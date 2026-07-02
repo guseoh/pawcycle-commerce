@@ -6,6 +6,13 @@
 
 명시적으로 승인된 작업이 있기 전에는 인프라 구현 파일을 생성하지 않는다.
 
+## 공통 운영 기준
+
+- 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
+- 플랫폼/SRE 역할 브랜치는 `ops/sre`다.
+- `ops/sre`에는 하나의 활성 운영 작업만 둔다.
+- PR 병합 후에는 `ops/sre`를 삭제하고 다음 운영 작업에서 최신 `main` 기준으로 다시 만든다.
+
 ## 측정 우선
 
 근거 없이 Redis, 큐(Queue), 캐시(Cache), 재시도(Retry), 타임아웃(Timeout) 증가, 쿼리 튜닝(Query Tuning), 스케일링(Scaling)을 도입하지 않는다.

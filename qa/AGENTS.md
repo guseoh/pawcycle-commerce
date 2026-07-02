@@ -6,6 +6,13 @@ QA(Quality Assurance)는 승인된 요구사항(Requirements)과 인수 조건(A
 
 QA는 제품 코드를 직접 수정해서 결함을 숨기지 않는다.
 
+## 공통 운영 기준
+
+- 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
+- QA 역할 브랜치는 `test/qa`다.
+- `test/qa`에는 하나의 활성 QA 작업만 둔다.
+- PR 병합 후에는 `test/qa`를 삭제하고 다음 QA 작업에서 최신 `main` 기준으로 다시 만든다.
+
 ## 검증 초점
 
 다음을 검증한다.

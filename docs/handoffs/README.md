@@ -17,3 +17,5 @@ docs/handoffs/<작업 ID>/<source-role>-to-<target-role>.md
 다른 역할에 실제로 전달할 정보가 있을 때만 인수인계를 만든다. 모든 작업마다 모든 조합의 인수인계를 만들지 않는다.
 
 새 인수인계는 `docs/handoffs/handoff-template.md`를 기준으로 작성한다.
+
+역할 브랜치, commit·push, 보고서 필수 규칙은 루트 `AGENTS.md`를 기준으로 한다.
