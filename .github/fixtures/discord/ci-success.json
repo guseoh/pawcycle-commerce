@@ -1,0 +1,15 @@
+{
+  "event": "ci_success",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "PR #12",
+  "task_id": "BOOTSTRAP-002",
+  "actor": "github-actions",
+  "branch": "ops/bootstrap-002",
+  "target": "Repository Validation",
+  "sha": "a1b2c3d4",
+  "status": "성공",
+  "validation": "커밋 규칙 · PR 제목 · Markdown",
+  "summary": "모든 검증 단계가 통과했습니다.",
+  "url": "https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
+  "timestamp": "2026-07-02T06:53:00Z"
+}

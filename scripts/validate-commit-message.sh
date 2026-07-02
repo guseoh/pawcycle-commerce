@@ -1,0 +1,75 @@
+#!/usr/bin/env sh
+set -eu
+
+MAX_TITLE_LENGTH=72
+ALLOWED_TYPES="feat fix docs style refactor test build ci chore perf revert"
+EXAMPLE="docs: 프로젝트 문서를 정리한다"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/validate-commit-message.sh <commit-message-file>
+  scripts/validate-commit-message.sh --message "<title>"
+USAGE
+}
+
+fail() {
+  printf '%s\n' "커밋 메시지 검증 실패: $1" >&2
+  printf '%s\n' "올바른 예: $EXAMPLE" >&2
+  exit 1
+}
+
+message_from_args() {
+  if [ "$#" -eq 2 ] && [ "$1" = "--message" ]; then
+    printf '%s' "$2"
+    return 0
+  fi
+
+  if [ "$#" -ne 1 ]; then
+    usage >&2
+    exit 2
+  fi
+
+  if [ ! -f "$1" ]; then
+    fail "커밋 메시지 파일을 찾을 수 없음: $1"
+  fi
+
+  sed -n '1p' "$1" | tr -d '\r'
+}
+
+title=$(message_from_args "$@")
+
+[ -n "$title" ] || fail "제목이 비어 있음"
+
+case "$title" in
+  *.) fail "제목 끝에는 마침표를 쓰지 않음" ;;
+esac
+
+title_length=$(printf '%s' "$title" | wc -m | tr -d ' ')
+if [ "$title_length" -gt "$MAX_TITLE_LENGTH" ]; then
+  fail "제목은 ${MAX_TITLE_LENGTH}자 이내여야 함: 현재 ${title_length}자"
+fi
+
+if ! printf '%s' "$title" | grep -Eq '^[a-z]+(\([a-z0-9][a-z0-9-]*\))?: .+'; then
+  fail "형식은 <type>(<scope>): <한국어 설명> 또는 <type>: <한국어 설명>이어야 함"
+fi
+
+type=$(printf '%s' "$title" | sed -E 's/^([a-z]+)(\([a-z0-9][a-z0-9-]*\))?: .+$/\1/')
+description=$(printf '%s' "$title" | sed -E 's/^[a-z]+(\([a-z0-9][a-z0-9-]*\))?: //')
+
+type_allowed=false
+for allowed in $ALLOWED_TYPES; do
+  if [ "$type" = "$allowed" ]; then
+    type_allowed=true
+    break
+  fi
+done
+
+[ "$type_allowed" = true ] || fail "허용되지 않은 type: $type"
+[ -n "$description" ] || fail "설명이 비어 있음"
+
+if ! printf '%s' "$description" | grep -Eq '[가-힣]'; then
+  fail "설명에는 한글이 최소 한 글자 이상 포함되어야 함"
+fi
+
+exit 0

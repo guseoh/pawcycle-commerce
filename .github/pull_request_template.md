@@ -8,6 +8,11 @@
 
 PO / UX / BE / FE / QA / SRE / TL
 
+## PR 제목 확인
+
+- [ ] PR 제목이 `<type>(<scope>): <한국어 설명>` 형식이다.
+- [ ] Squash Merge용 최종 제목으로 사용할 수 있다.
+
 ## 해결하는 문제
 
 ## 변경 범위
@@ -23,6 +28,7 @@ PO / UX / BE / FE / QA / SRE / TL
 - [ ] 관련 테스트가 통과했다.
 - [ ] 필요한 경우 린트(Lint), 타입 검사(Type Check), 빌드(Build)가 통과했다.
 - [ ] 실행할 수 없는 검사는 이유를 설명했다.
+- [ ] 커밋 메시지와 PR 제목 검증을 통과했다.
 
 ## API 영향
 
@@ -35,6 +41,13 @@ PO / UX / BE / FE / QA / SRE / TL
 ## 운영 영향(Operational Impact)
 
 없음 / 다음 문서에 기록:
+
+## 협업 알림 및 기록
+
+- Discord 알림 영향: 없음 / 있음
+- Obsidian PR 기록에 남길 핵심 요약:
+- 연결된 Issue:
+- 후속 작업:
 
 ## 인수인계(Handoff)
 

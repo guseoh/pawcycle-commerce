@@ -57,6 +57,30 @@ PawCycle Commerce는 반려동물 소모품을 일반 구매와 정기배송 구
 - 다른 역할의 영역 변경이 필요하면 직접 수정하지 않고 인수인계(Handoff)나 변경 요청(Change Request)을 남긴다.
 - 요청되지 않은 도구, 의존성, 인프라를 추가하지 않는다.
 
+## Secret 관리
+
+- 비밀번호, API Key, 토큰(Token), 개인 키(Private Key), 인증서(Certificate), Webhook URL을 저장소에 커밋하지 않는다.
+- Secret은 로컬 환경 변수(Environment Variable), GitHub Actions Secret 또는 사용자가 승인한 Secret 관리 시스템으로 전달한다.
+- 예시 설정에는 실제 값 대신 설명 가능한 placeholder를 사용한다.
+- Secret이 필요한 기능은 값이 없을 때 안전하게 실패해야 한다.
+- 로그, 문서, 완료 보고에 Secret 값을 출력하지 않는다.
+- AI 에이전트는 Secret 값을 생성, 추측, 복사하거나 문서에 삽입하지 않는다.
+- 실제 Secret 노출이 의심되면 구현을 계속하지 않고 사용자에게 보고한다.
+
+허용 예시는 다음과 같다.
+
+```text
+DISCORD_WEBHOOK_URL=<GitHub Actions Secret에서 제공>
+DB_PASSWORD=<로컬 환경 변수에서 제공>
+```
+
+금지 예시는 다음과 같다.
+
+```text
+DISCORD_WEBHOOK_URL=<실제 Webhook URL>
+DB_PASSWORD=<실제 비밀번호>
+```
+
 ## 문서 우선순위
 
 프로젝트 문서가 충돌하면 다음 순서로 해석한다.
@@ -125,6 +149,48 @@ PawCycle Commerce는 반려동물 소모품을 일반 구매와 정기배송 구
 - `feat/PS-001-frontend-subscription`
 - `test/PS-001-subscription`
 - `ops/PS-001-subscription-metrics`
+
+## 커밋과 Pull Request 제목 규칙
+
+커밋 메시지와 Pull Request 제목은 Conventional Commits 1.0.0을 기반으로 작성한다.
+
+기본 형식은 다음과 같다.
+
+```text
+<type>(<scope>): <한국어 설명>
+```
+
+`scope`는 선택 사항이다. `type`과 `scope`는 영문 소문자로 작성하고, 설명에는 한글을 최소 한 글자 이상 포함한다.
+
+허용 타입은 다음으로 제한한다.
+
+- `feat`: 사용자에게 제공되는 기능 추가
+- `fix`: 결함 수정
+- `docs`: 문서 변경
+- `style`: 동작에 영향이 없는 형식 변경
+- `refactor`: 기능 변경 없는 코드 구조 개선
+- `test`: 테스트 추가 또는 변경
+- `build`: 빌드 시스템 및 의존성 변경
+- `ci`: CI/CD 및 GitHub Actions 변경
+- `chore`: 기타 저장소 관리 작업
+- `perf`: 측정 근거가 있는 성능 개선
+- `revert`: 이전 변경 되돌리기
+
+제목 끝에는 마침표를 쓰지 않는다. 제목은 가능하면 72자 이내로 작성한다.
+
+권장 예시는 다음과 같다.
+
+```text
+docs: 프로젝트 운영 원칙을 정리한다
+ci(discord): PR 알림 워크플로를 추가한다
+fix(workflow): 중복 전송 조건을 수정한다
+```
+
+Squash Merge를 사용할 경우 Pull Request 제목이 `main`의 최종 커밋 메시지로 사용될 수 있도록 같은 규칙을 적용한다.
+
+자동화가 생성하는 커밋도 같은 규칙을 따른다.
+
+상세 설정과 로컬 Git Hook 설치 방법은 `docs/runbook/collaboration-automation.md`를 따른다.
 
 ## 작업 ID와 스레드 규칙
 

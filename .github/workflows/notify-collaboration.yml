@@ -1,0 +1,148 @@
+name: Collaboration Notification
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, closed, review_requested, synchronize]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, reopened, assigned, closed]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  discord:
+    name: Discord collaboration notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Build Discord payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_REF: ${{ github.ref_name }}
+          PUSH_COMPARE_URL: ${{ github.event.compare }}
+          PUSH_HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          event="pr_opened"
+          number="$PR_NUMBER"
+          task_id="$(printf '%s\n%s\n%s\n' "$PR_TITLE" "$PR_HEAD" "$ISSUE_TITLE" | grep -Eo '(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC)-[0-9]{3}' | head -n 1 || true)"
+          actor="$PR_AUTHOR"
+          branch="${PR_HEAD} → ${PR_BASE}"
+          target="Pull Request"
+          sha="$PR_SHA"
+          status="리뷰 대기"
+          validation="실행 대기"
+          summary="$PR_TITLE"
+          url="$PR_URL"
+          extra="변경 파일 ${PR_CHANGED_FILES:-기록 없음}개"
+
+          if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$ACTION" = "closed" ]; then
+            if [ "$PR_MERGED" = "true" ]; then
+              event="pr_merged"
+              status="병합 완료"
+              validation="Obsidian 기록 생성 예정"
+            else
+              event="pr_closed"
+              status="종료"
+              validation="병합 없음"
+            fi
+          elif [ "$EVENT_NAME" = "pull_request_target" ] && [ "$ACTION" = "synchronize" ]; then
+            event="pr_opened"
+            status="새 커밋 반영"
+            validation="검증 실행 예정"
+          elif [ "$EVENT_NAME" = "pull_request_review" ]; then
+            number="$PR_NUMBER"
+            actor="$ACTOR"
+            if [ "$REVIEW_STATE" = "approved" ]; then
+              event="review_approved"
+              status="승인"
+              validation="병합 승인 대기"
+            elif [ "$REVIEW_STATE" = "changes_requested" ]; then
+              event="changes_requested"
+              status="Changes requested"
+              validation="리뷰 확인 필요"
+            else
+              event="review_commented"
+              status="Commented"
+              validation="리뷰 코멘트 확인"
+            fi
+          elif [ "$EVENT_NAME" = "issues" ]; then
+            number="$ISSUE_NUMBER"
+            actor="$ISSUE_AUTHOR"
+            branch="기록 없음"
+            target="Issue"
+            sha="기록 없음"
+            summary="$ISSUE_TITLE"
+            url="$ISSUE_URL"
+            extra="액션 ${ACTION}"
+            if [ "$ACTION" = "closed" ]; then
+              event="issue_closed"
+              status="Closed"
+              validation="완료"
+            else
+              event="issue_opened"
+              status="Open"
+              validation="담당자 또는 라벨 확인"
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            event="main_updated"
+            number=""
+            actor="$ACTOR"
+            branch="$PUSH_REF"
+            target="main"
+            sha="$PUSH_SHA"
+            status="반영 완료"
+            validation="기준 브랜치 업데이트"
+            summary="$(printf '%s' "$PUSH_HEAD_MESSAGE" | sed -n '1p')"
+            url="$PUSH_COMPARE_URL"
+            extra="main 최신 커밋 반영"
+          fi
+
+          python .github/scripts/build-discord-payload.py \
+            --event "$event" \
+            --repository "$REPOSITORY" \
+            --number "$number" \
+            --task-id "$task_id" \
+            --actor "$actor" \
+            --branch "$branch" \
+            --target "$target" \
+            --sha "$sha" \
+            --status "$status" \
+            --validation "$validation" \
+            --summary "$summary" \
+            --extra "$extra" \
+            --url "$url" > discord-payload.json
+
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python .github/scripts/send-discord-notification.py --payload-file discord-payload.json

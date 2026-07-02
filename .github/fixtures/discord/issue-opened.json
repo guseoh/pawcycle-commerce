@@ -1,0 +1,15 @@
+{
+  "event": "issue_opened",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "8",
+  "task_id": "PS-002",
+  "actor": "guseoh",
+  "branch": "기록 없음",
+  "target": "Issue",
+  "sha": "기록 없음",
+  "status": "Open",
+  "validation": "담당자 미지정",
+  "summary": "새로운 작업 또는 결정 사항이 등록되었습니다.",
+  "url": "https://github.com/guseoh/pawcycle-commerce/issues/8",
+  "timestamp": "2026-07-02T06:56:00Z"
+}
