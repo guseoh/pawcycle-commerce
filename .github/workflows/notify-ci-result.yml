@@ -48,7 +48,7 @@ jobs:
             --target "$WORKFLOW_NAME" \
             --sha "$HEAD_SHA" \
             --status "$status" \
-            --validation "커밋 규칙 · PR 제목 · Markdown" \
+            --validation "커밋 규칙 · PR 제목 · 산출물" \
             --summary "$summary" \
             --url "$WORKFLOW_URL" > discord-payload.json
 

@@ -5,8 +5,8 @@
   },
   "pull_request": {
     "number": 12,
-    "title": "docs(agents): 브랜치 운영 규칙을 간소화한다",
-    "body": "작업 목적: 브랜치 운영 규칙을 간소화한다.\n\n주요 변경: AGENTS.md와 PR 템플릿을 수정한다.",
+    "title": "docs(agents): 브랜치 운영 규칙 간소화",
+    "body": "작업 목적: 브랜치 운영 규칙 간소화\n\n주요 변경: AGENTS.md와 PR 템플릿 수정",
     "merged": true,
     "merged_at": "2026-07-02T06:55:00Z",
     "merge_commit_sha": "d4e5f6a1234567890",

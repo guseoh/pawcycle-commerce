@@ -1,0 +1,63 @@
+name: Performance Experiment
+description: 성능 실험 질문과 재측정 계획을 기록합니다.
+title: "[PERF-000] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Secret, 개인정보, 실제 결제 정보는 입력하지 마세요.
+  - type: input
+    id: task-id
+    attributes:
+      label: 작업 ID
+      placeholder: PERF-001
+    validations:
+      required: true
+  - type: textarea
+    id: measurement-question
+    attributes:
+      label: 측정 질문
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 기준 환경
+    validations:
+      required: true
+  - type: input
+    id: data-size
+    attributes:
+      label: 데이터 크기
+    validations:
+      required: true
+  - type: textarea
+    id: load-pattern
+    attributes:
+      label: 부하 패턴
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: 기준 수치
+    validations:
+      required: true
+  - type: textarea
+    id: bottleneck
+    attributes:
+      label: 병목 증거
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: 개선 가설
+    validations:
+      required: true
+  - type: textarea
+    id: retest
+    attributes:
+      label: 동일 조건 재측정 계획
+    validations:
+      required: true

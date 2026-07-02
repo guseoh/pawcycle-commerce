@@ -24,6 +24,13 @@ jobs:
         run: |
           sh scripts/validate-commit-message.sh --message "$PR_TITLE"
 
+      - name: Validate task artifacts
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | python scripts/validate-task-artifacts.py --from-stdin
+
       - name: Validate commit messages
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

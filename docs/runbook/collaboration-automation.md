@@ -2,23 +2,71 @@
 
 ## 1. 목적
 
-이 문서는 PawCycle Commerce의 커밋 메시지 규칙, Git Hook, GitHub Actions 검증, Discord 알림, Obsidian PR 기록 자동화를 설명한다.
+이 문서는 PawCycle Commerce의 역할 브랜치, 커밋 메시지 규칙, Git Hook, GitHub Actions 검증, Discord 알림, Obsidian PR 기록 자동화를 설명한다.
 
 자동화의 목표는 다음과 같다.
 
 - `main`에 들어가는 커밋과 PR 제목의 형식을 일관되게 유지한다.
+- 작업 보고서와 역할 인수인계가 PR 산출물로 남도록 확인한다.
 - 협업 이벤트를 Discord에 구조화된 Embed로 알린다.
 - 병합된 PR을 Obsidian에서 읽기 쉬운 Markdown 기록으로 남긴다.
 - Secret과 Webhook URL이 저장소, 로그, 보고서에 노출되지 않게 한다.
 
-## 2. 커밋 메시지 규칙
+## 2. 역할 브랜치
+
+작업마다 긴 브랜치 이름을 만들지 않고 다음 역할 브랜치만 사용한다.
+
+| 브랜치 | 담당 역할 |
+| --- | --- |
+| `main` | 기준 브랜치 |
+| `spec/po` | Product Planner |
+| `design/ux` | UX/UI Designer |
+| `feat/be` | Backend Engineer |
+| `feat/fe` | Frontend Engineer |
+| `test/qa` | QA Engineer |
+| `ops/sre` | Platform/SRE |
+| `ops/tl` | Tech Lead와 공통 저장소 작업 |
+
+역할 브랜치는 영구 통합 브랜치가 아니다.
+
+```text
+최신 main
+→ 역할 브랜치 생성
+→ 역할의 한 작업 수행
+→ commit
+→ push
+→ PR
+→ main 병합
+→ 역할 브랜치 삭제
+→ 다음 작업에서 같은 이름 재생성
+```
+
+하나의 역할 브랜치에는 하나의 활성 작업만 둔다. Squash Merge 이후에는 기존 역할 브랜치를 계속 사용하지 않는다.
+
+## 3. commit·push 정책
+
+필수 검증을 통과하고 작업 보고서와 인수인계가 작성되면 Codex는 commit과 push를 수행한다.
+
+다음 상황에서는 commit과 push를 중단한다.
+
+- 필수 검증 실패
+- 해결되지 않은 충돌
+- 다른 작업 변경 혼입
+- Secret 노출 의심
+- 원격 브랜치 상태 불명확
+- destructive Git 작업 필요
+- 사용자의 명시적 금지
+
+Pull Request 병합은 사용자가 최종 검토 후 수행한다. Codex는 자동 병합하지 않는다.
+
+## 4. 커밋 메시지와 PR 제목 규칙
 
 커밋 메시지와 Pull Request 제목은 Conventional Commits 1.0.0을 기반으로 한다.
 
 기본 형식은 다음과 같다.
 
 ```text
-<type>(<scope>): <한국어 설명>
+<type>(<scope>): <한국어 명사형 설명>
 ```
 
 `scope`는 선택 사항이다.
@@ -41,30 +89,33 @@
 
 - `type`과 `scope`는 영문 소문자로 작성한다.
 - 설명에는 한글이 최소 한 글자 이상 포함되어야 한다.
+- 설명은 명사형으로 끝난다.
+- `~한다`, `~했다`, `~합니다`, `~하였다`, `~됩니다` 같은 서술형 종결을 쓰지 않는다.
 - 콜론 뒤에는 공백 한 칸을 둔다.
 - 제목 끝에는 마침표를 쓰지 않는다.
 - 제목은 가능하면 72자 이내로 작성한다.
-- 본문과 설명은 기본적으로 한국어로 작성한다.
-- `BREAKING CHANGE`, `Refs`, `Closes` 같은 표준 Footer 식별자는 영문을 허용한다.
 
 권장 예시는 다음과 같다.
 
 ```text
-docs: 프로젝트 문서를 정리한다
-ci(discord): PR 알림을 추가한다
-fix(workflow): 중복 전송 조건을 수정한다
+docs: 프로젝트 문서 정리
+docs(harness): 역할별 보고 체계 추가
+ci(discord): 협업 알림 워크플로 구성
+fix(obsidian): PR 기록 감지 오류 수정
 ```
 
 사용하지 않을 예시는 다음과 같다.
 
 ```text
-update
-docs: update docs
-CI: 알림 추가
-feat 기능 추가
+docs: 프로젝트 문서를 정리한다
+ci(discord): 알림을 추가합니다
+fix(obsidian): 오류를 수정했다
+feat: 기능을 구현하였다
 ```
 
-## 3. 로컬 Git Hook 설치
+자동화가 생성하는 커밋도 가능한 한 같은 규칙을 따른다. 예외적으로 Git이 생성하는 Merge commit과 Revert commit은 검증기가 허용한다.
+
+## 5. 로컬 Git Hook 설치
 
 로컬 커밋 전에 메시지를 검증하려면 다음을 실행한다.
 
@@ -86,19 +137,22 @@ git config core.hooksPath .githooks
 
 검증 기준은 `scripts/validate-commit-message.sh` 하나로 유지한다. 로컬 Hook과 GitHub Actions는 같은 스크립트를 호출한다.
 
-## 4. GitHub Actions 검증
+## 6. GitHub Actions 검증
 
 `Repository Validation` 워크플로는 Pull Request에서 다음을 검증한다.
 
 - PR 제목
 - PR에 포함된 커밋 메시지
+- PR 본문에서 작업 ID 확인
+- `docs/reports/<작업 ID>/`의 작업 보고서 확인
+- `docs/handoffs/<작업 ID>/`의 역할 인수인계 확인
 - 변경 diff의 공백 오류
 
 Discord Secret은 검증 워크플로에서 사용하지 않는다.
 
 검증 실패 시 실패한 커밋 SHA, 현재 메시지, 위반 규칙, 올바른 예시가 Actions 로그에 출력된다.
 
-## 5. Discord Webhook 설정
+## 7. Discord Webhook 설정
 
 Codex와 자동화는 Discord Webhook URL을 생성하거나 추측하지 않는다.
 
@@ -119,7 +173,7 @@ Webhook 이름은 Discord 설정에서 `PawCycle Bot`을 권장한다.
 
 Webhook URL은 채팅, Issue, PR, 커밋, 로그, 문서에 출력하지 않는다.
 
-## 6. Discord 알림 이벤트
+## 8. Discord 알림 이벤트
 
 Discord 알림은 단순 텍스트가 아니라 Rich Embed로 전송한다.
 
@@ -144,7 +198,7 @@ Discord 알림은 단순 텍스트가 아니라 Rich Embed로 전송한다.
 
 모든 작업 브랜치의 단순 push는 알리지 않는다.
 
-## 7. Discord Embed 디자인
+## 9. Discord Embed 디자인
 
 공통 필드는 다음이다.
 
@@ -166,21 +220,9 @@ Discord 알림은 단순 텍스트가 아니라 Rich Embed로 전송한다.
 
 상태별 색상은 `.github/scripts/build-discord-payload.py`에서 한곳에 관리한다.
 
-| 이벤트 | 색상 |
-| --- | --- |
-| PR 생성·리뷰 요청 | 파란색 `#3498DB` |
-| 리뷰 승인 | 초록색 `#2ECC71` |
-| 변경 요청 | 주황색 `#E67E22` |
-| CI 성공 | 초록색 `#2ECC71` |
-| CI 실패 | 빨간색 `#E74C3C` |
-| PR 병합 | 보라색 `#9B59B6` |
-| Issue 생성 | 청록색 `#1ABC9C` |
-| Issue 종료 | 회색 `#95A5A6` |
-| 경고·설정 필요 | 노란색 `#F1C40F` |
-
 Discord에는 전체 diff, 긴 로그, Stack Trace, Secret 값, 개인정보를 넣지 않는다.
 
-## 8. Discord 알림 테스트
+## 10. Discord 알림 테스트
 
 Secret이 설정되지 않은 상태에서는 실제 전송을 하지 않는다.
 
@@ -193,10 +235,10 @@ python scripts/validate-discord-payloads.py
 Secret 설정 후 실제 테스트가 필요하면 실제 PR이나 CI 성공으로 오해되지 않는 제목을 사용한다.
 
 ```text
-🧪 PawCycle Commerce 알림 연결 테스트
+PawCycle Commerce 알림 연결 테스트
 ```
 
-## 9. Obsidian PR 기록
+## 11. Obsidian PR 기록
 
 PR이 병합되면 Markdown 기록을 생성한다.
 
@@ -208,11 +250,9 @@ docs/learning/pull-requests/<연도>/PR-<번호>-<짧은-slug>.md
 
 파일명 slug는 저장소 파일명 규칙을 따르기 위해 영문 소문자, 숫자, 하이픈만 사용한다.
 
-사용자는 저장소 루트 또는 `docs/learning`을 Obsidian Vault로 열 수 있다.
+사용자는 저장소 루트 또는 `docs/learning`을 Obsidian Vault로 열 수 있다. `.obsidian/` 개인 설정은 저장소에 커밋하지 않는다.
 
-`.obsidian/` 개인 설정은 저장소에 커밋하지 않는다.
-
-## 10. Obsidian 기록 생성 방식
+## 12. Obsidian 기록 생성 방식
 
 `Record Merged Pull Request` 워크플로는 PR이 실제 병합된 경우에만 실행된다.
 
@@ -228,12 +268,12 @@ docs/learning/pull-requests/<연도>/PR-<번호>-<짧은-slug>.md
 자동 기록 커밋 메시지는 다음 형식이다.
 
 ```text
-docs(obsidian): PR #<번호> 기록을 추가한다
+docs(obsidian): PR #<번호> 기록 추가
 ```
 
 자동 커밋 사용자는 `github-actions[bot]`이다.
 
-## 11. 브랜치 보호와 실패 복구
+## 13. 브랜치 보호와 실패 복구
 
 현재 `main` 브랜치 보호 규칙이 자동 커밋을 막는다면 보호 규칙을 약화하지 않는다.
 
@@ -246,7 +286,7 @@ docs(obsidian): PR #<번호> 기록을 추가한다
 
 자동 커밋 실패는 제품 빌드나 테스트 결과를 성공으로 바꾸거나 실패로 바꾸지 않는다.
 
-## 12. 보안 주의사항
+## 14. 보안 주의사항
 
 - Secret 값은 저장소에 커밋하지 않는다.
 - Webhook URL은 로그와 완료 보고에 출력하지 않는다.
@@ -255,14 +295,25 @@ docs(obsidian): PR #<번호> 기록을 추가한다
 - Git 기록에 Secret이 들어갔다면 `.gitignore` 추가만으로 해결되지 않는다.
 - 노출된 Secret은 폐기하고 새 값으로 교체해야 한다.
 
-## 13. 로컬 검증 명령
+## 15. 로컬 검증 명령
 
 커밋 메시지 예시 검증:
 
 ```bash
-sh scripts/validate-commit-message.sh --message "docs: 프로젝트 문서를 정리한다"
-sh scripts/validate-commit-message.sh --message "ci(discord): PR 알림을 추가한다"
-sh scripts/validate-commit-message.sh --message "fix(workflow): 중복 전송 조건을 수정한다"
+sh scripts/test-commit-message-convention.sh
+```
+
+개별 메시지 검증:
+
+```bash
+sh scripts/validate-commit-message.sh --message "docs: 프로젝트 문서 정리"
+sh scripts/validate-commit-message.sh --message "ci(harness): 역할별 산출물 검증 추가"
+```
+
+작업 산출물 검증:
+
+```bash
+printf '%s\n' "BOOTSTRAP-004" | python scripts/validate-task-artifacts.py --from-stdin
 ```
 
 Discord payload 검증:

@@ -4,6 +4,12 @@
 
 실제 운영 워크플로(Operational Workflow), 배포 경로(Deployment Path), 반복 장애, 모니터링(Monitoring) 또는 알림(Alert) 표면이 생겼을 때 작성한다.
 
+## 현재 런북
+
+- `collaboration-automation.md`: 역할 브랜치, commit·push, 검증, Discord, Obsidian 자동화
+- `repository-onboarding.md`: 로컬 저장소, Git Hook, Obsidian, Discord, 검증 명령
+- `github-repository-settings.md`: GitHub Settings에서 사용자가 확인할 저장소 설정
+
 ## 최소 런북 구조
 
 ```markdown

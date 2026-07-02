@@ -6,6 +6,7 @@
 .env.*
 !.env.example
 !.env.*.example
+.envrc
 
 **/.env
 **/.env.*
@@ -17,6 +18,8 @@ secrets/
 .secrets/
 *.secret
 *.secrets
+.npmrc
+.pypirc
 
 credentials.json
 service-account.json
@@ -33,6 +36,9 @@ google-credentials.json
 *.pfx
 *.jks
 *.keystore
+*.crt
+*.cer
+*.der
 
 id_rsa
 id_rsa.*
@@ -83,6 +89,10 @@ dumps/
 backups/
 *.dump
 *.backup
+*.bak
+*.db
+*.sqlite
+*.sqlite3
 
 # SQL migration files may be source files.
 # Do not ignore every *.sql file globally.
