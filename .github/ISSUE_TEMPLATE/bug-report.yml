@@ -1,0 +1,75 @@
+name: Bug Report
+description: 재현 가능한 결함을 기록합니다.
+title: "[BUG-000] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        로그와 스크린샷에서 Secret, 개인정보, 실제 결제 정보를 제거한 뒤 작성하세요.
+  - type: input
+    id: task-id
+    attributes:
+      label: 작업 ID
+      placeholder: BUG-001
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 환경
+      description: 브라우저, OS, 브랜치, 실행 조건을 적습니다.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 순서
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그
+      description: Secret과 개인정보를 제거한 로그만 붙입니다.
+    validations:
+      required: false
+  - type: dropdown
+    id: impact
+    attributes:
+      label: 영향도
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: 회귀 여부
+      options:
+        - 알 수 없음
+        - 회귀 의심
+        - 신규 결함
+    validations:
+      required: true
+  - type: checkboxes
+    id: secret-check
+    attributes:
+      label: Secret 제거 확인
+      options:
+        - label: 첨부한 로그와 설명에서 Secret, 개인정보, 실제 결제 정보를 제거했습니다.
+          required: true
