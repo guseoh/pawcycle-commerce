@@ -33,7 +33,7 @@ def one_line(value: Any, limit: int = 180) -> str:
 
 def slugify(title: str) -> str:
     slug = title.lower()
-    slug = re.sub(r"[^a-z0-9가-힣]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug[:48] or "pull-request"
 

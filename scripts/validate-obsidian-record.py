@@ -34,6 +34,11 @@ def main() -> int:
         if not output_path.exists():
             print("PR 기록 파일이 생성되지 않았습니다.", file=sys.stderr)
             return 1
+        try:
+            output_path.name.encode("ascii")
+        except UnicodeEncodeError:
+            print("PR 기록 파일명은 영어와 숫자 기반이어야 합니다.", file=sys.stderr)
+            return 1
         content = output_path.read_text(encoding="utf-8")
         required = [
             "type: pull-request",
