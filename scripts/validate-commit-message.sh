@@ -19,6 +19,20 @@ fail() {
   exit 1
 }
 
+has_hangul() {
+  COMMIT_DESCRIPTION=$description
+  export COMMIT_DESCRIPTION
+
+  for python_bin in python3 python; do
+    if command -v "$python_bin" >/dev/null 2>&1 && "$python_bin" -c 'import sys; sys.exit(0)' >/dev/null 2>&1; then
+      "$python_bin" -c 'import os, sys; text = os.environ.get("COMMIT_DESCRIPTION", ""); sys.exit(0 if any("\u3131" <= ch <= "\u318e" or "\uac00" <= ch <= "\ud7a3" for ch in text) else 1)'
+      return $?
+    fi
+  done
+
+  printf '%s' "$description" | LC_ALL=C grep -Eq '[^ -~]'
+}
+
 message_from_args() {
   if [ "$#" -eq 2 ] && [ "$1" = "--message" ]; then
     printf '%s' "$2"
@@ -68,7 +82,7 @@ done
 [ "$type_allowed" = true ] || fail "허용되지 않은 type: $type"
 [ -n "$description" ] || fail "설명이 비어 있음"
 
-if ! printf '%s' "$description" | grep -Eq '[가-힣]'; then
+if ! has_hangul; then
   fail "설명에는 한글이 최소 한 글자 이상 포함되어야 함"
 fi
 
