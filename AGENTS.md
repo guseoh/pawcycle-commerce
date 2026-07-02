@@ -109,22 +109,39 @@ PawCycle Commerce는 반려동물 소모품을 일반 구매와 정기배송 구
 
 ## Git 및 Worktree 원칙
 
-- `main` 브랜치에 직접 작업하지 않는다.
-- 하나의 브랜치는 하나의 책임만 가진다.
+- `main`은 프로젝트의 유일한 기본 브랜치이자 통합 기준 브랜치다.
+- `main`에는 승인되고 검증된 결과만 포함한다.
+- `main`에서 직접 작업하지 않는다.
+- 모든 작업 브랜치는 최신 `main`에서 생성한다.
+- 브랜치 기본 형식은 `<분류>/<작업-id>`다.
+- 브랜치의 작업 ID는 소문자로 작성한다.
+- 브랜치 이름에 긴 기능 설명 slug, 작업자 이름, 에이전트 이름, 날짜, 기술 스택, 문서 파일명을 넣지 않는다.
+- 허용 브랜치 접두사는 `spec`, `design`, `feat`, `test`, `ops`다.
+- `spec/*`는 제품 기획, 요구사항, 도메인 분석, API·DB·아키텍처 설계 초안에 사용한다.
+- `design/*`는 UX/UI 흐름과 디자인 작업에 사용한다.
+- `feat/*`는 백엔드와 프론트엔드 제품 코드 구현에 사용한다.
+- `test/*`는 QA, E2E, 회귀 테스트에 사용한다.
+- `ops/*`는 저장소 운영, 인프라, CI/CD, 관측성, 성능 실험에 사용한다.
+- 백엔드와 프론트엔드가 같은 작업 ID에서 별도 구현 브랜치를 가져야 할 때만 `-be`, `-fe` 접미사를 사용한다.
+- E2E 테스트 분리가 필요할 때만 `-e2e` 접미사를 사용한다.
+- 하나의 브랜치는 하나의 작업 ID와 하나의 책임만 가진다.
+- 작업 결과는 Pull Request로 `main`에 병합한다.
+- 병합된 작업 브랜치는 활성 worktree와 후속 작업 여부를 확인한 뒤 삭제한다.
 - 역할별 작업은 가능하면 별도 Codex 스레드와 작업 트리(worktree)에서 수행한다.
-- 브랜치 이름에는 작업 ID와 역할을 포함한다.
 - 사용자 승인 없이 커밋, 푸시, 병합, 배포하지 않는다.
 - Codex가 자동으로 브랜치를 병합하지 않는다.
 - 사용자는 diff, 검증 결과, 설명 가능성을 확인한 뒤 병합 여부를 결정한다.
 
 브랜치 예시는 다음과 같다.
 
-- `spec/PS-001-service-vision`
-- `design/PS-001-service-vision`
-- `feat/PS-001-backend-subscription`
-- `feat/PS-001-frontend-subscription`
-- `test/PS-001-subscription`
-- `ops/PS-001-subscription-metrics`
+- `spec/ps-001`
+- `design/ps-001`
+- `feat/ps-001-be`
+- `feat/ps-001-fe`
+- `test/ps-001`
+- `ops/ps-001`
+- `ops/perf-001`
+- `ops/bootstrap-002`
 
 ## 작업 ID와 스레드 규칙
 
