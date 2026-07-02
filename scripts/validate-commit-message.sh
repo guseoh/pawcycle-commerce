@@ -3,13 +3,16 @@ set -eu
 
 MAX_TITLE_LENGTH=72
 ALLOWED_TYPES="feat fix docs style refactor test build ci chore perf revert"
-EXAMPLE="docs: 프로젝트 문서를 정리한다"
+EXAMPLE="docs: 프로젝트 문서 정리"
+DISALLOWED_PREDICATE_ENDINGS='(한다|했다|합니다|하였다|됩니다|추가한다|수정한다|작성한다|구현한다|정리한다|적용한다|연동한다)$'
 
 usage() {
   cat <<'USAGE'
 Usage:
   scripts/validate-commit-message.sh <commit-message-file>
   scripts/validate-commit-message.sh --message "<title>"
+
+The same title convention is used for commits and pull requests.
 USAGE
 }
 
@@ -56,6 +59,11 @@ title=$(message_from_args "$@")
 [ -n "$title" ] || fail "제목이 비어 있음"
 
 case "$title" in
+  "Merge "*) exit 0 ;;
+  "Revert \""*) exit 0 ;;
+esac
+
+case "$title" in
   *.) fail "제목 끝에는 마침표를 쓰지 않음" ;;
 esac
 
@@ -65,7 +73,7 @@ if [ "$title_length" -gt "$MAX_TITLE_LENGTH" ]; then
 fi
 
 if ! printf '%s' "$title" | grep -Eq '^[a-z]+(\([a-z0-9][a-z0-9-]*\))?: .+'; then
-  fail "형식은 <type>(<scope>): <한국어 설명> 또는 <type>: <한국어 설명>이어야 함"
+  fail "형식은 <type>(<scope>): <한국어 명사형 설명> 또는 <type>: <한국어 명사형 설명>이어야 함"
 fi
 
 type=$(printf '%s' "$title" | sed -E 's/^([a-z]+)(\([a-z0-9][a-z0-9-]*\))?: .+$/\1/')
@@ -84,6 +92,10 @@ done
 
 if ! has_hangul; then
   fail "설명에는 한글이 최소 한 글자 이상 포함되어야 함"
+fi
+
+if printf '%s' "$description" | grep -Eq "$DISALLOWED_PREDICATE_ENDINGS"; then
+  fail "설명은 '~한다', '~했다', '~합니다' 같은 서술형 종결이 아니라 명사형으로 끝나야 함"
 fi
 
 exit 0
