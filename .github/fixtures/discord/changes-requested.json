@@ -1,0 +1,15 @@
+{
+  "event": "changes_requested",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "12",
+  "task_id": "BOOTSTRAP-002",
+  "actor": "reviewer-name",
+  "branch": "ops/bootstrap-002 → main",
+  "target": "Pull Request",
+  "sha": "a1b2c3d4",
+  "status": "Changes requested",
+  "validation": "로그 확인 필요",
+  "summary": "리뷰 내용을 확인하고 수정이 필요합니다.",
+  "url": "https://github.com/guseoh/pawcycle-commerce/pull/12",
+  "timestamp": "2026-07-02T06:52:00Z"
+}

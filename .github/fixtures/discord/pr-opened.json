@@ -1,0 +1,15 @@
+{
+  "event": "pr_opened",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "12",
+  "task_id": "BOOTSTRAP-002",
+  "actor": "guseoh",
+  "branch": "ops/bootstrap-002 → main",
+  "target": "Pull Request",
+  "sha": "a1b2c3d4",
+  "status": "리뷰 대기",
+  "validation": "실행 대기",
+  "summary": "브랜치 운영 규칙 변경이 리뷰를 기다리고 있습니다.",
+  "url": "https://github.com/guseoh/pawcycle-commerce/pull/12",
+  "timestamp": "2026-07-02T06:50:00Z"
+}

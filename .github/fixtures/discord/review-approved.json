@@ -1,0 +1,15 @@
+{
+  "event": "review_approved",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "12",
+  "task_id": "BOOTSTRAP-002",
+  "actor": "reviewer-name",
+  "branch": "ops/bootstrap-002 → main",
+  "target": "Pull Request",
+  "sha": "a1b2c3d4",
+  "status": "승인",
+  "validation": "CI 성공",
+  "summary": "PR #12가 리뷰 승인을 받았습니다.",
+  "url": "https://github.com/guseoh/pawcycle-commerce/pull/12",
+  "timestamp": "2026-07-02T06:51:00Z"
+}

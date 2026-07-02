@@ -1,0 +1,29 @@
+{
+  "action": "closed",
+  "repository": {
+    "full_name": "guseoh/pawcycle-commerce"
+  },
+  "pull_request": {
+    "number": 12,
+    "title": "docs(agents): 브랜치 운영 규칙을 간소화한다",
+    "body": "작업 목적: 브랜치 운영 규칙을 간소화한다.\n\n주요 변경: AGENTS.md와 PR 템플릿을 수정한다.",
+    "merged": true,
+    "merged_at": "2026-07-02T06:55:00Z",
+    "merge_commit_sha": "d4e5f6a1234567890",
+    "html_url": "https://github.com/guseoh/pawcycle-commerce/pull/12",
+    "user": {
+      "login": "guseoh"
+    },
+    "base": {
+      "ref": "main"
+    },
+    "head": {
+      "ref": "ops/bootstrap-002"
+    },
+    "labels": [
+      {
+        "name": "operations"
+      }
+    ]
+  }
+}
