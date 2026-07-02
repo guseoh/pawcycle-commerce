@@ -206,6 +206,8 @@ PR이 병합되면 Markdown 기록을 생성한다.
 docs/learning/pull-requests/<연도>/PR-<번호>-<짧은-slug>.md
 ```
 
+파일명 slug는 저장소 파일명 규칙을 따르기 위해 영문 소문자, 숫자, 하이픈만 사용한다.
+
 사용자는 저장소 루트 또는 `docs/learning`을 Obsidian Vault로 열 수 있다.
 
 `.obsidian/` 개인 설정은 저장소에 커밋하지 않는다.

@@ -28,7 +28,7 @@ jobs:
 
       - name: Commit PR record
         run: |
-          if git diff --quiet -- docs/learning/pull-requests; then
+          if [ -z "$(git status --porcelain -- docs/learning/pull-requests)" ]; then
             echo "생성할 PR 기록이 없습니다." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
