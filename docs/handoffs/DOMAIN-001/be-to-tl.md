@@ -76,7 +76,7 @@ C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "
 rg -n "(T[B]D|TO[D]O|추후[[:space:]]+작성|검증[[:space:]]+후[[:space:]]+작성)" docs/domain docs/reports/DOMAIN-001 docs/handoffs/DOMAIN-001
 ```
 
-모든 로컬 검증은 통과했다. PR 생성 후 Repository Validation과 Collaboration Notification도 확인한다.
+모든 로컬 검증은 통과했다. PR `#7` 생성 후 Commit and PR conventions와 Discord collaboration notification도 통과했다.
 
 ## TL 검토 요청
 
