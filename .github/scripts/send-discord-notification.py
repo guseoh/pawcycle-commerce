@@ -20,36 +20,50 @@ def summary(message: str) -> None:
     print(message)
 
 
-def send(url: str, payload: dict[str, object], retries: int) -> int:
+def retry_delay(attempt: int) -> int:
+    return min(2 * attempt, 6)
+
+
+def should_retry(status: int) -> bool:
+    return status == 429 or 500 <= status < 600
+
+
+def build_request(url: str, payload: dict[str, object]) -> urllib.request.Request:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
+    return urllib.request.Request(
         url,
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
 
+
+def send(url: str, payload: dict[str, object], retries: int) -> int:
     for attempt in range(1, retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=15) as response:
+            with urllib.request.urlopen(build_request(url, payload), timeout=15) as response:
                 status = response.getcode()
             if 200 <= status < 300:
                 summary(f"Discord 알림 전송 완료: HTTP {status}")
                 return 0
-            summary(f"Discord 알림 전송 경고: HTTP {status}, attempt={attempt}")
+            if not should_retry(status):
+                summary(f"Discord 알림 전송 실패: HTTP {status}")
+                return 1
+            summary(f"Discord 알림 전송 재시도: HTTP {status}, attempt={attempt}/{retries}")
         except urllib.error.HTTPError as exc:
             status = exc.code
-            summary(f"Discord 알림 전송 경고: HTTP {status}, attempt={attempt}")
-            if status != 429 and status < 500:
-                return 0
-        except urllib.error.URLError as exc:
-            summary(f"Discord 알림 전송 경고: network error, attempt={attempt}, reason={exc.reason}")
+            if not should_retry(status):
+                summary(f"Discord 알림 전송 실패: HTTP {status}")
+                return 1
+            summary(f"Discord 알림 전송 재시도: HTTP {status}, attempt={attempt}/{retries}")
+        except urllib.error.URLError:
+            summary(f"Discord 알림 전송 재시도: 네트워크 오류, attempt={attempt}/{retries}")
 
         if attempt < retries:
-            time.sleep(min(2 * attempt, 6))
+            time.sleep(retry_delay(attempt))
 
     summary("Discord 알림 전송 실패: 제한된 재시도 후 포기")
-    return 0
+    return 1
 
 
 def main() -> int:
@@ -60,8 +74,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.webhook_url:
-        summary("Discord 알림 건너뜀: DISCORD_WEBHOOK_URL Secret이 설정되지 않음")
-        return 0
+        summary("Discord 알림 실패: DISCORD_WEBHOOK_URL Secret이 설정되지 않음")
+        return 1
 
     with open(args.payload_file, "r", encoding="utf-8") as handle:
         payload = json.load(handle)

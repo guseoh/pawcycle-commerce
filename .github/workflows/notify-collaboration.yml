@@ -1,6 +1,10 @@
 name: Collaboration Notification
 
 on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Repository Validation]
+    types: [completed]
   pull_request_target:
     types: [opened, ready_for_review, reopened, closed, review_requested, synchronize]
   pull_request_review:
@@ -47,6 +51,12 @@ jobs:
           PUSH_REF: ${{ github.ref_name }}
           PUSH_COMPARE_URL: ${{ github.event.compare }}
           PUSH_HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          WORKFLOW_RUN_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_RUN_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -64,7 +74,43 @@ jobs:
           url="$PR_URL"
           extra="변경 파일 ${PR_CHANGED_FILES:-기록 없음}개"
 
-          if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$ACTION" = "closed" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            event="test"
+            number=""
+            task_id="기록 없음"
+            actor="$ACTOR"
+            branch="${PUSH_REF:-기록 없음}"
+            target="Discord Webhook"
+            sha="${PUSH_SHA:-기록 없음}"
+            status="연결 테스트"
+            validation="수동 실행"
+            summary="PawCycle Commerce Discord Webhook 연결 테스트입니다. 실제 PR·CI 알림이 아닙니다."
+            url="$RUN_URL"
+            extra="실행자 ${ACTOR:-기록 없음}"
+          elif [ "$EVENT_NAME" = "workflow_run" ]; then
+            event="ci_failure"
+            number=""
+            if [ -n "$WORKFLOW_RUN_PR_NUMBER" ]; then
+              number="PR #$WORKFLOW_RUN_PR_NUMBER"
+            fi
+            task_id="$(printf '%s\n' "$WORKFLOW_RUN_HEAD_BRANCH" | grep -Eo '\b(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API|UX|DATA)-[0-9]{3}\b' | head -n 1 || true)"
+            actor="$ACTOR"
+            branch="${WORKFLOW_RUN_HEAD_BRANCH:-기록 없음}"
+            target="${WORKFLOW_RUN_NAME:-Repository Validation}"
+            sha="$WORKFLOW_RUN_HEAD_SHA"
+            status="미통과"
+            validation="Repository Validation conclusion: ${WORKFLOW_RUN_CONCLUSION:-기록 없음}"
+            summary="검증이 성공으로 완료되지 않았습니다."
+            url="$WORKFLOW_RUN_URL"
+            extra="Actions 실행 ${WORKFLOW_RUN_URL:-기록 없음}"
+            if [ "$WORKFLOW_RUN_CONCLUSION" = "success" ]; then
+              event="ci_success"
+              status="성공"
+              validation="Repository Validation success"
+              summary="Repository Validation이 성공으로 완료됐습니다."
+              extra="conclusion success"
+            fi
+          elif [ "$EVENT_NAME" = "pull_request_target" ] && [ "$ACTION" = "closed" ]; then
             if [ "$PR_MERGED" = "true" ]; then
               event="pr_merged"
               status="병합 완료"

@@ -7,9 +7,10 @@
   "branch": "ops/bootstrap-002",
   "target": "Repository Validation",
   "sha": "a1b2c3d4",
-  "status": "실패",
-  "validation": "커밋 메시지 검증 실패",
-  "summary": "검증 중 오류가 발생했습니다.",
+  "status": "미통과",
+  "validation": "Repository Validation conclusion: failure",
+  "summary": "검증이 성공으로 완료되지 않았습니다.",
+  "extra": "Actions 실행 https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
   "url": "https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
   "timestamp": "2026-07-02T06:54:00Z"
 }
