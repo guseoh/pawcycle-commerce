@@ -248,7 +248,9 @@ PawCycle Commerce 알림 연결 테스트 Embed 수신
 - PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/10`
 - PR 상태: Open, Draft
 - mergeable: MERGEABLE
-- PR 제목 변경 예정: `fix(collaboration): Discord 요청과 PR 본문 UTF-8 보완`
+- PR 제목: `fix(collaboration): Discord 요청과 PR 본문 UTF-8 보완`
+- PR 본문 복구: `.git\PR-10-body.md` UTF-8 파일과 `gh pr edit 10 --body-file`로 완료
+- 원격 PR 본문 확인: 한글 정상 표시, U+FFFD 없음, NUL 없음, 반복 `??` 손상 패턴 없음
 - 자동 병합: 하지 않음
 
 보고서 자신을 최종 갱신하는 커밋 SHA는 재귀적으로 기록하지 않는다.
@@ -278,3 +280,17 @@ Process completed with exit code 1.
 이 실패는 `pull_request_target` 워크플로가 보안상 기본 브랜치 스크립트를 checkout하기 때문에, PR 브랜치의 `User-Agent` 수정이 PR 알림 체크 실행에는 아직 적용되지 않는 구조와 관련된다.
 
 따라서 PR 단계에서는 `Commit and PR conventions` 통과와 로컬 검증 통과를 기준으로 수정 내용을 검토하고, 실제 Discord 전송 해결 여부는 PR 병합 후 `main`의 `Collaboration Notification` 수동 실행으로 확인해야 한다.
+
+## OPS-002 범위 확장 후 PR 상태
+
+확장 커밋과 PR 본문 복구 후 다음 상태를 확인했다.
+
+- 확장 커밋: `687837493ccd4209cb8719e1f81a8ec1c641c6ad`
+- 확장 커밋 메시지: `fix(collaboration): PR 본문 UTF-8 검증 추가`
+- PR head: `ops/sre`
+- PR base: `main`
+- Repository Validation 최신 실행: 통과
+- PR 본문 인코딩 검증: 통과
+- Discord collaboration notification: HTTP `403` 실패 유지
+
+Discord 알림 실패는 `pull_request_target` 이벤트가 기본 브랜치의 기존 전송 스크립트를 checkout하는 구조와 관련된다. 이 PR의 실제 Discord 전송 해결 여부는 병합 후 `main`에서 수동 실행으로 확인한다.

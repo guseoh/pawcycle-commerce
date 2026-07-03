@@ -79,13 +79,22 @@ PR 생성 직후 `Commit and PR conventions`는 통과했고, `Discord collabora
 
 이 PR의 실제 운영 확인은 병합 후 `main`에서 수동 `Collaboration Notification` 워크플로를 실행해 판단한다.
 
-PR #10 제목은 확장 범위를 반영해 다음으로 갱신한다.
+PR #10 제목은 확장 범위를 반영해 다음으로 갱신했다.
 
 ```text
 fix(collaboration): Discord 요청과 PR 본문 UTF-8 보완
 ```
 
-PR #10 본문은 `.git\PR-10-body.md` UTF-8 파일과 `gh pr edit 10 --body-file`로 복구한다. 셸 인라인 `--body`는 사용하지 않는다.
+PR #10 본문은 `.git\PR-10-body.md` UTF-8 파일과 `gh pr edit 10 --body-file`로 복구했다. 셸 인라인 `--body`는 사용하지 않았다.
+
+원격 본문은 다시 읽어 다음을 확인했다.
+
+- 한글 정상 표시
+- U+FFFD 없음
+- NUL 없음
+- 반복적인 `??` 손상 패턴 없음
+- 작업 ID `OPS-002` 존재
+- 병합은 사용자가 수행한다는 문구 존재
 
 ## 403 재발 시 확인 순서
 
