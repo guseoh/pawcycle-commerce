@@ -53,7 +53,7 @@ Write-Output 'OPS-001' | py -3 scripts/validate-task-artifacts.py --from-stdin
 C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "fix(discord): 협업 알림 실패 감지와 연결 테스트 추가"
 ```
 
-검증 결과는 모두 통과했다.
+검증 결과는 모두 통과했다. PR `#9` 생성 후 Commit and PR conventions와 Discord collaboration notification도 통과했다.
 
 ## 남아 있는 제한
 
