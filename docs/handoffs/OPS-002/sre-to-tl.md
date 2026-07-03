@@ -60,6 +60,14 @@ PawCycle Commerce 알림 연결 테스트 Embed 수신
 
 두 조건을 모두 확인하기 전에는 Discord 운영 확인 완료로 판단하지 않는다.
 
+## PR 체크 참고
+
+PR 생성 직후 `Commit and PR conventions`는 통과했고, `Discord collaboration notification`은 HTTP `403`으로 실패했다.
+
+이 알림 워크플로는 `pull_request_target` 이벤트에서 보안상 기본 브랜치 스크립트를 checkout한다. 따라서 PR 브랜치의 `User-Agent` 수정은 PR 알림 체크에는 아직 적용되지 않는다.
+
+이 PR의 실제 운영 확인은 병합 후 `main`에서 수동 `Collaboration Notification` 워크플로를 실행해 판단한다.
+
 ## 403 재발 시 확인 순서
 
 수정 후에도 HTTP `403`이 발생하면 Secret 값이나 Webhook URL을 로그 또는 문서에 출력하지 말고 다음 순서로 확인한다.
