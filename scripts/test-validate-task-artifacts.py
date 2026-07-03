@@ -25,6 +25,10 @@ VALID_IDS = [
     "DOMAIN-999",
     "API-001",
     "API-999",
+    "UX-001",
+    "UX-999",
+    "DATA-001",
+    "DATA-999",
 ]
 
 INVALID_TEXTS = [
@@ -33,6 +37,12 @@ INVALID_TEXTS = [
     "DOMAIN001",
     "API-01",
     "API001",
+    "UX-01",
+    "UX-0001",
+    "UX001",
+    "DATA-01",
+    "DATA-0001",
+    "DATA001",
 ]
 
 
@@ -82,6 +92,16 @@ def main() -> int:
         result = run_validator(root, "API-001\n")
         if result.returncode != 0:
             print("API-001 경로 검사 실패", file=sys.stderr)
+            return 1
+
+        result = run_validator(root, "UX-001\n")
+        if result.returncode != 0:
+            print("UX-001 경로 검사 실패", file=sys.stderr)
+            return 1
+
+        result = run_validator(root, "DATA-001\n")
+        if result.returncode != 0:
+            print("DATA-001 경로 검사 실패", file=sys.stderr)
             return 1
 
     print("Task artifact validator fixture OK")

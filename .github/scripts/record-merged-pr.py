@@ -16,7 +16,7 @@ from typing import Any
 
 
 REPO = "guseoh/pawcycle-commerce"
-TASK_ID_PREFIXES = "BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API"
+TASK_ID_PREFIXES = "BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API|UX|DATA"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:
