@@ -2,7 +2,7 @@
 
 ## 전달 목적
 
-OPS-002에서 Discord Webhook 요청에 명시적 `User-Agent`를 추가한 결과와 PR 병합 후 운영 확인 절차를 Tech Lead에게 전달한다.
+OPS-002에서 Discord Webhook 요청에 명시적 `User-Agent`를 추가한 결과, PR 본문 UTF-8 손상 방어, PR 병합 후 운영 확인 절차를 Tech Lead에게 전달한다.
 
 ## 변경 요약
 
@@ -14,6 +14,17 @@ User-Agent: DiscordBot (https://github.com/guseoh/pawcycle-commerce, 1.0)
 ```
 
 `User-Agent`는 공개 저장소 URL과 정적 버전만 포함한다. Webhook URL, Secret, 사용자 개인정보, 실행별 동적 값은 포함하지 않는다.
+
+PR #10 본문에서 한글이 다수의 `?` 문자로 치환된 손상을 확인해 다음 방어도 추가했다.
+
+- `AGENTS.md`에 UTF-8 PR 본문 파일과 `--body-file` 사용 규칙 추가
+- 공통 Pull Request 템플릿 정리
+- PR 본문 문자 손상 검증기 추가
+- 검증기 단위 테스트 추가
+- `Repository Validation`에 PR 본문 인코딩 검증 단계 추가
+- Runbook에 Windows PowerShell 기준 PR 본문 작성·수정·원격 확인 절차 추가
+
+PR 생성 또는 수정 직후에는 원격 본문을 다시 읽어 U+FFFD, NUL, 반복 `??` 손상 패턴이 없는지 확인해야 한다.
 
 ## 확인한 실패 증거
 
@@ -68,6 +79,14 @@ PR 생성 직후 `Commit and PR conventions`는 통과했고, `Discord collabora
 
 이 PR의 실제 운영 확인은 병합 후 `main`에서 수동 `Collaboration Notification` 워크플로를 실행해 판단한다.
 
+PR #10 제목은 확장 범위를 반영해 다음으로 갱신한다.
+
+```text
+fix(collaboration): Discord 요청과 PR 본문 UTF-8 보완
+```
+
+PR #10 본문은 `.git\PR-10-body.md` UTF-8 파일과 `gh pr edit 10 --body-file`로 복구한다. 셸 인라인 `--body`는 사용하지 않는다.
+
 ## 403 재발 시 확인 순서
 
 수정 후에도 HTTP `403`이 발생하면 Secret 값이나 Webhook URL을 로그 또는 문서에 출력하지 말고 다음 순서로 확인한다.
@@ -85,10 +104,12 @@ git status --short --branch
 git diff --check
 git diff --stat
 py -3 -m unittest scripts.test_send_discord_notification
+py -3 -m unittest scripts.test_validate_pr_body_encoding
 py -3 scripts/validate-discord-payloads.py
-py -3 -m py_compile .github/scripts/build-discord-payload.py .github/scripts/send-discord-notification.py scripts/test_send_discord_notification.py
+py -3 -m py_compile .github/scripts/build-discord-payload.py .github/scripts/send-discord-notification.py scripts/test_send_discord_notification.py scripts/validate-pr-body-encoding.py scripts/test_validate_pr_body_encoding.py
 Write-Output 'OPS-002' | py -3 scripts/validate-task-artifacts.py --from-stdin
 C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "fix(discord): Webhook 요청 User-Agent 추가"
+C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "fix(collaboration): PR 본문 UTF-8 검증 추가"
 ```
 
 검증 결과는 모두 통과했다.
@@ -100,3 +121,6 @@ C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "
 - Discord 서버, 채널, Webhook 생성 또는 재발급은 수행하지 않았다.
 - Discord payload 디자인과 알림 이벤트 종류는 변경하지 않았다.
 - GitHub Actions 전체 구조와 Obsidian 기록 구조는 변경하지 않았다.
+- 새 PR이나 새 브랜치를 만들지 않는다.
+- PR #10 병합은 사용자가 검토 후 직접 수행한다.
+- 반복 `??` 검증은 명백한 문자 손상을 막기 위한 방어이며 모든 가능한 인코딩 문제를 완전하게 판별하지는 않는다.

@@ -24,6 +24,12 @@ jobs:
         run: |
           sh scripts/validate-commit-message.sh --message "$PR_TITLE"
 
+      - name: Validate PR body encoding
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" | python scripts/validate-pr-body-encoding.py --from-stdin
+
       - name: Validate task artifacts
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
