@@ -238,6 +238,19 @@ Squash Merge를 사용할 경우 Pull Request 제목이 `main`의 최종 커밋 
 
 상세 설정과 로컬 Git Hook 설치 방법은 `docs/runbook/collaboration-automation.md`를 따른다.
 
+## Pull Request 본문 UTF-8 규칙
+
+- PR 제목과 본문은 UTF-8로 작성한다.
+- 한글이 포함된 여러 줄 PR 본문을 `gh pr create --body` 또는 `gh pr edit --body`로 직접 전달하지 않는다.
+- PR 본문은 UTF-8 Markdown 파일로 작성하고 `--body-file`을 사용한다.
+- Windows PowerShell의 기본 출력 인코딩에 의존하지 않는다.
+- 임시 PR 본문 파일은 `.git/` 또는 OS 임시 디렉터리에 두고 커밋하지 않는다.
+- PR 생성 또는 수정 직후 GitHub에 저장된 원격 제목, 본문, head/base, Draft 상태를 다시 확인한다.
+- 문자 손상이 발견되면 Ready for review 또는 완료 보고 전에 수정한다.
+- PR 생성은 완료가 아니며 원격 제목·본문·head/base·Draft 상태 확인까지 완료해야 한다.
+
+구체적인 작성과 복구 절차는 `docs/runbook/collaboration-automation.md`를 따른다.
+
 ## 작업 ID와 스레드 규칙
 
 모든 작업에는 작업 ID를 사용한다.

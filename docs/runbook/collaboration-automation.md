@@ -115,6 +115,67 @@ feat: 기능을 구현하였다
 
 자동화가 생성하는 커밋도 가능한 한 같은 규칙을 따른다. 예외적으로 Git이 생성하는 Merge commit과 Revert commit은 검증기가 허용한다.
 
+### Pull Request 본문 UTF-8 작성 절차
+
+PR 제목과 본문은 UTF-8로 작성한다. 한글이 포함된 여러 줄 본문은 셸 인라인 문자열로 전달하지 않고, UTF-8 Markdown 파일로 작성한 뒤 `--body-file`을 사용한다.
+
+Windows PowerShell 권장 절차는 다음이다.
+
+```text
+UTF-8 Markdown 본문 파일 준비
+→ Python strict UTF-8 읽기 확인
+→ gh pr create/edit --body-file 사용
+→ gh pr view로 원격 본문 재확인
+→ 문자 손상 검증 통과
+→ Ready for review
+```
+
+금지 사항은 다음이다.
+
+- 한글 여러 줄 본문을 `--body`에 직접 전달
+- 기본 인코딩의 `Out-File` 사용
+- 기본 인코딩의 `>` 리다이렉션에 의존
+- 원격 본문 확인 없이 PR 생성 완료 처리
+
+임시 PR 본문 파일은 `.git/` 또는 OS 임시 디렉터리에 두고 커밋하지 않는다.
+
+PR 생성 예시는 다음과 같다.
+
+```powershell
+gh pr create `
+    --base main `
+    --head <역할-브랜치> `
+    --title "<규칙에 맞는 제목>" `
+    --body-file ".git\pr-body.md" `
+    --draft
+```
+
+PR 수정 예시는 다음과 같다.
+
+```powershell
+gh pr edit <PR-NUMBER> `
+    --body-file ".git\pr-body.md"
+```
+
+원격 확인 예시는 다음과 같다.
+
+```powershell
+gh pr view <PR-NUMBER> `
+    --json number,title,body,state,isDraft,headRefName,baseRefName
+```
+
+본문 파일과 원격 본문은 다음 검증기를 통과해야 한다.
+
+```powershell
+py -3 scripts/validate-pr-body-encoding.py `
+    --body-file ".git\pr-body.md"
+
+gh pr view <PR-NUMBER> --json body --jq ".body" |
+    py -3 scripts/validate-pr-body-encoding.py --from-stdin
+```
+
+검증기는 U+FFFD replacement character, NUL 문자, 여러 줄에 걸친 명백한 `??` 문자 손상 패턴을 차단한다. 일반적인 질문 문장과 코드 블록의 물음표는 허용한다.
+
 ## 5. 로컬 Git Hook 설치
 
 로컬 커밋 전에 메시지를 검증하려면 다음을 실행한다.
@@ -242,6 +303,13 @@ python scripts/validate-discord-payloads.py
 
 `DISCORD_WEBHOOK_URL` Secret이 없거나 Discord가 오류를 반환하면 알림 전송 단계는 실패한다. 전송 스크립트는 Webhook URL과 오류 응답 본문을 출력하지 않는다.
 
+전송 요청은 Discord HTTP API가 식별할 수 있도록 다음 헤더를 포함한다.
+
+```text
+Content-Type: application/json
+User-Agent: DiscordBot (https://github.com/guseoh/pawcycle-commerce, 1.0)
+```
+
 Secret 설정 후 실제 연결 테스트가 필요하면 GitHub Actions에서 `Collaboration Notification` 워크플로를 수동 실행한다.
 
 ```text
@@ -258,9 +326,18 @@ Discord 알림 전송 완료: HTTP 204
 
 ```text
 Discord 알림 실패: DISCORD_WEBHOOK_URL Secret이 설정되지 않음
+Discord 알림 전송 실패: HTTP 403
 Discord 알림 전송 실패: HTTP 404
 Discord 알림 전송 실패: 제한된 재시도 후 포기
 ```
+
+수정 후에도 HTTP `403`이 발생하면 Webhook URL이나 오류 응답 본문을 출력하지 말고 다음을 확인한다.
+
+1. Discord Webhook이 삭제되거나 비활성화됐는지 확인한다.
+2. `DISCORD_WEBHOOK_URL` Secret이 현재 Webhook URL로 갱신돼 있는지 확인한다.
+3. Webhook 대상 채널이 변경되거나 삭제됐는지 확인한다.
+4. Discord 서버와 채널 권한이 변경됐는지 확인한다.
+5. 필요한 경우 Webhook을 재발급하고 GitHub Repository Secret을 갱신한다.
 
 ## 11. Obsidian PR 기록
 

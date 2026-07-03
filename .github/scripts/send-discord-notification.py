@@ -12,6 +12,9 @@ import urllib.error
 import urllib.request
 
 
+USER_AGENT = "DiscordBot (https://github.com/guseoh/pawcycle-commerce, 1.0)"
+
+
 def summary(message: str) -> None:
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
@@ -33,7 +36,10 @@ def build_request(url: str, payload: dict[str, object]) -> urllib.request.Reques
     return urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
 
