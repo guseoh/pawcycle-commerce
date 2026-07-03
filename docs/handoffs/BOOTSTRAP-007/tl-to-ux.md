@@ -60,7 +60,7 @@ C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "
 C:\Program Files\Git\bin\bash.exe -lc "printf '%s\n' 'UX-0001' 'UX001' 'UX-001' 'DATA-0001' 'DATA001' 'DATA-001' | grep -Eo '\\b(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API|UX|DATA)-[0-9]{3}\\b'"
 ```
 
-검증 결과는 모두 통과했다.
+검증 결과는 모두 통과했다. PR `#8` 생성 후 Commit and PR conventions와 Discord collaboration notification도 통과했다.
 
 ## 남아 있는 제한
 

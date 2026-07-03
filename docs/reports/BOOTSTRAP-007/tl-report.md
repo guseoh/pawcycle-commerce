@@ -93,7 +93,7 @@
 | DATA-001 stdin 감지 확인 | 임시 산출물 디렉터리를 사용한 `DATA-001` stdin 검증 | 통과 |
 | Discord 작업 ID grep 확인 | Git Bash에서 `UX-0001`, `UX001`, `UX-001`, `DATA-0001`, `DATA001`, `DATA-001` 입력으로 grep 패턴 확인 | 통과 |
 | 커밋 메시지 확인 | `C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "fix(validation): UX와 DATA 작업 ID 인식 추가"` | 통과 |
-| PR 생성 후 CI | `gh pr checks` | PR 생성 후 기록 |
+| PR 생성 후 CI | `gh pr checks 8 --watch --interval 5` | 통과. Commit and PR conventions, Discord collaboration notification 성공 |
 
 ## 위험과 제한
 
@@ -105,13 +105,24 @@
 ## Git 결과
 
 - 브랜치: `ops/tl`
-- 주요 변경 커밋: PR 생성 전 기록
+- 주요 변경 커밋: `73fabe513052de363fe537a03d5b715fb2a5760b`
 - 주요 변경 커밋 메시지: `fix(validation): UX와 DATA 작업 ID 인식 추가`
-- push: PR 생성 전 기록
-- PR: PR 생성 전 기록
+- push: `origin/ops/tl` 반영 완료
+- PR: `#8` 생성 완료
 - 자동 병합: 하지 않음
 
 보고서 자신을 최종 갱신하는 커밋 SHA는 재귀적으로 기록하지 않는다.
+
+## PR 상태
+
+- PR 번호: `#8`
+- PR 제목: `fix(validation): UX와 DATA 작업 ID 인식 추가`
+- PR 방향: `ops/tl` → `main`
+- PR 상태: Open, Ready for review
+- mergeable: MERGEABLE
+- Commit and PR conventions: 통과
+- Discord collaboration notification: 통과
+- 자동 병합: 하지 않음
 
 ## 다음 작업
 
