@@ -152,6 +152,14 @@ Discord Secret은 검증 워크플로에서 사용하지 않는다.
 
 검증 실패 시 실패한 커밋 SHA, 현재 메시지, 위반 규칙, 올바른 예시가 Actions 로그에 출력된다.
 
+`Collaboration Notification` 워크플로는 `Repository Validation` 완료 이벤트를 감시한다.
+
+- 결론이 `success`이면 CI 검증 성공 알림을 보낸다.
+- 성공 이외의 완료 결론은 CI 검증 미통과 알림을 보낸다.
+- 알림에는 head branch, head SHA, Actions 실행 URL과 conclusion을 포함한다.
+- 작업 ID를 확인할 수 없으면 `기록 없음`으로 표시하며 임의로 추측하지 않는다.
+- `Collaboration Notification` 자신은 감시하지 않는다.
+
 ## 7. Discord Webhook 설정
 
 Codex와 자동화는 Discord Webhook URL을 생성하거나 추측하지 않는다.
@@ -193,7 +201,7 @@ Discord 알림은 단순 텍스트가 아니라 Rich Embed로 전송한다.
 - 담당자 지정
 - Issue 종료
 - CI 검증 성공
-- CI 검증 실패
+- CI 검증 미통과
 - `main` 반영 성공
 
 모든 작업 브랜치의 단순 push는 알리지 않는다.
@@ -232,10 +240,26 @@ Secret이 설정되지 않은 상태에서는 실제 전송을 하지 않는다.
 python scripts/validate-discord-payloads.py
 ```
 
-Secret 설정 후 실제 테스트가 필요하면 실제 PR이나 CI 성공으로 오해되지 않는 제목을 사용한다.
+`DISCORD_WEBHOOK_URL` Secret이 없거나 Discord가 오류를 반환하면 알림 전송 단계는 실패한다. 전송 스크립트는 Webhook URL과 오류 응답 본문을 출력하지 않는다.
+
+Secret 설정 후 실제 연결 테스트가 필요하면 GitHub Actions에서 `Collaboration Notification` 워크플로를 수동 실행한다.
 
 ```text
-PawCycle Commerce 알림 연결 테스트
+Actions → Collaboration Notification → Run workflow
+```
+
+수동 실행은 `test` 이벤트 payload를 만들고 실제 `DISCORD_WEBHOOK_URL` Secret으로 전송한다. 성공 로그에는 HTTP 2xx 상태가 표시되어야 하며 Discord 채널에서 연결 테스트 Embed가 실제로 수신되어야 한다.
+
+```text
+Discord 알림 전송 완료: HTTP 204
+```
+
+다음 로그는 실패로 처리된다.
+
+```text
+Discord 알림 실패: DISCORD_WEBHOOK_URL Secret이 설정되지 않음
+Discord 알림 전송 실패: HTTP 404
+Discord 알림 전송 실패: 제한된 재시도 후 포기
 ```
 
 ## 11. Obsidian PR 기록
@@ -320,6 +344,12 @@ Discord payload 검증:
 
 ```bash
 python scripts/validate-discord-payloads.py
+```
+
+Discord 전송 동작 검증:
+
+```bash
+python -m unittest scripts.test_send_discord_notification
 ```
 
 Obsidian 기록 생성 검증:

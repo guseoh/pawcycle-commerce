@@ -1,0 +1,16 @@
+{
+  "event": "test",
+  "repository": "guseoh/pawcycle-commerce",
+  "number": "",
+  "task_id": "기록 없음",
+  "actor": "guseoh",
+  "branch": "main",
+  "target": "Discord Webhook",
+  "sha": "a1b2c3d4",
+  "status": "연결 테스트",
+  "validation": "수동 실행",
+  "summary": "PawCycle Commerce Discord Webhook 연결 테스트입니다. 실제 PR·CI 알림이 아닙니다.",
+  "extra": "실행자 guseoh",
+  "url": "https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
+  "timestamp": "2026-07-03T10:10:00Z"
+}

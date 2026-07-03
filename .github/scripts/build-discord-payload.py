@@ -53,8 +53,8 @@ EVENTS = {
         "footer": "PawCycle Commerce · GitHub Actions",
     },
     "ci_failure": {
-        "title": "❌ CI 검증 실패",
-        "description": "검증 중 오류가 발생했습니다.",
+        "title": "❌ CI 검증 미통과",
+        "description": "검증이 성공으로 완료되지 않았습니다.",
         "color": "failure",
         "footer": "PawCycle Commerce · GitHub Actions",
     },
