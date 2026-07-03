@@ -19,6 +19,8 @@ TASK_ID_PREFIXES = (
     "SEC",
     "DOMAIN",
     "API",
+    "UX",
+    "DATA",
 )
 TASK_ID_RE = re.compile(rf"\b({'|'.join(TASK_ID_PREFIXES)})-\d{{3}}\b")
 
