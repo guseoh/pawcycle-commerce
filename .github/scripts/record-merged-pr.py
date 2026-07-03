@@ -16,6 +16,7 @@ from typing import Any
 
 
 REPO = "guseoh/pawcycle-commerce"
+TASK_ID_PREFIXES = "BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:
@@ -40,7 +41,7 @@ def slugify(title: str) -> str:
 
 def task_id_from_text(*values: str) -> str:
     joined = "\n".join(values)
-    match = re.search(r"\b(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC)-\d{3}\b", joined)
+    match = re.search(rf"\b({TASK_ID_PREFIXES})-\d{{3}}\b", joined)
     return match.group(0) if match else "기록 없음"
 
 

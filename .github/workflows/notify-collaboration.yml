@@ -53,7 +53,7 @@ jobs:
         run: |
           event="pr_opened"
           number="$PR_NUMBER"
-          task_id="$(printf '%s\n%s\n%s\n' "$PR_TITLE" "$PR_HEAD" "$ISSUE_TITLE" | grep -Eo '(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC)-[0-9]{3}' | head -n 1 || true)"
+          task_id="$(printf '%s\n%s\n%s\n' "$PR_TITLE" "$PR_HEAD" "$ISSUE_TITLE" | grep -Eo '(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API)-[0-9]{3}' | head -n 1 || true)"
           actor="$PR_AUTHOR"
           branch="${PR_HEAD} → ${PR_BASE}"
           target="Pull Request"

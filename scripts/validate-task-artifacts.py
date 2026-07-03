@@ -8,7 +8,19 @@ import re
 import sys
 from pathlib import Path
 
-TASK_ID_RE = re.compile(r"\b(BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC)-\d{3}\b")
+TASK_ID_PREFIXES = (
+    "BOOTSTRAP",
+    "PS",
+    "ARCH",
+    "FOUNDATION",
+    "BUG",
+    "PERF",
+    "OPS",
+    "SEC",
+    "DOMAIN",
+    "API",
+)
+TASK_ID_RE = re.compile(rf"\b({'|'.join(TASK_ID_PREFIXES)})-\d{{3}}\b")
 
 
 def parse_args() -> argparse.Namespace:
