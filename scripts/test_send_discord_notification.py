@@ -18,6 +18,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / ".github" / "scripts" / "send-discord-notification.py"
 WEBHOOK_URL = "https://example.invalid/webhook/opaque-value"
+TEST_WEBHOOK_MARKER = "opaque-value"
 
 
 def load_module():
@@ -53,6 +54,23 @@ def http_error(status: int) -> urllib.error.HTTPError:
 class SendDiscordNotificationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.payload = {"content": "test"}
+
+    def test_build_request_sets_required_headers(self) -> None:
+        request = discord.build_request(WEBHOOK_URL, self.payload)
+
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("Content-type"), "application/json")
+        self.assertEqual(request.get_header("User-agent"), discord.USER_AGENT)
+        self.assertTrue(discord.USER_AGENT.startswith("DiscordBot ("))
+        self.assertIn("https://github.com/guseoh/pawcycle-commerce", discord.USER_AGENT)
+        self.assertRegex(discord.USER_AGENT, r", [0-9]+(?:\.[0-9]+)*\)$")
+
+    def test_build_request_headers_do_not_include_webhook_url(self) -> None:
+        request = discord.build_request(WEBHOOK_URL, self.payload)
+        header_values = "\n".join(str(value) for value in request.header_items())
+
+        self.assertNotIn(WEBHOOK_URL, header_values)
+        self.assertNotIn(TEST_WEBHOOK_MARKER, header_values)
 
     def run_send(self, side_effects, retries: int = 3) -> tuple[int, str, mock.Mock]:
         stdout = io.StringIO()

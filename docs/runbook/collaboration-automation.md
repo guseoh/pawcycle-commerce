@@ -242,6 +242,13 @@ python scripts/validate-discord-payloads.py
 
 `DISCORD_WEBHOOK_URL` Secret이 없거나 Discord가 오류를 반환하면 알림 전송 단계는 실패한다. 전송 스크립트는 Webhook URL과 오류 응답 본문을 출력하지 않는다.
 
+전송 요청은 Discord HTTP API가 식별할 수 있도록 다음 헤더를 포함한다.
+
+```text
+Content-Type: application/json
+User-Agent: DiscordBot (https://github.com/guseoh/pawcycle-commerce, 1.0)
+```
+
 Secret 설정 후 실제 연결 테스트가 필요하면 GitHub Actions에서 `Collaboration Notification` 워크플로를 수동 실행한다.
 
 ```text
@@ -258,9 +265,18 @@ Discord 알림 전송 완료: HTTP 204
 
 ```text
 Discord 알림 실패: DISCORD_WEBHOOK_URL Secret이 설정되지 않음
+Discord 알림 전송 실패: HTTP 403
 Discord 알림 전송 실패: HTTP 404
 Discord 알림 전송 실패: 제한된 재시도 후 포기
 ```
+
+수정 후에도 HTTP `403`이 발생하면 Webhook URL이나 오류 응답 본문을 출력하지 말고 다음을 확인한다.
+
+1. Discord Webhook이 삭제되거나 비활성화됐는지 확인한다.
+2. `DISCORD_WEBHOOK_URL` Secret이 현재 Webhook URL로 갱신돼 있는지 확인한다.
+3. Webhook 대상 채널이 변경되거나 삭제됐는지 확인한다.
+4. Discord 서버와 채널 권한이 변경됐는지 확인한다.
+5. 필요한 경우 Webhook을 재발급하고 GitHub Repository Secret을 갱신한다.
 
 ## 11. Obsidian PR 기록
 
