@@ -171,7 +171,7 @@ PR #11 보완 후 추가 검증:
 | UX-001 산출물 확인 | `Write-Output 'UX-001' \| py -3 scripts/validate-task-artifacts.py --from-stdin` | 통과 |
 | 커밋 메시지 확인 | `C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "docs(ux): UX-001 검토 사항 보완"` | 통과 |
 | PR 본문 인코딩 확인 | `py -3 scripts/validate-pr-body-encoding.py --body-file ".git\UX-001-pr-body.md"` | 통과 |
-| 원격 PR 본문 인코딩 확인 | `py -3 scripts/validate-pr-body-encoding.py --body-file ".git\UX-001-remote-pr-body.md"` | PR 본문 갱신 후 실행 예정 |
+| 원격 PR 본문 인코딩 확인 | `py -3 scripts/validate-pr-body-encoding.py --body-file ".git\UX-001-remote-pr-body.md"` | 통과 |
 | 보완 문구 확인 | PowerShell strict UTF-8와 금지 문구·요구사항 ID 점검 | 통과 |
 
 PR 생성 후 원격 체크 결과:
@@ -205,11 +205,15 @@ PR 생성 후 원격 체크 결과:
 
 ## PR #11 보완 Git 결과
 
-- 보완 커밋: 검증 후 기록
+- 보완 커밋: `15782e3`
 - 보완 커밋 메시지: `docs(ux): UX-001 검토 사항 보완`
-- push: 검증 후 기록
-- PR #11 본문: `.git\UX-001-pr-body.md`와 `--body-file`로 갱신 예정
-- PR #11 Draft 해제: 보완 검증과 원격 확인 후 진행 예정
+- push: `origin/design/ux` 반영 완료
+- PR #11 본문: `.git\UX-001-pr-body.md`와 `--body-file`로 갱신 완료
+- PR #11 원격 본문: UTF-8 검증 통과
+- PR #11 방향: `design/ux` → `main`
+- PR #11 상태: Open, Ready for review
+- PR #11 체크: 보완 커밋 기준 통과 확인
+- PR #11 Draft 해제: 완료
 - 자동 병합: 하지 않음
 
 보고서 자신을 최종 갱신하는 커밋 SHA는 재귀적으로 기록하지 않는다.
