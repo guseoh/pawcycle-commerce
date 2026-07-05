@@ -139,8 +139,19 @@ f58bf8f docs(domain): DOMAIN-001 구독 도메인 설계
 - 로컬 `feat/be`가 없어 `backup/local-feat-be-before-DATA-001`는 만들지 않음
 - 원격 `origin/feat/be` 삭제 완료
 - 새 `feat/be` 시작 SHA: `db1d149bdb442c2c99808ac166e80be5af0b79d3`
-- commit, push는 검증 후 수행한다.
+- 1차 작업 커밋: `e40d7344c03b9d100e3ccd4143aa6198370e8fd0`
+- push: `origin/feat/be` 업스트림 설정 완료
+- PR 상태 갱신은 후속 보고서 커밋으로 수행한다.
 
 ## PR 결과
 
-Draft PR은 검증과 push 후 생성한다. 자동 병합하지 않는다.
+- Draft PR: #17
+- PR URL: https://github.com/guseoh/pawcycle-commerce/pull/17
+- title: `docs(data): 첫 수직 MVP 데이터 모델 설계`
+- head/base: `feat/be` -> `main`
+- 상태: Open Draft
+- PR checks:
+  - `Repository Validation / Commit and PR conventions`: pass
+  - `Collaboration Notification / Discord collaboration notification`: pass
+  - `CodeRabbit`: pass, `Review skipped: draft pull request`
+- 자동 병합하지 않았다.
