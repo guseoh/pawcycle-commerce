@@ -110,6 +110,8 @@ PS-002, DOMAIN-001, UX-001, PS-003, UX-002, ARCH-001, DATA-001에서 승인·제
 | 구현·마이그레이션·신규 의존성 미작성 확인 | 통과 |
 | CodeRabbit 설정 변경 없음 확인 | 통과 |
 | Secret 또는 민감정보 패턴 확인 | 통과 |
+| PR 제목·본문·head/base·Draft 상태 확인 | 통과, PR #18 `feat/be` → `main` Draft |
+| GitHub 원격 체크 확인 | 통과, Repository Validation·Discord collaboration notification·CodeRabbit `SUCCESS` |
 
 ## 위험과 제한
 
@@ -118,13 +120,13 @@ PS-002, DOMAIN-001, UX-001, PS-003, UX-002, ARCH-001, DATA-001에서 승인·제
 - 인증 구현 방식과 Spring Security 설정은 확정하지 않았다.
 - 삭제 정책은 API-001에서 확정하지 않았다.
 - 결제, 재고, 배송, 구독 상태가 후속 MVP에 추가되면 API 계약 재검토가 필요하다.
-- CodeRabbit 리뷰는 Draft PR에서는 자동 실행되지 않을 수 있으며, 사용자가 Ready for review 전환 후 확인한다.
+- CodeRabbit 상태 컨텍스트는 Draft PR 확인 시점에 `SUCCESS`로 확인했지만, 사용자가 Ready for review로 전환한 뒤 실제 리뷰 코멘트가 추가될 수 있다.
 
-## CodeRabbit 확인 계획
+## CodeRabbit 확인 결과
 
-`.coderabbit.yaml`에서 Draft PR 리뷰가 비활성화되어 있으므로 API-001 PR은 Draft로 생성한다.
+`.coderabbit.yaml`에서 Draft PR 리뷰가 비활성화되어 있으므로 API-001 PR은 Draft로 생성했다.
 
-검증 후 사용자가 Ready for review로 전환하면 CodeRabbit 리뷰를 확인한다. CodeRabbit 지적은 전부 반영하지 않고, 제품·도메인·아키텍처 승인 범위와 충돌하지 않는 필요한 항목만 선별한다.
+PR #18 원격 상태 확인에서 CodeRabbit 상태 컨텍스트는 `SUCCESS`였다. 사용자가 Ready for review로 전환한 뒤 추가 리뷰 코멘트가 생기면 전부 반영하지 않고, 제품·도메인·아키텍처 승인 범위와 충돌하지 않는 필요한 항목만 선별한다.
 
 ## Git 결과
 
@@ -146,8 +148,18 @@ e40d734 docs(data): 첫 수직 MVP 데이터 모델 설계
 - 로컬 `feat/be` 삭제 완료
 - 최신 `main` fast-forward 완료
 - 새 `feat/be` 시작 SHA: `5d94f9a9744b30a724821da66210490ecd187783`
-- commit, push는 검증 후 수행한다.
+- API 계약 커밋 SHA: `c3e7dd6480553dfcbb548876d2d0c5c34255564a`
+- API 계약 커밋 메시지: `docs(api): 첫 수직 MVP API 계약 설계`
+- `origin/feat/be` push 완료
+- PR 상태 갱신 보고서는 별도 보고서 커밋으로 분리한다.
 
 ## PR 결과
 
-Draft PR은 검증과 push 후 생성한다. 자동 병합하지 않는다.
+Draft PR #18을 생성했다.
+
+- PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/18`
+- PR 제목: `docs(api): 첫 수직 MVP API 계약 설계`
+- head/base: `feat/be` → `main`
+- 상태: `OPEN`, `Draft`
+- 원격 체크: Repository Validation `SUCCESS`, Discord collaboration notification `SUCCESS`, CodeRabbit `SUCCESS`
+- 자동 병합하지 않았다.
