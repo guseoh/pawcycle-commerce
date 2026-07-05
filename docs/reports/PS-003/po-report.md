@@ -134,6 +134,7 @@ UX-001에서 열린 상태로 남은 네 가지 제품 정책을 Approved Produc
 | PS-003 산출물 확인 | `Write-Output 'PS-003' \| py -3 scripts/validate-task-artifacts.py --from-stdin` | 통과 |
 | 커밋 메시지 확인 | `C:\Program Files\Git\bin\bash.exe scripts/validate-commit-message.sh --message "docs(product): UX 제품 결정 확정"` | 통과 |
 | PR 본문 인코딩 확인 | `py -3 scripts/validate-pr-body-encoding.py --body-file ".git\PS-003-pr-body.md"` | 통과 |
+| 원격 PR 본문 인코딩 확인 | `py -3 scripts/validate-pr-body-encoding.py --body-file ".git\PS-003-remote-pr-body.md"` | 통과 |
 | 추가 문서 점검 | UTF-8 strict 읽기, 요구사항 ID 유지, AC 정의 중복 없음, 금지 경로 변경 없음, 민감정보 패턴 없음 | 통과 |
 
 ## 위험과 제한
@@ -148,14 +149,21 @@ UX-001에서 열린 상태로 남은 네 가지 제품 정책을 Approved Produc
 
 ## Git 결과
 
+- 주요 변경 커밋: `2eb8ee1`
 - 커밋 메시지: `docs(product): UX 제품 결정 확정`
 - push 대상: `origin/spec/po`
-- 최종 커밋과 push 결과는 PR 생성 후 완료 보고에서 확정한다.
+- push: 완료
+- 보고서 상태 갱신 커밋 SHA는 재귀적으로 기록하지 않는다.
 
 ## PR 결과
 
+- PR 번호: `#13`
 - PR 제목: `docs(product): UX 제품 결정 확정`
 - PR 방향: `spec/po` → `main`
-- PR 상태: Draft 예정
+- PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/13`
+- PR 상태: Open, Draft
+- PR 본문: UTF-8 Markdown 파일과 `--body-file`로 생성 완료
+- 원격 PR 본문: UTF-8 검증 통과
+- Repository Validation: 통과
+- Discord collaboration notification: 통과
 - 자동 병합: 하지 않음
-- PR 생성 결과는 완료 보고에서 확정한다.
