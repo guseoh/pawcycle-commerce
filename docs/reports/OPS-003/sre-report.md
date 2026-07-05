@@ -82,14 +82,21 @@
 
 ## Git 결과
 
+- 주요 변경 커밋: `cfe989c`
 - 커밋 메시지: `docs(review): PR 리뷰 한국어 지침 추가`
 - push 대상: `origin/ops/sre`
-- 최종 커밋과 push 결과는 PR 생성 후 완료 보고에서 확정한다.
+- push: 완료
+- 보고서 상태 갱신 커밋 SHA는 재귀적으로 기록하지 않는다.
 
 ## PR 결과
 
+- PR 번호: `#12`
 - PR 제목: `docs(review): PR 리뷰 한국어 지침 추가`
 - PR 방향: `ops/sre` → `main`
-- PR 상태: Draft 예정
+- PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/12`
+- PR 상태: Open, Draft
+- PR 본문: UTF-8 Markdown 파일과 `--body-file`로 생성 완료
+- 원격 PR 본문: UTF-8 검증 통과
+- Repository Validation: 통과
+- Discord collaboration notification: 통과
 - 자동 병합: 하지 않음
-- PR 생성 결과는 완료 보고에서 확정한다.
