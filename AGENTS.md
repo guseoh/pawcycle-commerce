@@ -260,6 +260,85 @@ Squash Merge를 사용할 경우 Pull Request 제목이 `main`의 최종 커밋 
 - 자동 리뷰의 기본 문구도 가능한 범위에서 한국어로 작성한다.
 - 영어 원문을 그대로 반복하지 말고, 한국어 사용자와 Product Owner/Tech Lead가 바로 판단할 수 있게 작성한다.
 
+## CodeRabbit review guidelines
+
+이 저장소는 Codex Review와 CodeRabbit AI를 함께 사용한다.
+
+### 프로젝트 맥락
+
+PawCycle Commerce는 Spring Boot, Next.js(TypeScript), MySQL 기반의 반려동물 소모품 정기배송 이커머스 프로젝트다.
+
+단순 CRUD 프로젝트가 아니라 도메인 설계, 인증/인가, 주문, 결제, 정기배송 구독, 배송, 관리자 기능, 테스트, 배포와 모니터링까지 확장하는 포트폴리오 프로젝트다.
+
+핵심 도메인은 다음으로 본다.
+
+- 회원
+- 반려동물
+- 상품
+- 장바구니
+- 주문
+- 결제
+- 정기배송 구독
+- 배송
+- 관리자
+- 알림
+
+### AI 리뷰 역할 분리
+
+Codex Review는 설계 방향 검토, 구현 초안 작성, 리팩터링 방향 논의, CodeRabbit 리뷰 반영 여부 판단과 후속 작업 프롬프트 작성에 사용한다.
+
+CodeRabbit AI는 PR 내부에서 변경사항 요약, 라인별 코드 리뷰, 테스트 누락, 보안 문제, 인증/인가 누락, 도메인 규칙 위반, 유지보수성 문제를 자세히 검토하는 자동 리뷰어로 사용한다.
+
+### CodeRabbit 리뷰 우선순위
+
+CodeRabbit은 다음 우선순위로 리뷰한다.
+
+1. 실제 버그 가능성
+2. 보안 문제
+3. 인증/인가 누락
+4. 도메인 규칙 위반
+5. 테스트 누락
+6. API 응답/예외 형식 불일치
+7. 유지보수성
+8. 스타일 개선
+
+단순 취향이나 과도한 추상화 제안은 낮은 우선순위로 본다.
+
+### CodeRabbit 리뷰 반영 원칙
+
+CodeRabbit의 지적을 전부 그대로 반영하지 않는다.
+
+CodeRabbit은 최종 결정자가 아니라 PR 검토를 도와주는 자동 리뷰어다.
+
+특히 결제, 주문 상태 변경, 정기배송 상태 전이, 인증/인가, 개인정보와 관련된 코드는 AI 리뷰 결과를 참고하되 반드시 Product Owner/Tech Lead가 직접 다시 검토한다.
+
+### CodeRabbit 무료 사용 기준
+
+- CodeRabbit은 무료 범위에서만 사용한다.
+- 가능하면 이 저장소는 public repository로 운영한다.
+- GitHub App 설치 시 모든 저장소가 아니라 `guseoh/pawcycle-commerce` selected repository 하나만 선택한다.
+- 먼저 PawCycle Commerce에만 적용한다.
+- 리뷰 품질과 비용·제한을 확인한 뒤 다른 public 프로젝트 확대 여부를 결정한다.
+
+### Codex Review와 CodeRabbit 운영 흐름
+
+1. Issue를 작성한다.
+2. Codex로 설계와 구현 초안을 만든다.
+3. 사용자가 직접 코드를 확인한다.
+4. PR을 생성한다.
+5. CodeRabbit의 상세 리뷰를 확인한다.
+6. 필요한 리뷰만 선별해서 반영한다.
+7. Codex Review로 수정 방향을 다시 검토한다.
+8. 테스트를 통과시킨 뒤 사용자가 직접 판단해서 merge한다.
+
+운영 원칙은 다음과 같다.
+
+- Codex Review는 유지한다.
+- CodeRabbit은 자동 리뷰어일 뿐 최종 결정자가 아니다.
+- CodeRabbit 지적은 전부 반영하지 않는다.
+- 보안, 인증/인가, 결제, 주문 상태, 정기배송 상태 전이, 개인정보 관련 변경은 사람이 반드시 다시 검토한다.
+- merge는 사용자가 직접 결정한다.
+
 ## 작업 ID와 스레드 규칙
 
 모든 작업에는 작업 ID를 사용한다.
