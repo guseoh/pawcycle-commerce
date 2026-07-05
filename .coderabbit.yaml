@@ -1,0 +1,53 @@
+language: "ko-KR"
+enable_free_tier: true
+
+tone_instructions: "한국어로 리뷰하고 실제 버그, 보안, 인증/인가, 도메인 규칙 위반, 테스트 누락, 유지보수성 문제를 우선한다."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  review_status: true
+  review_details: true
+  commit_status: true
+  fail_commit_status: false
+  poem: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  suggested_reviewers: false
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    base_branches:
+      - "develop"
+  path_instructions:
+    - path: "backend/**"
+      instructions: >
+        Spring Boot 백엔드 코드에서는 도메인 규칙, 트랜잭션 경계,
+        인증/인가 누락, 예외 처리, 테스트 누락, JPA 연관관계와 N+1 위험을 우선 검토한다.
+    - path: "frontend/**"
+      instructions: >
+        Next.js와 TypeScript 코드에서는 사용자 흐름, 인증 상태 처리,
+        API 계약 불일치, 접근성, 폼 검증, 오류·로딩·빈 상태 누락을 우선 검토한다.
+    - path: "docs/**"
+      instructions: >
+        문서 변경에서는 승인된 요구사항, 도메인 규칙, UX 결정, ADR, API 계약과의
+        추적성 불일치나 결정 상태 오표기를 우선 검토한다.
+    - path: "db/**"
+      instructions: >
+        데이터베이스 설계와 마이그레이션에서는 제약 조건, 외래키, 인덱스,
+        불변 조건, 롤백·재적용 위험을 우선 검토한다.
+    - path: ".github/**"
+      instructions: >
+        GitHub 설정 변경에서는 Secret 노출, 권한 과다, 트리거 범위,
+        PR 검증 누락과 자동화 실패 은폐 가능성을 우선 검토한다.
+
+chat:
+  auto_reply: true
