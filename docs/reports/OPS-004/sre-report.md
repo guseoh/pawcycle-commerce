@@ -168,8 +168,17 @@ cfe989c docs(review): PR 리뷰 한국어 지침 추가
 - 원격 `origin/ops/sre` 삭제 완료
 - 로컬 `ops/sre` 삭제 완료
 - 최신 `main`에서 새 `ops/sre` 생성 완료
-- commit, push는 검증 후 수행한다.
+- 작업 커밋: `1a169fafdffbd78c04e8b19d15b457dd59663a68`
+- push: `origin/ops/sre` 업스트림 설정 완료
 
 ## PR 결과
 
-Draft PR은 검증과 push 후 생성한다. 자동 병합하지 않는다.
+- Draft PR: #16
+- PR URL: https://github.com/guseoh/pawcycle-commerce/pull/16
+- title: `chore(review): CodeRabbit 리뷰 설정 추가`
+- head/base: `ops/sre` -> `main`
+- 상태: Open Draft
+- PR 생성 직후 확인한 checks:
+  - `Repository Validation / Commit and PR conventions`: queued
+  - `Collaboration Notification / Discord collaboration notification`: queued
+- 자동 병합하지 않았다.
