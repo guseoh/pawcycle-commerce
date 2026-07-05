@@ -178,7 +178,7 @@ cfe989c docs(review): PR 리뷰 한국어 지침 추가
 - title: `chore(review): CodeRabbit 리뷰 설정 추가`
 - head/base: `ops/sre` -> `main`
 - 상태: Open Draft
-- PR 생성 직후 확인한 checks:
-  - `Repository Validation / Commit and PR conventions`: queued
-  - `Collaboration Notification / Discord collaboration notification`: queued
+- PR checks:
+  - `Repository Validation / Commit and PR conventions`: pass
+  - `Collaboration Notification / Discord collaboration notification`: pass
 - 자동 병합하지 않았다.
