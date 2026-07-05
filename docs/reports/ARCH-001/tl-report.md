@@ -130,8 +130,15 @@ c577096 docs(report): BOOTSTRAP-007 PR 상태 갱신
 - 원격 `origin/ops/tl` 삭제 완료
 - 로컬 `ops/tl` 삭제 완료
 - 최신 `main`에서 새 `ops/tl` 생성 완료
-- commit, push는 검증 후 수행한다.
+- 1차 커밋: `9dd1c23 docs(architecture): 첫 수직 MVP 아키텍처 결정`
+- 원격 push: `origin/ops/tl`
+- 이 보고서의 PR 상태 갱신은 후속 보고서 커밋으로 push한다.
 
 ## PR 결과
 
-Draft PR은 검증과 push 후 생성한다. 자동 병합하지 않는다.
+- Draft PR: #15 `docs(architecture): 첫 수직 MVP 아키텍처 결정`
+- URL: https://github.com/guseoh/pawcycle-commerce/pull/15
+- head/base: `ops/tl` → `main`
+- 원격 확인: 제목, 본문, head/base, Draft 상태 정상
+- 생성 직후 status check는 GitHub Actions에서 대기 상태였다.
+- 자동 병합하지 않았다.
