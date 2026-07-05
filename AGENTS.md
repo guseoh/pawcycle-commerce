@@ -251,6 +251,15 @@ Squash Merge를 사용할 경우 Pull Request 제목이 `main`의 최종 커밋 
 
 구체적인 작성과 복구 절차는 `docs/runbook/collaboration-automation.md`를 따른다.
 
+## Review guidelines
+
+- 모든 GitHub Pull Request 리뷰 댓글은 한국어로 작성한다.
+- 리뷰 제목, 본문, 수정 제안, 위험 설명은 한국어로 작성한다.
+- 코드 식별자, 파일 경로, 요구사항 ID, API path, 커밋 SHA는 원문을 유지한다.
+- 심각도 표기는 `P0`, `P1`, `P2` 형식을 유지하되 제목 설명은 한국어로 작성한다.
+- 자동 리뷰의 기본 문구도 가능한 범위에서 한국어로 작성한다.
+- 영어 원문을 그대로 반복하지 말고, 한국어 사용자와 Product Owner/Tech Lead가 바로 판단할 수 있게 작성한다.
+
 ## 작업 ID와 스레드 규칙
 
 모든 작업에는 작업 ID를 사용한다.
