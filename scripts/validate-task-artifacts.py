@@ -17,6 +17,7 @@ TASK_ID_PREFIXES = (
     "PERF",
     "OPS",
     "SEC",
+    "AUTH",
     "DOMAIN",
     "API",
     "UX",
