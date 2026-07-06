@@ -59,7 +59,7 @@
 아래 구조는 코드 생성이 아니라 구현 방향 후보이다. 실제 디렉터리와 클래스는 사용자 승인 이후 별도 구현 작업에서 만든다.
 
 ```text
-com.pawcycle.commerce
+com.pawcycle.backend
   catalog
     domain
     application
@@ -83,6 +83,7 @@ com.pawcycle.commerce
 
 판단 근거:
 
+- 현재 Spring Boot 애플리케이션 진입점은 `com.pawcycle.backend` 패키지에 있으므로, 기본 component scan 범위에 들어가도록 후보 패키지도 그 하위로 둔다.
 - `catalog`는 공개 상품 탐색과 SKU 조회를 담당한다.
 - `subscription`은 구독 생성과 내 구독 조회를 담당한다.
 - `member`는 보호 API에서 인증된 사용자 식별 경계를 담당한다.
@@ -130,14 +131,15 @@ OpenAPI generation/validation tool은 build task, API 문서 위치, 생성물 c
 
 1. 의존성 승인
 2. DB schema와 Flyway 승인
-3. Product, SKU, Member, Subscription 최소 모델 구현
-4. 상품 목록과 상세 조회 API 구현
-5. 구독 생성 API 구현
-6. 내 구독 목록과 상세 API 구현
-7. 인증 경계 적용
-8. 테스트와 CI 확장
+3. 인증 방식과 Spring Security 경계 승인
+4. Product, SKU, Member, Subscription 최소 모델 구현
+5. 상품 목록과 상세 조회 API 구현
+6. 보호 API 인증 경계 적용
+7. 구독 생성 API 구현
+8. 내 구독 목록과 상세 API 구현
+9. 테스트와 CI 확장
 
-이 순서는 추천안이다. 사용자가 인증 경계와 DB schema를 먼저 확정하지 않는다면 3번 이후의 실제 구현은 시작하지 않는다.
+이 순서는 추천안이다. 사용자가 인증 경계와 DB schema를 먼저 확정하지 않는다면 4번 이후의 실제 구현은 시작하지 않는다. 구독 생성과 내 구독 조회 같은 보호 API는 인증 경계가 적용된 같은 변경에서만 추가한다.
 
 ## 테스트 전략 후보
 

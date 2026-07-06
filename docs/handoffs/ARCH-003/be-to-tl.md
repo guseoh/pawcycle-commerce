@@ -14,10 +14,12 @@
 
 1. 의존성 도입 범위 승인
 2. `DATA-001` 기반 실제 DB schema와 Flyway 도입 여부 승인
-3. `API-001` 기반 Controller 계약 승인
-4. `AUTH-001` 기반 Spring Security 구현 방식 승인
+3. `AUTH-001` 기반 Spring Security 구현 방식 승인
+4. `API-001` 기반 Controller 계약 승인
 5. `ARCH-001` 기반 패키지, 트랜잭션, 예외 처리 경계 승인
 6. 첫 수직 MVP Backend 최소 구현 착수
+
+구독 생성과 내 구독 조회 같은 보호 API는 인증 경계가 적용된 같은 변경에서만 추가한다.
 
 ## 사용자 결정 필요 항목
 
