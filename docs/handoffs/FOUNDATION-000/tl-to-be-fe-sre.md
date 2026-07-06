@@ -10,7 +10,7 @@ Status: Proposed
 
 - Java는 25 LTS를 우선 기준으로 둔다.
 - Spring Boot는 4.1.x 최신 patch를 우선 기준으로 둔다.
-- Gradle은 9.x를 우선 기준으로 둔다.
+- Gradle은 9.1 이상 9.x 최신 patch를 우선 검토 기준으로 둔다.
 - Backend 테스트 baseline은 `spring-boot-starter-test`로 시작한다.
 - MySQL target은 8.4 LTS다.
 - Migration tool은 Flyway를 우선 검토한다.
@@ -32,13 +32,15 @@ Status: Proposed
 - 프로젝트 생성 후 CI 후보는 Backend `./gradlew test`, Frontend `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build`다.
 - Docker Compose, GitHub Actions, 배포 설정, Secret, 성능 튜닝은 FOUNDATION-000에서 만들지 않았다.
 
-## FOUNDATION-001에서 지켜야 할 기술 버전
+## FOUNDATION-001에서 우선 검토할 기술 버전
+
+아래 항목은 사용자 승인 전 의무 적용 기준이 아니라 FOUNDATION-001에서 우선 검토할 Proposed 기준이다.
 
 | 영역 | 기준 |
 | --- | --- |
 | Java | 25 LTS |
 | Spring Boot | 4.1.x |
-| Gradle | 9.x |
+| Gradle | 9.1 이상 9.x 최신 patch |
 | Backend test | `spring-boot-starter-test` |
 | Node.js | 24 LTS |
 | Next.js | 16.x |
@@ -47,7 +49,7 @@ Status: Proposed
 | MySQL | 8.4 LTS |
 | Migration | Flyway 후보 |
 
-## 아직 확정하지 않은 항목
+## 아직 결정하지 않은 항목
 
 - 배포 플랫폼
 - Docker Compose 도입 여부
@@ -60,7 +62,7 @@ Status: Proposed
 
 ## 구현 시작 전 중단 조건
 
-- Java 25 LTS, Spring Boot 4.1.x, Gradle 9.x 조합이 실제 scaffold에서 호환되지 않는 경우
+- Java 25 LTS, Spring Boot 4.1.x, Gradle 9.1 이상 9.x 최신 patch 조합이 실제 scaffold에서 호환되지 않는 경우
 - Node.js 24 LTS, Next.js 16.x, TypeScript 6.0.x 조합이 실제 scaffold 또는 build에서 호환되지 않는 경우
 - MySQL 8.4 LTS와 JDBC/Flyway 조합 확인 없이 DB migration을 만들 필요가 생긴 경우
 - DATA-001, API-001, AUTH-001 Proposed 문서를 Approved 입력처럼 사용해야 하는 경우

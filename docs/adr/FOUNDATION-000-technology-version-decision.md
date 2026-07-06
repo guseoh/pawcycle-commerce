@@ -26,7 +26,7 @@ FOUNDATION-001 애플리케이션 기반 작업이 동일한 Java, Spring Boot, 
 - [Oracle Java Downloads](https://www.oracle.com/java/technologies/downloads/)는 JDK 26을 최신 릴리스, JDK 25를 최신 LTS, JDK 21을 이전 LTS로 안내한다.
 - [Adoptium Temurin Support](https://adoptium.net/support)는 Java 25 LTS의 제공 가능 기간을 최소 2031년 9월로 안내한다.
 - [Spring Boot Installing](https://docs.spring.io/spring-boot/installing.html)과 [System Requirements](https://docs.spring.io/spring-boot/system-requirements.html)는 Spring Boot가 Gradle 8.14 이상 8.x 또는 9.x와 호환된다고 안내한다.
-- [Gradle Compatibility Matrix](https://docs.gradle.org/current/userguide/compatibility.html)는 Gradle 실행 JVM으로 17부터 26까지를 요구한다고 안내한다.
+- [Gradle Compatibility Matrix](https://docs.gradle.org/current/userguide/compatibility.html)는 Gradle 실행 JVM으로 17부터 26까지를 요구하고, Java 25는 toolchain과 Gradle 실행 모두 Gradle 9.1.0 이상에서 지원한다고 안내한다.
 - [Spring Boot Testing](https://docs.spring.io/spring-boot/reference/testing/index.html)은 `spring-boot-starter-test`가 JUnit Jupiter, AssertJ, Hamcrest 등 일반 테스트 라이브러리를 가져온다고 안내한다.
 - [Node.js Previous Releases](https://nodejs.org/en/about/previous-releases)는 Node.js 24를 LTS로, Node.js 26을 Current 계열로 안내한다.
 - [Next.js 16](https://nextjs.org/blog/next-16)은 Node.js 20.9 이상과 TypeScript 5.1 이상을 요구한다.
@@ -40,7 +40,7 @@ FOUNDATION-001 애플리케이션 기반 작업이 동일한 Java, Spring Boot, 
 | --- | --- | --- | --- | --- |
 | Java | 25 LTS | 최신 LTS이며 Spring Boot 4.1과 Gradle 실행 JVM 범위에 들어간다. Adoptium 기준 장기 제공 가능 기간도 확보된다. | Backend 프로젝트 생성 시 toolchain과 로컬 JDK 기준으로 사용한다. | Proposed |
 | Spring Boot | 4.1.x | 현재 Spring Boot 4.1 계열은 Java 17 이상과 Gradle 8.14 이상 또는 9.x 조합을 지원한다. 새 프로젝트에서 Jakarta EE 11/Spring Framework 7 기준을 맞춘다. | FOUNDATION-001에서 Spring Initializr 또는 Gradle 설정 시 4.1 계열 최신 patch를 다시 확인한다. | Proposed |
-| Gradle | 9.x | Spring Boot 4.1 지원 범위에 포함되고 Java 25 실행 환경과 호환된다. 새 프로젝트에서는 Gradle 8 계열보다 다음 장기 유지보수 기준에 가깝다. | Gradle wrapper 생성은 FOUNDATION-001에서 수행한다. plugin 호환성 문제가 있으면 8.14 이상으로 중단 후 재결정한다. | Proposed |
+| Gradle | 9.1 이상 9.x 최신 patch | Spring Boot 4.1 지원 범위에 포함되며, Java 25를 Gradle 실행 JVM 또는 toolchain 기준으로 사용할 때 필요한 최소 지원선인 9.1.0 이상을 만족한다. | Gradle wrapper 생성은 FOUNDATION-001에서 수행한다. plugin 호환성 문제가 있으면 중단 후 재결정한다. | Proposed |
 | Backend test stack | `spring-boot-starter-test` 기반 | Spring Boot 공식 starter가 JUnit Jupiter, AssertJ, Hamcrest 등 기본 테스트 구성을 제공한다. 첫 MVP에는 별도 테스트 프레임워크를 늘리지 않는다. | Backend 생성 후 단위 테스트와 slice 테스트 기본값으로 사용한다. Testcontainers는 DB 통합 테스트가 승인될 때 별도 결정한다. | Proposed |
 | Node.js | 24 LTS | 공식 릴리스 표 기준 LTS이며 Next.js 16의 Node.js 20.9 이상 요구사항을 만족한다. Node.js 26은 Current 계열이므로 첫 MVP 기준에서는 피한다. | Frontend 로컬 개발과 CI Node 버전 기준으로 사용한다. 정확한 patch는 FOUNDATION-001에서 재확인한다. | Proposed |
 | Next.js | 16.x | 공식 문서 기준 현재 주 버전이며 Node.js 20.9 이상, TypeScript 5.1 이상과 호환된다. | Next.js 프로젝트 생성 시 16 계열 최신 patch를 사용한다. App Router 사용 여부와 구체 라우트는 후속 FE 작업에서 결정한다. | Proposed |
@@ -70,7 +70,7 @@ FOUNDATION-001 애플리케이션 기반 작업이 동일한 Java, Spring Boot, 
 
 ## FOUNDATION-001 입력
 
-- Backend 프로젝트 생성 시 Java 25 LTS, Spring Boot 4.1.x, Gradle 9.x를 우선 검토한다.
+- Backend 프로젝트 생성 시 Java 25 LTS, Spring Boot 4.1.x, Gradle 9.1 이상 9.x 최신 patch를 우선 검토한다.
 - Backend test baseline은 `spring-boot-starter-test`로 시작한다.
 - Frontend 프로젝트 생성 시 Node.js 24 LTS, Next.js 16.x, TypeScript 6.0.x, npm을 우선 검토한다.
 - Frontend 검증 baseline은 ESLint CLI, TypeScript type check, Next.js build 후보로 둔다.
