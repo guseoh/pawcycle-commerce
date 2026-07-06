@@ -139,14 +139,16 @@ FOUNDATION-002는 Repository Validation에 Backend와 Frontend 최소 검증을 
 추천 1은 다음 작업으로 가장 안전하다.
 
 ```text
-BE-001 Backend 구현 계획과 의존성 도입안 정리
+후속 Backend 계획 작업: Backend 구현 계획과 의존성 도입안 정리
 ```
+
+작업 ID는 현재 검증 하네스가 허용하는 접두사로 별도 확정한다.
 
 목적은 실제 코드 구현 전 JPA, Flyway, MySQL, Security 의존성 도입 범위와 테스트 전략을 정리하는 것이다.
 
 포함 후보:
 
-- DATA-001, API-001, AUTH-001, FOUNDATION-000의 승인 필요 항목 확인
+- DATA-001, API-001, AUTH-001, ARCH-001, FOUNDATION-000의 승인 필요 항목 확인
 - Backend 패키지 구조 후보
 - 도메인 객체, 애플리케이션 서비스, Controller, Repository, Entity 구현 순서
 - 테스트 범위와 도입 의존성 후보
@@ -156,10 +158,10 @@ BE-001 Backend 구현 계획과 의존성 도입안 정리
 추천 2는 조건부로만 가능하다.
 
 ```text
-BE-001 첫 수직 MVP Backend 최소 구현
+후속 Backend 구현 작업: 첫 수직 MVP Backend 최소 구현
 ```
 
-이 작업은 사용자가 DATA-001, API-001, AUTH-001, FOUNDATION-000을 구현 입력으로 승인한 경우에만 진행한다.
+이 작업은 사용자가 DATA-001, API-001, AUTH-001, ARCH-001, FOUNDATION-000을 구현 입력으로 승인한 경우에만 진행한다.
 
 ## Backend 첫 구현 작업 제외 범위
 
@@ -193,7 +195,7 @@ BE-001 첫 수직 MVP Backend 최소 구현
 
 ## 다음 작업 후보
 
-1. `BE-001 Backend 구현 계획과 의존성 도입안 정리`
+1. `후속 Backend 계획 작업: Backend 구현 계획과 의존성 도입안 정리`
 2. `ARCH-003 Backend 패키지 구조와 트랜잭션 경계 결정`
 3. `DATA-002 첫 MVP DB schema 승인안`
 4. `API-002 첫 MVP API 계약 승인안`
