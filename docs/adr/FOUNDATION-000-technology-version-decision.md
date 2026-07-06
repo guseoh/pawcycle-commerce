@@ -1,8 +1,16 @@
 # FOUNDATION-000 기술 버전 결정
 
-## 문서 상태
+## 상태
 
 Status: Proposed
+
+## 날짜
+
+2026-07-06
+
+## 작업 ID
+
+`FOUNDATION-000`
 
 이 문서는 첫 번째 수직 MVP 구현 전에 사용할 기술 버전과 개발 기반 경계를 제안한다. 최종 승인은 사용자 결정이 필요하며, 이 문서만으로 DATA-001, API-001, AUTH-001의 Proposed 상태를 Approved로 바꾸지 않는다.
 

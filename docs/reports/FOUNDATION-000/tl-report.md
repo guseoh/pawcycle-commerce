@@ -87,6 +87,12 @@
 - 배포 설정, Secret, 성능 최적화
 - DATA-001, API-001, AUTH-001 상태 변경
 
+## 적용 방법
+
+- 기준 문서와 최신 `main`에 병합된 PS, DOMAIN, UX, ARCH, DATA, API, AUTH 산출물을 먼저 확인했다.
+- 공식 기술 문서로 Java, Spring Boot, Gradle, Node.js, Next.js, TypeScript, MySQL, Flyway 호환성을 비교했다.
+- 구현을 만들지 않고 FOUNDATION-001에서 우선 검토할 버전과 중단 조건만 ADR, 보고서, 인수인계에 정리했다.
+
 ## 주요 추천안
 
 | 항목 | 추천 | 상태 |
