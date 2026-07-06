@@ -12,9 +12,9 @@ FOUNDATION-001 애플리케이션 기반 작업이 동일한 Java, Spring Boot, 
 
 이번 작업은 버전과 개발 기반 경계 결정이다. Spring Boot 프로젝트, Next.js 프로젝트, Gradle wrapper, package.json, Docker Compose, GitHub Actions, Flyway 마이그레이션, JPA Entity, Controller, Service, Repository, OpenAPI 파일은 생성하지 않는다.
 
-## 승인된 상위 방향
+## 상위 방향 입력
 
-| 영역 | 승인된 방향 |
+| 영역 | 입력 |
 | --- | --- |
 | Backend | Spring Boot |
 | Frontend | Next.js + TypeScript |
