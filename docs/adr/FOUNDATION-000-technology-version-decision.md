@@ -1,4 +1,4 @@
-# FOUNDATION-000 기술 버전 결정
+# FOUNDATION-000 기술 버전 결정안
 
 ## 상태
 
