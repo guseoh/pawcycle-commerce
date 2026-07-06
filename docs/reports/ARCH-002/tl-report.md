@@ -231,8 +231,8 @@ PR #23 생성 후 GitHub Actions 확인:
 - 최초 커밋 SHA: `6753558639bd8410d3e0bc6ca44d5fbda4f90d7b`
 - 리뷰 반영 전 PR head SHA: `6753558639bd8410d3e0bc6ca44d5fbda4f90d7b`
 - 리뷰 반영 커밋 메시지: `docs(architecture): Backend 구현 착수 기준 보완`
-- 리뷰 반영 커밋 SHA: 이 보고서가 포함된 커밋이므로 완료 보고에서 확정
-- push 결과: 리뷰 반영 커밋 후 완료 보고에서 확정
+- 리뷰 반영 커밋 SHA: `3197d54bedee5fdcecc770cb58ba68b291073246`
+- push 결과: `origin/ops/tl` push 완료
 
 ## PR 결과
 
