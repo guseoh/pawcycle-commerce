@@ -89,7 +89,14 @@ Frontend CI:
 
 ## GitHub Actions 실행 결과
 
-PR 생성 후 Repository Validation 실행 결과를 확인해 이 보고서와 PR 본문에 반영한다.
+PR #22 생성 후 Repository Validation 실행 결과를 확인했다.
+
+- `Application validation`: 성공, `1m26s`
+- `Commit and PR conventions`: 성공, `5s`
+- `Discord collaboration notification`: 성공, `7s`
+- `CodeRabbit`: draft pull request라 review skipped, check 성공
+
+`Application validation`에서 Backend test/build와 Frontend install/lint/build가 함께 실행됐다.
 
 ## 실패 후 수정 내용
 
@@ -97,7 +104,6 @@ PR 생성 후 Repository Validation 실행 결과를 확인해 이 보고서와 
 
 ## 실행하지 못한 검증과 이유
 
-- PR 생성 전에는 GitHub Actions 원격 실행 결과를 확인할 수 없다.
 - Linux/macOS 로컬 `./gradlew test`, `./gradlew build`는 현재 Windows PowerShell 환경이라 실행하지 않았다. 대신 Windows 명령인 `.\gradlew.bat test`, `.\gradlew.bat build`를 실행했다.
 
 ## 남은 위험
@@ -113,9 +119,16 @@ PR 생성 후 Repository Validation 실행 결과를 확인해 이 보고서와 
 - 작업 브랜치: `ops/sre`
 - 기준 브랜치: `main`
 - 커밋 메시지: `ci(foundation): 애플리케이션 검증 연결`
-- 커밋 SHA: 커밋 후 완료 보고에 기록
-- push 결과: push 후 완료 보고에 기록
+- CI 연결 커밋 SHA: `4abf3eaa4dcb88e526cc7a9964f135149447df69`
+- push 결과: `origin/ops/sre` push 완료
 
 ## PR 결과
 
-PR 생성 후 번호, 링크, head/base, GitHub Actions 결과를 확인해 완료 보고와 PR 본문에 기록한다.
+- PR 번호: #22
+- PR 제목: `ci(foundation): 애플리케이션 검증 연결`
+- PR 링크: `https://github.com/guseoh/pawcycle-commerce/pull/22`
+- 상태: `OPEN`
+- Draft: `true`
+- base: `main`
+- head: `ops/sre`
+- 자동 병합: 수행하지 않음
