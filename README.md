@@ -119,6 +119,7 @@ ci(convention): 명사형 제목 검증 추가
 - `docs/runbook/collaboration-automation.md`
 - `docs/runbook/FOUNDATION-002-ci-validation.md`
 - `docs/adr/ARCH-002-first-backend-implementation-readiness.md`
+- `docs/adr/ARCH-003-backend-implementation-plan-and-dependency-proposal.md`
 - `docs/runbook/repository-onboarding.md`
 - `docs/runbook/github-repository-settings.md`
 - `docs/reports/README.md`
