@@ -159,7 +159,7 @@ PR #25의 thread-aware GraphQL 조회로 다음 4개 review thread가 `isResolve
 | API 인증 실패 응답 계약 | `docs/adr/ARCH-004-backend-implementation-decision-request.md` line 297 | session 기반 인증을 쓰더라도 `/api/**` 보호 API는 `401`/`403` JSON 응답 계약을 우선하도록 보완했다. |
 | CSRF 토큰 전달 계약 | `docs/adr/ARCH-004-backend-implementation-decision-request.md` line 271 | CSRF 사용 시 token 노출 방식, cookie/header 이름, FE 전송 규칙을 함께 승인하도록 보완했다. |
 
-보고서와 PO 인수인계에도 위 4개 보완 결정을 추가했다. 수정 직후에는 review thread를 직접 resolve하지 않고, push 후 GitHub가 outdated 처리하는지 다시 확인한다.
+보고서와 PO 인수인계에도 위 4개 보완 결정을 추가했다. 리뷰 반영 push 후 4개 thread는 모두 `isOutdated=true`가 되었고, 수정 반영이 명확해 `resolveReviewThread`로 모두 `isResolved=true` 처리했다.
 
 ## 결정 요청 항목 요약
 
@@ -295,13 +295,15 @@ PR #25 리뷰 반영 검증:
 - reset/rebase/force push/history rewrite: 사용하지 않음
 - 최초 ARCH-004 커밋: `3f7bcea6684126e3ba8f2deaffbf28272519afbc`
 - 최초 push 결과: `origin/ops/tl`에 push 완료
-- 리뷰 반영 커밋: 이 보고서는 리뷰 반영 commit 전 작성되며 완료 보고에서 SHA와 push 결과를 기록한다.
+- 리뷰 반영 커밋: `b27a135425ec340239dac90738f6af7dcb20a040`
+- 리뷰 반영 push 결과: `origin/ops/tl`에 push 완료
 
 ## PR 결과
 
 - PR: #25 `docs(architecture): Backend 구현 결정 요청 정리`
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/25`
 - 상태: `OPEN`, draft `false`, base `main`, head `ops/tl`
-- PR #25 head SHA: 리뷰 반영 전 `3f7bcea6684126e3ba8f2deaffbf28272519afbc`
-- Repository Validation: 리뷰 반영 전 `success`
+- PR #25 head SHA: 리뷰 반영 push 후 `b27a135425ec340239dac90738f6af7dcb20a040`
+- Repository Validation: 리뷰 반영 전 `success`; 리뷰 반영 후 재실행 확인 중
+- 리뷰 thread 상태: 4건 모두 outdated 및 resolved 처리 완료
 - 자동 병합하지 않음
