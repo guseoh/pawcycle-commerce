@@ -120,6 +120,7 @@ ci(convention): 명사형 제목 검증 추가
 - `docs/runbook/FOUNDATION-002-ci-validation.md`
 - `docs/adr/ARCH-002-first-backend-implementation-readiness.md`
 - `docs/adr/ARCH-003-backend-implementation-plan-and-dependency-proposal.md`
+- Backend 구현 결정 요청: `docs/adr/ARCH-004-backend-implementation-decision-request.md`
 - `docs/runbook/repository-onboarding.md`
 - `docs/runbook/github-repository-settings.md`
 - `docs/reports/README.md`
