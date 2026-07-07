@@ -116,6 +116,9 @@ ci(convention): 명사형 제목 검증 추가
 - `AGENTS.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
+- Tech Lead 역할 문서: `docs/roles/tech-lead.md`
+- Tech Lead Skill: `.agents/skills/tech-lead/SKILL.md`
+- QA 검증 기준: `docs/qa/README.md`
 - `docs/runbook/collaboration-automation.md`
 - `docs/runbook/FOUNDATION-002-ci-validation.md`
 - `docs/adr/ARCH-002-first-backend-implementation-readiness.md`
