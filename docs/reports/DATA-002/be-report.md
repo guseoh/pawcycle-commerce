@@ -117,27 +117,31 @@
 
 | 검증 | 결과 |
 | --- | --- |
-| `git status --short --branch` | 통과. `feat/be`에서 DATA-002 문서와 README 변경만 확인 |
+| `git status --short --branch` | 통과. commit 후 작업 트리 clean 확인 |
+| `git diff origin/main...HEAD --name-status` | 통과. PR diff가 `README.md`, DATA-002 data/report/handoff 3개 파일로 제한됨 |
 | `git diff --check` | 통과. 공백 오류 없음 |
 | `git diff --stat` | 실행. staged 변경은 `git diff --cached --stat`로 확인 |
 | `git diff --name-status` | 실행. staged 변경은 `git diff --cached --name-status`로 확인 |
 | `git diff --cached --check` | 통과. staged 공백 오류 없음 |
-| `git diff --cached --stat` | 통과. 4개 파일, 607줄 추가 확인 |
+| `git diff --cached --stat` | 통과. DATA-002 최초 commit 전 staged 변경 확인 |
 | `git diff --cached --name-status` | 통과. `README.md` 수정, DATA-002 문서 3개 추가 확인 |
 | 필수 산출물 `Test-Path` 3건 | 통과. data, report, handoff 파일 모두 존재 |
 | `Write-Output 'DATA-002' \| py -3 scripts\validate-task-artifacts.py --from-stdin` | 통과. `task artifacts validated for DATA-002` |
 | `py -3 scripts\validate-task-artifacts.py --task-id DATA-002` | 통과. `task artifacts validated for DATA-002` |
 | 커밋 메시지 검증 | 통과. `docs(data): 첫 MVP 논리 ERD 정리` |
 | Secret 의심 패턴 검사 | 통과. staged diff에서 GitHub 토큰, 개인 키, 비밀번호, 웹훅, JDBC URL 계열 의심 패턴 없음 |
-| Backend `.\gradlew.bat test` | 실행 불가. 현재 `backend/gradlew.bat`와 Gradle 프로젝트 파일 없음 |
-| Backend `.\gradlew.bat build` | 실행 불가. 현재 `backend/gradlew.bat`와 Gradle 프로젝트 파일 없음 |
-| Frontend `npm ci`, `npm run lint`, `npm run build` | 실행 불가. 현재 `frontend/package.json`과 lockfile 없음 |
+| Backend `.\gradlew.bat test` | 실패. Java 25 toolchain 미설치 및 toolchain download repository 미설정으로 exit code 1 |
+| Backend `.\gradlew.bat build` | 실패. Java 25 toolchain 미설치 및 toolchain download repository 미설정으로 exit code 1 |
+| Frontend `npm ci` | 통과. exit code 0, moderate 취약점 2건 audit 보고 |
+| Frontend `npm run lint` | 통과. exit code 0 |
+| Frontend `npm run build` | 통과. exit code 0 |
 
 ## 실행하지 못한 검증과 이유
 
-- Backend 앱 검증은 실행하지 못했다. 현재 `backend/`에는 `AGENTS.md`만 있고 `gradlew.bat`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`가 없다.
-- Frontend 앱 검증은 실행하지 못했다. 현재 `frontend/`에는 `AGENTS.md`만 있고 `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`이 없다.
-- 로컬 런타임은 Java `21.0.11`, Node `v22.17.1`, npm `10.9.2`로 확인했다. 이번 실행 불가는 Java/Node 버전 불일치가 아니라 앱 프로젝트 파일 부재 때문이다.
+- Backend `test`와 `build`는 실행했지만 완료하지 못했다. 현재 로컬 Java는 `21.0.11`이고, `backend/build.gradle`은 Java toolchain `25`를 요구한다.
+- Gradle 오류 사유: Java 25 설치를 찾지 못했고 toolchain download repository가 설정되어 있지 않다.
+- Frontend 검증은 Node `v22.17.1`, npm `10.9.2`에서 통과했다.
+- `npm ci`가 moderate 취약점 2건을 audit 정보로 보고했지만, DATA-002는 문서 정리 작업이며 의존성 수정은 범위 밖이라 변경하지 않았다.
 
 ## QA 필요 여부
 
@@ -162,7 +166,10 @@
 - 작업 시작 브랜치: `feat/be`
 - 기존 ERD-001 로컬 산출물을 DATA-002 경로로 이동했다.
 - commit 전 문서 산출물 검증과 staged diff 검증을 통과했다.
-- commit 예정 메시지: `docs(data): 첫 MVP 논리 ERD 정리`
+- DATA-002 최초 commit: `1f2771a docs(data): 첫 MVP 논리 ERD 정리`
+- 최초 push는 원격 `feat/be`에 병합 완료된 과거 head가 남아 있어 fast-forward 거부됐다.
+- force push, reset, rebase 없이 최신 `origin/main` 일반 merge와 원격 `feat/be` ancestry 보존 merge로 정리했다.
+- 최신 main 병합으로 로컬 트리에는 main의 backend/frontend 기반 파일이 존재하지만, PR diff는 DATA-002 문서와 README 링크로 제한된다.
 
 ## PR 결과
 
