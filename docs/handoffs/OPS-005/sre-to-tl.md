@@ -23,8 +23,10 @@ OPS-005에서 Tech Lead 역할 문서, 산출물 검증기, QA 독립 검증 기
 ## 완료된 작업
 
 - Tech Lead 역할 문서와 Skill을 추가했다.
+- Tech Lead 역할 문서와 Skill에 AI Tech Lead 보조 역할 문서 표현을 추가했다.
 - `validate-task-artifacts.py`가 현재 task-id의 마크다운 필수 섹션을 검사하도록 강화했다.
-- `scripts/test_validate_task_artifacts.py`에 표준 라이브러리 `unittest` 기반 테스트 9개를 추가했다.
+- `scripts/test_validate_task_artifacts.py`에 표준 라이브러리 `unittest` 기반 테스트 14개를 추가했다.
+- CodeRabbit 리뷰 thread 8건을 확인하고 반영했다.
 - 기존 하이픈 테스트 파일은 언더스코어 테스트 파일을 실행하는 호환 entry point로 유지했다.
 - QA 필요 여부, QA 문서 경로, QA 생략 사유 기준을 QA README, PR 템플릿, 보고서 템플릿에 추가했다.
 - AI 리뷰 반영 여부와 미반영 이유를 PR 템플릿에 추가했다.
@@ -35,6 +37,7 @@ OPS-005에서 Tech Lead 역할 문서, 산출물 검증기, QA 독립 검증 기
 - 후속 PR에서 `Write-Output '<TASK-ID>' | py -3 scripts/validate-task-artifacts.py --from-stdin`로 보고서와 인수인계 필수 섹션을 검증할 수 있다.
 - 기능 구현 PR은 QA 독립 검증 필요 여부를 PR 또는 보고서에 남겨야 한다.
 - Tech Lead는 PR 최종 확인에서 Proposed/Approved 오표기, 검증 미실행 사유, QA 필요 여부, 남은 위험을 확인할 수 있다.
+- 검증기는 표 헤더와 구분선만 있는 섹션을 의미 있는 콘텐츠로 인정하지 않는다.
 
 ## 관련 파일
 
@@ -57,7 +60,7 @@ OPS-005에서 Tech Lead 역할 문서, 산출물 검증기, QA 독립 검증 기
 | Tech Lead 역할 목적과 판단 기준 | `docs/roles/tech-lead.md` |
 | Tech Lead 실행 절차 | `.agents/skills/tech-lead/SKILL.md` |
 | 산출물 섹션 검증 | `scripts/validate-task-artifacts.py` |
-| 검증기 테스트 | `scripts/test_validate_task_artifacts.py` |
+| 검증기 테스트 14 tests | `scripts/test_validate_task_artifacts.py` |
 | QA 필요/불필요 기준 | `docs/qa/README.md`, `.github/pull_request_template.md` |
 | 보고서/인수인계 품질 기준 | `docs/reports/task-report-template.md`, `docs/handoffs/handoff-template.md` |
 
@@ -66,7 +69,7 @@ OPS-005에서 Tech Lead 역할 문서, 산출물 검증기, QA 독립 검증 기
 - 현재 task-id의 보고서와 인수인계만 검증한다.
 - `--task-id`, `--from-stdin`, `--root` 인터페이스를 유지한다.
 - QA 문서가 필요 없는 작업도 생략 사유를 남긴다.
-- AI 리뷰는 보조 검토이며 최종 결정자는 사용자인 Product Owner/Tech Lead다.
+- AI 리뷰와 AI Tech Lead 보조 역할은 검토와 권고를 돕는다. 최종 승인과 병합 결정은 사용자가 수행한다.
 
 ## 미확정 결정
 
@@ -114,6 +117,7 @@ py -3 scripts/test_validate_task_artifacts.py
 - QA 문서 불필요 사유가 OPS-005 범위와 맞는지 확인한다.
 - `scripts/test-validate-task-artifacts.py` 호환 entry point 유지가 허용 가능한지 확인한다.
 - `.github/workflows/**` 변경 없이 기존 Validate task artifacts 단계와 호환되는지 확인한다.
+- AI Tech Lead 보조 역할 표현이 사용자 최종 승인권을 대체하지 않는지 확인한다.
 
 ## QA 필요 여부
 
@@ -122,18 +126,20 @@ py -3 scripts/test_validate_task_artifacts.py
 
 ## AI 리뷰에서 남은 확인 항목
 
-- PR 생성 전에는 AI 리뷰 결과가 없다.
-- PR 생성 후 CodeRabbit/Codex Review가 지적한 항목은 TL이 버그, 보안, 테스트 누락, 범위 밖, 오탐으로 분류해 반영 여부를 결정한다.
+- CodeRabbit 리뷰 thread 8건은 이번 리뷰 반영 작업에서 모두 반영했다.
+- Codex Review는 사용량 제한으로 실행되지 않아 CodeRabbit 리뷰와 로컬/CI 검증 결과를 기준으로 반영했다.
 
 ## 알려진 위험
 
 - 새 검증 기준 때문에 후속 PR은 보고서/인수인계 섹션 누락 시 실패한다.
 - 섹션명 표현이 새 alias에 없으면 사람이 보기에는 맞아도 검증 실패가 날 수 있다.
+- `risk`, `limit` 같은 짧은 영어 alias는 제거되어 영어 위험 섹션 제목은 구체적 표현을 사용해야 한다.
 
 ## 남은 위험과 주의 사항
 
 - 후속 역할은 템플릿을 기준으로 보고서를 작성해야 한다.
 - AI 리뷰가 검증 기준을 완화하라고 제안하더라도, 사용자 승인 없는 품질 기준 약화는 하지 않는다.
+- PR #26의 CodeRabbit thread가 push 후 outdated 처리되는지 확인해야 한다.
 
 ## 다음 권장 작업
 

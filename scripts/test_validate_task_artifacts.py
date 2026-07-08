@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -143,10 +144,14 @@ def write_artifacts(
 
 
 def run_validator(root: Path, *args: str, stdin_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--root", str(root), *args],
         input=stdin_text,
         text=True,
+        encoding="utf-8",
+        env=env,
         capture_output=True,
         check=False,
     )
@@ -219,6 +224,54 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("검증 결과 섹션이 비어 있음", result.stderr)
 
+    def test_table_header_only_sections_fail(self) -> None:
+        cases = (
+            (
+                "validation",
+                VALID_REPORT.replace(
+                    "## 실행한 검증\n\n| 명령 | 결과 |\n| --- | --- |\n| `py -3 -m py_compile scripts/validate-task-artifacts.py` | 통과 |\n\n",
+                    "## 실행한 검증\n\n| 명령 | 결과 |\n| --- | --- |\n\n",
+                ),
+                "검증 결과 섹션이 비어 있음",
+            ),
+            (
+                "not_run",
+                VALID_REPORT.replace(
+                    "## 실행하지 못한 검증과 이유\n\n- 없음.\n\n",
+                    "## 실행하지 못한 검증과 이유\n\n| 명령 | 이유 |\n| --- | --- |\n\n",
+                ),
+                "실행하지 못한 검증 사유 없음",
+            ),
+            (
+                "risk",
+                VALID_REPORT.replace("## 남은 위험\n\n- 없음.\n\n", "## 남은 위험\n\n| 항목 | 내용 |\n| --- | --- |\n\n"),
+                "위험/제한/차단/남은 위험 섹션이 비어 있음",
+            ),
+        )
+
+        for name, report, expected_error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_artifacts(root, report=report)
+
+                result = run_validator(root, "--task-id", TASK_ID)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
+
+    def test_table_with_data_row_counts_as_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT.replace(
+                "## 남은 위험\n\n- 없음.\n\n",
+                "## 남은 위험\n\n| 항목 | 내용 |\n| --- | --- |\n| 남은 위험 | 없음 |\n\n",
+            )
+            write_artifacts(root, report=report)
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_not_run_section_without_reason_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -234,6 +287,17 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             report = VALID_REPORT.replace("## 남은 위험\n\n- 없음.\n\n", "")
+            write_artifacts(root, report=report)
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("위험/제한/차단/남은 위험", result.stderr)
+
+    def test_rate_limit_heading_does_not_satisfy_risk_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT.replace("## 남은 위험\n\n- 없음.\n\n", "## Rate Limit 설정\n\n- API 제한값 문서화.\n\n")
             write_artifacts(root, report=report)
 
             result = run_validator(root, "--task-id", TASK_ID)

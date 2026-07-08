@@ -48,7 +48,10 @@ REPORT_REQUIREMENTS = (
     SectionRequirement("변경하지 않은 범위 또는 제외 범위", ("변경하지 않은 범위", "제외 범위", "unchanged scope", "excluded scope")),
     SectionRequirement("실행한 검증 또는 검증 결과", ("실행한 검증", "검증 결과", "validation result", "executed validation")),
     SectionRequirement("실행하지 못한 검증과 이유", ("실행하지 못한 검증", "미실행 검증", "테스트 미실행", "not-run validation", "not run validation")),
-    SectionRequirement("남은 위험 또는 위험", ("남은 위험", "위험", "제한", "차단 사유", "remaining risk", "risk", "limit", "blocker")),
+    SectionRequirement(
+        "남은 위험 또는 위험",
+        ("남은 위험", "위험", "제한", "차단 사유", "remaining risk", "known limitation", "risk summary", "blocker reason"),
+    ),
     SectionRequirement("Git 결과", ("git 결과", "git result")),
     SectionRequirement("PR 결과", ("pr 결과", "pr 상태", "pull request result", "pr result")),
 )
@@ -61,12 +64,25 @@ HANDOFF_REQUIREMENTS = (
     SectionRequirement("미결정 사항 또는 승인 필요 항목", ("미결정", "승인 필요", "미확정", "approval needed", "undecided")),
     SectionRequirement("검증 포인트", ("검증 포인트", "검증 결과", "validation point", "validation points")),
     SectionRequirement("중단 조건", ("중단 조건", "차단 조건", "stop condition", "stop conditions")),
-    SectionRequirement("남은 위험 또는 주의 사항", ("남은 위험", "주의 사항", "위험", "제한", "risk", "warning")),
+    SectionRequirement(
+        "남은 위험 또는 주의 사항",
+        ("남은 위험", "주의 사항", "위험", "제한", "remaining risk", "known limitation", "risk summary", "blocker reason"),
+    ),
 )
 
 VALIDATION_ALIASES = ("실행한 검증", "검증 결과", "검증 포인트", "validation result", "executed validation", "validation point")
 NOT_RUN_ALIASES = ("실행하지 못한 검증", "미실행 검증", "테스트 미실행", "not-run validation", "not run validation")
-RISK_ALIASES = ("남은 위험", "위험", "제한", "차단 사유", "주의 사항", "remaining risk", "risk", "limit", "blocker", "warning")
+RISK_ALIASES = (
+    "남은 위험",
+    "위험",
+    "제한",
+    "차단 사유",
+    "주의 사항",
+    "remaining risk",
+    "known limitation",
+    "risk summary",
+    "blocker reason",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,10 +113,6 @@ def find_task_id(args: argparse.Namespace) -> str:
     if not match:
         raise SystemExit("PR 제목 또는 본문에서 작업 ID를 찾을 수 없음")
     return match.group(0)
-
-
-def has_markdown_file(path: Path) -> bool:
-    return path.is_dir() and any(child.is_file() and child.suffix == ".md" for child in path.iterdir())
 
 
 def markdown_files(path: Path) -> list[Path]:
@@ -138,8 +150,9 @@ def parse_sections(path: Path) -> list[MarkdownSection]:
 
 
 def has_meaningful_content(section: MarkdownSection) -> bool:
-    for line in section.content:
-        stripped = line.strip()
+    rows = [line.strip() for line in section.content]
+
+    for index, stripped in enumerate(rows):
         if not stripped:
             continue
 
@@ -148,6 +161,10 @@ def has_meaningful_content(section: MarkdownSection) -> bool:
         if not without_table_marks:
             continue
         if stripped in {"-", "*", "- [ ]", "- [x]", "- [X]"}:
+            continue
+        next_stripped = rows[index + 1] if index + 1 < len(rows) else ""
+        next_without_marks = next_stripped.replace("|", "").replace("-", "").replace(":", "").replace(" ", "")
+        if stripped.startswith("|") and stripped.endswith("|") and next_stripped and not next_without_marks:
             continue
         return True
     return False
@@ -197,14 +214,14 @@ def main() -> int:
     report_dir = root / "docs" / "reports" / task_id
     handoff_dir = root / "docs" / "handoffs" / task_id
 
-    failures: list[str] = []
-    if not has_markdown_file(report_dir):
-        failures.append(f"작업 보고서 Markdown 파일 없음: {report_dir}")
-    if not has_markdown_file(handoff_dir):
-        failures.append(f"역할 인수인계 Markdown 파일 없음: {handoff_dir}")
-
     report_files = markdown_files(report_dir)
     handoff_files = markdown_files(handoff_dir)
+
+    failures: list[str] = []
+    if not report_files:
+        failures.append(f"작업 보고서 Markdown 파일 없음: {report_dir}")
+    if not handoff_files:
+        failures.append(f"역할 인수인계 Markdown 파일 없음: {handoff_dir}")
     if report_files:
         failures.extend(
             validate_required_sections(
