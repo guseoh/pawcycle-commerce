@@ -119,6 +119,7 @@ ci(convention): 명사형 제목 검증 추가
 - `docs/runbook/collaboration-automation.md`
 - `docs/runbook/repository-onboarding.md`
 - `docs/runbook/github-repository-settings.md`
+- `docs/data/DATA-002-first-mvp-logical-erd.md`
 - `docs/reports/README.md`
 - `docs/handoffs/README.md`
 
