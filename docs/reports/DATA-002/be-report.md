@@ -8,7 +8,7 @@
 - 작업 브랜치: `feat/be`
 - 작업 유형: 첫 MVP 논리 ERD 정리
 - 결정 상태: Proposed 데이터 설계 보완 산출물
-- 로컬 경로: `C:\Users\guseo\IdeaProjects\pawcycle-commerce`
+- 작업 위치: repository root
 
 ## 작업 목적
 
@@ -31,10 +31,11 @@
 - `docs/api/API-001-first-mvp-api-contract.md`
 - 기존 ERD-001 로컬 산출물 3개
 
-## 승인 입력
+## 입력 상태 구분
 
-- 첫 MVP 데이터 모델 기준은 DATA-001이다.
-- 첫 MVP API 계약 기준은 API-001이다.
+- 첫 MVP 제품/도메인/API 입력은 PS-002, DOMAIN-001, API-001을 기준으로 한다.
+- DATA-001의 테이블 후보와 DATA-002의 논리 ERD는 Proposed 데이터 설계 입력이다.
+- DATA-001과 DATA-002의 테이블·컬럼 후보는 사용자 승인 전까지 실제 DB schema, Flyway migration, JPA Entity의 최종 입력으로 보지 않는다.
 - 첫 MVP 논리 ERD는 사용자 승인 전까지 Proposed 상태로 둔다.
 - `ERD-001` 접두사는 현재 산출물 검증기의 `--from-stdin` 감지 대상이 아니므로 신규 접두사를 추가하지 않고 `DATA-002`로 정리한다.
 
@@ -44,6 +45,16 @@
 - `docs/reports/DATA-002/be-report.md`
 - `docs/handoffs/DATA-002/be-to-tl.md`
 - `README.md`
+
+README 변경은 사용자 요청의 변경 범위에 포함된 최소 문서 링크 1줄 추가이며, 제품/도메인/API/코드 변경이 아니다.
+
+## 적용 방법
+
+- 기존 ERD-001 로컬 산출물을 DATA-002 경로로 이동했다.
+- 문서 내부 작업 ID와 경로 참조를 DATA-002 기준으로 정리했다.
+- DATA-001과 DATA-002의 데이터 설계 입력을 Proposed 상태로 분리해 표시했다.
+- README에는 DATA-002 논리 ERD 링크 1줄만 추가했다.
+- PR #27 리뷰 6건에 따라 Proposed 입력 표현, README 범위 근거, Backend 검증 기록, 구독 상세 식별자 표기, Mermaid 관계 표기, 개인 로컬 경로를 보완했다.
 
 ## 변경하지 않은 범위
 
@@ -88,7 +99,7 @@
 ## 결정 상태
 
 - DATA-002는 Proposed 데이터 설계 보완 산출물이다.
-- 사용자 승인 없이 DATA-001, API-001, ARCH 문서를 Approved로 변경하지 않았다.
+- 사용자 승인 없이 DATA-001, API-001, ARCH 문서를 최종 상태로 변경하지 않았다.
 - 실제 SQL DDL, DB 타입, FK/인덱스 이름, JPA 매핑, Repository 쿼리 방식은 후속 Backend 구현 전 사용자 승인과 기술 결정이 필요하다.
 
 ## API 영향
@@ -120,18 +131,20 @@
 | `git status --short --branch` | 통과. commit 후 작업 트리 clean 확인 |
 | `git diff origin/main...HEAD --name-status` | 통과. PR diff가 `README.md`, DATA-002 data/report/handoff 3개 파일로 제한됨 |
 | `git diff --check` | 통과. 공백 오류 없음 |
-| `git diff --stat` | 실행. staged 변경은 `git diff --cached --stat`로 확인 |
-| `git diff --name-status` | 실행. staged 변경은 `git diff --cached --name-status`로 확인 |
+| `git diff --stat` | 통과. DATA-002 리뷰 반영 변경이 data/handoff/report 3개 문서로 제한됨 |
+| `git diff --name-status` | 통과. DATA-002 data/handoff/report 3개 문서 수정 확인 |
 | `git diff --cached --check` | 통과. staged 공백 오류 없음 |
-| `git diff --cached --stat` | 통과. DATA-002 최초 commit 전 staged 변경 확인 |
-| `git diff --cached --name-status` | 통과. `README.md` 수정, DATA-002 문서 3개 추가 확인 |
+| `git diff --cached --stat` | 통과. DATA-002 리뷰 반영 staged 변경 확인 |
+| `git diff --cached --name-status` | 통과. DATA-002 data/handoff/report 3개 문서 수정 확인 |
+| 로컬 경로 노출 검사 | 통과. DATA-002 data/report/handoff 문서에서 개인 로컬 경로 없음 |
 | 필수 산출물 `Test-Path` 3건 | 통과. data, report, handoff 파일 모두 존재 |
 | `Write-Output 'DATA-002' \| py -3 scripts\validate-task-artifacts.py --from-stdin` | 통과. `task artifacts validated for DATA-002` |
 | `py -3 scripts\validate-task-artifacts.py --task-id DATA-002` | 통과. `task artifacts validated for DATA-002` |
-| 커밋 메시지 검증 | 통과. `docs(data): 첫 MVP 논리 ERD 정리` |
+| 커밋 메시지 검증 | 통과. `docs(data): DATA-002 리뷰 반영` |
 | Secret 의심 패턴 검사 | 통과. staged diff에서 GitHub 토큰, 개인 키, 비밀번호, 웹훅, JDBC URL 계열 의심 패턴 없음 |
 | Backend `.\gradlew.bat test` | 실패. Java 25 toolchain 미설치 및 toolchain download repository 미설정으로 exit code 1 |
 | Backend `.\gradlew.bat build` | 실패. Java 25 toolchain 미설치 및 toolchain download repository 미설정으로 exit code 1 |
+| GitHub Actions Application validation | 통과. Java 25 설치 환경에서 Backend test/build와 Frontend 검증 성공 |
 | Frontend `npm ci` | 통과. exit code 0, moderate 취약점 2건 audit 보고 |
 | Frontend `npm run lint` | 통과. exit code 0 |
 | Frontend `npm run build` | 통과. exit code 0 |
@@ -140,6 +153,7 @@
 
 - Backend `test`와 `build`는 실행했지만 완료하지 못했다. 현재 로컬 Java는 `21.0.11`이고, `backend/build.gradle`은 Java toolchain `25`를 요구한다.
 - Gradle 오류 사유: Java 25 설치를 찾지 못했고 toolchain download repository가 설정되어 있지 않다.
+- 로컬 Backend `test`와 `build`는 Java 25 toolchain 미설치로 실패했다. 다만 PR #27의 GitHub Actions Application validation은 Java 25를 설치한 환경에서 Backend test/build를 성공했으므로, 이번 문서 PR의 원격 필수 검증은 통과한 상태다.
 - Frontend 검증은 Node `v22.17.1`, npm `10.9.2`에서 통과했다.
 - `npm ci`가 moderate 취약점 2건을 audit 정보로 보고했지만, DATA-002는 문서 정리 작업이며 의존성 수정은 범위 밖이라 변경하지 않았다.
 
@@ -151,8 +165,10 @@
 
 ## AI 리뷰 반영 여부
 
-- PR 생성 전 AI 리뷰 없음.
-- PR 생성 후 CodeRabbit/Codex Review가 남으면 반영 여부와 미반영 이유를 PR 본문에 갱신한다.
+- CodeRabbit/Codex Review 확인.
+- PR #27 리뷰 thread 6건을 반영했다.
+- CodeRabbit의 보고서 `적용 방법`과 `PR 상태` 섹션 보강 요청도 함께 반영했다.
+- 미반영 항목 없음.
 
 ## 남은 위험
 
@@ -171,8 +187,10 @@
 - force push, reset, rebase 없이 최신 `origin/main` 일반 merge와 원격 `feat/be` ancestry 보존 merge로 정리했다.
 - 최신 main 병합으로 로컬 트리에는 main의 backend/frontend 기반 파일이 존재하지만, PR diff는 DATA-002 문서와 README 링크로 제한된다.
 
-## PR 결과
+## PR 상태
 
-- PR은 commit과 push 후 생성한다.
-- PR 제목 예정: `docs(data): 첫 MVP 논리 ERD 정리`
+- PR #27: `docs(data): 첫 MVP 논리 ERD 정리`
+- 상태: open, draft false, base `main`, head `feat/be`
+- 원격 Repository Validation과 Application validation은 통과 상태다.
+- PR 본문은 리뷰 반영 내역과 개인 로컬 경로 제거를 포함해 갱신한다.
 - 자동 병합하지 않는다.

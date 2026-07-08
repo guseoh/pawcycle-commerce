@@ -7,7 +7,7 @@
 - 결정 상태: Proposed Logical ERD
 - 기준 입력: `PS-002`, `DOMAIN-001`, `UX-002`, `ARCH-001`, `DATA-001`, `API-001`
 
-이 문서는 첫 수직 MVP의 논리 ERD 초안이다. 사용자 승인 전까지 `Approved`로 표시하지 않는다.
+이 문서는 첫 수직 MVP의 논리 ERD 초안이다. 사용자 승인 전까지 실제 DB schema, Flyway migration, JPA Entity의 최종 입력으로 보지 않는다.
 
 ## 작업 목적
 
@@ -15,26 +15,31 @@
 
 이번 작업은 후속 Backend 구현이 Flyway 마이그레이션과 JPA Entity를 작성하기 전에 사용할 논리 설계 입력을 제공한다. 실제 SQL DDL, DB 타입, FK 이름, 인덱스 이름, JPA 매핑은 확정하지 않는다.
 
-## 승인된 입력
+## 제품/도메인 입력
 
 - 비회원과 로그인 회원은 상품 목록, 상품 상세, SKU와 구독 가능 여부를 확인할 수 있다.
 - 구독 생성, 내 구독 목록, 내 구독 상세는 로그인한 회원만 사용할 수 있다.
-- 첫 MVP 테이블 후보는 `members`, `products`, `skus`, `subscriptions`다.
-- Product 1:N SKU 관계를 사용한다.
-- Member 1:N Subscription 관계를 사용한다.
-- SKU 1:N Subscription 관계를 사용한다.
 - 구독 하나는 SKU 하나만 대상으로 한다.
 - SKU는 구독 가능 여부를 가진다.
 - 구독 생성 시 SKU가 존재하고 `subscribable=true`여야 한다.
 - 수량은 1~10이다.
 - 배송 주기는 2주, 4주, 8주다.
-- 다음 주문 예정일은 서버가 계산한 확정값이다.
+- 다음 주문 예정일은 서버가 계산해 저장하는 값이다.
 - 날짜 계산 기준은 `Asia/Seoul` 날짜 단위다.
 - API 날짜 표현 후보는 ISO-8601 local date 문자열이다.
 - 휴일, 주말, 영업일 보정은 적용하지 않는다.
 - 다음 배송 예정일은 포함하지 않는다.
 - 결제, 재고, 배송, 구독 상태, 삭제 정책은 첫 MVP에서 제외한다.
 - soft delete, hard delete, 삭제·탈퇴·보관·익명화 정책은 DATA-002에서 확정하지 않는다.
+
+## Proposed 데이터 설계 입력
+
+DATA-001의 테이블 후보와 DATA-002의 논리 ERD는 Proposed 데이터 설계 입력이다. 사용자 승인 전까지 실제 DB schema, Flyway migration, JPA Entity의 최종 입력으로 보지 않는다.
+
+- 첫 MVP 테이블 후보는 `members`, `products`, `skus`, `subscriptions`다.
+- Product 1:N SKU 관계 후보를 사용한다.
+- Member 1:N Subscription 관계 후보를 사용한다.
+- SKU 1:N Subscription 관계 후보를 사용한다.
 
 ## ERD 범위
 
@@ -80,7 +85,7 @@
 - SKU 구독 가능 여부는 재고, 품절, 일반 판매 상태와 연결하지 않는다.
 - Subscription은 `member_id`와 `sku_id`를 통해 소유자 검증과 단일 SKU 구독을 지원한다.
 - 수량 1~10과 배송 주기 2/4/8은 도메인/애플리케이션 검증과 DB 제약 후보로 함께 기록한다.
-- 다음 주문 예정일은 서버 계산 확정값으로 보존하는 방향을 ERD 후보에 반영한다.
+- 다음 주문 예정일은 서버 계산값으로 보존하는 방향을 ERD 후보에 반영한다.
 - `created_date`, `next_order_date`는 날짜 단위 의미를 가진다.
 - `created_at`, `updated_at`은 감사 목적의 시각 후보로 둔다.
 - 실제 DB 타입, CHECK 적용 여부, FK/인덱스 이름은 후속 Flyway/JPA 구현에서 확정한다.
@@ -201,7 +206,7 @@ Mermaid 필드 표기는 논리 필드 후보다. 실제 SQL 타입, FK 이름, 
 | `quantity` | 구독 수량 | nullable false, 1~10 후보 | 수량 1~10 | `quantity` |
 | `delivery_cycle_weeks` | 배송 주기 | nullable false, 2/4/8 후보 | 배송 주기 2/4/8 | `deliveryCycleWeeks` |
 | `created_date` | 구독 생성일 | nullable false 후보 | `Asia/Seoul` 날짜 단위 | `createdDate` |
-| `next_order_date` | 다음 주문 예정일 | nullable false 후보, `created_date`보다 이후 후보 | 서버 계산 확정값 | `nextOrderDate` |
+| `next_order_date` | 다음 주문 예정일 | nullable false 후보, `created_date`보다 이후 후보 | 서버 계산값 | `nextOrderDate` |
 | `created_at` | 구독 레코드 생성 시각 | nullable false 후보 | 공통 감사 필드 후보 | API-001 사용처 없음 |
 | `updated_at` | 구독 레코드 수정 시각 | nullable false 후보 | 공통 감사 필드 후보 | API-001 사용처 없음 |
 
@@ -221,8 +226,8 @@ Mermaid 필드 표기는 논리 필드 후보다. 실제 SQL 타입, FK 이름, 
 
 | 대상 | 제약 후보 | 이유 | 적용 위치 후보 |
 | --- | --- | --- | --- |
-| `subscriptions.quantity` | 1 이상 10 이하 | 승인된 수량 범위 | 도메인/애플리케이션 검증 + DB CHECK 후보 |
-| `subscriptions.delivery_cycle_weeks` | 2, 4, 8 중 하나 | 승인된 배송 주기 | 도메인/애플리케이션 검증 + DB CHECK 후보 |
+| `subscriptions.quantity` | 1 이상 10 이하 | 요구사항 수량 범위 | 도메인/애플리케이션 검증 + DB CHECK 후보 |
+| `subscriptions.delivery_cycle_weeks` | 2, 4, 8 중 하나 | 요구사항 배송 주기 | 도메인/애플리케이션 검증 + DB CHECK 후보 |
 | `subscriptions.member_id` | nullable false, FK 후보 | 구독 소유자 필요 | DB FK 후보 |
 | `subscriptions.sku_id` | nullable false, FK 후보 | 구독 대상 SKU 필요 | DB FK 후보 |
 | `subscriptions.created_date` | nullable false | 구독 생성일 필요 | 도메인/애플리케이션 검증 + DB NOT NULL 후보 |
@@ -249,7 +254,7 @@ MySQL CHECK 제약의 실제 적용 여부, DDL 표현, 제약 이름은 후속 
 ## 날짜와 시간 기준
 
 - `created_date`, `next_order_date`는 날짜 단위 의미를 가진다.
-- `next_order_date`는 서버 계산 확정값이다.
+- `next_order_date`는 서버 계산값이다.
 - 계산 기준은 `Asia/Seoul`이다.
 - `next_order_date`는 `created_date + delivery_cycle_weeks`로 계산한다.
 - 휴일, 주말, 영업일 보정은 없다.
@@ -267,9 +272,9 @@ MySQL CHECK 제약의 실제 적용 여부, DDL 표현, 제약 이름은 후속 
 | Product 데이터 모델 | `products` 후보와 상품 목록·상세 표시 필드 후보로 반영 |
 | SKU 데이터 모델 | `skus` 후보와 `product_id`, `price`, `subscribable` 후보로 반영 |
 | Subscription 데이터 모델 | `subscriptions` 후보와 소유자, SKU, 수량, 배송 주기, 날짜 필드 후보로 반영 |
-| Product - SKU 1:N | `PRODUCTS ||--o{ SKUS` 관계로 반영 |
-| Member - Subscription 1:N | `MEMBERS ||--o{ SUBSCRIPTIONS` 관계로 반영 |
-| SKU - Subscription 1:N | `SKUS ||--o{ SUBSCRIPTIONS` 관계로 반영 |
+| Product - SKU 1:N | `PRODUCTS \|\|--o{ SKUS` 관계로 반영 |
+| Member - Subscription 1:N | `MEMBERS \|\|--o{ SUBSCRIPTIONS` 관계로 반영 |
+| SKU - Subscription 1:N | `SKUS \|\|--o{ SUBSCRIPTIONS` 관계로 반영 |
 | 제약 조건 후보 | 수량, 배송 주기, 날짜, `subscribable`, 가격, 상품명 제약 후보로 반영 |
 | 인덱스 후보 | `skus(product_id)`, `subscriptions(member_id, id)`, `subscriptions(member_id, next_order_date)`, `products(display_status, id)` 후보로 반영 |
 
@@ -281,7 +286,7 @@ MySQL CHECK 제약의 실제 적용 여부, DDL 표현, 제약 이름은 후속 
 | `GET /api/products/{productId}` | `products`, `skus` | 상품 상세, SKU 목록 | 공개 API |
 | `POST /api/subscriptions` | `members`, `skus`, `subscriptions` | `member_id`, `sku_id`, `quantity`, `delivery_cycle_weeks`, `next_order_date` | 인증 필요 |
 | `GET /api/subscriptions` | `subscriptions`, `skus`, `products` | `member_id`, `next_order_date`, 상품/SKU 요약 | 본인 구독만 |
-| `GET /api/subscriptions/{subscriptionId}` | `subscriptions`, `skus`, `products` | `subscription_id`, `member_id`, 상품/SKU 상세 | 소유자 검증 |
+| `GET /api/subscriptions/{subscriptionId}` | `subscriptions`, `skus`, `products` | `subscriptions.id`, `member_id`, 상품/SKU 상세 | 소유자 검증 |
 
 ## 요구사항 추적성
 
@@ -339,7 +344,7 @@ MySQL CHECK 제약의 실제 적용 여부, DDL 표현, 제약 이름은 후속 
 
 ## 후속 작업 순서
 
-1. 사용자 검토로 DATA-002 Proposed Logical ERD 승인 또는 수정
+1. 사용자 검토로 DATA-002 Proposed Logical ERD 유지 또는 수정
 2. Backend 구현: Flyway 마이그레이션, JPA Entity, 값 객체 매핑, Repository 쿼리 작성
 3. Backend API 구현: Controller, DTO, Service, 예외 처리, 인증 컨텍스트 연동
 4. Backend 테스트: 도메인 규칙, Repository 조회, API 통합 테스트 작성
