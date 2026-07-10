@@ -166,8 +166,8 @@ Spring Boot는 `HttpOnly`, `SameSite`, `Secure`, `Domain`, `Path`, `Max-Age`와 
 
 | 항목 | 추천 계약 | 검증 조건 |
 | --- | --- | --- |
-| 로그인 식별자 | `members.email` | 요청의 앞뒤 공백을 제거하고 소문자로 정규화한 뒤 조회·저장 |
-| email 물리 후보 | `VARCHAR(254) NOT NULL`, `UNIQUE` | 중복·null 거부, 정규화 뒤 동일 email 중복 거부 |
+| 로그인 식별자 | `members.email` | ASCII email만 허용하고 앞뒤 ASCII space/tab을 제거한 뒤 local-part case는 보존하고 domain만 소문자화 |
+| email 물리 후보 | `VARCHAR(254) CHARACTER SET ascii COLLATE ascii_bin NOT NULL`, `UNIQUE` | local-part case 보존, domain 정규화, null·정규화 충돌 거부 |
 | password hash 컬럼 | `password_hash VARCHAR(100) NOT NULL`, default 없음 | 평문·null 거부, BCrypt 결과 저장과 일치 검증 |
 | API 노출 | login 요청 외 email 비노출, hash 항상 비노출 | 응답·예외·로그·테스트 보고서에서 hash와 평문 부재 확인 |
 | principal | 최소 `memberId`; Entity 미보유 | 인증 컨텍스트 값으로 회원 조회, body/query memberId 무시 |
@@ -176,6 +176,14 @@ Spring Boot는 `HttpOnly`, `SameSite`, `Secure`, `Domain`, `Path`, `Max-Age`와 
 | 로컬 수동 검증 회원 | 별도 local-only bootstrap에서 환경 변수로 받은 가짜 credential을 BCrypt 처리 | 값 미커밋, 미로그, production profile 비활성 |
 
 `password_hash` 길이 `100`은 60자 BCrypt 결과와 Spring Security의 `{bcrypt}` 접두 형식을 수용하면서 hash 형식 전환 시 즉시 schema 변경을 강제하지 않는 최소 여유다. Spring Security의 password storage 형식은 `{id}encodedPassword`이고 BCrypt는 adaptive one-way 함수다. [Spring Security password storage](https://docs.spring.io/spring-security/reference/features/authentication/password-storage.html) MySQL의 `VARCHAR(M)`은 최대 문자 수를 지정한다. [MySQL string types](https://dev.mysql.com/doc/refman/8.4/en/string-type-syntax.html)
+
+email 정규화는 다음 경계로 제한한다.
+
+- local-part는 RFC 5321의 case-sensitive 원칙에 따라 입력 case를 보존하고 domain만 locale-independent ASCII 소문자로 바꾼다. [RFC 5321](https://www.rfc-editor.org/info/rfc5321/)
+- 첫 MVP는 ASCII local-part와 ASCII DNS domain만 허용한다. Unicode local-part, IDN, SMTPUTF8과 Unicode normalization은 Deferred다.
+- 특정 provider의 점 제거, `+tag` 제거, alias 통합 또는 domain allowlist를 적용하지 않는다. 문법에 맞는 ASCII DNS domain을 동일하게 취급한다.
+- 등록 API는 범위 밖이지만 migration, test fixture와 local bootstrap에서 정규화 결과가 기존 credential과 충돌하면 자동 병합·덮어쓰지 않고 작업을 실패시킨다.
+- 제어 문자, 내부 공백, 여러 `@`, 빈 local-part/domain과 254자를 넘는 입력은 `VALIDATION_FAILED`로 거부한다.
 
 ### 근거와 영향
 
@@ -188,12 +196,12 @@ Spring Boot는 `HttpOnly`, `SameSite`, `Secure`, `Domain`, `Path`, `Max-Age`와 
 
 1. `CHAR(60) NOT NULL`: 순수 BCrypt 결과에는 정확하지만 `{bcrypt}` prefix나 후속 password encoder 교체 시 migration이 즉시 필요하다.
 2. 별도 `member_credentials` 테이블: credential lifecycle 분리가 가능하지만 첫 회원·로그인만 있는 MVP에는 join과 모델이 늘어난다.
-3. email 원문 저장 + case-insensitive collation만 의존: 구현은 단순하지만 DB collation 변경에 정규화 의미가 좌우된다.
+3. email 전체를 소문자화하고 case-insensitive collation을 사용: 일반 provider에는 편하지만 case-sensitive local-part credential을 합칠 수 있다.
 4. V1 production migration에 고정 test member 삽입: 빠른 수동 확인은 가능하지만 credential과 환경별 데이터가 schema migration에 영구 결합되므로 추천하지 않는다.
 
 ### 위험
 
-- 국제화 email, alias, 탈퇴 후 재가입, email 변경 정책은 정해지지 않았다. 첫 MVP는 정규화 가능한 일반 email만 가정한다.
+- 국제화 email, IDN, provider alias, 탈퇴 후 재가입, email 변경 정책은 정해지지 않아 ASCII email 외 입력을 거부한다.
 - `VARCHAR(100)`은 특정 encoder를 DB가 검증하지 않으므로 애플리케이션 테스트가 필요하다.
 - local bootstrap의 환경 변수 이름·수명·운영 차단이 구현 PR에서 명확하지 않으면 production test account 위험이 생긴다.
 - BCrypt strength는 실행 환경에서 측정해야 하며 AUTH-002가 cost를 승인하지 않는다.
@@ -204,7 +212,7 @@ Spring Boot는 `HttpOnly`, `SameSite`, `Secure`, `Domain`, `Path`, `Max-Age`와 
 
 1. DR1: email login, 네 API URI·method·status·body, 안정 오류 코드
 2. DR2: session 저장 CSRF와 JSON endpoint/header 절차, CSRF cookie 미사용, session cookie 속성·timeout, same-origin 우선
-3. DR3: email 정규화·제약, `password_hash VARCHAR(100) NOT NULL`, production seed 금지와 test/local fixture 분리
+3. DR3: ASCII email의 local-part case 보존·domain 소문자화·충돌 거부, email 제약, `password_hash VARCHAR(100) NOT NULL`, production seed 금지와 test/local fixture 분리
 
 세 묶음 중 하나라도 승인되지 않으면 관련 Controller/DTO/SecurityConfig/migration/JPA 구현을 시작하지 않는다. 사용자가 일부만 승인하면 승인된 묶음만 후속 승인 입력 문서에 기록하고 나머지는 `Decision Required`로 유지한다.
 
@@ -214,7 +222,7 @@ Spring Boot는 `HttpOnly`, `SameSite`, `Secure`, `Domain`, `Path`, `Max-Age`와 
 - 회원 가입, 비밀번호 재설정·변경, email 인증, 계정 잠금·rate limit
 - remember-me, 동시 session 제한, device/session 목록과 강제 로그아웃
 - 구독 API와 소유권 구현
-- 국제화 email, email 변경·탈퇴·재가입 정책
+- 국제화 email·IDN·SMTPUTF8, email 변경·탈퇴·재가입 정책
 - cross-site FE/BE 배포와 credentialed CORS 계약
 - BCrypt strength 측정값과 encoder upgrade 정책
 
