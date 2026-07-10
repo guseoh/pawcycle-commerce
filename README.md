@@ -125,6 +125,7 @@ ci(convention): 명사형 제목 검증 추가
 - `docs/adr/ARCH-003-backend-implementation-plan-and-dependency-proposal.md`
 - Backend 구현 결정 요청: `docs/adr/ARCH-004-backend-implementation-decision-request.md`
 - Backend 구현 승인 후보: `docs/adr/ARCH-005-backend-implementation-approval-candidates.md`
+- 첫 Backend 구현 승인 입력: `docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md`
 - `docs/runbook/repository-onboarding.md`
 - `docs/runbook/github-repository-settings.md`
 - `docs/data/DATA-002-first-mvp-logical-erd.md`
