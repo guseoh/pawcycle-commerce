@@ -181,8 +181,9 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - service image, dynamic port 표현식, health option과 environment 전달 정의
 - runbook의 service·image pull·port·datasource·Flyway 실패 구분
 - 로컬 Frontend install/lint/build
-- OPS-006 산출물 validator와 diff·Secret 검사는 최종 변경에서 실행
-- 최종 workflow YAML과 MySQL service 기동은 PR의 GitHub Actions Application validation로 검증
+- OPS-006 산출물 validator와 diff·Secret 검사
+- 원격 `Initialize containers`와 `Verify MySQL service`
+- 원격 Java 25 Backend test/build와 Node.js 24 Frontend install/lint/build
 
 ## 아직 검증되지 않은 datasource·Flyway 범위
 
@@ -220,6 +221,14 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 | staged name·stat | 허용 파일 4개만 포함됨을 확인 |
 | staged Secret 의심 패턴 검사 | CI 비운영 root fixture와 dynamic localhost JDBC URL만 일치, 실제 Secret 없음 |
 | 커밋 메시지 검증 | `ci(database): MySQL 검증 서비스 기반 추가` 통과 |
+| PR #32 본문 local·remote UTF-8 검사 | 통과 |
+| 원격 Commit and PR conventions | 통과 |
+| 원격 Application validation | 통과, 2분 3초 |
+| 원격 `Initialize containers` | 통과 |
+| 원격 `Verify MySQL service` | 통과 |
+| 원격 Java 25 Backend test/build | 두 step 모두 통과 |
+| 원격 Node.js 24 Frontend install/lint/build | 세 step 모두 통과 |
+| 원격 CodeRabbit check | 통과 |
 
 ## 실패 후 수정 내용
 
@@ -249,11 +258,12 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 ## AI 리뷰 반영 여부
 
 - 작업 전 AI 리뷰 지적 없음.
-- PR 생성 후 CodeRabbit/Codex Review가 있으면 CI 보안, Secret, health check, 기존 검사 회귀와 문서 정합성 순으로 선별한다.
+- PR #32 CodeRabbit check가 통과했으나 Draft 상태라 상세 review thread는 생성되지 않았다.
+- Codex Review는 별도로 실행하지 않았으며 로컬 구조 검사와 원격 CI 증거로 검증했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-- 현재 미반영 항목 없음.
+- 수신한 상세 AI review 지적이 없어 미반영 항목 없음.
 
 ## 적용 방법
 
@@ -294,11 +304,18 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 기존 로컬 `ops/sre`는 `backup/local-ops-sre-before-OPS-006`으로 보존
 - 병합 완료 원격 `ops/sre` 삭제 후 최신 `main`에서 새 역할 branch 생성
 - reset, rebase, force push와 history rewrite 사용 없음
-- OPS-006 commit·push 결과는 필수 검증 후 갱신 예정
+- 구현 commit: `8fee031e95f54268e5f703fc9ff78e859db6f8f6`
+- commit 제목: `ci(database): MySQL 검증 서비스 기반 추가`
+- `origin/ops/sre` push와 upstream 설정 성공
+- 이 보고서의 Git·PR 결과 갱신은 후속 `docs(report)` commit으로 추가
 
 ## PR 결과
 
-- base/head 예정: `main` ← `ops/sre`
-- 제목 예정: `ci(database): MySQL 검증 서비스 기반 추가`
-- Draft PR 생성과 원격 CI 결과는 필수 검증 후 갱신 예정
+- PR: #32 `ci(database): MySQL 검증 서비스 기반 추가`
+- URL: `https://github.com/guseoh/pawcycle-commerce/pull/32`
+- base/head: `main` ← `ops/sre`
+- 상태: OPEN, Draft
+- 최초 head `8fee031`의 Commit and PR conventions, Application validation, CodeRabbit과 알림 check 통과
+- Application validation run `29096635630`에서 container 초기화, MySQL 검증, Backend와 Frontend step 모두 통과
+- 원격 PR 본문 UTF-8 검증 통과
 - 자동 병합하지 않음
