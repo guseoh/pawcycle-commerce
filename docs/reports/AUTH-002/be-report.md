@@ -177,7 +177,7 @@ Tech Lead와 사용자는 DR1~DR3를 각각 승인·수정·보류한다. 승인
 - reset, rebase, force push, history rewrite를 사용하지 않았다.
 - 최초 commit: `d211019 docs(auth): 세션 인증 최소 계약 제안`
 - `origin/feat/be` push와 upstream 설정을 완료했다.
-- CodeRabbit review 반영은 후속 문서 commit으로 push한다.
+- review 반영 commit: `7c7f307 docs(auth): 세션 인증 계약 리뷰 반영`; `origin/feat/be` push 완료
 
 ## PR 결과
 
