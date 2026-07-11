@@ -163,6 +163,8 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 | Repository Validation run `29144751627` | Java 25 Backend test/build, MySQL, Frontend 전체 통과 |
 | Repository Validation run `29145031383`, `29145057897` | Backend test 실패: `databaseConstraintsRejectDuplicateEmailAndNegativePrice` 173행 assertion, 12개 중 1개 실패 |
 | 실패 원인 후속 수정 | DB 제약 negative-path test에 `@Transactional`을 적용하고 익명 logout의 유효 CSRF 인증 경계 회귀 테스트 추가 |
+| Repository Validation run `29151260379` | Backend test 실패: 동일 transaction에서 중복 email 위반 뒤 실행한 음수 price assertion, 13개 중 1개 실패 |
+| 집중 후속 수정 | 중복 email과 음수 price 제약을 각각 독립된 rollback transaction 테스트로 분리 |
 
 ## 로컬에서 실행하지 못한 검증과 이유
 

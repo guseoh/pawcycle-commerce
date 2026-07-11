@@ -24,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -152,6 +153,10 @@ class DatabaseFoundationIntegrationTests {
 				email,
 				passwordEncoder.encode(UUID.randomUUID().toString())))
 				.isInstanceOf(DataIntegrityViolationException.class);
+
+		TestTransaction.flagForRollback();
+		TestTransaction.end();
+		TestTransaction.start();
 
 		Product product = productRepository.save(new Product(
 				"Constraint product",
