@@ -18,6 +18,7 @@
 ## 입력 문서
 
 - 사용자 OPS-006 요청
+- 사용자 OPS-006 PR #32 리뷰 수정·로컬 브랜치 복구 승인
 - `AGENTS.md`
 - `infra/AGENTS.md`
 - `.agents/skills/platform-sre/SKILL.md`
@@ -78,7 +79,7 @@ MySQL 8.4 image는 이번 CI 구현에서 제안하고 workflow로 검증하는 
 | 충돌 안전 port | container `3306/tcp`만 선언하고 GitHub Actions dynamic host port 사용 |
 | health check | `mysqladmin ping`, interval 10초, timeout 5초, retries 10, start period 20초 |
 | character set·collation | 첫 step에서 `utf8mb4`, `utf8mb4_0900_ai_ci` 확인 |
-| Backend 환경 변수 | test/build에 `SPRING_DATASOURCE_URL`, `USERNAME`, `PASSWORD` 제공 |
+| Backend 환경 변수 | test/build에 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` 제공 |
 | 기존 CI 보존 | conventions, Java 25, Backend test/build, Node 24, Frontend install/lint/build 유지 |
 | Secret 경계 | CI job 전용 비운영 값, GitHub Secret 신규 요구 없음, 로그 출력 금지 |
 | 실패 진단 | runbook에 container, pull, health, port, datasource, Flyway 구분 기록 |
@@ -86,9 +87,9 @@ MySQL 8.4 image는 이번 CI 구현에서 제안하고 workflow로 검증하는 
 ## MySQL image와 port 선택 근거
 
 - `mysql:8.4`는 승인된 MySQL 8.4 LTS 계열을 명시하고 변동성이 큰 `latest`를 사용하지 않는다.
-- patch 또는 digest를 고정하면 upstream security patch 반영을 수동 관리해야 한다. 현재는 CI 기반 도입 단계이므로 `8.4` tag를 사용하고 tag drift를 남은 위험으로 기록한다.
+- patch 또는 digest를 고정하면 upstream security patch 반영을 수동 관리해야 한다. 승인 원본에는 digest 고정 또는 mutable `8.4` tag 유지 결정이 없으므로 현재 구현을 임의로 바꾸지 않고 `Decision Required`로 분리한다.
 - `ports: 3306/tcp`는 GitHub Actions가 사용 가능한 host port를 job마다 동적으로 할당하므로 GitHub-hosted runner의 다른 service와 고정 port 충돌을 피한다.
-- Backend URL은 `job.services.mysql.ports[3306]` 값을 사용한다.
+- Backend URL은 `job.services.mysql.ports['3306']` 값을 사용한다.
 
 ## CI database·credential 경계
 
@@ -121,7 +122,7 @@ SPRING_DATASOURCE_USERNAME=<CI 전용 사용자>
 SPRING_DATASOURCE_PASSWORD=<CI 전용 비운영 값>
 ```
 
-URL의 port는 `${{ job.services.mysql.ports[3306] }}` 표현식에서 가져온다. JDBC option은 Backend application-test 설정과 함께 후속 작업에서 결정한다.
+URL의 port는 `${{ job.services.mysql.ports['3306'] }}` 표현식에서 가져온다. JDBC option은 Backend application-test 설정과 함께 후속 작업에서 결정한다.
 
 ## 주요 결과
 
@@ -142,6 +143,7 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 ## 결정 상태
 
 - `mysql:8.4`: OPS-006 workflow 물리 구현값
+- MySQL image digest 고정 또는 mutable tag 유지: 승인 원본에 결정 없음, `Decision Required`
 - dynamic host port: OPS-006 충돌 회피 전략
 - Testcontainers: Deferred 유지
 - Docker Compose: Explicitly Excluded 유지
@@ -206,13 +208,14 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 | `main` fast-forward와 새 `ops/sre` | 최신 `origin/main` 기준 생성 |
 | OPS-006 기준 validator | 예상 실패: 보고서와 인수인계 생성 전 부재 |
 | `docker info` | 실패: Docker Desktop Linux daemon 미실행 |
-| Backend `gradlew.bat test` | 실패: 로컬 Java 21, 요구 Java 25 toolchain 없음 |
-| Backend `gradlew.bat build` | 실패: 로컬 Java 21, 요구 Java 25 toolchain 없음 |
+| Backend `gradlew.bat test` | 미실행: 현재 로컬 Java 17, 요구 Java 25 toolchain 없음 |
+| Backend `gradlew.bat build` | 미실행: 현재 로컬 Java 17, 요구 Java 25 toolchain 없음 |
 | Frontend `npm ci` | 통과, 기존 audit moderate 2건 보고 |
 | Frontend `npm run lint` | 통과 |
 | Frontend `npm run build` | 통과, Next.js production build |
 | 기존 `js-yaml` 기반 workflow 구문·구조 검사 | 통과, 신규 dependency 설치 없음 |
 | workflow 필수 항목·기존 step 보존 검사 | 통과 |
+| workflow service port 문자열 키 3곳 검사 | 통과, `${{ job.services.mysql.ports['3306'] }}`로 통일 |
 | `Write-Output 'OPS-006' \| py -3 scripts\validate-task-artifacts.py --from-stdin` | 통과, `task artifacts validated for OPS-006` |
 | `py -3 scripts\validate-task-artifacts.py --task-id OPS-006` | 통과, `task artifacts validated for OPS-006` |
 | `git diff --check` | 통과 |
@@ -234,7 +237,7 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 
 - OPS-006 기준 validator 실패는 산출물 생성 전 예상 결과이므로 보고서와 인수인계를 작성한 뒤 두 입력 방식으로 재검증한다.
 - 첫 산출물 validator 재실행은 실수로 `frontend`에서 실행해 상대 경로의 `scripts`를 찾지 못했다. 저장소 루트에서 같은 명령을 다시 실행해 두 방식 모두 통과했다.
-- 로컬 Backend 실패는 제품 코드나 workflow 결함으로 수정하지 않았다. Java 25를 제공하는 기존 원격 Application validation로 보완한다.
+- 로컬 Backend는 현재 Java 17이고 요구 Java 25 toolchain이 없어 다시 실행하지 않았다. 제품 코드나 workflow 결함으로 해석하지 않고 Java 25를 제공하는 원격 Application validation로 보완한다.
 - Docker daemon 부재를 우회하려고 Docker Desktop을 자동 시작하거나 새 도구를 설치하지 않았다. 원격 service container를 최종 기동 증거로 사용한다.
 
 ## 실행하지 못한 검증과 이유
@@ -257,13 +260,17 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 
 ## AI 리뷰 반영 여부
 
-- 작업 전 AI 리뷰 지적 없음.
-- PR #32 CodeRabbit check가 통과했으나 Draft 상태라 상세 review thread는 생성되지 않았다.
+- PR #32는 Ready for review이며 CodeRabbit 상세 review thread 5건을 확인했다.
+- port 참조 3곳을 문자열 키 `${{ job.services.mysql.ports['3306'] }}`로 통일했다.
+- 보고서의 datasource 환경 변수명을 실제 workflow 계약과 일치시켰다.
+- Runbook의 배포용 Docker 제외 범위와 CI MySQL service 포함 범위를 분리하고 image pull 진단을 중립적인 registry/network 표현으로 정정했다.
 - Codex Review는 별도로 실행하지 않았으며 로컬 구조 검사와 원격 CI 증거로 검증했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-- 수신한 상세 AI review 지적이 없어 미반영 항목 없음.
+- `mysql:8.4` digest 고정은 `ARCH-006`, `AUTH-003`, `FOUNDATION-000`과 OPS-006 승인 원본에서 고정 또는 tag 유지 승인을 찾지 못했다.
+- 기존 보고서와 Runbook의 tag 유지 설명은 승인 원본이 아니므로 승인으로 간주하지 않는다.
+- 사용자 또는 Tech Lead가 digest 정책, 갱신 주기와 검증 절차를 승인할 때까지 `Decision Required`로 남기고 관련 review thread를 resolve하지 않는다.
 
 ## 적용 방법
 
@@ -289,7 +296,7 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 실제 JDBC option과 timezone·TLS 정책은 Backend datasource 결정에 남아 있다.
 - Flyway migration 실패와 JPA mapping 문제는 후속 구현에서 처음 드러날 수 있다.
 - MySQL image 초기화 시간이 CI 비용과 대기 시간을 늘릴 수 있다.
-- image digest 고정 여부는 tag drift가 실제 재현성 문제를 만들 때 다시 판단한다.
+- image digest 고정 또는 mutable tag 유지 여부는 병합 전 사용자 또는 Tech Lead 결정이 필요하다.
 
 ## 다음 작업
 
@@ -303,7 +310,10 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 기준 commit: `de9e971 docs(obsidian): PR #31 기록 추가`
 - 기존 로컬 `ops/sre`는 `backup/local-ops-sre-before-OPS-006`으로 보존
 - 병합 완료 원격 `ops/sre` 삭제 후 최신 `main`에서 새 역할 branch 생성
-- reset, rebase, force push와 history rewrite 사용 없음
+- 리뷰 수정 시작 전 로컬 `ops/sre` SHA `d250bcd6bf8f8e3fc645b9af09b442268865a76a`를 `backup/local-ops-sre-before-OPS-006-review-fix`에 보존했다.
+- 로컬 고유 커밋은 `d250bcd chore(harness): 역할과 산출물 검증 강화` 1개이며 자동 재적용하지 않았다.
+- 사용자 승인 범위에서 로컬 `ops/sre`만 `origin/ops/sre`로 reset했고 reset 후 SHA는 `eec524b4aa21bca827d7968e9bdc42bbf91e119f`로 일치했다.
+- 백업 브랜치는 삭제하거나 원격 push하지 않았고 rebase·force push는 사용하지 않았다.
 - 구현 commit: `8fee031e95f54268e5f703fc9ff78e859db6f8f6`
 - commit 제목: `ci(database): MySQL 검증 서비스 기반 추가`
 - `origin/ops/sre` push와 upstream 설정 성공
@@ -314,8 +324,10 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - PR: #32 `ci(database): MySQL 검증 서비스 기반 추가`
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/32`
 - base/head: `main` ← `ops/sre`
-- 상태: OPEN, Draft
-- 최초 head `8fee031`의 Commit and PR conventions, Application validation, CodeRabbit과 알림 check 통과
-- Application validation run `29096635630`에서 container 초기화, MySQL 검증, Backend와 Frontend step 모두 통과
+- 상태: OPEN, Ready for review
+- 리뷰 수정 전 head: `eec524b4aa21bca827d7968e9bdc42bbf91e119f`
+- 최신 Repository Validation run `29137838131`의 Commit and PR conventions와 Application validation 통과
+- 같은 Application validation에서 container 초기화, MySQL 검증, Backend test/build와 Frontend install/lint/build 통과
+- CodeRabbit 상세 review thread 5건 확인: 확정 수정 4건, digest `Decision Required` 1건
 - 원격 PR 본문 UTF-8 검증 통과
 - 자동 병합하지 않음

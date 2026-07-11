@@ -36,7 +36,7 @@
 - CI database: `pawcycle_test`
 - application user: CI 전용 `pawcycle_ci`
 - host: GitHub-hosted runner의 `127.0.0.1`
-- host port: `${{ job.services.mysql.ports[3306] }}` dynamic mapping
+- host port: `${{ job.services.mysql.ports['3306'] }}` dynamic mapping
 - service health와 server version·character set·collation 선행 검증
 - Backend test/build에 전달되는 datasource 환경 변수
 
@@ -74,6 +74,8 @@
 - Flyway V1 schema와 migration 내용
 - JPA mapping과 transaction 경계
 - MySQL image digest 고정 여부
+
+MySQL image digest 정책은 `ARCH-006`과 `AUTH-003`의 승인 범위에 없고 `FOUNDATION-000`도 `Proposed` 상태이므로 `Decision Required`다. 승인 전에는 `mysql:8.4`를 임의로 digest 고정하거나 tag 유지 위험을 수용된 결정으로 확정하지 않는다.
 
 ## 승인 필요 항목
 
@@ -137,8 +139,10 @@ Backend 구현 PR에서 별도 workflow 변경 없이 기존 Application validat
 
 ## AI 리뷰에서 남은 확인 항목
 
-- OPS-006 작업 전 AI 리뷰 지적 없음.
-- PR 리뷰에서 health check, dynamic port, Secret 경계, action pinning과 기존 step 회귀를 확인한다.
+- PR #32의 CodeRabbit 상세 review thread 5건을 확인했다.
+- port 문자열 키, 보고서 환경 변수명, Runbook Docker 범위와 image pull 진단 4건은 OPS-006에서 반영한다.
+- MySQL image digest 고정 1건은 승인 결정이 없어 `Decision Required`로 남기고 resolve하지 않는다.
+- health check, dynamic port, Secret 경계, action pinning과 기존 step 회귀는 최신 head의 검증 결과로 확인한다.
 
 ## 알려진 위험
 

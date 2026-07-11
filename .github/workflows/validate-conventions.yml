@@ -93,7 +93,7 @@ jobs:
           MYSQL_DATABASE: pawcycle_test
           MYSQL_USERNAME: pawcycle_ci
           MYSQL_PASSWORD: ci-only-not-a-secret
-          MYSQL_PORT: ${{ job.services.mysql.ports[3306] }}
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
         run: |
           test -n "$MYSQL_CONTAINER_ID"
           test -n "$MYSQL_PORT"
@@ -132,7 +132,7 @@ jobs:
       - name: Backend test
         working-directory: backend
         env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports[3306] }}/pawcycle_test
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
           SPRING_DATASOURCE_USERNAME: pawcycle_ci
           SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
         run: ./gradlew test
@@ -140,7 +140,7 @@ jobs:
       - name: Backend build
         working-directory: backend
         env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports[3306] }}/pawcycle_test
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
           SPRING_DATASOURCE_USERNAME: pawcycle_ci
           SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
         run: ./gradlew build

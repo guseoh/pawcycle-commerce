@@ -35,7 +35,7 @@ Application validation의 `application` job은 다음 CI 전용 MySQL service를
 | character set | `utf8mb4` |
 | collation | `utf8mb4_0900_ai_ci` |
 
-`mysql:8.4`는 MySQL 8.4 LTS 계열을 명시하고 `latest`를 피한다. patch와 image digest는 고정하지 않으므로 upstream tag 갱신 시 patch가 바뀔 수 있다. CI 실패 시 image 변경 여부를 먼저 확인하고, 재현성과 보안 갱신 비용을 검토한 뒤 별도 SRE 작업에서 digest 고정 여부를 결정한다.
+`mysql:8.4`는 MySQL 8.4 LTS 계열을 명시하고 `latest`를 피한다. 다만 patch와 image digest를 고정하지 않아 upstream tag 갱신 시 실행 image가 바뀔 수 있다. `ARCH-006` 승인 입력은 CI MySQL service 검증을 승인하지만 image digest 정책은 승인하지 않았고, `FOUNDATION-000`도 `Proposed` 상태이므로 digest 고정 여부는 `Decision Required`다. tag drift로 재현성 문제가 발생하거나 보안·공급망 정책이 요구되면 검증된 공식 image digest, 갱신 주기와 검증 절차를 사용자 또는 Tech Lead가 승인한 뒤 별도 SRE 작업으로 반영한다.
 
 service는 다음 Docker health check를 통과해야 job step이 시작된다.
 
@@ -61,7 +61,7 @@ SPRING_DATASOURCE_USERNAME=<CI 전용 사용자>
 SPRING_DATASOURCE_PASSWORD=<CI 전용 비운영 값>
 ```
 
-`<dynamic-port>`는 `${{ job.services.mysql.ports[3306] }}`에서 가져온다. JDBC option은 이 SRE 작업에서 추가로 고정하지 않는다.
+`<dynamic-port>`는 `${{ job.services.mysql.ports['3306'] }}`에서 가져온다. JDBC option은 이 SRE 작업에서 추가로 고정하지 않는다.
 
 현재 Backend에 JPA, MySQL JDBC와 Flyway가 없으면 이 환경 변수는 소비되지 않는다. 따라서 service 기동과 변수 전달 성공을 datasource 연결, migration 또는 schema 검증 성공으로 해석하지 않는다. 후속 Backend 작업이 승인된 dependency와 application-test 설정을 추가한 뒤 같은 CI 경로에서 실제 연결과 migration을 검증한다.
 
@@ -119,7 +119,7 @@ cd ..
 
 ## 제외 범위
 
-Docker는 아직 CI에 포함하지 않는다. `Dockerfile`, `docker-compose.yml`, Kubernetes, Nginx, 배포 workflow는 이번 기준선에 없다.
+배포용 Dockerfile, Docker Compose, Kubernetes, Nginx와 배포 workflow는 이번 기준선에 포함하지 않는다. CI 검증용 MySQL service container는 포함한다.
 
 MySQL service container는 CI에 포함하지만 schema 생성, Flyway migration, JPA 통합 테스트와 실제 DB Secret은 포함하지 않는다. Testcontainers와 Docker Compose도 Deferred 또는 Explicitly Excluded 상태를 유지한다.
 
@@ -128,9 +128,9 @@ MySQL service container는 CI에 포함하지만 schema 생성, Flyway migration
 1. PR 제목, 본문, 작업 산출물, 커밋 메시지 오류인지 먼저 확인한다.
 2. `git diff --check` 실패라면 공백 또는 줄 끝 오류를 수정한다.
 3. Application validation이 step 진입 전에 실패하면 job의 `Initialize containers`와 MySQL service 로그에서 image pull, container 시작과 health check 상태를 확인한다.
-4. image pull 실패라면 `mysql:8.4` tag 가용성, GitHub Container registry/network 오류와 Docker pull 오류를 확인한다.
+4. image pull 실패라면 `mysql:8.4` tag 가용성, container registry 또는 network 오류와 Docker pull 오류를 확인한다.
 5. `Verify MySQL service` 실패라면 dynamic host port가 할당됐는지, database 이름이 `pawcycle_test`인지, server version·character set·collation 검사가 실패했는지 확인한다. password나 전체 connection string을 출력하지 않는다.
-6. Backend datasource 연결 실패라면 실패 step이 service 확인 이후인지 확인하고, URL host가 `127.0.0.1`, port가 `${{ job.services.mysql.ports[3306] }}`, database가 `pawcycle_test`인지 workflow 정의로 확인한다. 환경 변수 실제 값 전체를 로그에 출력하지 않는다.
+6. Backend datasource 연결 실패라면 실패 step이 service 확인 이후인지 확인하고, URL host가 `127.0.0.1`, port가 `${{ job.services.mysql.ports['3306'] }}`, database가 `pawcycle_test`인지 workflow 정의로 확인한다. 환경 변수 실제 값 전체를 로그에 출력하지 않는다.
 7. Flyway 실패는 service 기동 성공 후 Backend test/build 로그의 migration 단계에서 발생한다. `Initialize containers` 또는 health 실패와 구분하고 migration·schema 문제는 Backend Engineer에게 전달한다.
 8. Backend 실패라면 Java 25 설치, `backend/gradlew` 실행 권한, Gradle wrapper, `./gradlew test`, `./gradlew build` 로그를 확인한다.
 9. Frontend 실패라면 Node.js 24 설치, `frontend/package-lock.json`, `npm ci`, `npm run lint`, `npm run build` 로그를 확인한다.
