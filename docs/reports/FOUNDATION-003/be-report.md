@@ -136,7 +136,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - CSRF 실패: `403 CSRF_INVALID` JSON
 - 오류 body: `code`, `message`, `fieldErrors`
 
-실제 auth/product Controller가 없으므로 test source의 격리 Controller로 filter 경계만 검증한다. CORS, JWT, OAuth2, remember-me와 동시 session 제한을 추가하지 않았다.
+실제 auth/product Controller가 없는 승인 경로의 404와 Security filter가 먼저 반환하는 401·403을 구분해 경계를 검증한다. CORS, JWT, OAuth2, remember-me와 동시 session 제한을 추가하지 않았다.
 
 ## 테스트
 
@@ -146,6 +146,8 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - Flyway 반복 migrate 시 V1 재적용 없음
 - runtime 생성 password를 BCrypt hash로 저장하는 test fixture
 - Member/Product/Sku Repository와 Product-SKU mapping
+- UNIQUE와 CHECK negative-path의 독립 rollback transaction
+- `chk_skus_price_nonnegative`의 `CHECK`, `ENFORCED=YES` metadata와 MySQL CHECK 위반 root `SQLException`
 - 공개 경계, 보호 경계 401, CSRF 403, AccessDenied 403 JSON
 - production 기본 Secure와 local/test 명시 override 설정
 
@@ -166,6 +168,9 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 | Repository Validation run `29151260379` | Backend test 실패: 동일 transaction에서 중복 email 위반 뒤 실행한 음수 price assertion, 13개 중 1개 실패 |
 | 집중 후속 수정 | 중복 email과 음수 price 제약을 각각 독립된 rollback transaction 테스트로 분리 |
 | Repository Validation run `29151342478` | Backend test 실패: 독립 transaction 적용 후에도 동일 테스트 179행 음수 price assertion 실패, 13개 중 1개 실패 |
+| 실패 원인 확정 | MySQL CHECK 위반은 발생했지만 Spring 예외가 `DataIntegrityViolationException` 구체 타입과 일치하지 않아 기존 assertion 실패 |
+| CHECK 검증 보완 | UNIQUE·CHECK 테스트 분리, Product `saveAndFlush`, CHECK metadata와 root `SQLException`의 constraint명·SQLState `HY000`·vendor code `3819` 검증 |
+| Repository Validation run `29151829482`, head `4ba57ba2b32282d49e12e77e7c5cf2449a538ede` | Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과 |
 
 ## 로컬에서 실행하지 못한 검증과 이유
 
@@ -192,10 +197,9 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 
 ## 위험과 제한
 
-- 실제 Java 25·MySQL 8.4 통합 결과는 원격 CI가 완료돼야 확정된다.
+- Java 25·MySQL 8.4 통합 결과는 Repository Validation run `29151829482`에서 확인했다.
 - mutable `mysql:8.4` tag drift 위험은 OPS-006 승인 결정을 유지한다.
 - MySQL major version만 확인하자는 CodeRabbit 제안은 OPS-006의 MySQL 8.4.* CI 계약을 약화하므로 미반영했다.
-- 동일 CI 실패에 한 차례 집중 수정과 재검증을 수행했으나 실패가 유지돼 추가 수정 반복을 중단했다.
 - product enum 값, 실제 상품 조회 query와 transaction은 후속 공개 상품 API 작업 범위다.
 - 실제 Authentication 생성, SecurityContext 저장, logout handler, principal과 CSRF token API는 미구현이다.
 - production HTTPS와 reverse proxy의 실제 cookie 전달은 배포 환경에서 별도 확인이 필요하다.
@@ -215,6 +219,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - 테스트 보완 commit: `8e63a27b9fbe454fb4e3cef0b439e774d6fa79a5`
 - 테스트 보완 제목: `test(backend): Security JSON 응답 검증 보완`
 - 리뷰 후속 commit: `9a96d192fa429322bc6b953e051bd39b09bfa242`, `5237f31444023b89d45c0adad08c9d962fdca443`
+- DB CHECK 검증 commit: `4ba57ba2b32282d49e12e77e7c5cf2449a538ede`
 - 두 commit 모두 force 없이 일반 push했다.
 - PR을 자동 병합하지 않는다.
 
@@ -224,8 +229,8 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/33`
 - base/head: `main` ← `feat/be`
 - 상태: OPEN, Ready for review
-- 최신 검증 head: `5237f31444023b89d45c0adad08c9d962fdca443`
-- Repository Validation run `29151342478` Backend test 실패
+- 코드 검증 head: `4ba57ba2b32282d49e12e77e7c5cf2449a538ede`
+- Repository Validation run `29151829482` 전체 통과
 - CodeRabbit review는 완료됐으며 유효한 지적 반영과 미반영 근거 답변 후 unresolved thread가 없다.
 - Codex Review는 사용량 한도 초과로 실행하지 못했다.
 - 원격 제목·본문·head·base와 UTF-8 상태를 확인했다.
