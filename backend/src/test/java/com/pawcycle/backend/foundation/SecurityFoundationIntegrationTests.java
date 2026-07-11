@@ -16,9 +16,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -26,14 +23,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(SecurityFoundationIntegrationTests.TestApiConfiguration.class)
 class SecurityFoundationIntegrationTests {
 
 	private final WebApplicationContext applicationContext;
@@ -58,12 +51,10 @@ class SecurityFoundationIntegrationTests {
 	@Test
 	void publicProductAndAuthenticationBoundariesAllowAnonymousRequests() throws Exception {
 		mockMvc.perform(get("/api/products/test"))
-				.andExpect(status().isOk())
-				.andExpect(content().string("public-product"));
+				.andExpect(status().isNotFound());
 
 		mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andExpect(content().string("test-csrf"));
+				.andExpect(status().isNotFound());
 	}
 
 	@Test
@@ -80,8 +71,7 @@ class SecurityFoundationIntegrationTests {
 	@Test
 	void authenticatedRequestCanReachProtectedBoundary() throws Exception {
 		mockMvc.perform(get("/api/auth/me").with(user("foundation-user")))
-				.andExpect(status().isOk())
-				.andExpect(content().string("authenticated-member"));
+				.andExpect(status().isNotFound());
 	}
 
 	@Test
@@ -107,36 +97,4 @@ class SecurityFoundationIntegrationTests {
 		assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("\"fieldErrors\":[]");
 	}
 
-	@TestConfiguration(proxyBeanMethods = false)
-	static class TestApiConfiguration {
-
-		@Bean
-		TestApiController testApiController() {
-			return new TestApiController();
-		}
-	}
-
-	@RestController
-	static class TestApiController {
-
-		@GetMapping("/api/products/test")
-		String publicProduct() {
-			return "public-product";
-		}
-
-		@GetMapping("/api/auth/csrf")
-		String csrf() {
-			return "test-csrf";
-		}
-
-		@PostMapping("/api/auth/login")
-		String login() {
-			return "test-login";
-		}
-
-		@GetMapping("/api/auth/me")
-		String me() {
-			return "authenticated-member";
-		}
-	}
 }

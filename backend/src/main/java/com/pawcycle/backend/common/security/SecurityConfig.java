@@ -32,7 +32,7 @@ public class SecurityConfig {
 						.requestMatchers("/api/**")
 						.authenticated()
 						.anyRequest()
-						.permitAll())
+						.denyAll())
 				.exceptionHandling(exceptions -> exceptions
 						.authenticationEntryPoint(authenticationEntryPoint)
 						.accessDeniedHandler(accessDeniedHandler))

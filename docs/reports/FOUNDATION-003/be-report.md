@@ -158,14 +158,16 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 | Java 17 `SessionCookieConfigurationTests` | 통과 |
 | 로컬 Docker MySQL | 미실행: Docker Desktop Linux daemon 없음 |
 | 로컬 설치 MySQL | 미사용: 승인된 격리 credential이 제공되지 않아 기존 로컬 DB에 접근하지 않음 |
-| Java 25·CI MySQL 전체 test/build | 원격 Repository Validation에서 확인 예정 |
+| 최초 Java 25·CI MySQL Backend test | 실패: JSON Content-Type exact match 3건 |
+| focused Security test assertion 수정 | `application/json;charset=UTF-8` 호환 비교로 정정 |
+| Repository Validation run `29144751627` | Java 25 Backend test/build, MySQL, Frontend 전체 통과 |
 
 ## 실행하지 못한 검증과 이유
 
 - 로컬 Java 25 test/build: Java 25 toolchain이 설치되지 않았고 download repository가 구성되지 않았다.
 - 로컬 Docker MySQL: Docker Desktop Linux daemon이 실행 중이 아니다.
 - 로컬 설치 MySQL 통합 테스트: 기존 서비스에 접근할 승인된 격리 credential이 없어 사용하지 않았다.
-- 위 검증은 PR의 Java 25·OPS-006 MySQL Repository Validation에서 수행한다.
+- Java 25와 OPS-006 MySQL 통합 검증은 Repository Validation run `29144751627`에서 통과했다.
 
 ## API 영향
 
@@ -201,11 +203,23 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 
 ## Git 결과
 
-- 구현 commit·push와 PR 결과는 필수 검증 후 갱신한다.
+- 새 `feat/be` 기준 SHA: `e5c6e648e406386f45a1c074b70694513fe37c79`
+- 구현 commit: `75318c01bb35f61c6da8bbaa023d36777fb411e4`
+- 구현 제목: `feat(backend): MySQL 영속성과 세션 보안 기반 추가`
+- 테스트 보완 commit: `8e63a27b9fbe454fb4e3cef0b439e774d6fa79a5`
+- 테스트 보완 제목: `test(backend): Security JSON 응답 검증 보완`
+- 두 commit 모두 force 없이 일반 push했다.
 - PR을 자동 병합하지 않는다.
 
 ## PR 결과
 
-- `main` 대상 PR은 로컬 필수 검증과 commit·push 후 생성한다.
-- 원격 제목·본문·head·base와 UTF-8 상태를 생성 직후 확인한다.
+- PR #33 `feat(backend): MySQL 영속성과 세션 보안 기반 추가`
+- URL: `https://github.com/guseoh/pawcycle-commerce/pull/33`
+- base/head: `main` ← `feat/be`
+- 상태: OPEN, Ready for review
+- 검증 head: `8e63a27b9fbe454fb4e3cef0b439e774d6fa79a5`
+- Repository Validation run `29144751627` 전체 통과
+- CodeRabbit review는 완료됐으며 지적별 반영 결과는 후속 보고 갱신에 기록한다.
+- Codex Review는 사용량 한도 초과로 실행하지 못했다.
+- 원격 제목·본문·head·base와 UTF-8 상태를 확인했다.
 - 자동 병합하지 않는다.

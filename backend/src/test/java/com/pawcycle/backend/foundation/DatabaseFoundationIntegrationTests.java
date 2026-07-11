@@ -1,6 +1,7 @@
 package com.pawcycle.backend.foundation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -136,6 +138,39 @@ class DatabaseFoundationIntegrationTests {
 		assertThat(skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(product.getId()))
 				.extracting(Sku::getId)
 				.containsExactly(sku.getId());
+	}
+
+	@Test
+	void databaseConstraintsRejectDuplicateEmailAndNegativePrice() {
+		String email = "constraint-" + UUID.randomUUID() + "@example.test";
+		String passwordHash = passwordEncoder.encode(UUID.randomUUID().toString());
+		jdbcTemplate.update("INSERT INTO members (email, password_hash) VALUES (?, ?)", email, passwordHash);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"INSERT INTO members (email, password_hash) VALUES (?, ?)",
+				email,
+				passwordEncoder.encode(UUID.randomUUID().toString())))
+				.isInstanceOf(DataIntegrityViolationException.class);
+
+		Product product = productRepository.save(new Product(
+				"Constraint product",
+				"Constraint short description",
+				null,
+				"TEST",
+				null,
+				"TEST"));
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"""
+				INSERT INTO skus (product_id, name, price, subscribable, display_order)
+				VALUES (?, ?, ?, ?, ?)
+				""",
+				product.getId(),
+				"Negative price SKU",
+				new BigDecimal("-0.01"),
+				true,
+				1))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	private Map<String, Object> column(String table, String column) {
