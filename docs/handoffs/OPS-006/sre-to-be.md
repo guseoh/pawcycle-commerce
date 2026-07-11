@@ -151,7 +151,7 @@ Backend 구현 PR에서 별도 workflow 변경 없이 기존 Application validat
 
 - PR #32의 CodeRabbit 상세 review thread 5건을 확인했다.
 - port 문자열 키, 보고서 환경 변수명, Runbook Docker 범위와 image pull 진단 4건은 OPS-006에서 반영한다.
-- MySQL image digest 고정 1건은 승인된 mutable tag 유지 결정, tag drift 위험 수용과 digest 재검토 조건을 문서화한 뒤 답변하고 resolve한다.
+- MySQL image digest 고정 1건은 승인된 mutable tag 유지 결정, tag drift 위험 수용과 digest 재검토 조건을 문서화하고 답변해 resolve했다.
 - health check, dynamic port, Secret 경계, action pinning과 기존 step 회귀는 최신 head의 검증 결과로 확인한다.
 
 ## 알려진 위험

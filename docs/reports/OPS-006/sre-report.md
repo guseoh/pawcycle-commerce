@@ -277,7 +277,7 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 사용자와 Tech Lead가 `mysql:8.4` mutable tag 유지와 현재 단계의 tag drift 위험 수용을 승인했다.
 - digest 고정 권고 자체는 재현성과 공급망 무결성 관점에서 유효하지만 현재 CI 단계에서는 구현하지 않는다.
 - Runbook과 Backend 인수인계에 실제 version 확인, drift 장애 진단, 재검토 조건과 롤백 경계를 반영한다.
-- 관련 CodeRabbit thread에는 승인 결정과 제한을 답변하고 문서 추적성이 확인되면 resolve한다.
+- 관련 CodeRabbit thread에는 승인 결정과 제한, 최신 검증 결과를 답변하고 문서 추적성을 확인해 resolve했다.
 
 ## 적용 방법
 
@@ -327,6 +327,9 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 리뷰 수정 commit: `794e53c19a7708ff07400089a49ec4d7b239d2eb`
 - 리뷰 수정 commit 제목: `fix(ci): MySQL 검증 리뷰와 문서 정합성 보완`
 - `origin/ops/sre`에서 직접 이어진 commit만 force 옵션 없이 일반 push 성공
+- image 정책 승인 반영 commit: `fb5b72cb7cc8cd7ae0a8107a2abccc1b3b4615aa`
+- image 정책 승인 반영 제목: `docs(ci): MySQL 이미지 정책 승인 반영`
+- 원격 head에서 직접 이어진 commit만 force 옵션 없이 일반 push 성공
 
 ## PR 결과
 
@@ -334,12 +337,13 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/32`
 - base/head: `main` ← `ops/sre`
 - 상태: OPEN, Ready for review
-- 검증된 리뷰 수정 head: `794e53c19a7708ff07400089a49ec4d7b239d2eb`
-- 최신 Repository Validation run `29142768167`의 Commit and PR conventions와 Application validation 통과
+- 검증된 image 정책 head: `fb5b72cb7cc8cd7ae0a8107a2abccc1b3b4615aa`
+- 최신 Repository Validation run `29143430405`의 Commit and PR conventions와 Application validation 통과
 - 같은 Application validation에서 container 초기화, MySQL 검증, Backend test/build와 Frontend install/lint/build 통과
 - CodeRabbit check 통과
 - CodeRabbit 상세 review thread 5건에 한국어 답변 완료
 - port 문자열 키, datasource 환경 변수명, Docker 범위, image pull 진단 4건 resolve
-- digest 고정 1건은 mutable tag 유지 승인 결정 반영 전 unresolved 상태
+- digest 고정 1건도 mutable tag 유지 승인 결정, 위험 수용과 재검토 조건을 답변하고 resolve
+- 유효한 미해결 review thread 없음
 - 원격 PR 본문 UTF-8 검증 통과
 - 자동 병합하지 않음
