@@ -151,7 +151,10 @@ class AuthIntegrationTests {
 					.content(objectMapper.writeValueAsString(Map.of("email", "local@@example.com", "password", ""))))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-				.andExpect(jsonPath("$.fieldErrors[*].field").value(java.util.List.of("email", "password")));
+				.andExpect(jsonPath("$.fieldErrors").isArray())
+				.andExpect(jsonPath("$.fieldErrors.length()").value(2))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("email"))
+				.andExpect(jsonPath("$.fieldErrors[1].field").value("password"));
 
 		CsrfSession malformedSession = csrfSession();
 		mockMvc.perform(post("/api/auth/login")

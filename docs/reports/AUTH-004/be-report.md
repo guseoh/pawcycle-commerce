@@ -51,6 +51,8 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - JDK downgrade, H2와 Testcontainers를 사용하지 않음
 - `git diff --check`: 통과
 - 최초 Repository Validation run `29152545987`: AUTH-004 산출물 부재로 conventions 실패, Application validation skip
+- Repository Validation run `29152600218`: Java 25 compile 통과, validation fieldErrors 배열 assertion 1건 실패
+- 집중 수정: fieldErrors 순서·크기를 개별 JSON path로 검증하도록 assertion 구체화
 - Java 25·MySQL 8.4 코드 검증: 대기
 
 ## 실행하지 못한 검증과 이유
