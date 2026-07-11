@@ -225,10 +225,9 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 | staged Secret 의심 패턴 검사 | CI 비운영 root fixture와 dynamic localhost JDBC URL만 일치, 실제 Secret 없음 |
 | 커밋 메시지 검증 | `ci(database): MySQL 검증 서비스 기반 추가` 통과 |
 | PR #32 본문 local·remote UTF-8 검사 | 통과 |
-| 원격 Commit and PR conventions | 통과 |
-| 원격 Application validation | 통과, 2분 3초 |
-| 원격 `Initialize containers` | 통과 |
-| 원격 `Verify MySQL service` | 통과 |
+| 리뷰 수정 head `794e53c` Commit and PR conventions | 통과, 최신 Repository Validation run `29142768167` |
+| 리뷰 수정 head `794e53c` Application validation | 통과, 최신 Repository Validation run `29142768167` |
+| 원격 `Initialize containers`와 `Verify MySQL service` | 통과 |
 | 원격 Java 25 Backend test/build | 두 step 모두 통과 |
 | 원격 Node.js 24 Frontend install/lint/build | 세 step 모두 통과 |
 | 원격 CodeRabbit check | 통과 |
@@ -317,7 +316,9 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 구현 commit: `8fee031e95f54268e5f703fc9ff78e859db6f8f6`
 - commit 제목: `ci(database): MySQL 검증 서비스 기반 추가`
 - `origin/ops/sre` push와 upstream 설정 성공
-- 이 보고서의 Git·PR 결과 갱신은 후속 `docs(report)` commit으로 추가
+- 리뷰 수정 commit: `794e53c19a7708ff07400089a49ec4d7b239d2eb`
+- 리뷰 수정 commit 제목: `fix(ci): MySQL 검증 리뷰와 문서 정합성 보완`
+- `origin/ops/sre`에서 직접 이어진 commit만 force 옵션 없이 일반 push 성공
 
 ## PR 결과
 
@@ -325,9 +326,12 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/32`
 - base/head: `main` ← `ops/sre`
 - 상태: OPEN, Ready for review
-- 리뷰 수정 전 head: `eec524b4aa21bca827d7968e9bdc42bbf91e119f`
-- 최신 Repository Validation run `29137838131`의 Commit and PR conventions와 Application validation 통과
+- 검증된 리뷰 수정 head: `794e53c19a7708ff07400089a49ec4d7b239d2eb`
+- 최신 Repository Validation run `29142768167`의 Commit and PR conventions와 Application validation 통과
 - 같은 Application validation에서 container 초기화, MySQL 검증, Backend test/build와 Frontend install/lint/build 통과
-- CodeRabbit 상세 review thread 5건 확인: 확정 수정 4건, digest `Decision Required` 1건
+- CodeRabbit check 통과
+- CodeRabbit 상세 review thread 5건에 한국어 답변 완료
+- port 문자열 키, datasource 환경 변수명, Docker 범위, image pull 진단 4건 resolve
+- digest 고정 1건은 `Decision Required` 답변 후 unresolved 유지
 - 원격 PR 본문 UTF-8 검증 통과
 - 자동 병합하지 않음
