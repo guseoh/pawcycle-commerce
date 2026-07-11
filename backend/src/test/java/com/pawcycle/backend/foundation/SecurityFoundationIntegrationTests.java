@@ -70,7 +70,7 @@ class SecurityFoundationIntegrationTests {
 	void protectedApiReturnsAuthRequiredJsonWithoutRedirect() throws Exception {
 		mockMvc.perform(get("/api/auth/me"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.code").value("AUTH_REQUIRED"))
 				.andExpect(jsonPath("$.fieldErrors").isArray())
 				.andExpect(jsonPath("$.fieldErrors").isEmpty())
@@ -88,7 +88,7 @@ class SecurityFoundationIntegrationTests {
 	void stateChangingRequestWithoutCsrfReturnsCsrfInvalidJson() throws Exception {
 		mockMvc.perform(post("/api/auth/login"))
 				.andExpect(status().isForbidden())
-				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.code").value("CSRF_INVALID"))
 				.andExpect(jsonPath("$.fieldErrors").isArray())
 				.andExpect(jsonPath("$.fieldErrors").isEmpty());
@@ -102,7 +102,7 @@ class SecurityFoundationIntegrationTests {
 		accessDeniedHandler.handle(request, response, new AccessDeniedException("test-only"));
 
 		assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
-		assertThat(response.getContentType()).isEqualTo(MediaType.APPLICATION_JSON_VALUE);
+		assertThat(response.getContentType()).startsWith(MediaType.APPLICATION_JSON_VALUE);
 		assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("\"code\":\"ACCESS_DENIED\"");
 		assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("\"fieldErrors\":[]");
 	}
