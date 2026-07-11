@@ -41,6 +41,8 @@
 - Backend가 `.github/**` 변경을 필요로 하면 Platform/SRE 작업으로 분리
 - Testcontainers Deferred, Docker Compose Explicitly Excluded
 - 실제 Secret 저장 금지
+- OPS-006 후속 요청에서 사용자와 Tech Lead가 CI 검증용 `mysql:8.4` mutable tag 유지와 tag drift 위험 수용을 승인
+- digest 고정은 재현 가능한 릴리스 검증, 공급망 보안 강화 또는 예상하지 않은 tag drift가 확인되는 후속 작업에서 재검토
 
 MySQL 8.4 image는 이번 CI 구현에서 제안하고 workflow로 검증하는 물리 세부값이다. FOUNDATION-000 원본 상태를 변경하거나 문서 전체를 Approved로 승격하지 않는다.
 
@@ -87,7 +89,10 @@ MySQL 8.4 image는 이번 CI 구현에서 제안하고 workflow로 검증하는 
 ## MySQL image와 port 선택 근거
 
 - `mysql:8.4`는 승인된 MySQL 8.4 LTS 계열을 명시하고 변동성이 큰 `latest`를 사용하지 않는다.
-- patch 또는 digest를 고정하면 upstream security patch 반영을 수동 관리해야 한다. 승인 원본에는 digest 고정 또는 mutable `8.4` tag 유지 결정이 없으므로 현재 구현을 임의로 바꾸지 않고 `Decision Required`로 분리한다.
+- OPS-006 후속 요청에서 사용자와 Tech Lead가 CI 검증용 mutable `mysql:8.4` tag 유지를 승인했다. 같은 tag가 다른 patch 또는 내부 image 내용을 가리킬 수 있는 tag drift 위험을 현재 단계에서 수용한다.
+- `Verify MySQL service`는 실제 server version `8.4.*`를 확인하지만 image 내부 패키지 전체의 동일성까지 보장하지 않는다.
+- digest 고정은 현재 범위에서 제외하며 재현 가능한 릴리스 검증, 공급망 보안 강화 또는 예상하지 않은 tag drift가 확인되면 공식 digest와 갱신·검증 절차를 Tech Lead 결정 항목으로 다시 올린다.
+- 이 결정은 CI 검증용 image에만 적용하며 운영 환경의 MySQL image 정책을 확정하지 않는다.
 - `ports: 3306/tcp`는 GitHub Actions가 사용 가능한 host port를 job마다 동적으로 할당하므로 GitHub-hosted runner의 다른 service와 고정 port 충돌을 피한다.
 - Backend URL은 `job.services.mysql.ports['3306']` 값을 사용한다.
 
@@ -143,7 +148,9 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 ## 결정 상태
 
 - `mysql:8.4`: OPS-006 workflow 물리 구현값
-- MySQL image digest 고정 또는 mutable tag 유지: 승인 원본에 결정 없음, `Decision Required`
+- CI MySQL image 정책: mutable `mysql:8.4` tag 유지 `Approved`
+- tag drift: 현재 CI 단계의 제한으로 위험 수용
+- digest 고정: 현재 제외, 재현 가능한 릴리스 검증·공급망 보안 강화·예상하지 않은 drift 발생 시 재검토
 - dynamic host port: OPS-006 충돌 회피 전략
 - Testcontainers: Deferred 유지
 - Docker Compose: Explicitly Excluded 유지
@@ -265,11 +272,12 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - Runbook의 배포용 Docker 제외 범위와 CI MySQL service 포함 범위를 분리하고 image pull 진단을 중립적인 registry/network 표현으로 정정했다.
 - Codex Review는 별도로 실행하지 않았으며 로컬 구조 검사와 원격 CI 증거로 검증했다.
 
-## AI 리뷰 미반영 항목과 이유
+## MySQL image 리뷰 결정
 
-- `mysql:8.4` digest 고정은 `ARCH-006`, `AUTH-003`, `FOUNDATION-000`과 OPS-006 승인 원본에서 고정 또는 tag 유지 승인을 찾지 못했다.
-- 기존 보고서와 Runbook의 tag 유지 설명은 승인 원본이 아니므로 승인으로 간주하지 않는다.
-- 사용자 또는 Tech Lead가 digest 정책, 갱신 주기와 검증 절차를 승인할 때까지 `Decision Required`로 남기고 관련 review thread를 resolve하지 않는다.
+- 사용자와 Tech Lead가 `mysql:8.4` mutable tag 유지와 현재 단계의 tag drift 위험 수용을 승인했다.
+- digest 고정 권고 자체는 재현성과 공급망 무결성 관점에서 유효하지만 현재 CI 단계에서는 구현하지 않는다.
+- Runbook과 Backend 인수인계에 실제 version 확인, drift 장애 진단, 재검토 조건과 롤백 경계를 반영한다.
+- 관련 CodeRabbit thread에는 승인 결정과 제한을 답변하고 문서 추적성이 확인되면 resolve한다.
 
 ## 적용 방법
 
@@ -295,7 +303,7 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - 실제 JDBC option과 timezone·TLS 정책은 Backend datasource 결정에 남아 있다.
 - Flyway migration 실패와 JPA mapping 문제는 후속 구현에서 처음 드러날 수 있다.
 - MySQL image 초기화 시간이 CI 비용과 대기 시간을 늘릴 수 있다.
-- image digest 고정 또는 mutable tag 유지 여부는 병합 전 사용자 또는 Tech Lead 결정이 필요하다.
+- mutable tag drift는 승인된 제한이며, 예상하지 않은 변경이 확인되면 digest 고정을 Tech Lead 결정 항목으로 다시 올린다.
 
 ## 다음 작업
 
@@ -332,6 +340,6 @@ README는 기존 FOUNDATION-002 runbook이 이미 주요 문서에 연결되어 
 - CodeRabbit check 통과
 - CodeRabbit 상세 review thread 5건에 한국어 답변 완료
 - port 문자열 키, datasource 환경 변수명, Docker 범위, image pull 진단 4건 resolve
-- digest 고정 1건은 `Decision Required` 답변 후 unresolved 유지
+- digest 고정 1건은 mutable tag 유지 승인 결정 반영 전 unresolved 상태
 - 원격 PR 본문 UTF-8 검증 통과
 - 자동 병합하지 않음

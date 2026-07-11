@@ -62,6 +62,10 @@
 ## 확정된 결정
 
 - CI image는 MySQL 8.4 LTS 계열의 `mysql:8.4`다.
+- OPS-006 후속 요청에서 사용자와 Tech Lead가 CI 검증용 `mysql:8.4` mutable tag 유지를 승인했다.
+- 같은 tag가 다른 8.4 patch 또는 내부 image 내용을 가리킬 수 있는 tag drift 위험을 현재 단계에서 수용한다.
+- `Verify MySQL service`의 실제 server version `8.4.*` 검증을 유지한다.
+- 이 결정은 CI 검증에만 적용하며 운영 환경의 image 정책으로 확대하지 않는다.
 - database 이름은 `pawcycle_test`다.
 - host는 runner의 `127.0.0.1`, host port는 GitHub Actions dynamic mapping을 사용한다.
 - server character set·collation target은 `utf8mb4`와 `utf8mb4_0900_ai_ci`다.
@@ -73,9 +77,8 @@
 - Backend application-test profile의 파일·property 구성
 - Flyway V1 schema와 migration 내용
 - JPA mapping과 transaction 경계
-- MySQL image digest 고정 여부
 
-MySQL image digest 정책은 `ARCH-006`과 `AUTH-003`의 승인 범위에 없고 `FOUNDATION-000`도 `Proposed` 상태이므로 `Decision Required`다. 승인 전에는 `mysql:8.4`를 임의로 digest 고정하거나 tag 유지 위험을 수용된 결정으로 확정하지 않는다.
+digest 고정은 현재 범위에서 제외한다. 재현 가능한 릴리스 검증, 공급망 보안 강화 또는 예상하지 않은 tag drift가 확인되면 공식 digest와 갱신·검증 절차를 확인해 Tech Lead 결정 항목으로 다시 올린다.
 
 ## 승인 필요 항목
 
@@ -97,16 +100,23 @@ MySQL image digest 정책은 `ARCH-006`과 `AUTH-003`의 승인 범위에 없고
 - application-test 설정에 실제 credential, production fallback 또는 공용 seed 회원을 넣지 않는다.
 - 필요한 JDBC option은 근거와 테스트를 포함해 Backend 구현에서 제안한다.
 
-## Flyway와 JPA 검증 CI 경로
+## 현재 OPS-006에서 검증한 범위
 
-1. MySQL service Docker health가 통과한다.
-2. `Verify MySQL service`가 version·character set·collation을 확인한다.
-3. Java 25 설정과 Gradle wrapper 준비가 완료된다.
-4. Backend `./gradlew test`가 datasource connection, fresh Flyway migration과 JPA mapping 테스트를 실행한다.
-5. Backend `./gradlew build`가 같은 CI 환경에서 통과한다.
-6. Frontend install/lint/build가 기존대로 통과한다.
+- MySQL service container 초기화와 Docker health check
+- `Verify MySQL service`의 실제 server version `8.4.*`, `utf8mb4`, `utf8mb4_0900_ai_ci` 확인
+- GitHub Actions dynamic host port 할당과 문자열 port key 참조 확인
+- Backend test/build step에 세 `SPRING_DATASOURCE_*` 환경 변수 전달 정의
+- Java 25 Backend test/build와 Node.js 24 Frontend install/lint/build step 실행 성공
 
-OPS-006 시점에는 4단계의 datasource·Flyway·JPA가 구현되지 않아 service 환경 제공까지만 검증된다.
+현재 Backend가 datasource 환경 변수를 소비하지 않으므로 Backend test/build 성공은 실제 MySQL connection, Flyway 또는 JPA 검증 성공을 뜻하지 않는다.
+
+## 후속 Backend 구현 후 검증할 범위
+
+1. test profile이 세 `SPRING_DATASOURCE_*` 환경 변수를 실제로 소비한다.
+2. Backend가 `pawcycle_test` datasource에 연결한다.
+3. 빈 database에 fresh Flyway migration을 적용하고 재실행 오류가 없는지 확인한다.
+4. JPA mapping과 MySQL schema 정합성을 검증한다.
+5. 세션 인증 관련 Backend 통합 테스트를 같은 CI MySQL 경로에서 실행한다.
 
 ## 지켜야 할 규칙
 
@@ -141,12 +151,12 @@ Backend 구현 PR에서 별도 workflow 변경 없이 기존 Application validat
 
 - PR #32의 CodeRabbit 상세 review thread 5건을 확인했다.
 - port 문자열 키, 보고서 환경 변수명, Runbook Docker 범위와 image pull 진단 4건은 OPS-006에서 반영한다.
-- MySQL image digest 고정 1건은 승인 결정이 없어 `Decision Required`로 남기고 resolve하지 않는다.
+- MySQL image digest 고정 1건은 승인된 mutable tag 유지 결정, tag drift 위험 수용과 digest 재검토 조건을 문서화한 뒤 답변하고 resolve한다.
 - health check, dynamic port, Secret 경계, action pinning과 기존 step 회귀는 최신 head의 검증 결과로 확인한다.
 
 ## 알려진 위험
 
-- `mysql:8.4` tag의 patch drift
+- `mysql:8.4` tag가 다른 patch 또는 내부 image 내용을 가리킬 수 있는 tag drift
 - GitHub-hosted runner의 image pull과 Docker service 장애
 - MySQL 초기화에 따른 CI 시간 증가
 - 현재 Backend가 환경 변수를 소비하지 않아 connection이 아직 검증되지 않음
@@ -169,7 +179,7 @@ Backend 구현 PR에서 별도 workflow 변경 없이 기존 Application validat
 3. 같은 Application validation에서 실제 connection·migration·mapping을 검증한다.
 4. QA가 인증·credential·migration 동작을 독립 검증한다.
 
-## 완료 조건
+## 후속 Backend 작업 완료 조건
 
 - Backend test profile이 CI 환경 변수를 소비
 - fresh MySQL datasource 연결과 Flyway 적용 검증
