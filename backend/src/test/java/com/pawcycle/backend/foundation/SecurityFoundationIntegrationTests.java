@@ -2,6 +2,7 @@ package com.pawcycle.backend.foundation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -60,6 +61,17 @@ class SecurityFoundationIntegrationTests {
 	@Test
 	void protectedApiReturnsAuthRequiredJsonWithoutRedirect() throws Exception {
 		mockMvc.perform(get("/api/auth/me"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.code").value("AUTH_REQUIRED"))
+				.andExpect(jsonPath("$.fieldErrors").isArray())
+				.andExpect(jsonPath("$.fieldErrors").isEmpty())
+				.andExpect(result -> assertThat(result.getResponse().getRedirectedUrl()).isNull());
+	}
+
+	@Test
+	void anonymousLogoutWithValidCsrfReturnsAuthRequiredJsonWithoutRedirect() throws Exception {
+		mockMvc.perform(post("/api/auth/logout").with(csrf()))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.code").value("AUTH_REQUIRED"))

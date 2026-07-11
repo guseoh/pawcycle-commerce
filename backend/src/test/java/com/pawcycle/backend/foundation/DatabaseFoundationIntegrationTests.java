@@ -141,6 +141,7 @@ class DatabaseFoundationIntegrationTests {
 	}
 
 	@Test
+	@Transactional
 	void databaseConstraintsRejectDuplicateEmailAndNegativePrice() {
 		String email = "constraint-" + UUID.randomUUID() + "@example.test";
 		String passwordHash = passwordEncoder.encode(UUID.randomUUID().toString());

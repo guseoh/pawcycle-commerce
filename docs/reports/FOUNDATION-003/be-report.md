@@ -161,13 +161,14 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 | 최초 Java 25·CI MySQL Backend test | 실패: JSON Content-Type exact match 3건 |
 | focused Security test assertion 수정 | `application/json;charset=UTF-8` 호환 비교로 정정 |
 | Repository Validation run `29144751627` | Java 25 Backend test/build, MySQL, Frontend 전체 통과 |
+| Repository Validation run `29145031383`, `29145057897` | Backend test 실패: `databaseConstraintsRejectDuplicateEmailAndNegativePrice` 173행 assertion, 12개 중 1개 실패 |
+| 실패 원인 후속 수정 | DB 제약 negative-path test에 `@Transactional`을 적용하고 익명 logout의 유효 CSRF 인증 경계 회귀 테스트 추가 |
 
-## 실행하지 못한 검증과 이유
+## 로컬에서 실행하지 못한 검증과 이유
 
 - 로컬 Java 25 test/build: Java 25 toolchain이 설치되지 않았고 download repository가 구성되지 않았다.
 - 로컬 Docker MySQL: Docker Desktop Linux daemon이 실행 중이 아니다.
 - 로컬 설치 MySQL 통합 테스트: 기존 서비스에 접근할 승인된 격리 credential이 없어 사용하지 않았다.
-- Java 25와 OPS-006 MySQL 통합 검증은 Repository Validation run `29144751627`에서 통과했다.
 
 ## API 영향
 
@@ -190,6 +191,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 
 - 실제 Java 25·MySQL 8.4 통합 결과는 원격 CI가 완료돼야 확정된다.
 - mutable `mysql:8.4` tag drift 위험은 OPS-006 승인 결정을 유지한다.
+- MySQL major version만 확인하자는 CodeRabbit 제안은 OPS-006의 MySQL 8.4.* CI 계약을 약화하므로 미반영했다.
 - product enum 값, 실제 상품 조회 query와 transaction은 후속 공개 상품 API 작업 범위다.
 - 실제 Authentication 생성, SecurityContext 저장, logout handler, principal과 CSRF token API는 미구현이다.
 - production HTTPS와 reverse proxy의 실제 cookie 전달은 배포 환경에서 별도 확인이 필요하다.
