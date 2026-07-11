@@ -23,9 +23,10 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 
 ## 현재 상태
 
-- 구현 head: `6c0f5dafab1d5e985edcd7a8e47a2c0525ba1ac6`
-- Java 25·MySQL 8.4 검증: 대기
-- 완료 run ID는 전체 검증 통과 후 갱신
+- 검증 head: `c3915fe327a86949b9b6bad5990c5acf9d832265`
+- Repository Validation run: `29152674405`
+- Java 25 Backend test/build와 MySQL 8.4 검증 통과
+- Frontend install/lint/build 회귀 통과
 
 ## test member 경계
 
@@ -71,8 +72,8 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 
 ## 남은 위험 또는 주의 사항
 
-- 원격 Java 25·MySQL 검증이 아직 완료되지 않았다.
 - 실제 reverse proxy와 HTTPS cookie 전달은 배포 환경에서 별도 확인해야 한다.
+- 현재 자동 검증은 실제 login/logout/product API를 함께 완료했다는 의미가 아니며 공개 상품 API는 미구현이다.
 
 ## 제외 범위와 중단 조건
 

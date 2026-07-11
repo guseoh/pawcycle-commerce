@@ -6,7 +6,7 @@
 - 역할: Backend Engineer
 - 기준 브랜치: `main`
 - 작업 브랜치: `feat/be`
-- 상태: 코드 구현 완료, Java 25·MySQL 원격 검증 대기
+- 상태: 코드 구현과 Java 25·MySQL 원격 검증 완료
 
 ## 목적
 
@@ -45,6 +45,35 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - login 회원 조회는 read-only transaction이며 session·SecurityContext 변경은 DB transaction과 분리된다.
 - logout은 DB transaction 없이 Spring Security logout handler로 session·context·CSRF token·cookie를 정리한다.
 
+## email 정규화 규칙
+
+- 앞뒤 ASCII space·tab만 제거한다.
+- local-part case는 보존하고 domain만 `Locale.ROOT`로 소문자화한다.
+- ASCII, 단일 `@`, 비어 있지 않은 local/domain과 정규화 후 최대 254자를 검증한다.
+- 제어 문자·내부 공백·여러 `@`·non-ASCII를 거부한다.
+- password는 trim하거나 변형하지 않는다.
+
+## Authentication과 session
+
+- principal은 `AuthenticatedMemberPrincipal(memberId)`이며 JPA Entity와 email·credential을 포함하지 않는다.
+- `UsernamePasswordAuthenticationToken` credentials는 null이고 권한은 현재 승인 범위에서 비어 있다.
+- `ChangeSessionIdAuthenticationStrategy`가 login session id를 변경한다.
+- `HttpSessionSecurityContextRepository`가 SecurityContext를 HTTP session에 저장한다.
+- `CsrfAuthenticationStrategy`가 login 전 token을 폐기하고 다음 `/csrf` 요청에서 새 token을 생성한다.
+- logout은 `CsrfLogoutHandler`, `SecurityContextLogoutHandler`, `CookieClearingLogoutHandler`로 token·session·context·JSESSIONID를 정리한다.
+
+## 공통 오류 응답
+
+- validation·malformed JSON은 `400 VALIDATION_FAILED` JSON이다.
+- 존재하지 않는 email과 잘못된 password는 동일한 `401 INVALID_CREDENTIALS` message를 사용한다.
+- 기존 `AUTH_REQUIRED`, `ACCESS_DENIED`, `CSRF_INVALID` Security handler를 재사용한다.
+- 예상하지 못한 MVC 오류는 내부 정보를 숨긴 `500 INTERNAL_ERROR` JSON이다.
+
+## local bootstrap
+
+- 승인 문서와 runbook상 수동 검증의 필수 조건이 아니므로 구현하지 않았다.
+- test profile fixture만 사용하며 production·migration seed가 없다.
+
 ## 검증 결과
 
 - 로컬 focused test: Java 25 toolchain 부재로 미실행
@@ -53,7 +82,8 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - 최초 Repository Validation run `29152545987`: AUTH-004 산출물 부재로 conventions 실패, Application validation skip
 - Repository Validation run `29152600218`: Java 25 compile 통과, validation fieldErrors 배열 assertion 1건 실패
 - 집중 수정: fieldErrors 순서·크기를 개별 JSON path로 검증하도록 assertion 구체화
-- Java 25·MySQL 8.4 코드 검증: 대기
+- Repository Validation run `29152674405`, head `c3915fe327a86949b9b6bad5990c5acf9d832265`: Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
+- AUTH-004 산출물 validator: 통과
 
 ## 실행하지 못한 검증과 이유
 
@@ -62,7 +92,6 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 
 ## 위험과 제한
 
-- 원격 Java 25·MySQL 검증 전이므로 현재 head를 병합 준비 완료로 판단하지 않는다.
 - same-origin 또는 reverse proxy 전제만 지원하며 cross-site 배포는 별도 결정이 필요하다.
 - 실제 deployment cookie와 reverse proxy 동작은 운영 환경에서 재검증해야 한다.
 
@@ -76,10 +105,12 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 ## Git 결과
 
 - 구현 commit: `6c0f5dafab1d5e985edcd7a8e47a2c0525ba1ac6`
+- 검증 준비 commit: `9ef296d6d1967b7b164c2554b255345526bc2117`
+- 테스트 보완 commit: `c3915fe327a86949b9b6bad5990c5acf9d832265`
 - PR #34 Draft, `main` ← `feat/be`
-- 필수 검증 완료 후 실제 head·run·리뷰 결과로 갱신한다.
+- 일반 push만 사용했다.
 - 자동 병합하지 않는다.
 
 ## PR 상태
 
-- PR #34는 검증 대기 중인 Draft다.
+- PR #34는 CodeRabbit/Codex Review를 위해 Ready 전환 예정이며 자동 병합하지 않는다.
