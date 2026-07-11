@@ -2,6 +2,7 @@ package com.pawcycle.backend.foundation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
@@ -11,6 +12,7 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,11 +22,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -143,7 +145,7 @@ class DatabaseFoundationIntegrationTests {
 
 	@Test
 	@Transactional
-	void databaseConstraintsRejectDuplicateEmailAndNegativePrice() {
+	void databaseConstraintsRejectDuplicateEmail() {
 		String email = "constraint-" + UUID.randomUUID() + "@example.test";
 		String passwordHash = passwordEncoder.encode(UUID.randomUUID().toString());
 		jdbcTemplate.update("INSERT INTO members (email, password_hash) VALUES (?, ?)", email, passwordHash);
@@ -153,12 +155,23 @@ class DatabaseFoundationIntegrationTests {
 				email,
 				passwordEncoder.encode(UUID.randomUUID().toString())))
 				.isInstanceOf(DataIntegrityViolationException.class);
+	}
 
-		TestTransaction.flagForRollback();
-		TestTransaction.end();
-		TestTransaction.start();
+	@Test
+	@Transactional
+	void databaseConstraintsRejectNegativePrice() {
+		Map<String, Object> checkConstraint = jdbcTemplate.queryForMap(
+				"""
+				SELECT constraint_type, enforced
+				FROM information_schema.table_constraints
+				WHERE constraint_schema = DATABASE()
+				  AND table_name = 'skus'
+				  AND constraint_name = 'chk_skus_price_nonnegative'
+				""");
+		assertThat(checkConstraint.get("CONSTRAINT_TYPE")).isEqualTo("CHECK");
+		assertThat(checkConstraint.get("ENFORCED")).isEqualTo("YES");
 
-		Product product = productRepository.save(new Product(
+		Product product = productRepository.saveAndFlush(new Product(
 				"Constraint product",
 				"Constraint short description",
 				null,
@@ -166,7 +179,7 @@ class DatabaseFoundationIntegrationTests {
 				null,
 				"TEST"));
 
-		assertThatThrownBy(() -> jdbcTemplate.update(
+		Throwable thrown = catchThrowable(() -> jdbcTemplate.update(
 				"""
 				INSERT INTO skus (product_id, name, price, subscribable, display_order)
 				VALUES (?, ?, ?, ?, ?)
@@ -175,8 +188,15 @@ class DatabaseFoundationIntegrationTests {
 				"Negative price SKU",
 				new BigDecimal("-0.01"),
 				true,
-				1))
-				.isInstanceOf(DataIntegrityViolationException.class);
+				1));
+
+		assertThat(thrown).isInstanceOf(DataAccessException.class);
+		Throwable mostSpecificCause = ((DataAccessException) thrown).getMostSpecificCause();
+		assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
+		SQLException sqlException = (SQLException) mostSpecificCause;
+		assertThat(sqlException.getMessage()).contains("chk_skus_price_nonnegative");
+		assertThat(sqlException.getSQLState()).isEqualTo("HY000");
+		assertThat(sqlException.getErrorCode()).isEqualTo(3819);
 	}
 
 	private Map<String, Object> column(String table, String column) {
