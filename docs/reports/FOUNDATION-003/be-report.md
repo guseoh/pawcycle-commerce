@@ -165,6 +165,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 | 실패 원인 후속 수정 | DB 제약 negative-path test에 `@Transactional`을 적용하고 익명 logout의 유효 CSRF 인증 경계 회귀 테스트 추가 |
 | Repository Validation run `29151260379` | Backend test 실패: 동일 transaction에서 중복 email 위반 뒤 실행한 음수 price assertion, 13개 중 1개 실패 |
 | 집중 후속 수정 | 중복 email과 음수 price 제약을 각각 독립된 rollback transaction 테스트로 분리 |
+| Repository Validation run `29151342478` | Backend test 실패: 독립 transaction 적용 후에도 동일 테스트 179행 음수 price assertion 실패, 13개 중 1개 실패 |
 
 ## 로컬에서 실행하지 못한 검증과 이유
 
@@ -194,6 +195,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - 실제 Java 25·MySQL 8.4 통합 결과는 원격 CI가 완료돼야 확정된다.
 - mutable `mysql:8.4` tag drift 위험은 OPS-006 승인 결정을 유지한다.
 - MySQL major version만 확인하자는 CodeRabbit 제안은 OPS-006의 MySQL 8.4.* CI 계약을 약화하므로 미반영했다.
+- 동일 CI 실패에 한 차례 집중 수정과 재검증을 수행했으나 실패가 유지돼 추가 수정 반복을 중단했다.
 - product enum 값, 실제 상품 조회 query와 transaction은 후속 공개 상품 API 작업 범위다.
 - 실제 Authentication 생성, SecurityContext 저장, logout handler, principal과 CSRF token API는 미구현이다.
 - production HTTPS와 reverse proxy의 실제 cookie 전달은 배포 환경에서 별도 확인이 필요하다.
@@ -212,6 +214,7 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - 구현 제목: `feat(backend): MySQL 영속성과 세션 보안 기반 추가`
 - 테스트 보완 commit: `8e63a27b9fbe454fb4e3cef0b439e774d6fa79a5`
 - 테스트 보완 제목: `test(backend): Security JSON 응답 검증 보완`
+- 리뷰 후속 commit: `9a96d192fa429322bc6b953e051bd39b09bfa242`, `5237f31444023b89d45c0adad08c9d962fdca443`
 - 두 commit 모두 force 없이 일반 push했다.
 - PR을 자동 병합하지 않는다.
 
@@ -221,9 +224,9 @@ AUTH-003의 ASCII·case-sensitive email과 password hash 물리 계약을 그대
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/33`
 - base/head: `main` ← `feat/be`
 - 상태: OPEN, Ready for review
-- 검증 head: `8e63a27b9fbe454fb4e3cef0b439e774d6fa79a5`
-- Repository Validation run `29144751627` 전체 통과
-- CodeRabbit review는 완료됐으며 지적별 반영 결과는 후속 보고 갱신에 기록한다.
+- 최신 검증 head: `5237f31444023b89d45c0adad08c9d962fdca443`
+- Repository Validation run `29151342478` Backend test 실패
+- CodeRabbit review는 완료됐으며 유효한 지적 반영과 미반영 근거 답변 후 unresolved thread가 없다.
 - Codex Review는 사용량 한도 초과로 실행하지 못했다.
 - 원격 제목·본문·head·base와 UTF-8 상태를 확인했다.
 - 자동 병합하지 않는다.
