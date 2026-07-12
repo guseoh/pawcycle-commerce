@@ -117,7 +117,7 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 
 ## 원격 Repository Validation에서 실행된 검증
 
-- 최신 확인 run `29180050269`, head `cffb966ddcab9d2bdc90bfdb6278327592fb7324`, conclusion `success`
+- 검증 기록 수정 head `deab85514eeb5af0e2d65ff8be6757f665f06f9e`의 run `29186370983`, conclusion `success`
 - Java 25 Backend test, Backend build, MySQL 8.4 검증: 통과
 - Frontend install·lint·build: 통과
 - commit·PR conventions와 작업 산출물 검증: 통과
@@ -133,7 +133,7 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 
 ## AI 리뷰 반영 여부
 
-PR #35 CodeRabbit review에서 검증 기록 정합성 지적 1건을 유효한 항목으로 확인했다. 문서 반영과 검증 후 답변·해결할 대상이며, 현재 미해결 review thread는 1건이다.
+PR #35 CodeRabbit review의 검증 기록 정합성 지적 1건을 유효한 항목으로 반영했다. 수정 내용과 run `29186370983` 검증 근거를 답변하고 스레드를 해결했으며, 재조회 결과 미해결 review thread는 0건이다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -171,7 +171,8 @@ PR #35 CodeRabbit review에서 검증 기록 정합성 지적 1건을 유효한 
 
 - PR #35 Ready for review, `main` ← `ops/tl`
 - 승인 계약 commit `08d3f7e20c266660f4f2d75fbb49dbec0a823000`은 이력으로 유지한다.
-- 현재 원격 head `cffb966ddcab9d2bdc90bfdb6278327592fb7324`, 최신 Repository Validation run `29180050269` 전체 통과
+- 검증 기록 수정 head `deab85514eeb5af0e2d65ff8be6757f665f06f9e`, Repository Validation run `29186370983` 전체 통과
 - 원격 제목·본문 UTF-8, head/base, Ready for review, `MERGEABLE/CLEAN` 상태 확인
-- 현재 미해결 CodeRabbit review thread: 1건
+- CodeRabbit review 답변·해결 완료, 재조회한 미해결 review thread: 0건
+- 이 상태 기록을 포함하는 최종 문서 commit SHA와 해당 run은 commit 후 PR #35 본문에 원격 기준으로 기록한다.
 - 자동 병합하지 않는다.

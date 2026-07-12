@@ -14,9 +14,10 @@
 - 작업 브랜치: `ops/tl`
 - 승인 계약 commit: `08d3f7e20c266660f4f2d75fbb49dbec0a823000`
 - PR: #35 Ready for review, `main` ← `ops/tl`
-- 현재 원격 head: `cffb966ddcab9d2bdc90bfdb6278327592fb7324`
-- 최신 Repository Validation run: `29180050269`, conclusion `success`, Backend·MySQL·Frontend·conventions·작업 산출물 검증 통과
-- CodeRabbit: 검증 기록 정합성 지적 1건 반영 중, 현재 미해결 review thread 1건
+- 검증 기록 수정 head: `deab85514eeb5af0e2d65ff8be6757f665f06f9e`
+- Repository Validation run: `29186370983`, conclusion `success`, Backend·MySQL·Frontend·conventions·작업 산출물 검증 통과
+- CodeRabbit: 검증 기록 정합성 지적 답변·해결 완료, 재조회한 미해결 review thread 0건
+- 최종 문서 commit SHA와 해당 run은 PR #35 본문의 원격 상태 기록을 기준으로 확인한다.
 
 ## 입력 문서
 
@@ -113,7 +114,7 @@ Approved 계약과 `tl-to-be.md`를 Backend 구현 입력으로 사용한다.
 
 ## AI 리뷰에서 남은 확인 항목
 
-API-002 PR의 검증 기록 정합성 지적 반영과 thread 해결 결과를 확인한다.
+API-002 PR의 검증 기록 정합성 지적 반영과 thread 해결 결과를 확인했다. 추가 미해결 항목은 없다.
 
 ## 알려진 위험
 
