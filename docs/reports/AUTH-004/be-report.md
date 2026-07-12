@@ -6,7 +6,7 @@
 - 역할: Backend Engineer
 - 기준 브랜치: `main`
 - 작업 브랜치: `feat/be`
-- 상태: 코드 구현과 Java 25·MySQL 원격 검증 완료
+- 상태: 리뷰 수정과 Java 25·MySQL 원격 검증 완료
 
 ## 목적
 
@@ -91,7 +91,8 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - 집중 수정: fieldErrors 순서·크기를 개별 JSON path로 검증하도록 assertion 구체화
 - Repository Validation run `29152674405`, head `c3915fe327a86949b9b6bad5990c5acf9d832265`: Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 - AUTH-004 산출물 validator: 통과
-- AUTH-004 리뷰 수정 focused test: 로컬 Java 25 toolchain 부재로 실행 진입 전 실패; Java 25 CI 검증 예정
+- AUTH-004 리뷰 수정 focused test: 로컬 Java 25 toolchain 부재로 실행 진입 전 실패
+- Repository Validation run `29178576306`, head `b52b3152a5cd46665a67d9533a582e0509010670`: conventions, Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 - `git diff --check`: 통과
 
 ## 적용 방법
@@ -113,8 +114,6 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 
 ## 다음 작업
 
-- Java 25·MySQL 8.4 환경에서 focused test와 Backend test·build를 실행한다.
-- Repository Validation 전체 통과 head와 run을 보고서, QA 인수인계와 PR 본문에 동기화한다.
 - QA가 두 credential 실패 경로의 동일 응답·SecurityContext 미저장과 민감정보 비노출을 재검증한다.
 - AUTH-003 범위 밖 email 구조 정책은 Product Owner/Tech Lead의 별도 결정 전까지 추가하지 않는다.
 
@@ -130,10 +129,11 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - 구현 commit: `6c0f5dafab1d5e985edcd7a8e47a2c0525ba1ac6`
 - 검증 준비 commit: `9ef296d6d1967b7b164c2554b255345526bc2117`
 - 테스트 보완 commit: `c3915fe327a86949b9b6bad5990c5acf9d832265`
-- PR #34 Draft, `main` ← `feat/be`
+- 리뷰 수정 commit: `b52b3152a5cd46665a67d9533a582e0509010670`
+- PR #34 Ready for review, `main` ← `feat/be`
 - 일반 push만 사용했다.
 - 자동 병합하지 않는다.
 
 ## PR 상태
 
-- PR #34는 CodeRabbit/Codex Review를 위해 Ready 전환 예정이며 자동 병합하지 않는다.
+- PR #34는 Ready for review이며 자동 병합하지 않는다.

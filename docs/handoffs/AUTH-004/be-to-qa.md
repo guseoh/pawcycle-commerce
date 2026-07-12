@@ -23,11 +23,10 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 
 ## 현재 상태
 
-- 기준 검증 head: `c3915fe327a86949b9b6bad5990c5acf9d832265`
-- 기준 Repository Validation run: `29152674405`
-- 기준 head의 Java 25 Backend test/build, MySQL 8.4와 Frontend 회귀 검증 통과
-- 최신 리뷰 수정은 미등록 email dummy BCrypt 비교, 예상 외 예외 로그와 254자 email 경계 테스트를 포함한다.
-- 최신 리뷰 수정 head와 Repository Validation run은 push 후 실제 결과로 갱신한다.
+- 검증 head: `b52b3152a5cd46665a67d9533a582e0509010670`
+- Repository Validation run: `29178576306`
+- Java 25 Backend test/build, MySQL 8.4와 Frontend install/lint/build 회귀 검증 통과
+- 검증 head는 미등록 email dummy BCrypt 비교, 예상 외 예외 로그와 254자 email 경계 테스트를 포함한다.
 
 ## test member 경계
 
