@@ -38,6 +38,13 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - DB schema, V1 migration, 신규 dependency
 - local bootstrap, production seed와 실제 credential
 
+## 주요 결과
+
+- 미등록 email도 애플리케이션 시작 시 한 번 생성한 dummy BCrypt hash로 비교해 credential 실패 경로마다 `PasswordEncoder.matches`를 정확히 한 번 실행한다.
+- dummy hash는 요청마다 생성하지 않으며 실제 credential, raw 값과 hash를 응답·문서·로그에 기록하지 않는다.
+- 예상하지 못한 인증 API 예외는 기존 `500 INTERNAL_ERROR` 응답을 유지하고 안정적인 서버 메시지와 stack trace를 기록한다.
+- 정확히 254자인 email 정상 경계를 테스트하며, AUTH-003에서 승인하지 않은 local-part·domain label 구조 정책은 추가하지 않는다.
+
 ## 계층과 트랜잭션
 
 - API 계층은 HTTP 요청·응답과 인증 principal 매핑만 담당한다.
@@ -84,6 +91,15 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - 집중 수정: fieldErrors 순서·크기를 개별 JSON path로 검증하도록 assertion 구체화
 - Repository Validation run `29152674405`, head `c3915fe327a86949b9b6bad5990c5acf9d832265`: Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 - AUTH-004 산출물 validator: 통과
+- AUTH-004 리뷰 수정 focused test: 로컬 Java 25 toolchain 부재로 실행 진입 전 실패; Java 25 CI 검증 예정
+- `git diff --check`: 통과
+
+## 적용 방법
+
+1. 추가 설정·dependency·DB migration 없이 기존 Spring Boot 애플리케이션을 새 head로 빌드한다.
+2. 애플리케이션 시작 시 configured `PasswordEncoder`가 재사용할 dummy hash를 한 번 생성한다.
+3. 배포 후 미등록 email과 잘못된 password의 동일한 `401 INVALID_CREDENTIALS` 응답, 인증 context 미저장과 예상 외 예외의 안전한 `500` 응답·서버 로그를 확인한다.
+4. same-origin 또는 reverse proxy, 기존 session·CSRF 계약은 변경 없이 유지한다.
 
 ## 실행하지 못한 검증과 이유
 
@@ -94,6 +110,13 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 
 - same-origin 또는 reverse proxy 전제만 지원하며 cross-site 배포는 별도 결정이 필요하다.
 - 실제 deployment cookie와 reverse proxy 동작은 운영 환경에서 재검증해야 한다.
+
+## 다음 작업
+
+- Java 25·MySQL 8.4 환경에서 focused test와 Backend test·build를 실행한다.
+- Repository Validation 전체 통과 head와 run을 보고서, QA 인수인계와 PR 본문에 동기화한다.
+- QA가 두 credential 실패 경로의 동일 응답·SecurityContext 미저장과 민감정보 비노출을 재검증한다.
+- AUTH-003 범위 밖 email 구조 정책은 Product Owner/Tech Lead의 별도 결정 전까지 추가하지 않는다.
 
 ## 민감정보와 DB 영향
 

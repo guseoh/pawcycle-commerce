@@ -3,6 +3,8 @@ package com.pawcycle.backend.member.api;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.InvalidCredentialsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = AuthController.class)
 public class AuthExceptionHandler {
+	private static final Logger log = LoggerFactory.getLogger(AuthExceptionHandler.class);
 
 	@ExceptionHandler(AuthValidationException.class)
 	ResponseEntity<ApiErrorResponse> handleValidation(AuthValidationException exception) {
@@ -31,7 +34,8 @@ public class AuthExceptionHandler {
 	}
 
 	@ExceptionHandler(Exception.class)
-	ResponseEntity<ApiErrorResponse> handleUnexpectedException() {
+	ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception) {
+		log.error("Unexpected exception while handling authentication request", exception);
 		return ResponseEntity.internalServerError().body(ApiErrorResponse.withoutFieldErrors(
 				"INTERNAL_ERROR", "요청을 처리할 수 없습니다."));
 	}

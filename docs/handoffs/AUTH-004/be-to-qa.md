@@ -23,10 +23,11 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 
 ## 현재 상태
 
-- 검증 head: `c3915fe327a86949b9b6bad5990c5acf9d832265`
-- Repository Validation run: `29152674405`
-- Java 25 Backend test/build와 MySQL 8.4 검증 통과
-- Frontend install/lint/build 회귀 통과
+- 기준 검증 head: `c3915fe327a86949b9b6bad5990c5acf9d832265`
+- 기준 Repository Validation run: `29152674405`
+- 기준 head의 Java 25 Backend test/build, MySQL 8.4와 Frontend 회귀 검증 통과
+- 최신 리뷰 수정은 미등록 email dummy BCrypt 비교, 예상 외 예외 로그와 254자 email 경계 테스트를 포함한다.
+- 최신 리뷰 수정 head와 Repository Validation run은 push 후 실제 결과로 갱신한다.
 
 ## test member 경계
 
@@ -48,14 +49,19 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 ## 실패와 validation
 
 - 존재하지 않는 email과 잘못된 password는 동일한 `401 INVALID_CREDENTIALS` status·code·message다.
+- 두 credential 실패 경로는 요청마다 `PasswordEncoder.matches`를 정확히 한 번 호출하고 SecurityContext를 저장하지 않는다.
+- dummy hash는 애플리케이션 시작 시 한 번 생성해 재사용하며 요청마다 encode하지 않는다.
 - email 형식과 null·빈 password는 `400 VALIDATION_FAILED`와 field·message만 있는 fieldErrors다.
+- 정확히 254자인 승인 범위 email은 통과하고 255자는 거부한다.
 - malformed JSON은 HTML이 아닌 `VALIDATION_FAILED` JSON이다.
 - 익명 logout + 유효 CSRF는 `401`; CSRF 누락은 `403 CSRF_INVALID`다.
+- 예상하지 못한 인증 API 예외는 안전한 `500 INTERNAL_ERROR`를 반환하고 서버에 안정적인 메시지와 예외 stack trace를 기록한다.
 
 ## 민감정보 확인
 
 - 응답·URL·로그에 password, hash와 session id가 없어야 한다.
 - CSRF token은 `/api/auth/csrf` 성공 body 이외에 노출하지 않는다.
+- 추가 예외 로그 메시지에 email, password, password hash, session id와 CSRF token을 직접 넣지 않는다.
 - principal은 JPA Member가 아니며 credentials는 null이어야 한다.
 
 ## 검증 포인트

@@ -5,6 +5,8 @@ import com.pawcycle.backend.member.infra.MemberRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -22,6 +24,7 @@ public class AuthApplicationService {
 	private final EmailNormalizer emailNormalizer;
 	private final MemberRepository memberRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final String dummyPasswordHash;
 	private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
 	private final SecurityContextRepository securityContextRepository;
 	private final LogoutHandler logoutHandler;
@@ -36,6 +39,7 @@ public class AuthApplicationService {
 		this.emailNormalizer = emailNormalizer;
 		this.memberRepository = memberRepository;
 		this.passwordEncoder = passwordEncoder;
+		this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
 		this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
 		this.securityContextRepository = securityContextRepository;
 		this.logoutHandler = logoutHandler;
@@ -48,9 +52,13 @@ public class AuthApplicationService {
 			HttpServletRequest request,
 			HttpServletResponse response) {
 		NormalizedLoginCredentials credentials = emailNormalizer.normalize(email, password);
-		Member member = memberRepository.findByEmail(credentials.email())
-				.filter(candidate -> passwordEncoder.matches(credentials.password(), candidate.getPasswordHash()))
-				.orElseThrow(InvalidCredentialsException::new);
+		Optional<Member> candidate = memberRepository.findByEmail(credentials.email());
+		String passwordHash = candidate.map(Member::getPasswordHash).orElse(dummyPasswordHash);
+		boolean passwordMatches = passwordEncoder.matches(credentials.password(), passwordHash);
+		if (candidate.isEmpty() || !passwordMatches) {
+			throw new InvalidCredentialsException();
+		}
+		Member member = candidate.get();
 
 		AuthenticatedMemberPrincipal principal = new AuthenticatedMemberPrincipal(member.getId());
 		Authentication authentication = new UsernamePasswordAuthenticationToken(principal, null, List.of());

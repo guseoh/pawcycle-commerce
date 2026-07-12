@@ -46,6 +46,15 @@ class EmailNormalizerTests {
 						.containsExactly("email", "password"));
 	}
 
+	@Test
+	void acceptsEmailAtMaxLengthBoundary() {
+		String email = "a".repeat(242) + "@example.com";
+
+		NormalizedLoginCredentials credentials = emailNormalizer.normalize(email, "password");
+
+		assertThat(credentials.email()).hasSize(254);
+	}
+
 	private static Stream<String> invalidEmails() {
 		return Stream.of(
 				" ",
