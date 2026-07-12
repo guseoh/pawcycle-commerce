@@ -13,11 +13,11 @@
 
 - 작업 브랜치: `ops/tl`
 - 승인 계약 commit: `08d3f7e20c266660f4f2d75fbb49dbec0a823000`
-- PR: #35 Ready for review, `main` ← `ops/tl`
-- 최종 검증 대상 head: `87f207d04360ed450524cbfa5f4943629742c22f`
-- Repository Validation run: `29186568303`, conclusion `success`, Backend·MySQL·Frontend·conventions·작업 산출물 검증 통과
-- CodeRabbit: 검증 기록 정합성 지적 답변·해결 완료, 재조회한 미해결 review thread 0건
-- 최종 문서 commit SHA와 해당 run은 PR #35 본문의 원격 상태 기록을 기준으로 확인한다.
+- PR: #35, `main` ← `ops/tl`
+- 검증 이력: head `61e453085adce0f597779547b475155a1be22cdd`, Repository Validation run `29186827845`, conclusion `success`, Backend·MySQL·Frontend·conventions·작업 산출물 검증 통과
+- 위 head와 run은 완료된 검증의 역사적 근거이며 현재 PR head나 최신 run을 의미하지 않는다.
+- CodeRabbit: 검증 기록 정합성 지적 답변·해결 완료
+- 현재 PR head, 최신 Repository Validation 결과, mergeable 상태와 미해결 review thread 수는 변동 가능한 원격 상태이므로 PR #35 본문과 GitHub Checks를 권위 있는 원본으로 확인한다.
 
 ## 입력 문서
 
@@ -114,7 +114,7 @@ Approved 계약과 `tl-to-be.md`를 Backend 구현 입력으로 사용한다.
 
 ## AI 리뷰에서 남은 확인 항목
 
-검증 기록 정합성 지적과 후속 D7 오류 코드 기록 정합성 지적을 답변·해결했다. 재조회한 미해결 review thread는 0건이다.
+검증 기록 정합성 지적과 후속 D7 오류 코드 기록 정합성 지적을 답변·해결했다. 현재 미해결 review thread 수는 PR #35 본문과 GitHub Checks에서 확인한다.
 
 ## 알려진 위험
 
