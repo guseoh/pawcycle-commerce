@@ -28,6 +28,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - email 정규화·검증, BCrypt credential 확인
 - memberId 전용 principal, session fixation과 SecurityContext 저장
 - 로그인·로그아웃 CSRF token 교체·폐기와 logout 정리
+- Spring Security 기본 `GET /logout`, `POST /logout`과 redirect logout 비활성화
 - JSON validation·credential·security 오류 응답
 - 집중 단위·통합 테스트
 
@@ -44,6 +45,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - dummy hash는 요청마다 생성하지 않으며 실제 credential, raw 값과 hash를 응답·문서·로그에 기록하지 않는다.
 - 예상하지 못한 인증 API 예외는 기존 `500 INTERNAL_ERROR` 응답을 유지하고 안정적인 서버 메시지와 stack trace를 기록한다.
 - 정확히 254자인 email 정상 경계를 테스트하며, AUTH-003에서 승인하지 않은 local-part·domain label 구조 정책은 추가하지 않는다.
+- filter-chain 기본 logout은 비활성화하고 승인된 `POST /api/auth/logout`만 애플리케이션 서비스의 logout handler를 실행한다.
 
 ## 계층과 트랜잭션
 
@@ -68,6 +70,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - `HttpSessionSecurityContextRepository`가 SecurityContext를 HTTP session에 저장한다.
 - `CsrfAuthenticationStrategy`가 login 전 token을 폐기하고 다음 `/csrf` 요청에서 새 token을 생성한다.
 - logout은 `CsrfLogoutHandler`, `SecurityContextLogoutHandler`, `CookieClearingLogoutHandler`로 token·session·context·JSESSIONID를 정리한다.
+- Spring Security 기본 `/logout` filter와 확인 페이지는 명시적으로 비활성화하며, 비승인 `/logout` 요청은 session을 종료하지 않는다.
 
 ## 공통 오류 응답
 
@@ -94,6 +97,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - AUTH-004 리뷰 수정 focused test: 로컬 Java 25 toolchain 부재로 실행 진입 전 실패
 - Repository Validation run `29178576306`, head `b52b3152a5cd46665a67d9533a582e0509010670`: conventions, Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 - `git diff --check`: 통과
+- 기본 `/logout` 비활성화 회귀 테스트: Java 25 Repository Validation 실행 예정
 
 ## 적용 방법
 
@@ -115,6 +119,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 ## 다음 작업
 
 - QA가 두 credential 실패 경로의 동일 응답·SecurityContext 미저장과 민감정보 비노출을 재검증한다.
+- QA가 비승인 `GET /logout`, `POST /logout`의 redirect·session 종료 부재와 승인된 `/api/auth/logout` 회귀를 재검증한다.
 - AUTH-003 범위 밖 email 구조 정책은 Product Owner/Tech Lead의 별도 결정 전까지 추가하지 않는다.
 
 ## 민감정보와 DB 영향

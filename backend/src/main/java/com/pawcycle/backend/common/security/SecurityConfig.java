@@ -50,6 +50,7 @@ public class SecurityConfig {
 				.exceptionHandling(exceptions -> exceptions
 						.authenticationEntryPoint(authenticationEntryPoint)
 						.accessDeniedHandler(accessDeniedHandler))
+				.logout(logout -> logout.disable())
 				.sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()));
 		return http.build();
 	}

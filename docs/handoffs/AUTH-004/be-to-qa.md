@@ -27,6 +27,7 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 - Repository Validation run: `29178576306`
 - Java 25 Backend test/build, MySQL 8.4와 Frontend install/lint/build 회귀 검증 통과
 - 검증 head는 미등록 email dummy BCrypt 비교, 예상 외 예외 로그와 254자 email 경계 테스트를 포함한다.
+- Spring Security 기본 `/logout` 비활성화 변경은 Java 25 Repository Validation 실행 후 검증 head와 run을 갱신한다.
 
 ## test member 경계
 
@@ -45,6 +46,14 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 7. `204`, session·context·token 정리와 JSESSIONID 종료를 확인한다.
 8. logout 후 `/api/auth/me`의 `401 AUTH_REQUIRED`를 확인한다.
 
+## 비승인 logout 경로 검증
+
+1. 승인된 login으로 인증 session과 새 CSRF token을 준비한다.
+2. 같은 session으로 `GET /logout`을 호출해 HTML 확인 페이지와 redirect가 없고 `403 ACCESS_DENIED`인지 확인한다.
+3. 같은 session과 유효한 CSRF token으로 `POST /logout`을 호출해 redirect와 session 종료가 없고 `403 ACCESS_DENIED`인지 확인한다.
+4. 두 요청 뒤 같은 session의 `GET /api/auth/me`가 기존 memberId로 `200`을 반환하는지 확인한다.
+5. 이어서 승인된 `POST /api/auth/logout`을 호출해 `204`와 session·SecurityContext·CSRF token·JSESSIONID 정리를 확인한다.
+
 ## 실패와 validation
 
 - 존재하지 않는 email과 잘못된 password는 동일한 `401 INVALID_CREDENTIALS` status·code·message다.
@@ -55,6 +64,7 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 - malformed JSON은 HTML이 아닌 `VALIDATION_FAILED` JSON이다.
 - 익명 logout + 유효 CSRF는 `401`; CSRF 누락은 `403 CSRF_INVALID`다.
 - 예상하지 못한 인증 API 예외는 안전한 `500 INTERNAL_ERROR`를 반환하고 서버에 안정적인 메시지와 예외 stack trace를 기록한다.
+- Spring Security 기본 `GET /logout`, `POST /logout`은 비활성화되어 redirect와 session 종료를 수행하지 않는다.
 
 ## 민감정보 확인
 

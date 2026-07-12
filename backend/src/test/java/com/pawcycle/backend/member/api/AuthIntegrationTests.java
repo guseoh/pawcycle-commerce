@@ -193,6 +193,34 @@ class AuthIntegrationTests {
 	}
 
 	@Test
+	void defaultLogoutPathsDoNotTerminateAuthenticatedSession() throws Exception {
+		CsrfSession csrfSession = csrfSession();
+		login(csrfSession, member.getEmail(), password).andExpect(status().isOk());
+		String authenticatedCsrfToken = csrfToken(csrfSession.session());
+
+		mockMvc.perform(get("/logout").session(csrfSession.session()))
+				.andExpect(status().isForbidden())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+				.andExpect(result -> assertThat(result.getResponse().getRedirectedUrl()).isNull())
+				.andExpect(result -> assertThat(result.getResponse().getContentAsString())
+						.doesNotContainIgnoringCase("<html"));
+
+		mockMvc.perform(post("/logout")
+					.session(csrfSession.session())
+					.header("X-CSRF-TOKEN", authenticatedCsrfToken))
+				.andExpect(status().isForbidden())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+				.andExpect(result -> assertThat(result.getResponse().getRedirectedUrl()).isNull());
+
+		assertThat(csrfSession.session().isInvalid()).isFalse();
+		mockMvc.perform(get("/api/auth/me").session(csrfSession.session()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.memberId").value(member.getId()));
+	}
+
+	@Test
 	void anonymousLogoutWithValidCsrfIsUnauthorizedAndMissingCsrfIsForbidden() throws Exception {
 		CsrfSession csrfSession = csrfSession();
 		mockMvc.perform(post("/api/auth/logout")
