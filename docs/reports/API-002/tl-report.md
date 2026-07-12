@@ -151,8 +151,9 @@ D1~D7 중 하나라도 미선택이면 정확한 DTO, query filter, ordering 또
 
 ## Git 결과
 
-- commit: 검증 후 기록 예정
-- push: 검증 후 `ops/tl` 일반 push 예정
+- 계약·보고서·인수인계 commit: `e14b74f36a6ac53b71dfb66872df3b121e60c81f`
+- 이전 원격 `ops/tl`은 squash 병합된 AUTH-003 잔여 브랜치이며 열린 PR이 없음을 확인한 뒤 삭제했다.
+- 최신 `main` 기준으로 새 `ops/tl`을 일반 push해 재생성했다.
 
 ## PR 결과
 
