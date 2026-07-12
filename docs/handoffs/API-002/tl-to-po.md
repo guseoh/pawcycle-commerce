@@ -44,7 +44,7 @@ D3: PUBLIC  # 단일 공개 literal, 미존재·비공개 통합 404, 상태 비
 D4: A  # productId ASC, SKU display_order/id ASC
 D5: A  # 빈 배열, nullable 명시적 null, SKU 없는 공개 상품 유지
 D6: A  # JSON number, 화면 형식은 Frontend 책임
-D7: A  # PRODUCT_DETAIL_UNAVAILABLE 사용
+D7: A  # 목록 PRODUCT_LIST_UNAVAILABLE, 상세 PRODUCT_DETAIL_UNAVAILABLE 사용
 ```
 
 ## 관련 파일
@@ -114,7 +114,7 @@ Approved 계약과 `tl-to-be.md`를 Backend 구현 입력으로 사용한다.
 
 ## AI 리뷰에서 남은 확인 항목
 
-API-002 PR의 검증 기록 정합성 지적 반영과 thread 해결 결과를 확인했다. 추가 미해결 항목은 없다.
+최초 검증 기록 정합성 지적은 답변·해결했다. 후속 D7 오류 코드 기록 정합성 지적 1건은 승인 계약 변경 없이 반영 중이다.
 
 ## 알려진 위험
 
