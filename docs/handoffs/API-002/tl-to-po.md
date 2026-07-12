@@ -2,7 +2,7 @@
 
 ## 전달 목적
 
-공개 상품 API 구현 전에 D1~D7의 추천안·대안·영향을 검토하고 승인·수정·보류할 수 있도록 전달한다.
+사용자가 승인한 D1~D7이 계약에 정확히 반영됐음을 기록하고 Backend 구현 단계로 넘긴다.
 
 ## 대상 역할
 
@@ -11,20 +11,21 @@
 
 ## 입력 문서
 
-- `docs/api/API-002-public-product-api-contract-proposal.md` (`Proposed`, `Decision Required`)
+- `docs/api/API-002-public-product-api-contract-proposal.md` (`Approved API Contract`)
 - `docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md` (공개 API 범위 Approved)
 - `docs/api/API-001-first-mvp-api-contract.md` (공개 API 세부 후보 Proposed)
 - `docs/product/PS-002-first-mvp-requirements.md`
 
 ## 완료된 작업
 
-- 목록·상세 정확한 JSON 후보와 필드 사전 작성
-- D1 가격 요약, D2 배송 주기, D3 공개 기준, D4 순서, D5 빈 값, D6 가격, D7 오류 선택지 작성
-- 각 항목의 근거, 추천 이유, 대안 영향과 BE·FE·QA 영향 기록
+- 목록·상세 최종 JSON과 필드 사전 승인 기록
+- D1-A, D2-A, D3-PUBLIC, D4-A, D5-A, D6-A, D7-A 승인 반영
+- 미선택 대안과 API-001 나머지 후보 미승인 상태 유지
+- Backend 구현 인수인계 작성
 
 ## 사용 가능한 결과
 
-사용자는 다음 값을 그대로 선택하거나 수정할 수 있다.
+사용자는 다음 값을 명시적으로 승인했다.
 
 ```text
 D1: A  # SKU별 가격 배열
@@ -41,6 +42,7 @@ D7: A  # PRODUCT_DETAIL_UNAVAILABLE 사용
 - `docs/api/API-002-public-product-api-contract-proposal.md`
 - `docs/reports/API-002/tl-report.md`
 - `docs/handoffs/API-002/tl-to-po.md`
+- `docs/handoffs/API-002/tl-to-be.md`
 
 ## 인수 조건과 추적성
 
@@ -55,28 +57,27 @@ D7: A  # PRODUCT_DETAIL_UNAVAILABLE 사용
 - 요구사항의 표시 정보
 - 공통 오류 JSON shape와 내부 정보 비노출
 - 검색·필터·정렬 입력·페이지네이션 및 구독·재고·결제·배송 제외
+- D1-A SKU별 가격 배열
+- D2-A SKU 내부 배송 주기와 비구독 SKU의 `[]`
+- D3-PUBLIC 단일 공개 상태, 미존재·비공개 통합 404, 내부 상태 비노출
+- D4-A 상품·SKU 결정적 순서
+- D5-A 빈 배열·명시적 null·SKU 없는 공개 상품 유지
+- D6-A JSON number와 Frontend 화면 표시 책임
+- D7-A `PRODUCT_DETAIL_UNAVAILABLE`
 
 ## 미확정 결정
 
-- D1~D7 전체
-- `PUBLIC` 또는 `VISIBLE` 공개 literal
-- 상세 예상 외 500 code
+- D1~D7 안에는 없음
+- API-001의 구독 API와 기타 후보는 계속 Proposed
+- `petType` 허용값 집합과 관리자 상태 전이는 이번 승인 범위 밖
 
 ## 승인 필요 항목
 
-| ID | 추천 | 사용자 동작 |
-| --- | --- | --- |
-| D1 | A | A 승인, B 선택 또는 수정 |
-| D2 | A | A 승인, B 선택 또는 수정 |
-| D3 | `PUBLIC` | `PUBLIC`, `VISIBLE`, 별도 결정 중 선택 |
-| D4 | A | 순서 보장 또는 미보장 선택 |
-| D5 | A | 안정 shape 또는 생략/제외 정책 선택 |
-| D6 | A | JSON number 또는 string 선택 |
-| D7 | A | 상세 전용 500 또는 `INTERNAL_ERROR` 선택 |
+D1~D7 추가 승인 필요 항목은 없다. 범위 밖 정책이 필요하면 별도 작업으로 결정한다.
 
 ## 다음 역할의 입력
 
-사용자 승인 후 선택된 값만 Backend·Frontend·QA 입력으로 전환한다. 이 인수인계 자체는 구현 승인이 아니다.
+Approved 계약과 `tl-to-be.md`를 Backend 구현 입력으로 사용한다.
 
 ## 지켜야 할 규칙
 
@@ -87,10 +88,9 @@ D7: A  # PRODUCT_DETAIL_UNAVAILABLE 사용
 
 ## 적용·실행 방법
 
-1. Proposed 계약의 D1~D7을 검토한다.
-2. 선택값과 수정 문구를 명시한다.
-3. Tech Lead가 승인된 값만 기록한다.
-4. 이후 Backend 구현 작업을 새 작업 ID와 `feat/be`에서 시작한다.
+1. Approved 계약의 D1~D7 반영 결과를 확인한다.
+2. Backend 구현 작업을 새 작업 ID와 `feat/be`에서 시작한다.
+3. 구현 완료 후 Frontend·QA에 계약과 실제 API를 전달한다.
 
 ## 다음 역할의 검증 포인트
 
@@ -100,31 +100,30 @@ D7: A  # PRODUCT_DETAIL_UNAVAILABLE 사용
 
 ## QA 필요 여부
 
-결정 후보 문서 자체의 독립 QA는 생략한다. 승인 후 구현에는 QA 독립 검증이 필요하다.
+승인 기록 문서 자체의 독립 QA는 생략한다. Backend 구현에는 QA 독립 검증이 필요하다.
 
 ## AI 리뷰에서 남은 확인 항목
 
-PR이 없으므로 AI PR 리뷰는 수행하지 않았다.
+API-002 Draft PR에서 AI 리뷰 결과를 확인한다.
 
 ## 알려진 위험
 
-- 가격 범위만 선택하면 SKU별 가격 요구사항 변경이 필요하다.
-- 여러 공개 상태를 선택하면 현재 범위를 넘는 상태 정책이 필요하다.
-- 순서 미보장은 FE·QA에 별도 정렬 책임을 만든다.
+- Backend가 미선택 대안을 섞으면 승인 JSON과 달라진다.
+- `PUBLIC` 외 값을 공개하면 내부 상태가 노출될 수 있다.
+- JSON number의 화면 formatting을 Backend가 맡으면 책임 경계가 달라진다.
 
 ## 남은 위험과 주의 사항
 
-추천안은 승인값이 아니다. D1~D7이 해소되기 전 Backend 구현을 시작하면 DTO와 query 계약이 갈릴 수 있다.
+API-001 전체가 승인된 것은 아니다. Backend는 공개 상품 API 두 개와 D1~D7만 구현한다.
 
 ## 다음 권장 작업
 
-사용자가 추천 조합 `D1-A, D2-A, D3-PUBLIC, D4-A, D5-A, D6-A, D7-A`를 승인·수정·보류한다.
+Backend Engineer가 `docs/handoffs/API-002/tl-to-be.md`를 받아 공개 상품 API 구현을 시작한다.
 
 ## 완료 조건
 
-- D1~D7 선택값이 명시됨
-- 선택된 값만 승인 입력으로 기록됨
-- 미선택 항목은 Decision Required 유지
+- D1~D7 승인값이 정확히 기록됨
+- 미선택 대안과 API-001 나머지 후보는 미승인 유지
 - Backend 구현 작업이 별도 시작됨
 
 ## 중단 조건
