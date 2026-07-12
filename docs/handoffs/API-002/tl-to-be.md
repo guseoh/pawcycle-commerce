@@ -14,9 +14,10 @@
 
 - 작업 브랜치: `ops/tl`
 - 승인 계약 commit: `08d3f7e20c266660f4f2d75fbb49dbec0a823000`
-- PR: #35 Draft, `main` ← `ops/tl`
-- Repository Validation run: `29179790452`, 전체 통과
-- CodeRabbit: 완료, 미해결 review thread 없음
+- PR: #35 Ready for review, `main` ← `ops/tl`
+- 현재 원격 head: `cffb966ddcab9d2bdc90bfdb6278327592fb7324`
+- 최신 Repository Validation run: `29180050269`, conclusion `success`, Backend·MySQL·Frontend·conventions·작업 산출물 검증 통과
+- CodeRabbit: 검증 기록 정합성 지적 1건 반영 중, 현재 미해결 review thread 1건
 
 ## 입력 문서
 

@@ -102,17 +102,26 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 
 측정이나 최적화를 수행하지 않았다. SKU별 가격 배열은 응답 크기가 SKU 수에 비례한다는 영향만 기록했다.
 
-## 실행한 검증
+## 직접 실행한 검증
 
 - `python scripts\\validate-task-artifacts.py --task-id API-002`: `task artifacts validated for API-002`
+- 계약 문서의 JSON 예시 4건 구문 검증: 통과
 - 필수 상태·D1~D7·추적성·오류 코드 검색: 통과
 - `git diff --check`: 통과
-- Repository Validation run `29179790452`, contract head `08d3f7e20c266660f4f2d75fbb49dbec0a823000`: conventions, Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 
-## 실행하지 못한 검증과 이유
+## 실행하지 못한 검증과 이유 (로컬에서 직접 실행하지 않은 검증)
 
-- Backend test·build: 문서 승인 기록 작업이며 `backend/**`를 변경하지 않아 실행 대상이 아니다.
-- Frontend test·build: `frontend/**`를 변경하지 않았다.
+- Backend test·build: 이번 후속 작업은 문서 정합성 수정이며 `backend/**`를 변경하지 않아 로컬에서 직접 실행하지 않았다.
+- Frontend install·lint·build: `frontend/**`를 변경하지 않아 로컬에서 직접 실행하지 않았다.
+- MySQL 통합 검증: DB·migration·Backend 코드를 변경하지 않아 로컬에서 직접 실행하지 않았다.
+
+## 원격 Repository Validation에서 실행된 검증
+
+- 최신 확인 run `29180050269`, head `cffb966ddcab9d2bdc90bfdb6278327592fb7324`, conclusion `success`
+- Java 25 Backend test, Backend build, MySQL 8.4 검증: 통과
+- Frontend install·lint·build: 통과
+- commit·PR conventions와 작업 산출물 검증: 통과
+- 위 결과는 GitHub Actions에서 실행된 결과이며 로컬 직접 실행 기록과 구분한다.
 
 ## QA 필요 여부
 
@@ -124,11 +133,11 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 
 ## AI 리뷰 반영 여부
 
-PR #35 CodeRabbit check 완료, 리뷰와 미해결 thread 없음.
+PR #35 CodeRabbit review에서 검증 기록 정합성 지적 1건을 유효한 항목으로 확인했다. 문서 반영과 검증 후 답변·해결할 대상이며, 현재 미해결 review thread는 1건이다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-없음.
+없음. 확인된 지적은 반영 대상으로 분류했다.
 
 ## 적용 방법
 
@@ -160,7 +169,9 @@ PR #35 CodeRabbit check 완료, 리뷰와 미해결 thread 없음.
 
 ## PR 결과
 
-- PR #35 Draft, `main` ← `ops/tl`
-- contract head `08d3f7e20c266660f4f2d75fbb49dbec0a823000`, Repository Validation run `29179790452` 전체 통과
-- 원격 제목·본문 UTF-8, head/base, Draft, `MERGEABLE/CLEAN` 상태 확인
+- PR #35 Ready for review, `main` ← `ops/tl`
+- 승인 계약 commit `08d3f7e20c266660f4f2d75fbb49dbec0a823000`은 이력으로 유지한다.
+- 현재 원격 head `cffb966ddcab9d2bdc90bfdb6278327592fb7324`, 최신 Repository Validation run `29180050269` 전체 통과
+- 원격 제목·본문 UTF-8, head/base, Ready for review, `MERGEABLE/CLEAN` 상태 확인
+- 현재 미해결 CodeRabbit review thread: 1건
 - 자동 병합하지 않는다.
