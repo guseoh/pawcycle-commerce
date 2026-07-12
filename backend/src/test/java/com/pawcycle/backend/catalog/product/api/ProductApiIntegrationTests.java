@@ -107,7 +107,10 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.description").value(nullValue()))
 				.andExpect(jsonPath("$.thumbnailUrl").value(nullValue()))
 				.andExpect(jsonPath("$.skus[0].subscribable").value(true))
-				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles").value(List.of(2, 4, 8)))
+				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles.length()").value(3))
+				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[0]").value(2))
+				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[1]").value(4))
+				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[2]").value(8))
 				.andExpect(jsonPath("$.skus[1].subscribable").value(false))
 				.andExpect(jsonPath("$.skus[1].availableDeliveryCycles").isEmpty())
 				.andExpect(jsonPath("$.displayStatus").doesNotExist());

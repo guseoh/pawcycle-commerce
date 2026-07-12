@@ -93,8 +93,9 @@ API-002에서 승인한 공개 상품 목록 `GET /api/products`와 상세 `GET 
 - 저장소를 변경하지 않는 임시 Java 21 init script로 컴파일과 focused test 실행을 시도했다.
 - 소스·테스트 컴파일은 성공했으나 Gradle test worker가 기존 테스트를 포함한 모든 테스트 클래스를 `ClassNotFoundException`으로 로드하지 못했다.
 - 같은 실행기 원인이 focused 재실행에서도 반복돼 추가 반복을 중단하고 Java 25·MySQL Repository Validation로 보완한다.
-- Repository Validation run `29188054853`에서 Backend test 2건이 실패했다. 숫자가 아닌 `/api/products/test` path가 기존 Security 회귀 기대와 달리 `400`이 되었고, 목록 SKU batch 조회에서 lazy Product 접근이 추가 query를 만들었다.
-- 집중 수정으로 숫자가 아닌 상세 path를 `PRODUCT_NOT_FOUND`로 처리하고, batch SKU query에 `JOIN FETCH s.product`를 적용했다. 수정 후 Java 21 `compileJava`, `compileTestJava`는 통과했으며 Java 25·MySQL 재검증을 대기한다.
+- Repository Validation run `29188054853`에서 Backend test 2건이 실패했다. 숫자가 아닌 `/api/products/test` path가 기존 Security 회귀 기대와 달리 `400`이 되었고, `availableDeliveryCycles`의 실제 JSON 배열을 Java `List.of(2, 4, 8)`과 직접 비교하는 JsonPath assertion이 실패했다.
+- 첫 집중 수정에서 숫자가 아닌 상세 path를 `PRODUCT_NOT_FOUND`로 처리해 Security 회귀는 해소됐지만, run `29188140349`에서 동일 배열 직접 비교 assertion이 다시 실패했다. query-count 실패로 오인해 추가했던 SKU `JOIN FETCH`는 원인과 무관해 제거했다.
+- 배열 계약은 변경하지 않고 길이 `3`과 인덱스별 값 `2`, `4`, `8`을 검증하도록 수정해 값과 순서를 안정적으로 확인한다. 수정 후 Java 25·MySQL focused·전체 재검증을 수행한다.
 
 ## 실행하지 못한 검증과 이유
 
