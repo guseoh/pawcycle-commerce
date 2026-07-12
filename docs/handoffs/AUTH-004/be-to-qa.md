@@ -23,11 +23,10 @@ AUTH-003 session 인증 계약의 구현 범위와 QA 검증 입력을 전달한
 
 ## 현재 상태
 
-- 검증 head: `b52b3152a5cd46665a67d9533a582e0509010670`
-- Repository Validation run: `29178576306`
+- 검증 head: `2612e676bf6c4b453952c2bc620946eec23fdd29`
+- Repository Validation run: `29178960066`
 - Java 25 Backend test/build, MySQL 8.4와 Frontend install/lint/build 회귀 검증 통과
-- 검증 head는 미등록 email dummy BCrypt 비교, 예상 외 예외 로그와 254자 email 경계 테스트를 포함한다.
-- Spring Security 기본 `/logout` 비활성화 변경은 Java 25 Repository Validation 실행 후 검증 head와 run을 갱신한다.
+- 검증 head는 미등록 email dummy BCrypt 비교, 예상 외 예외 로그, 254자 email 경계와 기본 `/logout` 비활성화 회귀 테스트를 포함한다.
 
 ## test member 경계
 

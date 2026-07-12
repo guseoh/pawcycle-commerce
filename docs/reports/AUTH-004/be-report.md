@@ -97,7 +97,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - AUTH-004 리뷰 수정 focused test: 로컬 Java 25 toolchain 부재로 실행 진입 전 실패
 - Repository Validation run `29178576306`, head `b52b3152a5cd46665a67d9533a582e0509010670`: conventions, Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 - `git diff --check`: 통과
-- 기본 `/logout` 비활성화 회귀 테스트: Java 25 Repository Validation 실행 예정
+- Repository Validation run `29178960066`, head `2612e676bf6c4b453952c2bc620946eec23fdd29`: 기본 `/logout` 회귀를 포함한 Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build와 conventions 전체 통과
 
 ## 적용 방법
 
@@ -135,6 +135,7 @@ AUTH-003에서 승인한 최소 session 인증 API와 session·CSRF 생명주기
 - 검증 준비 commit: `9ef296d6d1967b7b164c2554b255345526bc2117`
 - 테스트 보완 commit: `c3915fe327a86949b9b6bad5990c5acf9d832265`
 - 리뷰 수정 commit: `b52b3152a5cd46665a67d9533a582e0509010670`
+- 기본 logout 비활성화 commit: `2612e676bf6c4b453952c2bc620946eec23fdd29`
 - PR #34 Ready for review, `main` ← `feat/be`
 - 일반 push만 사용했다.
 - 자동 병합하지 않는다.
