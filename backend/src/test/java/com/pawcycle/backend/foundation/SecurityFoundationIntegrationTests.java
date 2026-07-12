@@ -3,7 +3,7 @@ package com.pawcycle.backend.foundation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.common.security.ApiAccessDeniedHandler;
+import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -55,7 +57,8 @@ class SecurityFoundationIntegrationTests {
 				.andExpect(status().isNotFound());
 
 		mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isNotFound());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.token").isNotEmpty());
 	}
 
 	@Test
@@ -82,8 +85,11 @@ class SecurityFoundationIntegrationTests {
 
 	@Test
 	void authenticatedRequestCanReachProtectedBoundary() throws Exception {
-		mockMvc.perform(get("/api/auth/me").with(user("foundation-user")))
-				.andExpect(status().isNotFound());
+		mockMvc.perform(get("/api/auth/me").with(authentication(
+				new UsernamePasswordAuthenticationToken(
+						new AuthenticatedMemberPrincipal(1L), null, java.util.List.of()))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.memberId").value(1));
 	}
 
 	@Test
