@@ -93,6 +93,8 @@ API-002에서 승인한 공개 상품 목록 `GET /api/products`와 상세 `GET 
 - 저장소를 변경하지 않는 임시 Java 21 init script로 컴파일과 focused test 실행을 시도했다.
 - 소스·테스트 컴파일은 성공했으나 Gradle test worker가 기존 테스트를 포함한 모든 테스트 클래스를 `ClassNotFoundException`으로 로드하지 못했다.
 - 같은 실행기 원인이 focused 재실행에서도 반복돼 추가 반복을 중단하고 Java 25·MySQL Repository Validation로 보완한다.
+- Repository Validation run `29188054853`에서 Backend test 2건이 실패했다. 숫자가 아닌 `/api/products/test` path가 기존 Security 회귀 기대와 달리 `400`이 되었고, 목록 SKU batch 조회에서 lazy Product 접근이 추가 query를 만들었다.
+- 집중 수정으로 숫자가 아닌 상세 path를 `PRODUCT_NOT_FOUND`로 처리하고, batch SKU query에 `JOIN FETCH s.product`를 적용했다. 수정 후 Java 21 `compileJava`, `compileTestJava`는 통과했으며 Java 25·MySQL 재검증을 대기한다.
 
 ## 실행하지 못한 검증과 이유
 

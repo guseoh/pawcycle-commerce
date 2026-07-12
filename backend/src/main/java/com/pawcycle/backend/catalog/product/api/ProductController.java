@@ -2,6 +2,7 @@ package com.pawcycle.backend.catalog.product.api;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailView;
 import com.pawcycle.backend.catalog.product.application.ProductListView;
+import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
 import com.pawcycle.backend.catalog.product.application.ProductQueryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,7 +25,11 @@ public class ProductController {
 	}
 
 	@GetMapping("/{productId}")
-	ProductDetailView product(@PathVariable Long productId) {
-		return productQueryService.findProduct(productId);
+	ProductDetailView product(@PathVariable String productId) {
+		try {
+			return productQueryService.findProduct(Long.valueOf(productId));
+		} catch (NumberFormatException exception) {
+			throw new ProductNotFoundException();
+		}
 	}
 }
