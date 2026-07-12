@@ -9,6 +9,14 @@
 - Product Owner / Tech Lead: 사용자
 - 승인 후 후속 역할: Backend Engineer, Frontend Engineer, QA Engineer
 
+## 전달 상태
+
+- 작업 브랜치: `ops/tl`
+- 승인 계약 commit: `08d3f7e20c266660f4f2d75fbb49dbec0a823000`
+- PR: #35 Draft, `main` ← `ops/tl`
+- Repository Validation run: `29179790452`, 전체 통과
+- CodeRabbit: 완료, 미해결 review thread 없음
+
 ## 입력 문서
 
 - `docs/api/API-002-public-product-api-contract-proposal.md` (`Approved API Contract`)

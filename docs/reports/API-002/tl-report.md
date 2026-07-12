@@ -107,6 +107,7 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 - `python scripts\\validate-task-artifacts.py --task-id API-002`: `task artifacts validated for API-002`
 - 필수 상태·D1~D7·추적성·오류 코드 검색: 통과
 - `git diff --check`: 통과
+- Repository Validation run `29179790452`, contract head `08d3f7e20c266660f4f2d75fbb49dbec0a823000`: conventions, Java 25 Backend test/build, MySQL 8.4, Frontend install/lint/build 전체 통과
 
 ## 실행하지 못한 검증과 이유
 
@@ -123,7 +124,7 @@ API-002의 D1~D7은 공개 상품 DTO·query·ordering·오류 mapping의 승인
 
 ## AI 리뷰 반영 여부
 
-Draft PR 생성 후 AI 리뷰 상태를 확인한다.
+PR #35 CodeRabbit check 완료, 리뷰와 미해결 thread 없음.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -153,10 +154,13 @@ Draft PR 생성 후 AI 리뷰 상태를 확인한다.
 ## Git 결과
 
 - 계약·보고서·인수인계 commit: `e14b74f36a6ac53b71dfb66872df3b121e60c81f`
+- 승인 계약·Backend 인수인계 commit: `08d3f7e20c266660f4f2d75fbb49dbec0a823000`
 - 이전 원격 `ops/tl`은 squash 병합된 AUTH-003 잔여 브랜치이며 열린 PR이 없음을 확인한 뒤 삭제했다.
 - 최신 `main` 기준으로 새 `ops/tl`을 일반 push해 재생성했다.
 
 ## PR 결과
 
-- 기존 API-002 PR 없음, 검증 후 Draft PR 생성 예정
+- PR #35 Draft, `main` ← `ops/tl`
+- contract head `08d3f7e20c266660f4f2d75fbb49dbec0a823000`, Repository Validation run `29179790452` 전체 통과
+- 원격 제목·본문 UTF-8, head/base, Draft, `MERGEABLE/CLEAN` 상태 확인
 - 자동 병합하지 않는다.
