@@ -6,7 +6,7 @@
 - 역할: Backend Engineer
 - 기준 브랜치: `main`
 - 작업 브랜치: `feat/be`
-- 상태: 구현 및 로컬 컴파일 완료, Java 25·MySQL 원격 검증 진행 전
+- 상태: 구현 및 Java 25·MySQL 원격 검증 완료
 
 ## 목적
 
@@ -86,6 +86,7 @@ API-002에서 승인한 공개 상품 목록 `GET /api/products`와 상세 `GET 
 - API-002 계약 JSON과 구현 필드 수동 대조: 통과
 - `git diff --check`: 통과
 - `python scripts\validate-task-artifacts.py --task-id PRODUCT-001`: 통과
+- Repository Validation run `29196486947`, head `50453a368a95ae26a38c8c946d726879b5d7fa96`, GitHub Actions Java 25·MySQL 8.4: 실패했던 focused test를 포함한 Backend test, Backend build, Frontend install·lint·build, conventions 전체 통과
 
 ## 실패 후 수정
 
@@ -113,20 +114,22 @@ API-002에서 승인한 공개 상품 목록 `GET /api/products`와 상세 `GET 
 ## 위험과 제한
 
 - `BINARY` 공개 비교는 현재 승인된 MySQL 기반 계약에 맞춘 최소 구현이다.
-- 로컬 Java 25·MySQL 실행 근거는 없으며 원격 Repository Validation 성공 전 병합 준비 완료로 판단하지 않는다.
+- 로컬 Java 25·MySQL 실행 근거는 없으며 해당 검증은 Repository Validation run `29196486947`의 성공 결과를 사용한다.
 - 실제 운영 데이터의 `petType` 문자열은 새 검증 없이 그대로 전달된다.
 
 ## 다음 작업
 
-- Repository Validation에서 Java 25 Backend test/build와 MySQL 8.4 통합 테스트를 확인한다.
 - QA가 정상·빈 값·공개 경계·정렬·404·500·Security 회귀 시나리오를 독립 검증한다.
 - Frontend 연동은 별도 승인 작업에서 API-002 계약을 사용한다.
 
 ## Git 결과
 
-- 구현·검증 문서 commit과 PR 정보는 검증 후 기록한다.
+- 구현 commit: `8cc32f8162d400b434df31ddf6757ca8ed24b007`
+- 공개 조회 경계 수정 commit: `aab9ad5875e7641d554d17ddde919973e977a747`
+- 배송 주기 JSON assertion 수정 commit: `50453a368a95ae26a38c8c946d726879b5d7fa96`
+- PR #36, `main` ← `feat/be`
 - 일반 push만 사용하고 자동 병합하지 않는다.
 
 ## PR 상태
 
-- `feat/be`에서 `main` 대상 PR을 생성하고 Ready for review 상태는 필수 검증 후 확정한다.
+- PR #36은 필수 검증 성공 후 Ready for review로 전환한다. 현재 원격 상태는 PR 본문과 GitHub Checks를 권위 있는 원본으로 확인한다.
