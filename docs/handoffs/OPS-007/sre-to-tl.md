@@ -51,7 +51,7 @@ payload는 상세 이벤트에서 다음 세 부분을 한 Discord 메시지에 
 
 로컬에서 정규화 fixture 20개와 Discord 단위 테스트 36개가 통과했다. 기존 `ops/sre`의 `pr_preview` run `29246535424` HTTP 204는 수정 전 참고 기록이며 최종 보안 검증 증거가 아니다. 수정 후 실제 Webhook Preview는 PR #40 병합 후 기본 브랜치 workflow에서 실행하고, Discord 채널 화면 수신 여부는 사용자가 확인한다.
 
-head `ab83d5a`의 Repository Validation run `29255002315`는 conventions와 application validation 전체가 성공했다. 이어진 collaboration report run `29254995061`은 기본 브랜치 collector 부재를 `exit 1`로 드러내고 전송 단계 전에 종료했다. 기존 review thread 10개는 모두 근거 답변 또는 수정 후 resolved 상태다.
+최신 PR head의 Repository Validation 전체 성공과 모든 유효한 review thread의 resolved 상태를 GitHub에서 확인했다. 병합 전 collaboration report 실패는 기본 브랜치 collector 부재를 `exit 1`로 드러내고 전송 단계 전에 종료하는 승인된 동작이다. 현재 head, CI run, Draft·Ready·mergeable 상태와 review thread 수는 GitHub를 기준으로 확인한다.
 
 ## 중단 조건
 
