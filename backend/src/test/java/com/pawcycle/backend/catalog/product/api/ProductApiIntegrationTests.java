@@ -93,6 +93,17 @@ class ProductApiIntegrationTests {
 	}
 
 	@Test
+	void anonymousEmptyListReturnsEmptyArrayAndUsesOneQuery() throws Exception {
+		flushAndResetStatistics();
+
+		mockMvc.perform(get("/api/products"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products").isEmpty());
+
+		assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+	}
+
+	@Test
 	void authenticatedDetailNeedsNoCsrfAndUsesTwoQueries() throws Exception {
 		Product product = saveProduct("상세 상품", "DOG", null, null, "PUBLIC");
 		saveSku(product, "구독 SKU", "19900.00", true, 1);
