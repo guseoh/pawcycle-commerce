@@ -29,10 +29,10 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 - `collect-discord-context.py`가 이벤트 payload와 read-only GitHub API를 정규화된 context JSON으로 변환한다.
 - builder를 이벤트별 1~3개 Embed 보고서 구조로 변경하고 `fields[:8]` 절단을 제거했다.
 - 작업 ID 우선순위, 역할 브랜치 매핑, PR 본문의 제한된 섹션 추출과 API 실패 fallback을 구현했다.
-- PR Ready, Draft, synchronize, review requested, 승인, 변경 요청, CI 결과, 병합, Issue와 Preview를 구분했다.
+- PR Ready, Draft, synchronize, review requested, 승인, 변경 요청, CI conclusion별 결과, 병합, Issue와 Preview를 구분했다.
 - CI job별 conclusion, 실패 job·step, 리뷰 상태, 미해결 thread, 처리 과정과 다음 행동을 표시한다.
-- 정규화 fixture 16개, collector·builder 단위 테스트와 validator를 추가·갱신했다.
-- 협업 자동화 runbook에 단일 workflow, 보안 경계, fallback과 Preview 절차를 반영했다.
+- 정규화 fixture 20개, collector·builder·sender 단위 테스트와 validator를 추가·갱신했다.
+- 협업 자동화 runbook에 단일 workflow, 보안 경계, collector 누락 실패와 병합 후 Preview 절차를 반영했다.
 
 ## 변경하지 않은 범위
 
@@ -46,29 +46,32 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 ## 주요 결과
 
 - `Repository Validation` 완료 이벤트의 알림 경로는 `notify-collaboration.yml`의 `workflow_run` 한 곳뿐이다.
-- `pull_request_target`과 `workflow_run`은 기본 브랜치의 신뢰된 script만 실행하며 read 권한만 사용한다.
+- `pull_request_target`, `workflow_run`, `workflow_dispatch`는 모두 기본 브랜치의 신뢰된 script만 실행하며 read 권한만 사용한다.
+- 기본 브랜치에 필수 collector가 없으면 성공으로 숨기지 않고 workflow를 실패시킨다.
 - 작업 ID는 본문의 명시적 항목을 우선하고 `API-003`, `AUTH-004`, `PRODUCT-001`, `OPS-007`과 미기록 경계를 fixture로 검증한다.
 - 상세 이벤트는 작업 요약, 처리·검증·리뷰, 상태와 다음 작업의 세 Embed로 구성한다. 간단 이벤트는 한 Embed를 사용한다.
 - API 조회 실패는 `0`이나 성공으로 추측하지 않고 `확인 불가`로 표시한다.
-- `allowed_mentions={"parse":[]}`, mention 무력화, control character 제거, 필드·전체 6000자 제한과 낮은 우선순위 목록의 생략 건수 표시를 유지한다.
+- review thread는 GraphQL cursor로 전체 페이지를 집계하며 페이지 실패·반복 cursor는 `확인 불가`로 처리한다.
+- PR fenced code block은 섹션 추출 전에 전체 제거하고 Webhook·token·password·client secret·API/AWS key·PEM private key를 공통 `clean_text()`에서 마스킹한다. Issue 본문은 전달하지 않는다.
+- CI conclusion은 `success`, `failure`, `timed_out`, `cancelled`, `neutral`, `skipped`, unknown으로 구분한다.
+- `allowed_mentions={"parse":[]}`, mention 무력화, control character 제거와 Discord 실제 embed 텍스트 합계 6000자 제한을 유지한다.
 
 ## 검증 결과
 
 | 검증 | 명령 | 결과 |
 | --- | --- | --- |
-| Python 문법 | workspace Python `-m py_compile`로 변경된 6개 Python 파일 검사 | 통과 |
-| 정규화 payload fixture | `python scripts/validate-discord-payloads.py` | 통과, 16개 |
-| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 25개 |
+| Python 문법 | `python -m py_compile`로 collector, builder, limit helper, sender, validator와 테스트 검사 | 통과 |
+| 정규화 payload fixture | `python scripts/validate-discord-payloads.py` | 통과, 20개 |
+| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 35개 |
 | 중복 CI 알림 경로 | payload validator의 workflow 검사 | 통과, `workflow_run` 1개 |
+| Workflow 신뢰 경계 | indentation-aware validator | 통과: default branch checkout, collector 누락 `exit 1`, 중복 trigger 없음 |
+| 작업 산출물 | `py scripts\\validate-task-artifacts.py --task-id OPS-007` | 통과 |
 | Diff 형식 | `git diff --check` | 통과 |
-| Repository Validation | PR #40 run `29246521901` | 통과: conventions, Java 25·MySQL 8.4 Backend test/build, Node.js 24 Frontend install/lint/build |
-| Discord PR Preview | `ops/sre`, `scenario=pr_preview`, `pr_number=40`, run `29246535424` | 통과: collector·builder·sender 성공, HTTP 204 |
+| 수정 후 Discord PR Preview | 병합 전에는 실행하지 않음 | 미실행: PR branch script와 Repository Secret을 함께 실행하지 않음 |
 
-첫 실행에서 WindowsApps `python.exe`가 `Python`만 출력하고 종료 코드 1을 반환했다. 코드 실패가 아니므로 workspace dependency의 Python 3.12 runtime으로 같은 명령을 다시 실행했고 위 결과처럼 통과했다.
+기존 `ops/sre` script로 실행한 run `29246535424`의 HTTP 204는 수정 전 참고 기록이다. 이번 보안 보완 후의 최종 Webhook 전송 증거로 재사용하지 않으며, 수정 후 실제 Preview는 병합되어 기본 브랜치 코드가 신뢰 경계 안에 들어온 뒤 수행한다.
 
-task artifact validator, Secret 의심 패턴 검사, Repository Validation 전체와 실제 Discord Preview가 통과했다. Actions의 Node.js 20 deprecation 안내는 기존 pinned `actions/checkout`이 runner에서 Node.js 24로 강제 실행된다는 warning이며 이번 작업의 실패는 아니다.
-
-Ready 전환 후 CodeRabbit review 제출 알림 run `29247302229`는 기본 브랜치에 아직 신규 collector가 없어 실패했다. 보안 결정대로 PR head script로 우회하지 않고, 기본 브랜치에 collector가 없는 병합 전에는 `notify=false`로 안전하게 생략하는 호환 fallback을 추가했다. 또한 CodeRabbit의 유효 의견에 따라 QA heading 중복 분류 방지, 10분 job timeout과 fixture 계약을 보강했다.
+Ready 전환 후 CodeRabbit review 제출 알림 run `29247302229`는 기본 브랜치에 collector가 없어 실패했다. collector 누락을 `notify=false`와 종료 코드 0으로 숨기던 호환 fallback은 제거했고, 필수 collector가 없으면 명시적으로 실패하도록 변경했다. QA heading 중복 분류 방지와 10분 job timeout은 유지한다.
 
 추가 리뷰에서 이전 CI run의 SHA가 최신 PR SHA로 덮일 수 있는 문제, API 실패 시 event의 PR 번호가 사라지는 문제와 Issue 자유 본문의 Secret 전파 가능성을 확인했다. run SHA·PR 번호를 event 기준으로 보존하고 stale CI의 변경 정보를 `확인 불가`로 전환했으며, 공통 Secret redaction과 Issue 본문 비전송을 추가했다.
 
@@ -78,30 +81,35 @@ Ready 전환 후 CodeRabbit review 제출 알림 run `29247302229`는 기본 브
 
 ## 적용 방법
 
-PR·review·Issue 이벤트와 `Repository Validation` 완료 시 `notify-collaboration.yml`이 기본 브랜치의 collector와 builder를 실행한다. 수동 연결은 Actions의 `Collaboration Notification`에서 `connection_test`, PR 보고서 확인은 `pr_preview`와 양의 정수 `pr_number`를 사용한다.
+PR·review·Issue 이벤트, `Repository Validation` 완료와 수동 dispatch 모두 `notify-collaboration.yml`이 기본 브랜치의 collector와 builder를 실행한다. PR branch의 script는 Secret과 함께 실행하지 않는다. 병합 후 수동 연결은 Actions의 `Collaboration Notification`에서 `connection_test`, PR 보고서 확인은 `pr_preview`와 양의 정수 `pr_number`를 사용한다.
+
+롤백 시 이번 보완 커밋 전체를 PR에서 되돌리고 이전 신뢰 경계로 실제 Webhook Preview를 실행하지 않는다. 기본 브랜치 collector 배포 전 알림 누락은 workflow 실패로 관측한다.
 
 ## 남은 위험과 제한
 
 - GitHub API가 일시적으로 실패하면 job, review 또는 thread 정보가 `확인 불가`로 표시될 수 있다.
 - review 시 CI 상태는 해당 head branch의 최신 `Repository Validation` 실행을 사용하므로 새 실행이 아직 생성되지 않은 짧은 구간에는 이전 상태 또는 `확인 불가`가 보일 수 있다.
 - 실제 Webhook과 Discord 채널 권한은 로컬 fixture로 검증할 수 없다.
-- 하나의 PR에 review thread가 100개를 넘으면 현재 GraphQL 첫 100개 범위만 집계한다.
+- GraphQL 어느 페이지에서든 조회가 실패하거나 cursor가 반복되면 전체 thread 수를 `확인 불가`로 표시한다.
+- 수정 후 실제 Discord 수신과 카드 가독성은 병합 후 사용자가 확인해야 한다.
 
 ## 다음 작업
 
-1. Draft PR에서 Repository Validation 전체 결과를 확인한다.
-2. 가능하면 `ops/sre` ref의 `pr_preview`를 실행해 HTTP 2xx를 확인한다.
-3. 사용자가 Discord 채널의 카드 가독성과 실제 수신을 확인한다.
-4. 병합 후 후속 구독 Backend PR부터 새 보고서형 알림을 운영 확인한다.
+1. PR #40의 Repository Validation 전체 성공과 unresolved review 0건을 확인한다.
+2. 사용자가 PR #40 병합 여부를 결정한다.
+3. 병합 후 기본 브랜치의 `Collaboration Notification`에서 `scenario=pr_preview`, 안전한 PR 번호로 실행해 HTTP 2xx/204를 확인한다.
+4. 사용자가 Discord 채널의 카드 수신과 가독성을 확인한다.
 
 ## Git 결과
 
-- 기준 `main`: `d56686426300683ce97aa92ae472ff0775e2890f`
-- PR #39 merge commit: `79e0cbc277093d4f4469342747979ec08eb528e7`
-- 기존 `ops/sre` 보존: `backup/ops-sre-before-OPS-007` → `0ced626947...`
+- 작업 시작 원격 기준 `main`: `d56686426300683ce97aa92ae472ff0775e2890f`
+- 기존 로컬 `ops/sre` 보존: `backup/ops-sre-before-OPS-007-eec524b` → `eec524b`
 - 작업 브랜치: `ops/sre`
 - 구현 커밋: `08118de` `ci(discord): 협업 상세 알림 개선`
 - 원격 검증 기록 커밋: `bae555a` `docs(ops): OPS-007 원격 검증 결과 기록`
+- 호환 보완 커밋: `501b15f` `fix(ci): 병합 전 Discord 알림 호환 보완`
+- 컨텍스트 보완 커밋: `cefa15d` `fix(discord): CI 컨텍스트와 민감정보 경계 보완`
+- 작업 시작 PR head: `5b68105` `fix(discord): JSON 시크릿 마스킹 보완`
 - force push, reset, rebase, 자동 병합: 수행하지 않음
 
 ## PR 상태
@@ -111,4 +119,5 @@ PR·review·Issue 이벤트와 `Repository Validation` 완료 시 `notify-collab
 - 제목: `ci(discord): 협업 상세 알림 개선`
 - PR: #40
 - 최초 상태: Draft
-- Repository Validation과 HTTP 204 Preview 통과 후 Ready for review로 전환하며 자동 병합하지 않는다.
+- 현재 Open, Ready for review이며 자동 병합하지 않는다.
+- 수정 후 실제 Webhook Preview는 병합 후 기본 브랜치에서 수행한다.

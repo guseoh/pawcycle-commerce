@@ -4,12 +4,21 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+LIMITS_PATH = Path(__file__).with_name("discord-payload-limits.py")
+LIMITS_SPEC = importlib.util.spec_from_file_location("discord_payload_limits", LIMITS_PATH)
+if LIMITS_SPEC is None or LIMITS_SPEC.loader is None:
+    raise RuntimeError("Discord payload limit helper를 불러올 수 없음")
+limits = importlib.util.module_from_spec(LIMITS_SPEC)
+LIMITS_SPEC.loader.exec_module(limits)
 
 
 MISSING = "기록 없음"
@@ -23,10 +32,14 @@ COLORS = {
     "changes_requested": 0xE67E22,
     "ci_success": 0x2ECC71,
     "ci_failure": 0xE74C3C,
+    "ci_timed_out": 0xE67E22,
+    "ci_cancelled": 0x95A5A6,
+    "ci_neutral": 0xF1C40F,
+    "ci_skipped": 0x95A5A6,
+    "ci_unknown": 0x7F8C8D,
     "pr_merged": 0x9B59B6,
     "issue_opened": 0x1ABC9C,
     "issue_closed": 0x95A5A6,
-    "main_updated": 0x9B59B6,
     "connection_test": 0x3498DB,
 }
 TITLES = {
@@ -38,10 +51,14 @@ TITLES = {
     "changes_requested": "PR 변경 요청",
     "ci_success": "Repository Validation 성공",
     "ci_failure": "Repository Validation 미통과",
+    "ci_timed_out": "Repository Validation 시간 초과",
+    "ci_cancelled": "Repository Validation 취소",
+    "ci_neutral": "Repository Validation 중립",
+    "ci_skipped": "Repository Validation 건너뜀",
+    "ci_unknown": "Repository Validation 상태 확인 필요",
     "pr_merged": "PR 병합 완료",
     "issue_opened": "Issue 등록",
     "issue_closed": "Issue 완료",
-    "main_updated": "main 반영 완료",
     "connection_test": "Discord 협업 알림 Preview",
 }
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -181,13 +198,13 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
         embeds[0]["fields"].extend([field("현재 상태", context.get("status"), True, 100), field("다음 작업", context.get("next_action"), False, 500)])
 
     payload = {"username": "PawCycle Bot", "allowed_mentions": {"parse": []}, "embeds": embeds}
-    if len(json.dumps(payload, ensure_ascii=False)) > 6000:
+    if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:
         for item in payload["embeds"]:
             for item_field in item.get("fields", []):
                 item_field["value"] = clean(item_field["value"], 280)
             if "description" in item:
                 item["description"] = clean(item["description"], 280)
-    if len(json.dumps(payload, ensure_ascii=False)) > 6000:
+    if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:
         raise ValueError("Discord payload 6000자 제한을 만족할 수 없음")
     return payload
 

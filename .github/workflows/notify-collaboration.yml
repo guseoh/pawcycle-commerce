@@ -40,7 +40,7 @@ jobs:
       - name: Checkout trusted notification scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Collect normalized collaboration context
         id: context
@@ -50,9 +50,8 @@ jobs:
           NOTIFICATION_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           if [ ! -f .github/scripts/collect-discord-context.py ]; then
-            echo "notify=false" >> "$GITHUB_OUTPUT"
-            echo "기본 브랜치에 상세 알림 collector가 아직 없어 안전하게 알림을 생략합니다."
-            exit 0
+            echo "필수 Discord context collector가 없습니다." >&2
+            exit 1
           fi
           python .github/scripts/collect-discord-context.py \
             --event-name "$GITHUB_EVENT_NAME" \

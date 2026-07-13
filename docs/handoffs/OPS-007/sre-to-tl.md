@@ -20,7 +20,8 @@ Tech Lead가 PR 구조와 권한, 이벤트별 중복 억제, payload 예시와 
 - 단일 진입점 `.github/workflows/notify-collaboration.yml`
 - 정규화 수집기 `.github/scripts/collect-discord-context.py`
 - 보고서 builder `.github/scripts/build-discord-payload.py`
-- 정규화 Discord fixture 16개와 collector·builder·sender 테스트
+- 정규화 Discord fixture 20개와 collector·builder·sender 테스트
+- 전체 review thread 페이지네이션, CI conclusion별 상태와 실제 embed 텍스트 길이 검증
 - 제거된 중복 `.github/workflows/notify-ci-result.yml`
 - 갱신된 협업 자동화 runbook
 
@@ -39,26 +40,28 @@ payload는 상세 이벤트에서 다음 세 부분을 한 Discord 메시지에 
 ## 검증 포인트
 
 1. notification workflow 전체에서 `Repository Validation`용 `workflow_run`이 한 경로인지 확인한다.
-2. `pull_request_target`과 `workflow_run`이 기본 브랜치 script만 checkout하는지 확인한다.
+2. `pull_request_target`, `workflow_run`, `workflow_dispatch`가 모두 기본 브랜치 script만 checkout하는지 확인한다.
 3. 권한이 `contents`, `pull-requests`, `issues`, `actions` read로 제한됐는지 확인한다.
 4. API 실패 시 thread와 job을 성공 또는 0으로 오인하지 않고 `확인 불가`로 표시하는지 확인한다.
 5. PR Ready, CI failure, changes requested fixture에서 처리 과정, 실패 step, review 상태와 다음 작업이 남는지 확인한다.
-6. `allowed_mentions`, 6000자 경계와 Secret 비노출 검증을 확인한다.
-7. 수동 Preview는 `scenario=pr_preview`, 양의 정수 PR 번호로만 API를 조회하는지 확인한다.
+6. fenced code, Secret·AWS credential·private key 비노출과 Issue 본문 미전달을 확인한다.
+7. 실제 embed 텍스트 합계 6000자 경계와 malformed payload 오류 수집을 확인한다.
+8. collector 누락이 성공으로 숨겨지지 않고 CI conclusion별 다음 행동이 분리되는지 확인한다.
+9. 병합 후 수동 Preview는 `scenario=pr_preview`, 양의 정수 PR 번호로만 API를 조회하는지 확인한다.
 
-로컬에서 정규화 fixture 16개와 Discord 단위 테스트 25개가 통과했다. PR #40 Repository Validation run `29246521901`에서 conventions, Java 25·MySQL 8.4 Backend test/build와 Node.js 24 Frontend install/lint/build가 모두 통과했다. `ops/sre`의 `pr_preview` run `29246535424`는 HTTP 204로 전송에 성공했다. Discord 채널 화면 수신 여부는 사용자가 확인한다.
+로컬에서 정규화 fixture 20개와 Discord 단위 테스트 35개가 통과했다. 기존 `ops/sre`의 `pr_preview` run `29246535424` HTTP 204는 수정 전 참고 기록이며 최종 보안 검증 증거가 아니다. 수정 후 실제 Webhook Preview는 PR #40 병합 후 기본 브랜치 workflow에서 실행하고, Discord 채널 화면 수신 여부는 사용자가 확인한다.
 
 ## 중단 조건
 
 - write 권한 확대, PR head script의 Secret 권한 실행 또는 신규 dependency가 필요함
 - Webhook URL·token·응답 본문 전체가 로그나 payload에 노출됨
 - 동일한 Repository Validation 실행이 둘 이상의 경로로 알림을 생성함
-- 필수 fixture, Repository Validation 또는 실제 전송이 실패함
+- 필수 fixture 또는 Repository Validation이 실패함
 - 제품·API·DB 계약 변경이나 destructive Git 작업이 필요함
 
 ## 남은 위험 또는 주의 사항
 
 - 실제 Discord 채널 수신은 HTTP 성공만으로 단정하지 않는다.
 - API 일시 장애 시 알림은 전송하되 일부 상세 값은 `확인 불가`다.
-- review thread 집계는 API 첫 100개 범위다.
-- 후속 구독 Backend PR부터 새 알림이 적용되며, 첫 운영 이벤트에서 중복 여부와 가독성을 다시 확인한다.
+- review thread 페이지 조회가 하나라도 실패하면 부분 합계 대신 `확인 불가`가 표시된다.
+- 실제 전송은 병합 후 기본 브랜치에서만 검증하며, 첫 운영 이벤트에서 중복 여부와 가독성을 다시 확인한다.

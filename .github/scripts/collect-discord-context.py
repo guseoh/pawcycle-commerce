@@ -24,9 +24,17 @@ KNOWN_PREFIXES = (
 )
 FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9])(?:{KNOWN_PREFIXES})-[0-9]{{3}}(?![0-9])", re.IGNORECASE)
 SECRET_PATTERNS = (
+    (re.compile(r"-----BEGIN [^-\r\n]*PRIVATE KEY-----.*?-----END [^-\r\n]*PRIVATE KEY-----", re.IGNORECASE | re.DOTALL), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s`]+", re.IGNORECASE), "[REDACTED_WEBHOOK]"),
     (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"), "[REDACTED_TOKEN]"),
-    (re.compile(r'''(?i)\b(authorization\s*['"]?\s*:\s*bearer|password\s*['"]?\s*[:=]|token\s*['"]?\s*[:=])\s*['"]?[^\s`'"]+'''), r"\1 [REDACTED]"),
+    (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), "[REDACTED_AWS_ACCESS_KEY]"),
+    (re.compile(r'''(?i)(["']?authorization["']?\s*:\s*["']?bearer\s+)[^\s"']+'''), r"\1[REDACTED]"),
+    (
+        re.compile(
+            r'''(?i)(["']?(?:authorization|password|token|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?key|aws_access_key_id|aws_secret_access_key|private_key)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)'''
+        ),
+        r"\1[REDACTED]",
+    ),
 )
 ROLE_BY_BRANCH = {
     "spec/po": "Product Planner",
@@ -91,8 +99,27 @@ def strip_automatic_summary(body: str) -> str:
     return re.split(r"(?im)^##\s+(?:Summary by CodeRabbit|CodeRabbit Summary)\s*$", body, maxsplit=1)[0]
 
 
+def strip_fenced_code_blocks(body: str) -> str:
+    kept: list[str] = []
+    fence_char = ""
+    fence_length = 0
+    for line in (body or "").splitlines(keepends=True):
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if not fence_char:
+            if marker:
+                fence_char = marker.group(1)[0]
+                fence_length = len(marker.group(1))
+            else:
+                kept.append(line)
+            continue
+        if re.match(rf"^\s*{re.escape(fence_char)}{{{fence_length},}}\s*$", line.rstrip("\r\n")):
+            fence_char = ""
+            fence_length = 0
+    return "".join(kept)
+
+
 def extract_sections(body: str) -> dict[str, str]:
-    body = strip_automatic_summary(body)
+    body = strip_fenced_code_blocks(strip_automatic_summary(body))
     headings = list(re.finditer(r"(?m)^##\s+(.+?)\s*$", body))
     sections: dict[str, str] = {key: MISSING for key in SECTION_ALIASES}
     for index, heading in enumerate(headings):
@@ -109,8 +136,9 @@ def extract_sections(body: str) -> dict[str, str]:
                 break
         value = clean_text("\n".join(lines), 650)
         for key, aliases in SECTION_ALIASES.items():
-            if any(alias.lower() in name.lower() for alias in aliases) and sections[key] == MISSING:
-                sections[key] = value
+            if any(alias.lower() in name.lower() for alias in aliases):
+                if sections[key] == MISSING:
+                    sections[key] = value
                 break
     return sections
 
@@ -126,6 +154,8 @@ class GitHubApi:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         encoded = None if data is None else json.dumps(data).encode("utf-8")
+        if encoded is not None:
+            headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=encoded, headers=headers, method="POST" if data else "GET")
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
@@ -175,18 +205,38 @@ class GitHubApi:
     def unresolved_threads(self, number: int) -> int | str:
         owner, name = self.repository.split("/", 1)
         query = """
-        query($owner:String!,$name:String!,$number:Int!){
+        query($owner:String!,$name:String!,$number:Int!,$after:String){
           repository(owner:$owner,name:$name){
-            pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}
+            pullRequest(number:$number){
+              reviewThreads(first:100,after:$after){
+                nodes{isResolved}
+                pageInfo{hasNextPage endCursor}
+              }
+            }
           }
         }
         """
-        data = self.graphql(query, {"owner": owner, "name": name, "number": number})
-        try:
-            nodes = data["repository"]["pullRequest"]["reviewThreads"]["nodes"]
-            return sum(1 for node in nodes if not node.get("isResolved"))
-        except (KeyError, TypeError):
-            return UNKNOWN
+        after: str | None = None
+        seen_cursors: set[str] = set()
+        unresolved = 0
+        while True:
+            data = self.graphql(query, {"owner": owner, "name": name, "number": number, "after": after})
+            try:
+                threads = data["repository"]["pullRequest"]["reviewThreads"]
+                nodes = threads["nodes"]
+                page_info = threads["pageInfo"]
+                if not isinstance(nodes, list) or not isinstance(page_info, dict):
+                    return UNKNOWN
+                unresolved += sum(1 for node in nodes if isinstance(node, dict) and not node.get("isResolved"))
+                if not page_info.get("hasNextPage"):
+                    return unresolved
+                cursor = page_info.get("endCursor")
+                if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                    return UNKNOWN
+                seen_cursors.add(cursor)
+                after = cursor
+            except (KeyError, TypeError):
+                return UNKNOWN
 
 
 def default_context(repository: str, event: str, timestamp: str | None = None) -> dict[str, Any]:
@@ -380,8 +430,16 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
         if run.get("name") != "Repository Validation":
             context["notify"] = False
             return context
-        conclusion = str(run.get("conclusion") or UNKNOWN)
-        context["event"] = "ci_success" if conclusion == "success" else "ci_failure"
+        conclusion = str(run.get("conclusion") or "unknown").lower()
+        event_by_conclusion = {
+            "success": "ci_success",
+            "failure": "ci_failure",
+            "timed_out": "ci_timed_out",
+            "cancelled": "ci_cancelled",
+            "neutral": "ci_neutral",
+            "skipped": "ci_skipped",
+        }
+        context["event"] = event_by_conclusion.get(conclusion, "ci_unknown")
         context.update(
             {
                 "actor": ((run.get("actor") or {}).get("login")) or context["actor"],
@@ -431,7 +489,13 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
             else:
                 context["next_action"] = UNKNOWN
         else:
-            context["next_action"] = "실패 로그 확인과 최소 수정"
+            context["next_action"] = {
+                "failure": "실패 Job과 Step 확인 후 최소 수정",
+                "timed_out": "timeout 원인과 장시간 Step 확인 후 재실행 판단",
+                "cancelled": "취소 원인 확인 후 필요 시 재실행",
+                "neutral": "중립 결론 조건과 check 설정 확인",
+                "skipped": "skip 조건이 의도된 것인지 확인",
+            }.get(conclusion, "Actions 실행 상태 확인")
         return context
 
     if event_name == "issues":
