@@ -95,7 +95,7 @@
 - focused Controller·통합 테스트, Backend 전체 test·build는 Java 25 toolchain이 로컬에 없고 download repository도 구성되지 않아 실행하지 못했다.
 - 로컬 MySQL 8.4 통합 검증은 MySQL 실행 파일과 Docker engine이 없어 실행하지 못했다.
 - 같은 toolchain 원인의 명령을 반복하지 않았고 프로젝트 설정 변경이나 도구 설치도 수행하지 않았다.
-- QA 테스트의 실제 Java 25·MySQL 8.4 실행은 QA PR의 Repository Validation로 보완한다.
+- QA 테스트의 실제 Java 25·MySQL 8.4 실행은 QA PR의 Repository Validation로 보완했다.
 
 ## 발견한 결함과 심각도
 
@@ -122,9 +122,7 @@
 
 ## 다음 작업
 
-1. 이 검증 결과를 `test/qa`에 일반 push한다.
-2. 보고서 갱신 후 Repository Validation 전체 통과를 확인한다.
-3. QA PR을 Ready for review로 전환하고 사용자가 병합 여부를 결정한다.
+- 사용자가 QA PR의 테스트와 보고서를 검토하고 병합 여부를 결정한다.
 
 ## Git 결과
 

@@ -98,6 +98,7 @@ class ProductApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products").isArray())
 				.andExpect(jsonPath("$.products").isEmpty());
 
 		assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
