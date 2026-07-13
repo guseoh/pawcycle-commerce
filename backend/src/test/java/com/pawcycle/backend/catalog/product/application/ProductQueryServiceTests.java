@@ -3,7 +3,6 @@ package com.pawcycle.backend.catalog.product.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -96,7 +95,7 @@ class ProductQueryServiceTests {
 		assertThatThrownBy(() -> productQueryService.findProduct(99L))
 				.isInstanceOf(ProductNotFoundException.class)
 				.hasMessage("상품을 확인할 수 없습니다.");
-		verify(skuRepository, never()).findAllByProductIdOrderByDisplayOrderAscIdAsc(99L);
+		verifyNoInteractions(skuRepository);
 	}
 
 	@Test

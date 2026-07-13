@@ -54,7 +54,11 @@ class SecurityFoundationIntegrationTests {
 	@Test
 	void publicProductAndAuthenticationBoundariesAllowAnonymousRequests() throws Exception {
 		mockMvc.perform(get("/api/products/test"))
-				.andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
+				.andExpect(jsonPath("$.message").value("상품을 확인할 수 없습니다."))
+				.andExpect(jsonPath("$.fieldErrors").isArray())
+				.andExpect(jsonPath("$.fieldErrors").isEmpty());
 
 		mockMvc.perform(get("/api/auth/csrf"))
 				.andExpect(status().isOk())
