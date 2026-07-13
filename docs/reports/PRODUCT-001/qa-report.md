@@ -9,7 +9,13 @@
 - 작업 브랜치: `test/qa`
 - 선행 조건: PR #36이 사용자 승인으로 `main`에 병합됨
 
-## 승인 입력
+## 작업 목적
+
+- PR #36으로 `main`에 병합된 공개 상품 목록·상세 API를 구현과 분리된 QA 관점에서 독립 검증한다.
+- PRODUCT-001 요구사항과 API-002 D1~D7을 실제 구현, 자동 테스트와 검증 결과에 직접 대응시킨다.
+- Backend 보고 내용을 그대로 승인하지 않고 요구사항·기술 안정성·Security 회귀 증거에 근거한 QA 판정을 남긴다.
+
+## 입력 문서
 
 - `docs/product/PS-002-first-mvp-requirements.md`
 - `docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md`
@@ -50,6 +56,12 @@
 
 검색·필터·페이지네이션, 구독·재고·결제·배송·관리자 API와 승인되지 않은 상품 상태·가격·통화 정책은 구현 diff에 포함되지 않았다. 응답은 JPA Entity가 아니라 `ProductListView`와 `ProductDetailView` 전용 read model을 사용한다.
 
+## 주요 결과
+
+- PRODUCT-001 요구사항과 API-002 D1~D7은 병합된 구현과 일치한다.
+- 실제 회귀 증거가 부족했던 빈 목록, 미존재 상품의 SKU 조회 중단과 숫자가 아닌 상품 ID 오류 계약을 테스트로 보완했다.
+- Java 25·MySQL 8.4 Repository Validation과 관련 Security 회귀가 통과했으며 재현 가능한 제품 코드 결함은 없다.
+
 ## 요구사항 관점 결과
 
 - 목록과 상세의 승인 필드, 공개 접근, 빈 값과 배송 주기 관계가 `REQ-PRODUCT-001`, `REQ-PRODUCT-002`에 일치한다.
@@ -63,7 +75,7 @@
 - 빈 목록은 Product statement 1개 후 조기 반환하도록 통합 테스트로 보완했다.
 - 상세는 공개 Product 1회와 정렬된 SKU 1회로 최대 2개 statement다.
 - 미존재 상품은 SKU Repository와 전혀 상호작용하지 않도록 단위 테스트를 강화했다.
-- 목록 정상 테스트의 `verifyNoMoreInteractions`는 정확한 두 repository 호출과 실제 statement 2개 통합 검증이 같은 위험을 이미 보호하므로 추가하지 않았다.
+- Mock Repository 단위 테스트는 예상 Product·SKU 호출을 확인하고, MySQL 통합 테스트는 실제 목록 조회가 Product 1회와 SKU batch 1회인 statement 2개로 제한돼 N+1이 발생하지 않음을 별도로 검증한다. 핵심 SQL query 수 계약이 통합 증거로 보호되므로 내부 구현을 더 강하게 고정하는 `verifyNoMoreInteractions`는 추가하지 않았다.
 
 ## Security 회귀 관점 결과
 
@@ -79,7 +91,7 @@
 - `ProductApiIntegrationTests.anonymousEmptyListReturnsEmptyArrayAndUsesOneQuery`: `{ "products": [] }`와 statement 1개 검증
 - `SecurityFoundationIntegrationTests.publicProductAndAuthenticationBoundariesAllowAnonymousRequests`: 숫자가 아닌 ID의 승인된 404 body 검증
 
-## 실행한 검증
+## 검증 결과
 
 - `java -version`: OpenJDK 17 확인
 - `mysql --version`: 실행 파일 없음
@@ -114,7 +126,14 @@
 - 승인 계약과 병합 구현의 정적·자동 증거가 일치하고 재현 가능한 기능·보안·회귀 결함이 없다.
 - 실제 공백에 한정해 추가한 테스트와 Repository Validation 전체가 통과했다.
 
-## 남은 위험
+## 적용 방법
+
+- 추가한 테스트는 기존 Backend test suite에서 지속적인 PRODUCT-001 회귀 검증으로 사용한다.
+- 빈 상품 목록의 배열 계약과 statement 1개, 미존재 상품의 SKU 조회 중단, 숫자가 아닌 상품 ID의 승인 404 오류 계약을 보호한다.
+- 이 QA 보고서는 PRODUCT-001 요구사항·구현·테스트 대응과 최종 통과 판정의 근거로 사용한다.
+- 런타임 설정, 배포 절차와 제품 코드에는 별도 적용 사항이 없다.
+
+## 위험과 제한
 
 - 추가한 테스트를 로컬 Java 25·MySQL 8.4에서 직접 실행한 근거가 없다.
 - 로컬 환경 공백은 동일 테스트를 실행한 GitHub Actions Java 25·MySQL 8.4 성공 이력으로 보완했다.
@@ -128,9 +147,11 @@
 
 - 최신 `main`에서 새 `test/qa`를 생성했다.
 - QA 테스트와 최초 보고서를 commit `f347f44e225fec13b1ceda1f046dd93b64416779`로 일반 push했다.
+- 후속 테스트 리뷰 반영과 QA 보고서 갱신도 일반 commit과 일반 push로 반영했다.
 - history rewrite와 force push를 수행하지 않았다.
+- 현재 head와 push 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
 
-## PR 결과
+## PR 상태
 
 - PRODUCT-001 QA PR #37을 `main` ← `test/qa` Draft로 생성했다.
 - 현재 PR 상태와 원격 검증 결과는 GitHub를 권위 있는 원본으로 확인한다.
