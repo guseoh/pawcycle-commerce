@@ -61,6 +61,11 @@ class DiscordContextTests(unittest.TestCase):
         self.assertEqual(sections["changes"], "변경 A")
         self.assertNotIn("자동 요약", str(sections))
 
+    def test_qa_heading_does_not_fill_validation(self):
+        sections = discord.extract_sections("## QA 검증\n독립 QA 통과")
+        self.assertEqual(sections["qa"], "독립 QA 통과")
+        self.assertEqual(sections["validation"], discord.MISSING)
+
     def test_workflow_api_failure_uses_explicit_fallback(self):
         payload = {"workflow_run": {"id": 7, "name": "Repository Validation", "conclusion": "failure", "head_branch": "ops/sre", "head_sha": "abc", "html_url": "https://example.invalid/run", "pull_requests": []}}
         with mock.patch.dict("os.environ", {"GITHUB_ACTOR": "runner"}):

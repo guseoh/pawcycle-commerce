@@ -36,8 +36,8 @@ SECTION_ALIASES = {
     "purpose": ("목적", "작업 목적"),
     "changes": ("변경 사항", "주요 변경", "변경 범위"),
     "process": ("처리 과정", "작업 과정"),
-    "validation": ("검증", "실행한 검증"),
     "qa": ("QA와 구현 경계", "QA 검증", "QA 필요 여부"),
+    "validation": ("검증", "실행한 검증"),
     "next": ("승인 후 다음 작업", "다음 작업"),
     "risks": ("남은 위험", "위험과 제한"),
 }
@@ -104,6 +104,7 @@ def extract_sections(body: str) -> dict[str, str]:
         for key, aliases in SECTION_ALIASES.items():
             if any(alias.lower() in name.lower() for alias in aliases) and sections[key] == MISSING:
                 sections[key] = value
+                break
     return sections
 
 

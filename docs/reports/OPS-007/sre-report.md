@@ -68,6 +68,8 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 
 task artifact validator, Secret 의심 패턴 검사, Repository Validation 전체와 실제 Discord Preview가 통과했다. Actions의 Node.js 20 deprecation 안내는 기존 pinned `actions/checkout`이 runner에서 Node.js 24로 강제 실행된다는 warning이며 이번 작업의 실패는 아니다.
 
+Ready 전환 후 첫 실제 `workflow_run` 알림 run `29247302229`는 기본 브랜치에 아직 신규 collector가 없어 실패했다. 보안 결정대로 PR head script로 우회하지 않고, 기본 브랜치에 collector가 없는 병합 전에는 `notify=false`로 안전하게 생략하는 호환 fallback을 추가했다. 또한 CodeRabbit의 유효 의견에 따라 QA heading 중복 분류 방지, 10분 job timeout과 fixture 계약을 보강했다.
+
 ## 실행하지 못한 검증과 이유
 
 - 실제 Discord 채널 화면 수신: Codex가 Discord 화면 수신을 추측하지 않으며 사용자가 확인해야 한다.
@@ -97,6 +99,7 @@ PR·review·Issue 이벤트와 `Repository Validation` 완료 시 `notify-collab
 - 기존 `ops/sre` 보존: `backup/ops-sre-before-OPS-007` → `0ced626947...`
 - 작업 브랜치: `ops/sre`
 - 구현 커밋: `08118de` `ci(discord): 협업 상세 알림 개선`
+- 원격 검증 기록 커밋: `bae555a` `docs(ops): OPS-007 원격 검증 결과 기록`
 - force push, reset, rebase, 자동 병합: 수행하지 않음
 
 ## PR 상태
