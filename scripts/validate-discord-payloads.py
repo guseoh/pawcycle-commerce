@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,25 @@ REQUIRED = {
     "issue-opened.json", "issue-closed.json", "manual-test.json",
     "missing-task.json", "long-input.json", "long-review.json", "api-fallback.json",
 }
+SENSITIVE_ASSIGNMENT = re.compile(
+    r'''(?i)["']?(?:password|token|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?key|aws_access_key_id|aws_secret_access_key|private_key)["']?\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)'''
+)
+
+
+def contains_unredacted_secret(raw: str) -> bool:
+    normalized = raw.replace(r'\"', '"')
+    if re.search(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/", normalized, re.IGNORECASE):
+        return True
+    if re.search(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", normalized):
+        return True
+    if re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b", normalized):
+        return True
+    if re.search(r"-----BEGIN [^-\r\n]*PRIVATE KEY-----", normalized, re.IGNORECASE):
+        return True
+    return any(
+        not match.group("value").strip("\"'").startswith("[REDACTED")
+        for match in SENSITIVE_ASSIGNMENT.finditer(normalized)
+    )
 
 
 def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, Any]) -> list[str]:
@@ -98,12 +118,12 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     for required_text in context.get("_expect", {}).get("contains", []):
         if required_text not in raw:
             errors.append(f"필수 텍스트 누락: {required_text}")
-    if "discord.com/api/webhooks" in raw or "DISCORD_WEBHOOK_URL" in raw or "github_pat_" in raw or "ghp_" in raw:
-        errors.append("Webhook 정보가 payload에 포함됨")
+    if contains_unredacted_secret(raw):
+        errors.append("마스킹되지 않은 Secret 의심 값이 payload에 포함됨")
     if "@everyone" in raw or "@here" in raw:
         errors.append("멘션이 제한 없이 포함됨")
     if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:
-        errors.append("embed 텍스트 합계가 6000자 제한을 초과함")
+        errors.append(f"embed 텍스트 합계가 {limits.MAX_TOTAL_TEXT}자 제한을 초과함")
     return [f"{fixture.name}: {error}" for error in errors]
 
 

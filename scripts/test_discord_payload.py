@@ -116,6 +116,20 @@ jobs:
 """
         self.assertEqual(validator.yaml_top_level_on_entries(text), ["workflow_dispatch"])
 
+    def test_validator_rejects_aws_and_private_key_markers(self):
+        payload = {
+            "allowed_mentions": {"parse": []},
+            "embeds": [{
+                "title": "검증",
+                "color": 1,
+                "fields": [{"name": "로그", "value": "AWS_SECRET_ACCESS_KEY=unsafe-value\n-----BEGIN PRIVATE KEY-----", "inline": False}],
+                "footer": {"text": "footer"},
+                "timestamp": "2026-07-13T00:00:00Z",
+            }],
+        }
+        errors = validator.validate_payload(payload, Path("secret.json"), {"event": "connection_test"})
+        self.assertIn("마스킹되지 않은 Secret 의심 값", "\n".join(errors))
+
 
 if __name__ == "__main__":
     unittest.main()

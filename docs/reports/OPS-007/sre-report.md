@@ -62,7 +62,7 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 | --- | --- | --- |
 | Python 문법 | `python -m py_compile`로 collector, builder, limit helper, sender, validator와 테스트 검사 | 통과 |
 | 정규화 payload fixture | `python scripts/validate-discord-payloads.py` | 통과, 20개 |
-| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 35개 |
+| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 36개 |
 | 중복 CI 알림 경로 | payload validator의 workflow 검사 | 통과, `workflow_run` 1개 |
 | Workflow 신뢰 경계 | indentation-aware validator | 통과: default branch checkout, collector 누락 `exit 1`, 중복 trigger 없음 |
 | 작업 산출물 | `py scripts\\validate-task-artifacts.py --task-id OPS-007` | 통과 |

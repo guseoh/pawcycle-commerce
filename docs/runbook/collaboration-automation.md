@@ -326,7 +326,7 @@ scenario=connection_test
 
 병합 후 검증 순서는 다음과 같다.
 
-1. PR #40 병합을 사용자가 결정한다.
+1. 대상 PR 병합을 사용자가 결정한다.
 2. 기본 브랜치의 `Collaboration Notification`을 연다.
 3. `scenario=pr_preview`와 안전한 PR 번호를 지정한다.
 4. HTTP 2xx 또는 204를 확인한다.
