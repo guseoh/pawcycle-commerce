@@ -61,15 +61,16 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 | Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 21개 |
 | 중복 CI 알림 경로 | payload validator의 workflow 검사 | 통과, `workflow_run` 1개 |
 | Diff 형식 | `git diff --check` | 통과 |
+| Repository Validation | PR #40 run `29246521901` | 통과: conventions, Java 25·MySQL 8.4 Backend test/build, Node.js 24 Frontend install/lint/build |
+| Discord PR Preview | `ops/sre`, `scenario=pr_preview`, `pr_number=40`, run `29246535424` | 통과: collector·builder·sender 성공, HTTP 204 |
 
 첫 실행에서 WindowsApps `python.exe`가 `Python`만 출력하고 종료 코드 1을 반환했다. 코드 실패가 아니므로 workspace dependency의 Python 3.12 runtime으로 같은 명령을 다시 실행했고 위 결과처럼 통과했다.
 
-Repository Validation, task artifact validator, Secret 의심 패턴 검사와 실제 Discord Preview 결과는 Draft PR 생성 후 최종 기록한다.
+task artifact validator, Secret 의심 패턴 검사, Repository Validation 전체와 실제 Discord Preview가 통과했다. Actions의 Node.js 20 deprecation 안내는 기존 pinned `actions/checkout`이 runner에서 Node.js 24로 강제 실행된다는 warning이며 이번 작업의 실패는 아니다.
 
 ## 실행하지 못한 검증과 이유
 
 - 실제 Discord 채널 화면 수신: Codex가 Discord 화면 수신을 추측하지 않으며 사용자가 확인해야 한다.
-- `pr_preview` 실제 전송: Draft PR 번호가 생긴 뒤 `ops/sre` ref에서 실행한다. Secret 또는 workflow_dispatch 제약이 있으면 post-merge 절차로 남긴다.
 
 ## 적용 방법
 
@@ -95,7 +96,7 @@ PR·review·Issue 이벤트와 `Repository Validation` 완료 시 `notify-collab
 - PR #39 merge commit: `79e0cbc277093d4f4469342747979ec08eb528e7`
 - 기존 `ops/sre` 보존: `backup/ops-sre-before-OPS-007` → `0ced626947...`
 - 작업 브랜치: `ops/sre`
-- 예정 커밋: `ci(discord): 협업 상세 알림 개선`
+- 구현 커밋: `08118de` `ci(discord): 협업 상세 알림 개선`
 - force push, reset, rebase, 자동 병합: 수행하지 않음
 
 ## PR 상태
@@ -103,5 +104,6 @@ PR·review·Issue 이벤트와 `Repository Validation` 완료 시 `notify-collab
 - base: `main`
 - head: `ops/sre`
 - 제목: `ci(discord): 협업 상세 알림 개선`
+- PR: #40
 - 최초 상태: Draft
-- Repository Validation과 가능한 Preview 통과 후 Ready for review로 전환하며 자동 병합하지 않는다.
+- Repository Validation과 HTTP 204 Preview 통과 후 Ready for review로 전환하며 자동 병합하지 않는다.

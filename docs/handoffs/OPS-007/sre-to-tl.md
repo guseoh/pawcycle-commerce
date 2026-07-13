@@ -46,7 +46,7 @@ payload는 상세 이벤트에서 다음 세 부분을 한 Discord 메시지에 
 6. `allowed_mentions`, 6000자 경계와 Secret 비노출 검증을 확인한다.
 7. 수동 Preview는 `scenario=pr_preview`, 양의 정수 PR 번호로만 API를 조회하는지 확인한다.
 
-로컬에서 정규화 fixture 16개와 Discord 단위 테스트 21개가 통과했다. Repository Validation과 실제 Preview 결과는 PR checks에서 최종 확인한다.
+로컬에서 정규화 fixture 16개와 Discord 단위 테스트 21개가 통과했다. PR #40 Repository Validation run `29246521901`에서 conventions, Java 25·MySQL 8.4 Backend test/build와 Node.js 24 Frontend install/lint/build가 모두 통과했다. `ops/sre`의 `pr_preview` run `29246535424`는 HTTP 204로 전송에 성공했다. Discord 채널 화면 수신 여부는 사용자가 확인한다.
 
 ## 중단 조건
 
