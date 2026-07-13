@@ -90,14 +90,15 @@
 - 인증 제품 경로 logger·민감정보 사용 정적 검색: 승인 위치 외 직접 기록 코드 없음
 - `java -version`: OpenJDK 17 확인
 - focused Backend test 명령: 테스트 실행 전 Java 25 toolchain 탐색 실패
-- task artifact validator와 `git diff --check`: commit 전 검증 예정
-- QA PR Repository Validation: Draft PR 생성 후 검증 예정
+- `py scripts\validate-task-artifacts.py --task-id AUTH-004`: 통과
+- `git diff --check`: 통과
+- Repository Validation run `29232798593`, head `b6c7342dafe0faf51a2f54baa2a1412c51a474e2`: conventions, task artifact validator, Java 25·MySQL 8.4 Backend test/build와 Frontend install/lint/build 전체 통과
 
 ## 실행하지 못한 검증과 이유
 
 - 로컬 focused 인증·Security·공개 상품 통합 테스트와 Backend build는 Java 25 toolchain이 없고 download repository도 구성되지 않아 실행하지 못했다.
 - 같은 toolchain 원인의 Gradle 명령은 반복하지 않았고 JDK downgrade, dependency·build 설정 변경이나 도구 설치를 수행하지 않았다.
-- Java 25·MySQL 8.4 Backend test/build와 Frontend 회귀는 QA PR의 Repository Validation에서 실행한다.
+- Java 25·MySQL 8.4 Backend test/build와 Frontend 회귀는 QA PR의 Repository Validation 성공 결과로 보완했다.
 
 ## 발견한 결함과 심각도
 
@@ -106,9 +107,9 @@
 
 ## 최종 판정
 
-- 현재 판정: **조건부 통과**
+- 최종 판정: **통과**
 - 승인 계약, 병합 구현과 기존 자동 증거는 일치하며 확인된 제품 결함이 없다.
-- QA PR의 Repository Validation 전체 통과 후 최종 **통과**로 확정하고 Ready for review로 전환한다.
+- QA head의 Repository Validation 전체가 통과해 조건을 충족했으며 최종 보고서 commit 검증 후 Ready for review로 전환한다.
 
 ## 적용 방법
 
@@ -124,8 +125,7 @@
 
 ## 다음 작업
 
-- QA 보고서를 commit·일반 push하고 `main` ← `test/qa` Draft PR을 생성한다.
-- Repository Validation 전체 통과를 확인한 뒤 보고서 판정과 Git·PR 결과를 갱신하고 Ready for review로 전환한다.
+- 사용자가 QA 보고서와 독립 검증 근거를 검토하고 병합 여부를 결정한다.
 - 자동 병합하지 않으며 최종 병합 여부는 사용자가 결정한다.
 
 ## Git 결과
@@ -133,10 +133,11 @@
 - 기존 PR #37 역할 브랜치 commit `0695f0c224184aa7ed0ecbc87ffa577c85701c93`은 로컬 `backup/test-qa-before-AUTH-004`에 보존했다.
 - 기존 원격 `test/qa` tree가 PR #37 merge tree와 같음을 확인한 뒤 원격 역할 브랜치를 일반 삭제했다.
 - 최신 `main`에서 새 로컬 `test/qa`를 생성했으며 reset, rebase와 force push를 사용하지 않았다.
-- QA commit과 일반 push 결과는 후속 갱신한다.
+- 최초 QA 보고서 commit `b6c7342dafe0faf51a2f54baa2a1412c51a474e2`를 일반 push했다.
+- Repository Validation 성공 결과와 최종 판정 갱신도 일반 commit·일반 push로 반영한다.
 
 ## PR 상태
 
-- AUTH-004 QA PR은 후속 단계에서 Draft로 생성한다.
-- Repository Validation 전체 통과 전에는 Ready for review로 전환하지 않는다.
+- AUTH-004 QA PR #38을 `main` ← `test/qa` Draft로 생성했다.
+- 최초 QA head의 Repository Validation 전체가 통과했으며 최종 보고서 commit 검증 후 Ready for review로 전환한다.
 - 자동 병합하지 않는다.
