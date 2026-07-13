@@ -25,12 +25,13 @@ API-002 공개 상품 목록·상세 구현의 독립 QA 검증 입력을 전달
 ## 현재 상태
 
 - 로컬 Java 21 compileJava·compileTestJava: 통과
-- Java 25·MySQL 8.4 Repository Validation: PR 생성 후 확인 필요
 - 로컬 Java 25와 격리 MySQL 환경은 없어 직접 실행하지 않음
+- 2026-07-12 GitHub Actions Java 25·MySQL 8.4 Backend test·build: 통과
+- 2026-07-12 GitHub Actions Frontend install·lint·build, conventions와 task artifact validator: 통과
 
 ## 검증 포인트
 
-공개 상품 목록·상세 API의 계약, 공개 접근, 응답 구조, 빈 값, 정렬, 공개 상태 경계와 오류 응답을 QA가 독립 검증한다. 로컬에서는 Java 21 임시 환경으로 `compileJava`와 `compileTestJava`가 통과했으며, Java 25 Backend test/build와 MySQL 통합 검증은 로컬 환경 부재로 실행하지 못했다. 해당 검증은 PR의 Repository Validation 결과로 확인한다.
+공개 상품 목록·상세 API의 계약, 공개 접근, 응답 구조, 빈 값, 정렬, 공개 상태 경계와 오류 응답을 QA가 독립 검증한다. 로컬에서는 Java 21 임시 환경으로 `compileJava`와 `compileTestJava`가 통과했고 Java 25·MySQL은 환경 부재로 직접 실행하지 않았다. Java 25 Backend test·build와 MySQL 8.4 통합 검증, Frontend install·lint·build 및 conventions는 GitHub Actions에서 완료됐으므로, QA는 동일한 CI 수행이 아니라 아래 계약·오류·경계·회귀 항목을 독립적으로 확인한다.
 
 ### 정상 시나리오
 
@@ -96,11 +97,10 @@ API-002 공개 상품 목록·상세 구현의 독립 QA 검증 입력을 전달
 
 ## 남은 위험 또는 주의 사항
 
-- 로컬 Java 25·MySQL 직접 실행 근거가 없으므로 Repository Validation 성공이 필수다.
-- MySQL collation 경계는 실제 MySQL 8.4 결과를 기준으로 판단한다.
+- 로컬 Java 25·MySQL 직접 실행 근거는 없으며, 해당 환경 검증은 GitHub Actions의 성공 이력으로 보완했다.
+- QA는 실제 MySQL 8.4에서 확인된 collation 경계를 포함해 공개 상태 계약을 독립적으로 확인한다.
 
 ## 제외 범위와 중단 조건
 
 - 구독·관리자·재고·결제·배송 API를 함께 검증 범위로 확장하지 않는다.
 - migration, 신규 dependency, Frontend·CI 변경이 필요하면 QA를 중단하고 별도 작업으로 분리한다.
-- Java 25 Backend test/build 또는 MySQL 8.4 검증이 실패하면 인수 완료로 판단하지 않는다.

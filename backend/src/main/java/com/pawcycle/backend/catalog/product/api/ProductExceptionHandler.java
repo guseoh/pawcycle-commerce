@@ -18,7 +18,7 @@ public class ProductExceptionHandler {
 	@ExceptionHandler(ProductNotFoundException.class)
 	ResponseEntity<ApiErrorResponse> handleNotFound(ProductNotFoundException exception) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiErrorResponse.withoutFieldErrors(
-				"PRODUCT_NOT_FOUND", exception.getMessage()));
+				"PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
 	}
 
 	@ExceptionHandler(ProductListUnavailableException.class)
