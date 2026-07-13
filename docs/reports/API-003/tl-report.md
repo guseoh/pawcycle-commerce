@@ -134,12 +134,14 @@ D3 목록 정렬을 지원하는 최소 `(member_id, id)` 인덱스만 승인했
 
 ## 실행하지 못한 검증과 이유
 
-- 없음. 제품 코드 전체 회귀는 Repository Validation에서 확인했다.
+- 구독 Backend 단위·MySQL 통합·Security 회귀·query 수 검증: 후속 Backend 구현 작업 대상이므로 이번 승인 기록 PR에서는 미실행
+- 인증·상품·구독 독립 통합 QA: Frontend 구현 완료 후 수행할 후속 검증이므로 미실행
+- 이번 API-003 승인 기록에 적용되는 문서 검증과 Repository Validation을 통한 기존 제품 코드 회귀 검증은 모두 실행 완료
 
 ## QA 필요 여부
 
 - API-003 결정 문서 자체의 별도 QA 작업은 만들지 않는다.
-- Backend 구현 PR에 단위·MySQL 통합·Security 회귀 테스트를 포함한다.
+- Backend 구현 PR에 단위·MySQL 통합·Security 회귀와 query 수 검증을 포함한다.
 - Frontend 완료 후 인증·상품·구독 전체 흐름의 독립 통합 QA를 한 번 수행한다.
 
 ## QA 문서 경로 또는 생략 사유
