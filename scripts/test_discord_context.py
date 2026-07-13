@@ -95,17 +95,19 @@ class DiscordContextTests(unittest.TestCase):
         self.assertIn("이전 SHA", context["risks"])
 
     def test_secret_patterns_are_redacted(self):
-        source = "https://discord.com/api/webhooks/123/opaque ghp_abcdefghijklmnopqrstuvwxyz password=hunter2"
+        source = 'https://discord.com/api/webhooks/123/opaque ghp_abcdefghijklmnopqrstuvwxyz password=hunter2 "token": "json-secret"'
         cleaned = discord.clean_text(source)
         self.assertNotIn("opaque", cleaned)
         self.assertNotIn("ghp_", cleaned)
         self.assertNotIn("hunter2", cleaned)
+        self.assertNotIn("json-secret", cleaned)
         self.assertIn("[REDACTED", cleaned)
 
     def test_issue_body_is_not_forwarded(self):
         payload = {"action": "opened", "issue": {"number": 9, "title": "OPS-007 문의", "body": "password=do-not-send", "user": {"login": "author"}}}
         context = discord.collect("issues", payload, "guseoh/pawcycle-commerce", FakeApi())
-        self.assertNotIn("do-not-send", context["purpose"])
+        self.assertNotIn("do-not-send", repr(context))
+        self.assertEqual(context["purpose"], discord.MISSING)
 
 
 if __name__ == "__main__":

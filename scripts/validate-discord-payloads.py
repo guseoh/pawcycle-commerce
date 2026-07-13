@@ -77,6 +77,11 @@ def validate_workflow() -> list[str]:
         errors.append(f"Repository Validation 알림 workflow_run 경로가 {count}개임")
     if (ROOT / ".github" / "workflows" / "notify-ci-result.yml").exists():
         errors.append("중복 notify-ci-result.yml이 남아 있음")
+    collaboration = (ROOT / ".github" / "workflows" / "notify-collaboration.yml").read_text(encoding="utf-8")
+    if "github.event.repository.default_branch" not in collaboration:
+        errors.append("신뢰된 기본 브랜치 checkout이 없음")
+    if "if [ ! -f .github/scripts/collect-discord-context.py ]" not in collaboration:
+        errors.append("병합 전 기본 브랜치 collector 호환 fallback이 없음")
     return errors
 
 

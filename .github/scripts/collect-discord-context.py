@@ -26,7 +26,7 @@ FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9])(?:{KNOWN_PREFIXES})-[0-9]{{3}}(?![0-
 SECRET_PATTERNS = (
     (re.compile(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s`]+", re.IGNORECASE), "[REDACTED_WEBHOOK]"),
     (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"), "[REDACTED_TOKEN]"),
-    (re.compile(r"(?i)\b(authorization\s*:\s*bearer|password\s*[:=]|token\s*[:=])\s*[^\s`]+"), r"\1 [REDACTED]"),
+    (re.compile(r'''(?i)\b(authorization\s*['"]?\s*:\s*bearer|password\s*['"]?\s*[:=]|token\s*['"]?\s*[:=])\s*['"]?[^\s`'"]+'''), r"\1 [REDACTED]"),
 )
 ROLE_BY_BRANCH = {
     "spec/po": "Product Planner",
@@ -441,7 +441,7 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
             {
                 "number": issue.get("number", MISSING),
                 "title": clean_text(issue.get("title"), 180, multiline=False),
-                "purpose": "Issue 본문은 민감정보 보호를 위해 Discord에 전송하지 않음",
+                "purpose": MISSING,
                 "actor": ((issue.get("user") or {}).get("login")) or context["actor"],
                 "task_id": extract_task_id("", "", "", f"{issue.get('title', '')}\n{issue.get('body', '')}"),
                 "status": "Closed" if action == "closed" else "Open",
