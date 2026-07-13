@@ -1,15 +1,1 @@
-{
-  "event": "issue_closed",
-  "repository": "guseoh/pawcycle-commerce",
-  "number": "8",
-  "task_id": "PS-002",
-  "actor": "guseoh",
-  "branch": "기록 없음",
-  "target": "Issue",
-  "sha": "기록 없음",
-  "status": "Closed",
-  "validation": "완료",
-  "summary": "Issue가 완료 상태로 변경되었습니다.",
-  "url": "https://github.com/guseoh/pawcycle-commerce/issues/8",
-  "timestamp": "2026-07-02T06:57:00Z"
-}
+{"event":"issue_closed","number":71,"task_id":"OPS-007","actor":"guseoh","title":"Discord 알림 개선","purpose":"상세 협업 알림 도입","status":"Closed","next_action":"후속 작업 확인","url":"https://github.com/guseoh/pawcycle-commerce/issues/71","timestamp":"2026-07-13T01:00:00Z","_expect":{"contains":["OPS-007","Closed","후속 작업 확인"]}}

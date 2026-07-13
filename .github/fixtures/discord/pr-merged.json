@@ -1,15 +1,1 @@
-{
-  "event": "pr_merged",
-  "repository": "guseoh/pawcycle-commerce",
-  "number": "12",
-  "task_id": "BOOTSTRAP-002",
-  "actor": "guseoh",
-  "branch": "ops/bootstrap-002 → main",
-  "target": "main",
-  "sha": "d4e5f6a",
-  "status": "병합 완료",
-  "validation": "Obsidian 기록 생성 예정",
-  "summary": "변경 사항이 main에 반영되었습니다.",
-  "url": "https://github.com/guseoh/pawcycle-commerce/pull/12",
-  "timestamp": "2026-07-02T06:55:00Z"
-}
+{"event":"pr_merged","number":39,"task_id":"API-003","role":"Tech Lead","actor":"guseoh","head":"ops/tl","base":"main","sha":"79e0cbc","title":"구독 API 계약 승인","purpose":"계약 확정","changes":"ADR와 인수인계","validation":"통과","qa":"해당 없음","reviews":[],"unresolved_threads":0,"mergeable":true,"status":"병합 완료","next_action":"후속 Backend 작업","url":"https://github.com/guseoh/pawcycle-commerce/pull/39","timestamp":"2026-07-13T01:00:00Z","_expect":{"contains":["API-003","병합 완료"]}}
