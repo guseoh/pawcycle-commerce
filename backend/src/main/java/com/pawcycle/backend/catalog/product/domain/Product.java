@@ -58,4 +58,20 @@ public class Product {
 	public String getName() {
 		return name;
 	}
+
+	public String getShortDescription() {
+		return shortDescription;
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+	public String getPetType() {
+		return petType;
+	}
+
+	public String getThumbnailUrl() {
+		return thumbnailUrl;
+	}
 }

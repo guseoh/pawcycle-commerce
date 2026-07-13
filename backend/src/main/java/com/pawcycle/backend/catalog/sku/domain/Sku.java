@@ -54,4 +54,16 @@ public class Sku {
 	public Product getProduct() {
 		return product;
 	}
+
+	public String getName() {
+		return name;
+	}
+
+	public BigDecimal getPrice() {
+		return price;
+	}
+
+	public boolean isSubscribable() {
+		return subscribable;
+	}
 }
