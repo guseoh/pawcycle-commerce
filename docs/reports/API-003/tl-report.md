@@ -122,11 +122,14 @@ D3 목록 정렬을 지원하는 최소 `(member_id, id)` 인덱스만 추천했
 - `git diff --check`: 통과
 - 변경 경로가 API-003 문서 3개뿐인지 확인: 통과
 - token·private key·AWS key·Discord webhook·password assignment Secret 의심 패턴 검색: 발견 없음
-- Repository Validation: Draft PR 생성 후 실행 예정
+- Repository Validation run `29238416954` (`47ba017b665ef255a22169ffdbde777b9275ce5a`): 통과
+  - Commit and PR conventions: 통과
+  - Java 25·MySQL 8.4 Backend test/build: 통과
+  - Node.js 24 Frontend install/lint/build: 통과
 
 ## 실행하지 못한 검증과 이유
 
-- Backend test/build와 Frontend 검증은 제품 코드를 변경하지 않는 결정 문서 작업이며 Repository Validation에서 전체 회귀로 확인한다.
+- 없음. 제품 코드 전체 회귀는 Repository Validation에서 확인했다.
 
 ## QA 필요 여부
 
@@ -140,7 +143,7 @@ D3 목록 정렬을 지원하는 최소 `(member_id, id)` 인덱스만 추천했
 
 ## AI 리뷰 반영 여부
 
-Draft PR 생성 후 CodeRabbit/Codex Review를 확인한다.
+Draft PR #39를 생성했다. Draft 상태의 CodeRabbit check는 정상적으로 건너뛰었으며, Ready 전환 후 유효한 리뷰 의견을 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -172,11 +175,12 @@ Draft PR 생성 후 CodeRabbit/Codex Review를 확인한다.
 
 - PR #38 병합 이후 최신 `main`에서 새 `ops/tl`을 준비했다.
 - 기존 로컬 역할 branch는 `backup/ops-tl-before-API-003`으로 보존했고 병합 완료된 원격 `ops/tl`은 일반 삭제했다.
-- commit과 일반 push 결과는 후속 갱신한다.
+- commit `47ba017b665ef255a22169ffdbde777b9275ce5a` (`docs(api): 구독 API 승인 후보 통합 정리`)을 생성해 `origin/ops/tl`에 일반 push했다.
 - reset, rebase, force push와 history rewrite를 사용하지 않는다.
 
 ## PR 결과
 
-- base `main`, head `ops/tl`, 제목 `docs(api): 구독 API 승인 후보 통합 정리`의 Draft PR을 생성할 예정이다.
-- Repository Validation 전체 통과 후에만 Ready for review로 전환한다.
+- base `main`, head `ops/tl`, 제목 `docs(api): 구독 API 승인 후보 통합 정리`의 Draft PR #39를 생성했다.
+- 최초 문서 head `47ba017b665ef255a22169ffdbde777b9275ce5a`의 Repository Validation run `29238416954`가 통과했다.
+- 이 보고서 갱신 commit의 Repository Validation 전체 통과 후 Ready for review로 전환한다. 현재 동적 PR 상태와 최종 head 검증 결과는 GitHub를 기준으로 한다.
 - 자동 병합하지 않는다.
