@@ -23,6 +23,11 @@ KNOWN_PREFIXES = (
     "API|ARCH|AUTH|BOOTSTRAP|BUG|DATA|DOMAIN|FOUNDATION|OPS|PERF|PRODUCT|PS|SEC|UX"
 )
 FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9])(?:{KNOWN_PREFIXES})-[0-9]{{3}}(?![0-9])", re.IGNORECASE)
+SECRET_PATTERNS = (
+    (re.compile(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s`]+", re.IGNORECASE), "[REDACTED_WEBHOOK]"),
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"), "[REDACTED_TOKEN]"),
+    (re.compile(r"(?i)\b(authorization\s*:\s*bearer|password\s*[:=]|token\s*[:=])\s*[^\s`]+"), r"\1 [REDACTED]"),
+)
 ROLE_BY_BRANCH = {
     "spec/po": "Product Planner",
     "design/ux": "UX/UI Designer",
@@ -52,6 +57,8 @@ def clean_text(value: Any, limit: int = 700, multiline: bool = True) -> str:
         return MISSING
     text = str(value)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
+    for pattern, replacement in SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
     text = "".join(char for char in text if char in "\n\t" or ord(char) >= 32)
     text = text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
     if multiline:
@@ -390,10 +397,27 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
         pulls = run.get("pull_requests") or []
         if pulls and pulls[0].get("number"):
             number = int(pulls[0]["number"])
+            context["number"] = number
             pr = api.pull_request(number)
             if pr:
+                run_sha = str(run.get("head_sha") or MISSING)
+                pr_sha = str((pr.get("head") or {}).get("sha") or MISSING)
                 pr_context(context, pr, api)
                 context["actions_url"] = run.get("html_url") or MISSING
+                context["sha"] = run_sha
+                if pr_sha not in (MISSING, run_sha):
+                    context.update(
+                        {
+                            "changed_files": UNKNOWN,
+                            "additions": UNKNOWN,
+                            "deletions": UNKNOWN,
+                            "changes": "현재 PR 최신 SHA와 다른 이전 CI 실행",
+                            "process": UNKNOWN,
+                            "validation": f"Repository Validation {conclusion} @ {run_sha[:7]}",
+                            "qa": UNKNOWN,
+                            "risks": "이 결과는 현재 PR 최신 커밋보다 이전 SHA에 대한 검증임",
+                        }
+                    )
         jobs, failed = format_jobs(api.workflow_jobs(int(run.get("id") or 0)))
         context["ci_jobs"] = jobs
         context["failed_jobs"] = failed
@@ -417,7 +441,7 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
             {
                 "number": issue.get("number", MISSING),
                 "title": clean_text(issue.get("title"), 180, multiline=False),
-                "purpose": clean_text(issue.get("body"), 350),
+                "purpose": "Issue 본문은 민감정보 보호를 위해 Discord에 전송하지 않음",
                 "actor": ((issue.get("user") or {}).get("login")) or context["actor"],
                 "task_id": extract_task_id("", "", "", f"{issue.get('title', '')}\n{issue.get('body', '')}"),
                 "status": "Closed" if action == "closed" else "Open",

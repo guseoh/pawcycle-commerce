@@ -58,7 +58,7 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 | --- | --- | --- |
 | Python 문법 | workspace Python `-m py_compile`로 변경된 6개 Python 파일 검사 | 통과 |
 | 정규화 payload fixture | `python scripts/validate-discord-payloads.py` | 통과, 16개 |
-| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 21개 |
+| Discord 전체 단위 테스트 | `python -m unittest discover -s scripts -p "test_*discord*.py"` | 통과, 25개 |
 | 중복 CI 알림 경로 | payload validator의 workflow 검사 | 통과, `workflow_run` 1개 |
 | Diff 형식 | `git diff --check` | 통과 |
 | Repository Validation | PR #40 run `29246521901` | 통과: conventions, Java 25·MySQL 8.4 Backend test/build, Node.js 24 Frontend install/lint/build |
@@ -68,7 +68,9 @@ Discord 협업 알림을 단순 상태 통지에서 PR 작업 맥락, 처리 과
 
 task artifact validator, Secret 의심 패턴 검사, Repository Validation 전체와 실제 Discord Preview가 통과했다. Actions의 Node.js 20 deprecation 안내는 기존 pinned `actions/checkout`이 runner에서 Node.js 24로 강제 실행된다는 warning이며 이번 작업의 실패는 아니다.
 
-Ready 전환 후 첫 실제 `workflow_run` 알림 run `29247302229`는 기본 브랜치에 아직 신규 collector가 없어 실패했다. 보안 결정대로 PR head script로 우회하지 않고, 기본 브랜치에 collector가 없는 병합 전에는 `notify=false`로 안전하게 생략하는 호환 fallback을 추가했다. 또한 CodeRabbit의 유효 의견에 따라 QA heading 중복 분류 방지, 10분 job timeout과 fixture 계약을 보강했다.
+Ready 전환 후 CodeRabbit review 제출 알림 run `29247302229`는 기본 브랜치에 아직 신규 collector가 없어 실패했다. 보안 결정대로 PR head script로 우회하지 않고, 기본 브랜치에 collector가 없는 병합 전에는 `notify=false`로 안전하게 생략하는 호환 fallback을 추가했다. 또한 CodeRabbit의 유효 의견에 따라 QA heading 중복 분류 방지, 10분 job timeout과 fixture 계약을 보강했다.
+
+추가 리뷰에서 이전 CI run의 SHA가 최신 PR SHA로 덮일 수 있는 문제, API 실패 시 event의 PR 번호가 사라지는 문제와 Issue 자유 본문의 Secret 전파 가능성을 확인했다. run SHA·PR 번호를 event 기준으로 보존하고 stale CI의 변경 정보를 `확인 불가`로 전환했으며, 공통 Secret redaction과 Issue 본문 비전송을 추가했다.
 
 ## 실행하지 못한 검증과 이유
 

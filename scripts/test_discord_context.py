@@ -42,6 +42,18 @@ class FakeApi:
         return discord.UNKNOWN
 
 
+class StalePrApi(FakeApi):
+    def pull_request(self, number):
+        return {
+            "number": number,
+            "title": "OPS-007 최신 변경",
+            "body": "## 작업 목적\n최신 목적\n## 주요 변경\n최신 변경",
+            "head": {"ref": "ops/sre", "sha": "new-sha"},
+            "base": {"ref": "main"},
+            "user": {"login": "author"},
+        }
+
+
 class DiscordContextTests(unittest.TestCase):
     def test_task_id_priority_and_supported_families(self):
         self.assertEqual(discord.extract_task_id("작업 ID:\nAUTH-004", "API-003", "ops/sre"), "AUTH-004")
@@ -67,12 +79,33 @@ class DiscordContextTests(unittest.TestCase):
         self.assertEqual(sections["validation"], discord.MISSING)
 
     def test_workflow_api_failure_uses_explicit_fallback(self):
-        payload = {"workflow_run": {"id": 7, "name": "Repository Validation", "conclusion": "failure", "head_branch": "ops/sre", "head_sha": "abc", "html_url": "https://example.invalid/run", "pull_requests": []}}
+        payload = {"workflow_run": {"id": 7, "name": "Repository Validation", "conclusion": "failure", "head_branch": "ops/sre", "head_sha": "abc", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}
         with mock.patch.dict("os.environ", {"GITHUB_ACTOR": "runner"}):
             context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
+        self.assertEqual(context["number"], 40)
         self.assertEqual(context["ci_jobs"], discord.UNKNOWN)
         self.assertEqual(context["unresolved_threads"], discord.UNKNOWN)
         self.assertEqual(context["next_action"], "실패 로그 확인과 최소 수정")
+
+    def test_stale_workflow_run_preserves_run_sha_and_marks_context(self):
+        payload = {"workflow_run": {"id": 8, "name": "Repository Validation", "conclusion": "success", "head_branch": "ops/sre", "head_sha": "old-sha", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}
+        context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", StalePrApi())
+        self.assertEqual(context["sha"], "old-sha")
+        self.assertEqual(context["changed_files"], discord.UNKNOWN)
+        self.assertIn("이전 SHA", context["risks"])
+
+    def test_secret_patterns_are_redacted(self):
+        source = "https://discord.com/api/webhooks/123/opaque ghp_abcdefghijklmnopqrstuvwxyz password=hunter2"
+        cleaned = discord.clean_text(source)
+        self.assertNotIn("opaque", cleaned)
+        self.assertNotIn("ghp_", cleaned)
+        self.assertNotIn("hunter2", cleaned)
+        self.assertIn("[REDACTED", cleaned)
+
+    def test_issue_body_is_not_forwarded(self):
+        payload = {"action": "opened", "issue": {"number": 9, "title": "OPS-007 문의", "body": "password=do-not-send", "user": {"login": "author"}}}
+        context = discord.collect("issues", payload, "guseoh/pawcycle-commerce", FakeApi())
+        self.assertNotIn("do-not-send", context["purpose"])
 
 
 if __name__ == "__main__":
