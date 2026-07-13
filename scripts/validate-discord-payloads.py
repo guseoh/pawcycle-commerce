@@ -27,6 +27,11 @@ if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
     raise RuntimeError("Discord message contract helper를 불러올 수 없음")
 contract = importlib.util.module_from_spec(CONTRACT_SPEC)
 CONTRACT_SPEC.loader.exec_module(contract)
+BUILDER_SPEC = importlib.util.spec_from_file_location("discord_payload_builder_validator", BUILDER)
+if BUILDER_SPEC is None or BUILDER_SPEC.loader is None:
+    raise RuntimeError("Discord payload builder를 불러올 수 없음")
+builder = importlib.util.module_from_spec(BUILDER_SPEC)
+BUILDER_SPEC.loader.exec_module(builder)
 REQUIRED = {
     "pr-opened.json", "pr-draft.json", "pr-synchronize.json", "review-approved.json",
     "changes-requested.json", "ci-success.json", "ci-failure.json", "pr-merged.json",
@@ -125,7 +130,7 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     if event.startswith("ci_"):
         required_names |= {"📋 Job 결과", "❌ 실패 Job / Step"}
         actions_url = context.get("actions_url")
-        if actions_url and actions_url not in ("기록 없음", "확인 불가"):
+        if actions_url and actions_url not in (builder.MISSING, builder.UNKNOWN):
             required_names.add("🔗 Actions")
     if event in ("review_approved", "changes_requested"):
         required_names |= {"💬 리뷰 의견", "✅ CI 상태"}
