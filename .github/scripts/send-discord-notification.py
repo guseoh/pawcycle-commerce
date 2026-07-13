@@ -82,8 +82,8 @@ def send(url: str, payload: dict[str, object], retries: int, *, wait_for_message
                 status = response.getcode()
                 raw_response = response.read() if wait_for_message else b""
             if 200 <= status < 300:
-                summary(f"Discord 알림 전송 완료: HTTP {status}")
                 if wait_for_message:
+                    summary(f"Discord Webhook 응답 수신: HTTP {status}")
                     message: Any = None
                     try:
                         message = parse_created_message(raw_response)
@@ -99,6 +99,9 @@ def send(url: str, payload: dict[str, object], retries: int, *, wait_for_message
                     summary(f"Requested embed count: {counts['requested_embed_count']}")
                     summary(f"Created message embed count: {counts['created_embed_count']}")
                     summary("Discord message contract: success")
+                    summary("Discord 알림 전송 완료")
+                else:
+                    summary(f"Discord Webhook 전송 완료: HTTP {status}")
                 return 0
             if not should_retry(status):
                 summary(f"Discord 알림 전송 실패: HTTP {status}")

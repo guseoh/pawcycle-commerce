@@ -31,6 +31,7 @@ Tech Lead가 구현 diff, 신뢰 경계, Repository Validation과 병합 후 Pre
 - `pr_ready`, `pr_merged`, review 상세 이벤트와 모든 `ci_*`가 정확히 3개 Embed인가
 - payload 계약 검증이 Discord 전송 전에 실행되는가
 - sender가 `wait=true`를 사용하고 message 식별자와 응답 `embeds` 수를 검증하는가
+- wait mode가 message 계약 성공 전에는 `Discord 알림 전송 완료`를 기록하지 않는가
 - HTTP 204, JSON 파싱 실패, 생성 Embed 1개가 성공으로 처리되지 않는가
 - 로그와 Step Summary에 Webhook URL, response body, field value와 PR 본문 전체가 없는가
 - title과 주요 field label의 이모지가 정보를 과도하게 복잡하게 만들지 않는가
@@ -60,6 +61,7 @@ Preview는 실제 PR 상태를 반영한다. PR #40은 병합된 PR이므로 기
    - `Discord event: pr_merged`
    - Expected/Payload/Created embed count: 모두 3
    - `Discord message contract: success`
+   - 계약 성공 뒤 `Discord 알림 전송 완료`
 4. Discord 화면에서 세 카드, 이모지 렌더링, PC·모바일 가독성, PR 링크를 확인한다.
 5. Secret·전체 로그가 없고 `@everyone`, `@here`가 mention으로 동작하지 않는지 확인한다.
 

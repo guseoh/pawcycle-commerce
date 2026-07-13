@@ -115,10 +115,14 @@ class DiscordContextTests(unittest.TestCase):
     def test_pr_preview_api_failure_and_closed_unmerged_are_explicit_fallbacks(self):
         failed = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(None), "pr_preview", "40")
         closed = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(self.preview_pr(state="closed")), "pr_preview", "40")
+        closed_draft = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(self.preview_pr(state="closed", draft=True)), "pr_preview", "40")
         self.assertEqual(failed["event"], "connection_test")
         self.assertIn("조회 실패", failed["status"])
         self.assertEqual(closed["event"], "connection_test")
         self.assertIn("미병합", closed["status"])
+        self.assertEqual(closed_draft["event"], "connection_test")
+        self.assertIn("미병합", closed_draft["status"])
+        self.assertNotIn("Draft", closed_draft["status"])
 
     def test_task_id_priority_and_supported_families(self):
         self.assertEqual(discord.extract_task_id("작업 ID:\nAUTH-004", "API-003", "ops/sre"), "AUTH-004")

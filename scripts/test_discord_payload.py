@@ -70,6 +70,28 @@ class DiscordPayloadTests(unittest.TestCase):
                 self.assertIn("🆔 작업 ID", names)
                 self.assertIn("🧪 검증 결과", names)
                 self.assertIn("➡️ 다음 작업", names)
+                if context["event"] in ("review_approved", "changes_requested"):
+                    self.assertIn("💬 리뷰 의견", names)
+                    self.assertIn("✅ CI 상태", names)
+
+    def test_actions_field_requirement_matches_builder_condition(self):
+        base = json.loads((ROOT / ".github" / "fixtures" / "discord" / "ci-success.json").read_text(encoding="utf-8"))
+        for actions_url, required in (
+            ("https://github.com/guseoh/pawcycle-commerce/actions/runs/1", True),
+            (None, False),
+            (discord.MISSING, False),
+            (discord.UNKNOWN, False),
+        ):
+            with self.subTest(actions_url=actions_url):
+                context = dict(base)
+                if actions_url is None:
+                    context.pop("actions_url", None)
+                else:
+                    context["actions_url"] = actions_url
+                payload = discord.build_payload(context)
+                names = {field["name"] for item in payload["embeds"] for field in item["fields"]}
+                self.assertEqual("🔗 Actions" in names, required)
+                self.assertEqual(validator.validate_payload(payload, Path("actions.json"), context), [])
 
     def test_merged_preview_title_uses_one_preview_emoji(self):
         context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-merged.json").read_text(encoding="utf-8"))

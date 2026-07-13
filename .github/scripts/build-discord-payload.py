@@ -188,9 +188,9 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
         if event.startswith("ci_"):
             detail_fields.extend([field("📋 Job 결과", format_jobs(context.get("ci_jobs")), False, 620), field("❌ 실패 Job / Step", format_failures(context.get("failed_jobs")), False, 620)])
         if event in ("review_approved", "changes_requested") and context.get("review_body"):
-            detail_fields.append(field("리뷰 의견", context.get("review_body"), False, 420))
+            detail_fields.append(field("💬 리뷰 의견", context.get("review_body"), False, 420))
         if event in ("review_approved", "changes_requested"):
-            detail_fields.append(field("CI 상태", context.get("ci_status"), True, 80))
+            detail_fields.append(field("✅ CI 상태", context.get("ci_status"), True, 80))
         detail_fields.extend([field("👀 리뷰 상태", format_reviews(context.get("reviews")), False, 500), field("💬 미해결 스레드", context.get("unresolved_threads"), True, 40)])
         embeds.append(embed("🔍 처리·검증·리뷰", color, detail_fields, context))
 

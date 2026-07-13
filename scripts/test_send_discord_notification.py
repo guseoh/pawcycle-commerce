@@ -101,6 +101,23 @@ class DiscordSenderTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("DISCORD_WEBHOOK_URL Secret이 설정되지 않음", stdout.getvalue())
 
+    def test_wait_mode_without_context_file_fails_in_main(self):
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+            json.dump(self.payload, handle)
+            payload_path = handle.name
+        stdout = io.StringIO()
+        try:
+            with (
+                mock.patch.dict(sender.os.environ, {"DISCORD_WEBHOOK_URL": WEBHOOK_URL}, clear=True),
+                mock.patch.object(sys, "argv", ["send-discord-notification.py", "--payload-file", payload_path, "--wait-for-message"]),
+                redirect_stdout(stdout),
+            ):
+                code = sender.main()
+        finally:
+            Path(payload_path).unlink()
+        self.assertEqual(code, 1)
+        self.assertIn("wait mode에는 --context-file이 필요함", stdout.getvalue())
+
     def test_non_retryable_http_errors_fail_immediately(self):
         for status in (400, 401, 403, 404):
             with self.subTest(status=status):
@@ -152,8 +169,12 @@ class DiscordSenderTests(unittest.TestCase):
             with redirect_stdout(output):
                 result = sender.send("https://example.invalid/hook", self.payload, 1, wait_for_message=True, event="pr_merged")
         self.assertEqual(result, 0)
-        self.assertIn("Created message embed count: 3", output.getvalue())
-        self.assertNotIn("sensitive-response", output.getvalue())
+        log = output.getvalue()
+        self.assertIn("Discord Webhook 응답 수신: HTTP 200", log)
+        self.assertIn("Created message embed count: 3", log)
+        self.assertIn("Discord message contract: success", log)
+        self.assertIn("Discord 알림 전송 완료", log)
+        self.assertNotIn("sensitive-response", log)
 
     def test_wait_mode_rejects_message_embed_mismatch_without_logging_body_or_url(self):
         message = {"id": "message-id", "embeds": [{}], "content": "private-body"}
@@ -163,9 +184,13 @@ class DiscordSenderTests(unittest.TestCase):
             with redirect_stdout(output):
                 result = sender.send(webhook, self.payload, 1, wait_for_message=True, event="pr_merged")
         self.assertEqual(result, 1)
-        self.assertIn("Created message embed count: 1", output.getvalue())
-        self.assertNotIn("private-body", output.getvalue())
-        self.assertNotIn("private-token", output.getvalue())
+        log = output.getvalue()
+        self.assertIn("Discord Webhook 응답 수신: HTTP 200", log)
+        self.assertIn("Discord message contract mismatch", log)
+        self.assertIn("Created message embed count: 1", log)
+        self.assertNotIn("Discord 알림 전송 완료", log)
+        self.assertNotIn("private-body", log)
+        self.assertNotIn("private-token", log)
 
     def test_wait_mode_rejects_invalid_json_http_204_and_missing_message_id(self):
         cases = [
@@ -176,11 +201,20 @@ class DiscordSenderTests(unittest.TestCase):
         for response in cases:
             with self.subTest(status=response.status, body=response.body):
                 with mock.patch("urllib.request.urlopen", return_value=response):
-                    self.assertEqual(sender.send("https://example.invalid/hook", self.payload, 1, wait_for_message=True, event="pr_merged"), 1)
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        result = sender.send("https://example.invalid/hook", self.payload, 1, wait_for_message=True, event="pr_merged")
+                self.assertEqual(result, 1)
+                self.assertNotIn("Discord 알림 전송 완료", output.getvalue())
 
     def test_non_wait_mode_keeps_http_204_success(self):
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse(204)):
-            self.assertEqual(sender.send("https://example.invalid/hook", self.payload, 1, event="pr_merged"), 0)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = sender.send("https://example.invalid/hook", self.payload, 1, event="pr_merged")
+        self.assertEqual(result, 0)
+        self.assertIn("Discord Webhook 전송 완료: HTTP 204", output.getvalue())
+        self.assertNotIn("Discord message contract: success", output.getvalue())
 
     def test_payload_count_mismatch_fails_before_network(self):
         single = dict(self.payload)

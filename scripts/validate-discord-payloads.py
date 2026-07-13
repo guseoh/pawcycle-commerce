@@ -21,6 +21,12 @@ if LIMITS_SPEC is None or LIMITS_SPEC.loader is None:
     raise RuntimeError("Discord payload limit helper를 불러올 수 없음")
 limits = importlib.util.module_from_spec(LIMITS_SPEC)
 LIMITS_SPEC.loader.exec_module(limits)
+CONTRACT_PATH = ROOT / ".github" / "scripts" / "discord-message-contract.py"
+CONTRACT_SPEC = importlib.util.spec_from_file_location("discord_message_contract_validator", CONTRACT_PATH)
+if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
+    raise RuntimeError("Discord message contract helper를 불러올 수 없음")
+contract = importlib.util.module_from_spec(CONTRACT_SPEC)
+CONTRACT_SPEC.loader.exec_module(contract)
 REQUIRED = {
     "pr-opened.json", "pr-draft.json", "pr-synchronize.json", "review-approved.json",
     "changes-requested.json", "ci-success.json", "ci-failure.json", "pr-merged.json",
@@ -63,10 +69,11 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     if not 1 <= len(embeds) <= limits.MAX_EMBEDS:
         errors.append(f"embed 개수가 1~{limits.MAX_EMBEDS} 범위를 벗어남")
     event = str(context.get("event", ""))
-    detailed = event in ("pr_ready", "pr_merged", "review_approved", "changes_requested") or event.startswith("ci_")
-    if detailed and len(embeds) != 3:
-        errors.append("상세 이벤트가 3개 embed 보고서를 만들지 않음")
-    if detailed and isinstance(embeds, list) and len(embeds) == 3:
+    detailed = contract.is_detailed_event(event)
+    expected_count = contract.expected_embed_count(event)
+    if len(embeds) != expected_count:
+        errors.append(f"이벤트 embed 개수가 공통 계약과 다름: expected={expected_count}, actual={len(embeds)}")
+    if detailed and isinstance(embeds, list) and len(embeds) == expected_count:
         titles = [item.get("title") for item in embeds if isinstance(item, dict)]
         if titles[1:] != ["🔍 처리·검증·리뷰", "🚦 상태와 다음 작업"]:
             errors.append("상세 embed title 이모지 계약 불일치")
@@ -116,9 +123,12 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     common = {"🆔 작업 ID", "🧑‍💻 역할", "👤 작업자", "🌿 브랜치", "🔖 커밋", "📊 변경 규모", "🎯 작업 목적", "📌 현재 상태", "➡️ 다음 작업"}
     required_names = common | ({"🧩 주요 변경", "🛠️ 처리 과정", "🧪 검증 결과", "👀 리뷰 상태", "💬 미해결 스레드", "🔀 병합 가능", "⚠️ 남은 위험"} if detailed else set())
     if event.startswith("ci_"):
-        required_names |= {"📋 Job 결과", "❌ 실패 Job / Step", "🔗 Actions"}
+        required_names |= {"📋 Job 결과", "❌ 실패 Job / Step"}
+        actions_url = context.get("actions_url")
+        if actions_url and actions_url not in ("기록 없음", "확인 불가"):
+            required_names.add("🔗 Actions")
     if event in ("review_approved", "changes_requested"):
-        required_names |= {"리뷰 의견", "CI 상태"}
+        required_names |= {"💬 리뷰 의견", "✅ CI 상태"}
     if missing_names := required_names - names:
         errors.append("필수 section 누락: " + ", ".join(sorted(missing_names)))
     for required_text in context.get("_expect", {}).get("contains", []):
@@ -186,35 +196,36 @@ def validate_workflow() -> list[str]:
     ]
     collaboration_path = ROOT / ".github" / "workflows" / "notify-collaboration.yml"
     collaboration = collaboration_path.read_text(encoding="utf-8")
+    all_blocks = yaml_step_blocks(collaboration)
     if yaml_top_level_on_entries(collaboration).count("workflow_run") != 1:
         errors.append("notify-collaboration.yml top-level on에 workflow_run이 정확히 하나가 아님")
     if workflow_run_paths != ["notify-collaboration.yml"]:
         errors.append("Repository Validation workflow_run trigger가 단일 협업 알림 경로가 아님")
     if (ROOT / ".github" / "workflows" / "notify-ci-result.yml").exists():
         errors.append("중복 notify-ci-result.yml이 남아 있음")
-    checkout_blocks = [block for block in yaml_step_blocks(collaboration) if any("uses: actions/checkout@" in line for line in block)]
+    checkout_blocks = [block for block in all_blocks if any("uses: actions/checkout@" in line for line in block)]
     trusted_ref = "ref: ${{ github.event.repository.default_branch }}"
     if len(checkout_blocks) != 1 or not any(trusted_ref in line.strip() for line in checkout_blocks[0]):
         errors.append("실제 checkout step이 신뢰된 기본 브랜치를 사용하지 않음")
     if any("github.ref" in line for block in checkout_blocks for line in block):
         errors.append("checkout step에 github.ref 조건이 남아 있음")
-    collector_blocks = [block for block in yaml_step_blocks(collaboration) if any("collect-discord-context.py" in line for line in block)]
+    collector_blocks = [block for block in all_blocks if any("collect-discord-context.py" in line for line in block)]
     if not collector_blocks or not any(
         "if [ ! -f .github/scripts/collect-discord-context.py ]" in "\n".join(block) and "exit 1" in "\n".join(block)
         for block in collector_blocks
     ):
         errors.append("collector 누락이 실제 command step에서 실패로 처리되지 않음")
-    contract_blocks = [block for block in yaml_step_blocks(collaboration) if any("discord-message-contract.py" in line for line in block)]
-    sender_blocks = [block for block in yaml_step_blocks(collaboration) if any("send-discord-notification.py" in line for line in block)]
+    contract_blocks = [block for block in all_blocks if any("discord-message-contract.py" in line for line in block)]
+    sender_blocks = [block for block in all_blocks if any("send-discord-notification.py" in line for line in block)]
     if not contract_blocks or not sender_blocks:
         errors.append("payload 계약 검증 또는 sender step이 없음")
-    elif yaml_step_blocks(collaboration).index(contract_blocks[0]) > yaml_step_blocks(collaboration).index(sender_blocks[0]):
+    elif all_blocks.index(contract_blocks[0]) > all_blocks.index(sender_blocks[0]):
         errors.append("payload 계약 검증이 sender보다 먼저 실행되지 않음")
     if not sender_blocks or not all(value in "\n".join(sender_blocks[0]) for value in ("--wait-for-message", "--context-file")):
         errors.append("sender가 wait mode와 context file을 사용하지 않음")
     if sender_blocks and "DISCORD_WEBHOOK_URL" not in "\n".join(sender_blocks[0]):
         errors.append("sender step에 Discord Webhook Secret이 없음")
-    non_sender_secret_blocks = [block for block in yaml_step_blocks(collaboration) if block not in sender_blocks and "DISCORD_WEBHOOK_URL" in "\n".join(block)]
+    non_sender_secret_blocks = [block for block in all_blocks if block not in sender_blocks and "DISCORD_WEBHOOK_URL" in "\n".join(block)]
     if non_sender_secret_blocks:
         errors.append("Discord Webhook Secret이 sender 외 step에 전달됨")
     return errors

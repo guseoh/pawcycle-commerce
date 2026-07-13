@@ -357,16 +357,16 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
                     context["event"] = "pr_merged"
                     context["status"] = "병합 완료 Preview"
                     context["sha"] = pr.get("merge_commit_sha") or context["sha"]
-                elif pr.get("draft"):
-                    context["event"] = "pr_draft"
-                    context["status"] = "Draft Preview"
-                elif pr.get("state") == "open":
-                    context["event"] = "pr_ready"
-                    context["status"] = "리뷰 가능 Preview"
-                else:
+                elif pr.get("state") != "open":
                     context["event"] = "connection_test"
                     context["status"] = "종료됨(미병합) Preview"
                     context["next_action"] = "PR 종료 사유 확인"
+                elif pr.get("draft"):
+                    context["event"] = "pr_draft"
+                    context["status"] = "Draft Preview"
+                else:
+                    context["event"] = "pr_ready"
+                    context["status"] = "리뷰 가능 Preview"
             else:
                 context["event"] = "connection_test"
                 context["status"] = "PR 상태 조회 실패 Preview"
