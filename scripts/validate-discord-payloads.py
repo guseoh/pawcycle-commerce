@@ -66,6 +66,12 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     detailed = event in ("pr_ready", "pr_merged", "review_approved", "changes_requested") or event.startswith("ci_")
     if detailed and len(embeds) != 3:
         errors.append("상세 이벤트가 3개 embed 보고서를 만들지 않음")
+    if detailed and isinstance(embeds, list) and len(embeds) == 3:
+        titles = [item.get("title") for item in embeds if isinstance(item, dict)]
+        if titles[1:] != ["🔍 처리·검증·리뷰", "🚦 상태와 다음 작업"]:
+            errors.append("상세 embed title 이모지 계약 불일치")
+        if len(titles) != len(set(titles)):
+            errors.append("embed title 중복")
     for index, embed in enumerate(embeds):
         if not isinstance(embed, dict):
             errors.append(f"embed {index + 1} 형식 오류")
@@ -107,10 +113,10 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
         for item in (embed.get("fields") if isinstance(embed.get("fields"), list) else [])
         if isinstance(item, dict)
     }
-    common = {"작업 ID", "역할", "작업자", "브랜치", "커밋", "변경 규모", "작업 목적", "현재 상태", "다음 작업"}
-    required_names = common | ({"주요 변경", "처리 과정", "검증 결과", "리뷰 상태", "미해결 스레드", "병합 가능", "남은 위험"} if detailed else set())
+    common = {"🆔 작업 ID", "🧑‍💻 역할", "👤 작업자", "🌿 브랜치", "🔖 커밋", "📊 변경 규모", "🎯 작업 목적", "📌 현재 상태", "➡️ 다음 작업"}
+    required_names = common | ({"🧩 주요 변경", "🛠️ 처리 과정", "🧪 검증 결과", "👀 리뷰 상태", "💬 미해결 스레드", "🔀 병합 가능", "⚠️ 남은 위험"} if detailed else set())
     if event.startswith("ci_"):
-        required_names |= {"Job 결과", "실패 Job / Step", "Actions"}
+        required_names |= {"📋 Job 결과", "❌ 실패 Job / Step", "🔗 Actions"}
     if event in ("review_approved", "changes_requested"):
         required_names |= {"리뷰 의견", "CI 상태"}
     if missing_names := required_names - names:
@@ -198,6 +204,19 @@ def validate_workflow() -> list[str]:
         for block in collector_blocks
     ):
         errors.append("collector 누락이 실제 command step에서 실패로 처리되지 않음")
+    contract_blocks = [block for block in yaml_step_blocks(collaboration) if any("discord-message-contract.py" in line for line in block)]
+    sender_blocks = [block for block in yaml_step_blocks(collaboration) if any("send-discord-notification.py" in line for line in block)]
+    if not contract_blocks or not sender_blocks:
+        errors.append("payload 계약 검증 또는 sender step이 없음")
+    elif yaml_step_blocks(collaboration).index(contract_blocks[0]) > yaml_step_blocks(collaboration).index(sender_blocks[0]):
+        errors.append("payload 계약 검증이 sender보다 먼저 실행되지 않음")
+    if not sender_blocks or not all(value in "\n".join(sender_blocks[0]) for value in ("--wait-for-message", "--context-file")):
+        errors.append("sender가 wait mode와 context file을 사용하지 않음")
+    if sender_blocks and "DISCORD_WEBHOOK_URL" not in "\n".join(sender_blocks[0]):
+        errors.append("sender step에 Discord Webhook Secret이 없음")
+    non_sender_secret_blocks = [block for block in yaml_step_blocks(collaboration) if block not in sender_blocks and "DISCORD_WEBHOOK_URL" in "\n".join(block)]
+    if non_sender_secret_blocks:
+        errors.append("Discord Webhook Secret이 sender 외 step에 전달됨")
     return errors
 
 

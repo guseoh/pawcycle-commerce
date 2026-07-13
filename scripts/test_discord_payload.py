@@ -52,6 +52,33 @@ class FakeApi:
 
 
 class DiscordPayloadTests(unittest.TestCase):
+    def test_all_detailed_events_have_three_distinct_emoji_titles_and_labels(self):
+        fixtures = [
+            "pr-opened.json", "pr-merged.json", "review-approved.json", "changes-requested.json",
+            "ci-success.json", "ci-failure.json", "ci-timed-out.json", "ci-cancelled.json",
+            "ci-neutral.json", "ci-skipped.json", "ci-unknown.json",
+        ]
+        for name in fixtures:
+            with self.subTest(fixture=name):
+                context = json.loads((ROOT / ".github" / "fixtures" / "discord" / name).read_text(encoding="utf-8"))
+                payload = discord.build_payload(context)
+                titles = [item["title"] for item in payload["embeds"]]
+                names = {field["name"] for item in payload["embeds"] for field in item["fields"]}
+                self.assertEqual(len(payload["embeds"]), 3)
+                self.assertEqual(len(titles), len(set(titles)))
+                self.assertEqual(titles[1:], ["🔍 처리·검증·리뷰", "🚦 상태와 다음 작업"])
+                self.assertIn("🆔 작업 ID", names)
+                self.assertIn("🧪 검증 결과", names)
+                self.assertIn("➡️ 다음 작업", names)
+
+    def test_merged_preview_title_uses_one_preview_emoji(self):
+        context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-merged.json").read_text(encoding="utf-8"))
+        context["preview"] = True
+        context["number"] = 40
+        title = discord.build_payload(context)["embeds"][0]["title"]
+        self.assertEqual(title, "🧪 [PREVIEW] PR 병합 완료 · #40")
+        self.assertNotIn("🎉", title)
+
     def test_detailed_report_preserves_failure_and_next_action(self):
         context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "ci-failure.json").read_text(encoding="utf-8"))
         payload = discord.build_payload(context)

@@ -73,8 +73,16 @@ jobs:
         if: steps.context.outputs.notify == 'true'
         run: python .github/scripts/build-discord-payload.py --context-file discord-context.json > discord-payload.json
 
+      - name: Validate Discord payload contract
+        if: steps.context.outputs.notify == 'true'
+        run: python .github/scripts/discord-message-contract.py --payload-file discord-payload.json --context-file discord-context.json
+
       - name: Send Discord notification
         if: steps.context.outputs.notify == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python .github/scripts/send-discord-notification.py --payload-file discord-payload.json
+        run: >-
+          python .github/scripts/send-discord-notification.py
+          --payload-file discord-payload.json
+          --context-file discord-context.json
+          --wait-for-message
