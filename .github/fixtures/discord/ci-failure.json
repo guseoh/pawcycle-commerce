@@ -1,16 +1,1 @@
-{
-  "event": "ci_failure",
-  "repository": "guseoh/pawcycle-commerce",
-  "number": "PR #12",
-  "task_id": "BOOTSTRAP-002",
-  "actor": "github-actions",
-  "branch": "ops/bootstrap-002",
-  "target": "Repository Validation",
-  "sha": "a1b2c3d4",
-  "status": "미통과",
-  "validation": "Repository Validation conclusion: failure",
-  "summary": "검증이 성공으로 완료되지 않았습니다.",
-  "extra": "Actions 실행 https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
-  "url": "https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
-  "timestamp": "2026-07-02T06:54:00Z"
-}
+{"event":"ci_failure","number":40,"task_id":"OPS-007","role":"Platform/SRE","actor":"github-actions","head":"ops/sre","base":"main","sha":"a1b2c3d4","title":"Repository Validation","purpose":"협업 알림 검증","changes":"workflow 수정","validation":"Repository Validation failure","qa":"해당 없음","ci_jobs":[{"name":"Task artifact validation","conclusion":"failure"},{"name":"Frontend regression","conclusion":"success"}],"failed_jobs":[{"name":"Task artifact validation","conclusion":"failure","step":"Validate required headings"}],"reviews":"확인 불가","unresolved_threads":"확인 불가","mergeable":"확인 불가","status":"failure","risks":"필수 heading 누락","next_action":"실패 로그 확인과 최소 수정","url":"https://github.com/guseoh/pawcycle-commerce/actions/runs/2","actions_url":"https://github.com/guseoh/pawcycle-commerce/actions/runs/2","timestamp":"2026-07-13T01:00:00Z","_expect":{"contains":["Task artifact validation","Validate required headings","실패 로그"]}}

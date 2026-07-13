@@ -1,15 +1,1 @@
-{
-  "event": "ci_success",
-  "repository": "guseoh/pawcycle-commerce",
-  "number": "PR #12",
-  "task_id": "BOOTSTRAP-002",
-  "actor": "github-actions",
-  "branch": "ops/bootstrap-002",
-  "target": "Repository Validation",
-  "sha": "a1b2c3d4",
-  "status": "성공",
-  "validation": "커밋 규칙 · PR 제목 · 산출물",
-  "summary": "모든 검증 단계가 통과했습니다.",
-  "url": "https://github.com/guseoh/pawcycle-commerce/actions/runs/123",
-  "timestamp": "2026-07-02T06:53:00Z"
-}
+{"event":"ci_success","number":39,"task_id":"API-003","role":"Tech Lead","actor":"github-actions","head":"ops/tl","base":"main","sha":"123456789","title":"Repository Validation","purpose":"구독 API 계약 승인","changes":"승인 문서","validation":"모든 job 성공","qa":"해당 없음","ci_jobs":[{"name":"Backend test/build","conclusion":"success"},{"name":"Frontend regression","conclusion":"success"}],"failed_jobs":[],"reviews":[{"user":"reviewer","state":"APPROVED"}],"unresolved_threads":0,"mergeable":true,"status":"success","next_action":"사용자 최종 검토","url":"https://github.com/guseoh/pawcycle-commerce/actions/runs/1","actions_url":"https://github.com/guseoh/pawcycle-commerce/actions/runs/1","timestamp":"2026-07-13T01:00:00Z","_expect":{"contains":["API-003","Backend test/build","사용자 최종 검토"]}}

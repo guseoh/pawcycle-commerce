@@ -1,15 +1,1 @@
-{
-  "event": "main_updated",
-  "repository": "guseoh/pawcycle-commerce",
-  "number": "main",
-  "task_id": "BOOTSTRAP-002",
-  "actor": "guseoh",
-  "branch": "main",
-  "target": "main",
-  "sha": "d4e5f6a",
-  "status": "반영 완료",
-  "validation": "Pull Request 병합",
-  "summary": "새 커밋이 기준 브랜치에 반영되었습니다.",
-  "url": "https://github.com/guseoh/pawcycle-commerce/commit/d4e5f6a",
-  "timestamp": "2026-07-02T06:58:00Z"
-}
+{"event":"main_updated","task_id":"기록 없음","actor":"guseoh","head":"main","base":"main","sha":"d566864","title":"main 기준 브랜치 갱신","purpose":"병합 결과 반영","status":"반영 완료","next_action":"후속 작업 확인","url":"https://github.com/guseoh/pawcycle-commerce/commit/d566864","timestamp":"2026-07-13T01:00:00Z","_expect":{"contains":["main 반영 완료"]}}
