@@ -349,13 +349,27 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
         if scenario == "pr_preview":
             if not re.fullmatch(r"[1-9][0-9]*", pr_number or ""):
                 raise ValueError("pr_preview의 pr_number는 양의 정수여야 함")
-            context["event"] = "pr_ready"
             context["preview"] = True
-            context["status"] = "Preview"
             pr = api.pull_request(int(pr_number))
             if pr:
                 pr_context(context, pr, api)
+                if pr.get("merged"):
+                    context["event"] = "pr_merged"
+                    context["status"] = "병합 완료 Preview"
+                    context["sha"] = pr.get("merge_commit_sha") or context["sha"]
+                elif pr.get("state") != "open":
+                    context["event"] = "connection_test"
+                    context["status"] = "종료됨(미병합) Preview"
+                    context["next_action"] = "PR 종료 사유 확인"
+                elif pr.get("draft"):
+                    context["event"] = "pr_draft"
+                    context["status"] = "Draft Preview"
+                else:
+                    context["event"] = "pr_ready"
+                    context["status"] = "리뷰 가능 Preview"
             else:
+                context["event"] = "connection_test"
+                context["status"] = "PR 상태 조회 실패 Preview"
                 context["number"] = int(pr_number)
                 context["next_action"] = "GitHub API 조회 상태 확인"
             return context

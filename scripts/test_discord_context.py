@@ -64,7 +64,66 @@ class CurrentPrApi(StalePrApi):
         return self.unresolved
 
 
+class PreviewPrApi(FakeApi):
+    def __init__(self, pr):
+        self.pr = pr
+
+    def pull_request(self, _number):
+        return self.pr
+
+    def unresolved_threads(self, _number):
+        return 0
+
+    def review_states(self, _number):
+        return []
+
+    def latest_validation(self, _branch):
+        return "success"
+
+
 class DiscordContextTests(unittest.TestCase):
+    @staticmethod
+    def preview_pr(**overrides):
+        pr = {
+            "number": 40,
+            "title": "OPS-007 Discord 알림",
+            "body": "## 작업 목적\n상세 알림 검증",
+            "head": {"ref": "ops/sre", "sha": "head-sha"},
+            "base": {"ref": "main"},
+            "user": {"login": "author"},
+            "state": "open",
+            "draft": False,
+            "merged": False,
+        }
+        pr.update(overrides)
+        return pr
+
+    def test_pr_preview_reflects_merged_draft_and_ready_states(self):
+        cases = [
+            (self.preview_pr(state="closed", merged=True, merge_commit_sha="merge-sha"), "pr_merged", "병합 완료", "merge-sha"),
+            (self.preview_pr(draft=True), "pr_draft", "Draft", "head-sha"),
+            (self.preview_pr(), "pr_ready", "리뷰 가능", "head-sha"),
+        ]
+        for pr, expected_event, expected_status, expected_sha in cases:
+            with self.subTest(event=expected_event):
+                context = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(pr), "pr_preview", "40")
+                self.assertEqual(context["event"], expected_event)
+                self.assertIn(expected_status, context["status"])
+                self.assertEqual(context["sha"], expected_sha)
+                self.assertTrue(context["preview"])
+
+    def test_pr_preview_api_failure_and_closed_unmerged_are_explicit_fallbacks(self):
+        failed = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(None), "pr_preview", "40")
+        closed = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(self.preview_pr(state="closed")), "pr_preview", "40")
+        closed_draft = discord.collect("workflow_dispatch", {}, "guseoh/pawcycle-commerce", PreviewPrApi(self.preview_pr(state="closed", draft=True)), "pr_preview", "40")
+        self.assertEqual(failed["event"], "connection_test")
+        self.assertIn("조회 실패", failed["status"])
+        self.assertEqual(closed["event"], "connection_test")
+        self.assertIn("미병합", closed["status"])
+        self.assertEqual(closed_draft["event"], "connection_test")
+        self.assertIn("미병합", closed_draft["status"])
+        self.assertNotIn("Draft", closed_draft["status"])
+
     def test_task_id_priority_and_supported_families(self):
         self.assertEqual(discord.extract_task_id("작업 ID:\nAUTH-004", "API-003", "ops/sre"), "AUTH-004")
         self.assertEqual(discord.extract_task_id("", "PRODUCT-001 상품", "feat/be"), "PRODUCT-001")

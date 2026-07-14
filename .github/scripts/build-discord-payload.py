@@ -20,6 +20,13 @@ if LIMITS_SPEC is None or LIMITS_SPEC.loader is None:
 limits = importlib.util.module_from_spec(LIMITS_SPEC)
 LIMITS_SPEC.loader.exec_module(limits)
 
+CONTRACT_PATH = Path(__file__).with_name("discord-message-contract.py")
+CONTRACT_SPEC = importlib.util.spec_from_file_location("discord_message_contract_builder", CONTRACT_PATH)
+if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
+    raise RuntimeError("Discord message contract helper를 불러올 수 없음")
+contract = importlib.util.module_from_spec(CONTRACT_SPEC)
+CONTRACT_SPEC.loader.exec_module(contract)
+
 
 MISSING = "기록 없음"
 UNKNOWN = "확인 불가"
@@ -43,23 +50,23 @@ COLORS = {
     "connection_test": 0x3498DB,
 }
 TITLES = {
-    "pr_ready": "PR 리뷰 준비",
-    "pr_draft": "Draft PR 등록",
-    "pr_synchronize": "PR 새 커밋 반영",
-    "pr_review_requested": "PR 리뷰어 지정",
-    "review_approved": "PR 리뷰 승인",
-    "changes_requested": "PR 변경 요청",
-    "ci_success": "Repository Validation 성공",
-    "ci_failure": "Repository Validation 미통과",
-    "ci_timed_out": "Repository Validation 시간 초과",
-    "ci_cancelled": "Repository Validation 취소",
-    "ci_neutral": "Repository Validation 중립",
-    "ci_skipped": "Repository Validation 건너뜀",
-    "ci_unknown": "Repository Validation 상태 확인 필요",
-    "pr_merged": "PR 병합 완료",
-    "issue_opened": "Issue 등록",
-    "issue_closed": "Issue 완료",
-    "connection_test": "Discord 협업 알림 Preview",
+    "pr_ready": "🛠️ PR 리뷰 준비",
+    "pr_draft": "📝 Draft PR 등록",
+    "pr_synchronize": "🔄 PR 새 커밋 반영",
+    "pr_review_requested": "👀 PR 리뷰어 지정",
+    "review_approved": "✅ PR 리뷰 승인",
+    "changes_requested": "⚠️ PR 변경 요청",
+    "ci_success": "✅ Repository Validation 성공",
+    "ci_failure": "❌ Repository Validation 미통과",
+    "ci_timed_out": "⏱️ Repository Validation 시간 초과",
+    "ci_cancelled": "⏹️ Repository Validation 취소",
+    "ci_neutral": "🟡 Repository Validation 중립",
+    "ci_skipped": "⏭️ Repository Validation 건너뜀",
+    "ci_unknown": "❓ Repository Validation 상태 확인 필요",
+    "pr_merged": "🎉 PR 병합 완료",
+    "issue_opened": "📌 Issue 등록",
+    "issue_closed": "🗂️ Issue 완료",
+    "connection_test": "🧪 Discord 협업 알림 Preview",
 }
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -155,47 +162,51 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
     color = COLORS[event]
     number = context.get("number")
     suffix = "" if number in (None, "", MISSING, UNKNOWN) else f" · #{clean(number, 20, False)}"
-    preview = "[PREVIEW] " if context.get("preview") else ""
+    preview = "🧪 [PREVIEW] " if context.get("preview") else ""
+    event_title = TITLES[event]
+    if context.get("preview"):
+        event_title = re.sub(r"^\S+\s+", "", event_title, count=1)
     summary = [
-        field("작업 ID", context.get("task_id"), True, 80),
-        field("역할", context.get("role"), True, 80),
-        field("작업자", context.get("actor"), True, 80),
-        field("브랜치", f"{display(context.get('head'), 90)} → {display(context.get('base'), 90)}", True, 190),
-        field("커밋", short_sha(context.get("sha")), True, 30),
-        field("변경 규모", format_change(context), True, 120),
-        field("작업 목적", context.get("purpose"), False, 620),
+        field("🆔 작업 ID", context.get("task_id"), True, 80),
+        field("🧑‍💻 역할", context.get("role"), True, 80),
+        field("👤 작업자", context.get("actor"), True, 80),
+        field("🌿 브랜치", f"{display(context.get('head'), 90)} → {display(context.get('base'), 90)}", True, 190),
+        field("🔖 커밋", short_sha(context.get("sha")), True, 30),
+        field("📊 변경 규모", format_change(context), True, 120),
+        field("🎯 작업 목적", context.get("purpose"), False, 620),
     ]
-    embeds = [embed(f"{preview}{TITLES[event]}{suffix}", color, summary, context, context.get("title"))]
+    embeds = [embed(f"{preview}{event_title}{suffix}", color, summary, context, context.get("title"))]
 
-    detailed = event in ("pr_ready", "pr_merged", "review_approved", "changes_requested") or event.startswith("ci_")
+    detailed = contract.is_detailed_event(event)
     if detailed:
+        detail_title, action_title = contract.DETAILED_EMBED_TITLES
         detail_fields = [
-            field("주요 변경", context.get("changes"), False, 620),
-            field("처리 과정", context.get("process"), False, 620),
-            field("검증 결과", context.get("validation"), False, 620),
-            field("QA 결과", context.get("qa"), False, 420),
+            field("🧩 주요 변경", context.get("changes"), False, 620),
+            field("🛠️ 처리 과정", context.get("process"), False, 620),
+            field("🧪 검증 결과", context.get("validation"), False, 620),
+            field("✅ QA 결과", context.get("qa"), False, 420),
         ]
         if event.startswith("ci_"):
-            detail_fields.extend([field("Job 결과", format_jobs(context.get("ci_jobs")), False, 620), field("실패 Job / Step", format_failures(context.get("failed_jobs")), False, 620)])
+            detail_fields.extend([field("📋 Job 결과", format_jobs(context.get("ci_jobs")), False, 620), field("❌ 실패 Job / Step", format_failures(context.get("failed_jobs")), False, 620)])
         if event in ("review_approved", "changes_requested") and context.get("review_body"):
-            detail_fields.append(field("리뷰 의견", context.get("review_body"), False, 420))
+            detail_fields.append(field("💬 리뷰 의견", context.get("review_body"), False, 420))
         if event in ("review_approved", "changes_requested"):
-            detail_fields.append(field("CI 상태", context.get("ci_status"), True, 80))
-        detail_fields.extend([field("리뷰 상태", format_reviews(context.get("reviews")), False, 500), field("미해결 스레드", context.get("unresolved_threads"), True, 40)])
-        embeds.append(embed("처리·검증·리뷰", color, detail_fields, context))
+            detail_fields.append(field("✅ CI 상태", context.get("ci_status"), True, 80))
+        detail_fields.extend([field("👀 리뷰 상태", format_reviews(context.get("reviews")), False, 500), field("💬 미해결 스레드", context.get("unresolved_threads"), True, 40)])
+        embeds.append(embed(detail_title, color, detail_fields, context))
 
         action_fields = [
-            field("현재 상태", context.get("status"), True, 100),
-            field("병합 가능", context.get("mergeable"), True, 60),
-            field("남은 위험", context.get("risks"), False, 500),
-            field("다음 작업", context.get("next_action"), False, 500),
+            field("📌 현재 상태", context.get("status"), True, 100),
+            field("🔀 병합 가능", context.get("mergeable"), True, 60),
+            field("⚠️ 남은 위험", context.get("risks"), False, 500),
+            field("➡️ 다음 작업", context.get("next_action"), False, 500),
         ]
         actions_url = context.get("actions_url")
         if actions_url and actions_url not in (MISSING, UNKNOWN):
-            action_fields.append(field("Actions", actions_url, False, 500))
-        embeds.append(embed("상태와 다음 작업", color, action_fields, context))
+            action_fields.append(field("🔗 Actions", actions_url, False, 500))
+        embeds.append(embed(action_title, color, action_fields, context))
     else:
-        embeds[0]["fields"].extend([field("현재 상태", context.get("status"), True, 100), field("다음 작업", context.get("next_action"), False, 500)])
+        embeds[0]["fields"].extend([field("📌 현재 상태", context.get("status"), True, 100), field("➡️ 다음 작업", context.get("next_action"), False, 500)])
 
     payload = {"username": "PawCycle Bot", "allowed_mentions": {"parse": []}, "embeds": embeds}
     if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:
@@ -206,6 +217,7 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
                 item["description"] = clean(item["description"], 280)
     if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:
         raise ValueError("Discord payload 6000자 제한을 만족할 수 없음")
+    contract.validate_payload_contract(payload, event)
     return payload
 
 

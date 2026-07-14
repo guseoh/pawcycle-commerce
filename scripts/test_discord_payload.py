@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import unittest
@@ -52,6 +53,55 @@ class FakeApi:
 
 
 class DiscordPayloadTests(unittest.TestCase):
+    def test_all_detailed_events_have_three_distinct_emoji_titles_and_labels(self):
+        fixtures = [
+            "pr-opened.json", "pr-merged.json", "review-approved.json", "changes-requested.json",
+            "ci-success.json", "ci-failure.json", "ci-timed-out.json", "ci-cancelled.json",
+            "ci-neutral.json", "ci-skipped.json", "ci-unknown.json",
+        ]
+        for name in fixtures:
+            with self.subTest(fixture=name):
+                context = json.loads((ROOT / ".github" / "fixtures" / "discord" / name).read_text(encoding="utf-8"))
+                payload = discord.build_payload(context)
+                titles = [item["title"] for item in payload["embeds"]]
+                names = {field["name"] for item in payload["embeds"] for field in item["fields"]}
+                self.assertEqual(len(payload["embeds"]), 3)
+                self.assertEqual(len(titles), len(set(titles)))
+                self.assertEqual(tuple(titles[1:]), discord.contract.DETAILED_EMBED_TITLES)
+                self.assertIn("🆔 작업 ID", names)
+                self.assertIn("🧪 검증 결과", names)
+                self.assertIn("➡️ 다음 작업", names)
+                if context["event"] in ("review_approved", "changes_requested"):
+                    self.assertIn("💬 리뷰 의견", names)
+                    self.assertIn("✅ CI 상태", names)
+
+    def test_actions_field_requirement_matches_builder_condition(self):
+        base = json.loads((ROOT / ".github" / "fixtures" / "discord" / "ci-success.json").read_text(encoding="utf-8"))
+        for actions_url, required in (
+            ("https://github.com/guseoh/pawcycle-commerce/actions/runs/1", True),
+            (None, False),
+            (discord.MISSING, False),
+            (discord.UNKNOWN, False),
+        ):
+            with self.subTest(actions_url=actions_url):
+                context = dict(base)
+                if actions_url is None:
+                    context.pop("actions_url", None)
+                else:
+                    context["actions_url"] = actions_url
+                payload = discord.build_payload(context)
+                names = {field["name"] for item in payload["embeds"] for field in item["fields"]}
+                self.assertEqual("🔗 Actions" in names, required)
+                self.assertEqual(validator.validate_payload(payload, Path("actions.json"), context), [])
+
+    def test_merged_preview_title_uses_one_preview_emoji(self):
+        context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-merged.json").read_text(encoding="utf-8"))
+        context["preview"] = True
+        context["number"] = 40
+        title = discord.build_payload(context)["embeds"][0]["title"]
+        self.assertEqual(title, "🧪 [PREVIEW] PR 병합 완료 · #40")
+        self.assertNotIn("🎉", title)
+
     def test_detailed_report_preserves_failure_and_next_action(self):
         context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "ci-failure.json").read_text(encoding="utf-8"))
         payload = discord.build_payload(context)
@@ -103,6 +153,75 @@ class DiscordPayloadTests(unittest.TestCase):
         self.assertIn("footer 형식 오류", joined)
         self.assertIn("author 형식 오류", joined)
         self.assertIn("field 1 형식 오류", joined)
+
+    def test_validator_rejects_malformed_titles_without_exception(self):
+        context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-opened.json").read_text(encoding="utf-8"))
+        valid_payload = discord.build_payload(context)
+        for malformed in (["list"], {"dict": True}, None, "", "   "):
+            with self.subTest(title=malformed):
+                payload = copy.deepcopy(valid_payload)
+                payload["embeds"][0]["title"] = malformed
+                errors = validator.validate_payload(payload, Path("malformed-title.json"), context)
+                self.assertIn("embed title 형식 오류", "\n".join(errors))
+
+    def test_validator_rejects_duplicate_and_misordered_detailed_titles(self):
+        context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-opened.json").read_text(encoding="utf-8"))
+        valid_payload = discord.build_payload(context)
+
+        duplicate = copy.deepcopy(valid_payload)
+        duplicate["embeds"][1]["title"] = duplicate["embeds"][0]["title"]
+        self.assertIn(
+            "embed title 중복",
+            "\n".join(validator.validate_payload(duplicate, Path("duplicate-title.json"), context)),
+        )
+
+        typo = copy.deepcopy(valid_payload)
+        typo["embeds"][1]["title"] = f"{discord.contract.DETAILED_EMBED_TITLES[0]} 오타"
+        self.assertIn(
+            "상세 embed title 이모지 계약 불일치",
+            "\n".join(validator.validate_payload(typo, Path("typo-title.json"), context)),
+        )
+
+        reversed_titles = copy.deepcopy(valid_payload)
+        reversed_titles["embeds"][1]["title"], reversed_titles["embeds"][2]["title"] = (
+            reversed_titles["embeds"][2]["title"],
+            reversed_titles["embeds"][1]["title"],
+        )
+        self.assertIn(
+            "상세 embed title 이모지 계약 불일치",
+            "\n".join(validator.validate_payload(reversed_titles, Path("reversed-title.json"), context)),
+        )
+
+    def test_message_contract_validates_title_types_duplicates_and_order(self):
+        detailed_context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "pr-opened.json").read_text(encoding="utf-8"))
+        detailed_payload = discord.build_payload(detailed_context)
+        metadata = discord.contract.validate_payload_contract(detailed_payload, detailed_context["event"])
+        self.assertEqual(tuple(metadata["payload_embed_titles"][1:]), discord.contract.DETAILED_EMBED_TITLES)
+
+        for malformed in (["list"], {"dict": True}, None, "", "   "):
+            with self.subTest(title=malformed):
+                payload = copy.deepcopy(detailed_payload)
+                payload["embeds"][0]["title"] = malformed
+                with self.assertRaisesRegex(ValueError, "title 형식 오류"):
+                    discord.contract.validate_payload_contract(payload, detailed_context["event"])
+
+        duplicate = copy.deepcopy(detailed_payload)
+        duplicate["embeds"][1]["title"] = duplicate["embeds"][0]["title"]
+        with self.assertRaisesRegex(ValueError, "title이 중복됨"):
+            discord.contract.validate_payload_contract(duplicate, detailed_context["event"])
+
+        reversed_titles = copy.deepcopy(detailed_payload)
+        reversed_titles["embeds"][1]["title"], reversed_titles["embeds"][2]["title"] = (
+            reversed_titles["embeds"][2]["title"],
+            reversed_titles["embeds"][1]["title"],
+        )
+        with self.assertRaisesRegex(ValueError, "상세 embed title 순서 불일치"):
+            discord.contract.validate_payload_contract(reversed_titles, detailed_context["event"])
+
+        simple_context = json.loads((ROOT / ".github" / "fixtures" / "discord" / "manual-test.json").read_text(encoding="utf-8"))
+        simple_payload = discord.build_payload(simple_context)
+        simple_metadata = discord.contract.validate_payload_contract(simple_payload, simple_context["event"])
+        self.assertEqual(simple_metadata["payload_embed_count"], 1)
 
     def test_workflow_parser_ignores_comments_and_non_on_blocks(self):
         text = """name: Example
