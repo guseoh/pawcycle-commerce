@@ -13,10 +13,12 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,6 +69,21 @@ class LocalQaBootstrapServiceTests {
 				.isInstanceOf(LocalQaBootstrapException.class);
 
 		verifyNoInteractions(memberRepository, productRepository, skuRepository, subscriptionRepository);
+	}
+
+	@Test
+	void invalidEmailPreservesGeneralizedValidationCauseWithoutLeakingInput() {
+		String email = UUID.randomUUID() + "-invalid-email";
+		String password = UUID.randomUUID().toString();
+
+		assertThatThrownBy(() -> bootstrapService.bootstrap(email, password, false))
+				.isInstanceOf(LocalQaBootstrapException.class)
+				.hasMessage("로컬 QA bootstrap credential 설정이 없거나 유효하지 않습니다.")
+				.hasCauseInstanceOf(AuthValidationException.class)
+				.satisfies(error -> {
+					assertThat(error.getMessage()).doesNotContain(email, password);
+					assertThat(error.getCause().getMessage()).doesNotContain(email, password);
+				});
 	}
 
 	@Test
@@ -174,6 +191,39 @@ class LocalQaBootstrapServiceTests {
 	}
 
 	@Test
+	void singleSkuWithMismatchedPriceFailsWithoutMutation() {
+		Product product = matchingProduct();
+		assertMismatchedSkuFails(product, new Sku(
+				product,
+				LocalQaBootstrapService.SKU_NAME,
+				LocalQaBootstrapService.SKU_PRICE.add(BigDecimal.ONE),
+				true,
+				LocalQaBootstrapService.SKU_DISPLAY_ORDER));
+	}
+
+	@Test
+	void singleSkuWithMismatchedSubscribableFlagFailsWithoutMutation() {
+		Product product = matchingProduct();
+		assertMismatchedSkuFails(product, new Sku(
+				product,
+				LocalQaBootstrapService.SKU_NAME,
+				LocalQaBootstrapService.SKU_PRICE,
+				false,
+				LocalQaBootstrapService.SKU_DISPLAY_ORDER));
+	}
+
+	@Test
+	void singleSkuWithMismatchedDisplayOrderFailsWithoutMutation() {
+		Product product = matchingProduct();
+		assertMismatchedSkuFails(product, new Sku(
+				product,
+				LocalQaBootstrapService.SKU_NAME,
+				LocalQaBootstrapService.SKU_PRICE,
+				true,
+				LocalQaBootstrapService.SKU_DISPLAY_ORDER + 1));
+	}
+
+	@Test
 	void resetDeletesOnlySubscriptionsOwnedByResolvedQaMember() {
 		String email = runtimeQaEmail();
 		String password = UUID.randomUUID().toString();
@@ -219,5 +269,22 @@ class LocalQaBootstrapServiceTests {
 				LocalQaBootstrapService.SKU_PRICE,
 				true,
 				LocalQaBootstrapService.SKU_DISPLAY_ORDER);
+	}
+
+	private void assertMismatchedSkuFails(Product product, Sku sku) {
+		String email = runtimeQaEmail();
+		String password = UUID.randomUUID().toString();
+		Member member = member(email);
+		when(memberRepository.findByEmailForUpdate(email)).thenReturn(Optional.of(member));
+		when(passwordEncoder.matches(password, member.getPasswordHash())).thenReturn(true);
+		when(productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME)).thenReturn(List.of(product));
+		when(skuRepository.findAllByProductIdAndName(product.getId(), LocalQaBootstrapService.SKU_NAME))
+				.thenReturn(List.of(sku));
+
+		assertThatThrownBy(() -> bootstrapService.bootstrap(email, password, false))
+				.isInstanceOf(LocalQaBootstrapException.class);
+
+		verify(skuRepository, never()).saveAndFlush(any());
+		verifyNoInteractions(subscriptionRepository);
 	}
 }

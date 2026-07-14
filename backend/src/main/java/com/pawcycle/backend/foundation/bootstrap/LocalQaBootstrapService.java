@@ -70,7 +70,7 @@ public class LocalQaBootstrapService {
 		try {
 			normalizedEmail = emailNormalizer.normalizeEmail(email);
 		} catch (AuthValidationException exception) {
-			throw invalidCredentialConfiguration();
+			throw invalidCredentialConfiguration(exception);
 		}
 		int separator = normalizedEmail.indexOf('@');
 		if (!normalizedEmail.substring(0, separator).equals(QA_EMAIL_LOCAL_PART)) {
@@ -145,5 +145,11 @@ public class LocalQaBootstrapService {
 
 	private LocalQaBootstrapException invalidCredentialConfiguration() {
 		return new LocalQaBootstrapException("로컬 QA bootstrap credential 설정이 없거나 유효하지 않습니다.");
+	}
+
+	private LocalQaBootstrapException invalidCredentialConfiguration(Throwable cause) {
+		return new LocalQaBootstrapException(
+				"로컬 QA bootstrap credential 설정이 없거나 유효하지 않습니다.",
+				cause);
 	}
 }

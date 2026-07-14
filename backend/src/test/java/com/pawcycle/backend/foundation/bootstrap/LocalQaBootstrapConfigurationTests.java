@@ -58,6 +58,12 @@ class LocalQaBootstrapConfigurationTests {
 						"spring.profiles.active=local-integration,test",
 						"pawcycle.local-qa-bootstrap.enabled=true")
 				.run(context -> assertThat(context).doesNotHaveBean("localQaBootstrapRunner"));
+
+		contextRunner
+				.withPropertyValues(
+						"spring.profiles.active=local-integration,prod",
+						"pawcycle.local-qa-bootstrap.enabled=true")
+				.run(context -> assertThat(context).doesNotHaveBean("localQaBootstrapRunner"));
 	}
 
 	@Test
