@@ -108,9 +108,18 @@ class SubscriptionDatabaseIntegrationTests {
 		assertRejectedInsert(member.getId(), sku.getId(), 11, 4, createdDate, createdDate.plusWeeks(4));
 		assertRejectedInsert(member.getId(), sku.getId(), 1, 6, createdDate, createdDate.plusWeeks(6));
 		assertRejectedInsert(member.getId(), sku.getId(), 1, 4, createdDate, createdDate);
-		assertRejectedInsert(member.getId(), sku.getId(), 1, 4, createdDate, createdDate.plusWeeks(4).plusDays(1));
+		assertRejectedInsert(member.getId(), sku.getId(), 1, 4, createdDate, createdDate.minusDays(1));
 		assertRejectedInsert(Long.MAX_VALUE, sku.getId(), 1, 4, createdDate, createdDate.plusWeeks(4));
 		assertRejectedInsert(member.getId(), Long.MAX_VALUE, 1, 4, createdDate, createdDate.plusWeeks(4));
+	}
+
+	@Test
+	void databaseAllowsLaterDateThatDoesNotMatchDeliveryCycle() {
+		LocalDate createdDate = LocalDate.of(2026, 7, 14);
+
+		assertThat(insertSubscription(
+				member.getId(), sku.getId(), 1, 4, createdDate, createdDate.plusDays(1)))
+				.isEqualTo(1);
 	}
 
 	private void assertRejectedInsert(
@@ -120,11 +129,22 @@ class SubscriptionDatabaseIntegrationTests {
 			int cycle,
 			LocalDate createdDate,
 			LocalDate nextOrderDate) {
-		assertThatThrownBy(() -> jdbcTemplate.update("""
+		assertThatThrownBy(() -> insertSubscription(
+				memberId, skuId, quantity, cycle, createdDate, nextOrderDate))
+				.isInstanceOf(DataAccessException.class);
+	}
+
+	private int insertSubscription(
+			Long memberId,
+			Long skuId,
+			int quantity,
+			int cycle,
+			LocalDate createdDate,
+			LocalDate nextOrderDate) {
+		return jdbcTemplate.update("""
 				INSERT INTO subscriptions
 				    (member_id, sku_id, quantity, delivery_cycle_weeks, created_date, next_order_date)
 				VALUES (?, ?, ?, ?, ?, ?)
-				""", memberId, skuId, quantity, cycle, createdDate, nextOrderDate))
-				.isInstanceOf(DataAccessException.class);
+				""", memberId, skuId, quantity, cycle, createdDate, nextOrderDate);
 	}
 }

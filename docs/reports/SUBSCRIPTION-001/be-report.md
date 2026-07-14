@@ -6,7 +6,7 @@
 - 역할: Backend Engineer
 - 기준 브랜치: `main`
 - 작업 브랜치: `feat/be`
-- 상태: 구현, 로컬 보조 검증과 Java 25·MySQL 8.4 원격 검증 완료, PR Ready
+- 상태: 구현과 검증 기록 완료. 현재 CI·Ready·review 상태는 GitHub를 권위 있는 원본으로 확인한다.
 
 ## 작업 목적
 
@@ -89,16 +89,15 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - Java 21 임시 toolchain 구독·인증·상품 focused 단위 테스트 38개: 통과
 - JSON 오류·안전 500 응답 handler 단위 테스트 3개: 통과
 - API·MySQL·Security·query 수 통합 테스트 소스 컴파일: 통과
-- Repository Validation Java 25·MySQL 8.4 Backend 테스트 74개와 build: 통과
-- Repository Validation commit·PR convention 검사: 통과
+- 최신 Repository Validation과 CodeRabbit 결과는 GitHub checks·review를 권위 있는 원본으로 확인한다.
 - `git diff --check`: 통과
-- `python scripts\validate-task-artifacts.py --task-id SUBSCRIPTION-001`: 통과
+- `py scripts\validate-task-artifacts.py --task-id SUBSCRIPTION-001`: 통과
 
 ## 실행하지 못한 검증과 이유
 
-- 로컬 Java 25 test·build: Java 25 toolchain이 설치되지 않았고 download repository가 구성되지 않았다.
+- 이번 D7 수정 후 구독 도메인·DB 대상 테스트: Java 25 toolchain이 설치되지 않고 download repository가 구성되지 않아 test task 의존성 해석 전에 실패했다.
 - 로컬 MySQL 8.4 통합 테스트: Docker daemon이 실행되지 않고 datasource 환경 변수가 없어 격리 MySQL에 연결할 수 없었다.
-- 로컬에서 실행하지 못한 항목은 PR #42의 Repository Validation Java 25·MySQL 8.4 결과로 보완했으며 로컬 실행 근거와 구분한다.
+- 로컬에서 실행하지 못한 Java 25·MySQL 8.4 검증은 PR #42의 최신 Repository Validation 결과로 확인하며 로컬 실행 근거와 구분한다.
 
 ## 실패 후 수정
 
@@ -110,7 +109,8 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 ## 리뷰 반영
 
 - JSON 타입 오류가 Jackson 역직렬화 path의 승인된 요청 필드명을 유지하도록 수정하고 malformed JSON에는 `request` fallback을 유지했다.
-- DB 날짜 CHECK를 `next_order_date = created_date + delivery_cycle_weeks` 등식으로 강화하고 불일치 직접 INSERT 거부 테스트를 추가했다.
+- DB 날짜 CHECK를 API-003 D7의 `next_order_date > created_date`로 복원하고, 같거나 이전 날짜 거부와 이후 비등식 날짜 허용을 물리 계약 테스트로 분리했다.
+- 정확한 `nextOrderDate = createdDate + deliveryCycleWeeks` 등식은 기존 Subscription 도메인 로직과 단위 테스트가 계속 보호한다.
 - endpoint별 안전 500 응답 메시지를 정확 일치로 검증하고 Frontend 인수인계의 `nextOrderDate` 설명 모순을 교정했다.
 - Frontend 인수인계의 4주 주기 예시 날짜를 Backend 계산·통합 테스트와 같은 `2026-08-11`로 통일했다.
 - 배송 주기 값은 migration의 독립 물리 계약과 Java 런타임 계약에 각각 명시해야 하므로 계층을 가로지르는 단일화 제안은 반영하지 않았다.
@@ -149,6 +149,6 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 
 ## PR 상태
 
-- `main` ← `feat/be` PR #42를 Draft로 생성하고 필수 Repository Validation 통과 후 Ready로 전환했다.
+- `main` ← `feat/be` 기존 PR #42를 갱신한다.
 - PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/42`
 - 원격 head, CI와 review 상태는 GitHub를 권위 있는 원본으로 확인한다.
