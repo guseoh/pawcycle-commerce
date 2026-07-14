@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
+import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -22,7 +23,9 @@ export function AppHeader() {
       await logout();
       router.push("/products");
     } catch (error) {
-      if (error instanceof ApiError && error.code === "CSRF_INVALID") {
+      if (error instanceof CsrfRefreshError) {
+        setNotice("보안 정보를 갱신하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      } else if (error instanceof ApiError && error.code === "CSRF_INVALID") {
         setNotice("보안 정보를 새로 받았습니다. 로그아웃을 다시 눌러 주세요.");
       } else {
         setNotice("로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.");

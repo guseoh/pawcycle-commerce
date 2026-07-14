@@ -11,6 +11,7 @@ import {
   subscriptionApi,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
 import {
   buildLoginHref,
   formatPetType,
@@ -122,25 +123,25 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
 
     setSubmitting(true);
     try {
-      const csrfToken = auth.csrfToken ?? (await auth.refreshCsrf());
-      const response = await subscriptionApi.create(
+      const response = await auth.executeWithCsrf((csrfToken) => subscriptionApi.create(
         {
           skuId: selectedSkuId as number,
           quantity: Number(quantity),
           deliveryCycleWeeks: deliveryCycleWeeks as number,
         },
         csrfToken,
-      );
+      ));
       router.push(`/subscriptions/${response.subscriptionId}?created=1`);
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof CsrfRefreshError) {
+        setSubmitError("보안 정보를 갱신하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      } else if (error instanceof ApiError) {
         if (error.code === "AUTH_REQUIRED") {
           auth.markAnonymous();
           router.push(buildLoginHref(returnPath));
           return;
         }
         if (error.code === "CSRF_INVALID") {
-          await auth.refreshCsrf().catch(() => null);
           setSubmitError("보안 정보를 새로 받았습니다. 내용을 확인한 뒤 구독 만들기를 다시 눌러 주세요.");
         } else if (error.code === "SKU_NOT_FOUND" || error.code === "SKU_NOT_SUBSCRIBABLE") {
           setSelectedSkuId(null);

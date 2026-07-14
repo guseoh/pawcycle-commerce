@@ -6,6 +6,7 @@ import { FormEvent, useRef, useState } from "react";
 import { LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
 
 type LoginErrors = Partial<Record<"email" | "password", string>>;
 
@@ -37,7 +38,9 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
       await auth.login(email, password);
       router.replace(returnTo);
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof CsrfRefreshError) {
+        setMessage("보안 정보를 갱신하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      } else if (error instanceof ApiError) {
         const fieldErrors: LoginErrors = {};
         for (const fieldError of error.fieldErrors) {
           if (fieldError.field === "email" || fieldError.field === "password") {
@@ -71,6 +74,11 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
         <p className="eyebrow">Signed in</p>
         <h1>이미 로그인되어 있습니다.</h1>
         <p>요청한 화면으로 계속 이동할 수 있습니다.</p>
+        {message ? (
+          <div className="error-summary" ref={errorRef} tabIndex={-1} role="alert">
+            <p>{message}</p>
+          </div>
+        ) : null}
         <div className="button-row">
           <button className="button button-primary" type="button" onClick={() => router.replace(returnTo)}>
             계속하기

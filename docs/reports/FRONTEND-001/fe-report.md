@@ -43,8 +43,10 @@
 
 - 상품 목록과 상세는 인증과 무관하게 `/api/products`, `/api/products/{productId}`를 호출한다.
 - API client는 모두 상대 경로 `/api/**`, `credentials: same-origin`, `cache: no-store`를 사용하고 승인 오류 응답을 `ApiError`로 보존한다.
-- 인증 상태와 CSRF token은 React provider 메모리에만 보관한다. 초기화 시 현재 회원과 token을 확인하고, 로그인 성공 직후 token을 다시 획득한다.
-- 로그인과 구독 생성에서 `CSRF_INVALID`를 받으면 token만 다시 획득하며 실패한 POST는 재실행하지 않는다.
+- 인증 상태와 CSRF token은 React provider 메모리에만 보관한다. 초기화 시 현재 회원만 확인하며 공개 상품 조회만으로 CSRF token을 선취득하지 않는다.
+- 로그인·로그아웃·구독 생성 직전에 token이 없을 때만 획득하고 로그인 성공 직후 새 token을 다시 획득한다.
+- `AUTH_REQUIRED`로 비회원 전환 시 회원 ID와 기존 CSRF token을 함께 폐기한다.
+- `CSRF_INVALID`를 받으면 기존 token을 먼저 폐기하고 새 token을 요청한다. 갱신 성공과 실패를 구분해 안내하며 실패한 POST는 재실행하지 않는다.
 - `returnTo`는 `/products`, `/products/{양의 정수}`, `/subscriptions`, `/subscriptions/{양의 정수}`만 허용하고 그 밖의 값은 `/products`로 대체한다.
 - 구독 생성은 중복 제출을 막고 응답의 `subscriptionId`로 상세 화면에 이동한다. 생성 전 `nextOrderDate`를 계산하거나 표시하지 않는다.
 - 목록은 서버 순서를 그대로 표시하고 빈 배열을 별도 상태로 처리한다. 상세의 미존재·타인 소유·비숫자 ID는 `SUBSCRIPTION_NOT_FOUND` 동일 조회 불가 화면으로 처리한다.
@@ -52,8 +54,8 @@
 
 ## 오류와 재시도 경계
 
-- `AUTH_REQUIRED`: 메모리 인증 상태를 비회원으로 바꾸고 안전한 로그인 복귀 경로로 이동한다.
-- `CSRF_INVALID`: token을 갱신하고 사용자에게 버튼을 다시 누르도록 안내한다. POST 자동 재실행은 없다.
+- `AUTH_REQUIRED`: 메모리 회원 ID와 CSRF token을 폐기하고 비회원으로 바꾼 뒤 안전한 로그인 복귀 경로로 이동한다.
+- `CSRF_INVALID`: 기존 token을 폐기한 뒤 갱신에 성공한 경우에만 버튼을 다시 누르도록 안내한다. 갱신 실패는 별도 보안 정보 오류로 안내하고 token을 비운 상태로 유지한다. POST 자동 재실행은 없다.
 - `SKU_NOT_FOUND`, `SKU_NOT_SUBSCRIBABLE`: 선택을 지우고 상품 정보를 다시 조회한다.
 - `VALIDATION_FAILED`: 서버의 실제 `fieldErrors.field`를 해당 입력에 연결하고 오류 요약으로 포커스를 이동한다.
 - `SUBSCRIPTION_NOT_FOUND`: 정보 노출 없이 고정된 조회 불가 화면을 표시하며 동일 조회 재시도 버튼은 제공하지 않는다.
@@ -63,7 +65,7 @@
 
 - Node.js `v22.17.1`, npm `10.9.2`
 - `npm ci --no-audit --no-fund`: 통과, lockfile 기준 343 packages 설치
-- `npm test`: 순수 로직 테스트 3개 통과
+- `npm test`: 순수 로직 테스트 7개 통과. 인증 만료 token 폐기, 새 token 로그인 1회 실행, CSRF 갱신 성공·실패와 POST 미재실행을 포함한다.
 - `npm run typecheck`: 통과
 - `npm run lint`: 통과
 - `npm run build`: 통과, 승인 화면 route 생성 확인

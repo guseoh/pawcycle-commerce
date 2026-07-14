@@ -6,9 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ApiError, authApi } from "./api";
+import { clearAuthentication, runCsrfRequest } from "./csrf-lifecycle";
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous" | "error";
 
@@ -16,9 +18,8 @@ interface AuthContextValue {
   status: AuthStatus;
   memberId: number | null;
   errorMessage: string | null;
-  csrfToken: string | null;
   refresh: () => Promise<void>;
-  refreshCsrf: () => Promise<string>;
+  executeWithCsrf: <T>(request: (token: string) => Promise<T>) => Promise<T>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   markAnonymous: () => void;
@@ -29,36 +30,44 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [memberId, setMemberId] = useState<number | null>(null);
-  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const csrfTokenRef = useRef<string | null>(null);
 
-  const refreshCsrf = useCallback(async () => {
-    const response = await authApi.csrf();
-    setCsrfToken(response.token);
-    return response.token;
+  const setCsrfToken = useCallback((token: string | null) => {
+    csrfTokenRef.current = token;
   }, []);
+
+  const acquireCsrfToken = useCallback(async () => (await authApi.csrf()).token, []);
+
+  const executeWithCsrf = useCallback(
+    <T,>(request: (token: string) => Promise<T>) => runCsrfRequest({
+      currentToken: csrfTokenRef.current,
+      acquireToken: acquireCsrfToken,
+      setToken: setCsrfToken,
+      request,
+      isCsrfInvalid: (error) => error instanceof ApiError && error.code === "CSRF_INVALID",
+    }),
+    [acquireCsrfToken, setCsrfToken],
+  );
 
   const refresh = useCallback(async () => {
     setStatus("loading");
     setErrorMessage(null);
 
-    const csrfRequest = refreshCsrf().catch(() => null);
     try {
       const currentMember = await authApi.me();
       setMemberId(currentMember.memberId);
       setStatus("authenticated");
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") {
-        setMemberId(null);
-        setStatus("anonymous");
+        clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
       } else {
         setMemberId(null);
         setStatus("error");
         setErrorMessage("로그인 상태를 확인하지 못했습니다.");
       }
     }
-    await csrfRequest;
-  }, [refreshCsrf]);
+  }, [setCsrfToken]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => void refresh(), 0);
@@ -67,58 +76,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const token = csrfToken ?? (await refreshCsrf());
-      try {
-        const member = await authApi.login(email, password, token);
-        setMemberId(member.memberId);
-        setStatus("authenticated");
-        setErrorMessage(null);
-        setCsrfToken(null);
-        await refreshCsrf();
-      } catch (error) {
-        if (error instanceof ApiError && error.code === "CSRF_INVALID") {
-          await refreshCsrf();
-        }
-        throw error;
-      }
+      await runCsrfRequest({
+        currentToken: csrfTokenRef.current,
+        acquireToken: acquireCsrfToken,
+        setToken: setCsrfToken,
+        request: async (token) => {
+          const member = await authApi.login(email, password, token);
+          setMemberId(member.memberId);
+          setStatus("authenticated");
+          setErrorMessage(null);
+        },
+        isCsrfInvalid: (error) => error instanceof ApiError && error.code === "CSRF_INVALID",
+        refreshAfterSuccess: true,
+      });
     },
-    [csrfToken, refreshCsrf],
+    [acquireCsrfToken, setCsrfToken],
   );
 
   const logout = useCallback(async () => {
-    const token = csrfToken ?? (await refreshCsrf());
     try {
-      await authApi.logout(token);
-      setCsrfToken(null);
-      setMemberId(null);
-      setStatus("anonymous");
-      setErrorMessage(null);
+      await executeWithCsrf(async (token) => {
+        await authApi.logout(token);
+        clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
+        setErrorMessage(null);
+      });
     } catch (error) {
-      if (error instanceof ApiError && error.code === "CSRF_INVALID") {
-        await refreshCsrf();
-      }
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") {
-        setCsrfToken(null);
-        setMemberId(null);
-        setStatus("anonymous");
+        clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
       }
       throw error;
     }
-  }, [csrfToken, refreshCsrf]);
+  }, [executeWithCsrf, setCsrfToken]);
 
   const markAnonymous = useCallback(() => {
-    setMemberId(null);
-    setStatus("anonymous");
-  }, []);
+    clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
+  }, [setCsrfToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
       memberId,
       errorMessage,
-      csrfToken,
       refresh,
-      refreshCsrf,
+      executeWithCsrf,
       login,
       logout,
       markAnonymous,
@@ -127,9 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       memberId,
       errorMessage,
-      csrfToken,
       refresh,
-      refreshCsrf,
+      executeWithCsrf,
       login,
       logout,
       markAnonymous,
