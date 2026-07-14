@@ -85,6 +85,7 @@ PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS=false
 6. 종료·재기동과 reset flag 복원 절차
 
 Docker Compose, reverse proxy와 구체적인 same-origin 구현은 Platform/SRE 승인 범위에서 결정한다. Backend 코드를 변경해 CORS나 cookie 계약을 우회하지 않는다.
+`local-integration` profile은 운영 기본 cookie 보안을 덮어쓰지 않는다. 로컬 HTTP에서만 `SESSION_COOKIE_SECURE=false`가 필요하면 Platform/SRE Runbook의 해당 로컬 프로세스 환경 변수로 명시하고 production/test profile과 조합하지 않는다.
 
 ## 미결정 사항 또는 승인 필요 항목
 

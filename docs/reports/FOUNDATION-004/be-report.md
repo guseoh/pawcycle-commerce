@@ -47,6 +47,7 @@
 - `local-integration` profile이 활성화되고 `pawcycle.local-qa-bootstrap.enabled=true`일 때만 runner가 생성된다.
 - `test`, `production` 또는 `prod` profile이 함께 활성화되면 runner가 생성되지 않는다.
 - local profile 파일의 `enabled`와 `reset-subscriptions` 기본값은 모두 `false`다.
+- local profile 파일은 session cookie 보안을 완화하지 않으며 기존 `SESSION_COOKIE_SECURE` 계약을 유지한다.
 - email과 password에는 fallback·기본값이 없으며 누락·invalid 입력은 DB 접근 전에 일반화된 오류로 시작을 중단한다.
 - email은 기존 AUTH-003 정규화 규칙을 사용하고 local-part가 예약 식별자 `qa-foundation-004`일 때만 허용한다.
 - raw password, hash, session ID와 CSRF token을 출력하는 logger·응답·문서를 추가하지 않았다.

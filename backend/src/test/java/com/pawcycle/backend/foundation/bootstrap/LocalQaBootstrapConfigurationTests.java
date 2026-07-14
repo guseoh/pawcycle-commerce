@@ -6,6 +6,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ApplicationRunner;
@@ -55,6 +58,17 @@ class LocalQaBootstrapConfigurationTests {
 						"spring.profiles.active=local-integration,test",
 						"pawcycle.local-qa-bootstrap.enabled=true")
 				.run(context -> assertThat(context).doesNotHaveBean("localQaBootstrapRunner"));
+	}
+
+	@Test
+	void localIntegrationProfileDoesNotOverrideSessionCookieSecurity() throws IOException {
+		Properties properties = new Properties();
+		try (InputStream input = getClass().getResourceAsStream("/application-local-integration.properties")) {
+			assertThat(input).isNotNull();
+			properties.load(input);
+		}
+
+		assertThat(properties).doesNotContainKey("server.servlet.session.cookie.secure");
 	}
 
 	@Test
