@@ -89,7 +89,7 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - Java 21 임시 toolchain 구독·인증·상품 focused 단위 테스트 38개: 통과
 - JSON 오류·안전 500 응답 handler 단위 테스트 3개: 통과
 - API·MySQL·Security·query 수 통합 테스트 소스 컴파일: 통과
-- Repository Validation Java 25·MySQL 8.4 Backend 테스트 73개와 build: 통과
+- Repository Validation Java 25·MySQL 8.4 Backend 테스트 74개와 build: 통과
 - Repository Validation commit·PR convention 검사: 통과
 - `git diff --check`: 통과
 - `python scripts\validate-task-artifacts.py --task-id SUBSCRIPTION-001`: 통과
@@ -143,6 +143,7 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - 구현 commit: `d329fbf feat(subscription): 구독 생성과 조회 API 구현`
 - MySQL PK 메타데이터 검증 수정 commit: `34bc380 test(subscription): MySQL PK 메타데이터 검증 수정`
 - JSON 타입 오류 필드 보존 commit: `9ed4882 fix(subscription): JSON 타입 오류 필드 보존`
+- 날짜 무결성과 검증 문서 보강 commit: `3d8caec fix(subscription): 날짜 무결성과 검증 문서 보강`
 - reset, rebase, force push와 자동 병합을 사용하지 않는다.
 
 ## PR 상태

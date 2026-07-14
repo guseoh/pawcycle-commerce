@@ -153,7 +153,7 @@ GET /api/subscriptions/{subscriptionId}
 ## 검증 상태
 
 - Backend 보조 Java 21 compile과 focused 단위 테스트는 통과했다.
-- PR #42의 Repository Validation에서 Java 25·MySQL 8.4 Backend 테스트 73개와 build, API·Security·query 수 검증이 통과했다.
+- PR #42의 Repository Validation에서 Java 25·MySQL 8.4 Backend 테스트 74개와 build, API·Security·query 수 검증이 통과했다.
 - 실제 원격 CI와 PR 리뷰 상태는 GitHub를 권위 있는 원본으로 사용한다.
 
 ## 검증 포인트
