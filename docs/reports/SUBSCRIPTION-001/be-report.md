@@ -102,6 +102,7 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - 최초 Java 25 compile은 toolchain 부재로 소스 컴파일 전에 실패했다.
 - 저장소에 포함되지 않는 임시 Java 21 init script로 전체 소스·테스트 컴파일을 확인했다.
 - focused 단위 테스트의 첫 실행에서 공용 mock helper의 미사용 stub 2개가 Mockito strictness에 걸렸다. 해당 stub만 lenient로 제한하고 같은 focused 테스트를 재실행해 통과했다.
+- 첫 Repository Validation에서 Java 25·MySQL 8.4 Backend 테스트 73개 중 물리 계약 테스트 1개가 실패했다. MySQL이 명명한 PK를 `information_schema`에서 `PRIMARY`로 노출하는 실제 동작에 맞춰 assertion만 수정했으며 migration 계약은 변경하지 않았다.
 
 ## 적용 방법
 

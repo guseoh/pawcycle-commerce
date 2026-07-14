@@ -83,7 +83,7 @@ class SubscriptionDatabaseIntegrationTests {
 				  AND table_name = 'subscriptions'
 				""", String.class);
 		assertThat(constraints).contains(
-				"pk_subscriptions",
+				"PRIMARY",
 				"fk_subscriptions_member",
 				"fk_subscriptions_sku",
 				"chk_subscriptions_quantity",
