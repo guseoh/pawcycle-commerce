@@ -9,6 +9,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
+	List<Product> findAllByName(String name);
+
 	@Query(value = """
 			SELECT p.*
 			FROM products p

@@ -4,10 +4,15 @@ import com.pawcycle.backend.subscription.domain.Subscription;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
+
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("DELETE FROM Subscription subscription WHERE subscription.member.id = :memberId")
+	int deleteAllByMemberId(@Param("memberId") Long memberId);
 
 	@Query("""
 			SELECT subscription

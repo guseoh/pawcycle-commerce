@@ -14,7 +14,7 @@ public class EmailNormalizer {
 
 	NormalizedLoginCredentials normalize(String email, String password) {
 		List<FieldErrorResponse> fieldErrors = new ArrayList<>();
-		String normalizedEmail = normalizeEmail(email);
+		String normalizedEmail = trimEmail(email);
 		if (!isValid(normalizedEmail)) {
 			fieldErrors.add(new FieldErrorResponse("email", EMAIL_MESSAGE));
 		}
@@ -24,13 +24,18 @@ public class EmailNormalizer {
 		if (!fieldErrors.isEmpty()) {
 			throw new AuthValidationException(fieldErrors);
 		}
-		int separator = normalizedEmail.indexOf('@');
-		String localPart = normalizedEmail.substring(0, separator);
-		String domain = normalizedEmail.substring(separator + 1).toLowerCase(Locale.ROOT);
-		return new NormalizedLoginCredentials(localPart + "@" + domain, password);
+		return new NormalizedLoginCredentials(normalizeDomain(normalizedEmail), password);
 	}
 
-	private String normalizeEmail(String email) {
+	public String normalizeEmail(String email) {
+		String normalizedEmail = trimEmail(email);
+		if (!isValid(normalizedEmail)) {
+			throw new AuthValidationException(List.of(new FieldErrorResponse("email", EMAIL_MESSAGE)));
+		}
+		return normalizeDomain(normalizedEmail);
+	}
+
+	private String trimEmail(String email) {
 		if (email == null) {
 			return null;
 		}
@@ -43,6 +48,13 @@ public class EmailNormalizer {
 			end--;
 		}
 		return email.substring(start, end);
+	}
+
+	private String normalizeDomain(String email) {
+		int separator = email.indexOf('@');
+		String localPart = email.substring(0, separator);
+		String domain = email.substring(separator + 1).toLowerCase(Locale.ROOT);
+		return localPart + "@" + domain;
 	}
 
 	private boolean isValid(String email) {
