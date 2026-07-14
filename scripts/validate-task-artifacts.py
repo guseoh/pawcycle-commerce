@@ -14,6 +14,7 @@ TASK_ID_PREFIXES = (
     "PS",
     "ARCH",
     "FOUNDATION",
+    "FRONTEND",
     "BUG",
     "PERF",
     "OPS",
