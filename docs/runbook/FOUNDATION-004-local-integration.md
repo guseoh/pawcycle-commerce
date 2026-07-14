@@ -69,7 +69,7 @@ powershell -NoProfile -File .\smoke.ps1 -Scenario Full -BaseUri http://localhost
 
 ```powershell
 docker compose --env-file .env.local down
-docker compose --env-file .env.local up --detach
+docker compose --env-file .env.local up --detach --wait --wait-timeout 120
 powershell -NoProfile -File .\smoke.ps1 -Scenario Preserved -BaseUri http://localhost:8080
 ```
 
@@ -81,7 +81,7 @@ powershell -NoProfile -File .\smoke.ps1 -Scenario Preserved -BaseUri http://loca
 2. Backend와 proxy를 재생성하고 빈 상태를 확인한다.
 
    ```powershell
-   docker compose --env-file .env.local up --detach --force-recreate backend proxy
+   docker compose --env-file .env.local up --detach --wait --wait-timeout 120 --force-recreate backend proxy
    powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
    ```
 
@@ -89,7 +89,7 @@ powershell -NoProfile -File .\smoke.ps1 -Scenario Preserved -BaseUri http://loca
 4. Backend와 proxy를 다시 재생성한다.
 
    ```powershell
-   docker compose --env-file .env.local up --detach --force-recreate backend proxy
+   docker compose --env-file .env.local up --detach --wait --wait-timeout 120 --force-recreate backend proxy
    powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
    ```
 

@@ -54,7 +54,7 @@ docker compose --env-file .env.local stop
 docker compose --env-file .env.local start
 ```
 
-`down` 뒤 `up --detach`도 named volume을 보존한다. `down --volumes`는 명시적 전체 삭제이므로 일반 QA 종료에 사용하지 않는다.
+`down` 뒤 `up --detach --wait --wait-timeout 120`도 named volume을 보존한다. Compose 대기가 성공해 모든 서비스가 `healthy`가 된 뒤 검증을 시작한다. `down --volumes`는 명시적 전체 삭제이므로 일반 QA 종료에 사용하지 않는다.
 
 ## QA fixture 기대값
 
@@ -70,15 +70,20 @@ docker compose --env-file .env.local start
 ## 빈 구독 상태 reset과 false 복원
 
 1. `.env.local`의 `PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS`를 `true`로 바꾼다.
-2. Backend와 proxy를 재생성한다.
-3. Empty smoke 또는 브라우저에서 내 구독 목록이 비어 있는지 확인한다.
-4. 즉시 reset 값을 `false`로 복원한다.
-5. Backend와 proxy를 다시 재생성한다.
+2. Backend와 proxy를 재생성하고 빈 상태를 확인한다.
 
-```powershell
-docker compose --env-file .env.local up --detach --force-recreate backend proxy
-powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
-```
+   ```powershell
+   docker compose --env-file .env.local up --detach --wait --wait-timeout 120 --force-recreate backend proxy
+   powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
+   ```
+
+3. 즉시 `.env.local`의 reset 값을 `false`로 복원한다.
+4. Backend와 proxy를 다시 재생성한다.
+
+   ```powershell
+   docker compose --env-file .env.local up --detach --wait --wait-timeout 120 --force-recreate backend proxy
+   powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
+   ```
 
 reset은 예약된 QA 회원의 구독만 삭제해야 한다. 다른 회원이나 비fixture 데이터를 직접 정리하지 않는다.
 
