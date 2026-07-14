@@ -19,6 +19,10 @@ limits = importlib.util.module_from_spec(LIMITS_SPEC)
 LIMITS_SPEC.loader.exec_module(limits)
 
 DETAILED_EVENTS = frozenset({"pr_ready", "pr_merged", "review_approved", "changes_requested"})
+DETAILED_EMBED_TITLES = (
+    "🔍 처리·검증·리뷰",
+    "🚦 상태와 다음 작업",
+)
 
 
 def is_detailed_event(event: str) -> bool:
@@ -43,7 +47,7 @@ def payload_embeds(payload: Any) -> list[dict[str, Any]]:
 def embed_titles(embeds: list[dict[str, Any]]) -> list[str]:
     titles = [item.get("title") for item in embeds]
     if not all(isinstance(title, str) and title.strip() for title in titles):
-        raise ValueError("Discord payload embed title이 비어 있음")
+        raise ValueError("Discord payload embed title 형식 오류")
     normalized = [title.strip() for title in titles]
     if len(normalized) != len(set(normalized)):
         raise ValueError("Discord payload embed title이 중복됨")
@@ -58,6 +62,8 @@ def validate_payload_contract(payload: Any, event: str) -> dict[str, Any]:
     if payload.get("allowed_mentions") != {"parse": []}:
         raise ValueError("Discord payload mention 보호가 없음")
     titles = embed_titles(embeds)
+    if is_detailed_event(event) and tuple(titles[1:]) != DETAILED_EMBED_TITLES:
+        raise ValueError("Discord 상세 embed title 순서 불일치")
     for index, embed in enumerate(embeds, start=1):
         if len(str(embed.get("title", ""))) > limits.MAX_TITLE:
             raise ValueError(f"Discord payload embed {index} title 제한 초과")

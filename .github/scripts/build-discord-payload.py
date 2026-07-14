@@ -179,6 +179,7 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
 
     detailed = contract.is_detailed_event(event)
     if detailed:
+        detail_title, action_title = contract.DETAILED_EMBED_TITLES
         detail_fields = [
             field("🧩 주요 변경", context.get("changes"), False, 620),
             field("🛠️ 처리 과정", context.get("process"), False, 620),
@@ -192,7 +193,7 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
         if event in ("review_approved", "changes_requested"):
             detail_fields.append(field("✅ CI 상태", context.get("ci_status"), True, 80))
         detail_fields.extend([field("👀 리뷰 상태", format_reviews(context.get("reviews")), False, 500), field("💬 미해결 스레드", context.get("unresolved_threads"), True, 40)])
-        embeds.append(embed("🔍 처리·검증·리뷰", color, detail_fields, context))
+        embeds.append(embed(detail_title, color, detail_fields, context))
 
         action_fields = [
             field("📌 현재 상태", context.get("status"), True, 100),
@@ -203,7 +204,7 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
         actions_url = context.get("actions_url")
         if actions_url and actions_url not in (MISSING, UNKNOWN):
             action_fields.append(field("🔗 Actions", actions_url, False, 500))
-        embeds.append(embed("🚦 상태와 다음 작업", color, action_fields, context))
+        embeds.append(embed(action_title, color, action_fields, context))
     else:
         embeds[0]["fields"].extend([field("📌 현재 상태", context.get("status"), True, 100), field("➡️ 다음 작업", context.get("next_action"), False, 500)])
 

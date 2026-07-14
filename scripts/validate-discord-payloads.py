@@ -78,12 +78,19 @@ def validate_payload(payload: dict[str, Any], fixture: Path, context: dict[str, 
     expected_count = contract.expected_embed_count(event)
     if len(embeds) != expected_count:
         errors.append(f"이벤트 embed 개수가 공통 계약과 다름: expected={expected_count}, actual={len(embeds)}")
-    if detailed and isinstance(embeds, list) and len(embeds) == expected_count:
-        titles = [item.get("title") for item in embeds if isinstance(item, dict)]
-        if titles[1:] != ["🔍 처리·검증·리뷰", "🚦 상태와 다음 작업"]:
-            errors.append("상세 embed title 이모지 계약 불일치")
-        if len(titles) != len(set(titles)):
+    titles = [item.get("title") for item in embeds if isinstance(item, dict)]
+    valid_titles = (
+        len(titles) == len(embeds)
+        and all(isinstance(title, str) and title.strip() for title in titles)
+    )
+    if not valid_titles:
+        errors.append("embed title 형식 오류")
+    else:
+        normalized_titles = [title.strip() for title in titles]
+        if len(normalized_titles) != len(set(normalized_titles)):
             errors.append("embed title 중복")
+        if detailed and tuple(normalized_titles[1:]) != contract.DETAILED_EMBED_TITLES:
+            errors.append("상세 embed title 이모지 계약 불일치")
     for index, embed in enumerate(embeds):
         if not isinstance(embed, dict):
             errors.append(f"embed {index + 1} 형식 오류")

@@ -35,6 +35,9 @@ Tech Lead가 구현 diff, 신뢰 경계, Repository Validation과 병합 후 Pre
 - HTTP 204, JSON 파싱 실패, 생성 Embed 1개가 성공으로 처리되지 않는가
 - 로그와 Step Summary에 Webhook URL, response body, field value와 PR 본문 전체가 없는가
 - title과 주요 field label의 이모지가 정보를 과도하게 복잡하게 만들지 않는가
+- list, dict, `None`, 빈 문자열 또는 공백 title이 validator를 예외 종료시키지 않고 형식 오류로 수집되는가
+- 상세 이벤트의 두 고정 title 순서가 공통 message contract 한 곳에서 관리되는가
+- 단순 이벤트는 현재 상태·다음 작업을 첫 번째 Embed에, 상세 이벤트는 세 번째 Embed에 표시하는가
 - 제품 코드, API 계약, dependency와 Secret 변경이 없는가
 
 ## 미결정 사항 또는 승인 필요 항목
