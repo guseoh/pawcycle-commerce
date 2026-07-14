@@ -42,7 +42,12 @@ export async function runCsrfRequest<T>({
   try {
     const result = await request(token);
     if (refreshAfterSuccess) {
-      await acquireFreshToken(acquireToken, setToken);
+      try {
+        await acquireFreshToken(acquireToken, setToken);
+      } catch (error) {
+        if (!(error instanceof CsrfRefreshError)) throw error;
+        setToken(null);
+      }
     }
     return result;
   } catch (error) {

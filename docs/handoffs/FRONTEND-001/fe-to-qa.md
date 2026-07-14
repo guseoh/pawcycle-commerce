@@ -40,6 +40,8 @@
 - `frontend/src/components/`
 - `frontend/src/lib/api.ts`
 - `frontend/src/lib/auth-context.tsx`
+- `frontend/src/lib/csrf-lifecycle.ts`
+- `frontend/src/lib/csrf-lifecycle.test.mts`
 - `frontend/src/lib/frontend-utils.ts`
 - `frontend/src/lib/frontend-utils.test.mts`
 - `docs/reports/FRONTEND-001/fe-report.md`

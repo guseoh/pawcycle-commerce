@@ -32,12 +32,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [memberId, setMemberId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const csrfTokenRef = useRef<string | null>(null);
+  const authGenerationRef = useRef(0);
 
   const setCsrfToken = useCallback((token: string | null) => {
     csrfTokenRef.current = token;
   }, []);
 
   const acquireCsrfToken = useCallback(async () => (await authApi.csrf()).token, []);
+
+  const nextAuthGeneration = useCallback(() => {
+    authGenerationRef.current += 1;
+    return authGenerationRef.current;
+  }, []);
 
   const executeWithCsrf = useCallback(
     <T,>(request: (token: string) => Promise<T>) => runCsrfRequest({
@@ -51,14 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refresh = useCallback(async () => {
+    const generation = nextAuthGeneration();
     setStatus("loading");
     setErrorMessage(null);
 
     try {
       const currentMember = await authApi.me();
+      if (generation !== authGenerationRef.current) return;
       setMemberId(currentMember.memberId);
       setStatus("authenticated");
     } catch (error) {
+      if (generation !== authGenerationRef.current) return;
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") {
         clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
       } else {
@@ -67,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setErrorMessage("로그인 상태를 확인하지 못했습니다.");
       }
     }
-  }, [setCsrfToken]);
+  }, [nextAuthGeneration, setCsrfToken]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => void refresh(), 0);
@@ -76,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
+      nextAuthGeneration();
       await runCsrfRequest({
         currentToken: csrfTokenRef.current,
         acquireToken: acquireCsrfToken,
@@ -90,10 +100,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshAfterSuccess: true,
       });
     },
-    [acquireCsrfToken, setCsrfToken],
+    [acquireCsrfToken, nextAuthGeneration, setCsrfToken],
   );
 
   const logout = useCallback(async () => {
+    nextAuthGeneration();
     try {
       await executeWithCsrf(async (token) => {
         await authApi.logout(token);
@@ -106,11 +117,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw error;
     }
-  }, [executeWithCsrf, setCsrfToken]);
+  }, [executeWithCsrf, nextAuthGeneration, setCsrfToken]);
 
   const markAnonymous = useCallback(() => {
+    nextAuthGeneration();
     clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
-  }, [setCsrfToken]);
+  }, [nextAuthGeneration, setCsrfToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

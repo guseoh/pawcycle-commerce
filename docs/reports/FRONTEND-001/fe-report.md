@@ -65,7 +65,7 @@
 
 - Node.js `v22.17.1`, npm `10.9.2`
 - `npm ci --no-audit --no-fund`: 통과, lockfile 기준 343 packages 설치
-- `npm test`: 순수 로직 테스트 7개 통과. 인증 만료 token 폐기, 새 token 로그인 1회 실행, CSRF 갱신 성공·실패와 POST 미재실행을 포함한다.
+- `npm test`: 순수 로직 테스트 8개 통과. 인증 만료 token 폐기, 새 token 로그인 1회 실행, CSRF 갱신 성공·실패, 성공한 로그인 보존과 POST 미재실행을 포함한다.
 - `npm run typecheck`: 통과
 - `npm run lint`: 통과
 - `npm run build`: 통과, 승인 화면 route 생성 확인

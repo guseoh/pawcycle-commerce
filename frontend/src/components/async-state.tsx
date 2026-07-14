@@ -23,7 +23,12 @@ export function ErrorState({
   children,
 }: ErrorStateProps) {
   return (
-    <section className="state-panel state-panel-error" aria-labelledby="error-state-title">
+    <section
+      className="state-panel state-panel-error"
+      role="alert"
+      aria-atomic="true"
+      aria-labelledby="error-state-title"
+    >
       <p className="eyebrow">확인할 수 없음</p>
       <h1 id="error-state-title">{title}</h1>
       <p>{message}</p>
