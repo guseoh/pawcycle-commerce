@@ -78,8 +78,8 @@ class DatabaseFoundationIntegrationTests {
 				""",
 				String.class);
 
-		assertThat(tables).contains("members", "products", "skus", "flyway_schema_history");
-		assertThat(tables).doesNotContain("subscriptions", "orders", "payments", "deliveries", "inventory");
+		assertThat(tables).contains("members", "products", "skus", "subscriptions", "flyway_schema_history");
+		assertThat(tables).doesNotContain("orders", "payments", "deliveries", "inventory");
 	}
 
 	@Test
@@ -109,12 +109,12 @@ class DatabaseFoundationIntegrationTests {
 	}
 
 	@Test
-	void rerunningFlywayDoesNotReapplyV1() {
+	void rerunningFlywayDoesNotReapplyAppliedMigrations() {
 		Integer before = appliedMigrationCount();
 		flyway.migrate();
 		Integer after = appliedMigrationCount();
 
-		assertThat(before).isEqualTo(1);
+		assertThat(before).isEqualTo(2);
 		assertThat(after).isEqualTo(before);
 	}
 
