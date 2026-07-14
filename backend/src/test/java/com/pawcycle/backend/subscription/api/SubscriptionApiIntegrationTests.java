@@ -249,6 +249,15 @@ class SubscriptionApiIntegrationTests {
 					.content("{\"skuId\":\"wrong-type\",\"quantity\":1,\"deliveryCycleWeeks\":2}"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("skuId"));
+
+		mockMvc.perform(post("/api/subscriptions")
+					.with(authenticated(owner))
+					.with(csrf())
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.fieldErrors[0].field").value("request"));
 
 		postSubscription(owner, Map.of("skuId", Long.MAX_VALUE, "quantity", 1, "deliveryCycleWeeks", 2))

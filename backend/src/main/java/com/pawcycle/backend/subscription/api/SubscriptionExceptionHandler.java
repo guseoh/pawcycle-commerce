@@ -9,6 +9,7 @@ import com.pawcycle.backend.subscription.application.SubscriptionDetailUnavailab
 import com.pawcycle.backend.subscription.application.SubscriptionListUnavailableException;
 import com.pawcycle.backend.subscription.application.SubscriptionNotFoundException;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,10 +18,12 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tools.jackson.core.JacksonException;
 
 @RestControllerAdvice(assignableTypes = SubscriptionController.class)
 public class SubscriptionExceptionHandler {
 	private static final Logger log = LoggerFactory.getLogger(SubscriptionExceptionHandler.class);
+	private static final Set<String> REQUEST_FIELDS = Set.of("skuId", "quantity", "deliveryCycleWeeks");
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
@@ -32,11 +35,26 @@ public class SubscriptionExceptionHandler {
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
-	ResponseEntity<ApiErrorResponse> handleMalformedJson() {
+	ResponseEntity<ApiErrorResponse> handleMalformedJson(HttpMessageNotReadableException exception) {
 		return ResponseEntity.badRequest().body(new ApiErrorResponse(
 				"VALIDATION_FAILED",
 				"입력 내용을 확인해 주세요.",
-				List.of(new FieldErrorResponse("request", "요청 값의 형식을 확인해 주세요."))));
+				List.of(new FieldErrorResponse(resolveJsonErrorField(exception), "요청 값의 형식을 확인해 주세요."))));
+	}
+
+	private String resolveJsonErrorField(HttpMessageNotReadableException exception) {
+		Throwable cause = exception.getCause();
+		while (cause != null) {
+			if (cause instanceof JacksonException jacksonException) {
+				return jacksonException.getPath().stream()
+						.map(JacksonException.Reference::getPropertyName)
+						.filter(REQUEST_FIELDS::contains)
+						.reduce((first, last) -> last)
+						.orElse("request");
+			}
+			cause = cause.getCause();
+		}
+		return "request";
 	}
 
 	@ExceptionHandler(SkuNotFoundException.class)

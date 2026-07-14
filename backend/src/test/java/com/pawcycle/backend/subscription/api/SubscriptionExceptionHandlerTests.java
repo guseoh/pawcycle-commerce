@@ -1,6 +1,7 @@
 package com.pawcycle.backend.subscription.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.subscription.application.SkuNotFoundException;
@@ -10,8 +11,12 @@ import com.pawcycle.backend.subscription.application.SubscriptionDetailUnavailab
 import com.pawcycle.backend.subscription.application.SubscriptionListUnavailableException;
 import com.pawcycle.backend.subscription.application.SubscriptionNotFoundException;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.exc.MismatchedInputException;
 
 class SubscriptionExceptionHandlerTests {
 
@@ -41,6 +46,24 @@ class SubscriptionExceptionHandlerTests {
 				handler.handleDetailUnavailable(new SubscriptionDetailUnavailableException(
 						new IllegalStateException("subscriptions table detail"))),
 				"SUBSCRIPTION_DETAIL_UNAVAILABLE");
+	}
+
+	@Test
+	void jsonTypeErrorsUseKnownFieldAndMalformedJsonUsesRequestFallback() {
+		MismatchedInputException typeMismatch = MismatchedInputException.from(
+				(JsonParser) null, Long.class, "wrong type");
+		typeMismatch.prependPath(SubscriptionCreateRequest.class, "skuId");
+
+		ResponseEntity<ApiErrorResponse> typeMismatchResponse = handler.handleMalformedJson(
+				new HttpMessageNotReadableException("wrong type", typeMismatch, mock(HttpInputMessage.class)));
+		ResponseEntity<ApiErrorResponse> malformedResponse = handler.handleMalformedJson(
+				new HttpMessageNotReadableException(
+						"malformed", new IllegalArgumentException("malformed"), mock(HttpInputMessage.class)));
+
+		assertThat(typeMismatchResponse.getBody()).isNotNull();
+		assertThat(typeMismatchResponse.getBody().fieldErrors()).extracting("field").containsExactly("skuId");
+		assertThat(malformedResponse.getBody()).isNotNull();
+		assertThat(malformedResponse.getBody().fieldErrors()).extracting("field").containsExactly("request");
 	}
 
 	private void assertError(
