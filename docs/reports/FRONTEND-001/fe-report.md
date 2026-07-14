@@ -67,6 +67,8 @@
 - `npm run typecheck`: 통과
 - `npm run lint`: 통과
 - `npm run build`: 통과, 승인 화면 route 생성 확인
+- `py -m py_compile scripts\validate-task-artifacts.py`: 통과
+- `"FRONTEND-001" | py scripts\validate-task-artifacts.py --from-stdin`: 통과
 - `py scripts\validate-task-artifacts.py --task-id FRONTEND-001`: 통과
 - `git diff --check`: 통과
 
@@ -87,6 +89,7 @@
 - `main` ← `feat/fe` Draft PR #43을 생성했다.
 - PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/43`
 - 생성 직후 상태: `OPEN`, Draft, 미병합, head `f9e391c0b5de03e6c9276e9b5ae58dac15e6a16e`
+- Repository Validation이 `FRONTEND-001` prefix를 인식하지 못한 차단을 해소하기 위해 validator의 prefix 목록에 `FRONTEND` 한 줄만 추가했으며 기존 섹션·판정 규칙은 변경하지 않았다.
 - 최신 head의 CI·review·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
 - Ready 전환과 자동 병합은 수행하지 않았다.
 
