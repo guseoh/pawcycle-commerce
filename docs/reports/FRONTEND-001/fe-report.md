@@ -6,7 +6,7 @@
 - 역할: Frontend Engineer
 - 기준 브랜치: `main`
 - 작업 브랜치: `feat/fe`
-- 상태: 구현과 로컬 검증 완료. 현재 CI·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
+- 상태: 구현, 병합 전 리뷰 수정과 로컬 검증 완료. 현재 CI·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
 
 ## 작업 목적
 
@@ -25,11 +25,13 @@
 - `/`에서 `/products`로 이동하는 공개 상품 목록·상세 화면
 - `/login?returnTo=...` 로그인과 안전한 내부 GET 화면 복귀
 - 현재 회원, 로그인, 로그아웃과 메모리 기반 CSRF token 생명주기
+- 로그아웃 `AUTH_REQUIRED`의 세션 만료 안내·상품 목록 이동과 관련 회귀 테스트
 - 상품 상세의 구독 가능한 SKU, 수량 1~10, 서버 제공 배송 주기 선택과 구독 생성
 - 보호된 `/subscriptions`, `/subscriptions/[subscriptionId]` 목록·상세 화면
 - 로딩, 빈 상태, 조회 불가, API 오류, 재시도와 생성 성공 상태
 - label, fieldset, 오류 요약 포커스, skip link와 키보드 포커스 표시
 - dependency 없는 안전 복귀 경로·날짜 표시·구독 입력 순수 로직 테스트
+- `FRONTEND-001` 작업 ID를 허용하는 산출물 validator prefix 보완
 
 ## 변경하지 않은 범위
 
@@ -46,6 +48,7 @@
 - 인증 상태와 CSRF token은 React provider 메모리에만 보관한다. 초기화 시 현재 회원만 확인하며 공개 상품 조회만으로 CSRF token을 선취득하지 않는다.
 - 로그인·로그아웃·구독 생성 직전에 token이 없을 때만 획득하고 로그인 성공 직후 새 token을 다시 획득한다.
 - `AUTH_REQUIRED`로 비회원 전환 시 회원 ID와 기존 CSRF token을 함께 폐기한다.
+- 로그아웃 중 `AUTH_REQUIRED`는 이미 익명으로 전환된 상태에 맞춰 세션 만료 안내를 표시하고 `/products`로 이동한다.
 - `CSRF_INVALID`를 받으면 기존 token을 먼저 폐기하고 새 token을 요청한다. 갱신 성공과 실패를 구분해 안내하며 실패한 POST는 재실행하지 않는다.
 - `returnTo`는 `/products`, `/products/{양의 정수}`, `/subscriptions`, `/subscriptions/{양의 정수}`만 허용하고 그 밖의 값은 `/products`로 대체한다.
 - 구독 생성은 중복 제출을 막고 응답의 `subscriptionId`로 상세 화면에 이동한다. 생성 전 `nextOrderDate`를 계산하거나 표시하지 않는다.
@@ -54,7 +57,7 @@
 
 ## 오류와 재시도 경계
 
-- `AUTH_REQUIRED`: 메모리 회원 ID와 CSRF token을 폐기하고 비회원으로 바꾼 뒤 안전한 로그인 복귀 경로로 이동한다.
+- `AUTH_REQUIRED`: 메모리 회원 ID와 CSRF token을 폐기하고 비회원으로 바꾼다. 보호 화면은 안전한 로그인 복귀 경로로 이동하고, 로그아웃 요청은 세션 만료 안내 후 `/products`로 이동한다.
 - `CSRF_INVALID`: 기존 token을 폐기한 뒤 갱신에 성공한 경우에만 버튼을 다시 누르도록 안내한다. 갱신 실패는 별도 보안 정보 오류로 안내하고 token을 비운 상태로 유지한다. POST 자동 재실행은 없다.
 - `SKU_NOT_FOUND`, `SKU_NOT_SUBSCRIBABLE`: 선택을 지우고 상품 정보를 다시 조회한다.
 - `VALIDATION_FAILED`: 서버의 실제 `fieldErrors.field`를 해당 입력에 연결하고 오류 요약으로 포커스를 이동한다.
@@ -65,7 +68,7 @@
 
 - Node.js `v22.17.1`, npm `10.9.2`
 - `npm ci --no-audit --no-fund`: 통과, lockfile 기준 343 packages 설치
-- `npm test`: 순수 로직 테스트 8개 통과. 인증 만료 token 폐기, 새 token 로그인 1회 실행, CSRF 갱신 성공·실패, 성공한 로그인 보존과 POST 미재실행을 포함한다.
+- `npm test`: 순수 로직 테스트 12개 통과. 기존 인증·CSRF·복귀 경로·표시·입력 8개와 로그아웃 `AUTH_REQUIRED`, `CsrfRefreshError`, `CSRF_INVALID`, 일반 실패 회귀 4개를 포함한다.
 - `npm run typecheck`: 통과
 - `npm run lint`: 통과
 - `npm run build`: 통과, 승인 화면 route 생성 확인
@@ -81,6 +84,7 @@
 ## Git 결과
 
 - 최신 `origin/main` `5f095b3f60372135ca1d1b8ebe677eed49d36497`에서 로컬 `feat/fe`를 생성했다.
+- 데스크톱 작업 시작 시 `origin`과 GitHub CLI가 `guseoh/pawcycle-commerce`를 가리키고 작업 트리가 깨끗함을 확인했다. 로컬에 없던 `feat/fe`는 PR #43과 일치하는 `origin/feat/fe` head `43e15fc6e0144de7cabd64cacde43f44254893a0`에서 tracking 생성했다.
 - 구현 commit: `f9e391c feat(frontend): 첫 구독 수직 MVP 구현`
 - 인증·CSRF 생명주기 수정 commit: `7eff94a fix(frontend): 인증 CSRF 생명주기 수정`
 - Ready 리뷰 반영 commit: `1dee48a fix(frontend): 리뷰 접근성과 인증 경쟁 반영`
@@ -97,6 +101,7 @@
 - 최신 head의 CI·review·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
 - 최신 Repository Validation 성공과 유효한 미해결 review thread가 없음을 확인한 뒤 Ready for review로 전환했다.
 - CodeRabbit 지적 7개는 6개 최소 수정과 1개 dependency 제외 근거 답변으로 정리했으며 모든 thread가 resolved다.
+- 최신 리뷰에서 미해결 inline thread가 없음을 확인하고, 여전히 유효한 outside-diff 지적 2개인 로그아웃 `AUTH_REQUIRED` 처리와 validator 변경 범위 추적 누락만 반영했다.
 - 자동 병합은 수행하지 않았다.
 
 ## 적용·실행 방법

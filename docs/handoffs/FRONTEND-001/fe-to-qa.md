@@ -21,6 +21,7 @@
 
 - 공개 상품 목록·상세와 루트 redirect
 - 로그인·로그아웃·현재 회원과 메모리 CSRF token 관리
+- 로그아웃 중 세션 만료 안내와 상품 목록 이동
 - 안전한 로그인 복귀 경로 검증
 - 상품 상세의 구독 생성과 생성 상세 이동
 - 보호된 내 구독 목록·상세
@@ -42,6 +43,8 @@
 - `frontend/src/lib/auth-context.tsx`
 - `frontend/src/lib/csrf-lifecycle.ts`
 - `frontend/src/lib/csrf-lifecycle.test.mts`
+- `frontend/src/lib/logout-feedback.ts`
+- `frontend/src/lib/logout-feedback.test.mts`
 - `frontend/src/lib/frontend-utils.ts`
 - `frontend/src/lib/frontend-utils.test.mts`
 - `docs/reports/FRONTEND-001/fe-report.md`
@@ -102,7 +105,7 @@ npm run dev
 1. 비회원이 `/products`와 공개 상품 상세를 보고 상품·SKU 표시 가격·구독 가능 여부를 확인할 수 있다.
 2. `/subscriptions` 또는 조회 가능한 상세에 비회원으로 접근하면 로그인으로 이동하고, 성공 뒤 원래 내부 GET 화면으로 복귀한다.
 3. `returnTo=https://example.com`, `//example.com`, `/login`, 0·음수 ID 등은 `/products`로 대체된다.
-4. 로그인 성공 직후 현재 회원 UI가 갱신되고 로그아웃 성공 뒤 보호 화면 접근이 다시 로그인으로 연결된다.
+4. 로그인 성공 직후 현재 회원 UI가 갱신되고 로그아웃 성공 뒤 보호 화면 접근이 다시 로그인으로 연결된다. 로그아웃 중 `AUTH_REQUIRED`를 받으면 실패 안내 대신 세션 만료 안내를 표시하고 `/products`로 이동한다.
 5. 구독 가능한 SKU, 수량 1~10과 제공된 배송 주기를 선택할 수 있고 생성 중 버튼을 다시 눌러도 POST가 중복 전송되지 않는다.
 6. 생성 전 화면에 `nextOrderDate`가 계산·표시되지 않고, 성공 뒤 응답 `subscriptionId`의 상세에서 서버 날짜가 표시된다.
 7. 공개 상품 진입만으로 `/api/auth/csrf`가 호출되지 않고 로그인·로그아웃·구독 생성 직전에 token이 없을 때 호출된다.

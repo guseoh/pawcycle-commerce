@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/lib/frontend-utils.test.mts src/lib/csrf-lifecycle.test.mts"
+    "test": "node --experimental-strip-types --test src/lib/frontend-utils.test.mts src/lib/csrf-lifecycle.test.mts src/lib/logout-feedback.test.mts"
   },
   "dependencies": {
     "next": "16.2.10",
