@@ -66,4 +66,8 @@ public class Sku {
 	public boolean isSubscribable() {
 		return subscribable;
 	}
+
+	public int getDisplayOrder() {
+		return displayOrder;
+	}
 }

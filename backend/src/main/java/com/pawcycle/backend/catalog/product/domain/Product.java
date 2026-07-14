@@ -74,4 +74,8 @@ public class Product {
 	public String getThumbnailUrl() {
 		return thumbnailUrl;
 	}
+
+	public String getDisplayStatus() {
+		return displayStatus;
+	}
 }

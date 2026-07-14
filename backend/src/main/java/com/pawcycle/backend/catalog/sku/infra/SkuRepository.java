@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SkuRepository extends JpaRepository<Sku, Long> {
 
+	List<Sku> findAllByProductIdAndName(Long productId, String name);
+
 	List<Sku> findAllByProductIdOrderByDisplayOrderAscIdAsc(Long productId);
 
 	List<Sku> findAllByProductIdInOrderByProductIdAscDisplayOrderAscIdAsc(Collection<Long> productIds);
