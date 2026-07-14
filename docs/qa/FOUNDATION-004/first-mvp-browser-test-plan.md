@@ -54,8 +54,8 @@
 | QA-F004-021 | UX-001 접근성 | 상품 상세 | label·fieldset·legend·오류 연결 검사 | 수량 label, 배송 주기 group, 오류 programmatic 연결 | DOM semantics | 통과 |
 | QA-F004-022 | UX-001 반응형 411~422 | desktop과 좁은 viewport | 주요 화면과 긴 정보 확인 | 핵심 작업 미가림, 읽기 순서·줄바꿈·버튼 접근 유지 | viewport별 화면·DOM | 통과 |
 | QA-F004-023 | SRE Runbook, FOUNDATION-004 인수인계 | reset=false, 생성 구독 | 일반 `down`→`up --wait` 후 재로그인 | 구독·volume 보존, fixture 중복 없음, 네 서비스 healthy | container metadata·DOM·API | 통과 |
-| QA-F004-024 | SRE reset 경계 | QA 구독 존재 | reset true 재생성→Empty 확인→즉시 false 복원 | QA 회원 구독만 빈 상태, 최종 reset=false | DOM·API·container metadata | 통과 |
-| QA-F004-025 | FOUNDATION-004 운영 경계 | 전체 실행 전후 | service·volume·다른 project 상태 비교 | Backend 한 인스턴스, volume·다른 project 보존 | Docker metadata | 통과 |
+| QA-F004-024 | SRE reset 경계 | QA 구독 존재 | reset true 재생성→Empty 확인→즉시 false 복원 | QA 회원 구독만 빈 상태, 최종 reset=false | DOM·API·container metadata | 미실행(비QA 대조군) |
+| QA-F004-025 | FOUNDATION-004 운영 경계 | 전체 실행 전후 | service·volume·다른 project 상태 비교 | Backend 한 인스턴스, volume·다른 project 보존 | Docker metadata | 미실행(타 프로젝트 volume·data) |
 
 ## 심각도와 중단 기준
 
@@ -68,5 +68,6 @@
 ## 실행 제외와 대체 증거
 
 - 다른 회원이나 비fixture 데이터를 새로 만들거나 삭제하지 않는다. 타인 소유 상세은 기존 Backend Security 테스트 증거와 브라우저 미재현을 분리한다.
+- 기존 비QA 대조군의 pre/post 상태를 안전하게 수집할 수 없으면 reset의 비QA 보존과 타 프로젝트 volume·data 보존을 통과로 기록하지 않는다.
 - CSRF_INVALID·POST timeout을 안전하게 만들 수 없으면 브라우저 통과로 기록하지 않고 관련 Frontend 단위 테스트와 Backend Security 테스트를 최소 범위로 확인한다.
 - Backend·Frontend image build와 이미 통과한 전체 smoke는 관련 구현 변경이 없으므로 반복하지 않는다.

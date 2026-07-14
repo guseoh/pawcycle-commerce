@@ -81,17 +81,17 @@
 | QA-F004-021 | SKU와 배송 주기는 group, 수량은 이름 있는 spinbutton으로 노출됐다. 오류 요약과 필드 오류가 함께 표시됐다. | 통과 | 해당 없음 |
 | QA-F004-022 | 390×844와 1280×800에서 핵심 정보·버튼이 유지됐고 수평 overflow가 없었다. | 통과 | 해당 없음 |
 | QA-F004-023 | `reset=false` 일반 `down`→`up --wait` 뒤 두 구독과 동일 named volume이 보존됐고 네 서비스가 healthy였다. 엔진 재기동 뒤에도 재로그인 시 두 구독이 남아 있었다. | 통과 | 해당 없음 |
-| QA-F004-024 | reset true 재생성 뒤 `Empty`가 통과했고 즉시 false로 복원해 Backend·proxy를 재생성했다. false 상태의 `Empty`와 브라우저 빈 상태도 통과했다. | 통과 | 해당 없음 |
-| QA-F004-025 | Backend는 한 인스턴스였고 named volume 이름이 유지됐다. `board-mysql-dev`는 동일 container ID를 유지했으며 직접 변경·삭제하지 않았다. | 통과 | 환경 엔진 재기동으로 uptime은 초기화됐으며 아래 제한에 별도 기록한다. |
+| QA-F004-024 | reset true 재생성 뒤 QA 회원의 `Empty`가 통과했고 즉시 false로 복원했다. 다른 회원·비fixture 데이터를 만들지 않아 비QA 대조군의 pre/post 보존은 확인하지 못했다. | 미실행(비QA 대조군) | 잔여 위험 Medium. QA 대상 삭제와 최종 false만 검증했다. |
+| QA-F004-025 | Backend 한 인스턴스와 PawCycle named volume을 확인했고 `board-mysql-dev`는 동일 container ID였다. Board volume·data의 pre/post 상태는 수집하지 않았고 engine 재기동으로 uptime도 초기화됐다. | 미실행(타 프로젝트 volume·data) | 잔여 위험 Medium. 동일 container ID만으로 전체 보존을 입증하지 않는다. |
 
-결과 합계는 통과 19건, 일부 또는 전체 미실행 6건, 실패 0건, 차단 0건이다.
+결과 합계는 통과 17건, 일부 또는 전체 미실행 8건, 실패 0건, 차단 0건이다.
 
 ## 핵심 검증 결과
 
 - 공개 상품 → 안전한 로그인 복귀 → 구독 생성 → 목록 최신순 → 상세 → 로그아웃의 첫 사용자 흐름이 same-origin 브라우저에서 연결됐다.
 - 입력 오류와 빠른 반복은 생성 POST 전에 차단되거나 처리 중 잠금으로 1건만 전송됐다.
 - 미존재·비숫자 상세는 소유권 정보를 구분해 노출하지 않았다.
-- 일반 재시작에서 구독과 volume이 보존됐고 reset true 후 false 복원에서 최종 빈 구독 상태가 확인됐다.
+- 일반 재시작에서 QA 구독과 PawCycle volume이 보존됐고 reset true 후 false 복원에서 QA 회원의 최종 빈 구독 상태가 확인됐다. 비QA와 타 프로젝트 volume·data 보존은 미검증이다.
 - 최종 reset은 `false`이며 `mysql`, `backend`, `frontend`, `proxy`는 모두 healthy다.
 - P0·P1 또는 승인 계약 위반으로 판정할 재현 가능한 제품 결함은 발견하지 않았다.
 
@@ -152,19 +152,21 @@
 ## 위험과 제한
 
 - keyboard-only 전체 흐름, session 만료 logout, CSRF_INVALID와 생성 POST timeout은 실제 browser 증거가 없다.
+- 음수·비정상 ID `returnTo`의 로그인 후 fallback은 실제 browser에서 개별 검증하지 않았다.
 - 타인 소유 상세는 기존 통합 테스트·CI 이력에 의존하며 별도 browser 계정으로 재현하지 않았다.
 - Nginx 기본 timeout 때문에 Backend 단절 오류 화면이 약 60초 뒤 나타났다.
-- Docker Desktop engine이 검증 중 한 차례 재기동되어 다른 프로젝트 container의 uptime이 초기화됐다. container ID와 PawCycle volume은 보존됐지만 무중단 상태는 아니었다.
+- Docker Desktop engine이 검증 중 한 차례 재기동되어 다른 프로젝트 container의 uptime이 초기화됐다. 동일 container ID만 확인했으며 Board volume·data 보존은 검증하지 않았다.
 - Backend 대상 테스트의 현재 로컬 재실행 증거는 없고 병합된 PR #45의 Application validation 성공 이력을 대조했다.
 
 ## 최종 판정
 
-**조건부 통과**다. 첫 MVP의 공개 탐색, 인증, CSRF 정상 흐름, 구독 생성·조회, 로그아웃, 입력 경계, 반응형, 일반 재시작 보존과 reset 복원은 실제 브라우저·환경에서 통과했다. P0·P1과 승인 계약 위반은 발견되지 않았다. 다만 실제 browser keyboard-only, session 만료, CSRF_INVALID, POST timeout과 일부 GET 장애 조합은 미실행이므로 사용자 병합 검토에서 이 제한을 확인해야 한다.
+**조건부 통과**다. 첫 MVP의 공개 탐색, 인증, CSRF 정상 흐름, 구독 생성·조회, 로그아웃, 입력 경계, 반응형, QA 데이터의 일반 재시작 보존과 reset 복원은 실제 브라우저·환경에서 통과했다. P0·P1과 승인 계약 위반은 발견되지 않았다. 다만 음수·비정상 ID `returnTo`, 실제 browser keyboard-only, session 만료, CSRF_INVALID, POST timeout, 일부 GET 장애와 비QA·타 프로젝트 보존 대조는 미실행이므로 사용자 병합 검토에서 이 제한을 확인해야 한다.
 
 ## 다음 작업
 
 - 사용자 Product Owner/Tech Lead가 조건부 통과의 미실행 항목을 수용할지 결정한다.
-- 필요하면 별도 QA 세션에서 실제 keyboard-only 수동 검증과 승인된 fault-injection 수단을 사용한 session·CSRF·timeout 재검증을 수행한다.
+- 필요하면 별도 QA 세션에서 음수·비정상 ID `returnTo`, 실제 keyboard-only 수동 검증과 승인된 fault-injection 수단을 사용한 session·CSRF·timeout 재검증을 수행한다.
+- 승인된 기존 대조군이 준비되면 reset 전후 비QA 데이터와 타 프로젝트 volume·data 보존을 비교한다.
 - 제품 결함이 새로 재현되면 소유 역할에 bug report와 재검증 경로를 전달한다.
 
 ## Git 결과와 PR 상태
