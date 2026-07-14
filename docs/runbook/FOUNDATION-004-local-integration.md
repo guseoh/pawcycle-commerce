@@ -80,18 +80,18 @@ powershell -NoProfile -File .\smoke.ps1 -Scenario Preserved -BaseUri http://loca
 1. `.env.local`에서 `PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS=true`로 변경한다.
 2. Backend와 proxy를 재생성하고 빈 상태를 확인한다.
 
-```powershell
-docker compose --env-file .env.local up --detach --force-recreate backend proxy
-powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
-```
+   ```powershell
+   docker compose --env-file .env.local up --detach --force-recreate backend proxy
+   powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
+   ```
 
 3. 즉시 `.env.local`의 reset 값을 `false`로 복원한다.
 4. Backend와 proxy를 다시 재생성한다.
 
-```powershell
-docker compose --env-file .env.local up --detach --force-recreate backend proxy
-powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
-```
+   ```powershell
+   docker compose --env-file .env.local up --detach --force-recreate backend proxy
+   powershell -NoProfile -File .\smoke.ps1 -Scenario Empty -BaseUri http://localhost:8080
+   ```
 
 reset은 예약된 QA 회원의 구독만 삭제한다. 다른 회원이나 비fixture 데이터를 삭제해야 한다면 중단하고 Backend 담당자에게 전달한다.
 
