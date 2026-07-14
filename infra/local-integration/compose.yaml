@@ -14,7 +14,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - MYSQL_PWD="$${MYSQL_PASSWORD}" mysqladmin ping --host=127.0.0.1 --user="$${MYSQL_USER}" --silent
+        - MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1 --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}" --batch --skip-column-names --execute="SELECT 1" >/dev/null
       interval: 5s
       timeout: 5s
       retries: 20
