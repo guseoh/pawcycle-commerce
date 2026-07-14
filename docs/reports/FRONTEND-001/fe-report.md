@@ -76,13 +76,19 @@
 
 ## Git 결과
 
-- 최신 `origin/main`에서 로컬 `feat/fe`를 생성했다.
-- 문서 작성 시점에는 최종 commit·push 전이며, 최종 검증 뒤 실제 commit SHA와 원격 tracking 결과를 갱신한다.
+- 최신 `origin/main` `5f095b3f60372135ca1d1b8ebe677eed49d36497`에서 로컬 `feat/fe`를 생성했다.
+- 구현 commit: `f9e391c feat(frontend): 첫 구독 수직 MVP 구현`
+- `origin/feat/fe`를 새로 만들고 tracking push했다.
+- push 직후 로컬 `feat/fe`와 `origin/feat/fe`는 ahead 0 / behind 0이다.
+- rebase, force push와 자동 병합은 사용하지 않았다.
 
 ## PR 결과
 
-- 문서 작성 시점에는 Draft PR 생성 전이다.
-- 최종 검증과 push 뒤 `main ← feat/fe` Draft PR의 실제 번호·URL을 기록하며 자동 병합하지 않는다.
+- `main` ← `feat/fe` Draft PR #43을 생성했다.
+- PR URL: `https://github.com/guseoh/pawcycle-commerce/pull/43`
+- 생성 직후 상태: `OPEN`, Draft, 미병합, head `f9e391c0b5de03e6c9276e9b5ae58dac15e6a16e`
+- 최신 head의 CI·review·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
+- Ready 전환과 자동 병합은 수행하지 않았다.
 
 ## 적용·실행 방법
 
