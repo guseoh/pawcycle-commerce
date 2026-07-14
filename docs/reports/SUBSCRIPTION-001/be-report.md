@@ -112,6 +112,7 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - JSON 타입 오류가 Jackson 역직렬화 path의 승인된 요청 필드명을 유지하도록 수정하고 malformed JSON에는 `request` fallback을 유지했다.
 - DB 날짜 CHECK를 `next_order_date = created_date + delivery_cycle_weeks` 등식으로 강화하고 불일치 직접 INSERT 거부 테스트를 추가했다.
 - endpoint별 안전 500 응답 메시지를 정확 일치로 검증하고 Frontend 인수인계의 `nextOrderDate` 설명 모순을 교정했다.
+- Frontend 인수인계의 4주 주기 예시 날짜를 Backend 계산·통합 테스트와 같은 `2026-08-11`로 통일했다.
 - 배송 주기 값은 migration의 독립 물리 계약과 Java 런타임 계약에 각각 명시해야 하므로 계층을 가로지르는 단일화 제안은 반영하지 않았다.
 - 목록 pagination은 승인된 API shape 변경과 측정 근거가 필요한 후속 범위이므로 현재 전체 조회 계약을 유지했다.
 - 내부 예외 stack trace에는 원문 식별자나 SQL·schema 정보가 포함될 수 있어 로그 비노출 요구를 우선하고 고정된 endpoint 메시지만 기록했다.

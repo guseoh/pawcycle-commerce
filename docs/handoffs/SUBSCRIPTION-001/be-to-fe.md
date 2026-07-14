@@ -52,7 +52,7 @@ X-CSRF-TOKEN: <현재 session token>
 ```json
 {
   "subscriptionId": 501,
-  "nextOrderDate": "2026-08-10"
+  "nextOrderDate": "2026-08-11"
 }
 ```
 
@@ -85,7 +85,7 @@ GET /api/subscriptions
       },
       "quantity": 2,
       "deliveryCycleWeeks": 4,
-      "nextOrderDate": "2026-08-10"
+      "nextOrderDate": "2026-08-11"
     }
   ]
 }
@@ -116,7 +116,7 @@ GET /api/subscriptions/{subscriptionId}
   "quantity": 2,
   "deliveryCycleWeeks": 4,
   "createdDate": "2026-07-13",
-  "nextOrderDate": "2026-08-10"
+  "nextOrderDate": "2026-08-11"
 }
 ```
 
