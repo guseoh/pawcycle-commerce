@@ -115,7 +115,7 @@ GET /api/subscriptions/{subscriptionId}
   },
   "quantity": 2,
   "deliveryCycleWeeks": 4,
-  "createdDate": "2026-07-13",
+  "createdDate": "2026-07-14",
   "nextOrderDate": "2026-08-11"
 }
 ```

@@ -272,6 +272,23 @@ class SubscriptionApiIntegrationTests {
 	}
 
 	@Test
+	void decimalJsonNumbersAreRejectedWithActualFieldNames() throws Exception {
+		Sku sku = saveSku("소수 입력 SKU", "9900.00", true, 1);
+
+		assertDecimalJsonRejected("""
+				{"skuId": %s.5, "quantity": 1, "deliveryCycleWeeks": 2}
+				""".formatted(sku.getId()), "skuId");
+		assertDecimalJsonRejected("""
+				{"skuId": %s, "quantity": 1.5, "deliveryCycleWeeks": 2}
+				""".formatted(sku.getId()), "quantity");
+		assertDecimalJsonRejected("""
+				{"skuId": %s, "quantity": 1, "deliveryCycleWeeks": 2.5}
+				""".formatted(sku.getId()), "deliveryCycleWeeks");
+
+		assertThat(subscriptionRepository.count()).isZero();
+	}
+
+	@Test
 	void subscriptionSecurityAndPublicProductRegressionMatchExistingSessionBoundary() throws Exception {
 		Sku sku = saveSku("2kg", "19900.00", true, 1);
 		Map<String, Object> request = Map.of("skuId", sku.getId(), "quantity", 1, "deliveryCycleWeeks", 2);
@@ -313,11 +330,26 @@ class SubscriptionApiIntegrationTests {
 	private org.springframework.test.web.servlet.ResultActions postSubscription(
 			Member member,
 			Map<String, Object> request) throws Exception {
+		return postSubscription(member, objectMapper.writeValueAsString(request));
+	}
+
+	private org.springframework.test.web.servlet.ResultActions postSubscription(
+			Member member,
+			String requestJson) throws Exception {
 		return mockMvc.perform(post("/api/subscriptions")
 				.with(authenticated(member))
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(request)));
+				.content(requestJson));
+	}
+
+	private void assertDecimalJsonRejected(String requestJson, String field) throws Exception {
+		postSubscription(owner, requestJson)
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.message").value("입력 내용을 확인해 주세요."))
+				.andExpect(jsonPath("$.fieldErrors.length()").value(1))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value(field));
 	}
 
 	private RequestPostProcessor authenticated(Member member) {

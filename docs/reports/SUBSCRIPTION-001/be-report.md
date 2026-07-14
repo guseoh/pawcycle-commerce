@@ -42,6 +42,7 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 ## 주요 결과
 
 - `POST /api/subscriptions`는 session principal의 `memberId`를 소유자로 사용하고 `201`로 `subscriptionId`, `nextOrderDate`만 반환한다.
+- `skuId`, `quantity`, `deliveryCycleWeeks`는 구독 생성 request에 한정한 strict deserializer로 정수 JSON token만 허용하고 소수형 JSON은 실제 필드명의 `VALIDATION_FAILED`로 거부한다.
 - 생성일과 다음 주문 예정일은 주입한 `Clock`을 `Asia/Seoul`로 해석해 계산하며 휴일·주말 보정을 적용하지 않는다.
 - 동일 회원의 동일 SKU·수량·배송 주기 요청도 요청마다 서로 다른 구독을 생성한다.
 - `GET /api/subscriptions`는 본인 구독만 `subscriptionId DESC`로 반환하고 빈 결과를 `subscriptions: []`로 유지한다.
@@ -109,6 +110,8 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 ## 리뷰 반영
 
 - JSON 타입 오류가 Jackson 역직렬화 path의 승인된 요청 필드명을 유지하도록 수정하고 malformed JSON에는 `request` fallback을 유지했다.
+- `skuId`, `quantity`, `deliveryCycleWeeks` 각각의 소수형 JSON coercion을 차단하고 실제 오류 필드명 회귀 테스트를 추가했다.
+- Frontend 상세 예시의 `createdDate`를 `2026-07-14`로 교정해 4주 뒤 `nextOrderDate`인 `2026-08-11`과 일치시켰다.
 - DB 날짜 CHECK를 API-003 D7의 `next_order_date > created_date`로 복원하고, 같거나 이전 날짜 거부와 이후 비등식 날짜 허용을 물리 계약 테스트로 분리했다.
 - 정확한 `nextOrderDate = createdDate + deliveryCycleWeeks` 등식은 기존 Subscription 도메인 로직과 단위 테스트가 계속 보호한다.
 - endpoint별 안전 500 응답 메시지를 정확 일치로 검증하고 Frontend 인수인계의 `nextOrderDate` 설명 모순을 교정했다.
