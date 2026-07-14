@@ -108,6 +108,7 @@ class SubscriptionDatabaseIntegrationTests {
 		assertRejectedInsert(member.getId(), sku.getId(), 11, 4, createdDate, createdDate.plusWeeks(4));
 		assertRejectedInsert(member.getId(), sku.getId(), 1, 6, createdDate, createdDate.plusWeeks(6));
 		assertRejectedInsert(member.getId(), sku.getId(), 1, 4, createdDate, createdDate);
+		assertRejectedInsert(member.getId(), sku.getId(), 1, 4, createdDate, createdDate.plusWeeks(4).plusDays(1));
 		assertRejectedInsert(Long.MAX_VALUE, sku.getId(), 1, 4, createdDate, createdDate.plusWeeks(4));
 		assertRejectedInsert(member.getId(), Long.MAX_VALUE, 1, 4, createdDate, createdDate.plusWeeks(4));
 	}

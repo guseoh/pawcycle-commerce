@@ -144,15 +144,16 @@ GET /api/subscriptions/{subscriptionId}
 
 ## 제외 범위와 주의사항
 
-- 상태, 변경, 해지, 일시정지, 주문, 결제, 재고, 배송과 자동 주문 생성은 없다.
-- 가격 snapshot, 결제 금액, 배송 예정일은 없다.
+- 구독 상태·변경·해지·일시정지와 주문·결제·재고 차감은 없다.
+- 가격 snapshot과 배송 처리·자동 주문 생성은 없다.
+- `nextOrderDate`는 구독의 다음 주문 예정일로 응답한다.
 - `Idempotency-Key`와 자동 retry 보장은 없다.
 - Backend Entity나 소유자 ID는 응답에 노출되지 않는다.
 
 ## 검증 상태
 
 - Backend 보조 Java 21 compile과 focused 단위 테스트는 통과했다.
-- Java 25·MySQL 8.4 API·Security·query 수 검증은 Draft PR의 Repository Validation에서 확인한다.
+- PR #42의 Repository Validation에서 Java 25·MySQL 8.4 Backend 테스트 73개와 build, API·Security·query 수 검증이 통과했다.
 - 실제 원격 CI와 PR 리뷰 상태는 GitHub를 권위 있는 원본으로 사용한다.
 
 ## 검증 포인트
@@ -173,7 +174,7 @@ SUBSCRIPTION-001과 API-003 승인 범위 안의 추가 결정은 없다. 구독
 
 - timeout 뒤 사용자가 재시도하면 별도 구독이 생성될 수 있다.
 - 상세 가격은 현재 SKU 가격이며 과거 가격을 보존하지 않는다.
-- 원격 Java 25·MySQL 8.4 검증이 실패하면 Frontend 연동 기준으로 사용하지 않는다.
+- 병합 전 추가 commit으로 Repository Validation이 다시 실패하면 Frontend 연동 기준으로 사용하지 않는다.
 
 ## 중단 조건
 

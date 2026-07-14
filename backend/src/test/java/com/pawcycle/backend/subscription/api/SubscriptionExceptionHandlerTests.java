@@ -37,15 +37,18 @@ class SubscriptionExceptionHandlerTests {
 		assertSafeError(
 				handler.handleCreateFailed(new SubscriptionCreateFailedException(
 						new IllegalStateException("subscriptions table create"))),
-				"SUBSCRIPTION_CREATE_FAILED");
+				"SUBSCRIPTION_CREATE_FAILED",
+				"구독을 생성하지 못했습니다.");
 		assertSafeError(
 				handler.handleListUnavailable(new SubscriptionListUnavailableException(
 						new IllegalStateException("subscriptions table list"))),
-				"SUBSCRIPTION_LIST_UNAVAILABLE");
+				"SUBSCRIPTION_LIST_UNAVAILABLE",
+				"구독 목록을 불러오지 못했습니다.");
 		assertSafeError(
 				handler.handleDetailUnavailable(new SubscriptionDetailUnavailableException(
 						new IllegalStateException("subscriptions table detail"))),
-				"SUBSCRIPTION_DETAIL_UNAVAILABLE");
+				"SUBSCRIPTION_DETAIL_UNAVAILABLE",
+				"구독 정보를 불러오지 못했습니다.");
 	}
 
 	@Test
@@ -76,11 +79,14 @@ class SubscriptionExceptionHandlerTests {
 		assertThat(response.getBody().fieldErrors()).isEmpty();
 	}
 
-	private void assertSafeError(ResponseEntity<ApiErrorResponse> response, String code) {
+	private void assertSafeError(
+			ResponseEntity<ApiErrorResponse> response,
+			String code,
+			String message) {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().code()).isEqualTo(code);
-		assertThat(response.getBody().message()).doesNotContain("subscriptions", "table", "create", "list", "detail");
+		assertThat(response.getBody().message()).isEqualTo(message);
 		assertThat(response.getBody().fieldErrors()).isEmpty();
 	}
 }
