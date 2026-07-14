@@ -70,15 +70,16 @@ PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS=false
 
 ## 트랜잭션과 실패 동작
 
-- 회원 잠금 조회, 필요 시 회원·상품·SKU 생성과 선택적 reset은 하나의 transaction이다.
-- 같은 QA email은 비관적 쓰기 잠금으로 직렬화한다.
+- 기존 QA 회원 row 잠금 조회, 필요 시 회원·상품·SKU 생성과 선택적 reset은 하나의 transaction이다.
+- 비관적 쓰기 잠금은 기존 QA 회원 row가 있을 때만 해당 row의 동시 접근을 제한한다. row가 없는 빈 DB의 동시 최초 회원·상품·SKU 생성은 직렬화를 보장하지 않는다.
+- local 통합 환경은 단일 Backend 인스턴스 실행을 전제로 한다. 여러 인스턴스가 동시에 최초 bootstrap을 실행하면 UNIQUE 제약 또는 fixture 충돌로 한 인스턴스가 시작 실패할 수 있으며 재시도·재조회는 제공하지 않는다.
 - credential invalid, fixture 충돌, DB 오류 또는 reset 오류가 발생하면 시작이 중단되고 transaction이 rollback된다.
 - 오류 메시지는 설정 종류와 충돌 영역만 설명하며 credential 값을 포함하지 않는다.
 
 ## Platform/SRE Runbook 작업 범위
 
 1. 로컬 MySQL 8.4 datasource 준비와 Secret 전달 방식
-2. Java 25로 Backend를 `local-integration` profile에서 실행하는 명령
+2. Java 25로 Backend 단일 인스턴스를 `local-integration` profile에서 실행하는 명령
 3. Frontend와 Backend `/api/**`를 same-origin으로 연결하는 승인된 로컬 실행 구조
 4. bootstrap 최초 실행·반복 실행·reset 실행 절차
 5. 기동 실패 시 profile, enable flag, 환경 변수 존재 여부, fixture 충돌을 값 노출 없이 점검하는 진단 순서
@@ -119,7 +120,7 @@ Docker Compose, reverse proxy와 구체적인 same-origin 구현은 Platform/SRE
 ## 남은 위험 또는 주의 사항
 
 - 현재 Backend 작업 PC에는 Java 25와 datasource 환경이 없어 local bootstrap의 실제 기동 검증을 수행하지 못했다.
-- 같은 QA email은 DB lock으로 직렬화하지만 local 검증 환경은 단일 Backend 인스턴스 실행을 기준으로 한다.
+- local 검증 환경은 단일 Backend 인스턴스 실행을 기준으로 한다. 기존 QA 회원 row에는 비관적 쓰기 잠금이 적용되지만 빈 DB의 동시 최초 생성은 직렬화되지 않으며, 동시 실행 시 한 인스턴스가 UNIQUE 제약 또는 fixture 충돌로 시작 실패할 수 있다.
 - reset flag를 계속 `true`로 두면 재기동마다 QA 회원 구독이 삭제되므로 빈 상태 준비 후 `false`로 복원해야 한다.
 - 실제 browser same-origin 흐름은 Platform/SRE 환경 완성과 QA 검증 전까지 미확인이다.
 
