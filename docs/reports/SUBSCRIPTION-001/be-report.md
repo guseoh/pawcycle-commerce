@@ -145,7 +145,12 @@ API-003에서 승인된 구독 생성, 내 목록, 내 상세 API와 `subscripti
 - MySQL PK 메타데이터 검증 수정 commit: `34bc380 test(subscription): MySQL PK 메타데이터 검증 수정`
 - JSON 타입 오류 필드 보존 commit: `9ed4882 fix(subscription): JSON 타입 오류 필드 보존`
 - 날짜 무결성과 검증 문서 보강 commit: `3d8caec fix(subscription): 날짜 무결성과 검증 문서 보강`
-- reset, rebase, force push와 자동 병합을 사용하지 않는다.
+- D7 날짜 물리 계약 복원 commit: `f45457d fix(subscription): DB 날짜 계약 경계 복원`
+- 로컬 backup `backup/laptop-feat-be-20260714-130855`: `513dd4f0e89819920e1ec5f997782f741c33a076`
+- 로컬 backup `backup/laptop-ops-sre-20260714-130855`: `5b681051f59961f39b9658214af17e147756e7fc`
+- 두 backup은 원격에 push하거나 삭제하지 않았고, backup 확인 후 승인된 로컬 `feat/be`·`ops/sre` reset만 사용했다.
+- `main`, `feat/be`, `ops/sre`는 각 원격 대비 ahead 0 / behind 0이며 최종 작업 브랜치는 `feat/be`다.
+- rebase, force push와 자동 병합은 사용하지 않았다.
 
 ## PR 상태
 
