@@ -169,8 +169,11 @@
 
 ## Git 결과와 PR 상태
 
-- 작성 시점 브랜치: `test/qa`
-- commit·push·PR: 최종 validator 통과 후 수행하며 완료 결과는 이 절을 갱신한다.
+- 브랜치: `test/qa`
+- QA 산출물 commit: `6fea992fbfd47b669a09cce6fd1dd09e16156621`
+- push: `origin/test/qa` 완료
+- PR: #46 `test(qa): FOUNDATION-004 첫 구독 MVP 검증`
 - 대상 브랜치: `main`
+- PR 상태: Open, Ready for review
 - 자동 병합: 하지 않음
-- 현재 head, CI와 PR 상태의 권위 원본은 GitHub다.
+- 이 절의 상태 기록 commit을 포함한 최종 head, CI와 PR 상태의 권위 원본은 GitHub다.
