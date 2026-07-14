@@ -82,6 +82,8 @@
 
 - 최신 `origin/main` `5f095b3f60372135ca1d1b8ebe677eed49d36497`에서 로컬 `feat/fe`를 생성했다.
 - 구현 commit: `f9e391c feat(frontend): 첫 구독 수직 MVP 구현`
+- 인증·CSRF 생명주기 수정 commit: `7eff94a fix(frontend): 인증 CSRF 생명주기 수정`
+- Ready 리뷰 반영 commit: `1dee48a fix(frontend): 리뷰 접근성과 인증 경쟁 반영`
 - `origin/feat/fe`를 새로 만들고 tracking push했다.
 - push 직후 로컬 `feat/fe`와 `origin/feat/fe`는 ahead 0 / behind 0이다.
 - rebase, force push와 자동 병합은 사용하지 않았다.
@@ -93,7 +95,9 @@
 - 생성 직후 상태: `OPEN`, Draft, 미병합, head `f9e391c0b5de03e6c9276e9b5ae58dac15e6a16e`
 - Repository Validation이 `FRONTEND-001` prefix를 인식하지 못한 차단을 해소하기 위해 validator의 prefix 목록에 `FRONTEND` 한 줄만 추가했으며 기존 섹션·판정 규칙은 변경하지 않았다.
 - 최신 head의 CI·review·Draft/Ready 상태는 GitHub PR을 권위 있는 원본으로 확인한다.
-- Ready 전환과 자동 병합은 수행하지 않았다.
+- 최신 Repository Validation 성공과 유효한 미해결 review thread가 없음을 확인한 뒤 Ready for review로 전환했다.
+- CodeRabbit 지적 7개는 6개 최소 수정과 1개 dependency 제외 근거 답변으로 정리했으며 모든 thread가 resolved다.
+- 자동 병합은 수행하지 않았다.
 
 ## 적용·실행 방법
 
