@@ -1,175 +1,202 @@
 # PawCycle Commerce
 
-## 프로젝트 소개
+개와 고양이용 소모품의 일반 구매와 정기배송을 지원하는 이커머스 프로젝트입니다.
 
-PawCycle Commerce는 반려동물 소모품을 일반 구매와 정기배송 구독으로 판매하는 이커머스 프로젝트다.
+현재는 공개 상품 탐색부터 세션 로그인, 구독 생성과 조회까지 연결한 **1차 수직 MVP**를 완료했습니다.
 
-현재는 제품·도메인·저장소 기반 위에 최소 Backend와 Frontend 애플리케이션 기반을 생성한 단계다.
+## 기술 스택
 
-## 해결하려는 문제
+### Backend
 
-반려동물 소모품은 반복 구매 주기가 뚜렷하고 품절, 배송일, 수량 변경, 결제 실패가 사용자 경험에 직접 영향을 준다. 이 프로젝트는 반복 구매와 정기배송의 운영 복잡도를 명확한 도메인 규칙, 검증 가능한 계약, 설명 가능한 코드로 다루는 것을 목표로 한다.
+![Java](https://img.shields.io/badge/Java_25-007396?style=for-the-badge&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot_4.1-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
+![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white)
+![Spring Data JPA](https://img.shields.io/badge/Spring_Data_JPA-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
+![Bean Validation](https://img.shields.io/badge/Bean_Validation-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
+![Gradle](https://img.shields.io/badge/Gradle-02303A?style=for-the-badge&logo=gradle&logoColor=white)
 
-## 프로젝트 목표
+### Frontend
 
-- 제품 정책과 도메인 규칙을 먼저 명확히 한다.
-- Spring Boot, Next.js, MySQL 기반 구현 전에 협업 하네스를 정비한다.
-- AI 역할별 작업, 보고서, 인수인계, 검증, PR 기록을 일관되게 남긴다.
-- Secret과 개인정보가 저장소에 들어가지 않도록 한다.
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=000000)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js_24-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 
-## 현재 진행 단계
+### Database · Infrastructure
 
-Phase 0 운영·협업 기반 구성 단계다. Spring Boot 백엔드와 Next.js 프론트엔드의 최소 실행 기반은 생성했지만, 제품 기능, API, 인증, DB schema, Docker 기반 로컬 환경은 아직 생성하지 않았다.
+![MySQL](https://img.shields.io/badge/MySQL_8.4-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![Flyway](https://img.shields.io/badge/Flyway-CC0200?style=for-the-badge&logo=flyway&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 
-## 핵심 기능 계획
+## 1차 MVP
 
-- 상품 탐색과 구매
-- 정기배송 구독 생성과 변경
-- 배송 주기와 다음 배송일 관리
-- 한 회차 건너뛰기, 일시정지, 재개, 해지
-- 정기 주문 생성
-- 결제 실패와 재시도
-- 재고 부족 처리
+다음 사용자 흐름을 Backend, Frontend, Database와 세션 인증으로 연결했습니다.
 
-위 항목은 계획이며 아직 구현된 기능이 아니다.
+```text
+공개 상품 탐색
+→ 세션 로그인
+→ SKU·수량·배송 주기 선택
+→ 구독 생성
+→ 내 구독 목록·상세 조회
+→ 로그아웃
+```
 
-## 예정 기술 스택
+### QA 결과
 
-- Backend: Java, Spring Boot, Spring Security, Spring Data JPA, Bean Validation, Gradle
-- Frontend: Next.js, TypeScript
-- Database: MySQL
-- Operations: Docker, CI/CD, 알림, 운영 런북, 성능 측정
+| 결과 | 건수 |
+| --- | ---: |
+| 통과 | 17 |
+| 일부 또는 전체 미실행 | 8 |
+| 실패 | 0 |
+| 차단 | 0 |
 
-기술 버전과 의존성은 별도 FOUNDATION 작업에서 확정한다.
+1차 MVP 완료는 첫 사용자 가치 흐름의 구현과 통합 검증이 완료되었다는 의미입니다.
+
+PawCycle Commerce의 전체 기능이나 운영 배포가 완료되었다는 의미는 아닙니다.
+
+## 구현된 기능
+
+### 공개 상품
+
+- 비회원도 공개 상품 목록을 조회할 수 있습니다.
+- 공개 상품 상세와 SKU 정보를 조회할 수 있습니다.
+- SKU 가격과 구독 가능 여부를 확인할 수 있습니다.
+- 서버가 제공하는 배송 주기 선택지를 사용할 수 있습니다.
+- 비공개 상품과 존재하지 않는 상품 정보를 노출하지 않습니다.
+
+### 인증과 보안
+
+- 세션 기반 로그인과 로그아웃을 지원합니다.
+- 현재 로그인한 회원 정보를 조회할 수 있습니다.
+- 로그인 성공 시 세션 식별자를 변경합니다.
+- 상태 변경 요청에 CSRF 보호를 적용합니다.
+- 로그인 후 요청 이전 화면으로 안전하게 복귀할 수 있습니다.
+- 외부 URL과 허용되지 않은 경로로의 이동을 차단합니다.
+- 구독 소유자는 요청 값이 아닌 인증된 회원 정보로 결정합니다.
+
+### 정기배송 구독
+
+- 상품 상세 화면에서 구독을 생성할 수 있습니다.
+- 본인의 구독 목록을 조회할 수 있습니다.
+- 본인의 구독 상세 정보를 조회할 수 있습니다.
+- 구독 수량을 1개부터 10개까지 검증합니다.
+- 배송 주기를 2주, 4주 또는 8주로 검증합니다.
+- 다음 주문 예정일을 서버에서 계산합니다.
+- 존재하지 않는 구독과 타인 소유 구독을 동일한 방식으로 처리합니다.
+- 타인의 구독 존재 여부와 회원 정보를 노출하지 않습니다.
+- 빠른 중복 입력으로 동일 요청이 반복 전송되는 것을 제한합니다.
+
+### 로컬 통합 환경
+
+- MySQL 8.4와 Flyway migration을 사용합니다.
+- Hibernate가 schema를 생성하지 않고 기존 schema를 검증합니다.
+- Backend, Frontend, MySQL과 Nginx를 Docker Compose로 실행합니다.
+- Nginx를 통해 Frontend와 Backend를 같은 origin으로 연결합니다.
+- QA 전용 회원·상품·SKU fixture를 생성할 수 있습니다.
+- 일반 재시작 후 구독 데이터가 보존되는지 검증합니다.
+- 명시적 초기화 후 빈 구독 상태를 검증합니다.
+- MySQL named volume은 명시적으로 삭제하지 않는 한 보존합니다.
 
 ## 저장소 구조
 
 ```text
-.agents/        역할 Skill
-.github/        GitHub Actions, PR 템플릿, Issue Form
-backend/        Spring Boot 백엔드 애플리케이션 기반과 백엔드 역할 규칙
-frontend/       Next.js 프론트엔드 애플리케이션 기반과 프론트엔드 역할 규칙
-infra/          플랫폼/SRE 역할 규칙
-qa/             QA 역할 규칙
-docs/           제품, 도메인, ADR, 런북, 보고서, 인수인계
-scripts/        로컬 및 CI 검증 스크립트
+backend/        Spring Boot Backend
+frontend/       Next.js Frontend
+infra/          Docker Compose와 Nginx 로컬 통합 환경
+qa/             QA 규칙과 검증 자료
+docs/           요구사항, 도메인, ADR, API, Runbook과 작업 보고서
+scripts/        저장소와 작업 산출물 검증 스크립트
+.github/        GitHub Actions와 PR 자동화
+.agents/        역할별 AI 작업 Skill
 ```
 
-## 하네스 엔지니어링 방식
+## 실행과 검증
 
-작업은 사용자 요청 해석, 작업 ID와 역할 결정, 최신 `main` 확인, 역할 브랜치 준비, 관련 문서 확인, 최소 범위 변경, 자동 검증, 보고서와 인수인계 작성, commit, push, PR 생성 순서로 진행한다.
-
-## AI 역할
-
-- PO: 제품 기획과 Product Decision
-- UX: 사용자 흐름과 화면 상태
-- BE: 백엔드 도메인, API, 영속성
-- FE: 프론트엔드 UI와 API 사용
-- QA: 검증, 버그 리포트, 재검증
-- SRE: 운영, CI/CD, 런북, 알림
-- TL: 공통 저장소 정책과 기술 결정
-
-## 역할 브랜치
-
-| 브랜치 | 담당 역할 |
-| --- | --- |
-| `main` | 기준 브랜치 |
-| `spec/po` | Product Planner |
-| `design/ux` | UX/UI Designer |
-| `feat/be` | Backend Engineer |
-| `feat/fe` | Frontend Engineer |
-| `test/qa` | QA Engineer |
-| `ops/sre` | Platform/SRE |
-| `ops/tl` | Tech Lead와 공통 저장소 작업 |
-
-역할 브랜치에는 하나의 활성 작업만 둔다. PR 병합 후 역할 브랜치를 삭제하고 다음 작업에서 같은 이름으로 다시 만든다.
-
-## 커밋 규칙
-
-커밋 메시지와 PR 제목은 다음 형식이다.
+Docker Compose 기반 로컬 통합 환경의 실행 방법은 다음 Runbook을 따릅니다.
 
 ```text
-<type>(<scope>): <한국어 명사형 설명>
+docs/runbook/FOUNDATION-004-local-integration.md
 ```
 
-예:
-
-```text
-docs(repository): 초기 저장소 문서 구성
-ci(convention): 명사형 제목 검증 추가
-```
-
-`~한다`, `~했다`, `~합니다` 같은 서술형 종결은 사용하지 않는다.
-
-## 협업 자동화
-
-- 로컬 commit-msg Hook
-- GitHub Actions 커밋 메시지와 PR 제목 검증
-- 작업 보고서와 인수인계 존재 검증
-- Discord Rich Embed 알림
-- 병합 PR Obsidian 기록 생성
-
-자세한 내용은 `docs/runbook/collaboration-automation.md`를 따른다.
-
-## 주요 문서
-
-- `AGENTS.md`
-- `CONTRIBUTING.md`
-- `SECURITY.md`
-- Tech Lead 역할 문서: `docs/roles/tech-lead.md`
-- Tech Lead Skill: `.agents/skills/tech-lead/SKILL.md`
-- QA 검증 기준: `docs/qa/README.md`
-- `docs/runbook/collaboration-automation.md`
-- `docs/runbook/FOUNDATION-002-ci-validation.md`
-- `docs/adr/ARCH-002-first-backend-implementation-readiness.md`
-- `docs/adr/ARCH-003-backend-implementation-plan-and-dependency-proposal.md`
-- Backend 구현 결정 요청: `docs/adr/ARCH-004-backend-implementation-decision-request.md`
-- Backend 구현 승인 후보: `docs/adr/ARCH-005-backend-implementation-approval-candidates.md`
-- 첫 Backend 구현 승인 입력: `docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md`
-- 세션 인증 계약 승인 입력: `docs/adr/AUTH-003-session-authentication-approved-inputs.md`
-- `docs/runbook/repository-onboarding.md`
-- `docs/runbook/github-repository-settings.md`
-- `docs/data/DATA-002-first-mvp-logical-erd.md`
-- `docs/reports/README.md`
-- `docs/handoffs/README.md`
-
-## 로컬 시작 방법
-
-Backend 위치:
-
-```text
-backend/
-```
-
-Frontend 위치:
-
-```text
-frontend/
-```
-
-로컬 검증 요약:
+### Backend 검증
 
 ```bash
 cd backend
 ./gradlew test
 ./gradlew build
-cd ../frontend
+```
+
+Windows PowerShell에서는 다음 명령을 사용할 수 있습니다.
+
+```powershell
+cd backend
+.\gradlew.bat test
+.\gradlew.bat build
+```
+
+### Frontend 검증
+
+```bash
+cd frontend
 npm ci
 npm run lint
 npm run build
-cd ..
 ```
 
-자세한 도구 버전, Windows PowerShell 명령, Docker와 DB 제외 범위는 `docs/runbook/FOUNDATION-001-local-development.md`를 따른다.
+실제 비밀번호, DB credential, session ID와 CSRF token은 저장소에 커밋하지 않습니다.
 
-## 현재 실행 가능 상태
+## 자동 검증
 
-현재 실행 가능한 것은 저장소 문서 자동화 검증, Spring Boot 기본 애플리케이션 테스트와 빌드, Next.js 기본 애플리케이션 lint와 빌드다. 제품 기능, API 서버 기능, 웹 UI, DB 스키마, Docker Compose는 아직 없다.
+GitHub Actions의 Repository Validation은 다음 항목을 검증합니다.
 
-## 다음 작업
+- PR 제목과 commit message 규칙
+- 작업 보고서와 필요한 인수인계
+- Backend test와 build
+- MySQL, Flyway와 JPA schema
+- Spring Security와 CSRF
+- 공개 상품 API
+- 인증 API
+- 정기배송 구독 API
+- Frontend lint와 production build
+- whitespace와 민감정보 경계
 
-- BOOTSTRAP-005: GitHub 저장소 UI 설정
-- PS-001: 제품 비전과 MVP 범위 검토
-- DOMAIN-001: 도메인 용어와 상태 전이 정리
-- ARCH-001: 시스템 컨텍스트와 모듈 경계 정리
-- FOUNDATION-000: Java, Spring Boot, Node.js, Next.js, MySQL 버전 결정
+## 주요 문서
+
+| 구분 | 경로 |
+| --- | --- |
+| 제품 요구사항 | `docs/product/PS-002-first-mvp-requirements.md` |
+| UX 제품 결정 | `docs/product/PS-003-ux-product-decisions.md` |
+| 구독 도메인 | `docs/domain/DOMAIN-001-first-mvp-subscription-domain.md` |
+| Backend 구현 승인 입력 | `docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md` |
+| 세션 인증 결정 | `docs/adr/AUTH-003-session-authentication-approved-inputs.md` |
+| 공개 상품 API | `docs/api/API-002-public-product-api-contract-proposal.md` |
+| 구독 API | `docs/api/API-003-subscription-api-contract-decision-request.md` |
+| 로컬 통합 Runbook | `docs/runbook/FOUNDATION-004-local-integration.md` |
+| 브라우저 QA 계획 | `docs/qa/FOUNDATION-004/first-mvp-browser-test-plan.md` |
+| QA 결과 | `docs/reports/FOUNDATION-004/qa-report.md` |
+| 1차 MVP 완료 기준 | `docs/reports/FOUNDATION-005/tl-report.md` |
+
+## 알려진 제한
+
+- 구독 변경, 일시정지, 재개와 해지는 아직 구현하지 않았습니다.
+- 일반 구매, 장바구니와 주문은 아직 구현하지 않았습니다.
+- 결제, 재고와 배송은 아직 구현하지 않았습니다.
+- 운영 배포와 운영 환경의 Secret 관리는 아직 구성하지 않았습니다.
+- 관측성과 성능 기준선은 아직 측정하지 않았습니다.
+- 일부 접근성, 장애와 세션 만료 브라우저 시나리오는 미실행 상태입니다.
+- 구독 생성 요청 timeout에 대한 멱등성 정책은 아직 결정하지 않았습니다.
+
+## 다음 단계
+
+```text
+미실행 QA와 접근성 보강
+→ 로컬 성능 기준선 측정
+→ 구독 변경·일시정지·재개·해지
+→ 일반 구매와 주문
+→ 가상 결제와 재고
+```
+
+성능 최적화와 신규 인프라는 측정된 병목과 실제 필요성을 확인한 뒤 도입합니다.
