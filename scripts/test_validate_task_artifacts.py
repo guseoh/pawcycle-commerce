@@ -188,6 +188,93 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
 
+    def test_explicit_handoff_omission_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT + """\
+
+## 인수인계 생략
+
+- 다음 역할이 확정되지 않아 형식적인 인수인계를 작성하지 않는다.
+"""
+            write_artifacts(root, report=report, handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"task artifacts validated for {TASK_ID}", result.stdout)
+
+    def test_empty_handoff_omission_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT + "\n## 인수인계 생략\n"
+            write_artifacts(root, report=report, handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 보고서 인수인계 생략 사유 없음", result.stderr)
+            self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
+    def test_mixed_handoff_omission_sections_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT + """\
+
+## 인수인계 생략
+
+- 다음 역할이 확정되지 않아 형식적인 인수인계를 작성하지 않는다.
+
+## Handoff omission
+"""
+            write_artifacts(root, report=report, handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 보고서 인수인계 생략 사유 없음", result.stderr)
+            self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
+    def test_handoff_omission_denial_fails(self) -> None:
+        for denial in (
+            "생략하지 않음.",
+            "인수인계를 생략 안 한다.",
+            "해당 없음.",
+            "Not omitted.",
+        ):
+            with self.subTest(denial=denial), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                report = VALID_REPORT + f"\n## 인수인계 생략\n\n- {denial}\n"
+                write_artifacts(root, report=report, handoff=None)
+
+                result = run_validator(root, "--task-id", TASK_ID)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("작업 보고서 인수인계 생략 사유 없음", result.stderr)
+                self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
+    def test_each_report_requires_handoff_omission(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = VALID_REPORT + """\
+
+## 인수인계 생략
+
+- 다음 역할이 확정되지 않아 형식적인 인수인계를 작성하지 않는다.
+"""
+            write_artifacts(root, report=report, handoff=None)
+            report_dir = root / "docs" / "reports" / TASK_ID
+            (report_dir / "qa-report.md").write_text(VALID_REPORT, encoding="utf-8")
+
+            result = run_validator(root, "--task-id", TASK_ID)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                f"작업 보고서 인수인계 생략 사유 없음: {report_dir / 'qa-report.md'}",
+                result.stderr,
+            )
+            self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
     def test_missing_report_section_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
