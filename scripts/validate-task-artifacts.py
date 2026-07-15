@@ -91,7 +91,8 @@ HANDOFF_OMISSION_ALIASES = (
     "handoff omission",
 )
 HANDOFF_OMISSION_DENIAL_RE = re.compile(
-    r"(?:인수인계\s*)?생략(?:하지\s*않|안\s*함)|해당\s*없음|not\s+omitted|not\s+applicable|^n/?a$|^none$",
+    r"(?:인수인계(?:를|은|는)?\s*)?생략(?:을|은|는)?\s*(?:하지\s*않|안\s*(?:함|한|하))"
+    r"|해당\s*없음|not\s+omitted|not\s+applicable|^n/?a$|^none$",
     re.IGNORECASE | re.MULTILINE,
 )
 

@@ -236,7 +236,12 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
 
     def test_handoff_omission_denial_fails(self) -> None:
-        for denial in ("생략하지 않음.", "해당 없음.", "Not omitted."):
+        for denial in (
+            "생략하지 않음.",
+            "인수인계를 생략 안 한다.",
+            "해당 없음.",
+            "Not omitted.",
+        ):
             with self.subTest(denial=denial), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 report = VALID_REPORT + f"\n## 인수인계 생략\n\n- {denial}\n"
