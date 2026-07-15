@@ -214,21 +214,21 @@ def validate_required_sections(
 
 
 def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
-    omission_sections: list[tuple[Path, MarkdownSection]] = []
-    for path in files:
-        for section in matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES):
-            omission_sections.append((path, section))
+    omission_sections = [
+        (path, section)
+        for path in files
+        for section in matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES)
+    ]
 
     if not omission_sections:
         return False, []
-    if any(has_meaningful_content(section) for _, section in omission_sections):
-        return True, []
 
     failures = [
         f"작업 보고서 인수인계 생략 사유 없음: {path}:{section.line}"
         for path, section in omission_sections
+        if not has_meaningful_content(section)
     ]
-    return False, failures
+    return not failures, failures
 
 
 def main() -> int:
