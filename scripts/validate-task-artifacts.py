@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate task report and handoff artifacts referenced by a pull request."""
+"""Validate task reports and required or explicitly omitted handoff artifacts."""
 
 from __future__ import annotations
 
@@ -83,6 +83,12 @@ RISK_ALIASES = (
     "known limitation",
     "risk summary",
     "blocker reason",
+)
+HANDOFF_OMISSION_ALIASES = (
+    "인수인계 생략",
+    "인수인계 생략 사유",
+    "handoff omitted",
+    "handoff omission",
 )
 
 
@@ -207,6 +213,24 @@ def validate_required_sections(
     return failures
 
 
+def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
+    omission_sections: list[tuple[Path, MarkdownSection]] = []
+    for path in files:
+        for section in matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES):
+            omission_sections.append((path, section))
+
+    if not omission_sections:
+        return False, []
+    if any(has_meaningful_content(section) for _, section in omission_sections):
+        return True, []
+
+    failures = [
+        f"작업 보고서 인수인계 생략 사유 없음: {path}:{section.line}"
+        for path, section in omission_sections
+    ]
+    return False, failures
+
+
 def main() -> int:
     args = parse_args()
     task_id = find_task_id(args)
@@ -217,11 +241,12 @@ def main() -> int:
 
     report_files = markdown_files(report_dir)
     handoff_files = markdown_files(handoff_dir)
+    handoff_omitted, omission_failures = validate_handoff_omission(report_files)
 
-    failures: list[str] = []
+    failures: list[str] = omission_failures
     if not report_files:
         failures.append(f"작업 보고서 Markdown 파일 없음: {report_dir}")
-    if not handoff_files:
+    if not handoff_files and not handoff_omitted:
         failures.append(f"역할 인수인계 Markdown 파일 없음: {handoff_dir}")
     if report_files:
         failures.extend(
