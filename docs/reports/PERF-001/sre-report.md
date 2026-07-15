@@ -134,11 +134,16 @@ PR #48 병합 후 최신 첫 MVP의 로컬 관측 가능 상태를 실제 설정
 ## Git 결과
 
 - 작업 branch: `ops/sre`
-- commit·push: 최종 검증 후 수행 예정
+- 산출물 commit: `76a4e56a20a09ad87123bf41d07386057e48b73f`
+- `origin/ops/sre` push: 완료
+- 변경 파일: PERF-001 문서 세 개만 포함
 
 ## PR 상태
 
+- PR: `#49`
 - 제목: `docs(sre): PERF-001 로컬 성능 기준선 결정 요청`
 - base/head: `main` ← `ops/sre`
-- 상태: 최종 검증과 push 후 생성 예정
+- 상태: Open, Ready for review
+- 원격 제목·본문 UTF-8, base/head와 Draft 상태 확인 완료
+- CI와 AI review의 최신 상태는 GitHub PR을 기준으로 확인한다.
 - 자동 병합하지 않는다.
