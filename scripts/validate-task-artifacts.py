@@ -90,6 +90,10 @@ HANDOFF_OMISSION_ALIASES = (
     "handoff omitted",
     "handoff omission",
 )
+HANDOFF_OMISSION_DENIAL_RE = re.compile(
+    r"(?:인수인계\s*)?생략(?:하지\s*않|안\s*함)|해당\s*없음|not\s+omitted|not\s+applicable|^n/?a$|^none$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -181,6 +185,18 @@ def matching_sections(sections: list[MarkdownSection], aliases: tuple[str, ...])
     return [section for section in sections if heading_matches(section.heading, aliases)]
 
 
+def has_explicit_handoff_omission(section: MarkdownSection) -> bool:
+    if not has_meaningful_content(section):
+        return False
+
+    content = "\n".join(
+        line.strip().lstrip("-* ").rstrip(".")
+        for line in section.content
+        if line.strip()
+    )
+    return not HANDOFF_OMISSION_DENIAL_RE.search(content)
+
+
 def validate_required_sections(
     *,
     kind: str,
@@ -214,20 +230,24 @@ def validate_required_sections(
 
 
 def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
-    omission_sections = [
-        (path, section)
+    sections_by_path = {
+        path: matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES)
         for path in files
-        for section in matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES)
-    ]
-
-    if not omission_sections:
+    }
+    if not any(sections_by_path.values()):
         return False, []
 
-    failures = [
-        f"작업 보고서 인수인계 생략 사유 없음: {path}:{section.line}"
-        for path, section in omission_sections
-        if not has_meaningful_content(section)
-    ]
+    failures: list[str] = []
+    for path, omission_sections in sections_by_path.items():
+        if not omission_sections:
+            failures.append(f"작업 보고서 인수인계 생략 사유 없음: {path}")
+            continue
+        failures.extend(
+            f"작업 보고서 인수인계 생략 사유 없음: {path}:{section.line}"
+            for section in omission_sections
+            if not has_explicit_handoff_omission(section)
+        )
+
     return not failures, failures
 
 

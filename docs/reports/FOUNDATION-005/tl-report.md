@@ -484,7 +484,7 @@ ProductDetailScreen.handleSubmit
 ## 최종 정적 검증
 
 - FOUNDATION-005 task artifact validator: 최초 실행에서 보고서 heading과 handoff 필수 요구로 실패. heading을 보완하고 사용자 승인에 따라 명시적 인수인계 생략을 허용하는 validator와 회귀 테스트를 추가한 뒤 통과
-- validator Python compile과 단위 테스트: 최초 16 tests 통과. CodeRabbit이 유효한 혼합 생략 절 누락을 지적해 모든 생략 절을 검증하는 회귀를 추가한 뒤 17 tests 통과
+- validator Python compile과 단위 테스트: 최초 16 tests 통과. 리뷰에서 확인된 혼합 생략 절, 보고서별 생략 선언, 부정형 생략 답변의 우회 가능성을 차례로 보완한 뒤 19 tests 통과
 - commit 제목 validator: `docs(tl): FOUNDATION-005 첫 MVP 완료 기준 정리` 통과
 - whitespace 검사: 통과
 - 실제 경로·class·function·endpoint·migration·test 이름 대조: 통과
@@ -502,6 +502,6 @@ ProductDetailScreen.handleSubmit
 
 - 대상 브랜치: `main`
 - PR #47 `docs(tl): FOUNDATION-005 첫 MVP 완료 기준 정리`를 Draft가 아닌 검토 가능 상태로 생성했다.
-- CodeRabbit의 validator 혼합 생략 절 지적은 유효한 기능 결함으로 분류해 최소 수정과 회귀 테스트에 반영했다.
+- CodeRabbit과 Codex Review의 validator 지적은 유효한 기능 결함으로 분류해 모든 생략 절과 보고서별 선언을 검사하고 부정형 답변을 거부하는 최소 수정·회귀 테스트에 반영했다.
 - 현재 head, CI, mergeable, Draft·Ready와 review 상태는 GitHub를 권위 원본으로 확인한다.
 - 자동 병합하지 않으며 최종 병합과 후속 우선순위는 사용자가 결정한다.
