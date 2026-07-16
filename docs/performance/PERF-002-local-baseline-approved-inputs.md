@@ -39,7 +39,7 @@
 
 Container 자원 SLI candidate 자체는 승인됐다. 그러나 sampling이 periodic인지 event-based인지, 구체 시점·횟수·간격과 CPU·memory·network·block I/O·PIDs별 집계·optional 규칙은 `Decision Required`다. 기존 3회 event-based 방식과 지표별 집계 규칙은 승인된 결정에서 제거했으며 사용자 승인 전에는 임의로 확정하거나 실행하지 않는다.
 
-기대한 3xx는 정상이고, 기대하지 않은 3xx를 포함한 expected status 불일치만 오류다. 모든 elapsed는 client-observed 값이며 Nginx·Backend·DB server processing time으로 표현하지 않는다. SLO, latency 목표, 오류 예산과 regression threshold는 미결정이다.
+기대한 3xx는 정상이고, 기대하지 않은 3xx를 포함한 expected status 불일치만 오류다. HTTP record의 `elapsed_ms`만 client-observed 요청 경과이며 Nginx·Backend·DB server processing time으로 표현하지 않는다. Cold start 전체 경과와 service health convergence는 HTTP `elapsed_ms`와 분리된 별도 측정값이다. SLO, latency 목표, 오류 예산과 regression threshold는 미결정이다.
 
 ## D3-A 승인: 고정 측정 조건
 
