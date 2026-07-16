@@ -98,7 +98,8 @@ PERF-002 승인 원본, 동일 commit·QA fixture·Docker Desktop 자원·전원
 - p50과 nearest-rank p95 계산 및 쓰기 p95 미보고가 승인 조건과 일치하는가
 - expected status 불일치와 transport·timeout 실패가 누락 없이 집계되는가
 - D4 record가 `timestamp_utc`, `response_bytes_if_available`, `subscription_count_before_if_state_change`를 포함한 canonical field와 nullable 규칙을 지키는가
-- container 자원이 시작 전·중간·종료의 event-based 3개 표본으로 수집되고 관측 스케줄과 평균·최대가 기록되는가
+- container 자원이 시작 전·중간·종료의 event-based 3개 표본으로 수집되고 CPU·memory·누적 network·누적 block I/O·PIDs별 단위, 평균·최대와 가용 표본 수가 기록되는가
+- Windows에서 미제공 PIDs가 `null`로 유지되고 0으로 대체되지 않으며 누적 I/O가 처리량으로 오표기되지 않는가
 - seed ID, raw record·log와 민감정보가 저장소·보고서에 남지 않는가
 
 ## QA 필요 여부

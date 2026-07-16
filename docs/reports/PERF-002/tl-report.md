@@ -120,7 +120,7 @@ QA 독립 문서는 불필요하다.
 
 ## AI 리뷰 반영 여부
 
-PR #50의 CodeRabbit과 Codex Review를 확인했다. endpoint별 반복, cold 명령, D4 canonical schema, container sampling·D2 추적성과 PR 상태 관련 유효 지적을 반영했다.
+PR #50의 CodeRabbit과 Codex Review를 확인했다. endpoint별 반복, cold 명령, D4 canonical schema·`actual_status` null, container sampling·지표별 집계·PIDs optional, D2 추적성과 PR 상태 관련 유효 지적을 반영했다.
 
 ## AI 리뷰 미반영 항목과 이유
 

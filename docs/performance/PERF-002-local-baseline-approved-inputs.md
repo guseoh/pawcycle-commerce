@@ -36,7 +36,15 @@
 - method·normalized route·expected status·actual status별 요청 수와 기대 status 불일치 오류 비율
 - cold start 경과, service별 health convergence, container CPU·memory·network·block I/O·PIDs, restart와 환경 fingerprint
 
-Container 자원은 periodic sampling을 사용하지 않고 각 warm endpoint 또는 lifecycle cohort의 첫 요청 전, 중간 iteration 직후, 마지막 iteration 직후에 총 3회 수집한다. 30회 cohort의 중간은 15번째 iteration 직후, 10회 cohort의 중간은 5번째 iteration 직후다. 각 표본의 관측점과 `timestamp_utc`를 기록하고 세 표본의 평균·최대를 집계한다. 이 event-based sampling schedule을 결과에 남기며 단일 snapshot은 평균·최대로 표현하지 않는다.
+Container 자원은 periodic sampling을 사용하지 않고 각 warm endpoint 또는 lifecycle cohort의 첫 요청 전, 중간 iteration 직후, 마지막 iteration 직후에 총 3회 수집한다. 30회 cohort의 중간은 15번째 iteration 직후, 10회 cohort의 중간은 5번째 iteration 직후다. 각 표본의 관측점과 `timestamp_utc`를 기록하며 다음처럼 지표별로 집계한다.
+
+- CPU percentage: 숫자 표본의 평균·최대
+- memory usage bytes: 숫자 표본의 평균·최대
+- network RX/TX bytes: 방향별 누적 counter 세 표본의 평균·최대. 처리량으로 해석하지 않음
+- block read/write bytes: 방향별 누적 counter 세 표본의 평균·최대. 처리량으로 해석하지 않음
+- PIDs: 제공된 정수 표본의 평균·최대와 가용 표본 수. Windows에서 미제공 시 `null`로 유지하고 `0`으로 대체하지 않음
+
+이 event-based sampling schedule과 지표별 단위·가용 표본 수를 결과에 남기며 단일 snapshot은 평균·최대로 표현하지 않는다.
 
 기대한 3xx는 정상이고, 기대하지 않은 3xx를 포함한 expected status 불일치만 오류다. 모든 elapsed는 client-observed 값이며 Nginx·Backend·DB server processing time으로 표현하지 않는다. SLO, latency 목표, 오류 예산과 regression threshold는 미결정이다.
 
