@@ -72,7 +72,7 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 ## 결정 요청 결과
 
 - D1: Frontend 경계, 공개 읽기, 인증된 읽기, 인증 lifecycle과 구독 상태 변경의 다섯 cohort 분리 추천
-- D2: Frontend·proxy 경계와 읽기·lifecycle 30회의 p50·p95·max, 상태 변경 10회의 p50·max, status·오류 비율, cold health와 container 자원 SLI candidate 추천; 목표값은 미결정
+- D2: Frontend·proxy 경계와 읽기·lifecycle 30회의 p50·p95·max, 상태 변경 10회의 p50·max, endpoint 기대 status 불일치 수·오류 비율, cold health와 container 자원 SLI candidate 추천; 기대한 3xx는 오류에서 제외하고 목표값은 미결정
 - D3: run 시작 전 reset·즉시 `false` 복원·측정 제외 seed 1건 준비, cold 3회, warm-up 5회, 경계·읽기·lifecycle 30회, 쓰기 10회, concurrency 1 추천; 모두 승인 전 미실행
 - D4: method·정규화 route·status·client elapsed·상태 변경 전 cardinality allowlist, PowerShell 5.1 `try/catch/finally` 실패 수집과 민감정보 제외 추천
 - D5: raw 미커밋·장기 보존 중단, 승인된 process-memory 집계와 조건부 OS temp 삭제 예외, Markdown 결과·재현 명령만 보존 추천
@@ -100,7 +100,7 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 - 변경 경로 검사: PERF-001 문서 세 파일만 확인
 - `py -3 scripts/validate-pr-body-encoding.py --from-stdin`: 통과
 - `git diff --cached --check`: 통과
-- PR #49 최신 head `610f792`, 로컬·원격 `ops/sre` 일치와 clean worktree 확인
+- PR #49 보완 전 head에서 로컬·원격 `ops/sre` 일치와 clean worktree 확인
 - PR #49 기존 CI 전체 통과와 unresolved review thread 6개 확인
 - 민감정보 검증 범위 thread는 수행 검사가 password 계열로 한정됨을 확인해 철회·resolve 상태 유지
 - 후속 보완 `py -3 scripts/validate-task-artifacts.py --task-id PERF-001`: 통과
@@ -108,7 +108,8 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 - `scripts/validate-commit-message.sh --message 'docs(sre): PERF-001 측정 조건 보완'`: 통과
 - D1~D6의 `Decision Required` 6개와 `Approved` 상태 없음 확인
 - 후속 변경 경로 검사: PERF-001 문서 세 파일만 확인
-- 새 head CI와 CodeRabbit 통과 후 Frontend·proxy 실행 계약과 p50 계산법 관련 신규 유효 thread 2개 확인
+- 새 head CI와 CodeRabbit 통과 후 Frontend·proxy 실행 계약과 p50 계산법 관련 신규 유효 thread 2개 확인·반영
+- 후속 CodeRabbit의 기대 status 기준 오류율과 seed ID process-memory 폐기 경계 지적 확인·반영
 
 ## 실행하지 못한 검증과 이유
 

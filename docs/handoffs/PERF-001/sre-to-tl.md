@@ -40,7 +40,7 @@
 
 ### D2 SLI candidate
 
-- Frontend·proxy 경계와 읽기·인증 lifecycle 30회의 p50·p95·max, 상태 변경 10회의 p50·max, status·오류 비율, cold health, container 자원과 환경 fingerprint를 사용할지
+- Frontend·proxy 경계와 읽기·인증 lifecycle 30회의 p50·p95·max, 상태 변경 10회의 p50·max, endpoint 기대 status 불일치 수·오류 비율, cold health, container 자원과 환경 fingerprint를 사용할지
 - p50은 짝수 표본의 가운데 두 값 평균, p95는 nearest-rank로 고정할지
 - 상태 변경 p95가 필요하면 표본 수 증가를 별도 승인할지
 - SLO와 threshold를 이번 단계에서 계속 미결정으로 둘지
@@ -78,10 +78,11 @@
 - 인증된 읽기 setup·cleanup 시간이 읽기 latency 표본에서 제외되는가
 - Frontend·proxy 경계가 30회 실행되고 공개 읽기와 별도 집계되는가
 - cold start와 warm latency가 한 분포로 합쳐지지 않는가
-- reset 뒤 측정 제외 seed 1건이 준비되고 seed ID가 process memory에만 유지되는가
+- reset 뒤 측정 제외 seed 1건이 준비되고 seed ID가 측정 중 process memory에만 유지되다가 집계 전에 폐기되는가
 - 상태 변경 cohort가 읽기 cohort와 분리되고 iteration·생성 전 cardinality가 기록되는가
 - 상태 변경 10회는 p50·max만, 읽기 30회는 p50·p95·max가 보고되는가
 - p50은 짝수 표본의 가운데 두 값 평균, p95는 nearest-rank로 계산되고 표본 수가 기록되는가
+- 기대한 3xx는 오류에서 제외되고 기대하지 않은 3xx를 포함한 기대 status 불일치가 오류로 집계되는가
 - HTTP error·transport error·timeout이 루프 중단이나 표본 제거 없이 동일 schema로 집계되는가
 - latency가 client-observed 값이며 Nginx·Backend·DB 구간으로 오해되지 않는가
 - credential, header, body, cookie, session ID와 CSRF token이 record·log·문서에서 제외되는가
