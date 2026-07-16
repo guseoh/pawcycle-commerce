@@ -4,7 +4,8 @@
 
 - 작업 ID: `PERF-002`
 - 역할: Tech Lead
-- 상태: `Approved Scope / Detail Approval Required`
+- 상태: `Approved by PERF-002`
+- 실행 게이트: `Blocked Pending Detail Approval`
 - 승인 주체: 사용자/Product Owner 겸 Tech Lead
 - 승인 근거: PERF-002 작업 요청에서 PERF-001의 D1-A~D6-A를 모두 명시 승인
 - 적용 대상: 다음 Platform/SRE 기준선 측정의 승인 범위와 측정 전 해결할 세부 결정

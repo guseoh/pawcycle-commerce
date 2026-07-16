@@ -52,7 +52,7 @@
 
 ## 확정된 결정
 
-D1-A~D6-A의 추천 범위는 `Approved`다. 이 승인은 container sampling 방식이나 warm-up 적용 단위를 포함하지 않으며 현재 상태는 `Blocked Pending Detail Approval`이다.
+D1-A~D6-A의 추천 범위는 `Approved by PERF-002`다. 이 승인은 container sampling 방식이나 warm-up 적용 단위를 포함하지 않으며 실행 게이트는 `Blocked Pending Detail Approval`이다.
 
 ## 미확정 결정
 

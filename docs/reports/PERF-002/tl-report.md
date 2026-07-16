@@ -6,7 +6,8 @@
 - 역할: Tech Lead
 - 기준 브랜치: `main`
 - 작업 브랜치: `ops/tl`
-- 결정 상태: D1-A~D6-A 범위 `Approved`, 측정 세부 `Decision Required`
+- 결정 상태: D1-A~D6-A `Approved by PERF-002`
+- 실행 게이트: `Blocked Pending Detail Approval`
 
 ## 작업 목적
 
@@ -49,7 +50,7 @@ PERF-001의 D1-A~D6-A 추천 범위에 대한 사용자 승인을 기록하고, 
 | 인수 조건 | 결과 |
 | --- | --- |
 | D1-A~D6-A 단일 승인 원본 | `docs/performance/PERF-002-local-baseline-approved-inputs.md`에 기록 |
-| PERF-001 상태 일치 | 전체 `Partially Resolved`, D2 sampling·D3 warm-up 세부는 `Decision Required`로 갱신 |
+| PERF-001 상태 일치 | 전체 `Resolved by PERF-002`, D1~D6 `Approved by PERF-002`, 실행 게이트 `Blocked Pending Detail Approval`로 분리 |
 | 선택되지 않은 대안 미승인 | `Deferred` 또는 미승인으로 명시 |
 | 측정 착수 통제 | container sampling·warm-up 단위 승인 전 측정 차단 |
 | 실제 측정과 구현 제외 | 제품·실행 설정·script 변경 및 부하 실행 없음 |
@@ -69,11 +70,10 @@ PERF-001의 D1-A~D6-A 추천 범위에 대한 사용자 승인을 기록하고, 
 
 ## 결정 상태
 
-- D1-A~D6-A 추천 범위: `Approved`
-- D1·D4·D5·D6: `Approved by PERF-002`
+- D1-A~D6-A 추천 범위: `Approved by PERF-002`
 - D2 container sampling 방식: `Decision Required`
 - D3 warm-up 5회 적용 단위: `Decision Required`
-- 실제 기준선 측정: `Blocked Pending Detail Approval`
+- 실행 게이트: `Blocked Pending Detail Approval`
 - 선택되지 않은 대안과 확장안: `Deferred` 또는 미승인
 - SLO·threshold·고부하·신규 도구: 미승인
 
