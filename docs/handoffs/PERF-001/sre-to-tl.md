@@ -22,7 +22,8 @@
 - 현재 Compose·Nginx·Backend·Frontend·smoke·CI의 관측 가능 범위와 공백
 - 현재 도구만으로 가능한 client elapsed, health와 container 자원 측정 경계
 - D1~D6별 추천안, 실질적인 대안, 영향과 승인 필요 항목
-- cold/warm, warm-up, 반복·동시성, 상태 변경 데이터 통제 초안
+- cold/warm, warm-up, 반복·동시성, seed fixture와 상태 변경 cardinality 통제 초안
+- PowerShell 5.1에서 HTTP error·transport error·timeout을 누락하지 않는 record 규칙
 - credential·cookie·session·CSRF·body·raw log 제외 정책
 - 집계 Markdown과 재현 명령만 commit하는 증거 정책
 - 승인 후 동일 조건으로 실행할 단계별 실험 절차
@@ -31,29 +32,35 @@
 
 ### D1 범위
 
-- 세 cohort 추천안을 사용할지
+- Frontend 경계, 공개 읽기, 인증된 읽기, 인증 lifecycle과 구독 상태 변경의 다섯 cohort 추천안을 사용할지
+- 인증된 읽기 setup·cleanup을 읽기 latency에서 제외하고 인증 lifecycle을 별도 집계할지
 - 상태 변경 반복과 QA reset을 허용할지
 - browser rendering을 최소 기준선에서 제외할지
 
 ### D2 SLI candidate
 
-- client latency p50·p95·max, status·오류 비율, cold health, container 자원과 환경 fingerprint를 사용할지
+- 읽기·인증 lifecycle 30회의 p50·p95·max와 상태 변경 10회의 p50·max, status·오류 비율, cold health, container 자원과 환경 fingerprint를 사용할지
+- 상태 변경 p95가 필요하면 표본 수 증가를 별도 승인할지
 - SLO와 threshold를 이번 단계에서 계속 미결정으로 둘지
 
 ### D3 조건
 
 - cold 3회, warm-up 5회, 읽기 30회, 상태 변경 10회, concurrency 1
+- run 시작 전 reset·즉시 `false` 복원·측정 제외 seed 1건 생성과 seed ID의 process-memory 보관
+- 상태 변경 10회의 `iteration`·`subscription_count_before` 기록과 run 사이 reset 경계
 - Docker Desktop 자원·전원·background workload 통제 조건
 
 ### D4 record
 
-- method, 정규화 route, expected·actual status, elapsed와 outcome allowlist
+- method, 정규화 route, expected·actual status, elapsed, 상태 변경 전 cardinality와 outcome allowlist
+- PowerShell 5.1 `try/catch/finally` 기본안과 HTTP error·transport error·timeout의 동일 schema 수집
 - client elapsed를 server processing time과 구분해 최소 기준선으로 사용할지
 
 ### D5 증거
 
 - raw record·log 미커밋과 process-memory 집계
-- 진단용 OS temp 예외와 집계 완료 후 삭제
+- raw record·log와 민감정보의 저장소 commit·장기 보존 필요 시 중단
+- D5 승인, 민감정보 점검과 집계 후 삭제가 보장되는 진단용 OS temp 예외
 
 ### D6 도구
 
@@ -64,8 +71,13 @@
 
 - D1~D6가 모두 `Decision Required`이며 승인으로 오표기되지 않았는가
 - 첫 MVP 기능 endpoint가 공개·인증·읽기·상태 변경으로 추적되는가
+- 인증 lifecycle이 매 iteration 새 session·전후 CSRF·login·인증 확인·logout·session 폐기 경계를 지키는가
+- 인증된 읽기 setup·cleanup 시간이 읽기 latency 표본에서 제외되는가
 - cold start와 warm latency가 한 분포로 합쳐지지 않는가
-- 상태 변경 cohort가 읽기 cohort와 분리되고 데이터 증가가 기록되는가
+- reset 뒤 측정 제외 seed 1건이 준비되고 seed ID가 process memory에만 유지되는가
+- 상태 변경 cohort가 읽기 cohort와 분리되고 iteration·생성 전 cardinality가 기록되는가
+- 상태 변경 10회는 p50·max만, 읽기 30회는 p50·p95·max가 보고되는가
+- HTTP error·transport error·timeout이 루프 중단이나 표본 제거 없이 동일 schema로 집계되는가
 - latency가 client-observed 값이며 Nginx·Backend·DB 구간으로 오해되지 않는가
 - credential, header, body, cookie, session ID와 CSRF token이 record·log·문서에서 제외되는가
 - raw log·record를 저장소에 커밋하지 않는가
@@ -80,7 +92,8 @@
 - Nginx·Compose·CI나 Backend·Frontend 제품 코드 변경이 필요함
 - QA 회원 외 데이터 삭제 또는 volume 삭제가 필요함
 - 결과를 좋게 만들기 위해 반복·동시성·warm-up·자원 조건을 바꿔야 함
-- 원시 log, credential, cookie, session 또는 CSRF token을 저장해야 함
+- 원시 log·record, credential, cookie, session 또는 CSRF token을 저장소에 commit하거나 장기 보존해야 함
+- D5 승인, 민감정보 점검과 집계 후 삭제 보장 없이 OS temp 파일이 필요함
 
 ## 남은 위험 또는 주의 사항
 
@@ -93,6 +106,8 @@
 
 1. Tech Lead가 D1~D6 결정 결과를 PERF-001 문서 또는 후속 승인 문서에 기록한다.
 2. 별도 baseline 측정 작업에서 승인된 조건을 고정한다.
-3. 기능 smoke를 통과시킨 뒤 cold와 warm cohort를 분리 측정한다.
-4. 집계·재현 명령·환경 fingerprint와 제한만 보존한다.
-5. 병목 가설과 변경안은 기준 증거 이후 별도 역할 인수인계와 재측정 계획으로 제안한다.
+3. 기능 smoke 뒤 승인된 reset을 한 번 수행하고 즉시 `false`로 복원한 다음 측정 제외 seed 1건을 준비한다.
+4. cold, 공개 읽기, 인증된 읽기, 인증 lifecycle과 구독 상태 변경 cohort를 분리 측정한다.
+5. 상태 변경의 iteration·생성 전 cardinality와 표본 수별 통계를 구분해 집계한다.
+6. 집계·재현 명령·환경 fingerprint와 제한만 보존하고 승인된 OS temp 예외는 점검 후 삭제한다.
+7. 병목 가설과 변경안은 기준 증거 이후 별도 역할 인수인계와 재측정 계획으로 제안한다.
