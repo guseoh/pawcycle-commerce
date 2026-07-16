@@ -44,8 +44,8 @@
 | 승인 결정 | 다음 측정 적용 |
 | --- | --- |
 | D1-A | 다섯 cohort 분리, Frontend·proxy와 공개 읽기 분리 |
-| D2-A | 읽기·lifecycle 30회 p50·p95·max, 쓰기 10회 p50·max, expected status 오류율 |
-| D3-A | cold 3, 안정화 30초, warm-up 5, concurrency 1, reset·seed·cardinality 고정 |
+| D2-A | 읽기·lifecycle 30회 p50·p95·max, 쓰기 10회 p50·max, expected status 오류율, cold health, container 자원·restart, 환경 fingerprint |
+| D3-A | volume 미삭제 `down` → `up --detach --wait --wait-timeout 180` cold 3회, 안정화 30초, warm-up 5, endpoint별 읽기 30회, concurrency 1, reset·seed·cardinality 고정 |
 | D4-A | allowlist record, PowerShell 5.1 실패 처리, 민감정보·실제 ID 제외 |
 | D5-A | 집계 Markdown만 보존, raw 미커밋·미장기보존, 조건부 OS temp 삭제 |
 | D6-A | 현재 PowerShell·Docker만 사용하는 저장소 변경 없는 일회성 측정 |
@@ -86,7 +86,8 @@ PERF-002 승인 원본, 동일 commit·QA fixture·Docker Desktop 자원·전원
 4. run 시작 전 reset 한 번, 즉시 `false` 복원, 측정 제외 seed 한 건을 준비한다.
 5. warm-up 5회 후 다섯 cohort를 승인된 횟수로 concurrency 1에서 순차 실행한다.
 6. 동일 schema로 성공·HTTP error·transport error·timeout을 집계한다.
-7. seed ID는 집계 전에 폐기하고 raw record는 process memory에서 집계 직후 폐기한 뒤 집계 Markdown만 보존한다.
+7. 각 warm endpoint 또는 lifecycle cohort의 시작 전·중간 iteration 직후·종료 직후 container stats를 수집하고 세 표본의 평균·최대를 집계한다.
+8. seed ID는 집계 전에 폐기하고 raw record는 process memory에서 집계 직후 폐기한 뒤 집계 Markdown만 보존한다.
 
 ## 다음 역할의 검증 포인트
 
@@ -96,6 +97,8 @@ PERF-002 승인 원본, 동일 commit·QA fixture·Docker Desktop 자원·전원
 - cold 3, 안정화 30초, warm-up 5, 각 cohort 30/10회와 concurrency 1이 유지되는가
 - p50과 nearest-rank p95 계산 및 쓰기 p95 미보고가 승인 조건과 일치하는가
 - expected status 불일치와 transport·timeout 실패가 누락 없이 집계되는가
+- D4 record가 `timestamp_utc`, `response_bytes_if_available`, `subscription_count_before_if_state_change`를 포함한 canonical field와 nullable 규칙을 지키는가
+- container 자원이 시작 전·중간·종료의 event-based 3개 표본으로 수집되고 관측 스케줄과 평균·최대가 기록되는가
 - seed ID, raw record·log와 민감정보가 저장소·보고서에 남지 않는가
 
 ## QA 필요 여부

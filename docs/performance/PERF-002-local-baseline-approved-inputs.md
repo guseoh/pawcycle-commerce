@@ -34,7 +34,9 @@
 - p50: 정렬된 표본의 중앙값. 짝수 표본은 가운데 두 값의 산술평균
 - p95: nearest-rank `ceil(0.95 × n)`
 - method·normalized route·expected status·actual status별 요청 수와 기대 status 불일치 오류 비율
-- cold start 경과, service별 health, container CPU·memory·network·block I/O·PIDs, restart와 환경 fingerprint
+- cold start 경과, service별 health convergence, container CPU·memory·network·block I/O·PIDs, restart와 환경 fingerprint
+
+Container 자원은 periodic sampling을 사용하지 않고 각 warm endpoint 또는 lifecycle cohort의 첫 요청 전, 중간 iteration 직후, 마지막 iteration 직후에 총 3회 수집한다. 30회 cohort의 중간은 15번째 iteration 직후, 10회 cohort의 중간은 5번째 iteration 직후다. 각 표본의 관측점과 `timestamp_utc`를 기록하고 세 표본의 평균·최대를 집계한다. 이 event-based sampling schedule을 결과에 남기며 단일 snapshot은 평균·최대로 표현하지 않는다.
 
 기대한 3xx는 정상이고, 기대하지 않은 3xx를 포함한 expected status 불일치만 오류다. 모든 elapsed는 client-observed 값이며 Nginx·Backend·DB server processing time으로 표현하지 않는다. SLO, latency 목표, 오류 예산과 regression threshold는 미결정이다.
 
@@ -42,12 +44,12 @@
 
 | 항목 | 승인 조건 |
 | --- | --- |
-| cold start | 3회 |
+| cold start | volume을 삭제하지 않는 `down` → `up --detach --wait --wait-timeout 180` 3회, 전체 경과와 service별 health convergence 기록 |
 | 안정화 | service healthy 후 30초 |
 | warm-up | 측정 제외 5회 |
 | Frontend·proxy | 순차 30회 |
-| 공개 읽기 | 순차 30회 |
-| 인증된 읽기 | 순차 30회 |
+| 공개 읽기 | endpoint별 순차 30회 |
+| 인증된 읽기 | endpoint별 순차 30회 |
 | 인증 lifecycle | 순차 30회 |
 | 구독 상태 변경 | 순차 10회 |
 | concurrency | 1 |
@@ -62,7 +64,20 @@
 
 ## D4-A 승인: 측정 record
 
-수집 allowlist는 `timestamp`, `run_id`, `cohort`, `iteration`, `method`, `normalized_route`, `expected_status`, `actual_status`, `elapsed_ms`, `response_size_bytes`, `subscription_count_before` 또는 동등한 cardinality, `outcome`이다.
+HTTP 측정 record의 canonical allowlist는 다음 PERF-001 D4-A 필드명으로 고정한다.
+
+```text
+timestamp_utc, run_id, cohort, iteration, method,
+normalized_route, expected_status, actual_status, elapsed_ms,
+response_bytes_if_available, subscription_count_before_if_state_change,
+outcome
+```
+
+- `timestamp_utc`는 UTC 시각, elapsed와 response bytes·cardinality는 정수로 process memory의 PowerShell object에 유지한다.
+- `actual_status`는 transport error·timeout일 때만 `null`이다.
+- `response_bytes_if_available`은 확인할 수 없을 때 `null`이다.
+- `subscription_count_before_if_state_change`는 구독 상태 변경 cohort에서만 정수이고 다른 cohort에서는 `null`이다.
+- raw record는 직렬화하거나 파일로 저장하지 않는다. 승인된 직렬화 결과는 집계 Markdown뿐이다.
 
 - email, password, 요청·응답 body, 전체 header, cookie, session ID와 CSRF token은 수집하지 않는다.
 - 실제 상품·구독 ID와 query string은 보존하지 않는다.
