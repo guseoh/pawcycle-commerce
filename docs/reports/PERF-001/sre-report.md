@@ -72,8 +72,8 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 ## 결정 요청 결과
 
 - D1: Frontend 경계, 공개 읽기, 인증된 읽기, 인증 lifecycle과 구독 상태 변경의 다섯 cohort 분리 추천
-- D2: 읽기 30회의 p50·p95·max, 상태 변경 10회의 p50·max, status·오류 비율, cold health와 container 자원 SLI candidate 추천; 목표값은 미결정
-- D3: run 시작 전 reset·즉시 `false` 복원·측정 제외 seed 1건 준비, cold 3회, warm-up 5회, 읽기·lifecycle 30회, 쓰기 10회, concurrency 1 추천; 모두 승인 전 미실행
+- D2: Frontend·proxy 경계와 읽기·lifecycle 30회의 p50·p95·max, 상태 변경 10회의 p50·max, status·오류 비율, cold health와 container 자원 SLI candidate 추천; 목표값은 미결정
+- D3: run 시작 전 reset·즉시 `false` 복원·측정 제외 seed 1건 준비, cold 3회, warm-up 5회, 경계·읽기·lifecycle 30회, 쓰기 10회, concurrency 1 추천; 모두 승인 전 미실행
 - D4: method·정규화 route·status·client elapsed·상태 변경 전 cardinality allowlist, PowerShell 5.1 `try/catch/finally` 실패 수집과 민감정보 제외 추천
 - D5: raw 미커밋·장기 보존 중단, 승인된 process-memory 집계와 조건부 OS temp 삭제 예외, Markdown 결과·재현 명령만 보존 추천
 - D6: 기존 PowerShell 5.1 호환·Docker 최소안 우선, PowerShell 7 전용 option·repository script·k6·metric stack은 대안 또는 별도 승인 추천
@@ -108,6 +108,7 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 - `scripts/validate-commit-message.sh --message 'docs(sre): PERF-001 측정 조건 보완'`: 통과
 - D1~D6의 `Decision Required` 6개와 `Approved` 상태 없음 확인
 - 후속 변경 경로 검사: PERF-001 문서 세 파일만 확인
+- 새 head CI와 CodeRabbit 통과 후 Frontend·proxy 실행 계약과 p50 계산법 관련 신규 유효 thread 2개 확인
 
 ## 실행하지 못한 검증과 이유
 
@@ -134,6 +135,7 @@ PR #49 후속 리뷰에서는 실제 측정 없이 인증 lifecycle, seed fixtur
 - 상태 변경 10회는 cardinality가 증가하므로 iteration과 `subscription_count_before` 없이 고정 cardinality 결과로 비교할 수 없다.
 - 인증된 읽기 setup·cleanup이 읽기 latency에 포함되면 인증 비용과 읽기 비용을 구분할 수 없다.
 - 상태 변경 10회의 nearest-rank p95는 max와 같아 독립적인 tail statistic으로 해석할 수 없다.
+- p50 계산법을 고정하지 않으면 짝수 표본에서 중앙 두 값 평균과 nearest-rank 결과가 달라질 수 있다.
 - 정상 실행 중 snapshot은 성능 기준선이나 병목 증거가 아니다.
 - 오류 재시도 keyboard 접근성과 session 만료는 계속 미실행 위험이다.
 
