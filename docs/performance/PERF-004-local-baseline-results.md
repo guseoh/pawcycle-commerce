@@ -3,17 +3,17 @@
 ## 결과 상태
 
 - 상태: `Partial / Stopped`
-- 유효한 결과: 환경 fingerprint, 사전 검증, cold start 3회, service별 health convergence
+- 보존 가능한 부분 관측: 환경 fingerprint, cold start 3회, service별 health convergence
 - 미완료 결과: 다섯 읽기 route, 인증 lifecycle, 구독 상태 변경, warm container sampling
 - 중단 이유: warm 측정 계측 래퍼가 첫 유효 표본 전에 두 차례 실패했고, 두 번째 실패 전에 QA seed와 집계 제외 대상 warm-up이 수행됐다. 실패 실행을 성공 재실행으로 대체하거나 서로 다른 준비 상태를 합치지 않기 위해 추가 측정을 중단했다.
 
-이 문서는 완료된 로컬 기준선이 아니다. 아래 cold start 결과만 PERF-004의 부분 관측값으로 사용할 수 있다.
+이 문서는 완료된 로컬 기준선이 아니다. 아래 cold start 값은 실제 측정된 부분 관측값으로만 보존한다. 승인된 `reset → reset=false → seed 생성·확인 → cold` 순서와 달리 seed가 cold 3회 뒤에 생성됐으므로 승인된 cold cohort 또는 새 warm 결과와 결합 가능한 기준선으로 사용하지 않는다.
 
 ## 질문
 
 PERF-002와 PERF-003에서 승인한 동일 조건 아래에서 PawCycle Commerce local-integration의 cold start, HTTP cohort와 container 자원 기준선은 무엇인가?
 
-이번 실행은 cold start에 대해서만 답을 제공한다. HTTP와 warm container 기준선은 제공하지 않는다.
+이번 실행은 순서 이탈이 있는 cold start 관측만 제공한다. 승인된 cold 기준선, HTTP 기준선과 warm container 기준선은 제공하지 않는다.
 
 ## 승인 입력
 
@@ -75,7 +75,7 @@ docker compose --env-file .env.local down
 docker compose --env-file .env.local up --detach --wait --wait-timeout 180
 ```
 
-별도 500 ms polling으로 각 service가 처음 `healthy`가 된 경과를 기록했다. 세 번째 회차의 전체 healthy 뒤 30초 안정화를 적용했다. 이후 process-memory 계측 래퍼에서 QA seed를 생성하고 warm cohort를 시작했으나 첫 유효 warm 표본 전에 중단 조건에 도달했다. 마지막에는 `Preserved` smoke를 통과한 뒤 volume을 삭제하지 않는 `down`으로 정리했다.
+별도 500 ms polling으로 각 service가 처음 `healthy`가 된 경과를 기록했다. 세 번째 회차의 전체 healthy 뒤 30초 안정화를 적용했다. 이후 process-memory 계측 래퍼에서 QA seed를 생성하고 확인한 뒤 warm cohort를 시작했으나 첫 유효 warm 표본 전에 중단 조건에 도달했다. 이 실제 순서는 승인된 seed-before-cold 순서와 달랐다. 마지막에는 `Preserved` smoke를 통과한 뒤 volume을 삭제하지 않는 `down`으로 정리했다.
 
 ## 사전 환경 검증
 
@@ -95,6 +95,8 @@ docker compose --env-file .env.local up --detach --wait --wait-timeout 180
 ## Cold start 결과
 
 단위는 millisecond다. 전체 경과는 `up --detach --wait` 명령 시작부터 종료까지이며, service convergence는 같은 시작점부터 첫 `healthy` 관측까지다. 500 ms polling 간격 때문에 service별 값에는 그만큼의 관측 오차가 있을 수 있다.
+
+아래 수치는 실제 실행 증거로 보존하지만 seed 생성·확인 전에 측정됐다. 따라서 PERF-002·003 승인 순서의 완료된 cold cohort가 아니며, 새 warm 결과와 결합하거나 SLO, threshold, 병목, regression 비교에 사용하지 않는다.
 
 | Run | 전체 경과 | mysql healthy | backend healthy | frontend healthy | proxy healthy | 결과 |
 | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -160,7 +162,7 @@ PERF-004의 계측 래퍼는 repository 파일이 아니라 한 PowerShell proce
 | Warm wrapper 1 | `[string]$Body = $null` 기본값이 PowerShell 5.1에서 길이 0의 `System.String`으로 바인딩됐고, null 비교만 사용한 request parameter 구성에서 GET에도 빈 body가 첨부됨 | PowerShell 함수·매개변수·HTTP 예외 처리 결함 | 예외와 상태 변경 없는 최소 재현으로 확정 |
 | Warm wrapper 2 | `Convert-SizeToBytes`의 곱셈 시 scalar여야 할 `$factor`가 `System.Object[]`이어서 `op_Multiply` 호출 실패 | container stats parsing 또는 집계 결함 | 실패 함수·표현식·반환 type은 확정. 원본 switch의 어떤 분기 조합이 배열을 만들었는지는 원본 정의 부재로 미확정 |
 
-상태 변경 없는 순수 PowerShell 최소 재현에서 `[string]$Body = $null`은 `IsNull=False`, `Length=0`이고 null 비교만 사용하면 body를 첨부하는 경로가 됐다. 또한 두 값을 가진 `$factor`는 `System.Object[]`이며 `$number * $factor`에서 PERF-004와 같은 `op_Multiply` 오류를 냈다. 빈 body를 첨부하지 않는 조건과 단일 값 hashtable lookup을 사용한 대체 로직은 순수 객체 입력에서 각각 GET body 미첨부와 scalar factor 1개를 확인했다.
+완료된 검증은 상태 변경 없는 순수 PowerShell 객체 최소 재현과 수정 방향 검증까지다. `[string]$Body = $null`은 `IsNull=False`, `Length=0`이고 null 비교만 사용하면 body를 첨부하는 경로가 됐다. 두 값을 가진 `$factor`는 `System.Object[]`이며 `$number * $factor`에서 PERF-004와 같은 `op_Multiply` 오류를 냈다. 순수 객체 입력에서는 빈 body 미첨부 조건과 scalar factor 1개라는 수정 방향도 확인했다. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing은 검증하지 않았다.
 
 두 오류 모두 제품 endpoint의 응답 성능이나 Docker engine 실패를 나타내는 증거가 아니다. 첫 오류는 request를 보내기 전 client parameter 구성, 두 번째 오류는 container stats 값을 집계 객체로 변환하는 client-side harness에서 발생했다.
 
@@ -200,6 +202,7 @@ Warm 측정 단위의 `before` sample 변환 도중 중단되어 승인된 `befo
 ## 결과 해석의 제한
 
 - Cold start 3회만으로 운영 capacity, SLO, regression threshold 또는 병목을 판단할 수 없다.
+- Cold start 3회는 seed-before-cold 승인 순서를 따르지 않아 승인된 cold 기준선이나 새 warm 결과와 결합 가능한 값이 아니다.
 - service convergence는 500 ms polling으로 관측한 client-side 값이며 내부 startup 구간을 설명하지 않는다.
 - 일반 대화형 desktop background workload와 WSL2/Docker Desktop 조건의 일회성 로컬 관측이다.
 - HTTP 및 container warm 결과가 없으므로 route, 인증, 상태 변경 또는 자원 사용량을 비교할 수 없다.
@@ -207,6 +210,6 @@ Warm 측정 단위의 `before` sample 변환 도중 중단되어 승인된 `befo
 
 ## 결론
 
-기준 commit과 환경 fingerprint, cold start 3회는 재현 근거가 있는 부분 결과다. 승인된 warm cohort 전체를 완료하지 못했으므로 PERF-004 로컬 성능 기준선은 미완료이며 Tech Lead의 재실행 결정 전까지 성능 목표·병목·최적화 입력으로 사용하지 않는다.
+기준 commit과 환경 fingerprint, cold start 3회는 사실 기반 부분 관측으로 보존한다. 다만 seed-before-cold 승인 순서를 따르지 않았고 warm cohort도 완료하지 못했으므로 PERF-004 로컬 성능 기준선은 미완료다. 이 값을 새 warm 결과와 결합하거나 SLO·threshold·병목·regression·최적화 입력으로 사용하지 않는다.
 
-PERF-005에서는 endpoint 호출, QA reset·seed·warm-up과 성능 측정을 실행하지 않고 위 래퍼 원인만 정적·순수 객체 방식으로 진단했다. Cold 부분 결과는 유지하고 warm 결과는 계속 `미완료·사용 불가`다.
+PERF-005에서는 endpoint 호출, QA reset·seed·warm-up과 성능 측정을 실행하지 않고 위 래퍼 결함 유형과 수정 방향만 정적·순수 객체 방식으로 검증했다. Cold는 순서 이탈이 있는 부분 관측으로 유지하고 warm 결과는 계속 `미완료·사용 불가`다.
