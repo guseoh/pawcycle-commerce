@@ -4,6 +4,8 @@
 
 사용자가 승인한 PERF-001 D1-A~D6-A 범위와 아직 승인하지 않은 측정 세부를 분리해 전달한다. Container sampling 방식과 warm-up 적용 단위가 결정될 때까지 실제 기준선을 측정하지 않는다.
 
+이 문서는 PERF-002 당시 상태를 보존한다. 두 측정 세부가 승인된 이후의 최신 실행 입력은 `docs/handoffs/PERF-003/tl-to-sre.md`다.
+
 ## 대상 역할
 
 - Platform/SRE
