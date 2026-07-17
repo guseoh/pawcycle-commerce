@@ -47,8 +47,10 @@ PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-0
 3. OS·runtime, CPU·memory, Docker·Compose·PowerShell 버전, Docker Desktop 자원, container image ID, 전원 모드와 background workload를 기록한다.
 4. PERF-004 기준 `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
 5. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
-6. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다.
-7. 아티팩트를 재현할 수 없거나 검증에 실패하면 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
+6. 실제 재실행용 수정 래퍼 아티팩트의 로컬 경로 또는 이름, 적용 가능한 version·commit과 SHA-256을 기록한다.
+7. 같은 식별자의 아티팩트로 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증하고 검증 명령·비민감 입력 설명과 결과를 기록한다.
+8. 실제 측정 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인한다.
+9. 식별자 불일치, 아티팩트 재현 실패 또는 검증 실패 시 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
 
 ## 승인된 실행 순서
 
@@ -74,7 +76,7 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 | 기준 commit | PERF-007 시작 시 최신 `origin/main` SHA 기록 |
 | Git 상태 | 상태 변경·래퍼 검증 전에 clean worktree와 `HEAD == 고정한 origin/main SHA` 확인 |
 | 환경 비교 | 환경 fingerprint 기록과 PERF-004 이후 제품·실행 설정 변경 검사 |
-| 래퍼 게이트 | 실제 수정 아티팩트의 상태 변경 없는 request parameter·stats parsing 검증 |
+| 래퍼 게이트 | 실제 수정 아티팩트의 경로·이름, version·commit, SHA-256과 검증 명령·비민감 입력 설명 기록, 동일 SHA의 상태 변경 없는 request parameter·stats parsing 검증 |
 | Cold 보존 | PERF-004 값을 부분 관측으로만 보존하고 새 결과와 합산 금지 |
 | 실패 경계 | 상태 변경 이후 임의 reset·재재실행 없이 중단 |
 | 승인 조건 | PERF-002·003 조건을 변경하지 않음 |
@@ -82,6 +84,7 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 ## 다음 역할의 검증 포인트
 
 - 래퍼 사전검증이 QA 상태 변경과 endpoint 측정 전에 완료됐는가
+- 기록한 아티팩트 SHA-256이 사전검증과 실제 측정 직전에 동일한가
 - 최신 기준 commit과 환경 fingerprint가 결과에 기록됐는가
 - PERF-004 이후 제품 코드·실행 설정 변경 부재가 확인됐는가
 - QA reset → reset `false` → seed → cold 3회 순서가 지켜졌는가
@@ -109,6 +112,7 @@ PERF-007이 승인된 조건을 그대로 적용하는 데 추가 제품·기술
 - 최신 `origin/main` 또는 역할 브랜치의 원격 관계가 불명확함
 - PERF-004 이후 제품 코드 또는 실행 설정 변경이 확인됨
 - 실제 수정 래퍼 아티팩트 재현 또는 상태 변경 없는 검증에 실패함
+- 래퍼 식별자를 기록할 수 없거나 측정 직전 SHA-256이 사전검증 값과 다름
 - PERF-002·003 승인 조건 변경이 필요함
 - QA 회원 외 데이터 삭제, volume 삭제 또는 iteration별 reset이 필요함
 - 상태 변경 이후 실패해 임의 reset 또는 재재실행이 필요함
