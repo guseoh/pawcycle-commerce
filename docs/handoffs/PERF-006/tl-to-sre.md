@@ -49,12 +49,14 @@ PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-0
 5. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
 6. 실제 재실행용 수정 래퍼 아티팩트의 로컬 경로 또는 이름, 적용 가능한 version·commit과 SHA-256을 기록한다.
 7. 같은 식별자의 아티팩트로 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증하고 검증 명령·비민감 입력 설명과 결과를 기록한다.
-8. 실제 측정 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인한다.
-9. 식별자 불일치, 아티팩트 재현 실패 또는 검증 실패 시 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
+8. 사전검증 직후이자 첫 QA reset 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인한다.
+9. 같은 시점에 `git status --porcelain` 출력이 비어 있는지 다시 확인하고, `git rev-parse HEAD`와 `git rev-parse origin/main`의 실제 SHA가 모두 1단계에서 고정한 기준 commit과 같은지 다시 비교한다.
+10. 최초 Git 검사와 사전검증 이후 Git 재검사 결과를 모두 PERF-007 결과에 기록한다.
+11. 식별자·SHA-256 불일치, 아티팩트 재현·검증 실패, dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치 시 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
 
 ## 승인된 실행 순서
 
-필수 게이트 통과 뒤 다음 순서를 한 번만 실행한다.
+사전검증 이후 Git 재검사를 포함한 필수 게이트 통과 뒤 다음 순서를 한 번만 실행한다.
 
 1. QA 회원 구독 reset 1회
 2. Reset 설정 즉시 `false` 복원
@@ -74,7 +76,7 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 | --- | --- |
 | 선택지 B | QA reset부터 cold·warm 전체를 하나의 새 run으로 실행 |
 | 기준 commit | PERF-007 시작 시 최신 `origin/main` SHA 기록 |
-| Git 상태 | 상태 변경·래퍼 검증 전에 `git status --porcelain` 빈 출력과 `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA 일치 확인 |
+| Git 상태 | 최초 확인과 래퍼 사전검증 직후·첫 QA reset 직전 재확인에서 `git status --porcelain` 빈 출력과 `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA·고정 기준 commit 일치 확인, 두 결과 기록 |
 | 환경 비교 | 환경 fingerprint 기록과 PERF-004 이후 제품·실행 설정 변경 검사 |
 | 래퍼 게이트 | 실제 수정 아티팩트의 경로·이름, version·commit, SHA-256과 검증 명령·비민감 입력 설명 기록, 동일 SHA의 상태 변경 없는 request parameter·stats parsing 검증 |
 | Cold 보존 | PERF-004 값을 부분 관측으로만 보존하고 새 결과와 합산 금지 |
@@ -85,6 +87,7 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 
 - 래퍼 사전검증이 QA 상태 변경과 endpoint 측정 전에 완료됐는가
 - 기록한 아티팩트 SHA-256이 사전검증과 실제 측정 직전에 동일한가
+- 최초 Git 검사와 래퍼 사전검증 직후·첫 QA reset 직전 Git 재검사 결과가 모두 기록되고 일치하는가
 - 최신 기준 commit과 환경 fingerprint가 결과에 기록됐는가
 - PERF-004 이후 제품 코드·실행 설정 변경 부재가 확인됐는가
 - QA reset → reset `false` → seed → cold 3회 순서가 지켜졌는가
@@ -113,6 +116,7 @@ PERF-007이 승인된 조건을 그대로 적용하는 데 추가 제품·기술
 - PERF-004 이후 제품 코드 또는 실행 설정 변경이 확인됨
 - 실제 수정 래퍼 아티팩트 재현 또는 상태 변경 없는 검증에 실패함
 - 래퍼 식별자를 기록할 수 없거나 측정 직전 SHA-256이 사전검증 값과 다름
+- 래퍼 사전검증 직후 Git 재검사에서 dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치가 확인됨
 - PERF-002·003 승인 조건 변경이 필요함
 - QA 회원 외 데이터 삭제, volume 삭제 또는 iteration별 reset이 필요함
 - 상태 변경 이후 실패해 임의 reset 또는 재재실행이 필요함
@@ -130,7 +134,7 @@ PERF-007이 승인된 조건을 그대로 적용하는 데 추가 제품·기술
 ## 완료 조건
 
 - 최신 기준 commit·환경 fingerprint와 제품·실행 설정 변경 부재를 기록한다.
-- 래퍼 사전검증을 통과한 뒤 승인 순서의 단일 전체 재실행을 수행한다.
+- 래퍼 사전검증과 직후 Git 재검사를 통과한 뒤 승인 순서의 단일 전체 재실행을 수행한다.
 - PERF-004 부분 관측과 새 결과를 분리한다.
 - 집계 Markdown과 재현 근거만 저장소에 남긴다.
 - SLO·threshold·병목·최적화와 capacity를 확정하지 않는다.
