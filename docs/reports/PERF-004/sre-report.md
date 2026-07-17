@@ -148,5 +148,5 @@ Tech Lead가 `docs/performance/PERF-005-local-baseline-rerun-decision-request.md
 ## PR 결과
 
 - PERF-004 수행 당시에는 신규 PR을 생성하지 않음
-- PERF-005에서 부분 결과 보존과 재실행 결정 요청을 main 대상 PR로 전달
+- PERF-005에서 부분 결과 보존과 재실행 결정 요청을 main 대상 PR #52로 전달
 - 자동 병합 없음
