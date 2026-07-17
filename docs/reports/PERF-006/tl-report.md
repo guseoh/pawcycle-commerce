@@ -164,12 +164,15 @@ Platform/SRE가 작업 ID `PERF-007`로 최신 기준 commit·환경 fingerprint
 
 - 최신 `main` 기준: `54eb9230b20556cfdd01c443b8c2749fe0b119fe`
 - 병합된 PR #51의 기존 역할 브랜치를 정리하고 깨끗한 `ops/tl`을 재생성했다.
-- Commit, push와 PR 결과는 검증 후 PR 원격 이력과 완료 보고에서 확인한다.
+- 승인 문서 commit: `774dd52 docs(tl): PERF-006 전체 기준선 재실행 승인`
+- 원격 `origin/ops/tl` push 완료
+- PR 결과 기록 이후의 commit은 자기 SHA를 같은 commit 안에 기록할 수 없으므로 PR #53 원격 이력과 완료 보고에서 확인한다.
 - reset, rebase, force push와 history rewrite 없음
 
 ## PR 결과
 
+- PR: `#53`
+- 상태: Open, Ready for review
 - 제목: `docs(tl): PERF-006 전체 기준선 재실행 승인`
 - 대상 브랜치: `main`
-- 상태: 검증 후 생성 예정
 - 자동 병합하지 않는다.
