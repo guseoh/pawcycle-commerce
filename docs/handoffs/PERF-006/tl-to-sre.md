@@ -2,7 +2,7 @@
 
 ## 전달 목적
 
-PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-007에서 QA reset부터 cold와 warm 전체를 승인 순서로 한 번 다시 측정하도록 실행 경계와 중단 조건을 고정한다.
+PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-007에서 reset 준비 기동 뒤 QA reset부터 cold와 warm 전체를 승인 순서로 한 번 다시 측정하도록 실행 경계와 중단 조건을 고정한다.
 
 ## 대상 역할과 다음 작업
 
@@ -49,36 +49,41 @@ PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-0
 5. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
 6. 실제 재실행용 수정 래퍼 아티팩트의 로컬 경로 또는 이름, 적용 가능한 version·commit과 SHA-256을 기록한다.
 7. 같은 식별자의 아티팩트로 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증하고 검증 명령·비민감 입력 설명과 결과를 기록한다.
-8. 사전검증 직후이자 첫 QA reset 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인한다.
+8. 사전검증 직후이자 reset 준비 기동 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인한다.
 9. 같은 시점에 `git status --porcelain` 출력이 비어 있는지 다시 확인하고, `git rev-parse HEAD`와 `git rev-parse origin/main`의 실제 SHA가 모두 1단계에서 고정한 기준 commit과 같은지 다시 비교한다.
 10. 최초 Git 검사와 사전검증 이후 Git 재검사 결과를 모두 PERF-007 결과에 기록한다.
-11. 식별자·SHA-256 불일치, 아티팩트 재현·검증 실패, dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치 시 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
+11. 식별자·SHA-256 불일치, 아티팩트 재현·검증 실패, dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치 시 Docker 준비 기동, endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
 
 ## 승인된 실행 순서
 
 사전검증 이후 Git 재검사를 포함한 필수 게이트 통과 뒤 다음 순서를 한 번만 실행한다.
 
-1. QA 회원 구독 reset 1회
-2. Reset 설정 즉시 `false` 복원
-3. 측정 제외 seed 구독 1건 생성·목록·상세 확인
-4. Volume을 삭제하지 않는 cold start 3회
-5. 네 service `healthy` 확인
-6. 측정 제외 30초 안정화
-7. 다섯 읽기 route별 warm-up 5회와 해당 route 측정
-8. 별도 warm-up 없는 인증 lifecycle 측정
-9. 별도 warm-up 없는 구독 상태 변경 측정
+1. PERF-004 종료 상태인 volume 보존 `down` 확인
+2. Volume을 삭제하지 않고 승인된 Compose `up --detach --wait --wait-timeout 180` 실행
+3. 네 service `healthy` 확인
+4. 최초 기동을 reset 준비로 기록하고 cold 표본과 PERF-002·003 반복 횟수·통계에서 제외
+5. QA 회원 구독 reset 1회
+6. Reset 설정 즉시 `false` 복원
+7. 측정 제외 seed 구독 1건 생성·목록·상세 확인
+8. Volume을 삭제하지 않는 cold start 3회
+9. 세 번째 cold 뒤 네 service `healthy` 확인
+10. 측정 제외 30초 안정화
+11. 다섯 읽기 route별 warm-up 5회와 해당 route 측정
+12. 별도 warm-up 없는 인증 lifecycle 측정
+13. 별도 warm-up 없는 구독 상태 변경 측정
 
-Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait-timeout 180`을 사용한다. PERF-002의 반복 횟수, concurrency 1, 통계와 실패 처리, PERF-003의 event-based sampling·nullable 규칙을 그대로 적용한다.
+Cold start는 seed 생성·확인 뒤 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait-timeout 180`을 사용해 3회 측정한다. Reset 전 최초 기동은 환경 준비이며 cold 표본과 PERF-002·003 반복 횟수·통계에서 제외한다. PERF-002의 concurrency 1, 통계와 실패 처리, PERF-003의 event-based sampling·nullable 규칙을 그대로 적용한다.
 
 ## 인수 조건과 추적성
 
 | 승인 결정 | PERF-007 적용 |
 | --- | --- |
-| 선택지 B | QA reset부터 cold·warm 전체를 하나의 새 run으로 실행 |
+| 선택지 B | Reset 준비 기동 뒤 QA reset부터 cold·warm 전체를 하나의 새 run으로 실행 |
 | 기준 commit | PERF-007 시작 시 최신 `origin/main` SHA 기록 |
-| Git 상태 | 최초 확인과 래퍼 사전검증 직후·첫 QA reset 직전 재확인에서 `git status --porcelain` 빈 출력과 `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA·고정 기준 commit 일치 확인, 두 결과 기록 |
+| Git 상태 | 최초 확인과 래퍼 사전검증 직후·reset 준비 기동 직전 재확인에서 `git status --porcelain` 빈 출력과 `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA·고정 기준 commit 일치 확인, 두 결과 기록 |
 | 환경 비교 | 환경 fingerprint 기록과 PERF-004 이후 제품·실행 설정 변경 검사 |
 | 래퍼 게이트 | 실제 수정 아티팩트의 경로·이름, version·commit, SHA-256과 검증 명령·비민감 입력 설명 기록, 동일 SHA의 상태 변경 없는 request parameter·stats parsing 검증 |
+| Reset 준비 | 필수 게이트 뒤 volume 보존 `down` 확인 → volume 비삭제 기동 → 네 service `healthy` 확인, 최초 기동은 cold 표본에서 제외 |
 | Cold 보존 | PERF-004 값을 부분 관측으로만 보존하고 새 결과와 합산 금지 |
 | 실패 경계 | 상태 변경 이후 임의 reset·재재실행 없이 중단 |
 | 승인 조건 | PERF-002·003 조건을 변경하지 않음 |
@@ -87,9 +92,10 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 
 - 래퍼 사전검증이 QA 상태 변경과 endpoint 측정 전에 완료됐는가
 - 기록한 아티팩트 SHA-256이 사전검증과 실제 측정 직전에 동일한가
-- 최초 Git 검사와 래퍼 사전검증 직후·첫 QA reset 직전 Git 재검사 결과가 모두 기록되고 일치하는가
+- 최초 Git 검사와 래퍼 사전검증 직후·reset 준비 기동 직전 Git 재검사 결과가 모두 기록되고 일치하는가
 - 최신 기준 commit과 환경 fingerprint가 결과에 기록됐는가
 - PERF-004 이후 제품 코드·실행 설정 변경 부재가 확인됐는가
+- Volume 보존 reset 준비 기동과 네 service healthy가 QA reset 전에 완료되고 준비 기동이 cold 표본에서 제외됐는가
 - QA reset → reset `false` → seed → cold 3회 순서가 지켜졌는가
 - 세 번째 cold 뒤 네 service healthy와 측정 제외 30초 안정화가 적용됐는가
 - 다섯 route의 warm-up 5회와 측정, 인증 lifecycle, 구독 상태 변경이 승인 순서로 수행됐는가
@@ -117,6 +123,7 @@ PERF-007이 승인된 조건을 그대로 적용하는 데 추가 제품·기술
 - 실제 수정 래퍼 아티팩트 재현 또는 상태 변경 없는 검증에 실패함
 - 래퍼 식별자를 기록할 수 없거나 측정 직전 SHA-256이 사전검증 값과 다름
 - 래퍼 사전검증 직후 Git 재검사에서 dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치가 확인됨
+- Reset 준비 기동 또는 네 service의 `healthy` 확인에 실패함
 - PERF-002·003 승인 조건 변경이 필요함
 - QA 회원 외 데이터 삭제, volume 삭제 또는 iteration별 reset이 필요함
 - 상태 변경 이후 실패해 임의 reset 또는 재재실행이 필요함
@@ -134,7 +141,7 @@ PERF-007이 승인된 조건을 그대로 적용하는 데 추가 제품·기술
 ## 완료 조건
 
 - 최신 기준 commit·환경 fingerprint와 제품·실행 설정 변경 부재를 기록한다.
-- 래퍼 사전검증과 직후 Git 재검사를 통과한 뒤 승인 순서의 단일 전체 재실행을 수행한다.
+- 래퍼 사전검증과 직후 Git 재검사를 통과한 뒤 reset 준비 기동을 거쳐 승인 순서의 단일 전체 재실행을 수행한다.
 - PERF-004 부분 관측과 새 결과를 분리한다.
 - 집계 Markdown과 재현 근거만 저장소에 남긴다.
 - SLO·threshold·병목·최적화와 capacity를 확정하지 않는다.

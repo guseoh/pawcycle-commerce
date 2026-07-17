@@ -37,7 +37,7 @@ PERF-004에서 cold start 3회는 실제 측정됐지만 QA seed가 cold 뒤에 
 
 ## 변경하지 않는 승인 조건
 
-- 완전한 run의 승인 순서: QA 회원 구독 reset 1회 → reset 설정 즉시 `false` 복원 → 읽기 측정에서 제외되는 seed 구독 1건 생성·확인 → cold 3회 → 네 service `healthy` 확인 → 측정 제외 30초 안정화 → warm 전체
+- 완전한 run의 승인 순서: volume 보존 reset 준비 기동·네 service `healthy` 확인 → QA 회원 구독 reset 1회 → reset 설정 즉시 `false` 복원 → 읽기 측정에서 제외되는 seed 구독 1건 생성·확인 → cold 3회 → 네 service `healthy` 확인 → 측정 제외 30초 안정화 → warm 전체. Reset 준비 기동은 cold 표본과 PERF-002·003 반복 횟수·통계에서 제외한다.
 - 상태 변경 iteration별 `subscription_count_before` 기록과 증가 cardinality 분리
 - 각 읽기 route의 cohort 직전 순차 warm-up 5회
 - 인증 lifecycle과 구독 상태 변경에는 별도 warm-up 없음
@@ -49,7 +49,7 @@ PERF-004에서 cold start 3회는 실제 측정됐지만 QA seed가 cold 뒤에 
 | 선택지 | Cold 처리 | QA 초기 상태 | 실행 범위 | 선택 조건 | 주요 위험 |
 | --- | --- | --- | --- | --- | --- |
 | A. Cold 관측 보존 + warm 전체 실행 | PERF-004 3회를 순서 이탈이 있는 부분 관측으로만 보존, 재측정 안 함 | Run 시작 시 QA 회원 구독 1회 reset → 즉시 reset 비활성 복원 → seed 1건 재생성·확인 | Volume 보존 기동·healthy 확인·30초 안정화 뒤 warm 전체 | Seed-before-cold 순서 이탈을 수용한다는 별도 사용자 결정과 실제 수정 래퍼 아티팩트의 상태 변경 없는 검증 통과 | 승인된 하나의 완전한 기준선을 만들 수 없고 cold와 warm을 결합할 수 없음 |
-| B. Cold와 warm 전체 재실행 | PERF-004 cold는 부분 관측으로만 보존하고 cold 3회부터 새로 측정 | QA reset → reset 비활성 복원 → seed 1건 생성·확인 | Cold 3회 → healthy 확인·30초 안정화 → warm 전체 | PERF-002·003 승인 순서를 유지해 하나의 완전한 기준선이 필요함 | 실행 시간과 QA state 소비 증가, 새 run도 실패하면 다시 중단 필요 |
+| B. Cold와 warm 전체 재실행 | PERF-004 cold는 부분 관측으로만 보존하고 cold 3회부터 새로 측정 | Volume 보존 준비 기동·healthy 확인 → QA reset → reset 비활성 복원 → seed 1건 생성·확인 | 준비 기동은 cold 표본에서 제외, seed 뒤 cold 3회 → healthy 확인·30초 안정화 → warm 전체 | PERF-002·003 승인 순서를 유지해 하나의 완전한 기준선이 필요함 | 준비 기동 또는 새 run이 실패하면 상태 변경·측정을 시작하지 않거나 즉시 중단 필요 |
 | C. 기준선 측정 종료 | PERF-004 cold 부분 관측만 보존 | 변경 없음 | 추가 측정 없음 | 추가 측정 가치보다 재실행 비용·위험이 큼 | Warm 기준선이 영구적으로 없고 route·인증·상태 변경 비교 불가 |
 
 ## 선택지 A 상세
@@ -69,8 +69,8 @@ PERF-004에서 cold start 3회는 실제 측정됐지만 QA seed가 cold 뒤에 
 
 B는 PERF-002·003 승인 순서를 그대로 지키는 완전 재실행안이며 Platform/SRE 기본 권고안이다.
 
-1. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다. 사전검증 직후이자 첫 QA reset 직전에 아티팩트 SHA-256과 Git 정합성을 재확인하며, 어느 검사든 실패하거나 아티팩트를 재현할 수 없으면 측정을 시작하지 않는다.
-2. PERF-004 종료 상태인 volume 보존 `down`에서 volume을 삭제하지 않고 승인된 Compose `up --detach --wait --wait-timeout 180`으로 기동하고 네 service의 `healthy`를 확인한다.
+1. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다. 사전검증 직후이자 reset 준비 기동 직전에 아티팩트 SHA-256과 Git 정합성을 재확인하며, 어느 검사든 실패하거나 아티팩트를 재현할 수 없으면 Docker 준비 기동과 측정을 시작하지 않는다.
+2. PERF-004 종료 상태인 volume 보존 `down`에서 volume을 삭제하지 않고 승인된 Compose `up --detach --wait --wait-timeout 180`으로 기동하고 네 service의 `healthy`를 확인한다. 이 reset 준비 기동은 cold start 표본과 PERF-002·003 반복 횟수·통계에서 제외하며, 기동 또는 healthy 확인에 실패하면 QA reset·seed, cold와 warm 측정을 시작하지 않는다.
 3. QA 회원 구독을 한 번 reset하고 reset 설정을 즉시 비활성 상태로 복원한다.
 4. 측정에서 제외되는 seed 구독 1건을 생성하고 목록·상세로 확인한다.
 5. Volume을 삭제하지 않는 `down`과 `up --detach --wait --wait-timeout 180`으로 cold start 3회를 수행한다.
@@ -84,7 +84,7 @@ PERF-004 cold 3회를 부분 관측으로만 보존하고 warm 기준선은 `미
 
 ## Platform/SRE 권고안
 
-`B. Cold와 warm 전체 재실행`을 권고한다. PERF-004 cold 값은 사실 기반 관측이지만 seed-before-cold 승인 순서를 따르지 않아 새 warm과 결합 가능한 승인 cold cohort가 아니다. B만 `QA reset → reset 비활성 복원 → seed 생성·확인 → cold 3회 → healthy 확인·30초 안정화 → warm 전체` 순서를 지켜 하나의 완전한 기준선을 만들 수 있다.
+`B. Cold와 warm 전체 재실행`을 권고한다. PERF-004 cold 값은 사실 기반 관측이지만 seed-before-cold 승인 순서를 따르지 않아 새 warm과 결합 가능한 승인 cold cohort가 아니다. B만 `volume 보존 준비 기동·healthy 확인 → QA reset → reset 비활성 복원 → seed 생성·확인 → cold 3회 → healthy 확인·30초 안정화 → warm 전체` 순서를 지켜 하나의 완전한 기준선을 만들 수 있다. 최초 준비 기동은 cold 표본에서 제외한다.
 
 B도 다음 재실행 전 게이트를 충족해야 한다.
 
@@ -93,8 +93,8 @@ B도 다음 재실행 전 게이트를 충족해야 한다.
 - 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing이 상태 변경 없는 로컬 입력 검증을 통과함
 - 검증 전 실제 수정 래퍼 아티팩트의 로컬 경로 또는 이름, 적용 가능한 version·commit과 SHA-256을 기록하고 검증 명령·비민감 입력 설명·결과를 같은 식별자에 연결함
 - 실제 측정 직전에 아티팩트 SHA-256이 검증한 값과 같은지 다시 확인하고 다르면 측정을 시작하지 않음
-- 래퍼 사전검증 직후이자 첫 QA reset 직전에 `git status --porcelain` 빈 출력, `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA와 고정 기준 commit의 일치를 다시 확인하고 두 시점의 Git 검사 결과를 PERF-007 결과에 기록함
-- 재검사에서 dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치가 확인되면 endpoint 호출, QA reset·seed, cold start와 warm 측정을 시작하지 않음
+- 래퍼 사전검증 직후이자 reset 준비 기동 직전에 `git status --porcelain` 빈 출력, `git rev-parse HEAD`·`git rev-parse origin/main`의 실제 SHA와 고정 기준 commit의 일치를 다시 확인하고 두 시점의 Git 검사 결과를 PERF-007 결과에 기록함
+- 재검사에서 dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치가 확인되면 Docker 준비 기동, endpoint 호출, QA reset·seed, cold start와 warm 측정을 시작하지 않음
 - 해당 검증에 실패하거나 아티팩트를 재현할 수 없으면 측정을 시작하지 않음
 - 재실행은 새 작업 ID에서 한 번만 시작하고 상태 변경 이후 다시 실패하면 임의 reset 또는 재재실행하지 않음
 
@@ -109,8 +109,9 @@ PERF-006에서 `B. Cold와 warm 전체 재실행`이 승인됐다. 별도 Platfo
 - PERF-004 기준 이후 제품 코드 또는 실행 설정 변경이 확인되면 측정을 시작하지 않고 사용자 결정을 요청한다.
 - 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing이 상태 변경 없는 로컬 입력 검증을 통과해야 한다.
 - 검증·실행할 아티팩트의 로컬 경로 또는 이름, 적용 가능한 version·commit과 SHA-256, 검증 명령·비민감 입력 설명을 기록하고 측정 직전 동일 SHA-256을 재확인한다.
-- 래퍼 사전검증 직후이자 첫 QA reset 직전에 `git status --porcelain`, `git rev-parse HEAD`와 `git rev-parse origin/main`을 다시 실행해 작업 트리가 깨끗하고 두 SHA가 모두 고정 기준 commit과 같은지 확인하며 최초·재검사 결과를 PERF-007 결과에 기록한다.
-- 검증 실패, 아티팩트 재현 실패, dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치 시 endpoint 호출, reset, seed, cold start와 warm 측정을 시작하지 않는다.
+- 래퍼 사전검증 직후이자 reset 준비 기동 직전에 `git status --porcelain`, `git rev-parse HEAD`와 `git rev-parse origin/main`을 다시 실행해 작업 트리가 깨끗하고 두 SHA가 모두 고정 기준 commit과 같은지 확인하며 최초·재검사 결과를 PERF-007 결과에 기록한다.
+- 검증 실패, 아티팩트 재현 실패, dirty worktree, `HEAD`·`origin/main` 변경 또는 고정 기준 commit 불일치 시 Docker 준비 기동, endpoint 호출, reset, seed, cold start와 warm 측정을 시작하지 않는다.
+- 필수 게이트 통과 뒤 PERF-004의 volume 보존 `down`에서 volume을 삭제하지 않는 승인 Compose 명령으로 준비 기동하고 네 service `healthy`를 확인한다. 이 기동은 cold 표본에서 제외하며, 기동 또는 healthy 확인 실패 시 QA reset·seed, cold와 warm 측정을 시작하지 않는다.
 - 상태 변경 이후 실패하면 임의 reset 또는 재재실행 없이 중단한다.
 
 상세 승인 범위와 실행 게이트는 `docs/performance/PERF-006-local-baseline-rerun-approval.md`를 따른다. PERF-004 cold 값은 계속 순서 이탈이 있는 부분 관측으로만 보존하며 PERF-007 결과와 합산하지 않는다.
