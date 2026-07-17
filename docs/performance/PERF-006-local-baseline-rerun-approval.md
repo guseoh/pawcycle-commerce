@@ -28,7 +28,7 @@
 
 PERF-007은 다음 조건을 순서대로 확인하고 모두 통과한 경우에만 QA 상태 변경과 실제 측정을 시작한다.
 
-1. 깨끗한 작업 트리에서 최신 `origin/main`의 실제 SHA를 기준 commit으로 고정해 결과에 기록한다.
+1. 최신 `origin/main`의 실제 SHA를 기준 commit으로 고정한다. `git status --porcelain` 출력이 비어 있고 `git rev-parse HEAD`와 `git rev-parse origin/main`의 실제 SHA가 모두 고정한 값과 같은지 확인해 결과에 기록한다.
 2. OS·runtime, CPU·memory, Docker·Compose·PowerShell 버전, Docker Desktop 자원 할당, container image ID, 전원 모드와 background workload를 환경 fingerprint로 기록한다.
 3. PERF-004 기준 commit `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
 4. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
