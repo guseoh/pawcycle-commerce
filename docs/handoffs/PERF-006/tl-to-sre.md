@@ -44,7 +44,7 @@ PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-0
 
 1. 최신 `origin/main`을 fetch하고 실제 SHA를 PERF-007 기준 commit으로 고정한다.
 2. `git status --short --branch`로 작업 트리가 깨끗하고 `HEAD`가 고정한 `origin/main` SHA와 일치하는지 확인한다.
-3. OS, CPU·memory, Docker·Compose 버전, Docker Desktop 자원, 전원 모드와 background workload를 기록한다.
+3. OS·runtime, CPU·memory, Docker·Compose·PowerShell 버전, Docker Desktop 자원, container image ID, 전원 모드와 background workload를 기록한다.
 4. PERF-004 기준 `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
 5. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
 6. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다.

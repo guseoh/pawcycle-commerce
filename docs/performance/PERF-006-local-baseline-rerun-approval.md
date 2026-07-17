@@ -29,7 +29,7 @@
 PERF-007은 다음 조건을 순서대로 확인하고 모두 통과한 경우에만 QA 상태 변경과 실제 측정을 시작한다.
 
 1. 깨끗한 작업 트리에서 최신 `origin/main`의 실제 SHA를 기준 commit으로 고정해 결과에 기록한다.
-2. OS, CPU·memory, Docker·Compose 버전, Docker Desktop 자원 할당, 전원 모드와 background workload를 환경 fingerprint로 기록한다.
+2. OS·runtime, CPU·memory, Docker·Compose·PowerShell 버전, Docker Desktop 자원 할당, container image ID, 전원 모드와 background workload를 환경 fingerprint로 기록한다.
 3. PERF-004 기준 commit `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
 4. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
 5. 실제 재실행용 수정 래퍼 아티팩트를 재현하고 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다.
