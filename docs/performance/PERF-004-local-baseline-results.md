@@ -157,10 +157,10 @@ Cold start와 service health convergence는 HTTP elapsed 및 warm container samp
 
 PERF-004의 계측 래퍼는 repository 파일이 아니라 한 PowerShell process에서만 실행됐다. PERF-005 확인 시 현재 session과 PSReadLine 지속 history에 관련 함수 정의가 남아 있지 않아 원본 파일·행 번호와 당시 전체 함수 본문은 복구할 수 없었다. 다음 분류는 PERF-004 실행에서 보존된 실제 예외, 실패 표현식과 상태 경계를 근거로 한다.
 
-| 오류 | 직접 원인 | 분류 | 확정 범위 |
+| 오류 | 관찰된 현상과 재현된 결함 유형 | 분류 | 증거 범위 |
 | --- | --- | --- | --- |
-| Warm wrapper 1 | `[string]$Body = $null` 기본값이 PowerShell 5.1에서 길이 0의 `System.String`으로 바인딩됐고, null 비교만 사용한 request parameter 구성에서 GET에도 빈 body가 첨부됨 | PowerShell 함수·매개변수·HTTP 예외 처리 결함 | 예외와 상태 변경 없는 최소 재현으로 확정 |
-| Warm wrapper 2 | `Convert-SizeToBytes`의 곱셈 시 scalar여야 할 `$factor`가 `System.Object[]`이어서 `op_Multiply` 호출 실패 | container stats parsing 또는 집계 결함 | 실패 함수·표현식·반환 type은 확정. 원본 switch의 어떤 분기 조합이 배열을 만들었는지는 원본 정의 부재로 미확정 |
+| Warm wrapper 1 | 실제 실행에서 GET body 예외가 발생했고, 순수 객체에서 `[string]$Body = $null`이 길이 0의 `System.String`이 되어 null 비교만으로 body 첨부 경로에 들어가는 유형을 재현함 | PowerShell 함수·매개변수·HTTP parameter 구성 결함 유형 | 실제 예외와 결함 유형·수정 방향만 확인. 원본 래퍼의 실제 binding·request 구성 제어 흐름은 미확정 |
+| Warm wrapper 2 | 실제 실행에서 `$factor`가 `System.Object[]`인 `op_Multiply` 오류가 발생했고, 순수 객체에서 scalar factor를 보장하지 못한 배열 곱셈 유형을 재현함 | container stats parsing·집계에서 scalar factor 보장 실패 유형 | 실패 함수·표현식·관찰 type과 결함 유형·수정 방향만 확인. 배열을 만든 원본 parsing·switch 경로는 미확정 |
 
 완료된 검증은 상태 변경 없는 순수 PowerShell 객체 최소 재현과 수정 방향 검증까지다. `[string]$Body = $null`은 `IsNull=False`, `Length=0`이고 null 비교만 사용하면 body를 첨부하는 경로가 됐다. 두 값을 가진 `$factor`는 `System.Object[]`이며 `$number * $factor`에서 PERF-004와 같은 `op_Multiply` 오류를 냈다. 순수 객체 입력에서는 빈 body 미첨부 조건과 scalar factor 1개라는 수정 방향도 확인했다. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing은 검증하지 않았다.
 

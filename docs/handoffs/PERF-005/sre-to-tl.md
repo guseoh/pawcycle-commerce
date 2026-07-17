@@ -24,7 +24,7 @@ PERF-004 cold 부분 결과와 warm 계측 래퍼 진단을 전달하고, QA 초
 - Seed-before-cold 순서 이탈이 있는 cold start 부분 관측 3회: 25,917 ms, 25,155 ms, 25,293 ms
 - Warm 결과 `미완료·사용 불가` 경계
 - Warm wrapper 1의 PowerShell body parameter 구성 결함 분류
-- Warm wrapper 2의 container stats scalar 반환 결함 분류
+- Warm wrapper 2의 container stats parsing·집계에서 scalar factor 보장 실패 유형 분류
 - QA seed와 첫 route warm-up으로 최초 state가 소비된 사실
 - 재실행 선택지 A·B·C와 Platform/SRE 권고안 B
 - main 대상 Open·Ready PR #52
