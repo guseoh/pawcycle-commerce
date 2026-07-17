@@ -5,8 +5,10 @@
 - 작업 ID: `PERF-005`
 - 요청 역할: Platform/SRE
 - 결정 역할: 사용자/Product Owner 겸 Tech Lead
-- 상태: `Pending User/Tech Lead Decision`
-- 실행 게이트: `Blocked Pending Rerun Decision`
+- 상태: `Approved by PERF-006`
+- 선택: `B. Cold와 warm 전체 재실행`
+- 실행 게이트: `Open for PERF-007 Full Local Baseline Rerun`
+- 승인 원본: `docs/performance/PERF-006-local-baseline-rerun-approval.md`
 
 이번 결정은 PERF-004의 cold 부분 결과 보존 범위와 별도 작업의 재실행 경계만 정한다. PERF-002의 reset·seed·cardinality 경계와 PERF-003의 warm-up·container sampling 조건은 변경하지 않는다.
 
@@ -94,16 +96,17 @@ B도 다음 재실행 전 게이트를 충족해야 한다.
 
 A는 사용자가 seed-before-cold 순서 이탈을 별도로 수용할 때만 선택할 수 있는 부분 결과 연속안이며 PERF-002·003 조건을 그대로 유지하는 기본 권고안이 아니다. C는 추가 측정을 종료할 때 선택한다.
 
-## 사용자/Tech Lead 결정 요청
+## 사용자/Tech Lead 승인 결과
 
-다음 중 하나를 명시적으로 승인한다.
+PERF-006에서 `B. Cold와 warm 전체 재실행`이 승인됐다. 별도 Platform/SRE 작업 `PERF-007`은 다음 조건을 모두 충족한 뒤 승인 순서에 따른 단일 전체 재실행을 시작할 수 있다.
 
-```text
-PERF-005 결정: A / B / C
-추가 조건: <없음 또는 승인 조건>
-```
+- 작업 시작 시 최신 `origin/main`의 실제 SHA를 기준 commit으로 고정하고 환경 fingerprint를 기록한다.
+- PERF-004 기준 이후 제품 코드 또는 실행 설정 변경이 확인되면 측정을 시작하지 않고 사용자 결정을 요청한다.
+- 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing이 상태 변경 없는 로컬 입력 검증을 통과해야 한다.
+- 검증 실패 또는 아티팩트 재현 실패 시 reset, seed, cold start와 warm 측정을 시작하지 않는다.
+- 상태 변경 이후 실패하면 임의 reset 또는 재재실행 없이 중단한다.
 
-결정 전에는 reset, seed, warm-up, cold start와 warm 성능 측정을 실행하지 않는다.
+상세 승인 범위와 실행 게이트는 `docs/performance/PERF-006-local-baseline-rerun-approval.md`를 따른다. PERF-004 cold 값은 계속 순서 이탈이 있는 부분 관측으로만 보존하며 PERF-007 결과와 합산하지 않는다.
 
 ## 미승인 범위
 
