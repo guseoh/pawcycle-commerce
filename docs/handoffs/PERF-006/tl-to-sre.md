@@ -43,11 +43,12 @@ PERF-005 선택지 B의 사용자 승인을 전달하고, Platform/SRE가 PERF-0
 ## 측정 시작 전 필수 게이트
 
 1. 최신 `origin/main`을 fetch하고 실제 SHA를 PERF-007 기준 commit으로 고정한다.
-2. OS, CPU·memory, Docker·Compose 버전, Docker Desktop 자원, 전원 모드와 background workload를 기록한다.
-3. PERF-004 기준 `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
-4. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
-5. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다.
-6. 아티팩트를 재현할 수 없거나 검증에 실패하면 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
+2. `git status --short --branch`로 작업 트리가 깨끗하고 `HEAD`가 고정한 `origin/main` SHA와 일치하는지 확인한다.
+3. OS, CPU·memory, Docker·Compose 버전, Docker Desktop 자원, 전원 모드와 background workload를 기록한다.
+4. PERF-004 기준 `a7ea1ec3447bc0ca34b20f5a7827a7882eec2f0d` 이후 제품 코드 또는 실행 설정 변경 여부를 확인한다.
+5. 제품 코드 또는 실행 설정 변경이 있으면 측정을 시작하지 않고 사용자 결정을 요청한다.
+6. 실제 재실행용 수정 래퍼 아티팩트의 request parameter 구성과 container stats parsing을 상태 변경 없는 로컬 입력으로 검증한다.
+7. 아티팩트를 재현할 수 없거나 검증에 실패하면 endpoint 호출, QA reset·seed와 실제 측정을 시작하지 않는다.
 
 ## 승인된 실행 순서
 
@@ -71,6 +72,7 @@ Cold start는 volume을 삭제하지 않는 `down`과 `up --detach --wait --wait
 | --- | --- |
 | 선택지 B | QA reset부터 cold·warm 전체를 하나의 새 run으로 실행 |
 | 기준 commit | PERF-007 시작 시 최신 `origin/main` SHA 기록 |
+| Git 상태 | 상태 변경·래퍼 검증 전에 clean worktree와 `HEAD == 고정한 origin/main SHA` 확인 |
 | 환경 비교 | 환경 fingerprint 기록과 PERF-004 이후 제품·실행 설정 변경 검사 |
 | 래퍼 게이트 | 실제 수정 아티팩트의 상태 변경 없는 request parameter·stats parsing 검증 |
 | Cold 보존 | PERF-004 값을 부분 관측으로만 보존하고 새 결과와 합산 금지 |
