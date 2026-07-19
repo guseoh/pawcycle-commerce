@@ -113,7 +113,7 @@ python scripts/validate-obsidian-record.py
 작업 산출물 검증:
 
 ```bash
-printf '%s\n' "BOOTSTRAP-004" | python scripts/validate-task-artifacts.py --from-stdin
+python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
 ```
 
 백엔드와 프론트엔드 애플리케이션 프로젝트는 아직 없으므로 Gradle, Next.js, Docker Compose 실행 명령은 없다.

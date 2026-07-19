@@ -5,8 +5,8 @@
   },
   "pull_request": {
     "number": 12,
-    "title": "docs(agents): 브랜치 운영 규칙 간소화",
-    "body": "작업 목적: 브랜치 운영 규칙 간소화\n\n주요 변경: AGENTS.md와 PR 템플릿 수정",
+    "title": "chore(harness): 위험 기반 Lean Harness 정렬",
+    "body": "작업 ID: HARNESS-LEAN-001\n\n작업 목적: 위험 기반 하네스 정렬\n\n주요 변경: AGENTS.md와 PR 템플릿 수정",
     "merged": true,
     "merged_at": "2026-07-02T06:55:00Z",
     "merge_commit_sha": "d4e5f6a1234567890",
@@ -18,7 +18,7 @@
       "ref": "main"
     },
     "head": {
-      "ref": "ops/bootstrap-002"
+      "ref": "ops/tl"
     },
     "labels": [
       {

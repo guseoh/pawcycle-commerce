@@ -12,7 +12,7 @@ Repository Validation은 다음을 확인한다.
 
 - PR 제목 커밋 메시지 규칙
 - PR 본문 UTF-8 인코딩
-- 작업 보고서와 인수인계 산출물 존재
+- 작업 등급별 보고서와 필요한 인수인계 산출물 구조
 - PR에 포함된 커밋 메시지 규칙
 - whitespace 오류
 - MySQL 8.4 service 기동과 health check
