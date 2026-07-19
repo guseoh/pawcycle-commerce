@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -15,10 +16,25 @@ SCRIPT = ROOT / ".github" / "scripts" / "record-merged-pr.py"
 FIXTURE = ROOT / ".github" / "fixtures" / "obsidian" / "merged-pr.json"
 
 
+def load_record_module():
+    spec = importlib.util.spec_from_file_location("record_merged_pr", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("병합 PR 기록 모듈을 불러올 수 없습니다.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> int:
     if not FIXTURE.exists():
         print("Obsidian fixture가 없습니다.", file=sys.stderr)
         return 1
+
+    record = load_record_module()
+    for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "HARNESS-LEAN-001"):
+        if record.task_id_from_text(f"작업 ID: {task_id}") != task_id:
+            print(f"병합 PR 작업 ID 추출 실패: {task_id}", file=sys.stderr)
+            return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         result = subprocess.run(

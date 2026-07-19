@@ -62,7 +62,7 @@
 
 ## 주요 결과
 
-- `HARNESS-LEAN-001` 형식의 작업 ID를 PR 본문에서 인식한다.
+- validator, Discord와 병합 PR 기록이 승인된 prefix 집합과 `HARNESS-...-###` 형식을 동일하게 인식한다.
 - 명시된 작업 등급과 보고서의 작업 등급 불일치를 차단한다.
 - 고위험 증거는 heading 존재뿐 아니라 비어 있지 않은 내용까지 검사한다.
 - CI workflow 호출 형태와 기존 작업 디렉터리는 변경하지 않는다. 새 PR의 등급 누락은 기본 실패한다.
@@ -72,7 +72,7 @@
 - 운영 권위·요약: `AGENTS.md`, `docs/runbook/lean-harness.md`, 관련 역할·QA·협업 문서
 - template: `.github/pull_request_template.md`, 보고서·인수인계 template
 - validator: `scripts/validate-task-artifacts.py`
-- 자동화: Discord 컨텍스트와 병합 PR 기록의 작업 ID 추출
+- 자동화: Discord 컨텍스트와 병합 PR 기록의 일치된 작업 ID 추출
 - 회귀 테스트: validator, Discord 컨텍스트와 병합 PR 기록 fixture
 - 현재 작업 보고서
 
@@ -119,7 +119,7 @@
 | `py -3 scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-001 --task-grade 고위험` | 통과 |
 | `py -3 scripts/test_discord_context.py` | 통과, 17개 테스트 |
 | `py -3 scripts/validate-obsidian-record.py` | 통과, `HARNESS-LEAN-001` 기록 확인 |
-| `bash scripts/validate-commit-message.sh --message "fix(harness): 리뷰 검증 누락 보완"` | 통과 |
+| `bash scripts/validate-commit-message.sh --message "fix(harness): 작업 ID와 소비자 계약 정렬"` | 통과 |
 | `git diff --check` | 통과 |
 | 변경 파일 개인 절대 경로·Secret 패턴 검사 | 일치 항목 없음 |
 
@@ -149,11 +149,11 @@
 
 ## AI 리뷰 반영 여부
 
-- 최신 head의 미해결 리뷰 7개를 thread 상태와 현재 코드에서 검증했다. 등급 누락, placeholder, QA 내용, HARNESS ID 자동화, 운영자 인수인계, README 자동 판정 범위와 오류 경로 테스트 지적은 모두 유효해 최소 반영했다.
+- 리뷰 지적과 해결 상태는 GitHub Review Threads를 권위 원본으로 확인한다. 등급 누락, placeholder, QA 내용, 작업 ID prefix 정렬, 인수인계 완료 경로와 소비자 용어 지적은 현재 코드에서 유효성을 검증해 최소 반영했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-- 없음. docstring·Ruff 경고는 요청된 동작 결함과 무관하고 기존 함수 전반의 범위 밖 정리이므로 반영하지 않았다.
+- docstring·Ruff 경고는 요청된 동작 결함과 무관하고 기존 함수 전반의 범위 밖 정리이므로 반영하지 않았다.
 
 ## 적용 방법
 
@@ -169,12 +169,12 @@
 
 ## 위험과 제한
 
-- 등급이 없는 입력은 호환성을 위해 일반으로 처리하므로 실제 고위험 작업의 잘못된 미분류까지 validator가 의미적으로 찾아내지는 못한다.
+- 등급 없는 기존 산출물의 일반 규칙 적용은 명시적 legacy 옵션으로 제한되며, 명시된 등급 자체의 의미적 적절성은 사람이 검토해야 한다.
 - 독립 검증의 충분성과 롤백의 실제 안전성은 구조 검사만으로 보장할 수 없어 사용자와 Tech Lead 판단이 남는다.
 
 ## 남은 위험
 
-- 최신 head의 GitHub Checks, 미해결 리뷰와 사용자 최종 검토가 남아 있으며 현재 상태는 GitHub를 권위 원본으로 확인한다.
+- 검증 상태는 GitHub Checks, 리뷰 지적과 해결 상태는 GitHub Review Threads를 권위 원본으로 확인하며 사용자 최종 검토가 필요하다.
 - prompt 권장 길이는 저장소에 prompt 원문이 없으므로 문서 경고로만 운영한다.
 
 ## 다음 작업
@@ -191,4 +191,4 @@
 
 ## PR 결과
 
-- PR #56은 `ops/tl`에서 `main`을 대상으로 하며 자동 병합하지 않는다. 최신 head·상태·Checks는 GitHub를 권위 원본으로 확인한다.
+- PR #56은 `ops/tl`에서 `main`을 대상으로 하며 자동 병합하지 않는다. PR 상태와 검증은 GitHub Checks, 리뷰는 GitHub Review Threads를 권위 원본으로 확인한다.

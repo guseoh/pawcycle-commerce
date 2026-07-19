@@ -15,6 +15,7 @@ TASK_ID_PREFIXES = (
     "ARCH",
     "FOUNDATION",
     "FRONTEND",
+    "PRODUCT",
     "BUG",
     "PERF",
     "OPS",
@@ -25,9 +26,8 @@ TASK_ID_PREFIXES = (
     "UX",
     "DATA",
 )
-TASK_ID_RE = re.compile(
-    rf"\b(?:({'|'.join(TASK_ID_PREFIXES)})-\d{{3}}|HARNESS(?:-[A-Z]+)*-\d{{3}})\b"
-)
+TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+TASK_ID_RE = re.compile(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 TASK_GRADE_FIELD_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:작업 등급|task grade)\s*:\s*(.*?)\s*$",
@@ -99,7 +99,10 @@ HIGH_RISK_EVIDENCE_REQUIREMENTS = (
 
 HANDOFF_REQUIREMENTS = (
     SectionRequirement("전달 목적", ("전달 목적", "delivery purpose", "handoff purpose")),
-    SectionRequirement("다음 역할 또는 대상 역할", ("다음 역할", "대상 역할", "target role", "next role")),
+    SectionRequirement(
+        "대상 역할 또는 운영자",
+        ("대상 역할 또는 운영자", "대상 역할", "다음 역할", "target role", "next role", "operator"),
+    ),
     SectionRequirement("입력 문서", ("입력 문서", "input docs")),
     SectionRequirement("사용 가능한 결과", ("사용 가능한 결과", "완료된 작업", "관련 파일", "usable result", "usable results")),
     SectionRequirement("미결정 사항 또는 승인 필요 항목", ("미결정", "승인 필요", "미확정", "approval needed", "undecided")),

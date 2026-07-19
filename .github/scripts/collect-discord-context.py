@@ -18,10 +18,24 @@ from typing import Any
 
 UNKNOWN = "확인 불가"
 MISSING = "기록 없음"
-KNOWN_PREFIXES = (
-    "API|ARCH|AUTH|BOOTSTRAP|BUG|DATA|DOMAIN|FOUNDATION|OPS|PERF|PRODUCT|PS|SEC|UX"
+TASK_ID_PREFIXES = (
+    "BOOTSTRAP",
+    "PS",
+    "ARCH",
+    "FOUNDATION",
+    "FRONTEND",
+    "PRODUCT",
+    "BUG",
+    "PERF",
+    "OPS",
+    "SEC",
+    "AUTH",
+    "DOMAIN",
+    "API",
+    "UX",
+    "DATA",
 )
-TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|(?:{KNOWN_PREFIXES})-[0-9]{{3}})"
+TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-[0-9]{{3}})"
 TASK_LINE = re.compile(rf"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?({TASK_ID_PATTERN})`?\s*$")
 FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])", re.IGNORECASE)
 SECRET_PATTERNS = (

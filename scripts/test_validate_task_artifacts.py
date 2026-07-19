@@ -400,16 +400,21 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 등급은 경량, 일반 또는 고위험이어야 함", result.stderr)
 
-    def test_harness_lean_task_id_is_detected(self) -> None:
-        task_id = "HARNESS-LEAN-001"
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_artifacts(root, report=graded_report("일반"), task_id=task_id)
+    def test_supported_task_id_families_are_detected(self) -> None:
+        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "HARNESS-LEAN-001"):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                report = graded_report("일반").replace(TASK_ID, task_id)
+                write_artifacts(root, report=report, task_id=task_id)
 
-            result = run_validator(root, "--from-stdin", stdin_text=f"작업 ID: {task_id}\n작업 등급: 일반\n")
+                result = run_validator(
+                    root,
+                    "--from-stdin",
+                    stdin_text=f"작업 ID: {task_id}\n작업 등급: 일반\n",
+                )
 
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(task_id, result.stdout)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(task_id, result.stdout)
 
     def test_missing_report_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

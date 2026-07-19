@@ -126,9 +126,10 @@ class DiscordContextTests(unittest.TestCase):
 
     def test_task_id_priority_and_supported_families(self):
         self.assertEqual(discord.extract_task_id("작업 ID:\nAUTH-004", "API-003", "ops/sre"), "AUTH-004")
+        self.assertEqual(discord.extract_task_id("작업 ID: FRONTEND-003", "", "feat/fe"), "FRONTEND-003")
+        self.assertEqual(discord.extract_task_id("", "PRODUCT-002 상품", "spec/po"), "PRODUCT-002")
         self.assertEqual(discord.extract_task_id("작업 ID: HARNESS-LEAN-001", "", "ops/tl"), "HARNESS-LEAN-001")
         self.assertEqual(discord.extract_task_id("", "HARNESS-LEAN-001 후속 수정", "ops/tl"), "HARNESS-LEAN-001")
-        self.assertEqual(discord.extract_task_id("", "PRODUCT-001 상품", "feat/be"), "PRODUCT-001")
         self.assertEqual(discord.extract_task_id("", "일반 제목", "api-003-contract"), "API-003")
         self.assertEqual(discord.extract_task_id("", "일반 제목", "feature/no-id"), discord.MISSING)
 

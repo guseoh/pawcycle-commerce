@@ -16,8 +16,24 @@ from typing import Any
 
 
 REPO = "guseoh/pawcycle-commerce"
-TASK_ID_PREFIXES = "BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API|UX|DATA"
-TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{TASK_ID_PREFIXES})-\d{{3}})"
+TASK_ID_PREFIXES = (
+    "BOOTSTRAP",
+    "PS",
+    "ARCH",
+    "FOUNDATION",
+    "FRONTEND",
+    "PRODUCT",
+    "BUG",
+    "PERF",
+    "OPS",
+    "SEC",
+    "AUTH",
+    "DOMAIN",
+    "API",
+    "UX",
+    "DATA",
+)
+TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:
