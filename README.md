@@ -153,7 +153,7 @@ npm run build
 GitHub Actions의 Repository Validation은 다음 항목을 검증합니다.
 
 - PR 제목과 commit message 규칙
-- 작업 보고서와 필요한 인수인계
+- 작업 등급별 보고서와 실제 소비자가 있는 인수인계
 - Backend test와 build
 - MySQL, Flyway와 JPA schema
 - Spring Security와 CSRF

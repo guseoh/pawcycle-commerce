@@ -126,6 +126,42 @@ VALID_HANDOFF = f"""# {TASK_ID} SRE to TL 인수인계
 """
 
 
+def graded_report(grade: str) -> str:
+    return VALID_REPORT.replace(
+        "- 역할: Platform/SRE\n",
+        f"- 역할: Platform/SRE\n- 작업 등급: {grade}\n",
+    ) + """\
+
+## QA 필요 여부
+
+- 등급과 변경 위험에 따라 판단함.
+"""
+
+
+HIGH_RISK_REPORT = graded_report("고위험") + """\
+
+## 명시적 승인 근거
+
+- 사용자가 고위험 변경 범위를 승인함.
+
+## 적용 전 검증
+
+- 기준 상태 검증 통과.
+
+## 적용 후 검증
+
+- 변경 후 회귀 검증 통과.
+
+## 독립 검증
+
+- 별도 CI 검증 경로 통과.
+
+## 복구·롤백 증거
+
+- 변경 커밋 revert 후 기존 검증 경로 복구 가능.
+"""
+
+
 def write_artifacts(
     root: Path,
     *,
@@ -167,6 +203,131 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"task artifacts validated for {TASK_ID}", result.stdout)
+            self.assertIn("하위 호환 일반 규칙", result.stderr)
+
+    def test_lightweight_without_report_or_handoff_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(Path(tmp), "--task-id", TASK_ID, "--task-grade", "경량")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"task artifacts validated for {TASK_ID} (경량)", result.stdout)
+
+    def test_from_stdin_lightweight_without_artifacts_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=f"작업 ID: {TASK_ID}\n작업 등급: 경량\n",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"task artifacts validated for {TASK_ID} (경량)", result.stdout)
+
+    def test_standard_report_with_explicit_handoff_omission_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = graded_report("일반") + """\
+
+## 인수인계 생략
+
+- 다음 역할이 실제로 사용할 결과가 없어 생략함.
+"""
+            write_artifacts(root, report=report, handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "일반")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_standard_without_report_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(Path(tmp), "--task-id", TASK_ID, "--task-grade", "일반")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 보고서 Markdown 파일 없음", result.stderr)
+
+    def test_standard_without_handoff_or_omission_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root, report=graded_report("일반"), handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "일반")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
+    def test_high_risk_report_with_required_evidence_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root, report=HIGH_RISK_REPORT)
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "고위험")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_high_risk_required_evidence_is_enforced(self) -> None:
+        headings = (
+            "명시적 승인 근거",
+            "적용 전 검증",
+            "적용 후 검증",
+            "독립 검증",
+            "복구·롤백 증거",
+        )
+        for heading in headings:
+            with self.subTest(heading=heading), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                report = HIGH_RISK_REPORT.replace(f"## {heading}", "## 기타 증거")
+                write_artifacts(root, report=report)
+
+                result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "고위험")
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("고위험 작업 보고서 필수 증거 섹션 없음", result.stderr)
+
+    def test_high_risk_empty_evidence_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = HIGH_RISK_REPORT.replace(
+                "## 독립 검증\n\n- 별도 CI 검증 경로 통과.\n\n",
+                "## 독립 검증\n\n",
+            )
+            write_artifacts(root, report=report)
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "고위험")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("고위험 작업 보고서 필수 증거 섹션이 비어 있음", result.stderr)
+
+    def test_explicit_grade_must_match_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root, report=graded_report("일반"))
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "고위험")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 보고서 작업 등급 불일치", result.stderr)
+
+    def test_invalid_grade_field_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=f"작업 ID: {TASK_ID}\n작업 등급: 초고위험\n",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 등급 필드 값", result.stderr)
+
+    def test_harness_lean_task_id_is_detected(self) -> None:
+        task_id = "HARNESS-LEAN-001"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root, task_id=task_id)
+
+            result = run_validator(root, "--from-stdin", stdin_text=f"작업 ID: {task_id}\n")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(task_id, result.stdout)
 
     def test_missing_report_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

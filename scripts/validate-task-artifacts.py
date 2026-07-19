@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate task reports and required or explicitly omitted handoff artifacts."""
+"""Validate risk-graded task artifacts without retroactively changing legacy records."""
 
 from __future__ import annotations
 
@@ -25,8 +25,29 @@ TASK_ID_PREFIXES = (
     "UX",
     "DATA",
 )
-TASK_ID_RE = re.compile(rf"\b({'|'.join(TASK_ID_PREFIXES)})-\d{{3}}\b")
+TASK_ID_RE = re.compile(
+    rf"\b(?:({'|'.join(TASK_ID_PREFIXES)})-\d{{3}}|HARNESS(?:-[A-Z]+)*-\d{{3}})\b"
+)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+TASK_GRADE_FIELD_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:작업 등급|task grade)\s*:\s*(.*?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+LIGHTWEIGHT = "경량"
+STANDARD = "일반"
+HIGH_RISK = "고위험"
+TASK_GRADE_ALIASES = {
+    "경량": LIGHTWEIGHT,
+    "lightweight": LIGHTWEIGHT,
+    "light": LIGHTWEIGHT,
+    "일반": STANDARD,
+    "standard": STANDARD,
+    "normal": STANDARD,
+    "고위험": HIGH_RISK,
+    "high-risk": HIGH_RISK,
+    "high risk": HIGH_RISK,
+}
 
 
 @dataclass(frozen=True)
@@ -55,6 +76,21 @@ REPORT_REQUIREMENTS = (
     ),
     SectionRequirement("Git 결과", ("git 결과", "git result")),
     SectionRequirement("PR 결과", ("pr 결과", "pr 상태", "pull request result", "pr result")),
+)
+
+GRADED_REPORT_REQUIREMENTS = (
+    SectionRequirement("QA 필요 여부", ("qa 필요 여부", "qa 검증", "qa decision")),
+)
+
+HIGH_RISK_EVIDENCE_REQUIREMENTS = (
+    SectionRequirement("명시적 승인 근거", ("명시적 승인 근거", "승인 근거", "explicit approval")),
+    SectionRequirement("적용 전 검증", ("적용 전 검증", "변경 전 검증", "pre-change validation")),
+    SectionRequirement("적용 후 검증", ("적용 후 검증", "변경 후 검증", "post-change validation")),
+    SectionRequirement("독립 검증", ("독립 검증", "independent validation", "independent verification")),
+    SectionRequirement(
+        "복구·롤백 증거",
+        ("복구·롤백", "복구 및 롤백", "롤백 증거", "복구 증거", "recovery and rollback", "rollback evidence"),
+    ),
 )
 
 HANDOFF_REQUIREMENTS = (
@@ -101,6 +137,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", help="Explicit task ID to validate.")
     parser.add_argument(
+        "--task-grade",
+        help="Explicit task grade: 경량, 일반, or 고위험. Defaults to legacy-compatible 일반 when omitted.",
+    )
+    parser.add_argument(
         "--from-stdin",
         action="store_true",
         help="Read PR title and body text from standard input and detect the task ID.",
@@ -113,18 +153,44 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def find_task_id(args: argparse.Namespace) -> str:
+def find_task_id(args: argparse.Namespace, input_text: str) -> str:
     if args.task_id:
         return args.task_id
 
     if not args.from_stdin:
         raise SystemExit("작업 ID를 찾으려면 --task-id 또는 --from-stdin이 필요함")
 
-    text = sys.stdin.read()
-    match = TASK_ID_RE.search(text)
+    match = TASK_ID_RE.search(input_text)
     if not match:
         raise SystemExit("PR 제목 또는 본문에서 작업 ID를 찾을 수 없음")
     return match.group(0)
+
+
+def normalize_task_grade(value: str) -> str | None:
+    normalized = normalize(value).strip("`*_ ")
+    return TASK_GRADE_ALIASES.get(normalized)
+
+
+def find_task_grade(args: argparse.Namespace, input_text: str) -> tuple[str, bool]:
+    if args.task_grade:
+        grade = normalize_task_grade(args.task_grade)
+        if grade is None:
+            raise SystemExit("작업 등급은 경량, 일반 또는 고위험이어야 함")
+        return grade, True
+
+    matches = TASK_GRADE_FIELD_RE.findall(input_text)
+    if not matches:
+        return STANDARD, False
+
+    grades = [normalize_task_grade(value) for value in matches]
+    if any(grade is None for grade in grades):
+        raise SystemExit("작업 등급 필드 값은 경량, 일반 또는 고위험이어야 함")
+    distinct_grades = set(grades)
+    if len(distinct_grades) != 1:
+        raise SystemExit("서로 충돌하는 작업 등급 필드가 있음")
+    grade = grades[0]
+    assert grade is not None
+    return grade, True
 
 
 def markdown_files(path: Path) -> list[Path]:
@@ -230,6 +296,39 @@ def validate_required_sections(
     return failures
 
 
+def validate_meaningful_requirements(
+    *,
+    kind: str,
+    files: list[Path],
+    requirements: tuple[SectionRequirement, ...],
+) -> list[str]:
+    failures: list[str] = []
+    for path in files:
+        sections = parse_sections(path)
+        for requirement in requirements:
+            matched = matching_sections(sections, requirement.aliases)
+            if not matched:
+                failures.append(f"{kind} 필수 증거 섹션 없음: {path}: {requirement.label}")
+            elif not any(has_meaningful_content(section) for section in matched):
+                failures.append(f"{kind} 필수 증거 섹션이 비어 있음: {path}: {requirement.label}")
+    return failures
+
+
+def validate_report_grades(files: list[Path], expected_grade: str) -> list[str]:
+    failures: list[str] = []
+    for path in files:
+        values = TASK_GRADE_FIELD_RE.findall(path.read_text(encoding="utf-8"))
+        if not values:
+            failures.append(f"작업 보고서 작업 등급 필드 없음: {path}")
+            continue
+        grades = [normalize_task_grade(value) for value in values]
+        if any(grade is None for grade in grades):
+            failures.append(f"작업 보고서 작업 등급 값이 유효하지 않음: {path}")
+        elif set(grades) != {expected_grade}:
+            failures.append(f"작업 보고서 작업 등급 불일치: {path}: 기대값 {expected_grade}")
+    return failures
+
+
 def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
     sections_by_path = {
         path: matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES)
@@ -254,7 +353,9 @@ def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
 
 def main() -> int:
     args = parse_args()
-    task_id = find_task_id(args)
+    input_text = sys.stdin.read() if args.from_stdin else ""
+    task_id = find_task_id(args, input_text)
+    task_grade, grade_explicit = find_task_grade(args, input_text)
     root = Path(args.root)
 
     report_dir = root / "docs" / "reports" / task_id
@@ -264,19 +365,33 @@ def main() -> int:
     handoff_files = markdown_files(handoff_dir)
     handoff_omitted, omission_failures = validate_handoff_omission(report_files)
 
-    failures: list[str] = omission_failures
-    if not report_files:
+    failures: list[str] = []
+    if task_grade != LIGHTWEIGHT:
+        failures.extend(omission_failures)
+    if not report_files and task_grade != LIGHTWEIGHT:
         failures.append(f"작업 보고서 Markdown 파일 없음: {report_dir}")
-    if not handoff_files and not handoff_omitted:
+    if not handoff_files and not handoff_omitted and task_grade != LIGHTWEIGHT:
         failures.append(f"역할 인수인계 Markdown 파일 없음: {handoff_dir}")
     if report_files:
+        requirements = REPORT_REQUIREMENTS
+        if grade_explicit:
+            requirements += GRADED_REPORT_REQUIREMENTS
+            failures.extend(validate_report_grades(report_files, task_grade))
         failures.extend(
             validate_required_sections(
                 kind="작업 보고서",
                 files=report_files,
-                requirements=REPORT_REQUIREMENTS,
+                requirements=requirements,
             )
         )
+        if task_grade == HIGH_RISK:
+            failures.extend(
+                validate_meaningful_requirements(
+                    kind="고위험 작업 보고서",
+                    files=report_files,
+                    requirements=HIGH_RISK_EVIDENCE_REQUIREMENTS,
+                )
+            )
     if handoff_files:
         failures.extend(
             validate_required_sections(
@@ -291,7 +406,12 @@ def main() -> int:
             print(failure, file=sys.stderr)
         return 1
 
-    print(f"task artifacts validated for {task_id}")
+    if not grade_explicit:
+        print(
+            "경고: 작업 등급이 없어 하위 호환 일반 규칙을 적용함; 새 작업은 작업 등급을 명시해야 함",
+            file=sys.stderr,
+        )
+    print(f"task artifacts validated for {task_id} ({task_grade})")
     return 0
 
 
