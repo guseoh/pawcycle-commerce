@@ -233,6 +233,32 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 등급 필드가 없음", result.stderr)
 
+    def test_graded_report_fails_with_legacy_option_only(self) -> None:
+        for grade in ("일반", "고위험"):
+            with self.subTest(grade=grade), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_artifacts(root, report=graded_report(grade))
+
+                result = run_validator(root, "--task-id", TASK_ID)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    "legacy 옵션은 작업 등급이 없는 기존 보고서에만 허용됨",
+                    result.stderr,
+                )
+                self.assertIn("PR 본문 또는 --task-grade", result.stderr)
+
+    def test_explicit_high_risk_grade_runs_evidence_validation_with_legacy_option(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root, report=graded_report("고위험"))
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "고위험")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("고위험 작업 보고서 필수 증거 섹션 없음", result.stderr)
+            self.assertNotIn("legacy 옵션은 작업 등급이 없는 기존 보고서에만 허용됨", result.stderr)
+
     def test_lightweight_without_report_or_handoff_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(Path(tmp), "--task-id", TASK_ID, "--task-grade", "경량")

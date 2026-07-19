@@ -115,13 +115,15 @@
 | 명령 | 결과 |
 | --- | --- |
 | 관련 Python 문법 검사 | 통과 |
-| `py -3 scripts/test_validate_task_artifacts.py` | 통과, 35개 테스트 |
+| `py -3 scripts/test_validate_task_artifacts.py` | 통과, 37개 테스트 |
+| legacy 등급 없음 통과·등급 있는 일반/고위험 거부·명시적 고위험 증거 검사 | 통과 |
 | `py -3 scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-001 --task-grade 고위험` | 통과 |
 | `py -3 scripts/test_discord_context.py` | 통과, 17개 테스트 |
 | `py -3 scripts/validate-obsidian-record.py` | 통과, `HARNESS-LEAN-001` 기록 확인 |
 | `bash scripts/validate-commit-message.sh --message "fix(harness): 작업 ID와 소비자 계약 정렬"` | 통과 |
 | `bash scripts/validate-commit-message.sh --message "fix(harness): 실제 소비 기준 정렬"` | 통과 |
 | `bash scripts/validate-commit-message.sh --message "fix(harness): 인수인계 트리거 분리"` | 통과 |
+| `bash scripts/validate-commit-message.sh --message "fix(harness): legacy 등급 우회 차단"` | 통과 |
 | `git diff --check` | 통과 |
 | 변경 파일 개인 절대 경로·Secret 패턴 검사 | 일치 항목 없음 |
 

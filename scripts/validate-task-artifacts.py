@@ -351,6 +351,17 @@ def validate_report_grades(files: list[Path], expected_grade: str) -> list[str]:
     return failures
 
 
+def validate_legacy_report_grades(files: list[Path]) -> list[str]:
+    failures: list[str] = []
+    for path in files:
+        if TASK_GRADE_FIELD_RE.search(path.read_text(encoding="utf-8")):
+            failures.append(
+                "legacy 옵션은 작업 등급이 없는 기존 보고서에만 허용됨: "
+                f"{path}; 보고서에 작업 등급이 있으면 PR 본문 또는 --task-grade로 등급을 명시해야 함"
+            )
+    return failures
+
+
 def validate_handoff_omission(files: list[Path]) -> tuple[bool, list[str]]:
     sections_by_path = {
         path: matching_sections(parse_sections(path), HANDOFF_OMISSION_ALIASES)
@@ -398,6 +409,8 @@ def main() -> int:
         requirements = REPORT_REQUIREMENTS
         if grade_explicit:
             failures.extend(validate_report_grades(report_files, task_grade))
+        else:
+            failures.extend(validate_legacy_report_grades(report_files))
         failures.extend(
             validate_required_sections(
                 kind="작업 보고서",
