@@ -119,7 +119,7 @@
 | `py -3 scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-001 --task-grade 고위험` | 통과 |
 | `py -3 scripts/test_discord_context.py` | 통과, 17개 테스트 |
 | `py -3 scripts/validate-obsidian-record.py` | 통과, `HARNESS-LEAN-001` 기록 확인 |
-| `bash scripts/validate-commit-message.sh --message "fix(harness): 작업 ID와 소비자 계약 정렬"` | 통과 |
+| 관련 후속 commit 제목 검사 | 통과 |
 | `git diff --check` | 통과 |
 | 변경 파일 개인 절대 경로·Secret 패턴 검사 | 일치 항목 없음 |
 
