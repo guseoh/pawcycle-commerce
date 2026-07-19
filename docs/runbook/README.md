@@ -9,6 +9,7 @@
 - `collaboration-automation.md`: 역할 브랜치, commit·push, 검증, Discord, Obsidian 자동화
 - `repository-onboarding.md`: 로컬 저장소, Git Hook, Obsidian, Discord, 검증 명령
 - `github-repository-settings.md`: GitHub Settings에서 사용자가 확인할 저장소 설정
+- `OPS-009-aws-operations-foundation.md`: DEPLOY-001 AWS 운영 기반의 생성 전 게이트, 사용자 실행, 검증과 안전 정리
 
 ## 최소 런북 구조
 
