@@ -80,6 +80,10 @@ REPORT_REQUIREMENTS = (
 
 GRADED_REPORT_REQUIREMENTS = (
     SectionRequirement("QA 필요 여부", ("qa 필요 여부", "qa 검증", "qa decision")),
+    SectionRequirement(
+        "QA 문서 경로 또는 생략 사유",
+        ("qa 문서 경로", "qa 생략 사유", "qa document path", "qa omission reason"),
+    ),
 )
 
 HIGH_RISK_EVIDENCE_REQUIREMENTS = (
@@ -131,6 +135,11 @@ HANDOFF_OMISSION_DENIAL_RE = re.compile(
     r"|해당\s*없음|not\s+omitted|not\s+applicable|^n/?a$|^none$",
     re.IGNORECASE | re.MULTILINE,
 )
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+PLACEHOLDER_LINE_RE = re.compile(
+    r"^(?:[-*]\s*)?(?:<[^>]+>|\[[^\]]+\]|todo|tbd|미정|작성\s*(?:필요|예정))\.?$",
+    re.IGNORECASE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,7 +147,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task-id", help="Explicit task ID to validate.")
     parser.add_argument(
         "--task-grade",
-        help="Explicit task grade: 경량, 일반, or 고위험. Defaults to legacy-compatible 일반 when omitted.",
+        help="Explicit task grade: 경량, 일반, or 고위험.",
+    )
+    parser.add_argument(
+        "--allow-legacy-without-grade",
+        action="store_true",
+        help="Allow an existing ungraded artifact to use the legacy 일반 rules.",
     )
     parser.add_argument(
         "--from-stdin",
@@ -180,7 +194,9 @@ def find_task_grade(args: argparse.Namespace, input_text: str) -> tuple[str, boo
 
     matches = TASK_GRADE_FIELD_RE.findall(input_text)
     if not matches:
-        return STANDARD, False
+        if args.allow_legacy_without_grade:
+            return STANDARD, False
+        raise SystemExit("작업 등급 필드가 없음; 기존 산출물만 --allow-legacy-without-grade로 검증할 수 있음")
 
     grades = [normalize_task_grade(value) for value in matches]
     if any(grade is None for grade in grades):
@@ -228,7 +244,8 @@ def parse_sections(path: Path) -> list[MarkdownSection]:
 
 
 def has_meaningful_content(section: MarkdownSection) -> bool:
-    rows = [line.strip() for line in section.content]
+    content = HTML_COMMENT_RE.sub("", "\n".join(section.content))
+    rows = [line.strip() for line in content.splitlines()]
 
     for index, stripped in enumerate(rows):
         if not stripped:
@@ -239,6 +256,8 @@ def has_meaningful_content(section: MarkdownSection) -> bool:
         if not without_table_marks:
             continue
         if stripped in {"-", "*", "- [ ]", "- [x]", "- [X]"}:
+            continue
+        if PLACEHOLDER_LINE_RE.fullmatch(stripped):
             continue
         next_stripped = rows[index + 1] if index + 1 < len(rows) else ""
         next_without_marks = next_stripped.replace("|", "").replace("-", "").replace(":", "").replace(" ", "")
@@ -375,7 +394,6 @@ def main() -> int:
     if report_files:
         requirements = REPORT_REQUIREMENTS
         if grade_explicit:
-            requirements += GRADED_REPORT_REQUIREMENTS
             failures.extend(validate_report_grades(report_files, task_grade))
         failures.extend(
             validate_required_sections(
@@ -384,6 +402,14 @@ def main() -> int:
                 requirements=requirements,
             )
         )
+        if grade_explicit and task_grade in (STANDARD, HIGH_RISK):
+            failures.extend(
+                validate_meaningful_requirements(
+                    kind=f"{task_grade} 작업 보고서",
+                    files=report_files,
+                    requirements=GRADED_REPORT_REQUIREMENTS,
+                )
+            )
         if task_grade == HIGH_RISK:
             failures.extend(
                 validate_meaningful_requirements(
@@ -408,7 +434,7 @@ def main() -> int:
 
     if not grade_explicit:
         print(
-            "경고: 작업 등급이 없어 하위 호환 일반 규칙을 적용함; 새 작업은 작업 등급을 명시해야 함",
+            "경고: 명시적 legacy 옵션으로 등급 없는 기존 산출물에 일반 규칙을 적용함",
             file=sys.stderr,
         )
     print(f"task artifacts validated for {task_id} ({task_grade})")

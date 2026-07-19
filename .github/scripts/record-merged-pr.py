@@ -17,6 +17,7 @@ from typing import Any
 
 REPO = "guseoh/pawcycle-commerce"
 TASK_ID_PREFIXES = "BOOTSTRAP|PS|ARCH|FOUNDATION|BUG|PERF|OPS|SEC|DOMAIN|API|UX|DATA"
+TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{TASK_ID_PREFIXES})-\d{{3}})"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:
@@ -41,8 +42,8 @@ def slugify(title: str) -> str:
 
 def task_id_from_text(*values: str) -> str:
     joined = "\n".join(values)
-    match = re.search(rf"\b({TASK_ID_PREFIXES})-\d{{3}}\b", joined)
-    return match.group(0) if match else "기록 없음"
+    match = re.search(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])", joined, re.IGNORECASE)
+    return match.group(0).upper() if match else "기록 없음"
 
 
 def github_api(path: str, token: str) -> Any:

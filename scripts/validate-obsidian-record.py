@@ -44,6 +44,7 @@ def main() -> int:
             "type: pull-request",
             "repository: guseoh/pawcycle-commerce",
             "status: merged",
+            "taskId: HARNESS-LEAN-001",
             "# PR #12",
             "## 작업 목적",
             "## 변경 파일",

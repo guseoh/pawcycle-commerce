@@ -135,6 +135,10 @@ def graded_report(grade: str) -> str:
 ## QA 필요 여부
 
 - 등급과 변경 위험에 따라 판단함.
+
+## QA 문서 경로 또는 생략 사유
+
+- 제품 동작 변경이 없어 별도 QA 문서를 생략함.
 """
 
 
@@ -179,11 +183,20 @@ def write_artifacts(
         (handoff_dir / "sre-to-tl.md").write_text(handoff, encoding="utf-8")
 
 
-def run_validator(root: Path, *args: str, stdin_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def run_validator(
+    root: Path,
+    *args: str,
+    stdin_text: str | None = None,
+    allow_legacy_without_grade: bool = True,
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
+    command = [sys.executable, str(SCRIPT), "--root", str(root)]
+    if allow_legacy_without_grade:
+        command.append("--allow-legacy-without-grade")
+    command.extend(args)
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--root", str(root), *args],
+        command,
         input=stdin_text,
         text=True,
         encoding="utf-8",
@@ -194,7 +207,7 @@ def run_validator(root: Path, *args: str, stdin_text: str | None = None) -> subp
 
 
 class ValidateTaskArtifactsTest(unittest.TestCase):
-    def test_valid_report_and_handoff_pass(self) -> None:
+    def test_legacy_report_and_handoff_pass_with_explicit_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_artifacts(root)
@@ -203,7 +216,22 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"task artifacts validated for {TASK_ID}", result.stdout)
-            self.assertIn("하위 호환 일반 규칙", result.stderr)
+            self.assertIn("명시적 legacy 옵션", result.stderr)
+
+    def test_missing_grade_fails_without_legacy_option(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_artifacts(root)
+
+            result = run_validator(
+                root,
+                "--from-stdin",
+                stdin_text=f"작업 ID: {TASK_ID}\n",
+                allow_legacy_without_grade=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 등급 필드가 없음", result.stderr)
 
     def test_lightweight_without_report_or_handoff_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -254,6 +282,42 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("역할 인수인계 Markdown 파일 없음", result.stderr)
+
+    def test_handoff_omission_template_placeholder_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = graded_report("일반") + """\
+
+## 인수인계 생략
+
+<!-- 확정된 소비자가 없을 때 구체적 사유로 교체합니다. -->
+
+- <구체적 생략 사유>
+"""
+            write_artifacts(root, report=report, handoff=None)
+
+            result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "일반")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 보고서 인수인계 생략 사유 없음", result.stderr)
+
+    def test_standard_qa_sections_require_actual_content(self) -> None:
+        cases = (
+            ("## QA 필요 여부\n\n- 등급과 변경 위험에 따라 판단함.\n\n", "## QA 필요 여부\n\n"),
+            (
+                "## QA 문서 경로 또는 생략 사유\n\n- 제품 동작 변경이 없어 별도 QA 문서를 생략함.\n",
+                "## QA 문서 경로 또는 생략 사유\n\n- <QA 문서 경로 또는 구체적 생략 사유>\n",
+            ),
+        )
+        for original, replacement in cases:
+            with self.subTest(section=original.splitlines()[0]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_artifacts(root, report=graded_report("일반").replace(original, replacement))
+
+                result = run_validator(root, "--task-id", TASK_ID, "--task-grade", "일반")
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("일반 작업 보고서 필수 증거 섹션이 비어 있음", result.stderr)
 
     def test_high_risk_report_with_required_evidence_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -318,13 +382,31 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 등급 필드 값", result.stderr)
 
+    def test_conflicting_grade_fields_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=f"작업 ID: {TASK_ID}\n작업 등급: 경량\n작업 등급: 고위험\n",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("서로 충돌하는 작업 등급 필드가 있음", result.stderr)
+
+    def test_invalid_cli_task_grade_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(Path(tmp), "--task-id", TASK_ID, "--task-grade", "초고위험")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 등급은 경량, 일반 또는 고위험이어야 함", result.stderr)
+
     def test_harness_lean_task_id_is_detected(self) -> None:
         task_id = "HARNESS-LEAN-001"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_artifacts(root, task_id=task_id)
+            write_artifacts(root, report=graded_report("일반"), task_id=task_id)
 
-            result = run_validator(root, "--from-stdin", stdin_text=f"작업 ID: {task_id}\n")
+            result = run_validator(root, "--from-stdin", stdin_text=f"작업 ID: {task_id}\n작업 등급: 일반\n")
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(task_id, result.stdout)

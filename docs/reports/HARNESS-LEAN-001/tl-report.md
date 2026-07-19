@@ -57,7 +57,7 @@
 | 경량 무산출물 허용 | 명시적 경량이면 보고서·인수인계 없이 통과하는 회귀 테스트 추가 |
 | 일반 조건부 인수인계 | 보고서 필수, 인수인계 또는 보고서의 명시적 생략 사유 검사 |
 | 고위험 증거 유지 | 승인·적용 전후·독립 검증·복구 및 롤백 heading과 내용 검사 |
-| 기존 산출물 호환 | 등급이 없으면 경고와 함께 기존 일반 규칙 적용 |
+| 기존 산출물 호환 | 명시적 legacy 옵션에서만 등급 없는 기존 산출물에 일반 규칙 적용 |
 | 프롬프트 예산 비차단 | 권장 길이를 권위 문서에만 기록하고 validator 조건에서 제외 |
 
 ## 주요 결과
@@ -65,15 +65,16 @@
 - `HARNESS-LEAN-001` 형식의 작업 ID를 PR 본문에서 인식한다.
 - 명시된 작업 등급과 보고서의 작업 등급 불일치를 차단한다.
 - 고위험 증거는 heading 존재뿐 아니라 비어 있지 않은 내용까지 검사한다.
-- CI workflow 호출 형태와 기존 작업 디렉터리는 변경하지 않는다.
+- CI workflow 호출 형태와 기존 작업 디렉터리는 변경하지 않는다. 새 PR의 등급 누락은 기본 실패한다.
 
 ## 변경 파일
 
 - 운영 권위·요약: `AGENTS.md`, `docs/runbook/lean-harness.md`, 관련 역할·QA·협업 문서
 - template: `.github/pull_request_template.md`, 보고서·인수인계 template
 - validator: `scripts/validate-task-artifacts.py`
-- 회귀 테스트: `scripts/test_validate_task_artifacts.py`
-- 현재 작업 보고서와 다음 작업 인수인계
+- 자동화: Discord 컨텍스트와 병합 PR 기록의 작업 ID 추출
+- 회귀 테스트: validator, Discord 컨텍스트와 병합 PR 기록 fixture
+- 현재 작업 보고서
 
 ## 결정 상태
 
@@ -97,7 +98,7 @@
 ## 운영 영향
 
 - 병합 후 시작하는 작업은 작업 등급을 명시하고 등급별 산출물·QA·검증 기준을 사용한다.
-- 기존 등급 없는 작업은 하위 호환 일반 규칙과 경고를 사용한다.
+- 기존 등급 없는 산출물은 명시적 `--allow-legacy-without-grade` 옵션에서만 하위 호환 일반 규칙과 경고를 사용한다.
 
 ## 성능 영향
 
@@ -113,10 +114,12 @@
 
 | 명령 | 결과 |
 | --- | --- |
-| `py -3 -m py_compile scripts/validate-task-artifacts.py scripts/test_validate_task_artifacts.py` | 통과 |
-| `py -3 scripts/test_validate_task_artifacts.py` | 통과, 30개 테스트 |
+| 관련 Python 문법 검사 | 통과 |
+| `py -3 scripts/test_validate_task_artifacts.py` | 통과, 35개 테스트 |
 | `py -3 scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-001 --task-grade 고위험` | 통과 |
-| `bash scripts/validate-commit-message.sh --message "chore(harness): 위험 기반 Lean Harness 정렬"` | 통과 |
+| `py -3 scripts/test_discord_context.py` | 통과, 17개 테스트 |
+| `py -3 scripts/validate-obsidian-record.py` | 통과, `HARNESS-LEAN-001` 기록 확인 |
+| `bash scripts/validate-commit-message.sh --message "fix(harness): 리뷰 검증 누락 보완"` | 통과 |
 | `git diff --check` | 통과 |
 | 변경 파일 개인 절대 경로·Secret 패턴 검사 | 일치 항목 없음 |
 
@@ -124,12 +127,11 @@
 
 - 변경 파일 자기 리뷰와 targeted diff 검사를 수행했다.
 - 실제 고위험 산출물 validator, commit 제목과 공백 검사를 통과했다.
-- PR 게시 후 독립된 GitHub Actions `Repository Validation` 결과를 확인한다.
+- 원격 검증 상태는 보고서에 실행 ID나 중간 SHA를 복제하지 않고 최신 GitHub Checks를 권위 원본으로 확인한다.
 
 ## 독립 검증
 
-- GitHub-hosted runner의 `Repository Validation` run `29681262065`에서 `Commit and PR conventions`와 `Application validation`이 모두 통과했다.
-- 별도 `Discord collaboration report`도 통과했다.
+- GitHub-hosted runner의 최신 `Repository Validation`을 독립 자동 검증 경로로 사용하며, 결과의 권위 원본은 GitHub Checks다.
 - 인증·결제·데이터·제품 동작 변경이 없는 하네스 변경이므로 별도 제품 QA 문서는 만들지 않는다. 사용자가 diff와 CI 결과를 최종 검토한다.
 
 ## 실행하지 못한 검증과 이유
@@ -147,11 +149,11 @@
 
 ## AI 리뷰 반영 여부
 
-- Draft PR이라 CodeRabbit은 검토를 건너뛰었다. Ready 전환 후 생성되는 AI 리뷰는 실제 버그·보안·검증 누락만 선별 반영한다.
+- 최신 head의 미해결 리뷰 7개를 thread 상태와 현재 코드에서 검증했다. 등급 누락, placeholder, QA 내용, HARNESS ID 자동화, 운영자 인수인계, README 자동 판정 범위와 오류 경로 테스트 지적은 모두 유효해 최소 반영했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-- 현재 없음.
+- 없음. docstring·Ruff 경고는 요청된 동작 결함과 무관하고 기존 함수 전반의 범위 밖 정리이므로 반영하지 않았다.
 
 ## 적용 방법
 
@@ -172,17 +174,21 @@
 
 ## 남은 위험
 
-- Draft PR의 AI 리뷰와 사용자 최종 검토가 남아 있다.
+- 최신 head의 GitHub Checks, 미해결 리뷰와 사용자 최종 검토가 남아 있으며 현재 상태는 GitHub를 권위 원본으로 확인한다.
 - prompt 권장 길이는 저장소에 prompt 원문이 없으므로 문서 경고로만 운영한다.
 
 ## 다음 작업
 
 - 다음 작업자는 새 등급 필드와 delta-only 명세를 사용하고, 위험 발견 시 등급을 승격한다.
 
+## 인수인계 생략
+
+- 확정된 후속 역할이나 실제 운영자가 없고, 다음 작업은 루트 규칙·권위 런북·template을 직접 입력으로 사용하므로 범용 인수인계를 작성하지 않는다.
+
 ## Git 결과
 
-- 역할 브랜치 재생성·게시와 구현 commit `496ad1a` push를 완료했다. 이 보고서의 독립 검증 결과도 후속 문서 commit으로 push한다.
+- 역할 브랜치의 commit·push 이력은 Git을 권위 원본으로 확인한다.
 
 ## PR 결과
 
-- Draft PR #56을 `ops/tl`에서 `main` 대상으로 생성했다. 자동 병합하지 않는다.
+- PR #56은 `ops/tl`에서 `main`을 대상으로 하며 자동 병합하지 않는다. 최신 head·상태·Checks는 GitHub를 권위 원본으로 확인한다.

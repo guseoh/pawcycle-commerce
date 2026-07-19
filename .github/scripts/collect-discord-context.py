@@ -18,11 +18,12 @@ from typing import Any
 
 UNKNOWN = "확인 불가"
 MISSING = "기록 없음"
-TASK_LINE = re.compile(r"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?([A-Z][A-Z0-9]*-[0-9]{3})`?\s*$")
 KNOWN_PREFIXES = (
     "API|ARCH|AUTH|BOOTSTRAP|BUG|DATA|DOMAIN|FOUNDATION|OPS|PERF|PRODUCT|PS|SEC|UX"
 )
-FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9])(?:{KNOWN_PREFIXES})-[0-9]{{3}}(?![0-9])", re.IGNORECASE)
+TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|(?:{KNOWN_PREFIXES})-[0-9]{{3}})"
+TASK_LINE = re.compile(rf"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?({TASK_ID_PATTERN})`?\s*$")
+FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])", re.IGNORECASE)
 SECRET_PATTERNS = (
     (re.compile(r"-----BEGIN [^-\r\n]*PRIVATE KEY-----.*?-----END [^-\r\n]*PRIVATE KEY-----", re.IGNORECASE | re.DOTALL), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s`]+", re.IGNORECASE), "[REDACTED_WEBHOOK]"),
