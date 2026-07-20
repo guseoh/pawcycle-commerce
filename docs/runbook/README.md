@@ -10,6 +10,7 @@
 - `repository-onboarding.md`: 로컬 저장소, Git Hook, Obsidian, Discord, 검증 명령
 - `github-repository-settings.md`: GitHub Settings에서 사용자가 확인할 저장소 설정
 - `OPS-009-aws-operations-foundation.md`: DEPLOY-001 AWS 운영 기반의 생성 전 게이트, 사용자 실행, 검증과 안전 정리
+- `OPS-010-production-single-release.md`: DEPLOY-002 production image 게시, 수동 단일 release, 상태 확인과 rollback
 
 ## 최소 런북 구조
 

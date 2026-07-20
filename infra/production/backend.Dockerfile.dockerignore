@@ -1,0 +1,9 @@
+**
+!backend/
+!backend/gradle/
+!backend/gradle/**
+!backend/src/
+!backend/src/**
+!backend/build.gradle
+!backend/settings.gradle
+!backend/gradlew
