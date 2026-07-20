@@ -223,6 +223,7 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 - 초기 구현 commit: `a473b6abd62e915f39ebc86b58f4acd0764bd4ff`
 - 제목: `feat(sre): OPS-010 운영 단일 release 배포 기반 구성`
 - 리뷰 후속 commit: `29f8579`, 배포 진단과 이전 Secret bundle 정리 보완
+- release 불변성 후속 commit: `d096e17`, smoke·digest·base image·계약 gate 보완
 - 원격: `origin/ops/sre` push 완료
 
 ## PR 결과
@@ -230,6 +231,6 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 - PR: `#58`, `main` 대상
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/58`
 - 최신 구현 head의 Repository Validation: 통과
-- AI review: 유효 지적 반영, 미반영 근거 댓글 기록과 thread 해결 완료
+- AI review: release 불변성 판단·반영·검증 제한을 PR 댓글로 기록, 정확한 thread 상태는 GitHub에서 확인
 - 정확한 review 상태: GitHub Review Threads가 권위 원본
 - 자동 병합: 비활성
