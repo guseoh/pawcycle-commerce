@@ -75,6 +75,7 @@
 - IAM Console이 처리할 수 있는 same-name role/profile만 삭제하고 잔여 profile이나 이름 불일치에는 중단하도록 했다.
 - Docker 설치·smoke와 생성 전 게이트가 일치하도록 `download.docker.com`과 Docker Hub `hello-world` 경로를 추가했다.
 - Budget 증거에는 금액·Credits/Refunds·알림 기준·만료일 검토 여부를 보존하고 이메일·잔액·계정 ID는 제외하도록 통일했다.
+- Forecasted Budget 알림은 사용 이력이 충분하기 전 계산·발송되지 않을 수 있어 초기에는 Actual 알림과 Billing/Budgets 실제 비용 화면을 우선 확인하도록 안내했다.
 
 ## 변경 파일
 
@@ -120,6 +121,7 @@
 | 검증 | 결과 |
 | --- | --- |
 | 관련 Markdown 경로와 민감 패턴 정적 확인 | 통과 |
+| 동적 review thread 개수 제거와 Forecasted 초기 안내 일치 확인 | 통과 |
 | `py -3 -m py_compile` validator 문법 검사 | 통과 |
 | `py -3 scripts/test_validate_task_artifacts.py` 전체 37개 회귀 테스트 | 통과 |
 | `py -3 scripts/test_validate_pr_body_encoding.py` 전체 12개 회귀 테스트 | 통과 |
@@ -132,7 +134,7 @@
 
 - `ops/sre`가 최신 `main`에서 시작했고 작업 전 worktree가 깨끗함을 확인했다.
 - 기존 local integration 파일은 개발·검증용이며 production 배포 구현이 아님을 확인했다.
-- 현재 파일과 PR #57의 thread-aware 조회로 미해결 Codex·CodeRabbit 스레드 7개를 확인하고 승인 범위와 대조했다.
+- 현재 파일과 PR #57 Review Threads를 thread-aware 방식으로 확인하고 유효 지적을 승인 범위와 대조했다. 정확한 thread 개수와 해결 상태는 GitHub를 권위 원본으로 둔다.
 - 실제 AWS Console·CLI, Secret 조회와 서버 접속을 수행하지 않았다.
 
 ## 적용 후 검증 (고위험 필수)
@@ -163,7 +165,7 @@
 
 ## AI 리뷰 반영 여부
 
-PR #57의 미해결 Codex 1개와 CodeRabbit 6개 스레드를 현재 파일과 공식 AWS·Docker 근거로 개별 검토했다. CPU credit, 승인 출처, Docker network gate, ordered list, Budget 증거, 리소스 식별, IAM profile 정리 지적은 모두 유효해 후속 수정에 반영했다. 스레드별 댓글과 해결 상태는 GitHub Review Threads를 권위 원본으로 둔다.
+PR #57 Review Threads를 현재 파일과 공식 AWS·Docker 근거로 확인했다. CPU credit, 승인 출처, Docker network gate, ordered list, Budget 증거, 리소스 식별, IAM profile 정리의 유효 지적을 후속 수정에 반영했다. 정확한 thread 개수, 댓글과 해결 상태는 GitHub Review Threads를 권위 원본으로 둔다.
 
 ## AI 리뷰 미반영 항목과 이유
 

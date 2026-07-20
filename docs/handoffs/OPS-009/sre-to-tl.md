@@ -34,7 +34,7 @@
 - 실제 AWS 미실행과 비민감 증거 형식 분리
 - Credit specification `standard`, 리소스 식별 계약과 IAM Console same-name 정리 경계 반영
 - Docker 공식 저장소·Docker Hub outbound 게이트와 Budget 비민감 증거 규칙 일치
-- PR #57의 미해결 Codex·CodeRabbit 스레드 7개를 재검증하고 유효 지적 반영
+- PR #57 Review Threads를 재검증하고 유효 지적 반영. 정확한 개수와 해결 상태는 GitHub를 권위 원본으로 사용
 
 ## 사용 가능한 결과
 
@@ -54,7 +54,7 @@
 
 | 확인 대상 | 인수 기준 |
 | --- | --- |
-| 비용 | Gross 30 USD·Net 1 USD, Credits·Refunds, 알림 기준과 만료일 검토 여부를 보존하고 이메일·잔액·계정 ID는 제외 |
+| 비용 | Gross 30 USD·Net 1 USD, Credits·Refunds, 알림 기준과 만료일 검토 여부를 보존하고 이메일·잔액·계정 ID는 제외. 초기에는 Actual 알림과 Billing/Budgets 실제 비용 화면을 우선 확인 |
 | IAM | 현재는 EC2 trust와 `AmazonSSMManagedInstanceCore` 하나뿐임을 확인 |
 | Network | 80·443 공개, 22·3306·8080·3000 기본 비공개, `download.docker.com`·Docker Hub outbound 확인 |
 | Compute cost | `t3.small` Credit specification `standard`와 CPU credit 고갈 시 baseline 제한 확인 |
@@ -136,7 +136,7 @@
 
 ## AI 리뷰에서 남은 확인 항목
 
-후속 수정에서 확인한 Codex 1개와 CodeRabbit 6개 스레드는 모두 유효로 판정해 문서에 반영했다. 스레드별 판단 댓글, 최신 해결 상태와 추가 review 발생 여부는 GitHub Review Threads에서 확인한다.
+PR #57 Review Threads를 확인해 유효 지적을 문서에 반영했다. Forecasted Budget 알림은 충분한 사용 이력이 쌓이기 전 계산·발송되지 않을 수 있으므로 초기에는 Actual 알림과 Billing/Budgets 실제 비용 화면을 우선 확인한다. 정확한 thread 개수, 판단 댓글, 해결 상태와 추가 review 발생 여부는 GitHub Review Threads에서 확인한다.
 
 ## 알려진 위험
 

@@ -130,6 +130,8 @@ IAM instance profile tag는 CLI/API에서 관리해야 하므로 Console-only인
 
 성공 기준은 Budget 두 개가 올바른 비용 유형과 알림으로 표시되는 것이다. 알림을 받을 수 없거나 비용 유형이 불명확하면 Budget을 삭제하지 말고 화면을 벗어나 운영자 판단을 요청한다.
 
+Forecasted 100% 알림은 충분한 과거 사용 정보가 쌓이기 전에는 계산·발송되지 않을 수 있다. AWS는 Budget forecast 생성에 약 5주의 사용 데이터가 필요하다고 안내하므로 초기에는 Forecasted 알림 미수신만으로 설정 실패로 판단하지 않는다. Actual 알림의 기준·구독 상태와 Billing/Budgets 화면의 실제 발생 비용을 우선 확인한다.
+
 ### 2. 최소 권한 EC2 instance role 생성
 
 1. IAM Console에서 EC2 use case의 role을 리소스 식별 계약의 이름과 공통 tag로 만든다. Console이 자동 생성하는 same-name instance profile을 외부 매핑에 같은 쌍으로 기록한다. 이 role은 EC2 서비스가 assume하며 사람의 로그인이나 장기 access key에 사용하지 않는다.
