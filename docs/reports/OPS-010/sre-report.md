@@ -126,7 +126,8 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - 전체 stop/start 뒤 MySQL sentinel 보존: 통과
 - SHA A → SHA B → SHA A rollback 뒤 sentinel 보존: 통과
 - Backend production Dockerfile `bootJar`: 통과
-- Backend local Gradle test/build: Windows Java 25 toolchain 부재로 미실행, Repository Validation에서 확인
+- Backend local Gradle test/build: Windows Java 25 toolchain 부재로 미실행
+- GitHub Repository Validation의 Java 25 Backend test/build와 Frontend 검증: 통과
 - Frontend lint/build: 통과
 - OPS-010 고위험 산출물 validator와 Repository Validation: 최종 단계에서 실행·확인
 
@@ -203,8 +204,14 @@ PR 생성 전 미반영 항목 없음. PR 이후 결과는 GitHub Review Threads
 
 ## Git 결과
 
-최종 검증 후 한국어 명사형 Conventional Commit으로 commit하고 `ops/sre`를 push한다. 결과 SHA는 완료 시 갱신한다.
+- 초기 구현 commit: `a473b6abd62e915f39ebc86b58f4acd0764bd4ff`
+- 제목: `feat(sre): OPS-010 운영 단일 release 배포 기반 구성`
+- 원격: `origin/ops/sre` push 완료
 
 ## PR 결과
 
-최종 자체 리뷰와 검증 뒤 `main` 대상 PR을 생성한다. 자동 병합하지 않으며 URL과 Repository Validation 결과는 완료 시 갱신한다.
+- PR: `#58`, `main` 대상
+- URL: `https://github.com/guseoh/pawcycle-commerce/pull/58`
+- 초기 구현 head의 Repository Validation: 통과
+- AI review: Ready 전환 뒤 확인 예정, 정확한 상태는 GitHub Review Threads가 권위 원본
+- 자동 병합: 비활성
