@@ -36,11 +36,26 @@ SSM_PREFIX="${SSM_PREFIX%/}"
 [[ "$OUTPUT_DIR" == /* && "$OUTPUT_DIR" != "/" ]] || die "output directory must be an absolute directory other than /"
 [[ "$AWS_REGION" == "ap-northeast-2" ]] || die "approved region is ap-northeast-2"
 command -v aws >/dev/null 2>&1 || die "AWS CLI is required"
+command -v realpath >/dev/null 2>&1 || die "realpath is required"
 
 umask 077
 install -d -m 700 "$OUTPUT_DIR"
 [[ ! -e "$OUTPUT_DIR/current" || -L "$OUTPUT_DIR/current" ]] \
   || die "output current path exists and is not a managed symlink"
+
+PREVIOUS_BUNDLE=""
+if [[ -L "$OUTPUT_DIR/current" ]]; then
+  previous_name="$(readlink "$OUTPUT_DIR/current")"
+  [[ "$previous_name" =~ ^\.bundle\.[A-Za-z0-9]+$ ]] \
+    || die "current runtime symlink target is not a managed bundle"
+  previous_path="$OUTPUT_DIR/$previous_name"
+  [[ -d "$previous_path" && ! -L "$previous_path" ]] \
+    || die "current runtime bundle target is missing or unsafe"
+  output_resolved="$(realpath -e "$OUTPUT_DIR")"
+  PREVIOUS_BUNDLE="$(realpath -e "$previous_path")"
+  [[ "$PREVIOUS_BUNDLE" == "$output_resolved"/.bundle.* ]] \
+    || die "previous runtime bundle resolves outside the managed directory"
+fi
 
 BUNDLE_DIR="$(mktemp -d "$OUTPUT_DIR/.bundle.XXXXXX")"
 NEXT_LINK="$OUTPUT_DIR/.current.next"
@@ -97,6 +112,11 @@ chmod 600 "$BUNDLE_DIR/.complete"
 ln -s "$(basename -- "$BUNDLE_DIR")" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$OUTPUT_DIR/current"
 BUNDLE_DIR=""
-trap - EXIT
 
+if [[ -n "$PREVIOUS_BUNDLE" ]]; then
+  rm -rf -- "$PREVIOUS_BUNDLE" \
+    || die "new runtime bundle is active, but the previous bundle cleanup failed"
+fi
+
+trap - EXIT
 printf 'Materialized required runtime files under %s/current\n' "$OUTPUT_DIR"

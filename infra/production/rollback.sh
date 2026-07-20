@@ -61,5 +61,5 @@ write_state previous-sha "$CURRENT_SHA"
 write_state current-sha "$TARGET_SHA"
 
 ACTIVE_SHA="$TARGET_SHA"
-compose ps
+compose ps || printf 'WARNING: rollback succeeded, but final compose ps failed\n' >&2
 printf 'Rollback activated without database restoration or volume deletion: %s\n' "$TARGET_SHA"

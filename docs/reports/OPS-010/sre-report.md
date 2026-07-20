@@ -71,6 +71,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - Compose는 proxy의 HTTP만 외부 bridge에 연결하고 app·data network는 internal로 분리했다.
 - MySQL, Backend, Frontend, Nginx에 health, `unless-stopped`, log rotation, memory·CPU·PID 제한을 적용했다.
 - runtime bundle은 MySQL과 Backend 파일을 분리해 Backend에 root password를 전달하지 않는다.
+- 새 runtime bundle 게시 뒤 관리 경로로 검증된 직전 평문 bundle을 제거한다.
 - deploy는 현재 정상 release의 복귀 가능성을 먼저 검증하고 대상 실패 시 이전 SHA를 자동 복구한다.
 - rollback은 application image만 교체하며 MySQL volume과 schema를 복원·삭제하지 않는다.
 
@@ -172,7 +173,8 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사하고, PR 생성 
 
 ## AI 리뷰 미반영 항목과 이유
 
-PR 생성 전 미반영 항목 없음. PR 이후 결과는 GitHub Review Threads를 권위 원본으로 확인한다.
+- 기존 Repository Validation job은 같은 단계와 후속 validator에서 이미 `python`을 사용하고 최신 runner 검증이 반복 통과하므로 별도 `actions/setup-python` 추가 제안은 미반영했다.
+- 정확한 thread 상태와 답변은 GitHub Review Threads를 권위 원본으로 확인한다.
 
 ## 적용 방법
 

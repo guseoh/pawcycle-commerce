@@ -145,6 +145,8 @@ def validate_scripts() -> None:
     require("--with-decryption" in materialize, "SecureString decryption flag is required")
     require(materialize.count("chmod 600") >= 2, "runtime files and completion marker must be mode 600")
     require("set +x" in materialize, "materializer must disable shell tracing")
+    require("realpath -e" in materialize, "previous runtime bundle deletion must validate the resolved path")
+    require('rm -rf -- "$PREVIOUS_BUNDLE"' in materialize, "previous plaintext runtime bundle must be removed")
 
 
 def main() -> None:

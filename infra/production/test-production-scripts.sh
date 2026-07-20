@@ -61,6 +61,8 @@ if [[ "$1" == "compose" ]]; then
     ps)
       if [[ "$*" == *"--quiet"* ]]; then
         printf 'container-%s\n' "$service"
+      elif [[ "${FAKE_PS_FAIL:-}" == "1" ]]; then
+        exit 2
       else
         printf 'fake compose services healthy\n'
       fi
@@ -131,6 +133,13 @@ fi
 unset FAKE_MISSING
 [[ "$(readlink "$RUNTIME_DIR/current")" == "$original_bundle" ]]
 
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null
+[[ "$(find "$RUNTIME_DIR" -mindepth 1 -maxdepth 1 -type d -name '.bundle.*' | wc -l)" == "1" ]]
+[[ ! -e "$RUNTIME_DIR/$original_bundle" ]]
+
 BACKEND_IMAGE="ghcr.io/example/pawcycle-commerce-backend"
 FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"
 SHA_A="1111111111111111111111111111111111111111"
@@ -148,6 +157,9 @@ deploy() {
 
 deploy "$SHA_A"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+export FAKE_PS_FAIL=1
+deploy "$SHA_A"
+unset FAKE_PS_FAIL
 deploy "$SHA_B"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_B" ]]
 [[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_A" ]]
