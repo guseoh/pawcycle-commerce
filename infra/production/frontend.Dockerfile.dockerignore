@@ -1,0 +1,11 @@
+**
+!frontend/
+frontend/*
+!frontend/src/
+!frontend/src/**
+!frontend/eslint.config.mjs
+!frontend/next-env.d.ts
+!frontend/next.config.ts
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json

@@ -87,6 +87,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate OPS-010 production contracts
+        run: |
+          bash -n \
+            infra/production/release-common.sh \
+            infra/production/materialize-ssm-env.sh \
+            infra/production/deploy.sh \
+            infra/production/rollback.sh \
+            infra/production/test-production-scripts.sh \
+            infra/production/test-production-compose.sh
+          python infra/production/validate-production-contracts.py
+          bash infra/production/test-production-scripts.sh
+
       - name: Verify MySQL service
         env:
           MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
