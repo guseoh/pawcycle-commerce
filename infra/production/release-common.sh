@@ -6,6 +6,8 @@ PRODUCTION_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$PRODUCTION_DIR/compose.yaml"
 PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
+MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -77,6 +79,22 @@ compose() {
     docker compose --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE" "$@"
 }
 
+base_image_digest() {
+  local reference="$1"
+  local repository="${reference%%:*}"
+  local expected_digest="${reference##*@}"
+  local digest
+
+  [[ "$reference" == *@sha256:* && "$expected_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || die "base image must be pinned by sha256 digest: $reference"
+
+  docker pull "$reference" >/dev/null
+  digest="$(docker image inspect --format '{{ range .RepoDigests }}{{ println . }}{{ end }}' "$reference" \
+    | grep -Fx "${repository}@${expected_digest}" | head -n 1 || true)"
+  [[ -n "$digest" ]] || die "pinned base image digest is missing or drifted: $reference"
+  printf '%s\n' "$digest"
+}
+
 image_digest() {
   local repository="$1"
   local sha="$2"
@@ -89,7 +107,7 @@ image_digest() {
   [[ "$revision" == "$sha" ]] || die "image revision label does not match release SHA: $reference"
 
   digest="$(docker image inspect --format '{{ range .RepoDigests }}{{ println . }}{{ end }}' "$reference" \
-    | grep -F "${repository}@sha256:" | head -n 1)"
+    | grep -F "${repository}@sha256:" | head -n 1 || true)"
   [[ -n "$digest" ]] || die "registry digest is missing: $reference"
   printf '%s\n' "$digest"
 }
@@ -99,13 +117,17 @@ preflight_release() {
   local record="$PAWCYCLE_STATE_DIR/${sha}.images"
   local backend_digest
   local frontend_digest
+  local mysql_digest
+  local proxy_digest
+  local candidate_record="${record}.tmp"
 
   validate_sha "$sha"
   ACTIVE_SHA="$sha"
   export ACTIVE_SHA
 
   compose config --quiet
-  compose pull mysql proxy >/dev/null
+  mysql_digest="$(base_image_digest "$MYSQL_IMAGE")"
+  proxy_digest="$(base_image_digest "$PROXY_IMAGE")"
   backend_digest="$(image_digest "$BACKEND_IMAGE" "$sha")"
   frontend_digest="$(image_digest "$FRONTEND_IMAGE" "$sha")"
 
@@ -113,12 +135,46 @@ preflight_release() {
     printf 'RELEASE_SHA=%s\n' "$sha"
     printf 'BACKEND_DIGEST=%s\n' "$backend_digest"
     printf 'FRONTEND_DIGEST=%s\n' "$frontend_digest"
-  } > "${record}.tmp"
-  chmod 600 "${record}.tmp"
-  mv -f "${record}.tmp" "$record"
+    printf 'MYSQL_DIGEST=%s\n' "$mysql_digest"
+    printf 'PROXY_DIGEST=%s\n' "$proxy_digest"
+  } > "$candidate_record"
+  chmod 600 "$candidate_record"
+
+  if [[ -f "$record" ]]; then
+    if ! cmp -s "$candidate_record" "$record"; then
+      rm -f -- "$candidate_record"
+      die "image digest drift detected for previously verified release SHA: $sha"
+    fi
+    rm -f -- "$candidate_record"
+  else
+    mv "$candidate_record" "$record"
+  fi
 
   printf 'Verified Backend digest: %s\n' "$backend_digest"
   printf 'Verified Frontend digest: %s\n' "$frontend_digest"
+  printf 'Verified MySQL digest: %s\n' "$mysql_digest"
+  printf 'Verified Nginx digest: %s\n' "$proxy_digest"
+}
+
+validate_release_contract_compatibility() {
+  local active_contract_sha="$1"
+  local candidate_contract_sha="$2"
+  local status
+
+  [[ "$active_contract_sha" != "$candidate_contract_sha" ]] || return 0
+  git cat-file -e "${active_contract_sha}^{commit}" 2>/dev/null \
+    || die "current release commit is unavailable for contract comparison: $active_contract_sha"
+  git cat-file -e "${candidate_contract_sha}^{commit}" 2>/dev/null \
+    || die "target release commit is unavailable for contract comparison: $candidate_contract_sha"
+
+  if git diff --quiet "$active_contract_sha" "$candidate_contract_sha" -- ':(top)infra/production'; then
+    return 0
+  else
+    status=$?
+  fi
+  [[ "$status" -eq 1 ]] \
+    || die "unable to compare infra/production release contracts"
+  die "infra/production contract differs between current and target SHA; automatic application rollback is unsafe"
 }
 
 wait_healthy() {
@@ -151,8 +207,14 @@ wait_healthy() {
 }
 
 smoke_release() {
-  curl --fail --silent --show-error --max-time 10 http://127.0.0.1/products >/dev/null
-  curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/products >/dev/null
+  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/products >/dev/null; then
+    printf 'Frontend HTTP smoke failed: /products\n' >&2
+    return 1
+  fi
+  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/products >/dev/null; then
+    printf 'Backend HTTP smoke failed: /api/products\n' >&2
+    return 1
+  fi
   printf 'HTTP smoke checks passed\n'
 }
 
@@ -163,21 +225,28 @@ verify_running_release() {
   local configured_reference
   local revision
 
-  for service in backend frontend; do
-    if [[ "$service" == "backend" ]]; then
-      expected_reference="${BACKEND_IMAGE}:${ACTIVE_SHA}"
-    else
-      expected_reference="${FRONTEND_IMAGE}:${ACTIVE_SHA}"
-    fi
+  for service in mysql backend frontend proxy; do
+    case "$service" in
+      mysql) expected_reference="$MYSQL_IMAGE" ;;
+      backend) expected_reference="${BACKEND_IMAGE}:${ACTIVE_SHA}" ;;
+      frontend) expected_reference="${FRONTEND_IMAGE}:${ACTIVE_SHA}" ;;
+      proxy) expected_reference="$PROXY_IMAGE" ;;
+    esac
 
     container_id="$(compose ps --quiet "$service")"
     [[ -n "$container_id" ]] || return 1
     configured_reference="$(docker inspect --format '{{ .Config.Image }}' "$container_id")"
-    revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$container_id")"
-    [[ "$configured_reference" == "$expected_reference" && "$revision" == "$ACTIVE_SHA" ]] || {
+    [[ "$configured_reference" == "$expected_reference" ]] || {
       printf '%s is not running the requested immutable image\n' "$service" >&2
       return 1
     }
+    if [[ "$service" == "backend" || "$service" == "frontend" ]]; then
+      revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$container_id")"
+      [[ "$revision" == "$ACTIVE_SHA" ]] || {
+        printf '%s revision label does not match the requested release\n' "$service" >&2
+        return 1
+      }
+    fi
   done
 }
 
@@ -213,8 +282,10 @@ stop_application_services() {
 
 initialize_release_context() {
   require_command curl
+  require_command cmp
   require_command docker
   require_command flock
+  require_command git
   require_command grep
   require_command stat
 

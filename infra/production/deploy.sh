@@ -43,6 +43,7 @@ if [[ -f "$PAWCYCLE_STATE_DIR/current-sha" ]]; then
 fi
 
 if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
+  validate_release_contract_compatibility "$CURRENT_SHA" "$TARGET_SHA"
   printf 'Preflighting rollback release before activation: %s\n' "$CURRENT_SHA"
   preflight_release "$CURRENT_SHA"
 fi

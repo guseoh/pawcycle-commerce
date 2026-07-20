@@ -13,6 +13,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 ## 입력 문서
 
 - 현재 OPS-010 사용자 지시
+- 현재 OPS-010 후속 수정 사용자 지시
 - 루트와 `infra/AGENTS.md`
 - `docs/roles/platform-sre.md`
 - `platform-sre` Skill
@@ -31,7 +32,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 
 ## 명시적 승인 근거 (고위험 필수)
 
-현재 OPS-010 사용자 지시가 production Compose·Nginx, image workflow, SSM materialize, 수동 deploy·rollback script와 사용자 Runbook 구현을 명시적으로 승인했다. 새 migration, DB rollback, TLS, 자동 배포와 실제 AWS 작업은 승인 범위에서 제외됐다.
+현재 OPS-010 사용자 지시와 후속 수정 지시가 production Compose·Nginx, image workflow, SSM materialize, 수동 deploy·rollback script, release 불변성 gate와 사용자 Runbook 구현을 명시적으로 승인했다. 새 migration, DB rollback, TLS, 자동 배포와 실제 AWS 작업은 승인 범위에서 제외됐다.
 
 ## 변경 범위
 
@@ -39,6 +40,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - 같은 `github.sha`로 두 `linux/amd64` image를 게시하는 workflow
 - fail-closed SSM runtime bundle materialize
 - image revision·digest preflight, health·smoke와 자동 복귀 deploy
+- 같은 SHA image 기록 비교, MySQL·Nginx digest pin과 release 계약 호환성 gate
 - 이전 SHA rollback과 MySQL volume 보존 경계
 - 정적 계약 validator, shell 상태기계 test와 실제 local Compose lifecycle test
 - OPS-010 Runbook, 보고서와 사용자/Tech Lead 인수인계
@@ -61,6 +63,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 | Secret fail-closed와 mode `600` | 필수 leaf 개별 조회, atomic symlink, 누락 test, file mode test |
 | 내부 port 비공개 | proxy HTTP만 publish하는 Compose JSON 검사 |
 | digest와 health 실패 안전성 | activation 전 RepoDigest·revision 검증, 이전 release 선검증과 자동 복귀 |
+| release 불변성 | 같은 SHA 네 image digest 비교, base digest pin, `infra/production/**` Git diff 선검증 |
 | MySQL 보존 rollback | 고정 named volume, schema 복원·volume 삭제 금지, local sentinel 유지 검증 |
 | 실제 운영 검증 구분 | AWS·GHCR·EC2는 미실행으로 기록 |
 
@@ -73,6 +76,9 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - runtime bundle은 MySQL과 Backend 파일을 분리해 Backend에 root password를 전달하지 않는다.
 - 새 runtime bundle 게시 뒤 관리 경로로 검증된 직전 평문 bundle을 제거한다.
 - deploy는 현재 정상 release의 복귀 가능성을 먼저 검증하고 대상 실패 시 이전 SHA를 자동 복구한다.
+- 각 HTTP smoke 실패는 즉시 실패를 반환하고 성공 state 기록 전 이전 SHA 복귀 또는 첫 배포 application 중지를 수행한다.
+- 같은 SHA의 네 image digest drift는 기존 기록을 덮어쓰지 않고 중단하며 MySQL·Nginx는 manifest digest로 고정한다.
+- 현재·대상 SHA의 `infra/production/**`가 다르면 image pull과 container·release state·volume 변경 전에 중단한다.
 - rollback은 application image만 교체하며 MySQL volume과 schema를 복원·삭제하지 않는다.
 
 ## 변경 파일
@@ -122,10 +128,14 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - `py -3 infra/production/validate-production-contracts.py`: 통과
 - `bash -n infra/production/*.sh`: 통과
 - Ubuntu 24.04 container의 `test-production-scripts.sh`: 통과
+- `/products`·`/api/products` 개별 실패, 자동 복귀와 첫 배포 중단 회귀 test: 통과
+- 같은 SHA application digest drift, pinned base digest drift와 release 계약 불일치 회귀 test: 통과
+- 실제 Docker Hub MySQL·Nginx pinned manifest pull·RepoDigest inspect: 통과
 - 실제 production Dockerfile 두 SHA build: 통과
 - validation 전용 Compose initial health와 Frontend·Backend HTTP smoke: 통과
 - 전체 stop/start 뒤 MySQL sentinel 보존: 통과
 - SHA A → SHA B → SHA A rollback 뒤 sentinel 보존: 통과
+- 후속 pinned base image 실제 Compose lifecycle 재검증: local Docker Desktop health 지연으로 미통과, 불변성 관련 Compose config·digest inspect와 독립 shell 회귀로 대체 확인
 - Backend production Dockerfile `bootJar`: 통과
 - Backend local Gradle test/build: Windows Java 25 toolchain 부재로 미실행
 - GitHub Repository Validation의 Java 25 Backend test/build와 Frontend 검증: 통과
@@ -144,11 +154,12 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - Compose JSON에서 proxy 기본 HTTP `80`만 publish하고 내부 service port가 비공개임을 확인했다.
 - 실제 local container가 모두 healthy이고 두 HTTP smoke가 성공했다.
 - stop/start와 두 SHA image 교체 뒤 validation 전용 MySQL sentinel이 유지됐다.
-- SSM 누락 시 기존 runtime symlink가 유지되고 unhealthy image 전환 시 이전 SHA가 복구되는 상태기계 test가 통과했다.
+- SSM 누락 시 기존 runtime symlink가 유지되고 unhealthy·각 HTTP smoke 실패 시 이전 SHA가 복구되는 상태기계 test가 통과했다.
+- 같은 SHA digest drift는 기존 `.images`를 보존했고 계약 불일치는 Compose activation과 release state 변경 전에 중단됐다.
 
 ## 독립 검증 (고위험 필수)
 
-구현 로직과 분리된 `validate-production-contracts.py`가 Compose JSON, workflow 최소 권한·동일 SHA, digest·rollback·Secret·volume 금지 계약을 검사한다. GitHub Repository Validation은 같은 validator와 Linux shell test, Backend·Frontend 회귀 검증을 독립 runner에서 수행한다.
+구현 로직과 분리된 `validate-production-contracts.py`가 Compose JSON, workflow 최소 권한·동일 SHA, base digest pin, 기존 digest 기록 비교, 계약 diff gate, smoke·rollback·Secret·volume 금지 계약을 검사한다. GitHub Repository Validation은 같은 validator와 Linux shell test, Backend·Frontend 회귀 검증을 독립 runner에서 수행한다.
 
 ## 실행하지 못한 검증과 이유
 
@@ -169,7 +180,7 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 
 ## AI 리뷰 반영 여부
 
-PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 CodeRabbit 지적은 현재 파일과 실제 계약을 기준으로 선별했으며, 유효한 배포 진단 종료 코드와 이전 평문 runtime bundle 누적 문제를 함께 수정·검증했다.
+PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 기존 CodeRabbit 지적과 현재 후속 사용자 승인에서 확인된 release·rollback 불변성 결함은 현재 파일과 실제 계약을 기준으로 선별했으며, 유효 항목을 최소 변경과 회귀 test로 반영했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -183,6 +194,8 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 ## 복구·롤백 증거 (고위험 필수)
 
 - 상태기계 test에서 두 번째 SHA 성공 뒤 이전 SHA rollback과 unhealthy 대상의 자동 복귀를 확인했다.
+- 두 smoke 각각의 실패에서 성공 state가 기록되지 않고, 이전 release 자동 복귀와 첫 배포 application 중지가 수행됨을 확인했다.
+- 동일 SHA·base digest drift가 기존 기록을 보존하고 중단되며, 계약 불일치가 container activation 전에 중단됨을 확인했다.
 - 실제 Compose 검증에서 SHA A → SHA B → SHA A로 application image를 바꾸고 MySQL sentinel이 유지됨을 확인했다.
 - Nginx 강제 재생성 보완 뒤 장시간 command가 로컬 10분 상한에 도달했지만, 같은 run의 최종 container가 모두 healthy이고 두 smoke와 MySQL sentinel이 통과함을 후속 확인했다.
 - production deploy·rollback 경로에는 volume 삭제와 schema 복원 명령이 없다.
@@ -190,6 +203,7 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 
 ## 위험과 제한
 
+- 후속 실제 lifecycle 재검증은 첫 실행에서 local MySQL 초기화가 기존 health 구간을 넘겼고, 동일 조건 재시도에서는 MySQL이 healthy가 된 뒤 Docker Desktop의 장시간 CPU 지연으로 Backend·Frontend가 기존 health 한도를 넘겨 미통과했다. 이번 후속 변경으로 health 값을 바꾸거나 `t3.small` 자원 결정을 추론하지 않으며, 불변성 경로는 독립 shell 상태기계와 Compose config·pinned digest 검사로 검증한다.
 - 첫 local HTTP 검증은 proxy가 internal network에만 있어 host port가 닫힌 결함을 발견했고, proxy 전용 edge bridge를 분리해 해결했다.
 - 다음 local run에서 Backend health가 한 번 일시 실패했으나 진단 로그를 추가한 동일 구성 재검증은 전체 lifecycle을 통과했다. 실제 `t3.small`에서는 memory·disk와 OOM을 반드시 확인한다.
 - Nginx 강제 재생성 뒤 최종 장시간 run은 command timeout 후 같은 container의 health·smoke·sentinel을 확인해 성공을 확정했으며 검증용 자원만 정리했다.

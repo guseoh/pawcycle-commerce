@@ -44,6 +44,8 @@ CURRENT_SHA="$(<"$PAWCYCLE_STATE_DIR/current-sha")"
 validate_sha "$CURRENT_SHA"
 [[ "$TARGET_SHA" != "$CURRENT_SHA" ]] || die "rollback target equals current release"
 
+validate_release_contract_compatibility "$CURRENT_SHA" "$TARGET_SHA"
+
 printf 'Preflighting current recovery release: %s\n' "$CURRENT_SHA"
 preflight_release "$CURRENT_SHA"
 printf 'Preflighting rollback target: %s\n' "$TARGET_SHA"

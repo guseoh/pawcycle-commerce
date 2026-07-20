@@ -16,6 +16,8 @@ MYSQL_ENV="$TEMP_DIR/mysql.env"
 BACKEND_ENV="$TEMP_DIR/backend.env"
 BACKEND_IMAGE="ghcr.io/example/pawcycle-commerce-backend"
 FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"
+MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -93,6 +95,8 @@ build_release() {
 activate_and_check() {
   local sha="$1"
   local service
+  local container_id
+  local configured_image
   ACTIVE_SHA="$sha"
   compose config --quiet
   compose up --detach --pull never --remove-orphans mysql backend frontend
@@ -101,12 +105,23 @@ activate_and_check() {
   done
   compose up --detach --pull never --no-deps --force-recreate proxy
   wait_healthy proxy
+  for service in mysql proxy; do
+    container_id="$(compose ps --quiet "$service")"
+    configured_image="$(docker inspect --format '{{.Config.Image}}' "$container_id")"
+    if [[ "$service" == "mysql" ]]; then
+      [[ "$configured_image" == "$MYSQL_IMAGE" ]]
+    else
+      [[ "$configured_image" == "$PROXY_IMAGE" ]]
+    fi
+  done
   curl --fail --silent --show-error "http://127.0.0.1:${HTTP_PORT}/products" >/dev/null
   curl --fail --silent --show-error "http://127.0.0.1:${HTTP_PORT}/api/products" >/dev/null
 }
 
 build_release "$SHA_A"
 build_release "$SHA_B"
+docker pull "$MYSQL_IMAGE" >/dev/null
+docker pull "$PROXY_IMAGE" >/dev/null
 activate_and_check "$SHA_A"
 
 MYSQL_CONTAINER="$(ACTIVE_SHA="$SHA_A" compose ps --quiet mysql)"

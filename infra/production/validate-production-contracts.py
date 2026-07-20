@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION = ROOT / "infra" / "production"
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-production-images.yml"
 SHA = "0" * 40
+MYSQL_IMAGE = "mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+PROXY_IMAGE = "nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 
 
 def require(condition: bool, message: str) -> None:
@@ -83,6 +85,8 @@ def validate_compose() -> None:
 
     require(services["backend"]["image"].endswith(f":{SHA}"), "Backend image must use RELEASE_SHA")
     require(services["frontend"]["image"].endswith(f":{SHA}"), "Frontend image must use RELEASE_SHA")
+    require(services["mysql"]["image"] == MYSQL_IMAGE, "MySQL image must use the approved immutable digest")
+    require(services["proxy"]["image"] == PROXY_IMAGE, "Nginx image must use the approved immutable digest")
 
     for name, service in services.items():
         require(service.get("restart") == "unless-stopped", f"{name} restart policy must be unless-stopped")
@@ -126,19 +130,35 @@ def validate_scripts() -> None:
     deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
     rollback = (PRODUCTION / "rollback.sh").read_text(encoding="utf-8")
     materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
+    script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")
     require("org.opencontainers.image.revision" in common and ".RepoDigests" in common, "revision and digest preflight are required")
+    require(MYSQL_IMAGE in common and PROXY_IMAGE in common, "base images must be pinned to approved immutable digests")
+    require("image digest drift detected for previously verified release SHA" in common, "same-SHA digest drift must fail closed")
+    require("MYSQL_DIGEST=%s" in common and "PROXY_DIGEST=%s" in common, "base image digests must be part of each SHA record")
+    require("cmp -s" in common, "existing SHA image records must be compared rather than overwritten")
+    require("git diff --quiet" in common and "':(top)infra/production'" in common, "release contract compatibility gate is missing")
     require("--pull never" in common, "activation must not replace preflighted images")
     require('PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data"' in common, "production volume name must ignore ambient overrides")
     require('PAWCYCLE_HTTP_PORT="80"' in common, "production HTTP port must ignore ambient overrides")
     require("for service in mysql backend frontend" in common, "health wait must cover MySQL and both application services")
     require("wait_healthy proxy" in common, "health wait must cover Nginx")
+    require("if ! curl" in common and "Frontend HTTP smoke failed" in common and "Backend HTTP smoke failed" in common, "both HTTP smoke failures must return explicitly")
     require("previous release was restored" in deploy, "automatic restoration evidence is missing")
     require("database restoration or volume deletion" in rollback, "rollback data boundary is missing")
     require(not re.search(r"docker\s+(?:compose\s+)?(?:volume\s+rm|.*down.*(?:-v|--volumes))", release_scripts), "release scripts must not delete volumes")
+    for evidence in (
+        "initial release did not fail when smoke failed",
+        "target release did not fail when smoke failed",
+        "same-SHA application digest drift did not fail closed",
+        "pinned base image digest drift did not fail closed",
+        "incompatible infra/production contract did not fail closed",
+        "rollback with incompatible infra/production contract did not fail closed",
+    ):
+        require(evidence in script_tests, f"release regression evidence is missing: {evidence}")
 
     for leaf in ("MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"):
         require(f"get_parameter {leaf}" in materialize, f"required SSM parameter is missing: {leaf}")
