@@ -128,7 +128,7 @@ test "$(git rev-parse HEAD)" = "<release-sha>"
 
 ## Secret materialize
 
-SSM prefix는 실행 입력으로만 전달한다. script는 네 parameter를 각각 `--with-decryption`으로 조회하고, 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
+SSM prefix는 실행 입력으로만 전달한다. script는 runtime directory의 `flock`을 먼저 획득해 동시 materialize를 거부하고, 네 parameter를 각각 `--with-decryption`으로 조회한다. 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
 
 ```bash
 cd /opt/pawcycle/control
@@ -251,7 +251,7 @@ rollback은 다음을 하지 않는다.
 
 일시 중지는 `docker compose stop`으로 수행한다. release 실패나 rollback 중에는 volume과 state 파일을 삭제하지 않는다. 서비스 영구 폐기, MySQL volume 삭제, EBS 삭제, schema 복구는 OPS-010의 권한이 아니며 별도 승인과 backup·restore 계획이 필요하다.
 
-materialize는 새 `current` symlink를 게시한 뒤 resolved path가 관리 경로 안으로 확인된 직전 `.bundle.*`만 제거한다. symlink target이 예상 형식이 아니거나 경로 밖으로 해석되면 삭제하지 않고 실패한다. cleanup 실패 메시지는 새 bundle이 이미 active라는 상태를 명시하므로, 사용자는 현재 symlink와 과거 bundle을 확인한 뒤 추가 materialize를 중단하고 에스컬레이션한다.
+materialize는 `flock` 범위 안에서 새 `current` symlink를 게시한 뒤 resolved path가 관리 경로 안으로 확인된 직전 `.bundle.*`만 제거한다. 동시 실행은 새 bundle 생성 전에 중단한다. symlink target이 예상 형식이 아니거나 경로 밖으로 해석되면 삭제하지 않고 실패한다. cleanup 실패 메시지는 새 bundle이 이미 active라는 상태를 명시하므로, 사용자는 현재 symlink와 과거 bundle을 확인한 뒤 추가 materialize를 중단하고 에스컬레이션한다.
 
 ## 비민감 증거와 실패 기록
 

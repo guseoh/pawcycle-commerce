@@ -167,6 +167,8 @@ def validate_scripts() -> None:
     require("set +x" in materialize, "materializer must disable shell tracing")
     require("realpath -e" in materialize, "previous runtime bundle deletion must validate the resolved path")
     require('rm -rf -- "$PREVIOUS_BUNDLE"' in materialize, "previous plaintext runtime bundle must be removed")
+    require('flock --nonblock 9' in materialize, "runtime materialization must reject concurrent writers")
+    require("concurrent runtime materialization did not fail closed" in script_tests, "materialization concurrency regression evidence is missing")
 
 
 def main() -> None:

@@ -25,6 +25,12 @@ while (( $# > 0 )); do
 done
 leaf="${name##*/}"
 [[ "${FAKE_MISSING:-}" != "$leaf" ]] || exit 254
+if [[ "$leaf" == "MYSQL_DATABASE" && -n "${FAKE_AWS_BLOCK_DIR:-}" ]]; then
+  : > "$FAKE_AWS_BLOCK_DIR/started"
+  while [[ ! -e "$FAKE_AWS_BLOCK_DIR/release" ]]; do
+    sleep 0.1
+  done
+fi
 case "$leaf" in
   MYSQL_DATABASE) printf 'ops010' ;;
   MYSQL_USER) printf 'ops010_user' ;;
@@ -190,6 +196,31 @@ unset FAKE_MISSING
   --region ap-northeast-2 >/dev/null
 [[ "$(find "$RUNTIME_DIR" -mindepth 1 -maxdepth 1 -type d -name '.bundle.*' | wc -l)" == "1" ]]
 [[ ! -e "$RUNTIME_DIR/$original_bundle" ]]
+
+FAKE_AWS_BLOCK_DIR="$TEST_ROOT/aws-block"
+mkdir -p "$FAKE_AWS_BLOCK_DIR"
+export FAKE_AWS_BLOCK_DIR
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null &
+materialize_pid=$!
+for (( attempt = 0; attempt < 100; attempt++ )); do
+  [[ ! -e "$FAKE_AWS_BLOCK_DIR/started" ]] || break
+  sleep 0.1
+done
+[[ -e "$FAKE_AWS_BLOCK_DIR/started" ]]
+if "$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null 2>&1; then
+  printf 'concurrent runtime materialization did not fail closed\n' >&2
+  exit 1
+fi
+: > "$FAKE_AWS_BLOCK_DIR/release"
+wait "$materialize_pid"
+unset FAKE_AWS_BLOCK_DIR
+[[ "$(find "$RUNTIME_DIR" -mindepth 1 -maxdepth 1 -type d -name '.bundle.*' | wc -l)" == "1" ]]
 
 BACKEND_IMAGE="ghcr.io/example/pawcycle-commerce-backend"
 FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"

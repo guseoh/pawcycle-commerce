@@ -36,10 +36,13 @@ SSM_PREFIX="${SSM_PREFIX%/}"
 [[ "$OUTPUT_DIR" == /* && "$OUTPUT_DIR" != "/" ]] || die "output directory must be an absolute directory other than /"
 [[ "$AWS_REGION" == "ap-northeast-2" ]] || die "approved region is ap-northeast-2"
 command -v aws >/dev/null 2>&1 || die "AWS CLI is required"
+command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v realpath >/dev/null 2>&1 || die "realpath is required"
 
 umask 077
 install -d -m 700 "$OUTPUT_DIR"
+exec 9>"$OUTPUT_DIR/.materialize.lock"
+flock --nonblock 9 || die "another runtime materialization is running"
 [[ ! -e "$OUTPUT_DIR/current" || -L "$OUTPUT_DIR/current" ]] \
   || die "output current path exists and is not a managed symlink"
 
@@ -119,4 +122,6 @@ if [[ -n "$PREVIOUS_BUNDLE" ]]; then
 fi
 
 trap - EXIT
+flock --unlock 9
+exec 9>&-
 printf 'Materialized required runtime files under %s/current\n' "$OUTPUT_DIR"

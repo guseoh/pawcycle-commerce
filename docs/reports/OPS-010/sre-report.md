@@ -75,6 +75,7 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - MySQL, Backend, Frontend, Nginx에 health, `unless-stopped`, log rotation, memory·CPU·PID 제한을 적용했다.
 - runtime bundle은 MySQL과 Backend 파일을 분리해 Backend에 root password를 전달하지 않는다.
 - 새 runtime bundle 게시 뒤 관리 경로로 검증된 직전 평문 bundle을 제거한다.
+- runtime materialize는 `flock`으로 동시 writer를 거부해 평문 orphan bundle 경쟁을 차단한다.
 - deploy는 현재 정상 release의 복귀 가능성을 먼저 검증하고 대상 실패 시 이전 SHA를 자동 복구한다.
 - 각 HTTP smoke 실패는 즉시 실패를 반환하고 성공 state 기록 전 이전 SHA 복귀 또는 첫 배포 application 중지를 수행한다.
 - 같은 SHA의 네 image digest drift는 기존 기록을 덮어쓰지 않고 중단하며 MySQL·Nginx는 manifest digest로 고정한다.
@@ -130,6 +131,7 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - Ubuntu 24.04 container의 `test-production-scripts.sh`: 통과
 - `/products`·`/api/products` 개별 실패, 자동 복귀와 첫 배포 중단 회귀 test: 통과
 - 같은 SHA application digest drift, pinned base digest drift와 release 계약 불일치 회귀 test: 통과
+- runtime materialize 동시 실행 fail-closed와 단일 bundle 보존 회귀 test: 통과
 - 실제 Docker Hub MySQL·Nginx pinned manifest pull·RepoDigest inspect: 통과
 - 실제 production Dockerfile 두 SHA build: 통과
 - validation 전용 Compose initial health와 Frontend·Backend HTTP smoke: 통과
