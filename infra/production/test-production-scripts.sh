@@ -51,6 +51,13 @@ fi
 if [[ "${FAKE_SMOKE_FAIL_SHA:-}" == "$active_sha" && "$request" == *"${FAKE_SMOKE_FAIL_PATH:-}" ]]; then
   exit 22
 fi
+if [[ "$*" == *"%{http_code}"* ]]; then
+  printf '301'
+elif [[ "$*" == *"%{redirect_url}"* ]]; then
+  printf 'https://%s/products' "${FAKE_DOMAIN:?}"
+elif [[ "$request" == *"/.well-known/acme-challenge/"* ]]; then
+  printf 'pawcycle-acme-probe'
+fi
 EOF
 
 cat > "$BIN_DIR/git" <<'EOF'
@@ -113,6 +120,47 @@ if [[ "$1" == "compose" ]]; then
 fi
 
 if [[ "$1" == "pull" ]]; then
+  exit 0
+fi
+
+if [[ "$1" == "volume" ]]; then
+  volume="${*: -1}"
+  case "$2" in
+    inspect) [[ -f "$FAKE_DOCKER_STATE/volume-$volume" ]] ;;
+    create) : > "$FAKE_DOCKER_STATE/volume-$volume"; printf '%s\n' "$volume" ;;
+  esac
+  exit $?
+fi
+
+if [[ "$1" == "run" ]]; then
+  if [[ "$*" == *" certonly "* ]]; then
+    count=0
+    [[ ! -f "$FAKE_DOCKER_STATE/issue-count" ]] || count="$(<"$FAKE_DOCKER_STATE/issue-count")"
+    printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/issue-count"
+    [[ "${FAKE_CERTBOT_FAIL:-}" != "1" ]] || exit 1
+  fi
+  if [[ "$*" == *" renew "* ]]; then
+    count=0
+    [[ ! -f "$FAKE_DOCKER_STATE/renew-count" ]] || count="$(<"$FAKE_DOCKER_STATE/renew-count")"
+    printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/renew-count"
+    [[ "${FAKE_RENEW_FAIL:-}" != "1" ]] || exit 1
+  fi
+  [[ "${FAKE_CERT_INVALID:-}" != "1" ]] || exit 1
+  exit 0
+fi
+
+if [[ "$1" == "exec" ]]; then
+  active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
+  request="${*: -1}"
+  if [[ "$*" == *"nginx -s reload"* ]]; then
+    count=0
+    [[ ! -f "$FAKE_DOCKER_STATE/reload-count" ]] || count="$(<"$FAKE_DOCKER_STATE/reload-count")"
+    printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/reload-count"
+    [[ "${FAKE_RELOAD_FAIL:-}" != "1" ]] || exit 1
+  fi
+  if [[ "${FAKE_SMOKE_FAIL_SHA:-}" == "$active_sha" && "$request" == *"${FAKE_SMOKE_FAIL_PATH:-}" ]]; then
+    exit 1
+  fi
   exit 0
 fi
 
@@ -342,4 +390,73 @@ unset FAKE_FAIL_SHA
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 [[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
 
-printf 'OPS-010 release script tests passed\n'
+FAKE_DOMAIN="ops011-test.duckdns.org"
+FAKE_EMAIL="operator${FAKE_AT_SIGN:-@}example.invalid"
+export FAKE_DOMAIN
+
+https_command() {
+  "$SCRIPT_DIR/https.sh" "$@" \
+    --domain "$FAKE_DOMAIN" \
+    --backend-image "$BACKEND_IMAGE" \
+    --frontend-image "$FRONTEND_IMAGE" \
+    --runtime-dir "$RUNTIME_DIR" \
+    --state-dir "$STATE_DIR" >/dev/null
+}
+
+https_command bootstrap
+[[ ! -e "$STATE_DIR/https-enabled" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+export FAKE_CERTBOT_FAIL=1
+if https_command issue --email "$FAKE_EMAIL"; then
+  printf 'certificate issuance failure enabled HTTPS\n' >&2
+  exit 1
+fi
+unset FAKE_CERTBOT_FAIL
+[[ ! -e "$STATE_DIR/https-enabled" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+https_command issue --email "$FAKE_EMAIL"
+[[ "$(<"$STATE_DIR/https-enabled")" == "enabled" ]]
+[[ "$(stat -c '%a' "$STATE_DIR/https-enabled")" == "600" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+issue_count_before="$(<"$FAKE_DOCKER_STATE/issue-count")"
+https_command issue --email "$FAKE_EMAIL"
+[[ "$(<"$FAKE_DOCKER_STATE/issue-count")" == "$issue_count_before" ]]
+reload_before=0
+[[ ! -f "$FAKE_DOCKER_STATE/reload-count" ]] || reload_before="$(<"$FAKE_DOCKER_STATE/reload-count")"
+https_command renew --dry-run
+reload_after=0
+[[ ! -f "$FAKE_DOCKER_STATE/reload-count" ]] || reload_after="$(<"$FAKE_DOCKER_STATE/reload-count")"
+[[ "$reload_after" == "$reload_before" ]]
+
+export FAKE_RENEW_FAIL=1
+if https_command renew; then
+  printf 'certificate renewal failure reloaded Nginx\n' >&2
+  exit 1
+fi
+unset FAKE_RENEW_FAIL
+reload_after_failure=0
+[[ ! -f "$FAKE_DOCKER_STATE/reload-count" ]] || reload_after_failure="$(<"$FAKE_DOCKER_STATE/reload-count")"
+[[ "$reload_after_failure" == "$reload_before" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+https_command renew
+[[ "$(<"$FAKE_DOCKER_STATE/reload-count")" -eq $((reload_before + 1)) ]]
+
+export FAKE_RELOAD_FAIL=1
+if https_command renew; then
+  printf 'Nginx reload failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_RELOAD_FAIL
+[[ -f "$STATE_DIR/https-enabled" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+https_command disable
+[[ ! -e "$STATE_DIR/https-enabled" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+printf 'OPS-011 production script tests passed\n'

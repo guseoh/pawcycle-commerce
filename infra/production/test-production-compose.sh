@@ -4,13 +4,16 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-VALIDATION_ID="ops010-${RANDOM}-$$"
+VALIDATION_ID="ops011-${RANDOM}-$$"
 PROJECT_NAME="pawcycle-$VALIDATION_ID"
 VALIDATION_VOLUME="pawcycle-$VALIDATION_ID-mysql-data"
+CERTBOT_WEBROOT_VOLUME="pawcycle-$VALIDATION_ID-certbot-webroot"
+LETSENCRYPT_VOLUME="pawcycle-$VALIDATION_ID-letsencrypt"
 EDGE_NETWORK="pawcycle-$VALIDATION_ID-edge"
 APP_NETWORK="pawcycle-$VALIDATION_ID-app"
 DATA_NETWORK="pawcycle-$VALIDATION_ID-data"
 HTTP_PORT="18080"
+HTTPS_PORT="18443"
 TEMP_DIR="$(mktemp -d)"
 MYSQL_ENV="$TEMP_DIR/mysql.env"
 BACKEND_ENV="$TEMP_DIR/backend.env"
@@ -25,13 +28,15 @@ cleanup() {
   local status=$?
   set +e
   if (( status != 0 )); then
-    printf 'OPS-010 validation failed; recent non-secret service logs follow\n' >&2
+    printf 'OPS-011 validation failed; recent non-secret service logs follow\n' >&2
     ACTIVE_SHA="$SHA_A" compose ps >&2
     ACTIVE_SHA="$SHA_A" compose logs --tail 100 mysql backend frontend proxy >&2
   fi
   ACTIVE_SHA="$SHA_A" compose down --remove-orphans >/dev/null 2>&1
-  if [[ "$VALIDATION_VOLUME" == pawcycle-ops010-* ]]; then
-    docker volume rm "$VALIDATION_VOLUME" >/dev/null 2>&1
+  if [[ "$VALIDATION_VOLUME" == pawcycle-ops011-* \
+    && "$CERTBOT_WEBROOT_VOLUME" == pawcycle-ops011-* \
+    && "$LETSENCRYPT_VOLUME" == pawcycle-ops011-* ]]; then
+    docker volume rm "$VALIDATION_VOLUME" "$CERTBOT_WEBROOT_VOLUME" "$LETSENCRYPT_VOLUME" >/dev/null 2>&1
   fi
   docker image rm "${BACKEND_IMAGE}:${SHA_A}" "${BACKEND_IMAGE}:${SHA_B}" \
     "${FRONTEND_IMAGE}:${SHA_A}" "${FRONTEND_IMAGE}:${SHA_B}" >/dev/null 2>&1
@@ -63,7 +68,10 @@ compose() {
   PAWCYCLE_EDGE_NETWORK="$EDGE_NETWORK" \
   PAWCYCLE_APP_NETWORK="$APP_NETWORK" \
   PAWCYCLE_DATA_NETWORK="$DATA_NETWORK" \
+  PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
+  PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
   PAWCYCLE_HTTP_PORT="$HTTP_PORT" \
+  PAWCYCLE_HTTPS_PORT="$HTTPS_PORT" \
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
@@ -144,4 +152,4 @@ docker exec --env MYSQL_PWD=local-validation-only "$MYSQL_CONTAINER" \
 
 ACTIVE_SHA="$SHA_A" compose down --remove-orphans
 docker volume inspect "$VALIDATION_VOLUME" --format '{{.Name}}' | grep -qx "$VALIDATION_VOLUME"
-printf 'OPS-010 Compose start, health, smoke, restart, rollback, and volume preservation passed\n'
+printf 'OPS-011 bootstrap Compose start, health, smoke, restart, rollback, and volume preservation passed\n'

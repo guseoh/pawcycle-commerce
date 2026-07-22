@@ -8,6 +8,7 @@ PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
 MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
+HTTPS_MARKER_NAME="https-enabled"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -65,7 +66,22 @@ prepare_state_directory() {
   install -d -m 700 "$PAWCYCLE_STATE_DIR"
 }
 
+https_enabled() {
+  local marker="$PAWCYCLE_STATE_DIR/$HTTPS_MARKER_NAME"
+
+  [[ -e "$marker" ]] || return 1
+  [[ ! -L "$marker" && -f "$marker" ]] || die "HTTPS marker must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$marker")" == "600" ]] || die "HTTPS marker mode must be 600"
+  [[ "$(<"$marker")" == "enabled" ]] || die "HTTPS marker content is invalid"
+}
+
 compose() {
+  local nginx_config="$PRODUCTION_DIR/nginx.conf"
+
+  if https_enabled; then
+    nginx_config="$PRODUCTION_DIR/nginx.https.conf"
+  fi
+
   RELEASE_SHA="$ACTIVE_SHA" \
   BACKEND_IMAGE="$BACKEND_IMAGE" \
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
@@ -75,7 +91,11 @@ compose() {
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
   PAWCYCLE_DATA_NETWORK="pawcycle-production-data" \
+  PAWCYCLE_CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot" \
+  PAWCYCLE_LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt" \
+  PAWCYCLE_NGINX_CONFIG="$nginx_config" \
   PAWCYCLE_HTTP_PORT="80" \
+  PAWCYCLE_HTTPS_PORT="443" \
     docker compose --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE" "$@"
 }
 
@@ -207,15 +227,19 @@ wait_healthy() {
 }
 
 smoke_release() {
-  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/products >/dev/null; then
-    printf 'Frontend HTTP smoke failed: /products\n' >&2
+  local proxy_id
+
+  proxy_id="$(compose ps --quiet proxy)"
+  [[ -n "$proxy_id" ]] || return 1
+  if ! docker exec "$proxy_id" wget --quiet --output-document=/dev/null http://127.0.0.1:8081/products; then
+    printf 'Frontend internal smoke failed: /products\n' >&2
     return 1
   fi
-  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/products >/dev/null; then
-    printf 'Backend HTTP smoke failed: /api/products\n' >&2
+  if ! docker exec "$proxy_id" wget --quiet --output-document=/dev/null http://127.0.0.1:8081/api/products; then
+    printf 'Backend internal smoke failed: /api/products\n' >&2
     return 1
   fi
-  printf 'HTTP smoke checks passed\n'
+  printf 'Internal release smoke checks passed\n'
 }
 
 verify_running_release() {
