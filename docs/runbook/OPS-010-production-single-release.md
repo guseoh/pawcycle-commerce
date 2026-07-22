@@ -10,7 +10,7 @@
 - 외부 공개: Nginx HTTP `80`만 허용
 - 내부 전용: MySQL `3306`, Backend `8080`, Frontend `3000`
 - 배포 방식: 사용자 수동 단일 release
-- 실제 AWS·SSM·GHCR 공개 설정·EC2 배포 검증: 미실행
+- 실제 운영 검증: 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 활성화, SSM materialize, EC2 내부 loopback·외부 사용자 PC HTTP와 재부팅 복구를 사용자/Tech Lead가 확인함. 실제 이전 SHA rollback은 미실행 후속 게이트이며 상세 결과와 미확정 항목은 `docs/reports/OPS-010/sre-report.md`에 기록
 
 TLS와 `443`, DNS, 자동 배포, Blue·Green, Spring Session, DB migration 변경과 DB rollback은 범위 밖이다. HTTP 단계에서도 Backend session cookie `Secure=true`를 유지하므로 로그인 기반 운영 검증은 TLS 작업 뒤 수행한다.
 
@@ -103,7 +103,7 @@ SSM Session Manager로 접속하고 다음 비민감 경로를 준비한다. AWS
 ```bash
 sudo install -d -m 755 /opt/pawcycle/control
 sudo install -d -m 700 /opt/pawcycle/runtime /opt/pawcycle/state
-sudo chown "$USER":"$USER" /opt/pawcycle/control
+sudo chown "$(id -un):$(id -gn)" /opt/pawcycle/control
 aws --version
 aws sts get-caller-identity >/dev/null
 sudo systemctl is-enabled docker
@@ -185,12 +185,14 @@ GET http://127.0.0.1/api/products
 
 ```bash
 sudo cat /opt/pawcycle/state/current-sha
-sudo ls -l /opt/pawcycle/state/*.images
+sudo ls -l "/opt/pawcycle/state/<release-sha>.images"
 sudo docker ps --filter label=com.docker.compose.project=pawcycle-production \
   --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'
 curl --fail --silent --show-error http://127.0.0.1/products >/dev/null
 curl --fail --silent --show-error http://127.0.0.1/api/products >/dev/null
 ```
+
+위 두 `curl`은 EC2 내부 loopback 검증이다. 외부 smoke는 별도의 외부 사용자 PC에서 EC2 외부 HTTP `80`의 `/products`와 `/api/products`를 호출해 확인하고 공인 IP는 증거에 기록하지 않는다.
 
 성공 기준은 proxy에만 host `0.0.0.0:80->80/tcp`가 있고 `3306`, `8080`, `3000` host publish가 없는 것이다. `.images` 파일에는 SHA와 네 image digest만 있으며 Secret이 없다. 같은 SHA를 재검증할 때 파일 내용이 바뀌면 안 된다.
 
@@ -288,7 +290,7 @@ MySQL volume 보존 확인:
 
 ## 완료와 에스컬레이션
 
-Backend·Frontend 동일 SHA/digest, base image pinned digest, 동일 SHA 재검증, 모든 health, 두 HTTP smoke, 재부팅 복구, MySQL volume 보존, 계약이 같은 이전 SHA rollback을 사용자가 확인하기 전에는 단일 release 완료로 판정하지 않는다. 실제 AWS·SSM·GHCR·EC2 단계는 이번 저장소 작업에서 미실행이며 통과로 기록하지 않는다.
+대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`에서 동일 `current-sha`, 네 container health, proxy만 host HTTP `80` 공개, EC2 내부 loopback 두 endpoint와 외부 사용자 PC의 HTTP `80` 두 endpoint, 재부팅 뒤 Docker 자동 시작·동일 MySQL volume·동일 SHA·health·내부 smoke 복구를 사용자/Tech Lead가 확인했다. `/pawcycle-commerce/prod` 아래 네 SecureString, 해당 prefix `ssm:GetParameter` 값 비출력 조회와 runtime materialize도 성공했다. 배포 전 단일 시점의 disk 38G 중 3.0G 사용·35G 여유·8%, available memory 약 1.4 GiB와 swap 0B를 확인했지만 지속 CPU, 부하 중 memory, OOM과 장기 성능은 미확정이다. IAM 정책 전체의 최소 권한과 backup·restore도 별도 확인이 필요하다. 실제 이전 SHA rollback은 완료 조건이 아닌 미실행 후속 게이트다.
 
 다음은 사용자/Tech Lead 결정이 필요하다.
 
