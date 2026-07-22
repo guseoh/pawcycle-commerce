@@ -68,9 +68,9 @@ Shell syntax, Compose·Nginx 정적 계약, 발급 실패·성공, dry-run 무 r
 | commit message validator | 통과 |
 | `git diff --check` | 통과 |
 | Frontend lint·build | 통과 |
-| 실제 Docker Nginx `-t` | local Docker engine 미실행으로 미수행, Repository Validation에 포함 |
-| Backend test·build | local Java 17로 Java 25 요구를 충족하지 못해 미수행, Repository Validation에 포함 |
-| Repository Validation | Draft PR 생성 뒤 GitHub를 권위 원본으로 확인 |
+| 실제 Docker Nginx `-t` | local Docker engine 미실행으로 미수행, 독립 Repository Validation에서 통과 |
+| Backend test·build | local Java 17로 Java 25 요구를 충족하지 못해 미수행, 독립 Java 25 Repository Validation에서 통과 |
+| Repository Validation | 초기 구현 head `455748e`에서 통과, 최신 결과는 GitHub를 권위 원본으로 확인 |
 
 ## 실행하지 못한 검증과 이유
 
@@ -103,9 +103,10 @@ Shell syntax, Compose·Nginx 정적 계약, 발급 실패·성공, dry-run 무 r
 ## Git 결과
 
 - branch: `ops/sre`
+- 초기 구현 commit: `455748e`
 - commit 제목: `feat(sre): OPS-011 HTTPS 운영 기반 구성`
 - 정확한 commit·push head는 GitHub를 권위 원본으로 확인한다.
 
 ## PR 결과
 
-main 대상 Draft PR이며 동적 head·review·check 상태는 GitHub를 권위 원본으로 확인한다. 자동 병합하지 않는다.
+main 대상 Draft PR `#60`이며 동적 head·review·check 상태는 GitHub를 권위 원본으로 확인한다. 자동 병합하지 않는다.
