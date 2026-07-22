@@ -30,6 +30,9 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - 수동 단일 release, 이전 SHA rollback
 - 실제 AWS·SSM·GHCR 설정과 EC2 배포는 병합 후 사용자 수행
 - 사용자/Tech Lead가 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 활성화와 재부팅 복구 결과를 비민감 증거로 제공
+- 사용자/Tech Lead가 배포 전 단일 시점에 disk 38G 중 3.0G 사용·35G 여유·8%, available memory 약 1.4 GiB와 swap 0B를 확인
+- `/pawcycle-commerce/prod` 아래 네 SecureString 존재, 해당 prefix의 `ssm:GetParameter` 조회와 runtime materialize 성공을 값 비출력 방식으로 확인
+- 외부 사용자 PC에서 EC2 외부 HTTP `80`의 `/products`와 `/api/products`를 확인했으며 공인 IP는 기록하지 않음
 
 ## 명시적 승인 근거 (고위험 필수)
 
@@ -83,8 +86,10 @@ DEPLOY-002의 production 단일 release 기반을 구현해 병합된 `main`의 
 - 같은 SHA의 네 image digest drift는 기존 기록을 덮어쓰지 않고 중단하며 MySQL·Nginx는 manifest digest로 고정한다.
 - 현재·대상 SHA의 `infra/production/**`가 다르면 image pull과 container·release state·volume 변경 전에 중단한다.
 - rollback은 application image만 교체하며 MySQL volume과 schema를 복원·삭제하지 않는다.
-- 사용자/Tech Lead가 대상 release 활성화, 동일 `current-sha`, 네 container의 `healthy`, proxy의 host HTTP `80` 단독 공개, 내부·외부 `/products`·`/api/products` 성공을 확인했다.
-- 사용자/Tech Lead가 재부팅 뒤 Docker 자동 시작, 동일 MySQL volume과 동일 SHA, 네 container health와 두 smoke의 복구를 확인했다.
+- 사용자/Tech Lead가 대상 release 활성화, 동일 `current-sha`, 네 container의 `healthy`와 proxy의 host HTTP `80` 단독 공개를 확인했다.
+- EC2 내부 loopback `127.0.0.1`에서 두 endpoint를 확인했고, 별도로 외부 사용자 PC 브라우저에서 EC2 외부 HTTP `80`의 `/products`와 `/api/products`를 확인했다.
+- `/pawcycle-commerce/prod` 아래 네 SecureString과 EC2 role의 해당 prefix `ssm:GetParameter` 조회, Secret 값 비출력과 runtime materialize 성공을 확인했다.
+- 사용자/Tech Lead가 재부팅 뒤 Docker 자동 시작, 동일 MySQL volume과 동일 SHA, 네 container health와 EC2 내부 loopback 두 smoke의 복구를 확인했다.
 
 ## 변경 파일
 
@@ -121,11 +126,11 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 
 ## 운영 영향
 
-사용자/Tech Lead가 병합 뒤 실제 EC2에서 대상 release를 활성화하고 `/opt/pawcycle/state`의 SHA, Compose health, 공개 port, 내부·외부 smoke와 재부팅 복구를 확인했다. 계정 ID·ARN·공인 IP와 Secret 값은 증거에 포함하지 않았다.
+사용자/Tech Lead가 병합 뒤 실제 EC2에서 대상 release를 활성화하고 `/opt/pawcycle/state`의 SHA, Compose health, 공개 port, EC2 내부 loopback smoke, 외부 사용자 PC의 HTTP `80` smoke와 재부팅 복구를 확인했다. 계정 ID·ARN·공인 IP와 Secret 값은 증거에 포함하지 않았다.
 
 ## 성능 영향
 
-`t3.small`의 2 vCPU·2 GiB 경계를 고려해 MySQL 640 MiB, Backend 640 MiB, Frontend 256 MiB, Nginx 128 MiB 상한과 총 CPU 2.0을 적용했다. 실제 운영 health와 재부팅 복구는 확인됐지만 CPU, memory, disk, swap과 OOM 수치는 제공되지 않아 자원 여유는 미확정이며 자원 상향은 승인되지 않았다.
+`t3.small`의 2 vCPU·2 GiB 경계를 고려해 MySQL 640 MiB, Backend 640 MiB, Frontend 256 MiB, Nginx 128 MiB 상한과 총 CPU 2.0을 적용했다. 사용자가 배포 전 단일 시점에 disk 38G 중 3.0G 사용·35G 여유·8%, available memory 약 1.4 GiB와 swap 0B를 확인했다. 이 수치는 해당 시점의 여유만 나타내며 지속 CPU, 부하 중 memory, OOM과 장기 성능은 미확정이고 자원 상향은 승인되지 않았다.
 
 ## 실행한 검증
 
@@ -147,7 +152,10 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - GitHub Repository Validation의 Java 25 Backend test/build와 Frontend 검증: 통과
 - Frontend lint/build: 통과
 - OPS-010 고위험 산출물 validator와 Repository Validation: 최종 단계에서 실행·확인
-- 사용자 제공 운영 검증: 대상 SHA 활성화, 동일 `current-sha`, 네 container `healthy`, proxy만 host HTTP `80` 공개, 내부·외부 `/products`·`/api/products` 성공
+- 사용자 제공 운영 검증: 대상 SHA 활성화, 동일 `current-sha`, 네 container `healthy`, proxy만 host HTTP `80` 공개
+- 사용자 제공 HTTP 검증: EC2 내부 loopback `127.0.0.1`의 두 endpoint 성공과 외부 사용자 PC 브라우저의 EC2 외부 HTTP `80` `/products`·`/api/products` 성공
+- 사용자 제공 SSM 검증: `/pawcycle-commerce/prod` 아래 네 SecureString 존재, 해당 prefix `ssm:GetParameter` 값 비출력 조회와 runtime materialize 성공
+- 사용자 제공 자원 검증: 배포 전 단일 시점 disk 38G 중 3.0G 사용·35G 여유·8%, available memory 약 1.4 GiB, swap 0B
 - 사용자 제공 재부팅 검증: Docker 자동 시작, 동일 MySQL volume, 동일 SHA, 네 container health와 두 smoke 복구
 
 ## 적용 전 검증 (고위험 필수)
@@ -165,17 +173,20 @@ API 요청·응답, status와 인증·인가 코드는 변경하지 않았다. N
 - SSM 누락 시 기존 runtime symlink가 유지되고 unhealthy·각 HTTP smoke 실패 시 이전 SHA가 복구되는 상태기계 test가 통과했다.
 - 같은 SHA digest drift는 기존 `.images`를 보존했고 계약 불일치는 Compose activation과 release state 변경 전에 중단됐다.
 - 사용자/Tech Lead의 실제 운영 확인에서 대상 SHA와 `current-sha`가 일치하고 네 container가 healthy였으며 proxy 외 host port는 공개되지 않았다.
-- 내부·외부 두 HTTP smoke가 성공했고 재부팅 뒤 Docker, 동일 MySQL volume, 동일 SHA, health와 smoke가 복구됐다.
+- EC2 내부 loopback 두 HTTP smoke와 외부 사용자 PC 브라우저의 EC2 외부 HTTP `80` 두 endpoint가 각각 성공했다.
+- 네 SecureString 존재, 해당 prefix `ssm:GetParameter` 값 비출력 조회와 runtime materialize가 성공했다.
+- 배포 전 단일 시점의 disk·available memory·swap을 확인했고, 재부팅 뒤 Docker, 동일 MySQL volume, 동일 SHA, health와 내부 loopback smoke가 복구됐다.
 
 ## 독립 검증 (고위험 필수)
 
-구현 로직과 분리된 `validate-production-contracts.py`가 Compose JSON, workflow 최소 권한·동일 SHA, base digest pin, 기존 digest 기록 비교, 계약 diff gate, smoke·rollback·Secret·volume 금지 계약을 검사한다. GitHub Repository Validation은 같은 validator와 Linux shell test, Backend·Frontend 회귀 검증을 독립 runner에서 수행했다. 구현자와 분리된 사용자/Tech Lead가 실제 release 활성화와 재부팅 복구를 확인했다.
+구현 로직과 분리된 `validate-production-contracts.py`가 Compose JSON, workflow 최소 권한·동일 SHA, base digest pin, 기존 digest 기록 비교, 계약 diff gate, smoke·rollback·Secret·volume 금지 계약을 검사한다. GitHub Repository Validation은 같은 validator와 Linux shell test, Backend·Frontend 회귀 검증을 독립 runner에서 수행했다. 구현자와 분리된 사용자/Tech Lead가 실제 release 활성화, SSM materialize, EC2 내부 loopback·외부 사용자 PC HTTP와 재부팅 복구를 확인했다.
 
 ## 실행하지 못한 검증과 이유
 
-- SSM parameter·IAM 최소 권한의 세부 설정과 GHCR Public visibility·anonymous pull은 별도 비민감 증거가 제공되지 않아 독립 확인하지 못함
-- 실제 이전 SHA rollback은 사용자 실행 증거가 없어 미확인
-- 실제 EC2 CPU·memory·disk·swap·OOM 수치는 제공되지 않아 자원 여유 미확인
+- SSM prefix의 네 Parameter와 `ssm:GetParameter` 성공은 확인했지만 IAM 정책 전체의 최소 권한 여부는 독립 검토하지 못함
+- GHCR Public visibility·anonymous pull은 별도 비민감 증거가 제공되지 않아 독립 확인하지 못함
+- 실제 이전 SHA rollback은 미실행이며 미충족 후속 게이트
+- 지속 CPU, 부하 중 memory, OOM과 장기 성능은 측정하지 않아 미확인
 - Backend local Gradle test/build: Windows에 Java 25 toolchain이 없어 미실행, Dockerfile `bootJar`와 Java 25 Repository Validation으로 대체 확인
 - 운영 DB backup·restore와 schema rollback: 명시적 제외 범위라 미실행
 - TLS·login session: TLS와 `443`가 제외돼 미실행
@@ -199,7 +210,7 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 
 ## 적용 방법
 
-사용자/Tech Lead가 `docs/runbook/OPS-010-production-single-release.md`의 release 활성화 → health·port·내부·외부 smoke → reboot 복구 절차를 실행했다. 실제 rollback은 별도 증거가 없어 확인 범위에 포함하지 않는다.
+사용자/Tech Lead가 `docs/runbook/OPS-010-production-single-release.md`의 release 활성화 → health·port → EC2 내부 loopback smoke → 외부 사용자 PC의 HTTP `80` smoke → reboot 복구 절차를 실행했다. 실제 이전 SHA rollback은 미실행 후속 게이트이며 현재 완료 조건에 포함하지 않는다.
 
 ## 복구·롤백 증거 (고위험 필수)
 
@@ -216,18 +227,18 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 
 - 후속 실제 lifecycle 재검증은 첫 실행에서 local MySQL 초기화가 기존 health 구간을 넘겼고, 동일 조건 재시도에서는 MySQL이 healthy가 된 뒤 Docker Desktop의 장시간 CPU 지연으로 Backend·Frontend가 기존 health 한도를 넘겨 미통과했다. 이번 후속 변경으로 health 값을 바꾸거나 `t3.small` 자원 결정을 추론하지 않으며, 불변성 경로는 독립 shell 상태기계와 Compose config·pinned digest 검사로 검증한다.
 - 첫 local HTTP 검증은 proxy가 internal network에만 있어 host port가 닫힌 결함을 발견했고, proxy 전용 edge bridge를 분리해 해결했다.
-- 다음 local run에서 Backend health가 한 번 일시 실패했으나 진단 로그를 추가한 동일 구성 재검증은 전체 lifecycle을 통과했다. 실제 `t3.small`에서는 memory·disk와 OOM을 반드시 확인한다.
+- 다음 local run에서 Backend health가 한 번 일시 실패했으나 진단 로그를 추가한 동일 구성 재검증은 전체 lifecycle을 통과했다. 실제 `t3.small`의 배포 전 단일 시점 memory·disk·swap은 확인했지만 부하 중 memory와 OOM은 계속 확인해야 한다.
 - Nginx 강제 재생성 뒤 최종 장시간 run은 command timeout 후 같은 container의 health·smoke·sentinel을 확인해 성공을 확정했으며 검증용 자원만 정리했다.
 - HTTP `80`만 제공하므로 secure session cookie 기반 login 운영 검증은 TLS 전까지 완료할 수 없다.
 - rollback은 DB schema를 되돌리지 않으므로 새 migration이 있으면 이 절차를 사용하면 안 된다.
 
 ## 남은 위험
 
-실제 EC2 자원 여유, SSM IAM prefix의 최소 권한, GHCR 공개 anonymous pull과 이전 SHA rollback은 별도 증거가 없어 미확정이다. backup·restore가 없으므로 단일 EC2·EBS 장애에 대한 데이터 복구는 OPS-010으로 보장하지 않으며 HTTP `80`만 제공하므로 전송 보안과 로그인 운영 검증은 OPS-011 전까지 보장하지 않는다.
+단일 시점의 disk·available memory·swap과 SSM prefix 조회 성공은 확인했지만 지속 CPU, 부하 중 memory, OOM, 장기 성능과 IAM 정책 전체의 최소 권한은 미확정이다. GHCR 공개 anonymous pull과 실제 이전 SHA rollback도 별도 증거가 없으며 rollback은 미충족 후속 게이트다. backup·restore가 없으므로 단일 EC2·EBS 장애에 대한 데이터 복구는 OPS-010으로 보장하지 않으며 HTTP `80`만 제공하므로 전송 보안과 로그인 운영 검증은 OPS-011 전까지 보장하지 않는다.
 
 ## 다음 작업
 
-실제 release 활성화와 재부팅 복구는 확인됐다. 이전 SHA rollback, 자원 여유 측정, TLS·DNS, backup·restore 또는 Blue·Green은 필요할 때 별도 작업과 승인을 사용한다.
+실제 release 활성화, SSM materialize, EC2 내부 loopback·외부 사용자 PC HTTP와 재부팅 복구는 확인됐다. 실제 이전 SHA rollback은 완료 조건이 아닌 미충족 후속 게이트로 남긴다. 지속 자원 측정, TLS·DNS, backup·restore 또는 Blue·Green은 필요할 때 별도 작업과 승인을 사용한다.
 
 ## Git 결과
 
@@ -235,17 +246,16 @@ PR 생성 전 전체 diff를 독립 리뷰 관점으로 검사했다. PR #58의 
 - 제목: `feat(sre): OPS-010 운영 단일 release 배포 기반 구성`
 - 리뷰 후속 commit: `29f8579`, 배포 진단과 이전 Secret bundle 정리 보완
 - release 불변성 후속 commit: `d096e17`, smoke·digest·base image·계약 gate 보완
-- 운영 실행 결과·Runbook 후속 commit: `0240d7e`, 사용자 증거와 권한 경계 명령 보완
+- PR #59 운영 실행 결과·Runbook commit: `0240d7e`, 세 문서의 사용자 증거와 권한 경계 명령 보완
+- PR #59 보고서 상태 commit: `8206bc5`, SRE 보고서의 Git·PR 결과 기록
 - 원격: 최신 `main`에서 재생성한 `origin/ops/sre` push 완료
 
 ## PR 결과
 
 - 초기 구현 PR: `#58`, `main` 병합 완료
-- 현재 후속 PR: `#59`, `main` 대상 Draft
+- 현재 후속 PR: `#59`, `main` 대상
 - URL: `https://github.com/guseoh/pawcycle-commerce/pull/59`
-- 원격 제목·본문·head/base·Draft 상태: 생성 직후 확인 완료
 - 초기 구현 PR #58 최종 head의 Repository Validation: 통과
-- 현재 후속 PR #59의 Repository Validation: 최신 원격 check를 권위 원본으로 확인
-- AI review: release 불변성 판단·반영·검증 제한을 PR 댓글로 기록, 정확한 thread 상태는 GitHub에서 확인
-- 정확한 review 상태: GitHub Review Threads가 권위 원본
+- PR #59의 제목·본문·head/base와 현재 review·check·상태: GitHub를 권위 원본으로 확인
+- AI review: 정확한 comment와 thread 상태는 GitHub Review Threads를 권위 원본으로 확인
 - 자동 병합: 비활성
