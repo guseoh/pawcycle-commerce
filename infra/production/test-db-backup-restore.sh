@@ -15,6 +15,7 @@ FAKE_S3_ROOT="$TEMP_DIR/s3"
 WORK_ROOT="$TEMP_DIR/work"
 LOCK_FILE="$TEMP_DIR/lock/ops013.lock"
 SOURCE_SECRET="$TEMP_DIR/source-root-password"
+GZIP_COUNT_FILE="$TEMP_DIR/gzip-decompress-count"
 SOURCE_CONTAINER="ops013-source-$RANDOM"
 BACKUP_ID=""
 PRODUCTION_VOLUME_CREATED=0
@@ -84,7 +85,8 @@ run_ops013() {
     FAKE_AWS_LIFECYCLE_COUNT="${FAKE_AWS_LIFECYCLE_COUNT:-}" \
     FAKE_AWS_HEAD_SIZE="${FAKE_AWS_HEAD_SIZE:-}" \
     FAKE_GZIP_FAIL="${FAKE_GZIP_FAIL:-}" \
-    FAKE_GZIP_FAIL_DECOMPRESS="${FAKE_GZIP_FAIL_DECOMPRESS:-}" \
+    FAKE_GZIP_COUNT_FILE="$GZIP_COUNT_FILE" \
+    FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT="${FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT:-}" \
     PAWCYCLE_OPS013_TEST_MODE=local-validation-only \
     PAWCYCLE_BACKUP_WORK_ROOT="$WORK_ROOT" \
     PAWCYCLE_BACKUP_LOCK_FILE="$LOCK_FILE" \
@@ -187,13 +189,20 @@ set -Eeuo pipefail
 if [[ "\${FAKE_GZIP_FAIL:-}" == "1" ]]; then
   exit 1
 fi
-if [[ "\${FAKE_GZIP_FAIL_DECOMPRESS:-}" == "1" ]]; then
-  for argument in "\$@"; do
-    if [[ "\$argument" == "--decompress" ]]; then
+for argument in "\$@"; do
+  if [[ "\$argument" == "--decompress" && -n "\${FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT:-}" ]]; then
+    count=0
+    if [[ -f "\$FAKE_GZIP_COUNT_FILE" ]]; then
+      read -r count <"\$FAKE_GZIP_COUNT_FILE"
+    fi
+    count=\$((count + 1))
+    printf '%s\n' "\$count" >"\$FAKE_GZIP_COUNT_FILE"
+    if [[ "\$count" == "\$FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT" ]]; then
       exit 1
     fi
-  done
-fi
+    break
+  fi
+done
 exec "$REAL_GZIP" "\$@"
 EOF
 chmod +x "$FAKE_BIN/aws" "$FAKE_BIN/gzip" "$SCRIPT"
@@ -288,7 +297,8 @@ checksum_target_failure="$(run_ops013 restore-verify \
 assert_no_restore_resources
 
 cp -a -- "$baseline/." "$backup_root/"
-decompression_failure="$(FAKE_GZIP_FAIL_DECOMPRESS=1 run_ops013 restore-verify \
+rm -f -- "$GZIP_COUNT_FILE"
+decompression_failure="$(FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT=2 run_ops013 restore-verify \
   --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
 [[ "$decompression_failure" == *"restore-decompression-failed"* ]] \
