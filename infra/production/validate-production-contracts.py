@@ -224,6 +224,10 @@ def validate_scripts() -> None:
     require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
     require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
     require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the domain")
+    require(
+        'validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https,
+        "HTTPS domain approval must happen only after certificate validation",
+    )
     require('local expected_domain="${1:-}"' in common, "certificate validation must accept a pre-approval candidate hostname")
     require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
     require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
@@ -310,11 +314,16 @@ def validate_backup_restore() -> None:
         "downloaded checksum files must bind one validated hash to the expected local basename",
     )
     require(
-        backup_restore.index('upload_and_verify "${base_key}.complete"') > backup_restore.index('upload_and_verify "${base_key}.verify.sha256"'),
+        'upload_and_verify "${base_key}.complete"' in backup_restore
+        and 'upload_and_verify "${base_key}.verify.sha256"' in backup_restore
+        and backup_restore.index('upload_and_verify "${base_key}.complete"')
+        > backup_restore.index('upload_and_verify "${base_key}.verify.sha256"'),
         "S3 completion marker must be uploaded after the verified backup object set",
     )
     require(
-        backup_restore.index('production MySQL changed during backup verification')
+        'production MySQL changed during backup verification' in backup_restore
+        and 'upload_and_verify "${base_key}.complete"' in backup_restore
+        and backup_restore.index('production MySQL changed during backup verification')
         < backup_restore.index('upload_and_verify "${base_key}.complete"'),
         "production MySQL identity and health must be rechecked before publishing the completion marker",
     )
@@ -322,13 +331,18 @@ def validate_backup_restore() -> None:
     require("--storage-class STANDARD" in backup_restore, "every S3 upload must explicitly use S3 Standard")
     require(
         "MAX_SINGLE_UPLOAD_BYTES=5000000000" in backup_restore
-        and "backup object exceeds the approved single-request S3 upload limit" in backup_restore,
+        and "MAX_METADATA_OBJECT_BYTES=1048576" in backup_restore
+        and "object_size_limit" in backup_restore
+        and "backup object exceeds its approved S3 upload size limit" in backup_restore,
         "single-request S3 uploads must fail before the decimal 5 GB object size limit",
     )
     require(
         "head_object_size" in backup_restore
         and "S3 object exceeds the approved download size limit" in backup_restore
-        and backup_restore.index('complete_size="$(head_object_size') < backup_restore.index('get_object "${base_key}.complete"'),
+        and 'complete_size="$(head_object_size' in backup_restore
+        and 'get_object "${base_key}.complete"' in backup_restore
+        and backup_restore.index('complete_size="$(head_object_size')
+        < backup_restore.index('get_object "${base_key}.complete"'),
         "all backup object sizes and encryption metadata must be checked before any restore download",
     )
     require(
@@ -344,6 +358,23 @@ def validate_backup_restore() -> None:
     require("get-public-access-block" in backup_restore, "bucket Public Access Block must be verified")
     require("get-bucket-encryption" in backup_restore, "bucket SSE-S3 default encryption must be verified")
     require("get-bucket-versioning" in backup_restore, "bucket versioning must be rejected by the retention preflight")
+    require(
+        'APPROVED_AWS_REGION="ap-northeast-2"' in backup_restore
+        and '[[ "$1" == "$APPROVED_AWS_REGION" ]]' in backup_restore,
+        "backup execution must fail closed outside the approved Seoul region",
+    )
+    require(
+        "PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" in backup_restore
+        and "--expected-bucket-owner" in backup_restore
+        and "12-digit AWS account ID" in backup_restore,
+        "every S3 API request must bind to the expected bucket owner",
+    )
+    require(
+        "write_restore_manifest" in backup_restore
+        and "write_source_manifest" not in backup_restore
+        and 'create_restore_mysql\n  import_dump\n  write_restore_manifest "$manifest"' in backup_restore,
+        "backup metadata must be generated from the isolated import of the dump snapshot",
+    )
     require(
         "get-bucket-lifecycle-configuration" in backup_restore and "Expiration.Days==\\`14\\`" in backup_restore,
         "the requested prefix must have an enabled 14-day expiration lifecycle",
@@ -452,7 +483,7 @@ def validate_backup_restore() -> None:
         "the Runbook must restrict full lifecycle and policy replacement to a dedicated new bucket",
     )
     require(
-        "--preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX" in runbook
+        "--preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX,PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" in runbook
         and '--bucket "$BACKUP_BUCKET"' not in runbook
         and '--region "$BACKUP_REGION"' not in runbook
         and '--prefix "$BACKUP_PREFIX"' not in runbook,
@@ -474,6 +505,8 @@ def validate_backup_restore() -> None:
         "temporary restore work file remained",
         "source production fixture changed during backup or restore verification",
         "source production volume was removed",
+        "non-Seoul backup region was reported as success",
+        "unexpected S3 bucket owner was reported as success",
     ):
         require(evidence in backup_tests, f"OPS-013 regression evidence is missing: {evidence}")
 

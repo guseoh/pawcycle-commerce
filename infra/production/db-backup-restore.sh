@@ -19,6 +19,7 @@ MIN_RESTORE_AVAILABLE_MEMORY_BYTES=$((768 * 1024 * 1024))
 MIN_FREE_DISK_BYTES=$((1024 * 1024 * 1024))
 MAX_SINGLE_UPLOAD_BYTES=5000000000
 MAX_METADATA_OBJECT_BYTES=1048576
+APPROVED_AWS_REGION="ap-northeast-2"
 CORE_TABLES=(members products skus subscriptions)
 export AWS_PAGER=""
 export AWS_CLI_AUTO_PROMPT=off
@@ -27,6 +28,7 @@ COMMAND=""
 S3_BUCKET="${PAWCYCLE_BACKUP_BUCKET:-}"
 AWS_REGION="${PAWCYCLE_BACKUP_REGION:-}"
 S3_PREFIX="${PAWCYCLE_BACKUP_PREFIX:-}"
+EXPECTED_BUCKET_OWNER="${PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER:-}"
 BACKUP_ID=""
 WORK_DIR=""
 AWS_ERROR_FILE=""
@@ -44,9 +46,10 @@ Usage:
   db-backup-restore.sh restore-verify --bucket <bucket> --region <region> --prefix <prefix> --backup-id <id>
   db-backup-restore.sh cleanup --backup-id <id>
 
-The bucket, region, and prefix may instead be supplied through
-PAWCYCLE_BACKUP_BUCKET, PAWCYCLE_BACKUP_REGION, and PAWCYCLE_BACKUP_PREFIX.
-AWS credentials must come from the EC2 instance role; this script never accepts them.
+The bucket, region, prefix, and expected bucket owner must be supplied through
+PAWCYCLE_BACKUP_BUCKET, PAWCYCLE_BACKUP_REGION, PAWCYCLE_BACKUP_PREFIX, and
+PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER. AWS credentials must come from the EC2
+instance role; this script never accepts them.
 EOF
 }
 
@@ -73,7 +76,11 @@ validate_bucket() {
 }
 
 validate_region() {
-  [[ "$1" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]] || die "AWS region format is invalid"
+  [[ "$1" == "$APPROVED_AWS_REGION" ]] || die "AWS region must be the approved Seoul region"
+}
+
+validate_account_id() {
+  [[ "$1" =~ ^[0-9]{12}$ ]] || die "expected S3 bucket owner must be a 12-digit AWS account ID"
 }
 
 validate_prefix() {
@@ -154,11 +161,12 @@ parse_args() {
 }
 
 validate_s3_inputs() {
-  [[ -n "$S3_BUCKET" && -n "$AWS_REGION" && -n "$S3_PREFIX" ]] \
-    || die "bucket, region, and prefix are required"
+  [[ -n "$S3_BUCKET" && -n "$AWS_REGION" && -n "$S3_PREFIX" && -n "$EXPECTED_BUCKET_OWNER" ]] \
+    || die "bucket, region, prefix, and expected bucket owner are required"
   validate_bucket "$S3_BUCKET"
   validate_region "$AWS_REGION"
   validate_prefix "$S3_PREFIX"
+  validate_account_id "$EXPECTED_BUCKET_OWNER"
 }
 
 validate_instance_role_boundary() {
@@ -287,10 +295,17 @@ new_backup_id() {
 
 aws_capture() {
   local output_file="$1"
+  local -a arguments
   shift
+  arguments=("$@")
+
+  if [[ "${arguments[0]:-}" == "s3api" ]]; then
+    (( ${#arguments[@]} >= 2 )) || die "invalid S3 API invocation"
+    arguments=("${arguments[0]}" "${arguments[1]}" --expected-bucket-owner "$EXPECTED_BUCKET_OWNER" "${arguments[@]:2}")
+  fi
 
   : > "$AWS_ERROR_FILE"
-  if ! aws "$@" >"$output_file" 2>"$AWS_ERROR_FILE"; then
+  if ! aws "${arguments[@]}" >"$output_file" 2>"$AWS_ERROR_FILE"; then
     : > "$AWS_ERROR_FILE"
     die "AWS request failed; bucket and object identifiers were suppressed"
   fi
@@ -536,20 +551,19 @@ check_restore_capacity() {
   printf 'Isolated restore disk and memory preflight passed\n'
 }
 
-write_source_manifest() {
-  local container="$1"
-  local manifest="$2"
-  local schema_file="$WORK_DIR/source-schema"
-  local flyway_file="$WORK_DIR/source-flyway"
+write_restore_manifest() {
+  local manifest="$1"
+  local schema_file="$WORK_DIR/snapshot-schema"
+  local flyway_file="$WORK_DIR/snapshot-flyway"
   local schema_hash
   local flyway_hash
   local flyway_count
   local table
-  local count_file="$WORK_DIR/source-count"
+  local count_file="$WORK_DIR/snapshot-count"
   local count
 
-  source_mysql_query "$container" "$(schema_query)" "$schema_file"
-  source_mysql_query "$container" "$(flyway_query)" "$flyway_file"
+  restore_mysql_query "$(schema_query)" "$schema_file"
+  restore_mysql_query "$(flyway_query)" "$flyway_file"
   schema_hash="$(sha256sum "$schema_file" | awk '{print $1}')"
   flyway_hash="$(sha256sum "$flyway_file" | awk '{print $1}')"
   flyway_count="$(wc -l <"$flyway_file" | tr -d ' ')"
@@ -561,7 +575,7 @@ write_source_manifest() {
     printf 'FLYWAY_SHA256=%s\n' "$flyway_hash"
     printf 'FLYWAY_COUNT=%s\n' "$flyway_count"
     for table in "${CORE_TABLES[@]}"; do
-      source_mysql_query "$container" "SELECT COUNT(*) FROM \`${table}\`;" "$count_file"
+      restore_mysql_query "SELECT COUNT(*) FROM \`${table}\`;" "$count_file"
       count="$(<"$count_file")"
       validate_nonnegative_integer "$count" "$table row count"
       printf 'TABLE_%s=%s\n' "$table" "$count"
@@ -637,15 +651,27 @@ verify_local_checksum() {
   [[ "$actual_hash" == "$expected_hash" ]] || die "downloaded backup checksum does not match"
 }
 
+object_size_limit() {
+  local key="$1"
+
+  if [[ "$key" == *.sql.gz ]]; then
+    printf '%s\n' "$MAX_SINGLE_UPLOAD_BYTES"
+  else
+    printf '%s\n' "$MAX_METADATA_OBJECT_BYTES"
+  fi
+}
+
 put_object() {
   local key="$1"
   local file="$2"
   local response="$WORK_DIR/aws-response"
   local size
+  local maximum_size
 
   size="$(stat -c '%s' "$file")"
-  (( size <= MAX_SINGLE_UPLOAD_BYTES )) \
-    || die "backup object exceeds the approved single-request S3 upload limit"
+  maximum_size="$(object_size_limit "$key")"
+  (( size <= maximum_size )) \
+    || die "backup object exceeds its approved S3 upload size limit"
 
   aws_capture "$response" s3api put-object \
     --bucket "$S3_BUCKET" --region "$AWS_REGION" \
@@ -675,8 +701,10 @@ head_object() {
   local key="$1"
   local expected_size="$2"
   local actual_size
+  local maximum_size
 
-  actual_size="$(head_object_size "$key" "$MAX_SINGLE_UPLOAD_BYTES")"
+  maximum_size="$(object_size_limit "$key")"
+  actual_size="$(head_object_size "$key" "$maximum_size")"
   [[ "$actual_size" == "$expected_size" ]] || die "uploaded S3 object size does not match"
 }
 
@@ -732,7 +760,11 @@ backup_command() {
   base_key="${S3_PREFIX}/${BACKUP_ID}"
 
   create_dump "$container" "$dump"
-  write_source_manifest "$container" "$manifest"
+  check_restore_capacity
+  create_restore_mysql
+  import_dump
+  write_restore_manifest "$manifest"
+  assert_restore_isolation
   write_checksum "$dump"
   write_checksum "$manifest"
   dump_hash="$(sha256sum "$dump" | awk '{print $1}')"
@@ -972,13 +1004,13 @@ verify_restored_database() {
   actual="$(sha256sum "$schema_file" | awk '{print $1}')"
   expected="$(manifest_value "$manifest" SCHEMA_SHA256)"
   validate_hash "$expected" "expected schema checksum"
-  [[ "$actual" == "$expected" ]] || die "restored schema does not match the backup-time source schema"
+  [[ "$actual" == "$expected" ]] || die "restored schema does not match the backup snapshot manifest"
 
   restore_mysql_query "$(flyway_query)" "$flyway_file"
   actual="$(sha256sum "$flyway_file" | awk '{print $1}')"
   expected="$(manifest_value "$manifest" FLYWAY_SHA256)"
   validate_hash "$expected" "expected Flyway checksum"
-  [[ "$actual" == "$expected" ]] || die "restored Flyway history does not match the backup-time source"
+  [[ "$actual" == "$expected" ]] || die "restored Flyway history does not match the backup snapshot manifest"
   actual="$(wc -l <"$flyway_file" | tr -d ' ')"
   expected="$(manifest_value "$manifest" FLYWAY_COUNT)"
   validate_nonnegative_integer "$expected" "expected Flyway history count"
@@ -989,9 +1021,9 @@ verify_restored_database() {
     actual="$(<"$count_file")"
     expected="$(manifest_value "$manifest" "TABLE_${table}")"
     validate_nonnegative_integer "$expected" "expected $table row count"
-    [[ "$actual" == "$expected" ]] || die "restored core table count does not match the backup-time source"
+    [[ "$actual" == "$expected" ]] || die "restored core table count does not match the backup snapshot manifest"
   done
-  printf 'Schema, Flyway history, and core table counts match the backup-time source\n'
+  printf 'Schema, Flyway history, and core table counts match the backup snapshot manifest\n'
 }
 
 restore_verify_command() {

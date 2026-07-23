@@ -26,7 +26,7 @@
 ## 변경 범위
 
 - production MySQL health·image·volume·disk·memory preflight
-- 일관된 압축 논리 dump, schema·Flyway·핵심 table count manifest와 SHA-256
+- 일관된 압축 논리 dump를 격리 import해 같은 snapshot에서 생성한 schema·Flyway·핵심 table count manifest와 SHA-256
 - S3 upload 전후 size·SSE-S3·download checksum과 completion marker 검증
 - production과 분리된 pinned MySQL·임시 named volume 복원 lifecycle
 - 성공·실패 cleanup, fake AWS·실제 MySQL lifecycle test와 정적 계약 validator
@@ -44,7 +44,9 @@ application/API/DB schema·migration, production DB 쓰기·중지·restore, `pa
 - production MySQL identity·health를 마지막으로 재확인한 뒤 completion marker를 업로드한다.
 - restore 전 모든 S3 object의 size·SSE-S3와 work disk 여유를 확인해 대형 object의 선다운로드를 차단한다.
 - checksum object는 hash와 기대 local basename 한 항목만 허용하며 외부·절대 경로를 읽지 않는다.
-- bucket region, Public Access Block 네 항목, SSE-S3, versioning 비활성과 지정 prefix 14일 lifecycle을 upload 전에 검사한다.
+- 승인 서울 region과 expected bucket owner, Public Access Block 네 항목, SSE-S3, versioning 비활성과 지정 prefix 14일 lifecycle을 upload 전에 검사한다.
+- dump를 임시 MySQL에 먼저 import해 manifest를 생성하므로 dump 이후 production row 쓰기가 backup snapshot 정합성을 깨뜨리지 않는다.
+- dump 이외 metadata object는 upload 전부터 1 MiB로 제한한다.
 - Runbook은 lifecycle·bucket policy 전체 교체 위험을 피하도록 OPS-013 전용 신규 빈 bucket만 허용한다.
 - 단일 PUT은 `5,000,000,000` byte에서 fail-close하고 restore disk는 실제 압축 해제 크기를 측정해 산정한다.
 - restore MySQL은 production과 같은 pinned image, `none` network, host port 없음, 고유 temporary volume·credential file과 resource limit을 사용한다.
@@ -63,7 +65,7 @@ API와 DB schema 변경은 없다. production DB에는 read-only 논리 dump와 
 
 Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioning 비활성·14일 lifecycle, completion marker 순서, credential 비노출, restore `none` network·무 publish·별도 volume, cleanup ownership과 production volume 삭제 금지를 확인했다. 실제 Docker engine이 없는 로컬 환경에서는 isolated MySQL lifecycle을 시작하지 못했으며 GitHub Repository Validation에서 실행하도록 연결했다.
 
-최초 Repository Validation은 source fixture의 credential 전달과 source·restore readiness 경계에서 순차 실패했다. restore MySQL 초기화 중 `mysqladmin ping` 조기 성공 가능성을 readiness race로 추정해 대상 DB의 `127.0.0.1` TCP 인증 쿼리 연속 2회 성공으로 변경하고 gzip·SQL import 종료 상태를 분리했다. 이후 리뷰에서 test-owned volume cleanup, S3 lifecycle·policy 교체 경계, 환경변수 전달, decimal 5 GB, 실제 압축 해제 크기, download 전 object preflight, completion marker 순서, ambient AWS 설정과 checksum target 검증을 추가 보완했다.
+최초 Repository Validation은 source fixture의 credential 전달과 source·restore readiness 경계에서 순차 실패했다. restore MySQL 초기화 중 `mysqladmin ping` 조기 성공 가능성을 readiness race로 추정해 대상 DB의 `127.0.0.1` TCP 인증 쿼리 연속 2회 성공으로 변경하고 gzip·SQL import 종료 상태를 분리했다. 이후 리뷰에서 test-owned volume cleanup, S3 lifecycle·policy 교체 경계, 환경변수 전달, decimal 5 GB, 실제 압축 해제 크기, download 전 object preflight, completion marker 순서, ambient AWS 설정과 checksum target 검증을 추가 보완했다. 마지막으로 dump와 live manifest의 snapshot 불일치, 서울 region·expected bucket owner, metadata 1 MiB upload 한도와 HTTPS 승인 순서 회귀 검증을 보완했다.
 
 ## 독립 검증 (고위험 필수)
 
@@ -106,7 +108,7 @@ Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioni
 ## 위험과 제한
 
 - dump 중 DDL은 MySQL consistent dump를 무효화할 수 있어 금지한다.
-- dump 뒤 생성한 count manifest와 restore 결과가 동시 row 쓰기로 다르면 안전하게 실패하며 운영 저부하 시점 재시도가 필요하다.
+- dump snapshot manifest를 만들기 위한 backup-time isolated import가 같은 EC2의 CPU·memory·disk I/O를 추가 사용하므로 저부하 시점에 실행한다.
 - 같은 EC2·EBS 장애는 source와 restore 검증 환경을 함께 손상시킬 수 있다.
 - 실제 압축 해제 크기 측정과 isolated restore는 같은 EC2의 CPU·disk I/O를 추가 사용한다.
 - 자동 schedule·알림, 실제 production restore, cross-region·versioning·KMS와 장기 backup은 없다.

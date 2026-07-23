@@ -8,6 +8,7 @@ MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93
 PRODUCTION_VOLUME="pawcycle-production-mysql-data"
 BUCKET="ops013-validation-bucket"
 REGION="ap-northeast-2"
+EXPECTED_BUCKET_OWNER="123456789012"
 PREFIX="production/mysql-backups"
 TEMP_DIR="$(mktemp -d)"
 FAKE_BIN="$TEMP_DIR/bin"
@@ -84,12 +85,17 @@ run_ops013() {
     FAKE_AWS_VERSIONING="${FAKE_AWS_VERSIONING:-}" \
     FAKE_AWS_LIFECYCLE_COUNT="${FAKE_AWS_LIFECYCLE_COUNT:-}" \
     FAKE_AWS_HEAD_SIZE="${FAKE_AWS_HEAD_SIZE:-}" \
+    FAKE_AWS_EXPECTED_BUCKET_OWNER="$EXPECTED_BUCKET_OWNER" \
+    FAKE_AFTER_COMPRESS_CONTAINER="${FAKE_AFTER_COMPRESS_CONTAINER:-}" \
+    FAKE_AFTER_COMPRESS_MARKER="${FAKE_AFTER_COMPRESS_MARKER:-}" \
     FAKE_GZIP_FAIL="${FAKE_GZIP_FAIL:-}" \
     FAKE_GZIP_COUNT_FILE="$GZIP_COUNT_FILE" \
     FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT="${FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT:-}" \
     PAWCYCLE_OPS013_TEST_MODE=local-validation-only \
     PAWCYCLE_BACKUP_WORK_ROOT="$WORK_ROOT" \
     PAWCYCLE_BACKUP_LOCK_FILE="$LOCK_FILE" \
+    PAWCYCLE_BACKUP_PREFIX="$PREFIX" \
+    PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER="${PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER:-$EXPECTED_BUCKET_OWNER}" \
     "$SCRIPT" "$@"
 }
 
@@ -135,6 +141,12 @@ argument() {
 
 if [[ "${FAKE_AWS_FAIL_OPERATION:-}" == "$operation" ]]; then
   printf 'simulated AWS failure\n' >&2
+  exit 1
+fi
+
+owner="$(argument --expected-bucket-owner "$@" || true)"
+if [[ "$owner" != "${FAKE_AWS_EXPECTED_BUCKET_OWNER:-}" ]]; then
+  printf 'unexpected bucket owner\n' >&2
   exit 1
 fi
 
@@ -203,6 +215,17 @@ for argument in "\$@"; do
     break
   fi
 done
+if [[ "\$#" == "0" && -n "\${FAKE_AFTER_COMPRESS_CONTAINER:-}" && -n "\${FAKE_AFTER_COMPRESS_MARKER:-}" && ! -e "\$FAKE_AFTER_COMPRESS_MARKER" ]]; then
+  set +e
+  "$REAL_GZIP"
+  status=\$?
+  set -e
+  if (( status == 0 )); then
+    docker exec "\$FAKE_AFTER_COMPRESS_CONTAINER" sh -eu -c 'export MYSQL_PWD="\$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=SOCKET --user=root "\$MYSQL_DATABASE" --execute="INSERT INTO members VALUES (2);"' >/dev/null 2>&1
+    : >"\$FAKE_AFTER_COMPRESS_MARKER"
+  fi
+  exit "\$status"
+fi
 exec "$REAL_GZIP" "\$@"
 EOF
 chmod +x "$FAKE_BIN/aws" "$FAKE_BIN/gzip" "$SCRIPT"
@@ -263,7 +286,14 @@ INSERT INTO skus VALUES (1);
 INSERT INTO subscriptions VALUES (1);
 SQL
 
-backup_output="$(run_ops013 backup --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX")"
+if run_ops013 backup --bucket "$BUCKET" --region us-west-2 --prefix "$PREFIX" >/dev/null 2>&1; then
+  fail "non-Seoul backup region was reported as success"
+fi
+if PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER=210987654321 run_ops013 backup --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+  fail "unexpected S3 bucket owner was reported as success"
+fi
+
+backup_output="$(FAKE_AFTER_COMPRESS_CONTAINER="$SOURCE_CONTAINER" FAKE_AFTER_COMPRESS_MARKER="$TEMP_DIR/after-dump-write" run_ops013 backup --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX")"
 BACKUP_ID="$(sed -n 's/^Backup completed: //p' <<<"$backup_output")"
 [[ -n "$BACKUP_ID" ]] || fail "backup ID was not returned"
 backup_root="$FAKE_S3_ROOT/$PREFIX"
@@ -374,7 +404,7 @@ fi
 assert_no_restore_resources
 
 docker exec "$SOURCE_CONTAINER" sh -eu -c \
-  'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; test "$(mysql --protocol=SOCKET --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT COUNT(*) FROM members;")" = "1"' \
+  'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; test "$(mysql --protocol=SOCKET --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT COUNT(*) FROM members;")" = "2"' \
   || fail "source production fixture changed during backup or restore verification"
 docker volume inspect "$PRODUCTION_VOLUME" >/dev/null \
   || fail "source production volume was removed"
