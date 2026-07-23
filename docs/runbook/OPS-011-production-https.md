@@ -11,7 +11,9 @@ DuckDNS token, 인증서 개인 키, 인증서 알림 email, 계정 식별자와
 - HTTP `80`: `/.well-known/acme-challenge/**` 제공, HTTPS 활성화 뒤 나머지는 `301` redirect
 - HTTPS `443`: 기존 Frontend `/products`와 Backend `/api/**` same-origin proxy
 - container 내부 `8081`: host에 publish하지 않는 health·release smoke 전용 listener
-- 인증서 lineage: root 관리 Docker volume의 고정 이름 `pawcycle-production`
+- Certbot 인증서 lineage(`--cert-name`): `pawcycle-production`
+- 인증서 Docker volume: `pawcycle-production-letsencrypt`
+- challenge Docker volume: `pawcycle-production-certbot-webroot`
 - Certbot: 공식 `certbot/certbot:v5.7.0` linux/amd64 digest 고정
 - Backend `SESSION_COOKIE_SECURE=true`, MySQL volume `pawcycle-production-mysql-data` 유지
 
@@ -61,6 +63,7 @@ sudo bash infra/production/https.sh bootstrap \
 ```
 
 성공 문구 세 개(내부 smoke, HTTP-01 경로, bootstrap 준비)를 확인한다. 외부 네트워크에서 HTTP challenge 경로 접근이 차단되면 발급으로 진행하지 않는다.
+검증된 hostname은 `/opt/pawcycle/state/https-domain`에 일반 파일·mode `600`으로 고정된다. 이후 명령에 다른 hostname을 전달하거나 이 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
 
 ## 4. 2단계 최초 발급과 HTTPS 전환
 
@@ -72,7 +75,7 @@ sudo bash infra/production/https.sh issue \
   --frontend-image "$FRONTEND_IMAGE"
 ```
 
-Certbot 실패 시 bootstrap HTTP가 유지된다. 발급 성공 뒤에도 certificate SAN·유효기간, HTTPS Nginx config와 두 endpoint 검증이 모두 성공해야 mode `600`의 `/opt/pawcycle/state/https-enabled` marker가 유지된다. 전환 실패 시 script가 marker를 제거하고 bootstrap proxy를 복구한다.
+Certbot 실패 시 bootstrap HTTP가 유지된다. 발급 성공 뒤에도 certificate SAN·최소 잔여 유효기간, 승인 hostname을 반영한 HTTPS Nginx config와 두 endpoint 검증이 모두 성공해야 mode `600`의 `/opt/pawcycle/state/https-enabled` marker가 유지된다. 승인 hostname만 같은 hostname의 HTTPS로 redirect되고 알 수 없는 Host는 연결을 종료한다. 전환 실패 시 script가 marker와 생성 config를 제거하고 health·release·내부 smoke·challenge를 모두 확인한 bootstrap proxy를 복구한다.
 
 ## 5. 적용 후 검증
 
@@ -97,6 +100,8 @@ sudo ss -ltn | grep -E ':(80|443)[[:space:]]' >/dev/null
 3. 브라우저 인증서의 SAN에 정확한 hostname이 있고 만료일이 유효하다.
 4. 승인된 test account로 login한 뒤 `JSESSIONID`가 `Secure`, `HttpOnly`, `SameSite=Lax`이고 logout 뒤 인증 상태가 제거된다. credential, cookie와 CSRF token은 기록하지 않는다.
 
+HTTPS marker가 활성화된 뒤 일반 `deploy.sh`와 `rollback.sh`도 새 release의 certificate SAN·최소 잔여 유효기간, host `443`의 두 endpoint와 승인 hostname HTTP redirect를 검증한다. 하나라도 실패하면 `current-sha`를 기록하지 않고 기존 release를 복구하므로, 이 gate를 우회해 state를 수동 편집하지 않는다.
+
 ## 6. 갱신 rehearsal과 실제 갱신
 
 `dry-run`을 먼저 수행한다. dry-run은 Nginx를 reload하지 않는다.
@@ -117,19 +122,27 @@ sudo bash infra/production/https.sh renew \
 
 ## 7. 재부팅 복구
 
-재부팅 전 현재 SHA를 root 전용 임시 shell 변수로만 보관하고 출력하지 않는다.
+재부팅 전 현재 SHA를 root 전용 임시 파일로 복사한다. Session Manager 재접속 뒤 shell 환경 변수가 사라져도 비교할 수 있으며 값은 출력하지 않는다.
 
 ```bash
-BEFORE_SHA="$(sudo cat /opt/pawcycle/state/current-sha)"
+sudo install -m 600 \
+  /opt/pawcycle/state/current-sha \
+  /opt/pawcycle/state/reboot-expected-sha
 sudo reboot
 ```
 
 재접속 뒤 Docker 자동 시작, 같은 SHA와 volume, 네 health를 확인한 다음 5절의 `status`, HTTPS 두 smoke, HTTP redirect와 login/logout을 다시 수행한다.
 
 ```bash
-test "$(sudo cat /opt/pawcycle/state/current-sha)" = "$BEFORE_SHA"
+sudo sh -c '
+  cmp -s /opt/pawcycle/state/reboot-expected-sha /opt/pawcycle/state/current-sha
+  status=$?
+  rm -f -- /opt/pawcycle/state/reboot-expected-sha
+  exit "$status"
+'
 sudo docker volume inspect pawcycle-production-mysql-data >/dev/null
 sudo docker volume inspect pawcycle-production-letsencrypt >/dev/null
+sudo docker volume inspect pawcycle-production-certbot-webroot >/dev/null
 sudo test -f /opt/pawcycle/state/https-enabled
 ```
 

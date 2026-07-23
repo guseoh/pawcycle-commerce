@@ -13,19 +13,20 @@ OPS-010 단일 release와 MySQL volume을 유지하면서 인증서 없는 HTTP 
 ## 입력 문서
 
 - 현재 OPS-011 사용자 승인
+- 현재 OPS-011 PR #60 보안·운영 결함 수정 승인
 - 루트·`infra/AGENTS.md`, Platform/SRE 역할 문서와 Skill
 - `docs/runbook/OPS-010-production-single-release.md`
 - `docs/runbook/lean-harness.md`
 
 ## 명시적 승인 근거 (고위험 필수)
 
-사용자가 무료 DuckDNS 단일 hostname, Let's Encrypt HTTP-01, 공식 Certbot image, `80` 유지와 `443` 추가, 2단계 bootstrap, 발급·갱신·복구 script와 고위험 문서를 승인했다. 실제 AWS·DNS·인증서 적용, token 입력, HSTS·DNS-01·자동 배포·backup은 제외했다.
+사용자가 무료 DuckDNS 단일 hostname, Let's Encrypt HTTP-01, 공식 Certbot image, `80` 유지와 `443` 추가, 2단계 bootstrap, 발급·갱신·복구 script와 고위험 문서를 승인했다. PR 후속 승인으로 hostname state·unknown Host 차단, deploy·rollback HTTPS gate, 공개 인증서 API와 실패 복구 보완을 승인했다. 실제 AWS·DNS·인증서 적용, token 입력, HSTS·DNS-01·자동 배포·backup은 제외했다.
 
 ## 변경 범위
 
 - bootstrap·HTTPS Nginx와 Compose의 `80`·`443`, 내부 `8081` health 경계
 - linux/amd64 digest 고정 Certbot 발급·dry-run·갱신·reload·HTTP 복구 script
-- root 관리 challenge·certificate named volume과 mode `600` HTTPS marker
+- root 관리 challenge·certificate named volume, mode `600` domain·Nginx config·HTTPS marker
 - 계약 validator, shell 상태기계·Nginx config test와 Repository Validation
 - Runbook과 사용자/Tech Lead 인수인계
 
@@ -37,13 +38,15 @@ AWS·DuckDNS·인증서 실제 변경, Secret·token, application/API/DB schema,
 
 - 인증서가 없으면 기존 HTTP proxy와 challenge 경로가 함께 동작한다.
 - 검증된 인증서가 있을 때만 HTTP challenge 예외 외 요청을 HTTPS로 redirect한다.
+- 승인 DuckDNS hostname만 같은 hostname으로 redirect하고 unknown Host는 연결을 종료한다.
 - HTTPS `/products`, `/api/**`는 기존 upstream을 유지하고 `X-Forwarded-Proto=https`를 전달한다.
 - 공개 port는 `80`, `443`뿐이며 Backend의 `SESSION_COOKIE_SECURE=true`를 유지한다.
-- 발급·전환 실패는 bootstrap HTTP로 복귀하고 갱신 실패는 Nginx reload를 수행하지 않는다. 어느 경로도 현재 SHA, MySQL·certificate volume을 삭제하지 않는다.
+- 일반 deploy·rollback도 HTTPS certificate·두 endpoint·redirect gate 통과 전에는 `current-sha`를 기록하지 않는다.
+- 발급·전환 실패는 challenge까지 검증한 bootstrap HTTP로 복귀하고 갱신 실패는 Nginx reload를 수행하지 않는다. 어느 경로도 현재 SHA, MySQL·certificate volume을 삭제하지 않는다.
 
 ## API·DB·보안·성능 영향
 
-API와 DB 변경은 없다. 인증서·개인 키는 root 관리 Docker volume, challenge는 별도 volume에 두고 Nginx에는 read-only mount한다. email은 실행 인자와 mode `600` 임시 config로만 받고 로그 directory는 tmpfs다. token은 script 입력으로도 받지 않는다. Nginx 자원 상한은 유지되어 별도 성능 개선을 주장하지 않는다.
+API와 DB 변경은 없다. 인증서·개인 키는 root 관리 Docker volume, challenge는 별도 volume에 두고 Nginx에는 read-only mount한다. 승인 hostname과 생성 Nginx config는 root state의 일반 파일·mode `600`으로 제한한다. 인증서는 pinned Certbot image의 공개 `cryptography.x509` API로 정확한 SAN과 최소 잔여 유효기간을 검사한다. email은 실행 인자와 mode `600` 임시 config로만 받고 로그 directory는 tmpfs다. token은 script 입력으로도 받지 않는다.
 
 ## 적용 전 검증 (고위험 필수)
 
@@ -68,9 +71,11 @@ Shell syntax, Compose·Nginx 정적 계약, 발급 실패·성공, dry-run 무 r
 | commit message validator | 통과 |
 | `git diff --check` | 통과 |
 | Frontend lint·build | 통과 |
-| 실제 Docker Nginx `-t` | local Docker engine 미실행으로 미수행, 독립 Repository Validation에서 통과 |
+| 승인 domain·전환·deploy·rollback 상태기계 test | 통과 |
+| 실제 Docker Nginx·unknown Host test | local Docker engine 미실행으로 미수행, 현재 결과는 GitHub를 권위 원본으로 확인 |
+| bootstrap·HTTPS Compose lifecycle | local Docker engine 미실행으로 미수행, 현재 결과는 GitHub를 권위 원본으로 확인 |
 | Backend test·build | local Java 17로 Java 25 요구를 충족하지 못해 미수행, 독립 Java 25 Repository Validation에서 통과 |
-| Repository Validation | 초기 구현 head `455748e`에서 통과, 최신 결과는 GitHub를 권위 원본으로 확인 |
+| Repository Validation | GitHub를 권위 원본으로 확인 |
 
 ## 실행하지 못한 검증과 이유
 
@@ -88,9 +93,17 @@ Shell syntax, Compose·Nginx 정적 계약, 발급 실패·성공, dry-run 무 r
 
 `docs/runbook/OPS-011-production-https.md`의 적용 전 gate → bootstrap → 발급 → HTTPS·redirect·certificate·session → dry-run·갱신 → 재부팅 복구 순서를 사용한다.
 
+## AI 리뷰 반영 여부
+
+유효한 hostname/volume 문구, unknown Host, 공개 인증서 API, probe cleanup, bootstrap 복구와 활성화 실패 test를 반영했다. 공식 registry manifest에서 기존 Certbot linux/amd64 digest가 일치함을 확인해 pin은 변경하지 않았다.
+
+## AI 리뷰 미반영 항목과 이유
+
+동적 PR head·run/check ID 기록은 GitHub를 권위 원본으로 두라는 사용자 결정과 충돌해 미반영했다. Certbot config 중복과 Nginx `8081` snippet 추출은 현재 보안·복구 수정에 직접 필요하지 않은 제외 범위라 변경하지 않았다.
+
 ## 복구·롤백 증거 (고위험 필수)
 
-상태기계 test는 발급 실패 시 marker 부재, dry-run·갱신 실패 시 무 reload, reload 실패 시 오류 반환, disable 뒤 현재 SHA·certificate·MySQL volume 보존을 확인한다. application rollback script와 volume 삭제 금지는 유지한다. 실제 이전 SHA rollback은 OPS-010의 미충족 후속 gate다.
+상태기계 test는 발급·HTTPS 전환 실패 뒤 marker·candidate·probe 제거와 bootstrap 복구, deploy·rollback HTTPS gate 실패 뒤 이전 SHA 복귀, dry-run·갱신 실패 시 무 reload, disable 뒤 certificate·MySQL volume 보존을 확인한다. application rollback script와 volume 삭제 금지는 유지한다. 실제 운영 이전 SHA rollback은 OPS-010의 미충족 후속 gate다.
 
 ## 위험과 제한
 
@@ -103,10 +116,10 @@ Shell syntax, Compose·Nginx 정적 계약, 발급 실패·성공, dry-run 무 r
 ## Git 결과
 
 - branch: `ops/sre`
-- 초기 구현 commit: `455748e`
 - commit 제목: `feat(sre): OPS-011 HTTPS 운영 기반 구성`
-- 정확한 commit·push head는 GitHub를 권위 원본으로 확인한다.
+- 후속 commit 제목: `fix(sre): OPS-011 HTTPS release 검증 보완`
+- 정확한 commit·push 상태는 GitHub를 권위 원본으로 확인한다.
 
 ## PR 결과
 
-main 대상 Draft PR `#60`이며 동적 head·review·check 상태는 GitHub를 권위 원본으로 확인한다. 자동 병합하지 않는다.
+main 대상 PR `#60`이며 동적 head·review·check·Draft/Ready 상태는 GitHub를 권위 원본으로 확인한다. 자동 병합하지 않는다.

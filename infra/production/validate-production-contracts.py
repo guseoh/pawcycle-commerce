@@ -147,6 +147,10 @@ def validate_workflow() -> None:
         "bash infra/production/test-production-nginx.sh" in validation_workflow,
         "Repository Validation must execute the Nginx configuration test",
     )
+    require(
+        "bash infra/production/test-production-compose.sh" in validation_workflow,
+        "Repository Validation must execute the production Compose lifecycle test",
+    )
 
 
 def validate_scripts() -> None:
@@ -156,6 +160,7 @@ def validate_scripts() -> None:
     materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
     https = (PRODUCTION / "https.sh").read_text(encoding="utf-8")
     script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
+    nginx_tests = (PRODUCTION / "test-production-nginx.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
@@ -196,7 +201,8 @@ def validate_scripts() -> None:
     require('flock --nonblock 9' in materialize, "runtime materialization must reject concurrent writers")
     require("concurrent runtime materialization did not fail closed" in script_tests, "materialization concurrency regression evidence is missing")
 
-    require(CERTBOT_IMAGE in https, "Certbot must be pinned to the approved linux/amd64 digest")
+    require(CERTBOT_IMAGE in common, "Certbot must be pinned to the approved linux/amd64 digest")
+    require(CERTBOT_IMAGE in nginx_tests, "Nginx tests must exercise the same pinned Certbot image")
     require("--platform linux/amd64" in https, "Certbot execution platform must be explicit")
     require("set +x" in https, "HTTPS operations must disable shell tracing")
     require("certonly --webroot" in https and "renew --cert-name" in https, "HTTP-01 issuance and renewal commands are required")
@@ -205,6 +211,21 @@ def validate_scripts() -> None:
     require(not re.search(r"docker\s+(?:compose\s+)?(?:volume\s+rm|.*down.*(?:-v|--volumes))", https), "HTTPS script must not delete volumes")
     require("current release state is missing" in https, "HTTPS operations must bind to the active release")
     require("mode must be 600" in common and "content is invalid" in common, "HTTPS state marker must fail closed")
+    require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
+    require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
+    require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
+    require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
+    require("from cryptography import x509" in common, "certificate parsing must use the public cryptography API")
+    require("from cryptography import x509" in nginx_tests, "pinned Certbot image must exercise the public certificate API")
+    require("_test_decode_cert" not in common + https, "private CPython certificate parsing API is forbidden")
+    for evidence in (
+        "HTTPS activation failure did not restore bootstrap",
+        "HTTPS release gate failure changed current SHA",
+        "HTTPS rollback gate failure changed current SHA",
+        "challenge probe remained after failed validation",
+        "HTTPS domain symlink did not fail closed",
+    ):
+        require(evidence in script_tests, f"HTTPS regression evidence is missing: {evidence}")
 
 
 def validate_nginx() -> None:
@@ -214,7 +235,11 @@ def validate_nginx() -> None:
     require("/.well-known/acme-challenge/" in bootstrap, "bootstrap HTTP-01 location is missing")
     require("listen 8081" in bootstrap, "bootstrap internal smoke listener is missing")
     require("listen 443 ssl" in https, "HTTPS listener is missing")
-    require("return 301 https://$host$request_uri" in https, "HTTP to HTTPS redirect is missing")
+    require("listen 80 default_server" in https and "return 444" in https, "unknown HTTP Host must fail closed")
+    require("ssl_reject_handshake on" in https, "unknown TLS SNI must fail closed")
+    require("server_name __PAWCYCLE_DOMAIN__" in https, "approved runtime hostname placeholder is missing")
+    require("return 301 https://__PAWCYCLE_DOMAIN__$request_uri" in https, "redirect must use only the approved hostname")
+    require("https://$host$request_uri" not in https, "untrusted Host must not be reflected into redirects")
     require("/.well-known/acme-challenge/" in https, "HTTPS-mode HTTP-01 exception is missing")
     require("/etc/letsencrypt/live/pawcycle-production/fullchain.pem" in https, "stable full chain path is missing")
     require("/etc/letsencrypt/live/pawcycle-production/privkey.pem" in https, "stable private key path is missing")

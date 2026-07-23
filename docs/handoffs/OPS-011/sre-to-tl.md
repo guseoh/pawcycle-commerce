@@ -27,7 +27,7 @@
 - 검증 후 HTTP→HTTPS redirect와 기존 Frontend·Backend HTTPS proxy
 - Certbot 최초 발급, dry-run·갱신, 검증 후 reload와 HTTP 복구 script
 - `80`·`443`만 공개하는 계약 validator와 shell·Nginx test
-- root 관리 named volume, mode `600` marker와 Secret 비출력 경계
+- root 관리 named volume, mode `600` domain·생성 config·marker와 Secret 비출력 경계
 
 ## 관련 파일
 
@@ -48,7 +48,7 @@
 1. Runbook의 최신 main·기존 release·DNS·port 중단 gate를 확인한다.
 2. `https.sh bootstrap`으로 현재 HTTP와 challenge 경로를 확인한다.
 3. `issue`로 발급하고 certificate 검증 뒤 HTTPS를 활성화한다.
-4. 외부 PC에서 HTTPS 두 endpoint, HTTP redirect, hostname·만료일을 확인한다.
+4. 외부 PC에서 HTTPS 두 endpoint, 승인 hostname HTTP redirect, unknown Host 거부와 hostname·만료일을 확인한다.
 5. 승인된 test account로 login/logout과 Secure·HttpOnly·SameSite cookie를 확인한다.
 6. `renew --dry-run`, 실제 `renew`, 재부팅 복구를 확인한다.
 
@@ -63,15 +63,17 @@
 ## 복구
 
 발급 실패는 bootstrap HTTP를 유지한다. 갱신 실패는 Nginx를 reload하지 않는다. HTTPS 기동이 복구되지 않으면 Runbook의 `https.sh disable`로 HTTP bootstrap만 복원하며 current SHA, MySQL·certificate volume은 삭제하지 않는다.
+HTTPS 활성화 뒤 일반 deploy·rollback의 TLS·두 endpoint·redirect gate가 실패하면 새 `current-sha`를 기록하지 않고 이전 release를 복구한다.
 
 ## 소비자 검증 포인트
 
 - 공개 listener가 `80`, `443`뿐인가?
 - HTTP-01 외 HTTP가 정확한 HTTPS hostname·path로 `301`되는가?
+- 알 수 없는 Host가 외부 domain으로 redirect되지 않고 거부되는가?
 - HTTPS `/products`, `/api/products`와 certificate hostname·만료일이 유효한가?
 - login/logout과 `JSESSIONID` 보안 속성이 유지되는가?
 - dry-run은 reload하지 않고 실제 갱신 성공 뒤에만 reload하는가?
-- 재부팅 뒤 동일 SHA·MySQL·certificate volume, health와 smoke가 복구되는가?
+- 재부팅 뒤 root 임시 SHA 파일 `cmp`와 삭제, 동일 MySQL·certificate volume, health와 smoke가 복구되는가?
 
 ## 미실행 gate와 남은 위험
 

@@ -7,12 +7,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=infra/production/release-common.sh
 source "$SCRIPT_DIR/release-common.sh"
 
-CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
-CERTIFICATE_NAME="pawcycle-production"
-CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot"
-LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt"
 HTTPS_MARKER=""
 CERTBOT_CONFIG=""
+HTTPS_CONFIG_CANDIDATE=""
 
 usage() {
   cat <<'EOF'
@@ -34,11 +31,6 @@ Options:
 EOF
 }
 
-validate_domain() {
-  [[ "$1" =~ ^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\.duckdns\.org$ ]] \
-    || die "domain must be one lowercase single-label duckdns.org hostname"
-}
-
 validate_email() {
   [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] \
     || die "email address format is invalid"
@@ -47,6 +39,9 @@ validate_email() {
 cleanup() {
   if [[ -n "$CERTBOT_CONFIG" && -f "$CERTBOT_CONFIG" ]]; then
     rm -f -- "$CERTBOT_CONFIG"
+  fi
+  if [[ -n "$HTTPS_CONFIG_CANDIDATE" && -f "$HTTPS_CONFIG_CANDIDATE" ]]; then
+    rm -f -- "$HTTPS_CONFIG_CANDIDATE"
   fi
 }
 trap cleanup EXIT
@@ -73,6 +68,42 @@ write_certbot_config() {
   chmod 600 "$CERTBOT_CONFIG"
 }
 
+persist_https_domain() {
+  local domain_file="$PAWCYCLE_STATE_DIR/$HTTPS_DOMAIN_NAME"
+
+  if [[ -e "$domain_file" || -L "$domain_file" ]]; then
+    load_https_domain
+    [[ "$HTTPS_DOMAIN" == "$DOMAIN" ]] \
+      || die "requested domain does not match the approved HTTPS domain state"
+    return 0
+  fi
+  write_state "$HTTPS_DOMAIN_NAME" "$DOMAIN"
+  load_https_domain
+}
+
+render_https_nginx_candidate() {
+  local target="$PAWCYCLE_STATE_DIR/$HTTPS_NGINX_CONFIG_NAME"
+
+  if [[ -L "$target" ]]; then
+    die "generated HTTPS Nginx configuration must not be a symlink"
+  fi
+  HTTPS_CONFIG_CANDIDATE="$PAWCYCLE_STATE_DIR/${HTTPS_NGINX_CONFIG_NAME}.candidate"
+  rm -f -- "$HTTPS_CONFIG_CANDIDATE"
+  sed "s/__PAWCYCLE_DOMAIN__/$HTTPS_DOMAIN/g" \
+    "$SCRIPT_DIR/nginx.https.conf" > "$HTTPS_CONFIG_CANDIDATE"
+  chmod 600 "$HTTPS_CONFIG_CANDIDATE"
+}
+
+promote_https_nginx_config() {
+  local target="$PAWCYCLE_STATE_DIR/$HTTPS_NGINX_CONFIG_NAME"
+
+  [[ -n "$HTTPS_CONFIG_CANDIDATE" && -f "$HTTPS_CONFIG_CANDIDATE" ]] \
+    || die "validated HTTPS Nginx configuration candidate is missing"
+  mv -f "$HTTPS_CONFIG_CANDIDATE" "$target"
+  HTTPS_CONFIG_CANDIDATE=""
+  validate_https_nginx_state
+}
+
 certbot() {
   docker run --rm --platform linux/amd64 \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt" \
@@ -86,31 +117,12 @@ certbot() {
     "$@" >/dev/null 2>&1
 }
 
-validate_certificate() {
-  docker run --rm --platform linux/amd64 \
-    --entrypoint python \
-    --env EXPECTED_DOMAIN="$DOMAIN" \
-    --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
-    "$CERTBOT_IMAGE" -c \
-    'import datetime, os, ssl, sys
-p="/etc/letsencrypt/live/pawcycle-production/fullchain.pem"
-try:
-    info=ssl._ssl._test_decode_cert(p)
-    sans={value.lower() for kind, value in info.get("subjectAltName", ()) if kind == "DNS"}
-    expiry=datetime.datetime.strptime(info["notAfter"], "%b %d %H:%M:%S %Y %Z").replace(tzinfo=datetime.timezone.utc)
-    expected=os.environ["EXPECTED_DOMAIN"].lower()
-    valid=sans == {expected} and expiry > datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-except (KeyError, OSError, ValueError, ssl.SSLError):
-    valid=False
-sys.exit(0 if valid else 1)' \
-    >/dev/null
-  printf 'Certificate hostname and validity checks passed\n'
-}
-
 validate_https_nginx_config() {
+  local config="$1"
+
   docker run --rm \
     --network pawcycle-production-app \
-    --volume "$SCRIPT_DIR/nginx.https.conf:/etc/nginx/conf.d/default.conf:ro" \
+    --volume "$config:/etc/nginx/conf.d/default.conf:ro" \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
     "$PROXY_IMAGE" nginx -t >/dev/null
   printf 'HTTPS Nginx configuration check passed\n'
@@ -118,42 +130,26 @@ validate_https_nginx_config() {
 
 verify_challenge_path() {
   local probe_path=".well-known/acme-challenge/pawcycle-bootstrap-probe"
+  local probe_ok=false
 
   docker run --rm --platform linux/amd64 --entrypoint sh \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
     "$CERTBOT_IMAGE" -c \
     "install -d -m 755 /var/www/certbot/.well-known/acme-challenge && printf pawcycle-acme-probe > /var/www/certbot/$probe_path"
-  if [[ "$(curl --fail --silent --show-error --max-time 10 --header "Host: $DOMAIN" "http://127.0.0.1/$probe_path")" != "pawcycle-acme-probe" ]]; then
-    return 1
+  if [[ "$(curl --fail --silent --show-error --max-time 10 \
+    --header "Host: $HTTPS_DOMAIN" "http://127.0.0.1/$probe_path")" == "pawcycle-acme-probe" ]]; then
+    probe_ok=true
   fi
   docker run --rm --platform linux/amd64 --entrypoint sh \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
     "$CERTBOT_IMAGE" -c "rm -f -- /var/www/certbot/$probe_path"
+  [[ "$probe_ok" == true ]] || return 1
   printf 'HTTP-01 challenge path check passed\n'
-}
-
-verify_https_paths() {
-  local path
-  local code
-  local redirect
-
-  for path in /products /api/products; do
-    curl --fail --silent --show-error --max-time 10 \
-      --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN$path" >/dev/null || return 1
-  done
-  code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
-    --header "Host: $DOMAIN" http://127.0.0.1/products)"
-  redirect="$(curl --silent --output /dev/null --write-out '%{redirect_url}' --max-time 10 \
-    --header "Host: $DOMAIN" http://127.0.0.1/products)"
-  [[ "$code" == "301" && "$redirect" == "https://$DOMAIN/products" ]] || return 1
-  smoke_release || return 1
-  printf 'HTTPS application and HTTP redirect checks passed\n'
 }
 
 bootstrap_http() {
   if https_enabled; then
-    validate_certificate
-    verify_https_paths
+    verify_https_release
     printf 'HTTPS is already enabled; bootstrap did not downgrade the service\n'
     return 0
   fi
@@ -178,12 +174,15 @@ enable_https() {
   fi
 
   rm -f -- "$HTTPS_MARKER"
+  rm -f -- "$PAWCYCLE_STATE_DIR/$HTTPS_NGINX_CONFIG_NAME"
   printf 'HTTPS activation failed; restoring bootstrap HTTP configuration\n' >&2
   if compose up --detach --pull never --no-deps --force-recreate proxy \
     && wait_healthy proxy \
     && verify_running_release \
     && smoke_release; then
-    die "HTTPS activation failed; bootstrap HTTP service was restored"
+    if verify_challenge_path; then
+      die "HTTPS activation failed; bootstrap HTTP service was restored"
+    fi
   fi
   die "HTTPS activation and bootstrap HTTP restoration both failed; release and data volumes were not removed"
 }
@@ -191,11 +190,12 @@ enable_https() {
 disable_https() {
   local backup="$PAWCYCLE_STATE_DIR/${HTTPS_MARKER_NAME}.disable-backup"
 
-  [[ -f "$HTTPS_MARKER" ]] || {
+  if [[ ! -e "$HTTPS_MARKER" && ! -L "$HTTPS_MARKER" ]]; then
     bootstrap_http
     printf 'HTTPS was already disabled\n'
     return 0
-  }
+  fi
+  https_enabled
   mv "$HTTPS_MARKER" "$backup"
   if compose up --detach --pull never --no-deps --force-recreate proxy \
     && wait_healthy proxy \
@@ -243,7 +243,7 @@ case "$ACTION" in
   bootstrap|issue|renew|status|disable) ;;
   *) usage >&2; die "unknown action: $ACTION" ;;
 esac
-validate_domain "$DOMAIN"
+validate_https_domain "$DOMAIN"
 if [[ "$ACTION" == "issue" ]]; then
   validate_email "$EMAIL"
 elif [[ -n "$EMAIL" ]]; then
@@ -257,9 +257,11 @@ prepare_state_directory
 [[ -f "$PAWCYCLE_STATE_DIR/current-sha" ]] || die "current release state is missing"
 TARGET_SHA="$(<"$PAWCYCLE_STATE_DIR/current-sha")"
 initialize_release_context
+require_command sed
 ACTIVE_SHA="$TARGET_SHA"
 HTTPS_MARKER="$PAWCYCLE_STATE_DIR/$HTTPS_MARKER_NAME"
 ensure_https_volumes
+persist_https_domain
 
 case "$ACTION" in
   bootstrap)
@@ -267,8 +269,7 @@ case "$ACTION" in
     ;;
   issue)
     if https_enabled; then
-      validate_certificate
-      verify_https_paths
+      verify_https_release
       printf 'HTTPS is already enabled; certificate issuance was not repeated\n'
       exit 0
     fi
@@ -278,8 +279,10 @@ case "$ACTION" in
       --domains "$DOMAIN" --cert-name "$CERTIFICATE_NAME" --keep-until-expiring; then
       die "certificate issuance failed; the current service and release remain active"
     fi
-    validate_certificate
-    validate_https_nginx_config
+    validate_https_certificate
+    render_https_nginx_candidate
+    validate_https_nginx_config "$HTTPS_CONFIG_CANDIDATE"
+    promote_https_nginx_config
     enable_https
     ;;
   renew)
@@ -295,7 +298,7 @@ case "$ACTION" in
     if ! certbot "${renew_args[@]}"; then
       die "certificate renewal failed; Nginx was not reloaded and the current certificate remains active"
     fi
-    validate_certificate
+    validate_https_certificate
     if [[ "$DRY_RUN" == true ]]; then
       verify_https_paths
       printf 'Certificate renewal dry-run passed without reloading Nginx\n'
@@ -312,7 +315,7 @@ case "$ACTION" in
     ;;
   status)
     https_enabled || die "HTTPS is not enabled"
-    validate_certificate
+    validate_https_certificate
     verify_https_paths
     ;;
   disable)

@@ -101,6 +101,7 @@ jobs:
           python infra/production/validate-production-contracts.py
           bash infra/production/test-production-scripts.sh
           bash infra/production/test-production-nginx.sh
+          bash infra/production/test-production-compose.sh
 
       - name: Verify MySQL service
         env:
