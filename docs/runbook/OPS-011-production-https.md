@@ -62,8 +62,7 @@ sudo bash infra/production/https.sh bootstrap \
   --frontend-image "$FRONTEND_IMAGE"
 ```
 
-성공 문구 세 개(내부 smoke, HTTP-01 경로, bootstrap 준비)를 확인한다. 외부 네트워크에서 HTTP challenge 경로 접근이 차단되면 발급으로 진행하지 않는다.
-최초 hostname은 proxy health, 실행 release, 내부 smoke와 HTTP-01 challenge가 모두 성공하기 전까지 현재 실행의 메모리 값으로만 사용된다. 성공 뒤에만 `/opt/pawcycle/state/https-domain`에 일반 파일·mode `600`으로 원자적으로 고정된다. 실패하면 domain·Nginx config 후보와 probe를 제거하므로 올바른 hostname으로 다시 실행할 수 있다. 승인 뒤에는 다른 hostname을 전달하거나 state 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
+성공 문구 세 개(내부 smoke, HTTP-01 경로, bootstrap 준비)를 확인한다. 이 검사는 `127.0.0.1`의 Nginx·webroot 동작만 확인하며 DNS 소유권을 증명하지 않는다. 따라서 성공해도 `/opt/pawcycle/state/https-domain`을 생성하지 않고, 외부 네트워크에서 HTTP challenge 경로 접근이 차단되면 발급으로 진행하지 않는다.
 
 ## 4. 2단계 최초 발급과 HTTPS 전환
 
@@ -75,7 +74,9 @@ sudo bash infra/production/https.sh issue \
   --frontend-image "$FRONTEND_IMAGE"
 ```
 
-Certbot 실패 시 bootstrap HTTP가 유지된다. 발급 성공 뒤에도 certificate SAN·최소 잔여 유효기간, 승인 hostname을 반영한 HTTPS Nginx config와 두 endpoint 검증이 모두 성공해야 mode `600`의 `/opt/pawcycle/state/https-enabled` marker가 유지된다. 승인 hostname만 같은 hostname의 HTTPS로 redirect되고 알 수 없는 Host는 연결을 종료한다. 전환 실패 시 script가 marker와 생성 config를 제거하고 health·release·내부 smoke·challenge를 모두 확인한 bootstrap proxy를 복구한다.
+최초 hostname은 Certbot의 실제 외부 HTTP-01 발급과 요청 hostname에 대한 certificate SAN·최소 잔여 유효기간 검증이 모두 성공한 뒤에만 `/opt/pawcycle/state/https-domain` 일반 파일·mode `600`으로 원자적으로 고정된다. Certbot·인증서 검증·domain 후보 정리에 실패하면 승인 state, marker와 생성 Nginx config를 남기지 않으므로 올바른 hostname으로 재시도할 수 있다. 승인 뒤에는 다른 hostname을 전달하거나 state 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
+
+승인 hostname을 반영한 HTTPS Nginx config와 두 endpoint 검증까지 성공해야 mode `600`의 `/opt/pawcycle/state/https-enabled` marker가 유지된다. 승인 hostname만 같은 hostname의 HTTPS로 redirect되고 알 수 없는 Host는 연결을 종료한다. 전환 실패 시 script가 marker와 생성 config를 제거하고 bootstrap proxy를 복구한다. health·release·내부 smoke 복구는 성공했지만 challenge만 실패한 경우와 bootstrap 복구 자체가 실패한 경우는 서로 다른 오류로 보고한다.
 
 ## 5. 적용 후 검증
 

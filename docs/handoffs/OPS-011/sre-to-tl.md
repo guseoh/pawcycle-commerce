@@ -27,7 +27,7 @@
 - 검증 후 HTTP→HTTPS redirect와 기존 Frontend·Backend HTTPS proxy
 - Certbot 최초 발급, dry-run·갱신, 검증 후 reload와 HTTP 복구 script
 - `80`·`443`만 공개하는 계약 validator와 shell·Nginx test
-- bootstrap 검증 성공 뒤에만 고정되는 mode `600` domain, root 관리 named volume·생성 config·marker와 Secret 비출력 경계
+- Certbot HTTP-01·후보 SAN 검증 성공 뒤에만 고정되는 mode `600` domain, root 관리 named volume·생성 config·marker와 Secret 비출력 경계
 
 ## 관련 파일
 
@@ -46,8 +46,8 @@
 ## 적용 순서
 
 1. Runbook의 최신 main·기존 release·DNS·port 중단 gate를 확인한다.
-2. `https.sh bootstrap`으로 현재 HTTP와 challenge 경로를 확인하고, 성공 뒤에만 hostname 승인 state가 생성됐는지 확인한다.
-3. `issue`로 발급하고 certificate 검증 뒤 HTTPS를 활성화한다.
+2. `https.sh bootstrap`으로 현재 HTTP와 로컬 challenge 경로를 확인하고 hostname state가 생성되지 않았는지 확인한다.
+3. `issue`로 외부 HTTP-01 발급과 후보 SAN 검증을 수행하고, 성공 뒤 mode `600` hostname 승인 state와 HTTPS를 확인한다.
 4. 외부 PC에서 HTTPS 두 endpoint, 승인 hostname HTTP redirect, unknown Host 거부와 hostname·만료일을 확인한다.
 5. 승인된 test account로 login/logout과 Secure·HttpOnly·SameSite cookie를 확인한다.
 6. `renew --dry-run`, 실제 `renew`, 재부팅 복구를 확인한다.
@@ -62,7 +62,7 @@
 
 ## 복구
 
-최초 bootstrap 실패는 미승인 domain·후보 config·probe를 남기지 않아 올바른 hostname으로 재시도할 수 있다. 발급 실패는 승인된 hostname의 bootstrap HTTP를 유지한다. 갱신 실패는 Nginx를 reload하지 않는다. HTTPS 기동이 복구되지 않으면 Runbook의 `https.sh disable`로 HTTP bootstrap만 복원하며 current SHA, MySQL·certificate volume은 삭제하지 않는다.
+bootstrap은 성공해도 hostname을 승인하지 않는다. Certbot·후보 인증서 검증·domain 후보 cleanup 실패는 승인 domain·marker·생성 config·probe를 남기지 않아 올바른 hostname으로 재시도할 수 있다. HTTPS 전환 실패 뒤에는 bootstrap 복구 성공과 challenge 실패, 복구 자체 실패를 구분한다. 갱신 실패는 Nginx를 reload하지 않으며 current SHA, MySQL·certificate volume은 삭제하지 않는다.
 HTTPS 활성화 뒤 일반 deploy·rollback의 TLS·두 endpoint·redirect gate가 실패하면 새 `current-sha`를 기록하지 않고 이전 release를 복구한다.
 
 ## 소비자 검증 포인트

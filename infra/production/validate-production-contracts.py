@@ -215,23 +215,39 @@ def validate_scripts() -> None:
     require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
     require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
     require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
-    require("verify_challenge_path\n  approve_https_domain" in https, "HTTPS domain must be approved only after challenge validation")
+    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the HTTPS domain")
+    require('validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https, "HTTPS domain must be approved only after candidate certificate validation")
+    require('local expected_domain="${1:-}"' in common, "certificate validation must accept a pre-approval candidate hostname")
     require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
     require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
     require("from cryptography import x509" in common, "certificate parsing must use the public cryptography API")
     require("from cryptography import x509" in nginx_tests, "pinned Certbot image must exercise the public certificate API")
     require("_test_decode_cert" not in common + https, "private CPython certificate parsing API is forbidden")
     require("--cacert" in compose_tests and "--insecure" not in compose_tests, "Compose HTTPS smoke must verify its test certificate")
+    require(
+        "BOOTSTRAP_DOMAIN" in compose_tests
+        and '--header "Host: $BOOTSTRAP_DOMAIN"' in compose_tests
+        and "/.well-known/acme-challenge/probe" in compose_tests,
+        "Compose bootstrap must verify catch-all HTTP-01 routing for an unapproved candidate hostname",
+    )
+    require("FAKE_CHALLENGE_FAIL_AT_COUNT" in script_tests, "challenge recovery failure must be tested independently from hostname")
+    require(
+        "bootstrap HTTP service was restored, but HTTP-01 challenge path validation failed" in https
+        and "HTTPS activation and bootstrap HTTP restoration both failed" in https,
+        "HTTPS activation recovery errors must distinguish challenge failure from restoration failure",
+    )
     for evidence in (
-        "HTTPS activation failure did not restore bootstrap",
         "HTTPS release gate failure changed current SHA",
         "HTTPS rollback gate failure changed current SHA",
         "challenge probe remained after failed validation",
-        "failed bootstrap persisted HTTPS domain",
-        "failed bootstrap left HTTPS domain candidate",
-        "failed bootstrap left HTTPS Nginx candidate",
-        "different HTTPS domain was accepted after bootstrap approval",
+        "failed pre-approval flow persisted HTTPS domain",
+        "certificate issuance failure approved HTTPS domain",
+        "certificate validation failure approved HTTPS domain",
+        "domain candidate cleanup failure approved HTTPS domain",
+        "different HTTPS domain was accepted after certificate approval",
         "different HTTPS domain was accepted after HTTPS activation",
+        "HTTPS activation failure did not fail after challenge recovery error",
+        "HTTPS activation failure did not fail after bootstrap recovery failure",
         "HTTPS domain symlink did not fail closed",
     ):
         require(evidence in script_tests, f"HTTPS regression evidence is missing: {evidence}")

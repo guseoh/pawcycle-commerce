@@ -15,6 +15,7 @@ DATA_NETWORK="pawcycle-$VALIDATION_ID-data"
 HTTP_PORT="18080"
 HTTPS_PORT="18443"
 HTTPS_DOMAIN="ops011-compose-test.duckdns.org"
+BOOTSTRAP_DOMAIN="ops011-unapproved-test.duckdns.org"
 TEMP_DIR="$(mktemp -d)"
 MYSQL_ENV="$TEMP_DIR/mysql.env"
 BACKEND_ENV="$TEMP_DIR/backend.env"
@@ -152,6 +153,19 @@ build_release "$SHA_B"
 docker pull "$MYSQL_IMAGE" >/dev/null
 docker pull "$PROXY_IMAGE" >/dev/null
 activate_and_check "$SHA_A"
+
+docker run --rm \
+  --entrypoint sh \
+  --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
+  "$PROXY_IMAGE" -c \
+  'mkdir -p /var/www/certbot/.well-known/acme-challenge && printf pawcycle-acme-probe > /var/www/certbot/.well-known/acme-challenge/probe'
+[[ "$(curl --fail --silent --show-error \
+  --header "Host: $BOOTSTRAP_DOMAIN" \
+  "http://127.0.0.1:${HTTP_PORT}/.well-known/acme-challenge/probe")" == "pawcycle-acme-probe" ]]
+docker run --rm \
+  --entrypoint sh \
+  --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
+  "$PROXY_IMAGE" -c 'rm -f -- /var/www/certbot/.well-known/acme-challenge/probe'
 
 MYSQL_CONTAINER="$(ACTIVE_SHA="$SHA_A" compose ps --quiet mysql)"
 docker exec --env MYSQL_PWD=local-validation-only "$MYSQL_CONTAINER" \

@@ -184,7 +184,6 @@ bootstrap_http() {
   verify_running_release
   smoke_release
   verify_challenge_path
-  approve_https_domain
   printf 'Bootstrap HTTP service is ready for certificate issuance\n'
 }
 
@@ -208,6 +207,7 @@ enable_https() {
     if verify_challenge_path; then
       die "HTTPS activation failed; bootstrap HTTP service was restored"
     fi
+    die "HTTPS activation failed; bootstrap HTTP service was restored, but HTTP-01 challenge path validation failed"
   fi
   die "HTTPS activation and bootstrap HTTP restoration both failed; release and data volumes were not removed"
 }
@@ -304,7 +304,8 @@ case "$ACTION" in
       --domains "$HTTPS_DOMAIN" --cert-name "$CERTIFICATE_NAME" --keep-until-expiring; then
       die "certificate issuance failed; the current service and release remain active"
     fi
-    validate_https_certificate
+    validate_https_certificate "$HTTPS_DOMAIN"
+    approve_https_domain
     render_https_nginx_candidate
     validate_https_nginx_config "$HTTPS_CONFIG_CANDIDATE"
     promote_https_nginx_config

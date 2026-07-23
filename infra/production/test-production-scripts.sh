@@ -60,8 +60,10 @@ if [[ "$request" == *"/.well-known/acme-challenge/"* && "${FAKE_CHALLENGE_FAIL:-
   exit 22
 fi
 if [[ "$request" == *"/.well-known/acme-challenge/"* \
-  && "$*" != *"Host: ${FAKE_DOMAIN:?}"* ]]; then
-  exit 22
+  && -n "${FAKE_CHALLENGE_FAIL_AT_COUNT:-}" \
+  && -f "$FAKE_DOCKER_STATE/challenge-create-count" \
+  && "$(<"$FAKE_DOCKER_STATE/challenge-create-count")" == "$FAKE_CHALLENGE_FAIL_AT_COUNT" ]]; then
+    exit 22
 fi
 if [[ "$*" == *"%{http_code}"* ]]; then
   if [[ "${FAKE_REDIRECT_FAIL_SHA:-}" == "$active_sha" ]]; then
@@ -111,6 +113,9 @@ if [[ "$1" == "compose" ]]; then
       count=0
       [[ ! -f "$FAKE_DOCKER_STATE/up-count" ]] || count="$(<"$FAKE_DOCKER_STATE/up-count")"
       printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/up-count"
+      if [[ "${FAKE_UP_FAIL_AT_COUNT:-}" == "$((count + 1))" ]]; then
+        exit 1
+      fi
       printf '%s' "$RELEASE_SHA" > "$FAKE_DOCKER_STATE/active-sha"
       printf '%s' "$BACKEND_IMAGE" > "$FAKE_DOCKER_STATE/backend-image"
       printf '%s' "$FRONTEND_IMAGE" > "$FAKE_DOCKER_STATE/frontend-image"
@@ -150,6 +155,10 @@ fi
 
 if [[ "$1" == "run" ]]; then
   if [[ "$*" == *"printf pawcycle-acme-probe"* ]]; then
+    count=0
+    [[ ! -f "$FAKE_DOCKER_STATE/challenge-create-count" ]] \
+      || count="$(<"$FAKE_DOCKER_STATE/challenge-create-count")"
+    printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/challenge-create-count"
     : > "$FAKE_DOCKER_STATE/challenge-probe"
   elif [[ "$*" == *"rm -f -- /var/www/certbot/.well-known/acme-challenge/pawcycle-bootstrap-probe"* ]]; then
     rm -f -- "$FAKE_DOCKER_STATE/challenge-probe"
@@ -166,7 +175,9 @@ if [[ "$1" == "run" ]]; then
     printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/renew-count"
     [[ "${FAKE_RENEW_FAIL:-}" != "1" ]] || exit 1
   fi
-  [[ "${FAKE_CERT_INVALID:-}" != "1" ]] || exit 1
+  if [[ "$*" == *"from cryptography import x509"* ]]; then
+    [[ "${FAKE_CERT_INVALID:-}" != "1" ]] || exit 1
+  fi
   exit 0
 fi
 
@@ -427,80 +438,99 @@ https_command() {
     --state-dir "$STATE_DIR" >/dev/null
 }
 
-if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap; then
-  printf 'unverified HTTPS domain was reported as bootstrap success\n' >&2
-  exit 1
-fi
-[[ ! -e "$STATE_DIR/https-domain" ]] || {
-  printf 'failed bootstrap persisted HTTPS domain\n' >&2
-  exit 1
+assert_unapproved_https_state() {
+  [[ ! -e "$STATE_DIR/https-domain" ]] || {
+    printf 'failed pre-approval flow persisted HTTPS domain\n' >&2
+    exit 1
+  }
+  [[ ! -e "$STATE_DIR/https-domain.candidate" ]] || {
+    printf 'failed pre-approval flow left HTTPS domain candidate\n' >&2
+    exit 1
+  }
+  [[ ! -e "$STATE_DIR/nginx.https.conf" ]]
+  [[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]]
+  [[ ! -e "$STATE_DIR/https-enabled" ]]
+  [[ ! -e "$FAKE_DOCKER_STATE/challenge-probe" ]] || {
+    printf 'challenge probe remained after failed validation\n' >&2
+    exit 1
+  }
+  [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+  [[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
+  [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
 }
-[[ ! -e "$STATE_DIR/https-domain.candidate" ]] || {
-  printf 'failed bootstrap left HTTPS domain candidate\n' >&2
-  exit 1
-}
-[[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]] || {
-  printf 'failed bootstrap left HTTPS Nginx candidate\n' >&2
-  exit 1
-}
-[[ ! -e "$FAKE_DOCKER_STATE/challenge-probe" ]] || {
-  printf 'challenge probe remained after failed validation\n' >&2
-  exit 1
-}
 
-https_command bootstrap
-[[ ! -e "$STATE_DIR/https-enabled" ]]
-[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
-[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
-[[ "$(stat -c '%a' "$STATE_DIR/https-domain")" == "600" ]]
-[[ ! -e "$STATE_DIR/https-domain.candidate" ]]
-
-if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap; then
-  printf 'different HTTPS domain was accepted after bootstrap approval\n' >&2
-  exit 1
-fi
-[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
-
-mv "$STATE_DIR/https-domain" "$STATE_DIR/https-domain.saved"
-ln -s "$STATE_DIR/https-domain.saved" "$STATE_DIR/https-domain"
-if https_command bootstrap; then
-  printf 'HTTPS domain symlink did not fail closed\n' >&2
-  exit 1
-fi
-rm -f -- "$STATE_DIR/https-domain"
-mv "$STATE_DIR/https-domain.saved" "$STATE_DIR/https-domain"
-
-chmod 644 "$STATE_DIR/https-domain"
-if https_command bootstrap; then
-  printf 'HTTPS domain mode violation did not fail closed\n' >&2
-  exit 1
-fi
-chmod 600 "$STATE_DIR/https-domain"
-
-printf 'invalid.example.invalid\n' > "$STATE_DIR/https-domain"
-if https_command bootstrap; then
-  printf 'invalid HTTPS domain state did not fail closed\n' >&2
-  exit 1
-fi
-printf '%s\n' "$FAKE_DOMAIN" > "$STATE_DIR/https-domain"
-chmod 600 "$STATE_DIR/https-domain"
+HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap
+assert_unapproved_https_state
 
 export FAKE_CERTBOT_FAIL=1
-if https_command issue --email "$FAKE_EMAIL"; then
-  printf 'certificate issuance failure enabled HTTPS\n' >&2
+if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command issue --email "$FAKE_EMAIL"; then
+  printf 'certificate issuance failure approved HTTPS domain\n' >&2
   exit 1
 fi
 unset FAKE_CERTBOT_FAIL
-[[ ! -e "$STATE_DIR/https-enabled" ]]
-[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+assert_unapproved_https_state
 
-export FAKE_HTTPS_FAIL_SHA="$SHA_A"
-export FAKE_HTTPS_FAIL_PATH="/products"
+export FAKE_CERT_INVALID=1
 if https_command issue --email "$FAKE_EMAIL"; then
-  printf 'HTTPS activation failure did not restore bootstrap\n' >&2
+  printf 'certificate validation failure approved HTTPS domain\n' >&2
   exit 1
 fi
-unset FAKE_HTTPS_FAIL_SHA FAKE_HTTPS_FAIL_PATH
+unset FAKE_CERT_INVALID
+assert_unapproved_https_state
+
+mkdir "$STATE_DIR/https-domain.candidate"
+if https_command issue --email "$FAKE_EMAIL" 2>/dev/null; then
+  printf 'domain candidate cleanup failure approved HTTPS domain\n' >&2
+  exit 1
+fi
+[[ ! -e "$STATE_DIR/https-domain" ]]
+[[ ! -e "$STATE_DIR/nginx.https.conf" ]]
+[[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]]
+[[ ! -e "$STATE_DIR/https-enabled" ]]
+[[ ! -e "$FAKE_DOCKER_STATE/challenge-probe" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
+rmdir "$STATE_DIR/https-domain.candidate"
+
+https_command bootstrap
+assert_unapproved_https_state
+
+challenge_count_before="$(<"$FAKE_DOCKER_STATE/challenge-create-count")"
+export FAKE_HTTPS_FAIL_SHA="$SHA_A"
+export FAKE_HTTPS_FAIL_PATH="/products"
+export FAKE_CHALLENGE_FAIL_AT_COUNT="$((challenge_count_before + 2))"
+if recovery_error="$(https_command issue --email "$FAKE_EMAIL" 2>&1)"; then
+  printf 'HTTPS activation failure did not fail after challenge recovery error\n' >&2
+  exit 1
+fi
+unset FAKE_HTTPS_FAIL_SHA FAKE_HTTPS_FAIL_PATH FAKE_CHALLENGE_FAIL_AT_COUNT
+[[ "$recovery_error" == *"bootstrap HTTP service was restored, but HTTP-01 challenge path validation failed"* ]]
+[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
+[[ "$(stat -c '%a' "$STATE_DIR/https-domain")" == "600" ]]
+[[ ! -e "$STATE_DIR/https-enabled" ]]
+[[ ! -e "$STATE_DIR/nginx.https.conf" ]]
+[[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]]
+[[ ! -e "$FAKE_DOCKER_STATE/challenge-probe" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
+
+if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap; then
+  printf 'different HTTPS domain was accepted after certificate approval\n' >&2
+  exit 1
+fi
+[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
+
+up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
+export FAKE_HTTPS_FAIL_SHA="$SHA_A"
+export FAKE_HTTPS_FAIL_PATH="/products"
+export FAKE_UP_FAIL_AT_COUNT="$((up_count_before + 3))"
+if recovery_error="$(https_command issue --email "$FAKE_EMAIL" 2>&1)"; then
+  printf 'HTTPS activation failure did not fail after bootstrap recovery failure\n' >&2
+  exit 1
+fi
+unset FAKE_HTTPS_FAIL_SHA FAKE_HTTPS_FAIL_PATH FAKE_UP_FAIL_AT_COUNT
+[[ "$recovery_error" == *"HTTPS activation and bootstrap HTTP restoration both failed"* ]]
 [[ ! -e "$STATE_DIR/https-enabled" ]]
 [[ ! -e "$STATE_DIR/nginx.https.conf" ]]
 [[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]]
@@ -509,6 +539,8 @@ unset FAKE_HTTPS_FAIL_SHA FAKE_HTTPS_FAIL_PATH
 [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
 
 https_command issue --email "$FAKE_EMAIL"
+[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
+[[ "$(stat -c '%a' "$STATE_DIR/https-domain")" == "600" ]]
 [[ "$(<"$STATE_DIR/https-enabled")" == "enabled" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/https-enabled")" == "600" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/nginx.https.conf")" == "600" ]]
@@ -522,6 +554,30 @@ if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command status; then
 fi
 [[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
 [[ "$(<"$STATE_DIR/https-enabled")" == "enabled" ]]
+
+mv "$STATE_DIR/https-domain" "$STATE_DIR/https-domain.saved"
+ln -s "$STATE_DIR/https-domain.saved" "$STATE_DIR/https-domain"
+if https_command status; then
+  printf 'HTTPS domain symlink did not fail closed\n' >&2
+  exit 1
+fi
+rm -f -- "$STATE_DIR/https-domain"
+mv "$STATE_DIR/https-domain.saved" "$STATE_DIR/https-domain"
+
+chmod 644 "$STATE_DIR/https-domain"
+if https_command status; then
+  printf 'HTTPS domain mode violation did not fail closed\n' >&2
+  exit 1
+fi
+chmod 600 "$STATE_DIR/https-domain"
+
+printf 'invalid.example.invalid\n' > "$STATE_DIR/https-domain"
+if https_command status; then
+  printf 'invalid HTTPS domain state did not fail closed\n' >&2
+  exit 1
+fi
+printf '%s\n' "$FAKE_DOMAIN" > "$STATE_DIR/https-domain"
+chmod 600 "$STATE_DIR/https-domain"
 
 issue_count_before="$(<"$FAKE_DOCKER_STATE/issue-count")"
 https_command issue --email "$FAKE_EMAIL"

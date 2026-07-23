@@ -285,10 +285,17 @@ smoke_release() {
 }
 
 validate_https_certificate() {
-  load_https_domain
+  local expected_domain="${1:-}"
+
+  if [[ -n "$expected_domain" ]]; then
+    validate_https_domain "$expected_domain"
+  else
+    load_https_domain
+    expected_domain="$HTTPS_DOMAIN"
+  fi
   docker run --rm --platform linux/amd64 \
     --entrypoint python \
-    --env EXPECTED_DOMAIN="$HTTPS_DOMAIN" \
+    --env EXPECTED_DOMAIN="$expected_domain" \
     --env MIN_VALIDITY_SECONDS="$HTTPS_MIN_CERT_VALIDITY_SECONDS" \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
     "$CERTBOT_IMAGE" -c \
