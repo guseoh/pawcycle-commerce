@@ -17,6 +17,7 @@
 - source: Compose project `pawcycle-production`의 healthy MySQL 한 개
 - source volume: `pawcycle-production-mysql-data`, 읽기 전용 논리 dump 대상
 - MySQL image: production과 동일한 저장소 고정 digest
+- S3 bucket: OPS-013 전용으로 새로 생성한 빈 private bucket
 - S3 storage class: S3 Standard
 - encryption: SSE-S3 `AES256`
 - retention: 지정 prefix 아래 object 생성 14일 뒤 만료
@@ -32,11 +33,12 @@
 - production MySQL image 또는 volume이 고정 계약과 다름
 - MySQL migration·DDL 또는 대량 쓰기가 진행 중임
 - AWS region이 현재 EC2와 bucket에서 일치하는지 확인할 수 없음
+- bucket이 OPS-013 전용 신규 빈 bucket인지 확인할 수 없음
 - bucket Public Access Block 네 항목, SSE-S3 또는 14일 prefix lifecycle을 확인할 수 없음
 - instance role이 아닌 access key·Secret을 명령행이나 파일에 입력해야 함
 - backup work root나 runtime 파일이 symlink이거나 root 전용 mode가 아님
 - script가 요구하는 disk·available memory preflight를 통과하지 못함
-- 단일 compressed dump object가 승인된 5 GiB single-request upload 한도를 초과함
+- 단일 compressed dump object가 승인된 5,000,000,000 byte single-request upload 한도를 초과함
 - production service 중지, production DB 쓰기 또는 production volume 변경이 필요함
 - 임시 restore container가 `none` network·무 publish·별도 volume 계약을 만족하지 않음
 
@@ -72,22 +74,26 @@ read -r -s -p 'AWS region: ' BACKUP_REGION
 printf '\n'
 read -r -s -p 'Backup prefix: ' BACKUP_PREFIX
 printf '\n'
-export BACKUP_BUCKET BACKUP_REGION BACKUP_PREFIX
 
 [[ "$BACKUP_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]
 [[ "$BACKUP_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]]
 [[ "$BACKUP_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$ ]]
+
+export PAWCYCLE_BACKUP_BUCKET="$BACKUP_BUCKET"
+export PAWCYCLE_BACKUP_REGION="$BACKUP_REGION"
+export PAWCYCLE_BACKUP_PREFIX="$BACKUP_PREFIX"
+unset BACKUP_BUCKET BACKUP_REGION BACKUP_PREFIX
 ```
 
-`BACKUP_REGION`은 EC2와 bucket이 함께 위치한 승인된 서울 region이어야 한다.
+`PAWCYCLE_BACKUP_REGION`은 EC2와 bucket이 함께 위치한 승인된 서울 region이어야 한다.
 
-새 bucket이면 같은 region에 생성한다. 기존 bucket을 사용하면 생성 명령은 생략한다.
+OPS-013은 lifecycle·bucket policy의 기존 설정을 덮어쓰는 위험을 없애기 위해 **전용 신규 빈 bucket만 허용**한다. 기존 bucket 재사용은 이 Runbook 범위에서 제외한다. 생성 명령이 이미 존재하는 bucket 때문에 실패하면 다른 전용 bucket 이름으로 다시 시작하고 기존 bucket 설정을 변경하지 않는다.
 
 ```bash
 aws s3api create-bucket \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
-  --create-bucket-configuration "LocationConstraint=$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+  --region "$PAWCYCLE_BACKUP_REGION" \
+  --create-bucket-configuration "LocationConstraint=$PAWCYCLE_BACKUP_REGION" \
   >/dev/null
 ```
 
@@ -95,19 +101,19 @@ Public Access Block 네 항목과 SSE-S3 기본 암호화를 적용한다.
 
 ```bash
 aws s3api put-public-access-block \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+  --region "$PAWCYCLE_BACKUP_REGION" \
   --public-access-block-configuration \
   'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 
 aws s3api put-bucket-encryption \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+  --region "$PAWCYCLE_BACKUP_REGION" \
   --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
 ```
 
-현재 AWS 관리자 사용자만 읽을 수 있는 mode `600` 임시 파일로 지정 prefix의 14일 만료 rule을 적용한다.
+현재 AWS 관리자 사용자만 읽을 수 있는 mode `600` 임시 파일로 지정 prefix의 14일 만료 rule을 적용한다. `put-bucket-lifecycle-configuration`은 bucket의 lifecycle 전체를 교체하므로 위에서 생성한 OPS-013 전용 빈 bucket에만 실행한다.
 
 ```bash
 umask 077
@@ -119,7 +125,7 @@ tee "$LIFECYCLE_FILE" >/dev/null <<EOF
     {
       "ID": "expire-ops013-backups-after-14-days",
       "Status": "Enabled",
-      "Filter": {"Prefix": "${BACKUP_PREFIX}/"},
+      "Filter": {"Prefix": "${PAWCYCLE_BACKUP_PREFIX}/"},
       "Expiration": {"Days": 14}
     }
   ]
@@ -127,8 +133,8 @@ tee "$LIFECYCLE_FILE" >/dev/null <<EOF
 EOF
 
 if ! aws s3api put-bucket-lifecycle-configuration \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+  --region "$PAWCYCLE_BACKUP_REGION" \
   --lifecycle-configuration "file://$LIFECYCLE_FILE"; then
   rm -f -- "$LIFECYCLE_FILE"
   unset LIFECYCLE_FILE
@@ -187,8 +193,8 @@ tee "$BUCKET_POLICY_FILE" >/dev/null <<EOF
       "Principal": "*",
       "Action": "s3:*",
       "Resource": [
-        "arn:aws:s3:::${BACKUP_BUCKET}",
-        "arn:aws:s3:::${BACKUP_BUCKET}/*"
+        "arn:aws:s3:::${PAWCYCLE_BACKUP_BUCKET}",
+        "arn:aws:s3:::${PAWCYCLE_BACKUP_BUCKET}/*"
       ],
       "Condition": {"Bool": {"aws:SecureTransport": "false"}}
     },
@@ -197,7 +203,7 @@ tee "$BUCKET_POLICY_FILE" >/dev/null <<EOF
       "Effect": "Deny",
       "Principal": "*",
       "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::${BACKUP_BUCKET}/${BACKUP_PREFIX}/*",
+      "Resource": "arn:aws:s3:::${PAWCYCLE_BACKUP_BUCKET}/${PAWCYCLE_BACKUP_PREFIX}/*",
       "Condition": {
         "StringNotEquals": {
           "s3:x-amz-server-side-encryption": "AES256"
@@ -209,8 +215,8 @@ tee "$BUCKET_POLICY_FILE" >/dev/null <<EOF
 EOF
 
 if ! aws s3api put-bucket-policy \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+  --region "$PAWCYCLE_BACKUP_REGION" \
   --policy "file://$BUCKET_POLICY_FILE"; then
   rm -f -- "$BUCKET_POLICY_FILE"
   unset BUCKET_POLICY_FILE
@@ -261,30 +267,30 @@ unset BUCKET_POLICY_FILE
 
 ```bash
 aws s3api get-bucket-location \
-  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
   --query LocationConstraint --output text
 
 aws s3api get-public-access-block \
-  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
   --query '[PublicAccessBlockConfiguration.BlockPublicAcls,PublicAccessBlockConfiguration.IgnorePublicAcls,PublicAccessBlockConfiguration.BlockPublicPolicy,PublicAccessBlockConfiguration.RestrictPublicBuckets]' \
   --output text
 
 aws s3api get-bucket-encryption \
-  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
   --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
   --output text
 
 aws s3api get-bucket-versioning \
-  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
   --query Status --output text
 
 aws s3api get-bucket-lifecycle-configuration \
-  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
-  --query "length(Rules[?Status=='Enabled' && Expiration.Days==\`14\` && Filter.Prefix=='${BACKUP_PREFIX}/'])" \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
+  --query "length(Rules[?Status=='Enabled' && Expiration.Days==\`14\` && Filter.Prefix=='${PAWCYCLE_BACKUP_PREFIX}/'])" \
   --output text
 ```
 
-기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, lifecycle count `1` 이상이다. versioning이 `Enabled` 또는 `Suspended`인 기존 bucket은 OPS-013 대상으로 사용하지 않는다.
+기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, lifecycle count `1` 이상이다. bucket은 OPS-013 전용 신규 bucket이어야 하며 versioning이 `Enabled` 또는 `Suspended`이면 사용하지 않는다.
 
 ## 5. 운영 논리 백업
 
@@ -292,11 +298,8 @@ DDL·migration이 없는 저부하 시점에 수행한다. `--single-transaction
 
 ```bash
 cd /opt/pawcycle/repository
-sudo --preserve-env=BACKUP_BUCKET,BACKUP_REGION,BACKUP_PREFIX \
-  infra/production/db-backup-restore.sh backup \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
-  --prefix "$BACKUP_PREFIX"
+sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX \
+  infra/production/db-backup-restore.sh backup
 ```
 
 script는 다음 순서로 fail-close한다.
@@ -318,15 +321,12 @@ script는 다음 순서로 fail-close한다.
 
 ```bash
 read -r -p 'Backup ID: ' BACKUP_ID
-sudo --preserve-env=BACKUP_BUCKET,BACKUP_REGION,BACKUP_PREFIX \
+sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX \
   infra/production/db-backup-restore.sh restore-verify \
-  --bucket "$BACKUP_BUCKET" \
-  --region "$BACKUP_REGION" \
-  --prefix "$BACKUP_PREFIX" \
   --backup-id "$BACKUP_ID"
 ```
 
-script는 completion marker, object size·SSE-S3, SHA-256과 gzip을 확인한 뒤에만 복원한다. 임시 MySQL은 다음 계약을 가진다.
+script는 completion marker, object size·SSE-S3, SHA-256과 gzip을 확인한 뒤 실제 압축 해제 크기를 기준으로 Docker disk 여유를 계산하고 복원한다. 임시 MySQL은 다음 계약을 가진다.
 
 - production과 동일한 pinned MySQL image
 - `--network none`
@@ -356,7 +356,7 @@ cleanup은 OPS-013 restore label, `none` network, production volume 미사용을
 | disk·memory 부족 | backup 또는 restore 중단 | application을 중지하지 말고 용량 계획을 별도 승인 |
 | bucket 계약·IAM 실패 | upload 전 중단 | PAB·SSE-S3·lifecycle·role 정책 수정 후 재시도 |
 | dump·gzip 실패 | backup 실패 | 임시 파일 cleanup 확인 후 새 backup ID로 재시도 |
-| compressed object 5 GiB 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
+| compressed object 5,000,000,000 byte 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
 | upload·head·download checksum 실패 | backup 실패 | completion marker 부재를 확인하고 새 backup 생성 |
 | restore SQL 실패 | 복원 검증 실패 | 임시 resource cleanup 뒤 원본 backup 상태 조사 |
 | schema·Flyway·table count 불일치 | 복원 검증 실패 | 성공으로 기록하지 말고 DDL·동시 쓰기·dump 손상 조사 |
