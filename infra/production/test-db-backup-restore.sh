@@ -87,7 +87,7 @@ wait_source_mysql() {
 
   while (( elapsed < 180 )); do
     if docker exec "$SOURCE_CONTAINER" sh -eu -c \
-      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysqladmin --protocol=SOCKET --user=root ping --silent' \
+      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=SOCKET --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT 1;"' \
       >/dev/null 2>&1 \
       && [[ "$(docker inspect --format '{{.State.Health.Status}}' "$SOURCE_CONTAINER")" == "healthy" ]]; then
       return 0
