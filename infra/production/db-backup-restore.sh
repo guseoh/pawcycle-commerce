@@ -17,7 +17,7 @@ fi
 MIN_AVAILABLE_MEMORY_BYTES=$((256 * 1024 * 1024))
 MIN_RESTORE_AVAILABLE_MEMORY_BYTES=$((768 * 1024 * 1024))
 MIN_FREE_DISK_BYTES=$((1024 * 1024 * 1024))
-MAX_SINGLE_UPLOAD_BYTES=$((5 * 1024 * 1024 * 1024))
+MAX_SINGLE_UPLOAD_BYTES=5000000000
 CORE_TABLES=(members products skus subscriptions)
 export AWS_PAGER=""
 export AWS_CLI_AUTO_PROMPT=off
@@ -492,19 +492,27 @@ check_capacity() {
 
 check_restore_capacity() {
   local dump="$WORK_DIR/${BACKUP_ID}.sql.gz"
+  local size_file="$WORK_DIR/${BACKUP_ID}.uncompressed-size"
   local docker_root
   local available_disk
   local required_disk
-  local compressed_size
+  local uncompressed_size
   local available_memory
 
   docker_root="$(docker info --format '{{.DockerRootDir}}')"
   [[ "$docker_root" == /* && -d "$docker_root" ]] || die "Docker root directory is unavailable"
   available_disk="$(df -PB1 "$docker_root" | awk 'NR==2 {print $4}')"
-  compressed_size="$(stat -c '%s' "$dump")"
   validate_nonnegative_integer "$available_disk" "Docker free disk"
-  validate_nonnegative_integer "$compressed_size" "compressed backup size"
-  required_disk=$((compressed_size * 8 + 1024 * 1024 * 1024))
+
+  : >"$COMPRESSION_ERROR_FILE"
+  if ! gzip --decompress --stdout "$dump" 2>"$COMPRESSION_ERROR_FILE" | wc -c >"$size_file"; then
+    : >"$COMPRESSION_ERROR_FILE"
+    die "unable to measure uncompressed logical dump size"
+  fi
+  : >"$COMPRESSION_ERROR_FILE"
+  uncompressed_size="$(tr -d ' ' <"$size_file")"
+  validate_nonnegative_integer "$uncompressed_size" "uncompressed logical dump size"
+  required_disk=$((uncompressed_size * 2 + 1024 * 1024 * 1024))
   if (( required_disk < 2 * MIN_FREE_DISK_BYTES )); then
     required_disk=$((2 * MIN_FREE_DISK_BYTES))
   fi
