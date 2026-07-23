@@ -82,6 +82,7 @@ run_ops013() {
     FAKE_AWS_PUBLIC_BLOCK="${FAKE_AWS_PUBLIC_BLOCK:-}" \
     FAKE_AWS_VERSIONING="${FAKE_AWS_VERSIONING:-}" \
     FAKE_AWS_LIFECYCLE_COUNT="${FAKE_AWS_LIFECYCLE_COUNT:-}" \
+    FAKE_AWS_HEAD_SIZE="${FAKE_AWS_HEAD_SIZE:-}" \
     FAKE_GZIP_FAIL="${FAKE_GZIP_FAIL:-}" \
     FAKE_GZIP_FAIL_DECOMPRESS="${FAKE_GZIP_FAIL_DECOMPRESS:-}" \
     PAWCYCLE_OPS013_TEST_MODE=local-validation-only \
@@ -161,7 +162,11 @@ case "$operation" in
     ;;
   head-object)
     key="$(argument --key "$@")"
-    size="$(stat -c '%s' "$FAKE_S3_ROOT/$key")"
+    if [[ -n "${FAKE_AWS_HEAD_SIZE:-}" && "$key" == *.sql.gz ]]; then
+      size="$FAKE_AWS_HEAD_SIZE"
+    else
+      size="$(stat -c '%s' "$FAKE_S3_ROOT/$key")"
+    fi
     printf '%s\tAES256\n' "$size"
     ;;
   get-object)
@@ -263,6 +268,23 @@ cp -a -- "$backup_root/." "$baseline/"
 run_ops013 restore-verify \
   --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
   >/dev/null
+assert_no_restore_resources
+
+oversized_failure="$(FAKE_AWS_HEAD_SIZE=5000000001 run_ops013 restore-verify \
+  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  2>&1 >/dev/null || true)"
+[[ "$oversized_failure" == *"S3 object exceeds the approved download size limit"* ]] \
+  || fail "oversized S3 object was not rejected before download"
+assert_no_restore_resources
+
+cp -a -- "$baseline/." "$backup_root/"
+dump_hash="$(sha256sum "$backup_root/${BACKUP_ID}.sql.gz" | awk '{print $1}')"
+printf '%s  /dev/zero\n' "$dump_hash" >"$backup_root/${BACKUP_ID}.sql.gz.sha256"
+checksum_target_failure="$(run_ops013 restore-verify \
+  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  2>&1 >/dev/null || true)"
+[[ "$checksum_target_failure" == *"checksum target filename is invalid"* ]] \
+  || fail "untrusted checksum target filename was not rejected"
 assert_no_restore_resources
 
 cp -a -- "$baseline/." "$backup_root/"
