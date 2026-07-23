@@ -59,6 +59,10 @@ fi
 if [[ "$request" == *"/.well-known/acme-challenge/"* && "${FAKE_CHALLENGE_FAIL:-}" == "1" ]]; then
   exit 22
 fi
+if [[ "$request" == *"/.well-known/acme-challenge/"* \
+  && "$*" != *"Host: ${FAKE_DOMAIN:?}"* ]]; then
+  exit 22
+fi
 if [[ "$*" == *"%{http_code}"* ]]; then
   if [[ "${FAKE_REDIRECT_FAIL_SHA:-}" == "$active_sha" ]]; then
     printf '302'
@@ -408,24 +412,37 @@ unset FAKE_FAIL_SHA
 [[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
 
 FAKE_DOMAIN="ops011-test.duckdns.org"
+BAD_DOMAIN="ops011-wrong.duckdns.org"
 FAKE_EMAIL="operator${FAKE_AT_SIGN:-@}example.invalid"
 export FAKE_DOMAIN
 
 https_command() {
+  local domain="${HTTPS_COMMAND_DOMAIN:-$FAKE_DOMAIN}"
+
   "$SCRIPT_DIR/https.sh" "$@" \
-    --domain "$FAKE_DOMAIN" \
+    --domain "$domain" \
     --backend-image "$BACKEND_IMAGE" \
     --frontend-image "$FRONTEND_IMAGE" \
     --runtime-dir "$RUNTIME_DIR" \
     --state-dir "$STATE_DIR" >/dev/null
 }
 
-export FAKE_CHALLENGE_FAIL=1
-if https_command bootstrap; then
-  printf 'failed challenge validation was reported as bootstrap success\n' >&2
+if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap; then
+  printf 'unverified HTTPS domain was reported as bootstrap success\n' >&2
   exit 1
 fi
-unset FAKE_CHALLENGE_FAIL
+[[ ! -e "$STATE_DIR/https-domain" ]] || {
+  printf 'failed bootstrap persisted HTTPS domain\n' >&2
+  exit 1
+}
+[[ ! -e "$STATE_DIR/https-domain.candidate" ]] || {
+  printf 'failed bootstrap left HTTPS domain candidate\n' >&2
+  exit 1
+}
+[[ ! -e "$STATE_DIR/nginx.https.conf.candidate" ]] || {
+  printf 'failed bootstrap left HTTPS Nginx candidate\n' >&2
+  exit 1
+}
 [[ ! -e "$FAKE_DOCKER_STATE/challenge-probe" ]] || {
   printf 'challenge probe remained after failed validation\n' >&2
   exit 1
@@ -436,6 +453,13 @@ https_command bootstrap
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/https-domain")" == "600" ]]
+[[ ! -e "$STATE_DIR/https-domain.candidate" ]]
+
+if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command bootstrap; then
+  printf 'different HTTPS domain was accepted after bootstrap approval\n' >&2
+  exit 1
+fi
+[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
 
 mv "$STATE_DIR/https-domain" "$STATE_DIR/https-domain.saved"
 ln -s "$STATE_DIR/https-domain.saved" "$STATE_DIR/https-domain"
@@ -491,6 +515,13 @@ https_command issue --email "$FAKE_EMAIL"
 grep -Fq "server_name $FAKE_DOMAIN;" "$STATE_DIR/nginx.https.conf"
 grep -Fq "return 301 https://$FAKE_DOMAIN\$request_uri;" "$STATE_DIR/nginx.https.conf"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+if HTTPS_COMMAND_DOMAIN="$BAD_DOMAIN" https_command status; then
+  printf 'different HTTPS domain was accepted after HTTPS activation\n' >&2
+  exit 1
+fi
+[[ "$(<"$STATE_DIR/https-domain")" == "$FAKE_DOMAIN" ]]
+[[ "$(<"$STATE_DIR/https-enabled")" == "enabled" ]]
 
 issue_count_before="$(<"$FAKE_DOCKER_STATE/issue-count")"
 https_command issue --email "$FAKE_EMAIL"

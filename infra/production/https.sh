@@ -9,6 +9,7 @@ source "$SCRIPT_DIR/release-common.sh"
 
 HTTPS_MARKER=""
 CERTBOT_CONFIG=""
+HTTPS_DOMAIN_CANDIDATE=""
 HTTPS_CONFIG_CANDIDATE=""
 
 usage() {
@@ -40,6 +41,10 @@ cleanup() {
   if [[ -n "$CERTBOT_CONFIG" && -f "$CERTBOT_CONFIG" ]]; then
     rm -f -- "$CERTBOT_CONFIG"
   fi
+  if [[ -n "$HTTPS_DOMAIN_CANDIDATE" \
+    && ( -e "$HTTPS_DOMAIN_CANDIDATE" || -L "$HTTPS_DOMAIN_CANDIDATE" ) ]]; then
+    rm -f -- "$HTTPS_DOMAIN_CANDIDATE"
+  fi
   if [[ -n "$HTTPS_CONFIG_CANDIDATE" && -f "$HTTPS_CONFIG_CANDIDATE" ]]; then
     rm -f -- "$HTTPS_CONFIG_CANDIDATE"
   fi
@@ -68,7 +73,7 @@ write_certbot_config() {
   chmod 600 "$CERTBOT_CONFIG"
 }
 
-persist_https_domain() {
+select_https_domain() {
   local domain_file="$PAWCYCLE_STATE_DIR/$HTTPS_DOMAIN_NAME"
 
   if [[ -e "$domain_file" || -L "$domain_file" ]]; then
@@ -77,7 +82,26 @@ persist_https_domain() {
       || die "requested domain does not match the approved HTTPS domain state"
     return 0
   fi
-  write_state "$HTTPS_DOMAIN_NAME" "$DOMAIN"
+  HTTPS_DOMAIN="$DOMAIN"
+}
+
+approve_https_domain() {
+  local domain_file="$PAWCYCLE_STATE_DIR/$HTTPS_DOMAIN_NAME"
+
+  if [[ -e "$domain_file" || -L "$domain_file" ]]; then
+    load_https_domain
+    [[ "$HTTPS_DOMAIN" == "$DOMAIN" ]] \
+      || die "requested domain does not match the approved HTTPS domain state"
+    return 0
+  fi
+
+  HTTPS_DOMAIN_CANDIDATE="$PAWCYCLE_STATE_DIR/${HTTPS_DOMAIN_NAME}.candidate"
+  rm -f -- "$HTTPS_DOMAIN_CANDIDATE"
+  umask 077
+  printf '%s\n' "$HTTPS_DOMAIN" > "$HTTPS_DOMAIN_CANDIDATE"
+  chmod 600 "$HTTPS_DOMAIN_CANDIDATE"
+  mv -f "$HTTPS_DOMAIN_CANDIDATE" "$domain_file"
+  HTTPS_DOMAIN_CANDIDATE=""
   load_https_domain
 }
 
@@ -160,6 +184,7 @@ bootstrap_http() {
   verify_running_release
   smoke_release
   verify_challenge_path
+  approve_https_domain
   printf 'Bootstrap HTTP service is ready for certificate issuance\n'
 }
 
@@ -261,7 +286,7 @@ require_command sed
 ACTIVE_SHA="$TARGET_SHA"
 HTTPS_MARKER="$PAWCYCLE_STATE_DIR/$HTTPS_MARKER_NAME"
 ensure_https_volumes
-persist_https_domain
+select_https_domain
 
 case "$ACTION" in
   bootstrap)
@@ -276,7 +301,7 @@ case "$ACTION" in
     bootstrap_http
     write_certbot_config
     if ! certbot certonly --webroot --webroot-path /var/www/certbot \
-      --domains "$DOMAIN" --cert-name "$CERTIFICATE_NAME" --keep-until-expiring; then
+      --domains "$HTTPS_DOMAIN" --cert-name "$CERTIFICATE_NAME" --keep-until-expiring; then
       die "certificate issuance failed; the current service and release remain active"
     fi
     validate_https_certificate

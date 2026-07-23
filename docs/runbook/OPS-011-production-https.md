@@ -63,7 +63,7 @@ sudo bash infra/production/https.sh bootstrap \
 ```
 
 성공 문구 세 개(내부 smoke, HTTP-01 경로, bootstrap 준비)를 확인한다. 외부 네트워크에서 HTTP challenge 경로 접근이 차단되면 발급으로 진행하지 않는다.
-검증된 hostname은 `/opt/pawcycle/state/https-domain`에 일반 파일·mode `600`으로 고정된다. 이후 명령에 다른 hostname을 전달하거나 이 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
+최초 hostname은 proxy health, 실행 release, 내부 smoke와 HTTP-01 challenge가 모두 성공하기 전까지 현재 실행의 메모리 값으로만 사용된다. 성공 뒤에만 `/opt/pawcycle/state/https-domain`에 일반 파일·mode `600`으로 원자적으로 고정된다. 실패하면 domain·Nginx config 후보와 probe를 제거하므로 올바른 hostname으로 다시 실행할 수 있다. 승인 뒤에는 다른 hostname을 전달하거나 state 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
 
 ## 4. 2단계 최초 발급과 HTTPS 전환
 

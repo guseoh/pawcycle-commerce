@@ -214,6 +214,8 @@ def validate_scripts() -> None:
     require("mode must be 600" in common and "content is invalid" in common, "HTTPS state marker must fail closed")
     require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
     require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
+    require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
+    require("verify_challenge_path\n  approve_https_domain" in https, "HTTPS domain must be approved only after challenge validation")
     require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
     require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
     require("from cryptography import x509" in common, "certificate parsing must use the public cryptography API")
@@ -225,6 +227,11 @@ def validate_scripts() -> None:
         "HTTPS release gate failure changed current SHA",
         "HTTPS rollback gate failure changed current SHA",
         "challenge probe remained after failed validation",
+        "failed bootstrap persisted HTTPS domain",
+        "failed bootstrap left HTTPS domain candidate",
+        "failed bootstrap left HTTPS Nginx candidate",
+        "different HTTPS domain was accepted after bootstrap approval",
+        "different HTTPS domain was accepted after HTTPS activation",
         "HTTPS domain symlink did not fail closed",
     ):
         require(evidence in script_tests, f"HTTPS regression evidence is missing: {evidence}")
