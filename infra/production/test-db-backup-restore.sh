@@ -62,6 +62,10 @@ assert_no_restore_resources() {
     --filter label=com.pawcycle.ops013.scope=restore \
     --filter "label=com.pawcycle.ops013.backup-id=$BACKUP_ID")" ]] \
     || fail "temporary restore volume remained"
+  if [[ -d "$WORK_ROOT" ]]; then
+    [[ -z "$(sudo find "$WORK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'ops013-*' -print -quit 2>/dev/null)" ]] \
+      || fail "temporary restore work file remained"
+  fi
 }
 
 run_ops013() {
@@ -76,6 +80,7 @@ run_ops013() {
     FAKE_AWS_VERSIONING="${FAKE_AWS_VERSIONING:-}" \
     FAKE_AWS_LIFECYCLE_COUNT="${FAKE_AWS_LIFECYCLE_COUNT:-}" \
     FAKE_GZIP_FAIL="${FAKE_GZIP_FAIL:-}" \
+    FAKE_GZIP_FAIL_DECOMPRESS="${FAKE_GZIP_FAIL_DECOMPRESS:-}" \
     PAWCYCLE_OPS013_TEST_MODE=local-validation-only \
     PAWCYCLE_BACKUP_WORK_ROOT="$WORK_ROOT" \
     PAWCYCLE_BACKUP_LOCK_FILE="$LOCK_FILE" \
@@ -174,6 +179,13 @@ set -Eeuo pipefail
 if [[ "\${FAKE_GZIP_FAIL:-}" == "1" ]]; then
   exit 1
 fi
+if [[ "\${FAKE_GZIP_FAIL_DECOMPRESS:-}" == "1" ]]; then
+  for argument in "\$@"; do
+    if [[ "\$argument" == "--decompress" ]]; then
+      exit 1
+    fi
+  done
+fi
 exec "$REAL_GZIP" "\$@"
 EOF
 chmod +x "$FAKE_BIN/aws" "$FAKE_BIN/gzip" "$SCRIPT"
@@ -249,6 +261,14 @@ run_ops013 restore-verify \
   >/dev/null
 assert_no_restore_resources
 
+cp -a -- "$baseline/." "$backup_root/"
+decompression_failure="$(FAKE_GZIP_FAIL_DECOMPRESS=1 run_ops013 restore-verify \
+  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  2>&1 >/dev/null || true)"
+[[ "$decompression_failure" == *"restore-decompression-failed"* ]] \
+  || fail "restore decompression failure stage was not reported"
+assert_no_restore_resources
+
 if FAKE_GZIP_FAIL=1 run_ops013 backup \
   --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
   fail "backup failure was reported as success"
@@ -295,11 +315,11 @@ gzip --stdout "$TEMP_DIR/invalid.sql" >"$backup_root/${BACKUP_ID}.sql.gz"
 )
 dump_hash="$(sha256sum "$backup_root/${BACKUP_ID}.sql.gz" | awk '{print $1}')"
 sed -i "s/^DUMP_SHA256=.*/DUMP_SHA256=$dump_hash/" "$backup_root/${BACKUP_ID}.complete"
-if run_ops013 restore-verify \
+restore_failure="$(run_ops013 restore-verify \
   --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
-  >/dev/null 2>&1; then
-  fail "restore failure was reported as success"
-fi
+  2>&1 >/dev/null || true)"
+[[ "$restore_failure" == *"restore-sql-import-failed"* ]] \
+  || fail "restore SQL import failure stage was not reported"
 assert_no_restore_resources
 
 cp -a -- "$baseline/." "$backup_root/"

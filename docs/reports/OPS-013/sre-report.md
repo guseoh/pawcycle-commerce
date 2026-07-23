@@ -57,6 +57,8 @@ PR #61 병합, 최신 `origin/main`, 깨끗한 새 `ops/sre`와 미병합 역할
 
 Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioning 비활성·14일 lifecycle, completion marker 순서, credential 비노출, restore `none` network·무 publish·별도 volume, cleanup label과 production volume 삭제 금지를 확인했다. 실제 Docker engine이 없는 로컬 환경에서는 isolated MySQL lifecycle을 시작하지 못했으며 GitHub Repository Validation에서 실행하도록 연결했다.
 
+PR #62의 최초 Repository Validation은 source fixture가 `MYSQL_ROOT_PASSWORD_FILE`을 사용하는 경우를 인식하지 못해 실패했고 credential 전달 계약을 보완했다. 다음 실행은 source MySQL 초기화 중 socket readiness가 조기 성공해 직접 `Access denied`로 실패했으며 source fixture 준비 검사를 대상 DB 쿼리로 변경했다. 그 다음 실행은 raw MySQL 오류를 노출하지 않고 `isolated logical restore failed` 단계에서 중단됐다. restore MySQL도 초기화 중 `mysqladmin ping`이 조기 성공했을 가능성을 readiness race로 추정했으며, 이번 후속 수정에서 대상 restore DB의 `127.0.0.1` TCP 인증 쿼리 연속 2회 성공을 요구하고 gzip·SQL import 종료 상태를 각각 보존하도록 변경했다. 최신 재검증 결과는 아래 검증 표와 GitHub Repository Validation을 권위 원본으로 확인한다.
+
 ## 독립 검증 (고위험 필수)
 
 구현 script와 분리된 `validate-production-contracts.py`가 OPS-013 보안·격리·보존 계약을 검사한다. Repository Validation의 Ubuntu Docker 환경에서 fake AWS 경계와 pinned source·restore MySQL lifecycle, 기존 production shell·Nginx·Compose·Backend·Frontend 회귀를 실행한다.
@@ -72,7 +74,8 @@ Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioni
 | OPS-013 고위험 task artifact validator | 통과 |
 | commit message validator | 통과 |
 | `git diff --check` | 통과 |
-| Repository Validation | PR 생성 뒤 GitHub를 권위 원본으로 확인 |
+| PR #62 선행 Repository Validation | source credential 인식, source readiness, restore import 단계에서 순차 실패 |
+| 후속 수정 Repository Validation | 최신 head의 GitHub 실행 결과를 권위 원본으로 확인 |
 
 ## 실행하지 못한 검증과 이유
 

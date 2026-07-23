@@ -781,18 +781,35 @@ download_backup_set() {
 
 wait_restore_mysql() {
   local elapsed=0
+  local interval=2
+  local consecutive_successes=0
+  local container_status
 
   while (( elapsed < 180 )); do
+    container_status="$(docker inspect --format '{{.State.Status}}' "$TEMP_CONTAINER" 2>/dev/null || true)"
+    case "$container_status" in
+      exited|dead|"")
+        return 1
+        ;;
+    esac
+
     if docker exec "$TEMP_CONTAINER" sh -eu -c \
-      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysqladmin --protocol=SOCKET --user=root ping --silent' \
+      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=TCP --host=127.0.0.1 --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT 1;"' \
       >/dev/null 2>&1; then
-      return 0
+      consecutive_successes=$((consecutive_successes + 1))
+      if (( consecutive_successes >= 2 )); then
+        return 0
+      fi
+    else
+      consecutive_successes=0
     fi
-    if [[ "$(docker inspect --format '{{.State.Status}}' "$TEMP_CONTAINER")" == "exited" ]]; then
+
+    container_status="$(docker inspect --format '{{.State.Status}}' "$TEMP_CONTAINER" 2>/dev/null || true)"
+    if [[ "$container_status" == "exited" || "$container_status" == "dead" || -z "$container_status" ]]; then
       return 1
     fi
-    sleep 3
-    elapsed=$((elapsed + 3))
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
   done
   return 1
 }
@@ -856,19 +873,33 @@ create_restore_mysql() {
 
 import_dump() {
   local dump="$WORK_DIR/${BACKUP_ID}.sql.gz"
+  local pipeline_status
+  local gzip_status
+  local mysql_status
 
   : >"$MYSQL_ERROR_FILE"
   : >"$COMPRESSION_ERROR_FILE"
-  if ! gzip --decompress --stdout "$dump" 2>"$COMPRESSION_ERROR_FILE" \
+  set +e
+  gzip --decompress --stdout "$dump" 2>"$COMPRESSION_ERROR_FILE" \
     | docker exec --interactive "$TEMP_CONTAINER" sh -eu -c \
       'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=SOCKET --user=root "$MYSQL_DATABASE"' \
-      > /dev/null 2>"$MYSQL_ERROR_FILE"; then
-    : >"$MYSQL_ERROR_FILE"
-    : >"$COMPRESSION_ERROR_FILE"
-    die "isolated logical restore failed"
-  fi
+      > /dev/null 2>"$MYSQL_ERROR_FILE"
+  pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  gzip_status="${pipeline_status[0]}"
+  mysql_status="${pipeline_status[1]}"
   : >"$MYSQL_ERROR_FILE"
   : >"$COMPRESSION_ERROR_FILE"
+
+  if (( gzip_status != 0 && gzip_status != 141 )); then
+    die "restore-decompression-failed"
+  fi
+  if (( mysql_status != 0 )); then
+    die "restore-sql-import-failed"
+  fi
+  if (( gzip_status != 0 )); then
+    die "restore-decompression-failed"
+  fi
 }
 
 verify_restored_database() {

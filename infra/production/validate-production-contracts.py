@@ -331,8 +331,21 @@ def validate_backup_restore() -> None:
     require(
         backup_restore.count('2>"$MYSQL_ERROR_FILE"') >= 5
         and "source MySQL metadata query failed" in backup_restore
-        and "isolated logical restore failed" in backup_restore,
+        and "restore-decompression-failed" in backup_restore
+        and "restore-sql-import-failed" in backup_restore,
         "MySQL and dump failures must suppress credential or row-bearing stderr",
+    )
+    require(
+        "--protocol=TCP --host=127.0.0.1" in backup_restore
+        and '"$MYSQL_DATABASE" --execute="SELECT 1;"' in backup_restore
+        and "consecutive_successes >= 2" in backup_restore,
+        "restore readiness must require two authenticated TCP queries against the target database",
+    )
+    require(
+        'pipeline_status=("${PIPESTATUS[@]}")' in backup_restore
+        and 'gzip_status="${pipeline_status[0]}"' in backup_restore
+        and 'mysql_status="${pipeline_status[1]}"' in backup_restore,
+        "restore import must preserve decompressor and MySQL client exit statuses",
     )
     require(
         '> /dev/null 2>"$MYSQL_ERROR_FILE"' in backup_restore,
@@ -385,10 +398,12 @@ def validate_backup_restore() -> None:
         "bucket versioning mismatch was reported as success",
         "bucket lifecycle mismatch was reported as success",
         "checksum mismatch was reported as success",
-        "restore failure was reported as success",
+        "restore decompression failure stage was not reported",
+        "restore SQL import failure stage was not reported",
         "verification mismatch was reported as success",
         "temporary restore container remained",
         "temporary restore volume remained",
+        "temporary restore work file remained",
         "source production fixture changed during backup or restore verification",
         "source production volume was removed",
     ):
