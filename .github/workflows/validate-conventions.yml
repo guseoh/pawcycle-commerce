@@ -87,7 +87,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate OPS-011 production HTTPS contracts
+      - name: Validate production deployment and recovery contracts
         run: |
           bash -n \
             infra/production/release-common.sh \
@@ -95,13 +95,16 @@ jobs:
             infra/production/deploy.sh \
             infra/production/rollback.sh \
             infra/production/https.sh \
+            infra/production/db-backup-restore.sh \
             infra/production/test-production-scripts.sh \
             infra/production/test-production-nginx.sh \
-            infra/production/test-production-compose.sh
+            infra/production/test-production-compose.sh \
+            infra/production/test-db-backup-restore.sh
           python infra/production/validate-production-contracts.py
           bash infra/production/test-production-scripts.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-compose.sh
+          bash infra/production/test-db-backup-restore.sh
 
       - name: Verify MySQL service
         env:

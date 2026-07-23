@@ -1,0 +1,392 @@
+# OPS-013 운영 DB 논리 백업·격리 복원 Runbook
+
+## 목적
+
+운영 MySQL application DB를 중지하거나 변경하지 않고 압축 논리 dump를 비공개 S3에 저장한다. 같은 EC2·EBS에서 production network와 분리된 임시 MySQL·named volume에 복원해 schema, Flyway history와 핵심 table count가 백업 시점 원본과 일치하는지 확인한다.
+
+실제 bucket·region·prefix, account·role 식별자, credential, dump 원문과 row는 저장소·PR·실행 로그에 기록하지 않는다.
+
+## 증상과 영향
+
+- 증상: 논리 백업 또는 복원 검증 증거가 없거나 최근 백업의 무결성을 확인할 수 없음
+- 영향: MySQL volume 장애나 운영자 실수 뒤 application DB 복구 가능성을 입증할 수 없음
+- 이 Runbook의 한계: 논리 백업·격리 복원 검증만 다루며 production DB restore, EBS 복구와 application rollback을 수행하지 않음
+
+## 고정 계약
+
+- source: Compose project `pawcycle-production`의 healthy MySQL 한 개
+- source volume: `pawcycle-production-mysql-data`, 읽기 전용 논리 dump 대상
+- MySQL image: production과 동일한 저장소 고정 digest
+- S3 storage class: S3 Standard
+- encryption: SSE-S3 `AES256`
+- retention: 지정 prefix 아래 object 생성 14일 뒤 만료
+- restore: `--network none`, host port 없음, 고유 임시 named volume
+- 핵심 table: `members`, `products`, `skus`, `subscriptions`
+- completion marker가 없는 object set은 복원 대상으로 사용하지 않음
+
+## 중단 조건
+
+다음 중 하나면 실행하지 않는다.
+
+- 최신 main과 현재 production release·HTTPS·MySQL health가 불명확함
+- production MySQL image 또는 volume이 고정 계약과 다름
+- MySQL migration·DDL 또는 대량 쓰기가 진행 중임
+- AWS region이 현재 EC2와 bucket에서 일치하는지 확인할 수 없음
+- bucket Public Access Block 네 항목, SSE-S3 또는 14일 prefix lifecycle을 확인할 수 없음
+- instance role이 아닌 access key·Secret을 명령행이나 파일에 입력해야 함
+- backup work root나 runtime 파일이 symlink이거나 root 전용 mode가 아님
+- script가 요구하는 disk·available memory preflight를 통과하지 못함
+- 단일 compressed dump object가 승인된 5 GiB single-request upload 한도를 초과함
+- production service 중지, production DB 쓰기 또는 production volume 변경이 필요함
+- 임시 restore container가 `none` network·무 publish·별도 volume 계약을 만족하지 않음
+
+## 1. 저장소와 production 기준 확인
+
+```bash
+cd /opt/pawcycle/repository
+git fetch --prune origin
+git switch main
+git pull --ff-only origin main
+git status --short
+
+sudo docker ps \
+  --filter label=com.docker.compose.project=pawcycle-production \
+  --format '{{.Label "com.docker.compose.service"}} {{.Status}}'
+sudo docker volume inspect pawcycle-production-mysql-data >/dev/null
+sudo docker compose version
+aws --version
+df -h /opt/pawcycle /var/lib/docker
+free -h
+```
+
+`git status --short`는 비어 있어야 하고 네 production container가 healthy여야 한다. application SHA, 실제 hostname, IP와 credential은 증거에 복사하지 않는다.
+
+## 2. 비공개 S3 bucket 준비
+
+이 단계는 bucket·IAM을 변경할 권한이 있는 사용자 작업이다. EC2 instance role 권한과 분리해 수행한다. 아래 식별자는 현재 shell에서만 보유하고 terminal transcript에 값을 출력하지 않는다.
+
+```bash
+read -r -s -p 'Backup bucket: ' BACKUP_BUCKET
+printf '\n'
+read -r -s -p 'AWS region: ' BACKUP_REGION
+printf '\n'
+read -r -s -p 'Backup prefix: ' BACKUP_PREFIX
+printf '\n'
+export BACKUP_BUCKET BACKUP_REGION BACKUP_PREFIX
+
+[[ "$BACKUP_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]
+[[ "$BACKUP_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]]
+[[ "$BACKUP_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$ ]]
+```
+
+`BACKUP_REGION`은 EC2와 bucket이 함께 위치한 승인된 서울 region이어야 한다.
+
+새 bucket이면 같은 region에 생성한다. 기존 bucket을 사용하면 생성 명령은 생략한다.
+
+```bash
+aws s3api create-bucket \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --create-bucket-configuration "LocationConstraint=$BACKUP_REGION" \
+  >/dev/null
+```
+
+Public Access Block 네 항목과 SSE-S3 기본 암호화를 적용한다.
+
+```bash
+aws s3api put-public-access-block \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --public-access-block-configuration \
+  'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+
+aws s3api put-bucket-encryption \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+```
+
+현재 AWS 관리자 사용자만 읽을 수 있는 mode `600` 임시 파일로 지정 prefix의 14일 만료 rule을 적용한다.
+
+```bash
+umask 077
+LIFECYCLE_FILE="$(mktemp)"
+chmod 600 "$LIFECYCLE_FILE"
+tee "$LIFECYCLE_FILE" >/dev/null <<EOF
+{
+  "Rules": [
+    {
+      "ID": "expire-ops013-backups-after-14-days",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "${BACKUP_PREFIX}/"},
+      "Expiration": {"Days": 14}
+    }
+  ]
+}
+EOF
+
+if ! aws s3api put-bucket-lifecycle-configuration \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --lifecycle-configuration "file://$LIFECYCLE_FILE"; then
+  rm -f -- "$LIFECYCLE_FILE"
+  unset LIFECYCLE_FILE
+  exit 1
+fi
+rm -f -- "$LIFECYCLE_FILE"
+unset LIFECYCLE_FILE
+```
+
+bucket policy에는 TLS와 지정 prefix의 `AES256` upload를 강제한다. 실제 bucket·prefix로 치환한 policy는 저장소가 아닌 현재 AWS 관리자 사용자만 읽을 수 있는 mode `600` 임시 파일에서 적용하고 즉시 삭제한다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::<backup-bucket>",
+        "arn:aws:s3:::<backup-bucket>/*"
+      ],
+      "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+    },
+    {
+      "Sid": "RequireSseS3ForBackupPrefix",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::<backup-bucket>/<backup-prefix>/*",
+      "Condition": {
+        "StringNotEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    }
+  ]
+}
+```
+
+실행할 때는 위 구조를 다음 root 전용 임시 파일로 생성해 적용한다.
+
+```bash
+umask 077
+BUCKET_POLICY_FILE="$(mktemp)"
+chmod 600 "$BUCKET_POLICY_FILE"
+tee "$BUCKET_POLICY_FILE" >/dev/null <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::${BACKUP_BUCKET}",
+        "arn:aws:s3:::${BACKUP_BUCKET}/*"
+      ],
+      "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+    },
+    {
+      "Sid": "RequireSseS3ForBackupPrefix",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::${BACKUP_BUCKET}/${BACKUP_PREFIX}/*",
+      "Condition": {
+        "StringNotEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+if ! aws s3api put-bucket-policy \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --policy "file://$BUCKET_POLICY_FILE"; then
+  rm -f -- "$BUCKET_POLICY_FILE"
+  unset BUCKET_POLICY_FILE
+  exit 1
+fi
+rm -f -- "$BUCKET_POLICY_FILE"
+unset BUCKET_POLICY_FILE
+```
+
+## 3. EC2 instance role 최소 권한
+
+실제 role·account ARN은 저장소에 기록하지 않는다. `<backup-bucket>`과 `<backup-prefix>`만 사용자 로컬 정책에서 치환한다. lifecycle·encryption·Public Access Block 쓰기 권한은 instance role에 주지 않는다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadBackupBucketContract",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketVersioning",
+        "s3:GetLifecycleConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::<backup-bucket>"
+    },
+    {
+      "Sid": "WriteAndVerifyBackupObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::<backup-bucket>/<backup-prefix>/*"
+    }
+  ]
+}
+```
+
+`s3:DeleteObject`, wildcard bucket, KMS와 public ACL 권한은 추가하지 않는다.
+
+## 4. bucket 계약 확인
+
+다음 값만 확인하고 실제 식별자는 증거에 복사하지 않는다.
+
+```bash
+aws s3api get-bucket-location \
+  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --query LocationConstraint --output text
+
+aws s3api get-public-access-block \
+  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --query '[PublicAccessBlockConfiguration.BlockPublicAcls,PublicAccessBlockConfiguration.IgnorePublicAcls,PublicAccessBlockConfiguration.BlockPublicPolicy,PublicAccessBlockConfiguration.RestrictPublicBuckets]' \
+  --output text
+
+aws s3api get-bucket-encryption \
+  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
+  --output text
+
+aws s3api get-bucket-versioning \
+  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --query Status --output text
+
+aws s3api get-bucket-lifecycle-configuration \
+  --bucket "$BACKUP_BUCKET" --region "$BACKUP_REGION" \
+  --query "length(Rules[?Status=='Enabled' && Expiration.Days==\`14\` && Filter.Prefix=='${BACKUP_PREFIX}/'])" \
+  --output text
+```
+
+기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, lifecycle count `1` 이상이다. versioning이 `Enabled` 또는 `Suspended`인 기존 bucket은 OPS-013 대상으로 사용하지 않는다.
+
+## 5. 운영 논리 백업
+
+DDL·migration이 없는 저부하 시점에 수행한다. `--single-transaction`은 일반 row 쓰기를 막지 않지만 dump 중 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`는 금지한다.
+
+```bash
+cd /opt/pawcycle/repository
+sudo --preserve-env=BACKUP_BUCKET,BACKUP_REGION,BACKUP_PREFIX \
+  infra/production/db-backup-restore.sh backup \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --prefix "$BACKUP_PREFIX"
+```
+
+script는 다음 순서로 fail-close한다.
+
+1. healthy production MySQL·고정 image·고정 volume 확인
+2. mysql·mysqldump, 대상 DB·Flyway·핵심 table 확인
+3. DB 크기 기준 disk와 available memory 확인
+4. `--single-transaction --quick --skip-lock-tables` 압축 dump 생성
+5. schema·Flyway fingerprint와 핵심 table count manifest 생성
+6. dump·manifest와 각각의 SHA-256 checksum 업로드
+7. S3 size·SSE-S3·다운로드 checksum 재검증
+8. 마지막에만 completion marker 업로드
+
+성공 로그의 backup ID만 비민감 증거로 기록한다. 실제 object key, bucket과 row count는 기록하지 않는다.
+
+## 6. 격리 복원 검증
+
+성공한 backup ID를 입력한다. production DB container와 application에는 연결하지 않는다.
+
+```bash
+read -r -p 'Backup ID: ' BACKUP_ID
+sudo --preserve-env=BACKUP_BUCKET,BACKUP_REGION,BACKUP_PREFIX \
+  infra/production/db-backup-restore.sh restore-verify \
+  --bucket "$BACKUP_BUCKET" \
+  --region "$BACKUP_REGION" \
+  --prefix "$BACKUP_PREFIX" \
+  --backup-id "$BACKUP_ID"
+```
+
+script는 completion marker, object size·SSE-S3, SHA-256과 gzip을 확인한 뒤에만 복원한다. 임시 MySQL은 다음 계약을 가진다.
+
+- production과 동일한 pinned MySQL image
+- `--network none`
+- host port publish 없음
+- `pawcycle-restore-verify-<backup-id>-<suffix>` 전용 named volume
+- 무작위 root password를 mode `600` 임시 파일로만 전달
+- production MySQL volume mount 없음
+- 640 MiB memory, 0.70 CPU, 256 PID 상한
+
+복원 뒤 schema fingerprint, Flyway fingerprint·history count와 네 핵심 table count를 backup-time manifest와 비교한다. 실제 row와 count 값은 stdout에 출력하지 않는다.
+
+## 7. cleanup과 재실행
+
+정상·오류 종료에서는 trap이 임시 container·volume·파일을 제거한다. 강제 종료로 남은 resource는 정확한 backup ID로만 정리한다.
+
+```bash
+sudo infra/production/db-backup-restore.sh cleanup --backup-id "$BACKUP_ID"
+```
+
+cleanup은 OPS-013 restore label, `none` network, production volume 미사용을 다시 확인한 resource만 제거한다. production container·volume·state와 S3 object는 삭제하지 않는다. 같은 backup을 다시 검증하거나 새 backup을 생성해도 이름 충돌이 없어야 한다.
+
+## 8. 실패 판정과 복구
+
+| 실패 | 판정 | 안전한 조치 |
+| --- | --- | --- |
+| production health·image·volume 불일치 | backup 중단 | production 원인을 먼저 확인 |
+| disk·memory 부족 | backup 또는 restore 중단 | application을 중지하지 말고 용량 계획을 별도 승인 |
+| bucket 계약·IAM 실패 | upload 전 중단 | PAB·SSE-S3·lifecycle·role 정책 수정 후 재시도 |
+| dump·gzip 실패 | backup 실패 | 임시 파일 cleanup 확인 후 새 backup ID로 재시도 |
+| compressed object 5 GiB 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
+| upload·head·download checksum 실패 | backup 실패 | completion marker 부재를 확인하고 새 backup 생성 |
+| restore SQL 실패 | 복원 검증 실패 | 임시 resource cleanup 뒤 원본 backup 상태 조사 |
+| schema·Flyway·table count 불일치 | 복원 검증 실패 | 성공으로 기록하지 말고 DDL·동시 쓰기·dump 손상 조사 |
+
+실패 시 production service, `pawcycle-production-mysql-data`, release SHA와 HTTPS state를 변경하지 않는다. 부분 upload는 14일 lifecycle 대상이며 instance role에 삭제 권한을 추가하지 않는다.
+
+## 9. 비민감 증거 형식
+
+```text
+OPS-013 backup: PASS|FAIL, backup ID recorded separately
+S3 contract: region match, PAB 4/4, SSE-S3, 14-day prefix lifecycle PASS|FAIL
+Upload verification: size, encryption, checksum, completion marker PASS|FAIL
+Isolated restore: none network, no host port, temporary volume PASS|FAIL
+Data verification: schema, Flyway history, core table counts MATCH|MISMATCH
+Cleanup: temporary container, volume, work files ABSENT|PRESENT
+Production preservation: release, HTTPS state, MySQL container and volume UNCHANGED|UNKNOWN
+```
+
+bucket·account·ARN·hostname·IP·email·credential, application SHA 값, object key, dump 원문, row와 실제 count는 기록하지 않는다.
+
+## 10. 재부팅·application rollback과의 관계
+
+OPS-013은 application rollback이나 production restore를 수행하지 않는다. 현재 OPS-012 rollback은 `previous-sha` 부재로 Deferred다. 실제 이전 SHA rollback을 백업 성공으로 대체하거나 완료로 기록하지 않는다.
+
+## 에스컬레이션과 후속 작업
+
+- 자동 schedule과 실패 알림
+- certificate·DB backup 보존 정책 통합
+- 실제 production restore 승인 절차
+- cross-region·versioning·Glacier·별도 KMS가 필요한 규제 또는 RPO/RTO 결정
+- backup·restore 실행 중 count 불일치가 반복될 때의 쓰기 정합성 전략
+
+이 항목은 OPS-013 구현·운영 검증 완료로 간주하지 않는다.
