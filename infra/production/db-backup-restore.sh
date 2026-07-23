@@ -366,7 +366,14 @@ source_mysql_query() {
 
   : >"$MYSQL_ERROR_FILE"
   if ! docker exec "$container" sh -eu -c \
-    'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=SOCKET --user=root --batch --skip-column-names --raw "$MYSQL_DATABASE" --execute="$1"' \
+    'if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+       export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"
+     elif [ -n "${MYSQL_ROOT_PASSWORD_FILE:-}" ] && [ -f "$MYSQL_ROOT_PASSWORD_FILE" ]; then
+       export MYSQL_PWD="$(cat "$MYSQL_ROOT_PASSWORD_FILE")"
+     else
+       exit 1
+     fi
+     exec mysql --protocol=SOCKET --user=root --batch --skip-column-names --raw "$MYSQL_DATABASE" --execute="$1"' \
     sh "$sql" >"$output_file" 2>"$MYSQL_ERROR_FILE"; then
     : >"$MYSQL_ERROR_FILE"
     die "source MySQL metadata query failed"
@@ -432,7 +439,14 @@ check_source_tools_and_database() {
 
   : >"$MYSQL_ERROR_FILE"
   if ! docker exec "$container" sh -eu -c \
-    'command -v mysql >/dev/null; command -v mysqldump >/dev/null; test -n "$MYSQL_DATABASE"; test -n "$MYSQL_ROOT_PASSWORD"' \
+    'command -v mysql >/dev/null
+     command -v mysqldump >/dev/null
+     test -n "$MYSQL_DATABASE"
+     if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+       exit 0
+     fi
+     test -n "${MYSQL_ROOT_PASSWORD_FILE:-}"
+     test -f "$MYSQL_ROOT_PASSWORD_FILE"' \
     >/dev/null 2>"$MYSQL_ERROR_FILE"; then
     : >"$MYSQL_ERROR_FILE"
     die "source MySQL tools or runtime database contract is unavailable"
@@ -544,7 +558,14 @@ create_dump() {
   : >"$MYSQL_ERROR_FILE"
   : >"$COMPRESSION_ERROR_FILE"
   if ! docker exec "$container" sh -eu -c \
-    'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysqldump --protocol=SOCKET --user=root --single-transaction --quick --skip-lock-tables --routines --events --triggers --hex-blob --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 "$MYSQL_DATABASE"' \
+    'if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+       export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"
+     elif [ -n "${MYSQL_ROOT_PASSWORD_FILE:-}" ] && [ -f "$MYSQL_ROOT_PASSWORD_FILE" ]; then
+       export MYSQL_PWD="$(cat "$MYSQL_ROOT_PASSWORD_FILE")"
+     else
+       exit 1
+     fi
+     exec mysqldump --protocol=SOCKET --user=root --single-transaction --quick --skip-lock-tables --routines --events --triggers --hex-blob --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 "$MYSQL_DATABASE"' \
     2>"$MYSQL_ERROR_FILE" | gzip 2>"$COMPRESSION_ERROR_FILE" >"$dump"; then
     rm -f -- "$dump"
     : >"$MYSQL_ERROR_FILE"
