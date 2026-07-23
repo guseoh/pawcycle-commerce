@@ -40,15 +40,15 @@ application/API/DB schema·migration, production DB 쓰기·중지·restore, `pa
 
 - source credential은 host에서 읽거나 command argument로 전달하지 않고 기존 MySQL container 내부 환경에서만 사용한다.
 - bucket·region·prefix·expected owner는 `PAWCYCLE_BACKUP_*` 환경 변수로만 받고 S3 식별자 CLI flag는 거부한다.
-- ambient container credential과 AWS endpoint override를 거부하고 EC2 instance role·일반 S3 endpoint 경계를 강제한다.
+- ambient container credential, IMDS endpoint와 AWS service endpoint override를 거부하고 EC2 instance role·일반 AWS endpoint 경계를 강제한다.
 - dump·manifest·checksum을 mode `600` root 전용 임시 경로에서 생성하고 S3 object set을 검증한다.
 - production MySQL identity·health를 마지막으로 재확인한 뒤 completion marker를 업로드한다.
 - restore 전 모든 S3 object의 size·SSE-S3와 work disk 여유를 확인해 대형 object의 선다운로드를 차단한다.
 - checksum object는 hash와 기대 local basename 한 항목만 허용하며 외부·절대 경로를 읽지 않는다.
-- 승인 서울 region과 expected bucket owner, Public Access Block 네 항목, SSE-S3, versioning 비활성과 지정 prefix 14일 lifecycle을 upload 전에 검사한다.
+- 승인 서울 region과 expected bucket owner, Public Access Block 네 항목, SSE-S3, versioning 비활성과 전용 bucket의 유일한 지정 prefix 14일 lifecycle을 upload 전에 검사한다.
 - dump를 임시 MySQL에 먼저 import해 manifest를 생성하므로 dump 이후 production row 쓰기가 backup snapshot 정합성을 깨뜨리지 않는다.
 - dump 이외 metadata object는 upload 전부터 1 MiB로 제한한다.
-- Runbook은 lifecycle·bucket policy 전체 교체 위험을 피하도록 OPS-013 전용 신규 빈 bucket만 허용한다.
+- Runbook은 bucket 생성 실패를 즉시 중단하고 lifecycle·bucket policy 전체 교체 위험을 피하도록 OPS-013 전용 신규 빈 bucket만 허용한다.
 - 단일 PUT은 `5,000,000,000` byte에서 fail-close하고 restore disk는 실제 압축 해제 크기를 측정해 산정한다.
 - restore MySQL은 production과 같은 pinned image, `none` network, host port 없음, 고유 temporary volume·credential file과 resource limit을 사용한다.
 - lifecycle test cleanup은 자신이 생성한 production 이름의 fixture volume만 제거한다.

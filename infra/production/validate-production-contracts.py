@@ -386,8 +386,11 @@ def validate_backup_restore() -> None:
         "backup metadata must be generated from the isolated import of the dump snapshot",
     )
     require(
-        "get-bucket-lifecycle-configuration" in backup_restore and "Expiration.Days==\\`14\\`" in backup_restore,
-        "the requested prefix must have an enabled 14-day expiration lifecycle",
+        "get-bucket-lifecycle-configuration" in backup_restore
+        and "--query 'length(Rules)'" in backup_restore
+        and '[[ "$lifecycle_rule_count" == "1" ]]' in backup_restore
+        and "Expiration.Days==\\`14\\`" in backup_restore,
+        "the dedicated bucket must have exactly one enabled 14-day expiration lifecycle for the requested prefix",
     )
     require("AWS request failed; bucket and object identifiers were suppressed" in backup_restore, "AWS failures must not print bucket identifiers")
     require(
@@ -396,12 +399,13 @@ def validate_backup_restore() -> None:
             for name in (
                 "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
                 "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+                "AWS_EC2_METADATA_SERVICE_ENDPOINT",
                 "AWS_ENDPOINT_URL",
                 "AWS_ENDPOINT_URL_S3",
                 "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true",
             )
         ),
-        "ambient container credentials and endpoint overrides must be rejected or ignored",
+        "ambient container, IMDS, and service endpoint overrides must be rejected or ignored",
     )
     require(
         "AWS credentials and endpoint overrides must not come from the ambient environment" in backup_restore
@@ -487,6 +491,8 @@ def validate_backup_restore() -> None:
     )
     require(
         "전용 신규 빈 bucket만 허용" in runbook
+        and "if ! aws s3api create-bucket" in runbook
+        and "전용 신규 bucket 생성 실패: 기존 bucket을 변경하지 마세요." in runbook
         and "put-bucket-lifecycle-configuration" in runbook
         and "기존 bucket 재사용은 이 Runbook 범위에서 제외" in runbook
         and "put-bucket-policy" in runbook,
@@ -506,6 +512,8 @@ def validate_backup_restore() -> None:
         "bucket public access mismatch was reported as success",
         "bucket versioning mismatch was reported as success",
         "bucket lifecycle mismatch was reported as success",
+        "overlapping bucket lifecycle rules were reported as success",
+        "IMDS endpoint override was reported as success",
         "checksum mismatch was reported as success",
         "restore decompression failure stage was not reported",
         "restore SQL import failure stage was not reported",

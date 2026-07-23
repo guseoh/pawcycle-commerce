@@ -165,6 +165,7 @@ validate_instance_role_boundary() {
     AWS_WEB_IDENTITY_TOKEN_FILE \
     AWS_CONTAINER_CREDENTIALS_RELATIVE_URI \
     AWS_CONTAINER_CREDENTIALS_FULL_URI \
+    AWS_EC2_METADATA_SERVICE_ENDPOINT \
     AWS_ENDPOINT_URL \
     AWS_ENDPOINT_URL_S3; do
     [[ -z "${!name:-}" ]] || die "AWS credentials and endpoint overrides must not come from the ambient environment"
@@ -303,6 +304,7 @@ verify_bucket_contract() {
   local public_block
   local encryption
   local lifecycle_count
+  local lifecycle_rule_count
   local versioning
 
   aws_capture "$value_file" s3api get-bucket-location \
@@ -334,10 +336,17 @@ verify_bucket_contract() {
 
   aws_capture "$value_file" s3api get-bucket-lifecycle-configuration \
     --bucket "$S3_BUCKET" --region "$AWS_REGION" \
+    --query 'length(Rules)' --output text
+  lifecycle_rule_count="$(<"$value_file")"
+  [[ "$lifecycle_rule_count" == "1" ]] \
+    || die "the dedicated backup bucket must contain exactly one lifecycle rule"
+
+  aws_capture "$value_file" s3api get-bucket-lifecycle-configuration \
+    --bucket "$S3_BUCKET" --region "$AWS_REGION" \
     --query "length(Rules[?Status=='Enabled' && Expiration.Days==\`14\` && Filter.Prefix=='${S3_PREFIX}/'])" \
     --output text
   lifecycle_count="$(<"$value_file")"
-  [[ "$lifecycle_count" =~ ^[1-9][0-9]*$ ]] \
+  [[ "$lifecycle_count" == "1" ]] \
     || die "an enabled 14-day expiration lifecycle rule is required for the requested prefix"
 }
 

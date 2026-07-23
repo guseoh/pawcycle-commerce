@@ -27,7 +27,7 @@
 - production MySQL health·image·volume·disk·memory fail-close preflight
 - 압축 consistent logical dump를 격리 import해 같은 snapshot에서 생성한 schema·Flyway·핵심 table count manifest와 SHA-256
 - bucket·region·prefix·expected owner의 `PAWCYCLE_BACKUP_*` 환경 변수 전용 전달과 S3 식별자 CLI flag 거부
-- S3 region·PAB·SSE-S3·14일 lifecycle, upload size·encryption·download checksum과 completion marker gate
+- S3 region·PAB·SSE-S3·유일한 14일 lifecycle, IMDS·service endpoint override 차단, upload size·encryption·download checksum과 completion marker gate
 - pinned MySQL, `none` network, 무 publish·고유 named volume isolated restore
 - 실제 압축 해제 크기 기준 restore disk preflight
 - success·failure cleanup과 production container·volume·state 보존 계약
@@ -62,7 +62,7 @@
 
 1. 최신 main과 production release·HTTPS·MySQL·volume 기준을 확인한다.
 2. OPS-013 전용 신규 빈 bucket을 생성한다.
-3. bucket Public Access Block 4/4, SSE-S3와 지정 prefix 14일 lifecycle을 적용한다.
+3. bucket Public Access Block 4/4, SSE-S3와 다른 rule이 없는 지정 prefix 14일 lifecycle 하나를 적용한다.
 4. instance role에 bucket 계약 read와 지정 prefix `PutObject`·`GetObject`만 허용한다.
 5. DDL·migration이 없는 저부하 시점에 `backup`을 실행한다.
 6. completion marker까지 성공한 backup ID로 `restore-verify`를 실행한다.

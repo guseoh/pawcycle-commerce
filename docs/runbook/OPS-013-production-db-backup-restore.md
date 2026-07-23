@@ -91,11 +91,14 @@ unset BACKUP_BUCKET BACKUP_PREFIX
 OPS-013은 lifecycle·bucket policy의 기존 설정을 덮어쓰는 위험을 없애기 위해 **전용 신규 빈 bucket만 허용**한다. 기존 bucket 재사용은 이 Runbook 범위에서 제외한다. 생성 명령이 이미 존재하는 bucket 때문에 실패하면 다른 전용 bucket 이름으로 다시 시작하고 기존 bucket 설정을 변경하지 않는다.
 
 ```bash
-aws s3api create-bucket \
-  --bucket "$PAWCYCLE_BACKUP_BUCKET" \
-  --region "$PAWCYCLE_BACKUP_REGION" \
-  --create-bucket-configuration "LocationConstraint=$PAWCYCLE_BACKUP_REGION" \
-  >/dev/null
+if ! aws s3api create-bucket \
+    --bucket "$PAWCYCLE_BACKUP_BUCKET" \
+    --region "$PAWCYCLE_BACKUP_REGION" \
+    --create-bucket-configuration "LocationConstraint=$PAWCYCLE_BACKUP_REGION" \
+    >/dev/null; then
+  printf '%s\n' '전용 신규 bucket 생성 실패: 기존 bucket을 변경하지 마세요.' >&2
+  exit 1
+fi
 ```
 
 Public Access Block 네 항목과 SSE-S3 기본 암호화를 적용한다.
@@ -296,7 +299,7 @@ aws s3api get-bucket-lifecycle-configuration \
   --output text
 ```
 
-기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, lifecycle count `1` 이상이다. bucket은 OPS-013 전용 신규 bucket이어야 하며 versioning이 `Enabled` 또는 `Suspended`이면 사용하지 않는다.
+기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, 전체 lifecycle rule count와 14일 지정 prefix 일치 count가 각각 정확히 `1`이다. bucket은 OPS-013 전용 신규 bucket이어야 하며 versioning이 `Enabled` 또는 `Suspended`이거나 다른 lifecycle rule이 있으면 사용하지 않는다.
 
 ## 5. 운영 논리 백업
 

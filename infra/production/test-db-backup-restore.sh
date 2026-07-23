@@ -84,6 +84,7 @@ run_ops013() {
     FAKE_AWS_PUBLIC_BLOCK="${FAKE_AWS_PUBLIC_BLOCK:-}" \
     FAKE_AWS_VERSIONING="${FAKE_AWS_VERSIONING:-}" \
     FAKE_AWS_LIFECYCLE_COUNT="${FAKE_AWS_LIFECYCLE_COUNT:-}" \
+    FAKE_AWS_LIFECYCLE_TOTAL_COUNT="${FAKE_AWS_LIFECYCLE_TOTAL_COUNT:-}" \
     FAKE_AWS_HEAD_SIZE="${FAKE_AWS_HEAD_SIZE:-}" \
     FAKE_AWS_EXPECTED_BUCKET_OWNER="$EXPECTED_BUCKET_OWNER" \
     FAKE_AFTER_COMPRESS_CONTAINER="${FAKE_AFTER_COMPRESS_CONTAINER:-}" \
@@ -98,6 +99,7 @@ run_ops013() {
     PAWCYCLE_BACKUP_REGION="${PAWCYCLE_BACKUP_REGION:-$REGION}" \
     PAWCYCLE_BACKUP_PREFIX="${PAWCYCLE_BACKUP_PREFIX:-$PREFIX}" \
     PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER="${PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER:-$EXPECTED_BUCKET_OWNER}" \
+    AWS_EC2_METADATA_SERVICE_ENDPOINT="${AWS_EC2_METADATA_SERVICE_ENDPOINT:-}" \
     "$SCRIPT" "$@"
 }
 
@@ -166,7 +168,12 @@ case "$operation" in
     printf '%s\n' "${FAKE_AWS_VERSIONING:-None}"
     ;;
   get-bucket-lifecycle-configuration)
-    printf '%s\n' "${FAKE_AWS_LIFECYCLE_COUNT:-1}"
+    query="$(argument --query "$@" || true)"
+    if [[ "$query" == "length(Rules)" ]]; then
+      printf '%s\n' "${FAKE_AWS_LIFECYCLE_TOTAL_COUNT:-1}"
+    else
+      printf '%s\n' "${FAKE_AWS_LIFECYCLE_COUNT:-1}"
+    fi
     ;;
   put-object)
     key="$(argument --key "$@")"
@@ -294,6 +301,9 @@ fi
 if PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER=210987654321 run_ops013 backup >/dev/null 2>&1; then
   fail "unexpected S3 bucket owner was reported as success"
 fi
+if AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1 run_ops013 backup >/dev/null 2>&1; then
+  fail "IMDS endpoint override was reported as success"
+fi
 
 backup_output="$(FAKE_AFTER_COMPRESS_CONTAINER="$SOURCE_CONTAINER" FAKE_AFTER_COMPRESS_MARKER="$TEMP_DIR/after-dump-write" run_ops013 backup)"
 BACKUP_ID="$(sed -n 's/^Backup completed: //p' <<<"$backup_output")"
@@ -354,6 +364,9 @@ if FAKE_AWS_VERSIONING=Enabled run_ops013 backup >/dev/null 2>&1; then
 fi
 if FAKE_AWS_LIFECYCLE_COUNT=0 run_ops013 backup >/dev/null 2>&1; then
   fail "bucket lifecycle mismatch was reported as success"
+fi
+if FAKE_AWS_LIFECYCLE_TOTAL_COUNT=2 run_ops013 backup >/dev/null 2>&1; then
+  fail "overlapping bucket lifecycle rules were reported as success"
 fi
 
 cp -a -- "$baseline/." "$backup_root/"
