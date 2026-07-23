@@ -8,6 +8,15 @@ PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
 MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
+CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTIFICATE_NAME="pawcycle-production"
+CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot"
+LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt"
+HTTPS_MARKER_NAME="https-enabled"
+HTTPS_DOMAIN_NAME="https-domain"
+HTTPS_NGINX_CONFIG_NAME="nginx.https.conf"
+HTTPS_MIN_CERT_VALIDITY_SECONDS="86400"
+HTTPS_DOMAIN=""
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -65,7 +74,56 @@ prepare_state_directory() {
   install -d -m 700 "$PAWCYCLE_STATE_DIR"
 }
 
+validate_https_domain() {
+  [[ "$1" =~ ^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\.duckdns\.org$ ]] \
+    || die "domain must be one lowercase single-label duckdns.org hostname"
+}
+
+load_https_domain() {
+  local domain_file="$PAWCYCLE_STATE_DIR/$HTTPS_DOMAIN_NAME"
+
+  [[ -e "$domain_file" || -L "$domain_file" ]] || die "HTTPS domain state is missing"
+  [[ ! -L "$domain_file" && -f "$domain_file" ]] \
+    || die "HTTPS domain state must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$domain_file")" == "600" ]] || die "HTTPS domain state mode must be 600"
+  HTTPS_DOMAIN="$(<"$domain_file")"
+  validate_https_domain "$HTTPS_DOMAIN"
+}
+
+validate_https_nginx_state() {
+  local config="$PAWCYCLE_STATE_DIR/$HTTPS_NGINX_CONFIG_NAME"
+
+  [[ -e "$config" || -L "$config" ]] || die "generated HTTPS Nginx configuration is missing"
+  [[ ! -L "$config" && -f "$config" ]] \
+    || die "generated HTTPS Nginx configuration must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$config")" == "600" ]] || die "generated HTTPS Nginx configuration mode must be 600"
+  grep -Fq "server_name $HTTPS_DOMAIN;" "$config" \
+    || die "generated HTTPS Nginx configuration does not contain the approved domain"
+  grep -Fq "return 301 https://$HTTPS_DOMAIN\$request_uri;" "$config" \
+    || die "generated HTTPS redirect does not use the approved domain"
+  if grep -Fq '__PAWCYCLE_DOMAIN__' "$config"; then
+    die "generated HTTPS Nginx configuration contains an unresolved domain placeholder"
+  fi
+}
+
+https_enabled() {
+  local marker="$PAWCYCLE_STATE_DIR/$HTTPS_MARKER_NAME"
+
+  [[ -e "$marker" || -L "$marker" ]] || return 1
+  [[ ! -L "$marker" && -f "$marker" ]] || die "HTTPS marker must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$marker")" == "600" ]] || die "HTTPS marker mode must be 600"
+  [[ "$(<"$marker")" == "enabled" ]] || die "HTTPS marker content is invalid"
+  load_https_domain
+  validate_https_nginx_state
+}
+
 compose() {
+  local nginx_config="$PRODUCTION_DIR/nginx.conf"
+
+  if https_enabled; then
+    nginx_config="$PAWCYCLE_STATE_DIR/$HTTPS_NGINX_CONFIG_NAME"
+  fi
+
   RELEASE_SHA="$ACTIVE_SHA" \
   BACKEND_IMAGE="$BACKEND_IMAGE" \
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
@@ -75,7 +133,11 @@ compose() {
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
   PAWCYCLE_DATA_NETWORK="pawcycle-production-data" \
+  PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
+  PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
+  PAWCYCLE_NGINX_CONFIG="$nginx_config" \
   PAWCYCLE_HTTP_PORT="80" \
+  PAWCYCLE_HTTPS_PORT="443" \
     docker compose --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE" "$@"
 }
 
@@ -207,15 +269,80 @@ wait_healthy() {
 }
 
 smoke_release() {
-  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/products >/dev/null; then
-    printf 'Frontend HTTP smoke failed: /products\n' >&2
+  local proxy_id
+
+  proxy_id="$(compose ps --quiet proxy)"
+  [[ -n "$proxy_id" ]] || return 1
+  if ! docker exec "$proxy_id" wget --quiet --output-document=/dev/null http://127.0.0.1:8081/products; then
+    printf 'Frontend internal smoke failed: /products\n' >&2
     return 1
   fi
-  if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/products >/dev/null; then
-    printf 'Backend HTTP smoke failed: /api/products\n' >&2
+  if ! docker exec "$proxy_id" wget --quiet --output-document=/dev/null http://127.0.0.1:8081/api/products; then
+    printf 'Backend internal smoke failed: /api/products\n' >&2
     return 1
   fi
-  printf 'HTTP smoke checks passed\n'
+  printf 'Internal release smoke checks passed\n'
+}
+
+validate_https_certificate() {
+  local expected_domain="${1:-}"
+
+  if [[ -n "$expected_domain" ]]; then
+    validate_https_domain "$expected_domain"
+  else
+    load_https_domain
+    expected_domain="$HTTPS_DOMAIN"
+  fi
+  docker run --rm --platform linux/amd64 \
+    --entrypoint python \
+    --env EXPECTED_DOMAIN="$expected_domain" \
+    --env MIN_VALIDITY_SECONDS="$HTTPS_MIN_CERT_VALIDITY_SECONDS" \
+    --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
+    "$CERTBOT_IMAGE" -c \
+    'import datetime, os, sys
+from cryptography import x509
+
+path="/etc/letsencrypt/live/pawcycle-production/fullchain.pem"
+try:
+    with open(path, "rb") as certificate_file:
+        certificate=x509.load_pem_x509_certificate(certificate_file.read())
+    san=certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    dns_names=set(san.get_values_for_type(x509.DNSName))
+    expected=os.environ["EXPECTED_DOMAIN"].lower()
+    now=datetime.datetime.now(datetime.timezone.utc)
+    minimum=now+datetime.timedelta(seconds=int(os.environ["MIN_VALIDITY_SECONDS"]))
+    valid=(len(san) == 1 and dns_names == {expected}
+           and certificate.not_valid_before_utc <= now
+           and certificate.not_valid_after_utc >= minimum)
+except (OSError, ValueError, x509.ExtensionNotFound):
+    valid=False
+sys.exit(0 if valid else 1)' \
+    >/dev/null
+  printf 'Certificate SAN and minimum validity checks passed\n'
+}
+
+verify_https_paths() {
+  local path
+  local code
+  local redirect
+
+  load_https_domain
+  for path in /products /api/products; do
+    curl --fail --silent --show-error --max-time 10 \
+      --resolve "$HTTPS_DOMAIN:443:127.0.0.1" "https://$HTTPS_DOMAIN$path" >/dev/null || return 1
+  done
+  code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
+    --header "Host: $HTTPS_DOMAIN" http://127.0.0.1/products)"
+  redirect="$(curl --silent --output /dev/null --write-out '%{redirect_url}' --max-time 10 \
+    --header "Host: $HTTPS_DOMAIN" http://127.0.0.1/products)"
+  [[ "$code" == "301" && "$redirect" == "https://$HTTPS_DOMAIN/products" ]] || return 1
+  smoke_release || return 1
+  printf 'HTTPS application and approved-host redirect checks passed\n'
+}
+
+verify_https_release() {
+  validate_https_certificate || return 1
+  verify_https_paths || return 1
 }
 
 verify_running_release() {
@@ -264,6 +391,9 @@ activate_release() {
   wait_healthy proxy || return 1
   verify_running_release || return 1
   smoke_release || return 1
+  if https_enabled; then
+    verify_https_release || return 1
+  fi
 }
 
 write_state() {

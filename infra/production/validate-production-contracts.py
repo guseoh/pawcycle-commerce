@@ -13,9 +13,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION = ROOT / "infra" / "production"
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-production-images.yml"
+VALIDATION_WORKFLOW = ROOT / ".github" / "workflows" / "validate-conventions.yml"
 SHA = "0" * 40
 MYSQL_IMAGE = "mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
 PROXY_IMAGE = "nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
+CERTBOT_IMAGE = "certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
 
 
 def require(condition: bool, message: str) -> None:
@@ -24,7 +26,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def load_compose_config() -> dict[str, object]:
-    with tempfile.TemporaryDirectory(prefix="ops010-compose-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="ops011-compose-") as temporary:
         temporary_path = Path(temporary)
         mysql_env = temporary_path / "mysql.env"
         backend_env = temporary_path / "backend.env"
@@ -77,16 +79,20 @@ def validate_compose() -> None:
         require(not services[internal_service].get("ports"), f"{internal_service} must not publish host ports")
 
     proxy_ports = services["proxy"].get("ports", [])
-    require(len(proxy_ports) == 1, "proxy must publish exactly one port")
+    published_ports = {(port.get("published"), port.get("target")) for port in proxy_ports}
     require(
-        proxy_ports[0].get("published") == "80" and proxy_ports[0].get("target") == 80,
-        "proxy must publish host HTTP 80 only",
+        len(proxy_ports) == 2 and published_ports == {("80", 80), ("443", 443)},
+        "proxy must publish exactly HTTP 80 and HTTPS 443",
     )
 
     require(services["backend"]["image"].endswith(f":{SHA}"), "Backend image must use RELEASE_SHA")
     require(services["frontend"]["image"].endswith(f":{SHA}"), "Frontend image must use RELEASE_SHA")
     require(services["mysql"]["image"] == MYSQL_IMAGE, "MySQL image must use the approved immutable digest")
     require(services["proxy"]["image"] == PROXY_IMAGE, "Nginx image must use the approved immutable digest")
+    require(
+        services["backend"].get("environment", {}).get("SESSION_COOKIE_SECURE") == "true",
+        "Backend Secure session cookie contract must remain enabled",
+    )
 
     for name, service in services.items():
         require(service.get("restart") == "unless-stopped", f"{name} restart policy must be unless-stopped")
@@ -106,6 +112,17 @@ def validate_compose() -> None:
     require(total_memory <= 1664 * 1024 * 1024, "combined memory limits exceed the approved conservative budget")
 
     require(config["volumes"]["mysql-data"]["name"] == "pawcycle-production-mysql-data", "stable MySQL volume name is required")
+    require(
+        config["volumes"]["certbot-webroot"]["name"] == "pawcycle-production-certbot-webroot",
+        "stable Certbot webroot volume name is required",
+    )
+    require(
+        config["volumes"]["letsencrypt"]["name"] == "pawcycle-production-letsencrypt",
+        "stable Let's Encrypt volume name is required",
+    )
+    proxy_mounts = {mount["target"]: mount for mount in services["proxy"].get("volumes", [])}
+    require(proxy_mounts["/var/www/certbot"].get("read_only") is True, "Nginx challenge volume must be read-only")
+    require(proxy_mounts["/etc/letsencrypt"].get("read_only") is True, "Nginx certificate volume must be read-only")
     require(config["networks"]["edge"].get("internal") is not True, "proxy edge network must accept the published port")
     require(config["networks"]["app"].get("internal") is True, "app network must be internal")
     require(config["networks"]["data"].get("internal") is True, "data network must be internal")
@@ -113,6 +130,7 @@ def validate_compose() -> None:
 
 def validate_workflow() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    validation_workflow = VALIDATION_WORKFLOW.read_text(encoding="utf-8")
     require("permissions:\n  contents: read\n  packages: write" in workflow, "workflow permissions exceed or omit the approved minimum")
     require("if: github.ref == 'refs/heads/main'" in workflow, "non-main image publication must fail closed")
     require(workflow.count("tags: ghcr.io/${{ github.repository }}-") == 2, "both images need repository-derived tags")
@@ -124,13 +142,26 @@ def validate_workflow() -> None:
     for action_reference in re.findall(r"uses:\s+[^\s]+@([^\s]+)", workflow):
         require(bool(re.fullmatch(r"[0-9a-f]{40}", action_reference)), "workflow actions must be pinned to a 40-character commit")
 
+    require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
+    require(
+        "bash infra/production/test-production-nginx.sh" in validation_workflow,
+        "Repository Validation must execute the Nginx configuration test",
+    )
+    require(
+        "bash infra/production/test-production-compose.sh" in validation_workflow,
+        "Repository Validation must execute the production Compose lifecycle test",
+    )
+
 
 def validate_scripts() -> None:
     common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
     deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
     rollback = (PRODUCTION / "rollback.sh").read_text(encoding="utf-8")
     materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
+    https = (PRODUCTION / "https.sh").read_text(encoding="utf-8")
     script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
+    nginx_tests = (PRODUCTION / "test-production-nginx.sh").read_text(encoding="utf-8")
+    compose_tests = (PRODUCTION / "test-production-compose.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
@@ -144,9 +175,10 @@ def validate_scripts() -> None:
     require("--pull never" in common, "activation must not replace preflighted images")
     require('PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data"' in common, "production volume name must ignore ambient overrides")
     require('PAWCYCLE_HTTP_PORT="80"' in common, "production HTTP port must ignore ambient overrides")
+    require('PAWCYCLE_HTTPS_PORT="443"' in common, "production HTTPS port must ignore ambient overrides")
     require("for service in mysql backend frontend" in common, "health wait must cover MySQL and both application services")
     require("wait_healthy proxy" in common, "health wait must cover Nginx")
-    require("if ! curl" in common and "Frontend HTTP smoke failed" in common and "Backend HTTP smoke failed" in common, "both HTTP smoke failures must return explicitly")
+    require("docker exec" in common and "127.0.0.1:8081/products" in common, "release smoke must bypass public redirects")
     require("previous release was restored" in deploy, "automatic restoration evidence is missing")
     require("database restoration or volume deletion" in rollback, "rollback data boundary is missing")
     require(not re.search(r"docker\s+(?:compose\s+)?(?:volume\s+rm|.*down.*(?:-v|--volumes))", release_scripts), "release scripts must not delete volumes")
@@ -170,12 +202,84 @@ def validate_scripts() -> None:
     require('flock --nonblock 9' in materialize, "runtime materialization must reject concurrent writers")
     require("concurrent runtime materialization did not fail closed" in script_tests, "materialization concurrency regression evidence is missing")
 
+    require(CERTBOT_IMAGE in common, "Certbot must be pinned to the approved linux/amd64 digest")
+    require(CERTBOT_IMAGE in nginx_tests, "Nginx tests must exercise the same pinned Certbot image")
+    require("--platform linux/amd64" in https, "Certbot execution platform must be explicit")
+    require("set +x" in https, "HTTPS operations must disable shell tracing")
+    require("certonly --webroot" in https and "renew --cert-name" in https, "HTTP-01 issuance and renewal commands are required")
+    require("--dry-run" in https and "nginx -s reload" in https, "renewal rehearsal and post-renew reload are required")
+    require("certificate renewal failed; Nginx was not reloaded" in https, "renewal failure must preserve the running service")
+    require(not re.search(r"docker\s+(?:compose\s+)?(?:volume\s+rm|.*down.*(?:-v|--volumes))", https), "HTTPS script must not delete volumes")
+    require("current release state is missing" in https, "HTTPS operations must bind to the active release")
+    require("mode must be 600" in common and "content is invalid" in common, "HTTPS state marker must fail closed")
+    require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
+    require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
+    require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
+    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the HTTPS domain")
+    require('validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https, "HTTPS domain must be approved only after candidate certificate validation")
+    require('local expected_domain="${1:-}"' in common, "certificate validation must accept a pre-approval candidate hostname")
+    require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
+    require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
+    require("from cryptography import x509" in common, "certificate parsing must use the public cryptography API")
+    require("from cryptography import x509" in nginx_tests, "pinned Certbot image must exercise the public certificate API")
+    require("_test_decode_cert" not in common + https, "private CPython certificate parsing API is forbidden")
+    require("--cacert" in compose_tests and "--insecure" not in compose_tests, "Compose HTTPS smoke must verify its test certificate")
+    require(
+        "BOOTSTRAP_DOMAIN" in compose_tests
+        and '--header "Host: $BOOTSTRAP_DOMAIN"' in compose_tests
+        and "/.well-known/acme-challenge/probe" in compose_tests,
+        "Compose bootstrap must verify catch-all HTTP-01 routing for an unapproved candidate hostname",
+    )
+    require("FAKE_CHALLENGE_FAIL_AT_COUNT" in script_tests, "challenge recovery failure must be tested independently from hostname")
+    require(
+        "bootstrap HTTP service was restored, but HTTP-01 challenge path validation failed" in https
+        and "HTTPS activation and bootstrap HTTP restoration both failed" in https,
+        "HTTPS activation recovery errors must distinguish challenge failure from restoration failure",
+    )
+    for evidence in (
+        "HTTPS release gate failure changed current SHA",
+        "HTTPS rollback gate failure changed current SHA",
+        "challenge probe remained after failed validation",
+        "failed pre-approval flow persisted HTTPS domain",
+        "certificate issuance failure approved HTTPS domain",
+        "certificate validation failure approved HTTPS domain",
+        "domain candidate cleanup failure approved HTTPS domain",
+        "different HTTPS domain was accepted after certificate approval",
+        "different HTTPS domain was accepted after HTTPS activation",
+        "HTTPS activation failure did not fail after challenge recovery error",
+        "HTTPS activation failure did not fail after bootstrap recovery failure",
+        "HTTPS domain symlink did not fail closed",
+    ):
+        require(evidence in script_tests, f"HTTPS regression evidence is missing: {evidence}")
+
+
+def validate_nginx() -> None:
+    bootstrap = (PRODUCTION / "nginx.conf").read_text(encoding="utf-8")
+    https = (PRODUCTION / "nginx.https.conf").read_text(encoding="utf-8")
+
+    require("/.well-known/acme-challenge/" in bootstrap, "bootstrap HTTP-01 location is missing")
+    require("listen 8081" in bootstrap, "bootstrap internal smoke listener is missing")
+    require("listen 443 ssl" in https, "HTTPS listener is missing")
+    require("listen 80 default_server" in https and "return 444" in https, "unknown HTTP Host must fail closed")
+    require("ssl_reject_handshake on" in https, "unknown TLS SNI must fail closed")
+    require("server_name __PAWCYCLE_DOMAIN__" in https, "approved runtime hostname placeholder is missing")
+    require("return 301 https://__PAWCYCLE_DOMAIN__$request_uri" in https, "redirect must use only the approved hostname")
+    require("https://$host$request_uri" not in https, "untrusted Host must not be reflected into redirects")
+    require(https.count("/etc/letsencrypt/live/pawcycle-production/fullchain.pem") == 2, "both TLS server contexts must load the certificate")
+    require(https.count("/etc/letsencrypt/live/pawcycle-production/privkey.pem") == 2, "both TLS server contexts must load the certificate key")
+    require("/.well-known/acme-challenge/" in https, "HTTPS-mode HTTP-01 exception is missing")
+    require("/etc/letsencrypt/live/pawcycle-production/fullchain.pem" in https, "stable full chain path is missing")
+    require("/etc/letsencrypt/live/pawcycle-production/privkey.pem" in https, "stable private key path is missing")
+    require(https.count("proxy_set_header X-Forwarded-Proto https") >= 4, "HTTPS forwarding contract is incomplete")
+    require("listen 8081" in https, "HTTPS internal smoke listener is missing")
+
 
 def main() -> None:
     validate_compose()
     validate_workflow()
     validate_scripts()
-    print("OPS-010 production contracts validated")
+    validate_nginx()
+    print("OPS-011 production HTTPS contracts validated")
 
 
 if __name__ == "__main__":
