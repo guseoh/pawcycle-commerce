@@ -1,10 +1,4 @@
 Traceback (most recent call last):
-  File "/home/runner/work/pawcycle-commerce/pawcycle-commerce/scripts/ops013_followup_patch_v2.py", line 533, in <module>
-    main()
-  File "/home/runner/work/pawcycle-commerce/pawcycle-commerce/scripts/ops013_followup_patch_v2.py", line 525, in main
-    patch_tests()
-  File "/home/runner/work/pawcycle-commerce/pawcycle-commerce/scripts/ops013_followup_patch_v2.py", line 216, in patch_tests
-    replace_exact(
-  File "/home/runner/work/pawcycle-commerce/pawcycle-commerce/scripts/ops013_followup_patch_v2.py", line 13, in replace_exact
-    raise RuntimeError(f"{path}: expected {count} matches, found {actual}")
-RuntimeError: infra/production/test-db-backup-restore.sh: expected 1 matches, found 0
+  File "/home/runner/work/pawcycle-commerce/pawcycle-commerce/scripts/ops013_followup_patch_v3.py", line 22, in <module>
+    raise RuntimeError("test runner invocation contract was not found")
+RuntimeError: test runner invocation contract was not found
