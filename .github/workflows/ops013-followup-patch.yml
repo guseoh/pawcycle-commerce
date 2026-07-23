@@ -33,21 +33,39 @@ jobs:
         run: python -m py_compile scripts/ops013_followup_patch_v2.py
 
       - name: Apply focused follow-up patch
+        id: patch
         run: |
           set +e
           output="$(python scripts/ops013_followup_patch_v2.py 2>&1)"
           status=$?
           set -e
-          printf '%s\n' "$output" | tail -40
-          exit "$status"
+          if (( status != 0 )); then
+            printf '%s\n' "$output" > scripts/ops013_patch_error.txt
+            echo 'failed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rm -f scripts/ops013_patch_error.txt
+          echo 'failed=false' >> "$GITHUB_OUTPUT"
+
+      - name: Commit patch diagnostic
+        if: steps.patch.outputs.failed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/ops013_patch_error.txt
+          git commit -m "chore(sre): OPS-013 패치 실패 진단 기록"
+          git push origin HEAD:ops/sre
+          exit 1
 
       - name: Validate focused changes
+        if: steps.patch.outputs.failed == 'false'
         run: |
           bash -n infra/production/db-backup-restore.sh infra/production/test-db-backup-restore.sh
           python infra/production/validate-production-contracts.py
           git diff --check
 
       - name: Commit focused changes
+        if: steps.patch.outputs.failed == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
