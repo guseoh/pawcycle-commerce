@@ -42,8 +42,8 @@ SUCCESS_MESSAGE=""
 usage() {
   cat <<'EOF'
 Usage:
-  db-backup-restore.sh backup --bucket <bucket> --region <region> --prefix <prefix>
-  db-backup-restore.sh restore-verify --bucket <bucket> --region <region> --prefix <prefix> --backup-id <id>
+  db-backup-restore.sh backup
+  db-backup-restore.sh restore-verify --backup-id <id>
   db-backup-restore.sh cleanup --backup-id <id>
 
 The bucket, region, prefix, and expected bucket owner must be supplied through
@@ -112,21 +112,6 @@ parse_args() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --bucket)
-        [[ $# -ge 2 ]] || die "--bucket requires a value"
-        S3_BUCKET="$2"
-        shift 2
-        ;;
-      --region)
-        [[ $# -ge 2 ]] || die "--region requires a value"
-        AWS_REGION="$2"
-        shift 2
-        ;;
-      --prefix)
-        [[ $# -ge 2 ]] || die "--prefix requires a value"
-        S3_PREFIX="$2"
-        shift 2
-        ;;
       --backup-id)
         [[ $# -ge 2 ]] || die "--backup-id requires a value"
         BACKUP_ID="$2"

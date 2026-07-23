@@ -364,6 +364,16 @@ def validate_backup_restore() -> None:
         "backup execution must fail closed outside the approved Seoul region",
     )
     require(
+        "db-backup-restore.sh backup\n" in backup_restore
+        and "db-backup-restore.sh restore-verify --backup-id <id>" in backup_restore
+        and all(f"\n      {flag})" not in backup_restore for flag in ("--bucket", "--region", "--prefix"))
+        and all(
+            f'PAWCYCLE_BACKUP_{name}="${{PAWCYCLE_BACKUP_{name}:-${name}}}"' in backup_tests
+            for name in ("BUCKET", "REGION", "PREFIX")
+        ),
+        "S3 identifiers must be accepted only through the PAWCYCLE_BACKUP environment variables",
+    )
+    require(
         "PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" in backup_restore
         and "--expected-bucket-owner" in backup_restore
         and "12-digit AWS account ID" in backup_restore,

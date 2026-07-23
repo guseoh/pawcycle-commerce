@@ -94,7 +94,9 @@ run_ops013() {
     PAWCYCLE_OPS013_TEST_MODE=local-validation-only \
     PAWCYCLE_BACKUP_WORK_ROOT="$WORK_ROOT" \
     PAWCYCLE_BACKUP_LOCK_FILE="$LOCK_FILE" \
-    PAWCYCLE_BACKUP_PREFIX="$PREFIX" \
+    PAWCYCLE_BACKUP_BUCKET="${PAWCYCLE_BACKUP_BUCKET:-$BUCKET}" \
+    PAWCYCLE_BACKUP_REGION="${PAWCYCLE_BACKUP_REGION:-$REGION}" \
+    PAWCYCLE_BACKUP_PREFIX="${PAWCYCLE_BACKUP_PREFIX:-$PREFIX}" \
     PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER="${PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER:-$EXPECTED_BUCKET_OWNER}" \
     "$SCRIPT" "$@"
 }
@@ -286,14 +288,14 @@ INSERT INTO skus VALUES (1);
 INSERT INTO subscriptions VALUES (1);
 SQL
 
-if run_ops013 backup --bucket "$BUCKET" --region us-west-2 --prefix "$PREFIX" >/dev/null 2>&1; then
+if PAWCYCLE_BACKUP_REGION=us-west-2 run_ops013 backup >/dev/null 2>&1; then
   fail "non-Seoul backup region was reported as success"
 fi
-if PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER=210987654321 run_ops013 backup --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER=210987654321 run_ops013 backup >/dev/null 2>&1; then
   fail "unexpected S3 bucket owner was reported as success"
 fi
 
-backup_output="$(FAKE_AFTER_COMPRESS_CONTAINER="$SOURCE_CONTAINER" FAKE_AFTER_COMPRESS_MARKER="$TEMP_DIR/after-dump-write" run_ops013 backup --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX")"
+backup_output="$(FAKE_AFTER_COMPRESS_CONTAINER="$SOURCE_CONTAINER" FAKE_AFTER_COMPRESS_MARKER="$TEMP_DIR/after-dump-write" run_ops013 backup)"
 BACKUP_ID="$(sed -n 's/^Backup completed: //p' <<<"$backup_output")"
 [[ -n "$BACKUP_ID" ]] || fail "backup ID was not returned"
 backup_root="$FAKE_S3_ROOT/$PREFIX"
@@ -304,13 +306,11 @@ baseline="$TEMP_DIR/baseline"
 mkdir -p "$baseline"
 cp -a -- "$backup_root/." "$baseline/"
 
-run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
-  >/dev/null
+run_ops013 restore-verify --backup-id "$BACKUP_ID" >/dev/null
 assert_no_restore_resources
 
 oversized_failure="$(FAKE_AWS_HEAD_SIZE=5000000001 run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
 [[ "$oversized_failure" == *"S3 object exceeds the approved download size limit"* ]] \
   || fail "oversized S3 object was not rejected before download"
@@ -320,7 +320,7 @@ cp -a -- "$baseline/." "$backup_root/"
 dump_hash="$(sha256sum "$backup_root/${BACKUP_ID}.sql.gz" | awk '{print $1}')"
 printf '%s  /dev/zero\n' "$dump_hash" >"$backup_root/${BACKUP_ID}.sql.gz.sha256"
 checksum_target_failure="$(run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
 [[ "$checksum_target_failure" == *"checksum target filename is invalid"* ]] \
   || fail "untrusted checksum target filename was not rejected"
@@ -329,44 +329,36 @@ assert_no_restore_resources
 cp -a -- "$baseline/." "$backup_root/"
 rm -f -- "$GZIP_COUNT_FILE"
 decompression_failure="$(FAKE_GZIP_FAIL_DECOMPRESS_AT_COUNT=2 run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
 [[ "$decompression_failure" == *"restore-decompression-failed"* ]] \
   || fail "restore decompression failure stage was not reported"
 assert_no_restore_resources
 
-if FAKE_GZIP_FAIL=1 run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_GZIP_FAIL=1 run_ops013 backup >/dev/null 2>&1; then
   fail "backup failure was reported as success"
 fi
 
-if FAKE_AWS_FAIL_OPERATION=put-object run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_AWS_FAIL_OPERATION=put-object run_ops013 backup >/dev/null 2>&1; then
   fail "upload failure was reported as success"
 fi
 
-if FAKE_AWS_ENCRYPTION=aws:kms run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_AWS_ENCRYPTION=aws:kms run_ops013 backup >/dev/null 2>&1; then
   fail "bucket encryption mismatch was reported as success"
 fi
-if FAKE_AWS_PUBLIC_BLOCK='True True False True' run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_AWS_PUBLIC_BLOCK='True True False True' run_ops013 backup >/dev/null 2>&1; then
   fail "bucket public access mismatch was reported as success"
 fi
-if FAKE_AWS_VERSIONING=Enabled run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_AWS_VERSIONING=Enabled run_ops013 backup >/dev/null 2>&1; then
   fail "bucket versioning mismatch was reported as success"
 fi
-if FAKE_AWS_LIFECYCLE_COUNT=0 run_ops013 backup \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" >/dev/null 2>&1; then
+if FAKE_AWS_LIFECYCLE_COUNT=0 run_ops013 backup >/dev/null 2>&1; then
   fail "bucket lifecycle mismatch was reported as success"
 fi
 
 cp -a -- "$baseline/." "$backup_root/"
 printf 'tampered\n' >>"$backup_root/${BACKUP_ID}.sql.gz"
-if run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
-  >/dev/null 2>&1; then
+if run_ops013 restore-verify --backup-id "$BACKUP_ID" >/dev/null 2>&1; then
   fail "checksum mismatch was reported as success"
 fi
 assert_no_restore_resources
@@ -382,7 +374,7 @@ gzip --stdout "$TEMP_DIR/invalid.sql" >"$backup_root/${BACKUP_ID}.sql.gz"
 dump_hash="$(sha256sum "$backup_root/${BACKUP_ID}.sql.gz" | awk '{print $1}')"
 sed -i "s/^DUMP_SHA256=.*/DUMP_SHA256=$dump_hash/" "$backup_root/${BACKUP_ID}.complete"
 restore_failure="$(run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
+  --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
 [[ "$restore_failure" == *"restore-sql-import-failed"* ]] \
   || fail "restore SQL import failure stage was not reported"
@@ -396,9 +388,7 @@ sed -i 's/^TABLE_members=.*/TABLE_members=999/' "$backup_root/${BACKUP_ID}.verif
 )
 manifest_hash="$(sha256sum "$backup_root/${BACKUP_ID}.verify" | awk '{print $1}')"
 sed -i "s/^MANIFEST_SHA256=.*/MANIFEST_SHA256=$manifest_hash/" "$backup_root/${BACKUP_ID}.complete"
-if run_ops013 restore-verify \
-  --bucket "$BUCKET" --region "$REGION" --prefix "$PREFIX" --backup-id "$BACKUP_ID" \
-  >/dev/null 2>&1; then
+if run_ops013 restore-verify --backup-id "$BACKUP_ID" >/dev/null 2>&1; then
   fail "verification mismatch was reported as success"
 fi
 assert_no_restore_resources

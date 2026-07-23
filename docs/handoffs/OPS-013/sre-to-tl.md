@@ -26,6 +26,7 @@
 
 - production MySQL health·image·volume·disk·memory fail-close preflight
 - 압축 consistent logical dump를 격리 import해 같은 snapshot에서 생성한 schema·Flyway·핵심 table count manifest와 SHA-256
+- bucket·region·prefix·expected owner의 `PAWCYCLE_BACKUP_*` 환경 변수 전용 전달과 S3 식별자 CLI flag 거부
 - S3 region·PAB·SSE-S3·14일 lifecycle, upload size·encryption·download checksum과 completion marker gate
 - pinned MySQL, `none` network, 무 publish·고유 named volume isolated restore
 - 실제 압축 해제 크기 기준 restore disk preflight
@@ -50,6 +51,12 @@
 - healthy production MySQL과 충분한 EC2·Docker disk·available memory
 
 실제 bucket·region·prefix, account·role ARN, credential, dump·row·count와 application SHA 값은 저장소·PR·보고서에 입력하지 않는다.
+
+## 검증 근거
+
+- 로컬 Git for Windows Bash syntax, production 계약 validator, OPS-013 고위험 산출물 validator와 `git diff --check` 통과
+- 로컬 Windows Git Bash의 `flock` 부재와 Docker engine unavailable로 production script 회귀·isolated lifecycle은 GitHub Repository Validation에서 실행
+- 최신 head의 Backend·Frontend 포함 전체 Repository Validation, review thread와 Draft/Ready 상태는 GitHub를 권위 원본으로 확인
 
 ## 적용 순서
 

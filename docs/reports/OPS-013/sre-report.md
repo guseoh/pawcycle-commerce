@@ -39,6 +39,7 @@ application/API/DB schema·migration, production DB 쓰기·중지·restore, `pa
 ## 주요 결과
 
 - source credential은 host에서 읽거나 command argument로 전달하지 않고 기존 MySQL container 내부 환경에서만 사용한다.
+- bucket·region·prefix·expected owner는 `PAWCYCLE_BACKUP_*` 환경 변수로만 받고 S3 식별자 CLI flag는 거부한다.
 - ambient container credential과 AWS endpoint override를 거부하고 EC2 instance role·일반 S3 endpoint 경계를 강제한다.
 - dump·manifest·checksum을 mode `600` root 전용 임시 경로에서 생성하고 S3 object set을 검증한다.
 - production MySQL identity·health를 마지막으로 재확인한 뒤 completion marker를 업로드한다.
@@ -65,7 +66,7 @@ API와 DB schema 변경은 없다. production DB에는 read-only 논리 dump와 
 
 Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioning 비활성·14일 lifecycle, completion marker 순서, credential 비노출, restore `none` network·무 publish·별도 volume, cleanup ownership과 production volume 삭제 금지를 확인했다. 실제 Docker engine이 없는 로컬 환경에서는 isolated MySQL lifecycle을 시작하지 못했으며 GitHub Repository Validation에서 실행하도록 연결했다.
 
-최초 Repository Validation은 source fixture의 credential 전달과 source·restore readiness 경계에서 순차 실패했다. restore MySQL 초기화 중 `mysqladmin ping` 조기 성공 가능성을 readiness race로 추정해 대상 DB의 `127.0.0.1` TCP 인증 쿼리 연속 2회 성공으로 변경하고 gzip·SQL import 종료 상태를 분리했다. 이후 리뷰에서 test-owned volume cleanup, S3 lifecycle·policy 교체 경계, 환경변수 전달, decimal 5 GB, 실제 압축 해제 크기, download 전 object preflight, completion marker 순서, ambient AWS 설정과 checksum target 검증을 추가 보완했다. 마지막으로 dump와 live manifest의 snapshot 불일치, 서울 region·expected bucket owner, metadata 1 MiB upload 한도와 HTTPS 승인 순서 회귀 검증을 보완했다.
+최초 Repository Validation은 source fixture의 credential 전달과 source·restore readiness 경계에서 순차 실패했다. restore MySQL 초기화 중 `mysqladmin ping` 조기 성공 가능성을 readiness race로 추정해 대상 DB의 `127.0.0.1` TCP 인증 쿼리 연속 2회 성공으로 변경하고 gzip·SQL import 종료 상태를 분리했다. 이후 리뷰에서 test-owned volume cleanup, S3 lifecycle·policy 교체 경계, 환경변수 전달, decimal 5 GB, 실제 압축 해제 크기, download 전 object preflight, completion marker 순서, ambient AWS 설정과 checksum target 검증을 추가 보완했다. 마지막으로 dump와 live manifest의 snapshot 불일치, 서울 region·expected bucket owner, metadata 1 MiB upload 한도와 HTTPS 승인 순서 회귀 검증을 보완했다. 후속 안정화에서는 parser와 lifecycle test에 남은 S3 식별자 CLI flag를 제거하고 환경 변수 전용 계약을 정적 validator로 고정했다.
 
 ## 독립 검증 (고위험 필수)
 
@@ -75,10 +76,10 @@ Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioni
 
 | 검증 | 결과 |
 | --- | --- |
-| `bash -n` OPS-013 script·test | 후속 수정마다 Repository Validation에서 실행 |
-| `python infra/production/validate-production-contracts.py` | 후속 수정마다 Repository Validation에서 실행 |
-| `bash infra/production/test-production-scripts.sh` | Repository Validation에 연결 |
-| 로컬 `test-db-backup-restore.sh` | Docker engine unavailable로 fixture 생성 전 미실행 |
+| `bash -n` OPS-013 script·test | Git for Windows Bash에서 통과 |
+| `python infra/production/validate-production-contracts.py` | 로컬 통과 |
+| `bash infra/production/test-production-scripts.sh` | 로컬 Git Bash의 `flock` 부재로 중단, Repository Validation에서 실행 |
+| 로컬 `test-db-backup-restore.sh` | Docker engine unavailable로 미실행, Repository Validation에서 실행 |
 | OPS-013 고위험 task artifact validator | 통과 |
 | commit message validator | 통과 |
 | `git diff --check` | 통과 |
@@ -87,7 +88,7 @@ Shell syntax와 정적 계약 validator로 dump option, S3 PAB·SSE-S3·versioni
 
 ## 실행하지 못한 검증과 이유
 
-실제 AWS·S3·IAM·lifecycle 변경, 운영 backup·restore와 production 보존 비교는 승인된 병합 후 사용자 작업이므로 미실행이다. 로컬 Docker engine이 없어 isolated MySQL lifecycle은 시작 전 중단됐으며 production 이름의 fixture container·volume은 생성되지 않았다.
+실제 AWS·S3·IAM·lifecycle 변경, 운영 backup·restore와 production 보존 비교는 승인된 병합 후 사용자 작업이므로 미실행이다. 로컬 Docker engine이 없어 isolated MySQL lifecycle은 시작하지 않았으며 production 이름의 fixture container·volume은 생성되지 않았다. Windows Git Bash에는 `flock`이 없어 기존 production script 회귀는 해당 도구가 제공되는 Repository Validation을 독립 실행 근거로 사용한다.
 
 ## QA 필요 여부
 
