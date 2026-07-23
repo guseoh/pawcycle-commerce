@@ -18,6 +18,7 @@ MIN_AVAILABLE_MEMORY_BYTES=$((256 * 1024 * 1024))
 MIN_RESTORE_AVAILABLE_MEMORY_BYTES=$((768 * 1024 * 1024))
 MIN_FREE_DISK_BYTES=$((1024 * 1024 * 1024))
 MAX_SINGLE_UPLOAD_BYTES=5000000000
+MAX_METADATA_OBJECT_BYTES=1048576
 CORE_TABLES=(members products skus subscriptions)
 export AWS_PAGER=""
 export AWS_CLI_AUTO_PROMPT=off
@@ -163,11 +164,21 @@ validate_s3_inputs() {
 validate_instance_role_boundary() {
   local name
 
-  for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE AWS_WEB_IDENTITY_TOKEN_FILE; do
-    [[ -z "${!name:-}" ]] || die "AWS credentials must come only from the EC2 instance role"
+  for name in \
+    AWS_ACCESS_KEY_ID \
+    AWS_SECRET_ACCESS_KEY \
+    AWS_SESSION_TOKEN \
+    AWS_PROFILE \
+    AWS_WEB_IDENTITY_TOKEN_FILE \
+    AWS_CONTAINER_CREDENTIALS_RELATIVE_URI \
+    AWS_CONTAINER_CREDENTIALS_FULL_URI \
+    AWS_ENDPOINT_URL \
+    AWS_ENDPOINT_URL_S3; do
+    [[ -z "${!name:-}" ]] || die "AWS credentials and endpoint overrides must not come from the ambient environment"
   done
   export AWS_CONFIG_FILE=/dev/null
   export AWS_SHARED_CREDENTIALS_FILE=/dev/null
+  export AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true
 }
 
 prepare_host() {
@@ -608,16 +619,22 @@ write_checksum() {
 verify_local_checksum() {
   local file="$1"
   local checksum_file="$2"
-  local directory
   local basename
+  local expected_hash
+  local checksum_name
+  local extra
+  local actual_hash
+  local line_count
 
-  directory="$(dirname -- "$file")"
   basename="$(basename -- "$file")"
   [[ "$(basename -- "$checksum_file")" == "${basename}.sha256" ]] || die "checksum filename does not match its payload"
-  (
-    cd "$directory"
-    sha256sum --check --status "${basename}.sha256"
-  ) || die "downloaded backup checksum does not match"
+  line_count="$(wc -l <"$checksum_file" | tr -d ' ')"
+  [[ "$line_count" == "1" ]] || die "checksum file must contain exactly one entry"
+  read -r expected_hash checksum_name extra <"$checksum_file" || die "checksum file could not be parsed"
+  validate_hash "$expected_hash" "downloaded checksum"
+  [[ "$checksum_name" == "$basename" && -z "$extra" ]] || die "checksum target filename is invalid"
+  actual_hash="$(sha256sum "$file" | awk '{print $1}')"
+  [[ "$actual_hash" == "$expected_hash" ]] || die "downloaded backup checksum does not match"
 }
 
 put_object() {
@@ -637,9 +654,9 @@ put_object() {
     --server-side-encryption AES256
 }
 
-head_object() {
+head_object_size() {
   local key="$1"
-  local expected_size="$2"
+  local maximum_size="$2"
   local response="$WORK_DIR/aws-response"
   local actual_size
   local encryption
@@ -648,8 +665,19 @@ head_object() {
     --bucket "$S3_BUCKET" --region "$AWS_REGION" --key "$key" \
     --query '[ContentLength,ServerSideEncryption]' --output text
   read -r actual_size encryption <"$response"
-  [[ "$actual_size" == "$expected_size" && "$encryption" == "AES256" ]] \
-    || die "uploaded S3 object size or SSE-S3 metadata does not match"
+  validate_nonnegative_integer "$actual_size" "S3 object size"
+  [[ "$encryption" == "AES256" ]] || die "S3 object encryption metadata does not match"
+  (( actual_size <= maximum_size )) || die "S3 object exceeds the approved download size limit"
+  printf '%s\n' "$actual_size"
+}
+
+head_object() {
+  local key="$1"
+  local expected_size="$2"
+  local actual_size
+
+  actual_size="$(head_object_size "$key" "$MAX_SINGLE_UPLOAD_BYTES")"
+  [[ "$actual_size" == "$expected_size" ]] || die "uploaded S3 object size does not match"
 }
 
 get_object() {
@@ -721,9 +749,9 @@ backup_command() {
   upload_and_verify "${base_key}.sql.gz.sha256" "${dump}.sha256"
   upload_and_verify "${base_key}.verify" "$manifest"
   upload_and_verify "${base_key}.verify.sha256" "${manifest}.sha256"
-  upload_and_verify "${base_key}.complete" "$complete"
   [[ "$(find_production_mysql)" == "$container" ]] \
     || die "production MySQL changed during backup verification"
+  upload_and_verify "${base_key}.complete" "$complete"
   SUCCESS_MESSAGE="Backup completed: $BACKUP_ID"
 }
 
@@ -765,17 +793,35 @@ download_backup_set() {
   local manifest="$WORK_DIR/${BACKUP_ID}.verify"
   local manifest_checksum="${manifest}.sha256"
   local complete="$WORK_DIR/${BACKUP_ID}.complete"
+  local dump_size
+  local dump_checksum_size
+  local manifest_size
+  local manifest_checksum_size
+  local complete_size
+  local total_size
+  local available_disk
+
+  complete_size="$(head_object_size "${base_key}.complete" "$MAX_METADATA_OBJECT_BYTES")"
+  dump_size="$(head_object_size "${base_key}.sql.gz" "$MAX_SINGLE_UPLOAD_BYTES")"
+  dump_checksum_size="$(head_object_size "${base_key}.sql.gz.sha256" "$MAX_METADATA_OBJECT_BYTES")"
+  manifest_size="$(head_object_size "${base_key}.verify" "$MAX_METADATA_OBJECT_BYTES")"
+  manifest_checksum_size="$(head_object_size "${base_key}.verify.sha256" "$MAX_METADATA_OBJECT_BYTES")"
+  total_size=$((complete_size + dump_size + dump_checksum_size + manifest_size + manifest_checksum_size))
+  available_disk="$(df -PB1 "$WORK_ROOT" | awk 'NR==2 {print $4}')"
+  validate_nonnegative_integer "$available_disk" "backup download free disk"
+  (( available_disk >= total_size + MIN_FREE_DISK_BYTES )) \
+    || die "insufficient free disk to download the verified backup object set"
 
   get_object "${base_key}.complete" "$complete"
-  head_object "${base_key}.complete" "$(stat -c '%s' "$complete")"
+  [[ "$(stat -c '%s' "$complete")" == "$complete_size" ]] || die "downloaded completion marker size does not match"
   get_object "${base_key}.sql.gz" "$dump"
-  head_object "${base_key}.sql.gz" "$(stat -c '%s' "$dump")"
+  [[ "$(stat -c '%s' "$dump")" == "$dump_size" ]] || die "downloaded dump size does not match"
   get_object "${base_key}.sql.gz.sha256" "$dump_checksum"
-  head_object "${base_key}.sql.gz.sha256" "$(stat -c '%s' "$dump_checksum")"
+  [[ "$(stat -c '%s' "$dump_checksum")" == "$dump_checksum_size" ]] || die "downloaded dump checksum size does not match"
   get_object "${base_key}.verify" "$manifest"
-  head_object "${base_key}.verify" "$(stat -c '%s' "$manifest")"
+  [[ "$(stat -c '%s' "$manifest")" == "$manifest_size" ]] || die "downloaded manifest size does not match"
   get_object "${base_key}.verify.sha256" "$manifest_checksum"
-  head_object "${base_key}.verify.sha256" "$(stat -c '%s' "$manifest_checksum")"
+  [[ "$(stat -c '%s' "$manifest_checksum")" == "$manifest_checksum_size" ]] || die "downloaded manifest checksum size does not match"
 
   verify_local_checksum "$dump" "$dump_checksum"
   verify_local_checksum "$manifest" "$manifest_checksum"
