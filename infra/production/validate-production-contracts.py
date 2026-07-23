@@ -303,10 +303,20 @@ def validate_backup_restore() -> None:
         "logical dump coverage or isolated restore safety options are incomplete",
     )
     require("gzip --test" in backup_restore, "compressed dump integrity must be checked")
-    require("sha256sum --check --status" in backup_restore, "downloaded backup checksum must fail closed")
+    require(
+        "checksum file must contain exactly one entry" in backup_restore
+        and "checksum target filename is invalid" in backup_restore
+        and 'actual_hash="$(sha256sum "$file"' in backup_restore,
+        "downloaded checksum files must bind one validated hash to the expected local basename",
+    )
     require(
         backup_restore.index('upload_and_verify "${base_key}.complete"') > backup_restore.index('upload_and_verify "${base_key}.verify.sha256"'),
         "S3 completion marker must be uploaded after the verified backup object set",
+    )
+    require(
+        backup_restore.index('production MySQL changed during backup verification')
+        < backup_restore.index('upload_and_verify "${base_key}.complete"'),
+        "production MySQL identity and health must be rechecked before publishing the completion marker",
     )
     require("--server-side-encryption AES256" in backup_restore, "every S3 upload must explicitly request SSE-S3")
     require("--storage-class STANDARD" in backup_restore, "every S3 upload must explicitly use S3 Standard")
@@ -314,6 +324,16 @@ def validate_backup_restore() -> None:
         "MAX_SINGLE_UPLOAD_BYTES=5000000000" in backup_restore
         and "backup object exceeds the approved single-request S3 upload limit" in backup_restore,
         "single-request S3 uploads must fail before the decimal 5 GB object size limit",
+    )
+    require(
+        "head_object_size" in backup_restore
+        and "S3 object exceeds the approved download size limit" in backup_restore
+        and backup_restore.index('complete_size="$(head_object_size') < backup_restore.index('get_object "${base_key}.complete"'),
+        "all backup object sizes and encryption metadata must be checked before any restore download",
+    )
+    require(
+        "insufficient free disk to download the verified backup object set" in backup_restore,
+        "restore downloads must reserve local work disk before fetching objects",
     )
     require(
         "gzip --decompress --stdout" in backup_restore
@@ -330,10 +350,23 @@ def validate_backup_restore() -> None:
     )
     require("AWS request failed; bucket and object identifiers were suppressed" in backup_restore, "AWS failures must not print bucket identifiers")
     require(
-        "AWS credentials must come only from the EC2 instance role" in backup_restore
+        all(
+            name in backup_restore
+            for name in (
+                "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+                "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+                "AWS_ENDPOINT_URL",
+                "AWS_ENDPOINT_URL_S3",
+                "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true",
+            )
+        ),
+        "ambient container credentials and endpoint overrides must be rejected or ignored",
+    )
+    require(
+        "AWS credentials and endpoint overrides must not come from the ambient environment" in backup_restore
         and "AWS_CONFIG_FILE=/dev/null" in backup_restore
         and "AWS_SHARED_CREDENTIALS_FILE=/dev/null" in backup_restore,
-        "backup AWS access must reject ambient credentials and profiles",
+        "backup AWS access must remain bound to the EC2 instance role and normal S3 endpoint",
     )
     require(
         backup_restore.count('2>"$MYSQL_ERROR_FILE"') >= 5
@@ -407,10 +440,16 @@ def validate_backup_restore() -> None:
         "the lifecycle test may remove the production-named fixture volume only when it created that volume",
     )
     require(
+        "oversized S3 object was not rejected before download" in backup_tests
+        and "untrusted checksum target filename was not rejected" in backup_tests,
+        "download size and checksum target regression tests are required",
+    )
+    require(
         "전용 신규 빈 bucket만 허용" in runbook
         and "put-bucket-lifecycle-configuration" in runbook
-        and "기존 bucket 재사용은 이 Runbook 범위에서 제외" in runbook,
-        "the Runbook must prevent lifecycle replacement on a shared existing bucket",
+        and "기존 bucket 재사용은 이 Runbook 범위에서 제외" in runbook
+        and "put-bucket-policy" in runbook,
+        "the Runbook must restrict full lifecycle and policy replacement to a dedicated new bucket",
     )
     require(
         "--preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX" in runbook
