@@ -17,6 +17,7 @@ LOCK_FILE="$TEMP_DIR/lock/ops013.lock"
 SOURCE_SECRET="$TEMP_DIR/source-root-password"
 SOURCE_CONTAINER="ops013-source-$RANDOM"
 BACKUP_ID=""
+PRODUCTION_VOLUME_CREATED=0
 REAL_GZIP="$(command -v gzip)"
 
 cleanup() {
@@ -35,7 +36,9 @@ cleanup() {
       --filter "label=com.pawcycle.ops013.backup-id=$BACKUP_ID" \
       | xargs -r docker volume rm >/dev/null 2>&1
   fi
-  docker volume rm "$PRODUCTION_VOLUME" >/dev/null 2>&1
+  if [[ "$PRODUCTION_VOLUME_CREATED" == "1" ]]; then
+    docker volume rm "$PRODUCTION_VOLUME" >/dev/null 2>&1
+  fi
   resolved_base="$(readlink -f -- "${TMPDIR:-/tmp}")"
   resolved_temp="$(readlink -f -- "$TEMP_DIR")"
   if [[ -n "$resolved_temp" && -d "$resolved_temp" && ! -L "$TEMP_DIR" && "$resolved_temp" == "$resolved_base"/tmp.* ]]; then
@@ -204,6 +207,7 @@ fi
 printf '%s\n' 'local-validation-root-password' >"$SOURCE_SECRET"
 chmod 600 "$SOURCE_SECRET"
 docker volume create "$PRODUCTION_VOLUME" >/dev/null
+PRODUCTION_VOLUME_CREATED=1
 docker run --detach \
   --name "$SOURCE_CONTAINER" \
   --label com.docker.compose.project=pawcycle-production \
