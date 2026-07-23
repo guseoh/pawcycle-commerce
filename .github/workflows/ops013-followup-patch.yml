@@ -7,12 +7,14 @@ on:
     paths:
       - .github/workflows/ops013-followup-patch.yml
       - scripts/ops013_followup_patch_v2.py
+      - scripts/ops013_followup_patch_v3.py
   pull_request:
     branches:
       - main
     paths:
       - .github/workflows/ops013-followup-patch.yml
       - scripts/ops013_followup_patch_v2.py
+      - scripts/ops013_followup_patch_v3.py
 
 permissions:
   contents: write
@@ -30,13 +32,13 @@ jobs:
           show-progress: false
 
       - name: Validate patcher syntax
-        run: python -m py_compile scripts/ops013_followup_patch_v2.py
+        run: python -m py_compile scripts/ops013_followup_patch_v2.py scripts/ops013_followup_patch_v3.py
 
       - name: Apply focused follow-up patch
         id: patch
         run: |
           set +e
-          output="$(python scripts/ops013_followup_patch_v2.py 2>&1)"
+          output="$(python scripts/ops013_followup_patch_v3.py 2>&1)"
           status=$?
           set -e
           if (( status != 0 )); then
