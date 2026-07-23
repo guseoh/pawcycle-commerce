@@ -161,6 +161,7 @@ def validate_scripts() -> None:
     https = (PRODUCTION / "https.sh").read_text(encoding="utf-8")
     script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
     nginx_tests = (PRODUCTION / "test-production-nginx.sh").read_text(encoding="utf-8")
+    compose_tests = (PRODUCTION / "test-production-compose.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
@@ -218,6 +219,7 @@ def validate_scripts() -> None:
     require("from cryptography import x509" in common, "certificate parsing must use the public cryptography API")
     require("from cryptography import x509" in nginx_tests, "pinned Certbot image must exercise the public certificate API")
     require("_test_decode_cert" not in common + https, "private CPython certificate parsing API is forbidden")
+    require("--cacert" in compose_tests and "--insecure" not in compose_tests, "Compose HTTPS smoke must verify its test certificate")
     for evidence in (
         "HTTPS activation failure did not restore bootstrap",
         "HTTPS release gate failure changed current SHA",
@@ -240,6 +242,8 @@ def validate_nginx() -> None:
     require("server_name __PAWCYCLE_DOMAIN__" in https, "approved runtime hostname placeholder is missing")
     require("return 301 https://__PAWCYCLE_DOMAIN__$request_uri" in https, "redirect must use only the approved hostname")
     require("https://$host$request_uri" not in https, "untrusted Host must not be reflected into redirects")
+    require(https.count("/etc/letsencrypt/live/pawcycle-production/fullchain.pem") == 2, "both TLS server contexts must load the certificate")
+    require(https.count("/etc/letsencrypt/live/pawcycle-production/privkey.pem") == 2, "both TLS server contexts must load the certificate key")
     require("/.well-known/acme-challenge/" in https, "HTTPS-mode HTTP-01 exception is missing")
     require("/etc/letsencrypt/live/pawcycle-production/fullchain.pem" in https, "stable full chain path is missing")
     require("/etc/letsencrypt/live/pawcycle-production/privkey.pem" in https, "stable private key path is missing")

@@ -127,10 +127,10 @@ activate_and_check() {
     fi
   done
   if [[ "$HTTPS_MODE" == true ]]; then
-    curl --insecure --fail --silent --show-error \
+    curl --cacert "$CERTIFICATE_SOURCE/fullchain.pem" --fail --silent --show-error \
       --resolve "$HTTPS_DOMAIN:$HTTPS_PORT:127.0.0.1" \
       "https://$HTTPS_DOMAIN:$HTTPS_PORT/products" >/dev/null
-    curl --insecure --fail --silent --show-error \
+    curl --cacert "$CERTIFICATE_SOURCE/fullchain.pem" --fail --silent --show-error \
       --resolve "$HTTPS_DOMAIN:$HTTPS_PORT:127.0.0.1" \
       "https://$HTTPS_DOMAIN:$HTTPS_PORT/api/products" >/dev/null
     [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' \
