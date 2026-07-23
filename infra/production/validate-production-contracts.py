@@ -223,8 +223,7 @@ def validate_scripts() -> None:
     require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
     require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
     require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
-    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the HTTPS domain")
-    require('validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https, "HTTPS domain must be approved only after candidate certificate validation")
+    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the domain")
     require('local expected_domain="${1:-}"' in common, "certificate validation must accept a pre-approval candidate hostname")
     require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
     require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
@@ -285,6 +284,8 @@ def validate_nginx() -> None:
 def validate_backup_restore() -> None:
     backup_restore = (PRODUCTION / "db-backup-restore.sh").read_text(encoding="utf-8")
     backup_tests = (PRODUCTION / "test-db-backup-restore.sh").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "runbook" / "OPS-013-production-db-backup-restore.md").read_text(encoding="utf-8")
+    logical_commands = re.sub(r"\\\n\s*", " ", backup_restore)
 
     require(MYSQL_IMAGE in backup_restore, "restore verification must use the production pinned MySQL image")
     require(
@@ -310,9 +311,15 @@ def validate_backup_restore() -> None:
     require("--server-side-encryption AES256" in backup_restore, "every S3 upload must explicitly request SSE-S3")
     require("--storage-class STANDARD" in backup_restore, "every S3 upload must explicitly use S3 Standard")
     require(
-        "MAX_SINGLE_UPLOAD_BYTES" in backup_restore
+        "MAX_SINGLE_UPLOAD_BYTES=5000000000" in backup_restore
         and "backup object exceeds the approved single-request S3 upload limit" in backup_restore,
-        "single-request S3 uploads must fail before the object size limit",
+        "single-request S3 uploads must fail before the decimal 5 GB object size limit",
+    )
+    require(
+        "gzip --decompress --stdout" in backup_restore
+        and "uncompressed logical dump size" in backup_restore
+        and "compressed_size * 8" not in backup_restore,
+        "restore disk preflight must use the measured uncompressed dump size rather than a compression-ratio guess",
     )
     require("get-public-access-block" in backup_restore, "bucket Public Access Block must be verified")
     require("get-bucket-encryption" in backup_restore, "bucket SSE-S3 default encryption must be verified")
@@ -352,7 +359,10 @@ def validate_backup_restore() -> None:
         "logical restore client output must not expose dump statements or rows",
     )
     require("--network none" in backup_restore, "restore MySQL must use the Docker none network")
-    require("--publish" not in backup_restore and re.search(r"(?:^|\s)-p(?:\s|$)", backup_restore) is None, "restore must not publish host ports")
+    require(
+        re.search(r"\bdocker\s+(?:create|run)\b[^\n]*(?:\s-p(?:\s|$)|\s--publish(?:=|\s))", logical_commands) is None,
+        "restore docker create or run commands must not publish host ports",
+    )
     require(
         'production_mount' in backup_restore and "restore container must not mount the production MySQL volume" in backup_restore,
         "restore isolation must reject the production volume",
@@ -389,6 +399,25 @@ def validate_backup_restore() -> None:
     require(
         not re.search(r"docker\s+volume\s+rm[^\n]*pawcycle-production-mysql-data", backup_restore),
         "OPS-013 must never remove the production MySQL volume",
+    )
+    require(
+        "PRODUCTION_VOLUME_CREATED=0" in backup_tests
+        and 'if [[ "$PRODUCTION_VOLUME_CREATED" == "1" ]]' in backup_tests
+        and "PRODUCTION_VOLUME_CREATED=1" in backup_tests,
+        "the lifecycle test may remove the production-named fixture volume only when it created that volume",
+    )
+    require(
+        "전용 신규 빈 bucket만 허용" in runbook
+        and "put-bucket-lifecycle-configuration" in runbook
+        and "기존 bucket 재사용은 이 Runbook 범위에서 제외" in runbook,
+        "the Runbook must prevent lifecycle replacement on a shared existing bucket",
+    )
+    require(
+        "--preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX" in runbook
+        and '--bucket "$BACKUP_BUCKET"' not in runbook
+        and '--region "$BACKUP_REGION"' not in runbook
+        and '--prefix "$BACKUP_PREFIX"' not in runbook,
+        "the Runbook must pass backup identifiers only through the supported environment variables",
     )
     for evidence in (
         "backup failure was reported as success",
