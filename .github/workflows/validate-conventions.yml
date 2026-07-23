@@ -9,50 +9,6 @@ permissions:
   pull-requests: read
 
 jobs:
-  ops013-followup-patch:
-    name: Apply OPS-013 follow-up patch
-    if: github.head_ref == 'ops/sre'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout OPS-013 branch
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ops/sre
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Apply patch when absent
-        id: patch
-        run: |
-          if grep -Fq 'APPROVED_AWS_REGION="ap-northeast-2"' infra/production/db-backup-restore.sh; then
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          python -m py_compile scripts/ops013_followup_patch_v2.py
-          python scripts/ops013_followup_patch_v2.py
-          bash -n infra/production/db-backup-restore.sh infra/production/test-db-backup-restore.sh
-          python infra/production/validate-production-contracts.py
-          git diff --check
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
-
-      - name: Commit focused changes
-        if: steps.patch.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            infra/production/db-backup-restore.sh \
-            infra/production/test-db-backup-restore.sh \
-            infra/production/validate-production-contracts.py \
-            docs/runbook/OPS-013-production-db-backup-restore.md \
-            docs/reports/OPS-013/sre-report.md \
-            docs/handoffs/OPS-013/sre-to-tl.md
-          git diff --cached --quiet && { echo "No focused changes produced" >&2; exit 1; }
-          git commit -m "fix(sre): OPS-013 백업 복구 계약 보완"
-          git push origin HEAD:ops/sre
-
   conventions:
     name: Commit and PR conventions
     runs-on: ubuntu-latest
