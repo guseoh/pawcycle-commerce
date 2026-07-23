@@ -7,7 +7,7 @@
 
 ## 전달 목적
 
-병합된 HTTPS 계약을 실제 DuckDNS·EC2에 적용하고 외부 TLS, 재부팅과 session 보안을 검증할 운영자에게 전달한다.
+병합된 HTTPS 계약의 실제 DuckDNS·EC2 적용, 갱신과 재부팅 복구 결과를 사용자·Tech Lead에게 전달하고 보류·후속 위험을 구분한다.
 
 ## 대상 역할 또는 운영자
 
@@ -28,6 +28,11 @@
 - Certbot 최초 발급, dry-run·갱신, 검증 후 reload와 HTTP 복구 script
 - `80`·`443`만 공개하는 계약 validator와 shell·Nginx test
 - Certbot HTTP-01·후보 SAN 검증 성공 뒤에만 고정되는 mode `600` domain, root 관리 named volume·생성 config·marker와 Secret 비출력 경계
+- 실제 DuckDNS·EC2 HTTPS 적용, 인증서 발급과 SAN·최소 잔여 유효기간 검증
+- 내부 release smoke와 HTTPS application·승인 hostname redirect
+- 외부 PC HTTPS 두 endpoint, HTTP→HTTPS redirect와 브라우저 인증서 확인
+- dry-run 무 reload, 실제 갱신 뒤 인증서 재검증·Nginx reload
+- 재부팅 뒤 동일 application SHA·세 volume·HTTPS marker·네 container health·HTTPS status 복구
 
 ## 관련 파일
 
@@ -65,24 +70,26 @@
 bootstrap은 성공해도 hostname을 승인하지 않는다. Certbot·후보 인증서 검증·domain 후보 cleanup 실패는 승인 domain·marker·생성 config·probe를 남기지 않아 올바른 hostname으로 재시도할 수 있다. HTTPS 전환 실패 뒤에는 bootstrap 복구 성공과 challenge 실패, 복구 자체 실패를 구분한다. 갱신 실패는 Nginx를 reload하지 않으며 current SHA, MySQL·certificate volume은 삭제하지 않는다.
 HTTPS 활성화 뒤 일반 deploy·rollback의 TLS·두 endpoint·redirect gate가 실패하면 새 `current-sha`를 기록하지 않고 이전 release를 복구한다.
 
-## 소비자 검증 포인트
+## 운영 검증 결과
 
-- 공개 listener가 `80`, `443`뿐인가?
-- HTTP-01 외 HTTP가 정확한 HTTPS hostname·path로 `301`되는가?
-- 알 수 없는 Host가 외부 domain으로 redirect되지 않고 거부되는가?
-- HTTPS `/products`, `/api/products`와 certificate hostname·만료일이 유효한가?
-- login/logout과 `JSESSIONID` 보안 속성이 유지되는가?
-- dry-run은 reload하지 않고 실제 갱신 성공 뒤에만 reload하는가?
-- 재부팅 뒤 root 임시 SHA 파일 `cmp`와 삭제, 동일 MySQL·certificate volume, health와 smoke가 복구되는가?
+- 사용자·Tech Lead 운영 증거: HTTPS 발급, SAN·최소 잔여 유효기간, 내부 release smoke, HTTPS application과 승인 hostname redirect 통과
+- 사용자·Tech Lead 운영 증거: 외부 PC의 HTTPS `/products`·`/api/products`, HTTP→HTTPS redirect와 브라우저 인증서 확인
+- 사용자·Tech Lead 운영 증거: 운영 상품 `0`건을 정상 empty state로 확인
+- 사용자·Tech Lead 운영 증거: `renew --dry-run`은 reload 없이 통과하고 실제 `renew`는 인증서 재검증과 Nginx reload까지 통과
+- 사용자·Tech Lead 운영 증거: 재부팅 뒤 동일 application SHA, MySQL·Let's Encrypt·webroot volume, HTTPS marker, 네 container health와 HTTPS status 복구
+- PR #60 Repository Validation: shell·상태기계·Nginx·Compose lifecycle·계약 validator와 Backend·Frontend 회귀 통과
 
-## 미실행 gate와 남은 위험
+## 보류·미실행 gate와 남은 위험
 
-AWS·DuckDNS·Let's Encrypt, 외부 HTTPS, 재부팅과 session 검증은 아직 미실행이다. 자동 갱신 schedule, certificate backup, 실제 이전 SHA rollback과 단일 EC2 장애 복구도 완료되지 않았다. 실행 결과는 Secret과 식별자를 제외한 성공·실패 상태만 후속 보고서에 반영한다.
+- login/logout과 `JSESSIONID` 속성은 운영 회원이 `0`건이고 승인된 test account가 없어 실패가 아닌 보류다.
+- 외부 unknown Host 거부와 실제 이전 SHA rollback은 미실행이다.
+- 자동 갱신 schedule, certificate backup과 backup·restore는 미완료 후속 작업이다.
+- 단일 EC2·EBS 장애와 이후 DNS·CA·clock·certificate 만료 위험은 이번 단일 시점 성공 결과로 제거되지 않는다.
 
 ## 미결정 사항 또는 승인 필요 항목
 
-실제 hostname 생성, Security Group `443`, 인증서 발급·갱신과 재부팅은 사용자 실행 승인이 필요하다. 자동 갱신 schedule, certificate backup, HSTS와 실제 application rollback은 후속 작업으로 분리한다.
+승인된 test account를 준비한 session 검증은 별도 사용자 결정이 필요하다. 외부 unknown Host 검증, 자동 갱신 schedule, certificate backup, 실제 application rollback과 backup·restore는 후속 작업으로 분리한다.
 
 ## QA 필요 여부
 
-별도 QA 문서는 생략한다. Repository Validation을 독립 자동 검증으로 사용하고 사용자/Tech Lead가 실제 외부 TLS·session gate를 수행한다.
+별도 QA 문서는 생략한다. PR #60 Repository Validation을 독립 자동 검증으로 사용했고 사용자·Tech Lead가 실제 외부 TLS gate를 수행했다. session gate는 보류 상태다.
