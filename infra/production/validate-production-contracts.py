@@ -144,12 +144,20 @@ def validate_workflow() -> None:
 
     require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
     require(
+        "infra/production/db-backup-restore.sh" in validation_workflow,
+        "Repository Validation must syntax-check the OPS-013 backup and restore script",
+    )
+    require(
         "bash infra/production/test-production-nginx.sh" in validation_workflow,
         "Repository Validation must execute the Nginx configuration test",
     )
     require(
         "bash infra/production/test-production-compose.sh" in validation_workflow,
         "Repository Validation must execute the production Compose lifecycle test",
+    )
+    require(
+        "bash infra/production/test-db-backup-restore.sh" in validation_workflow,
+        "Repository Validation must execute the isolated backup and restore lifecycle test",
     )
 
 
@@ -215,8 +223,11 @@ def validate_scripts() -> None:
     require("HTTPS domain state must be a regular non-symlink file" in common, "approved HTTPS domain must reject symlinks")
     require("HTTPS domain state mode must be 600" in common, "approved HTTPS domain must be mode 600")
     require("select_https_domain" in https and "approve_https_domain" in https, "HTTPS domain approval must be separated from runtime selection")
-    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the HTTPS domain")
-    require('validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https, "HTTPS domain must be approved only after candidate certificate validation")
+    require("verify_challenge_path\n  approve_https_domain" not in https, "local bootstrap challenge validation must not approve the domain")
+    require(
+        'validate_https_certificate "$HTTPS_DOMAIN"\n    approve_https_domain' in https,
+        "HTTPS domain approval must happen only after certificate validation",
+    )
     require('local expected_domain="${1:-}"' in common, "certificate validation must accept a pre-approval candidate hostname")
     require("generated HTTPS Nginx configuration mode must be 600" in common, "generated Nginx state must be mode 600")
     require("verify_https_release || return 1" in common, "deploy and rollback must enforce the HTTPS release gate")
@@ -274,12 +285,257 @@ def validate_nginx() -> None:
     require("listen 8081" in https, "HTTPS internal smoke listener is missing")
 
 
+def validate_backup_restore() -> None:
+    backup_restore = (PRODUCTION / "db-backup-restore.sh").read_text(encoding="utf-8")
+    backup_tests = (PRODUCTION / "test-db-backup-restore.sh").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "runbook" / "OPS-013-production-db-backup-restore.md").read_text(encoding="utf-8")
+    logical_commands = re.sub(r"\\\n\s*", " ", backup_restore)
+
+    require(MYSQL_IMAGE in backup_restore, "restore verification must use the production pinned MySQL image")
+    require(
+        'PRODUCTION_MYSQL_VOLUME="pawcycle-production-mysql-data"' in backup_restore,
+        "backup source volume must be the stable production MySQL volume",
+    )
+    require(
+        'PRODUCTION_PROJECT="pawcycle-production"' in backup_restore,
+        "backup source must be selected from the production Compose project",
+    )
+    require("--single-transaction" in backup_restore and "--quick" in backup_restore, "logical dump consistency options are missing")
+    require("--skip-lock-tables" in backup_restore, "logical backup must not lock production tables")
+    require(
+        all(option in backup_restore for option in ("--routines", "--events", "--triggers", "--hex-blob", "--set-gtid-purged=OFF")),
+        "logical dump coverage or isolated restore safety options are incomplete",
+    )
+    require("gzip --test" in backup_restore, "compressed dump integrity must be checked")
+    require(
+        "checksum file must contain exactly one entry" in backup_restore
+        and "checksum target filename is invalid" in backup_restore
+        and 'actual_hash="$(sha256sum "$file"' in backup_restore,
+        "downloaded checksum files must bind one validated hash to the expected local basename",
+    )
+    require(
+        'upload_and_verify "${base_key}.complete"' in backup_restore
+        and 'upload_and_verify "${base_key}.verify.sha256"' in backup_restore
+        and backup_restore.index('upload_and_verify "${base_key}.complete"')
+        > backup_restore.index('upload_and_verify "${base_key}.verify.sha256"'),
+        "S3 completion marker must be uploaded after the verified backup object set",
+    )
+    require(
+        'production MySQL changed during backup verification' in backup_restore
+        and 'upload_and_verify "${base_key}.complete"' in backup_restore
+        and backup_restore.index('production MySQL changed during backup verification')
+        < backup_restore.index('upload_and_verify "${base_key}.complete"'),
+        "production MySQL identity and health must be rechecked before publishing the completion marker",
+    )
+    require("--server-side-encryption AES256" in backup_restore, "every S3 upload must explicitly request SSE-S3")
+    require("--storage-class STANDARD" in backup_restore, "every S3 upload must explicitly use S3 Standard")
+    require(
+        "MAX_SINGLE_UPLOAD_BYTES=5000000000" in backup_restore
+        and "MAX_METADATA_OBJECT_BYTES=1048576" in backup_restore
+        and "object_size_limit" in backup_restore
+        and "backup object exceeds its approved S3 upload size limit" in backup_restore,
+        "single-request S3 uploads must fail before the decimal 5 GB object size limit",
+    )
+    require(
+        "head_object_size" in backup_restore
+        and "S3 object exceeds the approved download size limit" in backup_restore
+        and 'complete_size="$(head_object_size' in backup_restore
+        and 'get_object "${base_key}.complete"' in backup_restore
+        and backup_restore.index('complete_size="$(head_object_size')
+        < backup_restore.index('get_object "${base_key}.complete"'),
+        "all backup object sizes and encryption metadata must be checked before any restore download",
+    )
+    require(
+        "insufficient free disk to download the verified backup object set" in backup_restore,
+        "restore downloads must reserve local work disk before fetching objects",
+    )
+    require(
+        "gzip --decompress --stdout" in backup_restore
+        and "uncompressed logical dump size" in backup_restore
+        and "compressed_size * 8" not in backup_restore,
+        "restore disk preflight must use the measured uncompressed dump size rather than a compression-ratio guess",
+    )
+    require("get-public-access-block" in backup_restore, "bucket Public Access Block must be verified")
+    require("get-bucket-encryption" in backup_restore, "bucket SSE-S3 default encryption must be verified")
+    require("get-bucket-versioning" in backup_restore, "bucket versioning must be rejected by the retention preflight")
+    require(
+        'APPROVED_AWS_REGION="ap-northeast-2"' in backup_restore
+        and '[[ "$1" == "$APPROVED_AWS_REGION" ]]' in backup_restore,
+        "backup execution must fail closed outside the approved Seoul region",
+    )
+    require(
+        "db-backup-restore.sh backup\n" in backup_restore
+        and "db-backup-restore.sh restore-verify --backup-id <id>" in backup_restore
+        and all(f"\n      {flag})" not in backup_restore for flag in ("--bucket", "--region", "--prefix"))
+        and all(
+            f'PAWCYCLE_BACKUP_{name}="${{PAWCYCLE_BACKUP_{name}:-${name}}}"' in backup_tests
+            for name in ("BUCKET", "REGION", "PREFIX")
+        ),
+        "S3 identifiers must be accepted only through the PAWCYCLE_BACKUP environment variables",
+    )
+    require(
+        "PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" in backup_restore
+        and "--expected-bucket-owner" in backup_restore
+        and "12-digit AWS account ID" in backup_restore,
+        "every S3 API request must bind to the expected bucket owner",
+    )
+    require(
+        "write_restore_manifest" in backup_restore
+        and "write_source_manifest" not in backup_restore
+        and 'create_restore_mysql\n  import_dump\n  write_restore_manifest "$manifest"' in backup_restore,
+        "backup metadata must be generated from the isolated import of the dump snapshot",
+    )
+    require(
+        "get-bucket-lifecycle-configuration" in backup_restore
+        and "--query 'length(Rules)'" in backup_restore
+        and '[[ "$lifecycle_rule_count" == "1" ]]' in backup_restore
+        and "Expiration.Days==\\`14\\`" in backup_restore,
+        "the dedicated bucket must have exactly one enabled 14-day expiration lifecycle for the requested prefix",
+    )
+    require("AWS request failed; bucket and object identifiers were suppressed" in backup_restore, "AWS failures must not print bucket identifiers")
+    require(
+        all(
+            name in backup_restore
+            for name in (
+                "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+                "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+                "AWS_EC2_METADATA_SERVICE_ENDPOINT",
+                "AWS_ENDPOINT_URL",
+                "AWS_ENDPOINT_URL_S3",
+                "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true",
+            )
+        ),
+        "ambient container, IMDS, and service endpoint overrides must be rejected or ignored",
+    )
+    require(
+        "AWS credentials and endpoint overrides must not come from the ambient environment" in backup_restore
+        and "AWS_CONFIG_FILE=/dev/null" in backup_restore
+        and "AWS_SHARED_CREDENTIALS_FILE=/dev/null" in backup_restore,
+        "backup AWS access must remain bound to the EC2 instance role and normal S3 endpoint",
+    )
+    require(
+        backup_restore.count('2>"$MYSQL_ERROR_FILE"') >= 5
+        and "source MySQL metadata query failed" in backup_restore
+        and "restore-decompression-failed" in backup_restore
+        and "restore-sql-import-failed" in backup_restore,
+        "MySQL and dump failures must suppress credential or row-bearing stderr",
+    )
+    require(
+        "--protocol=TCP --host=127.0.0.1" in backup_restore
+        and '"$MYSQL_DATABASE" --execute="SELECT 1;"' in backup_restore
+        and "consecutive_successes >= 2" in backup_restore,
+        "restore readiness must require two authenticated TCP queries against the target database",
+    )
+    require(
+        'pipeline_status=("${PIPESTATUS[@]}")' in backup_restore
+        and 'gzip_status="${pipeline_status[0]}"' in backup_restore
+        and 'mysql_status="${pipeline_status[1]}"' in backup_restore,
+        "restore import must preserve decompressor and MySQL client exit statuses",
+    )
+    require(
+        '> /dev/null 2>"$MYSQL_ERROR_FILE"' in backup_restore,
+        "logical restore client output must not expose dump statements or rows",
+    )
+    require("--network none" in backup_restore, "restore MySQL must use the Docker none network")
+    require(
+        re.search(r"\bdocker\s+(?:create|run)\b[^\n]*(?:\s-p(?:\s|$)|\s--publish(?:=|\s))", logical_commands) is None,
+        "restore docker create or run commands must not publish host ports",
+    )
+    require(
+        'production_mount' in backup_restore and "restore container must not mount the production MySQL volume" in backup_restore,
+        "restore isolation must reject the production volume",
+    )
+    require(
+        "production MySQL changed during backup verification" in backup_restore
+        and "production MySQL changed during isolated restore verification" in backup_restore,
+        "backup and restore verification must recheck the production MySQL identity and health",
+    )
+    require(
+        "com.pawcycle.ops013.scope=restore" in backup_restore,
+        "temporary restore resources need a cleanup ownership label",
+    )
+    require("trap cleanup_trap EXIT INT TERM" in backup_restore, "success and failure must clean temporary restore resources")
+    require(
+        "OPS-013 temporary resource cleanup failed" in backup_restore,
+        "temporary resource cleanup failure must prevent a successful result",
+    )
+    require(
+        'if (( status == 0 )) && [[ -n "$SUCCESS_MESSAGE" ]]' in backup_restore,
+        "final success evidence must be emitted only after temporary resource cleanup",
+    )
+    require("set +x" in backup_restore, "backup and restore operations must disable shell tracing")
+    require("install -d -m 700" in backup_restore and "chmod 600" in backup_restore, "root-only temporary path modes are incomplete")
+    require(
+        'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"' in backup_restore
+        and 'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"' in backup_restore,
+        "database credentials must remain inside the source or isolated MySQL container",
+    )
+    require(
+        not re.search(r"docker\s+exec[^\n]*--env[^\n]*(?:MYSQL_PWD|MYSQL_PASSWORD|MYSQL_ROOT_PASSWORD)", backup_restore),
+        "database credentials must not be passed through docker exec command arguments",
+    )
+    require(
+        not re.search(r"docker\s+volume\s+rm[^\n]*pawcycle-production-mysql-data", backup_restore),
+        "OPS-013 must never remove the production MySQL volume",
+    )
+    require(
+        "PRODUCTION_VOLUME_CREATED=0" in backup_tests
+        and 'if [[ "$PRODUCTION_VOLUME_CREATED" == "1" ]]' in backup_tests
+        and "PRODUCTION_VOLUME_CREATED=1" in backup_tests,
+        "the lifecycle test may remove the production-named fixture volume only when it created that volume",
+    )
+    require(
+        "oversized S3 object was not rejected before download" in backup_tests
+        and "untrusted checksum target filename was not rejected" in backup_tests,
+        "download size and checksum target regression tests are required",
+    )
+    require(
+        "전용 신규 빈 bucket만 허용" in runbook
+        and "if ! aws s3api create-bucket" in runbook
+        and "전용 신규 bucket 생성 실패: 기존 bucket을 변경하지 마세요." in runbook
+        and "put-bucket-lifecycle-configuration" in runbook
+        and "기존 bucket 재사용은 이 Runbook 범위에서 제외" in runbook
+        and "put-bucket-policy" in runbook,
+        "the Runbook must restrict full lifecycle and policy replacement to a dedicated new bucket",
+    )
+    require(
+        "--preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX,PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" in runbook
+        and '--bucket "$BACKUP_BUCKET"' not in runbook
+        and '--region "$BACKUP_REGION"' not in runbook
+        and '--prefix "$BACKUP_PREFIX"' not in runbook,
+        "the Runbook must pass backup identifiers only through the supported environment variables",
+    )
+    for evidence in (
+        "backup failure was reported as success",
+        "upload failure was reported as success",
+        "bucket encryption mismatch was reported as success",
+        "bucket public access mismatch was reported as success",
+        "bucket versioning mismatch was reported as success",
+        "bucket lifecycle mismatch was reported as success",
+        "overlapping bucket lifecycle rules were reported as success",
+        "IMDS endpoint override was reported as success",
+        "checksum mismatch was reported as success",
+        "restore decompression failure stage was not reported",
+        "restore SQL import failure stage was not reported",
+        "verification mismatch was reported as success",
+        "temporary restore container remained",
+        "temporary restore volume remained",
+        "temporary restore work file remained",
+        "source production fixture changed during backup or restore verification",
+        "source production volume was removed",
+        "non-Seoul backup region was reported as success",
+        "unexpected S3 bucket owner was reported as success",
+    ):
+        require(evidence in backup_tests, f"OPS-013 regression evidence is missing: {evidence}")
+
+
 def main() -> None:
     validate_compose()
     validate_workflow()
     validate_scripts()
     validate_nginx()
-    print("OPS-011 production HTTPS contracts validated")
+    validate_backup_restore()
+    print("OPS-013 production backup and restore contracts validated")
 
 
 if __name__ == "__main__":
