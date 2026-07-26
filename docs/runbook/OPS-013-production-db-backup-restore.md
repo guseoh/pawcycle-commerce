@@ -21,6 +21,7 @@
 - S3 bucket: OPS-013 전용으로 새로 생성한 빈 private bucket과 예상 bucket owner 일치
 - S3 storage class: S3 Standard
 - encryption: SSE-S3 `AES256`
+- versioning: 비활성
 - retention: 지정 prefix 아래 object 생성 14일 뒤 만료
 - restore: `--network none`, host port 없음, 고유 임시 named volume
 - 핵심 table: `members`, `products`, `skus`, `subscriptions`
@@ -36,7 +37,7 @@
 - AWS region이 승인된 서울 region `ap-northeast-2`가 아니거나 EC2와 bucket에서 일치하는지 확인할 수 없음
 - S3 bucket owner가 현재 승인 AWS account와 일치하는지 확인할 수 없음
 - bucket이 OPS-013 전용 신규 빈 bucket인지 확인할 수 없음
-- bucket Public Access Block 네 항목, SSE-S3 또는 14일 prefix lifecycle을 확인할 수 없음
+- bucket Public Access Block 네 항목, SSE-S3 `AES256`, versioning 비활성 또는 14일 prefix lifecycle을 확인할 수 없음
 - instance role이 아닌 access key·Secret을 명령행이나 파일에 입력해야 함
 - backup work root나 runtime 파일이 symlink이거나 root 전용 mode가 아님
 - script가 요구하는 disk·available memory preflight를 통과하지 못함
@@ -322,7 +323,7 @@ script는 다음 순서로 fail-close한다.
 7. S3 size·SSE-S3·다운로드 checksum 재검증
 8. 마지막에만 completion marker 업로드
 
-성공 로그의 backup ID만 비민감 증거로 기록한다. 실제 object key, bucket과 row count는 기록하지 않는다.
+성공 로그의 backup ID는 `restore-verify`와 필요한 cleanup 추적을 위해 저장소 밖 접근이 제한된 운영 기록에 보관한다. 저장소의 비민감 증거에는 backup ID 값, 실제 object key, bucket과 row count를 기록하지 않는다.
 
 ## 6. 격리 복원 검증
 
@@ -363,7 +364,7 @@ cleanup은 OPS-013 restore label, `none` network, production volume 미사용을
 | --- | --- | --- |
 | production health·image·volume 불일치 | backup 중단 | production 원인을 먼저 확인 |
 | disk·memory 부족 | backup 또는 restore 중단 | application을 중지하지 말고 용량 계획을 별도 승인 |
-| bucket 계약·IAM 실패 | upload 전 중단 | PAB·SSE-S3·lifecycle·role 정책 수정 후 재시도 |
+| bucket 계약·IAM 실패 | upload 전 중단 | PAB·SSE-S3 `AES256`·versioning 비활성·lifecycle·role 정책 수정 후 재시도 |
 | dump·gzip 실패 | backup 실패 | 임시 파일 cleanup 확인 후 새 backup ID로 재시도 |
 | compressed object 5,000,000,000 byte 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
 | upload·head·download checksum 실패 | backup 실패 | completion marker 부재를 확인하고 새 backup 생성 |
@@ -372,11 +373,13 @@ cleanup은 OPS-013 restore label, `none` network, production volume 미사용을
 
 실패 시 production service, `pawcycle-production-mysql-data`, release SHA와 HTTPS state를 변경하지 않는다. 부분 upload는 14일 lifecycle 대상이며 instance role에 삭제 권한을 추가하지 않는다.
 
+> 2026-07-24 역사적 예외: 사용자가 일회성 유지보수 절차와 짧은 서비스 중단을 별도로 승인해 proxy·frontend·backend를 일시 중지했다. production MySQL과 `pawcycle-production-mysql-data`는 유지했고, 종료 후 네 서비스 health·HTTPS·공개 상품 API를 재검증했다. 이 기록은 “disk·memory 부족 시 application을 중지하지 않고 별도 승인”이라는 기본 정책을 변경하지 않으며 반복 실행의 기본 절차가 아니다.
+
 ## 9. 비민감 증거 형식
 
 ```text
-OPS-013 backup: PASS|FAIL, backup ID recorded separately
-S3 contract: Seoul region, expected owner, PAB 4/4, SSE-S3, 14-day prefix lifecycle PASS|FAIL
+OPS-013 backup: PASS|FAIL, backup ID stored in a restricted operational record outside the repository
+S3 contract: Seoul region, expected owner, PAB 4/4, SSE-S3 AES256, versioning disabled, 14-day prefix lifecycle PASS|FAIL
 Upload verification: size, encryption, checksum, completion marker PASS|FAIL
 Isolated restore: none network, no host port, temporary volume PASS|FAIL
 Data verification: schema, Flyway history, core table counts MATCH|MISMATCH
@@ -385,6 +388,8 @@ Production preservation: release, HTTPS state, MySQL container and volume UNCHAN
 ```
 
 bucket·account·ARN·hostname·IP·email·credential, application SHA 값, object key, dump 원문, row와 실제 count는 기록하지 않는다.
+
+2026-07-24 실행에서는 성공한 동일 backup ID를 `restore-verify`에 사용했지만, 현재 비민감 근거만으로 저장소 밖 장기 별도 보관 여부는 확인되지 않는다. 향후 동일 backup 재검증 전 제한된 운영 기록의 보관 여부를 확인하고, 값 자체는 저장소에 추가하지 않는다.
 
 ## 10. 재부팅·application rollback과의 관계
 
@@ -395,7 +400,8 @@ OPS-013은 application rollback이나 production restore를 수행하지 않는�
 - 자동 schedule과 실패 알림
 - certificate·DB backup 보존 정책 통합
 - 실제 production restore 승인 절차
-- cross-region·versioning·Glacier·별도 KMS가 필요한 규제 또는 RPO/RTO 결정
+- versioning 활성화와 versioned backup 보존 전략
+- cross-region·Glacier·별도 KMS가 필요한 규제 또는 RPO/RTO 결정
 - backup·restore 실행 중 count 불일치가 반복될 때의 쓰기 정합성 전략
 
 이 항목은 OPS-013 구현·운영 검증 완료로 간주하지 않는다.
