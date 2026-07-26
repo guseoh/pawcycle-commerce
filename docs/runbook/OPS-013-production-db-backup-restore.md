@@ -364,7 +364,7 @@ cleanup은 OPS-013 restore label, `none` network, production volume 미사용을
 | --- | --- | --- |
 | production health·image·volume 불일치 | backup 중단 | production 원인을 먼저 확인 |
 | disk·memory 부족 | backup 또는 restore 중단 | application을 중지하지 말고 용량 계획을 별도 승인 |
-| bucket 계약·IAM 실패 | upload 전 중단 | PAB·SSE-S3 `AES256`·versioning 비활성·lifecycle·role 정책 수정 후 재시도 |
+| bucket 계약·IAM 실패 | upload·backup·restore 진행 없이 중단 | 기존 bucket policy·lifecycle·encryption·versioning·Public Access Block·IAM policy를 실행 중 즉석 수정하지 않음. 사용자가 별도 승인된 준비 단계에서 필요한 resource를 수정·사전 검증한 뒤 전체 계약을 처음부터 재검증하고 새 backup ID로 재실행 |
 | dump·gzip 실패 | backup 실패 | 임시 파일 cleanup 확인 후 새 backup ID로 재시도 |
 | compressed object 5,000,000,000 byte 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
 | upload·head·download checksum 실패 | backup 실패 | completion marker 부재를 확인하고 새 backup 생성 |
