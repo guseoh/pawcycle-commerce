@@ -296,6 +296,12 @@ aws s3api get-bucket-versioning \
 aws s3api get-bucket-lifecycle-configuration \
   --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
   --expected-bucket-owner "$PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" \
+  --query 'length(Rules)' \
+  --output text
+
+aws s3api get-bucket-lifecycle-configuration \
+  --bucket "$PAWCYCLE_BACKUP_BUCKET" --region "$PAWCYCLE_BACKUP_REGION" \
+  --expected-bucket-owner "$PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER" \
   --query "length(Rules[?Status=='Enabled' && Expiration.Days==\`14\` && Filter.Prefix=='${PAWCYCLE_BACKUP_PREFIX}/'])" \
   --output text
 ```
