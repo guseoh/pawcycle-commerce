@@ -74,9 +74,11 @@ sudo bash infra/production/https.sh issue \
   --frontend-image "$FRONTEND_IMAGE"
 ```
 
-최초 hostname은 Certbot의 실제 외부 HTTP-01 발급과 요청 hostname에 대한 certificate SAN·최소 잔여 유효기간 검증이 모두 성공한 뒤에만 `/opt/pawcycle/state/https-domain` 일반 파일·mode `600`으로 원자적으로 고정된다. Certbot·인증서 검증·domain 후보 정리에 실패하면 승인 state, marker와 생성 Nginx config를 남기지 않으므로 올바른 hostname으로 재시도할 수 있다. 승인 뒤에는 다른 hostname을 전달하거나 state 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
+최초 hostname은 Certbot의 실제 외부 HTTP-01 발급과 요청 hostname에 대한 certificate SAN·최소 잔여 유효기간 검증이 모두 성공한 뒤에만 `/opt/pawcycle/state/https-domain` 일반 파일·mode `600`으로 원자적으로 고정된다. Certbot 또는 인증서 검증이 `approve_https_domain` 전에 실패하면 승인 state와 marker는 생기지 않고 후보 파일만 종료 trap이 정리한다. 승인 뒤에는 다른 hostname을 전달하거나 state 파일이 symlink·잘못된 형식·다른 mode이면 script가 중단한다.
 
-승인 hostname을 반영한 HTTPS Nginx config와 두 endpoint 검증까지 성공해야 mode `600`의 `/opt/pawcycle/state/https-enabled` marker가 유지된다. 승인 hostname만 같은 hostname의 HTTPS로 redirect되고 알 수 없는 Host는 연결을 종료한다. 전환 실패 시 script가 marker와 생성 config를 제거하고 bootstrap proxy를 복구한다. health·release·내부 smoke 복구는 성공했지만 challenge만 실패한 경우와 bootstrap 복구 자체가 실패한 경우는 서로 다른 오류로 보고한다.
+`approve_https_domain` 뒤 후보 Nginx config 생성·검증이 실패하면 승인된 `https-domain`은 남을 수 있고 marker는 없으며 후보 config만 정리된다. config가 state 경로로 승격된 뒤 검증이 실패하면 승인 domain과 생성 config가 남고 marker는 없을 수 있다. `enable_https`의 proxy·path·redirect 검증이 실패하면 marker와 생성 config를 제거하고 bootstrap proxy 복구를 시도하지만 승인 domain은 제거하지 않는다. health·release·내부 smoke 복구는 성공했지만 challenge만 실패한 경우와 bootstrap 복구 자체가 실패한 경우는 서로 다른 오류로 보고한다.
+
+실패 뒤 `https-domain`, `nginx.https.conf`, `https-enabled`, proxy와 certificate volume의 실제 잔존 상태를 비민감 방식으로 확인한다. state 파일을 수동 삭제해 재시도하지 말고 별도 복구 승인이 내려질 때까지 중단·에스컬레이션한다.
 
 ## 5. 적용 후 검증
 
@@ -119,7 +121,7 @@ sudo bash infra/production/https.sh renew \
   --frontend-image "$FRONTEND_IMAGE"
 ```
 
-실제 `renew`는 Certbot 성공, certificate 재검증, 실행 중 Nginx `-t` 이후에만 reload한다. 갱신 대상이 아직 아니어도 검증과 안전한 reload를 수행한다. 자동 schedule은 OPS-011 범위가 아니므로 운영자가 만료 전에 같은 순서로 실행하고 결과를 비민감 상태만 기록한다.
+실제 `renew`는 Certbot 성공, certificate 재검증, 실행 중 Nginx `-t` 이후에만 reload하고 마지막에 HTTPS path·redirect를 확인한다. 갱신 대상이 아직 아니어도 같은 gate를 수행한다. 자동 schedule은 OPS-011 범위가 아니므로 운영자가 만료 전에 같은 순서로 실행하고 결과를 비민감 상태만 기록한다.
 
 ## 7. 재부팅 복구
 
@@ -149,9 +151,13 @@ sudo test -f /opt/pawcycle/state/https-enabled
 
 ## 8. 실패 복구
 
-- 발급 실패: 추가 조치 없이 bootstrap HTTP와 현재 release를 유지하고 DNS·`80` 접근성만 조사한다.
-- 갱신 실패: Nginx를 reload하지 않는다. 기존 worker와 인증서가 계속 사용되며 volume·marker를 삭제하지 않는다.
-- reload 실패: 실행 중 worker는 이전에 적재한 인증서를 유지한다. 원인을 수정한 뒤 `renew --dry-run`부터 다시 시작한다.
+- `approve_https_domain` 전 발급·인증서 검증 실패: Nginx reload 없이 bootstrap HTTP와 현재 release를 유지한다. certificate volume은 실패 단계에 따라 파일이 생겼을 수 있으므로 상태를 확인한다.
+- domain 승인 뒤 최초 활성화 실패: 승인된 `https-domain`은 남을 수 있다. 후보 config 검증 실패, config 승격 뒤 실패, `enable_https` 실패의 marker·config 상태를 4절 기준으로 구분하고 수동 삭제 없이 중단·에스컬레이션한다.
+- Certbot 갱신 실패: reload 전이다. running worker는 기존 적재 상태지만 certificate volume이 완전히 이전 상태라고 단정하지 않는다.
+- 갱신 certificate 검증 실패: Certbot 성공 뒤이므로 volume 파일은 바뀌었을 수 있지만 reload하지 않는다. running worker는 이전 적재 상태다.
+- 실행 중 Nginx `-t` 실패: reload하지 않는다. volume 파일은 바뀌었을 수 있으므로 원인과 실제 인증서 상태를 확인한다.
+- reload 호출 실패: 자동 certificate volume rollback은 없다. running worker·적재 인증서 상태를 확인하고 별도 승인 전까지 중단한다.
+- reload 성공 뒤 path·redirect 실패: 새 worker가 갱신 인증서를 사용 중일 수 있으며 이전 인증서·worker로 자동 복귀한다는 보장이 없다. 자동 rollback으로 해석하지 않고 즉시 에스컬레이션한다.
 - 인증서 volume 손상 또는 HTTPS 기동 실패: 아래 명령으로 HTTP bootstrap을 복구한다. 인증서와 MySQL volume은 삭제하지 않는다.
 
 ```bash
