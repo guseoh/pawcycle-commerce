@@ -18,7 +18,7 @@
 - source volume: `pawcycle-production-mysql-data`, 읽기 전용 논리 dump 대상
 - MySQL image: production과 동일한 저장소 고정 digest
 - AWS region: 승인된 서울 region `ap-northeast-2`
-- S3 bucket: OPS-013 전용으로 새로 생성한 빈 private bucket과 예상 bucket owner 일치
+- S3 bucket: 운영자가 OPS-013 전용으로 새로 생성한 빈 private bucket과 예상 bucket owner 일치. 전용성·빈 상태는 준비 단계 전제이며 script가 증명하지 않음
 - S3 storage class: S3 Standard
 - encryption: SSE-S3 `AES256`
 - versioning: 비활성
@@ -89,7 +89,7 @@ unset BACKUP_BUCKET BACKUP_PREFIX
 
 `PAWCYCLE_BACKUP_REGION`은 승인된 서울 region `ap-northeast-2`로 고정한다. `PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER`는 현재 승인 AWS account에서 자동 조회하며 값을 문서·로그에 복사하지 않는다.
 
-OPS-013은 lifecycle·bucket policy의 기존 설정을 덮어쓰는 위험을 없애기 위해 **전용 신규 빈 bucket만 허용**한다. 기존 bucket 재사용은 이 Runbook 범위에서 제외한다. 생성 명령이 이미 존재하는 bucket 때문에 실패하면 다른 전용 bucket 이름으로 다시 시작하고 기존 bucket 설정을 변경하지 않는다.
+OPS-013은 lifecycle·bucket policy의 기존 설정을 덮어쓰는 위험을 없애기 위해 **전용 신규 빈 bucket만 허용**한다. 기존 bucket 재사용은 이 Runbook 범위에서 제외한다. 생성 명령이 이미 존재하는 bucket 때문에 실패하면 다른 전용 bucket 이름으로 다시 시작하고 기존 bucket 설정을 변경하지 않는다. 이는 사용자가 생성 성공과 빈 상태를 확인하는 준비 단계 gate다. `db-backup-restore.sh`는 bucket 생성 이력·object 목록·전용 소유 marker를 조회하지 않으므로 매 실행에서 전용 신규 빈 bucket 여부를 증명하지 않는다.
 
 ```bash
 if ! aws s3api create-bucket \
@@ -264,7 +264,7 @@ unset BUCKET_POLICY_FILE
 }
 ```
 
-`s3:DeleteObject`, wildcard bucket, KMS와 public ACL 권한은 추가하지 않는다.
+`s3:DeleteObject`, wildcard bucket, KMS와 public ACL 권한은 추가하지 않는다. 이 최소 정책과 초과 권한 부재는 사용자가 준비 단계에서 별도로 검증한다. `validate_instance_role_boundary`는 ambient credential·profile·endpoint override를 차단할 뿐 IAM policy를 조회하지 않으며, object 쓰기·읽기 권한 부족은 해당 S3 작업 시점에야 실패하고 초과 권한은 탐지하지 않는다.
 
 ## 4. bucket 계약 확인
 
@@ -300,11 +300,11 @@ aws s3api get-bucket-lifecycle-configuration \
   --output text
 ```
 
-기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, 전체 lifecycle rule count와 14일 지정 prefix 일치 count가 각각 정확히 `1`이다. bucket은 OPS-013 전용 신규 bucket이어야 하며 versioning이 `Enabled` 또는 `Suspended`이거나 다른 lifecycle rule이 있으면 사용하지 않는다.
+기대값은 같은 region, `True True True True`, `AES256`, versioning `None`, 전체 lifecycle rule count와 14일 지정 prefix 일치 count가 각각 정확히 `1`이다. bucket은 운영자가 준비 단계에서 확인한 OPS-013 전용 신규 bucket이어야 하며 versioning이 `Enabled` 또는 `Suspended`이거나 다른 lifecycle rule이 있으면 사용하지 않는다. `verify_bucket_contract`는 나열한 속성만 검사하고 bucket의 빈 상태·전용성은 확인하지 않는다.
 
 ## 5. 운영 논리 백업
 
-DDL·migration이 없는 저부하 시점에 수행한다. `--single-transaction`은 일반 row 쓰기를 막지 않지만 dump 중 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`는 금지한다.
+migration과 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`가 없는 저부하 시점에만 수행한다. `--single-transaction`은 일반 row 쓰기를 막지 않지만, 이 DDL 또는 migration이 겹치면 consistent snapshot을 보장할 수 없으므로 즉시 중단한다.
 
 ```bash
 cd /opt/pawcycle/repository
@@ -312,7 +312,7 @@ sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKU
   infra/production/db-backup-restore.sh backup
 ```
 
-script는 다음 순서로 fail-close한다.
+사용자는 먼저 전용 신규 빈 bucket과 최소 IAM policy를 준비 단계에서 확인한다. script는 bucket 속성과 ambient credential·endpoint 경계를 검사하지만 bucket 전용성, IAM 최소 권한 또는 초과 권한 부재를 매 실행 증명하지 않는다. 그 경계 안에서 backup은 다음 순서로 fail-close한다.
 
 1. healthy production MySQL·고정 image·고정 volume 확인
 2. mysql·mysqldump, 대상 DB·Flyway·핵심 table 확인
@@ -350,13 +350,15 @@ script는 completion marker, object size·SSE-S3, SHA-256과 gzip을 확인한 �
 
 ## 7. cleanup과 재실행
 
-정상·오류 종료에서는 trap이 임시 container·volume·파일을 제거한다. 강제 종료로 남은 resource는 정확한 backup ID로만 정리한다.
+정상·오류 종료에서는 `cleanup_trap`이 현재 실행이 보유한 `TEMP_CONTAINER`·`TEMP_VOLUME` 이름과 work path를 제거한다. container·volume은 삭제 직전 OPS-013 label, `none` network 또는 production volume 미사용 여부를 다시 검사하지 않는다. 따라서 실행 중 같은 이름의 resource를 외부에서 교체하지 말고, cleanup 실패 시 추가 삭제를 반복하지 않은 채 에스컬레이션한다.
+
+강제 종료로 남은 resource는 정확한 backup ID로만 명시적 정리한다.
 
 ```bash
 sudo infra/production/db-backup-restore.sh cleanup --backup-id "$BACKUP_ID"
 ```
 
-cleanup은 OPS-013 restore label, `none` network, production volume 미사용을 다시 확인한 resource만 제거한다. production container·volume·state와 S3 object는 삭제하지 않는다. 같은 backup을 다시 검증하거나 새 backup을 생성해도 이름 충돌이 없어야 한다.
+명시적 `cleanup --backup-id`는 OPS-013 restore label, `none` network, production volume 미사용과 volume 이름을 다시 확인한 resource만 제거한다. 이 재검증은 자동 `cleanup_trap`에는 없다. production container·volume·state와 S3 object는 삭제하지 않는다. 같은 backup을 다시 검증하거나 새 backup을 생성해도 이름 충돌이 없어야 한다.
 
 ## 8. 실패 판정과 복구
 
@@ -364,7 +366,9 @@ cleanup은 OPS-013 restore label, `none` network, production volume 미사용을
 | --- | --- | --- |
 | production health·image·volume 불일치 | backup 중단 | production 원인을 먼저 확인 |
 | disk·memory 부족 | backup 또는 restore 중단 | application을 중지하지 말고 용량 계획을 별도 승인 |
-| bucket 계약·IAM 실패 | upload·backup·restore 진행 없이 중단 | 기존 bucket policy·lifecycle·encryption·versioning·Public Access Block·IAM policy를 실행 중 즉석 수정하지 않음. 사용자가 별도 승인된 준비 단계에서 필요한 resource를 수정·사전 검증한 뒤 전체 계약을 처음부터 재검증하고 새 backup ID로 재실행 |
+| bucket 속성 조회·계약 실패 | dump·upload·restore 전 중단 | 기존 bucket policy·lifecycle·encryption·versioning·Public Access Block을 실행 중 즉석 수정하지 않음. 사용자가 별도 승인된 준비 단계에서 수정·사전 검증한 뒤 전체 계약을 처음부터 재검증하고 새 backup ID로 재실행 |
+| S3 object 쓰기·읽기 권한 실패 | 해당 upload·download 단계에서 실패. backup에서는 local dump·manifest가 이미 생성됐을 수 있음 | IAM policy를 실행 중 즉석 수정하지 않음. completion marker 부재와 cleanup을 확인하고 사용자가 별도 승인된 준비 단계에서 최소·초과 권한을 검증한 뒤 처음부터 재실행 |
+| 전용 bucket·IAM 최소 권한 전제 불명확 | script가 자동 판별하지 못하므로 운영자 gate 실패 | 실행하지 않고 준비 증거를 다시 확인. 기존 resource를 즉석 수정하지 않음 |
 | dump·gzip 실패 | backup 실패 | 임시 파일 cleanup 확인 후 새 backup ID로 재시도 |
 | compressed object 5,000,000,000 byte 초과 | backup 실패 | multipart 권한을 임의 추가하지 말고 별도 설계 승인 |
 | upload·head·download checksum 실패 | backup 실패 | completion marker 부재를 확인하고 새 backup 생성 |

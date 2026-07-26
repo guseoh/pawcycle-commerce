@@ -82,7 +82,7 @@ image 게시만 GitHub Actions가 담당한다. EC2에서의 Secret materialize,
 
 ## 4. Runtime Secret materialize와 파일 경계
 
-Secret의 원본은 사용자가 선택한 SSM Parameter Store prefix 아래 네 SecureString이다. 실제 prefix와 값은 저장소에 기록하지 않는다. `infra/production/materialize-ssm-env.sh`는 서울 region만 허용하고 instance role로 각 값을 `--with-decryption` 조회한다.
+Secret의 원본은 사용자가 선택한 SSM Parameter Store prefix 아래 네 SecureString이다. 이 타입은 OPS-010에서 운영자가 준비·검증한 계약이며, `infra/production/materialize-ssm-env.sh`는 매 실행에서 `Parameter.Type`을 다시 조회하지 않는다. script는 서울 region만 허용하고 instance role로 값을 `--with-decryption` 조회해 누락·빈 값·여러 줄을 거부한다. 실제 prefix와 값은 저장소에 기록하지 않는다.
 
 materialize 흐름은 다음과 같다.
 
@@ -91,7 +91,7 @@ materialize 흐름은 다음과 같다.
 3. MySQL 파일에는 DB 이름·application 계정·application 비밀번호·root 비밀번호를 기록한다.
 4. Backend 파일에는 datasource URL·application 계정·application 비밀번호만 기록한다. MySQL root 비밀번호는 Backend에 전달하지 않는다.
 5. 세 파일을 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 새 bundle로 교체한다.
-6. 직전 symlink target이 관리 directory 안의 예상 bundle임을 확인한 경우에만 이전 평문 bundle을 제거한다.
+6. 직전 symlink target이 관리 directory 안의 예상 bundle임을 확인한 경우, 새 `current` symlink 교체 뒤 검증해 둔 `PREVIOUS_BUNDLE`을 제거한다.
 
 하나라도 조회에 실패하거나 값이 비었으면 기존 `current`는 바뀌지 않는다. script는 shell trace를 끄고 값을 stdout에 출력하지 않는다. `release-common.sh`의 `validate_runtime_bundle`은 배포 전에 regular file·non-symlink·mode `600`·완료 marker·필수 key와 Backend root 비밀번호 부재를 다시 확인한다.
 
@@ -146,6 +146,8 @@ Compose는 이 파일들을 `env_file`로 MySQL과 Backend에 각각 전달한�
 | `nginx.https.conf` | `https.sh issue` | 승인 hostname을 반영하고 `nginx -t`를 통과한 생성 설정 |
 | `https-enabled` | `https.sh` | 값이 `enabled`인 경우 Compose가 HTTPS 설정을 선택하는 marker |
 
+최초 `issue` 실패 시 잔존 상태는 실패 단계에 따라 다르다. Certbot 또는 인증서 검증이 `approve_https_domain` 전에 실패하면 `https-domain`은 생성되지 않는다. 승인 뒤 후보 config 생성·검증이 실패하면 `https-domain`은 남을 수 있고 marker는 없으며 후보 파일만 종료 trap이 정리한다. config가 state 경로로 승격된 뒤 검증이 실패하면 승인 domain과 생성 config가 남고 marker는 없을 수 있다. `enable_https`의 proxy·path·redirect 검증이 실패하면 marker와 생성 config는 제거되고 bootstrap 복구를 시도하지만 승인된 `https-domain`은 제거하지 않는다. 어떤 경우에도 자동 domain state rollback을 가정하거나 state 파일을 수동 삭제하지 않고, 현재 파일·proxy·certificate volume 상태를 비민감 방식으로 확인한 뒤 별도 승인 전까지 중단·에스컬레이션한다.
+
 `previous-sha`는 마지막 두 release가 실제로 존재할 때만 만들어진다. OPS-013 완료가 application rollback을 대신하지 않으며, 현재 운영 증거에서는 `previous-sha` 부재로 실제 이전 SHA rollback이 Deferred다. state 파일을 수동 편집해 이 경계를 우회하지 않는다.
 
 영속 Docker volume은 역할이 다르다.
@@ -164,13 +166,20 @@ Compose는 이 파일들을 `env_file`로 MySQL과 Backend에 각각 전달한�
 
 `bootstrap`은 application과 MySQL을 바꾸지 않고 proxy만 HTTP 설정으로 재생성한다. 내부 release smoke와 로컬 HTTP-01 webroot를 검증하지만 이 성공만으로 hostname을 승인하지 않는다.
 
-`issue`는 bootstrap 확인 뒤 Certbot HTTP-01을 실행한다. 요청 hostname에 대한 인증서 SAN과 최소 잔여 유효기간이 성공해야만 `approve_https_domain`이 domain state를 기록한다. 그 뒤 후보 Nginx 설정을 render하고 별도 container의 `nginx -t`를 통과시켜 승격한다. HTTPS proxy와 두 application 경로·redirect 검증까지 성공해야 marker가 유지된다. 전환 실패 시 marker와 생성 설정을 제거하고 bootstrap HTTP 복구를 시도한다.
+`issue`는 bootstrap 확인 뒤 Certbot HTTP-01을 실행한다. 요청 hostname에 대한 인증서 SAN과 최소 잔여 유효기간이 성공해야만 `approve_https_domain`이 domain state를 기록한다. 그 뒤 후보 Nginx 설정을 render하고 별도 container의 `nginx -t`를 통과시켜 승격한다. HTTPS proxy와 두 application 경로·redirect 검증까지 성공해야 marker가 유지된다. `enable_https` 단계의 전환 실패는 marker와 생성 설정을 제거하고 bootstrap HTTP 복구를 시도하지만, 이미 승인된 domain state는 남을 수 있어 자동으로 최초 상태까지 돌아간다고 해석하지 않는다.
 
 이 순서 때문에 certificate validation 이전의 domain 후보는 운영 승인 상태가 아니다.
 
 ### 갱신
 
-`renew --dry-run`은 Nginx를 reload하지 않는다. 실제 `renew`는 Certbot 성공, 인증서 재검증, 실행 중 Nginx config 검증 뒤에만 reload하고 application 경로를 다시 확인한다. 실패하면 기존 worker와 인증서를 유지한다. 자동 갱신 schedule은 구현돼 있지 않아 운영자가 승인 절차에 따라 만료 전에 수동 실행해야 한다.
+`renew --dry-run`은 Nginx를 reload하지 않는다. 실제 `renew`는 Certbot 성공, 인증서 재검증, 실행 중 Nginx config 검증 뒤에만 reload하고 application 경로를 다시 확인한다. 실패 상태는 다음처럼 구분한다.
+
+- Certbot 실패는 reload 전이지만 certificate volume이 완전히 이전 상태라고 단정하지 않는다.
+- Certbot 성공 뒤 인증서 검증 또는 `nginx -t` 실패도 reload 전이므로 실행 중 worker는 이전에 적재한 상태를 유지하지만 volume 파일은 이미 바뀌었을 수 있다.
+- reload 호출 실패에는 certificate volume 자동 rollback이 없으며, 실행 중 worker와 실제 적재 인증서를 확인해야 한다.
+- reload 성공 뒤 path·redirect 검증 실패는 새 worker가 갱신된 인증서를 사용 중일 수 있고 이전 worker·인증서로 자동 복귀한다는 보장이 없다.
+
+모든 단계에서 script는 certificate volume을 이전 버전으로 되돌리지 않는다. 실패하면 Secret이나 인증서를 출력하지 않고 실행 중 worker·volume·HTTPS path 상태를 확인한 뒤 별도 승인 전까지 중단·에스컬레이션한다. 자동 갱신 schedule은 구현돼 있지 않아 운영자가 승인 절차에 따라 만료 전에 수동 실행해야 한다.
 
 ### 재부팅
 
@@ -182,21 +191,25 @@ Compose의 `restart: unless-stopped`와 Docker 자동 시작이 기본 복구 �
 
 ### S3와 source 계약
 
-실행 전 다음을 fail-close로 확인한다.
+실행 전 운영자가 준비·검증해야 하는 전제와 script가 매 실행 확인하는 gate를 구분한다.
+
+운영자는 OPS-013 전용 신규 빈 private bucket과 지정 bucket·prefix로 제한된 instance role 정책을 준비한다. 2026-07-24 실행에서는 이 전제와 초과 권한 부재를 별도로 검증했다. 그러나 script는 bucket의 생성 이력·object 목록·전용성이나 IAM policy 문서를 조회하지 않으므로 이를 매 실행 증명하지 않는다.
+
+script가 매 실행 확인하는 항목은 다음과 같다.
 
 - healthy한 production MySQL 한 개, production과 같은 pinned image, `pawcycle-production-mysql-data`
 - 서울 region, expected bucket owner
-- 전용 private bucket의 Public Access Block 4/4
+- bucket의 Public Access Block 4/4
 - SSE-S3 `AES256`, versioning 비활성
 - 지정 prefix의 유일한 14일 lifecycle
-- instance role의 승인된 최소 권한과 일반 AWS endpoint 경계
+- ambient credential·profile·endpoint override 부재와 일반 AWS endpoint 경계
 - disk·available memory, dump·metadata object size 제한
 
-bucket 또는 IAM 계약이 실패하면 backup·upload·restore를 시작하지 않고 실행 중 resource를 즉석 수정하지 않는다.
+bucket 속성 조회가 실패하면 dump 전에 중단한다. 반면 object 쓰기·읽기 권한 부족은 local dump와 snapshot manifest 생성 뒤 upload·download에서 발견될 수 있고, 초과 IAM 권한은 script가 탐지하지 않는다. bucket 또는 IAM 불일치를 발견하면 실행 중 resource를 즉석 수정하지 않고, 사용자가 별도 승인된 준비 단계에서 수정·사전 검증한 뒤 전체 계약을 처음부터 다시 확인한다.
 
 ### Backup과 snapshot manifest
 
-backup은 consistent logical dump를 압축한 뒤, 그 dump를 `--network none` 임시 MySQL에 먼저 import한다. schema·Flyway history·핵심 table count manifest는 live production DB를 다시 읽어 만드는 것이 아니라 이 복원된 dump snapshot에서 생성한다. 따라서 dump 이후 production write가 이어져도 manifest의 비교 기준은 dump와 같은 snapshot이다.
+backup은 migration과 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`가 없는 저부하 시점에만 consistent logical dump를 압축한다. 일반 row write는 계속될 수 있지만 이 DDL 금지 전제가 깨지면 중단한다. 그 dump를 `--network none` 임시 MySQL에 먼저 import하며, schema·Flyway history·핵심 table count manifest는 live production DB를 다시 읽어 만드는 것이 아니라 이 복원된 dump snapshot에서 생성한다. 따라서 dump 이후 production row write가 이어져도 manifest의 비교 기준은 dump와 같은 snapshot이다.
 
 dump·manifest·checksum의 크기를 검사한 뒤 S3에 올리고, S3 object size·SSE-S3·재다운로드 checksum을 확인한다. completion marker는 production MySQL identity·health를 다시 확인한 뒤 마지막에만 업로드된다. marker가 없는 부분 object set은 restore 입력으로 사용할 수 없고 14일 lifecycle 대상이다.
 
@@ -211,7 +224,7 @@ dump·manifest·checksum의 크기를 검사한 뒤 S3에 올리고, S3 object s
 - mode `600` temporary credential file
 - memory·CPU·PID 상한
 
-복원 뒤 dump snapshot manifest와 schema fingerprint, Flyway fingerprint·history, 핵심 table count를 비교한다. 성공·실패 cleanup은 OPS-013 label, network와 volume 경계를 다시 확인한 temporary resource만 제거하며 production container·volume·release·HTTPS state와 S3 object는 삭제하지 않는다.
+복원 뒤 dump snapshot manifest와 schema fingerprint, Flyway fingerprint·history, 핵심 table count를 비교한다. 정상·오류 종료의 `cleanup_trap`은 현재 실행이 보유한 `TEMP_CONTAINER`·`TEMP_VOLUME` 이름을 바로 제거하며 삭제 직전 label·network·production volume 경계를 재검증하지 않는다. 강제 종료 뒤 운영자가 실행하는 명시적 `cleanup --backup-id`만 OPS-013 label, `none` network, production volume 미사용과 volume 이름을 확인한 resource를 제거한다. 두 경로 모두 production container·volume·release·HTTPS state와 S3 object를 삭제 대상으로 삼지 않지만 검증 수준은 같지 않다.
 
 2026-07-24 사용자 검증에서 S3·IAM 계약, 운영 논리 backup, upload·무결성, S3에서 재다운로드한 object set의 isolated restore, 데이터 비교, production 보존, service smoke와 cleanup이 통과했다. application 세 service의 일시 중지는 사용자가 짧은 중단을 수용한 일회성 유지보수 예외였으며 기본 절차가 아니다. 실제 production DB에는 restore하지 않았다.
 
@@ -237,7 +250,7 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 5. `deploy.sh`가 현재 복귀 release와 대상 release의 계약·image digest를 preflight한다.
 6. 대상 release를 활성화하고 health·내부 smoke·활성 HTTPS gate를 통과한 뒤 release state를 갱신한다.
 7. 외부 HTTPS·공개 API와 필요 시 재부팅 복구를 별도로 확인한다.
-8. 승인된 저부하 시점에 DB logical backup과 S3 검증을 수행한다.
+8. migration과 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`가 없는 승인된 저부하 시점에 DB logical backup과 S3 검증을 수행한다.
 9. 같은 object set을 격리 MySQL에 restore해 dump snapshot manifest와 비교하고 temporary resource를 정리한다.
 10. 장애 종류에 따라 application image 문제는 rollback 경계로, DB 손상은 아직 승인되지 않은 actual production restore 경계로 분리해 에스컬레이션한다.
 
@@ -247,7 +260,7 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | --- | --- |
 | 단일 EC2의 Compose release, SSM materialize, 내부·외부 smoke, 재부팅 복구 | 운영 검증 완료 |
 | HTTPS 발급·SAN·경로, 수동 갱신 rehearsal·갱신, 재부팅 복구 | 운영 검증 완료 |
-| S3 계약·IAM 최소 권한, production logical backup, isolated restore, production 보존·cleanup | 운영 검증 완료 |
+| S3 계약·IAM 최소 권한, production logical backup, isolated restore, production 보존·cleanup | 2026-07-24 운영자 검증 완료. script가 IAM policy·bucket 전용성을 매 실행 증명하는 것은 아님 |
 | 실제 이전 SHA application rollback | Deferred |
 | 실제 production DB restore와 복구 훈련 | 미실행·미완료 |
 | 자동 서버 배포·무중단 배포·Blue/Green | 미구현 |
@@ -266,7 +279,7 @@ S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미�
 - **single release 교체:** Blue/Green보다 자원 사용이 작지만 proxy·container 교체 중 짧은 중단이 가능하고 무중단을 보장하지 않는다.
 - **SHA와 digest 이중 확인:** release 추적성과 image drift 차단은 강화되지만, application rollback은 두 commit의 `infra/production/**`가 같고 과거 image가 남아 있어야 한다.
 - **root 전용 runtime file:** Secret이 Git·image·일반 로그에서 분리되지만 materialized 평문이 단일 host disk에 존재한다.
-- **수동 HTTPS 갱신:** 실패 시 기존 인증서와 service를 보존하지만 schedule 부재로 만료 전 운영자 실행이 필요하다.
+- **수동 HTTPS 갱신:** 실패 단계에 따라 volume과 실행 중 worker 상태가 달라지며 자동 인증서 rollback이 없다. schedule도 없어 만료 전 운영자 실행·상태 확인이 필요하다.
 - **논리 backup과 격리 복원:** application rollback과 독립된 DB 복원 가능성을 확인하지만 같은 EC2 자원을 사용하며 actual production restore 절차·RPO/RTO를 증명하지 않는다.
 - **14일·versioning 비활성 S3 계약:** 최소 권한과 단순한 단기 보존을 유지하지만 장기 보존, 삭제 복원, cross-region 장애 대응은 제공하지 않는다.
 - **관측성:** container health와 smoke는 배포 gate로 사용하지만 중앙집중식 장기 metric·log·alert 체계가 이 문서의 완료 범위로 확인된 것은 아니다.
