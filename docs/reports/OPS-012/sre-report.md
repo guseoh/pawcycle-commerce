@@ -22,7 +22,7 @@ OPS-012 사용자 실행 결과, OPS-010 Runbook, production 운영 아키텍처
 OPS-012 보고서·인수인계와 현재 상태 Runbook·아키텍처 문서만 갱신한다.
 
 ## 변경하지 않은 범위
-application·test·`infra/production/**`·workflow·dependency와 실제 AWS·EC2·Docker·DB는 변경하지 않는다. 기존 OPS-010 역사 문서는 소급 수정하지 않는다.
+application·test·`infra/production/**`·workflow·dependency와 실제 AWS·EC2·Docker·DB는 변경하지 않는다. 기존 OPS-010 보고서·인수인계는 당시 사실을 기록한 역사 문서이므로 소급 수정하지 않는다. OPS-010 Runbook은 현재 실행 상태를 제공하는 문서이므로 이번 PR에서 OPS-012 검증 결과에 맞게 갱신했다.
 
 ## 인수 조건 매핑
 승인, 적용 전, 검증용 release, 원래 release 복귀, DB 비변경 증거를 아래 섹션으로 분리했다.
@@ -52,7 +52,13 @@ Secret, domain, IP, account ID, ARN, 이메일과 원시 로그를 기록하지 
 성능 측정이나 변경은 없다.
 
 ## 실행한 검증
-관련 Markdown, 고위험 산출물 validator, production 계약 validator와 `git diff --check`를 확인한다.
+- 관련 Markdown과 UTF-8 문자 인코딩 검사: 통과
+- 고위험 task artifact validator: 통과
+- production contract validator: 통과
+- 원래 release와 검증용 release의 `infra/production/**` 계약 비교: 일치
+- `git diff --check`: 통과
+- application 전체 테스트: 문서 전용 변경이며 application·`infra/production/**` 동작을 변경하지 않아 로컬에서 반복하지 않음
+- 원격 Repository Validation: 동적 상태를 문서에 고정하지 않고 GitHub Checks를 권위 원본으로 확인
 
 ## 적용 전 검증 (고위험 필수)
 Clean control source, 예상 current SHA, previous-sha 부재, 대상 main 포함, 두 SHA의 `infra/production/**` 계약 일치, 두 GHCR image, 네 container health, MySQL volume과 HTTPS 두 경로를 확인했다.
