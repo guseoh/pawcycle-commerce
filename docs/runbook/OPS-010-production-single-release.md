@@ -10,7 +10,7 @@
 - 외부 공개: Nginx HTTP `80`만 허용
 - 내부 전용: MySQL `3306`, Backend `8080`, Frontend `3000`
 - 배포 방식: 사용자 수동 단일 release
-- 실제 운영 검증: 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 활성화, SSM materialize, EC2 내부 loopback·외부 사용자 PC HTTP와 재부팅 복구를 사용자/Tech Lead가 확인함. 실제 이전 SHA rollback은 미실행 후속 게이트이며 상세 결과와 미확정 항목은 `docs/reports/OPS-010/sre-report.md`에 기록
+- 실제 운영 검증: 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 활성화·재부팅 복구와, OPS-012의 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release 복귀를 사용자/Tech Lead가 확인함. 상세 rollback 증거는 `docs/reports/OPS-012/sre-report.md`, 판단 인수인계는 `docs/handoffs/OPS-012/sre-to-tl.md`에 기록
 
 TLS와 `443`, DNS, 자동 배포, Blue·Green, Spring Session, DB migration 변경과 DB rollback은 범위 밖이다. HTTP 단계에서도 Backend session cookie `Secure=true`를 유지하므로 로그인 기반 운영 검증은 TLS 작업 뒤 수행한다.
 
@@ -290,7 +290,7 @@ MySQL volume 보존 확인:
 
 ## 완료와 에스컬레이션
 
-대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`에서 동일 `current-sha`, 네 container health, proxy만 host HTTP `80` 공개, EC2 내부 loopback 두 endpoint와 외부 사용자 PC의 HTTP `80` 두 endpoint, 재부팅 뒤 Docker 자동 시작·동일 MySQL volume·동일 SHA·health·내부 smoke 복구를 사용자/Tech Lead가 확인했다. `/pawcycle-commerce/prod` 아래 네 SecureString, 해당 prefix `ssm:GetParameter` 값 비출력 조회와 runtime materialize도 성공했다. 배포 전 단일 시점의 disk 38G 중 3.0G 사용·35G 여유·8%, available memory 약 1.4 GiB와 swap 0B를 확인했지만 지속 CPU, 부하 중 memory, OOM과 장기 성능은 미확정이다. IAM 정책 전체의 최소 권한과 backup·restore도 별도 확인이 필요하다. 실제 이전 SHA rollback은 완료 조건이 아닌 미실행 후속 게이트다.
+대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 최초 활성화·재부팅 복구에 더해, 2026-07-27 OPS-012에서 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release로 실제 `rollback.sh` 복귀가 확인됐다. 적용 전·중간·최종 네 container health, `pawcycle-production-mysql-data` 보존과 서버·외부 사용자 PC HTTPS 두 경로가 정상이고, 최종 `current-sha`는 원래 release, `previous-sha`는 검증용 release다. DB restore·schema downgrade·Flyway 수정·volume 삭제는 수행하지 않았다. 중단 시간은 측정하지 않았고 actual production DB restore는 여전히 미완료다. 상세 비민감 증거는 `docs/reports/OPS-012/sre-report.md`를 따른다.
 
 다음은 사용자/Tech Lead 결정이 필요하다.
 
