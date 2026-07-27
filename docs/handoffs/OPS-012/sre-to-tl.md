@@ -53,13 +53,13 @@ Tech Lead는 사용자 실행 사실과 비민감 추적성을 검토한다.
 PR review thread를 GitHub에서 확인한다.
 
 ## 알려진 위험
-Actual production DB restore와 schema 호환 복구는 검증되지 않았다.
+Actual production DB restore와 schema 호환 복구는 검증되지 않았다. 최종 `previous-sha`인 검증용 release는 원래 release와 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다르므로, 현재 기본 대상의 무인자 rollback은 application regression 복구를 증명하지 않는다.
 
 ## 남은 위험과 주의 사항
-단일 장애 도메인, 미확정 RPO/RTO, 미측정 중단 시간과 자동화 부재가 남는다.
+단일 장애 도메인, 미확정 RPO/RTO, 미측정 중단 시간과 자동화 부재가 남는다. 기능 차이가 있는 정상 release가 `previous-sha`를 갱신하기 전에는 승인된 대상 SHA를 명시한 `rollback.sh --sha`를 application 차이·GHCR image 존재·production 계약·DB schema 호환성 확인 뒤 사용하고 state 파일을 수동 편집하지 않는다.
 
 ## 다음 권장 작업
-상태 표현 승인 후 필요하면 DB restore를 별도 고위험 작업으로 정의한다.
+상태 표현 승인 후 필요하면 DB restore를 별도 고위험 작업으로 정의한다. 다음 기능 release 배포 뒤 `previous-sha`가 실제 기능 복구 후보를 가리키는지 확인한다.
 
 ## 완료 조건
 Application rollback 완료와 DB restore 미완료가 혼동 없이 승인된다.

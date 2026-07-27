@@ -148,7 +148,7 @@ Compose는 이 파일들을 `env_file`로 MySQL과 Backend에 각각 전달한�
 
 최초 `issue` 실패 시 잔존 상태는 실패 단계에 따라 다르다. Certbot 또는 인증서 검증이 `approve_https_domain` 전에 실패하면 `https-domain`은 생성되지 않는다. 승인 뒤 후보 config 생성·검증이 실패하면 `https-domain`은 남을 수 있고 marker는 없으며 후보 파일만 종료 trap이 정리한다. config가 state 경로로 승격된 뒤 검증이 실패하면 승인 domain과 생성 config가 남고 marker는 없을 수 있다. `enable_https`의 proxy·path·redirect 검증이 실패하면 marker와 생성 config는 제거되고 bootstrap 복구를 시도하지만 승인된 `https-domain`은 제거하지 않는다. 어떤 경우에도 자동 domain state rollback을 가정하거나 state 파일을 수동 삭제하지 않고, 현재 파일·proxy·certificate volume 상태를 비민감 방식으로 확인한 뒤 별도 승인 전까지 중단·에스컬레이션한다.
 
-`previous-sha`는 마지막 두 release가 실제로 존재할 때만 만들어진다. OPS-012에서 검증용 release 배포 후 원래 release로 실제 application rollback이 완료됐고 최종 `previous-sha`는 검증용 release로 확인됐다. 이 결과는 DB restore를 대신하지 않으며 state 파일을 수동 편집해 경계를 우회하지 않는다.
+`previous-sha`는 마지막 두 release가 실제로 존재할 때만 만들어진다. OPS-012에서 검증용 release 배포 후 원래 release로 실제 application rollback이 완료됐고 최종 `previous-sha`는 검증용 release로 확인됐다. 이 결과는 rollback 메커니즘을 검증했지만, 두 release 사이에는 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다르므로 현재 기본 대상은 application regression 복구 후보가 아니다. 기능 차이가 있는 정상 release가 `previous-sha`를 갱신하기 전에는 승인된 대상 SHA를 명시한 rollback에 application 차이·GHCR image 존재·production 계약·DB schema 호환성 검사를 적용한다. 이 결과는 DB restore를 대신하지 않으며 state 파일을 수동 편집해 경계를 우회하지 않는다.
 
 영속 Docker volume은 역할이 다르다.
 

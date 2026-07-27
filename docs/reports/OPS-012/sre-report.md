@@ -22,7 +22,7 @@ OPS-012 사용자 실행 결과, OPS-010 Runbook, production 운영 아키텍처
 OPS-012 보고서·인수인계와 현재 상태 Runbook·아키텍처 문서만 갱신한다.
 
 ## 변경하지 않은 범위
-application·test·`infra/production/**`·workflow·dependency와 실제 AWS·EC2·Docker·DB는 변경하지 않는다. 기존 OPS-010 보고서·인수인계는 당시 사실을 기록한 역사 문서이므로 소급 수정하지 않는다. OPS-010 Runbook은 현재 실행 상태를 제공하는 문서이므로 이번 PR에서 OPS-012 검증 결과에 맞게 갱신했다.
+OPS-012 운영 검증에는 사용자가 승인하고 직접 실행한 검증용 release 배포와 원래 release rollback이라는 container 전환이 포함됐다. 다만 이 PR의 문서 정리 단계에서는 추가 AWS·EC2·Docker·DB 명령을 실행하지 않았고 application·test·`infra/production/**`·workflow·dependency를 변경하지 않았다. 운영 검증 중에도 AWS 리소스와 DB·schema·Flyway·volume은 변경하지 않았다. 기존 OPS-010 보고서·인수인계는 당시 사실을 기록한 역사 문서이므로 소급 수정하지 않는다. OPS-010 Runbook은 현재 실행 상태를 제공하는 문서이므로 이번 PR에서 OPS-012 검증 결과에 맞게 갱신했다.
 
 ## 인수 조건 매핑
 승인, 적용 전, 검증용 release, 원래 release 복귀, DB 비변경 증거를 아래 섹션으로 분리했다.
@@ -91,10 +91,10 @@ PR 생성 후 유효한 문서 정합성 지적을 확인한다.
 원래 release로 실제 rollback 성공 후 state·health·volume·HTTPS가 확인됐다. DB restore·schema·Flyway·volume 변경은 없었다. 문서 변경은 revert PR로 복구할 수 있다.
 
 ## 위험과 제한
-Application rollback만 검증됐으며 actual production DB restore, RPO/RTO와 무중단은 보장되지 않는다.
+Application rollback 메커니즘만 검증됐으며 actual production DB restore, RPO/RTO와 무중단은 보장되지 않는다. 최종 `previous-sha`인 검증용 release는 원래 release와 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다르므로, 현재 기본 대상의 무인자 rollback을 application regression 복구 증거로 사용할 수 없다.
 
 ## 남은 위험
-단일 장애 도메인, DB 복구 훈련, 자동 배포·Blue/Green과 지속 성능은 별도 작업이다.
+단일 장애 도메인, DB 복구 훈련, 자동 배포·Blue/Green과 지속 성능은 별도 작업이다. 향후 기능 차이가 있는 정상 release 배포가 `previous-sha`를 갱신하기 전에는 application regression 복구 시 승인된 대상 SHA를 명시한 `rollback.sh --sha`를 application 차이·GHCR image 존재·production 계약·DB schema 호환성 확인과 사용자 승인 아래 사용해야 한다. 이 제한을 우회하려고 state 파일을 수동 편집하지 않는다.
 
 ## 다음 작업
 Tech Lead가 증거 범위와 DB restore 미완료 분리를 최종 판단한다.

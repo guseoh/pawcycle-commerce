@@ -10,9 +10,9 @@
 - 외부 공개: Nginx HTTP `80`만 허용
 - 내부 전용: MySQL `3306`, Backend `8080`, Frontend `3000`
 - 배포 방식: 사용자 수동 단일 release
-- 실제 운영 검증: 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 활성화·재부팅 복구와, OPS-012의 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release 복귀를 사용자/Tech Lead가 확인함. 상세 rollback 증거는 `docs/reports/OPS-012/sre-report.md`, 판단 인수인계는 `docs/handoffs/OPS-012/sre-to-tl.md`에 기록
+- 실제 운영 검증: OPS-010의 HTTP 대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` 활성화·재부팅 복구와, OPS-012의 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release 복귀를 사용자/Tech Lead가 확인함. OPS-012의 HTTPS 확인은 OPS-011에서 이미 구성된 HTTPS가 release 전환 뒤에도 보존됐는지 재검증한 것이며 OPS-010 구현 범위를 확대한 것이 아님. 상세 rollback 증거는 `docs/reports/OPS-012/sre-report.md`, 판단 인수인계는 `docs/handoffs/OPS-012/sre-to-tl.md`에 기록
 
-TLS와 `443`, DNS, 자동 배포, Blue·Green, Spring Session, DB migration 변경과 DB rollback은 범위 밖이다. HTTP 단계에서도 Backend session cookie `Secure=true`를 유지하므로 로그인 기반 운영 검증은 TLS 작업 뒤 수행한다.
+TLS와 `443`, DNS는 OPS-010 구현 범위 밖이었고 이후 OPS-011에서 HTTPS 구성을 완료했다. 자동 배포, Blue·Green, Spring Session, DB migration 변경과 DB rollback도 OPS-010 범위 밖이다. HTTP 단계에서도 Backend session cookie `Secure=true`를 유지하므로 로그인 기반 운영 검증은 TLS 작업 뒤 수행한다.
 
 ## 파일과 고정 계약
 
@@ -212,6 +212,8 @@ sudo docker volume inspect pawcycle-production-mysql-data --format '{{.Name}}'
 
 기본 rollback 대상은 마지막 성공 배포가 기록한 `previous-sha`다. 명시적 `--sha`도 반드시 40자 SHA이고 두 GHCR image가 모두 존재해야 한다.
 
+> 현재 OPS-012 최종 `previous-sha`는 원래 release와 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다른 검증용 release다. rollback 메커니즘은 검증됐지만 이 기본 대상은 application regression 복구 후보가 아니다. 향후 기능 차이가 있는 정상 release가 `previous-sha`를 갱신하기 전에는 무인자 rollback에 의존하지 말고, 사용자 승인을 받은 대상 SHA를 `--sha`로 명시해 application 차이·GHCR image 존재·production 계약·DB schema 호환성을 모두 확인한다. state 파일을 수동 편집해 이 경계를 우회하지 않는다.
+
 ```bash
 cd /opt/pawcycle/control
 sudo bash infra/production/rollback.sh \
@@ -290,7 +292,7 @@ MySQL volume 보존 확인:
 
 ## 완료와 에스컬레이션
 
-대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 최초 활성화·재부팅 복구에 더해, 2026-07-27 OPS-012에서 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release로 실제 `rollback.sh` 복귀가 확인됐다. 적용 전·중간·최종 네 container health, `pawcycle-production-mysql-data` 보존과 서버·외부 사용자 PC HTTPS 두 경로가 정상이고, 최종 `current-sha`는 원래 release, `previous-sha`는 검증용 release다. DB restore·schema downgrade·Flyway 수정·volume 삭제는 수행하지 않았다. 중단 시간은 측정하지 않았고 actual production DB restore는 여전히 미완료다. 상세 비민감 증거는 `docs/reports/OPS-012/sre-report.md`를 따른다.
+대상 release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 OPS-010 HTTP 최초 활성화·재부팅 복구에 더해, 2026-07-27 OPS-012에서 검증용 release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 release로 실제 `rollback.sh` 복귀가 확인됐다. 적용 전·중간·최종 네 container health, `pawcycle-production-mysql-data` 보존과 서버·외부 사용자 PC HTTPS 두 경로가 정상이다. 이 HTTPS 확인은 OPS-011에서 이미 구성된 HTTPS의 보존을 재검증한 것이며 OPS-010 구현 범위의 확대가 아니다. 최종 `current-sha`는 원래 release, `previous-sha`는 검증용 release다. DB restore·schema downgrade·Flyway 수정·volume 삭제는 수행하지 않았다. 중단 시간은 측정하지 않았고 actual production DB restore는 여전히 미완료다. 상세 비민감 증거는 `docs/reports/OPS-012/sre-report.md`를 따른다.
 
 다음은 사용자/Tech Lead 결정이 필요하다.
 
@@ -298,7 +300,8 @@ MySQL volume 보존 확인:
 - `t3.small`에서 OOM, 지속 swap, disk 부족으로 자원 상향 필요
 - 새 DB migration 또는 schema rollback 필요
 - private GHCR 인증, 신규 registry 또는 유료 서비스 필요
-- `443`, TLS, DNS, 자동 배포, Blue·Green, Spring Session 필요
+- 기존 HTTPS domain·certificate·`443` 계약 변경 또는 재발급 필요
+- 자동 배포, Blue·Green, Spring Session 필요
 - MySQL volume·EBS 삭제 또는 backup·restore 필요
 
 ## 공식 근거
