@@ -2,7 +2,7 @@
 
 ## 문서 목적과 사실 기준
 
-이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·013 Runbook·보고서·인수인계를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
+이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조와 이후 OPS-012 application rollback 검증 상태를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·012·013 Runbook·보고서·인수인계를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
 
 현재 구조는 서울 region의 단일 EC2·EBS 위에서 Docker Compose project 하나를 수동 운영하는 방식이다. GitHub Actions는 `main`의 Backend·Frontend image를 GHCR에 게시하지만 EC2 배포를 자동 실행하지 않는다. HTTPS와 운영 논리 backup·격리 복원은 실제 운영 검증을 통과했지만, 실제 production DB restore, 무중단 배포, 자동 배포, 고가용성은 완료된 상태가 아니다.
 
@@ -14,7 +14,7 @@
 | image build·게시 | `.github/workflows/publish-production-images.yml`, `infra/production/backend.Dockerfile`, `infra/production/frontend.Dockerfile` | `docs/runbook/OPS-010-production-single-release.md`, `docs/handoffs/OPS-010/sre-to-tl.md` |
 | Secret materialize | `infra/production/materialize-ssm-env.sh`, `infra/production/release-common.sh`의 `validate_runtime_bundle` | OPS-010 Runbook·보고서·인수인계 |
 | release 배포·복귀 | `infra/production/deploy.sh`, `infra/production/release-common.sh` | OPS-010 Runbook·보고서·인수인계 |
-| 명시적 application rollback | `infra/production/rollback.sh`, `infra/production/release-common.sh` | OPS-010 Runbook·인수인계 |
+| 명시적 application rollback | `infra/production/rollback.sh`, `infra/production/release-common.sh` | OPS-010 Runbook, OPS-012 보고서·인수인계 |
 | HTTP·HTTPS | `infra/production/nginx.conf`, `infra/production/nginx.https.conf`, `infra/production/https.sh` | `docs/runbook/OPS-011-production-https.md`, `docs/handoffs/OPS-011/sre-to-tl.md` |
 | DB backup·격리 복원 | `infra/production/db-backup-restore.sh` | `docs/runbook/OPS-013-production-db-backup-restore.md`, `docs/reports/OPS-013/production-verification-2026-07-24.md` |
 
@@ -148,7 +148,7 @@ Compose는 이 파일들을 `env_file`로 MySQL과 Backend에 각각 전달한�
 
 최초 `issue` 실패 시 잔존 상태는 실패 단계에 따라 다르다. Certbot 또는 인증서 검증이 `approve_https_domain` 전에 실패하면 `https-domain`은 생성되지 않는다. 승인 뒤 후보 config 생성·검증이 실패하면 `https-domain`은 남을 수 있고 marker는 없으며 후보 파일만 종료 trap이 정리한다. config가 state 경로로 승격된 뒤 검증이 실패하면 승인 domain과 생성 config가 남고 marker는 없을 수 있다. `enable_https`의 proxy·path·redirect 검증이 실패하면 marker와 생성 config는 제거되고 bootstrap 복구를 시도하지만 승인된 `https-domain`은 제거하지 않는다. 어떤 경우에도 자동 domain state rollback을 가정하거나 state 파일을 수동 삭제하지 않고, 현재 파일·proxy·certificate volume 상태를 비민감 방식으로 확인한 뒤 별도 승인 전까지 중단·에스컬레이션한다.
 
-`previous-sha`는 마지막 두 release가 실제로 존재할 때만 만들어진다. OPS-013 완료가 application rollback을 대신하지 않으며, 현재 운영 증거에서는 `previous-sha` 부재로 실제 이전 SHA rollback이 Deferred다. state 파일을 수동 편집해 이 경계를 우회하지 않는다.
+`previous-sha`는 마지막 두 release가 실제로 존재할 때만 만들어진다. OPS-012에서 검증용 release 배포 후 원래 release로 실제 application rollback이 완료됐고 최종 `previous-sha`는 검증용 release로 확인됐다. 이 결과는 rollback 메커니즘을 검증했지만, 두 release 사이에는 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다르므로 현재 기본 대상은 application regression 복구 후보가 아니다. 기능 차이가 있는 정상 release가 `previous-sha`를 갱신하기 전에는 승인된 대상 SHA를 명시한 rollback에 application 차이·GHCR image 존재·production 계약·DB schema 호환성 검사를 적용한다. 이 결과는 DB restore를 대신하지 않으며 state 파일을 수동 편집해 경계를 우회하지 않는다.
 
 영속 Docker volume은 역할이 다르다.
 
@@ -237,7 +237,7 @@ dump·manifest·checksum의 크기를 검사한 뒤 S3에 올리고, S3 object s
 | production MySQL volume | 유지 | mount하지 않음 | 변경이 필요하므로 별도 고위험 승인 대상 |
 | DB schema·Flyway | 변경·downgrade하지 않음 | dump snapshot과 비교만 함 | 호환성·중단·복구 계획 필요 |
 | network | 기존 Compose network | `none` | 미정 |
-| 현재 운영 상태 | `previous-sha` 부재로 실제 이전 SHA rollback Deferred | 실제 운영 검증 완료 | 미실행·미완료 |
+| 현재 운영 상태 | 2026-07-27 OPS-012 실제 운영 검증 완료 | 실제 운영 검증 완료 | 미실행·미완료 |
 
 application rollback은 같은 production 계약 안에서 image만 이전 SHA로 돌리는 절차다. DB migration 차이나 schema downgrade가 필요하면 중단한다. isolated restore는 backup의 복원 가능성을 production과 분리해 증명하지만 production 장애 복구 실행 자체는 아니다. 따라서 backup·격리 복원 성공을 application rollback 또는 actual production restore 완료로 확대하지 않는다.
 
@@ -261,7 +261,7 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | 단일 EC2의 Compose release, SSM materialize, 내부·외부 smoke, 재부팅 복구 | 운영 검증 완료 |
 | HTTPS 발급·SAN·경로, 수동 갱신 rehearsal·갱신, 재부팅 복구 | 운영 검증 완료 |
 | S3 계약·IAM 최소 권한, production logical backup, isolated restore, production 보존·cleanup | 2026-07-24 운영자 검증 완료. script가 IAM policy·bucket 전용성을 매 실행 증명하는 것은 아님 |
-| 실제 이전 SHA application rollback | Deferred |
+| 실제 이전 SHA application rollback | 2026-07-27 OPS-012 운영자 검증 완료 |
 | 실제 production DB restore와 복구 훈련 | 미실행·미완료 |
 | 자동 서버 배포·무중단 배포·Blue/Green | 미구현 |
 | Load Balancer·다중 EC2·DB replica를 포함한 고가용성 | 미구현 |

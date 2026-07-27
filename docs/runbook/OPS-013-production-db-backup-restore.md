@@ -403,7 +403,7 @@ bucket·account·ARN·hostname·IP·email·credential, application SHA 값, obje
 
 ## 10. 재부팅·application rollback과의 관계
 
-OPS-013은 application rollback이나 production restore를 수행하지 않는다. 현재 OPS-012 rollback은 `previous-sha` 부재로 Deferred다. 실제 이전 SHA rollback을 백업 성공으로 대체하거나 완료로 기록하지 않는다.
+OPS-013은 application rollback이나 production restore를 수행하지 않는다. OPS-012에서는 2026-07-27 검증용 release 배포로 생성된 `previous-sha`를 사용해 원래 release로 실제 application image rollback을 완료했다. 이 결과와 OPS-013의 backup·isolated restore 성공은 각각 application rollback 메커니즘과 격리 복원 가능성만 증명하며 actual production DB restore 완료를 뜻하지 않는다. Actual production DB restore와 복구 훈련은 미실행·미완료다. 기존 OPS-013 보고서·인수인계는 당시 사실을 기록한 역사 문서이므로 소급 수정하지 않는다.
 
 ## 에스컬레이션과 후속 작업
 
