@@ -14,11 +14,12 @@ CloudWatch Agent, CPU·메모리·디스크·custom metric, 앱·컨테이너 �
 export PAWCYCLE_ALERT_REGION=ap-northeast-2
 export PAWCYCLE_ALERT_INSTANCE_ID=<EC2 instance ID>
 export PAWCYCLE_ALERT_EMAIL=<alert recipient email>
+export PAWCYCLE_ALERT_ACCOUNT_ID=<12-digit approved AWS account ID>
 export PAWCYCLE_ALERT_RESOURCE_PREFIX=<dedicated lowercase prefix>
 bash infra/production/create-ec2-status-check-alarm.sh create
 ```
 
-입력 검증은 서울 region, EC2 instance ID 형식, email 형식, 전용 lowercase resource prefix를 강제한다. 생성은 먼저 기존 alarm·topic·subscription을 읽기 전용으로 모두 확인한다. 동일 계약이면 변경하지 않고 성공하며, alarm 불일치, alarm만 있고 topic 없음, topic만 있거나 예상 밖·중복 subscription이 있으면 어떤 생성·구독·alarm 변경도 하지 않고 중단한다. 세 리소스가 모두 없을 때만 topic → email subscription → alarm 순서로 생성한다.
+입력 검증은 서울 region, EC2 instance ID·12자리 account ID·email 형식, 전용 lowercase resource prefix를 강제한다. 모든 create·verify·cleanup은 변경 전에 `sts get-caller-identity`의 Account와 입력 account ID가 일치하는지, 지정 region에 입력 EC2 instance가 존재하는지 확인한다. 조회 실패·불일치는 어떤 리소스 변경도 하지 않고 중단한다. 생성은 이어서 기존 alarm·topic·subscription을 읽기 전용으로 모두 확인한다. 동일 계약이면 변경하지 않고 성공하며, alarm 불일치, alarm만 있고 topic 없음, topic만 있거나 예상 밖·중복 subscription이 있으면 어떤 생성·구독·alarm 변경도 하지 않고 중단한다. 세 리소스가 모두 없을 때만 topic → email subscription → `DatapointsToAlarm=2` alarm 순서로 생성한다.
 
 SNS confirmation email을 수신한 사용자는 AWS가 제공한 확인 절차를 완료한다. 확인 전에는 구독이 pending 상태이며 알림 수신을 성공으로 판단하지 않는다. 확인 후 다음 명령으로 alarm 계약만 다시 확인한다.
 
@@ -28,7 +29,7 @@ bash infra/production/create-ec2-status-check-alarm.sh verify
 
 ## 상태 확인과 수동 ALARM·OK 검증
 
-AWS Console에서 해당 alarm의 metric이 `AWS/EC2` `StatusCheckFailed`, threshold `>= 1`, period `60`, evaluation periods `2`, InstanceId dimension인지 확인한다. ALARM action과 OK action이 모두 같은 전용 SNS topic인지 확인한다. 화면·CLI 출력에 실제 ARN, account ID, email을 남기지 않는다.
+AWS Console에서 해당 alarm의 metric이 `AWS/EC2` `StatusCheckFailed`, threshold `>= 1`, period `60`, evaluation periods·DatapointsToAlarm 모두 `2`, `ActionsEnabled=true`, InstanceId dimension인지 확인한다. ALARM action과 OK action이 모두 같은 전용 SNS topic인지 확인한다. `verify`는 단일 승인 email subscription이 confirmed일 때만 성공하며 pending은 성공으로 처리하지 않는다. 화면·CLI 출력에 실제 ARN, account ID, email을 남기지 않는다.
 
 구독 확인 후 사용자만 다음 순서로 수동 state 전이를 검증한다. 이는 실제 장애를 만들지 않고 CloudWatch alarm state만 수동 변경한다. 실행 전후 CloudTrail과 SNS delivery를 사용자가 안전한 운영 기록에서 확인한다.
 
@@ -66,7 +67,7 @@ aws cloudwatch set-alarm-state --region "$PAWCYCLE_ALERT_REGION" \
 bash infra/production/cleanup-ec2-status-check-alarm.sh
 ```
 
-정리 스크립트는 정확한 승인 alarm 계약과 SNS email subscription 하나만 확인한 뒤 alarm을 먼저 삭제하고 topic을 삭제한다. topic에 다른 subscription이 있거나 alarm·topic 계약이 불일치하면 중단한다. 삭제 후 Console에서 alarm, topic, subscription이 남지 않았는지 확인한다. 삭제는 이메일 알림을 복구하지 못할 수 있으므로 재생성이 필요하면 생성 절차와 email confirmation을 처음부터 다시 수행한다.
+정리 스크립트는 account·instance 검증 뒤 SNS email subscription 하나만 확인한다. alarm이 있으면 정확한 승인 계약을 확인한 뒤 alarm을 먼저 삭제하고 topic을 삭제한다. alarm 없이 전용 topic과 단일 승인 subscription만 남은 부분 생성 상태도 topic을 삭제해 정리한다. topic에 다른 subscription이 있거나 alarm만 남아 topic이 없거나 alarm 계약이 불일치하면 중단한다. 삭제 후 Console에서 alarm, topic, subscription이 남지 않았는지 확인한다. 삭제는 이메일 알림을 복구하지 못할 수 있으므로 재생성이 필요하면 생성 절차와 email confirmation을 처음부터 다시 수행한다.
 
 ## 에스컬레이션과 보존할 증거
 

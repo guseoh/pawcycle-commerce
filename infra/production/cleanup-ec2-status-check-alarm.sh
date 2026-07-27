@@ -6,6 +6,7 @@ source "$SCRIPT_DIR/ec2-status-check-alarm-common.sh"
 
 require_command aws
 validate_inputs
+validate_runtime_target
 topic_arn="$(find_topic_arn)"
 if [[ "$topic_arn" == None ]]; then
   alarm_exists && die "alarm exists but its dedicated SNS topic is missing; refusing cleanup"

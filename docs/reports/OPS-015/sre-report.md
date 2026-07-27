@@ -12,11 +12,11 @@ EC2 기본 지표 `StatusCheckFailed`의 ALARM·OK 전이를 동일 SNS email to
 
 ## 승인 입력
 
-사용자가 승인한 `StatusCheckFailed >= 1`, 60초, 2회 연속 평가, 환경 변수 email 입력, 실제 AWS 미실행 및 제외 범위를 따른다.
+사용자가 승인한 `StatusCheckFailed >= 1`, 60초, `EvaluationPeriods=2`·`DatapointsToAlarm=2`, ALARM·OK action, account ID·email 환경 변수 입력, 실제 AWS 미실행 및 제외 범위를 따른다.
 
 ## 변경 범위
 
-AWS CLI 생성·계약 확인·정리 script, 정적 계약 test, production validation 연결과 OPS-015 Runbook을 추가한다.
+AWS account·EC2 대상 사전 검증, 생성·계약 확인·부분 생성 정리 script, fake AWS 계약 test, production validation 연결과 OPS-015 Runbook을 추가한다.
 
 ## 변경하지 않은 범위
 
