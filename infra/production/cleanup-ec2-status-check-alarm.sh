@@ -12,9 +12,7 @@ if [[ "$topic_arn" == None ]]; then
   printf '%s\n' 'No matching StatusCheckFailed alarm resources were found.'
   exit 0
 fi
-subscription_count="$(aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$topic_arn" --query 'length(Subscriptions)' --output text)"
-email_subscription_count="$(aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$topic_arn" --query "length(Subscriptions[?Protocol=='email' && Endpoint=='${ALERT_EMAIL}'])" --output text)"
-[[ "$subscription_count" == 1 && "$email_subscription_count" == 1 ]] || die "SNS topic has unexpected subscriptions; refusing cleanup"
+verify_subscription_contract "$topic_arn"
 if alarm_exists; then
   verify_alarm_contract "$topic_arn"
   aws cloudwatch delete-alarms --region "$AWS_REGION" --alarm-names "$ALARM_NAME"

@@ -182,7 +182,7 @@ def validate_scripts() -> None:
     require("--threshold 1" in ec2_alarm_create and "--comparison-operator GreaterThanOrEqualToThreshold" in ec2_alarm_create, "OPS-015 threshold contract is missing")
     require("--alarm-actions \"$topic_arn\"" in ec2_alarm_create and "--ok-actions \"$topic_arn\"" in ec2_alarm_create, "OPS-015 ALARM and OK must use the same SNS topic")
     require("existing alarm does not match the approved StatusCheckFailed contract" in ec2_alarm_common, "OPS-015 must not overwrite a conflicting alarm")
-    require("unexpected subscriptions; refusing cleanup" in ec2_alarm_cleanup, "OPS-015 cleanup must reject unexpected SNS subscribers")
+    require("SNS topic does not have exactly one approved email subscription" in ec2_alarm_common, "OPS-015 cleanup must reject unexpected SNS subscribers")
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")

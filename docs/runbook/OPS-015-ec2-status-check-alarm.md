@@ -18,7 +18,7 @@ export PAWCYCLE_ALERT_RESOURCE_PREFIX=<dedicated lowercase prefix>
 bash infra/production/create-ec2-status-check-alarm.sh create
 ```
 
-입력 검증은 서울 region, EC2 instance ID 형식, email 형식, 전용 lowercase resource prefix를 강제한다. 생성은 동일 이름 topic·subscription·승인 계약 alarm이 이미 있으면 변경하지 않고 성공한다. 같은 이름의 alarm이 승인 계약과 다르면 덮어쓰지 않고 중단한다.
+입력 검증은 서울 region, EC2 instance ID 형식, email 형식, 전용 lowercase resource prefix를 강제한다. 생성은 먼저 기존 alarm·topic·subscription을 읽기 전용으로 모두 확인한다. 동일 계약이면 변경하지 않고 성공하며, alarm 불일치, alarm만 있고 topic 없음, topic만 있거나 예상 밖·중복 subscription이 있으면 어떤 생성·구독·alarm 변경도 하지 않고 중단한다. 세 리소스가 모두 없을 때만 topic → email subscription → alarm 순서로 생성한다.
 
 SNS confirmation email을 수신한 사용자는 AWS가 제공한 확인 절차를 완료한다. 확인 전에는 구독이 pending 상태이며 알림 수신을 성공으로 판단하지 않는다. 확인 후 다음 명령으로 alarm 계약만 다시 확인한다.
 

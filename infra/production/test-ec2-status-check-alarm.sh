@@ -8,21 +8,68 @@ bash -n "$COMMON" "$CREATE" "$CLEANUP"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
 mkdir -p "$TEST_ROOT/bin"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$TEST_ROOT/bin/aws"
+cat > "$TEST_ROOT/bin/aws" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf '%s %s\n' "${1:-}" "${2:-}" >> "$FAKE_AWS_CALLS"
+case "${FAKE_AWS_SCENARIO:?}:${1:-}:${2:-}" in
+  query-failure:sns:list-topics) exit 42 ;;
+  new:sns:list-topics) printf 'None\n' ;;
+  new:sns:list-subscriptions-by-topic) printf 'None\n' ;;
+  new:cloudwatch:describe-alarms) [[ "$*" == *'MetricAlarms[0].AlarmName'* ]] && printf 'None\n' || printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
+  new:sns:create-topic) printf '%s\n' 'arn:aws:sns:ap-northeast-2:000000000000:pawcycle-ec2-status-check-alerts' ;;
+  new:sns:subscribe) printf '%s\n' 'pending confirmation' ;;
+  new:cloudwatch:put-metric-alarm) : ;;
+  repeat:sns:list-topics|conflict-alarm:sns:list-topics|unexpected-subscriber:sns:list-topics) printf '%s\n' 'arn:aws:sns:ap-northeast-2:000000000000:pawcycle-ec2-status-check-alerts' ;;
+  repeat:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
+  conflict-alarm:cloudwatch:describe-alarms) [[ "$*" == *'MetricAlarms[0].AlarmName'* ]] && printf '%s\n' 'pawcycle-ec2-status-check-failed' || printf 'None\n' ;;
+  unexpected-subscriber:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
+  repeat:sns:list-subscriptions-by-topic) [[ "$*" == *'length(Subscriptions)'* ]] && printf '1\n' || printf '1\n' ;;
+  unexpected-subscriber:sns:list-subscriptions-by-topic) [[ "$*" == *'length(Subscriptions)'* ]] && printf '2\n' || printf '1\n' ;;
+  *) printf 'unexpected fake AWS call: %s %s\n' "${1:-}" "${2:-}" >&2; exit 98 ;;
+esac
+EOF
 chmod +x "$TEST_ROOT/bin/aws"
 
 assert_invalid_input() {
-  local variable="$1" value="$2"
-  if env PATH="$TEST_ROOT/bin:$PATH" PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle "${variable}=${value}" bash "$CREATE" verify >/dev/null 2>&1; then
+  local variable="$1" value="$2" expected_message="$3"
+  local output status
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env PATH="$TEST_ROOT/bin:$PATH" FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO=new PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle "${variable}=${value}" bash "$CREATE" verify 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" != 1 || "$output" != *"$expected_message"* ]]; then
     printf 'invalid input was accepted: %s\n' "$variable" >&2
     exit 1
   fi
+  [[ ! -s "$TEST_ROOT/calls" ]] || { printf 'invalid input reached AWS: %s\n' "$variable" >&2; exit 1; }
 }
 
-assert_invalid_input PAWCYCLE_ALERT_REGION us-east-1
-assert_invalid_input PAWCYCLE_ALERT_INSTANCE_ID invalid-instance
-assert_invalid_input PAWCYCLE_ALERT_EMAIL invalid-email
-assert_invalid_input PAWCYCLE_ALERT_RESOURCE_PREFIX InvalidPrefix
+assert_invalid_input PAWCYCLE_ALERT_REGION us-east-1 'AWS region must be the approved Seoul region'
+assert_invalid_input PAWCYCLE_ALERT_INSTANCE_ID invalid-instance 'EC2 instance ID format is invalid'
+assert_invalid_input PAWCYCLE_ALERT_EMAIL invalid-email 'alert email format is invalid'
+assert_invalid_input PAWCYCLE_ALERT_RESOURCE_PREFIX InvalidPrefix 'resource prefix must be 3-31 lowercase letters'
+
+assert_scenario() {
+  local scenario="$1" expected_status="$2" expected_message="$3" expected_changes="$4"
+  local output status changes
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env PATH="$TEST_ROOT/bin:$PATH" FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO="$scenario" PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle bash "$CREATE" create 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" == "$expected_status" ]] || { printf 'unexpected status for %s: %s (%s)\n' "$scenario" "$status" "$output" >&2; exit 1; }
+  [[ "$output" == *"$expected_message"* ]] || { printf 'unexpected output for %s\n' "$scenario" >&2; exit 1; }
+  changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm)$' "$TEST_ROOT/calls" || true)"
+  [[ "$changes" == "$expected_changes" ]] || { printf 'unexpected AWS changes for %s: %s\n' "$scenario" "$changes" >&2; exit 1; }
+}
+
+assert_scenario new 0 'StatusCheckFailed alarm contract was created.' $'sns create-topic\nsns subscribe\ncloudwatch put-metric-alarm'
+assert_scenario repeat 0 'Existing StatusCheckFailed alarm contract is unchanged.' ''
+assert_scenario conflict-alarm 1 'existing alarm does not match the approved StatusCheckFailed contract' ''
+assert_scenario unexpected-subscriber 1 'SNS topic does not have exactly one approved email subscription' ''
+assert_scenario query-failure 42 '' ''
 
 grep -Fq 'PAWCYCLE_ALERT_REGION' "$COMMON"
 grep -Fq 'PAWCYCLE_ALERT_INSTANCE_ID' "$COMMON"
@@ -37,6 +84,6 @@ grep -Fq -- '--comparison-operator GreaterThanOrEqualToThreshold' "$CREATE"
 grep -Fq -- '--alarm-actions "$topic_arn"' "$CREATE"
 grep -Fq -- '--ok-actions "$topic_arn"' "$CREATE"
 grep -Fq 'existing alarm does not match the approved StatusCheckFailed contract' "$COMMON"
-grep -Fq 'unexpected subscriptions; refusing cleanup' "$CLEANUP"
+grep -Fq 'does not have exactly one approved email subscription' "$COMMON"
 grep -Fq 'aws sns delete-topic' "$CLEANUP"
 printf '%s\n' 'OPS-015 EC2 StatusCheckFailed alarm static contract tests passed'

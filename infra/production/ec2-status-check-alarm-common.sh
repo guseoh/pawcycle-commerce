@@ -30,6 +30,15 @@ alarm_exists() {
   [[ "$(aws cloudwatch describe-alarms --region "$AWS_REGION" --alarm-names "$ALARM_NAME" --query 'MetricAlarms[0].AlarmName' --output text)" != "None" ]]
 }
 
+verify_subscription_contract() {
+  local topic_arn="$1"
+  local subscription_count email_subscription_count
+  subscription_count="$(aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$topic_arn" --query 'length(Subscriptions)' --output text)"
+  email_subscription_count="$(aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$topic_arn" --query "length(Subscriptions[?Protocol=='email' && Endpoint=='${ALERT_EMAIL}'])" --output text)"
+  [[ "$subscription_count" == 1 && "$email_subscription_count" == 1 ]] \
+    || die "SNS topic does not have exactly one approved email subscription"
+}
+
 verify_alarm_contract() {
   local topic_arn="$1"
   local alarm
