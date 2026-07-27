@@ -170,7 +170,21 @@ def validate_scripts() -> None:
     script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
     nginx_tests = (PRODUCTION / "test-production-nginx.sh").read_text(encoding="utf-8")
     compose_tests = (PRODUCTION / "test-production-compose.sh").read_text(encoding="utf-8")
+    ec2_alarm_common = (PRODUCTION / "ec2-status-check-alarm-common.sh").read_text(encoding="utf-8")
+    ec2_alarm_create = (PRODUCTION / "create-ec2-status-check-alarm.sh").read_text(encoding="utf-8")
+    ec2_alarm_cleanup = (PRODUCTION / "cleanup-ec2-status-check-alarm.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
+
+    require('APPROVED_AWS_REGION="ap-northeast-2"' in ec2_alarm_common, "OPS-015 alarm region must be Seoul")
+    for variable in ("PAWCYCLE_ALERT_REGION", "PAWCYCLE_ALERT_INSTANCE_ID", "PAWCYCLE_ALERT_EMAIL", "PAWCYCLE_ALERT_ACCOUNT_ID", "PAWCYCLE_ALERT_RESOURCE_PREFIX"):
+        require(variable in ec2_alarm_common, f"OPS-015 alarm input is missing: {variable}")
+    require("StatusCheckFailed" in ec2_alarm_create and "--period 60" in ec2_alarm_create and "--evaluation-periods 2" in ec2_alarm_create and "--datapoints-to-alarm 2" in ec2_alarm_create, "OPS-015 metric period and evaluation contract is missing")
+    require("--threshold 1" in ec2_alarm_create and "--comparison-operator GreaterThanOrEqualToThreshold" in ec2_alarm_create, "OPS-015 threshold contract is missing")
+    require("--alarm-actions \"$topic_arn\"" in ec2_alarm_create and "--ok-actions \"$topic_arn\"" in ec2_alarm_create, "OPS-015 ALARM and OK must use the same SNS topic")
+    require("existing alarm does not match the approved StatusCheckFailed contract" in ec2_alarm_common, "OPS-015 must not overwrite a conflicting alarm")
+    require("SNS topic does not have exactly one approved email subscription" in ec2_alarm_common, "OPS-015 cleanup must reject unexpected SNS subscribers")
+    require("ActionsEnabled==\\`true\\`" in ec2_alarm_common and "DatapointsToAlarm==\\`2\\`" in ec2_alarm_common, "OPS-015 alarm action and datapoint contract is missing")
+    require("validate_runtime_target" in ec2_alarm_common and "sts get-caller-identity" in ec2_alarm_common and "ec2 describe-instances" in ec2_alarm_common, "OPS-015 must validate the AWS account and EC2 target before mutation")
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")
