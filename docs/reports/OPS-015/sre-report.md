@@ -48,8 +48,8 @@ SNS email confirmation과 실제 ALARM·OK delivery는 병합 후 사용자 검�
 
 ## Git 결과
 
-`ops/sre`는 `b2d6c189` 기준으로 재생성했다. commit·push·PR 결과는 완료 후 갱신한다.
+`ops/sre`는 `b2d6c189` 기준으로 재생성했고 `d657da3` (`feat(sre): EC2 상태 점검 알림 기반 구성`)을 push했다.
 
 ## PR 결과
 
-PR 생성 전이며 대상은 `main`이다.
+[`#65`](https://github.com/guseoh/pawcycle-commerce/pull/65)를 `main` 대상으로 생성했으며 Draft가 아니다. 병합은 사용자 검토 뒤에만 수행한다.
