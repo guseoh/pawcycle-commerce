@@ -1,6 +1,7 @@
 package com.pawcycle.backend.common.security;
 
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -25,6 +26,7 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 public class SecurityConfig {
 
 	@Bean
+	@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 	SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
 			ApiAuthenticationEntryPoint authenticationEntryPoint,
