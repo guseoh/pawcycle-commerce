@@ -161,7 +161,7 @@ def validate_workflow() -> None:
     )
     require(
         "infra/production/verify-production-auth-session-smoke.sh" in validation_workflow
-        and "infra/production/test-production-auth-session-smoke.sh" in validation_workflow,
+        and validation_workflow.count("infra/production/test-production-auth-session-smoke.sh") >= 2,
         "Repository Validation must syntax-check the OPS-017 auth session smoke scripts",
     )
     require(
@@ -213,20 +213,24 @@ def validate_scripts() -> None:
     for path in ("/products", "/login", "/api/products", "/api/auth/csrf", "/api/auth/login", "/api/auth/me", "/api/auth/logout"):
         require(path in auth_session_smoke, f"OPS-017 smoke path is missing: {path}")
     require("session ID did not rotate after login" in auth_session_smoke and "CSRF token did not rotate after login" in auth_session_smoke, "OPS-017 must verify session and CSRF rotation")
+    require("session cookie is not Secure and HttpOnly" in auth_session_smoke, "OPS-017 must verify authenticated session cookie security attributes")
     require("login and current member identities do not match" in auth_session_smoke, "OPS-017 must compare login and current member identities")
     require("STALE_COOKIE_JAR" in auth_session_smoke and "stale session rejection" in auth_session_smoke, "OPS-017 must reject the pre-logout session")
     for scenario in (
+        "auth-code-missing",
         "csrf-missing",
         "csrf-not-rotated",
         "session-not-rotated",
+        "cookie-not-secure",
+        "cookie-not-http-only",
         "member-mismatch",
         "logout-failure",
         "authenticated-after-logout",
         "mid-request-failure",
-        "different-duckdns-host",
-        "non-tty",
     ):
-        require(scenario in auth_session_tests, f"OPS-017 fake HTTP regression scenario is missing: {scenario}")
+        require(f"run_case {scenario} " in auth_session_tests, f"OPS-017 fake HTTP regression scenario is missing: {scenario}")
+    require("different-duckdns-host" in auth_session_tests and "run_invalid_url_case \\\n  different-duckdns-host" in auth_session_tests, "OPS-017 approved domain mismatch regression scenario is missing")
+    require("run_non_tty_case" in auth_session_tests, "OPS-017 non-TTY regression scenario is missing")
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")

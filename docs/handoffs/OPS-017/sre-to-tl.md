@@ -29,6 +29,8 @@ Credential 비노출, 승인 production domain state 일치, 실제 TTY 전용 �
 
 - `infra/production/verify-production-auth-session-smoke.sh`
 - `infra/production/test-production-auth-session-smoke.sh`
+- `infra/production/validate-production-contracts.py`
+- `.github/workflows/validate-conventions.yml`
 - `docs/runbook/OPS-017-production-auth-session-smoke.md`
 - `docs/reports/OPS-017/sre-report.md`
 
@@ -46,7 +48,7 @@ Production HTTPS login·logout 요청을 시작하려면 OPS-018 고위험 사�
 
 ## 검증 포인트
 
-Tech Lead는 허용 URL 정규식과 `/opt/pawcycle/state/https-domain` 일치, `/dev/tty` 전용 credential 입력, curl 첫 `--disable` 인자, TLS·redirect 옵션, CSRF header 파일과 login 표준입력, session·token 회전 비교, stale cookie 확인, trap 정리와 PASS 전용 출력을 확인한다.
+Tech Lead는 허용 URL 정규식과 `/opt/pawcycle/state/https-domain` 일치, `/dev/tty` 전용 credential 입력, curl 첫 `--disable` 인자, TLS·redirect 옵션, CSRF header 파일과 login 표준입력, session·token 회전, `Secure`·`HttpOnly`, stale cookie 확인, trap 정리와 PASS 전용 출력을 확인한다.
 
 ## 검증 결과
 

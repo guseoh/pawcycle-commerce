@@ -76,7 +76,7 @@ OPS-017 자체는 production에 요청하거나 운영 상태를 바꾸지 않�
 
 ## 적용 후 검증
 
-Fake curl에서 공개 경로, 익명 거부, CSRF와 session 회전, 회원 일치, logout과 기존 session 거부의 정상 흐름을 확인했다. 비 HTTPS·미승인 host·승인 state와 다른 DuckDNS host·비 TTY 입력, CSRF 누락·미회전, session 미회전, 회원 불일치, logout 실패, logout 뒤 인증 유지와 중간 요청 실패가 안전하게 실패하고 임시 파일이 제거됨을 확인했다. 사용자 curlrc에 금지 설정이 있어도 모든 curl 호출의 첫 인자가 `--disable`인지 확인했다.
+Fake curl에서 공개 경로, 익명 거부, CSRF와 session 회전, `Secure`·`HttpOnly` cookie, 회원 일치, logout과 기존 session 거부의 정상 흐름을 확인했다. 비 HTTPS·미승인 host·승인 state와 다른 DuckDNS host·비 TTY 입력, `401`의 다른 오류 code, CSRF 누락·미회전, session 미회전, cookie 보안 속성 누락, 회원 불일치, logout 실패, logout 뒤 인증 유지와 중간 요청 실패가 안전하게 실패하고 임시 파일이 제거됨을 확인했다. 사용자 curlrc에 금지 설정이 있어도 모든 curl 호출의 첫 인자가 `--disable`인지 확인했다.
 
 ## 독립 검증
 
@@ -100,7 +100,7 @@ CodeRabbit·Codex Review에서 확인된 실제 TTY 제한, 승인 production do
 
 ## AI 리뷰 미반영 항목과 이유
 
-현재 미반영 항목은 없다. 승인 범위를 넘는 application·인증 API·workflow 정책 변경 제안은 발견 시 별도 사용자 결정을 요청한다.
+응답 추출을 임의의 추가 필드와 pretty-print까지 허용하라는 제안은 현재 AUTH DTO의 단일 필드 JSON shape를 정확히 검증하는 경계를 완화하므로 반영하지 않았다. Curl stderr를 출력하라는 제안은 실제 production domain 등 운영 식별자가 terminal·수집 로그에 남을 수 있어 비민감 단계 오류만 출력한다는 승인 경계와 충돌하므로 반영하지 않았다.
 
 ## 적용 방법
 
@@ -124,8 +124,8 @@ Tech Lead가 저장소의 보안 경계와 fake HTTP 증거를 검토한 뒤 병
 
 ## Git 결과
 
-최신 `main`에서 준비한 `ops/sre`에 하나의 논리적 commit으로 기록하고 push한다. 정확한 commit은 Git을 권위 원본으로 확인한다.
+최신 `main`에서 준비한 `ops/sre`에 OPS-017 구현과 review 반영 commit을 기록해 `origin/ops/sre`에 push했다. 정확한 head와 commit 목록은 Git을 권위 원본으로 확인한다.
 
 ## PR 결과
 
-`main` 대상 PR을 생성하고 자동 병합하지 않는다. Head, review와 Repository Validation의 동적 상태는 GitHub를 권위 원본으로 확인한다.
+`main` 대상 PR #69를 생성해 Ready 상태로 유지한다. 자동 병합하지 않으며 head, review thread와 Repository Validation의 동적 상태는 GitHub를 권위 원본으로 확인한다.

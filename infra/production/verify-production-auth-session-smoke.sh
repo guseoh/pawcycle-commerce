@@ -68,6 +68,16 @@ extract_session_id() {
   awk -F '\t' '$6 == "JSESSIONID" { value = $7; count += 1 } END { if (count == 1) print value }' "$1"
 }
 
+assert_session_cookie_attributes() {
+  awk -F '\t' '
+    $6 == "JSESSIONID" {
+      count += 1
+      if ($1 ~ /^#HttpOnly_/ && $4 == "TRUE") valid += 1
+    }
+    END { exit !(count == 1 && valid == 1) }
+  ' "$1" || die "session cookie is not Secure and HttpOnly"
+}
+
 assert_auth_required() {
   grep -Eq '"code"[[:space:]]*:[[:space:]]*"AUTH_REQUIRED"' "$1" \
     || die "$2 did not return AUTH_REQUIRED"
@@ -211,6 +221,7 @@ LOGIN_MEMBER_ID="$(extract_member_id "$RESPONSE_BODY")"
 SESSION_ID_AFTER="$(extract_session_id "$COOKIE_JAR")"
 [[ -n "$LOGIN_MEMBER_ID" ]] || die "login member identity is missing"
 [[ -n "$SESSION_ID_AFTER" ]] || die "authenticated session cookie is missing"
+assert_session_cookie_attributes "$COOKIE_JAR"
 [[ "$SESSION_ID_BEFORE" != "$SESSION_ID_AFTER" ]] || die "session ID did not rotate after login"
 
 perform_request "rotated CSRF token" GET "/api/auth/csrf" "$COOKIE_JAR"

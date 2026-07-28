@@ -91,7 +91,10 @@ printf '%s %s\n' "$method" "$path" >> "$FAKE_CURL_CALLS"
 
 write_session_cookie() {
   local value="$1"
-  printf '# Netscape HTTP Cookie File\n#HttpOnly_ops017-test.duckdns.org\tFALSE\t/\tTRUE\t0\tJSESSIONID\t%s\n' "$value" > "$cookie_jar"
+  local domain="${2:-#HttpOnly_ops017-test.duckdns.org}"
+  local secure="${3:-TRUE}"
+  printf '# Netscape HTTP Cookie File\n%s\tFALSE\t/\t%s\t0\tJSESSIONID\t%s\n' \
+    "$domain" "$secure" "$value" > "$cookie_jar"
 }
 
 status=200
@@ -100,7 +103,11 @@ case "$call_count:$method:$path" in
   1:GET:/products|2:GET:/login|3:GET:/api/products) body='{}' ;;
   4:GET:/api/auth/me)
     status=401
-    body='{"code":"AUTH_REQUIRED","message":"test-only","fieldErrors":[]}'
+    if [[ "$FAKE_CURL_SCENARIO" == auth-code-missing ]]; then
+      body='{"code":"ACCESS_DENIED","message":"test-only","fieldErrors":[]}'
+    else
+      body='{"code":"AUTH_REQUIRED","message":"test-only","fieldErrors":[]}'
+    fi
     ;;
   5:GET:/api/auth/csrf)
     write_session_cookie 'session-before-test-only'
@@ -115,6 +122,10 @@ case "$call_count:$method:$path" in
     grep -Fq 'X-CSRF-TOKEN: token-before-test-only' "${request_header#@}" || exit 98
     if [[ "$FAKE_CURL_SCENARIO" == session-not-rotated ]]; then
       write_session_cookie 'session-before-test-only'
+    elif [[ "$FAKE_CURL_SCENARIO" == cookie-not-secure ]]; then
+      write_session_cookie 'session-after-test-only' '#HttpOnly_ops017-test.duckdns.org' 'FALSE'
+    elif [[ "$FAKE_CURL_SCENARIO" == cookie-not-http-only ]]; then
+      write_session_cookie 'session-after-test-only' 'ops017-test.duckdns.org' 'TRUE'
     else
       write_session_cookie 'session-after-test-only'
     fi
@@ -304,8 +315,11 @@ run_invalid_url_case \
   'URL does not match the approved production HTTPS domain state'
 run_non_tty_case
 run_case csrf-missing 1 'initial CSRF token is missing' 5
+run_case auth-code-missing 1 'anonymous current member did not return AUTH_REQUIRED' 4
 run_case csrf-not-rotated 1 'CSRF token did not rotate after login' 7
 run_case session-not-rotated 1 'session ID did not rotate after login' 6
+run_case cookie-not-secure 1 'session cookie is not Secure and HttpOnly' 6
+run_case cookie-not-http-only 1 'session cookie is not Secure and HttpOnly' 6
 run_case member-mismatch 1 'login and current member identities do not match' 8
 run_case logout-failure 1 'unexpected HTTP status at session logout' 9
 run_case authenticated-after-logout 1 'unexpected HTTP status at stale session rejection' 10

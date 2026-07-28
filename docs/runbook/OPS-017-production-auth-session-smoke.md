@@ -13,7 +13,7 @@
 - 공개 `/products`, `/login`, `/api/products`는 각각 `200`이어야 한다.
 - 익명 `/api/auth/me`는 `401`과 `AUTH_REQUIRED`여야 한다.
 - `GET /api/auth/csrf`로 초기 token과 session을 얻고 `POST /api/auth/login`에 사용한다.
-- Login 전후 `JSESSIONID`와 CSRF token은 각각 달라야 한다.
+- Login 전후 `JSESSIONID`와 CSRF token은 각각 달라야 하며 인증 session cookie는 `Secure`·`HttpOnly`여야 한다.
 - Login 응답과 인증된 `/api/auth/me`의 `memberId`는 같아야 한다.
 - Login 뒤 새 CSRF token으로 `POST /api/auth/logout`을 호출하고 `204`를 확인한다.
 - Logout 전 session cookie를 사용한 후속 `/api/auth/me`는 `401 AUTH_REQUIRED`여야 한다.
@@ -56,7 +56,7 @@ PASS logout and stale session rejection
 1. 공개 세 경로의 `200`을 확인한다.
 2. Cookie 없는 `/api/auth/me`의 `401 AUTH_REQUIRED`를 확인한다.
 3. 초기 CSRF token과 session cookie를 유지해 login한다.
-4. Login 응답의 `memberId`, `JSESSIONID` 회전과 login 뒤 CSRF token 회전을 메모리에서 비교한다.
+4. Login 응답의 `memberId`, `JSESSIONID` 회전, `Secure`·`HttpOnly` cookie 속성과 login 뒤 CSRF token 회전을 메모리에서 비교한다.
 5. 인증된 `/api/auth/me`의 `memberId`가 login 응답과 같은지 확인한다.
 6. 회전된 CSRF token으로 logout하고 `204`를 확인한다.
 7. Logout 직전 cookie 사본으로 `/api/auth/me`를 다시 호출해 `401 AUTH_REQUIRED`를 확인한다.
