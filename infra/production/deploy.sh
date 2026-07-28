@@ -47,7 +47,18 @@ if [[ -e "$PAWCYCLE_STATE_DIR/current-sha" || -L "$PAWCYCLE_STATE_DIR/current-sh
   CURRENT_SHA="$(read_state_sha current-sha)"
 fi
 
-load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$BASELINE_CONTRACT_SHA" "$CURRENT_SHA"
+CONTRACT_STATE_PATH="$PAWCYCLE_STATE_DIR/contract-sha"
+if [[ ! -e "$CONTRACT_STATE_PATH" && ! -L "$CONTRACT_STATE_PATH" ]]; then
+  [[ -n "$BASELINE_CONTRACT_SHA" ]] \
+    || die "production runtime contract state is missing; --baseline-contract-sha is required"
+  validate_sha "$BASELINE_CONTRACT_SHA"
+  CONTROL_SHA="$(current_control_sha)"
+  validate_runtime_contract_compatibility "$BASELINE_CONTRACT_SHA" "$CONTROL_SHA"
+elif [[ -n "$BASELINE_CONTRACT_SHA" ]]; then
+  die "--baseline-contract-sha is allowed only when contract state is absent"
+fi
+
+load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
 
 if [[ "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
   validate_runtime_contract_compatibility "$CONTRACT_SHA" "$TARGET_SHA"
