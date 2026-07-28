@@ -44,7 +44,9 @@ production 고정 데이터 volume은 `pawcycle-production-mysql-data`다. 배�
 7. SSM prefix와 네 leaf parameter가 준비됐고 실제 값, 이메일, 계정 ID, 전체 ARN은 저장소나 증거에 기록하지 않는다.
 8. `/opt/pawcycle/runtime`과 `/opt/pawcycle/state`는 저장소 checkout 밖이며 root만 접근할 수 있다.
 9. 현재 정상 SHA와 이전 SHA, Backend·Frontend·MySQL·Nginx digest를 비민감 운영 증거로 기록할 위치가 있다.
-10. 현재 SHA와 대상 SHA commit이 local Git object로 존재하며 두 commit의 `infra/production/**`가 동일하다. 차이가 있으면 설정까지 복원하는 release bundle이 없는 OPS-010에서는 배포·자동 rollback을 중단한다.
+10. `/opt/pawcycle/state/contract-sha`가 현재 Production에 승인·적용된 Runtime 계약 기준을 가리키며 mode `600`인 regular non-symlink file인지 확인한다. Runtime 계약은 Compose, HTTP·HTTPS Nginx 설정과 Backend·Frontend Dockerfile로 한정한다. 현재 Application `current-sha`와 계약 기준은 서로 다른 상태다.
+11. 기존 운영 환경에 `contract-sha`가 아직 없다면 사용자가 승인한 기존 적용 기준 SHA를 `--adopt-contract-sha`로 한 번만 전달한다. Script는 해당 SHA와 현재 control checkout의 Runtime 계약이 같은지, 현재 release identity·digest·health·HTTP·HTTPS Smoke가 정상인지 확인한 뒤에만 상태를 기록한다.
+12. 대상 release의 Runtime 계약이 `contract-sha`와 다르면 image pull이나 Container 변경 전에 중단한다. 보조 Runbook·Test·Alarm Script 변경은 Application 배포 호환성 판정에 포함하지 않는다.
 
 ## GitHub Actions image 게시
 
@@ -157,6 +159,9 @@ sudo bash infra/production/deploy.sh \
   --frontend-image 'ghcr.io/<github-owner>/<repository>-frontend' \
   --runtime-dir /opt/pawcycle/runtime \
   --state-dir /opt/pawcycle/state
+
+# contract-sha가 아직 없는 기존 운영 환경에서만 한 번 추가
+#   --adopt-contract-sha '<approved-existing-runtime-contract-sha>'
 ```
 
 script는 실행 중인 container를 바꾸기 전에 다음을 수행한다.

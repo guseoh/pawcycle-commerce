@@ -382,7 +382,26 @@ def validate_scripts() -> None:
     require("image digest drift detected for previously verified release SHA" in common, "same-SHA digest drift must fail closed")
     require("MYSQL_DIGEST=%s" in common and "PROXY_DIGEST=%s" in common, "base image digests must be part of each SHA record")
     require("cmp -s" in common, "existing SHA image records must be compared rather than overwritten")
-    require("git diff --quiet" in common and "':(top)infra/production'" in common, "release contract compatibility gate is missing")
+    for contract_path in (
+        "infra/production/compose.yaml",
+        "infra/production/nginx.conf",
+        "infra/production/nginx.https.conf",
+        "infra/production/backend.Dockerfile",
+        "infra/production/frontend.Dockerfile",
+    ):
+        require(contract_path in common, f"runtime contract path is missing: {contract_path}")
+    require(
+        "validate_runtime_contract_compatibility" in common
+        and "production runtime contract differs from the approved contract SHA" in common,
+        "runtime contract compatibility gate is missing",
+    )
+    require(
+        "read_state_sha contract-sha" in rollback
+        and "--adopt-contract-sha" in deploy
+        and "previous-contract-sha" in deploy
+        and "previous-contract-sha" in rollback,
+        "application release and runtime contract state must be separated",
+    )
     require("--pull never" in common, "activation must not replace preflighted images")
     require('PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data"' in common, "production volume name must ignore ambient overrides")
     require('PAWCYCLE_HTTP_PORT="80"' in common, "production HTTP port must ignore ambient overrides")
@@ -398,8 +417,9 @@ def validate_scripts() -> None:
         "target release did not fail when smoke failed",
         "same-SHA application digest drift did not fail closed",
         "pinned base image digest drift did not fail closed",
-        "incompatible infra/production contract did not fail closed",
-        "rollback with incompatible infra/production contract did not fail closed",
+        "missing runtime contract state did not fail closed",
+        "incompatible production runtime contract did not fail closed",
+        "rollback with incompatible production runtime contract did not fail closed",
     ):
         require(evidence in script_tests, f"release regression evidence is missing: {evidence}")
 
