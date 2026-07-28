@@ -23,7 +23,7 @@ OPS-017 사용자 승인 명세, AUTH-002~004 인증 계약, OPS-017 Runbook과 
 
 ## 사용 가능한 결과
 
-Credential 비노출, TLS 검증, redirect 거부, mode `700`/`600` 임시 저장, 모든 종료 경로 정리와 단계별 PASS 출력 계약이 포함된 실행 기반이다. Fake HTTP test는 정상 흐름과 승인된 실패 시나리오를 외부 network 없이 검증한다.
+Credential 비노출, 승인 production domain state 일치, 실제 TTY 전용 입력, ambient curlrc 차단, TLS 검증, redirect 거부, mode `700`/`600` 임시 저장, 모든 종료 경로 정리와 단계별 PASS 출력 계약이 포함된 실행 기반이다. Fake HTTP test는 정상 흐름과 승인된 실패 시나리오를 외부 network 없이 검증한다.
 
 ## 관련 파일
 
@@ -46,7 +46,7 @@ Production HTTPS login·logout 요청을 시작하려면 OPS-018 고위험 사�
 
 ## 검증 포인트
 
-Tech Lead는 허용 URL 정규식, TLS·redirect 옵션, 대화형 credential 입력, CSRF header 파일과 login 표준입력, session·token 회전 비교, stale cookie 확인, trap 정리와 PASS 전용 출력을 확인한다.
+Tech Lead는 허용 URL 정규식과 `/opt/pawcycle/state/https-domain` 일치, `/dev/tty` 전용 credential 입력, curl 첫 `--disable` 인자, TLS·redirect 옵션, CSRF header 파일과 login 표준입력, session·token 회전 비교, stale cookie 확인, trap 정리와 PASS 전용 출력을 확인한다.
 
 ## 검증 결과
 

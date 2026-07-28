@@ -201,10 +201,12 @@ def validate_scripts() -> None:
         r"^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)\.duckdns\.org$" in auth_session_smoke,
         "OPS-017 must accept only a lowercase single-label DuckDNS HTTPS origin",
     )
-    require("--proto '=https'" in auth_session_smoke and "--tlsv1.2" in auth_session_smoke and "--max-redirs 0" in auth_session_smoke, "OPS-017 HTTPS requests must verify TLS and reject redirects")
-    require(not re.search(r"(?:^|[ \t])(?:-k|--insecure|-L|--location)(?:[ \t]|$)", auth_session_smoke, re.MULTILINE), "OPS-017 must not disable TLS verification or follow redirects")
+    require('APPROVED_DOMAIN_FILE="/opt/pawcycle/state/https-domain"' in auth_session_smoke and "URL does not match the approved production HTTPS domain state" in auth_session_smoke, "OPS-017 must bind credentials to the approved production HTTPS domain state")
+    require("--disable\n    --silent" in auth_session_smoke and "--proto '=https'" in auth_session_smoke and "--tlsv1.2" in auth_session_smoke and "--max-redirs 0" in auth_session_smoke, "OPS-017 HTTPS requests must ignore curlrc, verify TLS, and reject redirects")
+    require(not re.search(r"^[ \t]+(?:-k|--insecure|-L|--location)(?:[ \t]|$)", auth_session_smoke, re.MULTILINE), "OPS-017 must not disable TLS verification or follow redirects")
     require("set +x" in auth_session_smoke and "set -x" not in auth_session_smoke, "OPS-017 must disable shell tracing")
-    require("IFS= read -r OPERATOR_EMAIL" in auth_session_smoke and "IFS= read -r -s OPERATOR_PASSWORD" in auth_session_smoke, "OPS-017 credentials must use interactive input with hidden password echo")
+    require("exec 3<>/dev/tty" in auth_session_smoke and "[[ -t 3 ]]" in auth_session_smoke, "OPS-017 credentials must require an interactive terminal")
+    require("IFS= read -r -u 3 OPERATOR_EMAIL" in auth_session_smoke and "IFS= read -r -s -u 3 OPERATOR_PASSWORD" in auth_session_smoke, "OPS-017 credentials must use TTY-only input with hidden password echo")
     require("--header \"@$header_file\"" in auth_session_smoke and "--data-binary @-" in auth_session_smoke, "OPS-017 credentials and CSRF token must not be placed in curl arguments")
     require("chmod 700 \"$WORK_DIR\"" in auth_session_smoke and "chmod 600 \"$sensitive_file\"" in auth_session_smoke, "OPS-017 sensitive temporary paths must use restrictive modes")
     require("trap cleanup EXIT" in auth_session_smoke and "trap 'exit 130' INT" in auth_session_smoke and "trap 'exit 143' TERM" in auth_session_smoke, "OPS-017 temporary credentials and files must be cleaned on all exits")
@@ -221,6 +223,8 @@ def validate_scripts() -> None:
         "logout-failure",
         "authenticated-after-logout",
         "mid-request-failure",
+        "different-duckdns-host",
+        "non-tty",
     ):
         require(scenario in auth_session_tests, f"OPS-017 fake HTTP regression scenario is missing: {scenario}")
 

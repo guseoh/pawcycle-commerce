@@ -8,8 +8,8 @@
 
 ## 승인된 계약
 
-- 대상 origin은 `https://<lowercase single-label>.duckdns.org` 하나다. path, query, port, uppercase, 다중 label과 다른 host는 허용하지 않는다.
-- TLS 인증서 검증을 유지하고 redirect를 따라가지 않는다.
+- 대상 origin은 `/opt/pawcycle/state/https-domain`에 승인된 `https://<lowercase single-label>.duckdns.org` 하나다. path, query, port, uppercase, 다중 label, 다른 DuckDNS label과 다른 host는 허용하지 않는다.
+- TLS 인증서 검증을 유지하고 redirect를 따라가지 않는다. Curl의 사용자·system 기본 설정은 `--disable` 첫 인자로 무시한다.
 - 공개 `/products`, `/login`, `/api/products`는 각각 `200`이어야 한다.
 - 익명 `/api/auth/me`는 `401`과 `AUTH_REQUIRED`여야 한다.
 - `GET /api/auth/csrf`로 초기 token과 session을 얻고 `POST /api/auth/login`에 사용한다.
@@ -24,7 +24,7 @@
 
 1. OPS-018 고위험 production 검증이 사용자에게 명시적으로 승인됐다.
 2. 실행할 checkout이 승인된 `main`이며 `infra/production/verify-production-auth-session-smoke.sh`의 검증이 통과했다.
-3. 대상은 승인된 lowercase 단일-label DuckDNS HTTPS origin이고 현재 production release의 `/products`, `/login`, `/api/products`를 제공한다.
+3. 대상은 `/opt/pawcycle/state/https-domain`의 일반 non-symlink, mode `600` 승인 state와 정확히 같은 lowercase 단일-label DuckDNS HTTPS origin이고 현재 production release의 `/products`, `/login`, `/api/products`를 제공한다.
 4. AUTH-002~004의 session·CSRF 계약과 현재 production application 계약이 일치한다.
 5. 검증용 회원은 이미 존재하며 상품·구독·회원·DB 데이터를 변경할 필요가 없다.
 6. 실행 terminal은 공유 화면 녹화, shell tracing과 credential 수집 도구를 사용하지 않는다.
@@ -32,14 +32,14 @@
 
 ## 사용자 실행
 
-Email과 password를 CLI 인자, 환경 변수, 파일 또는 shell history에 넣지 않는다. Script가 email을 대화형으로, password를 echo 없는 대화형으로 요청한다.
+Email과 password를 CLI 인자, 환경 변수, 파일 또는 shell history에 넣지 않는다. Script는 실제 `/dev/tty`에서만 email과 password를 읽고 비대화형 stdin·redirect·pipe를 거부하며 password echo를 끈다. 승인 domain state는 root-only 운영 파일이므로 기존 production script와 같이 `sudo`로 실행한다.
 
 ```bash
-bash infra/production/verify-production-auth-session-smoke.sh \
+sudo bash infra/production/verify-production-auth-session-smoke.sh \
   https://<approved-lowercase-single-label>.duckdns.org
 ```
 
-Script는 전용 임시 directory를 mode `700`으로 만들고 cookie·응답·CSRF header 파일을 mode `600`으로 관리한다. 정상 종료, 실패, `INT`, `TERM`에서 trap이 임시 파일과 process 내부 민감 변수를 정리한다. `curl -k`, redirect 추적과 shell tracing은 사용하지 않는다.
+Script는 credential 입력 전에 요청 origin과 승인 domain state의 정확한 일치를 확인한다. 전용 임시 directory를 mode `700`으로 만들고 cookie·응답·CSRF header 파일을 mode `600`으로 관리한다. 정상 종료, 실패, `INT`, `TERM`에서 trap이 임시 파일과 process 내부 민감 변수를 정리한다. Ambient curlrc, `curl -k`, redirect 추적과 shell tracing은 사용하지 않는다.
 
 성공 시 표준 출력에는 다음 단계별 PASS만 남는다.
 
@@ -67,7 +67,7 @@ Script는 비교값이나 응답 본문을 출력하지 않는다. 예상하지 
 
 실패 시 화면에 표시된 단계 이름과 비민감 오류 분류만 사용한다.
 
-1. URL 거부: HTTPS, lowercase, 단일 label, `.duckdns.org`, path·query·port 부재를 확인한다.
+1. URL 거부: HTTPS, lowercase, 단일 label, `.duckdns.org`, path·query·port 부재와 `/opt/pawcycle/state/https-domain`의 정확한 일치를 확인한다. State를 수동 변경하거나 다른 경로로 우회하지 않는다.
 2. 공개 경로 실패: 현재 release와 Nginx·application health를 기존 production 절차로 확인한다.
 3. 익명 거부 실패: `/api/auth/me`의 redirect나 HTML이 아닌 `401 AUTH_REQUIRED` 계약을 확인한다.
 4. CSRF·session 회전 실패: AUTH-003 설정과 현재 배포된 Backend release를 확인한다.
@@ -104,4 +104,4 @@ Workflow run 번호, 현재 check 개수, email, password, `memberId`, CSRF toke
 
 ## 에스컬레이션
 
-현재 API 계약만으로 검증할 수 없거나 credential을 argv·환경 변수·일반 파일로 전달해야 하거나 실제 데이터 쓰기가 필요하면 OPS-017/018 범위를 확대하지 않는다. 사용자/Tech Lead가 별도 작업과 위험 수용 여부를 결정한다.
+현재 API 계약만으로 검증할 수 없거나 승인 domain state를 읽을 수 없거나 credential을 실제 TTY 외의 argv·환경 변수·일반 파일로 전달해야 하거나 실제 데이터 쓰기가 필요하면 OPS-017/018 범위를 확대하지 않는다. 사용자/Tech Lead가 별도 작업과 위험 수용 여부를 결정한다.

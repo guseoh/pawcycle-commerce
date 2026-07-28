@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 set +x
+APPROVED_DOMAIN_FILE="/opt/pawcycle/state/https-domain"
 
 usage() {
   cat <<'EOF'
@@ -33,9 +34,11 @@ cleanup() {
   SESSION_ID_AFTER=""
   LOGIN_MEMBER_ID=""
   CURRENT_MEMBER_ID=""
+  APPROVED_DOMAIN=""
   unset OPERATOR_EMAIL OPERATOR_PASSWORD ESCAPED_EMAIL ESCAPED_PASSWORD
   unset CSRF_TOKEN_BEFORE CSRF_TOKEN_AFTER SESSION_ID_BEFORE SESSION_ID_AFTER
   unset LOGIN_MEMBER_ID CURRENT_MEMBER_ID
+  unset APPROVED_DOMAIN
   if [[ -n "${WORK_DIR:-}" && -d "$WORK_DIR" ]]; then
     rm -rf -- "$WORK_DIR"
   fi
@@ -78,6 +81,7 @@ perform_request() {
   local header_file="${5:-}"
   local payload_mode="${6:-none}"
   local -a curl_arguments=(
+    --disable
     --silent
     --show-error
     --request "$method"
@@ -125,9 +129,26 @@ BASE_URL="${1%/}"
 [[ "$BASE_URL" =~ ^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)\.duckdns\.org$ ]] \
   || die "URL must be an approved lowercase single-label DuckDNS HTTPS origin"
 
-for required_command in curl mktemp chmod rm sed awk grep cp; do
+for required_command in curl mktemp chmod rm sed awk grep cp stat; do
   require_command "$required_command"
 done
+
+[[ -e "$APPROVED_DOMAIN_FILE" || -L "$APPROVED_DOMAIN_FILE" ]] \
+  || die "approved HTTPS domain state is missing"
+[[ ! -L "$APPROVED_DOMAIN_FILE" && -f "$APPROVED_DOMAIN_FILE" ]] \
+  || die "approved HTTPS domain state must be a regular non-symlink file"
+[[ "$(stat -c '%a' "$APPROVED_DOMAIN_FILE")" == 600 ]] \
+  || die "approved HTTPS domain state mode must be 600"
+APPROVED_DOMAIN="$(<"$APPROVED_DOMAIN_FILE")"
+[[ "$APPROVED_DOMAIN" =~ ^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\.duckdns\.org$ ]] \
+  || die "approved HTTPS domain state is invalid"
+[[ "$BASE_URL" == "https://$APPROVED_DOMAIN" ]] \
+  || die "URL does not match the approved production HTTPS domain state"
+
+if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+  die "an interactive terminal is required for credentials"
+fi
+[[ -t 3 ]] || { exec 3>&-; die "an interactive terminal is required for credentials"; }
 
 umask 077
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pawcycle-ops017.XXXXXX")"
@@ -151,11 +172,12 @@ for sensitive_file in \
   : > "$sensitive_file"
   chmod 600 "$sensitive_file"
 done
-printf 'Operator email: ' >&2
-IFS= read -r OPERATOR_EMAIL || die "operator email input was not completed"
-printf 'Operator password: ' >&2
-IFS= read -r -s OPERATOR_PASSWORD || die "operator password input was not completed"
-printf '\n' >&2
+printf 'Operator email: ' >&3
+IFS= read -r -u 3 OPERATOR_EMAIL || die "operator email input was not completed"
+printf 'Operator password: ' >&3
+IFS= read -r -s -u 3 OPERATOR_PASSWORD || die "operator password input was not completed"
+printf '\n' >&3
+exec 3>&-
 [[ "$OPERATOR_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]] \
   || die "operator email format is invalid"
 [[ -n "$OPERATOR_PASSWORD" ]] || die "operator password must not be empty"

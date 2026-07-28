@@ -31,9 +31,9 @@ Application·인증 API·Nginx·DB·Compose 동작, dependency, 운영 계정, A
 
 ## 주요 결과
 
-Script는 lowercase 단일-label DuckDNS HTTPS origin만 허용하고 TLS 검증을 유지하며 redirect를 따르지 않는다. 공개 세 경로, 익명 인증 거부, CSRF·session 회전, login과 `/me` 회원 일치, logout과 기존 session 거부를 순서대로 확인한다.
+Script는 lowercase 단일-label DuckDNS HTTPS 형식과 `/opt/pawcycle/state/https-domain`의 승인 origin이 정확히 일치할 때만 credential을 요청한다. Curlrc를 첫 `--disable` 인자로 무시하고 TLS 검증을 유지하며 redirect를 따르지 않는다. 공개 세 경로, 익명 인증 거부, CSRF·session 회전, login과 `/me` 회원 일치, logout과 기존 session 거부를 순서대로 확인한다.
 
-Email은 대화형 입력, password는 echo 없는 대화형 입력으로만 받는다. CSRF header는 mode `600` 임시 파일, login JSON은 표준입력으로 `curl`에 전달한다. 성공 출력에는 다섯 단계 PASS만 남기고 식별값과 응답 본문을 출력하지 않는다.
+Email과 password는 실제 `/dev/tty`에서만 받고 비대화형 stdin을 거부하며 password echo를 끈다. CSRF header는 mode `600` 임시 파일, login JSON은 표준입력으로 `curl`에 전달한다. 성공 출력에는 다섯 단계 PASS만 남기고 식별값과 응답 본문을 출력하지 않는다.
 
 ## 결정 상태
 
@@ -49,7 +49,7 @@ DB·schema·Flyway·volume 변경은 없다. Smoke는 상품·구독·회원·DB
 
 ## 보안 영향
 
-Credential을 CLI 인자, 환경 변수, 저장소 파일과 command history로 받지 않는다. 임시 directory는 mode `700`, cookie·응답·header 파일은 mode `600`이며 정상·실패·`INT`·`TERM`에서 정리한다. TLS 우회, cross-host redirect, shell tracing, 원시 응답 출력은 금지했다.
+Credential을 CLI 인자, 환경 변수, 저장소 파일, command history와 비대화형 stdin으로 받지 않는다. 승인 production domain state와 정확히 일치하기 전에는 credential을 요청하지 않는다. 임시 directory는 mode `700`, cookie·응답·header 파일은 mode `600`이며 정상·실패·`INT`·`TERM`에서 정리한다. Ambient curlrc, TLS 우회, cross-host redirect, shell tracing, 원시 응답 출력은 금지했다.
 
 ## 운영 영향
 
@@ -76,11 +76,11 @@ OPS-017 자체는 production에 요청하거나 운영 상태를 바꾸지 않�
 
 ## 적용 후 검증
 
-Fake curl에서 공개 경로, 익명 거부, CSRF와 session 회전, 회원 일치, logout과 기존 session 거부의 정상 흐름을 확인했다. 비 HTTPS·미승인 host, CSRF 누락·미회전, session 미회전, 회원 불일치, logout 실패, logout 뒤 인증 유지와 중간 요청 실패가 안전하게 실패하고 임시 파일이 제거됨을 확인했다.
+Fake curl에서 공개 경로, 익명 거부, CSRF와 session 회전, 회원 일치, logout과 기존 session 거부의 정상 흐름을 확인했다. 비 HTTPS·미승인 host·승인 state와 다른 DuckDNS host·비 TTY 입력, CSRF 누락·미회전, session 미회전, 회원 불일치, logout 실패, logout 뒤 인증 유지와 중간 요청 실패가 안전하게 실패하고 임시 파일이 제거됨을 확인했다. 사용자 curlrc에 금지 설정이 있어도 모든 curl 호출의 첫 인자가 `--disable`인지 확인했다.
 
 ## 독립 검증
 
-Production contract validator는 script의 URL·TLS·credential 전달·임시 파일·trap·인증 순서 계약과 CI test 연결을 별도로 검사한다. GitHub Repository Validation 결과는 저장소 문서에 동적 run 번호나 check 개수를 고정하지 않고 Checks를 권위 원본으로 확인한다. 실제 production 독립 검증은 OPS-018에서 사용자/Tech Lead가 수행해야 한다.
+Production contract validator는 script의 URL·승인 domain state·TTY·curlrc 차단·TLS·credential 전달·임시 파일·trap·인증 순서 계약과 CI test 연결을 별도로 검사한다. GitHub Repository Validation 결과는 저장소 문서에 동적 run 번호나 check 개수를 고정하지 않고 Checks를 권위 원본으로 확인한다. 실제 production 독립 검증은 OPS-018에서 사용자/Tech Lead가 수행해야 한다.
 
 ## 실행하지 못한 검증과 이유
 
@@ -96,7 +96,7 @@ Production contract validator는 script의 URL·TLS·credential 전달·임시 �
 
 ## AI 리뷰 반영 여부
 
-PR의 CodeRabbit·Codex Review 결과를 확인하고 유효한 지적은 OPS-017 범위에서 반영한다. 반영 여부는 PR thread를 권위 원본으로 확인한다.
+CodeRabbit·Codex Review에서 확인된 실제 TTY 제한, 승인 production domain state와의 정확한 일치, curlrc 비활성화 지적을 반영한다. 최종 thread 해결 상태는 PR을 권위 원본으로 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
