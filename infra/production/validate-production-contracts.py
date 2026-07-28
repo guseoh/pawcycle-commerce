@@ -159,6 +159,15 @@ def validate_workflow() -> None:
         "bash infra/production/test-db-backup-restore.sh" in validation_workflow,
         "Repository Validation must execute the isolated backup and restore lifecycle test",
     )
+    require(
+        "infra/production/verify-production-auth-session-smoke.sh" in validation_workflow
+        and "infra/production/test-production-auth-session-smoke.sh" in validation_workflow,
+        "Repository Validation must syntax-check the OPS-017 auth session smoke scripts",
+    )
+    require(
+        "bash infra/production/test-production-auth-session-smoke.sh" in validation_workflow,
+        "Repository Validation must execute the OPS-017 fake HTTP contract test",
+    )
 
 
 def validate_scripts() -> None:
@@ -173,6 +182,8 @@ def validate_scripts() -> None:
     ec2_alarm_common = (PRODUCTION / "ec2-status-check-alarm-common.sh").read_text(encoding="utf-8")
     ec2_alarm_create = (PRODUCTION / "create-ec2-status-check-alarm.sh").read_text(encoding="utf-8")
     ec2_alarm_cleanup = (PRODUCTION / "cleanup-ec2-status-check-alarm.sh").read_text(encoding="utf-8")
+    auth_session_smoke = (PRODUCTION / "verify-production-auth-session-smoke.sh").read_text(encoding="utf-8")
+    auth_session_tests = (PRODUCTION / "test-production-auth-session-smoke.sh").read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require('APPROVED_AWS_REGION="ap-northeast-2"' in ec2_alarm_common, "OPS-015 alarm region must be Seoul")
@@ -185,6 +196,33 @@ def validate_scripts() -> None:
     require("SNS topic does not have exactly one approved email subscription" in ec2_alarm_common, "OPS-015 cleanup must reject unexpected SNS subscribers")
     require("ActionsEnabled==\\`true\\`" in ec2_alarm_common and "DatapointsToAlarm==\\`2\\`" in ec2_alarm_common, "OPS-015 alarm action and datapoint contract is missing")
     require("validate_runtime_target" in ec2_alarm_common and "sts get-caller-identity" in ec2_alarm_common and "ec2 describe-instances" in ec2_alarm_common, "OPS-015 must validate the AWS account and EC2 target before mutation")
+
+    require(
+        r"^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)\.duckdns\.org$" in auth_session_smoke,
+        "OPS-017 must accept only a lowercase single-label DuckDNS HTTPS origin",
+    )
+    require("--proto '=https'" in auth_session_smoke and "--tlsv1.2" in auth_session_smoke and "--max-redirs 0" in auth_session_smoke, "OPS-017 HTTPS requests must verify TLS and reject redirects")
+    require(not re.search(r"(?:^|[ \t])(?:-k|--insecure|-L|--location)(?:[ \t]|$)", auth_session_smoke, re.MULTILINE), "OPS-017 must not disable TLS verification or follow redirects")
+    require("set +x" in auth_session_smoke and "set -x" not in auth_session_smoke, "OPS-017 must disable shell tracing")
+    require("IFS= read -r OPERATOR_EMAIL" in auth_session_smoke and "IFS= read -r -s OPERATOR_PASSWORD" in auth_session_smoke, "OPS-017 credentials must use interactive input with hidden password echo")
+    require("--header \"@$header_file\"" in auth_session_smoke and "--data-binary @-" in auth_session_smoke, "OPS-017 credentials and CSRF token must not be placed in curl arguments")
+    require("chmod 700 \"$WORK_DIR\"" in auth_session_smoke and "chmod 600 \"$sensitive_file\"" in auth_session_smoke, "OPS-017 sensitive temporary paths must use restrictive modes")
+    require("trap cleanup EXIT" in auth_session_smoke and "trap 'exit 130' INT" in auth_session_smoke and "trap 'exit 143' TERM" in auth_session_smoke, "OPS-017 temporary credentials and files must be cleaned on all exits")
+    for path in ("/products", "/login", "/api/products", "/api/auth/csrf", "/api/auth/login", "/api/auth/me", "/api/auth/logout"):
+        require(path in auth_session_smoke, f"OPS-017 smoke path is missing: {path}")
+    require("session ID did not rotate after login" in auth_session_smoke and "CSRF token did not rotate after login" in auth_session_smoke, "OPS-017 must verify session and CSRF rotation")
+    require("login and current member identities do not match" in auth_session_smoke, "OPS-017 must compare login and current member identities")
+    require("STALE_COOKIE_JAR" in auth_session_smoke and "stale session rejection" in auth_session_smoke, "OPS-017 must reject the pre-logout session")
+    for scenario in (
+        "csrf-missing",
+        "csrf-not-rotated",
+        "session-not-rotated",
+        "member-mismatch",
+        "logout-failure",
+        "authenticated-after-logout",
+        "mid-request-failure",
+    ):
+        require(scenario in auth_session_tests, f"OPS-017 fake HTTP regression scenario is missing: {scenario}")
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")
