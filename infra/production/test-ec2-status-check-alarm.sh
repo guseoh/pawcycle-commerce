@@ -13,11 +13,22 @@ cat > "$TEST_ROOT/bin/aws" <<'EOF'
 set -Eeuo pipefail
 printf '%s %s\n' "${1:-}" "${2:-}" >> "$FAKE_AWS_CALLS"
 if [[ "${1:-}" == sts && "${2:-}" == get-caller-identity ]]; then
-  [[ "$*" == *'--region ap-northeast-2'* ]] || {
+  region_count=0
+  region_value=""
+  arguments=("$@")
+  for ((index = 0; index < ${#arguments[@]}; index += 1)); do
+    if [[ "${arguments[$index]}" == --region ]]; then
+      ((region_count += 1))
+      if ((index + 1 < ${#arguments[@]})); then
+        region_value="${arguments[$((index + 1))]}"
+      fi
+    fi
+  done
+  [[ "$region_count" == 1 && "$region_value" == ap-northeast-2 ]] || {
     printf '%s\n' 'STS call did not receive the approved Seoul region' >&2
     exit 45
   }
-  printf 'sts-region %s\n' "$*" >> "$FAKE_AWS_CALLS"
+  printf 'sts-region %s\n' "$region_value" >> "$FAKE_AWS_CALLS"
 fi
 case "${FAKE_AWS_SCENARIO:?}:${1:-}:${2:-}" in
   sts-failure:sts:get-caller-identity) exit 43 ;;
@@ -33,19 +44,45 @@ case "${FAKE_AWS_SCENARIO:?}:${1:-}:${2:-}" in
   new:sns:create-topic) printf '%s\n' 'arn:aws:sns:ap-northeast-2:000000000000:pawcycle-ec2-status-check-alerts' ;;
   new:sns:subscribe) printf '%s\n' 'pending confirmation' ;;
   new:cloudwatch:put-metric-alarm) : ;;
-  repeat:sns:list-topics|conflict-alarm:sns:list-topics|unexpected-subscriber:sns:list-topics|actions-disabled:sns:list-topics|one-of-two:sns:list-topics|pending:sns:list-topics) printf '%s\n' 'arn:aws:sns:ap-northeast-2:000000000000:pawcycle-ec2-status-check-alerts' ;;
-  repeat:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
+  repeat:sns:list-topics|conflict-alarm:sns:list-topics|unexpected-subscriber:sns:list-topics|actions-disabled:sns:list-topics|one-of-two:sns:list-topics|pending:sns:list-topics|cleanup-success:sns:list-topics) printf '%s\n' 'arn:aws:sns:ap-northeast-2:000000000000:pawcycle-ec2-status-check-alerts' ;;
+  repeat:cloudwatch:describe-alarms|cleanup-success:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
   conflict-alarm:cloudwatch:describe-alarms) [[ "$*" == *'MetricAlarms[0].AlarmName'* ]] && printf '%s\n' 'pawcycle-ec2-status-check-failed' || printf 'None\n' ;;
   actions-disabled:cloudwatch:describe-alarms|one-of-two:cloudwatch:describe-alarms) [[ "$*" == *'MetricAlarms[0].AlarmName'* ]] && printf '%s\n' 'pawcycle-ec2-status-check-failed' || printf 'None\n' ;;
   unexpected-subscriber:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
-  repeat:sns:list-subscriptions-by-topic|actions-disabled:sns:list-subscriptions-by-topic|one-of-two:sns:list-subscriptions-by-topic) printf '1\n' ;;
+  repeat:sns:list-subscriptions-by-topic|actions-disabled:sns:list-subscriptions-by-topic|one-of-two:sns:list-subscriptions-by-topic|cleanup-success:sns:list-subscriptions-by-topic) printf '1\n' ;;
   pending:cloudwatch:describe-alarms) printf '%s\n' 'pawcycle-ec2-status-check-failed' ;;
   pending:sns:list-subscriptions-by-topic) [[ "$*" == *'SubscriptionArn'* ]] && printf 'PendingConfirmation\n' || printf '1\n' ;;
   unexpected-subscriber:sns:list-subscriptions-by-topic) [[ "$*" == *'length(Subscriptions)'* ]] && printf '2\n' || printf '1\n' ;;
+  cleanup-success:cloudwatch:delete-alarms|cleanup-success:sns:delete-topic) : ;;
   *) printf 'unexpected fake AWS call: %s %s\n' "${1:-}" "${2:-}" >&2; exit 98 ;;
 esac
 EOF
 chmod +x "$TEST_ROOT/bin/aws"
+
+assert_fake_sts_region_rejection() {
+  local expected_case="$1"
+  shift
+  local output status
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO=new "$TEST_ROOT/bin/aws" sts get-caller-identity "$@" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" == 45 && "$output" == *'STS call did not receive the approved Seoul region'* ]] \
+    || { printf 'invalid STS region arguments were accepted: %s\n' "$expected_case" >&2; exit 1; }
+  [[ "$(grep -c '^sts-region ' "$TEST_ROOT/calls" || true)" == 0 ]] \
+    || { printf 'invalid STS region produced a success marker: %s\n' "$expected_case" >&2; exit 1; }
+}
+
+assert_fake_sts_region_rejection missing --query Account --output text
+assert_fake_sts_region_rejection prefix --region ap-northeast-20 --query Account --output text
+assert_fake_sts_region_rejection duplicate --region ap-northeast-2 --region ap-northeast-2 --query Account --output text
+
+assert_sts_region_marker() {
+  local scenario="$1"
+  [[ "$(grep -c '^sts-region ap-northeast-2$' "$TEST_ROOT/calls" || true)" == 1 ]] \
+    || { printf 'STS region was not verified exactly once for %s\n' "$scenario" >&2; exit 1; }
+}
 
 assert_invalid_input() {
   local variable="$1" value="$2" expected_message="$3"
@@ -77,8 +114,7 @@ assert_scenario() {
   set -e
   [[ "$status" == "$expected_status" ]] || { printf 'unexpected status for %s: %s (%s)\n' "$scenario" "$status" "$output" >&2; exit 1; }
   [[ "$output" == *"$expected_message"* ]] || { printf 'unexpected output for %s\n' "$scenario" >&2; exit 1; }
-  grep -Fq 'sts-region sts get-caller-identity --region ap-northeast-2' "$TEST_ROOT/calls" \
-    || { printf 'STS region was not verified for %s\n' "$scenario" >&2; exit 1; }
+  assert_sts_region_marker "$scenario"
   changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm)$' "$TEST_ROOT/calls" || true)"
   [[ "$changes" == "$expected_changes" ]] || { printf 'unexpected AWS changes for %s: %s\n' "$scenario" "$changes" >&2; exit 1; }
 }
@@ -95,6 +131,20 @@ assert_scenario ec2-failure 44 '' ''
 assert_scenario actions-disabled 1 'existing alarm does not match the approved StatusCheckFailed contract' ''
 assert_scenario one-of-two 1 'existing alarm does not match the approved StatusCheckFailed contract' ''
 
+assert_verify_confirmed() {
+  local output status changes
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env PATH="$TEST_ROOT/bin:$PATH" FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO=repeat PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_ACCOUNT_ID=000000000000 PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle bash "$CREATE" verify 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" == 0 && "$output" == *'Existing StatusCheckFailed alarm contract is unchanged.'* ]] || exit 1
+  assert_sts_region_marker verify-confirmed
+  changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm|cloudwatch delete-alarms|sns delete-topic)$' "$TEST_ROOT/calls" || true)"
+  [[ -z "$changes" ]] || exit 1
+}
+assert_verify_confirmed
+
 assert_verify_pending() {
   local output status changes
   : > "$TEST_ROOT/calls"
@@ -103,11 +153,39 @@ assert_verify_pending() {
   status=$?
   set -e
   [[ "$status" == 1 && "$output" == *'SNS email subscription is pending confirmation'* ]] || exit 1
-  grep -Fq 'sts-region sts get-caller-identity --region ap-northeast-2' "$TEST_ROOT/calls" || exit 1
+  assert_sts_region_marker verify-pending
   changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm|cloudwatch delete-alarms|sns delete-topic)$' "$TEST_ROOT/calls" || true)"
   [[ -z "$changes" ]] || exit 1
 }
 assert_verify_pending
+
+assert_cleanup_success() {
+  local output status changes
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env PATH="$TEST_ROOT/bin:$PATH" FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO=cleanup-success PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_ACCOUNT_ID=000000000000 PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle bash "$CLEANUP" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" == 0 && "$output" == *'StatusCheckFailed alarm resources were deleted.'* ]] || exit 1
+  assert_sts_region_marker cleanup-success
+  changes="$(grep -E '^(cloudwatch delete-alarms|sns delete-topic)$' "$TEST_ROOT/calls" || true)"
+  [[ "$changes" == $'cloudwatch delete-alarms\nsns delete-topic' ]] || exit 1
+}
+assert_cleanup_success
+
+assert_cleanup_stops_before_delete() {
+  local output status changes
+  : > "$TEST_ROOT/calls"
+  set +e
+  output="$(env PATH="$TEST_ROOT/bin:$PATH" FAKE_AWS_CALLS="$TEST_ROOT/calls" FAKE_AWS_SCENARIO=unexpected-subscriber PAWCYCLE_ALERT_REGION=ap-northeast-2 PAWCYCLE_ALERT_INSTANCE_ID=i-12345678 PAWCYCLE_ALERT_EMAIL=ops@example.test PAWCYCLE_ALERT_ACCOUNT_ID=000000000000 PAWCYCLE_ALERT_RESOURCE_PREFIX=pawcycle bash "$CLEANUP" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" == 1 && "$output" == *'SNS topic does not have exactly one approved email subscription'* ]] || exit 1
+  assert_sts_region_marker cleanup-stops-before-delete
+  changes="$(grep -E '^(cloudwatch delete-alarms|sns delete-topic)$' "$TEST_ROOT/calls" || true)"
+  [[ -z "$changes" ]] || exit 1
+}
+assert_cleanup_stops_before_delete
 
 grep -Fq 'PAWCYCLE_ALERT_REGION' "$COMMON"
 grep -Fq 'PAWCYCLE_ALERT_INSTANCE_ID' "$COMMON"
