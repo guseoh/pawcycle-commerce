@@ -17,12 +17,17 @@ HTTPS_DOMAIN_NAME="https-domain"
 HTTPS_NGINX_CONFIG_NAME="nginx.https.conf"
 HTTPS_MIN_CERT_VALIDITY_SECONDS="86400"
 HTTPS_DOMAIN=""
-RUNTIME_CONTRACT_PATHS=(
+RELEASE_CONTRACT_PATHS=(
   ':(top)infra/production/compose.yaml'
   ':(top)infra/production/nginx.conf'
   ':(top)infra/production/nginx.https.conf'
-  ':(top)infra/production/backend.Dockerfile'
-  ':(top)infra/production/frontend.Dockerfile'
+)
+CONTROL_WORKTREE_PATHS=(
+  "${RELEASE_CONTRACT_PATHS[@]}"
+  ':(top)infra/production/release-common.sh'
+  ':(top)infra/production/deploy.sh'
+  ':(top)infra/production/rollback.sh'
+  ':(top)infra/production/materialize-ssm-env.sh'
 )
 CONTRACT_SHA=""
 
@@ -96,9 +101,17 @@ read_state_sha() {
 }
 
 current_control_sha() {
+  local changes
   local sha
 
-  sha="$(git rev-parse --verify HEAD)"
+  if ! changes="$(git status --porcelain --untracked-files=all -- "${CONTROL_WORKTREE_PATHS[@]}")"; then
+    die "unable to inspect production control contract worktree"
+  fi
+  [[ -z "$changes" ]] || die "production control contract worktree is not clean"
+
+  if ! sha="$(git rev-parse --verify HEAD)"; then
+    die "unable to resolve production control HEAD"
+  fi
   validate_sha "$sha"
   printf '%s\n' "$sha"
 }
@@ -254,54 +267,80 @@ validate_runtime_contract_compatibility() {
 
   [[ "$approved_contract_sha" != "$candidate_sha" ]] || return 0
   git cat-file -e "${approved_contract_sha}^{commit}" 2>/dev/null \
-    || die "approved runtime contract commit is unavailable: $approved_contract_sha"
+    || die "approved release contract commit is unavailable: $approved_contract_sha"
   git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null \
-    || die "candidate runtime contract commit is unavailable: $candidate_sha"
+    || die "candidate release contract commit is unavailable: $candidate_sha"
 
-  if git diff --quiet "$approved_contract_sha" "$candidate_sha" -- "${RUNTIME_CONTRACT_PATHS[@]}"; then
+  if git diff --quiet "$approved_contract_sha" "$candidate_sha" -- "${RELEASE_CONTRACT_PATHS[@]}"; then
     return 0
   else
     status=$?
   fi
-  [[ "$status" -eq 1 ]] || die "unable to compare production runtime contracts"
-  die "production runtime contract differs from the approved contract SHA"
+  [[ "$status" -eq 1 ]] || die "unable to compare production release contracts"
+  die "production release contract differs from the approved contract SHA"
+}
+
+validate_current_release_for_contract_adoption() {
+  local current_release_sha="$1"
+
+  [[ -n "$current_release_sha" ]] || return 0
+  ACTIVE_SHA="$current_release_sha"
+  export ACTIVE_SHA
+  printf 'Preflighting currently running release before control contract adoption: %s\n' "$current_release_sha"
+  preflight_release "$current_release_sha"
+  verify_running_release || die "running release identity does not match current-sha during control contract adoption"
+  smoke_release || die "running release smoke failed during control contract adoption"
+  if https_enabled; then
+    verify_https_release || die "running HTTPS release verification failed during control contract adoption"
+  fi
 }
 
 load_or_adopt_runtime_contract() {
   local requested_contract_sha="$1"
   local current_release_sha="$2"
   local state_path="$PAWCYCLE_STATE_DIR/contract-sha"
+  local stored_contract_sha=""
   local control_sha
 
-  if [[ -e "$state_path" || -L "$state_path" ]]; then
-    CONTRACT_SHA="$(read_state_sha contract-sha)"
-    if [[ -n "$requested_contract_sha" && "$requested_contract_sha" != "$CONTRACT_SHA" ]]; then
-      die "requested runtime contract SHA does not match the existing contract state"
-    fi
-    return 0
-  fi
-
-  [[ -n "$requested_contract_sha" ]] \
-    || die "production runtime contract state is missing; --adopt-contract-sha is required"
-  validate_sha "$requested_contract_sha"
   control_sha="$(current_control_sha)"
-  validate_runtime_contract_compatibility "$requested_contract_sha" "$control_sha"
 
-  if [[ -n "$current_release_sha" ]]; then
-    ACTIVE_SHA="$current_release_sha"
-    export ACTIVE_SHA
-    printf 'Preflighting currently running release before runtime contract adoption: %s\n' "$current_release_sha"
-    preflight_release "$current_release_sha"
-    verify_running_release || die "running release identity does not match current-sha during contract adoption"
-    smoke_release || die "running release smoke failed during contract adoption"
-    if https_enabled; then
-      verify_https_release || die "running HTTPS release verification failed during contract adoption"
+  if [[ -e "$state_path" || -L "$state_path" ]]; then
+    stored_contract_sha="$(read_state_sha contract-sha)"
+    if [[ "$stored_contract_sha" == "$control_sha" ]]; then
+      if [[ -n "$requested_contract_sha" && "$requested_contract_sha" != "$control_sha" ]]; then
+        die "requested runtime contract SHA does not match current control HEAD"
+      fi
+      CONTRACT_SHA="$stored_contract_sha"
+      return 0
     fi
+
+    [[ -n "$requested_contract_sha" ]] \
+      || die "production control SHA differs from contract state; --adopt-contract-sha with the current control HEAD is required"
+    validate_sha "$requested_contract_sha"
+    [[ "$requested_contract_sha" == "$control_sha" ]] \
+      || die "requested runtime contract SHA does not match current control HEAD"
+    validate_runtime_contract_compatibility "$stored_contract_sha" "$control_sha"
+  else
+    [[ -n "$requested_contract_sha" ]] \
+      || die "production runtime contract state is missing; --adopt-contract-sha with the current control HEAD is required"
+    validate_sha "$requested_contract_sha"
+    [[ "$requested_contract_sha" == "$control_sha" ]] \
+      || die "requested runtime contract SHA does not match current control HEAD"
   fi
 
-  write_state contract-sha "$requested_contract_sha"
-  CONTRACT_SHA="$requested_contract_sha"
-  printf 'Production runtime contract adopted: %s\n' "$CONTRACT_SHA"
+  validate_current_release_for_contract_adoption "$current_release_sha"
+  write_state contract-sha "$control_sha"
+  CONTRACT_SHA="$control_sha"
+  printf 'Production control contract adopted: %s\n' "$CONTRACT_SHA"
+}
+
+load_runtime_contract() {
+  local control_sha
+
+  CONTRACT_SHA="$(read_state_sha contract-sha)"
+  control_sha="$(current_control_sha)"
+  [[ "$control_sha" == "$CONTRACT_SHA" ]] \
+    || die "production control SHA differs from contract state; deploy with --adopt-contract-sha using the current control HEAD after explicit approval"
 }
 
 validate_rollback_contract_compatibility() {
