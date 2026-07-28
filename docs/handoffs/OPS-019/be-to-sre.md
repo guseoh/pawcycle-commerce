@@ -19,7 +19,7 @@ OPS-019 Backend 보고서, AUTH-003 승인 인증 계약, AUTH-004 구현 결과
 
 ## 완료된 작업
 
-기존 `EmailNormalizer`, `PasswordEncoder`, `MemberRepository`와 transaction을 사용하는 회원 한 건 생성 command와 단위·통합 테스트 기반을 준비했다. 명시적 enable flag와 non-web application type을 모두 요구하며 일반 web process에서는 runner가 생성되지 않는다.
+기존 `EmailNormalizer`, `PasswordEncoder`, `MemberRepository`와 transaction을 사용하는 회원 한 건 생성 command와 단위·통합 테스트 기반을 준비했다. Application main의 Bootstrap이 Spring Context 전에 명시적 non-web application type과 정확한 enable flag를 검사하며, 일반 web process에서는 maintenance runner가 생성되지 않는다.
 
 ## 사용 가능한 결과
 
@@ -27,8 +27,9 @@ OPS-019 Backend 보고서, AUTH-003 승인 인증 계약, AUTH-004 구현 결과
 - 필수 application type: `spring.main.web-application-type=none`
 - 표준입력 첫 줄: email
 - 표준입력 둘째 줄: password
-- 성공 출력: 고정된 비민감 PASS 한 줄
-- 중복·입력·저장 실패: 기존 회원 변경 없이 generic failure
+- 성공 process stdout: 마지막 newline을 포함한 `PASS: production auth smoke member created` 한 줄
+- gate·중복·입력·저장 실패: nonzero와 고정된 비민감 오류, 기존 회원 변경 없음
+- Maintenance 안전값: Flyway, banner와 startup info 비활성, Context 생명주기 framework stdout·stderr 폐기
 
 실제 credential 값, memberId, hash와 DB 연결값은 이 문서에 없으며 추가해서는 안 된다.
 
@@ -42,6 +43,8 @@ OPS-019 Backend 보고서, AUTH-003 승인 인증 계약, AUTH-004 구현 결과
 
 Credential은 CLI 인자·환경 변수·파일이 아니라 표준입력 두 줄로만 전달한다. Email은 기존 인증 정규화 규칙을 사용하고 password는 trim하지 않는다. 동일 email이 있으면 update, password reset, overwrite 없이 실패한다.
 
+Non-web 요청의 enable gate가 누락·false·오타·오값 또는 중복이면 application Context, DataSource, Hikari, Flyway와 JPA 초기화 전에 종료한다. 유효한 maintenance 실행에서도 Bootstrap이 `spring.flyway.enabled=false`를 강제하며 같은 운영자 인자로 다시 활성화할 수 없게 한다.
+
 ## 미확정 결정
 
 Production image의 fat jar에서 maintenance main application을 실행하는 wrapper 방식, TTY prompt 구현, container 실행·정리 명령과 실제 실행 시점은 Platform/SRE가 후속 승인 범위에서 정한다.
@@ -53,10 +56,11 @@ Production DB 연결과 회원 생성, 운영 container 실행, OPS-018 session 
 ## 소비자 검증 포인트
 
 - 일반 web process에서 enable flag 유무와 관계없이 runner가 생기지 않는가
-- non-web type과 enable flag 중 하나라도 없으면 아무 입력·DB write도 수행하지 않는가
+- non-web type의 enable gate가 누락·false·오타·오값이면 Context·DataSource 전에 nonzero로 종료하는가
+- 운영자가 Flyway·banner·startup log를 활성화하는 인자를 추가해도 Backend Bootstrap의 안전값이 우선하는가
 - TTY에서 email은 대화형으로, password는 echo 없이 정확히 한 번 읽는가
 - credential이 argv, environment, 파일, shell history와 container log에 남지 않는가
-- 성공 시 PASS만 보이고 실패 시 입력·hash·DB 연결 세부가 보이지 않는가
+- 성공 stdout이 PASS 한 줄뿐이고 실패 시 입력·hash·JDBC URL·DB 사용자·원시 예외가 보이지 않는가
 - container가 한 번 실행 후 종료하며 web service로 남지 않는가
 
 ## 검증 결과
@@ -69,7 +73,7 @@ Wrapper는 `set -x`를 사용하지 않고 credential을 command substitution, a
 
 ## 적용·실행 방법
 
-이번 인수인계는 실행 가능한 운영 wrapper가 아니다. Platform/SRE는 기존 production image·runtime 계약 안에서 non-web application type과 enable flag를 명시하고, 보호된 TTY에서 표준입력 두 줄을 전달하며, 종료 코드와 고정 PASS를 확인하는 wrapper·Runbook을 별도 작업으로 준비한다.
+이번 인수인계는 실행 가능한 운영 wrapper가 아니다. Platform/SRE는 기존 production image·runtime 계약 안에서 non-web application type과 enable flag를 정확히 명시하고, 보호된 TTY에서 표준입력 두 줄을 전달하며, 종료 코드와 고정 PASS를 확인하는 wrapper·Runbook을 별도 작업으로 준비한다. Context 이전 gate, Flyway 차단, framework 출력 억제와 process 결과 형식은 Backend Bootstrap 책임이고, TTY password echo 차단과 container 실행·정리는 SRE 책임이다.
 
 ## 실패와 정리 경계
 
@@ -79,7 +83,7 @@ Wrapper는 `set -x`를 사용하지 않고 credential을 command substitution, a
 
 ## 알려진 위험
 
-Backend command 자체는 TTY echo를 제어하지 않는다. 실제 container의 jar 실행 경로와 one-shot 종료는 아직 검증하지 않았다. 강한 password의 구체 복잡도 규칙은 승인되지 않아 command가 추가 정책을 강제하지 않는다.
+Backend command 자체는 TTY echo를 제어하지 않는다. Application main의 Bootstrap 경계는 검증했지만 실제 production container의 jar 실행 경로와 one-shot 종료는 아직 검증하지 않았다. 강한 password의 구체 복잡도 규칙은 승인되지 않아 command가 추가 정책을 강제하지 않는다.
 
 ## 남은 위험과 주의 사항
 

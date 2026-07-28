@@ -25,10 +25,11 @@ OPS-019 사용자 승인, `AUTH-003` 승인 인수인계, `AUTH-004` Backend 결
 
 ## 변경 범위
 
-- 명시적 enable flag와 non-web application 조건을 모두 만족할 때만 생성되는 maintenance runner
+- Spring Context 생성 전에 non-web application type과 명시적 enable flag를 검사하는 maintenance Bootstrap gate
+- 승인된 maintenance 경로에서 Flyway, banner와 startup·framework log를 운영자 인자보다 우선해 비활성화하는 실행 경계
 - 표준입력 두 줄을 읽고 고정된 비민감 PASS만 출력하는 one-shot command
 - email 정규화, 빈 password 거부, 중복 잠금 조회, BCrypt encode와 회원 한 건 저장을 묶는 transaction service
-- 입력 오류, 중복, 저장 실패, 비활성화와 민감정보 비노출 회귀 테스트
+- 입력 오류, 중복, 저장 실패, gate 거부, 전체 Bootstrap 출력과 민감정보 비노출 회귀 테스트
 - Backend에서 Platform/SRE로 전달할 실행 경계
 
 ## 변경하지 않은 범위
@@ -37,15 +38,17 @@ Production DB·외부 network·운영 container에는 접근하지 않았다. �
 
 ## 주요 결과
 
-`pawcycle.maintenance.create-auth-smoke-member.enabled=true`와 non-web application type을 함께 요구한다. 둘 중 하나라도 없거나 servlet web application이면 runner와 service bean이 생성되지 않는다.
+Maintenance 진입은 애플리케이션 Context 생성 전에 `spring.main.web-application-type=none`과 `pawcycle.maintenance.create-auth-smoke-member.enabled=true`가 정확히 함께 있는지 검사한다. Non-web 요청에서 enable gate가 누락·false·오타·오값이거나 gate가 중복되면 비민감 오류와 nonzero로 종료하며 DataSource·Hikari·Flyway·JPA와 회원 저장을 시작하지 않는다. 일반적인 application 시작 또는 명시적 servlet web application은 maintenance Bootstrap을 통과하지 않고 기존 web 시작 경로를 그대로 사용한다.
 
 명령은 표준입력의 첫 줄을 email, 둘째 줄을 password로 읽는다. Email은 기존 `EmailNormalizer`로 정규화하고 password는 변형하지 않되 null·빈 값·공백만 있는 값은 거부한다. 정규화 email이 이미 존재하면 encode·save·update를 수행하지 않고 실패한다.
 
-성공 경로는 기존 `PasswordEncoder`로 hash를 만들고 `MemberRepository.saveAndFlush`로 회원 한 건만 저장한다. 성공 출력은 고정된 PASS 한 줄이며 email, password, memberId와 hash를 포함하지 않는다.
+승인된 maintenance 경로는 `spring.flyway.enabled=false`, non-web type, banner off, startup info off와 root logging off를 강제하며 같은 운영자 인자로 다시 활성화할 수 없게 보호한다. Context 생명주기 동안 framework stdout·stderr를 폐기하고 성공한 뒤 Bootstrap이 승인된 PASS만 원래 stdout에 기록한다. 성공 경로는 기존 `PasswordEncoder`로 hash를 만들고 `MemberRepository.saveAndFlush`로 회원 한 건만 저장한다. 성공 process stdout은 마지막 newline을 포함한 `PASS: production auth smoke member created` 한 줄뿐이다. 실패 process는 nonzero와 고정된 비민감 오류만 반환하며 email, password, memberId, hash, JDBC URL, DB 사용자와 원시 예외를 출력하지 않는다.
 
 ## 핵심 결정과 대안
 
-공개·관리자 API나 임시 HTTP endpoint 대신 기존 애플리케이션의 non-web `ApplicationRunner`를 선택했다. 일반 web process에서 enable flag가 잘못 전달돼도 실행되지 않도록 property 조건만 쓰는 대안보다 non-web 조건을 함께 사용했다.
+공개·관리자 API나 임시 HTTP endpoint 대신 기존 애플리케이션의 non-web `ApplicationRunner`를 사용하되, bean 조건만으로는 DataSource·Flyway 초기화를 막을 수 없으므로 main 진입점의 작은 사전 Bootstrap gate를 함께 사용했다. 별도 Boot artifact·Gradle packaging 없이 같은 애플리케이션 source를 사용하고, 정상 web 시작은 gate 대상이 아니게 유지했다.
+
+Flyway를 운영자 주의에 맡기는 대안은 잘못된 인자로 migration이 실행될 수 있어 제외했다. Bootstrap이 보호 대상 command-line 인자를 제거한 뒤 안전 값을 마지막에 추가하고, `SpringApplication`에도 non-web·command-line 처리·banner·startup info를 명시한다.
 
 직접 SQL과 외부 hash 생성은 기존 인증 규칙을 우회하므로 제외했다. 기존 local QA bootstrap은 회원 외 상품·SKU를 만들고 production profile을 차단하므로 재사용하지 않았다.
 
@@ -73,11 +76,11 @@ Schema, Flyway와 repository 계약 변경은 없다. 실제 후속 실행이 �
 
 ## 보안 영향
 
-Credential을 CLI 인자, 환경 변수, 저장소 파일로 받지 않는다. Command와 예외는 email, password, memberId, hash와 persistence 원인을 출력하지 않는다. 실제 TTY prompt와 password echo 차단은 후속 Platform/SRE wrapper 책임으로 분리했다.
+Credential을 CLI 인자, 환경 변수, 저장소 파일로 받지 않는다. Bootstrap·Command와 예외는 email, password, memberId, hash, JDBC URL, DB 사용자와 persistence 원인을 출력하지 않는다. Backend는 성공 stdout 한 줄과 generic failure 경계를 보장한다. 실제 TTY prompt, password echo 차단과 container 표준입력 연결은 후속 Platform/SRE wrapper 책임으로 분리했다.
 
 ## 운영 영향
 
-일반 application boot와 servlet web process에는 영향이 없다. 실제 production 실행은 별도 사용자 승인과 SRE wrapper·Runbook이 필요하다. 이번 작업에서는 maintenance flag를 사용해 애플리케이션을 시작하거나 DB에 연결하지 않았다.
+일반 application boot와 servlet web process는 기존 `SpringApplication.run` 경로를 사용하며 maintenance runner가 생성되지 않는다. 명시적 non-web maintenance 요청만 Context 전에 gate를 통과해야 하고, 승인된 경로에서도 Flyway는 항상 비활성이다. 실제 production 실행은 별도 사용자 승인과 SRE wrapper·Runbook이 필요하다. 이번 작업에서는 production 애플리케이션을 시작하거나 DB에 연결하지 않았다.
 
 ## 성능 영향
 
@@ -91,7 +94,10 @@ Credential을 CLI 인자, 환경 변수, 저장소 파일로 받지 않는다. C
 - 관련 Markdown UTF-8 strict decode: 통과
 - commit 제목 규칙 검사: 통과
 - `git diff --check`: 통과
-- Backend 집중 test와 build: 로컬 Java 25 부재로 실행 전 중단, GitHub Repository Validation에서 확인
+- Bootstrap 단위 테스트: gate 누락·false·오타·오값·중복을 application launcher 호출 전에 거부하고 보호 인자 강제를 확인
+- 전체 process 경계 테스트: gate 선행 종료, Flyway 강제 비활성, 성공 stdout 한 줄, 실패 출력 비민감화와 중복 회원 무변경을 확인
+- 기존 회원 정상 생성, 중복 무변경, 실패 rollback, configuration·일반 web 비활성 테스트 유지
+- Backend 집중 test와 build: 로컬 Java 25 부재로 실행 전 중단, GitHub Repository Validation의 Java 25·격리 MySQL 8.4 환경에서 확인
 - 첫 Repository Validation은 Spring Boot 4.1에 없는 `ConditionalOnWebApplication.Type.NOT_WEB` 참조로 compile에 실패했고, 지원되는 `@ConditionalOnNotWebApplication`으로 같은 non-web 조건을 교체했다.
 - 원격 Repository Validation: 동적 run 번호·SHA를 문서에 고정하지 않고 GitHub Checks를 권위 원본으로 확인
 
@@ -101,7 +107,7 @@ Credential을 CLI 인자, 환경 변수, 저장소 파일로 받지 않는다. C
 
 ## 적용 후 검증 (고위험 필수)
 
-저장소 변경 후 maintenance 비활성·web process 차단, 정상 한 건 생성, 중복 무변경, 입력·저장 실패와 민감정보 비노출을 단위·통합 테스트로 검증한다. 이번 작업의 적용 대상은 저장소 코드이며 production 회원 생성은 수행하지 않는다.
+저장소 변경 후 Context 이전 gate 거부, maintenance Flyway 비활성, 일반 web process 차단, 정상 한 건 생성, 성공 stdout 한 줄, 중복 무변경, 입력·저장 실패와 민감정보 비노출을 단위·통합·전체 process 테스트로 검증한다. 이번 작업의 적용 대상은 저장소 코드이며 production 회원 생성은 수행하지 않는다.
 
 ## 독립 검증 (고위험 필수)
 
@@ -121,15 +127,15 @@ GitHub Repository Validation의 Java 25·MySQL 8.4 환경에서 Backend test와 
 
 ## AI 리뷰 반영 여부
 
-PR 생성 후 CodeRabbit과 Codex Review 지적을 현재 코드·승인 범위와 대조해 유효한 지적만 반영한다.
+Codex Review의 두 P2를 반영했다. ApplicationRunner bean 조건 이전에 main Bootstrap gate를 두어 잘못된 non-web 요청을 Context·DataSource 전에 종료하고, maintenance 실행의 Flyway·framework 출력 차단과 process stdout 한 줄 계약을 코드와 전체 process 테스트로 고정했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-PR review 완료 후 미반영 항목이 있으면 사용자 승인, 기존 계약과 제외 범위에 근거해 PR에 기록한다.
+두 P2에는 미반영 항목이 없다. CodeRabbit의 일반적인 stack trace 보존 제안은 credential·DB 식별값과 persistence 원인을 노출하지 않는 이번 고위험 command의 승인된 실패 계약과 충돌하므로 원시 cause를 연결하지 않는 기존 결정을 유지한다.
 
 ## 적용 방법
 
-이번 PR은 코드와 테스트만 준비한다. 실제 실행은 Platform/SRE가 별도 승인된 wrapper와 Runbook에서 non-web mode, enable flag, 표준입력·TTY 보호와 one-shot 종료를 함께 보장한 뒤 수행한다.
+이번 PR은 코드와 테스트만 준비한다. 실제 실행은 Platform/SRE가 별도 승인된 wrapper와 Runbook에서 정확한 non-web mode와 enable flag를 전달하고, 보호된 TTY의 표준입력·password echo 차단과 container one-shot 종료를 보장한 뒤 수행한다. Backend Bootstrap이 gate 선행 검사, Flyway 비활성, framework 출력 억제와 process 결과 계약을 담당한다.
 
 ## 복구·롤백 증거 (고위험 필수)
 
@@ -137,7 +143,7 @@ PR review 완료 후 미반영 항목이 있으면 사용자 승인, 기존 계�
 
 ## 위험과 제한
 
-Backend 명령은 표준입력 두 줄의 순서만 정의하며 TTY에서 password echo를 끄지 않는다. SRE wrapper 없이 직접 실행하면 입력 보호와 fat jar 실행 방식이 보장되지 않는다. 강한 password의 구체 정책은 새로 만들지 않고 실제 사용자가 선택할 책임으로 유지했다.
+Backend 명령은 표준입력 두 줄의 순서만 정의하며 TTY에서 password echo를 끄지 않는다. Bootstrap은 application main 진입을 보호하지만 SRE wrapper 없이 직접 실행하면 입력 보호, production image의 fat jar 실행 경로와 container lifecycle은 보장되지 않는다. 강한 password의 구체 정책은 새로 만들지 않고 실제 사용자가 선택할 책임으로 유지했다.
 
 ## 남은 위험
 
