@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import shlex
 import signal
 import stat
 import subprocess
@@ -226,28 +227,46 @@ def run_case(mode: str, signal_during_password: bool = False) -> tuple[int, str,
 
 def assert_run_contract(arguments: str) -> None:
     run_line = next(line for line in arguments.splitlines() if line.startswith("run "))
-    for required in (
+    run_arguments = shlex.split(run_line)
+    for required_flag in (
         "--rm",
         "--interactive",
-        "--name pawcycle-ops020-auth-smoke-member",
-        "--network pawcycle-production-data",
         "--read-only",
-        "--tmpfs /tmp:size=64m,mode=1777",
-        "--user pawcycle",
-        "--security-opt no-new-privileges:true",
-        "--cap-drop ALL",
-        "--memory 640m",
-        "--cpus 0.75",
-        "--pids-limit 256",
-        "--log-driver none",
         "--spring.main.web-application-type=none",
         "--pawcycle.maintenance.create-auth-smoke-member.enabled=true",
         "--spring.flyway.enabled=false",
         DIGEST,
     ):
-        require(required in run_line, f"Docker run contract is missing: {required}")
-    for forbidden in (EMAIL, PASSWORD, "--publish", " -p ", "--restart"):
-        require(forbidden not in run_line, f"Docker run contract exposed or enabled: {forbidden}")
+        require(
+            required_flag in run_arguments,
+            f"Docker run contract is missing: {required_flag}",
+        )
+    for option, value in (
+        ("--name", "pawcycle-ops020-auth-smoke-member"),
+        ("--network", "pawcycle-production-data"),
+        ("--tmpfs", "/tmp:size=64m,mode=1777"),
+        ("--user", "pawcycle"),
+        ("--security-opt", "no-new-privileges:true"),
+        ("--cap-drop", "ALL"),
+        ("--memory", "640m"),
+        ("--cpus", "0.75"),
+        ("--pids-limit", "256"),
+        ("--log-driver", "none"),
+    ):
+        option_indexes = [
+            index for index, argument in enumerate(run_arguments) if argument == option
+        ]
+        require(
+            len(option_indexes) == 1
+            and option_indexes[0] + 1 < len(run_arguments)
+            and run_arguments[option_indexes[0] + 1] == value,
+            f"Docker run contract is missing or duplicated: {option} {value}",
+        )
+    for forbidden in (EMAIL, PASSWORD, "--publish", "-p", "--restart"):
+        require(
+            forbidden not in run_arguments,
+            f"Docker run contract exposed or enabled: {forbidden}",
+        )
 
 
 def main() -> None:
