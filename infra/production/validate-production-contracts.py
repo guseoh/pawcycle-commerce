@@ -168,6 +168,23 @@ def validate_workflow() -> None:
         "bash infra/production/test-production-auth-session-smoke.sh" in validation_workflow,
         "Repository Validation must execute the OPS-017 fake HTTP contract test",
     )
+    require(
+        "infra/production/create-production-auth-smoke-member.sh" in validation_workflow
+        and "infra/production/test-create-production-auth-smoke-member-lifecycle.sh" in validation_workflow,
+        "Repository Validation must syntax-check the OPS-020 shell contracts",
+    )
+    require(
+        "python -m py_compile infra/production/test-create-production-auth-smoke-member.py"
+        in validation_workflow
+        and 'sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py'
+        in validation_workflow,
+        "Repository Validation must execute the OPS-020 fake Docker and PTY contract test",
+    )
+    require(
+        "bash infra/production/test-create-production-auth-smoke-member-lifecycle.sh"
+        in validation_workflow,
+        "Repository Validation must execute the isolated OPS-020 Docker lifecycle test",
+    )
 
 
 def validate_scripts() -> None:
@@ -184,6 +201,11 @@ def validate_scripts() -> None:
     ec2_alarm_cleanup = (PRODUCTION / "cleanup-ec2-status-check-alarm.sh").read_text(encoding="utf-8")
     auth_session_smoke = (PRODUCTION / "verify-production-auth-session-smoke.sh").read_text(encoding="utf-8")
     auth_session_tests = (PRODUCTION / "test-production-auth-session-smoke.sh").read_text(encoding="utf-8")
+    auth_member = (PRODUCTION / "create-production-auth-smoke-member.sh").read_text(encoding="utf-8")
+    auth_member_pty = (PRODUCTION / "test-create-production-auth-smoke-member.py").read_text(encoding="utf-8")
+    auth_member_lifecycle = (
+        PRODUCTION / "test-create-production-auth-smoke-member-lifecycle.sh"
+    ).read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback))
 
     require('APPROVED_AWS_REGION="ap-northeast-2"' in ec2_alarm_common, "OPS-015 alarm region must be Seoul")
@@ -231,6 +253,127 @@ def validate_scripts() -> None:
         require(f"run_case {scenario} " in auth_session_tests, f"OPS-017 fake HTTP regression scenario is missing: {scenario}")
     require("different-duckdns-host" in auth_session_tests and "run_invalid_url_case \\\n  different-duckdns-host" in auth_session_tests, "OPS-017 approved domain mismatch regression scenario is missing")
     require("run_non_tty_case" in auth_session_tests, "OPS-017 non-TTY regression scenario is missing")
+
+    require("set +x" in auth_member and "set -x" not in auth_member, "OPS-020 must disable shell tracing")
+    require(
+        auth_member.index("exec 3<>/dev/tty") < auth_member.index("docker pull"),
+        "OPS-020 must reject a missing TTY before Docker access",
+    )
+    require(
+        '[[ "$EUID" == "0" ]]' in auth_member
+        and auth_member.index('[[ "$EUID" == "0" ]]') < auth_member.index("docker pull"),
+        "OPS-020 must reject non-root execution before Docker access",
+    )
+    require(
+        "stty -echo" in auth_member
+        and 'stty "$TTY_STATE"' in auth_member
+        and "trap cleanup EXIT" in auth_member
+        and "trap 'exit 130' INT" in auth_member
+        and "trap 'exit 143' TERM" in auth_member,
+        "OPS-020 terminal echo restoration is incomplete",
+    )
+    require(
+        "coproc MEMBER_CONTAINER" in auth_member
+        and 'printf \'%s\\n%s\\n\' "$OPERATOR_EMAIL" "$OPERATOR_PASSWORD" >&"$MEMBER_INPUT_FD"'
+        in auth_member,
+        "OPS-020 credentials must cross only a Bash builtin stdin pipe",
+    )
+    docker_run_start = auth_member.index("docker run")
+    docker_run_end = auth_member.index("2>/dev/null", docker_run_start)
+    docker_run_block = auth_member[docker_run_start:docker_run_end]
+    for option in (
+        "--rm",
+        "--interactive",
+        "--log-driver none",
+        "--read-only",
+        "--tmpfs /tmp:size=64m,mode=1777",
+        "--user pawcycle",
+        "--security-opt no-new-privileges:true",
+        "--cap-drop ALL",
+        "--memory 640m",
+        "--cpus 0.75",
+        "--pids-limit 256",
+    ):
+        require(option in auth_member, f"OPS-020 Docker security option is missing: {option}")
+    require(
+        "--publish" not in docker_run_block
+        and re.search(r"(?:^|\s)-p(?:\s|$)", docker_run_block) is None
+        and "--restart" not in docker_run_block
+        and "--volume" not in docker_run_block,
+        "OPS-020 must not publish ports, restart, or mount a volume",
+    )
+    require(
+        "org.opencontainers.image.revision" in auth_member
+        and "BACKEND_DIGEST" in auth_member
+        and "@sha256:" in auth_member
+        and "latest" not in auth_member,
+        "OPS-020 immutable Backend image verification is incomplete",
+    )
+    require(
+        'exec 9>>"$DEPLOY_LOCK_FILE"' in auth_member
+        and "flock --nonblock 9" in auth_member
+        and auth_member.index("flock --nonblock 9") < auth_member.index("docker pull"),
+        "OPS-020 must share the production release lock before Docker access",
+    )
+    require(
+        "MEMBER_COMMAND_TIMEOUT_SECONDS=180" in auth_member
+        and "exec timeout" in auth_member
+        and "--kill-after=10s" in auth_member
+        and "terminate_member_process" in auth_member,
+        "OPS-020 one-shot execution and cleanup must be time bounded",
+    )
+    require(
+        "validate_backend_env_contract" in auth_member
+        and "stream_backend_env" in auth_member
+        and "--env-file <(stream_backend_env)" in auth_member,
+        "OPS-020 must stream the Compose runtime env without persisting a converted file",
+    )
+    require(
+        "production Backend image reference is invalid" in auth_member
+        and "production Backend revision is invalid" in auth_member
+        and "production Backend image identity is invalid" in auth_member
+        and "production Backend is not healthy" in auth_member,
+        "OPS-020 must match the running Backend to the approved release",
+    )
+    require(
+        "pawcycle-production-data" in auth_member
+        and "--spring.main.web-application-type=none" in auth_member
+        and "--pawcycle.maintenance.create-auth-smoke-member.enabled=true" in auth_member
+        and "--spring.flyway.enabled=false" in auth_member,
+        "OPS-020 maintenance and data-network contract is incomplete",
+    )
+    require(
+        "docker rm --force" in auth_member
+        and "CONTAINER_STARTED" in auth_member
+        and "com.pawcycle.ops020.scope" in auth_member,
+        "OPS-020 ownership-scoped one-shot Container cleanup is incomplete",
+    )
+    require(
+        "password was echoed to the terminal" in auth_member_pty
+        and "raw Docker stderr was exposed" in auth_member_pty
+        and "Docker run contract exposed or enabled" in auth_member_pty,
+        "OPS-020 fake Docker and PTY regressions are incomplete",
+    )
+    require(
+        "runtime-env-contract-ok" in auth_member_pty
+        and "process.terminate()" in auth_member_pty
+        and '"--label", "com.pawcycle.ops020.scope=auth-smoke-member"' in auth_member_pty,
+        "OPS-020 PTY test must cover runtime env streaming and bounded child cleanup",
+    )
+    require(
+        "pawcycle-production" not in auth_member_lifecycle
+        and "/opt/pawcycle" not in auth_member_lifecycle
+        and "com.pawcycle.ops020.test" in auth_member_lifecycle
+        and "mysql:8.4.10@sha256:" in auth_member_lifecycle,
+        "OPS-020 lifecycle test must use only labeled isolated MySQL resources",
+    )
+    for evidence in (
+        "one-shot lifecycle changed the schema",
+        "one-shot lifecycle changed Flyway history",
+        "duplicate execution changed the existing member",
+        "one-shot lifecycle created non-member domain data",
+    ):
+        require(evidence in auth_member_lifecycle, f"OPS-020 lifecycle evidence is missing: {evidence}")
 
     require("^ghcr\\.io/" in common, "deploy input must be restricted to GHCR")
     require("^[0-9a-f]{40}$" in common, "deploy input must require a full commit SHA")
