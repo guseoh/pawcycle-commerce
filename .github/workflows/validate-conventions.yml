@@ -102,6 +102,8 @@ jobs:
             infra/production/test-ec2-status-check-alarm.sh \
             infra/production/verify-production-auth-session-smoke.sh \
             infra/production/test-production-auth-session-smoke.sh \
+            infra/production/create-production-auth-smoke-member.sh \
+            infra/production/test-create-production-auth-smoke-member-lifecycle.sh \
             infra/production/test-production-scripts.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
@@ -113,6 +115,9 @@ jobs:
           bash infra/production/test-db-backup-restore.sh
           bash infra/production/test-ec2-status-check-alarm.sh
           bash infra/production/test-production-auth-session-smoke.sh
+          python -m py_compile infra/production/test-create-production-auth-smoke-member.py
+          sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
+          bash infra/production/test-create-production-auth-smoke-member-lifecycle.sh
 
       - name: Verify MySQL service
         env:
