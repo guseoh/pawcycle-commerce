@@ -11,9 +11,10 @@ usage() {
 Usage: deploy.sh --sha <40-char-sha> --backend-image <ghcr-repository> --frontend-image <ghcr-repository> [options]
 
 Options:
-  --runtime-dir <path>        Materialized runtime bundle root (default: /opt/pawcycle/runtime)
-  --state-dir <path>          Release state directory (default: /opt/pawcycle/state)
-  --adopt-contract-sha <sha>  Explicitly approve the current clean control HEAD when contract state is absent or differs
+  --runtime-dir <path>           Materialized runtime bundle root (default: /opt/pawcycle/runtime)
+  --state-dir <path>             Release state directory (default: /opt/pawcycle/state)
+  --adopt-contract-sha <sha>     Explicitly approve the current clean control HEAD when contract state is absent or differs
+  --baseline-contract-sha <sha>  Previously approved control baseline; required only when contract state is absent
 EOF
 }
 
@@ -21,6 +22,7 @@ TARGET_SHA=""
 BACKEND_IMAGE=""
 FRONTEND_IMAGE=""
 ADOPT_CONTRACT_SHA=""
+BASELINE_CONTRACT_SHA=""
 PAWCYCLE_RUNTIME_DIR="/opt/pawcycle/runtime"
 PAWCYCLE_STATE_DIR="/opt/pawcycle/state"
 
@@ -30,6 +32,7 @@ while (( $# > 0 )); do
     --backend-image) BACKEND_IMAGE="${2:-}"; shift 2 ;;
     --frontend-image) FRONTEND_IMAGE="${2:-}"; shift 2 ;;
     --adopt-contract-sha) ADOPT_CONTRACT_SHA="${2:-}"; shift 2 ;;
+    --baseline-contract-sha) BASELINE_CONTRACT_SHA="${2:-}"; shift 2 ;;
     --runtime-dir) PAWCYCLE_RUNTIME_DIR="${2:-}"; shift 2 ;;
     --state-dir) PAWCYCLE_STATE_DIR="${2:-}"; shift 2 ;;
     --help) usage; exit 0 ;;
@@ -44,7 +47,7 @@ if [[ -e "$PAWCYCLE_STATE_DIR/current-sha" || -L "$PAWCYCLE_STATE_DIR/current-sh
   CURRENT_SHA="$(read_state_sha current-sha)"
 fi
 
-load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
+load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$BASELINE_CONTRACT_SHA" "$CURRENT_SHA"
 
 if [[ "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
   validate_runtime_contract_compatibility "$CONTRACT_SHA" "$TARGET_SHA"
