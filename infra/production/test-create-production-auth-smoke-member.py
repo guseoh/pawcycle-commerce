@@ -22,6 +22,7 @@ EMAIL = "ops020-fixture@example.test"
 PASSWORD = "fixture-password-not-secret"
 REPOSITORY = "ghcr.io/example/pawcycle-commerce-backend"
 DIGEST = f"{REPOSITORY}@sha256:{'a' * 64}"
+IMAGE_ID = f"sha256:{'b' * 64}"
 PASS = "PASS: production auth smoke member created"
 
 
@@ -82,15 +83,25 @@ case "${1:-}" in
     case "${4:-}" in
       *org.opencontainers.image.revision*) printf '%s\\n' "$FAKE_SHA" ;;
       *Config.User*) printf '%s\\n' 'pawcycle' ;;
+      *.Id*) printf '%s\\n' "$FAKE_IMAGE_ID" ;;
       *RepoDigests*) printf '%s\\n' "$FAKE_DIGEST" ;;
       *) exit 8 ;;
     esac
     ;;
-  ps) printf '%s\\n' 'mysql-fixture-id' ;;
+  ps)
+    case " $* " in
+      *com.docker.compose.service=backend*) printf '%s\\n' 'backend-fixture-id' ;;
+      *com.docker.compose.service=mysql*) printf '%s\\n' 'mysql-fixture-id' ;;
+      *) exit 8 ;;
+    esac
+    ;;
   inspect)
     case "${3:-}" in
       *State.Status*) printf '%s\\n' 'running' ;;
       *State.Health.Status*) printf '%s\\n' 'healthy' ;;
+      *Config.Image*) printf '%s:%s\\n' "$FAKE_REPOSITORY" "$FAKE_SHA" ;;
+      *org.opencontainers.image.revision*) printf '%s\\n' "$FAKE_SHA" ;;
+      *.Image*) printf '%s\\n' "$FAKE_IMAGE_ID" ;;
       *NetworkSettings.Networks*) printf '%s\\n' 'attached' ;;
       *com.pawcycle.ops020.scope*) printf '%s\\n' 'auth-smoke-member' ;;
       *) exit 8 ;;
@@ -99,6 +110,19 @@ case "${1:-}" in
   network) printf '%s\\n' 'true' ;;
   container) exit 1 ;;
   run)
+    env_file=''
+    arguments=("$@")
+    for (( index = 0; index < ${#arguments[@]}; index += 1 )); do
+      if [[ "${arguments[$index]}" == '--env-file' ]]; then
+        (( index + 1 < ${#arguments[@]} )) || exit 8
+        env_file="${arguments[$((index + 1))]}"
+      fi
+    done
+    [[ -n "$env_file" && -r "$env_file" ]]
+    grep -Fxq 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' "$env_file"
+    grep -Fxq 'SPRING_DATASOURCE_USERNAME=fixture_user' "$env_file"
+    grep -Fxq "SPRING_DATASOURCE_PASSWORD=fixture_db'password" "$env_file"
+    printf '%s\\n' 'runtime-env-contract-ok' >> "$FAKE_DOCKER_MARKER"
     IFS= read -r email
     IFS= read -r password
     [[ "$email" == 'ops020-fixture@example.test' ]]
@@ -129,9 +153,9 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
     (runtime / "current").symlink_to(bundle, target_is_directory=True)
     backend_env = bundle / "backend.env"
     backend_env.write_text(
-        "SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture\n"
-        "SPRING_DATASOURCE_USERNAME=fixture_user\n"
-        "SPRING_DATASOURCE_PASSWORD=fixture_db_password\n",
+        "SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/fixture'\n"
+        "SPRING_DATASOURCE_USERNAME='fixture_user'\n"
+        "SPRING_DATASOURCE_PASSWORD='fixture_db\\'password'\n",
         encoding="utf-8",
     )
     complete = bundle / ".complete"
@@ -155,6 +179,8 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "FAKE_SHA": sha,
         "FAKE_DIGEST": DIGEST,
+        "FAKE_IMAGE_ID": IMAGE_ID,
+        "FAKE_REPOSITORY": REPOSITORY,
         "FAKE_DOCKER_LOG": str(log),
         "FAKE_DOCKER_MARKER": str(marker),
         "FAKE_DOCKER_MODE": mode,
@@ -221,6 +247,13 @@ def run_case(mode: str, signal_during_password: bool = False) -> tuple[int, str,
                 marker.read_text(encoding="utf-8") if marker.exists() else "",
             )
         finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
             os.close(master)
             os.close(slave)
 
@@ -243,6 +276,7 @@ def assert_run_contract(arguments: str) -> None:
         )
     for option, value in (
         ("--name", "pawcycle-ops020-auth-smoke-member"),
+        ("--label", "com.pawcycle.ops020.scope=auth-smoke-member"),
         ("--network", "pawcycle-production-data"),
         ("--tmpfs", "/tmp:size=64m,mode=1777"),
         ("--user", "pawcycle"),
@@ -262,6 +296,15 @@ def assert_run_contract(arguments: str) -> None:
             and run_arguments[option_indexes[0] + 1] == value,
             f"Docker run contract is missing or duplicated: {option} {value}",
         )
+    env_file_indexes = [
+        index for index, argument in enumerate(run_arguments) if argument == "--env-file"
+    ]
+    require(
+        len(env_file_indexes) == 1
+        and env_file_indexes[0] + 1 < len(run_arguments)
+        and run_arguments[env_file_indexes[0] + 1].startswith("/dev/fd/"),
+        "Docker run contract is missing or duplicated: --env-file /dev/fd/*",
+    )
     for forbidden in (EMAIL, PASSWORD, "--publish", "-p", "--restart"):
         require(
             forbidden not in run_arguments,
@@ -276,6 +319,7 @@ def main() -> None:
     require(status == 0, "successful fake Docker execution failed")
     require(transcript.count(PASS) == 1, "success did not emit exactly one PASS")
     require("stdin-contract-ok" in marker, "credentials were not delivered only through stdin")
+    require("runtime-env-contract-ok" in marker, "runtime env was not streamed safely")
     assert_run_contract(arguments)
 
     status, transcript, arguments, marker = run_case("failure")

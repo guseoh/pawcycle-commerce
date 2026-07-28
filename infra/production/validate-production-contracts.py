@@ -278,6 +278,9 @@ def validate_scripts() -> None:
         in auth_member,
         "OPS-020 credentials must cross only a Bash builtin stdin pipe",
     )
+    docker_run_start = auth_member.index("docker run")
+    docker_run_end = auth_member.index("2>/dev/null", docker_run_start)
+    docker_run_block = auth_member[docker_run_start:docker_run_end]
     for option in (
         "--rm",
         "--interactive",
@@ -293,10 +296,10 @@ def validate_scripts() -> None:
     ):
         require(option in auth_member, f"OPS-020 Docker security option is missing: {option}")
     require(
-        "--publish" not in auth_member
-        and re.search(r"(?:^|\\s)-p(?:\\s|$)", auth_member) is None
-        and "--restart" not in auth_member
-        and "--volume" not in auth_member,
+        "--publish" not in docker_run_block
+        and re.search(r"(?:^|\s)-p(?:\s|$)", docker_run_block) is None
+        and "--restart" not in docker_run_block
+        and "--volume" not in docker_run_block,
         "OPS-020 must not publish ports, restart, or mount a volume",
     )
     require(
@@ -305,6 +308,32 @@ def validate_scripts() -> None:
         and "@sha256:" in auth_member
         and "latest" not in auth_member,
         "OPS-020 immutable Backend image verification is incomplete",
+    )
+    require(
+        'exec 9>>"$DEPLOY_LOCK_FILE"' in auth_member
+        and "flock --nonblock 9" in auth_member
+        and auth_member.index("flock --nonblock 9") < auth_member.index("docker pull"),
+        "OPS-020 must share the production release lock before Docker access",
+    )
+    require(
+        "MEMBER_COMMAND_TIMEOUT_SECONDS=180" in auth_member
+        and "exec timeout" in auth_member
+        and "--kill-after=10s" in auth_member
+        and "terminate_member_process" in auth_member,
+        "OPS-020 one-shot execution and cleanup must be time bounded",
+    )
+    require(
+        "validate_backend_env_contract" in auth_member
+        and "stream_backend_env" in auth_member
+        and "--env-file <(stream_backend_env)" in auth_member,
+        "OPS-020 must stream the Compose runtime env without persisting a converted file",
+    )
+    require(
+        "production Backend image reference is invalid" in auth_member
+        and "production Backend revision is invalid" in auth_member
+        and "production Backend image identity is invalid" in auth_member
+        and "production Backend is not healthy" in auth_member,
+        "OPS-020 must match the running Backend to the approved release",
     )
     require(
         "pawcycle-production-data" in auth_member
@@ -324,6 +353,12 @@ def validate_scripts() -> None:
         and "raw Docker stderr was exposed" in auth_member_pty
         and "Docker run contract exposed or enabled" in auth_member_pty,
         "OPS-020 fake Docker and PTY regressions are incomplete",
+    )
+    require(
+        "runtime-env-contract-ok" in auth_member_pty
+        and "process.terminate()" in auth_member_pty
+        and '"--label", "com.pawcycle.ops020.scope=auth-smoke-member"' in auth_member_pty,
+        "OPS-020 PTY test must cover runtime env streaming and bounded child cleanup",
     )
     require(
         "pawcycle-production" not in auth_member_lifecycle

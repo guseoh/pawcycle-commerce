@@ -19,7 +19,7 @@ OPS-019 Backend→SRE 인수인계와 OPS-020 보고서·Runbook이다.
 
 ## 완료된 작업
 
-Context 이전 Backend gate를 소비하는 root·TTY wrapper, immutable image·runtime/state·MySQL preflight, hardened one-shot Container, fake PTY와 격리 lifecycle 검증을 준비했다.
+Context 이전 Backend gate를 소비하는 root·TTY wrapper, 공유 deploy lock, immutable image·실행 중 Backend identity·runtime/state·MySQL preflight, hardened one-shot Container, fake PTY와 격리 lifecycle 검증을 준비했다.
 
 ## 사용 가능한 결과
 
@@ -45,7 +45,9 @@ Production DB에 회원 한 건을 생성하는 wrapper 실행과 이후 OPS-018
 - TTY가 Docker 접근 전에 요구되고 password echo가 모든 종료 경로에서 복구되는가
 - Credential이 argv·env·file·Docker log에 없고 stdin pipe에만 있는가
 - current SHA·OCI revision·registry digest와 runtime/state mode가 일치하는가
+- 실행 중인 Backend image identity·health가 승인 release와 일치하고 배포·rollback과 공유 lock으로 직렬화되는가
 - one-shot Container에 port·restart·volume이 없고 security/resource limit이 완전한가
+- Compose runtime env가 새 파일 없이 제한된 pipe로 전달되고 실행·cleanup이 유한 시간으로 제한되는가
 - running Production service를 중지·재시작·변경하는 명령이 없는가
 - PASS가 없거나 duplicate·성공 여부 불명확일 때 재실행을 금지하는가
 

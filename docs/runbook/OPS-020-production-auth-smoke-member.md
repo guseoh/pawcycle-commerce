@@ -22,7 +22,7 @@ Email과 password는 저장소, 명령 인자, 환경 변수, shell history, com
 
 1. 사용자가 Production 회원 한 건 생성을 별도 고위험 작업으로 명시 승인했는지 확인한다.
 2. root shell이 실제 TTY에 연결됐고 `set -x`가 꺼졌는지 확인한다.
-3. 현재 release가 OPS-019를 포함하며 Backend image publish와 배포 검증이 완료됐는지 확인한다.
+3. 현재 release가 OPS-019를 포함하며 실행 중인 Backend의 tag·OCI revision·image ID·health가 승인 SHA와 기록된 digest에 일치하는지 확인한다.
 4. `/opt/pawcycle/runtime`과 `/opt/pawcycle/state`가 non-symlink directory, mode `700`인지 확인한다.
 5. `current-sha`, `<sha>.images`, runtime `backend.env`와 `.complete`가 regular non-symlink file, mode `600`인지 확인한다.
 6. Production MySQL이 running·healthy이고 `pawcycle-production-data` internal network에 연결됐는지 확인한다.
@@ -37,13 +37,13 @@ sudo infra/production/create-production-auth-smoke-member.sh \
   --backend-image 'ghcr.io/<owner>/<repository>-backend'
 ```
 
-Wrapper는 root·TTY 검사를 Docker 접근 전에 수행한다. 그 뒤 current release, runtime/state mode, OPS-019 source, SHA tag·OCI revision·registry digest, non-root image user, MySQL health와 data network를 읽기 전용으로 검증한다. 모든 preflight가 성공한 뒤에만 TTY prompt가 나타난다.
+Wrapper는 root·TTY 검사를 Docker 접근 전에 수행하고 배포·rollback과 같은 `deploy.lock`을 획득한다. 그 뒤 current release, runtime/state mode, OPS-019 source, SHA tag·OCI revision·registry digest, 실행 중인 Backend의 image identity·health, non-root image user, MySQL health와 data network를 읽기 전용으로 검증한다. 모든 preflight가 성공한 뒤에만 TTY prompt가 나타난다.
 
 ## Container 안전 계약
 
-One-shot Container는 digest reference, `--rm --interactive`, restart 없음, port publish 없음, volume mount 없음, `--log-driver none`, Production data network 하나만 사용한다. Root filesystem은 read-only이고 `/tmp` tmpfs, user `pawcycle`, no-new-privileges, all capability drop, memory·CPU·PID limit을 적용한다. 현재 web Backend·MySQL·Frontend·Proxy service를 중지·재시작·변경하지 않는다.
+One-shot Container는 digest reference, `--rm --interactive`, restart 없음, port publish 없음, volume mount 없음, `--log-driver none`, Production data network 하나만 사용한다. Compose용 runtime env는 새 파일로 변환하지 않고 검증된 세 항목만 process-substitution pipe로 Docker에 전달한다. 회원 email·password는 이 env 경로에 포함하지 않는다. Root filesystem은 read-only이고 `/tmp` tmpfs, user `pawcycle`, no-new-privileges, all capability drop, memory·CPU·PID limit을 적용한다. 현재 web Backend·MySQL·Frontend·Proxy service를 중지·재시작·변경하지 않는다.
 
-Backend 인자는 non-web type, 정확한 enable `true`, Flyway `false`다. Wrapper는 signal·오류·정상 종료에서 terminal echo를 복구하고 자신이 시작한 고정 이름 Container만 제거한다.
+Backend 인자는 non-web type, 정확한 enable `true`, Flyway `false`다. 실행은 180초로 제한하며 종료 유예 뒤에도 남은 Docker client는 강제 종료한다. Wrapper는 signal·오류·정상 종료에서 terminal echo를 복구하고, client를 먼저 유한 시간 안에 회수한 뒤 ownership label이 일치하는 고정 이름 Container만 제거한다.
 
 ## 성공 판정
 
@@ -57,7 +57,7 @@ PASS: production auth smoke member created
 
 ## 실패와 중단
 
-- Preflight 오류: 어떤 credential도 입력하지 말고 state·runtime·image·MySQL 계약을 비민감 정보로 재확인한다.
+- Preflight 오류: 어떤 credential도 입력하지 말고 deploy lock, state·runtime·실행 중인 Backend image·MySQL 계약을 비민감 정보로 재확인한다.
 - 입력 오류 또는 Container nonzero: 자동 재시도하지 않는다.
 - 중복 email 오류: 기존 row와 hash를 보존하므로 다른 password로 재실행하지 않는다. 승인 credential의 소유 상태를 확인하고 중단한다.
 - PASS를 보지 못했지만 회원 생성 여부가 불명확함: 재실행·삭제·password reset·직접 SQL을 하지 않는다. 사용자/Tech Lead와 Backend에 에스컬레이션한다.

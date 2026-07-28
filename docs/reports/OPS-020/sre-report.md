@@ -25,7 +25,7 @@ Wrapper, fake Docker·PTY 테스트, 실제 Production 이름을 쓰지 않는 �
 
 ## 변경 범위
 
-- root·TTY·runtime/state·current SHA·immutable image·MySQL health preflight
+- root·TTY·공유 deploy lock·runtime/state·current SHA·실행 중인 Backend identity·immutable image·MySQL health preflight
 - echo 보호 credential 입력과 Bash builtin stdin pipe
 - hardened one-shot Docker 실행·signal cleanup·exact PASS 판정
 - fake Docker/PTY와 격리 Docker lifecycle 회귀 검증
@@ -38,11 +38,11 @@ Backend·API·SecurityConfig·Flyway migration·schema·Compose service를 변�
 
 ## 주요 결과
 
-Wrapper는 root와 실제 `/dev/tty`를 Docker 접근 전에 요구한다. 현재 Production SHA와 OPS-019 source, root 전용 runtime/state 파일, Backend SHA tag·OCI revision·registry digest·non-root user, MySQL running/healthy와 internal data network가 모두 일치한 뒤에만 credential을 읽는다.
+Wrapper는 root와 실제 `/dev/tty`를 Docker 접근 전에 요구하고 배포·rollback과 같은 lock으로 mutation을 직렬화한다. 현재 Production SHA와 OPS-019 source, root 전용 runtime/state 파일, Backend SHA tag·OCI revision·registry digest·non-root user, 실행 중인 Backend의 reference·revision·image ID·health, MySQL running/healthy와 internal data network가 모두 일치한 뒤에만 credential을 읽는다.
 
 Password echo는 정상·오류·INT·TERM에서 복구한다. Credential은 unexported shell variable에서 Bash builtin `printf`로 coprocess stdin pipe에만 기록되고 즉시 비운다. Container argv·env·파일·log에는 포함하지 않는다.
 
-One-shot Container는 digest reference, no persistent log, no port·restart·volume, read-only·tmpfs·non-root·no-new-privileges·capability drop·resource limit을 사용한다. 성공 stdout은 승인된 PASS 한 줄만 허용한다.
+Compose runtime env는 따옴표 포함 형식을 검증한 뒤 새 파일 없이 pipe에서 Docker env-file 형식으로 변환한다. One-shot Container는 digest reference, 180초 실행 제한, no persistent log, no port·restart·volume, read-only·tmpfs·non-root·no-new-privileges·capability drop·resource limit을 사용한다. 성공 stdout은 승인된 PASS 한 줄만 허용한다.
 
 ## 핵심 결정과 대안
 
@@ -105,11 +105,11 @@ GitHub Repository Validation의 Linux·Docker·Java 25 환경에서 기존 검�
 
 ## AI 리뷰 반영 여부
 
-PR 생성 후 CodeRabbit·Codex Review를 현재 코드와 승인 계약에 대조해 유효 지적만 반영한다.
+CodeRabbit·Codex Review의 실행 제한·cleanup, 공유 release lock, 실행 중인 Backend identity, runtime env streaming, PTY child 정리와 정적 검사 지적을 현재 코드와 승인 계약에 대조해 반영했다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-미반영 항목은 PR에 근거와 함께 기록한다.
+MySQL OCI index digest를 linux/amd64 단일-platform digest로 바꾸라는 제안은 기존 Production Compose·backup 계약까지 변경하고 multi-architecture immutable pin을 불필요하게 축소하므로 미반영했다. 근거는 PR thread에 기록한다.
 
 ## 적용 방법
 
@@ -117,7 +117,7 @@ PR 생성 후 CodeRabbit·Codex Review를 현재 코드와 승인 계약에 대�
 
 ## 복구·롤백 증거 (고위험 필수)
 
-Wrapper 실패는 Backend transaction rollback과 task-owned Container cleanup을 사용한다. 테스트 resource는 label과 임의 이름으로만 정리한다. 성공 Production 회원은 자동 삭제하지 않는다. 저장소 변경은 revert PR로 복구한다.
+Wrapper 실패는 Backend transaction rollback, 180초 실행 제한과 task-owned Container cleanup을 사용한다. 배포·rollback과는 공유 lock으로 직렬화한다. 테스트 resource는 label과 임의 이름으로만 정리한다. 성공 Production 회원은 자동 삭제하지 않는다. 저장소 변경은 revert PR로 복구한다.
 
 ## 위험과 제한
 

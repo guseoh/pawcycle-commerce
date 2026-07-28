@@ -40,6 +40,15 @@ die() {
   exit 1
 }
 
+require_output_absent() {
+  local output="$1"
+  local sensitive_value="$2"
+  local category="$3"
+
+  [[ "$output" != *"$sensitive_value"* ]] \
+    || die "isolated one-shot output exposed $category"
+}
+
 mysql_query() {
   docker exec \
     --env "MYSQL_PWD=$DB_ROOT_PASSWORD" \
@@ -135,14 +144,14 @@ run_member_command() {
   )"
   status=$?
   set -e
-  [[ "$output" != *"$MEMBER_EMAIL"* ]]
-  [[ "$output" != *"$MEMBER_PASSWORD"* ]]
-  [[ "$output" != *"$DB_PASSWORD"* ]]
-  [[ "$output" != *"$DB_USER"* ]]
-  [[ "$output" != *"jdbc:mysql"* ]]
-  [[ "$output" != *"$TEST_ID"* ]]
-  [[ "$output" != *"$NETWORK"* ]]
-  [[ "$output" != *"$IMAGE_ID"* ]]
+  require_output_absent "$output" "$MEMBER_EMAIL" "member email"
+  require_output_absent "$output" "$MEMBER_PASSWORD" "member password"
+  require_output_absent "$output" "$DB_PASSWORD" "database password"
+  require_output_absent "$output" "$DB_USER" "database username"
+  require_output_absent "$output" "jdbc:mysql" "JDBC identifier"
+  require_output_absent "$output" "$TEST_ID" "test resource identifier"
+  require_output_absent "$output" "$NETWORK" "network identifier"
+  require_output_absent "$output" "$IMAGE_ID" "image identifier"
   if docker container inspect "$name" >/dev/null 2>&1; then
     die "one-shot lifecycle Container remained after exit"
   fi
