@@ -38,7 +38,8 @@
 - `current-sha`, `previous-sha` Application Release 상태와 `contract-sha`, `previous-contract-sha` Control 상태 분리
 - Release 호환성 비교 경로를 Compose와 HTTP·HTTPS Nginx 계약으로 한정
 - 현재 Control HEAD와 지정된 Control 파일의 clean worktree 검증
-- Control HEAD가 계약 상태와 다를 때 현재 HEAD의 명시적 승인 요구
+- 최초 상태 도입 시 기존 승인 Control 기준과 현재 Control HEAD의 Release 계약 비교
+- 저장된 Control SHA와 현재 HEAD가 다를 때 현재 HEAD의 명시적 승인 요구
 - Control 계약 채택 전에 현재 실행 Release의 image identity·digest·health·HTTP·HTTPS smoke 검증
 - Rollback 전에 현재 Control HEAD와 `contract-sha`의 정확한 일치 검증
 - 계약 상태 누락, Control drift, 불결한 worktree와 비호환 전환 회귀 테스트 보강
@@ -59,16 +60,18 @@
 ## 인수 조건 매핑
 
 - Application Release 상태와 Control 상태가 분리된다.
-- Control worktree가 불결하거나 Control HEAD가 승인 상태와 다르면 Docker 호출 전에 실패한다.
-- 새 Control HEAD는 정확한 40자 SHA를 명시적으로 전달한 경우에만 채택된다.
-- 저장된 이전 Control과 새 Control의 Release 계약이 다르면 채택을 거부한다.
+- Control worktree가 불결하면 Docker 호출 전에 실패한다.
+- 최초 `contract-sha`가 없을 때는 사용자가 승인한 기존 운영 기준 SHA와 현재 clean Control HEAD의 Release 계약이 같아야 한다.
+- 기존 `contract-sha`와 현재 Control HEAD가 다르면 현재 HEAD를 정확히 명시하고 기존 승인 Control과 Release 계약이 같아야 한다.
+- 검증 성공 뒤 `contract-sha`에는 과거 기준이 아니라 현재 clean Control HEAD가 기록된다.
 - 대상 Application Release의 Release 계약이 현재 승인 Control과 다르면 활성화를 거부한다.
 - Rollback은 `previous-sha`·`previous-contract-sha` 빠른 경로 또는 명시적 Release 계약 비교를 통과해야 한다.
 - MySQL volume·Schema·데이터는 변경하거나 삭제하지 않는다.
 
 ## 주요 결과
 
-- `contract-sha`는 과거 입력 기준이 아니라 검증을 통과한 현재 clean Control HEAD를 기록하도록 변경했다.
+- `contract-sha`는 검증을 통과한 현재 clean Control HEAD를 기록한다.
+- 최초 도입에서는 기존 승인 Control 기준 SHA를 입력으로 받아 현재 Control HEAD와 호환성을 검증한다.
 - 저장된 `contract-sha`와 현재 Control HEAD가 다른 상태를 자동 승인하지 않는다.
 - Control Script 변경은 Application Release SHA와 직접 비교하지 않고 정확한 HEAD 승인과 clean worktree로 통제한다.
 - Application Release 호환성은 실제 활성화 입력인 Compose와 Nginx 계약으로 판정한다.
@@ -85,7 +88,7 @@
 
 ## 결정 상태
 
-- 저장소 설계와 테스트 보강: 구현 및 재검증 진행 중
+- 저장소 설계와 테스트 보강: 구현 완료, CI 재검증 진행 중
 - PR #72 병합: 사용자 최종 승인 대기
 - 실제 Production 적용: 미승인·미실행
 
@@ -100,6 +103,7 @@ DB Schema, Flyway history, 운영 데이터와 MySQL volume 변경 없음.
 ## 보안 영향
 
 - Control checkout 직접 수정과 승인되지 않은 HEAD 실행을 차단한다.
+- 최초 상태 기록 전에 기존 승인 Control 기준과 현재 Control의 Release 계약을 비교한다.
 - 상태 SHA 파일은 regular non-symlink, mode `600` 계약을 유지한다.
 - Secret 값은 조회·출력·기록하지 않았다.
 
@@ -132,12 +136,13 @@ git diff --check: PASS
 저장소 준비 전 Production read-only 확인에서 다음을 확인했다.
 
 - 실행 중 Application `current-sha`
-- Control checkout SHA와 clean worktree
+- 기존 승인 Control 기준 SHA와 현재 Control checkout
+- Control worktree clean 상태
 - 네 Production Container health
 - 잔여 OPS-020 one-shot Container 부재
 - Runtime·state directory root-only 권한
 - 대상 Backend·Frontend image 존재
-- 당시 핵심 Compose·Nginx 계약 동일성
+- 기존 기준과 대상의 핵심 Compose·Nginx 계약 동일성
 
 ## 적용 후 검증 (고위험 필수)
 
@@ -146,7 +151,8 @@ git diff --check: PASS
 ## 독립 검증 (고위험 필수)
 
 - CodeRabbit이 Runbook의 폐기된 설명과 누락 계약 테스트의 원인 검증을 지적했다.
-- ChatGPT 독립 검토에서 Control HEAD drift, dirty worktree와 계약 상태 의미 결함을 추가 식별했다.
+- ChatGPT 독립 검토에서 Control HEAD drift, dirty worktree, 최초 기준선과 현재 Control 상태 의미 결함을 추가 식별했다.
+- CodeRabbit의 기존 두 스레드는 수정 후 자동 해소됐다.
 - Codex Review는 사용량 제한으로 실행되지 않았다.
 - 수정 후 GitHub Actions와 CodeRabbit을 병합 Gate로 다시 사용한다.
 
@@ -167,7 +173,7 @@ git diff --check: PASS
 
 ## AI 리뷰 반영 여부
 
-CodeRabbit과 ChatGPT 검토 결과를 반영 중이다.
+CodeRabbit 지적과 ChatGPT 독립 검토 결과를 반영했다. 최신 Commit 기준 재검토 결과는 병합 전에 다시 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -176,13 +182,19 @@ CodeRabbit과 ChatGPT 검토 결과를 반영 중이다.
 
 ## 적용 방법
 
-PR 병합 후 최신 승인 Control SHA를 `/opt/pawcycle/control`에 clean detached checkout한다. 실제 Production 승인 단계에서 `contract-sha`가 없거나 현재 Control HEAD와 다를 때만 현재 Control HEAD를 `--adopt-contract-sha`로 명시한다.
+PR 병합 후 최신 승인 Control SHA를 `/opt/pawcycle/control`에 clean detached checkout한다.
+
+- `contract-sha`가 없는 최초 전환: `--adopt-contract-sha`에 이미 승인된 기존 운영 Control 기준 SHA를 전달한다. Script가 현재 Control HEAD와의 Release 계약 호환성을 확인한 뒤 현재 HEAD를 기록한다.
+- `contract-sha`가 존재하지만 현재 Control HEAD와 다른 후속 전환: `--adopt-contract-sha`에 현재 Control HEAD를 정확히 전달한다. Script가 저장된 승인 Control과의 Release 계약 호환성을 확인한 뒤 상태를 갱신한다.
+
+두 경우 모두 실제 Production 실행은 별도 고위험 승인과 적용 전후 검증을 요구한다.
 
 ## 복구·롤백 증거 (고위험 필수)
 
 Fake lifecycle에서 다음 경계를 검증한다.
 
 - 계약 상태 누락과 잘못된 실패 원인 탐지
+- 최초 기준선과 현재 Control Release 계약 불일치 차단
 - 명시적 승인 없는 Control HEAD drift 차단
 - 비호환 Control 계약 전환 차단
 - dirty Control worktree 차단
@@ -203,14 +215,14 @@ Fake lifecycle에서 다음 경계를 검증한다.
 
 ## 남은 위험
 
-- 리뷰 후 수정 Commit의 CI와 CodeRabbit 결과가 아직 확정되지 않았다.
+- 리뷰 후 최신 수정 Commit의 CI와 CodeRabbit 결과가 아직 확정되지 않았다.
 - 실제 Production에서 최초 `contract-sha` 채택과 대상 Release 배포를 검증하지 않았다.
 - 대상 Release와 운영 DB Schema 호환성은 실제 실행 직전에 다시 확인해야 한다.
 
 ## 다음 작업
 
 1. PR #72 Repository Validation 전체 성공 확인
-2. CodeRabbit 지적과 스레드 해소 확인
+2. 최신 CodeRabbit 재검토 결과 확인
 3. 사용자·Tech Lead 병합 판단
 4. 병합 후 별도 고위험 승인으로 Production Control 전환과 Application 배포
 5. OPS-020 회원 생성과 OPS-018 인증 Session Smoke
