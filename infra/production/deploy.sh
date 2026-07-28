@@ -13,7 +13,7 @@ Usage: deploy.sh --sha <40-char-sha> --backend-image <ghcr-repository> --fronten
 Options:
   --runtime-dir <path>        Materialized runtime bundle root (default: /opt/pawcycle/runtime)
   --state-dir <path>          Release state directory (default: /opt/pawcycle/state)
-  --adopt-contract-sha <sha>  One-time approved runtime contract baseline when contract-sha is absent
+  --adopt-contract-sha <sha>  Explicitly approve the current clean control HEAD when contract state is absent or differs
 EOF
 }
 
