@@ -37,10 +37,10 @@ Application Release 상태와 Production Control 상태는 분리한다.
 
 - `current-sha`: 현재 실행 중인 Backend·Frontend Application Release SHA
 - `previous-sha`: 마지막 성공 전환 직전의 Application Release SHA
-- `contract-sha`: 사용자가 명시적으로 승인하고 검증한 현재 `/opt/pawcycle/control` HEAD
+- `contract-sha`: 사용자가 승인하고 검증한 현재 `/opt/pawcycle/control` HEAD
 - `previous-contract-sha`: `previous-sha`가 마지막으로 실행됐을 때 사용한 승인 Control SHA
 
-Release 호환성 비교 대상은 실제 Container 활성화 계약인 `compose.yaml`, `nginx.conf`, `nginx.https.conf`다. Dockerfile은 image build 결과의 SHA tag·OCI revision·registry digest로 검증한다. Control Script는 Release SHA와 비교하지 않지만, 현재 checkout의 다음 파일이 모두 Git HEAD 기준으로 깨끗해야 한다.
+Release 호환성 비교 대상은 실제 Container 활성화 계약인 `compose.yaml`, `nginx.conf`, `nginx.https.conf`다. Dockerfile은 image build 결과의 SHA tag·OCI revision·registry digest로 검증한다. Control Script는 Application Release SHA와 비교하지 않지만, 현재 checkout의 다음 파일이 모두 Git HEAD 기준으로 깨끗해야 한다.
 
 ```text
 infra/production/compose.yaml
@@ -65,9 +65,11 @@ infra/production/materialize-ssm-env.sh
 7. SSM prefix와 네 leaf parameter가 준비됐고 실제 값, 이메일, 계정 ID, 전체 ARN은 저장소나 증거에 기록하지 않는다.
 8. `/opt/pawcycle/runtime`과 `/opt/pawcycle/state`는 저장소 checkout 밖이며 root만 접근할 수 있다.
 9. 현재 정상 SHA와 이전 SHA, Backend·Frontend·MySQL·Nginx digest를 비민감 운영 증거로 기록할 위치가 있다.
-10. `/opt/pawcycle/control`은 승인된 원격 `main` commit의 clean detached checkout이며 위 Control 파일에 staged·unstaged·untracked 변경이 없다.
-11. `/opt/pawcycle/state/contract-sha`는 현재 승인된 Control HEAD를 가리키는 mode `600` regular non-symlink file이다. 파일이 없거나 현재 Control HEAD와 다르면 실제 Production 실행 승인에서 현재 Control HEAD를 `--adopt-contract-sha`로 명시한다. Script는 현재 실행 Release의 image identity·digest·health·HTTP·HTTPS smoke를 검증한 뒤에만 현재 Control HEAD를 기록한다.
-12. 저장된 이전 `contract-sha`와 새 Control HEAD의 Release 계약이 다르면 Control 전환을 중단한다. 승인된 현재 Control SHA와 대상 Release SHA의 Release 계약이 다르면 image pull과 Container 변경 전에 중단한다.
+10. `/opt/pawcycle/control`은 승인된 원격 `main` commit의 clean detached checkout이며 지정된 Control 파일에 staged·unstaged·untracked 변경이 없다.
+11. `/opt/pawcycle/state/contract-sha`는 현재 승인된 Control HEAD를 가리키는 mode `600` regular non-symlink file이다.
+12. `contract-sha`가 아직 없다면 `--adopt-contract-sha`에는 사용자가 이미 승인한 기존 운영 Control 기준 SHA를 전달한다. Script는 그 기준과 현재 clean Control HEAD의 Release 계약이 같은지, 현재 실행 Release의 image identity·digest·health·HTTP·HTTPS smoke가 정상인지 검증한 뒤 현재 Control HEAD를 `contract-sha`로 기록한다.
+13. `contract-sha`가 존재하지만 현재 Control HEAD와 다르면 `--adopt-contract-sha`에는 현재 Control HEAD를 정확히 전달한다. Script는 저장된 승인 Control과 현재 Control의 Release 계약이 같은지 검증하고 현재 실행 Release를 재검증한 뒤 상태를 갱신한다.
+14. 승인된 현재 `contract-sha`와 대상 Release SHA의 Release 계약이 다르면 image pull과 Container 변경 전에 중단한다.
 
 ## GitHub Actions image 게시
 
@@ -190,7 +192,10 @@ sudo bash infra/production/deploy.sh \
   --runtime-dir /opt/pawcycle/runtime \
   --state-dir /opt/pawcycle/state
 
-# contract-sha가 없거나 현재 clean Control HEAD와 다를 때만 별도 승인 후 추가
+# contract-sha가 없는 최초 전환에서만 별도 승인 후 추가
+#   --adopt-contract-sha '<approved-prior-control-baseline-sha>'
+
+# contract-sha가 존재하지만 현재 Control HEAD와 다를 때만 별도 승인 후 추가
 #   --adopt-contract-sha '<current-control-sha>'
 ```
 
@@ -198,11 +203,12 @@ script는 실행 중인 Container를 바꾸기 전에 다음을 수행한다.
 
 1. SHA, GHCR repository 형식, runtime file mode와 완료 marker를 검증하고 release lock을 획득한다.
 2. 현재 Control 계약 파일의 staged·unstaged·untracked 변경이 없는지 확인하고 Control HEAD를 계산한다.
-3. `contract-sha`가 없거나 Control HEAD와 다르면 `--adopt-contract-sha`가 현재 Control HEAD와 정확히 같은지, 저장된 계약과 새 Control의 Release 계약이 같은지 확인한다. 현재 Release가 있으면 image identity·digest·health·HTTP·HTTPS smoke를 확인한 뒤 현재 Control HEAD를 mode `600`으로 기록한다.
-4. 승인된 `contract-sha`와 대상 Release SHA의 `compose.yaml`, `nginx.conf`, `nginx.https.conf`가 같은지 확인한다. commit 부재·Git 오류·차이 발견 시 image pull과 Container 변경 전에 중단한다.
-5. Compose config를 검증하고 digest로 고정된 MySQL·Nginx와 현재 복귀 Release image를 pull·검증해 복귀 가능성을 먼저 확보한다.
-6. 대상 Backend·Frontend의 정확한 SHA tag를 pull하고 revision label과 GHCR `sha256` RepoDigest를 확인한다.
-7. 네 image digest 후보를 `/opt/pawcycle/state/<sha>.images`와 비교한다. 기존 기록과 한 글자라도 다르면 기록을 덮어쓰지 않고 중단하며, 최초 SHA만 mode `600` 파일로 원자적으로 기록한다.
+3. `contract-sha`가 없으면 전달한 기존 운영 기준 SHA와 현재 Control HEAD의 Release 계약을 비교한다. `contract-sha`가 현재 Control HEAD와 다르면 전달한 값이 현재 HEAD와 정확히 같은지와 저장된 계약의 호환성을 확인한다.
+4. Control 전환이 필요한 경우 현재 Release의 image identity·digest·health·HTTP·HTTPS smoke를 확인한 뒤 현재 Control HEAD를 mode `600`으로 기록한다.
+5. 승인된 `contract-sha`와 대상 Release SHA의 `compose.yaml`, `nginx.conf`, `nginx.https.conf`가 같은지 확인한다. commit 부재·Git 오류·차이 발견 시 image pull과 Container 변경 전에 중단한다.
+6. Compose config를 검증하고 digest로 고정된 MySQL·Nginx와 현재 복귀 Release image를 pull·검증해 복귀 가능성을 먼저 확보한다.
+7. 대상 Backend·Frontend의 정확한 SHA tag를 pull하고 revision label과 GHCR `sha256` RepoDigest를 확인한다.
+8. 네 image digest 후보를 `/opt/pawcycle/state/<sha>.images`와 비교한다. 기존 기록과 한 글자라도 다르면 기록을 덮어쓰지 않고 중단하며, 최초 SHA만 mode `600` 파일로 원자적으로 기록한다.
 
 계약 차이·Control drift·dirty worktree·digest drift·preflight 실패 시 `docker compose up`을 호출하지 않으므로 기존 정상 Release state, Container와 named volume은 변하지 않는다.
 
