@@ -119,9 +119,11 @@ case "${1:-}" in
       fi
     done
     [[ -n "$env_file" && -r "$env_file" ]]
-    grep -Fxq 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' "$env_file"
-    grep -Fxq 'SPRING_DATASOURCE_USERNAME=fixture_user' "$env_file"
-    grep -Fxq "SPRING_DATASOURCE_PASSWORD=fixture_db'password" "$env_file"
+    mapfile -t runtime_env_lines < "$env_file"
+    (( ${#runtime_env_lines[@]} == 3 ))
+    [[ "${runtime_env_lines[0]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' ]]
+    [[ "${runtime_env_lines[1]}" == 'SPRING_DATASOURCE_USERNAME=fixture_user' ]]
+    [[ "${runtime_env_lines[2]}" == "SPRING_DATASOURCE_PASSWORD=fixture_db'password" ]]
     printf '%s\\n' 'runtime-env-contract-ok' >> "$FAKE_DOCKER_MARKER"
     IFS= read -r email
     IFS= read -r password
