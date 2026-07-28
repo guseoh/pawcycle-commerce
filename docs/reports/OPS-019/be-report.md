@@ -92,6 +92,7 @@ Credential을 CLI 인자, 환경 변수, 저장소 파일로 받지 않는다. C
 - commit 제목 규칙 검사: 통과
 - `git diff --check`: 통과
 - Backend 집중 test와 build: 로컬 Java 25 부재로 실행 전 중단, GitHub Repository Validation에서 확인
+- 첫 Repository Validation은 Spring Boot 4.1에 없는 `ConditionalOnWebApplication.Type.NOT_WEB` 참조로 compile에 실패했고, 지원되는 `@ConditionalOnNotWebApplication`으로 같은 non-web 조건을 교체했다.
 - 원격 Repository Validation: 동적 run 번호·SHA를 문서에 고정하지 않고 GitHub Checks를 권위 원본으로 확인
 
 ## 적용 전 검증 (고위험 필수)
