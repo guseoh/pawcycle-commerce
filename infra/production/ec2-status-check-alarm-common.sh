@@ -26,7 +26,7 @@ validate_inputs() {
 
 validate_runtime_target() {
   local actual_account actual_instance
-  actual_account="$(aws sts get-caller-identity --query Account --output text)"
+  actual_account="$(aws sts get-caller-identity --region "$AWS_REGION" --query Account --output text)"
   [[ "$actual_account" == "$EXPECTED_ACCOUNT_ID" ]] || die "AWS caller account does not match the approved account"
   actual_instance="$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].InstanceId' --output text)"
   [[ "$actual_instance" == "$INSTANCE_ID" ]] || die "EC2 instance does not exist in the approved region"

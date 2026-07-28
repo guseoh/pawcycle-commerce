@@ -2,7 +2,7 @@
 
 ## 문서 목적과 사실 기준
 
-이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조와 이후 OPS-012 application rollback 검증 상태를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·012·013 Runbook·보고서·인수인계를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
+이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조와 이후 OPS-012 application rollback, OPS-015 EC2 최소 장애 알림 검증 상태를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·012·013·015 Runbook·보고서·인수인계를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
 
 현재 구조는 서울 region의 단일 EC2·EBS 위에서 Docker Compose project 하나를 수동 운영하는 방식이다. GitHub Actions는 `main`의 Backend·Frontend image를 GHCR에 게시하지만 EC2 배포를 자동 실행하지 않는다. HTTPS와 운영 논리 backup·격리 복원은 실제 운영 검증을 통과했지만, 실제 production DB restore, 무중단 배포, 자동 배포, 고가용성은 완료된 상태가 아니다.
 
@@ -17,6 +17,7 @@
 | 명시적 application rollback | `infra/production/rollback.sh`, `infra/production/release-common.sh` | OPS-010 Runbook, OPS-012 보고서·인수인계 |
 | HTTP·HTTPS | `infra/production/nginx.conf`, `infra/production/nginx.https.conf`, `infra/production/https.sh` | `docs/runbook/OPS-011-production-https.md`, `docs/handoffs/OPS-011/sre-to-tl.md` |
 | DB backup·격리 복원 | `infra/production/db-backup-restore.sh` | `docs/runbook/OPS-013-production-db-backup-restore.md`, `docs/reports/OPS-013/production-verification-2026-07-24.md` |
+| EC2 최소 장애 알림 | `infra/production/*ec2-status-check-alarm*.sh` | `docs/runbook/OPS-015-ec2-status-check-alarm.md`, OPS-015 보고서·인수인계 |
 
 ## 1. 단일 EC2와 Docker Compose topology
 
@@ -262,6 +263,7 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | HTTPS 발급·SAN·경로, 수동 갱신 rehearsal·갱신, 재부팅 복구 | 운영 검증 완료 |
 | S3 계약·IAM 최소 권한, production logical backup, isolated restore, production 보존·cleanup | 2026-07-24 운영자 검증 완료. script가 IAM policy·bucket 전용성을 매 실행 증명하는 것은 아님 |
 | 실제 이전 SHA application rollback | 2026-07-27 OPS-012 운영자 검증 완료 |
+| EC2 `StatusCheckFailed` ALARM·OK SNS email 알림 | 2026-07-27 OPS-015 운영자 검증 완료. 기존 alarm 계약·confirmed subscription 확인, cleanup 미실행 |
 | 실제 production DB restore와 복구 훈련 | 미실행·미완료 |
 | 자동 서버 배포·무중단 배포·Blue/Green | 미구현 |
 | Load Balancer·다중 EC2·DB replica를 포함한 고가용성 | 미구현 |
@@ -282,7 +284,7 @@ S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미�
 - **수동 HTTPS 갱신:** 실패 단계에 따라 volume과 실행 중 worker 상태가 달라지며 자동 인증서 rollback이 없다. schedule도 없어 만료 전 운영자 실행·상태 확인이 필요하다.
 - **논리 backup과 격리 복원:** application rollback과 독립된 DB 복원 가능성을 확인하지만 같은 EC2 자원을 사용하며 actual production restore 절차·RPO/RTO를 증명하지 않는다.
 - **14일·versioning 비활성 S3 계약:** 최소 권한과 단순한 단기 보존을 유지하지만 장기 보존, 삭제 복원, cross-region 장애 대응은 제공하지 않는다.
-- **관측성:** container health와 smoke는 배포 gate로 사용하지만 중앙집중식 장기 metric·log·alert 체계가 이 문서의 완료 범위로 확인된 것은 아니다.
+- **관측성:** container health와 smoke는 배포 gate로 사용하고 EC2 기본 `StatusCheckFailed`의 ALARM·OK email은 검증했지만, CPU·memory·disk·application 상태나 중앙집중식 장기 metric·log·alert 체계가 완료된 것은 아니다.
 
 ## 13. 이해 확인 질문
 

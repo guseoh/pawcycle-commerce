@@ -19,7 +19,7 @@ export PAWCYCLE_ALERT_RESOURCE_PREFIX=<dedicated lowercase prefix>
 bash infra/production/create-ec2-status-check-alarm.sh create
 ```
 
-입력 검증은 서울 region, EC2 instance ID·12자리 account ID·email 형식, 전용 lowercase resource prefix를 강제한다. 모든 create·verify·cleanup은 변경 전에 `sts get-caller-identity`의 Account와 입력 account ID가 일치하는지, 지정 region에 입력 EC2 instance가 존재하는지 확인한다. 조회 실패·불일치는 어떤 리소스 변경도 하지 않고 중단한다. 생성은 이어서 기존 alarm·topic·subscription을 읽기 전용으로 모두 확인한다. 동일 계약이면 변경하지 않고 성공하며, alarm 불일치, alarm만 있고 topic 없음, topic만 있거나 예상 밖·중복 subscription이 있으면 어떤 생성·구독·alarm 변경도 하지 않고 중단한다. 세 리소스가 모두 없을 때만 topic → email subscription → `DatapointsToAlarm=2` alarm 순서로 생성한다.
+입력 검증은 서울 region, EC2 instance ID·12자리 account ID·email 형식, 전용 lowercase resource prefix를 강제한다. 모든 create·verify·cleanup은 전역 AWS CLI region 설정에 의존하지 않고 `PAWCYCLE_ALERT_REGION`에서 검증한 서울 region을 STS를 포함한 AWS CLI 호출에 명시적으로 전달한다. 변경 전에 `sts get-caller-identity`의 Account와 입력 account ID가 일치하는지, 지정 region에 입력 EC2 instance가 존재하는지 확인한다. 조회 실패·불일치는 어떤 리소스 변경도 하지 않고 중단한다. 생성은 이어서 기존 alarm·topic·subscription을 읽기 전용으로 모두 확인한다. 동일 계약이면 변경하지 않고 성공하며, alarm 불일치, alarm만 있고 topic 없음, topic만 있거나 예상 밖·중복 subscription이 있으면 어떤 생성·구독·alarm 변경도 하지 않고 중단한다. 세 리소스가 모두 없을 때만 topic → email subscription → `DatapointsToAlarm=2` alarm 순서로 생성한다.
 
 SNS confirmation email을 수신한 사용자는 AWS가 제공한 확인 절차를 완료한다. 확인 전에는 구독이 pending 상태이며 알림 수신을 성공으로 판단하지 않는다. 확인 후 다음 명령으로 alarm 계약만 다시 확인한다.
 

@@ -12,6 +12,13 @@ cat > "$TEST_ROOT/bin/aws" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf '%s %s\n' "${1:-}" "${2:-}" >> "$FAKE_AWS_CALLS"
+if [[ "${1:-}" == sts && "${2:-}" == get-caller-identity ]]; then
+  [[ "$*" == *'--region ap-northeast-2'* ]] || {
+    printf '%s\n' 'STS call did not receive the approved Seoul region' >&2
+    exit 45
+  }
+  printf 'sts-region %s\n' "$*" >> "$FAKE_AWS_CALLS"
+fi
 case "${FAKE_AWS_SCENARIO:?}:${1:-}:${2:-}" in
   sts-failure:sts:get-caller-identity) exit 43 ;;
   account-mismatch:sts:get-caller-identity) printf '%s\n' '111111111111' ;;
@@ -70,6 +77,8 @@ assert_scenario() {
   set -e
   [[ "$status" == "$expected_status" ]] || { printf 'unexpected status for %s: %s (%s)\n' "$scenario" "$status" "$output" >&2; exit 1; }
   [[ "$output" == *"$expected_message"* ]] || { printf 'unexpected output for %s\n' "$scenario" >&2; exit 1; }
+  grep -Fq 'sts-region sts get-caller-identity --region ap-northeast-2' "$TEST_ROOT/calls" \
+    || { printf 'STS region was not verified for %s\n' "$scenario" >&2; exit 1; }
   changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm)$' "$TEST_ROOT/calls" || true)"
   [[ "$changes" == "$expected_changes" ]] || { printf 'unexpected AWS changes for %s: %s\n' "$scenario" "$changes" >&2; exit 1; }
 }
@@ -94,6 +103,7 @@ assert_verify_pending() {
   status=$?
   set -e
   [[ "$status" == 1 && "$output" == *'SNS email subscription is pending confirmation'* ]] || exit 1
+  grep -Fq 'sts-region sts get-caller-identity --region ap-northeast-2' "$TEST_ROOT/calls" || exit 1
   changes="$(grep -E '^(sns create-topic|sns subscribe|cloudwatch put-metric-alarm|cloudwatch delete-alarms|sns delete-topic)$' "$TEST_ROOT/calls" || true)"
   [[ -z "$changes" ]] || exit 1
 }
