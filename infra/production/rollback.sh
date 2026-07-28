@@ -40,7 +40,7 @@ fi
 initialize_release_context
 
 CURRENT_SHA="$(read_state_sha current-sha)"
-CONTRACT_SHA="$(read_state_sha contract-sha)"
+load_runtime_contract
 [[ "$TARGET_SHA" != "$CURRENT_SHA" ]] || die "rollback target equals current release"
 
 validate_rollback_contract_compatibility "$TARGET_SHA"
