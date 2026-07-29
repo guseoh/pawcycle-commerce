@@ -94,7 +94,7 @@ OPS-022에서 기준 Production Application Release가 `2e9222b568a3469e8ccc5edc
 
 ## Git 결과
 
-최신 `main`에서 새로 만든 `ops/sre`에 이 보고서만 commit·push한다.
+이번 기록 작업은 승인된 두 문서만 변경한다. 최종 commit·push 상태는 Git과 GitHub를 권위 원본으로 확인한다.
 
 ## PR 결과
 
