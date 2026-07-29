@@ -269,7 +269,8 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | Load Balancer·다중 EC2·DB replica를 포함한 고가용성 | 미구현 |
 | HTTPS 자동 갱신 schedule·certificate backup | 미완료 |
 | backup schedule·실패 알림·cross-region·장기 보존·versioned backup·RPO/RTO | 미완료 |
-| 운영 login/logout session 속성과 외부 unknown Host 검증 | 보류 또는 미실행 |
+| 운영 login/logout, CSRF·Session 회전, 현재 회원 식별과 logout 후 stale Session 거부 | 2026-07-29 OPS-018 운영자 검증 완료 |
+| 외부 unknown Host 검증 | 미실행 |
 | 지속 부하에서 CPU·memory·OOM·장기 성능 | 미확정 |
 
 S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미완료인 것은 versioning 활성화와 versioned backup 보존 전략이다. backup object는 지정 prefix의 14일 lifecycle 대상이며 instance role에 자동 삭제 권한을 추가하지 않았다.
