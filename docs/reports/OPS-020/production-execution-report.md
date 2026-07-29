@@ -40,6 +40,7 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 - OPS-020-PROD-001의 승인, 결과, 데이터 영향과 보안 경계를 비민감 증거로 기록했다.
 - 적용 전후 검증, 독립 검증, 복구·롤백 경계와 잔여 위험을 구분했다.
 - 저장소 준비 당시 기록인 `docs/reports/OPS-020/sre-report.md`에는 이 후속 실행 보고서 경로만 최소 보완했다.
+- 기존 `docs/handoffs/OPS-020/sre-to-tl.md`를 저장소 준비 시점의 역사적 인수인계로 명시하고 현재 OPS-020·OPS-018 권위 보고서를 연결했다.
 - OPS-018 결과는 `docs/reports/OPS-018/sre-report.md`를 권위 기록으로 참조하고 내용을 복제하지 않는다.
 
 ## 변경하지 않은 범위
@@ -135,7 +136,7 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 
 ## Git 결과
 
-- 최신 `main`에서 준비한 `ops/sre`에 이 실행 보고서와 기존 준비 보고서의 상태 안내를 commit하고 일반 push했다.
+- 최신 `main`에서 준비한 `ops/sre`에 승인된 세 문서를 commit하고 일반 push했다.
 - commit 제목은 `docs(sre): OPS-020 운영 회원 생성 결과 기록`으로 기록했다.
 - Production 실행 결과를 기록하기 위한 운영 명령은 Git 작업 중 재실행하지 않았다.
 - 최신 Head와 Checks 상태는 GitHub를 권위 원본으로 확인한다.
