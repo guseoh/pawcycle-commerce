@@ -5,7 +5,7 @@
 - 작업 ID: OPS-020
 - 작업 등급: 고위험
 - 역할: Platform/SRE
-- 상태: 저장소 준비 완료, 실제 Production 실행 미완료
+- 상태: 저장소 준비 완료 당시 기록. 후속 실제 실행 결과는 `docs/reports/OPS-020/production-execution-report.md` 참조
 
 ## 작업 목적
 
