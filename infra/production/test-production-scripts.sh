@@ -83,6 +83,11 @@ cat > "$BIN_DIR/git" <<'EOF'
 set -Eeuo pipefail
 case "${1:-}" in
   cat-file) exit 0 ;;
+  rev-parse) printf '%s\n' "${FAKE_CONTROL_SHA:?}"; exit 0 ;;
+  status)
+    [[ "${FAKE_CONTROL_DIRTY:-}" != "1" ]] || printf ' M infra/production/deploy.sh\n'
+    exit 0
+    ;;
   diff)
     [[ "${FAKE_CONTRACT_MISMATCH:-}" != "1" ]] || exit 1
     exit 0
@@ -307,15 +312,22 @@ FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"
 SHA_A="1111111111111111111111111111111111111111"
 SHA_B="2222222222222222222222222222222222222222"
 SHA_C="3333333333333333333333333333333333333333"
+export FAKE_CONTROL_SHA="$SHA_A"
 
 deploy() {
   local state_dir="${2:-$STATE_DIR}"
-  "$SCRIPT_DIR/deploy.sh" \
-    --sha "$1" \
-    --backend-image "$BACKEND_IMAGE" \
-    --frontend-image "$FRONTEND_IMAGE" \
-    --runtime-dir "$RUNTIME_DIR" \
-    --state-dir "$state_dir" >/dev/null
+  local arguments=(
+    --sha "$1"
+    --backend-image "$BACKEND_IMAGE"
+    --frontend-image "$FRONTEND_IMAGE"
+    --runtime-dir "$RUNTIME_DIR"
+    --state-dir "$state_dir"
+  )
+  if [[ ! -e "$state_dir/contract-sha" \
+    || "$(<"$state_dir/contract-sha")" != "$FAKE_CONTROL_SHA" ]]; then
+    arguments+=(--adopt-contract-sha "$FAKE_CONTROL_SHA")
+  fi
+  "$SCRIPT_DIR/deploy.sh" "${arguments[@]}" >/dev/null
 }
 
 for smoke_path in /products /api/products; do
@@ -335,8 +347,101 @@ for smoke_path in /products /api/products; do
   [[ "$(<"$FAKE_DOCKER_STATE/stop-count")" -gt "$stop_count_before" ]]
 done
 
+missing_contract_state="$TEST_ROOT/missing-contract-state"
+missing_contract_output="$TEST_ROOT/missing-contract-output"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if "$SCRIPT_DIR/deploy.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$missing_contract_state" >/dev/null 2>"$missing_contract_output"; then
+  printf 'missing runtime contract state did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'production runtime contract state is missing' "$missing_contract_output" \
+  || { printf 'missing runtime contract state failed for the wrong reason\n' >&2; exit 1; }
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+control_state="$TEST_ROOT/control-state"
+deploy "$SHA_A" "$control_state"
+[[ "$(<"$control_state/contract-sha")" == "$SHA_A" ]]
+export FAKE_CONTROL_SHA="$SHA_B"
+
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+control_drift_output="$TEST_ROOT/control-drift-output"
+if "$SCRIPT_DIR/deploy.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$control_state" >/dev/null 2>"$control_drift_output"; then
+  printf 'control SHA drift without explicit adoption did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'production control SHA differs from contract state' "$control_drift_output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+export FAKE_CONTRACT_MISMATCH=1
+if "$SCRIPT_DIR/deploy.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --adopt-contract-sha "$SHA_B" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$control_state" >/dev/null 2>&1; then
+  printf 'incompatible control contract transition did not fail closed\n' >&2
+  exit 1
+fi
+unset FAKE_CONTRACT_MISMATCH
+[[ "$(<"$control_state/contract-sha")" == "$SHA_A" ]]
+
+deploy "$SHA_A" "$control_state"
+[[ "$(<"$control_state/contract-sha")" == "$SHA_B" ]]
+[[ "$(stat -c '%a' "$control_state/contract-sha")" == "600" ]]
+
+export FAKE_CONTROL_DIRTY=1
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+dirty_control_output="$TEST_ROOT/dirty-control-output"
+if "$SCRIPT_DIR/deploy.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$control_state" >/dev/null 2>"$dirty_control_output"; then
+  printf 'dirty production control worktree did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'production control contract worktree is not clean' "$dirty_control_output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+unset FAKE_CONTROL_DIRTY
+
+export FAKE_CONTROL_SHA="$SHA_C"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+rollback_control_output="$TEST_ROOT/rollback-control-output"
+if "$SCRIPT_DIR/rollback.sh" \
+  --sha "$SHA_C" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$control_state" >/dev/null 2>"$rollback_control_output"; then
+  printf 'rollback with control SHA drift did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'production control SHA differs from contract state' "$rollback_control_output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+export FAKE_CONTROL_SHA="$SHA_A"
+
 deploy "$SHA_A"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$STATE_DIR/contract-sha")" == "$SHA_A" ]]
+[[ "$(stat -c '%a' "$STATE_DIR/contract-sha")" == "600" ]]
+
+rm -f -- "$STATE_DIR/contract-sha"
+deploy "$SHA_A"
+[[ "$(<"$STATE_DIR/contract-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
+
 export FAKE_PS_FAIL=1
 deploy "$SHA_A"
 unset FAKE_PS_FAIL
@@ -356,6 +461,7 @@ done
 deploy "$SHA_B"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_B" ]]
 [[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_A" ]]
+[[ "$(<"$STATE_DIR/previous-contract-sha")" == "$SHA_A" ]]
 
 "$SCRIPT_DIR/rollback.sh" \
   --backend-image "$BACKEND_IMAGE" \
@@ -364,6 +470,7 @@ deploy "$SHA_B"
   --state-dir "$STATE_DIR" >/dev/null
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_B" ]]
+[[ "$(<"$STATE_DIR/previous-contract-sha")" == "$SHA_A" ]]
 
 record_before="$(<"$STATE_DIR/${SHA_A}.images")"
 up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
@@ -389,7 +496,7 @@ sha_b_record_before="$(<"$STATE_DIR/${SHA_B}.images")"
 docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
 export FAKE_CONTRACT_MISMATCH=1
 if deploy "$SHA_B"; then
-  printf 'incompatible infra/production contract did not fail closed\n' >&2
+  printf 'incompatible production runtime contract did not fail closed\n' >&2
   exit 1
 fi
 unset FAKE_CONTRACT_MISMATCH
@@ -401,11 +508,12 @@ unset FAKE_CONTRACT_MISMATCH
 
 export FAKE_CONTRACT_MISMATCH=1
 if "$SCRIPT_DIR/rollback.sh" \
+  --sha "$SHA_C" \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
   --runtime-dir "$RUNTIME_DIR" \
   --state-dir "$STATE_DIR" >/dev/null; then
-  printf 'rollback with incompatible infra/production contract did not fail closed\n' >&2
+  printf 'rollback with incompatible production runtime contract did not fail closed\n' >&2
   exit 1
 fi
 unset FAKE_CONTRACT_MISMATCH

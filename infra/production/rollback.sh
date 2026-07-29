@@ -39,12 +39,11 @@ fi
 
 initialize_release_context
 
-[[ -f "$PAWCYCLE_STATE_DIR/current-sha" ]] || die "current release state is missing"
-CURRENT_SHA="$(<"$PAWCYCLE_STATE_DIR/current-sha")"
-validate_sha "$CURRENT_SHA"
+CURRENT_SHA="$(read_state_sha current-sha)"
+load_runtime_contract
 [[ "$TARGET_SHA" != "$CURRENT_SHA" ]] || die "rollback target equals current release"
 
-validate_release_contract_compatibility "$CURRENT_SHA" "$TARGET_SHA"
+validate_rollback_contract_compatibility "$TARGET_SHA"
 
 printf 'Preflighting current recovery release: %s\n' "$CURRENT_SHA"
 preflight_release "$CURRENT_SHA"
@@ -60,6 +59,7 @@ if ! activate_release "$TARGET_SHA"; then
 fi
 
 write_state previous-sha "$CURRENT_SHA"
+write_state previous-contract-sha "$CONTRACT_SHA"
 write_state current-sha "$TARGET_SHA"
 
 ACTIVE_SHA="$TARGET_SHA"

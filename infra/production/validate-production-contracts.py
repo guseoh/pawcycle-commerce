@@ -382,7 +382,46 @@ def validate_scripts() -> None:
     require("image digest drift detected for previously verified release SHA" in common, "same-SHA digest drift must fail closed")
     require("MYSQL_DIGEST=%s" in common and "PROXY_DIGEST=%s" in common, "base image digests must be part of each SHA record")
     require("cmp -s" in common, "existing SHA image records must be compared rather than overwritten")
-    require("git diff --quiet" in common and "':(top)infra/production'" in common, "release contract compatibility gate is missing")
+
+    for release_contract_path in (
+        "infra/production/compose.yaml",
+        "infra/production/nginx.conf",
+        "infra/production/nginx.https.conf",
+    ):
+        require(release_contract_path in common, f"release contract path is missing: {release_contract_path}")
+    for control_path in (
+        "infra/production/release-common.sh",
+        "infra/production/deploy.sh",
+        "infra/production/rollback.sh",
+        "infra/production/materialize-ssm-env.sh",
+    ):
+        require(control_path in common, f"control worktree path is missing: {control_path}")
+    require(
+        "RELEASE_CONTRACT_PATHS" in common
+        and "CONTROL_WORKTREE_PATHS" in common
+        and "git status --porcelain --untracked-files=all" in common,
+        "release compatibility and clean control worktree boundaries are incomplete",
+    )
+    require(
+        "validate_runtime_contract_compatibility" in common
+        and "production release contract differs from the approved contract SHA" in common,
+        "release contract compatibility gate is missing",
+    )
+    require(
+        "production control contract worktree is not clean" in common
+        and "production control SHA differs from contract state" in common
+        and "requested runtime contract SHA does not match current control HEAD" in common,
+        "explicit clean control HEAD approval gate is missing",
+    )
+    require(
+        'write_state contract-sha "$control_sha"' in common
+        and "load_runtime_contract" in common
+        and "load_runtime_contract" in rollback
+        and "--adopt-contract-sha" in deploy
+        and "previous-contract-sha" in deploy
+        and "previous-contract-sha" in rollback,
+        "application release and production control state must be separated",
+    )
     require("--pull never" in common, "activation must not replace preflighted images")
     require('PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data"' in common, "production volume name must ignore ambient overrides")
     require('PAWCYCLE_HTTP_PORT="80"' in common, "production HTTP port must ignore ambient overrides")
@@ -398,8 +437,14 @@ def validate_scripts() -> None:
         "target release did not fail when smoke failed",
         "same-SHA application digest drift did not fail closed",
         "pinned base image digest drift did not fail closed",
-        "incompatible infra/production contract did not fail closed",
-        "rollback with incompatible infra/production contract did not fail closed",
+        "missing runtime contract state did not fail closed",
+        "missing runtime contract state failed for the wrong reason",
+        "control SHA drift without explicit adoption did not fail closed",
+        "incompatible control contract transition did not fail closed",
+        "dirty production control worktree did not fail closed",
+        "rollback with control SHA drift did not fail closed",
+        "incompatible production runtime contract did not fail closed",
+        "rollback with incompatible production runtime contract did not fail closed",
     ):
         require(evidence in script_tests, f"release regression evidence is missing: {evidence}")
 

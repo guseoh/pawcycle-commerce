@@ -17,6 +17,19 @@ HTTPS_DOMAIN_NAME="https-domain"
 HTTPS_NGINX_CONFIG_NAME="nginx.https.conf"
 HTTPS_MIN_CERT_VALIDITY_SECONDS="86400"
 HTTPS_DOMAIN=""
+RELEASE_CONTRACT_PATHS=(
+  ':(top)infra/production/compose.yaml'
+  ':(top)infra/production/nginx.conf'
+  ':(top)infra/production/nginx.https.conf'
+)
+CONTROL_WORKTREE_PATHS=(
+  "${RELEASE_CONTRACT_PATHS[@]}"
+  ':(top)infra/production/release-common.sh'
+  ':(top)infra/production/deploy.sh'
+  ':(top)infra/production/rollback.sh'
+  ':(top)infra/production/materialize-ssm-env.sh'
+)
+CONTRACT_SHA=""
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -72,6 +85,35 @@ validate_runtime_bundle() {
 prepare_state_directory() {
   validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
   install -d -m 700 "$PAWCYCLE_STATE_DIR"
+}
+
+read_state_sha() {
+  local name="$1"
+  local path="$PAWCYCLE_STATE_DIR/$name"
+  local value
+
+  [[ -e "$path" || -L "$path" ]] || die "$name state is missing"
+  [[ ! -L "$path" && -f "$path" ]] || die "$name state must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$path")" == "600" ]] || die "$name state mode must be 600"
+  value="$(<"$path")"
+  validate_sha "$value"
+  printf '%s\n' "$value"
+}
+
+current_control_sha() {
+  local changes
+  local sha
+
+  if ! changes="$(git status --porcelain --untracked-files=all -- "${CONTROL_WORKTREE_PATHS[@]}")"; then
+    die "unable to inspect production control contract worktree"
+  fi
+  [[ -z "$changes" ]] || die "production control contract worktree is not clean"
+
+  if ! sha="$(git rev-parse --verify HEAD)"; then
+    die "unable to resolve production control HEAD"
+  fi
+  validate_sha "$sha"
+  printf '%s\n' "$sha"
 }
 
 validate_https_domain() {
@@ -218,25 +260,105 @@ preflight_release() {
   printf 'Verified Nginx digest: %s\n' "$proxy_digest"
 }
 
-validate_release_contract_compatibility() {
-  local active_contract_sha="$1"
-  local candidate_contract_sha="$2"
+validate_runtime_contract_compatibility() {
+  local approved_contract_sha="$1"
+  local candidate_sha="$2"
   local status
 
-  [[ "$active_contract_sha" != "$candidate_contract_sha" ]] || return 0
-  git cat-file -e "${active_contract_sha}^{commit}" 2>/dev/null \
-    || die "current release commit is unavailable for contract comparison: $active_contract_sha"
-  git cat-file -e "${candidate_contract_sha}^{commit}" 2>/dev/null \
-    || die "target release commit is unavailable for contract comparison: $candidate_contract_sha"
+  [[ "$approved_contract_sha" != "$candidate_sha" ]] || return 0
+  git cat-file -e "${approved_contract_sha}^{commit}" 2>/dev/null \
+    || die "approved release contract commit is unavailable: $approved_contract_sha"
+  git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null \
+    || die "candidate release contract commit is unavailable: $candidate_sha"
 
-  if git diff --quiet "$active_contract_sha" "$candidate_contract_sha" -- ':(top)infra/production'; then
+  if git diff --quiet "$approved_contract_sha" "$candidate_sha" -- "${RELEASE_CONTRACT_PATHS[@]}"; then
     return 0
   else
     status=$?
   fi
-  [[ "$status" -eq 1 ]] \
-    || die "unable to compare infra/production release contracts"
-  die "infra/production contract differs between current and target SHA; automatic application rollback is unsafe"
+  [[ "$status" -eq 1 ]] || die "unable to compare production release contracts"
+  die "production release contract differs from the approved contract SHA"
+}
+
+validate_current_release_for_contract_adoption() {
+  local current_release_sha="$1"
+
+  [[ -n "$current_release_sha" ]] || return 0
+  ACTIVE_SHA="$current_release_sha"
+  export ACTIVE_SHA
+  printf 'Preflighting currently running release before control contract adoption: %s\n' "$current_release_sha"
+  preflight_release "$current_release_sha"
+  verify_running_release || die "running release identity does not match current-sha during control contract adoption"
+  smoke_release || die "running release smoke failed during control contract adoption"
+  if https_enabled; then
+    verify_https_release || die "running HTTPS release verification failed during control contract adoption"
+  fi
+}
+
+load_or_adopt_runtime_contract() {
+  local requested_contract_sha="$1"
+  local current_release_sha="$2"
+  local state_path="$PAWCYCLE_STATE_DIR/contract-sha"
+  local stored_contract_sha=""
+  local control_sha
+
+  control_sha="$(current_control_sha)"
+
+  if [[ -e "$state_path" || -L "$state_path" ]]; then
+    stored_contract_sha="$(read_state_sha contract-sha)"
+    if [[ "$stored_contract_sha" == "$control_sha" ]]; then
+      if [[ -n "$requested_contract_sha" && "$requested_contract_sha" != "$control_sha" ]]; then
+        die "requested runtime contract SHA does not match current control HEAD"
+      fi
+      CONTRACT_SHA="$stored_contract_sha"
+      return 0
+    fi
+
+    [[ -n "$requested_contract_sha" ]] \
+      || die "production control SHA differs from contract state; --adopt-contract-sha with the current control HEAD is required"
+    validate_sha "$requested_contract_sha"
+    [[ "$requested_contract_sha" == "$control_sha" ]] \
+      || die "requested runtime contract SHA does not match current control HEAD"
+    validate_runtime_contract_compatibility "$stored_contract_sha" "$control_sha"
+  else
+    [[ -n "$requested_contract_sha" ]] \
+      || die "production runtime contract state is missing; --adopt-contract-sha with the current control HEAD is required"
+    validate_sha "$requested_contract_sha"
+    [[ "$requested_contract_sha" == "$control_sha" ]] \
+      || die "requested runtime contract SHA does not match current control HEAD"
+  fi
+
+  validate_current_release_for_contract_adoption "$current_release_sha"
+  write_state contract-sha "$control_sha"
+  CONTRACT_SHA="$control_sha"
+  printf 'Production control contract adopted: %s\n' "$CONTRACT_SHA"
+}
+
+load_runtime_contract() {
+  local control_sha
+
+  CONTRACT_SHA="$(read_state_sha contract-sha)"
+  control_sha="$(current_control_sha)"
+  [[ "$control_sha" == "$CONTRACT_SHA" ]] \
+    || die "production control SHA differs from contract state; deploy with --adopt-contract-sha using the current control HEAD after explicit approval"
+}
+
+validate_rollback_contract_compatibility() {
+  local target_sha="$1"
+  local previous_sha=""
+  local previous_contract_sha=""
+
+  if [[ -e "$PAWCYCLE_STATE_DIR/previous-sha" || -L "$PAWCYCLE_STATE_DIR/previous-sha" ]]; then
+    previous_sha="$(read_state_sha previous-sha)"
+  fi
+  if [[ -e "$PAWCYCLE_STATE_DIR/previous-contract-sha" || -L "$PAWCYCLE_STATE_DIR/previous-contract-sha" ]]; then
+    previous_contract_sha="$(read_state_sha previous-contract-sha)"
+  fi
+
+  if [[ "$target_sha" == "$previous_sha" && "$previous_contract_sha" == "$CONTRACT_SHA" ]]; then
+    return 0
+  fi
+  validate_runtime_contract_compatibility "$CONTRACT_SHA" "$target_sha"
 }
 
 wait_healthy() {
