@@ -15,6 +15,14 @@
 
 이미 완료된 OPS-020-PROD-001의 Production 인증 Smoke 회원 생성 결과를 비민감 고위험 증거로 남긴다. 저장소 준비 당시의 역사적 보고서와 실제 운영 실행 결과를 분리하고, 실제 데이터 영향과 복구 경계를 명확히 한다.
 
+## 입력 문서
+
+- 실행 절차와 성공 계약: `docs/runbook/OPS-020-production-auth-smoke-member.md`
+- 저장소 준비 당시 기록: `docs/reports/OPS-020/sre-report.md`
+- 후속 Session Smoke 결과: `docs/reports/OPS-018/sre-report.md`
+- 사용자 승인 입력: OPS-020-PROD-001
+- 비민감 완료 결과: 사용자 확인 성공 Marker와 Production 회원 한 명 생성 결과
+
 ## 승인 입력
 
 - 사용자가 2026-07-29 KST에 OPS-020-PROD-001 실행을 명시적으로 승인했다.
@@ -38,7 +46,7 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 
 - Production 명령, 회원 조회, DB 조회와 직접 SQL을 실행하지 않았다.
 - 회원 삭제·수정·비밀번호 변경과 자동 재실행을 수행하지 않았다.
-- 코드, 설정, Runbook, 운영 환경과 기존 역할 인수인계를 변경하지 않았다.
+- 코드, 설정, Runbook과 운영 환경을 변경하지 않았다.
 - OPS-018 Session Smoke를 실행하거나 그 보고서를 수정하지 않았다.
 - email, password, memberId, domain, Container 식별자와 원시 출력을 기록하지 않았다.
 
@@ -68,8 +76,8 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 
 - 실행에는 OPS-020-PROD-001 사용자 승인이 있었다.
 - 기준 Application Release는 승인된 `2e9222b568a3469e8ccc5edce1b5301218c6888e`였다.
-- 성공 Marker는 Wrapper의 사전 Gate와 one-shot Backend 명령이 성공한 뒤에만 출력되는 계약이다. 따라서 확인된 Marker를 근거로 TTY, 승인 Release, immutable image, runtime·state 파일, Production MySQL health와 one-shot Container 보안 Gate를 통과한 실행으로 기록한다.
-- 이번 증거 작업에서 해당 운영 상태를 다시 조회하거나 독립적으로 재실행하지 않았다.
+- 성공 Marker는 Wrapper의 사전 Gate와 one-shot Backend 명령이 성공한 뒤에만 출력되는 계약이다. 사용자 확인 성공 Marker와 Wrapper 계약에 따라 해당 Gate를 만족한 실행으로 기록한다.
+- TTY, 승인 Release, immutable image, runtime·state 파일, Production MySQL health와 one-shot Container 보안 Gate는 이번 보고서 작성 과정에서 독립적으로 재조회하거나 재실행하지 않았다.
 
 ## 적용 후 검증
 
@@ -91,6 +99,10 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 - 코드 revert는 이미 생성된 회원을 제거하지 않는다.
 - 회원 삭제나 비밀번호 변경은 별도 고위험 사용자 승인 대상이다.
 - 실패·모호한 결과와 자동 재실행이 없었으므로 실행 실패 복구 절차는 사용하지 않았다.
+
+## 적용 방법
+
+완료된 Production 실행 결과만 이 보고서에 문서화한다. 기존 저장소 준비 계약은 `docs/reports/OPS-020/sre-report.md`, 후속 Session Smoke 결과는 `docs/reports/OPS-018/sre-report.md`를 참조하며, 이번 기록 작업에서는 Production 명령·DB 조회·회원 변경을 수행하지 않았다.
 
 ## 실행한 검증
 
@@ -123,12 +135,14 @@ OPS-020-PROD-001은 Production DB에 회원 한 명을 생성하는 고위험 �
 
 ## Git 결과
 
-- 최신 `main`에서 새 `ops/sre`를 준비해 이 보고서와 기존 준비 보고서의 상태 안내만 변경한다.
-- commit 제목은 `docs(sre): OPS-020 운영 회원 생성 결과 기록`으로 사용한다.
-- Production 실행 결과를 기록하기 위한 운영 명령은 Git 작업 중 재실행하지 않는다.
+- 최신 `main`에서 준비한 `ops/sre`에 이 실행 보고서와 기존 준비 보고서의 상태 안내를 commit하고 일반 push했다.
+- commit 제목은 `docs(sre): OPS-020 운영 회원 생성 결과 기록`으로 기록했다.
+- Production 실행 결과를 기록하기 위한 운영 명령은 Git 작업 중 재실행하지 않았다.
+- 최신 Head와 Checks 상태는 GitHub를 권위 원본으로 확인한다.
 
 ## PR 결과
 
-- `ops/sre`에서 `main`으로 향하는 같은 제목의 Draft PR을 생성한다.
-- PR에는 실제 실행 결과, 데이터 영향, 복구 경계, OPS-018 분리와 미검증 위험을 요약한다.
-- 자동 병합하지 않고 사용자 검토에 남긴다.
+- `ops/sre`에서 `main`으로 향하는 [PR #74](https://github.com/guseoh/pawcycle-commerce/pull/74)를 같은 제목으로 생성했다.
+- PR 본문에 실제 실행 결과, 데이터 영향, 복구 경계, OPS-018 분리와 미검증 위험을 요약했다.
+- 최신 Head, Checks, Draft/Ready와 review 상태는 GitHub를 권위 원본으로 확인한다.
+- 자동 병합하지 않고 사용자 검토에 남겼다.

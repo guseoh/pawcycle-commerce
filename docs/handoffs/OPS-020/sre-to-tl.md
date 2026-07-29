@@ -4,6 +4,9 @@
 
 - 작업 ID: OPS-020
 - 작업 등급: 고위험
+- 문서 성격: OPS-020 저장소 준비 완료 시점의 역사적 인수인계
+- 현재 실행 결과: `docs/reports/OPS-020/production-execution-report.md`
+- 후속 Session Smoke 결과: `docs/reports/OPS-018/sre-report.md`
 
 ## 전달 목적
 
@@ -26,7 +29,8 @@ Context 이전 Backend gate를 소비하는 root·TTY wrapper, 공유 deploy loc
 - Wrapper: `infra/production/create-production-auth-smoke-member.sh`
 - Runbook: `docs/runbook/OPS-020-production-auth-smoke-member.md`
 - 성공 계약: `PASS: production auth smoke member created`
-- 실제 상태: 저장소 준비만 완료, Production 회원 생성 미완료
+- 당시 실제 상태: 저장소 준비만 완료, Production 회원 생성 미완료
+- 현재 결과: Production 회원 생성은 `docs/reports/OPS-020/production-execution-report.md`, OPS-018 Session Smoke는 `docs/reports/OPS-018/sre-report.md`에 각각 완료 결과가 기록돼 있다.
 
 ## 확정된 결정
 
@@ -34,11 +38,11 @@ Credential은 `/dev/tty`에서 한 번씩 받고 stdin 두 줄로만 전달한�
 
 ## 미확정 결정
 
-실제 실행 시점, 실제 전용 email/password, 실행 뒤 OPS-018 착수 여부는 별도 고위험 사용자 결정이다.
+저장소 준비 당시 실제 실행 시점, 실제 전용 email/password, 실행 뒤 OPS-018 착수 여부는 별도 고위험 사용자 결정이었다. 현재 완료 결과는 실행 보고서와 OPS-018 보고서를 따른다.
 
 ## 승인 필요 항목
 
-Production DB에 회원 한 건을 생성하는 wrapper 실행과 이후 OPS-018 인증·Session Smoke는 각각 명시적 승인이 필요하다.
+저장소 준비 당시 Production DB에 회원 한 건을 생성하는 wrapper 실행과 이후 OPS-018 인증·Session Smoke는 각각 명시적 승인이 필요했다. 두 실행의 현재 완료 결과는 각 권위 보고서를 따른다.
 
 ## 소비자 검증 포인트
 
@@ -73,11 +77,11 @@ Docker client 중단과 DB commit 경계가 겹치면 PASS 없이 회원이 존�
 
 ## 남은 위험과 주의 사항
 
-실제 Production 회원 생성, credential 보관 책임, 로그인 가능성, CSRF/session rotation과 logout은 미검증이다. OPS-020을 OPS-018 완료로 확대하지 않는다.
+저장소 준비 당시 실제 Production 회원 생성, credential 보관 책임, 로그인 가능성, CSRF/session rotation과 logout은 미검증이었다. 현재 회원 생성과 OPS-018 Session Smoke는 각 권위 보고서에 완료 결과가 기록돼 있으며, credential 수명과 운영자 관리 책임은 남아 있다. OPS-020 결과를 OPS-018 결과와 합쳐 기록하지 않는다.
 
 ## 다음 권장 작업
 
-Tech Lead가 PR의 TTY·immutable image·Container hardening과 테스트 격리를 검토한다. 병합 뒤 사용자가 별도 고위험 실행을 승인하면 회원을 한 번 생성하고 결과를 비민감 증거로 기록한 다음 OPS-018을 판단한다.
+저장소 준비 당시 권장 순서는 Tech Lead가 PR의 TTY·immutable image·Container hardening과 테스트 격리를 검토하고, 병합 뒤 별도 고위험 승인으로 회원을 한 번 생성한 다음 OPS-018을 판단하는 것이었다. 현재 완료 결과와 남은 위험은 실행 보고서와 OPS-018 보고서를 따른다.
 
 ## 완료 조건
 
