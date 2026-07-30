@@ -828,10 +828,10 @@ def validate_actual_production_restore() -> None:
         ROOT / ".github" / "workflows" / "validate-conventions.yml"
     ).read_text(encoding="utf-8")
     cutover_body = restore[
-        restore.index("cutover() {") : restore.index("\nrevert() {")
+        restore.index("\ncutover() {") : restore.index("\nrevert() {")
     ]
     revert_body = restore[
-        restore.index("revert() {") : restore.index("\nmain() {")
+        restore.index("\nrevert() {") : restore.index("\nmain() {")
     ]
     common_initialize = common[
         common.index("initialize_release_context() {") :
