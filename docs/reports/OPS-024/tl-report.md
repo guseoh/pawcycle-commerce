@@ -23,6 +23,7 @@
 - `docs/reports/OPS-016/sre-report.md`
 - `docs/reports/OPS-018/sre-report.md`
 - `docs/reports/OPS-020/production-execution-report.md`
+- `docs/reports/OPS-021/sre-report.md`
 - `docs/runbook/OPS-010-production-single-release.md`
 - `docs/runbook/OPS-011-production-https.md`
 - `docs/runbook/OPS-013-production-db-backup-restore.md`
@@ -72,45 +73,45 @@
 | HTTPS 운영 접속과 Production Secret 분리 | 충족 | OPS-011은 실제 인증서·HTTPS 경로·재부팅 복구를 기록한다. OPS-010과 `materialize-ssm-env.sh`는 SSM 원본, root 전용 mode `600` runtime 파일, MySQL root password의 Backend 미전달 계약을 함께 증명한다. 자동 갱신 schedule과 certificate backup은 범위 밖 잔여 위험이다. |
 | 공개 상품 및 인증·Session 핵심 Smoke | 충족 | OPS-018은 공개 HTTPS 경로, 익명 거부, 로그인 시 Session·CSRF 회전, 현재 회원 일치, logout과 stale Session 거부의 다섯 PASS를 기록한다. OPS-017 Runbook과 구현 계약을 교차 대조했으며 장기 Session·부하·다중 Instance는 미검증이다. |
 | DB 데이터와 Production volume 보존 | 충족 | OPS-010 lifecycle, OPS-012 실제 application rollback과 OPS-013 backup·격리 restore는 Production MySQL volume 보존과 schema 비변경을 각각 기록한다. 이는 Actual Production DB restore 완료를 뜻하지 않는다. |
-| 배포 실패 복귀와 실제 Application rollback | 충족 | OPS-010 구현·정적 및 lifecycle 검증은 대상 activation 실패 전에 기존 release를 preflight하고 실패 시 복귀하는 계약을 보호한다. OPS-012는 실제 이전 Application Release로 rollback 후 health·HTTPS·volume 보존을 확인했다. Production에서 의도적으로 배포 실패를 주입한 증거로 확대하지 않는다. |
+| 배포 실패 복귀와 실제 Application rollback | 부분 충족 | OPS-010 구현·lifecycle 검증은 실패 복귀 계약을 보호하고 OPS-012는 당시 계약에서 실제 이전 Application Release로 rollback 후 health·HTTPS·volume 보존을 확인했다. 그러나 최신 `main`의 OPS-021은 Application·Control 상태와 `contract-sha`를 분리했고, 이 새 Control 계약의 Production 채택·배포·rollback은 저장소 증거상 미실행이다. |
 | 논리 Backup과 승인된 isolated restore 검증 | 충족 | OPS-013은 Production logical backup, S3 무결성, network가 격리된 임시 MySQL restore, schema·Flyway·핵심 table 비교와 Production 보존을 기록한다. Actual Production DB restore, 자동 schedule과 RPO/RTO는 미완료다. |
 | 최소 장애 알림 | 충족 | OPS-016은 기존 EC2 `StatusCheckFailed` alarm 계약, confirmed 단일 subscription과 ALARM·OK email 수신을 기록한다. 실제 EC2 장애 유발, 확장 지표, 자동 복구와 cleanup은 수행하지 않았다. |
-| 배포·복구 Runbook | 충족 | OPS-010·011·013·015·017·020 Runbook과 관련 구현이 적용 전 gate, 성공·실패 판정, 중단과 복구 경계를 제공한다. Actual Production DB restore Runbook은 없으므로 해당 절차까지 완료됐다는 뜻은 아니다. |
+| 배포·복구 Runbook | 부분 충족 | OPS-010·011·013·015·017·020 Runbook은 Application 배포·rollback, HTTPS, isolated restore, 알림과 인증 검증의 적용 전 gate·중단·복구 경계를 제공한다. 하지만 DB 손상 시 운영자가 실행할 승인된 Actual Production DB restore Runbook은 없다. |
 
 ## 판정 제안
 
-- **최소 운영 안전성 기준선 충족 제안, 프로젝트 전체 운영 완성은 아님.**
-- 일곱 최소 기준은 병합된 실행 증거와 Runbook 또는 구현 계약을 교차 대조한 결과 모두 `충족`으로 평가했다.
+- **최소 운영 안전성 기준선은 부분 충족이며, 충족 제안은 보류한다.**
+- 다섯 기준은 `충족`, 두 기준은 `부분 충족`이다. 최신 OPS-021 Control 계약의 Production 적용·rollback 증거와 Actual Production DB restore Runbook이 없으므로 현재 증거로 전체 최소 기준 충족을 제안하지 않는다.
 - 이 평가는 Tech Lead의 판정 제안이다. 사용자가 잔여 위험을 검토해 결정하기 전 상태는 `Decision Required`이며 `Approved` 또는 `Verified`가 아니다.
 - 저장소 기준은 최신 `main`이고, 실제 인증·Session 및 회원 생성 검증 Release는 별도의 Application SHA다. 최신 `main`이 Production에 배포됐다고 해석하지 않는다.
 
 ## Decision Required
 
 - **Blue/Green:** 현재 단일 release 전환과 짧은 중단 가능성을 유지하고 Blue/Green·무중단 구현을 보류하는 안을 권고한다. 수용 여부는 사용자 결정이 필요하다.
-- **PERF-OPS-001:** 기준선 최종 판정 뒤 다음 운영 평가 초점을 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 이 보고서가 해당 작업을 승인하거나 활성화하지 않는다.
-- 사용자는 최소 기준선 제안을 수용할지와 두 권고를 채택할지를 별도로 판단해야 한다.
+- **PERF-OPS-001:** 두 부분 충족 항목의 처리 방침과 기준선 최종 판정 뒤 다음 운영 평가 초점을 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 이 보고서가 해당 작업을 승인하거나 활성화하지 않는다.
+- 사용자는 OPS-021 적용 증거와 Actual Production DB restore Runbook을 기준선 선행 조건으로 보완할지, 별도 잔여 위험으로 수용할지를 결정하고 두 권고의 채택 여부를 별도로 판단해야 한다.
 
 ## 적용 전 검증
 
-- `origin/main`이 승인된 기준 SHA이고 PR #74 병합 결과를 포함하는지 Git history로 확인했다.
+- 2026-07-30 KST 감사 시작 시 기준 commit [`6d72a74595458c55bd55d276b286ae45e408c25b`](https://github.com/guseoh/pawcycle-commerce/commit/6d72a74595458c55bd55d276b286ae45e408c25b)의 history가 [PR #74](https://github.com/guseoh/pawcycle-commerce/pull/74) 병합 결과를 포함함을 확인했다. 이후 `main`과 PR의 현재 상태는 GitHub를 권위 원본으로 확인한다.
 - 필수 실행 보고서, Runbook과 구현 경로가 모두 존재하고 현재 `main`에 병합됐음을 확인했다.
-- 각 기록의 실행일과 범위를 대조했다. OPS-010·011·013·020 준비 문서의 당시 미완료 문구는 이후 OPS-012·016·018·020 실행 보고서가 갱신한 역사적 상태이며 서로 충돌하는 현재 상태로 해석하지 않았다.
+- 각 기록의 실행일과 범위를 대조했다. OPS-010·011·013·020 준비 문서의 당시 미완료 문구는 이후 OPS-012·016·018·020 실행 보고서가 갱신한 역사적 상태이며 서로 충돌하는 현재 상태로 해석하지 않았다. OPS-021의 새 Control 계약 미적용 상태는 후속 완료 증거가 없어 현재 공백으로 유지했다.
 - 저장소 기준 SHA와 실제 운영에서 검증한 Application Release를 분리했다.
 - 작업 트리와 역할 브랜치가 깨끗하고 다른 worktree나 열린 `ops/tl` PR이 없음을 확인했다.
 
 ## 적용 후 검증
 
-- 판정표의 일곱 기준이 각각 실행 보고서와 Runbook 또는 구현 계약에 연결되는지 확인했다.
+- 판정표의 일곱 기준이 각각 실행 보고서와 Runbook 또는 구현 계약에 연결되고, OPS-021 Control 적용 공백과 Actual Production DB restore Runbook 부재가 두 `부분 충족` 판정에 반영되는지 확인했다.
 - 운영 개요의 권위 원본 지도, 현재 상태, 판정표에서 OPS-018·OPS-020 링크와 상태 용어가 일치하는지 확인했다.
 - Actual Production DB restore와 나머지 명시된 미검증 항목이 완료 상태로 확대되지 않았는지 확인했다.
-- 저장소 기준과 실제 검증 Release가 혼동되지 않고 최종 상태가 `Decision Required`로 유지되는지 확인했다.
+- 저장소 기준과 실제 검증 Release가 혼동되지 않고 최소 기준선 충족 제안이 보류되며 최종 상태가 `Decision Required`로 유지되는지 확인했다.
 
 ## 독립 검증
 
 - HTTPS·Secret은 OPS-011 실제 결과를 OPS-010의 runtime 분리 구현과 교차 대조했다.
 - 인증·Session은 OPS-018 실행 결과를 OPS-017 Runbook과 `verify-production-auth-session-smoke.sh` 계약에 대조했다.
 - DB 보존·backup·restore는 OPS-012·013 결과를 release와 backup 구현의 volume·schema 경계에 대조했다.
-- 실패 복귀는 OPS-010 lifecycle 증거와 `deploy.sh`·`release-common.sh` 상태 전이를, 실제 rollback은 OPS-012 결과와 `rollback.sh` 계약을 각각 확인했다.
+- 실패 복귀는 OPS-010 lifecycle 증거와 OPS-012 실제 rollback을 확인한 뒤, OPS-021에서 변경된 `contract-sha`·Control 상태 전이의 Production 적용이 미실행임을 별도 대조했다.
 - 장애 알림은 OPS-016 결과를 OPS-015 Runbook과 alarm 계약 구현에 대조했다.
 - 별도 Production 재조회나 명령 재실행을 독립 검증으로 과장하지 않는다. 병합된 Repository Validation과 이번 정적 validator의 결과는 GitHub Checks와 로컬 검증 결과를 각각 권위 원본으로 삼는다.
 
@@ -161,6 +162,8 @@
 ## 남은 위험
 
 - Actual Production DB restore는 미실행이다.
+- 최신 OPS-021 Control 계약의 Production 채택·배포·rollback 증거는 없다.
+- Actual Production DB restore Runbook은 없다.
 - 외부 unknown Host 검증은 미실행이다.
 - HTTPS 자동 갱신 schedule과 certificate backup은 없다.
 - Backup schedule·실패 알림·cross-region·장기 보존·versioning·RPO/RTO는 미완료다.
@@ -171,7 +174,7 @@
 ## 다음 작업
 
 - 사용자 판정 전에는 다음 역할을 활성화하지 않는다.
-- 사용자가 기준선 제안과 권고를 수용한 경우에만 별도 승인 작업에서 로드맵 상태와 PERF-OPS-001 착수 여부를 다룬다.
+- 사용자가 두 부분 충족 항목의 처리 방침과 권고를 결정한 경우에만 별도 승인 작업에서 로드맵 상태와 PERF-OPS-001 착수 여부를 다룬다.
 
 ## 인수인계 생략 사유
 
@@ -183,5 +186,5 @@
 
 ## PR 결과
 
-- `ops/tl`에서 `main`을 대상으로 Draft PR을 생성하고 자동 병합하지 않는다.
-- PR Head, Checks, Draft·Ready와 review 상태는 동적 값이므로 GitHub를 권위 원본으로 확인한다.
+- `ops/tl`에서 `main`을 대상으로 [PR #75](https://github.com/guseoh/pawcycle-commerce/pull/75)를 생성했고 자동 병합하지 않는다.
+- PR Head, Checks, Draft·Ready와 review 상태는 동적 값이므로 보고서에 고정하지 않고 GitHub를 권위 원본으로 확인한다.

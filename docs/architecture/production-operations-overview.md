@@ -13,7 +13,7 @@
 | AWS 기반·접속 | 저장소 밖 AWS resource, `infra/production/compose.yaml` | `docs/runbook/OPS-009-aws-operations-foundation.md`, `docs/handoffs/OPS-009/sre-to-tl.md` |
 | image build·게시 | `.github/workflows/publish-production-images.yml`, `infra/production/backend.Dockerfile`, `infra/production/frontend.Dockerfile` | `docs/runbook/OPS-010-production-single-release.md`, `docs/handoffs/OPS-010/sre-to-tl.md` |
 | Secret materialize | `infra/production/materialize-ssm-env.sh`, `infra/production/release-common.sh`의 `validate_runtime_bundle` | OPS-010 Runbook·보고서·인수인계 |
-| release 배포·복귀 | `infra/production/deploy.sh`, `infra/production/release-common.sh` | OPS-010 Runbook·보고서·인수인계 |
+| release 배포·복귀 | `infra/production/deploy.sh`, `infra/production/release-common.sh` | OPS-010 Runbook·보고서·인수인계, `docs/reports/OPS-021/sre-report.md` |
 | 명시적 application rollback | `infra/production/rollback.sh`, `infra/production/release-common.sh` | OPS-010 Runbook, OPS-012 보고서·인수인계 |
 | HTTP·HTTPS | `infra/production/nginx.conf`, `infra/production/nginx.https.conf`, `infra/production/https.sh` | `docs/runbook/OPS-011-production-https.md`, `docs/handoffs/OPS-011/sre-to-tl.md` |
 | DB backup·격리 복원 | `infra/production/db-backup-restore.sh` | `docs/runbook/OPS-013-production-db-backup-restore.md`, `docs/reports/OPS-013/production-verification-2026-07-24.md` |
@@ -265,6 +265,7 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | HTTPS 발급·SAN·경로, 수동 갱신 rehearsal·갱신, 재부팅 복구 | 운영 검증 완료 |
 | S3 계약·IAM 최소 권한, production logical backup, isolated restore, production 보존·cleanup | 2026-07-24 운영자 검증 완료. script가 IAM policy·bucket 전용성을 매 실행 증명하는 것은 아님 |
 | 실제 이전 SHA application rollback | 2026-07-27 OPS-012 운영자 검증 완료 |
+| OPS-021 Application·Control 상태 분리와 `contract-sha` 계약 | 저장소 구현·정적 lifecycle 검증 완료. 새 Control 계약의 Production 채택·배포·rollback은 미실행 |
 | EC2 `StatusCheckFailed` ALARM·OK SNS email 알림 | 2026-07-27 OPS-016 운영자 검증 완료. 기존 alarm 계약·confirmed subscription 확인, cleanup 미실행 |
 | 실제 production DB restore와 복구 훈련 | 미실행·미완료 |
 | 자동 서버 배포·무중단 배포·Blue/Green | 미구현 |
@@ -287,14 +288,14 @@ S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미�
 | HTTPS 운영 접속과 Production Secret 분리 | 충족 | OPS-010·011 결과와 Secret materialize 계약에 근거한다. 자동 갱신 schedule·certificate backup은 미완료다. |
 | 공개 상품 및 인증·Session 핵심 Smoke | 충족 | OPS-018의 다섯 단계 PASS와 OPS-017 계약에 근거한다. 장기 Session·부하·다중 Instance는 미검증이다. |
 | DB 데이터와 Production volume 보존 | 충족 | OPS-010·012·013의 volume 보존과 schema 비변경 증거에 근거한다. Actual Production DB restore는 미실행이다. |
-| 배포 실패 복귀와 실제 Application rollback | 충족 | OPS-010의 실패 복귀 계약·lifecycle 검증과 OPS-012 실제 rollback 결과에 근거한다. Production 실패 주입으로 확대하지 않는다. |
+| 배포 실패 복귀와 실제 Application rollback | 부분 충족 | OPS-010 실패 복귀 계약·lifecycle과 OPS-012의 당시 실제 rollback은 확인됐다. 최신 OPS-021 `contract-sha`·Control 계약의 Production 채택·배포·rollback은 미실행이다. |
 | 논리 Backup과 승인된 isolated restore 검증 | 충족 | OPS-013 실행 결과에 근거한다. 자동 schedule·cross-region·장기 보존·RPO/RTO는 미완료다. |
 | 최소 장애 알림 | 충족 | OPS-016의 기존 alarm 계약, confirmed subscription과 ALARM·OK 수신에 근거한다. 실제 EC2 장애 유발과 자동 복구는 미실행이다. |
-| 배포·복구 Runbook | 충족 | OPS-010·011·013·015·017·020 Runbook과 구현 계약에 근거한다. Actual Production DB restore 절차는 없다. |
+| 배포·복구 Runbook | 부분 충족 | Application 배포·rollback, HTTPS, isolated restore, 알림과 인증 검증 Runbook은 있다. DB 손상 시 승인된 Actual Production DB restore Runbook은 없다. |
 
-OPS-024 Tech Lead의 권장 결론은 **최소 운영 안전성 기준선 충족 제안, 프로젝트 전체 운영 완성은 아님**이다. 이는 증거 평가 제안이며 사용자 판정 전에는 `Approved` 또는 `Verified`가 아니다. 세부 근거와 잔여 위험은 `docs/reports/OPS-024/tl-report.md`를 따른다.
+OPS-024 Tech Lead의 권장 결론은 **최소 운영 안전성 기준선은 부분 충족이며, 충족 제안은 보류**다. 최신 OPS-021 Control 계약의 Production 적용·rollback 증거와 Actual Production DB restore Runbook이 없기 때문이다. 사용자 판정 전에는 `Approved` 또는 `Verified`가 아니며, 세부 근거와 잔여 위험은 `docs/reports/OPS-024/tl-report.md`를 따른다.
 
-Blue/Green은 현재 보류를 유지하고, 다음 운영 평가 초점을 PERF-OPS-001의 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 두 항목 모두 `Decision Required`이며 이 문서가 승인하거나 다음 역할을 활성화하지 않는다.
+Blue/Green은 현재 보류를 유지하고, 두 부분 충족 항목의 처리 방침과 기준선 최종 판정 뒤 다음 운영 평가 초점을 PERF-OPS-001의 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 두 항목 모두 `Decision Required`이며 이 문서가 승인하거나 다음 역할을 활성화하지 않는다.
 
 미완료 상태는 Actual Production DB restore, 외부 unknown Host 검증, HTTPS 자동 갱신 schedule·certificate backup, backup schedule·실패 알림·cross-region·장기 보존·versioning·RPO/RTO, Blue/Green·무중단·고가용성, 장기 부하·capacity·성능 기준선과 credential 수명·운영자 관리 자동화다.
 
