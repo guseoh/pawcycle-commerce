@@ -256,7 +256,7 @@ sudo docker volume inspect pawcycle-production-mysql-data --format '{{.Name}}'
 
 ## 이전 SHA rollback
 
-기본 rollback 대상은 마지막 성공 배포가 기록한 `previous-sha`다. 명시적 `--sha`도 반드시 40자 SHA이고 두 GHCR image가 모두 존재해야 한다.
+기본 rollback 대상은 마지막 성공 배포가 기록한 `previous-sha`다. 무인자 rollback은 공유 `deploy.lock`을 획득한 뒤에만 `previous-sha`를 읽으며, 파일이 symlink이거나 mode `600`이 아니거나 내용이 40자 SHA가 아니면 Container 변경 전에 실패한다. 명시적 `--sha`도 반드시 40자 SHA이고 두 GHCR image가 모두 존재해야 한다.
 
 > 현재 OPS-012 최종 `previous-sha`는 원래 Release와 Backend·Frontend 기능 차이가 없고 OPS-010 문서만 다른 검증용 Release다. rollback 메커니즘은 검증됐지만 이 기본 대상은 Application regression 복구 후보가 아니다. 향후 기능 차이가 있는 정상 Release가 `previous-sha`를 갱신하기 전에는 무인자 rollback에 의존하지 말고, 사용자 승인을 받은 대상 SHA를 `--sha`로 명시해 Application 차이·GHCR image 존재·Production 계약·DB schema 호환성을 모두 확인한다. state 파일을 수동 편집해 이 경계를 우회하지 않는다.
 

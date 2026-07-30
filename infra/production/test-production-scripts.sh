@@ -10,8 +10,9 @@ BIN_DIR="$TEST_ROOT/bin"
 RUNTIME_DIR="$TEST_ROOT/runtime"
 STATE_DIR="$TEST_ROOT/state"
 FAKE_DOCKER_STATE="$TEST_ROOT/docker-state"
+REAL_FLOCK="$(command -v flock)"
 mkdir -p "$BIN_DIR" "$FAKE_DOCKER_STATE"
-export FAKE_DOCKER_STATE
+export FAKE_DOCKER_STATE REAL_FLOCK
 
 cat > "$BIN_DIR/aws" <<'EOF'
 #!/usr/bin/env bash
@@ -94,6 +95,16 @@ case "${1:-}" in
     ;;
 esac
 exit 0
+EOF
+
+cat > "$BIN_DIR/flock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ -n "${FAKE_FLOCK_PREVIOUS_STATE:-}" ]]; then
+  printf '%s\n' "${FAKE_FLOCK_PREVIOUS_SHA:?}" >"$FAKE_FLOCK_PREVIOUS_STATE"
+  chmod 600 "$FAKE_FLOCK_PREVIOUS_STATE"
+fi
+exec "$REAL_FLOCK" "$@"
 EOF
 
 cat > "$BIN_DIR/docker" <<'EOF'
@@ -224,7 +235,7 @@ if [[ "$1" == "exec" ]]; then
     printf '1|1|validation|SQL|V1__validation.sql|12345|1\n'
   elif [[ "$request" == *"SELECT COUNT(*) FROM"* ]]; then
     if [[ "$active_volume" == pawcycle-production-mysql-candidate-* ]]; then
-      printf '2\n'
+      printf '%s\n' "${FAKE_CANDIDATE_TABLE_COUNT:-2}"
     else
       printf '1\n'
     fi
@@ -286,7 +297,7 @@ fi
 exit 0
 EOF
 
-chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/git"
+chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git"
 export PATH="$BIN_DIR:$PATH"
 
 output="$("$SCRIPT_DIR/materialize-ssm-env.sh" \
@@ -368,6 +379,14 @@ deploy() {
     arguments+=(--adopt-contract-sha "$FAKE_CONTROL_SHA")
   fi
   "$SCRIPT_DIR/deploy.sh" "${arguments[@]}" >/dev/null
+}
+
+rollback_without_sha() {
+  "$SCRIPT_DIR/rollback.sh" \
+    --backend-image "$BACKEND_IMAGE" \
+    --frontend-image "$FRONTEND_IMAGE" \
+    --runtime-dir "$RUNTIME_DIR" \
+    --state-dir "$1"
 }
 
 for smoke_path in /products /api/products; do
@@ -522,6 +541,45 @@ deploy "$SHA_B"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_B" ]]
 [[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/previous-contract-sha")" == "$SHA_A" ]]
+
+rollback_symlink_state="$TEST_ROOT/rollback-previous-symlink-state"
+mkdir -p "$rollback_symlink_state"
+cp -a -- "$STATE_DIR/." "$rollback_symlink_state/"
+rm -f -- "$rollback_symlink_state/previous-sha"
+printf '%s\n' "$SHA_A" >"$TEST_ROOT/rollback-previous-symlink-target"
+ln -s "$TEST_ROOT/rollback-previous-symlink-target" "$rollback_symlink_state/previous-sha"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if rollback_without_sha "$rollback_symlink_state" >/dev/null 2>"$TEST_ROOT/rollback-previous-symlink-output"; then
+  printf 'rollback previous-sha symlink did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'previous-sha state must be a regular non-symlink file' \
+  "$TEST_ROOT/rollback-previous-symlink-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+rollback_mode_state="$TEST_ROOT/rollback-previous-mode-state"
+mkdir -p "$rollback_mode_state"
+cp -a -- "$STATE_DIR/." "$rollback_mode_state/"
+chmod 644 "$rollback_mode_state/previous-sha"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if rollback_without_sha "$rollback_mode_state" >/dev/null 2>"$TEST_ROOT/rollback-previous-mode-output"; then
+  printf 'rollback previous-sha mode violation did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'previous-sha state mode must be 600' "$TEST_ROOT/rollback-previous-mode-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+rollback_stale_state="$TEST_ROOT/rollback-previous-stale-state"
+mkdir -p "$rollback_stale_state"
+cp -a -- "$STATE_DIR/." "$rollback_stale_state/"
+export FAKE_FLOCK_PREVIOUS_STATE="$rollback_stale_state/previous-sha"
+export FAKE_FLOCK_PREVIOUS_SHA="$SHA_C"
+rollback_without_sha "$rollback_stale_state" >/dev/null
+unset FAKE_FLOCK_PREVIOUS_STATE FAKE_FLOCK_PREVIOUS_SHA
+[[ "$(<"$rollback_stale_state/current-sha")" == "$SHA_C" ]]
+[[ "$(<"$rollback_stale_state/previous-sha")" == "$SHA_B" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_C" ]]
+printf '%s' "$SHA_B" >"$FAKE_DOCKER_STATE/active-sha"
 
 printf '%s\n' 'pawcycle-production-mysql-candidate-0123456789abcdef' >"$STATE_DIR/active-mysql-volume"
 chmod 600 "$STATE_DIR/active-mysql-volume"
@@ -888,6 +946,7 @@ chmod 600 "$STATE_DIR/db-restore-candidate"
 [[ "$(<"$STATE_DIR/previous-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/db-restore-source")" == "600" ]]
 
+export FAKE_CANDIDATE_TABLE_COUNT=3
 export FAKE_FAIL_MYSQL_VOLUME="pawcycle-production-mysql-data"
 if revert_error="$("$SCRIPT_DIR/production-db-restore.sh" revert \
   --backend-image "$BACKEND_IMAGE" \
@@ -904,6 +963,14 @@ unset FAKE_FAIL_MYSQL_VOLUME
 [[ "$(<"$STATE_DIR/previous-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 [[ -f "$STATE_DIR/db-restore-source" ]]
 [[ -f "$STATE_DIR/db-restore-candidate" ]]
+grep -Fq 'TABLE_members=2' "$STATE_DIR/db-restore-candidate"
+[[ "$(stat -c '%a' "$STATE_DIR/db-restore-revert-candidate")" == "600" ]]
+grep -Fq 'RECORD_KIND=candidate-current' "$STATE_DIR/db-restore-revert-candidate"
+grep -Fq "CANDIDATE_VOLUME=$CANDIDATE_VOLUME" "$STATE_DIR/db-restore-revert-candidate"
+grep -Fq "APPLICATION_SHA=$SHA_A" "$STATE_DIR/db-restore-revert-candidate"
+for table in members products skus subscriptions; do
+  grep -Fq "TABLE_${table}=3" "$STATE_DIR/db-restore-revert-candidate"
+done
 [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-mysql-data" ]]
 [[ -f "$FAKE_DOCKER_STATE/volume-$CANDIDATE_VOLUME" ]]
 
@@ -912,6 +979,7 @@ unset FAKE_FAIL_MYSQL_VOLUME
   --frontend-image "$FRONTEND_IMAGE" \
   --runtime-dir "$RUNTIME_DIR" \
   --state-dir "$STATE_DIR" >/dev/null
+unset FAKE_CANDIDATE_TABLE_COUNT
 [[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 [[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-data" ]]
 [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-mysql-data" ]]

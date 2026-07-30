@@ -34,6 +34,7 @@
 | `db-restore-verified` | 사전 OPS-013 `restore-verify` 성공의 backup ID hash·manifest hash·pinned image |
 | `db-restore-candidate` | candidate volume, source volume, backup·manifest hash, schema·Flyway·핵심 table manifest |
 | `db-restore-source` | 쓰기 중단 후 source volume의 schema·Flyway·핵심 table manifest와 Application SHA |
+| `db-restore-revert-candidate` | revert 쓰기 중단 후 현재 candidate의 최신 schema·Flyway·핵심 table manifest와 Application SHA |
 | `previous-mysql-volume` | cutover 전 source volume |
 | `db-restore-application-sha` | cutover와 복귀에 고정한 Application SHA |
 
@@ -204,9 +205,9 @@ sudo infra/production/production-db-restore.sh \
   --state-dir /opt/pawcycle/state
 ```
 
-Script는 `previous-mysql-volume`, `db-restore-source`, `db-restore-application-sha`를 대조하고 쓰기 경로와 MySQL을 정지한 뒤 source volume과 기존 Application SHA를 활성화한다. source MySQL manifest, Backend·Frontend 시작 후 manifest 재검증을 모두 통과한 뒤에만 Proxy를 열며, 네 health, 내부 Smoke와 HTTPS가 일치해야 성공한다.
+Script는 `previous-mysql-volume`, `db-restore-source`, `db-restore-application-sha`를 대조한 뒤 Proxy·Frontend·Backend를 먼저 정지한다. 아직 실행 중인 candidate MySQL의 최신 schema·Flyway·핵심 table manifest와 Application SHA를 mode `600`의 `db-restore-revert-candidate`에 기록·검증한 다음 MySQL을 정지하고 source volume을 활성화한다. source MySQL manifest, Backend·Frontend 시작 후 manifest 재검증을 모두 통과한 뒤에만 Proxy를 열며, 네 health, 내부 Smoke와 HTTPS가 일치해야 성공한다.
 
-source 복귀 실패 시 candidate 재활성화를 한 번 시도하고 중단한다. 어느 경로에서도 source·candidate volume과 restore state record를 자동 삭제하지 않는다.
+snapshot 이후 source 복귀 실패 시 최초 backup 시점의 `db-restore-candidate`가 아니라 `db-restore-revert-candidate`를 기준으로 최신 candidate 재활성화를 한 번 시도하고 중단한다. 어느 경로에서도 source·candidate volume과 restore state record를 자동 삭제하지 않는다.
 
 ## 실패·중단 경계
 
@@ -219,7 +220,7 @@ source 복귀 실패 시 candidate 재활성화를 한 번 시도하고 중단�
 | 쓰기 중단 자체 실패 | 일부 Application service 정지 가능 | source Release 재활성화를 한 번 시도하고 cutover 없이 중단 |
 | 쓰기 중단 후 source record 실패 | source volume 불변, Application 정지 가능 | 같은 Application SHA 재활성화 시도 결과 확인 후 중단 |
 | candidate 활성화·manifest 실패 | candidate 또는 일부 service 실패 | source volume·기존 Application SHA 자동 복귀 한 번, 두 volume 보존 |
-| source 복귀 실패 | source 또는 service 활성화 실패 | candidate 재활성화 한 번 후 즉시 에스컬레이션 |
+| source 복귀 실패 | source 또는 service 활성화 실패 | 쓰기 중단 후 기록한 최신 candidate manifest로 재활성화 한 번 후 즉시 에스컬레이션 |
 | 물리 volume·EBS 장애 | source를 읽을 수 없음 | 이 Runbook 중단, 별도 인프라 복구 결정 |
 
 ## 이후 deploy·rollback 회귀 방지

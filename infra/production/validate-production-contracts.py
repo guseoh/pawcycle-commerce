@@ -208,6 +208,10 @@ def validate_scripts() -> None:
         PRODUCTION / "test-create-production-auth-smoke-member-lifecycle.sh"
     ).read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback, db_restore))
+    rollback_initialize = rollback[
+        rollback.index("initialize_rollback_context() {") :
+        rollback.index("\n}", rollback.index("initialize_rollback_context() {")) + 2
+    ]
 
     require('APPROVED_AWS_REGION="ap-northeast-2"' in ec2_alarm_common, "OPS-015 alarm region must be Seoul")
     for variable in ("PAWCYCLE_ALERT_REGION", "PAWCYCLE_ALERT_INSTANCE_ID", "PAWCYCLE_ALERT_EMAIL", "PAWCYCLE_ALERT_ACCOUNT_ID", "PAWCYCLE_ALERT_RESOURCE_PREFIX"):
@@ -424,6 +428,21 @@ def validate_scripts() -> None:
         and "previous-contract-sha" in rollback,
         "application release and production control state must be separated",
     )
+    require(
+        "acquire_release_lock" in rollback_initialize
+        and 'TARGET_SHA="$(read_state_sha previous-sha)"' in rollback_initialize
+        and rollback_initialize.index("acquire_release_lock")
+        < rollback_initialize.index('read_state_sha previous-sha')
+        and 'TARGET_SHA="$(<"$PAWCYCLE_STATE_DIR/previous-sha")"' not in rollback,
+        "implicit rollback target must be validated and read only after the shared release lock",
+    )
+    require(
+        "FAKE_FLOCK_PREVIOUS_STATE" in script_tests
+        and 'export FAKE_FLOCK_PREVIOUS_SHA="$SHA_C"' in script_tests
+        and 'rollback_without_sha "$rollback_stale_state"' in script_tests
+        and 'rollback_stale_state/current-sha")" == "$SHA_C"' in script_tests,
+        "implicit rollback stale-target regression evidence is missing",
+    )
     require("--pull never" in common, "activation must not replace preflighted images")
     require(
         'PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME"' in common
@@ -453,6 +472,8 @@ def validate_scripts() -> None:
         "rollback with control SHA drift did not fail closed",
         "incompatible production runtime contract did not fail closed",
         "rollback with incompatible production runtime contract did not fail closed",
+        "rollback previous-sha symlink did not fail closed",
+        "rollback previous-sha mode violation did not fail closed",
         "missing active MySQL volume state did not fail closed",
         "candidate cutover failure was reported as success",
         "candidate manifest label mismatch was reported as success",
@@ -809,6 +830,9 @@ def validate_actual_production_restore() -> None:
     cutover_body = restore[
         restore.index("cutover() {") : restore.index("\nrevert() {")
     ]
+    revert_body = restore[
+        restore.index("revert() {") : restore.index("\nmain() {")
+    ]
     common_initialize = common[
         common.index("initialize_release_context() {") :
         common.index("\n}", common.index("initialize_release_context() {")) + 2
@@ -896,6 +920,29 @@ def validate_actual_production_restore() -> None:
         ),
         "cutover and revert must verify schema, Flyway history, and core table manifests",
     )
+    require(
+        "compose stop proxy frontend backend" in revert_body
+        and "db-restore-revert-candidate" in revert_body
+        and "candidate-current" in revert_body
+        and "compose stop mysql" in revert_body
+        and revert_body.index("compose stop proxy frontend backend")
+        < revert_body.index("write_database_record")
+        < revert_body.index("compose stop mysql")
+        and revert_body.count(
+            'restore_candidate_after_failed_revert "$candidate_volume" "$current_candidate_record"'
+        ) >= 3
+        and 'restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"'
+        not in revert_body,
+        "revert must snapshot the quiesced current candidate and use it for every post-snapshot fallback",
+    )
+    require(
+        "FAKE_CANDIDATE_TABLE_COUNT=3" in script_tests
+        and "grep -Fq 'TABLE_members=2' \"$STATE_DIR/db-restore-candidate\""
+        in script_tests
+        and 'grep -Fq "TABLE_${table}=3" "$STATE_DIR/db-restore-revert-candidate"'
+        in script_tests,
+        "candidate data drift fallback must be tested against the latest protected manifest",
+    )
     first_manifest = staged_activation.index("verify_active_database")
     backend_start = staged_activation.index(
         "compose up --detach --pull never --remove-orphans backend frontend"
@@ -940,6 +987,8 @@ def validate_actual_production_restore() -> None:
         "candidate cutover failure was reported as success",
         "application write-path stop failure was reported as success",
         "source revert activation failure was reported as success",
+        "FAKE_CANDIDATE_TABLE_COUNT=3",
+        "db-restore-revert-candidate",
         "candidate manifest label mismatch was reported as success",
         "OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed",
     ):

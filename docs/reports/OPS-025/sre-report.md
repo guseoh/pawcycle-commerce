@@ -57,6 +57,7 @@ OPS-021 실제 Production Control·Application rollback·재배포 결과를 비
 - cutover는 공유 `deploy.lock`, 쓰기 중단, source manifest 기록, source MySQL 정지 후에만 active 상태를 바꾼다.
 - candidate·source 활성화는 MySQL manifest, Backend·Frontend 시작 후 manifest 재검증을 통과한 뒤에만 Proxy를 열고, cutover 실패 시 같은 Application SHA와 source volume 복귀를 한 번 시도한다.
 - 쓰기 중단·MySQL 정지·보호 상태 기록 실패와 source revert 실패도 마지막 정상 volume을 한 번 재활성화하고 즉시 중단한다.
+- 무인자 Application rollback은 공유 lock 이후 보호된 `previous-sha`를 읽고, DB revert는 쓰기 중단 후 최신 candidate manifest를 별도 보호 record에 기록해 source 활성화 실패 fallback에 사용한다.
 - source·candidate volume과 복구 state는 자동 삭제하지 않는다.
 
 ## 변경 파일
@@ -117,7 +118,7 @@ API 요청·응답과 인증·인가 계약 변경 없음.
 
 ## 적용 후 검증
 
-저장소 변경에 대해 fake Docker에서 기본·candidate active volume의 deploy·rollback 유지, 상태 누락·label mismatch 차단, candidate cutover 성공, source revert 성공, candidate 활성화 실패 후 source 자동 복귀와 source revert 활성화 실패 후 candidate 자동 복귀를 검증했다. 쓰기 중단 실패도 cutover 없이 source Release를 재활성화하는 경계로 검증했다. 실제 Production 적용 후 검증은 별도 사용자 실행 승인 전까지 미실행이다.
+저장소 변경에 대해 fake Docker에서 기본·candidate active volume의 deploy·rollback 유지, 상태 누락·label mismatch 차단, candidate cutover 성공, source revert 성공, candidate 활성화 실패 후 source 자동 복귀와 source revert 활성화 실패 후 최신 candidate 자동 복귀를 검증했다. 무인자 rollback의 `previous-sha` symlink·mode 위반과 lock 시점 stale target, cutover 후 candidate table count 변경 뒤 source 활성화 실패 fallback도 검증했다. 실제 Production 적용 후 검증은 별도 사용자 실행 승인 전까지 미실행이다.
 
 ## 독립 검증
 

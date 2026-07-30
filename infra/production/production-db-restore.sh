@@ -215,6 +215,8 @@ write_database_record() {
   local target="$1"
   local volume="$2"
   local application_sha="$3"
+  local record_kind="${4:-source}"
+  local replace="${5:-false}"
   local work
   local container
   local schema_file
@@ -223,10 +225,23 @@ write_database_record() {
   local candidate
   local table
   local count
+  local volume_key
 
-  [[ ! -e "$target" && ! -L "$target" ]] || return 1
+  case "$record_kind" in
+    source) volume_key="SOURCE_VOLUME" ;;
+    candidate-current) volume_key="CANDIDATE_VOLUME" ;;
+    *) return 1 ;;
+  esac
+  if [[ -e "$target" || -L "$target" ]]; then
+    [[ "$replace" == "true" ]] || return 1
+    [[ ! -L "$target" && -f "$target" && "$(stat -c '%a' "$target")" == "600" ]] \
+      || return 1
+  fi
   work="$(mktemp -d "$PAWCYCLE_STATE_DIR/.db-restore-source.XXXXXXXX")" || return 1
-  chmod 700 "$work"
+  chmod 700 "$work" || {
+    remove_database_work "$work"
+    return 1
+  }
   schema_file="$work/schema"
   flyway_file="$work/flyway"
   count_file="$work/count"
@@ -259,8 +274,8 @@ write_database_record() {
   done
   {
     printf 'FORMAT_VERSION=1\n'
-    printf 'RECORD_KIND=source\n'
-    printf 'SOURCE_VOLUME=%s\n' "$volume"
+    printf 'RECORD_KIND=%s\n' "$record_kind"
+    printf '%s=%s\n' "$volume_key" "$volume"
     printf 'APPLICATION_SHA=%s\n' "$application_sha"
     printf 'MYSQL_IMAGE=%s\n' "$MYSQL_IMAGE"
     printf 'SCHEMA_SHA256=%s\n' "$(sha256sum "$schema_file" | awk '{print $1}')"
@@ -273,12 +288,38 @@ write_database_record() {
     remove_database_work "$work"
     return 1
   }
-  chmod 600 "$candidate"
-  if ! mv -- "$candidate" "$target"; then
+  chmod 600 "$candidate" || {
+    remove_database_work "$work"
+    return 1
+  }
+  if ! mv -f -- "$candidate" "$target"; then
     remove_database_work "$work"
     return 1
   fi
   remove_database_work "$work"
+}
+
+validate_current_candidate_record() {
+  local record="$1"
+  local volume="$2"
+  local application_sha="$3"
+  local key
+
+  validate_record_file "$record"
+  [[ "$(record_value "$record" FORMAT_VERSION)" == "1" \
+    && "$(record_value "$record" RECORD_KIND)" == "candidate-current" \
+    && "$(record_value "$record" CANDIDATE_VOLUME)" == "$volume" \
+    && "$(record_value "$record" APPLICATION_SHA)" == "$application_sha" \
+    && "$(record_value "$record" MYSQL_IMAGE)" == "$MYSQL_IMAGE" ]] \
+    || die "current candidate recovery record is invalid"
+  for key in SCHEMA_SHA256 FLYWAY_SHA256; do
+    [[ "$(record_value "$record" "$key")" =~ ^[0-9a-f]{64}$ ]] \
+      || die "current candidate database fingerprint is invalid"
+  done
+  for key in FLYWAY_COUNT TABLE_members TABLE_products TABLE_skus TABLE_subscriptions; do
+    [[ "$(record_value "$record" "$key")" =~ ^[0-9]+$ ]] \
+      || die "current candidate database manifest count is invalid"
+  done
 }
 
 verify_active_database() {
@@ -460,6 +501,17 @@ restore_candidate_after_failed_revert() {
   die "source database revert and candidate recovery both failed; both MySQL volumes were preserved"
 }
 
+resume_candidate_before_revert() {
+  local candidate_volume="$1"
+  local reason="$2"
+
+  ACTIVE_MYSQL_VOLUME="$candidate_volume"
+  if activate_release "$TARGET_SHA"; then
+    die "$reason; candidate volume and application state were restored without database transition"
+  fi
+  die "$reason and candidate release restoration both failed; both MySQL volumes were preserved"
+}
+
 cutover() {
   local source_volume
   local source_record="$PAWCYCLE_STATE_DIR/db-restore-source"
@@ -511,7 +563,7 @@ revert() {
   local source_volume
   local restore_sha
   local source_record="$PAWCYCLE_STATE_DIR/db-restore-source"
-  local candidate_record="$PAWCYCLE_STATE_DIR/db-restore-candidate"
+  local current_candidate_record="$PAWCYCLE_STATE_DIR/db-restore-revert-candidate"
 
   initialize_transition_context
   candidate_volume="$ACTIVE_MYSQL_VOLUME"
@@ -529,15 +581,26 @@ revert() {
   docker volume inspect "$source_volume" >/dev/null || die "source recovery volume is missing"
   preflight_release "$restore_sha"
 
-  if ! compose stop proxy frontend backend mysql; then
-    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
+  if ! compose stop proxy frontend backend; then
+    resume_candidate_before_revert "$candidate_volume" "database revert write-path stop failed"
+  fi
+  if ! write_database_record \
+    "$current_candidate_record" "$candidate_volume" "$restore_sha" candidate-current true; then
+    resume_candidate_before_revert "$candidate_volume" "current candidate recovery record failed"
+  fi
+  if ! (validate_current_candidate_record \
+    "$current_candidate_record" "$candidate_volume" "$restore_sha"); then
+    resume_candidate_before_revert "$candidate_volume" "current candidate recovery record validation failed"
+  fi
+  if ! compose stop mysql; then
+    restore_candidate_after_failed_revert "$candidate_volume" "$current_candidate_record"
   fi
   if ! write_state active-mysql-volume "$source_volume"; then
-    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
+    restore_candidate_after_failed_revert "$candidate_volume" "$current_candidate_record"
   fi
   ACTIVE_MYSQL_VOLUME="$source_volume"
   if ! (activate_database_release "$source_record" "$restore_sha"); then
-    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
+    restore_candidate_after_failed_revert "$candidate_volume" "$current_candidate_record"
   fi
   compose ps || printf 'WARNING: database revert succeeded, but final compose ps failed\n' >&2
   printf 'Original production database volume and application state restored; both volumes preserved\n'

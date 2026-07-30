@@ -33,11 +33,19 @@ while (( $# > 0 )); do
   esac
 done
 
-if [[ -z "$TARGET_SHA" && -f "$PAWCYCLE_STATE_DIR/previous-sha" ]]; then
-  TARGET_SHA="$(<"$PAWCYCLE_STATE_DIR/previous-sha")"
-fi
+initialize_rollback_context() {
+  if [[ -n "$TARGET_SHA" ]]; then
+    validate_sha "$TARGET_SHA"
+  fi
+  prepare_release_context
+  acquire_release_lock
+  if [[ -z "$TARGET_SHA" ]]; then
+    TARGET_SHA="$(read_state_sha previous-sha)"
+  fi
+  load_active_mysql_volume
+}
 
-initialize_release_context
+initialize_rollback_context
 
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
