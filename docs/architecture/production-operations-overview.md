@@ -2,7 +2,7 @@
 
 ## 문서 목적과 사실 기준
 
-이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조와 이후 OPS-012 application rollback, OPS-016 EC2 최소 장애 알림 검증 상태를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·012·013의 Runbook·보고서·인수인계, OPS-015 알림 Runbook과 OPS-016 보고서·인수인계를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
+이 문서는 OPS-014 시점의 production 인프라·배포·운영 구조와 이후 OPS-012 application rollback, OPS-016 EC2 최소 장애 알림, OPS-018 인증·Session Smoke와 OPS-020 인증 Smoke 회원 생성 검증 상태를 한 곳에서 설명한다. 동작의 권위 원본은 `infra/production/**`와 `.github/workflows/publish-production-images.yml`이며, 실제 적용·검증 상태는 OPS-009·010·011·012·013의 Runbook·보고서·인수인계, OPS-015·017·020 Runbook과 OPS-016·018·020 실행 보고서를 따른다. 이 문서는 실행 Runbook을 대체하지 않고 실제 AWS 식별자, hostname, 계정 정보, Secret 또는 데이터 값을 기록하지 않는다.
 
 현재 구조는 서울 region의 단일 EC2·EBS 위에서 Docker Compose project 하나를 수동 운영하는 방식이다. GitHub Actions는 `main`의 Backend·Frontend image를 GHCR에 게시하지만 EC2 배포를 자동 실행하지 않는다. HTTPS와 운영 논리 backup·격리 복원은 실제 운영 검증을 통과했지만, 실제 production DB restore, 무중단 배포, 자동 배포, 고가용성은 완료된 상태가 아니다.
 
@@ -18,6 +18,8 @@
 | HTTP·HTTPS | `infra/production/nginx.conf`, `infra/production/nginx.https.conf`, `infra/production/https.sh` | `docs/runbook/OPS-011-production-https.md`, `docs/handoffs/OPS-011/sre-to-tl.md` |
 | DB backup·격리 복원 | `infra/production/db-backup-restore.sh` | `docs/runbook/OPS-013-production-db-backup-restore.md`, `docs/reports/OPS-013/production-verification-2026-07-24.md` |
 | EC2 최소 장애 알림 | `infra/production/*ec2-status-check-alarm*.sh` | `docs/runbook/OPS-015-ec2-status-check-alarm.md`, OPS-016 보고서·인수인계 |
+| 인증·Session Smoke | `infra/production/verify-production-auth-session-smoke.sh` | `docs/runbook/OPS-017-production-auth-session-smoke.md`, `docs/reports/OPS-018/sre-report.md` |
+| 인증 Smoke 회원 생성 | `infra/production/create-production-auth-smoke-member.sh` | `docs/runbook/OPS-020-production-auth-smoke-member.md`, `docs/reports/OPS-020/production-execution-report.md` |
 
 ## 1. 단일 EC2와 Docker Compose topology
 
@@ -270,12 +272,33 @@ application rollback은 같은 production 계약 안에서 image만 이전 SHA�
 | HTTPS 자동 갱신 schedule·certificate backup | 미완료 |
 | backup schedule·실패 알림·cross-region·장기 보존·versioned backup·RPO/RTO | 미완료 |
 | 운영 login/logout, CSRF·Session 회전, 현재 회원 식별과 logout 후 stale Session 거부 | 2026-07-29 OPS-018 운영자 검증 완료 |
+| Production 인증 Smoke 회원 생성 | 2026-07-29 OPS-020 사용자 승인 실행 완료. 회원 한 명 유지, 직접 SQL·기존 회원 변경 없음 |
 | 외부 unknown Host 검증 | 미실행 |
 | 지속 부하에서 CPU·memory·OOM·장기 성능 | 미확정 |
 
 S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미완료인 것은 versioning 활성화와 versioned backup 보존 전략이다. backup object는 지정 prefix의 14일 lifecycle 대상이며 instance role에 자동 삭제 권한을 추가하지 않았다.
 
-## 12. 장애 도메인과 트레이드오프
+## 12. 운영 안전성 기준선 판정
+
+판정 상태는 `Decision Required`다. 저장소 평가 기준은 `main`의 `6d72a74595458c55bd55d276b286ae45e408c25b`이고, OPS-018 인증·Session 및 OPS-020 회원 생성이 실제로 검증된 Application Release는 `2e9222b568a3469e8ccc5edce1b5301218c6888e`이다. 이 구분은 최신 `main`이 Production에 배포됐다는 해석을 금지한다.
+
+| 최소 기준 | 증거 평가 | 현재 경계 |
+| --- | --- | --- |
+| HTTPS 운영 접속과 Production Secret 분리 | 충족 | OPS-010·011 결과와 Secret materialize 계약에 근거한다. 자동 갱신 schedule·certificate backup은 미완료다. |
+| 공개 상품 및 인증·Session 핵심 Smoke | 충족 | OPS-018의 다섯 단계 PASS와 OPS-017 계약에 근거한다. 장기 Session·부하·다중 Instance는 미검증이다. |
+| DB 데이터와 Production volume 보존 | 충족 | OPS-010·012·013의 volume 보존과 schema 비변경 증거에 근거한다. Actual Production DB restore는 미실행이다. |
+| 배포 실패 복귀와 실제 Application rollback | 충족 | OPS-010의 실패 복귀 계약·lifecycle 검증과 OPS-012 실제 rollback 결과에 근거한다. Production 실패 주입으로 확대하지 않는다. |
+| 논리 Backup과 승인된 isolated restore 검증 | 충족 | OPS-013 실행 결과에 근거한다. 자동 schedule·cross-region·장기 보존·RPO/RTO는 미완료다. |
+| 최소 장애 알림 | 충족 | OPS-016의 기존 alarm 계약, confirmed subscription과 ALARM·OK 수신에 근거한다. 실제 EC2 장애 유발과 자동 복구는 미실행이다. |
+| 배포·복구 Runbook | 충족 | OPS-010·011·013·015·017·020 Runbook과 구현 계약에 근거한다. Actual Production DB restore 절차는 없다. |
+
+OPS-024 Tech Lead의 권장 결론은 **최소 운영 안전성 기준선 충족 제안, 프로젝트 전체 운영 완성은 아님**이다. 이는 증거 평가 제안이며 사용자 판정 전에는 `Approved` 또는 `Verified`가 아니다. 세부 근거와 잔여 위험은 `docs/reports/OPS-024/tl-report.md`를 따른다.
+
+Blue/Green은 현재 보류를 유지하고, 다음 운영 평가 초점을 PERF-OPS-001의 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 두 항목 모두 `Decision Required`이며 이 문서가 승인하거나 다음 역할을 활성화하지 않는다.
+
+미완료 상태는 Actual Production DB restore, 외부 unknown Host 검증, HTTPS 자동 갱신 schedule·certificate backup, backup schedule·실패 알림·cross-region·장기 보존·versioning·RPO/RTO, Blue/Green·무중단·고가용성, 장기 부하·capacity·성능 기준선과 credential 수명·운영자 관리 자동화다.
+
+## 13. 장애 도메인과 트레이드오프
 
 - **단일 host:** 구조와 비용은 단순하지만 EC2·EBS·Docker 장애가 proxy, application, DB와 같은 host의 restore 검증에 함께 영향을 준다.
 - **수동 release:** 운영자가 gate를 직접 확인할 수 있지만 배포 자동화가 아니며 사람의 실행 순서와 비민감 기록 품질에 의존한다.
@@ -287,7 +310,7 @@ S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미�
 - **14일·versioning 비활성 S3 계약:** 최소 권한과 단순한 단기 보존을 유지하지만 장기 보존, 삭제 복원, cross-region 장애 대응은 제공하지 않는다.
 - **관측성:** container health와 smoke는 배포 gate로 사용하고 EC2 기본 `StatusCheckFailed`의 ALARM·OK email은 검증했지만, CPU·memory·disk·application 상태나 중앙집중식 장기 metric·log·alert 체계가 완료된 것은 아니다.
 
-## 13. 이해 확인 질문
+## 14. 이해 확인 질문
 
 1. 외부 사용자가 `/api/products`를 호출할 때 어떤 port, container, Docker network를 순서대로 지나며 MySQL port가 외부에 보이지 않는 이유는 무엇인가?
 2. Git commit SHA, GHCR tag, OCI revision label과 registry digest는 각각 무엇을 식별하고 어떤 함수가 서로의 일치를 검증하는가?
