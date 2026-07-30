@@ -150,7 +150,7 @@ GitHub Repository Validation의 독립 Linux 환경과 CodeRabbit/Codex AI 리�
 
 ## AI 리뷰 반영 여부
 
-PR #76에서 CodeRabbit과 Codex Review가 지적한 공유 lock 이전 상태 읽기, password의 Container 환경 노출, quiesce·상태 기록·revert 실패 복귀 누락, DB manifest 검증 전 Proxy 개방을 반영했다. 최종 미해결 고위험 지적과 check 결과는 동적 GitHub 상태를 권위 원본으로 확인한다.
+열린 `main` 대상 PR에서 CodeRabbit과 Codex Review가 지적한 공유 lock 이전 상태 읽기, password의 Container 환경 노출, quiesce·상태 기록·revert 실패 복귀 누락, DB manifest 검증 전 Proxy 개방을 반영했다. 최종 PR 번호, 미해결 지적과 check 결과는 동적 GitHub 상태를 권위 원본으로 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -183,8 +183,8 @@ Actual Production restore·복귀와 외부 HTTPS·핵심 데이터 검증이 �
 
 ## Git 결과
 
-`ops/sre`의 최초 구현 commit `d4b4b92321f6fcada1752ebdc8eb7429ebd67dd6`을 push했다. AI 리뷰 보강 commit은 검증 후 같은 역할 branch에 추가한다.
+구현과 AI 리뷰 보강 commit을 `ops/sre`에 push했다. 현재 local·remote head와 commit 관계는 `git rev-parse ops/sre`, `git ls-remote origin refs/heads/ops/sre`와 GitHub에서 직접 확인한다.
 
 ## PR 결과
 
-`main` 대상 PR #76 `feat(sre): Production DB restore 절차 준비`를 생성했다. 자동 병합하지 않으며 사용자 병합 대기 상태를 유지한다.
+`main` 대상 `feat(sre): Production DB restore 절차 준비` PR을 생성했고 자동 병합하지 않았다. 현재 PR 번호, head/base, Ready·Checks·리뷰·병합 상태는 GitHub의 열린 PR에서 직접 확인한다.
