@@ -120,7 +120,7 @@ sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKU
   --runtime-dir /opt/pawcycle/runtime
 ```
 
-Script는 `db-restore-verified`의 backup·manifest hash와 다시 받은 completion marker를 대조한다. candidate MySQL은 Production runtime DB 이름·credential 계약으로 초기화하지만 Secret을 인자나 출력에 노출하지 않는다. 성공 후 준비 Container와 work path는 제거하고 candidate volume은 정지 상태로 보존한다.
+Script는 `db-restore-verified`의 backup·manifest hash와 다시 받은 completion marker를 대조한다. candidate MySQL은 Production runtime DB 이름·credential 계약으로 초기화하되 password는 root-only 임시 파일과 MySQL `_FILE` 변수로만 주입하며 Container 환경·CLI 인자·출력에 값을 남기지 않는다. 성공 후 준비 Container와 work path는 제거하고 candidate volume은 정지 상태로 보존한다.
 
 전환 금지 조건:
 
@@ -167,9 +167,10 @@ Script의 순서는 고정된다.
 5. source MySQL이 실행 중이고 쓰기가 중단된 상태에서 `db-restore-source` manifest 기록
 6. source MySQL 정지
 7. candidate 상태·label 재검증
-8. `previous-mysql-volume`, `db-restore-application-sha`, `active-mysql-volume` 원자적 기록
-9. 같은 Application SHA로 MySQL·Backend·Frontend·Proxy 활성화
-10. 네 health, 내부 Smoke, HTTPS와 active schema·Flyway·핵심 table manifest 재검증
+8. `previous-mysql-volume`, `db-restore-application-sha`, `active-mysql-volume` 보호 상태 기록. 어느 기록이든 실패하면 source 복귀
+9. 같은 Application SHA로 candidate MySQL만 활성화하고 image·health·mount와 schema·Flyway·핵심 table manifest 검증
+10. Backend·Frontend 활성화 후 Flyway history를 포함한 DB manifest 재검증
+11. 두 DB gate가 모두 성공한 뒤에만 Proxy를 활성화하고 네 health, 내부 Smoke와 HTTPS 검증
 
 중간 실패 시 source와 candidate volume은 삭제하지 않는다. candidate 활성화 또는 적용 후 DB manifest 검증이 실패하면 source volume과 같은 Application SHA 복귀를 한 번 시도하고 성공 여부와 관계없이 중단한다.
 
@@ -203,7 +204,7 @@ sudo infra/production/production-db-restore.sh \
   --state-dir /opt/pawcycle/state
 ```
 
-Script는 `previous-mysql-volume`, `db-restore-source`, `db-restore-application-sha`를 대조하고 쓰기 경로와 MySQL을 정지한 뒤 source volume과 기존 Application SHA를 활성화한다. source schema·Flyway·핵심 table manifest, 네 health, 내부 Smoke와 HTTPS가 일치해야 성공한다.
+Script는 `previous-mysql-volume`, `db-restore-source`, `db-restore-application-sha`를 대조하고 쓰기 경로와 MySQL을 정지한 뒤 source volume과 기존 Application SHA를 활성화한다. source MySQL manifest, Backend·Frontend 시작 후 manifest 재검증을 모두 통과한 뒤에만 Proxy를 열며, 네 health, 내부 Smoke와 HTTPS가 일치해야 성공한다.
 
 source 복귀 실패 시 candidate 재활성화를 한 번 시도하고 중단한다. 어느 경로에서도 source·candidate volume과 restore state record를 자동 삭제하지 않는다.
 
@@ -215,6 +216,7 @@ source 복귀 실패 시 candidate 재활성화를 한 번 시도하고 중단�
 | restore-verify | completion marker·checksum·gzip·SQL·manifest 실패 | candidate 준비 금지, 자동 재시도 금지 |
 | candidate 준비 | 부분 candidate 또는 record 실패 | source 불변, candidate 자동 삭제 금지, cutover 금지 |
 | cutover 전 gate | 승인·lock·Control·Application·volume 불일치 | Container 정지 전 실패 |
+| 쓰기 중단 자체 실패 | 일부 Application service 정지 가능 | source Release 재활성화를 한 번 시도하고 cutover 없이 중단 |
 | 쓰기 중단 후 source record 실패 | source volume 불변, Application 정지 가능 | 같은 Application SHA 재활성화 시도 결과 확인 후 중단 |
 | candidate 활성화·manifest 실패 | candidate 또는 일부 service 실패 | source volume·기존 Application SHA 자동 복귀 한 번, 두 volume 보존 |
 | source 복귀 실패 | source 또는 service 활성화 실패 | candidate 재활성화 한 번 후 즉시 에스컬레이션 |

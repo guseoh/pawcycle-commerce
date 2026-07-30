@@ -345,12 +345,12 @@ assert_no_restore_resources
 sudo -n test -f "$STATE_DIR/db-restore-verified"
 [[ "$(sudo -n stat -c '%a' "$STATE_DIR/db-restore-verified")" == "600" ]]
 
+CANDIDATE_VOLUME_CREATED=1
 run_ops013 restore-candidate \
   --backup-id "$BACKUP_ID" \
   --candidate-volume "$CANDIDATE_VOLUME" \
   --state-dir "$STATE_DIR" \
   --runtime-dir "$RUNTIME_DIR" >/dev/null
-CANDIDATE_VOLUME_CREATED=1
 docker volume inspect "$CANDIDATE_VOLUME" >/dev/null \
   || fail "verified candidate volume was not preserved"
 [[ -z "$(docker ps --all --quiet --filter label=com.pawcycle.ops025.scope=candidate)" ]] \

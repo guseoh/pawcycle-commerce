@@ -809,6 +809,26 @@ def validate_actual_production_restore() -> None:
     cutover_body = restore[
         restore.index("cutover() {") : restore.index("\nrevert() {")
     ]
+    common_initialize = common[
+        common.index("initialize_release_context() {") :
+        common.index("\n}", common.index("initialize_release_context() {")) + 2
+    ]
+    transition_initialize = restore[
+        restore.index("initialize_transition_context() {") :
+        restore.index("\n}", restore.index("initialize_transition_context() {")) + 2
+    ]
+    candidate_runtime = backup_restore[
+        backup_restore.index("prepare_candidate_runtime() {") :
+        backup_restore.index("\nrecord_value() {")
+    ]
+    candidate_create = backup_restore[
+        backup_restore.index("create_restore_mysql() {") :
+        backup_restore.index("\nimport_dump() {")
+    ]
+    staged_activation = restore[
+        restore.index("activate_database_release() {") :
+        restore.index("\nrestore_source_after_failed_cutover() {")
+    ]
 
     require(
         "restore-candidate --backup-id <id>" in backup_restore
@@ -818,10 +838,14 @@ def validate_actual_production_restore() -> None:
     )
     require(
         "--network none" in backup_restore
-        and "--env-file \"$PAWCYCLE_RUNTIME_DIR/current/mysql.env\"" in backup_restore
+        and "--env-file" not in candidate_create
+        and "candidate-root-password" in candidate_runtime
+        and "candidate-user-password" in candidate_runtime
+        and "MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root-password" in candidate_create
+        and "MYSQL_PASSWORD_FILE=/run/secrets/mysql-user-password" in candidate_create
         and 'TEMP_VOLUME="$CANDIDATE_VOLUME"' in backup_restore
         and "PRESERVE_TEMP_VOLUME=1" in backup_restore,
-        "candidate preparation must use the production runtime database identity in an isolated retained volume",
+        "candidate preparation must use file-injected credentials in an isolated retained volume",
     )
     require(
         "com.pawcycle.ops025.scope=candidate" in backup_restore
@@ -837,9 +861,15 @@ def validate_actual_production_restore() -> None:
         "active and recovery MySQL volume state must survive later deploy and rollback commands",
     )
     require(
-        'exec 9>"$PAWCYCLE_STATE_DIR/deploy.lock"' in restore
-        and "another production release or database restore command is running" in restore,
-        "database cutover must share the production release operation lock",
+        "acquire_release_lock" in common_initialize
+        and common_initialize.index("acquire_release_lock")
+        < common_initialize.index("load_active_mysql_volume")
+        and "acquire_release_lock" in transition_initialize
+        and transition_initialize.index("acquire_release_lock")
+        < transition_initialize.index("read_state_sha")
+        < transition_initialize.index("load_active_mysql_volume")
+        and "another production release or database restore command is running" in common,
+        "deploy, rollback, cutover, and revert must acquire the shared lock before protected state reads",
     )
     require(
         "compose stop proxy frontend backend" in cutover_body
@@ -866,10 +896,25 @@ def validate_actual_production_restore() -> None:
         ),
         "cutover and revert must verify schema, Flyway history, and core table manifests",
     )
+    first_manifest = staged_activation.index("verify_active_database")
+    backend_start = staged_activation.index(
+        "compose up --detach --pull never --remove-orphans backend frontend"
+    )
+    second_manifest = staged_activation.index(
+        "verify_active_database", first_manifest + 1
+    )
+    proxy_start = staged_activation.index(
+        "compose up --detach --pull never --no-deps --force-recreate proxy"
+    )
+    require(
+        first_manifest < backend_start < second_manifest < proxy_start,
+        "candidate/source manifests must be checked before application startup and again before proxy traffic",
+    )
     require(
         "candidate cutover failed; source volume and application state were restored" in restore
         and "both MySQL volumes were preserved" in restore
-        and "source database revert failed; candidate reactivation was attempted" in restore,
+        and "source database revert failed; candidate volume and application state were restored" in restore
+        and "application write-path stop failed; source release reactivation was attempted without cutover" in restore,
         "cutover and revert failure boundaries are incomplete",
     )
     require(
@@ -893,6 +938,8 @@ def validate_actual_production_restore() -> None:
     )
     for evidence in (
         "candidate cutover failure was reported as success",
+        "application write-path stop failure was reported as success",
+        "source revert activation failure was reported as success",
         "candidate manifest label mismatch was reported as success",
         "OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed",
     ):

@@ -548,31 +548,46 @@ write_state() {
   local value="$2"
   local target="$PAWCYCLE_STATE_DIR/$name"
 
-  printf '%s\n' "$value" > "${target}.tmp"
-  chmod 600 "${target}.tmp"
-  mv -f "${target}.tmp" "$target"
+  printf '%s\n' "$value" > "${target}.tmp" || return 1
+  if ! chmod 600 "${target}.tmp"; then
+    rm -f -- "${target}.tmp"
+    return 1
+  fi
+  if ! mv -f "${target}.tmp" "$target"; then
+    rm -f -- "${target}.tmp"
+    return 1
+  fi
 }
 
 stop_application_services() {
   compose stop proxy frontend backend || true
 }
 
-initialize_release_context() {
+prepare_release_context() {
   require_command curl
   require_command cmp
   require_command docker
   require_command flock
   require_command git
   require_command grep
+  require_command rm
   require_command stat
 
-  validate_sha "$TARGET_SHA"
   validate_image_repository "$BACKEND_IMAGE"
   validate_image_repository "$FRONTEND_IMAGE"
   validate_runtime_bundle "$PAWCYCLE_RUNTIME_DIR"
   prepare_state_directory
-  load_active_mysql_volume
+}
 
+acquire_release_lock() {
   exec 9>"$PAWCYCLE_STATE_DIR/deploy.lock"
-  flock --nonblock 9 || die "another production release command is running"
+  chmod 600 "$PAWCYCLE_STATE_DIR/deploy.lock"
+  flock --nonblock 9 || die "another production release or database restore command is running"
+}
+
+initialize_release_context() {
+  validate_sha "$TARGET_SHA"
+  prepare_release_context
+  acquire_release_lock
+  load_active_mysql_volume
 }

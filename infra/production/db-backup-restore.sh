@@ -8,6 +8,7 @@ PRODUCTION_PROJECT="pawcycle-production"
 PRODUCTION_MYSQL_SERVICE="mysql"
 PRODUCTION_MYSQL_VOLUME="pawcycle-production-mysql-data"
 RESTORE_DATABASE="pawcycle_restore_verify"
+RESTORE_USER=""
 PAWCYCLE_STATE_DIR=""
 PAWCYCLE_RUNTIME_DIR=""
 CANDIDATE_VOLUME=""
@@ -44,7 +45,6 @@ SUCCESS_MESSAGE=""
 PRESERVE_TEMP_VOLUME=0
 PENDING_RECORD_TMP=""
 PENDING_RECORD_TARGET=""
-RESTORE_USES_RUNTIME_ENV=0
 
 usage() {
   cat <<'EOF'
@@ -269,16 +269,27 @@ prepare_state_contract() {
 prepare_candidate_runtime() {
   local mysql_env="$PAWCYCLE_RUNTIME_DIR/current/mysql.env"
   local database
+  local user
+  local key
+  local root_secret="$WORK_DIR/candidate-root-password"
+  local user_secret="$WORK_DIR/candidate-user-password"
 
   [[ ! -L "$mysql_env" && -f "$mysql_env" ]] || die "candidate restore MySQL runtime file is missing"
   [[ "$(stat -c '%a' "$mysql_env")" == "600" ]] || die "candidate restore MySQL runtime file mode must be 600"
   for key in MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
-    grep -Eq "^${key}=.+$" "$mysql_env" || die "candidate restore runtime key is missing: $key"
+    [[ "$(grep -Ec "^${key}=.+$" "$mysql_env")" == "1" ]] \
+      || die "candidate restore runtime key must occur exactly once: $key"
   done
   database="$(grep -E '^MYSQL_DATABASE=' "$mysql_env" | cut -d= -f2-)"
+  user="$(grep -E '^MYSQL_USER=' "$mysql_env" | cut -d= -f2-)"
   [[ "$database" =~ ^[A-Za-z0-9_]+$ ]] || die "candidate restore database name is invalid"
+  [[ "$user" =~ ^[A-Za-z0-9_]+$ ]] || die "candidate restore database user is invalid"
+  grep -E '^MYSQL_ROOT_PASSWORD=' "$mysql_env" | cut -d= -f2- >"$root_secret"
+  grep -E '^MYSQL_PASSWORD=' "$mysql_env" | cut -d= -f2- >"$user_secret"
+  [[ -s "$root_secret" && -s "$user_secret" ]] || die "candidate restore password file is empty"
+  chmod 600 "$root_secret" "$user_secret"
   RESTORE_DATABASE="$database"
-  RESTORE_USES_RUNTIME_ENV=1
+  RESTORE_USER="$user"
 }
 
 record_value() {
@@ -530,10 +541,6 @@ restore_mysql_query() {
   local sql="$1"
   local output_file="$2"
   local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
-
-  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
-    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
-  fi
 
   : >"$MYSQL_ERROR_FILE"
   if ! docker exec "$TEMP_CONTAINER" sh -eu -c \
@@ -999,10 +1006,6 @@ wait_restore_mysql() {
   local container_status
   local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
 
-  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
-    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
-  fi
-
   while (( elapsed < 180 )); do
     container_status="$(docker inspect --format '{{.State.Status}}' "$TEMP_CONTAINER" 2>/dev/null || true)"
     case "$container_status" in
@@ -1063,7 +1066,12 @@ create_restore_mysql() {
     TEMP_VOLUME="$CANDIDATE_VOLUME"
     PRESERVE_TEMP_VOLUME=1
     runtime_args=(
-      --env-file "$PAWCYCLE_RUNTIME_DIR/current/mysql.env"
+      --mount "type=bind,source=$WORK_DIR/candidate-root-password,destination=/run/secrets/mysql-root-password,readonly"
+      --mount "type=bind,source=$WORK_DIR/candidate-user-password,destination=/run/secrets/mysql-user-password,readonly"
+      --env MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root-password
+      --env MYSQL_PASSWORD_FILE=/run/secrets/mysql-user-password
+      --env "MYSQL_DATABASE=$RESTORE_DATABASE"
+      --env "MYSQL_USER=$RESTORE_USER"
       --label com.pawcycle.ops025.scope=candidate
       --label "com.pawcycle.ops025.backup-sha256=$backup_hash"
       --label "com.pawcycle.ops025.manifest-sha256=$manifest_hash"
@@ -1122,10 +1130,6 @@ import_dump() {
   local gzip_status
   local mysql_status
   local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
-
-  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
-    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
-  fi
 
   : >"$MYSQL_ERROR_FILE"
   : >"$COMPRESSION_ERROR_FILE"
@@ -1268,9 +1272,12 @@ restore_verify_command() {
 
 restore_candidate_command() {
   local production_container
+  local candidate_record="$PAWCYCLE_STATE_DIR/db-restore-candidate"
 
   docker volume inspect "$PRODUCTION_MYSQL_VOLUME" >/dev/null \
     || die "active production MySQL volume is missing; stop before candidate restore"
+  [[ ! -e "$candidate_record" && ! -L "$candidate_record" ]] \
+    || die "candidate restore state already exists; preserve it and stop"
   if docker volume inspect "$CANDIDATE_VOLUME" >/dev/null 2>&1; then
     die "candidate volume already exists; preserve it and stop"
   fi
@@ -1287,7 +1294,7 @@ restore_candidate_command() {
   assert_restore_isolation
   [[ "$(find_production_mysql)" == "$production_container" ]] \
     || die "production MySQL changed during candidate restore"
-  write_restore_state_record candidate "$PAWCYCLE_STATE_DIR/db-restore-candidate"
+  write_restore_state_record candidate "$candidate_record"
   SUCCESS_MESSAGE="Production restore candidate prepared and verified; source and candidate volumes preserved"
 }
 

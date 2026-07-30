@@ -53,9 +53,10 @@ OPS-021 실제 Production Control·Application rollback·재배포 결과를 비
 
 - deploy·rollback은 보호된 active volume 상태가 없거나 손상되면 fail-closed하고, Compose 입력과 실행 MySQL mount를 같은 값으로 검증한다.
 - candidate 준비는 OPS-013 completion marker·무결성 검증과 동일 backup의 사전 `restore-verify` 보호 기록을 요구한다.
-- candidate는 동일 pinned MySQL image, `none` network, host port·source mount 없음과 Production runtime DB credential 계약으로 준비된다.
+- candidate는 동일 pinned MySQL image, `none` network, host port·source mount 없음과 Production runtime DB identity 계약으로 준비되며 password는 root-only 파일과 MySQL `_FILE` 변수로 주입된다.
 - cutover는 공유 `deploy.lock`, 쓰기 중단, source manifest 기록, source MySQL 정지 후에만 active 상태를 바꾼다.
-- candidate 활성화·DB manifest 실패 시 같은 Application SHA와 source volume 복귀를 한 번 시도한다.
+- candidate·source 활성화는 MySQL manifest, Backend·Frontend 시작 후 manifest 재검증을 통과한 뒤에만 Proxy를 열고, cutover 실패 시 같은 Application SHA와 source volume 복귀를 한 번 시도한다.
+- 쓰기 중단·MySQL 정지·보호 상태 기록 실패와 source revert 실패도 마지막 정상 volume을 한 번 재활성화하고 즉시 중단한다.
 - source·candidate volume과 복구 state는 자동 삭제하지 않는다.
 
 ## 변경 파일
@@ -86,7 +87,7 @@ API 요청·응답과 인증·인가 계약 변경 없음.
 
 - backup ID는 보호된 runtime state에 SHA-256만 남긴다.
 - S3 식별자는 기존 환경 변수 경계를 유지하고 credential은 EC2 role만 사용한다.
-- Production runtime DB Secret은 env file에서 candidate Container로 전달되며 CLI 인자·공개 출력·저장소에 기록하지 않는다.
+- Production runtime DB Secret은 root-only env file에서 root-only 임시 password 파일로 추출한 뒤 MySQL `_FILE` 변수로 candidate Container에 bind되며, Container 환경·CLI 인자·공개 출력·저장소에 값이 기록되지 않는다.
 - restore state는 root-only directory의 regular non-symlink mode `600` 계약을 사용한다.
 
 ## 운영 영향
@@ -107,16 +108,16 @@ API 요청·응답과 인증·인가 계약 변경 없음.
 
 ## 적용 전 검증
 
-- 작업 시작 시 local `main`, `origin/main`과 승인 기준 `005031a5ad9add7a008f38b52e377812954b6480` 일치
+- 작업 시작 시점 관찰값으로 local `main`, `origin/main`과 승인 기준 `005031a5ad9add7a008f38b52e377812954b6480` 일치. 현재 branch·commit·PR·check 상태는 Git과 GitHub의 동적 상태가 권위 원본
 - 작업 트리 clean, 추가 worktree 없음
-- 원격 `ops/sre`는 열린 PR 없는 PR #74의 squash-merge 완료 head임을 GitHub와 commit 관계로 확인
+- 원격 `ops/sre`의 작업 시작 시점 head는 열린 PR이 없고 이전 squash-merge 완료 head임을 GitHub와 commit 관계로 확인
 - 최신 `origin/main`에서 로컬 `ops/sre` 재생성
 - 기존 OPS-013 completion marker·restore isolation·manifest와 OPS-021 deploy·rollback 상태 계약 분석
 - 실제 Production·AWS·DB·Secret 접근 없음
 
 ## 적용 후 검증
 
-저장소 변경에 대해 fake Docker에서 기본·candidate active volume의 deploy·rollback 유지, 상태 누락·label mismatch 차단, candidate cutover 성공, source revert 성공과 candidate 활성화 실패 후 source 자동 복귀를 검증했다. 실제 Production 적용 후 검증은 별도 사용자 실행 승인 전까지 미실행이다.
+저장소 변경에 대해 fake Docker에서 기본·candidate active volume의 deploy·rollback 유지, 상태 누락·label mismatch 차단, candidate cutover 성공, source revert 성공, candidate 활성화 실패 후 source 자동 복귀와 source revert 활성화 실패 후 candidate 자동 복귀를 검증했다. 쓰기 중단 실패도 cutover 없이 source Release를 재활성화하는 경계로 검증했다. 실제 Production 적용 후 검증은 별도 사용자 실행 승인 전까지 미실행이다.
 
 ## 독립 검증
 
@@ -125,7 +126,8 @@ GitHub Repository Validation의 독립 Linux 환경과 CodeRabbit/Codex AI 리�
 ## 복구·롤백 증거
 
 - fake lifecycle에서 candidate 활성화 실패 후 source volume과 기존 Application SHA 복귀 확인
-- 명시적 `revert`에서 source schema·Flyway·핵심 table manifest, 네 health·Smoke 검증 확인
+- 명시적 `revert`의 source 활성화 실패 후 candidate volume과 기존 Application SHA 복귀 확인
+- candidate와 source 모두 MySQL manifest 및 Backend·Frontend 시작 후 manifest 재검증 전에는 Proxy를 열지 않는 정적 계약 확인
 - candidate label mismatch는 서비스 정지 전에 차단
 - deploy·rollback 뒤에도 candidate active volume 유지 확인
 - source·candidate volume 자동 삭제 명령 부재를 validator로 확인
@@ -148,7 +150,7 @@ GitHub Repository Validation의 독립 Linux 환경과 CodeRabbit/Codex AI 리�
 
 ## AI 리뷰 반영 여부
 
-PR 생성 후 CodeRabbit과 가능한 Codex Review의 고위험 지적을 선별 반영한다. 실제 결과는 동적 GitHub 상태를 권위 원본으로 확인한다.
+PR #76에서 CodeRabbit과 Codex Review가 지적한 공유 lock 이전 상태 읽기, password의 Container 환경 노출, quiesce·상태 기록·revert 실패 복귀 누락, DB manifest 검증 전 Proxy 개방을 반영했다. 최종 미해결 고위험 지적과 check 결과는 동적 GitHub 상태를 권위 원본으로 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
@@ -175,15 +177,14 @@ Actual Production restore·복귀와 외부 HTTPS·핵심 데이터 검증이 �
 
 ## 다음 작업
 
-1. commit·원격 `ops/sre` 갱신과 `main` 대상 PR
-2. GitHub Repository Validation과 AI 리뷰 확인
-3. 사용자/Tech Lead 병합 판단
-4. 별도 고위험 승인 후 Actual Production restore 훈련 여부 결정
+1. GitHub Repository Validation과 AI 재리뷰 확인
+2. 사용자/Tech Lead 병합 판단
+3. 별도 고위험 승인 후 Actual Production restore 훈련 여부 결정
 
 ## Git 결과
 
-최종 commit·push 후 실제 branch와 commit SHA로 갱신한다.
+`ops/sre`의 최초 구현 commit `d4b4b92321f6fcada1752ebdc8eb7429ebd67dd6`을 push했다. AI 리뷰 보강 commit은 검증 후 같은 역할 branch에 추가한다.
 
 ## PR 결과
 
-`main` 대상 PR을 생성하고 자동 병합하지 않는다. 최종 번호, Draft·Checks·리뷰 상태는 생성 후 갱신한다.
+`main` 대상 PR #76 `feat(sre): Production DB restore 절차 준비`를 생성했다. 자동 병합하지 않으며 사용자 병합 대기 상태를 유지한다.

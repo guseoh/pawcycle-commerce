@@ -374,24 +374,90 @@ initialize_volume_state() {
 
 initialize_transition_context() {
   validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
-  prepare_state_directory
+  prepare_release_context
+  acquire_release_lock
   TARGET_SHA="$(read_state_sha current-sha)"
+  validate_sha "$TARGET_SHA"
   ACTIVE_SHA="$TARGET_SHA"
-  initialize_release_context
+  load_active_mysql_volume
   load_runtime_contract
+}
+
+verify_active_mysql_identity() {
+  local container_id
+  local mysql_volume
+
+  container_id="$(compose ps --quiet mysql)" || return 1
+  [[ -n "$container_id" ]] || return 1
+  [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")" == "healthy" ]] \
+    || return 1
+  [[ "$(docker inspect --format '{{.Config.Image}}' "$container_id")" == "$MYSQL_IMAGE" ]] \
+    || return 1
+  mysql_volume="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container_id")"
+  [[ "$mysql_volume" == "$ACTIVE_MYSQL_VOLUME" ]]
+}
+
+activate_database_release() {
+  local record="$1"
+  local sha="$2"
+  local service
+
+  ACTIVE_SHA="$sha"
+  export ACTIVE_SHA
+  compose up --detach --pull never --remove-orphans mysql || return 1
+  wait_healthy mysql || return 1
+  verify_active_mysql_identity || return 1
+  verify_active_database "$record" || return 1
+
+  compose up --detach --pull never --remove-orphans backend frontend || return 1
+  for service in backend frontend; do
+    wait_healthy "$service" || return 1
+  done
+  # Backend startup can run Flyway. Recheck the protected database contract
+  # before any user traffic is admitted through the proxy.
+  verify_active_database "$record" || return 1
+
+  compose up --detach --pull never --no-deps --force-recreate proxy || return 1
+  wait_healthy proxy || return 1
+  verify_running_release || return 1
+  smoke_release || return 1
+  if https_enabled; then
+    verify_https_release || return 1
+  fi
 }
 
 restore_source_after_failed_cutover() {
   local source_volume="$1"
   local source_record="$2"
+  local recovery_state_written=1
 
   compose stop proxy frontend backend mysql >/dev/null 2>&1 || true
-  write_state active-mysql-volume "$source_volume"
+  if ! write_state active-mysql-volume "$source_volume"; then
+    recovery_state_written=0
+  fi
   ACTIVE_MYSQL_VOLUME="$source_volume"
-  if activate_release "$TARGET_SHA" && verify_active_database "$source_record"; then
+  if (activate_database_release "$source_record" "$TARGET_SHA") \
+    && [[ "$recovery_state_written" == "1" ]]; then
     die "candidate cutover failed; source volume and application state were restored"
   fi
   die "candidate cutover and source recovery both failed; both MySQL volumes were preserved"
+}
+
+restore_candidate_after_failed_revert() {
+  local candidate_volume="$1"
+  local candidate_record="$2"
+  local recovery_state_written=1
+
+  compose stop proxy frontend backend mysql >/dev/null 2>&1 || true
+  if ! write_state active-mysql-volume "$candidate_volume"; then
+    recovery_state_written=0
+  fi
+  ACTIVE_MYSQL_VOLUME="$candidate_volume"
+  if (activate_database_release "$candidate_record" "$TARGET_SHA") \
+    && [[ "$recovery_state_written" == "1" ]]; then
+    die "source database revert failed; candidate volume and application state were restored"
+  fi
+  die "source database revert and candidate recovery both failed; both MySQL volumes were preserved"
 }
 
 cutover() {
@@ -411,22 +477,29 @@ cutover() {
     verify_https_release || die "running HTTPS verification failed before database cutover"
   fi
 
-  compose stop proxy frontend backend
+  if ! compose stop proxy frontend backend; then
+    ACTIVE_MYSQL_VOLUME="$source_volume"
+    activate_release "$TARGET_SHA" || true
+    die "application write-path stop failed; source release reactivation was attempted without cutover"
+  fi
   if ! write_database_record "$source_record" "$source_volume" "$TARGET_SHA"; then
     activate_release "$TARGET_SHA" || true
     die "source database recovery record failed; application restart was attempted without cutover"
   fi
-  compose stop mysql
-  validate_candidate_record
-  write_state previous-mysql-volume "$source_volume"
-  write_state db-restore-application-sha "$TARGET_SHA"
-  write_state active-mysql-volume "$CANDIDATE_VOLUME"
-  ACTIVE_MYSQL_VOLUME="$CANDIDATE_VOLUME"
-
-  if ! activate_release "$TARGET_SHA"; then
+  if ! compose stop mysql; then
     restore_source_after_failed_cutover "$source_volume" "$source_record"
   fi
-  if ! verify_active_database "$candidate_record"; then
+  if ! (validate_candidate_record); then
+    restore_source_after_failed_cutover "$source_volume" "$source_record"
+  fi
+  if ! write_state previous-mysql-volume "$source_volume" \
+    || ! write_state db-restore-application-sha "$TARGET_SHA" \
+    || ! write_state active-mysql-volume "$CANDIDATE_VOLUME"; then
+    restore_source_after_failed_cutover "$source_volume" "$source_record"
+  fi
+  ACTIVE_MYSQL_VOLUME="$CANDIDATE_VOLUME"
+
+  if ! (activate_database_release "$candidate_record" "$TARGET_SHA"); then
     restore_source_after_failed_cutover "$source_volume" "$source_record"
   fi
   compose ps || printf 'WARNING: database cutover succeeded, but final compose ps failed\n' >&2
@@ -438,6 +511,7 @@ revert() {
   local source_volume
   local restore_sha
   local source_record="$PAWCYCLE_STATE_DIR/db-restore-source"
+  local candidate_record="$PAWCYCLE_STATE_DIR/db-restore-candidate"
 
   initialize_transition_context
   candidate_volume="$ACTIVE_MYSQL_VOLUME"
@@ -455,16 +529,16 @@ revert() {
   docker volume inspect "$source_volume" >/dev/null || die "source recovery volume is missing"
   preflight_release "$restore_sha"
 
-  compose stop proxy frontend backend mysql
-  write_state active-mysql-volume "$source_volume"
-  ACTIVE_MYSQL_VOLUME="$source_volume"
-  if ! activate_release "$restore_sha" || ! verify_active_database "$source_record"; then
-    write_state active-mysql-volume "$candidate_volume"
-    ACTIVE_MYSQL_VOLUME="$candidate_volume"
-    activate_release "$restore_sha" || true
-    die "source database revert failed; candidate reactivation was attempted and both volumes were preserved"
+  if ! compose stop proxy frontend backend mysql; then
+    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
   fi
-  write_state current-sha "$restore_sha"
+  if ! write_state active-mysql-volume "$source_volume"; then
+    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
+  fi
+  ACTIVE_MYSQL_VOLUME="$source_volume"
+  if ! (activate_database_release "$source_record" "$restore_sha"); then
+    restore_candidate_after_failed_revert "$candidate_volume" "$candidate_record"
+  fi
   compose ps || printf 'WARNING: database revert succeeded, but final compose ps failed\n' >&2
   printf 'Original production database volume and application state restored; both volumes preserved\n'
 }

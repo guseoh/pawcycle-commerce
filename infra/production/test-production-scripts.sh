@@ -141,6 +141,9 @@ if [[ "$1" == "compose" ]]; then
       count=0
       [[ ! -f "$FAKE_DOCKER_STATE/stop-count" ]] || count="$(<"$FAKE_DOCKER_STATE/stop-count")"
       printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/stop-count"
+      if [[ "${FAKE_STOP_FAIL_AT_COUNT:-}" == "$((count + 1))" ]]; then
+        exit 1
+      fi
       ;;
   esac
   exit 0
@@ -885,6 +888,25 @@ chmod 600 "$STATE_DIR/db-restore-candidate"
 [[ "$(<"$STATE_DIR/previous-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/db-restore-source")" == "600" ]]
 
+export FAKE_FAIL_MYSQL_VOLUME="pawcycle-production-mysql-data"
+if revert_error="$("$SCRIPT_DIR/production-db-restore.sh" revert \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" 2>&1 >/dev/null)"; then
+  printf 'source revert activation failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_FAIL_MYSQL_VOLUME
+[[ "$revert_error" == *"source database revert failed; candidate volume and application state were restored"* ]]
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "$CANDIDATE_VOLUME" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "$CANDIDATE_VOLUME" ]]
+[[ "$(<"$STATE_DIR/previous-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ -f "$STATE_DIR/db-restore-source" ]]
+[[ -f "$STATE_DIR/db-restore-candidate" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-mysql-data" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-$CANDIDATE_VOLUME" ]]
+
 "$SCRIPT_DIR/production-db-restore.sh" revert \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
@@ -896,6 +918,23 @@ chmod 600 "$STATE_DIR/db-restore-candidate"
 [[ -f "$FAKE_DOCKER_STATE/volume-$CANDIDATE_VOLUME" ]]
 
 rm -f -- "$STATE_DIR/db-restore-source" "$STATE_DIR/previous-mysql-volume" "$STATE_DIR/db-restore-application-sha"
+stop_count_before="$(<"$FAKE_DOCKER_STATE/stop-count")"
+export FAKE_STOP_FAIL_AT_COUNT="$((stop_count_before + 1))"
+if stop_error="$("$SCRIPT_DIR/production-db-restore.sh" cutover \
+  --candidate-volume "$CANDIDATE_VOLUME" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" 2>&1 >/dev/null)"; then
+  printf 'application write-path stop failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_STOP_FAIL_AT_COUNT
+[[ "$stop_error" == *"application write-path stop failed; source release reactivation was attempted without cutover"* ]]
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ ! -e "$STATE_DIR/db-restore-source" ]]
+
 export FAKE_FAIL_MYSQL_VOLUME="$CANDIDATE_VOLUME"
 if cutover_error="$("$SCRIPT_DIR/production-db-restore.sh" cutover \
   --candidate-volume "$CANDIDATE_VOLUME" \
