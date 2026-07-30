@@ -94,6 +94,7 @@ jobs:
             infra/production/materialize-ssm-env.sh \
             infra/production/deploy.sh \
             infra/production/rollback.sh \
+            infra/production/production-db-restore.sh \
             infra/production/https.sh \
             infra/production/db-backup-restore.sh \
             infra/production/ec2-status-check-alarm-common.sh \

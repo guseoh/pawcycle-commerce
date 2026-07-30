@@ -125,6 +125,7 @@ if [[ "$1" == "compose" ]]; then
       printf '%s' "$BACKEND_IMAGE" > "$FAKE_DOCKER_STATE/backend-image"
       printf '%s' "$FRONTEND_IMAGE" > "$FAKE_DOCKER_STATE/frontend-image"
       printf '%s' 'mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d' > "$FAKE_DOCKER_STATE/mysql-image"
+      printf '%s' "$PAWCYCLE_MYSQL_VOLUME" > "$FAKE_DOCKER_STATE/mysql-volume"
       printf '%s' 'nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1' > "$FAKE_DOCKER_STATE/proxy-image"
       ;;
     ps)
@@ -152,10 +153,25 @@ fi
 if [[ "$1" == "volume" ]]; then
   volume="${*: -1}"
   case "$2" in
-    inspect) [[ -f "$FAKE_DOCKER_STATE/volume-$volume" ]] ;;
+    inspect)
+      [[ -f "$FAKE_DOCKER_STATE/volume-$volume" ]] || exit 1
+      if [[ "$*" == *"com.pawcycle.ops025.scope"* ]]; then
+        printf '%s\n' "$(<"$FAKE_DOCKER_STATE/volume-label-scope-$volume")"
+      elif [[ "$*" == *"com.pawcycle.ops025.source-volume"* ]]; then
+        printf '%s\n' "$(<"$FAKE_DOCKER_STATE/volume-label-source-$volume")"
+      elif [[ "$*" == *"com.pawcycle.ops025.backup-sha256"* ]]; then
+        printf '%s\n' "$(<"$FAKE_DOCKER_STATE/volume-label-backup-$volume")"
+      elif [[ "$*" == *"com.pawcycle.ops025.manifest-sha256"* ]]; then
+        printf '%s\n' "$(<"$FAKE_DOCKER_STATE/volume-label-manifest-$volume")"
+      fi
+      ;;
     create) : > "$FAKE_DOCKER_STATE/volume-$volume"; printf '%s\n' "$volume" ;;
   esac
   exit $?
+fi
+
+if [[ "$1" == "ps" && "$*" == *"--filter volume="* ]]; then
+  exit 0
 fi
 
 if [[ "$1" == "run" ]]; then
@@ -188,6 +204,7 @@ fi
 
 if [[ "$1" == "exec" ]]; then
   active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
+  active_volume="$(<"$FAKE_DOCKER_STATE/mysql-volume")"
   request="${*: -1}"
   if [[ "$*" == *"nginx -s reload"* ]]; then
     count=0
@@ -197,6 +214,17 @@ if [[ "$1" == "exec" ]]; then
   fi
   if [[ "${FAKE_SMOKE_FAIL_SHA:-}" == "$active_sha" && "$request" == *"${FAKE_SMOKE_FAIL_PATH:-}" ]]; then
     exit 1
+  fi
+  if [[ "$request" == *"'TABLE'"* && "$request" == *"information_schema.TABLES"* ]]; then
+    printf 'schema|%s\n' "$active_volume"
+  elif [[ "$request" == *"FROM flyway_schema_history"* ]]; then
+    printf '1|1|validation|SQL|V1__validation.sql|12345|1\n'
+  elif [[ "$request" == *"SELECT COUNT(*) FROM"* ]]; then
+    if [[ "$active_volume" == pawcycle-production-mysql-candidate-* ]]; then
+      printf '2\n'
+    else
+      printf '1\n'
+    fi
   fi
   exit 0
 fi
@@ -228,8 +256,12 @@ fi
 if [[ "$1" == "inspect" ]]; then
   container="${*: -1}"
   active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
-  if [[ "$*" == *".State.Health"* ]]; then
-    if [[ "${FAKE_FAIL_SHA:-}" == "$active_sha" && "$container" == "container-backend" ]]; then
+  if [[ "$*" == *".Mounts"* ]]; then
+    printf '%s\n' "$(<"$FAKE_DOCKER_STATE/mysql-volume")"
+  elif [[ "$*" == *".State.Health"* ]]; then
+    if { [[ "${FAKE_FAIL_SHA:-}" == "$active_sha" ]] \
+      || [[ "${FAKE_FAIL_MYSQL_VOLUME:-}" == "$(<"$FAKE_DOCKER_STATE/mysql-volume")" ]]; } \
+      && [[ "$container" == "container-backend" ]]; then
       printf 'unhealthy\n'
     else
       printf 'healthy\n'
@@ -323,6 +355,11 @@ deploy() {
     --runtime-dir "$RUNTIME_DIR"
     --state-dir "$state_dir"
   )
+  mkdir -p "$state_dir"
+  if [[ ! -e "$state_dir/active-mysql-volume" ]]; then
+    printf '%s\n' 'pawcycle-production-mysql-data' >"$state_dir/active-mysql-volume"
+    chmod 600 "$state_dir/active-mysql-volume"
+  fi
   if [[ ! -e "$state_dir/contract-sha" \
     || "$(<"$state_dir/contract-sha")" != "$FAKE_CONTROL_SHA" ]]; then
     arguments+=(--adopt-contract-sha "$FAKE_CONTROL_SHA")
@@ -349,6 +386,9 @@ done
 
 missing_contract_state="$TEST_ROOT/missing-contract-state"
 missing_contract_output="$TEST_ROOT/missing-contract-output"
+mkdir -p "$missing_contract_state"
+printf '%s\n' 'pawcycle-production-mysql-data' >"$missing_contract_state/active-mysql-volume"
+chmod 600 "$missing_contract_state/active-mysql-volume"
 docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
 if "$SCRIPT_DIR/deploy.sh" \
   --sha "$SHA_A" \
@@ -436,6 +476,23 @@ deploy "$SHA_A"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/contract-sha")" == "$SHA_A" ]]
 [[ "$(stat -c '%a' "$STATE_DIR/contract-sha")" == "600" ]]
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-data" ]]
+
+missing_volume_state="$TEST_ROOT/missing-volume-state"
+mkdir -p "$missing_volume_state"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if "$SCRIPT_DIR/deploy.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$missing_volume_state" >/dev/null 2>"$TEST_ROOT/missing-volume-output"; then
+  printf 'missing active MySQL volume state did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'active MySQL volume state is missing' "$TEST_ROOT/missing-volume-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
 
 rm -f -- "$STATE_DIR/contract-sha"
 deploy "$SHA_A"
@@ -463,14 +520,24 @@ deploy "$SHA_B"
 [[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/previous-contract-sha")" == "$SHA_A" ]]
 
+printf '%s\n' 'pawcycle-production-mysql-candidate-0123456789abcdef' >"$STATE_DIR/active-mysql-volume"
+chmod 600 "$STATE_DIR/active-mysql-volume"
+deploy "$SHA_A"
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-candidate-0123456789abcdef" ]]
+
 "$SCRIPT_DIR/rollback.sh" \
+  --sha "$SHA_B" \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
   --runtime-dir "$RUNTIME_DIR" \
   --state-dir "$STATE_DIR" >/dev/null
-[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
-[[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_B" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_B" ]]
+[[ "$(<"$STATE_DIR/previous-sha")" == "$SHA_A" ]]
 [[ "$(<"$STATE_DIR/previous-contract-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-candidate-0123456789abcdef" ]]
+deploy "$SHA_A"
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-candidate-0123456789abcdef" ]]
 
 record_before="$(<"$STATE_DIR/${SHA_A}.images")"
 up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
@@ -774,4 +841,93 @@ https_command disable
 [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 
+CANDIDATE_VOLUME="pawcycle-production-mysql-candidate-fedcba9876543210"
+BACKUP_HASH="$(printf '%064d' 7)"
+MANIFEST_HASH="$(printf '%064d' 8)"
+SCHEMA_HASH="$(printf 'schema|%s\n' "$CANDIDATE_VOLUME" | sha256sum | awk '{print $1}')"
+FLYWAY_HASH="$(printf '1|1|validation|SQL|V1__validation.sql|12345|1\n' | sha256sum | awk '{print $1}')"
+printf '%s\n' 'pawcycle-production-mysql-data' >"$STATE_DIR/active-mysql-volume"
+chmod 600 "$STATE_DIR/active-mysql-volume"
+printf '%s' 'pawcycle-production-mysql-data' >"$FAKE_DOCKER_STATE/mysql-volume"
+for volume in pawcycle-production-mysql-data "$CANDIDATE_VOLUME"; do
+  : >"$FAKE_DOCKER_STATE/volume-$volume"
+done
+printf '%s' 'candidate' >"$FAKE_DOCKER_STATE/volume-label-scope-$CANDIDATE_VOLUME"
+printf '%s' 'pawcycle-production-mysql-data' >"$FAKE_DOCKER_STATE/volume-label-source-$CANDIDATE_VOLUME"
+printf '%s' "$BACKUP_HASH" >"$FAKE_DOCKER_STATE/volume-label-backup-$CANDIDATE_VOLUME"
+printf '%s' "$MANIFEST_HASH" >"$FAKE_DOCKER_STATE/volume-label-manifest-$CANDIDATE_VOLUME"
+cat >"$STATE_DIR/db-restore-candidate" <<EOF
+FORMAT_VERSION=1
+RECORD_KIND=candidate
+BACKUP_ID_SHA256=$BACKUP_HASH
+MANIFEST_SHA256=$MANIFEST_HASH
+MYSQL_IMAGE=mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d
+SOURCE_VOLUME=pawcycle-production-mysql-data
+CANDIDATE_VOLUME=$CANDIDATE_VOLUME
+SCHEMA_SHA256=$SCHEMA_HASH
+FLYWAY_SHA256=$FLYWAY_HASH
+FLYWAY_COUNT=1
+TABLE_members=2
+TABLE_products=2
+TABLE_skus=2
+TABLE_subscriptions=2
+EOF
+chmod 600 "$STATE_DIR/db-restore-candidate"
+
+"$SCRIPT_DIR/production-db-restore.sh" cutover \
+  --candidate-volume "$CANDIDATE_VOLUME" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >/dev/null
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "$CANDIDATE_VOLUME" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "$CANDIDATE_VOLUME" ]]
+[[ "$(<"$STATE_DIR/previous-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(stat -c '%a' "$STATE_DIR/db-restore-source")" == "600" ]]
+
+"$SCRIPT_DIR/production-db-restore.sh" revert \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >/dev/null
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-mysql-data" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-$CANDIDATE_VOLUME" ]]
+
+rm -f -- "$STATE_DIR/db-restore-source" "$STATE_DIR/previous-mysql-volume" "$STATE_DIR/db-restore-application-sha"
+export FAKE_FAIL_MYSQL_VOLUME="$CANDIDATE_VOLUME"
+if cutover_error="$("$SCRIPT_DIR/production-db-restore.sh" cutover \
+  --candidate-volume "$CANDIDATE_VOLUME" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" 2>&1 >/dev/null)"; then
+  printf 'candidate cutover failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_FAIL_MYSQL_VOLUME
+[[ "$cutover_error" == *"candidate cutover failed; source volume and application state were restored"* ]]
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-mysql-data" ]]
+[[ -f "$FAKE_DOCKER_STATE/volume-$CANDIDATE_VOLUME" ]]
+
+rm -f -- "$STATE_DIR/db-restore-source" "$STATE_DIR/previous-mysql-volume" "$STATE_DIR/db-restore-application-sha"
+printf '%s' "$(printf '%064d' 9)" >"$FAKE_DOCKER_STATE/volume-label-manifest-$CANDIDATE_VOLUME"
+stop_count_before="$(<"$FAKE_DOCKER_STATE/stop-count")"
+if "$SCRIPT_DIR/production-db-restore.sh" cutover \
+  --candidate-volume "$CANDIDATE_VOLUME" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >/dev/null 2>&1; then
+  printf 'candidate manifest label mismatch was reported as success\n' >&2
+  exit 1
+fi
+printf '%s' "$MANIFEST_HASH" >"$FAKE_DOCKER_STATE/volume-label-manifest-$CANDIDATE_VOLUME"
+[[ "$(<"$FAKE_DOCKER_STATE/stop-count")" == "$stop_count_before" ]]
+[[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+
+printf 'OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed\n'
 printf 'OPS-011 production script tests passed\n'

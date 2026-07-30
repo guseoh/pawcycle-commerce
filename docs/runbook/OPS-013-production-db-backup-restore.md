@@ -315,10 +315,11 @@ migration과 `ALTER`, `CREATE`, `DROP`, `RENAME`, `TRUNCATE`가 없는 저부하
 ```bash
 cd /opt/pawcycle/repository
 sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX,PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER \
-  infra/production/db-backup-restore.sh backup
+  infra/production/db-backup-restore.sh backup \
+  --state-dir /opt/pawcycle/state
 ```
 
-사용자는 먼저 전용 신규 빈 bucket과 최소 IAM policy를 준비 단계에서 확인한다. script는 bucket 속성과 ambient credential·endpoint 경계를 검사하지만 bucket 전용성, IAM 최소 권한 또는 초과 권한 부재를 매 실행 증명하지 않는다. 그 경계 안에서 backup은 다음 순서로 fail-close한다.
+OPS-025 active volume 상태가 도입된 Control에서는 `--state-dir`을 반드시 사용한다. Script는 보호된 `active-mysql-volume`과 실행 MySQL mount를 대조하므로 candidate 전환 뒤에도 기본 volume으로 조용히 되돌아가 backup하지 않는다. 사용자는 먼저 전용 신규 빈 bucket과 최소 IAM policy를 준비 단계에서 확인한다. script는 bucket 속성과 ambient credential·endpoint 경계를 검사하지만 bucket 전용성, IAM 최소 권한 또는 초과 권한 부재를 매 실행 증명하지 않는다. 그 경계 안에서 backup은 다음 순서로 fail-close한다.
 
 1. healthy production MySQL·고정 image·고정 volume 확인
 2. mysql·mysqldump, 대상 DB·Flyway·핵심 table 확인
@@ -339,7 +340,8 @@ sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKU
 read -r -p 'Backup ID: ' BACKUP_ID
 sudo --preserve-env=PAWCYCLE_BACKUP_BUCKET,PAWCYCLE_BACKUP_REGION,PAWCYCLE_BACKUP_PREFIX,PAWCYCLE_BACKUP_EXPECTED_BUCKET_OWNER \
   infra/production/db-backup-restore.sh restore-verify \
-  --backup-id "$BACKUP_ID"
+  --backup-id "$BACKUP_ID" \
+  --state-dir /opt/pawcycle/state
 ```
 
 script는 completion marker, object size·SSE-S3, SHA-256과 gzip을 확인한 뒤 실제 압축 해제 크기를 기준으로 Docker disk 여유를 계산하고 복원한다. 임시 MySQL은 다음 계약을 가진다.

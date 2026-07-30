@@ -344,7 +344,7 @@ MySQL volume 보존 확인:
 
 ## 완료와 에스컬레이션
 
-대상 Release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 OPS-010 HTTP 최초 활성화·재부팅 복구에 더해, 2026-07-27 OPS-012에서 검증용 Release `f80e29293146fae13bda1c01d18131d651ede1d1` 배포 후 원래 Release로 실제 `rollback.sh` 복귀가 확인됐다. 적용 전·중간·최종 네 Container health, `pawcycle-production-mysql-data` 보존과 서버·외부 사용자 PC HTTPS 두 경로가 정상이다. 이 HTTPS 확인은 OPS-011에서 이미 구성된 HTTPS의 보존을 재검증한 것이며 OPS-010 구현 범위의 확대가 아니다. 최종 `current-sha`는 원래 Release, `previous-sha`는 검증용 Release다. DB restore·schema downgrade·Flyway 수정·volume 삭제는 수행하지 않았다. 중단 시간은 측정하지 않았고 actual Production DB restore는 여전히 미완료다. 상세 비민감 증거는 `docs/reports/OPS-012/sre-report.md`를 따른다.
+대상 Release `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`의 OPS-010 HTTP 최초 활성화·재부팅 복구와 2026-07-27 OPS-012의 실제 rollback 검증에 더해, 2026-07-30 OPS-021 Control 계약 아래 같은 이전 Release로 rollback한 뒤 원래 Application Release `2e9222b568a3469e8ccc5edce1b5301218c6888e`로 재배포한 결과를 사용자가 확인했다. rollback·재배포 후 health, 내부 Smoke, 외부 HTTPS, state와 Production MySQL volume 보존이 정상이다. DB restore·schema downgrade·Flyway 수정·volume 삭제는 수행하지 않았다. 실제 중단 시간과 Actual Production DB restore는 여전히 미검증이다. 상세 비민감 증거는 `docs/reports/OPS-012/sre-report.md`와 `docs/reports/OPS-021/production-execution-report.md`를 따른다.
 
 다음은 사용자/Tech Lead 결정이 필요하다.
 

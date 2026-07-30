@@ -8,6 +8,9 @@ PRODUCTION_PROJECT="pawcycle-production"
 PRODUCTION_MYSQL_SERVICE="mysql"
 PRODUCTION_MYSQL_VOLUME="pawcycle-production-mysql-data"
 RESTORE_DATABASE="pawcycle_restore_verify"
+PAWCYCLE_STATE_DIR=""
+PAWCYCLE_RUNTIME_DIR=""
+CANDIDATE_VOLUME=""
 WORK_ROOT="/opt/pawcycle/backup-work"
 LOCK_FILE="/run/lock/pawcycle/db-backup-restore.lock"
 if [[ "${PAWCYCLE_OPS013_TEST_MODE:-}" == "local-validation-only" ]]; then
@@ -38,12 +41,17 @@ TEMP_CONTAINER=""
 TEMP_VOLUME=""
 CLEANUP_PATHS_FILE=""
 SUCCESS_MESSAGE=""
+PRESERVE_TEMP_VOLUME=0
+PENDING_RECORD_TMP=""
+PENDING_RECORD_TARGET=""
+RESTORE_USES_RUNTIME_ENV=0
 
 usage() {
   cat <<'EOF'
 Usage:
-  db-backup-restore.sh backup
-  db-backup-restore.sh restore-verify --backup-id <id>
+  db-backup-restore.sh backup [--state-dir <path>]
+  db-backup-restore.sh restore-verify --backup-id <id> [--state-dir <path>]
+  db-backup-restore.sh restore-candidate --backup-id <id> --candidate-volume <name> --state-dir <path> --runtime-dir <path>
   db-backup-restore.sh cleanup --backup-id <id>
 
 The bucket, region, prefix, and expected bucket owner must be supplied through
@@ -102,6 +110,11 @@ validate_nonnegative_integer() {
   [[ "$1" =~ ^[0-9]+$ ]] || die "$2 is not a nonnegative integer"
 }
 
+validate_mysql_volume() {
+  [[ "$1" == "pawcycle-production-mysql-data" || "$1" =~ ^pawcycle-production-mysql-candidate-[0-9a-f]{16}$ ]] \
+    || die "$2 MySQL volume name is invalid"
+}
+
 parse_args() {
   [[ $# -ge 1 ]] || {
     usage >&2
@@ -117,6 +130,21 @@ parse_args() {
         BACKUP_ID="$2"
         shift 2
         ;;
+      --candidate-volume)
+        [[ $# -ge 2 ]] || die "--candidate-volume requires a value"
+        CANDIDATE_VOLUME="$2"
+        shift 2
+        ;;
+      --state-dir)
+        [[ $# -ge 2 ]] || die "--state-dir requires a value"
+        PAWCYCLE_STATE_DIR="$2"
+        shift 2
+        ;;
+      --runtime-dir)
+        [[ $# -ge 2 ]] || die "--runtime-dir requires a value"
+        PAWCYCLE_RUNTIME_DIR="$2"
+        shift 2
+        ;;
       --help|-h)
         usage
         exit 0
@@ -130,17 +158,34 @@ parse_args() {
   case "$COMMAND" in
     backup)
       [[ -z "$BACKUP_ID" ]] || die "backup generates its own backup ID"
+      [[ -z "$CANDIDATE_VOLUME" && -z "$PAWCYCLE_RUNTIME_DIR" ]] \
+        || die "backup does not accept candidate or runtime inputs"
+      [[ -z "$PAWCYCLE_STATE_DIR" ]] || validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
       validate_s3_inputs
       ;;
     restore-verify)
       validate_s3_inputs
       validate_backup_id "$BACKUP_ID"
+      [[ -z "$CANDIDATE_VOLUME" && -z "$PAWCYCLE_RUNTIME_DIR" ]] \
+        || die "restore-verify does not accept candidate or runtime inputs"
+      [[ -z "$PAWCYCLE_STATE_DIR" ]] || validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
+      ;;
+    restore-candidate)
+      validate_s3_inputs
+      validate_backup_id "$BACKUP_ID"
+      validate_mysql_volume "$CANDIDATE_VOLUME" "candidate"
+      [[ "$CANDIDATE_VOLUME" != "pawcycle-production-mysql-data" ]] \
+        || die "candidate volume must differ from the default production volume"
+      validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
+      validate_absolute_directory "$PAWCYCLE_RUNTIME_DIR" "runtime directory"
       ;;
     cleanup)
       validate_backup_id "$BACKUP_ID"
+      [[ -z "$CANDIDATE_VOLUME" && -z "$PAWCYCLE_STATE_DIR" && -z "$PAWCYCLE_RUNTIME_DIR" ]] \
+        || die "cleanup does not accept candidate, state, or runtime inputs"
       ;;
     *)
-      die "command must be backup, restore-verify, or cleanup"
+      die "command must be backup, restore-verify, restore-candidate, or cleanup"
       ;;
   esac
 }
@@ -203,6 +248,74 @@ prepare_host() {
   flock --nonblock 9 || die "another OPS-013 backup or restore command is running"
 }
 
+prepare_state_contract() {
+  local active_file
+
+  [[ -n "$PAWCYCLE_STATE_DIR" ]] || return 0
+  [[ ! -e "$PAWCYCLE_STATE_DIR" || (! -L "$PAWCYCLE_STATE_DIR" && -d "$PAWCYCLE_STATE_DIR") ]] \
+    || die "state directory must be a non-symlink directory"
+  install -d -m 700 "$PAWCYCLE_STATE_DIR"
+  [[ "$(stat -c '%u' "$PAWCYCLE_STATE_DIR")" == "0" ]] || die "state directory must be owned by root"
+
+  active_file="$PAWCYCLE_STATE_DIR/active-mysql-volume"
+  [[ -e "$active_file" || -L "$active_file" ]] || die "active MySQL volume state is missing"
+  [[ ! -L "$active_file" && -f "$active_file" ]] \
+    || die "active MySQL volume state must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$active_file")" == "600" ]] || die "active MySQL volume state mode must be 600"
+  PRODUCTION_MYSQL_VOLUME="$(<"$active_file")"
+  validate_mysql_volume "$PRODUCTION_MYSQL_VOLUME" "active"
+}
+
+prepare_candidate_runtime() {
+  local mysql_env="$PAWCYCLE_RUNTIME_DIR/current/mysql.env"
+  local database
+
+  [[ ! -L "$mysql_env" && -f "$mysql_env" ]] || die "candidate restore MySQL runtime file is missing"
+  [[ "$(stat -c '%a' "$mysql_env")" == "600" ]] || die "candidate restore MySQL runtime file mode must be 600"
+  for key in MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
+    grep -Eq "^${key}=.+$" "$mysql_env" || die "candidate restore runtime key is missing: $key"
+  done
+  database="$(grep -E '^MYSQL_DATABASE=' "$mysql_env" | cut -d= -f2-)"
+  [[ "$database" =~ ^[A-Za-z0-9_]+$ ]] || die "candidate restore database name is invalid"
+  RESTORE_DATABASE="$database"
+  RESTORE_USES_RUNTIME_ENV=1
+}
+
+record_value() {
+  local record="$1"
+  local key="$2"
+  local value
+
+  value="$(grep -E "^${key}=" "$record" | cut -d= -f2-)"
+  [[ -n "$value" ]] || die "restore state field is missing: $key"
+  printf '%s\n' "$value"
+}
+
+validate_state_record() {
+  local record="$1"
+
+  [[ -e "$record" || -L "$record" ]] || die "required restore state record is missing"
+  [[ ! -L "$record" && -f "$record" ]] || die "restore state record must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$record")" == "600" ]] || die "restore state record mode must be 600"
+}
+
+stage_state_record() {
+  local source="$1"
+  local target="$2"
+  local replace="${3:-false}"
+
+  if [[ -e "$target" || -L "$target" ]]; then
+    [[ "$replace" == "true" ]] || die "restore state record already exists; preserve it and stop"
+    validate_state_record "$target"
+  fi
+  PENDING_RECORD_TMP="${target}.tmp.$$"
+  PENDING_RECORD_TARGET="$target"
+  [[ ! -e "$PENDING_RECORD_TMP" && ! -L "$PENDING_RECORD_TMP" ]] \
+    || die "restore state temporary record already exists"
+  cp -- "$source" "$PENDING_RECORD_TMP"
+  chmod 600 "$PENDING_RECORD_TMP"
+}
+
 create_work_dir() {
   WORK_DIR="$(mktemp -d "$WORK_ROOT/ops013-${BACKUP_ID}-XXXXXXXX")"
   [[ ! -L "$WORK_DIR" && -d "$WORK_DIR" ]] || die "temporary work path is invalid"
@@ -242,12 +355,14 @@ cleanup_trap() {
       cleanup_failed=1
     fi
   fi
-  if [[ -n "$TEMP_VOLUME" ]]; then
+  if [[ -n "$TEMP_VOLUME" && "$PRESERVE_TEMP_VOLUME" == "0" ]]; then
     if ! docker volume rm "$TEMP_VOLUME" >/dev/null 2>&1; then
       cleanup_failed=1
     elif docker volume inspect "$TEMP_VOLUME" >/dev/null 2>&1; then
       cleanup_failed=1
     fi
+  elif [[ -n "$TEMP_VOLUME" ]]; then
+    docker volume inspect "$TEMP_VOLUME" >/dev/null 2>&1 || cleanup_failed=1
   fi
   if [[ -n "$WORK_DIR" ]]; then
     safe_remove_work_dir "$WORK_DIR"
@@ -260,6 +375,16 @@ cleanup_trap() {
     if [[ -e "$CLEANUP_PATHS_FILE" || -L "$CLEANUP_PATHS_FILE" ]]; then
       cleanup_failed=1
     fi
+  fi
+  if (( status == 0 && cleanup_failed == 0 )) && [[ -n "$PENDING_RECORD_TMP" ]]; then
+    if ! mv -f -- "$PENDING_RECORD_TMP" "$PENDING_RECORD_TARGET"; then
+      cleanup_failed=1
+    elif [[ -L "$PENDING_RECORD_TARGET" || ! -f "$PENDING_RECORD_TARGET" \
+      || "$(stat -c '%a' "$PENDING_RECORD_TARGET")" != "600" ]]; then
+      cleanup_failed=1
+    fi
+  elif [[ -n "$PENDING_RECORD_TMP" ]]; then
+    rm -f -- "$PENDING_RECORD_TMP"
   fi
   if (( cleanup_failed != 0 )); then
     printf 'ERROR: OPS-013 temporary resource cleanup failed\n' >&2
@@ -373,7 +498,7 @@ find_production_mysql() {
   [[ "$health" == "healthy" ]] || die "production MySQL must be healthy"
 
   volume_name="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container")"
-  destination="$(docker inspect --format '{{range .Mounts}}{{if eq .Name "pawcycle-production-mysql-data"}}{{.Destination}}{{end}}{{end}}' "$container")"
+  destination="$(docker inspect --format "{{range .Mounts}}{{if eq .Name \"$PRODUCTION_MYSQL_VOLUME\"}}{{.Destination}}{{end}}{{end}}" "$container")"
   [[ "$volume_name" == "$PRODUCTION_MYSQL_VOLUME" && "$destination" == "/var/lib/mysql" ]] \
     || die "production MySQL data volume contract does not match"
   printf '%s\n' "$container"
@@ -404,10 +529,15 @@ source_mysql_query() {
 restore_mysql_query() {
   local sql="$1"
   local output_file="$2"
+  local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
+
+  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
+    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
+  fi
 
   : >"$MYSQL_ERROR_FILE"
   if ! docker exec "$TEMP_CONTAINER" sh -eu -c \
-    'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=SOCKET --user=root --batch --skip-column-names --raw "$MYSQL_DATABASE" --execute="$1"' \
+    "$credential_command"'; exec mysql --protocol=SOCKET --user=root --batch --skip-column-names --raw "$MYSQL_DATABASE" --execute="$1"' \
     sh "$sql" >"$output_file" 2>"$MYSQL_ERROR_FILE"; then
     : >"$MYSQL_ERROR_FILE"
     die "isolated restore metadata query failed"
@@ -520,6 +650,9 @@ check_restore_capacity() {
   local available_memory
 
   docker_root="$(docker info --format '{{.DockerRootDir}}')"
+  if [[ "${PAWCYCLE_OPS013_TEST_MODE:-}" == "local-validation-only" && ! -d "$docker_root" ]]; then
+    docker_root="$WORK_ROOT"
+  fi
   [[ "$docker_root" == /* && -d "$docker_root" ]] || die "Docker root directory is unavailable"
   available_disk="$(df -PB1 "$docker_root" | awk 'NR==2 {print $4}')"
   validate_nonnegative_integer "$available_disk" "Docker free disk"
@@ -864,6 +997,11 @@ wait_restore_mysql() {
   local interval=2
   local consecutive_successes=0
   local container_status
+  local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
+
+  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
+    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
+  fi
 
   while (( elapsed < 180 )); do
     container_status="$(docker inspect --format '{{.State.Status}}' "$TEMP_CONTAINER" 2>/dev/null || true)"
@@ -874,7 +1012,7 @@ wait_restore_mysql() {
     esac
 
     if docker exec "$TEMP_CONTAINER" sh -eu -c \
-      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=TCP --host=127.0.0.1 --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT 1;"' \
+      "$credential_command"'; exec mysql --protocol=TCP --host=127.0.0.1 --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT 1;"' \
       >/dev/null 2>&1; then
       consecutive_successes=$((consecutive_successes + 1))
       if (( consecutive_successes >= 2 )); then
@@ -902,7 +1040,7 @@ assert_restore_isolation() {
 
   network_mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$TEMP_CONTAINER")"
   port_bindings="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$TEMP_CONTAINER")"
-  production_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Name "pawcycle-production-mysql-data"}}found{{end}}{{end}}' "$TEMP_CONTAINER")"
+  production_mount="$(docker inspect --format "{{range .Mounts}}{{if eq .Name \"$PRODUCTION_MYSQL_VOLUME\"}}found{{end}}{{end}}" "$TEMP_CONTAINER")"
   restore_mount="$(docker inspect --format "{{range .Mounts}}{{if eq .Name \"$TEMP_VOLUME\"}}{{.Destination}}{{end}}{{end}}" "$TEMP_CONTAINER")"
   [[ "$network_mode" == "none" ]] || die "restore container must use the none network"
   [[ "$port_bindings" == "{}" || "$port_bindings" == "null" ]] || die "restore container must not publish host ports"
@@ -913,10 +1051,27 @@ assert_restore_isolation() {
 create_restore_mysql() {
   local secret_file="$WORK_DIR/mysql-root-password"
   local suffix
+  local backup_hash
+  local manifest_hash
+  local runtime_args=()
 
   suffix="$(random_hex)"
-  TEMP_CONTAINER="pawcycle-restore-verify-${BACKUP_ID}-${suffix}"
-  TEMP_VOLUME="pawcycle-restore-verify-${BACKUP_ID}-${suffix}"
+  if [[ "$COMMAND" == "restore-candidate" ]]; then
+    backup_hash="$(printf '%s' "$BACKUP_ID" | sha256sum | awk '{print $1}')"
+    manifest_hash="$(sha256sum "$WORK_DIR/${BACKUP_ID}.verify" | awk '{print $1}')"
+    TEMP_CONTAINER="pawcycle-restore-candidate-${suffix}"
+    TEMP_VOLUME="$CANDIDATE_VOLUME"
+    PRESERVE_TEMP_VOLUME=1
+    runtime_args=(
+      --env-file "$PAWCYCLE_RUNTIME_DIR/current/mysql.env"
+      --label com.pawcycle.ops025.scope=candidate
+      --label "com.pawcycle.ops025.backup-sha256=$backup_hash"
+      --label "com.pawcycle.ops025.manifest-sha256=$manifest_hash"
+    )
+  else
+    TEMP_CONTAINER="pawcycle-restore-verify-${BACKUP_ID}-${suffix}"
+    TEMP_VOLUME="pawcycle-restore-verify-${BACKUP_ID}-${suffix}"
+  fi
   if docker container inspect "$TEMP_CONTAINER" >/dev/null 2>&1; then
     die "temporary restore container already exists"
   fi
@@ -924,21 +1079,31 @@ create_restore_mysql() {
     die "temporary restore volume already exists"
   fi
 
-  head -c 48 /dev/urandom | base64 >"$secret_file"
-  chmod 600 "$secret_file"
-  docker volume create \
-    --label com.pawcycle.ops013.scope=restore \
-    --label "com.pawcycle.ops013.backup-id=$BACKUP_ID" \
-    "$TEMP_VOLUME" >/dev/null
+  if [[ "$COMMAND" == "restore-candidate" ]]; then
+    docker volume create \
+      --label com.pawcycle.ops025.scope=candidate \
+      --label "com.pawcycle.ops025.source-volume=$PRODUCTION_MYSQL_VOLUME" \
+      --label "com.pawcycle.ops025.backup-sha256=$backup_hash" \
+      --label "com.pawcycle.ops025.manifest-sha256=$manifest_hash" \
+      "$TEMP_VOLUME" >/dev/null
+  else
+    head -c 48 /dev/urandom | base64 >"$secret_file"
+    chmod 600 "$secret_file"
+    docker volume create \
+      --label com.pawcycle.ops013.scope=restore \
+      --label "com.pawcycle.ops013.backup-id=$BACKUP_ID" \
+      "$TEMP_VOLUME" >/dev/null
+    runtime_args=(
+      --mount "type=bind,source=$secret_file,destination=/run/secrets/mysql-root-password,readonly"
+      --env MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root-password
+      --env "MYSQL_DATABASE=$RESTORE_DATABASE"
+    )
+  fi
   docker create \
     --name "$TEMP_CONTAINER" \
-    --label com.pawcycle.ops013.scope=restore \
-    --label "com.pawcycle.ops013.backup-id=$BACKUP_ID" \
+    "${runtime_args[@]}" \
     --network none \
     --mount "type=volume,source=$TEMP_VOLUME,destination=/var/lib/mysql" \
-    --mount "type=bind,source=$secret_file,destination=/run/secrets/mysql-root-password,readonly" \
-    --env MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root-password \
-    --env "MYSQL_DATABASE=$RESTORE_DATABASE" \
     --memory 640m \
     --cpus 0.70 \
     --pids-limit 256 \
@@ -956,13 +1121,18 @@ import_dump() {
   local pipeline_status
   local gzip_status
   local mysql_status
+  local credential_command='export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"'
+
+  if [[ "$RESTORE_USES_RUNTIME_ENV" == "1" ]]; then
+    credential_command='export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"'
+  fi
 
   : >"$MYSQL_ERROR_FILE"
   : >"$COMPRESSION_ERROR_FILE"
   set +e
   gzip --decompress --stdout "$dump" 2>"$COMPRESSION_ERROR_FILE" \
     | docker exec --interactive "$TEMP_CONTAINER" sh -eu -c \
-      'export MYSQL_PWD="$(cat /run/secrets/mysql-root-password)"; exec mysql --protocol=SOCKET --user=root "$MYSQL_DATABASE"' \
+      "$credential_command"'; exec mysql --protocol=SOCKET --user=root "$MYSQL_DATABASE"' \
       > /dev/null 2>"$MYSQL_ERROR_FILE"
   pipeline_status=("${PIPESTATUS[@]}")
   set -e
@@ -1020,6 +1190,58 @@ verify_restored_database() {
   printf 'Schema, Flyway history, and core table counts match the backup snapshot manifest\n'
 }
 
+write_restore_state_record() {
+  local kind="$1"
+  local target="$2"
+  local manifest="$WORK_DIR/${BACKUP_ID}.verify"
+  local record="$WORK_DIR/restore-state"
+  local backup_hash
+  local manifest_hash
+  local key
+
+  backup_hash="$(printf '%s' "$BACKUP_ID" | sha256sum | awk '{print $1}')"
+  manifest_hash="$(sha256sum "$manifest" | awk '{print $1}')"
+  {
+    printf 'FORMAT_VERSION=1\n'
+    printf 'RECORD_KIND=%s\n' "$kind"
+    printf 'BACKUP_ID_SHA256=%s\n' "$backup_hash"
+    printf 'MANIFEST_SHA256=%s\n' "$manifest_hash"
+    printf 'MYSQL_IMAGE=%s\n' "$MYSQL_IMAGE"
+    if [[ "$kind" == "candidate" ]]; then
+      printf 'SOURCE_VOLUME=%s\n' "$PRODUCTION_MYSQL_VOLUME"
+      printf 'CANDIDATE_VOLUME=%s\n' "$CANDIDATE_VOLUME"
+      for key in SCHEMA_SHA256 FLYWAY_SHA256 FLYWAY_COUNT \
+        TABLE_members TABLE_products TABLE_skus TABLE_subscriptions; do
+        printf '%s=%s\n' "$key" "$(manifest_value "$manifest" "$key")"
+      done
+    fi
+  } >"$record"
+  chmod 600 "$record"
+  if [[ "$kind" == "verified" ]]; then
+    stage_state_record "$record" "$target" true
+  else
+    stage_state_record "$record" "$target"
+  fi
+}
+
+verify_prior_restore_record() {
+  local record="$PAWCYCLE_STATE_DIR/db-restore-verified"
+  local manifest="$WORK_DIR/${BACKUP_ID}.verify"
+  local backup_hash
+  local manifest_hash
+
+  validate_state_record "$record"
+  [[ "$(record_value "$record" FORMAT_VERSION)" == "1" \
+    && "$(record_value "$record" RECORD_KIND)" == "verified" ]] \
+    || die "prior restore verification record is invalid"
+  backup_hash="$(printf '%s' "$BACKUP_ID" | sha256sum | awk '{print $1}')"
+  manifest_hash="$(sha256sum "$manifest" | awk '{print $1}')"
+  [[ "$(record_value "$record" BACKUP_ID_SHA256)" == "$backup_hash" \
+    && "$(record_value "$record" MANIFEST_SHA256)" == "$manifest_hash" \
+    && "$(record_value "$record" MYSQL_IMAGE)" == "$MYSQL_IMAGE" ]] \
+    || die "candidate backup does not match the prior restore verification record"
+}
+
 restore_verify_command() {
   local production_container
 
@@ -1036,7 +1258,37 @@ restore_verify_command() {
   assert_restore_isolation
   [[ "$(find_production_mysql)" == "$production_container" ]] \
     || die "production MySQL changed during isolated restore verification"
-  SUCCESS_MESSAGE="Isolated restore verification completed: $BACKUP_ID"
+  if [[ -n "$PAWCYCLE_STATE_DIR" ]]; then
+    write_restore_state_record verified "$PAWCYCLE_STATE_DIR/db-restore-verified"
+    SUCCESS_MESSAGE="Isolated restore verification completed and restricted state recorded"
+  else
+    SUCCESS_MESSAGE="Isolated restore verification completed: $BACKUP_ID"
+  fi
+}
+
+restore_candidate_command() {
+  local production_container
+
+  docker volume inspect "$PRODUCTION_MYSQL_VOLUME" >/dev/null \
+    || die "active production MySQL volume is missing; stop before candidate restore"
+  if docker volume inspect "$CANDIDATE_VOLUME" >/dev/null 2>&1; then
+    die "candidate volume already exists; preserve it and stop"
+  fi
+  production_container="$(find_production_mysql)"
+  create_work_dir
+  verify_bucket_contract
+  download_backup_set
+  verify_prior_restore_record
+  check_restore_capacity
+  prepare_candidate_runtime
+  create_restore_mysql
+  import_dump
+  verify_restored_database
+  assert_restore_isolation
+  [[ "$(find_production_mysql)" == "$production_container" ]] \
+    || die "production MySQL changed during candidate restore"
+  write_restore_state_record candidate "$PAWCYCLE_STATE_DIR/db-restore-candidate"
+  SUCCESS_MESSAGE="Production restore candidate prepared and verified; source and candidate volumes preserved"
 }
 
 cleanup_labeled_resources() {
@@ -1098,10 +1350,11 @@ cleanup_command() {
 main() {
   umask 077
   parse_args "$@"
-  for command in awk aws base64 basename chmod cut date df dirname docker find flock grep gzip head install mktemp od readlink rm sha256sum sleep stat tr wc; do
+  for command in awk aws base64 basename chmod cp cut date df dirname docker find flock grep gzip head install mktemp mv od readlink rm sha256sum sleep stat tr wc; do
     require_command "$command"
   done
   prepare_host
+  prepare_state_contract
   trap cleanup_trap EXIT INT TERM
 
   case "$COMMAND" in
@@ -1112,6 +1365,10 @@ main() {
     restore-verify)
       validate_instance_role_boundary
       restore_verify_command
+      ;;
+    restore-candidate)
+      validate_instance_role_boundary
+      restore_candidate_command
       ;;
     cleanup) cleanup_command ;;
   esac

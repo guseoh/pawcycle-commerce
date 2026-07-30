@@ -191,6 +191,7 @@ def validate_scripts() -> None:
     common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
     deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
     rollback = (PRODUCTION / "rollback.sh").read_text(encoding="utf-8")
+    db_restore = (PRODUCTION / "production-db-restore.sh").read_text(encoding="utf-8")
     materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
     https = (PRODUCTION / "https.sh").read_text(encoding="utf-8")
     script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
@@ -206,7 +207,7 @@ def validate_scripts() -> None:
     auth_member_lifecycle = (
         PRODUCTION / "test-create-production-auth-smoke-member-lifecycle.sh"
     ).read_text(encoding="utf-8")
-    release_scripts = "\n".join((common, deploy, rollback))
+    release_scripts = "\n".join((common, deploy, rollback, db_restore))
 
     require('APPROVED_AWS_REGION="ap-northeast-2"' in ec2_alarm_common, "OPS-015 alarm region must be Seoul")
     for variable in ("PAWCYCLE_ALERT_REGION", "PAWCYCLE_ALERT_INSTANCE_ID", "PAWCYCLE_ALERT_EMAIL", "PAWCYCLE_ALERT_ACCOUNT_ID", "PAWCYCLE_ALERT_RESOURCE_PREFIX"):
@@ -393,6 +394,7 @@ def validate_scripts() -> None:
         "infra/production/release-common.sh",
         "infra/production/deploy.sh",
         "infra/production/rollback.sh",
+        "infra/production/production-db-restore.sh",
         "infra/production/materialize-ssm-env.sh",
     ):
         require(control_path in common, f"control worktree path is missing: {control_path}")
@@ -423,7 +425,13 @@ def validate_scripts() -> None:
         "application release and production control state must be separated",
     )
     require("--pull never" in common, "activation must not replace preflighted images")
-    require('PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data"' in common, "production volume name must ignore ambient overrides")
+    require(
+        'PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME"' in common
+        and "load_active_mysql_volume" in common
+        and "active MySQL volume state is missing" in common
+        and "mysql is not using the active MySQL volume state" in common,
+        "deploy and rollback must bind Compose and the running MySQL mount to protected active volume state",
+    )
     require('PAWCYCLE_HTTP_PORT="80"' in common, "production HTTP port must ignore ambient overrides")
     require('PAWCYCLE_HTTPS_PORT="443"' in common, "production HTTPS port must ignore ambient overrides")
     require("for service in mysql backend frontend" in common, "health wait must cover MySQL and both application services")
@@ -445,6 +453,10 @@ def validate_scripts() -> None:
         "rollback with control SHA drift did not fail closed",
         "incompatible production runtime contract did not fail closed",
         "rollback with incompatible production runtime contract did not fail closed",
+        "missing active MySQL volume state did not fail closed",
+        "candidate cutover failure was reported as success",
+        "candidate manifest label mismatch was reported as success",
+        "OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed",
     ):
         require(evidence in script_tests, f"release regression evidence is missing: {evidence}")
 
@@ -612,8 +624,8 @@ def validate_backup_restore() -> None:
         "backup execution must fail closed outside the approved Seoul region",
     )
     require(
-        "db-backup-restore.sh backup\n" in backup_restore
-        and "db-backup-restore.sh restore-verify --backup-id <id>" in backup_restore
+        "db-backup-restore.sh backup [--state-dir <path>]" in backup_restore
+        and "db-backup-restore.sh restore-verify --backup-id <id> [--state-dir <path>]" in backup_restore
         and all(f"\n      {flag})" not in backup_restore for flag in ("--bucket", "--region", "--prefix"))
         and all(
             f'PAWCYCLE_BACKUP_{name}="${{PAWCYCLE_BACKUP_{name}:-${name}}}"' in backup_tests
@@ -753,6 +765,11 @@ def validate_backup_restore() -> None:
         and '--prefix "$BACKUP_PREFIX"' not in runbook,
         "the Runbook must pass backup identifiers only through the supported environment variables",
     )
+    require(
+        runbook.count("--state-dir /opt/pawcycle/state") >= 2
+        and "active-mysql-volume" in runbook,
+        "OPS-013 backup and restore verification must follow the protected active volume state",
+    )
     for evidence in (
         "backup failure was reported as success",
         "upload failure was reported as success",
@@ -777,13 +794,146 @@ def validate_backup_restore() -> None:
         require(evidence in backup_tests, f"OPS-013 regression evidence is missing: {evidence}")
 
 
+def validate_actual_production_restore() -> None:
+    common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
+    backup_restore = (PRODUCTION / "db-backup-restore.sh").read_text(encoding="utf-8")
+    restore = (PRODUCTION / "production-db-restore.sh").read_text(encoding="utf-8")
+    script_tests = (PRODUCTION / "test-production-scripts.sh").read_text(encoding="utf-8")
+    backup_tests = (PRODUCTION / "test-db-backup-restore.sh").read_text(encoding="utf-8")
+    runbook = (
+        ROOT / "docs" / "runbook" / "OPS-025-production-db-restore.md"
+    ).read_text(encoding="utf-8")
+    workflow = (
+        ROOT / ".github" / "workflows" / "validate-conventions.yml"
+    ).read_text(encoding="utf-8")
+    cutover_body = restore[
+        restore.index("cutover() {") : restore.index("\nrevert() {")
+    ]
+
+    require(
+        "restore-candidate --backup-id <id>" in backup_restore
+        and "verify_prior_restore_record" in backup_restore
+        and "db-restore-verified" in backup_restore,
+        "candidate preparation must require a prior successful OPS-013 restore verification record",
+    )
+    require(
+        "--network none" in backup_restore
+        and "--env-file \"$PAWCYCLE_RUNTIME_DIR/current/mysql.env\"" in backup_restore
+        and 'TEMP_VOLUME="$CANDIDATE_VOLUME"' in backup_restore
+        and "PRESERVE_TEMP_VOLUME=1" in backup_restore,
+        "candidate preparation must use the production runtime database identity in an isolated retained volume",
+    )
+    require(
+        "com.pawcycle.ops025.scope=candidate" in backup_restore
+        and "com.pawcycle.ops025.source-volume" in backup_restore
+        and "com.pawcycle.ops025.backup-sha256" in backup_restore
+        and "com.pawcycle.ops025.manifest-sha256" in backup_restore,
+        "candidate volume ownership and backup identity labels are incomplete",
+    )
+    require(
+        "active-mysql-volume" in common
+        and "previous-mysql-volume" in restore
+        and 'PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME"' in common,
+        "active and recovery MySQL volume state must survive later deploy and rollback commands",
+    )
+    require(
+        'exec 9>"$PAWCYCLE_STATE_DIR/deploy.lock"' in restore
+        and "another production release or database restore command is running" in restore,
+        "database cutover must share the production release operation lock",
+    )
+    require(
+        "compose stop proxy frontend backend" in cutover_body
+        and "write_database_record" in cutover_body
+        and "compose stop mysql" in cutover_body
+        and cutover_body.index("compose stop proxy frontend backend")
+        < cutover_body.index("write_database_record")
+        < cutover_body.index("compose stop mysql"),
+        "cutover must quiesce application writes before recording and stopping source MySQL",
+    )
+    require(
+        "verify_active_database" in restore
+        and all(
+            field in restore
+            for field in (
+                "SCHEMA_SHA256",
+                "FLYWAY_SHA256",
+                "FLYWAY_COUNT",
+                "TABLE_members",
+                "TABLE_products",
+                "TABLE_skus",
+                "TABLE_subscriptions",
+            )
+        ),
+        "cutover and revert must verify schema, Flyway history, and core table manifests",
+    )
+    require(
+        "candidate cutover failed; source volume and application state were restored" in restore
+        and "both MySQL volumes were preserved" in restore
+        and "source database revert failed; candidate reactivation was attempted" in restore,
+        "cutover and revert failure boundaries are incomplete",
+    )
+    require(
+        'validate_candidate_record "$source_volume" true' in restore
+        and "refusing to remove a path outside the database restore state work prefix" in restore,
+        "revert record revalidation or protected temporary cleanup boundary is missing",
+    )
+    require(
+        re.search(r"docker\s+volume\s+rm", restore) is None
+        and "docker cp" not in restore
+        and "docker export" not in restore
+        and "docker cp" not in backup_restore
+        and "docker export" not in backup_restore,
+        "actual production restore scripts must not delete volumes or copy raw data directories",
+    )
+    require(
+        "Flyway history" in restore
+        and "downgrade schema" in restore
+        and "retry" in restore,
+        "forbidden schema and automatic retry boundaries must be visible in the restore command",
+    )
+    for evidence in (
+        "candidate cutover failure was reported as success",
+        "candidate manifest label mismatch was reported as success",
+        "OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed",
+    ):
+        require(evidence in script_tests, f"OPS-025 fake lifecycle evidence is missing: {evidence}")
+    for evidence in (
+        "verified candidate volume was not preserved",
+        "candidate preparation container remained",
+        "candidate volume did not contain the verified logical restore",
+        "OPS-025 candidate preservation lifecycle tests passed",
+    ):
+        require(evidence in backup_tests, f"OPS-025 isolated candidate evidence is missing: {evidence}")
+    require(
+        "infra/production/production-db-restore.sh" in workflow,
+        "Repository Validation must syntax-check the actual production restore script",
+    )
+    for boundary in (
+        "명시적 승인",
+        "쓰기 중단",
+        "completion marker",
+        "restore-verify",
+        "candidate",
+        "schema fingerprint",
+        "Flyway",
+        "외부 HTTPS",
+        "원래 volume 복귀",
+        "자동 삭제하지",
+        "raw datadir",
+        "EBS",
+    ):
+        require(boundary in runbook, f"OPS-025 Runbook boundary is missing: {boundary}")
+
+
 def main() -> None:
     validate_compose()
     validate_workflow()
     validate_scripts()
     validate_nginx()
     validate_backup_restore()
+    validate_actual_production_restore()
     print("OPS-013 production backup and restore contracts validated")
+    print("OPS-025 actual production DB restore contracts validated")
 
 
 if __name__ == "__main__":

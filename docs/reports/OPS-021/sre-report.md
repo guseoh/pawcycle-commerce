@@ -1,5 +1,7 @@
 # OPS-021 Platform/SRE 작업 보고서
 
+> 이 문서는 OPS-021 저장소 준비 당시의 역사적 보고서다. 이후 사용자가 직접 수행한 Production Control 채택, 실제 Application rollback과 재배포 결과는 `docs/reports/OPS-021/production-execution-report.md`를 따른다.
+
 ## 작업 정보
 
 - 작업 ID: OPS-021
