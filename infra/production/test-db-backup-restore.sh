@@ -18,6 +18,11 @@ LOCK_FILE="$TEMP_DIR/lock/ops013.lock"
 SOURCE_SECRET="$TEMP_DIR/source-root-password"
 GZIP_COUNT_FILE="$TEMP_DIR/gzip-decompress-count"
 SOURCE_CONTAINER="ops013-source-$RANDOM"
+CANDIDATE_CONTAINER="ops025-candidate-check-$RANDOM"
+CANDIDATE_VOLUME="pawcycle-production-mysql-candidate-0123456789abcdef"
+CANDIDATE_VOLUME_CREATED=0
+STATE_DIR="$TEMP_DIR/state"
+RUNTIME_DIR="$TEMP_DIR/runtime"
 BACKUP_ID=""
 PRODUCTION_VOLUME_CREATED=0
 REAL_GZIP="$(command -v gzip)"
@@ -28,6 +33,7 @@ cleanup() {
 
   set +e
   docker rm --force "$SOURCE_CONTAINER" >/dev/null 2>&1
+  docker rm --force "$CANDIDATE_CONTAINER" >/dev/null 2>&1
   if [[ -n "$BACKUP_ID" ]]; then
     docker ps --all --quiet \
       --filter label=com.pawcycle.ops013.scope=restore \
@@ -41,11 +47,15 @@ cleanup() {
   if [[ "$PRODUCTION_VOLUME_CREATED" == "1" ]]; then
     docker volume rm "$PRODUCTION_VOLUME" >/dev/null 2>&1
   fi
+  if [[ "$CANDIDATE_VOLUME_CREATED" == "1" \
+    && "$CANDIDATE_VOLUME" == pawcycle-production-mysql-candidate-* ]]; then
+    docker volume rm "$CANDIDATE_VOLUME" >/dev/null 2>&1
+  fi
   resolved_base="$(readlink -f -- "${TMPDIR:-/tmp}")"
   resolved_temp="$(readlink -f -- "$TEMP_DIR")"
   if [[ -n "$resolved_temp" && -d "$resolved_temp" && ! -L "$TEMP_DIR" && "$resolved_temp" == "$resolved_base"/tmp.* ]]; then
     if command -v sudo >/dev/null 2>&1; then
-      sudo rm -rf -- "$resolved_temp"
+      sudo -n rm -rf -- "$resolved_temp"
     else
       rm -rf -- "$resolved_temp"
     fi
@@ -68,13 +78,13 @@ assert_no_restore_resources() {
     --filter "label=com.pawcycle.ops013.backup-id=$BACKUP_ID")" ]] \
     || fail "temporary restore volume remained"
   if [[ -d "$WORK_ROOT" ]]; then
-    [[ -z "$(sudo find "$WORK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'ops013-*' -print -quit 2>/dev/null)" ]] \
+    [[ -z "$(sudo -n find "$WORK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'ops013-*' -print -quit 2>/dev/null)" ]] \
       || fail "temporary restore work file remained"
   fi
 }
 
 run_ops013() {
-  sudo env \
+  sudo -n env \
     PATH="$FAKE_BIN:$PATH" \
     FAKE_S3_ROOT="$FAKE_S3_ROOT" \
     FAKE_TEST_UID="$(id -u)" \
@@ -319,6 +329,57 @@ cp -a -- "$backup_root/." "$baseline/"
 run_ops013 restore-verify --backup-id "$BACKUP_ID" >/dev/null
 assert_no_restore_resources
 
+sudo -n install -d -m 700 "$STATE_DIR" "$RUNTIME_DIR/current"
+printf '%s\n' "$PRODUCTION_VOLUME" | sudo -n tee "$STATE_DIR/active-mysql-volume" >/dev/null
+sudo -n chmod 600 "$STATE_DIR/active-mysql-volume"
+printf '%s\n' \
+  'MYSQL_DATABASE=ops013_source' \
+  'MYSQL_USER=ops025_candidate' \
+  'MYSQL_PASSWORD=local-candidate-only' \
+  'MYSQL_ROOT_PASSWORD=local-candidate-root-only' \
+  | sudo -n tee "$RUNTIME_DIR/current/mysql.env" >/dev/null
+sudo -n chmod 600 "$RUNTIME_DIR/current/mysql.env"
+
+run_ops013 restore-verify --backup-id "$BACKUP_ID" --state-dir "$STATE_DIR" >/dev/null
+assert_no_restore_resources
+sudo -n test -f "$STATE_DIR/db-restore-verified"
+[[ "$(sudo -n stat -c '%a' "$STATE_DIR/db-restore-verified")" == "600" ]]
+
+CANDIDATE_VOLUME_CREATED=1
+run_ops013 restore-candidate \
+  --backup-id "$BACKUP_ID" \
+  --candidate-volume "$CANDIDATE_VOLUME" \
+  --state-dir "$STATE_DIR" \
+  --runtime-dir "$RUNTIME_DIR" >/dev/null
+docker volume inspect "$CANDIDATE_VOLUME" >/dev/null \
+  || fail "verified candidate volume was not preserved"
+[[ -z "$(docker ps --all --quiet --filter label=com.pawcycle.ops025.scope=candidate)" ]] \
+  || fail "candidate preparation container remained"
+sudo -n test -f "$STATE_DIR/db-restore-candidate"
+[[ "$(sudo -n stat -c '%a' "$STATE_DIR/db-restore-candidate")" == "600" ]]
+[[ "$(sudo -n sed -n 's/^CANDIDATE_VOLUME=//p' "$STATE_DIR/db-restore-candidate")" == "$CANDIDATE_VOLUME" ]]
+
+sudo -n docker run --detach \
+  --name "$CANDIDATE_CONTAINER" \
+  --network none \
+  --mount "type=volume,source=$CANDIDATE_VOLUME,destination=/var/lib/mysql" \
+  --env-file "$RUNTIME_DIR/current/mysql.env" \
+  "$MYSQL_IMAGE" \
+  --character-set-server=utf8mb4 \
+  --collation-server=utf8mb4_0900_ai_ci >/dev/null
+for (( attempt = 0; attempt < 60; attempt++ )); do
+  if sudo -n docker exec "$CANDIDATE_CONTAINER" sh -eu -c \
+    'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=SOCKET --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT COUNT(*) FROM members;"' \
+    2>/dev/null | grep -qx '1'; then
+    break
+  fi
+  sleep 2
+done
+sudo -n docker exec "$CANDIDATE_CONTAINER" sh -eu -c \
+  'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; test "$(mysql --protocol=SOCKET --user=root --batch --skip-column-names "$MYSQL_DATABASE" --execute="SELECT COUNT(*) FROM members;")" = "1"' \
+  || fail "candidate volume did not contain the verified logical restore"
+sudo -n docker rm --force "$CANDIDATE_CONTAINER" >/dev/null
+
 oversized_failure="$(FAKE_AWS_HEAD_SIZE=5000000001 run_ops013 restore-verify \
   --backup-id "$BACKUP_ID" \
   2>&1 >/dev/null || true)"
@@ -414,4 +475,4 @@ docker volume inspect "$PRODUCTION_VOLUME" >/dev/null \
 
 run_ops013 cleanup --backup-id "$BACKUP_ID" >/dev/null
 assert_no_restore_resources
-printf 'OPS-013 isolated backup and restore lifecycle tests passed\n'
+printf 'OPS-013 isolated backup and restore plus OPS-025 candidate preservation lifecycle tests passed\n'

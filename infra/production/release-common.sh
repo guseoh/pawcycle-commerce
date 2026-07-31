@@ -7,6 +7,7 @@ COMPOSE_FILE="$PRODUCTION_DIR/compose.yaml"
 PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
 MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+DEFAULT_MYSQL_VOLUME="pawcycle-production-mysql-data"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
 CERTIFICATE_NAME="pawcycle-production"
@@ -27,9 +28,11 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/release-common.sh'
   ':(top)infra/production/deploy.sh'
   ':(top)infra/production/rollback.sh'
+  ':(top)infra/production/production-db-restore.sh'
   ':(top)infra/production/materialize-ssm-env.sh'
 )
 CONTRACT_SHA=""
+ACTIVE_MYSQL_VOLUME=""
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -98,6 +101,21 @@ read_state_sha() {
   value="$(<"$path")"
   validate_sha "$value"
   printf '%s\n' "$value"
+}
+
+validate_mysql_volume() {
+  [[ "$1" == "$DEFAULT_MYSQL_VOLUME" || "$1" =~ ^pawcycle-production-mysql-candidate-[0-9a-f]{16}$ ]] \
+    || die "active MySQL volume state is invalid"
+}
+
+load_active_mysql_volume() {
+  local path="$PAWCYCLE_STATE_DIR/active-mysql-volume"
+
+  [[ -e "$path" || -L "$path" ]] || die "active MySQL volume state is missing"
+  [[ ! -L "$path" && -f "$path" ]] || die "active MySQL volume state must be a regular non-symlink file"
+  [[ "$(stat -c '%a' "$path")" == "600" ]] || die "active MySQL volume state mode must be 600"
+  ACTIVE_MYSQL_VOLUME="$(<"$path")"
+  validate_mysql_volume "$ACTIVE_MYSQL_VOLUME"
 }
 
 current_control_sha() {
@@ -171,7 +189,7 @@ compose() {
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
   PAWCYCLE_MYSQL_ENV_FILE="$PAWCYCLE_MYSQL_ENV_FILE" \
   PAWCYCLE_BACKEND_ENV_FILE="$PAWCYCLE_BACKEND_ENV_FILE" \
-  PAWCYCLE_MYSQL_VOLUME="pawcycle-production-mysql-data" \
+  PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME" \
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
   PAWCYCLE_DATA_NETWORK="pawcycle-production-data" \
@@ -473,6 +491,7 @@ verify_running_release() {
   local container_id
   local configured_reference
   local revision
+  local mysql_volume
 
   for service in mysql backend frontend proxy; do
     case "$service" in
@@ -493,6 +512,12 @@ verify_running_release() {
       revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$container_id")"
       [[ "$revision" == "$ACTIVE_SHA" ]] || {
         printf '%s revision label does not match the requested release\n' "$service" >&2
+        return 1
+      }
+    elif [[ "$service" == "mysql" ]]; then
+      mysql_volume="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container_id")"
+      [[ "$mysql_volume" == "$ACTIVE_MYSQL_VOLUME" ]] || {
+        printf 'mysql is not using the active MySQL volume state\n' >&2
         return 1
       }
     fi
@@ -523,30 +548,46 @@ write_state() {
   local value="$2"
   local target="$PAWCYCLE_STATE_DIR/$name"
 
-  printf '%s\n' "$value" > "${target}.tmp"
-  chmod 600 "${target}.tmp"
-  mv -f "${target}.tmp" "$target"
+  printf '%s\n' "$value" > "${target}.tmp" || return 1
+  if ! chmod 600 "${target}.tmp"; then
+    rm -f -- "${target}.tmp"
+    return 1
+  fi
+  if ! mv -f "${target}.tmp" "$target"; then
+    rm -f -- "${target}.tmp"
+    return 1
+  fi
 }
 
 stop_application_services() {
   compose stop proxy frontend backend || true
 }
 
-initialize_release_context() {
+prepare_release_context() {
   require_command curl
   require_command cmp
   require_command docker
   require_command flock
   require_command git
   require_command grep
+  require_command rm
   require_command stat
 
-  validate_sha "$TARGET_SHA"
   validate_image_repository "$BACKEND_IMAGE"
   validate_image_repository "$FRONTEND_IMAGE"
   validate_runtime_bundle "$PAWCYCLE_RUNTIME_DIR"
   prepare_state_directory
+}
 
+acquire_release_lock() {
   exec 9>"$PAWCYCLE_STATE_DIR/deploy.lock"
-  flock --nonblock 9 || die "another production release command is running"
+  chmod 600 "$PAWCYCLE_STATE_DIR/deploy.lock"
+  flock --nonblock 9 || die "another production release or database restore command is running"
+}
+
+initialize_release_context() {
+  validate_sha "$TARGET_SHA"
+  prepare_release_context
+  acquire_release_lock
+  load_active_mysql_volume
 }
