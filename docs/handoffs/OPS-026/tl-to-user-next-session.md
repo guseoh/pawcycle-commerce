@@ -6,9 +6,22 @@
 
 ## 대상 역할 또는 운영자
 
-- 사용자: PM·Product Owner·Tech Lead·실제 운영 실행자
-- 다음 채팅의 ChatGPT: 최신 `main`, PR #77, 활성 PCC_V3와 실제 운영 증거를 다시 확인하고 다음 작업을 설계
-- 후속 저장소 역할 후보: Platform/SRE와 Tech Lead
+- 사용자: PM·Product Owner·Tech Lead·실제 운영 명령 실행자
+- 다음 채팅의 ChatGPT: 최신 `main`, PR #77, 활성 PCC_V3와 실제 운영 증거를 다시 확인하고 단계별 명령·중단 조건·검증 기준을 제공
+- Codex: 다음 Control 실제 검증 작업에는 사용하지 않음
+
+## 후속 작업 수행 방식
+
+다음 작업은 Codex 구현 작업이 아니라 **사용자와 ChatGPT가 함께 수행하는 고위험 실제 운영 검증**으로 진행한다.
+
+- ChatGPT는 각 단계 직전에 최신 GitHub·저장소·운영 증거를 확인한다.
+- ChatGPT는 한 번에 필요한 최소 명령, 예상 결과, 중단 조건과 복구 기준을 제시한다.
+- 사용자는 자신의 로컬 또는 Production 환경에서 명령을 직접 실행한다.
+- 사용자는 Secret·개인정보·원시 DB 값을 제외한 결과만 채팅에 전달한다.
+- ChatGPT는 전달된 결과를 판독하고 다음 단계 진행·중단·복구 여부를 결정한다.
+- 실제 AWS·Production Docker·DB·Secret·비용 변경은 사용자의 단계별 명시 승인 없이는 실행하지 않는다.
+- 저장소 문서 보완이 필요하면 ChatGPT가 GitHub에서 최소 변경을 작성·검증할 수 있지만, 운영 명령 자체는 사용자가 실행한다.
+- Codex prompt 작성, Codex 구현, Codex 하위 에이전트 사용은 이번 후속 작업 범위에서 제외한다.
 
 ## 입력 문서
 
@@ -47,13 +60,13 @@ PCC_V3는 활성화됐지만, OPS-026은 활성화 전에 승인된 기존 작�
 ## 미결정 사항 또는 승인 필요 항목
 
 1. OPS-025 이후 현재 Control을 실제 Production에 적용하고 deploy·rollback·원래 Release 재배포를 검증할지
-2. 위 실제 검증을 위한 저장소 준비와 사용자 실행을 어떤 작업 ID로 분리할지
-3. OPS-VERIFY-001 재판정을 같은 작업의 후속으로 할지 별도 Tech Lead 작업으로 할지
+2. 위 실제 검증의 새 작업 ID와 실행 범위를 무엇으로 정할지
+3. OPS-VERIFY-001 재판정을 같은 실행 작업의 완료 판정으로 할지 별도 Tech Lead 검토로 분리할지
 4. 현재 Control 검증 전 PR #77을 `Decision Required` 기록으로 병합할지
 5. 저장소 `AGENTS.md`, 역할 문서, Skill, PR template, validator를 PCC_V3와 정렬할 시점
 6. RDS ADR과 MVP2 계획의 우선순위
 
-기본 권고는 PR #77을 안전한 중단·재평가 기록으로 병합한 뒤, 별도 고위험 Control 실제 검증 작업을 시작하는 것이다.
+기본 권고는 PR #77을 안전한 중단·재평가 기록으로 병합한 뒤, 사용자와 ChatGPT가 별도 고위험 Control 실제 검증 작업을 진행하는 것이다.
 
 ## 검증 포인트
 
@@ -80,16 +93,17 @@ PR #77 변경 내용 자체는 다음을 확인한다.
 권장 후속 흐름:
 
 ```text
-현재 Control 검증 목적·범위 확정
+사용자·ChatGPT 실행 방식과 작업 ID 확정
 → 작업 등급 고위험
-→ 저장소 준비와 실제 Production 실행 분리
-→ 적용 전 state·release·volume·복귀 가능성 확인
-→ 사용자 명시 승인
-→ 현재 Control 적용
-→ deploy
-→ 이전 Application rollback
-→ 원래 Release 재배포
-→ health·내부 Smoke·외부 HTTPS
+→ 최신 main·PR·현재 Production state 재확인
+→ 저장소 준비와 실제 Production 실행 경계 확인
+→ 적용 전 release·Control·volume·복귀 가능성 확인
+→ 사용자 단계별 명시 승인
+→ 사용자가 현재 Control 적용
+→ 사용자가 deploy 실행
+→ 사용자가 이전 Application rollback 실행
+→ 사용자가 원래 Release 재배포
+→ ChatGPT와 함께 health·내부 Smoke·외부 HTTPS 결과 판독
 → active-mysql-volume·Application·Control 상태·volume 보존 확인
 → 비민감 실행 증거 기록
 → OPS-VERIFY-001 재판정
@@ -129,7 +143,11 @@ PawCycle Commerce 프로젝트를 이어간다.
 PR #77과 docs/handoffs/OPS-026/tl-to-user-next-session.md를 먼저 확인하고,
 최신 main·PR·CI·review·역할 브랜치 상태를 다시 검증해라.
 
+다음 작업은 Codex 없이 사용자와 ChatGPT가 함께 실행한다.
+ChatGPT는 단계별 최소 명령·예상 결과·중단 조건·복구 기준을 제시하고,
+사용자는 로컬 또는 Production 환경에서 명령을 직접 실행한 뒤 비민감 결과만 전달한다.
+
 OPS-026 결과는 OPS-VERIFY-001 = Decision Required이며,
 OPS-025 이후 현재 Control의 실제 Production 적용·deploy·rollback 검증이 남아 있다.
-실제 AWS·Production Docker·DB·Secret·비용 작업은 별도 명시 승인 전 금지한다.
+실제 AWS·Production Docker·DB·Secret·비용 작업은 사용자의 단계별 명시 승인 전 금지한다.
 ```
