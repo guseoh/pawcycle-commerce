@@ -8,7 +8,6 @@
 - 저장소 평가 기준: `main`의 `6d72a74595458c55bd55d276b286ae45e408c25b`
 - 실제 인증 검증 Application Release: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
 - 판정 상태: `Decision Required`
-- 후속 판정: `docs/reports/OPS-026/tl-report.md`에서 최신 병합 증거를 반영해 `OPS-VERIFY-001 = Verified`로 확정했다. 이 줄은 아래 OPS-024 역사적 판정표를 소급 변경하지 않는다.
 
 ## 작업 목적
 
