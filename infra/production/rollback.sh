@@ -45,13 +45,40 @@ initialize_rollback_context() {
   load_active_mysql_volume
 }
 
+validate_recorded_previous_release_contract() {
+  local current_sha="$1"
+  local target_sha="$2"
+  local previous_sha=""
+  local previous_contract_sha=""
+
+  if [[ -e "$PAWCYCLE_STATE_DIR/previous-sha" || -L "$PAWCYCLE_STATE_DIR/previous-sha" ]]; then
+    previous_sha="$(read_state_sha previous-sha)"
+  fi
+  if [[ -e "$PAWCYCLE_STATE_DIR/previous-contract-sha" || -L "$PAWCYCLE_STATE_DIR/previous-contract-sha" ]]; then
+    previous_contract_sha="$(read_state_sha previous-contract-sha)"
+  fi
+
+  # deploy.sh and rollback.sh write previous-sha and previous-contract-sha under
+  # the shared deploy.lock, then write current-sha last as the successful
+  # transition commit marker. A partial write therefore leaves previous-sha
+  # equal to current-sha and must not use the recorded previous Control.
+  if [[ "$target_sha" == "$previous_sha" \
+    && "$previous_sha" != "$current_sha" \
+    && -n "$previous_contract_sha" ]]; then
+    validate_runtime_contract_compatibility "$previous_contract_sha" "$CONTRACT_SHA"
+    return 0
+  fi
+
+  validate_rollback_contract_compatibility "$target_sha"
+}
+
 initialize_rollback_context
 
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
 [[ "$TARGET_SHA" != "$CURRENT_SHA" ]] || die "rollback target equals current release"
 
-validate_rollback_contract_compatibility "$TARGET_SHA"
+validate_recorded_previous_release_contract "$CURRENT_SHA" "$TARGET_SHA"
 
 printf 'Preflighting current recovery release: %s\n' "$CURRENT_SHA"
 preflight_release "$CURRENT_SHA"

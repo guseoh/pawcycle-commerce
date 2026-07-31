@@ -373,8 +373,7 @@ validate_rollback_contract_compatibility() {
     previous_contract_sha="$(read_state_sha previous-contract-sha)"
   fi
 
-  if [[ "$target_sha" == "$previous_sha" && -n "$previous_contract_sha" ]]; then
-    validate_runtime_contract_compatibility "$previous_contract_sha" "$CONTRACT_SHA"
+  if [[ "$target_sha" == "$previous_sha" && "$previous_contract_sha" == "$CONTRACT_SHA" ]]; then
     return 0
   fi
   validate_runtime_contract_compatibility "$CONTRACT_SHA" "$target_sha"
