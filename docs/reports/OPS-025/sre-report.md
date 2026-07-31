@@ -17,7 +17,7 @@ OPS-021 실제 Production Control·Application rollback·재배포 결과를 비
 - 사용자 제공 2026-07-30 KST OPS-021 Production 실행 결과
 - `docs/runbook/OPS-010-production-single-release.md`
 - `docs/runbook/OPS-013-production-db-backup-restore.md`
-- `docs/runbook/OPS-013-production-db-backup-restore.md`
+- `docs/runbook/OPS-025-production-db-restore.md`
 - `docs/runbook/lean-harness.md`
 - 기존 production Compose, backup·restore, deploy·rollback Script와 tests
 
