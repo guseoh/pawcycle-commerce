@@ -106,11 +106,13 @@ jobs:
             infra/production/create-production-auth-smoke-member.sh \
             infra/production/test-create-production-auth-smoke-member-lifecycle.sh \
             infra/production/test-production-scripts.sh \
+            infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
             infra/production/test-db-backup-restore.sh
           python infra/production/validate-production-contracts.py
           bash infra/production/test-production-scripts.sh
+          bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-compose.sh
           bash infra/production/test-db-backup-restore.sh

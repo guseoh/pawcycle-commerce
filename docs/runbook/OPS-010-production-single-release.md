@@ -269,7 +269,9 @@ sudo bash infra/production/rollback.sh \
   --state-dir /opt/pawcycle/state
 ```
 
-rollback은 현재 Control worktree가 깨끗하고 HEAD가 `contract-sha`와 정확히 같은지 먼저 검증한다. 대상이 `previous-sha`이고 `previous-contract-sha`가 현재 `contract-sha`와 같으면 마지막 성공 전환의 빠른 호환 경로를 사용한다. 그 외 대상은 현재 `contract-sha`와 대상 Release SHA의 Release 계약 세 파일이 같아야 한다. 조건을 통과한 뒤 현재 복구 Release와 rollback 대상을 모두 preflight하고 Application image를 바꾼다. 불일치하면 Container·state·volume 변경 전에 중단한다. 활성화 실패 시에는 검증을 통과한 직전 현재 SHA를 다시 복구한다. MySQL Container가 Compose 판단에 따라 재사용 또는 재생성될 수 있어도 동일 named volume을 사용한다.
+rollback은 현재 Control worktree가 깨끗하고 HEAD가 `contract-sha`와 정확히 같은지 먼저 검증한다. `deploy.sh`와 `rollback.sh`는 공유 `deploy.lock` 아래 `previous-sha`, `previous-contract-sha`를 먼저 기록하고 `current-sha`를 성공 전환의 마지막 commit marker로 기록한다. 따라서 대상이 기록된 `previous-sha`이고 `previous-sha != current-sha`이며 `previous-contract-sha`가 존재할 때만 기록된 이전 Control을 사용한다. 이 경우 `previous-contract-sha`와 현재 `contract-sha`의 `compose.yaml`, `nginx.conf`, `nginx.https.conf` Release 계약이 같아야 rollback을 허용한다. Control SHA 문자열이 달라도 세 계약 파일이 같으면 허용하고, 다르면 Container·state·volume 변경 전에 거부한다.
+
+기록된 `previous-sha`가 아닌 명시적 대상, `previous-contract-sha` 누락 또는 `previous-sha == current-sha`인 부분 기록 상태는 이전 Control 경로를 사용하지 않는다. 이 경우 기존처럼 현재 `contract-sha`와 대상 commit의 Release 계약 세 파일이 같아야 한다. 조건을 통과한 뒤 현재 복구 Release와 rollback 대상을 모두 preflight하고 Application image를 바꾼다. 활성화 실패 시에는 검증을 통과한 직전 현재 SHA를 다시 복구한다. MySQL Container가 Compose 판단에 따라 재사용 또는 재생성될 수 있어도 동일 named volume을 사용한다.
 
 Control HEAD가 `contract-sha`와 다르면 rollback에서 계약을 채택하지 않는다. 먼저 실제 Production 실행 승인을 받고 `deploy.sh --adopt-contract-sha '<current-control-sha>'`로 현재 Release를 검증해 Control 계약을 전환하거나, 기존 승인 Control checkout으로 복귀한 뒤 rollback한다.
 
