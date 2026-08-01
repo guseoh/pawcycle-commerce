@@ -137,9 +137,14 @@ class DiscordContextTests(unittest.TestCase):
         self.assertEqual(discord.role_for_branch("ops/sre"), "Platform/SRE")
         self.assertEqual(discord.role_for_branch("test/qa"), "QA Engineer")
         self.assertEqual(discord.role_for_branch("ops/tl/HARNESS-LEAN-003"), "Tech Lead")
-        self.assertEqual(discord.role_for_branch("feat/be/MVP2-001"), "Backend Engineer")
-        self.assertEqual(discord.role_for_branch("feat/backend/MVP2-001"), discord.MISSING)
+        self.assertEqual(discord.role_for_branch("feat/be/API-004"), "Backend Engineer")
+        self.assertEqual(discord.role_for_branch("feat/backend/API-004"), discord.MISSING)
         self.assertEqual(discord.role_for_branch("unknown/branch"), discord.MISSING)
+
+    def test_task_branch_flows_through_role_and_task_id_extraction(self):
+        branch = "ops/tl/HARNESS-LEAN-003"
+        self.assertEqual(discord.role_for_branch(branch), "Tech Lead")
+        self.assertEqual(discord.extract_task_id("", "하네스 후속 수정", branch), "HARNESS-LEAN-003")
 
     def test_new_pr_template_sections_are_consumed(self):
         sections = discord.extract_sections(
@@ -201,6 +206,20 @@ PRIVATE_KEY=hidden
         self.assertEqual(context["ci_jobs"], discord.UNKNOWN)
         self.assertEqual(context["unresolved_threads"], discord.UNKNOWN)
         self.assertEqual(context["next_action"], "실패 Job과 Step 확인 후 최소 수정")
+
+    def test_metadata_workflow_is_not_reported_as_code_ci_success(self):
+        payload = {
+            "workflow_run": {
+                "id": 9,
+                "name": "PR Metadata Validation",
+                "conclusion": "success",
+                "head_branch": "ops/tl/HARNESS-LEAN-003",
+                "head_sha": "abc",
+                "pull_requests": [{"number": 82}],
+            }
+        }
+        context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
+        self.assertFalse(context["notify"])
 
     def test_stale_workflow_run_preserves_run_sha_and_marks_context(self):
         payload = {"workflow_run": {"id": 8, "name": "Repository Validation", "conclusion": "success", "head_branch": "ops/sre", "head_sha": "old-sha", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}

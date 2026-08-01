@@ -43,9 +43,9 @@ description: >-
 
 1. 작업 ID와 승인된 요구사항·도메인·ADR·API 계약을 확인한다.
 2. 남은 Product·Technical Decision, 기존 관례와 최소 변경 범위를 확인한다.
-3. transaction·persistence 영향을 설계하고 관련 시 동시성과 멱등성을 검토한다.
+3. transaction·persistence 영향을 설계하고 관련 시 동시성과 멱등성을 검토한다. transaction 경계나 동시성 제어가 의미 있게 바뀌면 근거를 남길 권위 위치를 정한다.
 4. 허용 경로에서 구현하고 집중 테스트를 추가한다.
-5. 외부 계약·DB·장기 기술 결정이 바뀔 때만 문서를, 실제 소비자가 있을 때만 인수인계를 갱신한다.
+5. 외부 계약·DB·장기 기술 결정 또는 의미 있는 transaction·동시성 경계가 바뀔 때 구현 문서·API/ADR·PR 중 가장 가까운 권위 위치를 갱신하고, 실제 소비자가 있을 때만 인수인계를 작성한다.
 6. 관련 Gradle 검사와 회귀를 실행하고 API·DB 영향, 미실행과 위험을 보고한다.
 
 ## 7. 허용 경로
@@ -78,3 +78,4 @@ description: >-
 - 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
 - 산출물·QA 조건은 `docs/runbook/lean-harness.md`를 따른다.
 - 백엔드 task branch는 `feat/be/<TASK-ID>`다.
+- 하나의 task branch에는 하나의 활성 작업만 둔다.

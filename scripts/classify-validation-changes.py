@@ -8,15 +8,29 @@ import sys
 from pathlib import PurePosixPath
 
 GROUPS = ("harness", "backend", "frontend", "production")
-COMMON_HARNESS_FILES = {
+ALL_COMPONENT_FILES = {
     "AGENTS.md",
     ".github/pull_request_template.md",
-    ".github/workflows/validate-conventions.yml",
     "scripts/validate-task-artifacts.py",
     "scripts/test_validate_task_artifacts.py",
     "scripts/classify-validation-changes.py",
     "scripts/test_validate_conventions_workflow.py",
     "docs/runbook/lean-harness.md",
+}
+HARNESS_FILES = {
+    ".coderabbit.yaml",
+    "CONTRIBUTING.md",
+    "docs/reports/README.md",
+    "docs/reports/task-report-template.md",
+}
+ROLE_COMPONENTS = {
+    "backend-engineer": ("harness", "backend"),
+    "frontend-engineer": ("harness", "frontend"),
+    "platform-sre": ("harness", "production"),
+    "product-planner": ("harness",),
+    "ux-designer": ("harness",),
+    "qa-engineer": ("harness",),
+    "tech-lead": ("harness",),
 }
 
 
@@ -25,33 +39,54 @@ def normalized(path: str) -> str:
     return value[2:] if value.startswith("./") else value
 
 
+def role_components(path: str) -> tuple[str, ...] | None:
+    for role, components in ROLE_COMPONENTS.items():
+        if path == f"docs/roles/{role}.md" or path.startswith(f".agents/skills/{role}/"):
+            return components
+    path_role = {
+        "backend/AGENTS.md": "backend-engineer",
+        "frontend/AGENTS.md": "frontend-engineer",
+        "infra/AGENTS.md": "platform-sre",
+        "qa/AGENTS.md": "qa-engineer",
+    }.get(path)
+    return ROLE_COMPONENTS.get(path_role) if path_role else None
+
+
 def classify(paths: list[str]) -> dict[str, bool]:
     result = {group: False for group in GROUPS}
+    unknown: list[str] = []
     for raw_path in paths:
         path = normalized(raw_path)
         if not path or path == ".":
             continue
-        if (
-            path in COMMON_HARNESS_FILES
-            or path.startswith(".agents/skills/")
-            or path.startswith("docs/roles/")
-            or path.startswith(".github/workflows/")
-        ):
+        if path in ALL_COMPONENT_FILES or path.startswith(".github/workflows/"):
             return {group: True for group in GROUPS}
-        if path.startswith("backend/"):
+        components = role_components(path)
+        if components:
+            for component in components:
+                result[component] = True
+        elif path.startswith("infra/local-integration/"):
+            return {group: True for group in GROUPS}
+        elif path.startswith("backend/"):
             result["backend"] = True
         elif path.startswith("frontend/"):
             result["frontend"] = True
         elif path.startswith("infra/production/"):
             result["production"] = True
-        if (
-            path.endswith(".md")
+        elif (
+            path in HARNESS_FILES
+            or path.startswith(".githooks/")
             or path.startswith("docs/")
             or path.startswith("scripts/")
             or path.startswith(".github/scripts/")
             or path.startswith(".github/fixtures/")
         ):
             result["harness"] = True
+        else:
+            unknown.append(path)
+    if unknown:
+        print(f"미분류 변경 경로: {', '.join(unknown)}", file=sys.stderr)
+        return {group: True for group in GROUPS}
     return result
 
 

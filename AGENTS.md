@@ -81,7 +81,7 @@ git log --oneline HEAD..origin/main
 | Platform/SRE | `ops/sre/<TASK-ID>` |
 | Tech Lead | `ops/tl/<TASK-ID>` |
 
-하나의 task branch에는 하나의 활성 작업만 둔다. 병합 뒤 안전할 때 branch를 삭제하며, 삭제 전 열린 PR·고유 commit·worktree를 확인한다. 기존 역사 branch와 과거 문서는 소급 변경하지 않는다. 자동 reset, rebase, force push와 history rewrite를 하지 않는다.
+하나의 task branch에는 하나의 활성 작업만 둔다. 병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없을 때만 branch를 삭제하며, 하나라도 있으면 삭제하지 않는다. 기존 역사 branch와 과거 문서는 소급 변경하지 않는다. 자동 reset, rebase, force push와 history rewrite를 하지 않는다.
 
 커밋과 PR 제목은 `<type>(<scope>): <한국어 명사형 설명>` 형식을 사용한다. 허용 type은 `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `build`, `ci`, `chore`, `perf`, `revert`다. 설명은 한글을 포함한 명사형으로 끝내고 마침표를 붙이지 않는다.
 

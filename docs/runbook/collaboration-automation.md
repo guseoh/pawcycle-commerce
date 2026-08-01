@@ -201,23 +201,25 @@ git config core.hooksPath .githooks
 
 ## 6. GitHub Actions 검증
 
-`Repository Validation` 워크플로는 Pull Request에서 다음을 검증한다.
+code event의 `Repository Validation` 워크플로는 Pull Request에서 다음을 검증한다.
 
 - PR 제목
 - PR에 포함된 커밋 메시지
 - PR 본문의 작업 ID·등급·실행 구분·목적·범위·검증·위험 또는 복구 경계
 - 존재하는 보고서의 목적·증거·위험 최소 구조
 - 실제 운영 실행의 보고서와 승인·적용 전후·독립·복구 증거
-- 등급 없는 기존 산출물의 명시적 legacy 경로
+- 실행 구분이 없던 기존 산출물의 명시적 legacy 경로
 - 변경 diff의 공백 오류
 
-`edited`는 PR metadata만 검증한다. code event는 base/head diff를 Harness, Backend+MySQL, Frontend, Production 계약으로 분류해 필요한 component job을 병렬 실행하고 `Application validation`에서 success·skipped를 집계한다. component 실패는 aggregate 성공으로 바뀌지 않는다. `Commit and PR conventions`와 `Application validation` 이름은 branch protection 호환을 위해 유지한다.
+`edited`는 별도 `PR Metadata Validation` 워크플로의 `PR metadata validation` job에서 제목·본문 encoding·task artifact 계약만 검증한다. 이 workflow는 required check나 component·aggregate job 이름을 만들지 않으며 code workflow와 다른 concurrency group을 사용한다.
+
+code event는 merge base부터 head까지의 `--no-renames` diff를 Harness, Backend+MySQL, Frontend, Production 계약으로 분류해 rename의 원래 경로도 포함한다. 미분류 경로는 fail-closed로 전체 component를 선택한다. 네 component는 공통 선행 job에만 의존해 병렬 실행되며, `Application validation`은 선택된 component의 success와 선택되지 않은 component의 skipped만 허용한다. classifier·component failure, cancelled와 timed_out은 aggregate 성공으로 바뀌지 않는다. `Commit and PR conventions`와 `Application validation` 이름은 branch protection 호환을 위해 유지한다.
 
 Discord Secret은 검증 워크플로에서 사용하지 않는다.
 
 검증 실패 시 실패한 커밋 SHA, 현재 메시지, 위반 규칙, 올바른 예시가 Actions 로그에 출력된다.
 
-`Collaboration Notification` 워크플로는 `Repository Validation` 완료 이벤트를 감시한다.
+`Collaboration Notification` 워크플로는 code workflow인 `Repository Validation` 완료 이벤트만 감시한다. `PR Metadata Validation` 성공은 전체 CI 성공이나 사용자 최종 검토 단계로 알리지 않는다.
 
 - 결론이 `success`이면 CI 검증 성공 알림을 보낸다.
 - 성공 이외의 완료 결론은 CI 검증 미통과 알림을 보낸다.

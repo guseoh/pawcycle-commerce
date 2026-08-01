@@ -1,0 +1,39 @@
+name: PR Metadata Validation
+
+on:
+  pull_request:
+    types: [edited]
+
+concurrency:
+  group: repository-validation-metadata-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  metadata:
+    name: PR metadata validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: sh scripts/validate-commit-message.sh --message "$PR_TITLE"
+
+      - name: Validate PR body encoding
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" | python scripts/validate-pr-body-encoding.py --from-stdin
+
+      - name: Validate task artifacts
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | python scripts/validate-task-artifacts.py --from-stdin

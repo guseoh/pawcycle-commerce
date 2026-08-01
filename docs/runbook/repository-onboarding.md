@@ -72,6 +72,12 @@ Secret 설정 후 실제 전송은 PR 생성, 리뷰, CI 결과 같은 GitHub �
 ```bash
 git switch main
 git pull --ff-only
+git switch -c <role-prefix>/<TASK-ID>
+```
+
+위 명령의 placeholder를 실제 값으로 교체한다. 예:
+
+```bash
 git switch -c ops/tl/HARNESS-LEAN-003
 ```
 
@@ -93,11 +99,22 @@ ops/tl/<TASK-ID>
 
 ```bash
 git status
+<작업 등급에 맞는 필수 검증>
+python scripts/validate-task-artifacts.py \
+  --task-id <TASK-ID> \
+  --task-grade <경량|일반|고위험> \
+  --execution-type "저장소 변경"
 git diff --check
+git diff
+git add <선택한 경로>
+git commit -m "<type>(<scope>): <한국어 명사형 설명>"
 git push -u origin <role-prefix>/<TASK-ID>
+gh pr create --base main --head <role-prefix>/<TASK-ID> --body-file <UTF-8-PR-body.md>
 ```
 
-PR이 `main`에 병합되면 열린 PR·고유 commit·worktree가 없는지 확인한 뒤 task branch를 삭제한다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
+순서는 상태 확인 → 작업 등급에 맞는 필수 검증 → 산출물 validator → diff 확인 → 선택한 변경만 add → commit → 일반 push → PR이다.
+
+PR이 `main`에 병합되면 열린 PR·고유 commit·사용 중인 worktree가 모두 없는지 확인한 뒤에만 task branch를 삭제한다. 하나라도 있으면 삭제하지 않는다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
 
 ## 검증 명령
 
@@ -117,7 +134,7 @@ python scripts/validate-obsidian-record.py
 python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
 ```
 
-백엔드와 프론트엔드 애플리케이션 프로젝트는 아직 없으므로 Gradle, Next.js, Docker Compose 실행 명령은 없다.
+Backend·Frontend·MySQL·로컬 통합·Production 계약 파일이 존재한다. 현재 작업과 변경 영향에 맞는 실제 검증 명령만 선택해 실행한다.
 
 ## 보안 확인
 

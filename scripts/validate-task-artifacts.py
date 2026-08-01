@@ -59,7 +59,7 @@ class MarkdownSection:
 REPORT_REQUIREMENTS = (
     SectionRequirement("목적", ("작업 목적", "목적", "purpose")),
     SectionRequirement("결과 또는 증거", ("주요 결과", "결과", "증거", "evidence", "result")),
-    SectionRequirement("위험·제한", ("남은 위험", "위험과 제한", "위험", "제한", "risk", "limitation")),
+    SectionRequirement("위험·제한", ("남은 위험", "위험과 제한", "위험 또는 제한", "위험", "제한", "risk", "limitation")),
 )
 
 PRODUCTION_EXECUTION_REQUIREMENTS = (
@@ -68,8 +68,9 @@ PRODUCTION_EXECUTION_REQUIREMENTS = (
     SectionRequirement("적용 후 확인", ("적용 후 확인", "적용 후 검증", "post-change", "post-execution")),
     SectionRequirement("독립 확인", ("독립 확인", "독립 검증", "independent verification", "independent validation")),
     SectionRequirement("복구·rollback", ("복구·rollback", "복구·롤백", "복구 및 롤백", "rollback", "recovery")),
-    SectionRequirement("미실행과 남은 위험", ("실행하지 못한", "미실행", "남은 위험", "not run", "remaining risk")),
 )
+UNEXECUTED_ALIASES = ("미실행 항목", "실행하지 못한", "미실행", "not run")
+REMAINING_RISK_ALIASES = ("남은 위험", "remaining risk")
 
 PLACEHOLDER_RE = re.compile(
     r"^(?:[-*]\s*)?(?:<[^>]+>|\[[^\]]+\]|todo|tbd|미정|작성\s*(?:필요|예정))\.?$",
@@ -90,6 +91,10 @@ def parse_args() -> argparse.Namespace:
 
 def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().casefold().replace("`", ""))
+
+
+def visible_text(text: str) -> str:
+    return HTML_COMMENT_RE.sub("", text)
 
 
 def normalize_grade(value: str) -> str | None:
@@ -160,13 +165,24 @@ def parse_sections(path: Path) -> list[MarkdownSection]:
 
 
 def meaningful_text(text: str) -> bool:
-    text = HTML_COMMENT_RE.sub("", text)
-    for line in text.splitlines():
+    lines = visible_text(text).splitlines()
+    for index, line in enumerate(lines):
         value = line.strip()
         if not value or value in {"-", "*", "- [ ]", "- [x]", "- [X]"}:
             continue
         if not value.replace("|", "").replace("-", "").replace(":", "").strip():
             continue
+        if "|" in value:
+            cells = [cell.strip() for cell in value.strip("|").split("|")]
+            if cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+                continue
+            next_value = next((item.strip() for item in lines[index + 1 :] if item.strip()), "")
+            next_cells = [cell.strip() for cell in next_value.strip("|").split("|")]
+            if next_cells and all(re.fullmatch(r":?-{3,}:?", cell) for cell in next_cells):
+                continue
+            if not any(cell and not PLACEHOLDER_RE.fullmatch(cell) for cell in cells):
+                continue
+            return True
         if PLACEHOLDER_RE.fullmatch(value):
             continue
         return True
@@ -245,10 +261,64 @@ def validate_requirements(kind: str, files: list[Path], requirements: tuple[Sect
     return failures
 
 
+def validate_execution_risk_details(path: Path) -> list[str]:
+    sections = parse_sections(path)
+    unexecuted_sections = matching_sections(sections, UNEXECUTED_ALIASES)
+    risk_sections = matching_sections(sections, REMAINING_RISK_ALIASES)
+    shared_lines = {section.line for section in unexecuted_sections} & {section.line for section in risk_sections}
+
+    unexecuted_ok = any(
+        section.line not in shared_lines and meaningful_text(section_text(section))
+        for section in unexecuted_sections
+    )
+    risk_ok = any(
+        section.line not in shared_lines and meaningful_text(section_text(section))
+        for section in risk_sections
+    )
+    for section in sections:
+        if section.line not in shared_lines:
+            continue
+        content = section_text(section)
+        unexecuted_ok = unexecuted_ok or has_meaningful_label(content, UNEXECUTED_ALIASES)
+        risk_ok = risk_ok or has_meaningful_label(content, REMAINING_RISK_ALIASES)
+
+    failures: list[str] = []
+    if not unexecuted_ok:
+        failures.append(f"실제 운영 실행 보고서 필수 섹션 없음 또는 비어 있음: {path}: 미실행 항목")
+    if not risk_ok:
+        failures.append(f"실제 운영 실행 보고서 필수 섹션 없음 또는 비어 있음: {path}: 남은 위험")
+    return failures
+
+
+def report_field_values(path: Path, field: str, normalizer) -> list[str | None]:
+    text = visible_text(path.read_text(encoding="utf-8"))
+    return [normalizer(value) for value in FIELD_PATTERNS[field].findall(text)]
+
+
+def production_report_files(files: list[Path]) -> list[Path]:
+    reports: list[Path] = []
+    for path in files:
+        values = report_field_values(path, "execution", normalize_execution)
+        if values and set(values) == {PRODUCTION_EXECUTION}:
+            reports.append(path)
+    return reports
+
+
+def validate_any_production_report(files: list[Path]) -> list[str]:
+    attempted: list[str] = []
+    for path in files:
+        failures = validate_requirements("실제 운영 실행 보고서", [path], PRODUCTION_EXECUTION_REQUIREMENTS)
+        failures.extend(validate_execution_risk_details(path))
+        if not failures:
+            return []
+        attempted.extend(failures)
+    return ["완전한 실제 운영 실행 보고서가 없음", *attempted]
+
+
 def validate_optional_report_fields(files: list[Path], grade: str, execution: str) -> list[str]:
     failures: list[str] = []
     for path in files:
-        text = path.read_text(encoding="utf-8")
+        text = visible_text(path.read_text(encoding="utf-8"))
         grade_values = FIELD_PATTERNS["grade"].findall(text)
         if grade_values:
             normalized = [normalize_grade(value) for value in grade_values]
@@ -264,7 +334,7 @@ def validate_optional_report_fields(files: list[Path], grade: str, execution: st
 
 def main() -> int:
     args = parse_args()
-    input_text = sys.stdin.read() if args.from_stdin else ""
+    input_text = visible_text(sys.stdin.read() if args.from_stdin else "")
     task_id = find_task_id(args, input_text)
 
     legacy = args.allow_legacy_without_grade
@@ -277,8 +347,6 @@ def main() -> int:
         allowed="경량, 일반 또는 고위험",
         required=not legacy,
     )
-    if legacy and grade is not None:
-        raise SystemExit("legacy 옵션은 작업 등급이 없는 기존 산출물에만 허용됨")
 
     execution = resolve_field(
         cli_value=args.execution_type,
@@ -287,9 +355,8 @@ def main() -> int:
         normalizer=normalize_execution,
         label="실행 구분",
         allowed="저장소 변경 또는 실제 운영 실행",
-        required=args.from_stdin and not legacy,
+        required=not legacy,
     )
-    execution = execution or REPOSITORY_CHANGE
 
     root = Path(args.root)
     report_files = markdown_files(root / "docs" / "reports" / task_id)
@@ -297,15 +364,24 @@ def main() -> int:
     failures: list[str] = []
 
     if legacy:
+        if execution is not None:
+            failures.append("legacy 옵션은 실행 구분이 없는 기존 산출물에만 허용됨")
         if not report_files:
             failures.append(f"legacy 작업 보고서 Markdown 파일 없음: {root / 'docs' / 'reports' / task_id}")
         for path in report_files:
-            if FIELD_PATTERNS["grade"].search(path.read_text(encoding="utf-8")):
-                failures.append(f"legacy 옵션은 작업 등급이 없는 기존 보고서에만 허용됨: {path}")
+            report_text = visible_text(path.read_text(encoding="utf-8"))
+            grade_values = [normalize_grade(value) for value in FIELD_PATTERNS["grade"].findall(report_text)]
+            if any(value is None for value in grade_values) or len(set(grade_values)) > 1:
+                failures.append(f"legacy 작업 보고서 작업 등급이 유효하지 않음: {path}")
+            if FIELD_PATTERNS["execution"].search(report_text):
+                failures.append(f"legacy 옵션은 실행 구분이 없는 기존 보고서에만 허용됨: {path}")
     else:
         assert grade is not None
+        assert execution is not None
         if args.from_stdin:
             failures.extend(validate_pr_contract(input_text))
+        if execution == PRODUCTION_EXECUTION and grade != HIGH_RISK:
+            failures.append("실제 운영 실행의 작업 등급은 고위험이어야 함")
         if execution == PRODUCTION_EXECUTION and not report_files:
             failures.append(f"실제 운영 실행 보고서 Markdown 파일 없음: {root / 'docs' / 'reports' / task_id}")
         failures.extend(validate_optional_report_fields(report_files, grade, execution))
@@ -313,7 +389,15 @@ def main() -> int:
     if report_files:
         failures.extend(validate_requirements("작업 보고서", report_files, REPORT_REQUIREMENTS))
         if execution == PRODUCTION_EXECUTION:
-            failures.extend(validate_requirements("실제 운영 실행 보고서", report_files, PRODUCTION_EXECUTION_REQUIREMENTS))
+            designated_reports = production_report_files(report_files)
+            if not designated_reports:
+                failures.append("실행 구분이 표시된 실제 운영 실행 보고서가 없음")
+            else:
+                for path in designated_reports:
+                    grade_values = report_field_values(path, "grade", normalize_grade)
+                    if not grade_values or set(grade_values) != {HIGH_RISK}:
+                        failures.append(f"실제 운영 실행 보고서 작업 등급은 고위험이어야 함: {path}")
+                failures.extend(validate_any_production_report(designated_reports))
 
     # Handoffs are conditional. Existing files remain readable inputs, but their
     # necessity and semantic completeness are reviewed by the owner and Tech Lead.
@@ -325,7 +409,7 @@ def main() -> int:
         return 1
 
     if legacy:
-        print("경고: 명시적 legacy 옵션으로 등급 없는 기존 산출물을 검증함", file=sys.stderr)
+        print("경고: 명시적 legacy 옵션으로 실행 구분 없는 기존 산출물을 검증함", file=sys.stderr)
         print(f"task artifacts validated for {task_id} (legacy)")
     else:
         print(f"task artifacts validated for {task_id} ({grade}, {execution})")

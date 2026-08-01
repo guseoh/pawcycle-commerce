@@ -8,7 +8,8 @@
 
 - 테스트 계획(Test Plan)과 테스트 케이스(Test Case)를 작성한다.
 - 정상 흐름과 예외 흐름을 검증한다.
-- 경계값(Boundary Value), 권한(Permission), 중복 요청, 상태 전이(State Transition)를 테스트한다.
+- 관련 작업에서 경계값(Boundary Value), 권한·인가, 상태 전이, 중복 요청·멱등성을 테스트한다.
+- UI가 있으면 관련 접근성과 반응형 동작을 검증한다.
 - 실패 테스트(Failing Test) 또는 재현 가능한 버그 리포트(Bug Report)를 작성한다.
 - 수정 후 재검증(Retest)한다.
 - 회귀 위험(Regression Risk)을 기록한다.
