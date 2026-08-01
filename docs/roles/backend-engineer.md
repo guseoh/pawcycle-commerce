@@ -13,7 +13,7 @@
 - 인증(Authentication)과 인가(Authorization)를 처리한다.
 - 동시성(Concurrency)과 멱등성(Idempotency) 요구사항을 다룬다.
 - 단위 테스트(Unit Test)와 통합 테스트(Integration Test)를 작성한다.
-- 실제 변경과 소비자가 있을 때 API, DB, ADR 또는 인수인계를 갱신한다.
+- 실제 변경이 있으면 API·DB·ADR을 갱신하고, 실제 소비자가 있을 때만 인수인계를 작성한다.
 
 ## 3. 책임 밖의 업무
 

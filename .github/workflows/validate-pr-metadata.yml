@@ -9,8 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  # actions/checkout으로 검증 스크립트를 가져오기 위한 최소 권한
   contents: read
-  pull-requests: read
 
 jobs:
   metadata:

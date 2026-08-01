@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -130,10 +131,12 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("repository-validation-code-${{ github.event.pull_request.number }}", self.workflow)
         self.assertIn("types: [edited]", self.metadata_workflow)
         self.assertIn("repository-validation-metadata-${{ github.event.pull_request.number }}", self.metadata_workflow)
-        self.assertNotEqual(
-            "repository-validation-code-${{ github.event.pull_request.number }}",
-            "repository-validation-metadata-${{ github.event.pull_request.number }}",
-        )
+        code_group = re.search(r"(?m)^\s*group:\s*(.+?)\s*$", self.workflow)
+        metadata_group = re.search(r"(?m)^\s*group:\s*(.+?)\s*$", self.metadata_workflow)
+        self.assertIsNotNone(code_group)
+        self.assertIsNotNone(metadata_group)
+        assert code_group is not None and metadata_group is not None
+        self.assertNotEqual(code_group.group(1), metadata_group.group(1))
 
     def test_metadata_workflow_has_no_required_or_component_checks(self) -> None:
         self.assertIn("name: PR metadata validation", self.metadata_workflow)

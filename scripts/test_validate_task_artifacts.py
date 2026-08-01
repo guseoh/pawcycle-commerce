@@ -311,19 +311,34 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("작업 보고서 필수 섹션 없음", result.stderr)
 
-    def test_multiple_execution_reports_reject_conflicting_grade(self) -> None:
-        conflicting = PRODUCTION_REPORT.replace("작업 등급: 고위험", "작업 등급: 일반")
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, PRODUCTION_REPORT, filename="production-execution-report.md")
-            write_report(root, conflicting, filename="second-execution-report.md")
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("작업 등급 불일치", result.stderr)
+    def test_execution_reports_require_high_risk_grade(self) -> None:
+        cases = (
+            (
+                "conflicting",
+                PRODUCTION_REPORT.replace("작업 등급: 고위험", "작업 등급: 일반"),
+                True,
+                "작업 등급 불일치",
+            ),
+            (
+                "missing",
+                PRODUCTION_REPORT.replace("- 작업 등급: 고위험\n", ""),
+                False,
+                "작업 등급은 고위험이어야 함",
+            ),
+        )
+        for name, report, include_valid_report, expected_error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                if include_valid_report:
+                    write_report(root, PRODUCTION_REPORT, filename="production-execution-report.md")
+                write_report(root, report, filename="second-execution-report.md")
+                result = run_validator(
+                    root,
+                    "--from-stdin",
+                    stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
 
     def test_existing_report_requires_purpose_evidence_and_risk(self) -> None:
         invalid_reports = (
