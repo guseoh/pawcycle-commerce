@@ -136,7 +136,30 @@ class DiscordContextTests(unittest.TestCase):
     def test_branch_role_mapping(self):
         self.assertEqual(discord.role_for_branch("ops/sre"), "Platform/SRE")
         self.assertEqual(discord.role_for_branch("test/qa"), "QA Engineer")
+        self.assertEqual(discord.role_for_branch("ops/tl/HARNESS-LEAN-003"), "Tech Lead")
+        self.assertEqual(discord.role_for_branch("feat/be/API-004"), "Backend Engineer")
+        self.assertEqual(discord.role_for_branch("feat/backend/API-004"), discord.MISSING)
         self.assertEqual(discord.role_for_branch("unknown/branch"), discord.MISSING)
+
+    def test_task_branch_flows_through_role_and_task_id_extraction(self):
+        branch = "ops/tl/HARNESS-LEAN-003"
+        self.assertEqual(discord.role_for_branch(branch), "Tech Lead")
+        self.assertEqual(discord.extract_task_id("", "하네스 후속 수정", branch), "HARNESS-LEAN-003")
+
+    def test_new_pr_template_sections_are_consumed(self):
+        sections = discord.extract_sections(
+            "## 목적과 범위\n- 목적: Harness 단순화\n- 변경 범위: CI\n"
+            "## 결정과 영향\n- 중요한 결정: component 분리\n"
+            "## 검증\n- 실행 결과: PASS\n"
+            "## 위험과 복구\n- 남은 위험: 원격 CI 확인\n"
+            "## 병합 판단\n- 사용자 판단 항목: 병합 여부\n"
+        )
+        self.assertIn("Harness 단순화", sections["purpose"])
+        self.assertIn("변경 범위", sections["changes"])
+        self.assertIn("component 분리", sections["process"])
+        self.assertIn("PASS", sections["validation"])
+        self.assertIn("원격 CI", sections["risks"])
+        self.assertIn("병합 여부", sections["next"])
 
     def test_sections_ignore_automatic_summary_and_sanitize_mentions(self):
         body = "## 작업 목적\n안전한 @everyone 알림\n<!-- bot -->\n## 주요 변경\n변경 A\n## CodeRabbit Summary\n자동 요약"
@@ -183,6 +206,20 @@ PRIVATE_KEY=hidden
         self.assertEqual(context["ci_jobs"], discord.UNKNOWN)
         self.assertEqual(context["unresolved_threads"], discord.UNKNOWN)
         self.assertEqual(context["next_action"], "실패 Job과 Step 확인 후 최소 수정")
+
+    def test_metadata_workflow_is_not_reported_as_code_ci_success(self):
+        payload = {
+            "workflow_run": {
+                "id": 9,
+                "name": "PR Metadata Validation",
+                "conclusion": "success",
+                "head_branch": "ops/tl/HARNESS-LEAN-003",
+                "head_sha": "abc",
+                "pull_requests": [{"number": 82}],
+            }
+        }
+        context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
+        self.assertFalse(context["notify"])
 
     def test_stale_workflow_run_preserves_run_sha_and_marks_context(self):
         payload = {"workflow_run": {"id": 8, "name": "Repository Validation", "conclusion": "success", "head_branch": "ops/sre", "head_sha": "old-sha", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}

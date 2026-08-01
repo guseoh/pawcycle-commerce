@@ -2,7 +2,11 @@ name: Repository Validation
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: repository-validation-code-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -22,21 +26,18 @@ jobs:
       - name: Validate PR title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          sh scripts/validate-commit-message.sh --message "$PR_TITLE"
+        run: sh scripts/validate-commit-message.sh --message "$PR_TITLE"
 
       - name: Validate PR body encoding
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s' "$PR_BODY" | python scripts/validate-pr-body-encoding.py --from-stdin
+        run: printf '%s' "$PR_BODY" | python scripts/validate-pr-body-encoding.py --from-stdin
 
       - name: Validate task artifacts
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | python scripts/validate-task-artifacts.py --from-stdin
+        run: printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | python scripts/validate-task-artifacts.py --from-stdin
 
       - name: Validate commit messages
         env:
@@ -44,7 +45,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           failed=0
-          for sha in $(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA"); do
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          for sha in $(git rev-list --no-merges "$merge_base..$HEAD_SHA"); do
             subject="$(git log -1 --format=%s "$sha")"
             echo "검증 중: ${sha} ${subject}"
             if ! sh scripts/validate-commit-message.sh --message "$subject"; then
@@ -59,12 +61,72 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git diff --check "$BASE_SHA..$HEAD_SHA"
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git diff --check "$merge_base..$HEAD_SHA"
 
-  application:
-    name: Application validation
-    runs-on: ubuntu-latest
+  classify:
+    name: Classify validation changes
     needs: conventions
+    runs-on: ubuntu-latest
+    outputs:
+      harness: ${{ steps.paths.outputs.harness }}
+      backend: ${{ steps.paths.outputs.backend }}
+      frontend: ${{ steps.paths.outputs.frontend }}
+      production: ${{ steps.paths.outputs.production }}
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify pull request diff
+        id: paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git diff --no-renames --name-only "$merge_base..$HEAD_SHA" \
+            | python scripts/classify-validation-changes.py \
+            | tee -a "$GITHUB_OUTPUT"
+
+  harness:
+    name: Harness validation
+    if: needs.classify.outputs.harness == 'true'
+    needs: [conventions, classify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Compile Harness Python
+        run: |
+          python -m py_compile \
+            scripts/validate-task-artifacts.py \
+            scripts/validate-pr-body-encoding.py \
+            scripts/classify-validation-changes.py \
+            .github/scripts/collect-discord-context.py
+
+      - name: Run Harness regressions
+        run: |
+          python -m unittest \
+            scripts.test_validate_task_artifacts \
+            scripts.test_validate_pr_body_encoding \
+            scripts.test_validate_conventions_workflow \
+            scripts.test_discord_context \
+            scripts.test_discord_payload \
+            scripts.test_send_discord_notification
+          python scripts/validate-discord-payloads.py
+          python scripts/validate-obsidian-record.py
+
+  backend:
+    name: Backend and MySQL validation
+    if: needs.classify.outputs.backend == 'true'
+    needs: [conventions, classify]
+    runs-on: ubuntu-latest
     services:
       mysql:
         image: mysql:8.4
@@ -81,6 +143,105 @@ jobs:
           --health-timeout=5s
           --health-retries=10
           --health-start-period=20s
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Verify MySQL service
+        env:
+          MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
+          MYSQL_DATABASE: pawcycle_test
+          MYSQL_USERNAME: pawcycle_ci
+          MYSQL_PASSWORD: ci-only-not-a-secret
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: |
+          test -n "$MYSQL_CONTAINER_ID"
+          test -n "$MYSQL_PORT"
+          service_info="$(docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" --execute="SELECT CONCAT(@@version, '|', @@character_set_server, '|', @@collation_server);")"
+          IFS='|' read -r mysql_version character_set collation <<< "$service_info"
+          case "$mysql_version" in
+            8.4.*) ;;
+            *)
+              echo "::error title=Unexpected MySQL version::${mysql_version}"
+              exit 1
+              ;;
+          esac
+          if [ "$character_set" != "utf8mb4" ]; then
+            echo "::error title=Unexpected MySQL character set::${character_set}"
+            exit 1
+          fi
+          if [ "$collation" != "utf8mb4_0900_ai_ci" ]; then
+            echo "::error title=Unexpected MySQL collation::${collation}"
+            exit 1
+          fi
+
+      - name: Set up Java 25
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+          cache-dependency-path: |
+            backend/*.gradle*
+            backend/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Prepare Gradle wrapper
+        working-directory: backend
+        run: chmod +x ./gradlew
+
+      - name: Backend test
+        working-directory: backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
+          SPRING_DATASOURCE_USERNAME: pawcycle_ci
+          SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
+        run: ./gradlew test
+
+      - name: Backend build without repeated tests
+        working-directory: backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
+          SPRING_DATASOURCE_USERNAME: pawcycle_ci
+          SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
+        run: ./gradlew build -x test
+
+  frontend:
+    name: Frontend validation
+    if: needs.classify.outputs.frontend == 'true'
+    needs: [conventions, classify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+  production:
+    name: Production contract validation
+    if: needs.classify.outputs.production == 'true'
+    needs: [conventions, classify]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -122,79 +283,55 @@ jobs:
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
           bash infra/production/test-create-production-auth-smoke-member-lifecycle.sh
 
-      - name: Verify MySQL service
+  application:
+    name: Application validation
+    if: always()
+    needs: [conventions, classify, harness, backend, frontend, production]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate component results
         env:
-          MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
-          MYSQL_DATABASE: pawcycle_test
-          MYSQL_USERNAME: pawcycle_ci
-          MYSQL_PASSWORD: ci-only-not-a-secret
-          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+          CONVENTIONS_RESULT: ${{ needs.conventions.result }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          HARNESS_ENABLED: ${{ needs.classify.outputs.harness }}
+          HARNESS_RESULT: ${{ needs.harness.result }}
+          BACKEND_ENABLED: ${{ needs.classify.outputs.backend }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_ENABLED: ${{ needs.classify.outputs.frontend }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          PRODUCTION_ENABLED: ${{ needs.classify.outputs.production }}
+          PRODUCTION_RESULT: ${{ needs.production.result }}
         run: |
-          test -n "$MYSQL_CONTAINER_ID"
-          test -n "$MYSQL_PORT"
-
-          service_info="$(docker exec \
-            --env MYSQL_PWD="$MYSQL_PASSWORD" \
-            "$MYSQL_CONTAINER_ID" \
-            mysql --batch --skip-column-names \
-            --user="$MYSQL_USERNAME" \
-            "$MYSQL_DATABASE" \
-            --execute="SELECT CONCAT(@@version, '|', @@character_set_server, '|', @@collation_server);")"
-
-          IFS='|' read -r mysql_version character_set collation <<< "$service_info"
-
-          case "$mysql_version" in
-            8.4.*) ;;
-            *)
-              echo "::error title=Unexpected MySQL version::MySQL 8.4 LTS가 필요합니다."
+          require_success() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error title=Required validation did not succeed::${name}=${result}"
               exit 1
-              ;;
-          esac
+            fi
+          }
 
-          test "$character_set" = "utf8mb4"
-          test "$collation" = "utf8mb4_0900_ai_ci"
+          require_component_result() {
+            name="$1"
+            enabled="$2"
+            result="$3"
+            if [ "$enabled" = "true" ] && [ "$result" != "success" ]; then
+              echo "::error title=Selected component did not succeed::${name}=${result}"
+              exit 1
+            fi
+            if [ "$enabled" = "false" ] && [ "$result" != "skipped" ]; then
+              echo "::error title=Unselected component was not skipped::${name}=${result}"
+              exit 1
+            fi
+            if [ "$enabled" != "true" ] && [ "$enabled" != "false" ]; then
+              echo "::error title=Invalid classifier output::${name}=${enabled}"
+              exit 1
+            fi
+          }
 
-      - name: Set up Java 25
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
-        with:
-          distribution: temurin
-          java-version: '25'
-
-      - name: Prepare Gradle wrapper
-        working-directory: backend
-        run: chmod +x ./gradlew
-
-      - name: Backend test
-        working-directory: backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
-          SPRING_DATASOURCE_USERNAME: pawcycle_ci
-          SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
-        run: ./gradlew test
-
-      - name: Backend build
-        working-directory: backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
-          SPRING_DATASOURCE_USERNAME: pawcycle_ci
-          SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
-        run: ./gradlew build
-
-      - name: Set up Node.js 24
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Frontend install
-        working-directory: frontend
-        run: npm ci
-
-      - name: Frontend lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Frontend build
-        working-directory: frontend
-        run: npm run build
+          require_success conventions "$CONVENTIONS_RESULT"
+          require_success classify "$CLASSIFY_RESULT"
+          require_component_result harness "$HARNESS_ENABLED" "$HARNESS_RESULT"
+          require_component_result backend "$BACKEND_ENABLED" "$BACKEND_RESULT"
+          require_component_result frontend "$FRONTEND_ENABLED" "$FRONTEND_RESULT"
+          require_component_result production "$PRODUCTION_ENABLED" "$PRODUCTION_RESULT"

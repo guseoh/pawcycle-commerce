@@ -281,23 +281,21 @@ S3 bucket의 versioning 비활성은 검증이 끝난 현재 계약이다. 미�
 
 ## 12. 운영 안전성 기준선 판정
 
-판정 상태는 `Decision Required`다. 저장소 평가 기준은 `main`의 `6d72a74595458c55bd55d276b286ae45e408c25b`이고, OPS-018 인증·Session 및 OPS-020 회원 생성이 실제로 검증된 Application Release는 `2e9222b568a3469e8ccc5edce1b5301218c6888e`이다. 이 구분은 최신 `main`이 Production에 배포됐다는 해석을 금지한다.
+OPS-024와 OPS-026의 `Decision Required` 판정은 각 시점의 역사적 판정으로 보존한다. OPS-028 실행 증거를 반영한 현재 판정 권위 원본은 `docs/reports/OPS-029/tl-report.md`이며, 현재 상태는 `OPS-VERIFY-001 = Verified`다. 이 판정은 OPS-026의 일곱 최소 운영 안전성 기준선에만 한정되며 최신 `main` 전체가 Production에 배포됐다는 뜻은 아니다.
 
 | 최소 기준 | 증거 평가 | 현재 경계 |
 | --- | --- | --- |
 | HTTPS 운영 접속과 Production Secret 분리 | 충족 | OPS-010·011 결과와 Secret materialize 계약에 근거한다. 자동 갱신 schedule·certificate backup은 미완료다. |
 | 공개 상품 및 인증·Session 핵심 Smoke | 충족 | OPS-018의 다섯 단계 PASS와 OPS-017 계약에 근거한다. 장기 Session·부하·다중 Instance는 미검증이다. |
 | DB 데이터와 Production volume 보존 | 충족 | OPS-010·012·013의 volume 보존과 schema 비변경 증거에 근거한다. Actual Production DB restore는 미실행이다. |
-| 배포 실패 복귀와 실제 Application rollback | 부분 충족 | OPS-010 실패 복귀 계약·lifecycle과 OPS-012의 당시 실제 rollback은 확인됐다. 최신 OPS-021 `contract-sha`·Control 계약의 Production 채택·배포·rollback은 미실행이다. |
+| 배포 실패 복귀와 실제 Application rollback | 충족 | OPS-010·012의 기존 증거에 더해 OPS-028에서 현재 Control 계약 채택, 실제 rollback과 원래 Release 재배포를 확인했다. |
 | 논리 Backup과 승인된 isolated restore 검증 | 충족 | OPS-013 실행 결과에 근거한다. 자동 schedule·cross-region·장기 보존·RPO/RTO는 미완료다. |
 | 최소 장애 알림 | 충족 | OPS-016의 기존 alarm 계약, confirmed subscription과 ALARM·OK 수신에 근거한다. 실제 EC2 장애 유발과 자동 복구는 미실행이다. |
-| 배포·복구 Runbook | 부분 충족 | Application 배포·rollback, HTTPS, isolated restore, 알림과 인증 검증 Runbook은 있다. DB 손상 시 승인된 Actual Production DB restore Runbook은 없다. |
+| 배포·복구 Runbook | 충족 | Application 배포·rollback, HTTPS, backup·isolated restore, Actual Production DB restore 준비, 알림과 인증 검증 Runbook이 있다. Actual Production DB restore 실행·훈련 완료를 뜻하지 않는다. |
 
-OPS-024 Tech Lead의 권장 결론은 **최소 운영 안전성 기준선은 부분 충족이며, 충족 제안은 보류**다. 최신 OPS-021 Control 계약의 Production 적용·rollback 증거와 Actual Production DB restore Runbook이 없기 때문이다. 사용자 판정 전에는 `Approved` 또는 `Verified`가 아니며, 세부 근거와 잔여 위험은 `docs/reports/OPS-024/tl-report.md`를 따른다.
+OPS-024와 OPS-026의 보고서는 당시 증거와 판정을 설명하는 역사 원본이다. 현재 일곱 기준의 상세 대조와 `Verified` 경계는 OPS-029를 따른다.
 
-Blue/Green은 현재 보류를 유지하고, 두 부분 충족 항목의 처리 방침과 기준선 최종 판정 뒤 다음 운영 평가 초점을 PERF-OPS-001의 장기 부하·capacity·성능 기준선으로 이동하는 안을 권고한다. 두 항목 모두 `Decision Required`이며 이 문서가 승인하거나 다음 역할을 활성화하지 않는다.
-
-미완료 상태는 Actual Production DB restore, 외부 unknown Host 검증, HTTPS 자동 갱신 schedule·certificate backup, backup schedule·실패 알림·cross-region·장기 보존·versioning·RPO/RTO, Blue/Green·무중단·고가용성, 장기 부하·capacity·성능 기준선과 credential 수명·운영자 관리 자동화다.
+`Verified`는 전체 운영 완성 판정이 아니다. Actual Production DB restore·schema downgrade 실행, RTO, 무중단, 자동복구, 고가용성, 물리 MySQL volume·EBS·instance 장애 복구는 미완료다. 외부 unknown Host 검증, HTTPS 자동 갱신 schedule·certificate backup, backup schedule·실패 알림·cross-region·장기 보존·versioning, 장기 부하·capacity·성능 기준선과 credential 수명 관리도 남아 있다. OPS-028에서 관찰된 Certbot external/named volume 경고는 실행을 차단하지 않았지만 근본 원인이 해결되지 않아 인증서 저장·갱신 경로의 후속 확인이 필요하다.
 
 ## 13. 장애 도메인과 트레이드오프
 

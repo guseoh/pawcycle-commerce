@@ -9,7 +9,7 @@
 기준 로컬 경로:
 
 ```text
-C:\Users\guseo\IdeaProjects\pawcycle-commerce
+<repository-root>
 ```
 
 현재 Codex 작업은 위 저장소에서 수행한다.
@@ -45,7 +45,7 @@ PowerShell:
 Vault 경로:
 
 ```text
-C:\Users\guseo\IdeaProjects\pawcycle-commerce\docs
+<repository-root>\docs
 ```
 
 - 데스크톱과 노트북에서 각각 저장소를 clone한다.
@@ -65,39 +65,56 @@ python scripts/validate-discord-payloads.py
 
 Secret 설정 후 실제 전송은 PR 생성, 리뷰, CI 결과 같은 GitHub 이벤트로 확인한다. 전송 실패 시 Actions 로그를 확인한다.
 
-## 역할 브랜치 시작
+## task branch 시작
 
-최신 `main`에서 역할 브랜치를 만든다.
+최신 `main`에서 역할 prefix와 작업 ID를 결합한 task branch를 만든다.
 
 ```bash
 git switch main
 git pull --ff-only
-git switch -c ops/tl
+git switch -c <role-prefix>/<TASK-ID>
+```
+
+위 명령의 placeholder를 실제 값으로 교체한다. 예:
+
+```bash
+git switch -c ops/tl/HARNESS-LEAN-003
 ```
 
 역할별 브랜치:
 
 ```text
-spec/po
-design/ux
-feat/be
-feat/fe
-test/qa
-ops/sre
-ops/tl
+spec/po/<TASK-ID>
+design/ux/<TASK-ID>
+feat/be/<TASK-ID>
+feat/fe/<TASK-ID>
+test/qa/<TASK-ID>
+ops/sre/<TASK-ID>
+ops/tl/<TASK-ID>
 ```
 
-하나의 역할 브랜치에는 하나의 활성 작업만 둔다.
+하나의 task branch에는 하나의 활성 작업만 둔다.
 
-## 역할 브랜치 완료
+## task branch 완료
 
 ```bash
 git status
+<작업 등급에 맞는 필수 검증>
+python scripts/validate-task-artifacts.py \
+  --task-id <TASK-ID> \
+  --task-grade <경량|일반|고위험> \
+  --execution-type "저장소 변경"
 git diff --check
-git push -u origin <role-branch>
+git diff
+git add <선택한 경로>
+git commit -m "<type>(<scope>): <한국어 명사형 설명>"
+git push -u origin <role-prefix>/<TASK-ID>
+gh pr create --base main --head <role-prefix>/<TASK-ID> --body-file <UTF-8-PR-body.md>
 ```
 
-PR이 `main`에 병합되면 역할 브랜치를 삭제하고 다음 작업에서 최신 `main` 기준으로 같은 이름을 다시 만든다.
+순서는 상태 확인 → 작업 등급에 맞는 필수 검증 → 산출물 validator → diff 확인 → 선택한 변경만 add → commit → 일반 push → PR이다.
+
+PR이 `main`에 병합되면 열린 PR·고유 commit·사용 중인 worktree가 모두 없는지 확인한 뒤에만 task branch를 삭제한다. 하나라도 있으면 삭제하지 않는다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
 
 ## 검증 명령
 
@@ -105,7 +122,8 @@ PR이 `main`에 병합되면 역할 브랜치를 삭제하고 다음 작업에�
 
 ```bash
 sh scripts/test-commit-message-convention.sh
-python -m py_compile .github/scripts/*.py scripts/validate-task-artifacts.py
+python -m py_compile .github/scripts/*.py scripts/validate-task-artifacts.py scripts/classify-validation-changes.py
+python -m unittest scripts.test_validate_task_artifacts scripts.test_validate_conventions_workflow
 python scripts/validate-discord-payloads.py
 python scripts/validate-obsidian-record.py
 ```
@@ -116,7 +134,7 @@ python scripts/validate-obsidian-record.py
 python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
 ```
 
-백엔드와 프론트엔드 애플리케이션 프로젝트는 아직 없으므로 Gradle, Next.js, Docker Compose 실행 명령은 없다.
+Backend·Frontend·MySQL·로컬 통합·Production 계약 파일이 존재한다. 현재 작업과 변경 영향에 맞는 실제 검증 명령만 선택해 실행한다.
 
 ## 보안 확인
 
