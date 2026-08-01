@@ -6,6 +6,7 @@
 - 작업 등급: 고위험
 - 역할: Platform/SRE
 - 작업 유형: 실제 Production 실행 결과의 저장소 증거화
+- 실행일: `2026-07-31 KST` (정확한 실행 시각은 기록하지 않음)
 - 저장소 기준: `main`의 `b174449d525dc0a053bfaf802a0204b13f705f31`
 - 기록 근거: 사용자/Product Owner·Tech Lead가 단계별로 승인하고 직접 확인한 비민감 실행 결과
 
@@ -22,6 +23,7 @@
 - `docs/runbook/OPS-010-production-single-release.md`: Control 채택, deploy·rollback state 전이와 비민감 증거 경계
 - `docs/reports/OPS-025/sre-report.md`: `active-mysql-volume`과 실제 MySQL mount 보존 계약
 - `docs/architecture/production-operations-overview.md`: 현재 운영 구조와 잔여 위험
+- `infra/production/release-common.sh`: HTTPS 인증서 최소 유효기간 상수 `HTTPS_MIN_CERT_VALIDITY_SECONDS=86400`
 - [PR #79](https://github.com/guseoh/pawcycle-commerce/pull/79): OPS-027 병합 결과와 Repository Validation
 
 ## 승인 입력
@@ -57,14 +59,14 @@
 
 ## 인수 조건 매핑
 
-| 인수 조건 | 기록 위치 | 결과 |
-| --- | --- | --- |
-| 현재 Control 실제 Production 적용 | Control 채택 결과·최종 상태 | 확인 |
-| 현재 `active-mysql-volume` 경로의 실제 rollback | rollback 결과·MySQL volume 보존 | 확인 |
-| 원래 Application 재배포 | 원래 Release 재배포 결과 | 확인 |
-| health·내부 Smoke·HTTPS | health·Smoke·HTTPS 검증 | 확인 |
-| volume 보존 | MySQL volume 보존 | 확인 |
-| 실행·판정 경계 유지 | 실행하지 않은 작업·결정 상태 | 확인 |
+| 인수 조건 | 기록 위치 | 비민감 증거 참조 | 결과 |
+| --- | --- | --- | --- |
+| 현재 Control 실제 Production 적용 | Control checkout 결과·새 Control 계약 채택 결과 | `CONTROL_CHECKOUT=PASS`, `CONTROL_ADOPTION=PASS` | PASS |
+| 현재 `active-mysql-volume` 경로의 실제 rollback | rollback 결과·MySQL volume 보존 | `APPLICATION_ROLLBACK=PASS` | PASS |
+| 원래 Application 재배포 | 원래 Release 재배포 결과 | `APPLICATION_REDEPLOY=PASS` | PASS |
+| health·내부 Smoke·HTTPS | health·Smoke·HTTPS 검증 | `FINAL_PRODUCTION_VERIFY=PASS` | PASS |
+| volume 보존 | MySQL volume 보존 | `APPLICATION_ROLLBACK=PASS`, `FINAL_PRODUCTION_VERIFY=PASS` | 확인 |
+| 실행·판정 경계 유지 | 실행하지 않은 작업·결정 상태 | 승인 입력·변경하지 않은 범위 | 확인 |
 
 ## 주요 결과
 
@@ -87,6 +89,18 @@
 - `최종 health·내부 Smoke·HTTPS = 성공`
 - `active MySQL volume 보존 = 확인`
 - `OPS-VERIFY-001 = 미판정`: 후속 OPS-029 Tech Lead 작업의 책임이다.
+
+## 비민감 실행 증거 색인
+
+모든 결과는 `2026-07-31 KST`에 사용자가 단계별로 직접 확인한 비민감 marker다. 정확한 시각, 원시 명령 출력, 운영 식별자와 Secret은 보존하지 않았으며 marker는 각 결과의 재현 가능한 판정 참조로만 사용한다.
+
+| 실행 단계 | 결과 marker | 검사 구현 또는 버전 식별자 | 검사 기준 | 검증하는 승인 요구사항 |
+| --- | --- | --- | --- | --- |
+| Control checkout | `CONTROL_CHECKOUT=PASS` | Control `b174449d525dc0a053bfaf802a0204b13f705f31` | Control HEAD가 이전 SHA에서 새 SHA로 전환되고 Application은 유지됨 | 최신 Production Control checkout |
+| 새 Control 계약 채택 | `CONTROL_ADOPTION=PASS` | Control `b174449d525dc0a053bfaf802a0204b13f705f31`, `docs/runbook/OPS-010-production-single-release.md` | `contract-sha`가 새 Control HEAD와 일치하고 현재 Application을 재검증함 | 현재 Application을 유지한 새 Control 계약 채택 |
+| Application rollback | `APPLICATION_ROLLBACK=PASS` | Control `b174449d525dc0a053bfaf802a0204b13f705f31`, OPS-010 rollback 계약 | 기록된 이전 Release·revision, 네 Container health, 내부 Smoke·HTTPS와 volume 보존이 일치함 | 기록된 이전 Application으로 실제 rollback |
+| Application 재배포 | `APPLICATION_REDEPLOY=PASS` | Control `b174449d525dc0a053bfaf802a0204b13f705f31`, OPS-010 deploy 계약 | 원래 Release·revision, 네 Container health, 내부 Smoke·HTTPS와 volume 보존이 일치함 | 원래 Application 재배포 |
+| 최종 읽기 전용 검증 | `FINAL_PRODUCTION_VERIFY=PASS` | Control `b174449d525dc0a053bfaf802a0204b13f705f31`, `infra/production/release-common.sh` | 최종 state·revision·health·내부 Smoke·HTTPS·volume이 일치하고 인증서 SAN 및 `HTTPS_MIN_CERT_VALIDITY_SECONDS=86400`초 이상 | 각 전이 뒤 health, 내부 Smoke, HTTPS와 MySQL volume 보존 확인 |
 
 ## API 영향
 
@@ -136,12 +150,23 @@ DB restore, schema downgrade, Flyway history 수정과 데이터 변경을 실�
 
 OPS-028 문서 작성 과정에서는 위 절차나 다른 Production 명령을 다시 실행하지 않았다.
 
+## Control checkout 결과
+
+- 이전 Control HEAD: `82cb5a22e34a8381ba82d4ba7458f24314c184a8`
+- checkout 뒤 Control HEAD: `b174449d525dc0a053bfaf802a0204b13f705f31`
+- checkout 중 유지한 Application: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- 비민감 증거 참조: `CONTROL_CHECKOUT=PASS`
+- 결과: Control HEAD 전환과 현재 Application 유지가 확인됨
+
+checkout 자체는 `contract-sha`를 채택하는 단계가 아니며, 해당 state 갱신은 다음 새 Control 계약 채택 단계에서만 확인했다.
+
 ## Control 채택 결과
 
 - 이전 Control HEAD: `82cb5a22e34a8381ba82d4ba7458f24314c184a8`
 - 새 Control HEAD: `b174449d525dc0a053bfaf802a0204b13f705f31`
 - 채택 후 `contract-sha`: `b174449d525dc0a053bfaf802a0204b13f705f31`
 - 채택 중 유지한 Application: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- 비민감 증거 참조: `CONTROL_ADOPTION=PASS`
 - 결과: 현재 Application을 바꾸지 않고 새 Control 계약 채택 성공
 
 Control checkout과 계약 채택을 Application 배포나 DB 변경으로 확대하지 않는다.
@@ -193,7 +218,7 @@ Control checkout과 계약 채택을 Application 배포나 DB 변경으로 확�
 | Backend·Frontend revision | `current-sha`와 일치 |
 | 내부 상품 화면·상품 API Smoke | PASS |
 | HTTPS 상품 화면·상품 API Smoke | PASS |
-| 인증서 SAN·최소 유효기간 | PASS |
+| 인증서 SAN·최소 유효기간 | PASS (`HTTPS_MIN_CERT_VALIDITY_SECONDS=86400`초 이상) |
 | 가용 메모리 | `598 MiB` 관찰 |
 | Docker 디스크 여유 | `29 GiB` 관찰 |
 
@@ -201,14 +226,15 @@ Control checkout과 계약 채택을 Application 배포나 DB 변경으로 확�
 
 ## state 전이
 
-| 단계 | Control HEAD | `contract-sha` | `current-sha` | `previous-sha` | `previous-contract-sha` |
-| --- | --- | --- | --- | --- | --- |
-| 실행 전 | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | 제공되지 않음 | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 제공되지 않음 | 제공되지 않음 |
-| 새 Control 채택 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 중간값 미기록 | 중간값 미기록 |
-| rollback 성공 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b174449d525dc0a053bfaf802a0204b13f705f31` |
-| 원래 Release 재배포 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `b174449d525dc0a053bfaf802a0204b13f705f31` |
+| 단계 | Control HEAD | `contract-sha` | `current-sha` | `previous-sha` | `previous-contract-sha` | 비민감 증거 참조 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 실행 전 | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | 기록하지 않음 | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 기록하지 않음 | 기록하지 않음 | 읽기 전용 기준선 확인 |
+| Control checkout | `b174449d525dc0a053bfaf802a0204b13f705f31` | 채택 전 state 값은 기록하지 않음 | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 기록하지 않음 | 기록하지 않음 | `CONTROL_CHECKOUT=PASS` |
+| 새 Control 계약 채택 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 중간값은 최종 판정에 사용하지 않음 | 중간값은 최종 판정에 사용하지 않음 | `CONTROL_ADOPTION=PASS` |
+| rollback | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `APPLICATION_ROLLBACK=PASS` |
+| 원래 Release 재배포·최종 검증 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `APPLICATION_REDEPLOY=PASS`, `FINAL_PRODUCTION_VERIFY=PASS` |
 
-제공되지 않은 실행 전·중간 state 값은 추측하지 않는다.
+기록하지 않은 실행 전·중간 state 값은 추측하지 않으며, 각 단계의 확인값과 marker만 OPS-029의 판정 입력으로 사용한다.
 
 ## health·Smoke·HTTPS 검증
 
@@ -218,13 +244,13 @@ Control checkout과 계약 채택을 Application 배포나 DB 변경으로 확�
 - 원래 Application 재배포 뒤 네 Container가 다시 모두 healthy였다.
 - 최종 Backend·Frontend revision은 `current-sha`와 일치했다.
 - 최종 내부 상품 화면·상품 API와 HTTPS 상품 화면·상품 API가 모두 PASS였다.
-- 인증서 SAN과 최소 유효기간 검사가 PASS였다.
+- 인증서 SAN과 `infra/production/release-common.sh`의 `HTTPS_MIN_CERT_VALIDITY_SECONDS=86400`초 최소 유효기간 검사가 PASS였다.
 
 실제 service domain, IP, 인증서 원문과 전체 HTTP 출력은 기록하지 않는다.
 
 ## MySQL volume 보존
 
-- Control 채택, rollback과 원래 Application 재배포 전후 active MySQL volume이 변경되지 않았다.
+- Control 채택, rollback과 원래 Application 재배포 전후 active MySQL volume이 변경되지 않았다. rollback·최종 보존 증거 참조는 각각 `APPLICATION_ROLLBACK=PASS`, `FINAL_PRODUCTION_VERIFY=PASS`다.
 - 최종 active MySQL volume state와 실제 MySQL mount가 일치했다.
 - volume 이름과 운영 host 식별자는 기록하지 않는다.
 - DB restore, volume 삭제·초기화와 schema downgrade를 실행하지 않았다.
@@ -237,43 +263,46 @@ Production 실행자가 확인한 운영 결과와 저장소 문서 검증을 �
 
 ### 사용자가 Production에서 확인한 결과
 
-- 현재 Control checkout과 계약 채택 성공
-- 기록된 이전 Application rollback 성공
-- 원래 Application 재배포 성공
-- 각 Application 전이 뒤 네 Container health, revision, 내부 Smoke와 HTTPS PASS
-- active MySQL volume과 실제 mount 보존
-- 최종 state SHA와 Control SHA 일치
-- 인증서 SAN·최소 유효기간 PASS
+- `CONTROL_CHECKOUT=PASS`: 현재 Control checkout과 Application 유지 확인
+- `CONTROL_ADOPTION=PASS`: 새 Control 계약 채택과 현재 Application 재검증 확인
+- `APPLICATION_ROLLBACK=PASS`: 기록된 이전 Application rollback, 네 Container health, revision, 내부 Smoke·HTTPS와 active MySQL volume 보존 확인
+- `APPLICATION_REDEPLOY=PASS`: 원래 Application 재배포와 같은 검증 통과 확인
+- `FINAL_PRODUCTION_VERIFY=PASS`: 최종 state SHA·Control SHA·revision, 네 Container health, 내부 Smoke·HTTPS, active MySQL volume·실제 mount와 인증서 SAN·`86400`초 최소 유효기간 확인
 
 ### 저장소 문서 검증
 
-- OPS-028 고위험 task artifact validator: 변경 후 실행
-- Markdown UTF-8·trailing whitespace·내부 경로: 변경 후 확인
-- `git diff --check`: 변경 후 실행
-- 변경 파일 범위와 민감정보 패턴: 변경 후 확인
+- OPS-028 고위험 task artifact validator: 이 변경 후 PASS
+- Markdown UTF-8·trailing whitespace·내부 경로: 이 변경 후 PASS
+- `git diff --check`: 이 변경 후 PASS
+- 변경 파일 범위와 민감정보 패턴: 이 변경 후 PASS
 
 ## 적용 전 검증
 
 - 사용자 실행에서 Production 변경 전 읽기 전용 기준선을 확인했다.
 - 저장소 작업 시작 시 `origin/main`이 예상 SHA `b174449d525dc0a053bfaf802a0204b13f705f31`과 일치함을 확인했다.
-- 열린 PR이 없고 PR #79가 병합됐으며 최종 head가 잔여 원격 `ops/sre`와 일치함을 확인했다.
-- PR #79의 Commit and PR conventions와 Application validation이 모두 성공했음을 확인했다.
-- 로컬의 오래된 `ops/sre`는 병합된 PR #76 이력에 포함되고 원격 `ops/sre`는 병합된 PR #79의 최종 head와 같음을 확인한 뒤, force push 없이 최신 `origin/main`에서 역할 브랜치를 재생성했다.
+- 역할 브랜치 재생성의 과거 Git 판정은 Git 이력으로만 대조하며, PR·원격 브랜치·Checks·리뷰의 현재 상태는 이 보고서에 고정하지 않는다.
+- PR #79는 OPS-027 병합 증거의 참조이고, 현재 PR #80의 head·Checks·리뷰·thread는 [PR #80](https://github.com/guseoh/pawcycle-commerce/pull/80)을 권위 원본으로 확인한다.
 
 ## 적용 후 검증
 
-- rollback과 원래 Application 재배포 뒤 state, revision, 네 Container health, 내부 Smoke, HTTPS와 active MySQL volume 보존이 확인됐다.
-- 최종 Control HEAD와 `contract-sha`, Application state와 revision이 서로 일치했다.
-- OPS-028 보고서가 실행 성공과 미실행·금지 판정을 분리하는지 확인한다.
-- 저장소 변경이 승인된 새 보고서 한 파일로 제한되는지 확인한다.
-- 고위험 task artifact, UTF-8, 내부 경로와 diff 공백 검증을 실행한다.
+- rollback과 원래 Application 재배포 뒤 state, revision, 네 Container health, 내부 Smoke, HTTPS와 active MySQL volume 보존을 확인했다.
+- 최종 Control HEAD와 `contract-sha`, Application state와 revision이 서로 일치함을 확인했다.
+- OPS-028 보고서가 실행 성공과 미실행·금지 판정을 분리함을 확인했다.
+- 저장소 변경이 승인된 새 보고서 한 파일로 제한됨을 확인했다.
+- 고위험 task artifact, UTF-8, 내부 경로와 diff 공백 검증을 실행해 PASS를 확인했다.
 
 ## 독립 검증
 
 - 실제 Production 실행자이자 Product Owner·Tech Lead인 사용자가 각 승인 단계와 중간·최종 결과를 직접 확인했다.
 - Codex는 제공된 비민감 결과를 OPS-010 Runbook, OPS-025 active volume 계약, OPS-026 판정 공백과 OPS-027 저장소 준비에 대조한다.
 - PR #79 Repository Validation은 실행에 사용한 Control 계약의 독립 저장소 검증이며 실제 Production 실행 자체를 대신하지 않는다.
-- OPS-028 문서 delta의 독립 자동 검증은 Draft PR의 Repository Validation을 권위 원본으로 확인한다.
+- OPS-028 문서 delta의 독립 자동 검증·AI review·미해결 thread는 [PR #80](https://github.com/guseoh/pawcycle-commerce/pull/80)을 권위 원본으로 후속 확인한다.
+
+## 구현·검토·최종 판단 역할
+
+- 구현과 이 보고서의 범위·비민감 경계 대조: Codex. Codex는 OPS-028 문서 작성 중 Production 명령을 실행하지 않는다.
+- 독립 자동 검증과 PR review: Repository Validation, CodeRabbit, ChatGPT. 각 시스템의 현재 결과와 가용성은 PR #80에서 별도로 확인한다.
+- 최종 판정, 병합과 후속 OPS-029 착수 판단: 사용자/Product Owner·Tech Lead.
 
 ## 실행하지 못한 검증과 이유
 
@@ -296,12 +325,12 @@ Production 실행자가 확인한 운영 결과와 저장소 문서 검증을 �
 
 ## AI 리뷰 반영 여부
 
-- PR 생성 전: 해당 없음
-- PR 생성 후 CodeRabbit·Codex Review 결과는 GitHub를 동적 권위 원본으로 확인한다.
+- PR #80의 최신 미해결 CodeRabbit thread 세 건을 Codex가 유효로 선별했고, 실행 증거 추적성·동적 GitHub 상태·완료/후속 검증 분리를 반영했다.
+- CodeRabbit·ChatGPT·Repository Validation의 현재 결과와 추가 리뷰는 [PR #80](https://github.com/guseoh/pawcycle-commerce/pull/80)을 동적 권위 원본으로 확인한다.
 
 ## AI 리뷰 미반영 항목과 이유
 
-- 현재 없음. 리뷰가 생성되면 실행 사실, 비민감 경계와 승인 범위에 대조해 유효한 항목만 반영한다.
+- 이번 반영 대상인 미해결 thread 세 건은 모두 반영했다. 이후 생성되거나 변경되는 review·CI 상태는 고정된 보고서 문구가 아니라 PR #80에서 별도로 판단한다.
 
 ## 경고와 제한
 
@@ -362,6 +391,6 @@ Production 실행자가 확인한 운영 결과와 저장소 문서 검증을 �
 
 ## PR 결과
 
-- `ops/sre`에서 `main`을 대상으로 Draft PR을 생성한다.
-- PR head, Checks, 리뷰와 미해결 thread는 GitHub를 동적 권위 원본으로 확인한다.
+- 이 보고서는 기존 [PR #80](https://github.com/guseoh/pawcycle-commerce/pull/80)에서 `ops/sre`를 `main`에 제안한다. 새 PR을 만들지 않는다.
+- PR head, 상태, Checks, 리뷰와 미해결 thread는 GitHub의 PR #80을 동적 권위 원본으로 확인한다.
 - 자동 병합하지 않는다.
