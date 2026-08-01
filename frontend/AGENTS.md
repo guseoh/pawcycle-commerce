@@ -9,9 +9,9 @@
 ## 공통 운영 기준
 
 - 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 프론트엔드 역할 브랜치는 `feat/fe`다.
-- `feat/fe`에는 하나의 활성 프론트엔드 작업만 둔다.
-- PR 병합 후에는 `feat/fe`를 삭제하고 다음 프론트엔드 작업에서 최신 `main` 기준으로 다시 만든다.
+- 프론트엔드 task branch는 최신 `main`에서 `feat/fe/<TASK-ID>`로 만든다.
+- 하나의 task branch에는 하나의 활성 프론트엔드 작업만 둔다.
+- 병합 뒤 열린 PR·고유 commit·worktree가 없을 때 branch를 삭제한다.
 
 ## API 계약
 

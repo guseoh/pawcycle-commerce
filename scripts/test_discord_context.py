@@ -136,7 +136,25 @@ class DiscordContextTests(unittest.TestCase):
     def test_branch_role_mapping(self):
         self.assertEqual(discord.role_for_branch("ops/sre"), "Platform/SRE")
         self.assertEqual(discord.role_for_branch("test/qa"), "QA Engineer")
+        self.assertEqual(discord.role_for_branch("ops/tl/HARNESS-LEAN-003"), "Tech Lead")
+        self.assertEqual(discord.role_for_branch("feat/be/MVP2-001"), "Backend Engineer")
+        self.assertEqual(discord.role_for_branch("feat/backend/MVP2-001"), discord.MISSING)
         self.assertEqual(discord.role_for_branch("unknown/branch"), discord.MISSING)
+
+    def test_new_pr_template_sections_are_consumed(self):
+        sections = discord.extract_sections(
+            "## 목적과 범위\n- 목적: Harness 단순화\n- 변경 범위: CI\n"
+            "## 결정과 영향\n- 중요한 결정: component 분리\n"
+            "## 검증\n- 실행 결과: PASS\n"
+            "## 위험과 복구\n- 남은 위험: 원격 CI 확인\n"
+            "## 병합 판단\n- 사용자 판단 항목: 병합 여부\n"
+        )
+        self.assertIn("Harness 단순화", sections["purpose"])
+        self.assertIn("변경 범위", sections["changes"])
+        self.assertIn("component 분리", sections["process"])
+        self.assertIn("PASS", sections["validation"])
+        self.assertIn("원격 CI", sections["risks"])
+        self.assertIn("병합 여부", sections["next"])
 
     def test_sections_ignore_automatic_summary_and_sanitize_mentions(self):
         body = "## 작업 목적\n안전한 @everyone 알림\n<!-- bot -->\n## 주요 변경\n변경 A\n## CodeRabbit Summary\n자동 요약"

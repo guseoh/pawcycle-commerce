@@ -29,14 +29,14 @@
 - 기존 도메인 용어집과 규칙
 - 사용자가 승인한 결정
 
-## 5. 주요 산출물
+## 5. 주요 결과
 
 - PRD(Product Requirements Document)
 - 사용자 스토리
 - 비즈니스 규칙
 - 인수 조건
 - Product Decision 목록
-- 필요 시 기획에서 디자인 또는 엔지니어링으로 전달하는 인수인계(Handoff)
+- 실제 다음 역할이 사용할 때 기획 인수인계(Handoff)
 
 ## 6. 수정 권한
 
@@ -81,5 +81,4 @@
 ## 공통 운영 기준
 
 - 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 기획 역할 브랜치는 `spec/po`다.
-- 하나의 역할 브랜치에는 하나의 활성 작업만 둔다.
+- 기획 task branch는 `spec/po/<TASK-ID>` 형식이다.

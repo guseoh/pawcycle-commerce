@@ -51,7 +51,7 @@ SECRET_PATTERNS = (
         r"\1[REDACTED]",
     ),
 )
-ROLE_BY_BRANCH = {
+ROLE_BY_BRANCH_PREFIX = {
     "spec/po": "Product Planner",
     "design/ux": "UX/UI Designer",
     "feat/be": "Backend Engineer",
@@ -61,13 +61,13 @@ ROLE_BY_BRANCH = {
     "ops/tl": "Tech Lead",
 }
 SECTION_ALIASES = {
-    "purpose": ("목적", "작업 목적"),
-    "changes": ("변경 사항", "주요 변경", "변경 범위"),
-    "process": ("처리 과정", "작업 과정"),
+    "purpose": ("목적", "작업 목적", "목적과 범위"),
+    "changes": ("변경 사항", "주요 변경", "변경 범위", "목적과 범위"),
+    "process": ("처리 과정", "작업 과정", "결정과 영향"),
     "qa": ("QA와 구현 경계", "QA 검증", "QA 필요 여부"),
     "validation": ("검증", "실행한 검증"),
-    "next": ("승인 후 다음 작업", "다음 작업"),
-    "risks": ("남은 위험", "위험과 제한"),
+    "next": ("승인 후 다음 작업", "다음 작업", "병합 판단"),
+    "risks": ("남은 위험", "위험과 제한", "위험과 복구"),
 }
 
 
@@ -106,7 +106,11 @@ def extract_task_id(body: str = "", title: str = "", branch: str = "", issue_tex
 
 
 def role_for_branch(branch: str) -> str:
-    return ROLE_BY_BRANCH.get(branch or "", MISSING)
+    branch = branch or ""
+    for prefix, role in ROLE_BY_BRANCH_PREFIX.items():
+        if branch == prefix or branch.startswith(f"{prefix}/"):
+            return role
+    return MISSING
 
 
 def strip_automatic_summary(body: str) -> str:
@@ -154,7 +158,8 @@ def extract_sections(body: str) -> dict[str, str]:
             if any(alias.lower() in name.lower() for alias in aliases):
                 if sections[key] == MISSING:
                     sections[key] = value
-                break
+                if "목적과 범위" not in name:
+                    break
     return sections
 
 

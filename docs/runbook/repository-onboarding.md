@@ -9,7 +9,7 @@
 기준 로컬 경로:
 
 ```text
-C:\Users\guseo\IdeaProjects\pawcycle-commerce
+<repository-root>
 ```
 
 현재 Codex 작업은 위 저장소에서 수행한다.
@@ -45,7 +45,7 @@ PowerShell:
 Vault 경로:
 
 ```text
-C:\Users\guseo\IdeaProjects\pawcycle-commerce\docs
+<repository-root>\docs
 ```
 
 - 데스크톱과 노트북에서 각각 저장소를 clone한다.
@@ -65,39 +65,39 @@ python scripts/validate-discord-payloads.py
 
 Secret 설정 후 실제 전송은 PR 생성, 리뷰, CI 결과 같은 GitHub 이벤트로 확인한다. 전송 실패 시 Actions 로그를 확인한다.
 
-## 역할 브랜치 시작
+## task branch 시작
 
-최신 `main`에서 역할 브랜치를 만든다.
+최신 `main`에서 역할 prefix와 작업 ID를 결합한 task branch를 만든다.
 
 ```bash
 git switch main
 git pull --ff-only
-git switch -c ops/tl
+git switch -c ops/tl/HARNESS-LEAN-003
 ```
 
 역할별 브랜치:
 
 ```text
-spec/po
-design/ux
-feat/be
-feat/fe
-test/qa
-ops/sre
-ops/tl
+spec/po/<TASK-ID>
+design/ux/<TASK-ID>
+feat/be/<TASK-ID>
+feat/fe/<TASK-ID>
+test/qa/<TASK-ID>
+ops/sre/<TASK-ID>
+ops/tl/<TASK-ID>
 ```
 
-하나의 역할 브랜치에는 하나의 활성 작업만 둔다.
+하나의 task branch에는 하나의 활성 작업만 둔다.
 
-## 역할 브랜치 완료
+## task branch 완료
 
 ```bash
 git status
 git diff --check
-git push -u origin <role-branch>
+git push -u origin <role-prefix>/<TASK-ID>
 ```
 
-PR이 `main`에 병합되면 역할 브랜치를 삭제하고 다음 작업에서 최신 `main` 기준으로 같은 이름을 다시 만든다.
+PR이 `main`에 병합되면 열린 PR·고유 commit·worktree가 없는지 확인한 뒤 task branch를 삭제한다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
 
 ## 검증 명령
 
@@ -105,7 +105,8 @@ PR이 `main`에 병합되면 역할 브랜치를 삭제하고 다음 작업에�
 
 ```bash
 sh scripts/test-commit-message-convention.sh
-python -m py_compile .github/scripts/*.py scripts/validate-task-artifacts.py
+python -m py_compile .github/scripts/*.py scripts/validate-task-artifacts.py scripts/classify-validation-changes.py
+python -m unittest scripts.test_validate_task_artifacts scripts.test_validate_conventions_workflow
 python scripts/validate-discord-payloads.py
 python scripts/validate-obsidian-record.py
 ```

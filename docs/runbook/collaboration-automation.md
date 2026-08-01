@@ -7,41 +7,40 @@
 자동화의 목표는 다음과 같다.
 
 - `main`에 들어가는 커밋과 PR 제목의 형식을 일관되게 유지한다.
-- 작업 등급에 필요한 작업 보고서와 실제 소비자가 있는 역할 인수인계가 PR 산출물로 남도록 확인한다.
+- PR의 최소 안전 정보와 실제 운영 실행 보고서 관문을 확인한다.
 - 협업 이벤트를 Discord에 구조화된 Embed로 알린다.
 - 병합된 PR을 Obsidian에서 읽기 쉬운 Markdown 기록으로 남긴다.
 - Secret과 Webhook URL이 저장소, 로그, 보고서에 노출되지 않게 한다.
 
 ## 2. 역할 브랜치
 
-작업마다 긴 브랜치 이름을 만들지 않고 다음 역할 브랜치만 사용한다.
+HARNESS-LEAN-002 병합 뒤 시작하는 새 작업은 역할 prefix와 작업 ID를 결합한 task branch를 사용한다.
 
 | 브랜치 | 담당 역할 |
 | --- | --- |
 | `main` | 기준 브랜치 |
-| `spec/po` | Product Planner |
-| `design/ux` | UX/UI Designer |
-| `feat/be` | Backend Engineer |
-| `feat/fe` | Frontend Engineer |
-| `test/qa` | QA Engineer |
-| `ops/sre` | Platform/SRE |
-| `ops/tl` | Tech Lead와 공통 저장소 작업 |
+| `spec/po/<TASK-ID>` | Product Planner |
+| `design/ux/<TASK-ID>` | UX/UI Designer |
+| `feat/be/<TASK-ID>` | Backend Engineer |
+| `feat/fe/<TASK-ID>` | Frontend Engineer |
+| `test/qa/<TASK-ID>` | QA Engineer |
+| `ops/sre/<TASK-ID>` | Platform/SRE |
+| `ops/tl/<TASK-ID>` | Tech Lead와 공통 저장소 작업 |
 
-역할 브랜치는 영구 통합 브랜치가 아니다.
+task branch는 영구 통합 브랜치가 아니다.
 
 ```text
 최신 main
-→ 역할 브랜치 생성
-→ 역할의 한 작업 수행
+→ <role-prefix>/<TASK-ID> 생성
+→ 한 작업 수행
 → commit
 → push
 → PR
 → main 병합
-→ 역할 브랜치 삭제
-→ 다음 작업에서 같은 이름 재생성
+→ 안전할 때 task branch 삭제
 ```
 
-하나의 역할 브랜치에는 하나의 활성 작업만 둔다. Squash Merge 이후에는 기존 역할 브랜치를 계속 사용하지 않는다.
+하나의 task branch에는 하나의 활성 작업만 둔다. 병합 뒤 삭제 전에는 열린 PR, 고유 commit과 사용 중인 worktree가 없는지 확인한다. 기존 역사 branch와 과거 문서는 소급 변경하지 않으며 reset·rebase·force push·history rewrite를 사용하지 않는다.
 
 ## 3. commit·push 정책
 
@@ -206,12 +205,13 @@ git config core.hooksPath .githooks
 
 - PR 제목
 - PR에 포함된 커밋 메시지
-- PR 본문에서 작업 ID와 명시된 작업 등급 확인
-- 경량의 보고서·인수인계 기본 생략 허용
-- 일반의 작업 보고서와 인수인계 또는 명시적 생략 사유 확인
-- 고위험의 작업 보고서와 승인·적용 전후·독립 검증·복구 및 롤백 증거 확인
-- 새 PR의 등급 누락 차단, 등급 없는 기존 산출물은 명시적 legacy 옵션에서만 일반 규칙과 경고 적용
+- PR 본문의 작업 ID·등급·실행 구분·목적·범위·검증·위험 또는 복구 경계
+- 존재하는 보고서의 목적·증거·위험 최소 구조
+- 실제 운영 실행의 보고서와 승인·적용 전후·독립·복구 증거
+- 등급 없는 기존 산출물의 명시적 legacy 경로
 - 변경 diff의 공백 오류
+
+`edited`는 PR metadata만 검증한다. code event는 base/head diff를 Harness, Backend+MySQL, Frontend, Production 계약으로 분류해 필요한 component job을 병렬 실행하고 `Application validation`에서 success·skipped를 집계한다. component 실패는 aggregate 성공으로 바뀌지 않는다. `Commit and PR conventions`와 `Application validation` 이름은 branch protection 호환을 위해 유지한다.
 
 Discord Secret은 검증 워크플로에서 사용하지 않는다.
 
@@ -456,8 +456,8 @@ sh scripts/validate-commit-message.sh --message "ci(harness): 역할별 산출�
 작업 산출물 검증:
 
 ```bash
-python scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-001 --task-grade 고위험
-printf '%s\n' "작업 ID: BOOTSTRAP-004" "작업 등급: 일반" | python scripts/validate-task-artifacts.py --from-stdin
+python scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-002 --task-grade 고위험 --execution-type "저장소 변경"
+python -m unittest scripts.test_validate_task_artifacts scripts.test_validate_conventions_workflow
 python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
 ```
 
