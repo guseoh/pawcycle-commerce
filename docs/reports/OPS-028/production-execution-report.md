@@ -92,7 +92,7 @@
 
 ## 비민감 실행 증거 색인
 
-모든 결과는 `2026-07-31 KST`에 사용자가 단계별로 직접 확인한 비민감 marker다. 정확한 시각, 원시 명령 출력, 운영 식별자와 Secret은 보존하지 않았으며 marker는 각 결과의 재현 가능한 판정 참조로만 사용한다.
+모든 결과는 `2026-07-31 KST`에 사용자가 단계별로 직접 확인한 비민감 실행 결과다. 아래 marker는 OPS-028 보고서에서 사후 부여한 내부 추적 식별자이며 Production Script가 출력한 원시 실행 marker가 아니다. 정확한 시각, 원시 명령 출력, 운영 식별자와 Secret은 보존하지 않았고, 각 marker는 사용자가 확인한 비민감 실행 결과를 참조한다. 정확한 실행 시작·종료 시각이 기록되지 않아 OPS-029는 같은 날짜의 다른 운영 이벤트와 시간 순서를 독립 재구성할 수 없으며, 이는 판정 입력의 시간 추적성 제한으로 유지한다.
 
 | 실행 단계 | 결과 marker | 검사 구현 또는 버전 식별자 | 검사 기준 | 검증하는 승인 요구사항 |
 | --- | --- | --- | --- | --- |
@@ -129,8 +129,10 @@ DB restore, schema downgrade, Flyway history 수정과 데이터 변경을 실�
 | 항목 | 확인된 기준 |
 | --- | --- |
 | 이전 Control HEAD | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` |
-| 원래 Application | `2e9222b568a3469e8ccc5edce1b5301218c6888e` |
-| rollback 대상 | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` |
+| 실행 전 `contract-sha` | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` |
+| 원래 Application·`current-sha` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` |
+| 실행 전 `previous-sha`·rollback 대상 | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` |
+| 실행 전 `previous-contract-sha` | `1b78b93a6a0f9c593e3c792698eb18ddf5990810` |
 | 변경 대상 | Control 채택과 Application 전이 |
 | 금지된 데이터 작업 | DB restore·schema downgrade·volume 삭제 |
 
@@ -154,7 +156,10 @@ OPS-028 문서 작성 과정에서는 위 절차나 다른 Production 명령을 
 
 - 이전 Control HEAD: `82cb5a22e34a8381ba82d4ba7458f24314c184a8`
 - checkout 뒤 Control HEAD: `b174449d525dc0a053bfaf802a0204b13f705f31`
-- checkout 중 유지한 Application: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- checkout 중 유지한 Application·`current-sha`: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- checkout 뒤 유지된 `contract-sha`: `82cb5a22e34a8381ba82d4ba7458f24314c184a8`
+- checkout 뒤 유지된 `previous-sha`: `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`
+- checkout 뒤 유지된 `previous-contract-sha`: `1b78b93a6a0f9c593e3c792698eb18ddf5990810`
 - 비민감 증거 참조: `CONTROL_CHECKOUT=PASS`
 - 결과: Control HEAD 전환과 현재 Application 유지가 확인됨
 
@@ -165,7 +170,9 @@ checkout 자체는 `contract-sha`를 채택하는 단계가 아니며, 해당 st
 - 이전 Control HEAD: `82cb5a22e34a8381ba82d4ba7458f24314c184a8`
 - 새 Control HEAD: `b174449d525dc0a053bfaf802a0204b13f705f31`
 - 채택 후 `contract-sha`: `b174449d525dc0a053bfaf802a0204b13f705f31`
-- 채택 중 유지한 Application: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- 채택 중 유지한 Application·`current-sha`: `2e9222b568a3469e8ccc5edce1b5301218c6888e`
+- 채택 후 유지된 `previous-sha`: `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6`
+- 채택 후 유지된 `previous-contract-sha`: `1b78b93a6a0f9c593e3c792698eb18ddf5990810`
 - 비민감 증거 참조: `CONTROL_ADOPTION=PASS`
 - 결과: 현재 Application을 바꾸지 않고 새 Control 계약 채택 성공
 
@@ -228,13 +235,13 @@ Control checkout과 계약 채택을 Application 배포나 DB 변경으로 확�
 
 | 단계 | Control HEAD | `contract-sha` | `current-sha` | `previous-sha` | `previous-contract-sha` | 비민감 증거 참조 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 실행 전 | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | 기록하지 않음 | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 기록하지 않음 | 기록하지 않음 | 읽기 전용 기준선 확인 |
-| Control checkout | `b174449d525dc0a053bfaf802a0204b13f705f31` | 채택 전 state 값은 기록하지 않음 | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 기록하지 않음 | 기록하지 않음 | `CONTROL_CHECKOUT=PASS` |
-| 새 Control 계약 채택 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | 중간값은 최종 판정에 사용하지 않음 | 중간값은 최종 판정에 사용하지 않음 | `CONTROL_ADOPTION=PASS` |
+| 실행 전 | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `1b78b93a6a0f9c593e3c792698eb18ddf5990810` | 읽기 전용 기준선 확인 |
+| Control checkout | `b174449d525dc0a053bfaf802a0204b13f705f31` | `82cb5a22e34a8381ba82d4ba7458f24314c184a8` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `1b78b93a6a0f9c593e3c792698eb18ddf5990810` | `CONTROL_CHECKOUT=PASS` |
+| 새 Control 계약 채택 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `1b78b93a6a0f9c593e3c792698eb18ddf5990810` | `CONTROL_ADOPTION=PASS` |
 | rollback | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `APPLICATION_ROLLBACK=PASS` |
 | 원래 Release 재배포·최종 검증 | `b174449d525dc0a053bfaf802a0204b13f705f31` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `2e9222b568a3469e8ccc5edce1b5301218c6888e` | `b9cf3cf51c5ffd4b85c6eafc78706ed079e299d6` | `b174449d525dc0a053bfaf802a0204b13f705f31` | `APPLICATION_REDEPLOY=PASS`, `FINAL_PRODUCTION_VERIFY=PASS` |
 
-기록하지 않은 실행 전·중간 state 값은 추측하지 않으며, 각 단계의 확인값과 marker만 OPS-029의 판정 입력으로 사용한다.
+위 실행 전·중간 state 값은 사용자가 실행 당시 확인해 제공한 비민감 결과다. 확인되지 않은 다른 값은 추측하지 않으며, 각 단계의 확인값과 내부 추적 marker만 OPS-029의 판정 입력으로 사용한다.
 
 ## health·Smoke·HTTPS 검증
 
@@ -341,7 +348,7 @@ Production 실행자가 확인한 운영 결과와 저장소 문서 검증을 �
 - OPS-028에서 Compose 선언이나 volume을 수정하지 않았다.
 - 경고의 근본 원인이 해결됐다고 판정하지 않는다.
 
-또한 정확한 서비스 중단 시간, 무중단 여부, RTO와 사용자 트래픽 영향은 측정하지 않았다. 최종 메모리·디스크 값은 한 시점의 관찰이며 장기 운영 안전성이나 capacity를 증명하지 않는다.
+또한 정확한 실행 시작·종료 시각이 기록되지 않아 OPS-029는 같은 날짜의 다른 운영 이벤트와 시간 순서를 독립 재구성할 수 없다. 정확한 서비스 중단 시간, 무중단 여부, RTO와 사용자 트래픽 영향도 측정하지 않았다. 최종 메모리·디스크 값은 한 시점의 관찰이며 장기 운영 안전성이나 capacity를 증명하지 않는다.
 
 ## 적용 방법
 
