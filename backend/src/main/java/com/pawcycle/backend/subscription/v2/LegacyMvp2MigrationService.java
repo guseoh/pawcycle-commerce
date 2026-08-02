@@ -69,7 +69,7 @@ public class LegacyMvp2MigrationService {
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
 		while (scheduled.isBefore(today)) scheduled = scheduled.plusWeeks(cycle);
 		jdbc.update("UPDATE subscriptions SET status='ACTIVE',version=0,current_snapshot_id=?,legacy_api_visible=false,mvp2_managed=true WHERE id=?", snapshotId, subscriptionId);
-		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',?)", subscriptionId, scheduled, snapshotId);
+		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)", subscriptionId, scheduled);
 	}
 
 	public record LegacyPreflight(boolean valid, int invalidRows) {
