@@ -143,7 +143,7 @@ CREATE INDEX idx_command_history_subscription_occurred ON subscription_command_h
 
 CREATE TABLE subscription_creation_idempotency_results (
     member_id BIGINT NOT NULL,
-    idempotency_key VARCHAR(128) NOT NULL,
+    idempotency_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     payload_fingerprint CHAR(64) NOT NULL,
     subscription_id BIGINT NULL,
     response_status INT NULL,
@@ -159,7 +159,7 @@ CREATE TABLE subscription_command_idempotency_results (
     member_id BIGINT NOT NULL,
     subscription_id BIGINT NOT NULL,
     command_type VARCHAR(30) NOT NULL,
-    idempotency_key VARCHAR(128) NOT NULL,
+    idempotency_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     payload_fingerprint CHAR(64) NOT NULL,
     response_status INT NULL,
     response_body JSON NULL,
