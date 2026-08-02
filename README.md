@@ -1,6 +1,6 @@
 # PawCycle Commerce
 
-개와 고양이용 소모품의 일반 구매와 정기배송을 다루는 이커머스 프로젝트입니다. 현재 저장소는 공개 상품 탐색부터 세션 인증, 정기배송 구독 생성·조회까지 연결한 1차 수직 MVP와 단일 호스트 Production 운영 기준선을 함께 보여 줍니다.
+개와 고양이용 소모품의 일반 구매와 정기배송을 목표로 하는 이커머스 프로젝트입니다. 현재 구현은 공개 상품 탐색부터 세션 인증, 정기배송 구독 생성·조회까지 연결한 1차 수직 MVP이며, 일반 구매는 아직 제공하지 않습니다.
 
 이 README는 현재 저장소와 운영 검증의 경계를 설명합니다. 저장소에 준비된 계약, 실제 운영에서 검증된 최소 기준, 아직 실행하지 않은 고도화 항목과 다음 제품 단계를 서로 구분합니다.
 
@@ -15,7 +15,7 @@
 
 | 영역 | 현재 상태 | 범위와 경계 |
 | --- | --- | --- |
-| 1차 MVP | 구현·통합 완료 | 공개 상품, 세션 로그인/로그아웃, CSRF, 구독 생성·목록·상세, 다음 주문 예정일 계산 |
+| 1차 MVP | 구현·통합 및 조건부 QA 위험 수용 기준선 | 공개 상품, 세션 로그인/로그아웃, CSRF, 구독 생성·목록·상세, 다음 주문 예정일 계산 |
 | Production 기준선 | `OPS-VERIFY-001 = Verified` | [OPS-029 판정](docs/reports/OPS-029/tl-report.md)의 일곱 최소 운영 안전성 기준에 한정 |
 | Application rollback | 운영 검증 완료 | 이전 Application Release rollback과 원래 Release 재배포를 확인했으며 DB schema downgrade는 하지 않음 |
 | Logical backup·isolated restore | 운영 검증 완료 | Production DB가 아닌 격리 MySQL에 복원·비교 |
@@ -24,6 +24,8 @@
 | MVP2 | Planned | 제품·도메인 승인 후 Backend → Frontend → 통합 QA → Production 적용 준비 순서 |
 
 `OPS-VERIFY-001 = Verified`는 `OPS-026`에서 정의한 일곱 최소 운영 안전성 기준 충족을 뜻합니다. 전체 운영 완성, 무중단 배포, 자동복구, 고가용성, RPO/RTO, 물리 volume·EBS 장애 복구 또는 Actual Production DB restore 완료로 확대 해석하지 않습니다.
+
+1차 MVP의 완료 경계도 전체 QA 완료를 뜻하지 않습니다. [FOUNDATION-005 완료 판정](docs/reports/FOUNDATION-005/tl-report.md)은 [FOUNDATION-004 브라우저 QA 결과](docs/reports/FOUNDATION-004/qa-report.md)의 `조건부 통과`를 사용자가 수용한 **조건부 QA 위험 수용 기준선**입니다. 당시 브라우저 QA는 통과 17건, 일부 또는 전체 미실행 8건, 실패 0건이었고, keyboard-only 전체 순회·session 만료·브라우저 `CSRF_INVALID`·구독 생성 POST timeout은 단위 테스트나 대체 증거에 의존해 실제 브라우저에서 재현하지 않았습니다. 이후 Production 인증·Session·CSRF Smoke가 보강됐어도 이 브라우저 QA 전체를 대체하지 않습니다.
 
 ## 1차 MVP 사용자 흐름
 
@@ -80,7 +82,7 @@ Nginx proxy
 - EC2 `StatusCheckFailed` ALARM·OK SNS email 알림
 - Production 인증·Session·CSRF Smoke와 전용 Smoke 회원 생성
 
-이 결과는 [OPS-029 Tech Lead 보고서](docs/reports/OPS-029/tl-report.md)와 관련 [Production Runbook](docs/runbook/README.md)을 권위 원본으로 사용합니다. 운영 식별자, hostname, 계정, Secret, backup ID와 원시 로그는 저장소에 기록하지 않습니다.
+이 결과는 [OPS-029 Tech Lead 보고서](docs/reports/OPS-029/tl-report.md)를 권위 원본으로 사용하고, 실제 절차는 아래 주요 Production Runbook을 직접 따릅니다. 운영 식별자, hostname, 계정, Secret, backup ID와 원시 로그는 저장소에 기록하지 않습니다.
 
 ## 위험 기반 Lean Harness
 
@@ -167,9 +169,9 @@ PR에서는 변경 경로에 따라 [Repository Validation](.github/workflows/va
 - `git diff --check`
 - commit·PR title/body·작업 ID·등급·실행 구분 검증
 - 관련 Backend·Frontend·MySQL·Production·Harness Component 검증
-- whitespace와 Secret·민감 운영 식별자 비노출 검증
+- whitespace와 변경 경로에 따른 component·계약 검증
 
-실제 비밀번호, DB credential, session ID, CSRF token과 운영 식별자를 저장소·로그에 기록하지 않습니다.
+Secret·민감 운영 식별자 비노출은 작업자 검토와 필요한 수동 검사 경계입니다. Repository Validation이 전체 diff의 모든 운영 식별자를 자동 탐지한다고 해석하지 않습니다. 실제 비밀번호, DB credential, session ID, CSRF token과 운영 식별자를 저장소·로그에 기록하지 않습니다.
 
 ## 주요 권위 문서
 
@@ -184,9 +186,17 @@ PR에서는 변경 경로에 따라 [Repository Validation](.github/workflows/va
 | 구독 API | [API-003](docs/api/API-003-subscription-api-contract-decision-request.md) |
 | Production 구조 | [운영 아키텍처 개요](docs/architecture/production-operations-overview.md) |
 | 최소 운영 기준 판정 | [OPS-029 Tech Lead 보고서](docs/reports/OPS-029/tl-report.md) |
+| 1차 MVP 브라우저 QA 결과 | [FOUNDATION-004 QA 보고서](docs/reports/FOUNDATION-004/qa-report.md) |
+| 1차 MVP 완료 판정 | [FOUNDATION-005 Tech Lead 보고서](docs/reports/FOUNDATION-005/tl-report.md) |
 | Lean Harness | [lean-harness.md](docs/runbook/lean-harness.md) |
 | 로컬 통합 | [FOUNDATION-004 Runbook](docs/runbook/FOUNDATION-004-local-integration.md) |
-| Production 실행 | [Production Runbook 목록](docs/runbook/README.md) |
+| Production 단일 Release | [OPS-010](docs/runbook/OPS-010-production-single-release.md) |
+| Production HTTPS | [OPS-011](docs/runbook/OPS-011-production-https.md) |
+| Production DB backup·isolated restore | [OPS-013](docs/runbook/OPS-013-production-db-backup-restore.md) |
+| EC2 장애 알림 | [OPS-015](docs/runbook/OPS-015-ec2-status-check-alarm.md) |
+| Production 인증·Session Smoke | [OPS-017](docs/runbook/OPS-017-production-auth-session-smoke.md) |
+| Production Smoke 회원 | [OPS-020](docs/runbook/OPS-020-production-auth-smoke-member.md) |
+| Production DB restore | [OPS-025](docs/runbook/OPS-025-production-db-restore.md) |
 
 존재하지 않는 MVP2 상세 문서를 미리 링크하지 않습니다. MVP2는 승인된 제품·도메인 문서가 생긴 뒤 해당 문서로 연결합니다.
 
@@ -197,6 +207,8 @@ PR에서는 변경 경로에 따라 [Repository Validation](.github/workflows/va
 - 무중단 배포, 자동 서버 배포, 자동복구, Blue/Green, Load Balancer·다중 EC2·DB replica는 미구현입니다.
 - 물리 MySQL volume·EBS·instance 장애와 복구를 검증하지 않았습니다.
 - 전체 관측성, 장기 부하·capacity·성능 기준선과 credential 수명 관리는 미완료입니다.
+- HTTPS 자동 갱신 schedule과 certificate backup은 미완료입니다.
+- OPS-028에서 관찰된 Certbot external/named volume 경고의 근본 원인은 해결되지 않아 인증서 저장·갱신 경로의 후속 확인이 필요합니다.
 - RDS는 후보 방향이며 현재 Production DB는 Docker MySQL입니다.
 - 정기배송 Batch와 운영 자동화는 미구현입니다.
 - Harness 개선 후 수치 평가는 아직 실행하지 않았습니다.
@@ -225,8 +237,7 @@ PR에서는 변경 경로에 따라 [Repository Validation](.github/workflows/va
 다음 단계는 다음 순서로 진행합니다.
 
 ```text
-README 현재화
-→ MVP2 제품·도메인 승인 문서
+MVP2 제품·도메인 승인 문서
 → Backend
 → Frontend
 → 통합 QA
