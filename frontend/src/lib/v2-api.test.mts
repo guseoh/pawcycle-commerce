@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { newIdempotencyKey, v2Api, type V2SubscriptionDetail } from "./v2-api.ts";
+
+test("V2 mutating actions receive a non-empty idempotency key", () => {
+  const key = newIdempotencyKey();
+  assert.ok(key.length > 0);
+  assert.match(key, /^[A-Za-z0-9._-]+$/);
+});
+
+test("V2 command preserves protocol headers and reuses the caller's action key on retry", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: RequestInit[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requests.push(init ?? {});
+    return new Response(JSON.stringify({ subscriptionId: 7 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ETag: "\"4\"", Location: "/api/v2/subscriptions/7", "Idempotency-Replayed": "true" },
+    });
+  }) as typeof fetch;
+  try {
+    const key = "retry-key";
+    const first = await v2Api.subscriptions.command(7, "pause", {}, "csrf", "\"3\"", key);
+    const second = await v2Api.subscriptions.command(7, "pause", {}, "csrf", "\"3\"", key);
+    assert.equal(first.etag, "\"4\"");
+    assert.equal(first.location, "/api/v2/subscriptions/7");
+    assert.equal(first.replayed, true);
+    assert.equal(second.replayed, true);
+    assert.equal((requests[0].headers as Record<string, string>)["If-Match"], "\"3\"");
+    assert.equal((requests[0].headers as Record<string, string>)["Idempotency-Key"], key);
+    assert.equal((requests[1].headers as Record<string, string>)["Idempotency-Key"], key);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("API-004 subscription JSON fixture remains assignable to the frontend contract", () => {
+  const fixture = {
+    subscriptionId: 7,
+    pet: { petId: 3, name: "보리", petType: "DOG" },
+    status: "ACTIVE",
+    version: 4,
+    currentSnapshot: { planVersionId: 12, packagePriceKrw: 24900, deliveryCycleWeeks: 4, items: [{ skuId: 8, quantity: 2 }] },
+    nextScheduledDate: "2026-08-30",
+    pendingSnapshot: null,
+    schedules: { page: 0, size: 20, totalElements: 1, items: [{ scheduleId: 31, scheduledDate: "2026-08-30", status: "SCHEDULED" }] },
+    commandHistory: { page: 0, size: 20, totalElements: 1, items: [{ commandType: "CHANGE_PLAN", result: "SUCCEEDED", occurredAt: "2026-08-02T12:00:00+09:00" }] },
+  } satisfies V2SubscriptionDetail;
+  assert.equal(fixture.currentSnapshot.packagePriceKrw, 24900);
+  assert.equal(fixture.commandHistory.items[0].result, "SUCCEEDED");
+});
