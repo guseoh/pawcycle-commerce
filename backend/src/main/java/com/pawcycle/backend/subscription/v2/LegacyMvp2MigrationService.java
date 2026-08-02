@@ -23,10 +23,11 @@ public class LegacyMvp2MigrationService {
 	@Transactional(readOnly = true)
 	public LegacyPreflight preflight() {
 		List<Map<String, Object>> invalid = jdbc.queryForList("""
-			SELECT s.id, s.quantity, s.delivery_cycle_weeks, sk.price
-			FROM subscriptions s JOIN skus sk ON sk.id=s.sku_id
+			SELECT s.id, s.quantity, s.delivery_cycle_weeks, sk.price, p.pet_type
+			FROM subscriptions s JOIN skus sk ON sk.id=s.sku_id JOIN products p ON p.id=sk.product_id
 			WHERE s.mvp2_managed=false
 			  AND (s.quantity < 1 OR s.delivery_cycle_weeks NOT IN (2,4,8)
+			       OR p.pet_type IS NULL OR TRIM(UPPER(p.pet_type)) NOT IN ('DOG','CAT')
 			       OR sk.price < 0 OR sk.price <> FLOOR(sk.price)
 			       OR CAST(sk.price AS DECIMAL(30,0)) * s.quantity > ?)
 			""", JSON_SAFE_MAX);
@@ -41,7 +42,7 @@ public class LegacyMvp2MigrationService {
 		if (!preflight.valid()) throw new IllegalStateException("legacy preflight failed; no migration DML was written");
 		List<Map<String, Object>> legacy = jdbc.queryForList("""
 			SELECT s.id subscription_id,s.member_id,s.sku_id,s.quantity,s.delivery_cycle_weeks,
-			       s.next_order_date,sk.price,p.pet_type
+			       s.next_order_date,sk.price,TRIM(UPPER(p.pet_type)) pet_type
 			FROM subscriptions s JOIN skus sk ON sk.id=s.sku_id JOIN products p ON p.id=sk.product_id
 			WHERE s.mvp2_managed=false FOR UPDATE
 			""");
@@ -53,7 +54,7 @@ public class LegacyMvp2MigrationService {
 		long skuId = ((Number) row.get("sku_id")).longValue();
 		int quantity = ((Number) row.get("quantity")).intValue();
 		int cycle = ((Number) row.get("delivery_cycle_weeks")).intValue();
-		long total = ((BigDecimal) row.get("price")).longValueExact() * quantity;
+		long total = Math.multiplyExact(((BigDecimal) row.get("price")).longValueExact(), quantity);
 		jdbc.update("INSERT INTO subscription_plans(target_pet_type,on_sale,current_plan_version_id) VALUES (?,false,NULL)", row.get("pet_type"));
 		long planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,?,true)", planId, total);
@@ -67,7 +68,7 @@ public class LegacyMvp2MigrationService {
 		LocalDate scheduled = ((java.sql.Date) row.get("next_order_date")).toLocalDate();
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
 		while (scheduled.isBefore(today)) scheduled = scheduled.plusWeeks(cycle);
-		jdbc.update("UPDATE subscriptions SET status='ACTIVE',version=0,current_snapshot_id=?,mvp2_managed=true WHERE id=?", snapshotId, subscriptionId);
+		jdbc.update("UPDATE subscriptions SET status='ACTIVE',version=0,current_snapshot_id=?,legacy_api_visible=false,mvp2_managed=true WHERE id=?", snapshotId, subscriptionId);
 		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',?)", subscriptionId, scheduled, snapshotId);
 	}
 

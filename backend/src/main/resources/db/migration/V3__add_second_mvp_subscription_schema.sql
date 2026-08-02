@@ -6,6 +6,10 @@ ALTER TABLE subscriptions
     ADD COLUMN legacy_api_visible BOOLEAN NOT NULL DEFAULT TRUE,
     ADD COLUMN mvp2_managed BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE subscriptions
+    ADD CONSTRAINT chk_subscriptions_status
+        CHECK (status IS NULL OR status IN ('ACTIVE', 'PAUSED', 'CANCELED'));
+
 CREATE TABLE pets (
     id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
@@ -45,9 +49,12 @@ CREATE TABLE plan_versions (
     CONSTRAINT chk_plan_versions_price CHECK (package_price_krw BETWEEN 0 AND 9007199254740991)
 ) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+ALTER TABLE plan_versions
+    ADD CONSTRAINT uk_plan_versions_id_plan UNIQUE (id, plan_id);
+
 ALTER TABLE subscription_plans
     ADD CONSTRAINT fk_subscription_plans_current_version
-        FOREIGN KEY (current_plan_version_id) REFERENCES plan_versions (id);
+        FOREIGN KEY (current_plan_version_id, id) REFERENCES plan_versions (id, plan_id);
 
 CREATE TABLE plan_items (
     plan_version_id BIGINT NOT NULL,

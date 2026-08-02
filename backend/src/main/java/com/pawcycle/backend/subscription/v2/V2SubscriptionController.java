@@ -2,6 +2,7 @@ package com.pawcycle.backend.subscription.v2;
 
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.util.Map;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v2")
+@ConditionalOnProperty(prefix = "pawcycle.mvp2.reconciliation", name = "enabled", havingValue = "true")
 public class V2SubscriptionController {
 
 	private final V2SubscriptionService service;

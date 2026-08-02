@@ -126,6 +126,33 @@ class SubscriptionDatabaseIntegrationTests {
 				.isEqualTo(1);
 	}
 
+	@Test
+	void mvp2StatusAndCurrentPlanVersionMustSatisfyMySqlConstraints() {
+		long firstPlan = insertPlan("DOG");
+		long firstVersion = insertPlanVersion(firstPlan);
+		jdbcTemplate.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", firstVersion, firstPlan);
+		long secondPlan = insertPlan("DOG");
+		long secondVersion = insertPlanVersion(secondPlan);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", secondVersion, firstPlan))
+				.isInstanceOf(DataAccessException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(
+				"INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,status) VALUES (?,?,?,?,?,?,?)",
+				member.getId(), sku.getId(), 1, 4, LocalDate.of(2026, 7, 14), LocalDate.of(2026, 8, 11), "UNKNOWN"))
+				.isInstanceOf(DataAccessException.class);
+	}
+
+	private long insertPlan(String petType) {
+		jdbcTemplate.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "test plan", petType);
+		return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+	}
+
+	private long insertPlanVersion(long planId) {
+		jdbcTemplate.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,10000,false)", planId);
+		return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+	}
+
 	private void assertRejectedInsert(
 			Long memberId,
 			Long skuId,
