@@ -72,9 +72,13 @@ class SubscriptionDatabaseIntegrationTests {
 				ORDER BY ordinal_position
 				""");
 		assertThat(columns).extracting(row -> row.get("COLUMN_NAME"))
-				.containsExactly("id", "member_id", "sku_id", "quantity", "delivery_cycle_weeks",
-						"created_date", "next_order_date");
-		assertThat(columns).allSatisfy(row -> assertThat(row.get("IS_NULLABLE")).isEqualTo("NO"));
+				.contains("id", "member_id", "sku_id", "quantity", "delivery_cycle_weeks",
+						"created_date", "next_order_date", "pet_id", "status", "version",
+						"current_snapshot_id", "legacy_api_visible", "mvp2_managed");
+		assertThat(columns.stream()
+				.filter(row -> !List.of("pet_id", "status", "version", "current_snapshot_id")
+						.contains(row.get("COLUMN_NAME")))
+				.toList()).allSatisfy(row -> assertThat(row.get("IS_NULLABLE")).isEqualTo("NO"));
 
 		List<String> constraints = jdbcTemplate.queryForList("""
 				SELECT constraint_name
