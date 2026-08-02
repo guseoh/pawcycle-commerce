@@ -11,6 +11,12 @@ public class V2ApiException extends RuntimeException {
 		this.code = code;
 	}
 
+	public V2ApiException(int status, String code, String message, Throwable cause) {
+		super(message, cause);
+		this.status = status;
+		this.code = code;
+	}
+
 	public int status() { return status; }
 	public String code() { return code; }
 }
