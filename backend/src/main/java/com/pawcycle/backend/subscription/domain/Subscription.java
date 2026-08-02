@@ -44,6 +44,9 @@ public class Subscription {
 	@Column(name = "next_order_date", nullable = false)
 	private LocalDate nextOrderDate;
 
+	@Column(name = "legacy_api_visible", nullable = false)
+	private boolean legacyApiVisible = true;
+
 	protected Subscription() {
 	}
 
@@ -119,5 +122,9 @@ public class Subscription {
 
 	public LocalDate getNextOrderDate() {
 		return nextOrderDate;
+	}
+
+	public boolean isLegacyApiVisible() {
+		return legacyApiVisible;
 	}
 }

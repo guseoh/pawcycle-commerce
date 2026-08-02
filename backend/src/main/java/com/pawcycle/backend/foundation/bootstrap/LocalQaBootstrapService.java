@@ -12,6 +12,8 @@ import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,20 +37,34 @@ public class LocalQaBootstrapService {
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
 	private final SubscriptionRepository subscriptionRepository;
+	private final JdbcTemplate jdbcTemplate;
 
-	public LocalQaBootstrapService(
+	LocalQaBootstrapService(
 			EmailNormalizer emailNormalizer,
 			PasswordEncoder passwordEncoder,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
 			SkuRepository skuRepository,
 			SubscriptionRepository subscriptionRepository) {
+		this(emailNormalizer, passwordEncoder, memberRepository, productRepository, skuRepository, subscriptionRepository, null);
+	}
+
+	@Autowired
+	public LocalQaBootstrapService(
+			EmailNormalizer emailNormalizer,
+			PasswordEncoder passwordEncoder,
+			MemberRepository memberRepository,
+			ProductRepository productRepository,
+			SkuRepository skuRepository,
+			SubscriptionRepository subscriptionRepository,
+			JdbcTemplate jdbcTemplate) {
 		this.emailNormalizer = emailNormalizer;
 		this.passwordEncoder = passwordEncoder;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
 		this.subscriptionRepository = subscriptionRepository;
+		this.jdbcTemplate = jdbcTemplate;
 	}
 
 	@Transactional
@@ -58,8 +74,21 @@ public class LocalQaBootstrapService {
 		Product product = loadOrCreateProduct();
 		loadOrCreateSku(product);
 		if (resetSubscriptions) {
+			deleteV2SubscriptionChildren(member.getId());
 			subscriptionRepository.deleteAllByMemberId(member.getId());
 		}
+	}
+
+	private void deleteV2SubscriptionChildren(Long memberId) {
+		if (jdbcTemplate == null) return;
+		jdbcTemplate.update("DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
+		jdbcTemplate.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);
+		jdbcTemplate.update("DELETE ss FROM subscription_snapshots ss JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 	}
 
 	private String validateCredentials(String email, String password) {
