@@ -10,6 +10,10 @@ import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -105,6 +109,20 @@ class V2SubscriptionCommandIntegrationTests {
 	}
 
 	@Test
+	void skipPauseAndResumeAvoidScheduleDateCollision() {
+		long subscriptionId = createSubscription("skip-pause-resume");
+		service.command(member.getId(), subscriptionId, "skip-next", "skip-before-pause", "\"0\"", Map.of());
+		service.command(member.getId(), subscriptionId, "pause", "pause-after-skip", "\"1\"", Map.of());
+
+		V2SubscriptionService.V2Result resumed = service.command(member.getId(), subscriptionId, "resume", "resume-after-skip", "\"2\"", Map.of());
+
+		assertThat(resumed.body()).containsEntry("status", "ACTIVE").containsEntry("version", 3L);
+		assertThat(jdbc.queryForObject("SELECT COUNT(DISTINCT scheduled_date) FROM subscription_schedules WHERE subscription_id=?", Integer.class, subscriptionId)).isEqualTo(2);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SKIPPED'", Integer.class, subscriptionId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED'", Integer.class, subscriptionId)).isEqualTo(1);
+	}
+
+	@Test
 	void pauseReplayAndResumePreserveVersionContract() {
 		long subscriptionId = createSubscription("pause-resume");
 
@@ -122,6 +140,24 @@ class V2SubscriptionCommandIntegrationTests {
 		assertThat(resumed.etag()).isEqualTo("\"2\"");
 		assertThat(resumed.body()).containsEntry("status", "ACTIVE").containsEntry("version", 2L);
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED'", Integer.class, subscriptionId)).isEqualTo(1);
+	}
+
+	@Test
+	void overdueCommandCommitsReconciliationBeforeReturningVersionMismatch() {
+		long subscriptionId = createSubscription("overdue-command");
+		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", Map.of()))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
+
+		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE subscription_id=? AND idempotency_key='overdue-pause'", Integer.class, subscriptionId)).isZero();
+
+		V2SubscriptionService.V2Result paused = service.command(member.getId(), subscriptionId, "pause", "overdue-pause", "\"1\"", Map.of());
+		assertThat(paused.body()).containsEntry("status", "PAUSED").containsEntry("version", 2L);
 	}
 
 	@Test
@@ -152,12 +188,75 @@ class V2SubscriptionCommandIntegrationTests {
 		}
 	}
 
+	@Test
+	void scheduleDtoIncludesNullableAndAppliedEffectiveSnapshotId() {
+		long subscriptionId = createSubscription("schedule-dto");
+		V2SubscriptionService.V2Result initial = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
+		Map<String,Object> initialSchedules = castMap(initial.body().get("schedules"));
+		Map<String,Object> initialSchedule = castMap(castList(initialSchedules.get("items")).getFirst());
+		assertThat(initialSchedule).containsKey("effectiveSnapshotId").containsEntry("effectiveSnapshotId", null);
+
+		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+		service.reconcileActiveSubscriptions();
+		V2SubscriptionService.V2Result reconciled = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
+		Map<String,Object> schedules = castMap(reconciled.body().get("schedules"));
+		assertThat(castList(schedules.get("items"))).anySatisfy(item -> assertThat(castMap(item).get("effectiveSnapshotId")).isNotNull());
+	}
+
+	@Test
+	void planVersionDistinguishesMismatchAndUnavailableStates() {
+		long dogPetId = createPet("dog-plan", "DOG");
+		long catPetId = createPet("cat-plan", "CAT");
+		long planId = jdbc.queryForObject("SELECT plan_id FROM plan_versions WHERE id=?", Long.class, planVersionId);
+		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,26000,false)", planId);
+		long previousVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+		assertThatThrownBy(() -> service.planVersion(member.getId(), dogPetId, previousVersionId))
+				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "PLAN_NOT_AVAILABLE");
+		assertThatThrownBy(() -> service.planVersion(member.getId(), catPetId, planVersionId))
+				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "PLAN_PET_TYPE_MISMATCH");
+
+		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=NULL WHERE id=?", planId);
+		assertThatThrownBy(() -> service.planVersion(member.getId(), dogPetId, planVersionId))
+				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "PLAN_NOT_AVAILABLE");
+	}
+
+	@Test
+	void outOfRangeJsonIntegerIsRejectedWithoutWrapping() {
+		long petId = createPet("huge-number", "DOG");
+		assertThatThrownBy(() -> service.createSubscription(member.getId(), "huge-number", Map.of(
+				"petId", new BigInteger("18446744073709551617"),
+				"planVersionId", planVersionId,
+				"deliveryCycleWeeks", 4)))
+				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscriptions WHERE member_id=? AND pet_id=?", Integer.class, member.getId(), petId)).isZero();
+	}
+
+	@Test
+	void idempotencyKeysAreCaseSensitive() {
+		long petId = createPet("case-key", "DOG");
+		Map<String,Object> body = Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4);
+		V2SubscriptionService.V2Result upper = service.createSubscription(member.getId(), "CaseKey", body);
+		V2SubscriptionService.V2Result lower = service.createSubscription(member.getId(), "casekey", body);
+		assertThat(upper.body().get("subscriptionId")).isNotEqualTo(lower.body().get("subscriptionId"));
+	}
+
 	private long createSubscription(String key) {
-		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "반려동물-" + key, "petType", "DOG")).get("petId")).longValue();
+		long petId = createPet(key, "DOG");
 		V2SubscriptionService.V2Result created = service.createSubscription(
 				member.getId(),
 				"create-" + key,
 				Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
 		return ((Number) created.body().get("subscriptionId")).longValue();
 	}
+
+	private long createPet(String key, String petType) {
+		return ((Number) service.createPet(member.getId(), Map.of("name", "반려동물-" + key, "petType", petType)).get("petId")).longValue();
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String,Object> castMap(Object value) { return (Map<String,Object>) value; }
+
+	@SuppressWarnings("unchecked")
+	private List<Object> castList(Object value) { return (List<Object>) value; }
 }
