@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DuplicateKeyException;
@@ -105,14 +106,14 @@ public class V2SubscriptionService {
 
 	@Transactional
 	public V2Result command(long memberId,long subscriptionId,String rawCommand,String key,String ifMatch,Map<String,Object> body) {
-		String command = rawCommand.toUpperCase().replace('-', '_'); if (!List.of("CHANGE_PLAN","SKIP_NEXT","PAUSE","RESUME","CANCEL").contains(command)) throw new V2ApiException(404,"SUBSCRIPTION_NOT_FOUND","Subscription을 찾을 수 없습니다.");
+		String command = rawCommand.toUpperCase(Locale.ROOT).replace('-', '_'); if (!List.of("CHANGE_PLAN","SKIP_NEXT","PAUSE","RESUME","CANCEL").contains(command)) throw new V2ApiException(404,"SUBSCRIPTION_NOT_FOUND","Subscription을 찾을 수 없습니다.");
 		validateKey(key); String fp=fingerprint(body);
 		ownedSubscription(memberId,subscriptionId);
 		try { jdbc.update("INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,?,?,?)",memberId,subscriptionId,command,key,fp); }
 		catch(DuplicateKeyException duplicate) { return replay(one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",memberId,subscriptionId,command,key).orElseThrow(() -> duplicate),fp); }
 		long expected=parseEtag(ifMatch); Map<String,Object> subscription=lockedOwnedSubscription(memberId,subscriptionId);
 		if(longValue(subscription,"version")!=expected) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
-		reconcile(subscription); subscription=lockedOwnedSubscription(memberId,subscriptionId); if(longValue(subscription,"version")!=expected) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다."); String status=(String)subscription.get("status");
+		reconcile(subscription); subscription=lockedOwnedSubscription(memberId,subscriptionId); if(longValue(subscription,"version")!=expected) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
 		switch(command) {
 			case "CHANGE_PLAN" -> changePlan(memberId,subscription,body);
 			case "SKIP_NEXT" -> skip(subscription);
