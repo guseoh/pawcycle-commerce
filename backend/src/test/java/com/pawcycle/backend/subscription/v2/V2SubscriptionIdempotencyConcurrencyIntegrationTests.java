@@ -71,7 +71,8 @@ class V2SubscriptionIdempotencyConcurrencyIntegrationTests {
 			assertThat(results).extracting(V2SubscriptionService.V2Result::replay).containsExactlyInAnyOrder(false, true);
 			assertThat(results).allSatisfy(result -> {
 				assertThat(result.etag()).isEqualTo("\"1\"");
-				assertThat(result.body()).containsEntry("status", "PAUSED").containsEntry("version", 1L);
+				assertThat(result.body()).containsEntry("status", "PAUSED");
+				assertThat(((Number) result.body().get("version")).longValue()).isEqualTo(1L);
 			});
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_history WHERE subscription_id=? AND command_type='PAUSE'", Integer.class, subscriptionId)).isEqualTo(1);
 		} finally {
