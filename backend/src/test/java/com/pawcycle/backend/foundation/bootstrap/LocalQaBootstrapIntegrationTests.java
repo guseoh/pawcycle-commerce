@@ -11,9 +11,11 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import com.pawcycle.backend.subscription.domain.Subscription;
 import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
+import com.pawcycle.backend.subscription.v2.V2SubscriptionService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,8 +31,10 @@ import org.springframework.test.context.ActiveProfiles;
 class LocalQaBootstrapIntegrationTests {
 
 	private static final String OTHER_PRODUCT_PREFIX = "[TEST FOUNDATION-004] ";
+	private static final String V2_PLAN_PREFIX = "[TEST FOUNDATION-004 V2] ";
 
 	private final LocalQaBootstrapService bootstrapService;
+	private final V2SubscriptionService v2SubscriptionService;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
@@ -41,6 +45,7 @@ class LocalQaBootstrapIntegrationTests {
 	@Autowired
 	LocalQaBootstrapIntegrationTests(
 			LocalQaBootstrapService bootstrapService,
+			V2SubscriptionService v2SubscriptionService,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
 			SkuRepository skuRepository,
@@ -48,6 +53,7 @@ class LocalQaBootstrapIntegrationTests {
 			PasswordEncoder passwordEncoder,
 			JdbcTemplate jdbcTemplate) {
 		this.bootstrapService = bootstrapService;
+		this.v2SubscriptionService = v2SubscriptionService;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
@@ -59,6 +65,7 @@ class LocalQaBootstrapIntegrationTests {
 	@BeforeEach
 	@AfterEach
 	void cleanBootstrapFixtures() {
+		deleteV2ChildrenForFixtureMembers();
 		jdbcTemplate.update("""
 				DELETE FROM subscriptions
 				WHERE member_id IN (
@@ -73,6 +80,8 @@ class LocalQaBootstrapIntegrationTests {
 					WHERE product.name = ? OR product.name LIKE ?
 				)
 				""", LocalQaBootstrapService.PRODUCT_NAME, OTHER_PRODUCT_PREFIX + "%");
+		jdbcTemplate.update("DELETE FROM pets WHERE member_id IN (SELECT id FROM members WHERE email LIKE 'qa-foundation-004@%' OR email LIKE 'other-foundation-004@%')");
+		deleteV2FixturePlans();
 		jdbcTemplate.update("""
 				DELETE FROM skus
 				WHERE product_id IN (
@@ -150,6 +159,30 @@ class LocalQaBootstrapIntegrationTests {
 	}
 
 	@Test
+	void resetDeletesV2AggregateBeforeDeletingQaSubscription() {
+		String email = runtimeQaEmail();
+		String password = UUID.randomUUID().toString();
+		bootstrapService.bootstrap(email, password, false);
+		Member member = memberRepository.findByEmail(email).orElseThrow();
+		Product product = productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME).getFirst();
+		Sku sku = skuRepository.findAllByProductIdAndName(product.getId(), LocalQaBootstrapService.SKU_NAME).getFirst();
+		long planVersionId = createV2Plan(sku);
+		long petId = ((Number) v2SubscriptionService.createPet(member.getId(), Map.of("name", "QA 반려동물", "petType", "DOG")).get("petId")).longValue();
+		V2SubscriptionService.V2Result created = v2SubscriptionService.createSubscription(member.getId(), "qa-v2-reset", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
+		long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
+		v2SubscriptionService.command(member.getId(), subscriptionId, "change-plan", "qa-v2-change", "\"0\"", Map.of("planVersionId", planVersionId));
+
+		bootstrapService.bootstrap(email, password, true);
+
+		assertThat(subscriptionCount(member.getId())).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_snapshots WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=?", Integer.class, member.getId())).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=?", Integer.class, member.getId())).isZero();
+	}
+
+	@Test
 	void ambiguousFixtureRollsBackMemberCreation() {
 		String email = runtimeQaEmail();
 		String password = UUID.randomUUID().toString();
@@ -160,6 +193,37 @@ class LocalQaBootstrapIntegrationTests {
 
 		assertThat(memberRepository.findByEmail(email)).isEmpty();
 		assertThat(productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME)).hasSize(2);
+	}
+
+	private long createV2Plan(Sku sku) {
+		jdbcTemplate.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", V2_PLAN_PREFIX + UUID.randomUUID(), "DOG");
+		long planId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbcTemplate.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,19900,false)", planId);
+		long planVersionId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbcTemplate.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,1)", planVersionId, sku.getId());
+		jdbcTemplate.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4)", planVersionId);
+		jdbcTemplate.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", planVersionId, planId);
+		return planVersionId;
+	}
+
+	private void deleteV2ChildrenForFixtureMembers() {
+		String memberFilter = "SELECT id FROM members WHERE email LIKE 'qa-foundation-004@%' OR email LIKE 'other-foundation-004@%'";
+		jdbcTemplate.update("DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id IN (" + memberFilter + ")");
+		jdbcTemplate.update("DELETE ss FROM subscription_snapshots ss JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+	}
+
+	private void deleteV2FixturePlans() {
+		jdbcTemplate.update("UPDATE subscription_plans SET current_plan_version_id=NULL WHERE name LIKE ?", V2_PLAN_PREFIX + "%");
+		jdbcTemplate.update("DELETE c FROM plan_version_delivery_cycles c JOIN plan_versions v ON v.id=c.plan_version_id JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name LIKE ?", V2_PLAN_PREFIX + "%");
+		jdbcTemplate.update("DELETE i FROM plan_items i JOIN plan_versions v ON v.id=i.plan_version_id JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name LIKE ?", V2_PLAN_PREFIX + "%");
+		jdbcTemplate.update("DELETE v FROM plan_versions v JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name LIKE ?", V2_PLAN_PREFIX + "%");
+		jdbcTemplate.update("DELETE FROM subscription_plans WHERE name LIKE ?", V2_PLAN_PREFIX + "%");
 	}
 
 	private Product exactFixtureProduct() {
