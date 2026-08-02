@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { newIdempotencyKey, v2Api } from "./v2-api.ts";
+import { newIdempotencyKey, v2Api, type V2SubscriptionDetail } from "./v2-api.ts";
 
 test("V2 mutating actions receive a non-empty idempotency key", () => {
   const key = newIdempotencyKey();
@@ -32,4 +32,20 @@ test("V2 command preserves protocol headers and reuses the caller's action key o
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("API-004 subscription JSON fixture remains assignable to the frontend contract", () => {
+  const fixture = {
+    subscriptionId: 7,
+    pet: { petId: 3, name: "보리", petType: "DOG" },
+    status: "ACTIVE",
+    version: 4,
+    currentSnapshot: { planVersionId: 12, packagePriceKrw: 24900, deliveryCycleWeeks: 4, items: [{ skuId: 8, quantity: 2 }] },
+    nextScheduledDate: "2026-08-30",
+    pendingSnapshot: null,
+    schedules: { page: 0, size: 20, totalElements: 1, items: [{ scheduleId: 31, scheduledDate: "2026-08-30", status: "SCHEDULED" }] },
+    commandHistory: { page: 0, size: 20, totalElements: 1, items: [{ commandType: "CHANGE_PLAN", result: "SUCCEEDED", occurredAt: "2026-08-02T12:00:00+09:00" }] },
+  } satisfies V2SubscriptionDetail;
+  assert.equal(fixture.currentSnapshot.packagePriceKrw, 24900);
+  assert.equal(fixture.commandHistory.items[0].result, "SUCCEEDED");
 });

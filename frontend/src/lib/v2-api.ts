@@ -36,7 +36,6 @@ export interface Schedule {
   scheduleId: number;
   scheduledDate: string;
   status: "SCHEDULED" | "SKIPPED" | "HELD" | "CANCELED";
-  effectiveSnapshotId: number;
 }
 
 export interface CommandHistory {

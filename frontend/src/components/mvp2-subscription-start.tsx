@@ -30,6 +30,7 @@ export function Mvp2SubscriptionStart() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [planRetryKey, setPlanRetryKey] = useState(0);
   const createKeyRef = useRef<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
 
@@ -56,21 +57,16 @@ export function Mvp2SubscriptionStart() {
   }, [auth.status, loadPets, router, retryKey]);
 
   useEffect(() => {
+    let active = true;
     queueMicrotask(() => {
-      if (selectedPetId === null) { setPlans(null); setSelectedPlan(null); setCycle(null); return; }
-      setPlanState("loading");
-      setPlans(null);
-      setSelectedPlan(null);
-      setCycle(null);
-      void v2Api.plans.list(selectedPetId).then(({ body }) => {
-        setPlans(body.items);
-        setPlanState("idle");
-      }).catch((error: unknown) => {
-        setPlanState("error");
-        setMessage(error instanceof ApiError ? error.message : "호환 플랜을 불러오지 못했습니다.");
+      if (selectedPetId === null) { if (active) { setPlans(null); setSelectedPlan(null); setCycle(null); } return; }
+      setPlanState("loading"); setPlans(null); setSelectedPlan(null); setCycle(null);
+      void v2Api.plans.list(selectedPetId).then(({ body }) => { if (active) { setPlans(body.items); setPlanState("idle"); } }).catch((error: unknown) => {
+        if (active) { setPlanState("error"); setMessage(error instanceof ApiError ? error.message : "호환 플랜을 불러오지 못했습니다."); }
       });
     });
-  }, [selectedPetId]);
+    return () => { active = false; };
+  }, [selectedPetId, planRetryKey]);
 
   const selectedPet = useMemo(() => pets?.find((pet) => pet.petId === selectedPetId) ?? null, [pets, selectedPetId]);
 
@@ -89,6 +85,7 @@ export function Mvp2SubscriptionStart() {
       setSelectedPetId(response.body.petId);
       setPetName("");
     } catch (error) {
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.replace(buildLoginHref("/mvp2/subscriptions/new")); return; }
       setMessage(error instanceof ApiError ? error.message : "반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도할 수 있습니다.");
       focusError();
     } finally { setPetSubmitting(false); }
@@ -130,8 +127,8 @@ export function Mvp2SubscriptionStart() {
     } finally { setSubmitting(false); }
   }
 
-  if (auth.status === "loading" || auth.status === "anonymous" || state === "loading") return <LoadingState>구독 시작 정보를 불러오고 있습니다.</LoadingState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
+  if (auth.status === "loading" || auth.status === "anonymous" || state === "loading") return <LoadingState>구독 시작 정보를 불러오고 있습니다.</LoadingState>;
   if (state === "error") return <ErrorState title="반려동물 목록을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => setRetryKey((key) => key + 1)} />;
 
   return <div className="detail-stack">
@@ -139,14 +136,14 @@ export function Mvp2SubscriptionStart() {
     {message ? <div className="error-summary" ref={errorRef} tabIndex={-1} role="alert"><h2>확인이 필요합니다.</h2><p>{message}</p></div> : null}
     <section className="section-card" aria-labelledby="pet-select-title">
       <h2 id="pet-select-title">1. 반려동물 선택</h2>
-      {pets?.length ? <div className="radio-grid">{pets.map((pet) => <label className="radio-card" key={pet.petId}><input type="radio" name="pet" checked={selectedPetId === pet.petId} onChange={() => { setSelectedPetId(pet.petId); resetCreateKey(); }} /><strong>{pet.name}</strong><span>{formatPetType(pet.petType)}</span></label>)}</div> : <p>등록된 반려동물이 없습니다. 아래에서 먼저 등록해 주세요.</p>}
+      {pets?.length ? <div className="radio-grid">{pets.map((pet) => <label className="radio-card" key={pet.petId}><input type="radio" name="pet" disabled={submitting} checked={selectedPetId === pet.petId} onChange={() => { setSelectedPetId(pet.petId); resetCreateKey(); }} /><strong>{pet.name}</strong><span>{formatPetType(pet.petType)}</span></label>)}</div> : <p>등록된 반려동물이 없습니다. 아래에서 먼저 등록해 주세요.</p>}
       <form className="inline-form" onSubmit={registerPet} noValidate>
-        <label className="form-field">반려동물 이름<input className="input" value={petName} maxLength={50} onChange={(event) => setPetName(event.target.value)} disabled={petSubmitting} /></label>
-        <fieldset className="form-section" disabled={petSubmitting}><legend>종</legend><label className="cycle-option"><input type="radio" checked={petType === "DOG"} onChange={() => setPetType("DOG")} />개</label><label className="cycle-option"><input type="radio" checked={petType === "CAT"} onChange={() => setPetType("CAT")} />고양이</label></fieldset>
-        <button className="button button-secondary" type="submit" disabled={petSubmitting}>{petSubmitting ? "등록 중" : "반려동물 등록"}</button>
+        <label className="form-field">반려동물 이름<input className="input" value={petName} maxLength={50} onChange={(event) => setPetName(event.target.value)} disabled={petSubmitting || submitting} /></label>
+        <fieldset className="form-section" disabled={petSubmitting || submitting}><legend>종</legend><label className="cycle-option"><input type="radio" checked={petType === "DOG"} onChange={() => setPetType("DOG")} />개</label><label className="cycle-option"><input type="radio" checked={petType === "CAT"} onChange={() => setPetType("CAT")} />고양이</label></fieldset>
+        <button className="button button-secondary" type="submit" disabled={petSubmitting || submitting}>{petSubmitting ? "등록 중" : "반려동물 등록"}</button>
       </form>
     </section>
-    {selectedPet ? <section className="section-card" aria-labelledby="plan-select-title"><h2 id="plan-select-title">2. 호환 플랜 선택</h2><p>{selectedPet.name}에게 판매 중인 플랜만 표시합니다.</p>{planState === "loading" ? <LoadingState>호환 플랜을 찾고 있습니다.</LoadingState> : planState === "error" ? <ErrorState title="플랜을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => setSelectedPetId(selectedPetId)} /> : plans?.length ? <div className="product-grid">{plans.map((plan) => <article className="product-card" key={plan.planVersionId}><p className="eyebrow">Plan #{plan.planId}</p><h3>{plan.planName}</h3><p>{formatPrice(plan.packagePriceKrw)} · {plan.items.length}개 SKU 구성</p><button className="button button-secondary" type="button" onClick={() => void selectPlan(plan)}>상세 선택</button></article>)}</div> : <p>현재 선택할 수 있는 호환 플랜이 없습니다.</p>}</section> : null}
+    {selectedPet ? <section className="section-card" aria-labelledby="plan-select-title"><h2 id="plan-select-title">2. 호환 플랜 선택</h2><p>{selectedPet.name}에게 판매 중인 플랜만 표시합니다.</p>{planState === "loading" ? <LoadingState>호환 플랜을 찾고 있습니다.</LoadingState> : planState === "error" ? <ErrorState title="플랜을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => setPlanRetryKey((key) => key + 1)} /> : plans?.length ? <div className="product-grid">{plans.map((plan) => <article className="product-card" key={plan.planVersionId}><p className="eyebrow">Plan #{plan.planId}</p><h3>{plan.planName}</h3><p>{formatPrice(plan.packagePriceKrw)} · {plan.items.length}개 SKU 구성</p><button className="button button-secondary" type="button" disabled={submitting} onClick={() => void selectPlan(plan)}>상세 선택</button></article>)}</div> : <p>현재 선택할 수 있는 호환 플랜이 없습니다.</p>}</section> : null}
     {selectedPlan ? <form className="section-card" onSubmit={createSubscription} noValidate aria-labelledby="create-title"><h2 id="create-title">3. 배송 주기와 구독 확인</h2><dl className="detail-list"><dt>반려동물</dt><dd>{selectedPet?.name}</dd><dt>플랜</dt><dd>{selectedPlan.planName}</dd><dt>패키지 가격</dt><dd>{formatPrice(selectedPlan.packagePriceKrw)}</dd><dt>구성</dt><dd>{selectedPlan.items.map((item) => `SKU ${item.skuId} × ${item.quantity}`).join(", ")}</dd></dl><fieldset className="form-section" disabled={submitting}><legend>배송 주기</legend><div className="cycle-row">{selectedPlan.allowedDeliveryCycleWeeks.map((weeks) => <label className="cycle-option" key={weeks}><input type="radio" name="cycle" checked={cycle === weeks} onChange={() => { setCycle(weeks); resetCreateKey(); }} />{weeks}주</label>)}</div></fieldset><div className="button-row"><button className="button button-primary" type="submit" disabled={submitting || cycle === null}>{submitting ? "구독 생성 중" : "구독 만들기"}</button><Link className="button button-secondary" href="/mvp2/subscriptions">목록으로</Link></div></form> : null}
   </div>;
 }
