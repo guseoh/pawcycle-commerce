@@ -77,6 +77,21 @@ public class V2SubscriptionController {
 			@PathVariable long subscriptionId, @PathVariable String command,
 			@RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestHeader(value = "If-Match", required = false) String ifMatch,
 			@RequestBody(required = false) Map<String, Object> body) {
+		validateIfMatchSyntax(ifMatch);
 		return service.command(principal.memberId(), subscriptionId, command, key, ifMatch, body == null ? Map.of() : body).response();
+	}
+
+	private void validateIfMatchSyntax(String value) {
+		if (value == null) {
+			throw new V2ApiException(428, "IF_MATCH_REQUIRED", "If-Match가 필요합니다.");
+		}
+		if (!value.matches("\\\"[0-9]+\\\"")) {
+			throw new V2ApiException(400, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.");
+		}
+		try {
+			Long.parseLong(value.substring(1, value.length() - 1));
+		} catch (NumberFormatException exception) {
+			throw new V2ApiException(400, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.", exception);
+		}
 	}
 }
