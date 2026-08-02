@@ -19,10 +19,14 @@ public class LocalQaBootstrapConfiguration {
 	@Bean
 	ApplicationRunner localQaBootstrapRunner(
 			LocalQaBootstrapProperties properties,
-			LocalQaBootstrapService bootstrapService) {
-		return arguments -> bootstrapService.bootstrap(
-				properties.email(),
-				properties.password(),
-				properties.resetSubscriptions());
+			LocalQaBootstrapService bootstrapService,
+			LocalQaMvp2FixtureService mvp2FixtureService) {
+		return arguments -> {
+			bootstrapService.bootstrap(
+					properties.email(),
+					properties.password(),
+					properties.resetSubscriptions());
+			mvp2FixtureService.bootstrap();
+		};
 	}
 }
