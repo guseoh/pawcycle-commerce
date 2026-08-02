@@ -24,6 +24,7 @@ ALTER TABLE subscriptions
 
 CREATE TABLE subscription_plans (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NULL,
     target_pet_type VARCHAR(3) NOT NULL,
     on_sale BOOLEAN NOT NULL,
     sale_starts_on DATE NULL,
