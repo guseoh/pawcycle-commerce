@@ -11,6 +11,8 @@ test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
   assert.equal(sanitizeReturnTo("/products"), "/products");
   assert.equal(sanitizeReturnTo("/products/42"), "/products/42");
   assert.equal(sanitizeReturnTo("/subscriptions/7"), "/subscriptions/7");
+  assert.equal(sanitizeReturnTo("/mvp2/subscriptions/new"), "/mvp2/subscriptions/new");
+  assert.equal(sanitizeReturnTo("/mvp2/subscriptions/7"), "/mvp2/subscriptions/7");
   assert.equal(sanitizeReturnTo("https://evil.example"), "/products");
   assert.equal(sanitizeReturnTo("//evil.example"), "/products");
   assert.equal(sanitizeReturnTo("/login"), "/products");

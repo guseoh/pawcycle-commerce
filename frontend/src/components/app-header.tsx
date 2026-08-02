@@ -50,6 +50,7 @@ export function AppHeader() {
         <nav className="main-nav" aria-label="주요 메뉴">
           <Link href="/products">상품</Link>
           <Link href="/subscriptions">내 구독</Link>
+          <Link href="/mvp2/subscriptions">MVP2 구독</Link>
           {status === "loading" ? (
             <span className="nav-status" role="status">회원 정보 확인 중</span>
           ) : status === "authenticated" ? (

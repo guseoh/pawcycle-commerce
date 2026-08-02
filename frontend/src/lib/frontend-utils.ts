@@ -1,6 +1,6 @@
 export const PRODUCTS_PATH = "/products";
 
-const SAFE_RETURN_PATH = /^(?:\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/[1-9]\d*)?)$/;
+const SAFE_RETURN_PATH = /^(?:\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/[1-9]\d*)?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?)$/;
 const ISO_LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function sanitizeReturnTo(value: string | null | undefined): string {
