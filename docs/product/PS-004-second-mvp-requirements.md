@@ -25,7 +25,7 @@
 ### 포함 범위
 
 - Pet 등록, 본인 Pet 목록·상세 조회, 이름과 종(DOG/CAT), 회원 소유권
-- 신규 구독 대상 Pet 선택
+- 신규 구독 대상 Pet 선택과 Pet이 없는 기존 Subscription의 플랜 변경 시 본인 Pet 선택
 - SubscriptionPlan, PlanVersion, PlanItem으로 표현하는 종별 패키지 플랜
 - Plan의 대상 종, 판매 여부와 판매 기간, PlanVersion의 구성 SKU·수량·허용 배송 주기
 - 현재 판매 중이고 Pet 종에 호환되는 PlanVersion을 선택한 신규 구독 생성
@@ -48,10 +48,12 @@
 | 항목 | Approved Input |
 | --- | --- |
 | Pet | 이름과 DOG/CAT 종을 가지며 회원이 소유한다. 신규 구독에는 Pet 선택이 필수다. |
-| Plan | SubscriptionPlan은 대상 종, 판매 여부·기간을 가진다. 가격·구성 변경은 새 PlanVersion으로만 제공한다. |
-| Plan 구성 | PlanVersion은 구성 SKU·수량과 허용 배송 주기만 제공한다. 사용자는 구성 수량을 임의 변경하지 않는다. |
-| 판매 가능성 | 신규 구독·플랜 변경에는 현재 판매 중이고 Pet 종에 호환되는 PlanVersion만 선택할 수 있다. |
-| 가격 | 금액은 KRW 정수다. 신규 구독과 플랜 변경은 선택 PlanVersion의 가격·구성을 snapshot으로 보존한다. |
+| Plan | SubscriptionPlan은 대상 종, 판매 여부·기간을 가진다. 신규 선택에는 Plan마다 현재 PlanVersion 하나만 제공한다. 가격·구성 변경은 새 PlanVersion으로만 제공하며, 이전 PlanVersion은 신규 구독·플랜 변경 후보가 아니다. |
+| Plan 구성 | PlanVersion은 구성 SKU·수량과 허용 배송 주기만 제공한다. 신규 구독은 허용 배송 주기 중 하나를 선택하고, 사용자는 구성 수량을 임의 변경하지 않는다. |
+| 판매 가능성 | 신규 구독·플랜 변경에는 현재 판매 중이고 Pet 종에 호환되는 현재 PlanVersion만 선택할 수 있다. |
+| 가격과 snapshot | 금액은 KRW 정수다. 신규 구독은 선택 PlanVersion의 가격·구성·배송 주기를 현재 적용 snapshot으로 보존한다. 플랜 변경은 다음 실행 가능한 SCHEDULED 회차에 적용할 pending snapshot으로 보존한다. |
+| 플랜 변경 주기 | 플랜 변경은 현재 구독 배송 주기를 유지한다. 대상 PlanVersion이 그 주기를 허용하지 않으면 변경을 거부하며, 플랜 변경으로 배송 주기를 다시 계산하거나 바꾸지 않는다. |
+| 기존 구독 가격 | 기존 Subscription의 legacy 초기 가격 snapshot은 migration 시점의 현재 SKU 가격을 사용하고, 기존 수량·배송 주기는 보존한다. 이는 구독 생성 당시 가격이 아니며 이후 가격 변경으로 자동 변경되지 않는다. |
 | 기존 구독 | 판매가 종료돼도 기존 구독을 자동 해지하거나 다른 플랜으로 전환하지 않는다. |
 | 날짜·주기 | Asia/Seoul 날짜 단위와 2·4·8주 배송 주기를 유지하며, 휴일·영업일 보정은 하지 않는다. |
 | 구독 상태 | ACTIVE, PAUSED, CANCELED만 사용한다. CANCELED는 복원하지 않고 재이용은 새 구독 생성이다. |
@@ -67,36 +69,44 @@
 
 | 현재 상태 | 허용 명령 | 결과 |
 | --- | --- | --- |
-| ACTIVE | 플랜 변경 | 현재 판매 중이며 Pet 종에 호환되는 PlanVersion을 선택하고, 다음 예정 회차부터 적용한다. |
-| ACTIVE | 건너뛰기 | 현재 회차를 SKIPPED로 바꾸고, 주기만큼 뒤의 다음 SCHEDULED 회차를 만든다. |
-| ACTIVE | 일시정지 | 즉시 PAUSED가 되며 예정 회차는 HELD가 되고 새 회차 생성을 중단한다. |
-| ACTIVE | 해지 | 즉시 CANCELED가 되며 미래 회차를 취소하고 과거 이력은 유지한다. |
-| PAUSED | 재개 | 재개일과 현재 주기로 새 예정일을 계산하고 HELD 회차를 SCHEDULED로 전환한다. |
-| PAUSED | 해지 | 즉시 CANCELED가 되며 미래 회차를 취소하고 과거 이력은 유지한다. |
-| CANCELED | 없음 | 재개·복원하지 않는다. 재이용은 새 구독 생성으로만 한다. |
+| ACTIVE | 플랜 변경 | 현재 판매 중이며 Pet 종에 호환되고 현재 배송 주기를 허용하는 현재 PlanVersion을 선택한다. 현재 적용 snapshot은 유지하고 다음 실행 가능한 SCHEDULED 회차에 적용할 pending snapshot을 보존한다. |
+| ACTIVE | 건너뛰기 | 현재 회차를 SKIPPED로 바꾸고, 주기만큼 뒤에 새 SCHEDULED 회차를 만든다. pending 변경이 있으면 그 새 회차로 적용 대상을 이동한다. |
+| ACTIVE | 일시정지 | 즉시 PAUSED가 되며 예정 회차는 HELD가 되고 새 회차 생성을 중단한다. pending 변경은 유지한다. |
+| ACTIVE | 해지 | 즉시 CANCELED가 되며 미래 회차를 취소하고 과거 이력은 유지한다. pending 변경은 적용하지 않고 취소 결과와 명령 이력만 보존한다. |
+| PAUSED | 재개 | 재개일과 현재 주기로 새 예정일을 계산하고 HELD 회차를 SCHEDULED로 전환한다. pending 변경이 있으면 이 새 SCHEDULED 회차에 적용한다. |
+| PAUSED | 해지 | 즉시 CANCELED가 되며 미래 회차를 취소하고 과거 이력은 유지한다. pending 변경은 적용하지 않는다. |
+| CANCELED | 없음 | 재개·복원하거나 pending 변경을 적용하지 않는다. 재이용은 새 구독 생성으로만 한다. |
 
 플랜 변경은 ACTIVE에서만 가능하다. ACTIVE에서 PAUSED 또는 CANCELED로, PAUSED에서 ACTIVE 또는 CANCELED로만 전이한다.
 
 ### Schedule
 
 - Schedule 상태는 SCHEDULED, SKIPPED, HELD, CANCELED다.
-- 다음 예정일은 사용자에게 보여 주는 구독 관리 정보이며, 이번 범위에서 실제 주문·결제·재고·배송 또는 Batch를 만들지 않는다.
-- 건너뛰기·일시정지·재개·해지는 위 상태와 회차 이력을 일관되게 남긴다.
+- `실행 가능한 미래 Schedule`은 Asia/Seoul 기준일 당일 또는 이후의 SCHEDULED 회차 중 가장 가까운 회차다.
+- ACTIVE Subscription에는 실행 가능한 미래 SCHEDULED 회차가 정확히 하나 있다. PAUSED Subscription에는 실행 가능한 미래 SCHEDULED 회차가 없고 재개 대상 HELD 회차가 하나 있다. CANCELED Subscription에는 실행 가능한 미래 Schedule이 없다.
+- 다음 예정일은 ACTIVE의 실행 가능한 미래 SCHEDULED 회차만 뜻한다. PAUSED·CANCELED에는 다음 예정일이 없으며, HELD·CANCELED 또는 과거 회차는 이력으로만 구분한다.
+- ACTIVE의 현재 SCHEDULED 회차가 과거가 되면, 실제 주문·결제·재고·배송 또는 Batch를 만들지 않고도 현재 배송 주기로 다음 실행 가능한 SCHEDULED 회차를 이어서 유지한다. 과거 SCHEDULED 회차는 계획 이력으로 남긴다.
+- 플랜 변경은 다음 예정일을 즉시 다시 계산하지 않는다. pending snapshot이 적용된 회차 이후의 다음 예정일 계산에도 유지된 현재 배송 주기를 사용한다.
+- 건너뛰기·일시정지·재개·해지는 위 상태, 회차 이력, pending 변경 적용 대상을 일관되게 남긴다.
 
 ### 명령 안전성
 
-- 명령은 Idempotency-Key, 회원, Subscription ID, 명령 유형으로 식별한다.
-- 같은 식별과 같은 Payload는 같은 결과를 반환한다.
-- 같은 Key에 다른 Payload를 사용하면 충돌이다.
+- 기존 Subscription 관리 명령은 `Member + Subscription ID + 명령 유형 + Idempotency-Key` 조합으로 식별한다.
+- 같은 조합과 같은 Payload는 같은 결과를 반환하고, 같은 조합과 다른 Payload는 충돌이다.
+- 다른 Subscription 또는 다른 명령 유형에서 같은 Key를 사용해도 전역 충돌로 해석하지 않는다.
+- 신규 구독 생성은 Subscription ID가 없으므로 `Member + CREATE_SUBSCRIPTION + Idempotency-Key` 조합으로 별도 식별한다. 같은 조합과 같은 Payload는 같은 생성 결과, 다른 Payload는 충돌이다.
 - Subscription version이 맞지 않으면 동시 수정 충돌로 처리한다.
 
 ### 기존 데이터 결과 정책
 
 - 기존 Subscription을 삭제하거나 초기화하지 않는다.
 - 구독 가능 SKU를 기준으로 기본 Plan, 최초 PlanVersion, PlanItem 구성을 연결한다.
-- 기존 Subscription에는 연결된 PlanVersion과 당시 가격·수량·배송 주기 snapshot을 남긴다.
+- 기존 Subscription에는 연결된 PlanVersion, 기존 수량·배송 주기와 migration 시점의 현재 SKU 가격으로 만든 `legacy 초기 가격 snapshot`을 남긴다. 이 값은 구독 생성 당시 가격이 아니다.
+- 이후 가격·구성 변경은 legacy 초기 가격 snapshot을 자동 변경하지 않는다.
 - 기존 데이터에 한해서는 `pet_id`가 일시적으로 nullable일 수 있다.
-- 기존 구독은 조회와 상태 명령을 사용할 수 있다. 플랜 변경 전에 Pet 선택이 필요하다.
+- 기존 Subscription은 초기 상태를 ACTIVE로 두고 기존 `next_order_date`를 첫 실행 가능한 SCHEDULED 회차로 옮긴다. 해당 날짜가 migration 기준일보다 과거면 기존 배송 주기를 반복해 기준일 당일 또는 이후가 되는 첫 날짜로 보정한다.
+- 이행 직후 기존 Subscription마다 실행 가능한 미래 Schedule은 하나만 둔다.
+- 기존 구독은 조회와 상태 명령을 사용할 수 있다. Pet이 없는 기존 구독은 플랜 변경 입력에서 본인 Pet을 선택해 연결한 뒤에만 변경할 수 있다.
 - 새 구독에는 Pet이 필수다.
 
 실제 컬럼·FK·데이터 이행 순서와 rollback은 후속 Backend 설계의 책임이다.
@@ -108,7 +118,8 @@
 ```text
 로그인한 보호자
 → Pet 등록 또는 본인 Pet 선택
-→ Pet 종에 호환되고 현재 판매 중인 PlanVersion 선택
+→ Pet 종에 호환되고 현재 판매 중인 현재 PlanVersion 선택
+→ PlanVersion이 허용한 배송 주기 중 하나 선택
 → 새 구독 생성
 → 다음 예정일과 가격·구성 snapshot 확인
 → 필요 시 허용 상태의 플랜 변경·건너뛰기·일시정지·재개·해지 수행
@@ -118,10 +129,11 @@
 ### 예외 흐름
 
 - 타인의 Pet 또는 Subscription을 조회하거나 명령하려 하면 해당 자원을 노출하지 않는다.
-- 신규 구독 또는 플랜 변경에서 판매 종료, 판매 기간 밖, Pet 종 비호환 PlanVersion은 선택할 수 없다.
+- 신규 구독 또는 플랜 변경에서 판매 종료, 판매 기간 밖, 이전 PlanVersion, Pet 종 비호환 PlanVersion은 선택할 수 없다.
+- 플랜 변경 대상 PlanVersion이 현재 구독 배송 주기를 허용하지 않으면 변경할 수 없다.
 - ACTIVE가 아닌 구독의 플랜 변경·건너뛰기는 수행하지 않는다.
 - CANCELED 구독은 재개하지 않으며 새 구독을 만든다.
-- 같은 Idempotency-Key에 다른 Payload를 보내면 충돌로 처리한다.
+- 같은 명령 식별 조합에서 다른 Payload를 보내면 충돌로 처리한다.
 - Subscription version 불일치 명령은 이전 결과를 덮어쓰지 않는다.
 
 ## 기능 요구사항과 인수 조건
@@ -138,53 +150,66 @@
 
 보호자는 신규 구독 또는 허용된 플랜 변경에서 Pet 종에 호환되고 현재 판매 중인 PlanVersion만 선택할 수 있다.
 
-- AC-PLAN-001-01: 선택 가능한 PlanVersion에는 대상 종, 구성 SKU·수량, 허용 배송 주기와 가격이 확인 가능하다.
-- AC-PLAN-001-02: 판매 종료·판매 기간 밖·판매 중지 또는 Pet 종 비호환 PlanVersion은 신규 선택에서 제외된다.
-- AC-PLAN-001-03: 가격·구성이 달라진 Plan은 기존 PlanVersion을 고치지 않고 새 PlanVersion으로 제공된다.
+- AC-PLAN-001-01: 선택 가능한 현재 PlanVersion에는 대상 종, 구성 SKU·수량, 허용 배송 주기와 가격이 확인 가능하다.
+- AC-PLAN-001-02: 판매 종료·판매 기간 밖·판매 중지·이전 PlanVersion 또는 Pet 종 비호환 PlanVersion은 신규 선택에서 제외된다.
+- AC-PLAN-001-03: 가격·구성이 달라진 Plan은 기존 PlanVersion을 고치지 않고 새 PlanVersion으로 제공하며, 이전 PlanVersion은 신규 선택 후보가 아니다.
 
 ### REQ-SUB-005 Pet 기반 신규 구독과 snapshot
 
-로그인한 회원은 자신의 Pet과 호환 PlanVersion을 선택해 새 구독을 만들고, 다음 예정일 및 선택 당시의 가격·구성 snapshot을 확인한다.
+로그인한 회원은 자신의 Pet, 호환 PlanVersion과 그 PlanVersion이 허용한 배송 주기 하나를 선택해 새 구독을 만들고, 다음 예정일 및 선택 당시의 가격·구성 snapshot을 확인한다.
 
-- AC-SUB-005-01: 신규 구독은 본인 Pet과 현재 판매 중인 호환 PlanVersion 없이는 만들어지지 않는다.
+- AC-SUB-005-01: 신규 구독은 본인 Pet, 현재 판매 중인 호환 PlanVersion 및 그 PlanVersion이 허용한 배송 주기 없이는 만들어지지 않는다.
 - AC-SUB-005-02: 신규 구독은 KRW 정수 가격, 구성 SKU·수량, 배송 주기 snapshot과 다음 예정일을 보존한다.
 - AC-SUB-005-03: 이후 Plan 가격·구성이 바뀌어도 기존 구독의 snapshot은 자동 변경되지 않는다.
 
 ### REQ-SUB-006 본인 구독 조회와 상태·명령 이력
 
-회원은 자신의 구독 목록·상세에서 현재 상태, 다음 예정일, 가격·구성 snapshot, 상태·명령 이력을 확인한다.
+회원은 자신의 구독 목록·상세에서 현재 상태, 상태에 맞는 다음 예정일 또는 회차 이력, 현재 적용·pending 가격·구성 snapshot, 상태·명령 이력을 확인한다.
 
 - AC-SUB-006-01: 회원은 자신의 구독만 목록과 상세에서 확인한다.
-- AC-SUB-006-02: 구독 상세에는 다음 예정일과 현재 적용 snapshot이 포함된다.
-- AC-SUB-006-03: 상태와 명령 이력은 과거 회차·해지 이력을 지우지 않고 확인 가능하다.
+- AC-SUB-006-02: ACTIVE 구독 상세에는 실행 가능한 미래 SCHEDULED 회차의 다음 예정일과 현재 적용 snapshot이 포함된다. PAUSED·CANCELED에는 다음 예정일을 유효한 예정일로 표시하지 않는다.
+- AC-SUB-006-03: 플랜 변경 직후에는 현재 적용 snapshot과 다음 회차용 pending snapshot을 구분한다. pending snapshot은 적용 회차가 될 때 현재 적용 snapshot으로 전환된다.
+- AC-SUB-006-04: 상태와 명령 이력은 과거 회차·해지 이력을 지우지 않고 확인 가능하다.
 
 ### REQ-SUB-007 구독 관리 명령
 
 회원은 자신의 구독 상태에 맞게 플랜 변경·건너뛰기·일시정지·재개·해지를 수행한다.
 
-- AC-SUB-007-01: ACTIVE 구독의 플랜 변경은 다음 예정 회차부터 적용되고 새 PlanVersion 가격·구성 snapshot을 보존한다.
-- AC-SUB-007-02: ACTIVE 구독 건너뛰기는 현재 회차를 SKIPPED로 바꾸고 주기 뒤 SCHEDULED 회차를 만든다.
-- AC-SUB-007-03: 일시정지는 즉시 PAUSED, 예정 회차 HELD, 새 회차 생성 중단을 보장한다.
-- AC-SUB-007-04: 재개는 PAUSED에서만 가능하고 재개일과 현재 주기로 새 예정일을 계산해 HELD 회차를 SCHEDULED로 바꾼다.
-- AC-SUB-007-05: ACTIVE 또는 PAUSED의 해지는 즉시 CANCELED가 되며 미래 회차만 취소하고 과거 이력을 유지한다.
-- AC-SUB-007-06: CANCELED 구독은 재개하지 않으며 재이용은 새 구독 생성이다.
+- AC-SUB-007-01: ACTIVE 구독의 플랜 변경은 현재 구독 배송 주기를 유지하고, 대상 PlanVersion이 그 주기를 허용할 때만 다음 실행 가능한 SCHEDULED 회차용 pending snapshot을 보존한다. 현재 적용 snapshot과 다음 예정일은 즉시 바꾸지 않는다.
+- AC-SUB-007-02: ACTIVE 구독 건너뛰기는 현재 회차를 SKIPPED로 바꾸고 주기 뒤 SCHEDULED 회차를 만든다. pending 변경이 있으면 새 회차로 적용 대상을 옮긴다.
+- AC-SUB-007-03: 일시정지는 즉시 PAUSED, 예정 회차 HELD, 새 회차 생성 중단을 보장하며 pending 변경은 유지한다.
+- AC-SUB-007-04: 재개는 PAUSED에서만 가능하고 재개일과 현재 주기로 새 예정일을 계산해 HELD 회차를 SCHEDULED로 바꾼다. pending 변경이 있으면 이 회차에 적용한다.
+- AC-SUB-007-05: ACTIVE 또는 PAUSED의 해지는 즉시 CANCELED가 되며 미래 회차만 취소하고 과거 이력을 유지한다. pending 변경은 적용하지 않는다.
+- AC-SUB-007-06: CANCELED 구독은 재개하거나 pending 변경을 적용하지 않으며, 재이용은 새 구독 생성이다.
+- AC-SUB-007-07: 플랜 변경 자체는 다음 예정일을 다시 계산하지 않으며, pending snapshot 적용 회차 이후에도 유지된 현재 배송 주기로 다음 예정일을 계산한다.
 
 ### REQ-SUB-008 명령 재시도와 동시 수정 보호
 
 회원의 구독 명령은 재시도와 동시 수정에서 이전 결과를 중복 적용하거나 덮어쓰지 않는다.
 
-- AC-SUB-008-01: 같은 Idempotency-Key, 회원, Subscription ID, 명령 유형, Payload의 재시도는 최초 결과와 같다.
-- AC-SUB-008-02: 같은 Key와 다른 Payload는 충돌로 처리한다.
+- AC-SUB-008-01: 같은 `Member + Subscription ID + 명령 유형 + Idempotency-Key`와 같은 Payload의 관리 명령 재시도는 최초 결과와 같다.
+- AC-SUB-008-02: 같은 관리 명령 식별 조합과 다른 Payload는 충돌로 처리한다. 다른 Subscription 또는 다른 명령 유형의 같은 Key는 전역 충돌이 아니다.
 - AC-SUB-008-03: Subscription version 불일치 명령은 동시 수정 충돌로 처리한다.
+- AC-SUB-008-04: 신규 구독 생성은 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`와 같은 Payload의 재시도에 같은 생성 결과를, 다른 Payload에 충돌을 반환한다.
 
 ### REQ-SUB-009 기존 Subscription 보존
 
 기존 Subscription은 삭제·초기화하지 않고 2차 MVP의 PlanVersion 및 snapshot 정보와 연결한다.
 
 - AC-SUB-009-01: 기존 Subscription은 조회와 허용 상태 명령을 계속 사용할 수 있다.
-- AC-SUB-009-02: 기존 Subscription은 PlanVersion, 당시 가격·수량·배송 주기 snapshot을 가진다.
-- AC-SUB-009-03: Pet이 없는 기존 Subscription은 플랜 변경 전에 Pet을 선택해야 한다.
-- AC-SUB-009-04: 신규 구독에는 Pet이 필수이며, 기존 데이터에 한해서만 `pet_id`의 일시적 nullable을 허용한다.
+- AC-SUB-009-02: 기존 Subscription의 `legacy 초기 가격 snapshot`은 migration 시점 현재 SKU 가격과 기존 수량·배송 주기를 보존한다. 이는 구독 생성 당시 가격이 아니며 이후 가격 변경으로 자동 변경되지 않는다.
+- AC-SUB-009-03: 기존 Subscription은 이행 직후 ACTIVE이고 기존 `next_order_date`를 기준일 당일 또는 이후의 첫 실행 가능한 SCHEDULED 회차로 가진다. 과거 날짜는 기존 배송 주기를 반복해 보정한다.
+- AC-SUB-009-04: Pet이 없는 기존 Subscription은 플랜 변경 입력에서 본인 Pet을 선택해 연결한 뒤에만 플랜을 변경할 수 있다.
+- AC-SUB-009-05: 신규 구독에는 Pet이 필수이며, 기존 데이터에 한해서만 `pet_id`의 일시적 nullable을 허용한다.
+
+### REQ-SUB-010 실행 가능한 미래 Schedule 일관성
+
+각 Subscription은 상태와 무관하게 여러 이력을 보존하되, 다음 예정일의 의미는 실행 가능한 미래 Schedule 하나로만 판단한다.
+
+- AC-SUB-010-01: ACTIVE Subscription은 실행 가능한 미래 SCHEDULED 회차를 정확히 하나 가진다.
+- AC-SUB-010-02: PAUSED Subscription은 실행 가능한 미래 SCHEDULED 회차가 없고 HELD 회차를 하나 가진다.
+- AC-SUB-010-03: CANCELED Subscription은 실행 가능한 미래 Schedule이 없다. SKIPPED·CANCELED·과거 SCHEDULED 회차는 여러 이력으로 남을 수 있다.
+- AC-SUB-010-04: ACTIVE의 현재 SCHEDULED 회차가 과거가 되면 현재 배송 주기로 다음 실행 가능한 SCHEDULED 회차를 이어서 유지하며, 실제 주문·결제·재고·배송 또는 Batch는 만들지 않는다.
 
 ## 요구사항 추적성
 
@@ -192,7 +217,7 @@
 | --- | --- | --- |
 | REQ-PET-001 | Pet 소유권과 신규 구독 대상 조건 | [DOMAIN-002](../domain/DOMAIN-002-second-mvp-subscription-domain.md) |
 | REQ-PLAN-001 | SubscriptionPlan, PlanVersion, PlanItem과 판매·종 호환성 | [DOMAIN-002](../domain/DOMAIN-002-second-mvp-subscription-domain.md) |
-| REQ-SUB-005~009 | Subscription 상태·Schedule·snapshot·명령·기존 데이터 불변 조건 | [DOMAIN-002](../domain/DOMAIN-002-second-mvp-subscription-domain.md) |
+| REQ-SUB-005~010 | Subscription 상태·Schedule·현재·pending snapshot·명령·기존 데이터 불변 조건 | [DOMAIN-002](../domain/DOMAIN-002-second-mvp-subscription-domain.md) |
 
 ## Deferred Technical Decision
 
