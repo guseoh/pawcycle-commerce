@@ -20,12 +20,12 @@ Proposed
 
 다음 구현 경계를 Proposed로 채택한다.
 
-1. Subscription을 상태, optimistic version, current snapshot, 최대 하나 pending, Schedule, command history와 idempotency result의 일관성 aggregate로 둔다. Pet과 Plan은 생성·변경 시 읽어 검증하지만 Subscription child를 직접 수정하지 않는다.
-2. 관리 명령은 `If-Match` header의 Subscription version을 사용한다. 성공 replay는 version 검사보다 먼저 처리하며, 새 요청만 conditional update로 충돌을 판정한다.
-3. idempotency unique scope는 관리 명령에서 Member + Subscription + command type + key, 생성에서 Member + CREATE_SUBSCRIPTION + key다. 같은 scope·같은 canonical payload는 최초 성공을 replay하고 다른 payload는 충돌이다.
-4. 한 transaction에서 command 상태 전이, snapshot/pending 변경, Schedule cardinality, version 증가, command history와 성공 replay 기록을 완료한다. DB unique 제약은 pending·scope·필수 참조를 보조하고, 비관적 lock·Redis·message broker는 추가하지 않는다.
-5. Schedule reconciliation은 조회가 아니라 write command와 미래 scheduler가 공유할 application service 책임이다. 실제 scheduler와 주문 생성은 구현 후속 범위다.
-6. legacy migration은 preflight를 먼저 수행하고 변환 불가 row가 하나라도 있으면 write를 시작하지 않는 all-or-nothing 경계로 둔다. 자동 down migration은 rollback 전략이 아니다.
+1. Subscription을 상태, optimistic version, `current_snapshot_id`, 최대 하나 pending, Schedule, command history와 idempotency result의 일관성 aggregate로 둔다. snapshot item은 관계형 child로 저장하고 Schedule은 `effective_snapshot_id`로 적용 snapshot을 보존한다.
+2. 관리 명령은 `If-Match` header의 Subscription version을 사용한다. 누락은 428, 형식 오류는 400, 신규 version 불일치는 412로 구분하며 상세·생성·명령 성공에는 `ETag`를 제공한다.
+3. 생성과 관리 idempotency result는 nullable scope unique에 의존하지 않는 별도 table로 둔다. 같은 scope·같은 canonical payload의 성공 replay는 저장한 business status·body·`Location`·`ETag`를 그대로 반환하고 replay header만 추가한다. 실패는 저장하지 않고 성공은 자동 만료하지 않는다.
+4. 한 transaction에서 command 상태 전이, snapshot/pending 변경, Schedule cardinality, version 증가, command history와 성공 replay 기록을 완료한다. optimistic update 0건 뒤에는 scope를 재조회해 replay·payload 충돌을 먼저 판정한다. DB unique 제약은 pending·scope·필수 참조를 보조하고, 비관적 lock·Redis·message broker는 추가하지 않는다.
+5. Schedule reconciliation은 조회가 아니라 write command와 scheduler trigger가 공유할 application service 책임이다. scheduler trigger는 command 없는 ACTIVE Subscription의 cardinality를 위해 2차 MVP 구현 전에 제공해야 하며, overdue target Schedule에서 pending 승격 후 다음 미래 Schedule을 만든다.
+6. legacy migration은 source write freeze 뒤 같은 snapshot의 preflight, 전용 DML transaction, post-validation, 별도 constraint hardening 순서로 둔다. DML 실패는 전체 rollback하지만 DDL auto-commit·hardening 실패가 자동 전체 rollback을 뜻하지 않는다. 자동 down migration은 rollback 전략이 아니다.
 
 구체적인 endpoint·오류는 [API-004](../api/API-004-second-mvp-api-contract.md), 물리 구조·제약·migration 단계는 [DATA-003](../data/DATA-003-second-mvp-subscription-data-design.md)에 제안한다.
 
@@ -53,11 +53,11 @@ Proposed
 
 ## 결과와 영향(Consequences)
 
-- Backend는 Subscription application service 하나의 transaction 경계에서 version·pending·Schedule·history·idempotency를 함께 테스트해야 한다.
+- Backend는 Subscription application service 하나의 transaction 경계에서 version·pending·Schedule·history·idempotency를 함께 테스트하고, concurrent create-key 경합과 optimistic 패자 재조회도 검증해야 한다.
 - Frontend는 명령마다 `Idempotency-Key`와 현재 `version`을 `If-Match`에 전송하고, replay와 version mismatch를 구분해 처리해야 한다.
-- DB는 idempotency scope, pending 최대 하나, Schedule 조회와 legacy 참조를 지원하는 제약을 제공해야 한다. 실제 index 표현은 MySQL·Flyway 검증 후 확정한다.
+- DB는 분리된 idempotency scope, pending 최대 하나, immutable PlanVersion의 current pointer, Schedule-effective snapshot, legacy API visibility와 source write freeze를 지원하는 제약을 제공해야 한다. 실제 index 표현은 MySQL·Flyway 검증 후 확정한다.
 - `LegacyInitialSnapshot`과 `PendingPlanChange`는 결과 불변 조건이며, 별도 Entity/table 강제가 아니다.
-- 자동 scheduler, replay 보존 기간, 실패 결과 저장, 여러 누락 회차 처리, 주문·결제·배송 생성은 여전히 후속 기술·운영 결정이다.
+- scheduler trigger의 배포·운영 cadence, 여러 누락 회차 처리, 주문·결제·배송 생성은 여전히 후속 기술·운영 결정이다.
 
 ## 실패와 복구 경계
 
@@ -67,5 +67,5 @@ Proposed
 
 1. API-004 승인 후 controller/DTO·session/CSRF·소유권·오류 매핑을 구현한다.
 2. DATA-003을 기준으로 additive Flyway와 legacy preflight·migration을 별도 고위험 구현 작업으로 설계·검증한다.
-3. MySQL integration test에서 optimistic conflict, idempotency race, pending 교체, 상태별 Schedule cardinality와 legacy migration 실패 원자성을 검증한다.
+3. MySQL integration test에서 optimistic conflict 뒤 replay 재조회, 생성 idempotency race, pending target overdue 승격, 상태별 Schedule cardinality, UTC 저장·Asia/Seoul 표현, source write freeze와 legacy migration DML 실패 원자성을 검증한다.
 4. scheduler와 실제 order/payment/delivery는 별도 승인된 요구사항과 운영 설계가 생긴 뒤 구현한다.

@@ -22,7 +22,7 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 - 모든 endpoint는 기존 session 인증과 CSRF 계약을 사용한다. client가 member ID를 전달하지 않으며 서버 principal의 `memberId`가 소유권 기준이다.
 - Pet과 Subscription의 타인 소유·부재·형식이 맞지 않는 식별자는 모두 해당 자원의 `404` 오류로 처리하여 존재를 노출하지 않는다.
 - JPA Entity, 내부 ID 관계, SQL 오류, replay 원 요청 body와 payload fingerprint는 응답에 노출하지 않는다.
-- 날짜는 `YYYY-MM-DD`이며 Asia/Seoul 날짜 단위다. 금액은 KRW 정수 JSON number이고 패키지 전체 가격이다.
+- 날짜는 `YYYY-MM-DD`이며 Asia/Seoul 날짜 단위다. command 발생 시각은 DB의 UTC instant를 Asia/Seoul offset으로 변환한 ISO-8601 `YYYY-MM-DDTHH:mm:ss[.SSS]+09:00`으로 반환한다. 금액은 KRW 정수 JSON number이고 패키지 전체 가격이며 JavaScript 안전 정수 상한 `9,007,199,254,740,991` 이하여야 한다.
 - 성공 응답은 아래 DTO 구조를 사용한다. 페이지 목록은 `page`, `size`, `totalElements`, `items`를 포함하며 `page`는 0부터, 기본 `size`는 20, 최대 100이다.
 
 기존 공통 오류 shape를 유지한다.
@@ -48,24 +48,25 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 | 409 | `DELIVERY_CYCLE_NOT_ALLOWED` | PlanVersion이 현재 또는 요청 배송 주기를 허용하지 않음 |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 같은 멱등 범위에서 다른 payload를 사용 |
 | 409 | `SUBSCRIPTION_COMMAND_NOT_ALLOWED` | 현재 상태에서 허용되지 않는 명령 |
-| 409 | `SUBSCRIPTION_VERSION_MISMATCH` | 신규 관리 명령의 version precondition 불일치 |
-| 412 | `IF_MATCH_REQUIRED` | 관리 명령에 `If-Match`가 없음 또는 형식이 맞지 않음 |
+| 400 | `IF_MATCH_INVALID` | `If-Match`가 quoted non-negative integer 형식이 아님 |
+| 412 | `SUBSCRIPTION_VERSION_MISMATCH` | 신규 관리 명령의 version precondition 불일치 |
+| 428 | `IF_MATCH_REQUIRED` | 관리 명령에 `If-Match`가 없음 |
 
 ### 1.3 멱등성과 동시성 header
 
 신규 구독과 모든 관리 명령에는 `Idempotency-Key` header가 필수다. 허용 문자는 ASCII 영문·숫자·`-._`이며 길이는 1~128이다. body 값으로 받지 않는다.
 
-관리 명령은 `If-Match: "<non-negative integer>"`를 필수로 사용한다. 이 문서는 request body version 대신 HTTP precondition header를 **Proposed**로 선택한다. body가 비즈니스 입력만 유지되고, HTTP의 조건부 갱신 의미를 명확히 하며, 동일 command DTO가 version field를 중복하지 않기 때문이다. 응답 `version`은 다음 신규 명령에 쓸 값을 제공한다.
+관리 명령은 `If-Match: "<non-negative integer>"`를 필수로 사용한다. 이 문서는 request body version 대신 HTTP precondition header를 **Proposed**로 선택한다. body가 비즈니스 입력만 유지되고, HTTP의 조건부 갱신 의미를 명확히 하며, 동일 command DTO가 version field를 중복하지 않기 때문이다. Subscription 상세, 생성 성공과 관리 명령 성공은 body의 `version`과 같은 `ETag: "<version>"` header를 제공한다.
 
 판정 순서는 고정한다.
 
 1. principal과 command scope로 기존 성공 replay를 찾는다.
-2. 같은 scope·같은 canonical payload면 최초 성공 응답을 `replayed: true`로 반환한다. 이때 현재 version은 검사하지 않는다.
+2. 같은 scope·같은 canonical payload면 최초 성공의 business status, body, `Location`, `ETag`를 그대로 반환하고 `Idempotency-Replayed: true` header만 추가한다. 이때 현재 version은 검사하지 않는다.
 3. 같은 scope·다른 payload면 `409 IDEMPOTENCY_KEY_REUSED`를 반환한다.
 4. replay가 없을 때만 `If-Match`와 Subscription version을 검사한다.
 5. version이 맞으면 상태·선행 조건을 검사하고 한 transaction에서 명령 결과와 성공 replay를 저장한다.
 
-관리 scope는 `Member + Subscription ID + command type + Idempotency-Key`이고, 생성 scope는 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`다. 동일 문자열 key는 다른 Subscription 또는 다른 command type에서 재사용할 수 있다. fingerprint에는 endpoint가 정의한 body와 관련 request 식별자를 canonical JSON으로 포함하며, member ID는 server context에서만 포함한다. 성공 결과만 보존한다. 실패 결과 저장과 성공 보존 기간은 구현 전 별도 운영 결정이다.
+관리 scope는 `Member + Subscription ID + command type + Idempotency-Key`이고, 생성 scope는 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`다. 동일 문자열 key는 다른 Subscription 또는 다른 command type에서 재사용할 수 있다. fingerprint에는 endpoint가 정의한 body와 관련 request 식별자를 canonical JSON으로 포함하며, member ID는 server context에서만 포함한다. 실패 결과는 저장하지 않고, 성공 결과와 필요한 business response·`Location`·`ETag`는 자동 만료하지 않는다. 수명 정책이 승인되기 전까지 이 보존 규칙을 유지한다.
 
 ## 2. Pet 계약
 
@@ -88,9 +89,9 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 | 목적 | Method / path | 성공 |
 | --- | --- | --- |
 | Pet 호환 판매 Plan 목록 | `GET /api/v2/subscription-plans?petId={petId}&page=&size=` | `200 OK` |
-| 선택 전 PlanVersion 상세 | `GET /api/v2/subscription-plans/{planVersionId}?petId={petId}` | `200 OK` |
+| 선택 전 PlanVersion 상세 | `GET /api/v2/subscription-plan-versions/{planVersionId}?petId={petId}` | `200 OK` |
 
-`petId`는 필수이며 본인 Pet이어야 한다. 목록과 상세 모두 Asia/Seoul 요청일에 판매 상태 활성, 판매 기간의 시작·종료일 포함, Pet 종 호환, 현재 PlanVersion인 항목만 반환한다. 이전 PlanVersion과 migration-only PlanVersion은 조회 후보에서 제외한다.
+`petId`는 필수이며 본인 Pet이어야 한다. 목록과 상세 모두 Asia/Seoul 요청일에 판매 상태 활성, 판매 기간의 시작·종료일 포함, Pet 종 호환, Plan의 `current_plan_version_id`가 가리키는 PlanVersion만 반환한다. 이전 PlanVersion과 migration-only PlanVersion은 조회 후보에서 제외한다. 목록은 `planId ASC, planVersionId ASC`로 고정 정렬한다.
 
 Plan DTO는 다음과 같다.
 
@@ -123,7 +124,7 @@ SKU의 현재 단가, 이전 version 식별자, 내부 판매 판단 사유는 �
 }
 ```
 
-Pet 소유권, 현재 판매 가능성, 종 호환, 요청 주기 허용을 모두 통과해야 한다. 성공 시 ACTIVE Subscription, 현재 적용 snapshot, 정확히 하나의 실행 가능한 미래 SCHEDULED Schedule, version 0을 만든다. `Location`은 `/api/v2/subscriptions/{subscriptionId}`다.
+Pet 소유권, 현재 판매 가능성, 종 호환, 요청 주기 허용을 모두 통과해야 한다. 성공 시 ACTIVE Subscription, 현재 적용 snapshot, 정확히 하나의 실행 가능한 미래 SCHEDULED Schedule, version 0을 만든다. 첫 `scheduledDate`는 Asia/Seoul 요청일에 선택한 `deliveryCycleWeeks`를 더한 날짜이며, 기존 1차 MVP의 다음 예정일 계산을 유지한다. `Location`은 `/api/v2/subscriptions/{subscriptionId}`다.
 
 ### 4.2 목록과 상세
 
@@ -132,7 +133,7 @@ Pet 소유권, 현재 판매 가능성, 종 호환, 요청 주기 허용을 모�
 | 본인 목록 | `GET /api/v2/subscriptions?page=&size=` | `200 OK` |
 | 본인 상세 | `GET /api/v2/subscriptions/{subscriptionId}` | `200 OK` |
 
-목록은 `subscriptionId DESC`로 정렬한다. 상세는 현재 snapshot, optional pending snapshot, Schedule 이력, 노출 가능한 command 이력까지 포함한다. Schedule 이력은 `scheduledDate DESC, scheduleId DESC` 기본 20개·최대 100개이며, command 이력은 `occurredAt DESC, commandHistoryId DESC` 기본 20개·최대 100개다. 별도 page parameter는 `schedulePage`, `scheduleSize`, `commandPage`, `commandSize`다.
+목록은 `subscriptionId DESC`로 정렬한다. 상세는 현재 snapshot, optional pending snapshot, Schedule 이력, 노출 가능한 command 이력까지 포함한다. Schedule 이력은 `scheduledDate DESC, scheduleId DESC`, command 이력은 `occurredAt DESC, commandHistoryId DESC`로 정렬한다. 각 이력은 독립적으로 기본 20개·최대 100개이며, `schedulePage`, `scheduleSize`, `commandPage`, `commandSize`를 받는다. `schedules`와 `commandHistory`는 각각 `{ "page", "size", "totalElements", "items" }` 페이지 객체다.
 
 ```json
 {
@@ -148,8 +149,8 @@ Pet 소유권, 현재 판매 가능성, 종 호환, 요청 주기 허용을 모�
   },
   "pendingSnapshot": null,
   "nextScheduledDate": "2026-09-01",
-  "schedules": [{ "scheduleId": 701, "scheduledDate": "2026-09-01", "status": "SCHEDULED" }],
-  "commandHistory": [{ "commandType": "CHANGE_PLAN", "result": "SUCCEEDED", "occurredAt": "2026-08-04T10:30:00+09:00" }]
+  "schedules": { "page": 0, "size": 20, "totalElements": 1, "items": [{ "scheduleId": 701, "scheduledDate": "2026-09-01", "status": "SCHEDULED", "effectiveSnapshotId": 901 }] },
+  "commandHistory": { "page": 0, "size": 20, "totalElements": 1, "items": [{ "commandType": "CHANGE_PLAN", "result": "SUCCEEDED", "occurredAt": "2026-08-04T10:30:00+09:00" }] }
 }
 ```
 
@@ -157,7 +158,7 @@ legacy Subscription의 `pet`은 null일 수 있다. 이는 migration 예외일 �
 
 ## 5. Subscription 관리 명령
 
-모든 endpoint는 `Idempotency-Key`와 `If-Match` header가 필수이며 성공 시 최신 Subscription DTO와 `replayed` boolean을 반환한다. replay는 최초 응답의 status·body를 보존한다. 인증·소유권 확인에 실패한 경우에는 멱등 결과를 조회하지 않는다.
+모든 endpoint는 `Idempotency-Key`와 `If-Match` header가 필수이며 성공 시 최신 Subscription DTO를 반환한다. replay도 최초의 business status·body·`Location`·`ETag`를 그대로 반환하고 `Idempotency-Replayed: true` header로만 표시한다. 인증·소유권 확인에 실패한 경우에는 멱등 결과를 조회하지 않는다.
 
 | command type | Method / path | body | 상태·결과 |
 | --- | --- | --- | --- |
@@ -169,17 +170,26 @@ legacy Subscription의 `pet`은 null일 수 있다. 이는 migration 예외일 �
 
 명령 성공의 공통 응답은 `200 OK`다. pending snapshot이 적용되는 시점에는 이를 current snapshot으로 원자적으로 전환한다. 동일 Idempotency-Key·동일 body의 `CHANGE_PLAN` replay는 새 pending 교체나 version mismatch를 만들지 않는다. 동일 Key·다른 body, optional `petId` 포함 여부 차이도 payload 충돌이다.
 
-`CHANGE_PLAN`의 `petId`는 기존 Pet이 있으면 생략 가능하고, 제공하면 기존 Pet과 같아야 한다. legacy Pet null이면 필수이며 소유 Pet이 아니거나 target Plan과 종이 맞지 않으면 `PET_NOT_FOUND` 또는 `PLAN_PET_TYPE_MISMATCH`를 반환한다.
+`CHANGE_PLAN`의 `petId`는 기존 Pet이 있으면 생략 가능하고, 제공하면 기존 Pet과 같아야 한다. legacy Pet null이면 필수이며 소유 Pet이 아니거나 target Plan과 종이 맞지 않으면 `PET_NOT_FOUND` 또는 `PLAN_PET_TYPE_MISMATCH`를 반환한다. 성공한 legacy 변경은 Pet 연결, target Plan 검증, pending 교체와 같은 transaction에서 `subscription.pet_id`를 영구 저장하고 최신 DTO의 `pet`에 반영한다.
 
 ## 6. Schedule 만료와 조회 경계
 
-GET endpoint는 상태를 변경하지 않는다. ACTIVE의 현재 SCHEDULED가 과거가 된 경우, 다음 write command와 미래 scheduler가 공통 application service를 통해 같은 transaction으로 catch-up한다. catch-up은 과거 SCHEDULED를 계획 이력으로 남기고 현재 snapshot의 주기로 다음 실행 가능한 미래 SCHEDULED 하나를 보장한다. 실제 주문·결제·재고·배송 객체는 만들지 않는다.
+GET endpoint는 상태를 변경하지 않는다. ACTIVE Subscription의 Schedule cardinality를 지속시키기 위해, 2차 MVP 구현에는 공통 reconciliation application service를 호출하는 scheduler trigger가 필수다. write command도 같은 service를 호출하지만, 명령이 전혀 없는 구독의 overdue Schedule은 scheduler가 처리한다. scheduler 자체의 배포·운영 구현은 후속 작업이지만 API-004 구현 완료 전 이 trigger가 제공되지 않으면 ACTIVE next date 불변 조건을 충족했다고 주장할 수 없다.
+
+catch-up은 Subscription을 version 조건으로 잠그고 다음 순서로 한 transaction에서 수행한다.
+
+1. 현재 실행 가능한 SCHEDULED가 과거면 그 회차의 `effectiveSnapshotId`를 확정한다.
+2. 해당 회차가 pending의 `targetScheduleId`이면 pending snapshot을 current로 승격하고 pending row를 제거한 뒤, 그 Schedule의 effective snapshot으로 연결한다. target이 아닌 overdue Schedule에는 기존 current snapshot을 유지한다.
+3. 확정된 회차를 계획 이력으로 남기고, 그 effective snapshot의 배송 주기에서 그 회차 날짜를 기준으로 반복 계산해 첫 미래 날짜를 찾는다.
+4. 그 날짜에 current snapshot을 가리키는 SCHEDULED 하나를 만들거나 기존 동일 회차를 재사용한다. pending은 새 미래 target에 임의로 이월하지 않으며, target Schedule이 사라진 불변 조건 위반은 version 증가나 다음 회차 생성 전에 실패로 처리한다.
+
+실제 주문·결제·재고·배송 객체는 만들지 않는다.
 
 자동 scheduler, 실행 시각, 여러 누락 회차 처리와 운영 관측성은 구현 전 별도 기술·운영 결정이다. 이 계약은 읽기 요청이 몰래 상태를 바꾸지 않고, command와 미래 scheduler가 같은 reconciliation 경계를 사용해야 한다는 요구만 제안한다.
 
 ## 7. 구현 전 확인 항목
 
 - API-004 endpoint, DTO, 오류 code, `If-Match`, Idempotency-Key는 Proposed이며 Frontend 계약 확정 전 구현하지 않는다.
-- 성공 replay 보존 기간·실패 결과 저장 여부, pagination의 실제 query 전략, command history 노출 세분화는 구현 PR에서 재검토한다.
+- pagination의 실제 query 전략과 command history 노출 세분화는 구현 PR에서 재검토한다. 성공 idempotency 결과 자동 만료와 실패 결과 저장은 이 Proposed 계약에서 허용하지 않는다.
 - 실제 Flyway SQL, JPA mapping, locking SQL, migration execution, Batch/Scheduler, 주문·결제·배송은 범위 밖이다.
 - 문서 변경의 복구 경계는 일반 revert PR이다. Production·AWS·운영 DB·Secret 실행은 수행하지 않는다.
