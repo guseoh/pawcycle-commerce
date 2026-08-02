@@ -82,7 +82,7 @@ class V2SubscriptionServiceIntegrationTests {
 	}
 
 	@Test
-	void legacyWhitespacePetTypeNormalizesBeforeMigrationAndHidesV1Record() {
+	void legacyWhitespacePetTypeNormalizesHidesV1AndKeepsFutureReconciliation() {
 		jdbc.update("UPDATE products SET pet_type=' DOG ' WHERE id=?", sku.getProduct().getId());
 		jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date) VALUES (?,?,?,?,?,?)", member.getId(), sku.getId(), 1, 4, LocalDate.now(ZoneId.of("Asia/Seoul")).minusWeeks(4), LocalDate.now(ZoneId.of("Asia/Seoul")).plusWeeks(4));
 		long subscriptionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -91,5 +91,12 @@ class V2SubscriptionServiceIntegrationTests {
 		legacyMigration.migrateAfterSourceWriteFreeze(true);
 		assertThat(jdbc.queryForObject("SELECT legacy_api_visible FROM subscriptions WHERE id=?", Boolean.class, subscriptionId)).isFalse();
 		assertThat(jdbc.queryForObject("SELECT target_pet_type FROM subscription_plans WHERE name IS NULL ORDER BY id DESC LIMIT 1", String.class)).isEqualTo("DOG");
+		assertThat(jdbc.queryForObject("SELECT effective_snapshot_id FROM subscription_schedules WHERE subscription_id=?", Long.class, subscriptionId)).isNull();
+
+		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+		service.reconcileActiveSubscriptions();
+
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NULL AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
 	}
 }
