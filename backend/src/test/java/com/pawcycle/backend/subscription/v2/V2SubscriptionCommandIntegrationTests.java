@@ -92,6 +92,7 @@ class V2SubscriptionCommandIntegrationTests {
 		assertThat(result.etag()).isEqualTo("\"1\"");
 		assertThat(result.body()).containsEntry("version", 1L);
 		assertThat(result.body().get("pendingSnapshot")).isNotNull();
+		assertThat(castMap(result.body().get("pendingSnapshot"))).doesNotContainKey("snapshotId");
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("SELECT ss.delivery_cycle_weeks FROM pending_plan_changes p JOIN subscription_snapshots ss ON ss.id=p.snapshot_id WHERE p.subscription_id=?", Integer.class, subscriptionId)).isEqualTo(4);
 	}

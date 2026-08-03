@@ -66,7 +66,9 @@ class V2SubscriptionServiceIntegrationTests {
 
 		assertThat(created.status()).isEqualTo(201);
 		assertThat(created.body()).containsKeys("pet", "currentSnapshot", "schedules", "commandHistory");
+		assertThat(((Map<?, ?>) created.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(replay.replay()).isTrue();
+		assertThat(((Map<?, ?>) replay.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
 		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
 
