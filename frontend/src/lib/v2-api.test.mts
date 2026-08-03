@@ -43,9 +43,10 @@ test("API-004 subscription JSON fixture remains assignable to the frontend contr
     currentSnapshot: { planVersionId: 12, packagePriceKrw: 24900, deliveryCycleWeeks: 4, items: [{ skuId: 8, quantity: 2 }] },
     nextScheduledDate: "2026-08-30",
     pendingSnapshot: null,
-    schedules: { page: 0, size: 20, totalElements: 1, items: [{ scheduleId: 31, scheduledDate: "2026-08-30", status: "SCHEDULED" }] },
+    schedules: { page: 0, size: 20, totalElements: 1, items: [{ scheduleId: 31, scheduledDate: "2026-08-30", status: "SCHEDULED", effectiveSnapshotId: null }] },
     commandHistory: { page: 0, size: 20, totalElements: 1, items: [{ commandType: "CHANGE_PLAN", result: "SUCCEEDED", occurredAt: "2026-08-02T12:00:00+09:00" }] },
   } satisfies V2SubscriptionDetail;
   assert.equal(fixture.currentSnapshot.packagePriceKrw, 24900);
+  assert.equal(fixture.schedules.items[0].effectiveSnapshotId, null);
   assert.equal(fixture.commandHistory.items[0].result, "SUCCEEDED");
 });

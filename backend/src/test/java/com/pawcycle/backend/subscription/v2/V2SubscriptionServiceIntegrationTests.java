@@ -62,11 +62,15 @@ class V2SubscriptionServiceIntegrationTests {
 		request.put("planVersionId", planVersionId);
 		request.put("petId", petId);
 		V2SubscriptionService.V2Result created = service.createSubscription(member.getId(), "create-replay-key", request);
+		assertThat(jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=JSON_SET(response_body,'$.currentSnapshot.snapshotId',9001) WHERE member_id=? AND idempotency_key=?", member.getId(), "create-replay-key")).isEqualTo(1);
 		V2SubscriptionService.V2Result replay = service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
 
 		assertThat(created.status()).isEqualTo(201);
 		assertThat(created.body()).containsKeys("pet", "currentSnapshot", "schedules", "commandHistory");
+		assertThat(((Map<?, ?>) created.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(replay.replay()).isTrue();
+		assertThat(((Map<?, ?>) replay.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
+		assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", String.class, member.getId(), "create-replay-key")).doesNotContain("\"snapshotId\"");
 		long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
 		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
 

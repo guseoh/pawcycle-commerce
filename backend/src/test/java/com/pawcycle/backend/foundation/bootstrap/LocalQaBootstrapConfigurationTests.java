@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,9 +18,11 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class LocalQaBootstrapConfigurationTests {
 
 	private final LocalQaBootstrapService bootstrapService = mock(LocalQaBootstrapService.class);
+	private final LocalQaMvp2FixtureService mvp2FixtureService = mock(LocalQaMvp2FixtureService.class);
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 			.withUserConfiguration(LocalQaBootstrapConfiguration.class)
-			.withBean(LocalQaBootstrapService.class, () -> bootstrapService);
+			.withBean(LocalQaBootstrapService.class, () -> bootstrapService)
+			.withBean(LocalQaMvp2FixtureService.class, () -> mvp2FixtureService);
 
 	@Test
 	void defaultAndNonLocalProfilesDoNotCreateBootstrapRunner() {
@@ -78,7 +81,7 @@ class LocalQaBootstrapConfigurationTests {
 	}
 
 	@Test
-	void enabledLocalRunnerPassesPropertiesToService() {
+	void enabledLocalRunnerPassesPropertiesAndBootstrapsMvp2Fixture() {
 		String email = runtimeQaEmail();
 		String password = UUID.randomUUID().toString();
 
@@ -93,11 +96,12 @@ class LocalQaBootstrapConfigurationTests {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
 					runner.run(null);
 					verify(bootstrapService).bootstrap(email, password, true);
+					verify(mvp2FixtureService).bootstrap();
 				});
 	}
 
 	@Test
-	void runnerPropagatesBootstrapFailureAndStopsStartup() {
+	void runnerPropagatesBootstrapFailureAndDoesNotCreateMvp2Fixture() {
 		String email = runtimeQaEmail();
 		String password = UUID.randomUUID().toString();
 		doThrow(new LocalQaBootstrapException("로컬 QA bootstrap 설정 오류"))
@@ -113,6 +117,28 @@ class LocalQaBootstrapConfigurationTests {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
 					assertThatThrownBy(() -> runner.run(null))
 							.isInstanceOf(LocalQaBootstrapException.class);
+					verifyNoInteractions(mvp2FixtureService);
+				});
+	}
+
+	@Test
+	void runnerPropagatesMvp2FixtureFailureAndStopsStartup() {
+		String email = runtimeQaEmail();
+		String password = UUID.randomUUID().toString();
+		doThrow(new LocalQaBootstrapException("MVP2 fixture 설정 오류"))
+				.when(mvp2FixtureService).bootstrap();
+
+		contextRunner
+				.withPropertyValues(
+						"spring.profiles.active=local-integration",
+						"pawcycle.local-qa-bootstrap.enabled=true",
+						"pawcycle.local-qa-bootstrap.email=" + email,
+						"pawcycle.local-qa-bootstrap.password=" + password)
+				.run(context -> {
+					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
+					assertThatThrownBy(() -> runner.run(null))
+							.isInstanceOf(LocalQaBootstrapException.class);
+					verify(bootstrapService).bootstrap(email, password, false);
 				});
 	}
 
