@@ -62,7 +62,7 @@ class V2SubscriptionServiceIntegrationTests {
 		request.put("planVersionId", planVersionId);
 		request.put("petId", petId);
 		V2SubscriptionService.V2Result created = service.createSubscription(member.getId(), "create-replay-key", request);
-		jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=JSON_SET(response_body,'$.currentSnapshot.snapshotId',9001) WHERE member_id=? AND idempotency_key=?", member.getId(), "create-replay-key");
+		assertThat(jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=JSON_SET(response_body,'$.currentSnapshot.snapshotId',9001) WHERE member_id=? AND idempotency_key=?", member.getId(), "create-replay-key")).isEqualTo(1);
 		V2SubscriptionService.V2Result replay = service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
 
 		assertThat(created.status()).isEqualTo(201);
