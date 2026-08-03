@@ -75,7 +75,12 @@ public class V2SubscriptionService {
 	public V2Result createSubscription(long memberId, String key, Map<String, Object> body) {
 		validateKey(key); String fingerprint = fingerprint(body);
 		try { jdbc.update("INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint) VALUES (?,?,?)", memberId,key,fingerprint); }
-		catch (DuplicateKeyException duplicate) { return replay(one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE", memberId,key).orElseThrow(() -> duplicate), fingerprint); }
+		catch (DuplicateKeyException duplicate) {
+			Map<String,Object> row=one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE",memberId,key).orElseThrow(() -> duplicate);
+			StoredReplay replayed=replay(row,fingerprint);
+			if(replayed.bodyChanged()) jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=? WHERE member_id=? AND idempotency_key=?",bodyJson(replayed.result().body()),memberId,key);
+			return replayed.result();
+		}
 		long petId = requiredLong(body, "petId"); long versionId = requiredLong(body, "planVersionId"); int cycle = requiredInt(body, "deliveryCycleWeeks");
 		Map<String,Object> pet = ownedPet(memberId, petId); Map<String,Object> version = availableVersion(pet, versionId, cycle);
 		LocalDate created = today(); LocalDate next = created.plusWeeks(cycle);
@@ -108,7 +113,12 @@ public class V2SubscriptionService {
 		validateKey(key); String fp=fingerprint(body);
 		ownedSubscription(memberId,subscriptionId);
 		try { jdbc.update("INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,?,?,?)",memberId,subscriptionId,command,key,fp); }
-		catch(DuplicateKeyException duplicate) { return replay(one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=? FOR UPDATE",memberId,subscriptionId,command,key).orElseThrow(() -> duplicate),fp); }
+		catch(DuplicateKeyException duplicate) {
+			Map<String,Object> row=one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=? FOR UPDATE",memberId,subscriptionId,command,key).orElseThrow(() -> duplicate);
+			StoredReplay replayed=replay(row,fp);
+			if(replayed.bodyChanged()) jdbc.update("UPDATE subscription_command_idempotency_results SET response_body=? WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",bodyJson(replayed.result().body()),memberId,subscriptionId,command,key);
+			return replayed.result();
+		}
 		long expected=parseEtag(ifMatch); Map<String,Object> subscription=lockedOwnedSubscription(memberId,subscriptionId);
 		if(longValue(subscription,"version")!=expected) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
 		reconcile(subscription); subscription=lockedOwnedSubscription(memberId,subscriptionId);
@@ -177,7 +187,8 @@ public class V2SubscriptionService {
 	private long firstSku(long versionId) { return jdbc.queryForObject("SELECT sku_id FROM plan_items WHERE plan_version_id=? ORDER BY sku_id LIMIT 1",Long.class,versionId); }
 	private Map<String,Object> planDto(Map<String,Object> v) { long id=longValue(v,"version_id"); List<Map<String,Object>> items=jdbc.queryForList("SELECT sku_id,quantity FROM plan_items WHERE plan_version_id=? ORDER BY sku_id",id).stream().map(i -> Map.<String,Object>of("skuId",longValue(i,"sku_id"),"quantity",intValue(i,"quantity"))).toList(); List<Integer> cycles=jdbc.queryForList("SELECT delivery_cycle_weeks FROM plan_version_delivery_cycles WHERE plan_version_id=? ORDER BY delivery_cycle_weeks",Integer.class,id); Map<String,Object> sale=new LinkedHashMap<>(); sale.put("onSale",v.get("on_sale")); sale.put("startsOn",v.get("sale_starts_on")); sale.put("endsOn",v.get("sale_ends_on")); Map<String,Object> result=new LinkedHashMap<>(); result.put("planId",longValue(v,"plan_id")); result.put("planName",v.get("plan_name")); result.put("targetPetType",v.get("target_pet_type")); result.put("planVersionId",id); result.put("packagePriceKrw",longValue(v,"package_price_krw")); result.put("items",items); result.put("allowedDeliveryCycleWeeks",cycles); result.put("sale",sale); return result; }
 	private Map<String,Object> petDto(Map<String,Object> p) { return Map.of("petId",longValue(p,"id"),"name",p.get("name"),"petType",p.get("pet_type")); }
-	private V2Result replay(Map<String,Object> row,String fingerprint) { if(!fingerprint.equals(row.get("payload_fingerprint"))) throw new V2ApiException(409,"IDEMPOTENCY_KEY_REUSED","동일 key에 다른 요청 본문을 사용할 수 없습니다."); try { @SuppressWarnings("unchecked") Map<String,Object> body=json.readValue((String)row.get("response_body"),Map.class); return result(intValue(row,"response_status"),body,(String)row.get("location_header"),(String)row.get("etag_header"),true); } catch(Exception e) { throw new IllegalStateException("저장된 멱등 결과를 읽을 수 없습니다.",e); } }
+	private StoredReplay replay(Map<String,Object> row,String fingerprint) { if(!fingerprint.equals(row.get("payload_fingerprint"))) throw new V2ApiException(409,"IDEMPOTENCY_KEY_REUSED","동일 key에 다른 요청 본문을 사용할 수 없습니다."); try { @SuppressWarnings("unchecked") Map<String,Object> body=json.readValue((String)row.get("response_body"),Map.class); boolean changed=removeInternalSnapshotId(body.get("currentSnapshot"))|removeInternalSnapshotId(body.get("pendingSnapshot")); return new StoredReplay(result(intValue(row,"response_status"),body,(String)row.get("location_header"),(String)row.get("etag_header"),true),changed); } catch(Exception e) { throw new IllegalStateException("저장된 멱등 결과를 읽을 수 없습니다.",e); } }
+	private boolean removeInternalSnapshotId(Object snapshot) { if(!(snapshot instanceof Map<?,?> map)||!map.containsKey("snapshotId")) return false; map.remove("snapshotId"); return true; }
 	private V2Result result(int status,Map<String,Object> body,String location,String etag,boolean replay) { return new V2Result(status,body,location,etag,replay); }
 	private String bodyJson(Map<String,Object> body) { try { return json.writeValueAsString(body); } catch(Exception e) { throw new IllegalStateException(e); } }
 	private String fingerprint(Map<String,Object> body) { try { byte[] bytes=MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(canonical(body))); StringBuilder out=new StringBuilder(); for(byte b:bytes) out.append(String.format("%02x",b)); return out.toString(); } catch(Exception e) { throw new IllegalStateException(e); } }
@@ -196,6 +207,7 @@ public class V2SubscriptionService {
 	private int intValue(Map<String,Object> r,String k){return ((Number)r.get(k)).intValue();}
 	private LocalDate today(){return LocalDate.now(clock.withZone(SEOUL));}
 	private record Page(int page,int size,int offset) {}
+	private record StoredReplay(V2Result result,boolean bodyChanged) {}
 	private static final class ReconciliationVersionChangedException extends V2ApiException { private ReconciliationVersionChangedException() { super(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 reconciliation으로 변경되었습니다."); } }
 	public record V2Result(int status,Map<String,Object> body,String location,String etag,boolean replay) { ResponseEntity<Map<String,Object>> response(){ResponseEntity.BodyBuilder b=ResponseEntity.status(status);if(location!=null)b.header("Location",location);if(etag!=null)b.header("ETag",etag);if(replay)b.header("Idempotency-Replayed","true");return b.body(body);} }
 }
