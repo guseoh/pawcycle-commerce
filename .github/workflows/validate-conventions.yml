@@ -2,15 +2,22 @@ name: Repository Validation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-concurrency:
-  group: repository-validation-code-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
 
 permissions:
   contents: read
   pull-requests: read
+
+concurrency:
+  group: repository-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   conventions:
@@ -44,35 +51,25 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          failed=0
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          for sha in $(git rev-list --no-merges "$merge_base..$HEAD_SHA"); do
-            subject="$(git log -1 --format=%s "$sha")"
-            echo "검증 중: ${sha} ${subject}"
-            if ! sh scripts/validate-commit-message.sh --message "$subject"; then
-              echo "::error title=Invalid commit message::${sha} ${subject}"
-              failed=1
-            fi
+          git log --format=%s "$BASE_SHA..$HEAD_SHA" | while IFS= read -r message; do
+            sh scripts/validate-commit-message.sh --message "$message"
           done
-          exit "$failed"
 
       - name: Check whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          git diff --check "$merge_base..$HEAD_SHA"
+        run: git diff --check "$BASE_SHA..$HEAD_SHA"
 
   classify:
     name: Classify validation changes
     needs: conventions
     runs-on: ubuntu-latest
     outputs:
-      harness: ${{ steps.paths.outputs.harness }}
-      backend: ${{ steps.paths.outputs.backend }}
-      frontend: ${{ steps.paths.outputs.frontend }}
-      production: ${{ steps.paths.outputs.production }}
+      harness: ${{ steps.classify.outputs.harness }}
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      production: ${{ steps.classify.outputs.production }}
     steps:
       - name: Checkout pull request
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -81,7 +78,7 @@ jobs:
           persist-credentials: false
 
       - name: Classify pull request diff
-        id: paths
+        id: classify
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -108,6 +105,9 @@ jobs:
             scripts/validate-task-artifacts.py \
             scripts/validate-pr-body-encoding.py \
             scripts/classify-validation-changes.py \
+            scripts/run-agent-benchmark.py \
+            scripts/validate-agent-benchmark.py \
+            scripts/render-agent-benchmark-charts.py \
             .github/scripts/collect-discord-context.py
 
       - name: Run Harness regressions
@@ -116,6 +116,7 @@ jobs:
             scripts.test_validate_task_artifacts \
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
+            scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
             scripts.test_discord_payload \
             scripts.test_send_discord_notification
@@ -329,9 +330,9 @@ jobs:
             fi
           }
 
-          require_success conventions "$CONVENTIONS_RESULT"
-          require_success classify "$CLASSIFY_RESULT"
-          require_component_result harness "$HARNESS_ENABLED" "$HARNESS_RESULT"
-          require_component_result backend "$BACKEND_ENABLED" "$BACKEND_RESULT"
-          require_component_result frontend "$FRONTEND_ENABLED" "$FRONTEND_RESULT"
-          require_component_result production "$PRODUCTION_ENABLED" "$PRODUCTION_RESULT"
+          require_success "conventions" "$CONVENTIONS_RESULT"
+          require_success "classify" "$CLASSIFY_RESULT"
+          require_component_result "harness" "$HARNESS_ENABLED" "$HARNESS_RESULT"
+          require_component_result "backend" "$BACKEND_ENABLED" "$BACKEND_RESULT"
+          require_component_result "frontend" "$FRONTEND_ENABLED" "$FRONTEND_RESULT"
+          require_component_result "production" "$PRODUCTION_ENABLED" "$PRODUCTION_RESULT"
