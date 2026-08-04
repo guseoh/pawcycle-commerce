@@ -1,4 +1,4 @@
-# HARNESS-AGENT-002 Before 상세 지표·Benchmark 준비 계획
+# HARNESS-AGENT-002 ChatGPT Connector Pilot 준비 계획
 
 ## 상태
 
@@ -11,102 +11,84 @@
 
 ## 목적
 
-HARNESS-AGENT-001A에서 고정한 GitHub MCP 도입 전 기준선을 바꾸지 않고, PR·CI·Review 상세 지표와 고정 Benchmark의 Before 반복 실행 결과를 재현 가능한 증거로 남긴다.
+현재 사용자 + ChatGPT GitHub Connector 작업 방식을 대조군 Pilot으로 측정하고, 향후 Codex + GitHub MCP + Rule·Skill·Tool Allowlist 환경과 동일 조건으로 비교한다.
 
-## 범위
+`HARNESS-AGENT-001A`의 역사적 Before 자료는 문제 사례와 복잡도 설명에만 사용하고 정량 Benchmark 기준값으로 소급 사용하지 않는다.
 
-포함:
+## 포함 범위
 
-- PR #84·#85·#86·#87·#89의 Workflow Run 수, 실패 Run 수와 First-pass CI 여부
-- PR별 Review thread 수, 해결 상태와 PR 본문 validator 실패 횟수
-- 고정 시나리오 A·B·C·D의 Before 3회 반복 실행
-- 실행 시간, Tool 호출 수, 실패 호출 수, 사용자 추가 설명·교정 횟수 기록
-- 시나리오별 정확도 판정과 중앙값·표본 수 집계
-- 수집 불가능한 증거를 `미수집` 또는 `evidence_missing=true`로 보존
+- PR #84·#85·#86·#87·#89 역사적 GitHub 상세 지표
+- 고정 시나리오 A·B·C·D의 ChatGPT Connector Pilot 각 3회
+- 시간, Tool 호출, 실패 호출, 중복 읽기, 사용자 개입과 정확도 기록
+- 향후 Codex GitHub MCP와 동일 입력·대상·정답표 비교 계약
+- 수집 불가능한 증거의 명시적 누락 처리
 
-제외:
+## 제외 범위
 
-- GitHub MCP 설치·인증·Tool Allowlist 적용
-- After Benchmark
+- GitHub MCP 설치·인증·Tool Allowlist 실제 적용
+- Codex MCP 실험군 실행
 - 실제 작업 3~5건 시범 운영
 - `AGENTS.md`, Skill, PR template, validator 변경
 - Backend·Frontend·API·DB·Production·AWS·Secret 변경
-- Grafana·Prometheus·상시 수집기 구축
 
-## 산출물 계획
+## 산출물
 
 ```text
 docs/reports/HARNESS-AGENT-002/
 ├── preparation-plan.md
-├── before-github-details.csv
-├── benchmark-results-before.jsonl
-└── before-summary.md
+├── historical-pr-details.csv
+├── benchmark-plan-chatgpt-connector.jsonl
+└── connector-pilot-summary.md
 ```
-
-- `before-github-details.csv`: PR별 GitHub 상세 지표 원본
-- `benchmark-results-before.jsonl`: 시나리오별 3회 실행 원본
-- `before-summary.md`: 계산법, 중앙값, 판정과 제한
 
 ## 측정 계약
 
-### GitHub 상세 지표
-
-- 표본: PR #84·#85·#86·#87·#89
-- 기준: 각 PR의 병합 전 최종 HEAD와 연결된 Pull Request Workflow
-- Workflow Run 수: 대상 PR의 생성부터 병합까지 발생한 관련 Run 수
-- 실패 Run 수: 결론이 `failure`인 Run 수
-- First-pass CI: 첫 필수 Repository Validation과 PR Metadata Validation이 모두 성공했는지 여부
-- Review thread: GitHub에서 확인 가능한 inline review thread만 집계
-- validator 실패: Repository 또는 Metadata Validation에서 문서·PR 본문 계약 때문에 실패한 Run만 별도 집계
-
-CI·Review 원본을 Connector에서 확인할 수 없거나 로그가 보존되지 않았으면 추측하지 않는다.
-
-### Benchmark 실행
-
-- 입력·대상·정답은 `HARNESS-AGENT-001A/benchmark-scenarios.md`를 그대로 사용한다.
-- 시나리오 A·B·C·D를 각각 3회 실행한다.
-- 실행 1회는 요청 확인 직전부터 최종 답안·판정 기록 완료까지로 본다.
-- 정확도는 `pass`, `partial`, `fail` 중 하나로 기록한다.
-- 범위 밖 쓰기, Secret 또는 Production 접근은 `scope_violation=true`로 실패 처리한다.
-- 시간 비교는 평균보다 중앙값을 우선한다.
+- 대조군: 사용자 + ChatGPT GitHub Connector
+- 실험군: 사용자 + Codex GitHub MCP + Rule·Skill·Tool Allowlist
+- A·B·C·D 각각 3회
+- 동일 입력·고정 대상·고정 정답표
+- 독립 세션 또는 문맥 초기화 환경
+- 시간 비교는 중앙값 우선
+- Production·AWS·운영 DB·Secret 쓰기는 실패 처리
 
 ## 실행 순서
 
-1. PR #84·#85·#86·#87·#89의 고정 HEAD와 Workflow·Review 원본을 수집한다.
-2. `before-github-details.csv`를 작성하고 누락 증거를 표시한다.
-3. Benchmark A·B·C·D를 각 3회 실행해 JSONL로 기록한다.
-4. 정답 기준으로 각 실행의 정확도를 판정한다.
-5. 시나리오별 중앙값, Tool 실패율과 사용자 개입 횟수를 집계한다.
-6. `before-summary.md`에 결과·한계·After 비교 경계를 기록한다.
-7. 최종 diff와 보고서 validator 조건을 확인한 뒤 PR을 생성한다.
+1. 역사적 PR 상세 지표를 보조 자료로 확정한다.
+2. ChatGPT Connector Pilot 12개 실행 슬롯을 고정한다.
+3. 독립 세션 조건으로 A~D를 각 3회 실행한다.
+4. 정답표로 정확도와 누락·범위 이탈을 판정한다.
+5. 시나리오별 중앙값과 사용자 개입을 집계한다.
+6. Codex 토큰 복구 후 동일 조건의 MCP 실험군을 실행한다.
+7. 실제 작업 3~5건으로 Benchmark 결과를 보완한다.
 
 ## 결과 또는 증거
 
-현재 확보된 증거:
+현재 확보:
 
-- 기준 `main`: `f6a50b5eb032355a6596bbb7c85da0fe6f17a273`
-- HARNESS-AGENT-001A 기준선과 고정 Benchmark 시나리오가 `main`에 병합됨
-- 작업 브랜치: `ops/tl/HARNESS-AGENT-002`
+- 역사적 PR 상세 지표 5건
+- ChatGPT Connector Pilot 실행 슬롯 12건
+- 비교 대조군·실험군과 공통 측정 계약
 
 현재 미실행:
 
-- PR 상세 Workflow·Review 지표 수집
-- Before Benchmark 12회 실행
-- 중앙값·정확도 집계
+- ChatGPT Connector Pilot 12회
+- Codex GitHub MCP 12회
+- 실제 작업 3~5건
+- 중앙값·개선률 계산
 
 ## 완료 조건
 
-- 5개 PR의 상세 지표가 원본 근거 또는 명시적 미수집 상태와 함께 기록됨
-- A·B·C·D 각각 3회, 총 12개 Benchmark 결과가 기록됨
-- 각 실행에 시간·Tool 호출·실패·정확도·사용자 개입·범위 이탈 여부가 있음
-- 시나리오별 중앙값과 표본 수가 계산됨
-- 실제 MCP 연결 전 단계라는 제한이 명확히 유지됨
-- Repository Validation과 PR Metadata Validation 통과
+- ChatGPT Connector Pilot 12회와 Codex MCP 12회 모두 실행됨
+- 각 실행에 시간·Tool 호출·실패·정확도·사용자 개입·범위 이탈 기록
+- 동일 정답표로 판정됨
+- 시나리오별 중앙값과 전체 중앙값 계산됨
+- 실제 작업 3~5건의 운영 결과가 보조 증거로 있음
+- Production·AWS·운영 DB·Secret 실행 0건
 
 ## 위험·제한
 
-- 과거 Workflow·Review 원본 일부가 Connector 또는 보존 기간 때문에 조회되지 않을 수 있다.
-- Tool 캐시와 네트워크 상태가 실행 시간에 영향을 줄 수 있다.
-- 같은 ChatGPT 세션의 문맥 캐시가 반복 실행 난이도를 낮출 수 있으므로 결과에 이를 명시해야 한다.
+- 역사적 PR Lead Time은 노동 시간이 아니다.
+- 현재 Review thread 상태는 병합 당시 상태와 다를 수 있다.
+- 네트워크·GitHub 상태·캐시·세션 문맥이 시간에 영향을 준다.
+- ChatGPT Connector Pilot 완료 전 개선률을 계산하지 않는다.
 - 표본 수가 작으므로 일반적인 AI Agent 성능으로 과장하지 않는다.
-- 이 작업은 GitHub MCP 효과를 증명하지 않는다. After 측정은 Codex 토큰 복구와 실제 MCP 연결 이후에만 수행한다.
