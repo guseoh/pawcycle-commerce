@@ -1,0 +1,6 @@
+pr_number,category,task_id,base_sha,head_sha,created_at,merged_at,lead_time_seconds,commit_count,manual_fast_pr_minutes_lower_bound,manual_observation_source,collected_at,source
+84,product-domain-docs,PS-004,5dd8f04ac1720497dd4c055ad8d3f00000baeba1,4486d3263c151647b5ec45307e22ed4906207fba,2026-08-02T03:15:41Z,2026-08-02T04:47:25Z,5504,5,,,2026-08-04T14:12:00Z,github
+85,api-data-adr-docs,API-004,2072dafe1d58f8e4f7007105427fd716db1a1ae9,fc8adf11cd61097464faced2b142b436b175183d,2026-08-02T06:00:02Z,2026-08-02T06:44:20Z,2658,2,,,2026-08-04T14:12:00Z,github
+86,frontend-implementation,FRONTEND-002,fc6e1538a39af8f4c294d9808b5492e610c05512,50ce5a4d072eaec296fe78690c9d4b037ee73002,2026-08-02T07:22:59Z,2026-08-02T10:47:18Z,12259,3,,,2026-08-04T14:12:00Z,github
+87,backend-implementation,API-005,fc6e1538a39af8f4c294d9808b5492e610c05512,c9563a27076b2e3d34a09fbe07e63dd9978ba613,2026-08-02T08:08:41Z,2026-08-02T10:43:34Z,9293,16,,,2026-08-04T14:12:00Z,github
+89,qa-integration-fast-pr-before,OPS-031,38778cc87b9bfdd590ba63fe961663ea84b52487,a243e76c6b3824e764f75c64154c8ffe794bc921,2026-08-02T11:50:59Z,2026-08-03T10:55:14Z,83055,16,40,user-confirmed-lower-bound,2026-08-04T14:12:00Z,github-and-user-observation
