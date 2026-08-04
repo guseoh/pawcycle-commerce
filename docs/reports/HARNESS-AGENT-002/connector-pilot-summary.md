@@ -1,6 +1,6 @@
 # HARNESS-AGENT-002 ChatGPT Connector Pilot 비교 설계와 판정
 
-> 상태: 대조군 Pilot 완료 — Codex GitHub MCP 비교 전  
+> 상태: 대조군 Pilot 완료 — Codex GitHub MCP 비교 전
 > 최초 설계 시각: 2026-08-05T00:13:00+09:00
 
 ## 목적
