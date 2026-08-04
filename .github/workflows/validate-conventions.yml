@@ -108,6 +108,9 @@ jobs:
             scripts/validate-task-artifacts.py \
             scripts/validate-pr-body-encoding.py \
             scripts/classify-validation-changes.py \
+            scripts/run-agent-benchmark.py \
+            scripts/validate-agent-benchmark.py \
+            scripts/render-agent-benchmark-charts.py \
             .github/scripts/collect-discord-context.py
 
       - name: Run Harness regressions
@@ -116,6 +119,7 @@ jobs:
             scripts.test_validate_task_artifacts \
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
+            scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
             scripts.test_discord_payload \
             scripts.test_send_discord_notification
