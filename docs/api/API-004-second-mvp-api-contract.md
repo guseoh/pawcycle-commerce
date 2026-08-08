@@ -68,6 +68,8 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 
 관리 scope는 `Member + Subscription ID + command type + Idempotency-Key`이고, 생성 scope는 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`다. 동일 문자열 key는 다른 Subscription 또는 다른 command type에서 재사용할 수 있다. fingerprint에는 endpoint가 정의한 body와 관련 request 식별자를 canonical JSON으로 포함하며, member ID는 server context에서만 포함한다. 실패 결과는 저장하지 않는다. 성공 결과와 필요한 business response·`Location`·`ETag`는 최초 성공 완료 UTC 시각부터 30일간 보관하며 replay나 저장 response body 보정은 보관 기한을 연장하지 않는다. cleanup은 완료 시각이 현재 UTC 시각에서 30일을 뺀 cutoff보다 이른 결과만 삭제하고, 정확히 cutoff인 결과와 완료되지 않은 결과는 보존한다. cleanup으로 삭제된 key는 이후 새 요청으로 처리될 수 있다.
 
+이 30일 retention과 bounded cleanup은 `OPS-IDEMP-001` 및 Issue `#107`에서 승인된 후속 운영 정책이다. 이 후속 승인만으로 API-004의 나머지 Proposed endpoint·DTO·오류·동시성 계약 상태를 Approved로 소급 변경하지 않는다.
+
 ## 2. Pet 계약
 
 | 목적 | Method / path | 성공 |
