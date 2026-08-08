@@ -29,6 +29,7 @@ def record(
         "model": "test-model",
         "reasoning_level": "test-reasoning",
         "comparison_arm": arm,
+        "phase": "benchmark",
         "scenario": scenario,
         "run": run,
         "duration_seconds": duration,
@@ -187,6 +188,19 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertIn("result must be independent", result.stderr)
 
+    def test_validator_rejects_incomplete_benchmark(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "incomplete-benchmark.jsonl"
+            source.write_text(json.dumps(record("A", 1)) + "\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(VALIDATOR), str(source)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertIn("scenario B: independent runs must be [1, 2, 3]", result.stderr)
+
     def test_validator_accepts_legacy_schema_three_history(self) -> None:
         source = ROOT.parent / "docs" / "reports" / "HARNESS-AGENT-006" / "benchmark-results-codex-github-mcp.jsonl"
         result = subprocess.run(
@@ -271,6 +285,47 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             self.assertEqual("test-model", row["model"])
             self.assertEqual("test-reasoning", row["reasoning_level"])
             self.assertTrue(row["success"])
+            self.assertEqual("benchmark", row["phase"])
+
+    def test_runner_pilot_records_single_work_item(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp) / "pilot-state.json"
+            output = Path(temp) / "pilot.jsonl"
+            start = subprocess.run(
+                [
+                    sys.executable, str(RUNNER), "start", "--state", str(state),
+                    "--task-id", "PILOT-GITHUB-001", "--model", "test-model",
+                    "--reasoning-level", "test-reasoning", "--arm", "pilot_arm",
+                    "--phase", "pilot", "--scenario", "Issue #88 follow-up", "--run", "1",
+                    "--target", "Issue #88", "--prompt", "test",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, start.returncode, start.stderr)
+            finish = subprocess.run(
+                [
+                    sys.executable, str(RUNNER), "finish", "--state", str(state),
+                    "--output", str(output), "--tool-calls", "1", "--accuracy", "pass",
+                    "--success", "--user-intervention-measurement", "measured",
+                    "--user-additional-explanations", "0", "--user-corrections", "0", "--independent",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, finish.returncode, finish.stderr)
+            validated = subprocess.run(
+                [sys.executable, str(VALIDATOR), str(output), "--expected-arm", "pilot_arm"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, validated.returncode, validated.stderr)
+            row = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual("pilot", row["phase"])
+            self.assertEqual("Issue #88 follow-up", row["scenario"])
 
 
 if __name__ == "__main__":

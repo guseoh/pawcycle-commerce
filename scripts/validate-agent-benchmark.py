@@ -12,7 +12,7 @@ from pathlib import Path
 
 SCENARIOS = {"A", "B", "C", "D"}
 REQUIRED = {
-    "schema_version", "record_type", "task_id", "comparison_arm", "scenario", "run",
+    "schema_version", "record_type", "task_id", "comparison_arm", "phase", "scenario", "run",
     "duration_seconds", "tool_calls", "failed_tool_calls", "user_additional_explanations",
     "user_corrections", "user_intervention_measurement", "accuracy", "scope_violation",
     "evidence_missing", "cache_reuse", "independent_evidence_read",
@@ -57,10 +57,18 @@ def validate(records: list[dict], expected_arm: str | None, allow_legacy_schema_
             continue
         if record["schema_version"] != "3.0":
             errors.append(f"{source}: schema_version must be 3.0")
-        if record["scenario"] not in SCENARIOS:
-            errors.append(f"{source}: invalid scenario")
-        if record["run"] not in (1, 2, 3):
-            errors.append(f"{source}: run must be 1, 2 or 3")
+        phase = record["phase"]
+        if phase not in ("benchmark", "pilot"):
+            errors.append(f"{source}: invalid phase")
+        elif phase == "benchmark":
+            if record["scenario"] not in SCENARIOS:
+                errors.append(f"{source}: benchmark scenario must be A, B, C or D")
+            if record["run"] not in (1, 2, 3):
+                errors.append(f"{source}: benchmark run must be 1, 2 or 3")
+        elif not isinstance(record["scenario"], str) or not record["scenario"].strip():
+            errors.append(f"{source}: pilot scenario must be a non-empty work item")
+        elif not non_negative_int(record["run"]) or record["run"] < 1:
+            errors.append(f"{source}: pilot run must be a positive integer")
         if expected_arm and record["comparison_arm"] != expected_arm:
             errors.append(f"{source}: unexpected comparison_arm")
         if record["record_type"] not in ("result", "exploratory_result"):
@@ -102,23 +110,29 @@ def validate(records: list[dict], expected_arm: str | None, allow_legacy_schema_
         if record["record_type"] == "result":
             if not record["independent_evidence_read"] or record["cache_reuse"] or not record["counts_toward_independent_repetition"]:
                 errors.append(f"{source}: result must be independent, non-cache and countable")
-            key = (record["scenario"], record["run"])
-            if key in keys:
-                errors.append(f"{source}: duplicate independent scenario/run {key}")
-            keys.add(key)
-            independent[record["scenario"]].append(record)
+            if phase == "benchmark":
+                key = (record["scenario"], record["run"])
+                if key in keys:
+                    errors.append(f"{source}: duplicate independent scenario/run {key}")
+                keys.add(key)
+                independent[record["scenario"]].append(record)
         elif record["counts_toward_independent_repetition"]:
             errors.append(f"{source}: exploratory result cannot count as independent")
-    for scenario in sorted(SCENARIOS):
-        runs = sorted(record["run"] for record in independent[scenario])
-        if runs != [1, 2, 3]:
-            errors.append(f"scenario {scenario}: independent runs must be [1, 2, 3], got {runs}")
+    if any(record.get("phase") == "benchmark" for record in records):
+        for scenario in sorted(SCENARIOS):
+            runs = sorted(record["run"] for record in independent[scenario])
+            if runs != [1, 2, 3]:
+                errors.append(f"scenario {scenario}: independent runs must be [1, 2, 3], got {runs}")
     return errors
 
 
 def summary(records: list[dict]) -> None:
     for scenario in sorted(SCENARIOS):
-        rows = [record for record in records if record.get("scenario") == scenario and record.get("record_type") == "result"]
+        rows = [
+            record for record in records
+            if record.get("phase") == "benchmark" and record.get("scenario") == scenario
+            and record.get("record_type") == "result"
+        ]
         durations = [float(record["duration_seconds"]) for record in rows if record.get("duration_seconds") is not None]
         duration = f"{statistics.median(durations):.3f}s" if durations else "N/A"
         tools = statistics.median([record["tool_calls"] for record in rows]) if rows else 0
