@@ -35,4 +35,4 @@
 
 ## 재현
 
-`docs/performance/OPS-PERF-001-local-query-measurement.ps1`는 `.env.local`을 출력하지 않고 전용 fixture를 만들고 정리한다.
+`docs/performance/OPS-PERF-001-local-query-measurement.ps1`는 `.env.local`을 출력하지 않고 전용 fixture를 만들며, 로그인·측정·로그아웃 중 실패해도 `finally`에서 전용 fixture를 정리한다.
