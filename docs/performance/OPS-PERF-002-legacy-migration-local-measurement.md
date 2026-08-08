@@ -82,7 +82,7 @@ Writer duration은 lock 획득 시점부터의 정확한 hold time이 아니라 
 - Fixture cleanup은 전용 member/product/SKU/subscription과 migration에서 생성한 하위 row만 대상으로 한다.
 - 측정/HTTP가 아닌 Spring/SQL/Gradle 실패 시에도 `finally`에서 임시 test source, MySQL container, 전용 network를 정리한다.
 - Cleanup 실패는 원래 실패를 덮지 않는다. 최종 run의 cleanup, raw evidence provenance validation, `final_legacy_rows=0`은 모두 pass였다.
-- Docker volume을 생성·reset·삭제하지 않았고 기존 local integration DB의 작업 외 legacy row도 변경하지 않았다.
+- MySQL data volume을 생성·reset·삭제하지 않았고 기존 local integration DB의 작업 외 legacy row도 변경하지 않았다.
 
 ## 운영 위험과 DATA-003 복구 경계
 
