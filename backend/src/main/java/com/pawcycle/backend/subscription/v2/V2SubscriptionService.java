@@ -14,25 +14,35 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /** V2 uses JDBC deliberately: its multi-table aggregate and compare-and-set writes stay explicit. */
 @Service
 public class V2SubscriptionService {
+	private static final Logger log = LoggerFactory.getLogger(V2SubscriptionService.class);
 	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 	private final JdbcTemplate jdbc;
 	private final ObjectMapper json;
 	private final Clock clock;
+	private final TransactionTemplate reconciliationTransaction;
 
-	public V2SubscriptionService(JdbcTemplate jdbc, ObjectMapper json, Clock clock) {
+	public V2SubscriptionService(JdbcTemplate jdbc, ObjectMapper json, Clock clock,
+			PlatformTransactionManager transactionManager) {
 		this.jdbc = jdbc;
 		this.json = json;
 		this.clock = clock;
+		this.reconciliationTransaction = new TransactionTemplate(transactionManager);
+		this.reconciliationTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
 
 	@Transactional
@@ -145,10 +155,17 @@ public class V2SubscriptionService {
 		return outcome;
 	}
 
-	@Transactional
 	public void reconcileActiveSubscriptions() {
 		List<Long> active = jdbc.queryForList("SELECT id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id", Long.class);
-		for (Long id : active) one("SELECT * FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", id).ifPresent(this::reconcile);
+		for (Long id : active) {
+			try {
+				reconciliationTransaction.executeWithoutResult(status ->
+						one("SELECT * FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", id)
+								.ifPresent(this::reconcile));
+			} catch (RuntimeException exception) {
+				log.error("Subscription reconciliation failed; subscriptionId={}", id, exception);
+			}
+		}
 	}
 
 	private void changePlan(long memberId,Map<String,Object> sub,Map<String,Object> body) {

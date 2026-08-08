@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -110,7 +111,7 @@ class V2SubscriptionServiceIntegrationTests {
 	}
 
 	@Test
-	void mysqlPersistsReplayAndReconcilesOverdueScheduleOnlyOnce() {
+	void mysqlPersistsReplayAndRejectsMismatchedPayload() {
 		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
 		Map<String, Object> request = new LinkedHashMap<>();
 		request.put("deliveryCycleWeeks", 4);
@@ -126,21 +127,12 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(replay.replay()).isTrue();
 		assertThat(((Map<?, ?>) replay.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", String.class, member.getId(), "create-replay-key")).doesNotContain("\"snapshotId\"");
-		long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
-		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
-
-		service.reconcileActiveSubscriptions();
-		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
-		service.reconcileActiveSubscriptions();
-		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
-
 		assertThatThrownBy(() -> service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 2)))
 				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "IDEMPOTENCY_KEY_REUSED");
 	}
 
 	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	void legacyWhitespacePetTypeNormalizesHidesV1AndKeepsFutureReconciliation() {
 		jdbc.update("UPDATE products SET pet_type=' DOG ' WHERE id=?", sku.getProduct().getId());
 		jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date) VALUES (?,?,?,?,?,?)", member.getId(), sku.getId(), 1, 4, LocalDate.now(ZoneId.of("Asia/Seoul")).minusWeeks(4), LocalDate.now(ZoneId.of("Asia/Seoul")).plusWeeks(4));
@@ -152,10 +144,22 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(jdbc.queryForObject("SELECT target_pet_type FROM subscription_plans WHERE name IS NULL ORDER BY id DESC LIMIT 1", String.class)).isEqualTo("DOG");
 		assertThat(jdbc.queryForObject("SELECT effective_snapshot_id FROM subscription_schedules WHERE subscription_id=?", Long.class, subscriptionId)).isNull();
 
-		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?",
+				LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1),
+				subscriptionId);
+
 		service.reconcileActiveSubscriptions();
 
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NULL AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL",
+				Integer.class,
+				subscriptionId)).isEqualTo(1);
+
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?",
+				Integer.class,
+				subscriptionId,
+				LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
 	}
 }

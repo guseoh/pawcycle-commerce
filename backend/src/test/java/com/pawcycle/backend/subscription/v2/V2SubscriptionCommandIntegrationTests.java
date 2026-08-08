@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -198,6 +199,7 @@ class V2SubscriptionCommandIntegrationTests {
 	}
 
 	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	void scheduleDtoIncludesNullableAndAppliedEffectiveSnapshotId() {
 		long subscriptionId = createSubscription("schedule-dto");
 		V2SubscriptionService.V2Result initial = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
@@ -205,11 +207,21 @@ class V2SubscriptionCommandIntegrationTests {
 		Map<String,Object> initialSchedule = castMap(castList(initialSchedules.get("items")).getFirst());
 		assertThat(initialSchedule).containsKey("effectiveSnapshotId").containsEntry("effectiveSnapshotId", null);
 
-		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?",
+				LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1),
+				subscriptionId);
+
 		service.reconcileActiveSubscriptions();
-		V2SubscriptionService.V2Result reconciled = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
+
+		V2SubscriptionService.V2Result reconciled =
+				service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
+
 		Map<String,Object> schedules = castMap(reconciled.body().get("schedules"));
-		assertThat(castList(schedules.get("items"))).anySatisfy(item -> assertThat(castMap(item).get("effectiveSnapshotId")).isNotNull());
+
+		assertThat(castList(schedules.get("items")))
+				.anySatisfy(item ->
+						assertThat(castMap(item).get("effectiveSnapshotId")).isNotNull());
 	}
 
 	@Test
