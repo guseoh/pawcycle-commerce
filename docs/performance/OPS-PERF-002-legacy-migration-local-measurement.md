@@ -1,65 +1,102 @@
 # OPS-PERF-002 legacy migration local measurement
 
+- 작업 ID: OPS-PERF-002
+- 작업 등급: 고위험
+- 실행 구분: 저장소 변경
+- 역할: Platform/SRE
+
 ## 대상과 경계
 
-- 기준: `main` 5b382294bde25df460c5eda864ea85fdc32a6297의 `LegacyMvp2MigrationService`
+- 대상: `LegacyMvp2MigrationService.migrateAfterSourceWriteFreeze(true)`의 실제 DML transaction과 `FOR UPDATE` query
+- 실행: 볼륨 없는 전용 MySQL container에서 수행한 **isolated local migration execution**
 - 환경: Windows Docker Desktop, MySQL 8.4.10, Eclipse Temurin 25.0.3, Spring Boot test profile
-- 실행 구분: 볼륨을 연결하지 않은 임시 local MySQL container에서 실제 migration service를 호출한 representative dry-run
-- 제외: Production DB·Cloud·AWS·실제 source-write freeze·운영 부하 실행
+- 제외: Production DB·Cloud·AWS·실제 운영 source-write freeze·Production backup/restore
 
-저장소에는 Production legacy row 규모 근거가 없다. 따라서 기존 OPS-PERF-001 local performance fixture와 같은 100건을 비교 가능한 representative 경계로 선택했다. 이는 Production-sized fixture나 Production latency가 아니다. 기존 local integration DB에는 작업 외 legacy row 1건이 있어 첫 시도는 fixture write 전에 중단했고, 기존 row를 변경하지 않았다. 최종 표본은 같은 MySQL image와 migration V1~V3를 적용한 격리 container에서 수집했다.
+저장소에는 Production legacy row 규모 근거가 없다. 따라서 실행 시간은 기존 OPS-PERF-001과 같은 legacy subscription 100건을 representative local boundary로 유지했다. Lock footprint는 인위적인 sleep이나 제품 test hook 없이 실제 migration transaction을 관측하기 위해 legacy target 300건과 그 사이의 managed row 1건을 사용했다. 이는 Production-sized fixture나 Production latency/SLO가 아니다.
 
-## Migration 실행 시간
+## 재현 방법과 provenance
 
-각 run은 고유 member 1건, product 1건, SKU 1건과 legacy subscription 100건을 먼저 commit했다. `preflight().valid()`를 확인한 뒤 `migrateAfterSourceWriteFreeze(true)` 호출 시작부터 transaction commit 반환까지를 측정했다. 호출 후에는 다음을 모두 확인하고 전용 fixture만 삭제했다.
+재현 wrapper와 local-only harness는 다음과 같다.
 
-- subscription 100건이 `mvp2_managed=true`, `ACTIVE`, current snapshot 보유, legacy API 비노출 상태
-- snapshot·snapshot item·future schedule 각 100건
-- migration-only plan 100건
-- cleanup 후 전용 member와 legacy subscription 잔여 0건
+- [`OPS-PERF-002-local-migration-measurement.ps1`](./OPS-PERF-002-local-migration-measurement.ps1)
+- [`OpsPerf002MigrationMeasurementTests.java`](./fixtures/OpsPerf002MigrationMeasurementTests.java)
 
-Warm-up 2회 후 독립 fixture 7회 표본은 다음과 같다.
+최종 run은 clean source commit `c4ca22fc77be9d470fc74b8a3ade575fcd11638d`, run ID `OPS-PERF-002-c4ca22f-run2`에서 실행했다.
 
-| 구분 | run | legacy rows | 실행 시간 (ms) | 정합성 | cleanup |
-| --- | ---: | ---: | ---: | --- | --- |
-| warm-up | 1 | 100 | 1282 | pass | pass |
-| warm-up | 2 | 100 | 1018 | pass | pass |
-| sample | 1 | 100 | 805 | pass | pass |
-| sample | 2 | 100 | 821 | pass | pass |
-| sample | 3 | 100 | 1027 | pass | pass |
-| sample | 4 | 100 | 666 | pass | pass |
-| sample | 5 | 100 | 671 | pass | pass |
-| sample | 6 | 100 | 611 | pass | pass |
-| sample | 7 | 100 | 674 | pass | pass |
+```powershell
+./docs/performance/OPS-PERF-002-local-migration-measurement.ps1 `
+  -Rows 100 -Warmup 2 -Iterations 7 `
+  -LockRows 300 -LockIterations 5 `
+  -RunId OPS-PERF-002-c4ca22f-run2 `
+  -OutputPath docs/performance/evidence/OPS-PERF-002/OPS-PERF-002-c4ca22f-run2.json
+```
 
-대표값은 **median 674 ms**, observed range는 **611~1027 ms**다. Spring context 시작과 Flyway 적용 시간은 service 호출 구간 밖이므로 포함하지 않았다.
+- MySQL image: `mysql:8.4.10`
+- 실행 digest: `mysql@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6`
+- 확인 version: `mysql  Ver 8.4.10 for Linux on x86_64 (MySQL Community Server - GPL)`
+- 최종 raw evidence: [`OPS-PERF-002-c4ca22f-run2.json`](./evidence/OPS-PERF-002/OPS-PERF-002-c4ca22f-run2.json)
+- 100-row lock 관측 창의 한계를 확인한 선행 raw evidence: [`OPS-PERF-002-97c7b3f-run1.json`](./evidence/OPS-PERF-002/OPS-PERF-002-97c7b3f-run1.json)
 
-Rollback은 별도 1건 fixture에 같은 날짜의 schedule을 미리 넣어 migration DML을 실패시켰다. 호출 실패 후 subscription은 `mvp2_managed=false`, current snapshot은 null, 생성된 migration snapshot은 0건이어서 transaction 전체 rollback을 확인했다. 이후 전용 fixture cleanup도 성공했다.
+Raw evidence에는 source commit, fixture/run ID, script/harness SHA-256, Java/MySQL image digest, 모든 표본, post-validation, rollback assertion, cleanup, native exit 결과가 들어 있다. Harness JSONL schema에는 임의 필드를 추가하지 않고 후속 evidence 경로만 기존 `notes`에서 연결한다.
 
-## `FOR UPDATE` contention
+## Representative migration 실행 시간
 
-V1~V3 schema를 적용한 격리 MySQL에서 전용 legacy subscription 1건을 사용했다. 독립 session A가 transaction을 시작하고 해당 row를 `SELECT ... FOR UPDATE`로 잠근 직후 MySQL advisory lock으로 readiness를 알린 다음 2초 동안 transaction을 유지했다. Session B는 readiness를 확인한 뒤 같은 row에 충돌 `UPDATE`를 실행했고, client wall-clock을 측정했다. Baseline은 session A 없이 같은 `UPDATE`를 실행했다. 각 조건은 5회다.
+각 run은 고유 member/product/SKU와 legacy subscription 100건을 commit한 뒤 `preflight().valid()`를 확인하고 실제 migration service 호출 시작부터 transaction commit 반환까지 측정했다. Warm-up 2회 후 독립 fixture 7회 결과는 다음과 같다.
 
-| 조건 | 표본 (ms) | median (ms) | observed range (ms) |
+| 구분 | 표본 (ms) | median (ms) | observed range (ms) |
 | --- | --- | ---: | ---: |
-| baseline | 294.5, 395.7, 312.9, 248.7, 355.5 | 312.9 | 248.7~395.7 |
-| row lock 충돌 | 1722.9, 1908.1, 1746.6, 1934.2, 1755.2 | 1755.2 | 1722.9~1934.2 |
+| 최종 run2 | 1114.3, 1057.0, 870.5, 714.2, 756.7, 638.7, 809.2 | **809.2** | **638.7~1114.3** |
 
-충돌 session의 wall-clock median은 baseline보다 1442.3 ms 길었다. 이 값은 Docker command 시작 비용과 readiness polling 이후 남은 lock hold 시간을 함께 포함한 실제 blocking 관측값이며, migration transaction의 정확한 lock hold 시간은 아니다. 첫 동기화 없는 시도는 session A 시작 전에 session B가 끝나 contention을 입증하지 못했으므로 폐기했고 위 표에 포함하지 않았다.
+Warm-up은 1387.7 ms와 1105.3 ms였다. 모든 run에서 subscription 100건의 managed/ACTIVE/current snapshot/legacy API 비노출 상태, snapshot·snapshot item·future schedule 100건, cleanup 후 전용 member와 legacy row 0건을 확인했다.
 
-현재 구현에서 subscription row lock은 preflight 이후 `FOR UPDATE` query가 실행될 때 획득되고 transaction commit까지 유지된다. 따라서 100건 migration service 전체 호출 시간 611~1027 ms는 이 fixture에서 lock hold의 상한이지만, lock 획득 시점 자체를 계측하지 않았으므로 정확한 hold time으로 표현하지 않는다. 독립 session 실험은 충돌 writer가 lock 해제까지 실제로 대기한다는 점을 확인한다.
+이전 PR 표본은 보존되지 않은 임시 wrapper에서 median 674 ms(611~1027 ms)였고, 보존 wrapper run1은 median 893.8 ms(730.8~1082.7 ms)였다. 최종 판단은 source/digest/raw evidence가 연결된 run2의 809.2 ms를 우선한다. 차이는 local Docker/JVM/MySQL 실행 변동 범위이며 Production 변화로 해석하지 않는다.
 
-## 안전성 판정과 한계
+Rollback probe는 legacy row 1건에 같은 날짜의 schedule을 미리 넣어 migration schedule insert를 실패시켰다. 실패 후 `mvp2_managed=false`, `current_snapshot_id=null`, migration snapshot 0건을 확인해 DML transaction 전체 rollback을 검증했고 전용 fixture cleanup도 성공했다.
 
-Representative local 100건에서는 모든 측정 run이 성공했고 post-migration 정합성, 의도된 실패의 전체 rollback, 실패 경로 cleanup을 확인했다. MySQL command wrapper는 실행 직후 native exit code를 검사했으며, 의도적인 invalid SQL이 non-zero 실패로 처리되는 것도 확인했다. Cleanup SQL은 첫 fixture write 전에 준비했고 전용 email/name/ID 범위만 삭제했으며, cleanup 오류가 있으면 원래 오류를 보존하도록 했다.
+## 실제 migration query의 lock footprint
 
-그러나 **이 결과만으로 Production migration 활성화를 승인할 수 없다.** 실제 Production legacy cardinality가 없고 migration은 row별 DML을 수행한다. 또한 source-write freeze가 불완전하면 충돌 writer가 transaction의 row lock 해제까지 block된다는 위험이 실제 관측됐다. 이번 측정만으로 구현을 최적화하거나 transaction 의미를 바꾸지 않았다.
+각 300-row lock run은 legacy target row 사이에 `mvp2_managed=true` row 1건을 배치했다. Actual service migration을 별도 thread에서 시작하고 `performance_schema.data_locks`에 `subscriptions` RECORD lock이 보인 뒤 다음 세 writer를 독립 connection에서 동시에 실행했다.
 
-운영 활성화 전에는 별도 승인 하에 다음이 필요하다.
+1. legacy target row `UPDATE`
+2. predicate 비대상 managed row `UPDATE`
+3. 인접 auto-increment managed row `INSERT`
 
-- 실제 Production legacy row 수와 허용 maintenance window 비교
-- 애플리케이션·DB 양쪽 source-write freeze 절차와 실패 시 복구 확인
-- lock wait/blocked writer 관측, timeout 기준, migration 중단·rollback 판단자 지정
-- Production과 같은 자원·데이터 분포에서의 실행 시간 및 lock hold 재검증
+`performance_schema.data_lock_waits`의 requesting connection ID를 각 writer connection ID와 대조했다. 각 조건은 baseline 5회와 actual migration contention 5회다.
 
-Production 실행, 운영 DB 접근, Cloud/AWS 실행은 하지 않았다.
+| operation | baseline median/range (ms) | contention median/range (ms) | 직접 wait attribution |
+| --- | ---: | ---: | ---: |
+| legacy target update | 0.9 / 0.8~3.5 | **1963.8 / 1882.2~2482.5** | 0/5 |
+| managed row update | 0.8 / 0.6~2.1 | **1966.8 / 1882.3~2481.1** | 5/5 |
+| adjacent managed insert | 24.0 / 10.1~27.3 | **2002.0 / 1888.6~2527.4** | 5/5 |
+
+같은 run의 actual migration transaction 시간은 2532.2, 2145.2, 1924.0, 2000.6, 1898.5 ms(median 2000.6 ms)였다. Legacy target update는 5회 모두 transaction 완료 시점과 함께 풀리는 wall-clock blocking을 보였지만 짧은 polling 구간에서 requesting connection ID가 직접 포착되지는 않았다. 따라서 이 operation의 정확한 wait entry/hold time을 직접 측정했다고 주장하지 않는다.
+
+반면 managed row update와 adjacent managed insert는 5/5 모두 실제 `data_lock_waits`에 직접 나타났다. 현재 schema에는 `mvp2_managed` index가 없고 REPEATABLE READ의 join/full-scan locking read가 predicate 비대상 record와 insert gap에도 영향을 주는 footprint가 실제 서비스 query에서 확인됐다. SKU/Product parent write 영향은 이번 probe에 포함하지 않았으므로 판정하지 않는다.
+
+Writer duration은 lock 획득 시점부터의 정확한 hold time이 아니라 writer 시작·실행과 남은 migration transaction 시간을 포함한 blocking 관측값이다. 제품 코드에 sleep/test hook을 넣지 않았고 query·transaction·schema·index를 변경하지 않았다.
+
+## 실패·cleanup·native command 경계
+
+- Wrapper는 clean worktree와 exact source commit을 확인하고 tracked harness를 임시 Backend test source로 복사한다.
+- MySQL/Java native command 직후 exit code를 검사하며 의도적인 invalid SQL이 non-zero로 처리되는지 먼저 검증한다.
+- Fixture cleanup은 전용 member/product/SKU/subscription과 migration에서 생성한 하위 row만 대상으로 한다.
+- 측정/HTTP가 아닌 Spring/SQL/Gradle 실패 시에도 `finally`에서 임시 test source, MySQL container, 전용 network를 정리한다.
+- Cleanup 실패는 원래 실패를 덮지 않는다. 최종 run의 cleanup, raw evidence provenance validation, `final_legacy_rows=0`은 모두 pass였다.
+- Docker volume을 생성·reset·삭제하지 않았고 기존 local integration DB의 작업 외 legacy row도 변경하지 않았다.
+
+## 운영 위험과 DATA-003 복구 경계
+
+Representative local execution은 성공했지만 **Production migration 활성화를 승인할 근거로 충분하지 않다.** 실제 Production cardinality가 없고 migration은 row별 DML을 수행한다. 더 중요하게, source-write freeze가 불완전하면 legacy target뿐 아니라 managed row writer와 인접 insert도 transaction 종료까지 block될 수 있다.
+
+DATA-003은 DDL auto-commit과 DML transaction을 분리하고, 데이터 write 뒤 복구를 승인된 backup/restore 및 별도 변경 관리 경계에 둔다. 이번 local 측정은 Production backup/restore 가능성, recovery point, 복구 시간, DML 실패 후 backup 복원 여부를 검증하지 않았다.
+
+Production 활성화 전에는 별도 고위험 승인 하에 다음을 검증해야 한다.
+
+- 실제 Production legacy row 수와 허용 maintenance window
+- application ingress와 DB 권한/lock을 함께 사용하는 source-write freeze
+- 승인된 backup/restore 절차, 복구 지점과 restore 정합성
+- DML transaction 실패 후 rollback만으로 충분한지 또는 backup 복구가 필요한지의 판단 절차와 책임자
+- lock wait/blocked writer 관측, timeout, 중단·rollback 기준
+- Production과 같은 자원·데이터 분포에서의 실행 시간과 lock hold
+
+위 backup/restore·복구 판단 검증 전에는 Production 활성화를 승인하지 않는다. 데이터 손실 위험과 활성화 여부는 사용자와 운영 담당자가 다시 판단해야 한다. 이번 작업에서 Production DB/Cloud/AWS 접근, 실제 운영 source-write freeze, Production backup/restore는 수행하지 않았다.
