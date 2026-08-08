@@ -33,8 +33,8 @@ PlanVersion과 PlanItem은 SubscriptionPlan의 하위 구성이다. Schedule, cu
 | `pending_plan_changes` | `subscription_id` unique, `snapshot_id` unique, `target_schedule_id` unique; subscription별 최대 하나의 pending과 적용 target |
 | `subscription_schedules` | `id`, `subscription_id`, `scheduled_date`, `status`; 계획 이력 |
 | `subscription_command_history` | command type·성공 결과 요약·발생 시각·Subscription version 전후; 사용자 노출 이력의 원본 |
-| `subscription_creation_idempotency_results` | `member_id`, `idempotency_key`, fingerprint, Subscription/result reference, response status·headers; 생성 scope 전용 |
-| `subscription_command_idempotency_results` | `member_id`, `subscription_id`, `command_type`, `idempotency_key`, fingerprint, response status·headers; 관리 scope 전용 |
+| `subscription_creation_idempotency_results` | `member_id`, `idempotency_key`, fingerprint, Subscription/result reference, response status·headers, nullable `completed_at`; 생성 scope 전용 |
+| `subscription_command_idempotency_results` | `member_id`, `subscription_id`, `command_type`, `idempotency_key`, fingerprint, response status·headers, nullable `completed_at`; 관리 scope 전용 |
 
 `LegacyInitialSnapshot`은 `subscription_snapshots`와 `subscription_snapshot_items`의 legacy origin으로 표현하고, `PendingPlanChange`는 `pending_plan_changes`로 표현한다. snapshot item JSON, current snapshot 값 복제, nullable scope unique에 의존하지 않는다. 과거 snapshot은 PlanVersion·SKU 가격 변경에 의해 변경되지 않고 pending은 최대 하나다. `subscription_schedules.effective_snapshot_id`는 해당 회차에 실제 적용되는 snapshot을 가리켜, pending 승격 뒤에도 과거 회차와 snapshot 관계를 보존한다.
 
@@ -65,6 +65,8 @@ PlanVersion과 PlanItem은 SubscriptionPlan의 하위 구성이다. Schedule, cu
 | Schedule/이력 | `(subscription_id, scheduled_date)`와 `(subscription_id, occurred_at)` | 상세 이력 |
 | 생성 idempotency | `subscription_creation_idempotency_results(member_id, idempotency_key)` unique | nullable Subscription ID 없이 생성 replay 경합 차단 |
 | 관리 idempotency | `subscription_command_idempotency_results(member_id, subscription_id, command_type, idempotency_key)` unique | command replay·다른 scope key 재사용 구분 |
+| 생성 idempotency cleanup | `subscription_creation_idempotency_results(completed_at, member_id, idempotency_key)` | 완료 시각 기준 bounded delete와 안정된 삭제 순서 지원 |
+| 관리 idempotency cleanup | `subscription_command_idempotency_results(completed_at, member_id, subscription_id, command_type, idempotency_key)` | 완료 시각 기준 bounded delete와 안정된 삭제 순서 지원 |
 
 MySQL의 partial unique 표현, generated column과 index 이름은 실제 schema 버전과 테스트 결과를 본 뒤 확정한다. nullable unique 처리에는 의존하지 않는다. 애플리케이션 검증만으로 상태 cardinality를 보장하지 않으며, DB가 직접 표현할 수 없는 시간 의존 조건은 transaction locking과 reconciliation으로 보완한다. API-001 목록·상세는 `legacy_api_visible=true`만 조회하고 새 2차 MVP row는 false로 둔다. migration된 legacy row는 기존 V1 열과 visibility를 보존하면서 `mvp2_managed=true`로 API-004 조회·명령에 참여하므로, V2 패키지 row가 API-001 단일 SKU DTO에 섞이지 않는다.
 
@@ -72,7 +74,13 @@ MySQL의 partial unique 표현, generated column과 index 이름은 실제 schem
 
 생성 scope는 `subscription_creation_idempotency_results(member_id, idempotency_key)`, 관리 명령 scope는 `subscription_command_idempotency_results(member_id, subscription_id, command_type, idempotency_key)`로 물리적으로 분리한다. 같은 key가 다른 command·Subscription에 사용되면 다른 관리 row가 가능하다.
 
-payload fingerprint에는 canonical request body와 command 식별을 사용하고, raw `Idempotency-Key` 자체와 member ID는 server-controlled scope 열로 저장한다. 최초 성공의 business status·body, `Location`, `ETag`와 재구성에 충분한 result reference를 저장한다. replay에는 저장한 business 응답을 그대로 반환하고 `Idempotency-Replayed: true` header만 추가한다. 실패 결과, 오류 body, stack trace, 원 요청 민감 정보는 저장·재노출하지 않으며 성공 결과는 자동 만료하지 않는다.
+payload fingerprint에는 canonical request body와 command 식별을 사용하고, raw `Idempotency-Key` 자체와 member ID는 server-controlled scope 열로 저장한다. key reservation row의 nullable `completed_at DATETIME(6)`은 null로 두고, 최초 성공의 business status·body, `Location`, `ETag`와 재구성에 충분한 result reference를 최종 update할 때 같은 transaction에서 최초 완료 UTC 시각을 기록한다. replay와 저장 response body 보정은 `completed_at`을 변경하지 않는다. 실패 결과, 오류 body, stack trace, 원 요청 민감 정보는 저장·재노출하지 않는다.
+
+성공 결과 retention은 최초 `completed_at`부터 30일이다. cleanup 실행은 먼저 `response_status`가 2xx이고 `response_body`가 존재하며 `completed_at IS NULL`인 rollback-era 성공 row를 table별 caller 제공 양의 `batchSize`까지 현재 UTC 시각으로 repair한다. repair 시각이 최초 완료 시각이 되어 30일 grace period가 시작되며, incomplete reservation 또는 성공 완료 여부를 판정할 수 없는 null row는 그대로 보존한다. 그 뒤 같은 현재 시각에서 30일을 뺀 cutoff로 `completed_at < cutoff`만 table별 같은 `batchSize`까지 삭제하므로 방금 repair한 row는 같은 실행에서 삭제되지 않는다. 정확히 cutoff인 row도 보존하고 creation·command의 repair·delete 수를 각각 반환한다. replay는 retention을 연장하지 않으며 cleanup으로 삭제된 key는 이후 새 요청으로 처리될 수 있다. Scheduler, 운영 batch size, retry/backoff와 alert는 이 설계에서 확정하지 않는다.
+
+Flyway는 MySQL 8.4 non-transactional DDL의 partial application 경계를 version별로 분리한다. V4는 creation `completed_at`, V5는 command `completed_at`을 각각 단일 `ALTER TABLE`로 추가한다. V6은 두 column이 존재한 뒤 동일 migration 실행 UTC 시각으로 기존 2xx·body 존재·null 성공 row만 backfill하고 incomplete reservation은 null로 보존한다. V7과 V8은 creation·command cleanup index를 각각 단일 DDL로 생성한다.
+
+V4 성공 뒤 V5가 실패하면 V4 완료 상태를 유지한 채 실패한 V5를 Flyway repair한 뒤 V5부터 재시도한다. V7 성공 뒤 V8 실패도 같은 방식으로 V7 index를 유지하고 V8부터 재시도한다. V6은 DDL과 섞지 않은 backfill 단계이며 실패 시 이후 index 단계로 진행하지 않는다. V3 fixture에서 V4→V8을 순차 적용하는 통합 테스트가 각 column·backfill·index 상태와 최종 fresh migration을 검증한다. 이 repository 재구성은 아직 Production에 적용되지 않았고 실제 Production repair·migration을 실행하지 않는다.
 
 Subscription에는 optimistic `version`을 둔다. 새로운 관리 명령은 `If-Match`와 version을 확인해 조건부 갱신한다. replay lookup은 version 검사보다 앞선다. 생성·관리 idempotency unique 위반 또는 optimistic update 0건이면 같은 scope를 즉시 다시 조회해 같은 fingerprint의 성공 replay 또는 다른 fingerprint의 key 충돌을 먼저 판정하고, 결과가 없을 때만 version 경쟁으로 매핑한다. 구현 검증에는 동시에 같은 생성 key를 제출해 Subscription 하나와 동일 replay 하나만 남는 테스트를 포함한다. 비관적 lock·Redis·message broker는 이 설계의 기본 선택이 아니다.
 
