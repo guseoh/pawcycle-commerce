@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -109,6 +110,64 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             self.assertIn("experiment_arm", svg)
             self.assertIn("2.000", svg)
             self.assertIn("10.000", svg)
+
+    def test_renderer_keeps_three_arms_inside_non_overlapping_canvas(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            inputs = []
+            for index, arm in enumerate(("control_arm", "experiment_arm", "third_arm")):
+                source = Path(temp) / f"{arm}.jsonl"
+                self.write_valid(source, arm, duration_offset=index * 8)
+                inputs.append(source)
+            output = Path(temp) / "comparison.svg"
+            rendered = subprocess.run(
+                [sys.executable, str(RENDERER), *(str(path) for path in inputs), "--output", str(output)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, rendered.returncode, rendered.stderr)
+            root = ET.parse(output).getroot()
+            canvas_height = float(root.attrib["height"])
+            bars = [element for element in root if element.attrib.get("data-role") == "bar"]
+            self.assertTrue(bars)
+            for bar in bars:
+                self.assertLessEqual(float(bar.attrib["y"]) + float(bar.attrib["height"]), canvas_height)
+            for section in ("duration", "tools", "accuracy"):
+                intervals = sorted(
+                    (float(bar.attrib["y"]), float(bar.attrib["y"]) + float(bar.attrib["height"]))
+                    for bar in bars
+                    if bar.attrib["data-section"] == section
+                )
+                self.assertTrue(all(current[1] <= following[0] for current, following in zip(intervals, intervals[1:])))
+
+    def test_renderer_replaces_duplicate_arm_scenario_run_with_later_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            control = Path(temp) / "control.jsonl"
+            supplement = Path(temp) / "supplement.jsonl"
+            output = Path(temp) / "comparison.svg"
+            original = [record("D", run, 75.0 if run == 1 else None, 3, "control_arm") for run in (1, 2, 3)]
+            replacement = [record("D", run, None, 3, "control_arm") for run in (1, 2, 3)]
+            control.write_text("".join(json.dumps(row) + "\n" for row in original), encoding="utf-8")
+            supplement.write_text("".join(json.dumps(row) + "\n" for row in replacement), encoding="utf-8")
+            rendered = subprocess.run(
+                [
+                    sys.executable,
+                    str(RENDERER),
+                    str(control),
+                    str(supplement),
+                    "--output",
+                    str(output),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, rendered.returncode, rendered.stderr)
+            svg = output.read_text(encoding="utf-8")
+            self.assertNotIn("75.000", svg)
+            self.assertNotIn("6/3", svg)
+            self.assertIn("N/A", svg)
+            self.assertIn("3/3", svg)
 
     def test_validator_rejects_cache_as_independent(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
