@@ -29,11 +29,16 @@ def start(args: argparse.Namespace) -> int:
     state = Path(args.state)
     if state.exists() and not args.overwrite:
         raise ValueError(f"state already exists: {state}")
+    if args.phase == "benchmark" and args.scenario not in SCENARIOS:
+        raise ValueError("benchmark scenario must be A, B, C or D")
     payload = {
         "schema_version": "3.0",
         "record_type": "benchmark_state",
         "task_id": args.task_id,
+        "model": args.model,
+        "reasoning_level": args.reasoning_level,
         "comparison_arm": args.arm,
+        "phase": args.phase,
         "scenario": args.scenario,
         "run": args.run,
         "target": args.target,
@@ -55,6 +60,9 @@ def finish(args: argparse.Namespace) -> int:
     state = json.loads(state_path.read_text(encoding="utf-8"))
     if state.get("status") != "running":
         raise ValueError("state is not running")
+    phase = state.get("phase", "benchmark")
+    if args.phase is not None and args.phase != phase:
+        raise ValueError("finish phase must match state phase")
     ended_epoch_ns = time.time_ns()
     duration = (ended_epoch_ns - int(state["started_epoch_ns"])) / 1_000_000_000
     measured = args.user_intervention_measurement == "measured"
@@ -69,8 +77,10 @@ def finish(args: argparse.Namespace) -> int:
         "schema_version": "3.0",
         "record_type": record_type,
         "task_id": state["task_id"],
+        "model": state["model"],
+        "reasoning_level": state["reasoning_level"],
         "comparison_arm": state["comparison_arm"],
-        "phase": args.phase,
+        "phase": phase,
         "scenario": state["scenario"],
         "run": state["run"],
         "target": state.get("target"),
@@ -85,6 +95,7 @@ def finish(args: argparse.Namespace) -> int:
         "user_corrections": args.user_corrections,
         "user_intervention_measurement": args.user_intervention_measurement,
         "accuracy": args.accuracy,
+        "success": args.success,
         "scope_violation": args.scope_violation,
         "evidence_missing": args.evidence_missing,
         "cache_reuse": args.cache_reuse,
@@ -111,9 +122,12 @@ def parser() -> argparse.ArgumentParser:
     begin = sub.add_parser("start")
     begin.add_argument("--state", required=True)
     begin.add_argument("--task-id", required=True)
+    begin.add_argument("--model", required=True)
+    begin.add_argument("--reasoning-level", required=True)
     begin.add_argument("--arm", required=True)
-    begin.add_argument("--scenario", choices=sorted(SCENARIOS), required=True)
-    begin.add_argument("--run", type=int, choices=(1, 2, 3), required=True)
+    begin.add_argument("--phase", choices=("benchmark", "pilot"), default="benchmark")
+    begin.add_argument("--scenario", required=True)
+    begin.add_argument("--run", type=int, required=True)
     begin.add_argument("--target", required=True)
     begin.add_argument("--prompt", required=True)
     begin.add_argument("--overwrite", action="store_true")
@@ -122,10 +136,11 @@ def parser() -> argparse.ArgumentParser:
     end = sub.add_parser("finish")
     end.add_argument("--state", required=True)
     end.add_argument("--output", required=True)
-    end.add_argument("--phase", default="benchmark")
+    end.add_argument("--phase", choices=("benchmark", "pilot"))
     end.add_argument("--tool-calls", type=int, required=True)
     end.add_argument("--failed-tool-calls", type=int, default=0)
     end.add_argument("--accuracy", choices=("pass", "fail", "not_scored"), required=True)
+    end.add_argument("--success", action=argparse.BooleanOptionalAction, required=True)
     end.add_argument("--user-intervention-measurement", choices=("measured", "not_measured"), required=True)
     end.add_argument("--user-additional-explanations", type=int)
     end.add_argument("--user-corrections", type=int)
