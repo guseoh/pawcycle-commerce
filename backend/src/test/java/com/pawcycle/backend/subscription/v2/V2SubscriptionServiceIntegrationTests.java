@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,60 @@ class V2SubscriptionServiceIntegrationTests {
 		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,2)", planVersionId, sku.getId());
 		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4)", planVersionId);
 		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", planVersionId, planId);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void listPagesKeepRelatedRowsOrderingAndMemberIsolationAfterBatchAssembly() {
+		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
+		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG multi", "DOG");
+		long multiPlanId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", multiPlanId);
+		long multiVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,?)", multiVersionId, sku.getId(), 3);
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,?)", multiVersionId, 2);
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,?)", multiVersionId, 8);
+		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", multiVersionId, multiPlanId);
+		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG empty", "DOG");
+		long emptyPlanId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", emptyPlanId);
+		long emptyVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", emptyVersionId, emptyPlanId);
+
+		List<Map<String, Object>> plans = (List<Map<String, Object>>) service.plans(member.getId(), petId, 0, 100).get("items");
+		assertThat(plans).extracting(plan -> ((Number) plan.get("planId")).longValue()).isSorted();
+		assertThat(plans).filteredOn(plan -> "DOG multi".equals(plan.get("planName"))).singleElement().satisfies(plan -> {
+			assertThat(plan.get("items")).isEqualTo(List.of(Map.of("skuId", sku.getId(), "quantity", 3)));
+			assertThat(plan.get("allowedDeliveryCycleWeeks")).isEqualTo(List.of(2, 8));
+		});
+		assertThat(plans).filteredOn(plan -> "DOG empty".equals(plan.get("planName"))).singleElement().satisfies(plan -> {
+			assertThat(plan.get("items")).isEqualTo(List.of());
+			assertThat(plan.get("allowedDeliveryCycleWeeks")).isEqualTo(List.of());
+		});
+		List<Map<String, Object>> secondPlanPage = (List<Map<String, Object>>) service.plans(member.getId(), petId, 1, 1).get("items");
+		assertThat(secondPlanPage).containsExactly(plans.get(1));
+
+		long firstSubscriptionId = ((Number) service.createSubscription(member.getId(), "list-first", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
+		long secondSubscriptionId = ((Number) service.createSubscription(member.getId(), "list-second", Map.of("petId", petId, "planVersionId", multiVersionId, "deliveryCycleWeeks", 2)).body().get("subscriptionId")).longValue();
+		Sku secondSku = skus.saveAndFlush(new Sku(sku.getProduct(), "v2-list-sku-" + UUID.randomUUID(), new BigDecimal("13000.00"), true, 1));
+		long secondSnapshotId = jdbc.queryForObject("SELECT current_snapshot_id FROM subscriptions WHERE id=?", Long.class, secondSubscriptionId);
+		jdbc.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) VALUES (?,?,?)", secondSnapshotId, secondSku.getId(), 1);
+		long firstSnapshotId = jdbc.queryForObject("SELECT current_snapshot_id FROM subscriptions WHERE id=?", Long.class, firstSubscriptionId);
+		jdbc.update("DELETE FROM subscription_snapshot_items WHERE snapshot_id=?", firstSnapshotId);
+		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status) VALUES (?,?,'SCHEDULED')", secondSubscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1));
+		Member other = members.saveAndFlush(new Member("v2-other-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
+		long otherPetId = ((Number) service.createPet(other.getId(), Map.of("name", "다른 회원", "petType", "DOG")).get("petId")).longValue();
+		service.createSubscription(other.getId(), "list-other", Map.of("petId", otherPetId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
+
+		List<Map<String, Object>> subscriptions = (List<Map<String, Object>>) service.subscriptions(member.getId(), 0, 100).get("items");
+		assertThat(subscriptions).extracting(subscription -> ((Number) subscription.get("subscriptionId")).longValue()).containsExactly(secondSubscriptionId, firstSubscriptionId);
+		Map<String, Object> second = subscriptions.getFirst();
+		assertThat(second.get("pet")).isEqualTo(Map.of("petId", petId, "name", "보리", "petType", "DOG"));
+		assertThat(((Map<String, Object>) second.get("currentSnapshot")).get("items")).isEqualTo(List.of(Map.of("skuId", sku.getId(), "quantity", 3), Map.of("skuId", secondSku.getId(), "quantity", 1)));
+		assertThat(second.get("nextScheduledDate")).isEqualTo(LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1));
+		assertThat(((Map<String, Object>) subscriptions.get(1).get("currentSnapshot")).get("items")).isEqualTo(List.of());
+		List<Map<String, Object>> secondSubscriptionPage = (List<Map<String, Object>>) service.subscriptions(member.getId(), 1, 1).get("items");
+		assertThat(secondSubscriptionPage).containsExactly(subscriptions.get(1));
 	}
 
 	@Test
