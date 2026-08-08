@@ -204,17 +204,19 @@ class V2SubscriptionServiceIntegrationTests {
 		insertCreationResult("creation-expired-near", cutoff.minusSeconds(1));
 		insertCreationResult("creation-cutoff", cutoff);
 		insertCreationResult("creation-recent", cutoff.plusSeconds(1));
-		insertCreationResult("creation-incomplete", null);
+		insertCreationReservation("creation-incomplete");
 		insertCommandResult(subscriptionId, "command-expired-old", cutoff.minusSeconds(3));
 		insertCommandResult(subscriptionId, "command-expired-middle", cutoff.minusSeconds(2));
 		insertCommandResult(subscriptionId, "command-expired-near", cutoff.minusSeconds(1));
 		insertCommandResult(subscriptionId, "command-cutoff", cutoff);
 		insertCommandResult(subscriptionId, "command-recent", cutoff.plusSeconds(1));
-		insertCommandResult(subscriptionId, "command-incomplete", null);
+		insertCommandReservation(subscriptionId, "command-incomplete");
 
 		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
 		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
 
+		assertThat(first.creationRepaired()).isZero();
+		assertThat(first.commandRepaired()).isZero();
 		assertThat(first.creationDeleted()).isEqualTo(2);
 		assertThat(first.commandDeleted()).isEqualTo(2);
 		assertThat(creationResultExists("creation-expired-near")).isTrue();
@@ -228,11 +230,58 @@ class V2SubscriptionServiceIntegrationTests {
 
 		V2IdempotencyCleanupService.CleanupResult second = cleanup.deleteExpired(2);
 
+		assertThat(second.creationRepaired()).isZero();
+		assertThat(second.commandRepaired()).isZero();
 		assertThat(second.creationDeleted()).isEqualTo(1);
 		assertThat(second.commandDeleted()).isEqualTo(1);
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
 		assertThatThrownBy(() -> cleanup.deleteExpired(0)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting() {
+		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
+		long subscriptionId = ((Number) service.createSubscription(member.getId(), "repair-subscription", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
+		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", member.getId(), "repair-subscription");
+		insertCreationResult("creation-repair-a", null);
+		insertCreationResult("creation-repair-b", null);
+		insertCreationResult("creation-repair-c", null);
+		insertCreationReservation("creation-repair-incomplete");
+		insertCommandResult(subscriptionId, "command-repair-a", null);
+		insertCommandResult(subscriptionId, "command-repair-b", null);
+		insertCommandResult(subscriptionId, "command-repair-c", null);
+		insertCommandReservation(subscriptionId, "command-repair-incomplete");
+
+		Instant now = Instant.parse("2026-08-09T00:00:00Z");
+		LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+
+		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
+
+		assertThat(first.creationRepaired()).isEqualTo(2);
+		assertThat(first.commandRepaired()).isEqualTo(2);
+		assertThat(first.creationDeleted()).isZero();
+		assertThat(first.commandDeleted()).isZero();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-a")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-b")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-c")).isNull();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-a")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-b")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
+
+		V2IdempotencyCleanupService.CleanupResult second = cleanup.deleteExpired(2);
+
+		assertThat(second.creationRepaired()).isEqualTo(1);
+		assertThat(second.commandRepaired()).isEqualTo(1);
+		assertThat(second.creationDeleted()).isZero();
+		assertThat(second.commandDeleted()).isZero();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-c")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
 	}
 
 	@Test
@@ -284,6 +333,31 @@ class V2SubscriptionServiceIntegrationTests {
 				key,
 				"0".repeat(64),
 				completedAt);
+	}
+
+	private void insertCreationReservation(String key) {
+		jdbc.update(
+				"INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint) VALUES (?,?,?)",
+				member.getId(),
+				key,
+				"1".repeat(64));
+	}
+
+	private void insertCommandReservation(long subscriptionId, String key) {
+		jdbc.update(
+				"INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,'PAUSE',?,?)",
+				member.getId(),
+				subscriptionId,
+				key,
+				"1".repeat(64));
+	}
+
+	private LocalDateTime resultCompletedAt(String table, String key) {
+		return jdbc.queryForObject(
+				"SELECT completed_at FROM " + table + " WHERE member_id=? AND idempotency_key=?",
+				LocalDateTime.class,
+				member.getId(),
+				key);
 	}
 
 	private boolean creationResultExists(String key) {

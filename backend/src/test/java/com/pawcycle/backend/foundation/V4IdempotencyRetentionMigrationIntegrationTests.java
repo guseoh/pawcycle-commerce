@@ -21,24 +21,29 @@ class V4IdempotencyRetentionMigrationIntegrationTests {
 	@Autowired private DataSource dataSource;
 
 	@Test
-	void v4BackfillsOnlyCompletedSuccessRowsAndAddsCleanupIndexesOnMySql84() throws Throwable {
+	void splitMigrationsExposeRestartableSchemaBackfillAndIndexBoundariesOnMySql84() throws Throwable {
 		Flyway latest = flyway();
 		Throwable primaryFailure = null;
 		try {
 			latest.clean();
-			Flyway.configure()
-					.dataSource(dataSource)
-					.locations("classpath:db/migration")
-					.cleanDisabled(false)
-					.target("3")
-					.load()
-					.migrate();
+			migrateTo("3");
 
 			JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 			seedV3Fixtures(jdbc);
-			LocalDateTime beforeMigration = jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", LocalDateTime.class);
+			assertThat(columnExists(jdbc, "subscription_creation_idempotency_results")).isFalse();
+			assertThat(columnExists(jdbc, "subscription_command_idempotency_results")).isFalse();
 
-			latest.migrate();
+			migrateTo("4");
+			assertCompletedAtColumn(jdbc, "subscription_creation_idempotency_results");
+			assertThat(columnExists(jdbc, "subscription_command_idempotency_results")).isFalse();
+			assertThat(completedAt(jdbc, "subscription_creation_idempotency_results", "creation-success")).isNull();
+
+			migrateTo("5");
+			assertCompletedAtColumn(jdbc, "subscription_command_idempotency_results");
+			assertThat(completedAt(jdbc, "subscription_command_idempotency_results", "command-success")).isNull();
+
+			LocalDateTime beforeMigration = jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", LocalDateTime.class);
+			migrateTo("6");
 
 			LocalDateTime afterMigration = jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", LocalDateTime.class);
 			LocalDateTime creationCompletedAt = completedAt(jdbc, "subscription_creation_idempotency_results", "creation-success");
@@ -47,13 +52,18 @@ class V4IdempotencyRetentionMigrationIntegrationTests {
 			assertThat(commandCompletedAt).isEqualTo(creationCompletedAt);
 			assertThat(completedAt(jdbc, "subscription_creation_idempotency_results", "creation-incomplete")).isNull();
 			assertThat(completedAt(jdbc, "subscription_command_idempotency_results", "command-incomplete")).isNull();
-			assertCompletedAtColumn(jdbc, "subscription_creation_idempotency_results");
-			assertCompletedAtColumn(jdbc, "subscription_command_idempotency_results");
+			assertThat(indexColumns(jdbc, "subscription_creation_idempotency_results", "idx_creation_idempotency_completed_at")).isEmpty();
+			assertThat(indexColumns(jdbc, "subscription_command_idempotency_results", "idx_command_idempotency_completed_at")).isEmpty();
+
+			migrateTo("7");
 			assertThat(indexColumns(jdbc, "subscription_creation_idempotency_results", "idx_creation_idempotency_completed_at"))
 					.containsExactly("completed_at", "member_id", "idempotency_key");
+			assertThat(indexColumns(jdbc, "subscription_command_idempotency_results", "idx_command_idempotency_completed_at")).isEmpty();
+
+			migrateTo("8");
 			assertThat(indexColumns(jdbc, "subscription_command_idempotency_results", "idx_command_idempotency_completed_at"))
 					.containsExactly("completed_at", "member_id", "subscription_id", "command_type", "idempotency_key");
-			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(4);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(8);
 			try (Connection connection = dataSource.getConnection()) {
 				assertThat(connection.getMetaData().getDatabaseProductVersion()).startsWith("8.4");
 			}
@@ -72,6 +82,16 @@ class V4IdempotencyRetentionMigrationIntegrationTests {
 				}
 			}
 		}
+	}
+
+	private void migrateTo(String version) {
+		Flyway.configure()
+				.dataSource(dataSource)
+				.locations("classpath:db/migration")
+				.cleanDisabled(false)
+				.target(version)
+				.load()
+				.migrate();
 	}
 
 	private Flyway flyway() {
@@ -103,6 +123,13 @@ class V4IdempotencyRetentionMigrationIntegrationTests {
 				"SELECT completed_at FROM " + table + " WHERE idempotency_key=?",
 				LocalDateTime.class,
 				key);
+	}
+
+	private boolean columnExists(JdbcTemplate jdbc, String table) {
+		return jdbc.queryForObject(
+				"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name='completed_at'",
+				Integer.class,
+				table) == 1;
 	}
 
 	private void assertCompletedAtColumn(JdbcTemplate jdbc, String table) {

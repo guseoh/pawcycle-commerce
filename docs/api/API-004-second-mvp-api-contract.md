@@ -70,6 +70,8 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 
 이 30일 retention과 bounded cleanup은 `OPS-IDEMP-001` 및 Issue `#107`에서 승인된 후속 운영 정책이다. 이 후속 승인만으로 API-004의 나머지 Proposed endpoint·DTO·오류·동시성 계약 상태를 Approved로 소급 변경하지 않는다.
 
+cleanup 실행은 삭제 전에 rollback compatibility repair를 수행한다. `response_status`가 2xx이고 `response_body`가 존재하지만 `completed_at IS NULL`인 성공 결과만 table별 caller 제공 양의 `batchSize` 범위에서 현재 UTC 시각으로 최초 완료 처리하며, 이 시각부터 30일 grace period를 부여한다. 같은 실행의 cutoff는 같은 현재 시각에서 계산하므로 repair된 row를 즉시 삭제하지 않는다. incomplete reservation처럼 성공 완료 여부를 판정할 수 없는 null row는 repair·삭제하지 않고, creation·command의 repair·delete 수를 각각 구분한다.
+
 ## 2. Pet 계약
 
 | 목적 | Method / path | 성공 |
