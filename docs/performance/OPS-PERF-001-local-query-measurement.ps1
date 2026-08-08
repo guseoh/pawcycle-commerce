@@ -20,7 +20,10 @@ Push-Location $ComposeDirectory
 function Invoke-Mysql([string]$Sql) {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sql))
     $command = "echo $encoded | base64 -d | MYSQL_PWD=`"`$MYSQL_PASSWORD`" mysql --protocol=TCP --host=127.0.0.1 --user=`"`$MYSQL_USER`" --database=`"`$MYSQL_DATABASE`" --batch --skip-column-names"
-    return & docker compose --env-file .env.local exec -T mysql sh -lc $command
+    $output = & docker compose --env-file .env.local exec -T mysql sh -lc $command
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) { throw "local MySQL command failed (exit code $exitCode)" }
+    return $output
 }
 function Questions() { [long](Invoke-Mysql "SHOW GLOBAL STATUS LIKE 'Questions';" | Select-Object -Last 1 | ForEach-Object { ($_ -split "`t")[-1] }) }
 function Median([long[]]$Values) { $s = $Values | Sort-Object; if ($s.Count % 2) { return $s[[int]($s.Count / 2)] }; return [long](($s[$s.Count / 2 - 1] + $s[$s.Count / 2]) / 2) }
@@ -41,7 +44,9 @@ DELETE FROM subscription_plans WHERE name LIKE '$prefix%';
 "@
 
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$base = "http://localhost:8080"
+$httpPort = if ([string]::IsNullOrWhiteSpace($env:PAWCYCLE_LOCAL_HTTP_PORT)) { 8080 } else { [int]$env:PAWCYCLE_LOCAL_HTTP_PORT }
+if ($httpPort -lt 1 -or $httpPort -gt 65535) { throw "PAWCYCLE_LOCAL_HTTP_PORT must be between 1 and 65535" }
+$base = "http://localhost:$httpPort"
 $loggedIn = $false
 $scriptFailed = $true
 try {
@@ -50,8 +55,8 @@ try {
 INSERT INTO members(email,password_hash) SELECT '$measurementEmail',password_hash FROM members WHERE email='$($env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL)';
 SET @member_id=(SELECT id FROM members WHERE email='$measurementEmail');
 SET @sku_id=(SELECT id FROM skus ORDER BY id LIMIT 1);
-INSERT INTO pets(member_id,name,pet_type) VALUES(@member_id,'$prefix pet','DOG'); SET @pet_id=LAST_INSERT_ID();
-INSERT INTO subscription_plans(name,target_pet_type,on_sale) SELECT CONCAT('$prefix plan ', n),'DOG',true FROM (WITH RECURSIVE seq AS (SELECT 1 n UNION ALL SELECT n+1 FROM seq WHERE n<100) SELECT n FROM seq) q;
+INSERT INTO pets(member_id,name,pet_type) VALUES(@member_id,'$prefix pet','CAT'); SET @pet_id=LAST_INSERT_ID();
+INSERT INTO subscription_plans(name,target_pet_type,on_sale) SELECT CONCAT('$prefix plan ', n),'CAT',true FROM (WITH RECURSIVE seq AS (SELECT 1 n UNION ALL SELECT n+1 FROM seq WHERE n<100) SELECT n FROM seq) q;
 INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) SELECT id,19900,false FROM subscription_plans WHERE name LIKE '$prefix%';
 UPDATE subscription_plans p JOIN plan_versions v ON v.plan_id=p.id SET p.current_plan_version_id=v.id WHERE p.name LIKE '$prefix%';
 INSERT INTO plan_items(plan_version_id,sku_id,quantity) SELECT v.id,@sku_id,1 FROM plan_versions v JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name LIKE '$prefix%';
@@ -67,10 +72,16 @@ INSERT INTO subscription_schedules(subscription_id,scheduled_date,status) SELECT
     Invoke-RestMethod "$base/api/auth/login" -Method Post -WebSession $session -Headers @{"X-CSRF-TOKEN"=$csrf} -ContentType "application/json" -Body $login | Out-Null
     $loggedIn = $true
     $petId = Invoke-Mysql "SELECT id FROM pets WHERE name='$prefix pet' ORDER BY id DESC LIMIT 1;" | Select-Object -Last 1
+    $planVerification = Invoke-RestMethod "$base/api/v2/subscription-plans?petId=$petId&page=0&size=100" -WebSession $session
+    $planItems = @($planVerification.items)
+    if ($planItems.Count -ne 100 -or @($planItems | Where-Object { -not $_.planName.StartsWith($prefix, [StringComparison]::Ordinal) }).Count -ne 0) {
+        throw "plans fixture isolation verification failed"
+    }
     $results = foreach ($size in $PageSizes) {
         foreach ($route in @("/api/v2/subscription-plans?petId=$petId&page=0&size=$size", "/api/v2/subscriptions?page=0&size=$size")) {
             if ($Warmup -gt 0) { 1..$Warmup | ForEach-Object { Invoke-WebRequest "$base$route" -WebSession $session -UseBasicParsing | Out-Null } }
             $samples = foreach ($i in 1..$Iterations) { $before=Questions; $watch=[Diagnostics.Stopwatch]::StartNew(); $response=Invoke-WebRequest "$base$route" -WebSession $session -UseBasicParsing; $watch.Stop(); $after=Questions; [pscustomobject]@{latency_ms=$watch.ElapsedMilliseconds; query_count=$after-$before; status=$response.StatusCode} }
+            if (@($samples | Where-Object { $_.status -ne 200 }).Count -ne 0) { throw "measurement HTTP response was not 200" }
             [pscustomobject]@{route=$route.Split('?')[0]; page_size=$size; warmup=$Warmup; iterations=$Iterations; query_count_median=(Median @($samples.query_count)); latency_median_ms=(Median @($samples.latency_ms)); samples=$samples}
         }
     }
