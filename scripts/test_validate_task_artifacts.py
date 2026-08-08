@@ -149,6 +149,46 @@ health와 상태를 확인했다.
 
 
 class ValidateTaskArtifactsTest(unittest.TestCase):
+    def test_ops_simple_and_subcategory_task_ids_pass(self) -> None:
+        for task_id in ("OPS-001", "OPS-PERF-001", "OPS-RECON-001", "OPS-IDEMP-001"):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(
+                    Path(tmp),
+                    "--from-stdin",
+                    stdin_text=body,
+                )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_non_ops_subcategory_task_id_remains_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = pr_body().replace(TASK_ID, "API-RECON-001")
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=body,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("작업 ID", result.stderr)
+
+    def test_malformed_ops_subcategory_task_ids_do_not_partially_match_stdin(self) -> None:
+        for task_id in (
+            "OPS-RECON-001-EXTRA",
+            "OPS-RECON-001abc",
+            "OPS-RECON-001_extra",
+        ):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(
+                    Path(tmp),
+                    "--from-stdin",
+                    stdin_text=body,
+                )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 ID", result.stderr)
+
     def test_lightweight_pr_without_report_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="경량"))

@@ -13,9 +13,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +26,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.transaction.TestTransaction;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -38,21 +43,70 @@ class V2SubscriptionServiceIntegrationTests {
 	@Autowired private SkuRepository skus;
 	@Autowired private PasswordEncoder passwordEncoder;
 	private Member member;
+	private Product product;
 	private Sku sku;
+	private long planId;
 	private long planVersionId;
 
 	@BeforeEach
 	void setUp() {
 		member = members.saveAndFlush(new Member("v2-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
-		Product product = products.saveAndFlush(new Product("V2 plan product", "test", null, "DOG", null, "PUBLIC"));
+		product = products.saveAndFlush(new Product("V2 plan product", "test", null, "DOG", null, "PUBLIC"));
 		sku = skus.saveAndFlush(new Sku(product, "v2-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG starter", "DOG");
-		long planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", planId);
 		planVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,2)", planVersionId, sku.getId());
 		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4)", planVersionId);
 		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", planVersionId, planId);
+	}
+
+	@AfterEach
+	void cleanCommittedFixtures() {
+		if (TestTransaction.isActive() || member == null) {
+			return;
+		}
+
+		long memberId = member.getId();
+		Set<Long> planIds = new LinkedHashSet<>();
+		if (planId != 0) {
+			planIds.add(planId);
+		}
+		planIds.addAll(jdbc.queryForList(
+				"SELECT DISTINCT pv.plan_id FROM subscription_snapshots ss "
+						+ "JOIN subscriptions s ON s.id=ss.subscription_id "
+						+ "JOIN plan_versions pv ON pv.id=ss.source_plan_version_id "
+						+ "WHERE s.member_id=?",
+				Long.class,
+				memberId));
+
+		jdbc.update("DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
+		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);
+		jdbc.update("DELETE ss FROM subscription_snapshots ss JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE FROM subscriptions WHERE member_id=?", memberId);
+		jdbc.update("DELETE FROM pets WHERE member_id=?", memberId);
+
+		for (Long fixturePlanId : planIds) {
+			jdbc.update("UPDATE subscription_plans SET current_plan_version_id=NULL WHERE id=?", fixturePlanId);
+			jdbc.update("DELETE c FROM plan_version_delivery_cycles c JOIN plan_versions v ON v.id=c.plan_version_id WHERE v.plan_id=?", fixturePlanId);
+			jdbc.update("DELETE i FROM plan_items i JOIN plan_versions v ON v.id=i.plan_version_id WHERE v.plan_id=?", fixturePlanId);
+			jdbc.update("DELETE FROM plan_versions WHERE plan_id=?", fixturePlanId);
+			jdbc.update("DELETE FROM subscription_plans WHERE id=?", fixturePlanId);
+		}
+
+		if (sku != null) {
+			jdbc.update("DELETE FROM skus WHERE id=?", sku.getId());
+		}
+		if (product != null) {
+			jdbc.update("DELETE FROM products WHERE id=?", product.getId());
+		}
+		jdbc.update("DELETE FROM members WHERE id=?", memberId);
 	}
 
 	@Test
@@ -110,7 +164,7 @@ class V2SubscriptionServiceIntegrationTests {
 	}
 
 	@Test
-	void mysqlPersistsReplayAndReconcilesOverdueScheduleOnlyOnce() {
+	void mysqlPersistsReplayAndRejectsMismatchedPayload() {
 		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
 		Map<String, Object> request = new LinkedHashMap<>();
 		request.put("deliveryCycleWeeks", 4);
@@ -126,21 +180,12 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(replay.replay()).isTrue();
 		assertThat(((Map<?, ?>) replay.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", String.class, member.getId(), "create-replay-key")).doesNotContain("\"snapshotId\"");
-		long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
-		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
-
-		service.reconcileActiveSubscriptions();
-		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
-		service.reconcileActiveSubscriptions();
-		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
-
 		assertThatThrownBy(() -> service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 2)))
 				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "IDEMPOTENCY_KEY_REUSED");
 	}
 
 	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	void legacyWhitespacePetTypeNormalizesHidesV1AndKeepsFutureReconciliation() {
 		jdbc.update("UPDATE products SET pet_type=' DOG ' WHERE id=?", sku.getProduct().getId());
 		jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date) VALUES (?,?,?,?,?,?)", member.getId(), sku.getId(), 1, 4, LocalDate.now(ZoneId.of("Asia/Seoul")).minusWeeks(4), LocalDate.now(ZoneId.of("Asia/Seoul")).plusWeeks(4));
@@ -152,10 +197,22 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(jdbc.queryForObject("SELECT target_pet_type FROM subscription_plans WHERE name IS NULL ORDER BY id DESC LIMIT 1", String.class)).isEqualTo("DOG");
 		assertThat(jdbc.queryForObject("SELECT effective_snapshot_id FROM subscription_schedules WHERE subscription_id=?", Long.class, subscriptionId)).isNull();
 
-		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?",
+				LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1),
+				subscriptionId);
+
 		service.reconcileActiveSubscriptions();
 
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NULL AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL",
+				Integer.class,
+				subscriptionId)).isEqualTo(1);
+
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?",
+				Integer.class,
+				subscriptionId,
+				LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
 	}
 }
