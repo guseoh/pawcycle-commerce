@@ -10,8 +10,12 @@ import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -171,17 +175,113 @@ class V2SubscriptionServiceIntegrationTests {
 		request.put("planVersionId", planVersionId);
 		request.put("petId", petId);
 		V2SubscriptionService.V2Result created = service.createSubscription(member.getId(), "create-replay-key", request);
+		LocalDateTime completedAt = jdbc.queryForObject("SELECT completed_at FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", LocalDateTime.class, member.getId(), "create-replay-key");
 		assertThat(jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=JSON_SET(response_body,'$.currentSnapshot.snapshotId',9001) WHERE member_id=? AND idempotency_key=?", member.getId(), "create-replay-key")).isEqualTo(1);
 		V2SubscriptionService.V2Result replay = service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
 
 		assertThat(created.status()).isEqualTo(201);
+		assertThat(completedAt).isNotNull();
 		assertThat(created.body()).containsKeys("pet", "currentSnapshot", "schedules", "commandHistory");
 		assertThat(((Map<?, ?>) created.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(replay.replay()).isTrue();
 		assertThat(((Map<?, ?>) replay.body().get("currentSnapshot")).containsKey("snapshotId")).isFalse();
 		assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", String.class, member.getId(), "create-replay-key")).doesNotContain("\"snapshotId\"");
+		assertThat(jdbc.queryForObject("SELECT completed_at FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", LocalDateTime.class, member.getId(), "create-replay-key")).isEqualTo(completedAt);
 		assertThatThrownBy(() -> service.createSubscription(member.getId(), "create-replay-key", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 2)))
 				.isInstanceOf(V2ApiException.class).hasFieldOrPropertyWithValue("code", "IDEMPOTENCY_KEY_REUSED");
+	}
+
+	@Test
+	void cleanupDeletesOnlyExpiredRowsWithinEachTableBatch() {
+		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
+		long subscriptionId = ((Number) service.createSubscription(member.getId(), "cleanup-subscription", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
+		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", member.getId(), "cleanup-subscription");
+
+		Instant now = Instant.parse("2026-08-08T00:00:00Z");
+		LocalDateTime cutoff = LocalDateTime.ofInstant(now.minusSeconds(30L * 24 * 60 * 60), ZoneOffset.UTC);
+		insertCreationResult("creation-expired-old", cutoff.minusSeconds(3));
+		insertCreationResult("creation-expired-middle", cutoff.minusSeconds(2));
+		insertCreationResult("creation-expired-near", cutoff.minusSeconds(1));
+		insertCreationResult("creation-cutoff", cutoff);
+		insertCreationResult("creation-recent", cutoff.plusSeconds(1));
+		insertCreationReservation("creation-incomplete");
+		insertCommandResult(subscriptionId, "command-expired-old", cutoff.minusSeconds(3));
+		insertCommandResult(subscriptionId, "command-expired-middle", cutoff.minusSeconds(2));
+		insertCommandResult(subscriptionId, "command-expired-near", cutoff.minusSeconds(1));
+		insertCommandResult(subscriptionId, "command-cutoff", cutoff);
+		insertCommandResult(subscriptionId, "command-recent", cutoff.plusSeconds(1));
+		insertCommandReservation(subscriptionId, "command-incomplete");
+
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
+
+		assertThat(first.creationRepaired()).isZero();
+		assertThat(first.commandRepaired()).isZero();
+		assertThat(first.creationDeleted()).isEqualTo(2);
+		assertThat(first.commandDeleted()).isEqualTo(2);
+		assertThat(creationResultExists("creation-expired-near")).isTrue();
+		assertThat(commandResultExists(subscriptionId, "command-expired-near")).isTrue();
+		assertThat(creationResultExists("creation-cutoff")).isTrue();
+		assertThat(commandResultExists(subscriptionId, "command-cutoff")).isTrue();
+		assertThat(creationResultExists("creation-recent")).isTrue();
+		assertThat(commandResultExists(subscriptionId, "command-recent")).isTrue();
+		assertThat(creationResultExists("creation-incomplete")).isTrue();
+		assertThat(commandResultExists(subscriptionId, "command-incomplete")).isTrue();
+
+		V2IdempotencyCleanupService.CleanupResult second = cleanup.deleteExpired(2);
+
+		assertThat(second.creationRepaired()).isZero();
+		assertThat(second.commandRepaired()).isZero();
+		assertThat(second.creationDeleted()).isEqualTo(1);
+		assertThat(second.commandDeleted()).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
+		assertThatThrownBy(() -> cleanup.deleteExpired(0)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting() {
+		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
+		long subscriptionId = ((Number) service.createSubscription(member.getId(), "repair-subscription", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
+		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", member.getId(), "repair-subscription");
+		insertCreationResult("creation-repair-a", null);
+		insertCreationResult("creation-repair-b", null);
+		insertCreationResult("creation-repair-c", null);
+		insertCreationReservation("creation-repair-incomplete");
+		insertCommandResult(subscriptionId, "command-repair-a", null);
+		insertCommandResult(subscriptionId, "command-repair-b", null);
+		insertCommandResult(subscriptionId, "command-repair-c", null);
+		insertCommandReservation(subscriptionId, "command-repair-incomplete");
+
+		Instant now = Instant.parse("2026-08-09T00:00:00Z");
+		LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+
+		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
+
+		assertThat(first.creationRepaired()).isEqualTo(2);
+		assertThat(first.commandRepaired()).isEqualTo(2);
+		assertThat(first.creationDeleted()).isZero();
+		assertThat(first.commandDeleted()).isZero();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-a")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-b")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-c")).isNull();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-a")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-b")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
+
+		V2IdempotencyCleanupService.CleanupResult second = cleanup.deleteExpired(2);
+
+		assertThat(second.creationRepaired()).isEqualTo(1);
+		assertThat(second.commandRepaired()).isEqualTo(1);
+		assertThat(second.creationDeleted()).isZero();
+		assertThat(second.commandDeleted()).isZero();
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-c")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isEqualTo(expectedCompletedAt);
+		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
+		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
 	}
 
 	@Test
@@ -214,5 +314,66 @@ class V2SubscriptionServiceIntegrationTests {
 				Integer.class,
 				subscriptionId,
 				LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
+	}
+
+	private void insertCreationResult(String key, LocalDateTime completedAt) {
+		jdbc.update(
+				"INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint,response_status,response_body,completed_at) VALUES (?,?,?,200,JSON_OBJECT(),?)",
+				member.getId(),
+				key,
+				"0".repeat(64),
+				completedAt);
+	}
+
+	private void insertCommandResult(long subscriptionId, String key, LocalDateTime completedAt) {
+		jdbc.update(
+				"INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint,response_status,response_body,completed_at) VALUES (?,?,'PAUSE',?,?,200,JSON_OBJECT(),?)",
+				member.getId(),
+				subscriptionId,
+				key,
+				"0".repeat(64),
+				completedAt);
+	}
+
+	private void insertCreationReservation(String key) {
+		jdbc.update(
+				"INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint) VALUES (?,?,?)",
+				member.getId(),
+				key,
+				"1".repeat(64));
+	}
+
+	private void insertCommandReservation(long subscriptionId, String key) {
+		jdbc.update(
+				"INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,'PAUSE',?,?)",
+				member.getId(),
+				subscriptionId,
+				key,
+				"1".repeat(64));
+	}
+
+	private LocalDateTime resultCompletedAt(String table, String key) {
+		return jdbc.queryForObject(
+				"SELECT completed_at FROM " + table + " WHERE member_id=? AND idempotency_key=?",
+				LocalDateTime.class,
+				member.getId(),
+				key);
+	}
+
+	private boolean creationResultExists(String key) {
+		return jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?",
+				Integer.class,
+				member.getId(),
+				key) == 1;
+	}
+
+	private boolean commandResultExists(long subscriptionId, String key) {
+		return jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type='PAUSE' AND idempotency_key=?",
+				Integer.class,
+				member.getId(),
+				subscriptionId,
+				key) == 1;
 	}
 }

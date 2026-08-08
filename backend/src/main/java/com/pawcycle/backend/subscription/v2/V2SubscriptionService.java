@@ -103,7 +103,7 @@ public class V2SubscriptionService {
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshotId, subscriptionId);
 		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)", subscriptionId, next);
 		V2Result result = result(201, detail(memberId, subscriptionId, 0, 20, 0, 20), "/api/v2/subscriptions/" + subscriptionId, "\"0\"", false);
-		jdbc.update("UPDATE subscription_creation_idempotency_results SET subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=? WHERE member_id=? AND idempotency_key=?",subscriptionId,result.status(),bodyJson(result.body()),result.location(),result.etag(),memberId,key);
+		jdbc.update("UPDATE subscription_creation_idempotency_results SET subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND idempotency_key=?",subscriptionId,result.status(),bodyJson(result.body()),result.location(),result.etag(),memberId,key);
 		return result;
 	}
 
@@ -151,7 +151,7 @@ public class V2SubscriptionService {
 		if(updated==0) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
 		jdbc.update("INSERT INTO subscription_command_history(subscription_id,command_type,occurred_at,version_before,version_after) VALUES (?,?,UTC_TIMESTAMP(6),?,?)",subscriptionId,command,expected,expected+1);
 		Map<String,Object> response=detail(memberId,subscriptionId,0,20,0,20); V2Result outcome=result(200,response,null,"\""+(expected+1)+"\"",false);
-		jdbc.update("UPDATE subscription_command_idempotency_results SET response_status=?,response_body=?,location_header=?,etag_header=? WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",200,bodyJson(response),null,outcome.etag(),memberId,subscriptionId,command,key);
+		jdbc.update("UPDATE subscription_command_idempotency_results SET response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",200,bodyJson(response),null,outcome.etag(),memberId,subscriptionId,command,key);
 		return outcome;
 	}
 
