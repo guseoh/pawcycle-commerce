@@ -12,6 +12,7 @@ import com.pawcycle.backend.member.infra.MemberRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -152,12 +153,15 @@ class V2SubscriptionCommandIntegrationTests {
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("SELECT ss.delivery_cycle_weeks FROM pending_plan_changes p JOIN subscription_snapshots ss ON ss.id=p.snapshot_id WHERE p.subscription_id=?", Integer.class, subscriptionId)).isEqualTo(4);
 
+		LocalDateTime completedAt = jdbc.queryForObject("SELECT completed_at FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", LocalDateTime.class, member.getId(), subscriptionId, "CHANGE_PLAN", "change-plan");
 		assertThat(jdbc.update("UPDATE subscription_command_idempotency_results SET response_body=JSON_SET(response_body,'$.currentSnapshot.snapshotId',9001,'$.pendingSnapshot.snapshotId',9002) WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", member.getId(), subscriptionId, "CHANGE_PLAN", "change-plan")).isEqualTo(1);
 		V2SubscriptionService.V2Result replay = service.command(member.getId(), subscriptionId, "change-plan", "change-plan", "\"999\"", commandBody);
+		assertThat(completedAt).isNotNull();
 		assertThat(replay.replay()).isTrue();
 		assertThat(castMap(replay.body().get("currentSnapshot"))).doesNotContainKey("snapshotId");
 		assertThat(castMap(replay.body().get("pendingSnapshot"))).doesNotContainKey("snapshotId");
 		assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", String.class, member.getId(), subscriptionId, "CHANGE_PLAN", "change-plan")).doesNotContain("\"snapshotId\"");
+		assertThat(jdbc.queryForObject("SELECT completed_at FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", LocalDateTime.class, member.getId(), subscriptionId, "CHANGE_PLAN", "change-plan")).isEqualTo(completedAt);
 	}
 
 	@Test

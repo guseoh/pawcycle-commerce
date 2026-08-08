@@ -66,7 +66,7 @@ API-001의 1차 MVP `POST /api/subscriptions`, `GET /api/subscriptions`, `GET /a
 4. replay가 없을 때만 `If-Match`와 Subscription version을 검사한다.
 5. version이 맞으면 상태·선행 조건을 검사하고 한 transaction에서 명령 결과와 성공 replay를 저장한다.
 
-관리 scope는 `Member + Subscription ID + command type + Idempotency-Key`이고, 생성 scope는 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`다. 동일 문자열 key는 다른 Subscription 또는 다른 command type에서 재사용할 수 있다. fingerprint에는 endpoint가 정의한 body와 관련 request 식별자를 canonical JSON으로 포함하며, member ID는 server context에서만 포함한다. 실패 결과는 저장하지 않고, 성공 결과와 필요한 business response·`Location`·`ETag`는 자동 만료하지 않는다. 수명 정책이 승인되기 전까지 이 보존 규칙을 유지한다.
+관리 scope는 `Member + Subscription ID + command type + Idempotency-Key`이고, 생성 scope는 `Member + CREATE_SUBSCRIPTION + Idempotency-Key`다. 동일 문자열 key는 다른 Subscription 또는 다른 command type에서 재사용할 수 있다. fingerprint에는 endpoint가 정의한 body와 관련 request 식별자를 canonical JSON으로 포함하며, member ID는 server context에서만 포함한다. 실패 결과는 저장하지 않는다. 성공 결과와 필요한 business response·`Location`·`ETag`는 최초 성공 완료 UTC 시각부터 30일간 보관하며 replay나 저장 response body 보정은 보관 기한을 연장하지 않는다. cleanup은 완료 시각이 현재 UTC 시각에서 30일을 뺀 cutoff보다 이른 결과만 삭제하고, 정확히 cutoff인 결과와 완료되지 않은 결과는 보존한다. cleanup으로 삭제된 key는 이후 새 요청으로 처리될 수 있다.
 
 ## 2. Pet 계약
 
@@ -190,6 +190,6 @@ catch-up은 Subscription을 version 조건으로 잠그고 다음 순서로 한 
 ## 7. 구현 전 확인 항목
 
 - API-004 endpoint, DTO, 오류 code, `If-Match`, Idempotency-Key는 Proposed이며 Frontend 계약 확정 전 구현하지 않는다.
-- pagination의 실제 query 전략과 command history 노출 세분화는 구현 PR에서 재검토한다. 성공 idempotency 결과 자동 만료와 실패 결과 저장은 이 Proposed 계약에서 허용하지 않는다.
+- pagination의 실제 query 전략과 command history 노출 세분화는 구현 PR에서 재검토한다. 성공 idempotency 결과는 최초 성공 완료부터 30일 보관한 뒤 승인된 bounded cleanup으로 삭제할 수 있으며, replay에 의한 retention 연장과 실패 결과 저장은 허용하지 않는다.
 - 실제 Flyway SQL, JPA mapping, locking SQL, migration execution, Batch/Scheduler, 주문·결제·배송은 범위 밖이다.
 - 문서 변경의 복구 경계는 일반 revert PR이다. Production·AWS·운영 DB·Secret 실행은 수행하지 않는다.
