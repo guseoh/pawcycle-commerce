@@ -14,12 +14,18 @@ VALIDATOR = ROOT / "validate-agent-benchmark.py"
 RENDERER = ROOT / "render-agent-benchmark-charts.py"
 
 
-def record(scenario: str, run: int, duration: float | None = 1.0, tools: int = 1) -> dict:
+def record(
+    scenario: str,
+    run: int,
+    duration: float | None = 1.0,
+    tools: int = 1,
+    arm: str = "test_arm",
+) -> dict:
     return {
         "schema_version": "3.0",
         "record_type": "result",
         "task_id": "HARNESS-AGENT-TEST",
-        "comparison_arm": "test_arm",
+        "comparison_arm": arm,
         "scenario": scenario,
         "run": run,
         "duration_seconds": duration,
@@ -39,10 +45,16 @@ def record(scenario: str, run: int, duration: float | None = 1.0, tools: int = 1
 
 
 class AgentBenchmarkToolsTest(unittest.TestCase):
-    def write_valid(self, path: Path) -> None:
+    def write_valid(self, path: Path, arm: str = "test_arm", duration_offset: float = 0) -> None:
         tool_counts = {"A": 1, "B": 1, "C": 6, "D": 3}
         rows = [
-            record(scenario, run, None if scenario in {"C", "D"} else float(run), tool_counts[scenario])
+            record(
+                scenario,
+                run,
+                None if scenario in {"C", "D"} else float(run) + duration_offset,
+                tool_counts[scenario],
+                arm,
+            )
             for scenario in "ABCD"
             for run in (1, 2, 3)
         ]
@@ -70,6 +82,33 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             svg = output.read_text(encoding="utf-8")
             self.assertIn("N/A", svg)
             self.assertIn("Accuracy pass count", svg)
+
+    def test_renderer_separates_comparison_arms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            control = Path(temp) / "control.jsonl"
+            experiment = Path(temp) / "experiment.jsonl"
+            output = Path(temp) / "comparison.svg"
+            self.write_valid(control, "control_arm")
+            self.write_valid(experiment, "experiment_arm", duration_offset=8)
+            rendered = subprocess.run(
+                [
+                    sys.executable,
+                    str(RENDERER),
+                    str(control),
+                    str(experiment),
+                    "--output",
+                    str(output),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, rendered.returncode, rendered.stderr)
+            svg = output.read_text(encoding="utf-8")
+            self.assertIn("control_arm", svg)
+            self.assertIn("experiment_arm", svg)
+            self.assertIn("2.000", svg)
+            self.assertIn("10.000", svg)
 
     def test_validator_rejects_cache_as_independent(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
