@@ -115,6 +115,7 @@ Codex의 설치된 GitHub App connector로 대상 저장소의 읽기 연결과 
 - connector 권한과 노출 Tool 자체는 read-only가 아니다. 안전성은 대상 저장소 인자와 호출 Tool allowlist에 의존한다.
 - 목록·Workflow wrapper는 첫 페이지만 반환할 수 있어 전체 생명주기 총합으로 확대 해석하지 않는다.
 - runner는 Tool 호출 수와 정확도를 자동 관측하지 않으므로 실행자가 실제 호출과 고정 정답표에 대조해 기록했다.
+- Benchmark 실행 당시 정확한 Codex 모델 식별자와 추론 수준은 측정 메타데이터로 보존되지 않아 동일 조건의 시간 결과 재현에는 한계가 있다. 후속 Benchmark에서는 이를 실행 메타데이터로 수집한다.
 - 저장소 변경은 이 PR 또는 관련 commit의 일반 revert로 복구한다.
 - archive branch는 legacy commit 보존 증거이므로 이 작업에서 삭제하지 않는다.
 - 실제 Production 실행과 자동 병합은 없다.
