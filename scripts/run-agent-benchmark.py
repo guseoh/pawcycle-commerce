@@ -33,6 +33,8 @@ def start(args: argparse.Namespace) -> int:
         "schema_version": "3.0",
         "record_type": "benchmark_state",
         "task_id": args.task_id,
+        "model": args.model,
+        "reasoning_level": args.reasoning_level,
         "comparison_arm": args.arm,
         "scenario": args.scenario,
         "run": args.run,
@@ -69,6 +71,8 @@ def finish(args: argparse.Namespace) -> int:
         "schema_version": "3.0",
         "record_type": record_type,
         "task_id": state["task_id"],
+        "model": state["model"],
+        "reasoning_level": state["reasoning_level"],
         "comparison_arm": state["comparison_arm"],
         "phase": args.phase,
         "scenario": state["scenario"],
@@ -85,6 +89,7 @@ def finish(args: argparse.Namespace) -> int:
         "user_corrections": args.user_corrections,
         "user_intervention_measurement": args.user_intervention_measurement,
         "accuracy": args.accuracy,
+        "success": args.success,
         "scope_violation": args.scope_violation,
         "evidence_missing": args.evidence_missing,
         "cache_reuse": args.cache_reuse,
@@ -111,6 +116,8 @@ def parser() -> argparse.ArgumentParser:
     begin = sub.add_parser("start")
     begin.add_argument("--state", required=True)
     begin.add_argument("--task-id", required=True)
+    begin.add_argument("--model", required=True)
+    begin.add_argument("--reasoning-level", required=True)
     begin.add_argument("--arm", required=True)
     begin.add_argument("--scenario", choices=sorted(SCENARIOS), required=True)
     begin.add_argument("--run", type=int, choices=(1, 2, 3), required=True)
@@ -126,6 +133,7 @@ def parser() -> argparse.ArgumentParser:
     end.add_argument("--tool-calls", type=int, required=True)
     end.add_argument("--failed-tool-calls", type=int, default=0)
     end.add_argument("--accuracy", choices=("pass", "fail", "not_scored"), required=True)
+    end.add_argument("--success", action=argparse.BooleanOptionalAction, required=True)
     end.add_argument("--user-intervention-measurement", choices=("measured", "not_measured"), required=True)
     end.add_argument("--user-additional-explanations", type=int)
     end.add_argument("--user-corrections", type=int)

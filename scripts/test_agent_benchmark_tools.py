@@ -26,6 +26,8 @@ def record(
         "schema_version": "3.0",
         "record_type": "result",
         "task_id": "HARNESS-AGENT-TEST",
+        "model": "test-model",
+        "reasoning_level": "test-reasoning",
         "comparison_arm": arm,
         "scenario": scenario,
         "run": run,
@@ -36,6 +38,7 @@ def record(
         "user_corrections": 0,
         "user_intervention_measurement": "measured",
         "accuracy": "pass",
+        "success": True,
         "scope_violation": False,
         "evidence_missing": False,
         "cache_reuse": False,
@@ -184,6 +187,23 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertIn("result must be independent", result.stderr)
 
+    def test_validator_accepts_legacy_schema_three_history(self) -> None:
+        source = ROOT.parent / "docs" / "reports" / "HARNESS-AGENT-006" / "benchmark-results-codex-github-mcp.jsonl"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR),
+                str(source),
+                "--expected-arm",
+                "codex_github_mcp",
+                "--allow-legacy-schema-3",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_runner_start_finish(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             state = Path(temp) / "state.json"
@@ -197,6 +217,10 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
                     str(state),
                     "--task-id",
                     "HARNESS-AGENT-TEST",
+                    "--model",
+                    "test-model",
+                    "--reasoning-level",
+                    "test-reasoning",
                     "--arm",
                     "test_arm",
                     "--scenario",
@@ -227,6 +251,7 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
                     "1",
                     "--accuracy",
                     "pass",
+                    "--success",
                     "--user-intervention-measurement",
                     "measured",
                     "--user-additional-explanations",
@@ -243,6 +268,9 @@ class AgentBenchmarkToolsTest(unittest.TestCase):
             row = json.loads(output.read_text(encoding="utf-8"))
             self.assertGreater(row["duration_seconds"], 0)
             self.assertEqual("none", row["production_execution"])
+            self.assertEqual("test-model", row["model"])
+            self.assertEqual("test-reasoning", row["reasoning_level"])
+            self.assertTrue(row["success"])
 
 
 if __name__ == "__main__":

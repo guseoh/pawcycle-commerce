@@ -16,8 +16,10 @@ REQUIRED = {
     "duration_seconds", "tool_calls", "failed_tool_calls", "user_additional_explanations",
     "user_corrections", "user_intervention_measurement", "accuracy", "scope_violation",
     "evidence_missing", "cache_reuse", "independent_evidence_read",
-    "counts_toward_independent_repetition", "production_execution",
+    "counts_toward_independent_repetition", "production_execution", "model",
+    "reasoning_level", "success",
 }
+LEGACY_OPTIONAL = {"production_execution", "model", "reasoning_level", "success"}
 
 
 def load(paths: list[Path]) -> list[dict]:
@@ -39,15 +41,19 @@ def non_negative_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def validate(records: list[dict], expected_arm: str | None) -> list[str]:
+def validate(records: list[dict], expected_arm: str | None, allow_legacy_schema_3: bool) -> list[str]:
     errors: list[str] = []
     independent: dict[str, list[dict]] = defaultdict(list)
     keys: set[tuple[str, int]] = set()
     for record in records:
         source = record.get("_source", "record")
         missing = sorted(REQUIRED - record.keys())
-        if missing:
-            errors.append(f"{source}: missing fields: {', '.join(missing)}")
+        required_missing = [
+            field for field in missing
+            if not allow_legacy_schema_3 or field not in LEGACY_OPTIONAL
+        ]
+        if required_missing:
+            errors.append(f"{source}: missing fields: {', '.join(required_missing)}")
             continue
         if record["schema_version"] != "3.0":
             errors.append(f"{source}: schema_version must be 3.0")
@@ -78,8 +84,19 @@ def validate(records: list[dict], expected_arm: str | None) -> list[str]:
             errors.append(f"{source}: invalid user_intervention_measurement")
         if record["accuracy"] not in ("pass", "fail", "not_scored"):
             errors.append(f"{source}: invalid accuracy")
-        if record["production_execution"] != "none":
+        if "production_execution" in record and record["production_execution"] != "none":
             errors.append(f"{source}: production_execution must be none")
+        model = record.get("model")
+        reasoning_level = record.get("reasoning_level")
+        if (model is None) != (reasoning_level is None):
+            errors.append(f"{source}: model and reasoning_level must be recorded together")
+        elif model is not None and (
+            not isinstance(model, str) or not model.strip()
+            or not isinstance(reasoning_level, str) or not reasoning_level.strip()
+        ):
+            errors.append(f"{source}: model and reasoning_level must be non-empty strings")
+        if "success" in record and not isinstance(record["success"], bool):
+            errors.append(f"{source}: success must be boolean")
         if record["scope_violation"]:
             errors.append(f"{source}: scope violation")
         if record["record_type"] == "result":
@@ -113,10 +130,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inputs", nargs="+", type=Path)
     parser.add_argument("--expected-arm")
+    parser.add_argument(
+        "--allow-legacy-schema-3",
+        action="store_true",
+        help="allow schema 3.0 records created before additive execution fields",
+    )
     args = parser.parse_args()
     try:
         records = load(args.inputs)
-        errors = validate(records, args.expected_arm)
+        errors = validate(records, args.expected_arm, args.allow_legacy_schema_3)
         if errors:
             for error in errors:
                 print(error, file=sys.stderr)
