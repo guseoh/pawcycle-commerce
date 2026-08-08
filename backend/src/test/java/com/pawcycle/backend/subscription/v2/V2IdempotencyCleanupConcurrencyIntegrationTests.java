@@ -50,6 +50,7 @@ class V2IdempotencyCleanupConcurrencyIntegrationTests {
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		CountDownLatch replayLocked = new CountDownLatch(1);
 		CountDownLatch cleanupStarted = new CountDownLatch(1);
+		CountDownLatch cleanupFinished = new CountDownLatch(1);
 		CountDownLatch allowReplayCommit = new CountDownLatch(1);
 		try {
 			Future<ReplayObservation> replay = executor.submit(() -> replayTransaction.execute(status -> {
@@ -65,10 +66,14 @@ class V2IdempotencyCleanupConcurrencyIntegrationTests {
 			Future<V2IdempotencyCleanupService.CleanupResult> cleanupResult = executor.submit(() ->
 					cleanupTransaction.execute(status -> {
 						cleanupStarted.countDown();
-						return cleanup.deleteExpired(1);
+						try {
+							return cleanup.deleteExpired(1);
+						} finally {
+							cleanupFinished.countDown();
+						}
 					}));
 			assertThat(cleanupStarted.await(AWAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
-			assertThat(cleanupResult.isDone()).isFalse();
+			assertThat(cleanupFinished.await(250, TimeUnit.MILLISECONDS)).isFalse();
 
 			allowReplayCommit.countDown();
 			ReplayObservation observation = replay.get(AWAIT_SECONDS, TimeUnit.SECONDS);

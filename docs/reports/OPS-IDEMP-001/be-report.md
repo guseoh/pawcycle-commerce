@@ -41,6 +41,7 @@
 - OPS-IDEMP-001 집중 테스트 성공, Backend 전체 148개 중 146개 성공과 동일 baseline failure를 local 증거로 사용하며 GitHub `Backend and MySQL validation` 전체 테스트를 최종 gate로 둔다.
 - follow-up Java 25.0.3·MySQL 8.4.10 검증에서 새 경합 클래스가 통과했고, 이미 immutable baseline에서도 실패한 `ProductionAuthSmokeMemberBootstrapProcessTests` 7개만 제외한 Backend 나머지 전체 143개가 실패·오류·skip 없이 통과했다.
 - Review Loop 집중 검증은 fresh MySQL 8.4에서 V4→V8 순차 상태, 기존 성공 backfill, bounded rollback repair, repair 후 grace period, incomplete reservation 보존, retention cutoff, replay·cleanup 경합과 기존 idempotency concurrency를 Java 25로 함께 실행해 통과했다.
+- 새 review가 지적한 cleanup worker 스케줄 여부와 실제 미완료 상태의 구분은 `cleanupFinished` latch로 보강했고, 해당 경합 클래스 2개는 Java 25·MySQL 8.4 격리 환경에서 실패·오류·skip 없이 통과했다.
 - Review Loop Backend 전체 local 재검증은 알려진 baseline process test class를 제외한 144개를 실행하려 했으나, 임시 MySQL test container의 DB reset 계정 인증 실패로 datasource 연결 전에 71개가 연쇄 실패해 유효한 코드 회귀 결과를 만들지 못했다. 같은 환경 실패를 반복하지 않고 새 push의 GitHub `Backend and MySQL validation` 전체 테스트를 최종 gate로 사용한다.
 - `docker run ... python scripts/validate-task-artifacts.py --task-id OPS-IDEMP-001 --task-grade 고위험 --execution-type "저장소 변경"`: 통과했다.
 - tracked 변경과 신규 파일별 `git diff --check`: 통과했다.
@@ -51,6 +52,7 @@
 - 전체 회귀 실패는 subscription·migration assertion이 아니라 유지보수 하위 Java process의 제한 시간 초과다. 동일 실패의 집중 재실행도 실패하여 승인된 검증 예산에 따라 추가 수정·반복을 하지 않았다.
 - follow-up 집중 테스트 첫 실행은 새 replay 선점 테스트의 Subscription ID가 JSON `Integer`와 fixture `Long`으로 비교되어 28개 중 1개가 실패했다. ID를 `long`으로 정규화하는 assertion만 교정하고 새 경합 클래스만 재실행해 통과했으며 production 코드는 변경하지 않았다.
 - Review Loop 전체 local 검증 첫 시도는 임시 Gradle init script의 UTF-8 BOM과 test DB reset 계정 설정 때문에 application test 전에 중단됐다. init script를 BOM 없는 ASCII로 교정했지만 reset 계정 인증이 다시 실패해 datasource 연결 실패로 이어졌으며, 코드 실패로 오인하거나 같은 검증을 반복하지 않았다.
+- 새 review 후 경합 클래스 실행은 두 테스트가 모두 통과한 XML을 생성했지만 Gradle 종료 직전 CLI 120초 한도에 도달했다. 테스트 결과를 재실행하지 않고 XML의 `tests=2`, `failures=0`, `errors=0`, `skipped=0`을 확인했다.
 
 ## 미실행과 위험
 
@@ -64,7 +66,8 @@
 
 - 구현 commit `e917c0eaced9f39874114abf886a975d0a36f0bf`는 PR `#108` branch에 push된 immutable 역사다.
 - 첫 review follow-up commit `33caf2805bda61db0d95121d6c7ec9ee8fc47dd2`는 `e917c0e` 이후 같은 PR branch에 일반 push된 immutable 역사다.
-- 이번 Review Loop의 migration 분할·rollback compatibility repair 변경도 같은 PR branch의 후속 commit으로 일반 push하며, 정확한 commit hash·push·PR 상태는 GitHub PR `#108`의 commits·checks에서 확인한다.
+- Review Loop migration 분할·rollback compatibility repair commit `22cf6d96f069c7e4ccb7dfe94a0d1ee8844abf8b`는 같은 PR branch에 일반 push됐고 해당 commit의 필수 CI가 모두 성공했다.
+- 이후 review 보강 commit과 최신 push·PR 상태는 GitHub PR `#108`의 commits·checks에서 확인한다.
 - follow-up 시작 시 PR `#108`은 OPEN·non-draft였고 merge는 수행하지 않았다. 이후 최신 상태와 merge 여부는 GitHub PR `#108`을 기준으로 확인한다.
 - Production DB migration과 Production cleanup은 수행하지 않았고 Cloud·AWS 실행도 없다.
 - Scheduler cadence와 운영 batch size는 후속 결정이며, 이번 작업에서 확정하지 않았다.
