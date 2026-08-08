@@ -40,6 +40,7 @@ class OpsPerf002MigrationMeasurementTests {
 	private static final int WARMUP = envInt("OPS_PERF_002_WARMUP");
 	private static final int ITERATIONS = envInt("OPS_PERF_002_ITERATIONS");
 	private static final int LOCK_ITERATIONS = envInt("OPS_PERF_002_LOCK_ITERATIONS");
+	private static final int LOCK_ROWS = envInt("OPS_PERF_002_LOCK_ROWS");
 	private static final String RUN_ID = env("OPS_PERF_002_RUN_ID");
 
 	@Autowired private LegacyMvp2MigrationService migration;
@@ -81,7 +82,8 @@ class OpsPerf002MigrationMeasurementTests {
 			"legacy_rows", ROWS,
 			"warmup_runs", WARMUP,
 			"measured_runs", ITERATIONS,
-			"lock_runs", LOCK_ITERATIONS
+			"lock_runs", LOCK_ITERATIONS,
+			"lock_legacy_rows", LOCK_ROWS
 		));
 		return result;
 	}
@@ -159,7 +161,7 @@ class OpsPerf002MigrationMeasurementTests {
 	private Map<String, Object> measureLockFootprint() throws Exception {
 		List<Map<String, Object>> runs = new ArrayList<>();
 		for (int run = 1; run <= LOCK_ITERATIONS; run++) {
-			LockFixture fixture = createLockFixture("lock-" + run, ROWS);
+			LockFixture fixture = createLockFixture("lock-" + run, LOCK_ROWS);
 			Throwable primaryFailure = null;
 			ExecutorService executor = Executors.newFixedThreadPool(4);
 			try {
@@ -191,7 +193,7 @@ class OpsPerf002MigrationMeasurementTests {
 				WriterResult managed = managedWriter.get(30, TimeUnit.SECONDS);
 				WriterResult insert = adjacentInsert.get(30, TimeUnit.SECONDS);
 				double migrationDuration = migrationFuture.get(30, TimeUnit.SECONDS);
-				assertMigrated(fixture.base(), ROWS);
+				assertMigrated(fixture.base(), LOCK_ROWS);
 				assertThat(jdbc.queryForObject(
 					"SELECT current_snapshot_id FROM subscriptions WHERE id=?",
 					Long.class, fixture.managedSubscriptionId()
@@ -208,7 +210,7 @@ class OpsPerf002MigrationMeasurementTests {
 				runs.add(Map.of(
 					"run_id", RUN_ID + "-lock-" + run,
 					"fixture_id", fixture.base().token(),
-					"legacy_target_rows", ROWS,
+					"legacy_target_rows", LOCK_ROWS,
 					"managed_rows_before_migration", 1,
 					"migration_duration_ms", migrationDuration,
 					"granted_subscription_record_locks_observed", grantedRecordLocks,

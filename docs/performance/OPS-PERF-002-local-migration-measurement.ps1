@@ -12,6 +12,9 @@ param(
     [ValidateRange(1, 10)]
     [int]$LockIterations = 5,
 
+    [ValidateRange(1, 1000)]
+    [int]$LockRows = 300,
+
     [ValidatePattern('^[A-Za-z0-9._-]+$')]
     [string]$RunId = '',
 
@@ -165,6 +168,7 @@ try {
             -e "OPS_PERF_002_WARMUP=$Warmup" `
             -e "OPS_PERF_002_ITERATIONS=$Iterations" `
             -e "OPS_PERF_002_LOCK_ITERATIONS=$LockIterations" `
+            -e "OPS_PERF_002_LOCK_ROWS=$LockRows" `
             -e "OPS_PERF_002_RUN_ID=$RunId" `
             -e "OPS_PERF_002_SOURCE_COMMIT=$sourceCommit" `
             -e "OPS_PERF_002_SCRIPT_SHA256=$scriptSha256" `
