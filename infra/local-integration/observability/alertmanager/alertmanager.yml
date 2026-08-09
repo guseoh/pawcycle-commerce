@@ -1,0 +1,18 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: pawcycle-local-discord
+  group_by:
+    - alertname
+  group_wait: 0s
+  group_interval: 15s
+  repeat_interval: 1h
+
+receivers:
+  - name: pawcycle-local-discord
+    discord_configs:
+      - webhook_url_file: /run/secrets/discord-webhook
+        send_resolved: true
+        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        message: '{{ range .Alerts }}{{ .Annotations.summary }} — {{ .Annotations.description }}{{ end }}'
