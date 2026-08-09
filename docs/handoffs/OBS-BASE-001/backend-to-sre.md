@@ -35,6 +35,7 @@ custom metric tag에는 `memberId`, `subscriptionId`, Idempotency-Key 또는 다
 ## Phase B 사용 경계
 
 - Prometheus는 local Docker network에서 Backend의 `/actuator/prometheus`를 직접 scrape한다.
+- retained·cleanup candidate gauge는 각 scrape에서 `completed_at` index 기반 `COUNT(*)`를 creation·command table별로 실행하므로 Phase B에서 scrape interval과 CPU·DB connection 비용을 함께 측정한다. Production cache·refresh cadence·query timeout 정책은 이번 범위에서 정하지 않는다.
 - Proxy에 `/actuator/**` route를 추가하지 않는다.
 - Grafana datasource와 Dashboard는 provisioning 파일로 구성하고 수동 클릭을 완료 조건으로 사용하지 않는다.
 - reconciliation은 기존 조건부 trigger 외에 새 cadence를 정하지 않는다.
