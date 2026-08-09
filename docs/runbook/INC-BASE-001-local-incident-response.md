@@ -12,6 +12,12 @@ $ProxyPort = (docker compose --env-file .env.local @ComposeFiles port proxy 80).
 $PrometheusPort = (docker compose --env-file .env.local @ComposeFiles port prometheus 9090).Split(':')[-1]
 $ProxyUrl = "http://127.0.0.1:$ProxyPort"
 $PrometheusUrl = "http://127.0.0.1:$PrometheusPort"
+function Get-PrometheusMetricValue([string]$Query) {
+    $EncodedQuery = [uri]::EscapeDataString($Query)
+    $Response = Invoke-RestMethod -TimeoutSec 10 "$PrometheusUrl/api/v1/query?query=$EncodedQuery"
+    if ($Response.status -ne 'success' -or $Response.data.result.Count -ne 1) { return $null }
+    return [double]$Response.data.result[0].value[1]
+}
 docker compose --env-file .env.local @ComposeFiles ps
 ```
 
@@ -82,17 +88,35 @@ function Remove-ReconciliationFixtureArtifacts {
     if (Test-Path -LiteralPath $SqlPath) { Remove-Item -LiteralPath $SqlPath }
     docker exec $MySqlContainer rm -f $ContainerSqlPath $ContainerOutputPath
 }
+function Stop-ReconciliationFixtureSession([int]$ConnectionId) {
+    if ((Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId;") -eq '1') {
+        Invoke-MySqlScalar "KILL $ConnectionId;" | Out-Null
+    }
+    $AbortDeadline = (Get-Date).AddSeconds(10)
+    do {
+        $AbortStatus = Invoke-MySqlScalar "SELECT CONCAT('SESSION_COUNT=', (SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId), ':NAMED_LOCK_FREE=', IS_FREE_LOCK('inc-base-001-reconciliation'));"
+        $FixtureAborted = $AbortStatus -eq 'SESSION_COUNT=0:NAMED_LOCK_FREE=1'
+        if (-not $FixtureAborted) { Start-Sleep -Seconds 1 }
+    } until ($FixtureAborted -or (Get-Date) -ge $AbortDeadline)
+    Remove-ReconciliationFixtureArtifacts
+    if (-not $FixtureAborted) { throw 'fixture session의 rollback과 named lock release를 확인하지 못했습니다.' }
+}
 $Sql = @"
 SELECT CONCAT('CONNECTION_ID:', CONNECTION_ID());
 SELECT GET_LOCK('inc-base-001-reconciliation',0) INTO @get_lock_result;
 SELECT @@SESSION.innodb_lock_wait_timeout INTO @lock_wait_timeout;
 SET @hold_seconds := @lock_wait_timeout + 40;
+SELECT COUNT(*), MIN(id) INTO @active_subscription_count, @candidate_subscription_id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE';
+SELECT COUNT(*) INTO @overdue_schedule_count FROM subscription_schedules WHERE subscription_id=@candidate_subscription_id AND status='SCHEDULED' AND effective_snapshot_id IS NULL AND scheduled_date<DATE(CONVERT_TZ(UTC_TIMESTAMP(),'+00:00','+09:00'));
 SET @subscription_id := NULL;
 START TRANSACTION;
-SELECT id INTO @subscription_id FROM subscriptions WHERE @get_lock_result=1 AND mvp2_managed=true AND status='ACTIVE' ORDER BY id LIMIT 1 FOR UPDATE;
+SELECT id INTO @subscription_id FROM subscriptions WHERE id=@candidate_subscription_id AND @get_lock_result=1 AND @active_subscription_count=1 AND @overdue_schedule_count=0 AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE;
 SELECT CASE
     WHEN @get_lock_result IS NULL OR @get_lock_result<>1 THEN CONCAT('NAMED_LOCK_FAILED:', COALESCE(@get_lock_result, 'NULL'))
-    WHEN @subscription_id IS NULL THEN 'NO_ACTIVE_FIXTURE'
+    WHEN @active_subscription_count=0 THEN 'NO_ACTIVE_FIXTURE'
+    WHEN @active_subscription_count<>1 THEN CONCAT('UNSAFE_ACTIVE_FIXTURE_COUNT:', @active_subscription_count)
+    WHEN @overdue_schedule_count<>0 THEN CONCAT('UNSAFE_OVERDUE_FIXTURE_COUNT:', @overdue_schedule_count)
+    WHEN @subscription_id IS NULL THEN 'FIXTURE_CHANGED_BEFORE_LOCK'
     ELSE CONCAT('LOCK_ACQUIRED:', @subscription_id, ':WAIT_TIMEOUT:', @lock_wait_timeout, ':HOLD_SECONDS:', @hold_seconds)
 END;
 SELECT IF(@get_lock_result=1 AND @subscription_id IS NOT NULL, SLEEP(@hold_seconds), NULL) INTO @sleep_result;
@@ -113,10 +137,11 @@ do {
     $LockAcquired = $LockMatch.Success
     $NoActiveFixture = $LockOutput -match '(?m)^NO_ACTIVE_FIXTURE$'
     $NamedLockFailed = $LockOutput -match '(?m)^NAMED_LOCK_FAILED:'
-    if (-not $LockAcquired -and -not $NoActiveFixture -and -not $NamedLockFailed) { Start-Sleep -Seconds 1 }
-} until ($LockAcquired -or $NoActiveFixture -or $NamedLockFailed -or (Get-Date) -ge $LockDeadline)
+    $UnsafeFixture = $LockOutput -match '(?m)^(UNSAFE_ACTIVE_FIXTURE_COUNT|UNSAFE_OVERDUE_FIXTURE_COUNT|FIXTURE_CHANGED_BEFORE_LOCK):?'
+    if (-not $LockAcquired -and -not $NoActiveFixture -and -not $NamedLockFailed -and -not $UnsafeFixture) { Start-Sleep -Seconds 1 }
+} until ($LockAcquired -or $NoActiveFixture -or $NamedLockFailed -or $UnsafeFixture -or (Get-Date) -ge $LockDeadline)
 $LockOutput
-if ($NoActiveFixture -or $NamedLockFailed) {
+if ($NoActiveFixture -or $NamedLockFailed -or $UnsafeFixture) {
     $TerminalDeadline = (Get-Date).AddSeconds(10)
     do {
         $LockOutput = (docker exec $MySqlContainer sh -c "cat '$ContainerOutputPath'") -join "`n"
@@ -133,32 +158,46 @@ if (-not $LockAcquired) {
         throw 'timeout된 MySQL fixture connection을 식별하지 못했습니다.'
     }
     $FixtureConnectionId = [int]$ConnectionMatch.Groups[1].Value
-    if ((Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$FixtureConnectionId;") -eq '1') {
-        Invoke-MySqlScalar "KILL $FixtureConnectionId;" | Out-Null
-    }
-    $AbortDeadline = (Get-Date).AddSeconds(10)
-    do {
-        $AbortStatus = Invoke-MySqlScalar "SELECT CONCAT('SESSION_COUNT=', (SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$FixtureConnectionId), ':NAMED_LOCK_FREE=', IS_FREE_LOCK('inc-base-001-reconciliation'));"
-        $FixtureAborted = $AbortStatus -eq 'SESSION_COUNT=0:NAMED_LOCK_FREE=1'
-        if (-not $FixtureAborted) { Start-Sleep -Seconds 1 }
-    } until ($FixtureAborted -or (Get-Date) -ge $AbortDeadline)
-    Remove-ReconciliationFixtureArtifacts
-    if (-not $FixtureAborted) { throw 'timeout된 fixture session의 rollback과 named lock release를 확인하지 못했습니다.' }
+    Stop-ReconciliationFixtureSession $FixtureConnectionId
     throw 'ACTIVE fixture row lock을 10초 안에 확인하지 못해 fixture session을 종료했습니다.'
 }
+$FixtureConnectionId = [int]$ConnectionMatch.Groups[1].Value
+$FixtureSubscriptionId = [long]$LockMatch.Groups[1].Value
+$LockWaitTimeout = [int]$LockMatch.Groups[2].Value
 $HoldSeconds = [int]$LockMatch.Groups[3].Value
+try {
+    $FailuresBeforeFailure = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
+} catch {
+    Stop-ReconciliationFixtureSession $FixtureConnectionId
+    throw
+}
+if ($FailuresBeforeFailure -ne 0) {
+    Stop-ReconciliationFixtureSession $FixtureConnectionId
+    throw 'reconciliation failure metric이 0인 clean baseline이 아닙니다.'
+}
+$FailureStartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
+$FailureDeadline = (Get-Date).AddSeconds($LockWaitTimeout + 10)
+do {
+    try {
+        $FailuresAfterInjection = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
+        $FailureLogs = (docker compose --env-file .env.local @ComposeFiles logs --since $FailureStartedAt backend) -join "`n"
+        $FailureLogPattern = '(?s)Subscription reconciliation failed; subscriptionId=' + $FixtureSubscriptionId + '.*Lock wait timeout exceeded'
+        $FailureObserved = $FailuresAfterInjection -gt $FailuresBeforeFailure -and $FailureLogs -match $FailureLogPattern
+    } catch {
+        $FailureObserved = $false
+    }
+    if (-not $FailureObserved) { Start-Sleep -Seconds 1 }
+} until ($FailureObserved -or (Get-Date) -ge $FailureDeadline)
+if (-not $FailureObserved) {
+    Stop-ReconciliationFixtureSession $FixtureConnectionId
+    throw 'fixture 대상의 reconciliation failure metric 증가와 lock timeout log를 확인하지 못했습니다.'
+}
 ```
 
-`LOCK_ACQUIRED:<subscription_id>:WAIT_TIMEOUT:<seconds>:HOLD_SECONDS:<seconds>`가 출력된 경우에만 Backend를 재시작한다. `NO_ACTIVE_FIXTURE` 또는 `NAMED_LOCK_FAILED`가 출력되면 실제 row lock이 없으므로 Backend를 재시작하지 않고 중단한다. failure metric과 `Lock wait timeout exceeded` log를 확인한 뒤 다음처럼 fixture 완료를 기다린다.
+`LOCK_ACQUIRED:<subscription_id>:WAIT_TIMEOUT:<seconds>:HOLD_SECONDS:<seconds>`가 출력되고 ACTIVE fixture가 정확히 하나이며 overdue schedule이 없을 때만 Backend를 재시작한다. `NO_ACTIVE_FIXTURE`, `UNSAFE_*`, `FIXTURE_CHANGED_BEFORE_LOCK`, `NAMED_LOCK_FAILED`가 출력되면 데이터 무변경을 보장할 수 없으므로 Backend를 재시작하지 않고 중단한다. fixture subscription ID와 일치하는 failure metric 증가 및 `Lock wait timeout exceeded` log를 제한 시간 안에 확인한 뒤 다음처럼 fixture 완료를 기다린다.
 
 ```powershell
-function Get-PrometheusMetricValue([string]$Query) {
-    $EncodedQuery = [uri]::EscapeDataString($Query)
-    $Response = Invoke-RestMethod -TimeoutSec 10 "$PrometheusUrl/api/v1/query?query=$EncodedQuery"
-    if ($Response.status -ne 'success' -or $Response.data.result.Count -ne 1) { return $null }
-    return [double]$Response.data.result[0].value[1]
-}
 $ExecutionsBeforeRestart = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
 $FailuresBeforeRestart = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
 $FixtureDeadline = (Get-Date).AddSeconds($HoldSeconds + 10)
@@ -168,7 +207,15 @@ do {
     if (-not $FixtureCompleted) { Start-Sleep -Seconds 1 }
 } until ($FixtureCompleted -or (Get-Date) -ge $FixtureDeadline)
 $LockOutput
-if (-not $FixtureCompleted) { throw 'row lock rollback 또는 named lock release를 확인하지 못했습니다.' }
+if (-not $FixtureCompleted) {
+    Stop-ReconciliationFixtureSession $FixtureConnectionId
+    throw 'fixture 완료 timeout으로 session을 종료했습니다.'
+}
+$RecoverySafetyStatus = Invoke-MySqlScalar "SELECT CONCAT('ACTIVE_FIXTURE_COUNT=', (SELECT COUNT(*) FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE'), ':TARGET_OVERDUE_COUNT=', (SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=$FixtureSubscriptionId AND status='SCHEDULED' AND effective_snapshot_id IS NULL AND scheduled_date<DATE(CONVERT_TZ(UTC_TIMESTAMP(),'+00:00','+09:00'))));"
+if ($RecoverySafetyStatus -ne 'ACTIVE_FIXTURE_COUNT=1:TARGET_OVERDUE_COUNT=0') {
+    Remove-ReconciliationFixtureArtifacts
+    throw "복구 실행의 데이터 무변경 precondition이 달라졌습니다: $RecoverySafetyStatus"
+}
 $RecoveryStartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 Remove-ReconciliationFixtureArtifacts
 docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
