@@ -1,248 +1,794 @@
-# PawCycle Commerce
+# 🐾 PawCycle Commerce
 
-개와 고양이용 소모품의 일반 구매와 정기배송을 목표로 하는 이커머스 프로젝트입니다. 현재 구현은 공개 상품 탐색부터 세션 인증, 정기배송 구독 생성·조회까지 연결한 1차 수직 MVP이며, 일반 구매는 아직 제공하지 않습니다.
+> **반려동물 소모품의 반복 구매를 정기배송으로 관리하는 Commerce 프로젝트**  
+> 제품 기능 구현에서 출발해 데이터 일관성, 운영 안정성, 장애 대응, 관측성, 운영 자동화와 AI Harness까지 확장하고 있습니다.
 
-이 README는 현재 저장소와 운영 검증의 경계를 설명합니다. 저장소에 준비된 계약, 실제 운영에서 검증된 최소 기준, 아직 실행하지 않은 고도화 항목과 다음 제품 단계를 서로 구분합니다.
+PawCycle Commerce는 단순한 쇼핑몰 CRUD를 만드는 것보다  
+**정기배송 서비스가 시간이 지나면서 마주치는 문제를 발견하고 해결하는 과정**에 초점을 둡니다.
 
-## 포트폴리오 핵심 가치
+```text
+제품 기능
+→ 안정적인 운영
+→ 장애 관측과 복구
+→ 반복 업무 자동화
+→ AI Harness 개선
+→ Evidence 기반 회고
+→ 다음 제품 개선
+```
 
-- 제품 기능은 Backend·Frontend·MySQL·Flyway·세션 보안을 하나의 사용자 흐름으로 연결합니다.
-- 운영은 서울 리전 단일 EC2에서 보수적인 Docker Compose release, HTTPS, Secret 분리, backup·격리 restore, application rollback과 최소 장애 알림을 검증합니다.
-- 작업은 사용자가 범위와 승인을 통제하고, AI는 delta-only 명세·자동 검증·리뷰 입력을 보조하는 위험 기반 Lean Harness로 관리합니다.
-- `Verified`와 `완료`는 같은 뜻이 아닙니다. 현재 판정은 정의된 최소 운영 안전성 기준에만 한정되며, 고가용성·자동복구·RPO/RTO·Actual Production DB restore 완료를 의미하지 않습니다.
+---
 
-## 현재 상태 요약
+## 📑 목차
 
-| 영역 | 현재 상태 | 범위와 경계 |
+- [프로젝트 소개](#-프로젝트-소개)
+- [핵심 구현](#-핵심-구현)
+- [기술 스택](#-기술-스택)
+- [아키텍처](#-아키텍처)
+- [주요 설계와 문제 해결](#-주요-설계와-문제-해결)
+- [성능 개선](#-성능-개선)
+- [운영과 관측성](#-운영과-관측성)
+- [AI Harness Engineering](#-ai-harness-engineering)
+- [대표 PR](#-대표-pr)
+- [현재 상태와 Roadmap](#-현재-상태와-roadmap)
+
+---
+
+# 🐶 프로젝트 소개
+
+정기배송 서비스는 구독 데이터를 저장하는 것만으로 끝나지 않습니다.
+
+구독 변경, 일정 계산, Scheduler 실행, 중복 요청, 실패 복구와 데이터 보정까지  
+**시간에 따라 상태가 계속 변하는 도메인**입니다.
+
+PawCycle에서는 이 과정에서 발생하는 문제를 실제 코드와 테스트로 다루고 있습니다.
+
+### 프로젝트의 세 가지 축
+
+| Product | Operations | AI Harness |
 | --- | --- | --- |
-| 1차 MVP | 구현·통합 및 조건부 QA 위험 수용 기준선 | 공개 상품, 세션 로그인/로그아웃, CSRF, 구독 생성·목록·상세, 다음 주문 예정일 계산 |
-| Production 기준선 | `OPS-VERIFY-001 = Verified` | [OPS-029 판정](docs/reports/OPS-029/tl-report.md)의 일곱 최소 운영 안전성 기준에 한정 |
-| Application rollback | 운영 검증 완료 | 이전 Application Release rollback과 원래 Release 재배포를 확인했으며 DB schema downgrade는 하지 않음 |
-| Logical backup·isolated restore | 운영 검증 완료 | Production DB가 아닌 격리 MySQL에 복원·비교 |
-| Actual Production DB restore | 미실행·미완료 | 별도 고위험 승인과 복구 계획이 필요한 영역 |
-| Lean Harness | 저장소에 적용 | 등급·branch·delta-only·조건부 산출물·code/metadata 검증 분리 |
-| MVP2 | Planned | 제품·도메인 승인 후 Backend → Frontend → 통합 QA → Production 적용 준비 순서 |
+| 정기배송 Commerce 기능 | 배포·관측·장애 대응·복구 | AI 작업 범위·검증·Review 통제 |
+| Subscription Lifecycle | Production Safety | Risk-based Workflow |
+| Idempotency / Reconciliation | Prometheus / Grafana / Alert | Codex / CI / Evidence |
 
-`OPS-VERIFY-001 = Verified`는 `OPS-026`에서 정의한 일곱 최소 운영 안전성 기준 충족을 뜻합니다. 전체 운영 완성, 무중단 배포, 자동복구, 고가용성, RPO/RTO, 물리 volume·EBS 장애 복구 또는 Actual Production DB restore 완료로 확대 해석하지 않습니다.
+---
 
-1차 MVP의 완료 경계도 전체 QA 완료를 뜻하지 않습니다. [FOUNDATION-005 완료 판정](docs/reports/FOUNDATION-005/tl-report.md)은 [FOUNDATION-004 브라우저 QA 결과](docs/reports/FOUNDATION-004/qa-report.md)의 `조건부 통과`를 사용자가 수용한 **조건부 QA 위험 수용 기준선**입니다. 당시 브라우저 QA는 통과 17건, 일부 또는 전체 미실행 8건, 실패 0건이었고, keyboard-only 전체 순회·session 만료·브라우저 `CSRF_INVALID`·구독 생성 POST timeout은 단위 테스트나 대체 증거에 의존해 실제 브라우저에서 재현하지 않았습니다. 이후 Production 인증·Session·CSRF Smoke가 보강됐어도 이 브라우저 QA 전체를 대체하지 않습니다.
+# ✨ 핵심 구현
 
-## 1차 MVP 사용자 흐름
+### Product
 
-```text
-공개 상품 목록·상세
-→ 세션 로그인
-→ SKU·수량·배송 주기 선택
-→ 구독 생성
-→ 내 구독 목록·상세 조회
-→ 로그아웃
-```
+- 공개 상품 목록·상세
+- Session Login / Logout
+- CSRF 보호
+- 정기배송 구독 생성·조회·관리
+- Subscription Snapshot과 Schedule
+- 회원별 구독 소유권 보호
 
-### 구현 범위
+### Reliability
 
-- 비회원 공개 상품 목록·상세와 SKU 가격·구독 가능 여부 조회
-- 세션 로그인·로그아웃, 현재 회원 식별, 로그인 성공 시 session rotation
-- 상태 변경 요청 CSRF 보호와 안전한 return path 처리
-- SKU·수량·배송 주기 검증과 서버의 다음 주문 예정일 계산
-- 인증된 회원 기준 구독 생성, 본인 구독 목록·상세 조회와 소유권 보호
-- 존재하지 않는 구독과 타인 소유 구독의 정보 노출 방지
-- Backend·Frontend·MySQL·Flyway 통합과 로컬 Docker Compose 환경
+- Idempotency 기반 중복 요청 방지
+- 성공 결과 Replay
+- Idempotency Retention / Cleanup
+- Reconciliation
+- Subscription 단위 실패 격리
+- Migration 및 동시성 회귀 검증
 
-### 아직 1차 MVP에 없는 것
+### Operations
 
-결제, 재고 차감, 실제 배송, 일반 구매·장바구니·주문, 구독 변경·일시정지·재개·해지는 아직 구현하지 않았습니다.
+- Docker Compose 기반 운영
+- Nginx / HTTPS
+- Application Rollback
+- Logical Backup / Isolated Restore
+- Prometheus / Grafana
+- Alertmanager / Discord Alert
+- 장애 재현 및 복구 Runbook
 
-## Production 아키텍처
+---
 
-현재 Production은 서울 리전의 단일 EC2와 보존 EBS 위에서 Docker Compose project 하나를 수동 운영합니다.
-
-```text
-Internet :443 / :80
-        ↓
-Nginx proxy
-        ├── Frontend :3000
-        └── Backend :8080 ─── MySQL :3306
-```
-
-- 외부 공개 포트는 80·443이며 Frontend·Backend·MySQL 포트는 Docker 내부 network에만 노출합니다.
-- Compose 서비스는 Nginx, Frontend, Backend, MySQL이고 MySQL 데이터는 named volume으로 보존합니다.
-- Backend·Frontend image는 GHCR에서 같은 commit SHA release tag로 가져오며 OCI revision과 registry digest를 확인합니다.
-- 운영자는 Session Manager로 접속하고, SSM Parameter Store `SecureString`을 root 전용 runtime Secret bundle로 materialize합니다.
-- HTTPS는 Let’s Encrypt를 사용합니다.
-- GitHub Actions는 image를 게시하지만 EC2 배포를 자동 실행하지 않습니다. 배포·rollback은 승인된 운영자가 Runbook의 preflight와 smoke를 확인하며 수행합니다.
-
-세부 구조와 운영 경계는 [Production 운영 아키텍처 개요](docs/architecture/production-operations-overview.md)를 따릅니다.
-
-## 실제 운영 검증 범위
-
-- 단일 EC2 Compose release, SSM Secret materialize, 내부·외부 smoke와 재부팅 복구
-- HTTPS 발급·SAN·경로, 수동 갱신 rehearsal과 재부팅 복구
-- 논리 DB backup, private S3 저장, 격리 MySQL restore·manifest 비교와 Production volume 보존
-- 이전 Application SHA rollback, 현재 Control 계약 채택, 원래 Release 재배포와 최종 health·Smoke 확인
-- EC2 `StatusCheckFailed` ALARM·OK SNS email 알림
-- Production 인증·Session·CSRF Smoke와 전용 Smoke 회원 생성
-
-이 결과는 [OPS-029 Tech Lead 보고서](docs/reports/OPS-029/tl-report.md)를 권위 원본으로 사용하고, 실제 절차는 아래 주요 Production Runbook을 직접 따릅니다. 운영 식별자, hostname, 계정, Secret, backup ID와 원시 로그는 저장소에 기록하지 않습니다.
-
-## 위험 기반 Lean Harness
-
-저장소 작업은 사용자가 최종 승인·병합·운영 실행을 통제하는 절차로 관리합니다.
-
-- 작업 등급은 `경량`, `일반`, `고위험`으로 나누며 등급에 따라 검증 깊이와 산출물을 결정합니다.
-- 저장소 변경과 실제 운영 실행을 분리합니다. 저장소 준비가 운영 적용 승인을 대신하지 않습니다.
-- 작업 branch는 역할별 `<role-prefix>/<TASK-ID>` 형식을 사용합니다.
-- 작업 명세는 이번 delta와 제외 범위를 명시합니다. 제품·도메인·API·DB 결정을 승인 없이 새로 만들지 않습니다.
-- PR metadata 검증과 code validation을 별도 workflow로 실행하고, 변경 경로에 관련된 Component만 병렬 검증합니다.
-- 보고서·QA·인수인계는 실제 소비자와 필요성이 있을 때만 생성합니다.
-- AI Review는 자동 승인 장치가 아니라 결함 탐색 입력입니다. 최종 판단과 병합은 사용자가 합니다.
-- Harness 개선 효과의 수치 평가는 MVP2 실제 작업 이후 수행합니다. 현재 README는 개선 완료 수치를 주장하지 않습니다.
-
-절차와 산출물 조건은 [Lean Harness Runbook](docs/runbook/lean-harness.md)을, 저장소 작업 순서는 [Repository onboarding](docs/runbook/repository-onboarding.md)을 따릅니다.
-
-## 기술 스택
-
-| 영역 | 기술 | 현재 기준 |
-| --- | --- | --- |
-| Backend | Java, Spring Boot, Spring Security, Spring Data JPA, Bean Validation, Gradle | Java 25, Spring Boot 4.1.0 |
-| Frontend | Next.js, React, TypeScript, Node.js | Next.js 16.2.10, React 19.2.4, TypeScript 6.0.3, Node.js 24.18.0 image |
-| Database | MySQL, Flyway | MySQL 8.4.10 image, Flyway migration |
-| Runtime | Docker Compose, Nginx | local integration·production compose |
-| CI | GitHub Actions, GHCR | commit SHA·OCI revision·digest 검증 |
-
-버전은 `backend/build.gradle`, `frontend/package.json`, `infra/*/Dockerfile`과 Compose 파일에서 확인한 값입니다.
-
-## 저장소 구조
-
-```text
-backend/        Spring Boot Backend와 Flyway migration
-frontend/       Next.js·React·TypeScript Frontend
-infra/          local integration·production Compose와 운영 Script
-qa/             QA 규칙과 브라우저 검증 자료
-docs/           제품·도메인·API·ADR·설계·Runbook·보고서
-scripts/        저장소·PR·작업 산출물 검증 Script
-.github/        GitHub Actions와 PR 자동화
-.agents/        역할별 AI 작업 Skill
-```
-
-## 실행과 검증
-
-### 로컬 통합 환경
-
-로컬 통합 환경은 [FOUNDATION-004 Runbook](docs/runbook/FOUNDATION-004-local-integration.md)의 환경 변수·fixture·정리 절차를 따른 뒤 실행합니다.
-
-```bash
-docker compose --file infra/local-integration/compose.yaml config --quiet
-docker compose --file infra/local-integration/compose.yaml up --build
-```
+# 🛠 기술 스택
 
 ### Backend
 
-```bash
-cd backend
-./gradlew test
-./gradlew build
-```
+<p>
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg" width="45" alt="Java"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/spring/spring-original.svg" width="45" alt="Spring"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/gradle/gradle-original.svg" width="45" alt="Gradle"/>
+</p>
 
-Windows PowerShell:
-
-```powershell
-cd backend
-.\gradlew.bat test
-.\gradlew.bat build
-```
+**Java · Spring Boot · Spring Security · Spring Data JPA · Micrometer · Gradle**
 
 ### Frontend
 
-```bash
-cd frontend
-npm ci
-npm run typecheck
-npm run lint
-npm run build
-npm test
-```
+<p>
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nextjs/nextjs-original.svg" width="45" alt="Next.js"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" width="45" alt="React"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg" width="45" alt="TypeScript"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg" width="45" alt="Node.js"/>
+</p>
 
-### 저장소 검증
+**Next.js · React · TypeScript · Node.js**
 
-PR에서는 변경 경로에 따라 [Repository Validation](.github/workflows/validate-conventions.yml)과 PR metadata validation이 실행됩니다.
+### Database & Infrastructure
 
-- `git diff --check`
-- commit·PR title/body·작업 ID·등급·실행 구분 검증
-- 관련 Backend·Frontend·MySQL·Production·Harness Component 검증
-- whitespace와 변경 경로에 따른 component·계약 검증
+<p>
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/mysql/mysql-original.svg" width="45" alt="MySQL"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/docker/docker-original.svg" width="45" alt="Docker"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg" width="45" alt="Nginx"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-plain-wordmark.svg" width="55" alt="AWS"/>
+</p>
 
-Secret·민감 운영 식별자 비노출은 작업자 검토와 필요한 수동 검사 경계입니다. Repository Validation이 전체 diff의 모든 운영 식별자를 자동 탐지한다고 해석하지 않습니다. 실제 비밀번호, DB credential, session ID, CSRF token과 운영 식별자를 저장소·로그에 기록하지 않습니다.
+**MySQL · Flyway · Docker · Docker Compose · Nginx · AWS**
 
-## 주요 권위 문서
+### Observability & Development
 
-| 구분 | 문서 |
-| --- | --- |
-| 1차 MVP 요구사항 | [PS-002](docs/product/PS-002-first-mvp-requirements.md) |
-| UX 제품 결정 | [PS-003](docs/product/PS-003-ux-product-decisions.md) |
-| 구독 도메인 | [DOMAIN-001](docs/domain/DOMAIN-001-first-mvp-subscription-domain.md) |
-| Backend 승인 입력 | [ARCH-006](docs/adr/ARCH-006-first-backend-implementation-approved-inputs.md) |
-| 세션 인증 결정 | [AUTH-003](docs/adr/AUTH-003-session-authentication-approved-inputs.md) |
-| 공개 상품 API | [API-002](docs/api/API-002-public-product-api-contract-proposal.md) |
-| 구독 API | [API-003](docs/api/API-003-subscription-api-contract-decision-request.md) |
-| Production 구조 | [운영 아키텍처 개요](docs/architecture/production-operations-overview.md) |
-| 최소 운영 기준 판정 | [OPS-029 Tech Lead 보고서](docs/reports/OPS-029/tl-report.md) |
-| 1차 MVP 브라우저 QA 결과 | [FOUNDATION-004 QA 보고서](docs/reports/FOUNDATION-004/qa-report.md) |
-| 1차 MVP 완료 판정 | [FOUNDATION-005 Tech Lead 보고서](docs/reports/FOUNDATION-005/tl-report.md) |
-| Lean Harness | [lean-harness.md](docs/runbook/lean-harness.md) |
-| 로컬 통합 | [FOUNDATION-004 Runbook](docs/runbook/FOUNDATION-004-local-integration.md) |
-| Production 단일 Release | [OPS-010](docs/runbook/OPS-010-production-single-release.md) |
-| Production HTTPS | [OPS-011](docs/runbook/OPS-011-production-https.md) |
-| Production DB backup·isolated restore | [OPS-013](docs/runbook/OPS-013-production-db-backup-restore.md) |
-| EC2 장애 알림 | [OPS-015](docs/runbook/OPS-015-ec2-status-check-alarm.md) |
-| Production 인증·Session Smoke | [OPS-017](docs/runbook/OPS-017-production-auth-session-smoke.md) |
-| Production Smoke 회원 | [OPS-020](docs/runbook/OPS-020-production-auth-smoke-member.md) |
-| Production DB restore | [OPS-025](docs/runbook/OPS-025-production-db-restore.md) |
+<p>
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/prometheus/prometheus-original.svg" width="45" alt="Prometheus"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/grafana/grafana-original.svg" width="45" alt="Grafana"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/github/github-original.svg" width="45" alt="GitHub"/>
+  &nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/githubactions/githubactions-original.svg" width="45" alt="GitHub Actions"/>
+</p>
 
-존재하지 않는 MVP2 상세 문서를 미리 링크하지 않습니다. MVP2는 승인된 제품·도메인 문서가 생긴 뒤 해당 문서로 연결합니다.
+**Prometheus · Grafana · Alertmanager · GitHub Actions · CodeRabbit · ChatGPT · Codex · GitHub MCP**
 
-## 현재 한계
+---
 
-- Actual Production DB restore와 schema downgrade, 복구 훈련은 미실행·미완료입니다.
-- 확정된 RPO·RTO, backup schedule·실패 알림·cross-region·장기 보존 정책은 없습니다.
-- 무중단 배포, 자동 서버 배포, 자동복구, Blue/Green, Load Balancer·다중 EC2·DB replica는 미구현입니다.
-- 물리 MySQL volume·EBS·instance 장애와 복구를 검증하지 않았습니다.
-- 전체 관측성, 장기 부하·capacity·성능 기준선과 credential 수명 관리는 미완료입니다.
-- HTTPS 자동 갱신 schedule과 certificate backup은 미완료입니다.
-- OPS-028에서 관찰된 Certbot external/named volume 경고의 근본 원인은 해결되지 않아 인증서 저장·갱신 경로의 후속 확인이 필요합니다.
-- RDS는 후보 방향이며 현재 Production DB는 Docker MySQL입니다.
-- 정기배송 Batch와 운영 자동화는 미구현입니다.
-- Harness 개선 후 수치 평가는 아직 실행하지 않았습니다.
-- 성능은 관측된 병목과 실제 필요성이 확인된 뒤 선택적으로 개선합니다.
+# 🏗 아키텍처
 
-## 2차 MVP와 이후 로드맵
-
-2차 MVP는 승인 전 `Planned`입니다.
-
-- Pet 등록과 DOG·CAT 구분
-- `SubscriptionPlan`·`PlanVersion`·`PlanItem`
-- 반려동물과 플랜을 선택한 구독, 가격·구성 snapshot
-- 플랜 변경과 다음 회차 건너뛰기
-- 일시정지·재개·해지와 상태·명령 이력
-- 예정·건너뜀·보류·취소 Schedule
-- 멱등성, 낙관적 잠금과 소유권 보호
-
-2차 MVP에서 제외하는 항목:
-
-- 실제 PG 결제, 카드·환불·위약금
-- 실제 재고 차감
-- 택배사 연동과 배송 완료
-- 관리자 백오피스
-- 추천 AI
-
-다음 단계는 다음 순서로 진행합니다.
+> `docs/images/readme/architecture.png` 추가 예정
 
 ```text
-MVP2 제품·도메인 승인 문서
-→ Backend
-→ Frontend
-→ 통합 QA
-→ Production 적용 준비
-→ 사용자 승인 기반 실제 Production 적용
-→ 성능 기준선과 Harness 전후 평가
-→ 관측성·장애 대응·운영 자동화
+Internet
+   │
+   ▼
+ Nginx
+   │
+   ├───────────────┐
+   ▼               ▼
+Next.js       Spring Boot
+Frontend         Backend
+                   │
+                   ▼
+                 MySQL
+                   │
+            ┌──────┴──────┐
+            ▼             ▼
+      Reconciliation   Idempotency
+            │
+            ▼
+        Micrometer
+            │
+            ▼
+       Prometheus
+            │
+       ┌────┴────┐
+       ▼         ▼
+    Grafana   Alertmanager
+                  │
+                  ▼
+               Discord
+```
+
+<details>
+<summary><strong>Production 운영 구조 자세히 보기</strong></summary>
+
+<br>
+
+Production 환경에서는 Application Release와 운영 Control 상태를 구분합니다.
+
+- Backend / Frontend image는 commit SHA 기준으로 식별
+- GHCR에 Application image 저장
+- Nginx에서 외부 HTTPS 처리
+- Application과 MySQL은 내부 Docker Network에서 통신
+- 운영 Secret은 저장소에서 분리
+- Logical Backup과 격리 Restore 절차 구성
+- 이전 Application Release Rollback 경로 검증
+
+GitHub Actions가 Production에 자동 배포하지 않습니다.
+
+실제 운영 실행은 승인된 Runbook과 별도 실행 승인을 기준으로 수행합니다.
+
+</details>
+
+---
+
+# 🧩 주요 설계와 문제 해결
+
+<details>
+<summary><strong>1. 하나의 구독 실패가 Scheduler 전체로 전파되는 문제</strong></summary>
+
+<br>
+
+### 문제
+
+여러 Subscription을 하나의 Transaction에서 Reconciliation하면  
+한 구독의 실패가 Batch 전체에 영향을 줄 수 있습니다.
+
+```text
+Subscription A → 성공
+Subscription B → 실패
+Subscription C → 처리되지 않음
+```
+
+### 해결
+
+Batch 전체 Transaction을 제거하고  
+각 Subscription을 독립적인 `REQUIRES_NEW` Transaction으로 처리했습니다.
+
+```text
+Batch
+ ├─ Subscription A → Commit
+ ├─ Subscription B → Rollback
+ └─ Subscription C → Commit
+```
+
+### 결과
+
+- 실패 구독만 Rollback
+- 이후 구독 처리 지속
+- 실패한 Subscription 식별 가능
+- 재처리와 장애 분석 경계 확보
+
+**Evidence:** [PR #106](https://github.com/guseoh/pawcycle-commerce/pull/106)
+
+</details>
+
+<details>
+<summary><strong>2. Idempotency 데이터가 계속 증가하는 문제</strong></summary>
+
+<br>
+
+### 문제
+
+중복 요청을 안전하게 Replay하기 위해 성공 결과를 보관하지만  
+영구 보관하면 데이터가 계속 증가합니다.
+
+반대로 너무 빨리 삭제하면 Replay 안전성을 잃습니다.
+
+### 해결
+
+성공 결과의 최초 완료 시각을 기록하고 **30일 Retention + Bounded Cleanup**을 적용했습니다.
+
+```text
+Reservation
+    │
+    ▼
+Command Success
+    │
+    ▼
+completed_at 기록
+    │
+    ▼
+30일 Retention
+    │
+    ▼
+Bounded Cleanup
+```
+
+추가 규칙:
+
+- Replay는 retention 기간을 연장하지 않음
+- 미완료 Reservation은 삭제하지 않음
+- 과거 데이터는 제한된 범위에서 Repair
+- Cleanup과 Replay 경쟁을 동시성 테스트로 검증
+
+**Evidence:** [PR #108](https://github.com/guseoh/pawcycle-commerce/pull/108)
+
+</details>
+
+<details>
+<summary><strong>3. Migration의 실제 Lock 범위를 확인한 과정</strong></summary>
+
+<br>
+
+MVP2 Legacy Migration에서 `FOR UPDATE`가 어느 범위까지 Lock을 잡는지 추측하지 않고  
+격리된 MySQL 환경에서 실제로 측정했습니다.
+
+확인된 범위에는 다음 상황이 포함됐습니다.
+
+- 관리 대상 Row Update
+- 인접 Insert
+- Legacy Target Update
+
+이 결과를 근거로 Production Migration을 단순 실행하지 않고  
+별도의 고위험 검증 대상으로 유지했습니다.
+
+**Evidence:** [PR #104](https://github.com/guseoh/pawcycle-commerce/pull/104)
+
+</details>
+
+---
+
+# 📈 성능 개선
+
+N+1 가능성을 발견했을 때 바로 최적화하지 않고  
+**먼저 Page Size별 SQL Query 수를 측정한 뒤 개선했습니다.**
+
+| API | Before 10 | Before 20 | Before 100 | After 10 | After 20 | After 100 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Plans | 32 | 52 | 212 | 14 | 14 | 14 |
+| Subscriptions | 51 | 91 | 411 | 15 | 15 | 19 |
+
+```text
+Measurement
+    ↓
+N+1 판정
+    ↓
+Batch 조회 적용
+    ↓
+동일 조건 재측정
+```
+
+API 응답 구조, Pagination, Authorization, DB Schema는 변경하지 않았습니다.
+
+**Evidence**
+
+- [PR #102 - N+1 측정](https://github.com/guseoh/pawcycle-commerce/pull/102)
+- [PR #103 - Batch 조회 개선](https://github.com/guseoh/pawcycle-commerce/pull/103)
+
+> 측정값은 Local Representative Fixture 기준이며 Production 성능이나 SLO로 표현하지 않습니다.
+
+---
+
+# 🔭 운영과 관측성
+
+현재 운영 흐름은 단순 배포에서 끝나지 않습니다.
+
+```text
+Deploy
+  ↓
+Health / Smoke
+  ↓
+Metrics
+  ↓
+Incident Detection
+  ↓
+Diagnosis
+  ↓
+Recovery
+  ↓
+Evidence
+```
+
+<details>
+<summary><strong>Prometheus / Grafana Observability</strong></summary>
+
+<br>
+
+Backend에서 다음 영역을 Metric으로 제공합니다.
+
+- HTTP
+- JVM
+- CPU
+- JDBC / HikariCP
+- Subscription Reconciliation
+- Idempotency Cleanup
+
+고카디널리티를 피하기 위해 `subscriptionId` 같은 개별 식별자는  
+Prometheus Label로 사용하지 않습니다.
+
+Local Docker 환경에서:
+
+```text
+Spring Boot
+    ↓
+Actuator / Micrometer
+    ↓
+Prometheus
+    ↓
+Grafana
+```
+
+흐름을 검증했습니다.
+
+**Evidence**
+
+- [PR #112 - Backend Observability](https://github.com/guseoh/pawcycle-commerce/pull/112)
+- [PR #113 - Prometheus / Grafana](https://github.com/guseoh/pawcycle-commerce/pull/113)
+
+</details>
+
+<details>
+<summary><strong>장애 재현과 복구</strong></summary>
+
+<br>
+
+다음 장애를 Local Disposable Environment에서 재현했습니다.
+
+- Backend unavailable
+- MySQL connection failure
+- Reconciliation failure
+
+Reconciliation 장애 재현은 Shared Local DB 대신  
+실행별 독립 Compose Project와 Fixture를 사용합니다.
+
+```text
+장애 발생
+   ↓
+Metric / Alert
+   ↓
+Log / Target 확인
+   ↓
+원인 구분
+   ↓
+복구
+   ↓
+정상 상태 확인
+```
+
+**Evidence:** [PR #116](https://github.com/guseoh/pawcycle-commerce/pull/116)
+
+</details>
+
+<details>
+<summary><strong>Alertmanager → Discord</strong></summary>
+
+<br>
+
+Dashboard를 사람이 계속 보고 있어야만 장애를 발견할 수 있는 구조에서 벗어나기 위해  
+Alert 흐름을 구성했습니다.
+
+```text
+Backend / Reconciliation
+          ↓
+      Prometheus
+          ↓
+        Alert
+          ↓
+     Alertmanager
+          ↓
+       Discord
+```
+
+Local 환경에서 다음 상태 변화를 직접 확인했습니다.
+
+- Backend unavailable `firing → resolved`
+- Reconciliation failure `firing → resolved`
+- Discord 전달
+
+Production Threshold, Escalation, Repeat Policy는 별도 운영 결정으로 남겨두었습니다.
+
+**Evidence**
+
+- [PR #118 - Prometheus Alert](https://github.com/guseoh/pawcycle-commerce/pull/118)
+- [PR #120 - Discord Alert](https://github.com/guseoh/pawcycle-commerce/pull/120)
+
+</details>
+
+---
+
+# 🤖 AI Harness Engineering
+
+PawCycle에서는 AI에게 저장소 전체를 자유롭게 맡기지 않습니다.
+
+**제품 결정은 사람이 하고, AI는 승인된 범위만 구현하도록 개발 과정 자체를 Harness로 관리합니다.**
+
+```text
+User / Product Owner / Tech Lead
+              │
+              ▼
+        Scope Approval
+              │
+              ▼
+       Risk Classification
+              │
+              ▼
+       Task Specification
+              │
+              ▼
+            Codex
+              │
+              ▼
+      Repository Change
+              │
+              ▼
+       Local Validation
+              │
+              ▼
+        GitHub Actions
+              │
+              ▼
+          AI Review
+              │
+              ▼
+         Human Review
+              │
+              ▼
+         Manual Merge
+              │
+              ▼
+           Evidence
+```
+
+> `docs/images/readme/ai-harness-workflow.png` 추가 예정
+
+<details>
+<summary><strong>AI 역할과 책임 경계</strong></summary>
+
+<br>
+
+### User
+
+- Product Owner
+- Tech Lead
+- 제품·도메인·API·DB 결정
+- 위험 수용
+- 실제 Production 실행
+- 최종 Merge
+
+### ChatGPT
+
+- Scope 분석
+- 설계 검토
+- 작업 위험 등급 결정
+- Codex 작업 명세
+- PR / CI / Review 분석
+- 운영 결과 분석
+- Evidence 기반 회고
+
+### Codex
+
+- 승인된 Repository 변경
+- Test / Validation
+- Commit / Push
+- 요청된 PR 생성
+
+AI가 제품 결정, 운영 위험 수용, Production 실행 또는 최종 Merge를 대신하지 않습니다.
+
+</details>
+
+<details>
+<summary><strong>Risk-Based Lean Harness</strong></summary>
+
+<br>
+
+모든 저장소 작업을 위험도에 따라 분류합니다.
+
+| Grade | 기준 |
+| --- | --- |
+| 경량 | 외부 계약을 변경하지 않는 작은 내부 변경 |
+| 일반 | 하나의 사용자 목적을 위한 비파괴 변경 |
+| 고위험 | 인증·Migration·Production·복구·보안 |
+
+작업 등급에 따라:
+
+- 검증 깊이
+- 활성 역할
+- Report
+- QA
+- Handoff
+- 운영 실행 경계
+
+를 다르게 적용합니다.
+
+Codex에는 전체 프로젝트를 설명하는 거대한 Prompt 대신  
+현재 작업의 **Delta**를 중심으로 명세합니다.
+
+```text
+Goal
++ Scope
++ Exclusions
++ Verification
++ Completion Condition
++ Stop Condition
+```
+
+새로운 제품·보안·DB 결정이 필요해지면 구현을 계속하지 않고 사용자 결정으로 돌아갑니다.
+
+</details>
+
+<details>
+<summary><strong>Harness 자체를 개선한 과정</strong></summary>
+
+<br>
+
+Harness 역시 처음부터 완성된 시스템으로 가정하지 않았습니다.
+
+실제 작업 중 Harness가 개발을 방해하는 문제가 발견되면  
+그 문제도 하나의 Software Defect로 취급했습니다.
+
+```text
+실제 작업
+   ↓
+Harness 결함 발견
+   ↓
+Parser / Validator 실패
+   ↓
+계약 수정
+   ↓
+Regression Test
+   ↓
+다음 작업에서 재사용
+```
+
+대표 사례:
+
+- `OBS-BASE` Task ID를 Validator가 인식하지 못한 문제
+- `INC-BASE` Task ID parser 계약 불일치
+- PR Metadata와 Validator 계약 불일치
+- Agent Benchmark Schema 진화
+
+**Evidence**
+
+- [PR #111 - OBS Task ID 지원](https://github.com/guseoh/pawcycle-commerce/pull/111)
+- [PR #115 - INC Task ID 지원](https://github.com/guseoh/pawcycle-commerce/pull/115)
+
+</details>
+
+<details>
+<summary><strong>GitHub MCP와 Agent Benchmark</strong></summary>
+
+<br>
+
+AI가 GitHub 상태를 추측하지 않고 실제 Repository Evidence를 읽도록  
+Connector와 GitHub MCP 기반 Workflow를 실험했습니다.
+
+```text
+ChatGPT Connector Baseline
+            ↓
+     Benchmark Contract
+            ↓
+    GitHub MCP Boundary
+            ↓
+  Codex GitHub MCP Benchmark
+            ↓
+       Actual Pilot
+```
+
+측정 또는 검증 항목:
+
+- Accuracy
+- Tool Call
+- Execution Time
+- Scope Violation
+- User Intervention
+- Production Access
+- Read Tool Allowlist
+
+대표 작업:
+
+- [PR #91 - Agent Before 기준선](https://github.com/guseoh/pawcycle-commerce/pull/91)
+- [PR #96 - Connector 대조군](https://github.com/guseoh/pawcycle-commerce/pull/96)
+- [PR #97 - GitHub MCP 운영 경계](https://github.com/guseoh/pawcycle-commerce/pull/97)
+- [PR #98 - Benchmark Tool](https://github.com/guseoh/pawcycle-commerce/pull/98)
+- [PR #100 - Codex GitHub MCP Benchmark](https://github.com/guseoh/pawcycle-commerce/pull/100)
+- [PR #101 - Pilot 계약](https://github.com/guseoh/pawcycle-commerce/pull/101)
+
+제한된 Benchmark 결과를 일반적인 AI Agent 성능으로 확대 해석하지 않습니다.
+
+</details>
+
+---
+
+# 🔧 대표 PR
+
+README에 전체 PR을 나열하지 않고  
+**설계 판단이나 문제 해결 과정이 드러나는 작업만 선별했습니다.**
+
+| Topic | Engineering Point | PR |
+| --- | --- | ---: |
+| MVP2 Integration | 실제 HTTP / DTO / Replay 계약 검증 | [#89](https://github.com/guseoh/pawcycle-commerce/pull/89) |
+| N+1 | 측정 → 개선 → 재측정 | [#102](https://github.com/guseoh/pawcycle-commerce/pull/102), [#103](https://github.com/guseoh/pawcycle-commerce/pull/103) |
+| Migration Lock | 실제 MySQL Lock Footprint 측정 | [#104](https://github.com/guseoh/pawcycle-commerce/pull/104) |
+| Reconciliation | Subscription별 Transaction 격리 | [#106](https://github.com/guseoh/pawcycle-commerce/pull/106) |
+| Idempotency | Retention + Cleanup + Concurrency | [#108](https://github.com/guseoh/pawcycle-commerce/pull/108) |
+| Observability | Metric → Prometheus → Grafana | [#112](https://github.com/guseoh/pawcycle-commerce/pull/112), [#113](https://github.com/guseoh/pawcycle-commerce/pull/113) |
+| Incident | 장애 재현 → 진단 → 복구 | [#116](https://github.com/guseoh/pawcycle-commerce/pull/116) |
+| Alert | Prometheus → Alertmanager → Discord | [#118](https://github.com/guseoh/pawcycle-commerce/pull/118), [#120](https://github.com/guseoh/pawcycle-commerce/pull/120) |
+| AI Harness | 실제 작업에서 Harness 결함 발견·개선 | [#111](https://github.com/guseoh/pawcycle-commerce/pull/111), [#115](https://github.com/guseoh/pawcycle-commerce/pull/115) |
+
+---
+
+# 🚦 현재 상태와 Roadmap
+
+```text
+Product MVP
+   ✅
+   ↓
+Production Safety Baseline
+   ✅
+   ↓
+MVP2 Subscription
+   ✅
+   ↓
+Idempotency / Reconciliation
+   ✅
+   ↓
+Performance Measurement & Improvement
+   ✅
+   ↓
+Observability
+   ✅
+   ↓
+Incident Response
+   ✅
+   ↓
+Alerting
+   ✅
+   ↓
+Subscription Operations Automation
+   🚧
+   ↓
+Codebase & Harness Stabilization
+   ⬜
+   ↓
+Deployment / Operations Automation
+   ⬜
+   ↓
+Evidence-Based Retrospective
+   ⬜
+   ↓
+Portfolio V1
+   ⬜
+   ↓
+MVP3
+   ⬜
+```
+
+<details>
+<summary><strong>MVP3 후보</strong></summary>
+
+<br>
+
+MVP3 기능은 아직 확정하지 않았습니다.
+
+현재 프로젝트의 Evidence를 해체한 뒤  
+Commerce 흐름에서 가장 큰 공백을 기준으로 결정할 예정입니다.
+
+현재 후보:
+
+- 주문
+- 결제
+- 정기결제
+- 재고
+- 관리자 운영
+
+결제가 선택된다면 단순 PG 결제창 연동보다는:
+
+```text
+Subscription
+    ↓
+Scheduler
+    ↓
+Recurring Payment
+    ↓
+Order
+    ↓
+Idempotency
+    ↓
+Reconciliation
+    ↓
+Metric / Alert
+```
+
+까지 기존 정기배송 구조와 연결하는 것을 검토합니다.
+
+</details>
+
+---
+
+## 🎯 What I Want to Prove
+
+PawCycle Commerce의 목표는 기능 수가 많은 쇼핑몰을 만드는 것이 아닙니다.
+
+**제품을 만들고, 운영하고, 실패를 관측하고, 반복 업무를 자동화하며,  
+그 과정에서 AI 개발 환경 자체도 개선할 수 있는 Backend Engineer의 개발 과정을 증명하는 것**이 목표입니다.
+
+```text
+Build
+→ Operate
+→ Observe
+→ Recover
+→ Automate
+→ Improve the Harness
+→ Learn from Evidence
 ```
