@@ -1,4 +1,19 @@
 services:
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "127.0.0.1:${PAWCYCLE_LOCAL_ALERTMANAGER_PORT:-9094}:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    tmpfs:
+      - /alertmanager
+    secrets:
+      - source: discord-webhook
+        target: discord-webhook
+
   prometheus:
     image: prom/prometheus:v3.13.2
     command:
@@ -39,3 +54,7 @@ volumes:
     name: pawcycle-local-integration-prometheus-data
   grafana-data:
     name: pawcycle-local-integration-grafana-data
+
+secrets:
+  discord-webhook:
+    file: ${PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE:?PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE is required}
