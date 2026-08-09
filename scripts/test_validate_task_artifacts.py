@@ -505,7 +505,7 @@ legacy 형식이다.
         self.assertIn("실행 구분 불일치", result.stderr)
 
     def test_supported_task_id_families_are_detected(self) -> None:
-        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "HARNESS-LEAN-001"):
+        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "HARNESS-LEAN-001"):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
