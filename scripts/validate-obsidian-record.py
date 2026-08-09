@@ -31,7 +31,7 @@ def main() -> int:
         return 1
 
     record = load_record_module()
-    for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "HARNESS-LEAN-001"):
+    for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "HARNESS-LEAN-001"):
         if record.task_id_from_text(f"작업 ID: {task_id}") != task_id:
             print(f"병합 PR 작업 ID 추출 실패: {task_id}", file=sys.stderr)
             return 1
