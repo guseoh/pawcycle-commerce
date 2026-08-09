@@ -5,9 +5,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class V2IdempotencyCleanupService {
@@ -29,6 +32,22 @@ public class V2IdempotencyCleanupService {
 		}
 
 		Timer.Sample sample = metrics.startCleanup();
+		AtomicReference<CleanupResult> completedResult = new AtomicReference<>();
+		boolean transactionSynchronized = TransactionSynchronizationManager.isSynchronizationActive();
+		if (transactionSynchronized) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCompletion(int status) {
+					CleanupResult result = completedResult.get();
+					if (status == STATUS_COMMITTED && result != null) {
+						metrics.cleanupSucceeded(result);
+					} else {
+						metrics.cleanupFailed();
+					}
+					metrics.finishCleanup(sample);
+				}
+			});
+		}
 		try {
 			LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 			int creationRepaired = jdbc.update(
@@ -56,13 +75,20 @@ public class V2IdempotencyCleanupService {
 					batchSize);
 			CleanupResult result = new CleanupResult(
 					creationRepaired, commandRepaired, creationDeleted, commandDeleted);
-			metrics.cleanupSucceeded(result);
+			completedResult.set(result);
+			if (!transactionSynchronized) {
+				metrics.cleanupSucceeded(result);
+			}
 			return result;
 		} catch (RuntimeException exception) {
-			metrics.cleanupFailed();
+			if (!transactionSynchronized) {
+				metrics.cleanupFailed();
+			}
 			throw exception;
 		} finally {
-			metrics.finishCleanup(sample);
+			if (!transactionSynchronized) {
+				metrics.finishCleanup(sample);
+			}
 		}
 	}
 

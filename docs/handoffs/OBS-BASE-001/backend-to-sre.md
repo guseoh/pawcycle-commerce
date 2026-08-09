@@ -16,11 +16,11 @@
 | `pawcycle.subscription.reconciliation.processed` | `_total` | 없음 | 실행에서 처리 시도한 활성 구독 수 |
 | `pawcycle.subscription.reconciliation.failures` | `_total` | 없음 | 개별 구독 또는 실행 전역 실패 수 |
 | `pawcycle.subscription.reconciliation.duration` | `_seconds_count`, `_seconds_sum` | 없음 | reconciliation 실행 시간 |
-| `pawcycle.subscription.idempotency.cleanup.executions` | `_total` | `result=success|failure` | cleanup 실행 결과 수 |
+| `pawcycle.subscription.idempotency.cleanup.executions` | `_total` | `result=success` 또는 `result=failure` | cleanup 실행 결과 수 |
 | `pawcycle.subscription.idempotency.cleanup.duration` | `_seconds_count`, `_seconds_sum` | 없음 | cleanup 실행 시간 |
-| `pawcycle.subscription.idempotency.cleanup.rows` | `_total` | `scope=creation|command`, `operation=repair|delete` | 처리 row 누적 수 |
-| `pawcycle.subscription.idempotency.retained.rows` | gauge | `scope=creation|command` | `completed_at IS NOT NULL` 현재 row 수 |
-| `pawcycle.subscription.idempotency.cleanup.candidates` | gauge | `scope=creation|command` | 현재 UTC 기준 30일 cutoff보다 이른 row 수 |
+| `pawcycle.subscription.idempotency.cleanup.rows` | `_total` | `scope=creation` 또는 `scope=command`; `operation=repair` 또는 `operation=delete` | 처리 row 누적 수 |
+| `pawcycle.subscription.idempotency.retained.rows` | gauge | `scope=creation` 또는 `scope=command` | `completed_at IS NOT NULL` 현재 row 수 |
+| `pawcycle.subscription.idempotency.cleanup.candidates` | gauge | `scope=creation` 또는 `scope=command` | 현재 UTC 기준 30일 cutoff보다 이른 row 수 |
 
 custom metric tag에는 `memberId`, `subscriptionId`, Idempotency-Key 또는 다른 개별 식별자를 넣지 않는다.
 
