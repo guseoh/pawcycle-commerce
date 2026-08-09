@@ -27,20 +27,32 @@ docker compose --env-file .env.local @ComposeFiles ps
 
 $PrometheusPort = (docker compose --env-file .env.local @ComposeFiles port prometheus 9090).Split(':')[-1]
 $GrafanaPort = (docker compose --env-file .env.local @ComposeFiles port grafana 3000).Split(':')[-1]
+$ProxyPort = (docker compose --env-file .env.local @ComposeFiles port proxy 80).Split(':')[-1]
 $PrometheusUrl = "http://127.0.0.1:$PrometheusPort"
 $GrafanaUrl = "http://127.0.0.1:$GrafanaPort"
+$ProxyUrl = "http://127.0.0.1:$ProxyPort"
 $ReadinessDeadline = (Get-Date).AddSeconds(180)
 
 do {
     $PrometheusReady = $false
     $GrafanaReady = $false
+    $BackendTargetReady = $false
+    $DatasourceReady = $false
+    $DashboardReady = $false
     try { $PrometheusReady = (Invoke-WebRequest -UseBasicParsing "$PrometheusUrl/-/ready").StatusCode -eq 200 } catch {}
     try { $GrafanaReady = (Invoke-RestMethod "$GrafanaUrl/api/health").database -eq 'ok' } catch {}
-    if (-not ($PrometheusReady -and $GrafanaReady)) { Start-Sleep -Seconds 2 }
-} until (($PrometheusReady -and $GrafanaReady) -or (Get-Date) -ge $ReadinessDeadline)
+    try {
+        $Targets = (Invoke-RestMethod "$PrometheusUrl/api/v1/targets").data.activeTargets
+        $BackendTargetReady = @($Targets | Where-Object { $_.labels.job -eq 'pawcycle-backend' -and $_.health -eq 'up' }).Count -gt 0
+    } catch {}
+    try { $DatasourceReady = (Invoke-RestMethod "$GrafanaUrl/api/datasources/uid/pawcycle-prometheus").uid -eq 'pawcycle-prometheus' } catch {}
+    try { $DashboardReady = (Invoke-RestMethod "$GrafanaUrl/api/dashboards/uid/pawcycle-local-observability").dashboard.uid -eq 'pawcycle-local-observability' } catch {}
+    $ObservabilityReady = $PrometheusReady -and $GrafanaReady -and $BackendTargetReady -and $DatasourceReady -and $DashboardReady
+    if (-not $ObservabilityReady) { Start-Sleep -Seconds 2 }
+} until ($ObservabilityReady -or (Get-Date) -ge $ReadinessDeadline)
 
-if (-not ($PrometheusReady -and $GrafanaReady)) {
-    throw 'Prometheus 또는 Grafana가 180초 안에 준비되지 않았습니다.'
+if (-not $ObservabilityReady) {
+    throw 'Prometheus target 또는 Grafana provisioning이 180초 안에 준비되지 않았습니다.'
 }
 ```
 
@@ -57,7 +69,7 @@ Prometheus API에서 `pawcycle-backend` target의 `health`가 `up`인지 확인�
 
 테스트 트래픽은 기존 `smoke.ps1` 또는 공개 상품 API 호출을 사용한다. 트래픽 전후 Prometheus query 결과를 비교해 HTTP request count, JVM heap/GC/thread, process/system CPU와 Hikari active/idle/pending을 확인한다. reconciliation은 기존 조건부 Scheduler 실행 결과만 관측하며 cadence를 변경하거나 새 trigger를 추가하지 않는다. idempotency cleanup은 승인된 runtime trigger와 운영 batch size가 없으므로 Phase A integration test 증거를 사용한다.
 
-Proxy 공개 경계는 `http://127.0.0.1:8080/actuator/prometheus` 응답이 Backend Prometheus payload가 아님을 확인한다. Backend container 내부 direct endpoint는 Prometheus scrape에만 사용한다.
+Proxy 공개 경계는 `$ProxyUrl/actuator/prometheus` 응답이 Backend Prometheus payload가 아님을 확인한다. `.env.local` 기본값은 `http://127.0.0.1:8080/actuator/prometheus`이며, Backend container 내부 direct endpoint는 Prometheus scrape에만 사용한다.
 
 resource baseline은 UTC 시각, Docker Engine/Compose 버전, 15초 scrape interval, 측정 전후 traffic 조건과 함께 기록한다. `docker stats --no-stream`으로 container CPU·memory를, `docker system df --verbose`와 named volume 정보를 사용해 local storage를 확인한다. 연속 scrape 전후 Hikari active/idle/pending과 MySQL connection 수를 비교해 gauge의 네 개 indexed `COUNT(*)` query가 local DB connection에 미치는 영향을 기록한다. 이 결과로 Production cache, refresh cadence, query timeout 또는 배치 정책을 정하지 않는다.
 
