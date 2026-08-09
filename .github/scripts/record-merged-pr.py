@@ -27,6 +27,7 @@ TASK_ID_PREFIXES = (
     "PERF",
     "OPS",
     "OBS-BASE",
+    "INC-BASE",
     "SEC",
     "AUTH",
     "DOMAIN",
