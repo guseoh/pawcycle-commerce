@@ -164,6 +164,18 @@
       ],
       "title": "Idempotency retained rows and cleanup candidates",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "max": 1, "min": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "id": 13,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "up{job=\"pawcycle-backend\"}", "legendFormat": "backend scrape", "range": true, "refId": "A" }
+      ],
+      "title": "Backend scrape availability",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",
