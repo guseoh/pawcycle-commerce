@@ -1,0 +1,18 @@
+groups:
+  - name: pawcycle-local-alerts
+    rules:
+      - alert: PawCycleBackendScrapeUnavailable
+        expr: up{job="pawcycle-backend"} == 0
+        for: 30s
+        labels:
+          scope: local
+        annotations:
+          summary: PawCycle Backend scrape unavailable
+          description: Local Prometheus has not scraped the Backend successfully for 30 seconds. Follow the INC-BASE-001 runbook to distinguish the cause.
+      - alert: PawCycleReconciliationFailure
+        expr: increase(pawcycle_subscription_reconciliation_failures_total[30s]) > 0
+        labels:
+          scope: local
+        annotations:
+          summary: PawCycle reconciliation failure observed
+          description: A reconciliation failure counter increase was observed in the local 30 second window. Follow the INC-BASE-001 runbook and Backend logs.

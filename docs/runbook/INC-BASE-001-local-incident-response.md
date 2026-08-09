@@ -16,7 +16,7 @@ docker compose --env-file .env.local @ComposeFiles ps
 정상 기준은 MySQL·Backend가 `healthy`, Backend `/actuator/health`가 `UP`, Prometheus `up{job="pawcycle-backend"}`가 `1`, Proxy 상품 API가 `200`인 상태다. 운영자의 첫 확인 순서는 다음과 같다.
 
 1. `docker compose ps`로 Backend와 MySQL process·health를 구분한다.
-2. Prometheus target의 `health`와 `lastError`를 확인한다.
+2. Prometheus Targets 화면에서 Backend target의 `health`·`lastError`를 확인하고, Alerts 화면에서 `PawCycleBackendScrapeUnavailable`·`PawCycleReconciliationFailure` 상태를 확인한다. alert는 원인 판정이 아니라 첫 확인 신호이므로 다음 순서로 원인을 구분한다.
 3. Backend container 내부 `/actuator/health`를 10초 이내로 확인한다.
 4. Backend scrape가 유지되면 Hikari와 reconciliation failure metric, 관련 Backend log를 확인한다.
 

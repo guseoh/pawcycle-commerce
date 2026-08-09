@@ -10,6 +10,7 @@ services:
   prometheus:
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
       - inc-base-001-prometheus-data:/prometheus
 
   grafana:
