@@ -27,7 +27,6 @@ TASK_ID_PREFIXES = (
     "PERF",
     "OPS",
     "OBS-BASE",
-    "INC-BASE",
     "SEC",
     "AUTH",
     "DOMAIN",
@@ -35,7 +34,8 @@ TASK_ID_PREFIXES = (
     "UX",
     "DATA",
 )
-TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+INC_BASE_TASK_ID_PATTERN = r"INC-BASE-[0-9]{3}(?![A-Za-z0-9_-])"
+TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:

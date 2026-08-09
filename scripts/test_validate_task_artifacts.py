@@ -189,6 +189,23 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 ID", result.stderr)
 
+    def test_malformed_inc_base_task_ids_do_not_partially_match_stdin(self) -> None:
+        for task_id in (
+            "INC-BASE-001-EXTRA",
+            "INC-BASE-001abc",
+            "INC-BASE-001_extra",
+        ):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(
+                    Path(tmp),
+                    "--from-stdin",
+                    stdin_text=body,
+                )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 ID", result.stderr)
+
     def test_lightweight_pr_without_report_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="경량"))

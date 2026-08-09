@@ -11,9 +11,10 @@ from pathlib import Path
 
 TASK_ID_PREFIXES = (
     "BOOTSTRAP", "PS", "ARCH", "FOUNDATION", "FRONTEND", "PRODUCT",
-    "BUG", "PERF", "OPS", "OBS-BASE", "INC-BASE", "SEC", "AUTH", "DOMAIN", "API", "UX", "DATA",
+    "BUG", "PERF", "OPS", "OBS-BASE", "SEC", "AUTH", "DOMAIN", "API", "UX", "DATA",
 )
-TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+INC_BASE_TASK_ID_PATTERN = r"INC-BASE-[0-9]{3}(?![A-Za-z0-9_-])"
+TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 TASK_ID_RE = re.compile(rf"(?<![A-Za-z0-9_-]){TASK_ID_PATTERN}(?![A-Za-z0-9_-])")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
