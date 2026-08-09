@@ -31,6 +31,7 @@ $PrometheusScrapeIntervalSeconds = 15
 $PrometheusScrapeTimeoutSeconds = 10
 $CleanupSafetyMarginSeconds = 20
 $LockHoldBudgetSeconds = $BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + $PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + $CleanupSafetyMarginSeconds
+$SessionTerminationTimeoutSeconds = 10
 $PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
 $PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
 $CleanupRequired = $false
@@ -62,6 +63,32 @@ function Invoke-MySqlScalar([string]$Statement, [switch]$Root) {
     $Output = & docker exec $MySqlContainer sh -c $Command
     if ($LASTEXITCODE -ne 0) { throw 'Disposable MySQL query failed.' }
     return ($Output -join "`n").Trim()
+}
+
+function Wait-MySqlSessionExit([long]$ConnectionId) {
+    $Deadline = (Get-Date).AddSeconds($SessionTerminationTimeoutSeconds)
+    do {
+        $SessionCount = Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId;" -Root
+        if ($SessionCount -eq '0') { return $true }
+        Start-Sleep -Seconds 1
+    } until ((Get-Date) -ge $Deadline)
+    return $false
+}
+
+function Stop-MySqlSession([long]$ConnectionId) {
+    $SessionCount = Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId;" -Root
+    if ($SessionCount -eq '0') { return }
+    try {
+        Invoke-MySqlScalar "KILL $ConnectionId;" -Root | Out-Null
+    } catch {
+        if ((Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId;" -Root) -ne '0') { throw }
+        return
+    }
+    if (-not (Wait-MySqlSessionExit $ConnectionId)) { throw "Disposable lock session did not terminate within $SessionTerminationTimeoutSeconds seconds." }
+}
+
+function Format-DockerLogSince([datetime]$Timestamp) {
+    return $Timestamp.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ')
 }
 
 function Get-BackendJson([string]$Url) {
@@ -103,6 +130,7 @@ if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found:
 $SharedVolumesBefore = Get-SharedVolumeState
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
 $env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
+$ExecutionError = $null
 
 try {
     $ConfigText = Invoke-ComposeCapture @('config', '--format', 'json')
@@ -191,7 +219,7 @@ SELECT 'LOCK_RELEASED';
         try {
             $FailureCount = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
             $TargetUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
-            $FailureLogs = (& docker logs --since $FailureStartedAt.ToString('yyyy-MM-ddTHH:mm:ssZ') $BackendContainer) -join "`n"
+            $FailureLogs = (& docker logs --since (Format-DockerLogSince $FailureStartedAt) $BackendContainer) -join "`n"
             $FailureObserved = $FailureCount -ge 1 -and $TargetUp -eq 1 -and $FailureLogs -match "(?s)Subscription reconciliation failed; subscriptionId=$FixtureSubscriptionId.*Lock wait timeout exceeded"
         } catch {
             $FailureObserved = $false
@@ -200,9 +228,7 @@ SELECT 'LOCK_RELEASED';
     } until ($FailureObserved -or (Get-Date).ToUniversalTime() -ge $FailureDeadline)
     if (-not $FailureObserved) { throw 'Disposable reconciliation failure signals were not observed.' }
 
-    Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null
-    $SessionCount = Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$FixtureConnectionId;" -Root
-    if ($SessionCount -ne '0') { throw 'Disposable lock session did not terminate.' }
+    Stop-MySqlSession $FixtureConnectionId
     $FixtureConnectionId = $null
     $FixtureFingerprintAfterFailure = Invoke-MySqlScalar $FixtureFingerprintQuery
     if ($FixtureFingerprintAfterFailure -ne $FixtureFingerprintBefore) { throw 'Disposable fixture changed during failure reproduction.' }
@@ -217,7 +243,7 @@ SELECT 'LOCK_RELEASED';
             $RecoveryExecutions = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
             $RecoveryFailures = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
             $RecoveryUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
-            $RecoveryLogs = (& docker logs --since $RecoveryStartedAt.ToString('yyyy-MM-ddTHH:mm:ssZ') $BackendContainer) -join "`n"
+            $RecoveryLogs = (& docker logs --since (Format-DockerLogSince $RecoveryStartedAt) $BackendContainer) -join "`n"
             $RecoveryObserved = $RecoveryExecutions -ge 1 -and $RecoveryFailures -eq 0 -and $RecoveryUp -eq 1 -and $RecoveryLogs -notmatch 'Subscription reconciliation failed'
         } catch {
             $RecoveryObserved = $false
@@ -240,31 +266,46 @@ SELECT 'LOCK_RELEASED';
     "RECOVERY_EVIDENCE:EXECUTIONS=$RecoveryExecutions`:FAILURES=$RecoveryFailures`:TARGET_UP=$RecoveryUp"
     'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=13'
     'FIXTURE_DATA_UNCHANGED=PASS'
+} catch {
+    $ExecutionError = $_
 } finally {
-    $CleanupErrors = [Collections.Generic.List[string]]::new()
+    $CleanupErrors = [Collections.Generic.List[Exception]]::new()
     if ($MySqlContainer -and $FixtureConnectionId) {
-        try { Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null } catch { [void]$CleanupErrors.Add("lock session: $($_.Exception.Message)") }
+        try { Stop-MySqlSession $FixtureConnectionId } catch { [void]$CleanupErrors.Add($_.Exception) }
     }
     if ($CleanupRequired) {
-        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch { [void]$CleanupErrors.Add("Compose down: $($_.Exception.Message)") }
-        $RemainingContainers = @(& docker ps --all --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
-        if ($LASTEXITCODE -ne 0 -or $RemainingContainers.Count -ne 0) { [void]$CleanupErrors.Add('disposable containers remain') }
-        $RemainingNetworks = @(& docker network ls --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
-        if ($LASTEXITCODE -ne 0 -or $RemainingNetworks.Count -ne 0) { [void]$CleanupErrors.Add('disposable networks remain') }
-        $AvailableVolumes = @(& docker volume ls --format '{{.Name}}')
-        if ($LASTEXITCODE -ne 0) { [void]$CleanupErrors.Add('disposable volume list failed') }
-        foreach ($VolumeName in $DisposableVolumeNames) {
-            if ($AvailableVolumes -contains $VolumeName) { [void]$CleanupErrors.Add("disposable volume remains: $VolumeName") }
-        }
+        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch { [void]$CleanupErrors.Add($_.Exception) }
+        try {
+            $RemainingContainers = @(& docker ps --all --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
+            if ($LASTEXITCODE -ne 0 -or $RemainingContainers.Count -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable containers remain')) }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
+        try {
+            $RemainingNetworks = @(& docker network ls --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
+            if ($LASTEXITCODE -ne 0 -or $RemainingNetworks.Count -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable networks remain')) }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
+        try {
+            $AvailableVolumes = @(& docker volume ls --format '{{.Name}}')
+            if ($LASTEXITCODE -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable volume list failed')) }
+            foreach ($VolumeName in $DisposableVolumeNames) {
+                if ($AvailableVolumes -contains $VolumeName) { [void]$CleanupErrors.Add([InvalidOperationException]::new("disposable volume remains: $VolumeName")) }
+            }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
     }
-    try { if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath } } catch { [void]$CleanupErrors.Add("lock SQL file: $($_.Exception.Message)") }
-    try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add("scalar SQL file: $($_.Exception.Message)") }
+    try { if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
+    try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
     $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
     $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
     try {
         $SharedVolumesAfter = Get-SharedVolumeState
         Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
-    } catch { [void]$CleanupErrors.Add("shared volume state: $($_.Exception.Message)") }
-    if ($CleanupErrors.Count -ne 0) { throw "Disposable cleanup failed: $($CleanupErrors -join '; ')" }
-    'DISPOSABLE_CLEANUP=PASS'
+    } catch { [void]$CleanupErrors.Add($_.Exception) }
+    if ($CleanupErrors.Count -ne 0) {
+        $AllErrors = [Collections.Generic.List[Exception]]::new()
+        if ($ExecutionError) { [void]$AllErrors.Add($ExecutionError.Exception) }
+        foreach ($CleanupError in $CleanupErrors) { [void]$AllErrors.Add($CleanupError) }
+        throw [AggregateException]::new('Disposable verification and cleanup failed.', [Exception[]]$AllErrors.ToArray())
+    }
 }
+
+if ($ExecutionError) { throw $ExecutionError }
+'DISPOSABLE_CLEANUP=PASS'

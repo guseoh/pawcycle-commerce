@@ -71,7 +71,7 @@ Set-Location infra/local-integration
 & ./incident/verify-inc-base-001.ps1 -EnvFile ./.env.local
 ```
 
-다른 worktree의 `.env.local`을 사용할 때는 절대 경로만 전달하며 파일을 복사하거나 출력하지 않는다. incident override는 subscription reset을 `false`로 고정한다. 실패 관측 deadline은 Backend 기동 180초 + 첫 Scheduler 실행 여유 15초 + 실제 `innodb_lock_wait_timeout` + Prometheus scrape interval 15초 + scrape timeout 10초다. lock holder는 여기에 cleanup 안전 여유 20초를 더해 대기하지만, 신호 확인 직후 root session에서 `KILL`하여 transaction rollback을 발생시킨다.
+다른 worktree의 `.env.local`을 사용할 때는 절대 경로만 전달하며 파일을 복사하거나 출력하지 않는다. incident override는 subscription reset을 `false`로 고정한다. 실패 관측 deadline은 Backend 기동 180초 + 첫 Scheduler 실행 여유 15초 + 실제 `innodb_lock_wait_timeout` + Prometheus scrape interval 15초 + scrape timeout 10초다. lock holder는 여기에 cleanup 안전 여유 20초를 더해 대기하며, 신호 확인 직후 root session에서 `KILL`한 뒤 최대 10초 동안 session 종료를 확인해 transaction rollback을 보장한다. recovery log cursor는 초 미만 UTC 정밀도를 유지한다.
 
 성공 출력은 다음 계약을 모두 포함한다.
 
@@ -83,7 +83,7 @@ Set-Location infra/local-integration
 
 `2026-08-09` disposable 재검증에서는 ACTIVE subscription `1` 한 건으로 failures `1`, target `UP`, lock wait `50`초 log를 확인했다. 원인 제거 후 executions `1`, failures `0`, target `UP`과 새 failure 없음, Grafana datasource·Dashboard·13개 panel, fixture 불변과 전용 container·volume·network 정리를 확인했다.
 
-스크립트는 첫 `up` 전부터 cleanup 필요 상태를 기록하고 성공·실패 모두에서 전용 project에만 `down --volumes --remove-orphans --rmi local`을 실행한다. 실행 전 merged Compose model에 disposable volume 세 개만 존재하는지 확인하며, 종료 후 전용 container·volume·network 부재와 시작 전후 공유 named volume의 존재·생성 시각 불변을 확인한다. cleanup 오류를 숨기지 않고 전용 stack 정리나 lock-session rollback을 확인할 수 없으면 공유 stack으로 우회하지 않고 중단한다.
+스크립트는 첫 `up` 전부터 cleanup 필요 상태를 기록하고 성공·실패 모두에서 전용 project에만 `down --volumes --remove-orphans --rmi local`을 실행한다. 실행 전 merged Compose model에 disposable volume 세 개만 존재하는지 확인하며, 종료 후 전용 container·volume·network 부재와 시작 전후 공유 named volume의 존재·생성 시각 불변을 확인한다. cleanup 오류를 숨기지 않고, 실행 오류와 동시에 발생하면 두 원인을 함께 보고한다. 전용 stack 정리나 lock-session rollback을 확인할 수 없으면 공유 stack으로 우회하지 않고 중단한다.
 
 ## 복구와 중단
 
