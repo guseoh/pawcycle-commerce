@@ -13,7 +13,10 @@ Prometheus와 Grafana의 host 포트는 `127.0.0.1`에만 바인딩한다. Prome
 ```text
 PAWCYCLE_LOCAL_PROMETHEUS_PORT=9090
 PAWCYCLE_LOCAL_GRAFANA_PORT=3001
+PAWCYCLE_LOCAL_ALERTMANAGER_PORT=9094
 ```
+
+Discord runtime secret file 경로를 `PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE`로 준비한다. runtime file은 Git tracked 상태가 아니어야 하며, repository 내부 파일이면 ignored 상태도 필요하다. webhook 값은 runtime file 외에 기록하지 않으며 Alertmanager는 `webhook_url_file`로만 이를 읽는다. Backend unavailable과 reconciliation failure의 Discord firing·resolved 수신은 local에서 수동으로 확인한다.
 
 다음 명령은 `infra/local-integration`에서 실행한다.
 

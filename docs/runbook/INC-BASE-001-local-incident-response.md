@@ -13,7 +13,7 @@ $ProxyUrl = "http://127.0.0.1:$ProxyPort"
 docker compose --env-file .env.local @ComposeFiles ps
 ```
 
-`PAWCYCLE_LOCAL_ALERTMANAGER_PORT`를 `.env.local`에 준비한다. runtime webhook file 경로는 disposable 검증 명령의 `-DiscordWebhookFile` 인수로만 전달하며, webhook 값 자체는 해당 file 외에 기록하지 않는다.
+`PAWCYCLE_LOCAL_ALERTMANAGER_PORT`와 `PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE` 경로를 local 환경에 준비한다. webhook 값은 runtime secret file 외에 기록하지 않으며 Alertmanager는 `webhook_url_file`로만 이를 읽는다.
 
 정상 기준은 MySQL·Backend가 `healthy`, Backend `/actuator/health`가 `UP`, Prometheus `up{job="pawcycle-backend"}`가 `1`, Proxy 상품 API가 `200`인 상태다. 운영자의 첫 확인 순서는 다음과 같다.
 
@@ -71,10 +71,10 @@ curl.exe --max-time 10 --output NUL --write-out "%{http_code}`n" "$ProxyUrl/api/
 
 ```powershell
 Set-Location infra/local-integration
-& ./incident/verify-inc-base-001.ps1 -EnvFile ./.env.local -DiscordWebhookFile <runtime-secret-file-path>
+& ./incident/verify-inc-base-001.ps1 -EnvFile ./.env.local
 ```
 
-`-DiscordWebhookFile`에는 repository 외부 runtime secret file 경로를 명시적으로 전달한다. repository 내부 파일을 사용하는 경우에는 Git untracked와 ignored 상태가 모두 필요하다. 다른 worktree의 `.env.local`을 사용할 때는 절대 경로만 전달하며 파일을 복사하거나 출력하지 않는다. incident override는 subscription reset을 `false`로 고정한다. 실패 관측 deadline은 Backend 기동 180초 + 첫 Scheduler 실행 여유 15초 + 실제 `innodb_lock_wait_timeout` + Prometheus scrape interval 15초 + scrape timeout 10초다. lock holder는 여기에 cleanup 안전 여유 20초를 더해 대기하며, 신호 확인 직후 root session에서 `KILL`한 뒤 최대 10초 동안 session 종료를 확인해 transaction rollback을 보장한다. recovery log cursor는 초 미만 UTC 정밀도를 유지한다.
+다른 worktree의 `.env.local`을 사용할 때는 절대 경로만 전달하며 파일을 복사하거나 출력하지 않는다. incident override는 subscription reset을 `false`로 고정한다. 실패 관측 deadline은 Backend 기동 180초 + 첫 Scheduler 실행 여유 15초 + 실제 `innodb_lock_wait_timeout` + Prometheus scrape interval 15초 + scrape timeout 10초다. lock holder는 여기에 cleanup 안전 여유 20초를 더해 대기하며, 신호 확인 직후 root session에서 `KILL`한 뒤 최대 10초 동안 session 종료를 확인해 transaction rollback을 보장한다. recovery log cursor는 초 미만 UTC 정밀도를 유지한다.
 
 성공 출력은 다음 계약을 모두 포함한다.
 

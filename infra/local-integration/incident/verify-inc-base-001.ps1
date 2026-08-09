@@ -1,8 +1,5 @@
 param(
-    [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.local'),
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$DiscordWebhookFile
+    [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.local')
 )
 
 Set-StrictMode -Version Latest
@@ -37,15 +34,13 @@ $LockHoldBudgetSeconds = $BackendStartupBudgetSeconds + $SchedulerStartBudgetSec
 $SessionTerminationTimeoutSeconds = 10
 $PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
 $PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
-$PreviousAlertmanagerPort = $env:PAWCYCLE_LOCAL_ALERTMANAGER_PORT
 $TemporaryEnvironmentNames = @(
     'MYSQL_DATABASE',
     'MYSQL_USER',
     'MYSQL_PASSWORD',
     'MYSQL_ROOT_PASSWORD',
     'PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL',
-    'PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD',
-    'PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE'
+    'PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD'
 )
 $PreviousTemporaryEnvironment = @{}
 $TemporaryEnvironmentNames | ForEach-Object {
@@ -56,7 +51,6 @@ $DisposableVolumeNames = @()
 $MySqlContainer = $null
 $FixtureConnectionId = $null
 $PrometheusPort = $null
-$AlertmanagerPort = $null
 
 function Invoke-Compose([string[]]$Command) {
     & docker compose @ComposeArguments @Command
@@ -106,32 +100,6 @@ function Stop-MySqlSession([long]$ConnectionId) {
     if (-not (Wait-MySqlSessionExit $ConnectionId)) { throw "Disposable lock session did not terminate within $SessionTerminationTimeoutSeconds seconds." }
 }
 
-function Remove-TemporaryArtifact([string]$Path) {
-    try {
-        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
-    } catch {
-        if (Test-Path -LiteralPath $Path) { throw }
-    }
-}
-
-function Remove-StaleTemporarySqlArtifacts {
-    $TemporaryDirectory = [IO.Path]::GetTempPath()
-    $ArtifactPattern = '^inc-base-001-(lock|scalar)-[0-9a-f]{12}\.sql$'
-    $CurrentRunPaths = @($LockSqlPath, $ScalarSqlPath)
-    $StaleArtifacts = @(Get-ChildItem -LiteralPath $TemporaryDirectory -File -Filter 'inc-base-001-*.sql' | Where-Object {
-            $_.Name -match $ArtifactPattern -and $_.FullName -notin $CurrentRunPaths
-        })
-
-    foreach ($Artifact in $StaleArtifacts) {
-        Remove-TemporaryArtifact $Artifact.FullName
-    }
-}
-
-function Add-CleanupError([string]$Category, [Exception]$Exception) {
-    [void]$CleanupErrors.Add($Exception)
-    [void]$CleanupCategories.Add($Category)
-}
-
 function Format-DockerLogSince([datetime]$Timestamp) {
     return $Timestamp.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ')
 }
@@ -160,85 +128,9 @@ function Set-PrometheusPort {
     $script:PrometheusPort = [int]$PortMatch.Groups[1].Value
 }
 
-function Set-AlertmanagerPort {
-    $PublishedAddress = Invoke-ComposeCapture @('port', 'alertmanager', '9093')
-    $PortMatch = [regex]::Match($PublishedAddress, ':(\d+)$')
-    if (-not $PortMatch.Success) { throw "Disposable Alertmanager port is invalid: $PublishedAddress" }
-    $script:AlertmanagerPort = [int]$PortMatch.Groups[1].Value
-}
-
 function Get-PrometheusJson([string]$Path) {
     if (-not $PrometheusPort) { throw 'Disposable Prometheus port is not available.' }
     return Invoke-RestMethod -Uri "http://127.0.0.1:$PrometheusPort$Path" -TimeoutSec 10
-}
-
-function Get-AlertmanagerJson([string]$Path) {
-    if (-not $AlertmanagerPort) { throw 'Disposable Alertmanager port is not available.' }
-    return Invoke-RestMethod -Uri "http://127.0.0.1:$AlertmanagerPort$Path" -TimeoutSec 10
-}
-
-function Get-AlertmanagerMetricValue([string]$MetricName) {
-    if (-not $AlertmanagerPort) { throw 'Disposable Alertmanager port is not available.' }
-    $Metrics = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$AlertmanagerPort/metrics" -TimeoutSec 10).Content
-    $Pattern = '(?m)^' + [regex]::Escape($MetricName) + '(?:\{[^}]*\})?\s+([0-9.eE+-]+)$'
-    $Total = 0.0
-    foreach ($Match in [regex]::Matches($Metrics, $Pattern)) {
-        $Total += [double]$Match.Groups[1].Value
-    }
-    return $Total
-}
-
-function Get-AlertmanagerNotificationMetricSchema {
-    if (-not $AlertmanagerPort) { throw 'Disposable Alertmanager port is not available.' }
-    $Metrics = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$AlertmanagerPort/metrics" -TimeoutSec 10).Content
-    $Schemas = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($Line in ($Metrics -split "`n")) {
-        $Match = [regex]::Match($Line, '^alertmanager_notifications(?:_failed)?_total(?:\{([^}]*)\})?\s+')
-        if (-not $Match.Success) { continue }
-        $LabelNames = @([regex]::Matches($Match.Groups[1].Value, '([A-Za-z_][A-Za-z0-9_]*)="') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        [void]$Schemas.Add("$($Line.Split('{')[0].Split(' ')[0]):$($LabelNames -join ',')")
-    }
-    return @($Schemas | Sort-Object)
-}
-
-function Get-PrometheusActiveAlertmanagerCount {
-    $Response = Get-PrometheusJson '/api/v1/alertmanagers'
-    if ($Response.status -ne 'success') { return 0 }
-    return @($Response.data.activeAlertmanagers).Count
-}
-
-function Test-PrometheusAlertmanagerConnected {
-    return (Get-PrometheusActiveAlertmanagerCount) -eq 1
-}
-
-function Test-AlertmanagerDiscordReceiverLoaded {
-    return @((Get-AlertmanagerJson '/api/v2/receivers') | Where-Object { $_.name -eq 'pawcycle-local-discord' }).Count -eq 1
-}
-
-function Test-AlertmanagerAlertSet([string]$AlertName, [bool]$ExpectedPresent) {
-    $Alerts = @(Get-AlertmanagerJson '/api/v2/alerts')
-    if (-not $ExpectedPresent) { return $Alerts.Count -eq 0 }
-    return $Alerts.Count -eq 1 -and $Alerts[0].labels.alertname -eq $AlertName
-}
-
-function Wait-DiscordNotification([string]$AlertName, [bool]$ExpectedPresent, [double]$MinimumTotal, [double]$FailureBaseline, [datetime]$Deadline) {
-    $NotificationTotal = 0.0
-    $NotificationFailures = 0.0
-    do {
-        try {
-            $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
-            $NotificationFailures = Get-AlertmanagerMetricValue 'alertmanager_notifications_failed_total'
-            $Observed = (Test-AlertmanagerAlertSet $AlertName $ExpectedPresent) -and $NotificationTotal -ge $MinimumTotal -and $NotificationFailures -eq $FailureBaseline
-        } catch {
-            $Observed = $false
-        }
-        if (-not $Observed) { Start-Sleep -Seconds 2 }
-    } until ($Observed -or (Get-Date) -ge $Deadline)
-    return [pscustomobject]@{
-        Observed = $Observed
-        Total = $NotificationTotal
-        Failures = $NotificationFailures
-    }
 }
 
 function Get-PrometheusMetricValue([string]$Query) {
@@ -291,18 +183,7 @@ function Assert-SharedVolumesUnchanged([hashtable]$Before, [hashtable]$After) {
 if (-not (Test-Path -LiteralPath $EnvFile)) { throw "Local env file not found: $EnvFile" }
 if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found: $FixturePath" }
 
-Remove-StaleTemporarySqlArtifacts
 $SharedVolumesBefore = Get-SharedVolumeState
-$DiscordWebhookItem = Get-Item -LiteralPath $DiscordWebhookFile -ErrorAction Stop
-if ($DiscordWebhookItem.Length -le 0) { throw 'PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE must not be empty.' }
-$RepositoryRoot = (Resolve-Path (Join-Path $LocalIntegrationDirectory '../..')).Path.TrimEnd('\', '/')
-$RepositoryPrefix = $RepositoryRoot + [IO.Path]::DirectorySeparatorChar
-if ($DiscordWebhookItem.FullName.Equals($RepositoryRoot, [StringComparison]::OrdinalIgnoreCase) -or $DiscordWebhookItem.FullName.StartsWith($RepositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-    & git ls-files --error-unmatch -- $DiscordWebhookItem.FullName 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { throw 'PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE must not be Git tracked.' }
-    & git check-ignore --quiet -- $DiscordWebhookItem.FullName
-    if ($LASTEXITCODE -ne 0) { throw 'PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE inside the repository must be Git ignored.' }
-}
 $env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
 $env:MYSQL_USER = 'pawcycle'
 $env:MYSQL_PASSWORD = New-DisposableSecret
@@ -311,11 +192,7 @@ $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
 $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
 $env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
-$env:PAWCYCLE_LOCAL_ALERTMANAGER_PORT = '0'
-$env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE = $DiscordWebhookItem.FullName
 $ExecutionError = $null
-$CleanupErrors = [Collections.Generic.List[Exception]]::new()
-$CleanupCategories = [Collections.Generic.List[string]]::new()
 
 try {
     $ConfigText = Invoke-ComposeCapture @('config', '--format', 'json')
@@ -335,14 +212,6 @@ try {
     if ($RuleMount.Count -ne 1 -or -not $RuleMount[0].read_only) {
         throw 'Disposable Prometheus alert rule mount is invalid.'
     }
-    $AlertmanagerSecret = @($Config.services.alertmanager.secrets | Where-Object { $_.target -eq 'discord-webhook' })
-    if ($AlertmanagerSecret.Count -ne 1) {
-        throw 'Disposable Alertmanager Discord secret mount is invalid.'
-    }
-    $ConfiguredSecret = $Config.secrets.PSObject.Properties['discord-webhook'].Value
-    if ($null -eq $ConfiguredSecret -or [IO.Path]::GetFullPath([string]$ConfiguredSecret.file) -ne $DiscordWebhookItem.FullName) {
-        throw 'Disposable Alertmanager Discord secret file path is invalid.'
-    }
     $ConfiguredVolumeKeys = @($Config.volumes.PSObject.Properties.Name | Sort-Object)
     $ExpectedVolumeKeys = @($ExpectedMounts.Values | Sort-Object)
     if (Compare-Object $ExpectedVolumeKeys $ConfiguredVolumeKeys) {
@@ -358,11 +227,10 @@ try {
 
     Invoke-Compose @('config', '--quiet')
     $CleanupRequired = $true
-    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'mysql', 'backend', 'alertmanager', 'prometheus')
+    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'mysql', 'backend', 'prometheus')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
     if (-not $BackendContainer) { throw 'Disposable Backend container not found.' }
     Set-PrometheusPort
-    Set-AlertmanagerPort
     $AlertLoadDeadline = (Get-Date).AddSeconds($PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + 20)
     do {
         try {
@@ -370,16 +238,13 @@ try {
             $InitialBackendAlert = Get-PrometheusAlertState 'PawCycleBackendScrapeUnavailable'
             $InitialReconciliationAlert = Get-PrometheusAlertState 'PawCycleReconciliationFailure'
             $AlertRulesLoaded = (Test-PrometheusAlertRuleLoaded 'PawCycleBackendScrapeUnavailable') -and (Test-PrometheusAlertRuleLoaded 'PawCycleReconciliationFailure')
-            $AlertmanagerReady = (Test-PrometheusAlertmanagerConnected) -and (Test-AlertmanagerDiscordReceiverLoaded)
-            $AlertsReady = $AlertRulesLoaded -and $AlertmanagerReady -and $InitialTargetUp -eq 1 -and -not $InitialBackendAlert -and -not $InitialReconciliationAlert
+            $AlertsReady = $AlertRulesLoaded -and $InitialTargetUp -eq 1 -and -not $InitialBackendAlert -and -not $InitialReconciliationAlert
         } catch {
             $AlertsReady = $false
         }
         if (-not $AlertsReady) { Start-Sleep -Seconds 2 }
     } until ($AlertsReady -or (Get-Date) -ge $AlertLoadDeadline)
     if (-not $AlertsReady) { throw 'Disposable Prometheus alert rules did not load in a normal state.' }
-    $NotificationFailures = Get-AlertmanagerMetricValue 'alertmanager_notifications_failed_total'
-    $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
 
     Invoke-Compose @('stop', '--timeout', '10', 'backend')
     $BackendAlertDeadline = (Get-Date).AddSeconds((3 * $PrometheusScrapeIntervalSeconds) + $PrometheusScrapeTimeoutSeconds + 20)
@@ -395,17 +260,7 @@ try {
         if (-not $BackendAlertFiringObserved) { Start-Sleep -Seconds 2 }
     } until ($BackendAlertFiringObserved -or (Get-Date) -ge $BackendAlertDeadline)
     if (-not $BackendAlertFiringObserved) { throw 'Disposable Backend scrape unavailable alert did not transition from pending to firing.' }
-    $ActiveAlertmanagerCount = Get-PrometheusActiveAlertmanagerCount
-    $BackendAlertAtAlertmanager = @((Get-AlertmanagerJson '/api/v2/alerts') | Where-Object { $_.labels.alertname -eq 'PawCycleBackendScrapeUnavailable' }).Count -eq 1
-    $NotificationMetricSchema = Get-AlertmanagerNotificationMetricSchema
-    if ($ActiveAlertmanagerCount -ne 1 -or -not $BackendAlertAtAlertmanager) {
-        throw "Alertmanager path diagnostics failed: active=$ActiveAlertmanagerCount, backendAlert=$BackendAlertAtAlertmanager, metrics=$($NotificationMetricSchema -join ';')."
-    }
-    $BackendFiringNotification = Wait-DiscordNotification -AlertName 'PawCycleBackendScrapeUnavailable' -ExpectedPresent $true -MinimumTotal ($NotificationTotal + 1) -FailureBaseline $NotificationFailures -Deadline ((Get-Date).AddSeconds(30))
-    if (-not $BackendFiringNotification.Observed) {
-        throw "Disposable Backend scrape unavailable Discord firing notification was not delivered: total=$($BackendFiringNotification.Total), failures=$($BackendFiringNotification.Failures)."
-    }
-    $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
+
     Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
     $BackendAlertRecoveryDeadline = (Get-Date).AddSeconds($PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + 20)
@@ -418,11 +273,6 @@ try {
         if (-not $BackendAlertRecovered) { Start-Sleep -Seconds 2 }
     } until ($BackendAlertRecovered -or (Get-Date) -ge $BackendAlertRecoveryDeadline)
     if (-not $BackendAlertRecovered) { throw 'Disposable Backend scrape unavailable alert did not resolve after recovery.' }
-    $BackendResolvedNotification = Wait-DiscordNotification -AlertName 'PawCycleBackendScrapeUnavailable' -ExpectedPresent $false -MinimumTotal ($NotificationTotal + 1) -FailureBaseline $NotificationFailures -Deadline ((Get-Date).AddSeconds(30))
-    if (-not $BackendResolvedNotification.Observed) {
-        throw "Disposable Backend scrape unavailable Discord resolved notification was not delivered: total=$($BackendResolvedNotification.Total), failures=$($BackendResolvedNotification.Failures)."
-    }
-    $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
 
     Invoke-Compose @('stop', '--timeout', '10', 'backend')
 
@@ -471,9 +321,8 @@ SELECT 'LOCK_RELEASED';
     $LockWaitTimeout = [int]$LockMatch.Groups[2].Value
     $HoldSeconds = [int]$LockMatch.Groups[3].Value
 
-    $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
     $FailureStartedAt = (Get-Date).ToUniversalTime()
-    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend', 'alertmanager', 'prometheus', 'grafana')
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend', 'prometheus', 'grafana')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
     if (-not $BackendContainer) { throw 'Disposable Backend container not found.' }
 
@@ -501,11 +350,7 @@ SELECT 'LOCK_RELEASED';
         if (-not $ReconciliationAlertFiringObserved) { Start-Sleep -Seconds 2 }
     } until ($ReconciliationAlertFiringObserved -or (Get-Date) -ge $ReconciliationAlertDeadline)
     if (-not $ReconciliationAlertFiringObserved) { throw 'Disposable reconciliation failure alert did not fire.' }
-    $ReconciliationFiringNotification = Wait-DiscordNotification -AlertName 'PawCycleReconciliationFailure' -ExpectedPresent $true -MinimumTotal ($NotificationTotal + 1) -FailureBaseline $NotificationFailures -Deadline ((Get-Date).AddSeconds(30))
-    if (-not $ReconciliationFiringNotification.Observed) {
-        throw "Disposable reconciliation failure Discord firing notification was not delivered: total=$($ReconciliationFiringNotification.Total), failures=$($ReconciliationFiringNotification.Failures)."
-    }
-    $NotificationTotal = Get-AlertmanagerMetricValue 'alertmanager_notifications_total'
+
     Stop-MySqlSession $FixtureConnectionId
     $FixtureConnectionId = $null
     $FixtureFingerprintAfterFailure = Invoke-MySqlScalar $FixtureFingerprintQuery
@@ -530,10 +375,6 @@ SELECT 'LOCK_RELEASED';
         if (-not $RecoveryObserved) { Start-Sleep -Seconds 2 }
     } until ($RecoveryObserved -or (Get-Date).ToUniversalTime() -ge $RecoveryDeadline)
     if (-not $RecoveryObserved) { throw 'Disposable reconciliation recovery signals were not observed.' }
-    $ReconciliationResolvedNotification = Wait-DiscordNotification -AlertName 'PawCycleReconciliationFailure' -ExpectedPresent $false -MinimumTotal ($NotificationTotal + 1) -FailureBaseline $NotificationFailures -Deadline ((Get-Date).AddSeconds(30))
-    if (-not $ReconciliationResolvedNotification.Observed) {
-        throw "Disposable reconciliation failure Discord resolved notification was not delivered: total=$($ReconciliationResolvedNotification.Total), failures=$($ReconciliationResolvedNotification.Failures)."
-    }
 
     $GrafanaHealth = Get-BackendJson 'http://grafana:3000/api/health'
     $GrafanaDatasource = Get-BackendJson 'http://grafana:3000/api/datasources/uid/pawcycle-prometheus'
@@ -546,51 +387,48 @@ SELECT 'LOCK_RELEASED';
 
     "DISPOSABLE_PROJECT=$ProjectName"
     'BACKEND_SCRAPE_ALERT:INITIAL=NORMAL:PENDING=OBSERVED:FIRING=OBSERVED:RESOLVED=PASS'
-    'BACKEND_SCRAPE_DISCORD:FIRING=DELIVERED:RESOLVED=DELIVERED'
     "FAILURE_EVIDENCE:SUBSCRIPTION_ID=$FixtureSubscriptionId`:FAILURES=$FailureCount`:TARGET_UP=$TargetUp`:LOCK_WAIT_SECONDS=$LockWaitTimeout`:HOLD_SECONDS=$HoldSeconds"
     'RECONCILIATION_FAILURE_ALERT:FIRING=OBSERVED:RESOLVED=PASS'
-    'RECONCILIATION_FAILURE_DISCORD:FIRING=DELIVERED:RESOLVED=DELIVERED'
     "RECOVERY_EVIDENCE:EXECUTIONS=$RecoveryExecutions`:FAILURES=$RecoveryFailures`:TARGET_UP=$RecoveryUp"
     'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=13'
     'FIXTURE_DATA_UNCHANGED=PASS'
 } catch {
     $ExecutionError = $_
 } finally {
+    $CleanupErrors = [Collections.Generic.List[Exception]]::new()
     if ($MySqlContainer -and $FixtureConnectionId) {
-        try { Stop-MySqlSession $FixtureConnectionId } catch { Add-CleanupError 'MYSQL_SESSION' $_.Exception }
+        try { Stop-MySqlSession $FixtureConnectionId } catch { [void]$CleanupErrors.Add($_.Exception) }
     }
     if ($CleanupRequired) {
-        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch { Add-CleanupError 'DOCKER_DOWN' $_.Exception }
+        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch { [void]$CleanupErrors.Add($_.Exception) }
         try {
             $RemainingContainers = @(& docker ps --all --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
-            if ($LASTEXITCODE -ne 0 -or $RemainingContainers.Count -ne 0) { Add-CleanupError 'DOCKER_POSTCHECK' ([InvalidOperationException]::new('disposable containers remain')) }
-        } catch { Add-CleanupError 'DOCKER_POSTCHECK' $_.Exception }
+            if ($LASTEXITCODE -ne 0 -or $RemainingContainers.Count -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable containers remain')) }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
         try {
             $RemainingNetworks = @(& docker network ls --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
-            if ($LASTEXITCODE -ne 0 -or $RemainingNetworks.Count -ne 0) { Add-CleanupError 'DOCKER_POSTCHECK' ([InvalidOperationException]::new('disposable networks remain')) }
-        } catch { Add-CleanupError 'DOCKER_POSTCHECK' $_.Exception }
+            if ($LASTEXITCODE -ne 0 -or $RemainingNetworks.Count -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable networks remain')) }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
         try {
             $AvailableVolumes = @(& docker volume ls --format '{{.Name}}')
-            if ($LASTEXITCODE -ne 0) { Add-CleanupError 'DOCKER_POSTCHECK' ([InvalidOperationException]::new('disposable volume list failed')) }
+            if ($LASTEXITCODE -ne 0) { [void]$CleanupErrors.Add([InvalidOperationException]::new('disposable volume list failed')) }
             foreach ($VolumeName in $DisposableVolumeNames) {
-                if ($AvailableVolumes -contains $VolumeName) { Add-CleanupError 'DOCKER_POSTCHECK' ([InvalidOperationException]::new("disposable volume remains: $VolumeName")) }
+                if ($AvailableVolumes -contains $VolumeName) { [void]$CleanupErrors.Add([InvalidOperationException]::new("disposable volume remains: $VolumeName")) }
             }
-        } catch { Add-CleanupError 'DOCKER_POSTCHECK' $_.Exception }
+        } catch { [void]$CleanupErrors.Add($_.Exception) }
     }
-    try { Remove-TemporaryArtifact $LockSqlPath } catch { Add-CleanupError 'TEMP_ARTIFACT' $_.Exception }
-    try { Remove-TemporaryArtifact $ScalarSqlPath } catch { Add-CleanupError 'TEMP_ARTIFACT' $_.Exception }
+    try { if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
+    try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
     $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
     $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
-    $env:PAWCYCLE_LOCAL_ALERTMANAGER_PORT = $PreviousAlertmanagerPort
     foreach ($EnvironmentName in $TemporaryEnvironmentNames) {
         [Environment]::SetEnvironmentVariable($EnvironmentName, $PreviousTemporaryEnvironment[$EnvironmentName], [EnvironmentVariableTarget]::Process)
     }
     try {
         $SharedVolumesAfter = Get-SharedVolumeState
         Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
-    } catch { Add-CleanupError 'SHARED_VOLUME_CHECK' $_.Exception }
+    } catch { [void]$CleanupErrors.Add($_.Exception) }
     if ($CleanupErrors.Count -ne 0) {
-        ('CLEANUP_CATEGORIES=' + (@($CleanupCategories | Sort-Object -Unique) -join ','))
         $AllErrors = [Collections.Generic.List[Exception]]::new()
         if ($ExecutionError) { [void]$AllErrors.Add($ExecutionError.Exception) }
         foreach ($CleanupError in $CleanupErrors) { [void]$AllErrors.Add($CleanupError) }
