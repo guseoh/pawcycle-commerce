@@ -34,7 +34,7 @@ TASK_ID_PREFIXES = (
     "UX",
     "DATA",
 )
-INC_BASE_TASK_ID_PATTERN = r"INC-BASE-[0-9]{3}(?![A-Za-z0-9_-])"
+INC_BASE_TASK_ID_PATTERN = r"(?<![\w-])INC-BASE-[0-9]{3}(?![\w-])"
 TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 
 

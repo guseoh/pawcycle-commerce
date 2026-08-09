@@ -130,7 +130,14 @@ class DiscordContextTests(unittest.TestCase):
         self.assertEqual(discord.extract_task_id("", "PRODUCT-002 상품", "spec/po"), "PRODUCT-002")
         self.assertEqual(discord.extract_task_id("작업 ID: OBS-BASE-001", "", "ops/tl"), "OBS-BASE-001")
         self.assertEqual(discord.extract_task_id("작업 ID: INC-BASE-001", "", "ops/tl"), "INC-BASE-001")
-        for malformed in ("INC-BASE-001-EXTRA", "INC-BASE-001abc", "INC-BASE-001_extra"):
+        for malformed in (
+            "INC-BASE-001-EXTRA",
+            "INC-BASE-001abc",
+            "INC-BASE-001_extra",
+            "X-INC-BASE-001",
+            "X_INC-BASE-001",
+            "INC-BASE-001é",
+        ):
             with self.subTest(malformed=malformed):
                 self.assertEqual(discord.extract_task_id("", malformed, malformed), discord.MISSING)
         self.assertEqual(discord.extract_task_id("작업 ID: HARNESS-LEAN-001", "", "ops/tl"), "HARNESS-LEAN-001")

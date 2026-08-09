@@ -194,6 +194,9 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             "INC-BASE-001-EXTRA",
             "INC-BASE-001abc",
             "INC-BASE-001_extra",
+            "X-INC-BASE-001",
+            "X_INC-BASE-001",
+            "INC-BASE-001é",
         ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)

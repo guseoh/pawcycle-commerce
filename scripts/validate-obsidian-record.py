@@ -35,6 +35,10 @@ def main() -> int:
         if record.task_id_from_text(f"작업 ID: {task_id}") != task_id:
             print(f"병합 PR 작업 ID 추출 실패: {task_id}", file=sys.stderr)
             return 1
+    for malformed in ("X-INC-BASE-001", "X_INC-BASE-001", "INC-BASE-001é"):
+        if record.task_id_from_text(malformed) == "INC-BASE-001":
+            print(f"병합 PR 잘못된 INC-BASE 작업 ID 추출: {malformed}", file=sys.stderr)
+            return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         result = subprocess.run(
