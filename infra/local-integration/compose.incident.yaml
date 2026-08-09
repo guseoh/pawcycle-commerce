@@ -3,6 +3,10 @@ services:
     volumes:
       - inc-base-001-mysql-data:/var/lib/mysql
 
+  backend:
+    environment:
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS: "false"
+
   prometheus:
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

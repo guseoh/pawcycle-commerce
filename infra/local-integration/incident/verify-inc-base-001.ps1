@@ -25,9 +25,16 @@ $SharedVolumeNames = @(
     'pawcycle-local-integration-prometheus-data',
     'pawcycle-local-integration-grafana-data'
 )
+$BackendStartupBudgetSeconds = 180
+$SchedulerStartBudgetSeconds = 15
+$PrometheusScrapeIntervalSeconds = 15
+$PrometheusScrapeTimeoutSeconds = 10
+$CleanupSafetyMarginSeconds = 20
+$LockHoldBudgetSeconds = $BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + $PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + $CleanupSafetyMarginSeconds
 $PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
 $PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
-$StackCreated = $false
+$CleanupRequired = $false
+$DisposableVolumeNames = @()
 $MySqlContainer = $null
 $FixtureConnectionId = $null
 
@@ -111,10 +118,22 @@ try {
             throw "Disposable volume isolation is invalid for service: $ServiceName"
         }
     }
+    $ConfiguredVolumeKeys = @($Config.volumes.PSObject.Properties.Name | Sort-Object)
+    $ExpectedVolumeKeys = @($ExpectedMounts.Values | Sort-Object)
+    if (Compare-Object $ExpectedVolumeKeys $ConfiguredVolumeKeys) {
+        throw 'Merged Compose model contains a non-disposable volume declaration.'
+    }
+    $DisposableVolumeNames = @($ExpectedVolumeKeys | ForEach-Object {
+        $VolumeName = $Config.volumes.PSObject.Properties[$_].Value.name
+        if (-not $VolumeName.StartsWith("${ProjectName}_") -or $SharedVolumeNames -contains $VolumeName) {
+            throw "Disposable volume name is unsafe: $VolumeName"
+        }
+        $VolumeName
+    })
 
     Invoke-Compose @('config', '--quiet')
-    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', '240', 'mysql', 'backend')
-    $StackCreated = $true
+    $CleanupRequired = $true
+    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'mysql', 'backend')
     Invoke-Compose @('stop', '--timeout', '10', 'backend')
 
     $MySqlContainer = Invoke-ComposeCapture @('ps', '--quiet', 'mysql')
@@ -133,7 +152,7 @@ try {
     $LockSql = @"
 SELECT CONCAT('CONNECTION_ID:', CONNECTION_ID());
 SELECT @@GLOBAL.innodb_lock_wait_timeout INTO @lock_wait_timeout;
-SET @hold_seconds := @lock_wait_timeout + 240;
+SET @hold_seconds := @lock_wait_timeout + $LockHoldBudgetSeconds;
 START TRANSACTION;
 SELECT id FROM subscriptions WHERE id=$FixtureSubscriptionId FOR UPDATE;
 SELECT CONCAT('LOCK_ACQUIRED:${FixtureSubscriptionId}:WAIT_TIMEOUT:', @lock_wait_timeout, ':HOLD_SECONDS:', @hold_seconds);
@@ -163,11 +182,11 @@ SELECT 'LOCK_RELEASED';
     $HoldSeconds = [int]$LockMatch.Groups[3].Value
 
     $FailureStartedAt = (Get-Date).ToUniversalTime()
-    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', '180', 'backend', 'prometheus', 'grafana')
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend', 'prometheus', 'grafana')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
     if (-not $BackendContainer) { throw 'Disposable Backend container not found.' }
 
-    $FailureDeadline = $FailureStartedAt.AddSeconds(180 + $LockWaitTimeout + 15 + 10)
+    $FailureDeadline = $FailureStartedAt.AddSeconds($BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + $LockWaitTimeout + $PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds)
     do {
         try {
             $FailureCount = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
@@ -190,9 +209,9 @@ SELECT 'LOCK_RELEASED';
 
     $RecoveryStartedAt = (Get-Date).ToUniversalTime()
     Invoke-Compose @('restart', '--timeout', '10', 'backend')
-    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', '180', 'backend')
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
-    $RecoveryDeadline = $RecoveryStartedAt.AddSeconds(180 + 15 + 10)
+    $RecoveryDeadline = $RecoveryStartedAt.AddSeconds($BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + $PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds)
     do {
         try {
             $RecoveryExecutions = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
@@ -222,17 +241,30 @@ SELECT 'LOCK_RELEASED';
     'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=13'
     'FIXTURE_DATA_UNCHANGED=PASS'
 } finally {
+    $CleanupErrors = [Collections.Generic.List[string]]::new()
     if ($MySqlContainer -and $FixtureConnectionId) {
-        try { Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null } catch {}
+        try { Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null } catch { [void]$CleanupErrors.Add("lock session: $($_.Exception.Message)") }
     }
-    if ($StackCreated) {
-        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch {}
+    if ($CleanupRequired) {
+        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch { [void]$CleanupErrors.Add("Compose down: $($_.Exception.Message)") }
+        $RemainingContainers = @(& docker ps --all --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
+        if ($LASTEXITCODE -ne 0 -or $RemainingContainers.Count -ne 0) { [void]$CleanupErrors.Add('disposable containers remain') }
+        $RemainingNetworks = @(& docker network ls --filter "label=com.docker.compose.project=$ProjectName" --format '{{.ID}}')
+        if ($LASTEXITCODE -ne 0 -or $RemainingNetworks.Count -ne 0) { [void]$CleanupErrors.Add('disposable networks remain') }
+        $AvailableVolumes = @(& docker volume ls --format '{{.Name}}')
+        if ($LASTEXITCODE -ne 0) { [void]$CleanupErrors.Add('disposable volume list failed') }
+        foreach ($VolumeName in $DisposableVolumeNames) {
+            if ($AvailableVolumes -contains $VolumeName) { [void]$CleanupErrors.Add("disposable volume remains: $VolumeName") }
+        }
     }
-    if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath }
-    if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath }
+    try { if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath } } catch { [void]$CleanupErrors.Add("lock SQL file: $($_.Exception.Message)") }
+    try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add("scalar SQL file: $($_.Exception.Message)") }
     $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
     $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
-    $SharedVolumesAfter = Get-SharedVolumeState
-    Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
+    try {
+        $SharedVolumesAfter = Get-SharedVolumeState
+        Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
+    } catch { [void]$CleanupErrors.Add("shared volume state: $($_.Exception.Message)") }
+    if ($CleanupErrors.Count -ne 0) { throw "Disposable cleanup failed: $($CleanupErrors -join '; ')" }
     'DISPOSABLE_CLEANUP=PASS'
 }
