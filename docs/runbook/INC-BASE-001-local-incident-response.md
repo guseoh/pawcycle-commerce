@@ -58,21 +58,30 @@ $SqlPath = Join-Path $env:TEMP 'inc-base-001-reconciliation-lock.sql'
 $Sql = @"
 SELECT CONNECTION_ID();
 SELECT GET_LOCK('inc-base-001-reconciliation',0);
+SET @subscription_id := NULL;
 START TRANSACTION;
-SELECT id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id LIMIT 1 FOR UPDATE;
-SELECT 'LOCK_ACQUIRED';
-SELECT SLEEP(90);
+SELECT id INTO @subscription_id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id LIMIT 1 FOR UPDATE;
+SELECT IF(@subscription_id IS NULL, 'NO_ACTIVE_FIXTURE', CONCAT('LOCK_ACQUIRED:', @subscription_id));
+SELECT IF(@subscription_id IS NULL, 0, SLEEP(90));
 ROLLBACK;
 SELECT RELEASE_LOCK('inc-base-001-reconciliation');
 "@
 [IO.File]::WriteAllText($SqlPath, $Sql, [Text.UTF8Encoding]::new($false))
 docker cp $SqlPath pawcycle-local-integration-mysql-1:/tmp/inc-base-001-reconciliation-lock.sql
 docker exec -d pawcycle-local-integration-mysql-1 sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --unbuffered < /tmp/inc-base-001-reconciliation-lock.sql > /tmp/inc-base-001-reconciliation-lock.out 2>&1'
-docker exec pawcycle-local-integration-mysql-1 sh -c 'cat /tmp/inc-base-001-reconciliation-lock.out'
+$LockDeadline = (Get-Date).AddSeconds(10)
+do {
+    $LockOutput = docker exec pawcycle-local-integration-mysql-1 sh -c 'cat /tmp/inc-base-001-reconciliation-lock.out'
+    $LockAcquired = $LockOutput -match '(?m)^LOCK_ACQUIRED:[0-9]+$'
+    $NoActiveFixture = $LockOutput -match '(?m)^NO_ACTIVE_FIXTURE$'
+    if (-not $LockAcquired -and -not $NoActiveFixture) { Start-Sleep -Seconds 1 }
+} until ($LockAcquired -or $NoActiveFixture -or (Get-Date) -ge $LockDeadline)
+$LockOutput
+if (-not $LockAcquired) { throw 'ACTIVE fixture row lock을 확인하지 못했습니다.' }
 docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
 ```
 
-failure metric과 `Lock wait timeout exceeded` log를 확인한 뒤 lock output의 마지막 두 값이 `0`, `1`인지 확인한다. 이는 `SLEEP` 완료와 named lock release 성공을 뜻한다. 그 전에 복구 재시작을 수행하지 않는다. release 후 다음 명령으로 기존 즉시 reconciliation 실행을 사용한다.
+`LOCK_ACQUIRED:<subscription_id>`가 출력된 경우에만 Backend를 재시작한다. `NO_ACTIVE_FIXTURE`가 출력되면 실제 row lock이 없으므로 Backend를 재시작하지 않고 중단한다. failure metric과 `Lock wait timeout exceeded` log를 확인한 뒤 lock output의 마지막 두 값이 `0`, `1`인지 확인한다. 이는 `SLEEP` 완료와 named lock release 성공을 뜻한다. 그 전에 복구 재시작을 수행하지 않는다. release 후 다음 명령으로 기존 즉시 reconciliation 실행을 사용한다.
 
 ```powershell
 docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
