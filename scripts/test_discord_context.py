@@ -129,6 +129,22 @@ class DiscordContextTests(unittest.TestCase):
         self.assertEqual(discord.extract_task_id("작업 ID: FRONTEND-003", "", "feat/fe"), "FRONTEND-003")
         self.assertEqual(discord.extract_task_id("", "PRODUCT-002 상품", "spec/po"), "PRODUCT-002")
         self.assertEqual(discord.extract_task_id("작업 ID: OBS-BASE-001", "", "ops/tl"), "OBS-BASE-001")
+        self.assertEqual(discord.extract_task_id("작업 ID: INC-BASE-001", "", "ops/tl"), "INC-BASE-001")
+        for malformed in (
+            "INC-BASE-001-EXTRA",
+            "INC-BASE-001abc",
+            "INC-BASE-001_extra",
+            "X-INC-BASE-001",
+            "X_INC-BASE-001",
+            "INC-BASE-001é",
+            "INC-BASE-001́",
+            "INC-BASE-001‌foo",
+            "ıNC-BASE-001",
+            "INC-BAſE-001",
+            "İNC-BASE-001",
+        ):
+            with self.subTest(malformed=malformed):
+                self.assertEqual(discord.extract_task_id("", malformed, malformed), discord.MISSING)
         self.assertEqual(discord.extract_task_id("작업 ID: HARNESS-LEAN-001", "", "ops/tl"), "HARNESS-LEAN-001")
         self.assertEqual(discord.extract_task_id("", "HARNESS-LEAN-001 후속 수정", "ops/tl"), "HARNESS-LEAN-001")
         self.assertEqual(discord.extract_task_id("", "일반 제목", "api-003-contract"), "API-003")

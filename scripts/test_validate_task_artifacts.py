@@ -189,6 +189,31 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 ID", result.stderr)
 
+    def test_malformed_inc_base_task_ids_do_not_partially_match_stdin(self) -> None:
+        for task_id in (
+            "INC-BASE-001-EXTRA",
+            "INC-BASE-001abc",
+            "INC-BASE-001_extra",
+            "X-INC-BASE-001",
+            "X_INC-BASE-001",
+            "INC-BASE-001é",
+            "INC-BASE-001́",
+            "INC-BASE-001‌foo",
+            "ıNC-BASE-001",
+            "INC-BAſE-001",
+            "İNC-BASE-001",
+        ):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(
+                    Path(tmp),
+                    "--from-stdin",
+                    stdin_text=body,
+                )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 ID", result.stderr)
+
     def test_lightweight_pr_without_report_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="경량"))
@@ -505,7 +530,7 @@ legacy 형식이다.
         self.assertIn("실행 구분 불일치", result.stderr)
 
     def test_supported_task_id_families_are_detected(self) -> None:
-        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "HARNESS-LEAN-001"):
+        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "INC-BASE-001", "HARNESS-LEAN-001"):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
