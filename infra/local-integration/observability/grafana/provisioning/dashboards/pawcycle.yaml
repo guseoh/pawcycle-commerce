@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: PawCycle
+    orgId: 1
+    folder: PawCycle
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
