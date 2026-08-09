@@ -137,6 +137,11 @@ class DiscordContextTests(unittest.TestCase):
             "X-INC-BASE-001",
             "X_INC-BASE-001",
             "INC-BASE-001é",
+            "INC-BASE-001́",
+            "INC-BASE-001‌foo",
+            "ıNC-BASE-001",
+            "INC-BAſE-001",
+            "İNC-BASE-001",
         ):
             with self.subTest(malformed=malformed):
                 self.assertEqual(discord.extract_task_id("", malformed, malformed), discord.MISSING)
