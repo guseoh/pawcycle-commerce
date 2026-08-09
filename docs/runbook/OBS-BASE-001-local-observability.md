@@ -67,7 +67,7 @@ Grafana datasource와 PawCycle Dashboard는 provisioning 파일에서 자동 생
 
 Prometheus API에서 `pawcycle-backend` target의 `health`가 `up`인지 확인한다. Grafana API에서는 datasource UID `pawcycle-prometheus`와 dashboard UID `pawcycle-local-observability`가 조회되어야 한다.
 
-테스트 트래픽은 기존 `smoke.ps1` 또는 공개 상품 API 호출을 사용한다. 트래픽 전후 Prometheus query 결과를 비교해 HTTP request count, JVM heap/GC/thread, process/system CPU와 Hikari active/idle/pending을 확인한다. reconciliation은 기존 조건부 Scheduler 실행 결과만 관측하며 cadence를 변경하거나 새 trigger를 추가하지 않는다. idempotency cleanup은 승인된 runtime trigger와 운영 batch size가 없으므로 Phase A integration test 증거를 사용한다.
+테스트 트래픽은 `./smoke.ps1 -BaseUri $ProxyUrl` 또는 `$ProxyUrl` 기준 공개 상품 API 호출을 사용한다. 트래픽 전후 Prometheus query 결과를 비교해 HTTP request count, JVM heap/GC/thread, process/system CPU와 Hikari active/idle/pending을 확인한다. reconciliation은 기존 조건부 Scheduler 실행 결과만 관측하며 cadence를 변경하거나 새 trigger를 추가하지 않는다. idempotency cleanup은 승인된 runtime trigger와 운영 batch size가 없으므로 Phase A integration test 증거를 사용한다.
 
 Proxy 공개 경계는 `$ProxyUrl/actuator/prometheus` 응답이 Backend Prometheus payload가 아님을 확인한다. `.env.local` 기본값은 `http://127.0.0.1:8080/actuator/prometheus`이며, Backend container 내부 direct endpoint는 Prometheus scrape에만 사용한다.
 
