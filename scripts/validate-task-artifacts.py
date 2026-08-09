@@ -11,7 +11,7 @@ from pathlib import Path
 
 TASK_ID_PREFIXES = (
     "BOOTSTRAP", "PS", "ARCH", "FOUNDATION", "FRONTEND", "PRODUCT",
-    "BUG", "PERF", "OPS", "SEC", "AUTH", "DOMAIN", "API", "UX", "DATA",
+    "BUG", "PERF", "OPS", "OBS-BASE", "SEC", "AUTH", "DOMAIN", "API", "UX", "DATA",
 )
 TASK_ID_PATTERN = rf"(?:HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 TASK_ID_RE = re.compile(rf"(?<![A-Za-z0-9_-]){TASK_ID_PATTERN}(?![A-Za-z0-9_-])")
