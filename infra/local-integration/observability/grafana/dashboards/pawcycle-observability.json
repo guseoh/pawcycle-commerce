@@ -1,0 +1,180 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count[5m]))", "legendFormat": "all", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..\"}[5m]))", "legendFormat": "4xx", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m]))", "legendFormat": "5xx", "range": true, "refId": "C" }
+      ],
+      "title": "HTTP requests and errors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_sum[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1e-9)", "legendFormat": "average", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "max(http_server_requests_seconds_max)", "legendFormat": "max", "range": true, "refId": "B" }
+      ],
+      "title": "HTTP latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "used", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(jvm_memory_committed_bytes{area=\"heap\"})", "legendFormat": "committed", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(jvm_memory_max_bytes{area=\"heap\"})", "legendFormat": "max", "range": true, "refId": "C" }
+      ],
+      "title": "JVM heap",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(jvm_gc_pause_seconds_count[5m]))", "legendFormat": "GC pauses/s", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "jvm_threads_live_threads", "legendFormat": "live threads", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "jvm_threads_peak_threads", "legendFormat": "peak threads", "range": true, "refId": "C" }
+      ],
+      "title": "JVM GC and threads",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "max": 1, "min": 0, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "process_cpu_usage", "legendFormat": "process", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "system_cpu_usage", "legendFormat": "system", "range": true, "refId": "B" }
+      ],
+      "title": "Process and system CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "hikaricp_connections_active", "legendFormat": "active {{pool}}", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "hikaricp_connections_idle", "legendFormat": "idle {{pool}}", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "hikaricp_connections_pending", "legendFormat": "pending {{pool}}", "range": true, "refId": "C" }
+      ],
+      "title": "Hikari connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_subscription_reconciliation_executions_total", "legendFormat": "executions", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_reconciliation_processed_total", "legendFormat": "processed", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_reconciliation_failures_total", "legendFormat": "failures", "range": true, "refId": "C" }
+      ],
+      "title": "Reconciliation totals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "rate(pawcycle_subscription_reconciliation_duration_seconds_sum[5m]) / clamp_min(rate(pawcycle_subscription_reconciliation_duration_seconds_count[5m]), 1e-9)", "legendFormat": "average", "range": true, "refId": "A" }
+      ],
+      "title": "Reconciliation duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_subscription_idempotency_cleanup_executions_total", "legendFormat": "{{result}}", "range": true, "refId": "A" }
+      ],
+      "title": "Idempotency cleanup executions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "rate(pawcycle_subscription_idempotency_cleanup_duration_seconds_sum[5m]) / clamp_min(rate(pawcycle_subscription_idempotency_cleanup_duration_seconds_count[5m]), 1e-9)", "legendFormat": "average", "range": true, "refId": "A" }
+      ],
+      "title": "Idempotency cleanup duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_subscription_idempotency_cleanup_rows_total", "legendFormat": "{{scope}} {{operation}}", "range": true, "refId": "A" }
+      ],
+      "title": "Idempotency repair and delete totals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "id": 12,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_subscription_idempotency_retained_rows", "legendFormat": "retained {{scope}}", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_idempotency_cleanup_candidates", "legendFormat": "candidate {{scope}}", "range": true, "refId": "B" }
+      ],
+      "title": "Idempotency retained rows and cleanup candidates",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": ["pawcycle", "local-integration", "observability"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "PawCycle Local Observability",
+  "uid": "pawcycle-local-observability",
+  "version": 1,
+  "weekStart": ""
+}
