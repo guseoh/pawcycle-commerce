@@ -89,4 +89,4 @@ MySQL connection 보완 관측에서는 direct scrape 5회 전후 `Threads_conne
 - Production cache, refresh cadence, query timeout, alert threshold와 배치 크기는 결정하지 않았다.
 - Scheduler, cleanup API endpoint와 runtime cleanup trigger를 추가하지 않았다.
 - Production Compose와 healthcheck를 변경하지 않았다.
-- local observability 구성의 rollback은 `compose.observability.yaml`을 제외한 기본 Compose 실행 또는 이 작업 PR의 revert다. 일반 종료에서 named volume을 삭제하지 않는다.
+- local observability 구성의 rollback은 두 Compose 파일을 함께 지정한 `docker compose down`으로 Prometheus와 Grafana container를 먼저 제거한 뒤 이 작업 PR을 revert하는 순서다. 일반 종료에서 named volume을 삭제하지 않는다.

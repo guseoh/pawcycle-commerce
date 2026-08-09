@@ -24,10 +24,28 @@ docker compose --env-file .env.local @ComposeFiles pull mysql proxy prometheus g
 docker compose --env-file .env.local @ComposeFiles build backend frontend
 docker compose --env-file .env.local @ComposeFiles up --detach --wait --wait-timeout 180
 docker compose --env-file .env.local @ComposeFiles ps
+
+$PrometheusPort = (docker compose --env-file .env.local @ComposeFiles port prometheus 9090).Split(':')[-1]
+$GrafanaPort = (docker compose --env-file .env.local @ComposeFiles port grafana 3000).Split(':')[-1]
+$PrometheusUrl = "http://127.0.0.1:$PrometheusPort"
+$GrafanaUrl = "http://127.0.0.1:$GrafanaPort"
+$ReadinessDeadline = (Get-Date).AddSeconds(180)
+
+do {
+    $PrometheusReady = $false
+    $GrafanaReady = $false
+    try { $PrometheusReady = (Invoke-WebRequest -UseBasicParsing "$PrometheusUrl/-/ready").StatusCode -eq 200 } catch {}
+    try { $GrafanaReady = (Invoke-RestMethod "$GrafanaUrl/api/health").database -eq 'ok' } catch {}
+    if (-not ($PrometheusReady -and $GrafanaReady)) { Start-Sleep -Seconds 2 }
+} until (($PrometheusReady -and $GrafanaReady) -or (Get-Date) -ge $ReadinessDeadline)
+
+if (-not ($PrometheusReady -and $GrafanaReady)) {
+    throw 'Prometheus 또는 Grafana가 180초 안에 준비되지 않았습니다.'
+}
 ```
 
-- Prometheus: `http://127.0.0.1:9090`
-- Grafana: `http://127.0.0.1:3001/d/pawcycle-local-observability`
+- Prometheus: `$PrometheusUrl` (`.env.local` 기본값은 `http://127.0.0.1:9090`)
+- Grafana: `$GrafanaUrl/d/pawcycle-local-observability` (`.env.local` 기본값은 `http://127.0.0.1:3001/d/pawcycle-local-observability`)
 - scrape interval: 15초
 - scrape timeout: 10초
 
@@ -50,4 +68,4 @@ $ComposeFiles = @('-f', 'compose.yaml', '-f', 'compose.observability.yaml')
 docker compose --env-file .env.local @ComposeFiles down
 ```
 
-일반 종료에서는 MySQL, Prometheus, Grafana named volume을 삭제하지 않는다. 관측성 변경을 되돌릴 때는 이 작업의 저장소 변경만 revert하며 Production 설정이나 Backend 제품 코드를 수정하지 않는다.
+일반 종료에서는 MySQL, Prometheus, Grafana named volume을 삭제하지 않는다. 관측성 변경을 되돌리기 전에도 반드시 두 Compose 파일을 함께 지정한 위 `down`을 먼저 실행해 Prometheus와 Grafana container를 제거한다. 이후 이 작업의 저장소 변경만 revert하며 Production 설정이나 Backend 제품 코드를 수정하지 않는다.
