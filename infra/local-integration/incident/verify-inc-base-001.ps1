@@ -34,10 +34,23 @@ $LockHoldBudgetSeconds = $BackendStartupBudgetSeconds + $SchedulerStartBudgetSec
 $SessionTerminationTimeoutSeconds = 10
 $PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
 $PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
+$TemporaryEnvironmentNames = @(
+    'MYSQL_DATABASE',
+    'MYSQL_USER',
+    'MYSQL_PASSWORD',
+    'MYSQL_ROOT_PASSWORD',
+    'PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL',
+    'PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD'
+)
+$PreviousTemporaryEnvironment = @{}
+$TemporaryEnvironmentNames | ForEach-Object {
+    $PreviousTemporaryEnvironment[$_] = [Environment]::GetEnvironmentVariable($_, [EnvironmentVariableTarget]::Process)
+}
 $CleanupRequired = $false
 $DisposableVolumeNames = @()
 $MySqlContainer = $null
 $FixtureConnectionId = $null
+$PrometheusPort = $null
 
 function Invoke-Compose([string[]]$Command) {
     & docker compose @ComposeArguments @Command
@@ -97,11 +110,54 @@ function Get-BackendJson([string]$Url) {
     return (($Output -join "`n") | ConvertFrom-Json)
 }
 
+function New-DisposableSecret {
+    $Bytes = [byte[]]::new(32)
+    $RandomNumberGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $RandomNumberGenerator.GetBytes($Bytes)
+    } finally {
+        $RandomNumberGenerator.Dispose()
+    }
+    return -join ($Bytes | ForEach-Object { $_.ToString('x2') })
+}
+
+function Set-PrometheusPort {
+    $PublishedAddress = Invoke-ComposeCapture @('port', 'prometheus', '9090')
+    $PortMatch = [regex]::Match($PublishedAddress, ':(\d+)$')
+    if (-not $PortMatch.Success) { throw "Disposable Prometheus port is invalid: $PublishedAddress" }
+    $script:PrometheusPort = [int]$PortMatch.Groups[1].Value
+}
+
+function Get-PrometheusJson([string]$Path) {
+    if (-not $PrometheusPort) { throw 'Disposable Prometheus port is not available.' }
+    return Invoke-RestMethod -Uri "http://127.0.0.1:$PrometheusPort$Path" -TimeoutSec 10
+}
+
 function Get-PrometheusMetricValue([string]$Query) {
     $EncodedQuery = [uri]::EscapeDataString($Query)
-    $Response = Get-BackendJson "http://prometheus:9090/api/v1/query?query=$EncodedQuery"
+    $Response = Get-PrometheusJson "/api/v1/query?query=$EncodedQuery"
     if ($Response.status -ne 'success' -or $Response.data.result.Count -ne 1) { return $null }
     return [double]$Response.data.result[0].value[1]
+}
+
+function Test-PrometheusAlertRuleLoaded([string]$AlertName) {
+    $Response = Get-PrometheusJson '/api/v1/rules'
+    if ($Response.status -ne 'success') { return $false }
+    foreach ($Group in @($Response.data.groups)) {
+        foreach ($Rule in @($Group.rules)) {
+            if ($Rule.name -eq $AlertName) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-PrometheusAlertState([string]$AlertName) {
+    $Response = Get-PrometheusJson '/api/v1/alerts'
+    if ($Response.status -ne 'success') { throw "Prometheus alert query failed for $AlertName" }
+    $Alerts = @($Response.data.alerts | Where-Object { $_.labels.alertname -eq $AlertName })
+    if ($Alerts.Count -gt 1) { throw "Prometheus returned multiple active alerts named $AlertName" }
+    if ($Alerts.Count -eq 0) { return $null }
+    return [string]$Alerts[0].state
 }
 
 function Get-SharedVolumeState {
@@ -128,6 +184,12 @@ if (-not (Test-Path -LiteralPath $EnvFile)) { throw "Local env file not found: $
 if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found: $FixturePath" }
 
 $SharedVolumesBefore = Get-SharedVolumeState
+$env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
+$env:MYSQL_USER = 'pawcycle'
+$env:MYSQL_PASSWORD = New-DisposableSecret
+$env:MYSQL_ROOT_PASSWORD = New-DisposableSecret
+$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
+$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
 $env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
 $ExecutionError = $null
@@ -146,6 +208,10 @@ try {
             throw "Disposable volume isolation is invalid for service: $ServiceName"
         }
     }
+    $RuleMount = @($Config.services.prometheus.volumes | Where-Object { $_.target -eq '/etc/prometheus/rules' })
+    if ($RuleMount.Count -ne 1 -or -not $RuleMount[0].read_only) {
+        throw 'Disposable Prometheus alert rule mount is invalid.'
+    }
     $ConfiguredVolumeKeys = @($Config.volumes.PSObject.Properties.Name | Sort-Object)
     $ExpectedVolumeKeys = @($ExpectedMounts.Values | Sort-Object)
     if (Compare-Object $ExpectedVolumeKeys $ConfiguredVolumeKeys) {
@@ -161,7 +227,53 @@ try {
 
     Invoke-Compose @('config', '--quiet')
     $CleanupRequired = $true
-    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'mysql', 'backend')
+    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'mysql', 'backend', 'prometheus')
+    $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
+    if (-not $BackendContainer) { throw 'Disposable Backend container not found.' }
+    Set-PrometheusPort
+    $AlertLoadDeadline = (Get-Date).AddSeconds($PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + 20)
+    do {
+        try {
+            $InitialTargetUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
+            $InitialBackendAlert = Get-PrometheusAlertState 'PawCycleBackendScrapeUnavailable'
+            $InitialReconciliationAlert = Get-PrometheusAlertState 'PawCycleReconciliationFailure'
+            $AlertRulesLoaded = (Test-PrometheusAlertRuleLoaded 'PawCycleBackendScrapeUnavailable') -and (Test-PrometheusAlertRuleLoaded 'PawCycleReconciliationFailure')
+            $AlertsReady = $AlertRulesLoaded -and $InitialTargetUp -eq 1 -and -not $InitialBackendAlert -and -not $InitialReconciliationAlert
+        } catch {
+            $AlertsReady = $false
+        }
+        if (-not $AlertsReady) { Start-Sleep -Seconds 2 }
+    } until ($AlertsReady -or (Get-Date) -ge $AlertLoadDeadline)
+    if (-not $AlertsReady) { throw 'Disposable Prometheus alert rules did not load in a normal state.' }
+
+    Invoke-Compose @('stop', '--timeout', '10', 'backend')
+    $BackendAlertDeadline = (Get-Date).AddSeconds((3 * $PrometheusScrapeIntervalSeconds) + $PrometheusScrapeTimeoutSeconds + 20)
+    $BackendAlertPendingObserved = $false
+    do {
+        try {
+            $BackendAlertState = Get-PrometheusAlertState 'PawCycleBackendScrapeUnavailable'
+            if ($BackendAlertState -eq 'pending') { $BackendAlertPendingObserved = $true }
+            $BackendAlertFiringObserved = $BackendAlertPendingObserved -and $BackendAlertState -eq 'firing'
+        } catch {
+            $BackendAlertFiringObserved = $false
+        }
+        if (-not $BackendAlertFiringObserved) { Start-Sleep -Seconds 2 }
+    } until ($BackendAlertFiringObserved -or (Get-Date) -ge $BackendAlertDeadline)
+    if (-not $BackendAlertFiringObserved) { throw 'Disposable Backend scrape unavailable alert did not transition from pending to firing.' }
+
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend')
+    $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
+    $BackendAlertRecoveryDeadline = (Get-Date).AddSeconds($PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + 20)
+    do {
+        try {
+            $BackendAlertRecovered = (Get-PrometheusMetricValue 'up{job="pawcycle-backend"}') -eq 1 -and -not (Get-PrometheusAlertState 'PawCycleBackendScrapeUnavailable')
+        } catch {
+            $BackendAlertRecovered = $false
+        }
+        if (-not $BackendAlertRecovered) { Start-Sleep -Seconds 2 }
+    } until ($BackendAlertRecovered -or (Get-Date) -ge $BackendAlertRecoveryDeadline)
+    if (-not $BackendAlertRecovered) { throw 'Disposable Backend scrape unavailable alert did not resolve after recovery.' }
+
     Invoke-Compose @('stop', '--timeout', '10', 'backend')
 
     $MySqlContainer = Invoke-ComposeCapture @('ps', '--quiet', 'mysql')
@@ -228,6 +340,17 @@ SELECT 'LOCK_RELEASED';
     } until ($FailureObserved -or (Get-Date).ToUniversalTime() -ge $FailureDeadline)
     if (-not $FailureObserved) { throw 'Disposable reconciliation failure signals were not observed.' }
 
+    $ReconciliationAlertDeadline = (Get-Date).AddSeconds($PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds + 20)
+    do {
+        try {
+            $ReconciliationAlertFiringObserved = (Get-PrometheusAlertState 'PawCycleReconciliationFailure') -eq 'firing'
+        } catch {
+            $ReconciliationAlertFiringObserved = $false
+        }
+        if (-not $ReconciliationAlertFiringObserved) { Start-Sleep -Seconds 2 }
+    } until ($ReconciliationAlertFiringObserved -or (Get-Date) -ge $ReconciliationAlertDeadline)
+    if (-not $ReconciliationAlertFiringObserved) { throw 'Disposable reconciliation failure alert did not fire.' }
+
     Stop-MySqlSession $FixtureConnectionId
     $FixtureConnectionId = $null
     $FixtureFingerprintAfterFailure = Invoke-MySqlScalar $FixtureFingerprintQuery
@@ -237,14 +360,15 @@ SELECT 'LOCK_RELEASED';
     Invoke-Compose @('restart', '--timeout', '10', 'backend')
     Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', "$BackendStartupBudgetSeconds", 'backend')
     $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
-    $RecoveryDeadline = $RecoveryStartedAt.AddSeconds($BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + $PrometheusScrapeIntervalSeconds + $PrometheusScrapeTimeoutSeconds)
+    $RecoveryDeadline = $RecoveryStartedAt.AddSeconds($BackendStartupBudgetSeconds + $SchedulerStartBudgetSeconds + (3 * $PrometheusScrapeIntervalSeconds) + $PrometheusScrapeTimeoutSeconds)
     do {
         try {
             $RecoveryExecutions = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
             $RecoveryFailures = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
             $RecoveryUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
+            $ReconciliationAlertResolved = -not (Get-PrometheusAlertState 'PawCycleReconciliationFailure')
             $RecoveryLogs = (& docker logs --since (Format-DockerLogSince $RecoveryStartedAt) $BackendContainer) -join "`n"
-            $RecoveryObserved = $RecoveryExecutions -ge 1 -and $RecoveryFailures -eq 0 -and $RecoveryUp -eq 1 -and $RecoveryLogs -notmatch 'Subscription reconciliation failed'
+            $RecoveryObserved = $RecoveryExecutions -ge 1 -and $RecoveryFailures -eq 0 -and $RecoveryUp -eq 1 -and $ReconciliationAlertResolved -and $RecoveryLogs -notmatch 'Subscription reconciliation failed'
         } catch {
             $RecoveryObserved = $false
         }
@@ -262,7 +386,9 @@ SELECT 'LOCK_RELEASED';
     if ($FixtureFingerprintAfterRecovery -ne $FixtureFingerprintBefore) { throw 'Disposable fixture changed after recovery.' }
 
     "DISPOSABLE_PROJECT=$ProjectName"
+    'BACKEND_SCRAPE_ALERT:INITIAL=NORMAL:PENDING=OBSERVED:FIRING=OBSERVED:RESOLVED=PASS'
     "FAILURE_EVIDENCE:SUBSCRIPTION_ID=$FixtureSubscriptionId`:FAILURES=$FailureCount`:TARGET_UP=$TargetUp`:LOCK_WAIT_SECONDS=$LockWaitTimeout`:HOLD_SECONDS=$HoldSeconds"
+    'RECONCILIATION_FAILURE_ALERT:FIRING=OBSERVED:RESOLVED=PASS'
     "RECOVERY_EVIDENCE:EXECUTIONS=$RecoveryExecutions`:FAILURES=$RecoveryFailures`:TARGET_UP=$RecoveryUp"
     'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=13'
     'FIXTURE_DATA_UNCHANGED=PASS'
@@ -295,6 +421,9 @@ SELECT 'LOCK_RELEASED';
     try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
     $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
     $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
+    foreach ($EnvironmentName in $TemporaryEnvironmentNames) {
+        [Environment]::SetEnvironmentVariable($EnvironmentName, $PreviousTemporaryEnvironment[$EnvironmentName], [EnvironmentVariableTarget]::Process)
+    }
     try {
         $SharedVolumesAfter = Get-SharedVolumeState
         Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
