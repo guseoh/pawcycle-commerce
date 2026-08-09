@@ -9,15 +9,7 @@ OBS-BASE-001 local stack에서 Backend unavailable, MySQL 연결 실패, reconci
 ```powershell
 $ComposeFiles = @('-f', 'compose.yaml', '-f', 'compose.observability.yaml')
 $ProxyPort = (docker compose --env-file .env.local @ComposeFiles port proxy 80).Split(':')[-1]
-$PrometheusPort = (docker compose --env-file .env.local @ComposeFiles port prometheus 9090).Split(':')[-1]
 $ProxyUrl = "http://127.0.0.1:$ProxyPort"
-$PrometheusUrl = "http://127.0.0.1:$PrometheusPort"
-function Get-PrometheusMetricValue([string]$Query) {
-    $EncodedQuery = [uri]::EscapeDataString($Query)
-    $Response = Invoke-RestMethod -TimeoutSec 10 "$PrometheusUrl/api/v1/query?query=$EncodedQuery"
-    if ($Response.status -ne 'success' -or $Response.data.result.Count -ne 1) { return $null }
-    return [double]$Response.data.result[0].value[1]
-}
 docker compose --env-file .env.local @ComposeFiles ps
 ```
 
@@ -34,7 +26,7 @@ docker compose --env-file .env.local @ComposeFiles ps
 | --- | --- | --- | --- |
 | Backend unavailable | Backend container가 stopped이고 `up=0`; Proxy API `502` | MySQL은 healthy | Backend healthy, health `UP`, `up=1`, Proxy `200` |
 | MySQL 연결 실패 | MySQL container가 stopped; Backend health·scrape·Proxy가 10초 안에 응답하지 않음 | Backend process는 running이고 Prometheus `lastError`는 scrape timeout | MySQL과 Backend healthy, health `UP`, `up=1`, Proxy `200` |
-| reconciliation 실패 | health `UP`, `up=1`인 상태에서 `pawcycle_subscription_reconciliation_failures_total` 증가와 실패 log가 함께 존재 | 전체 Backend·MySQL 장애가 아니라 해당 reconciliation transaction 실패 | 원인 제거 후 다음 허용된 실행이 완료되고 새 failure 증가가 없음 |
+| reconciliation 실패 | disposable stack에서 `pawcycle_subscription_reconciliation_failures_total` 증가와 fixture ID의 lock-timeout log가 함께 존재 | 공유 DB가 아니라 단일 ACTIVE fixture의 row lock | lock 제거 후 다음 실행 완료, failure `0`, 오류 log 없음, fixture 불변 |
 
 이 값들은 local 판정 조건이며 Production alert 임계값이 아니다. Grafana의 `Backend scrape availability`, `Hikari connections`, `Reconciliation totals` 패널에서 같은 Prometheus 신호를 확인한다.
 
@@ -70,174 +62,33 @@ curl.exe --max-time 10 --output NUL --write-out "%{http_code}`n" "$ProxyUrl/api/
 
 ## Reconciliation 실패
 
-active local fixture가 있을 때만 수행한다. 다음 SQL은 현재 MySQL session의 `innodb_lock_wait_timeout`을 읽고 40초의 Backend 재시작 여유를 더한 시간 동안 한 row를 조회 lock으로 보유한 뒤 `ROLLBACK`하며 데이터를 변경하지 않는다. 기존 즉시 reconciliation 실행을 사용하고 Scheduler cadence를 바꾸지 않는다. named lock과 실제 row lock, 적용 timeout을 함께 확인한 뒤 Backend를 재시작한다.
+공유 local DB에서는 장애를 재현하지 않는다. `compose.incident.yaml`은 실행마다 고유 Compose project를 사용하고 MySQL·Prometheus·Grafana data mount를 project-scoped disposable volume으로 교체한다. 기존 `pawcycle-local-integration-*` named volume은 mount·삭제하지 않는다.
+
+`verify-inc-base-001.ps1`은 migration과 기존 local bootstrap 후 ACTIVE subscription 한 건과 미래 schedule 한 건을 생성한다. row lock을 확보한 뒤 Backend를 시작해 lock timeout을 관측하고, 원인을 제거한 뒤 Backend 재시작으로 기존 즉시 reconciliation 실행을 사용한다. Scheduler cadence는 변경하지 않는다.
 
 ```powershell
-$MySqlContainer = docker compose --env-file .env.local @ComposeFiles ps -q mysql
-if (-not $MySqlContainer) { throw 'MySQL Compose service를 찾지 못했습니다.' }
-$RunId = [guid]::NewGuid().ToString('N')
-$SqlPath = Join-Path $env:TEMP "inc-base-001-reconciliation-lock-$RunId.sql"
-$ContainerSqlPath = "/tmp/inc-base-001-reconciliation-lock-$RunId.sql"
-$ContainerOutputPath = "/tmp/inc-base-001-reconciliation-lock-$RunId.out"
-$MySqlClient = 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names'
-function Invoke-MySqlScalar([string]$Statement) {
-    $Command = $MySqlClient + ' --execute="' + $Statement + '"'
-    return ((docker exec $MySqlContainer sh -c $Command) -join "`n").Trim()
-}
-function Remove-ReconciliationFixtureArtifacts {
-    if (Test-Path -LiteralPath $SqlPath) { Remove-Item -LiteralPath $SqlPath }
-    docker exec $MySqlContainer rm -f $ContainerSqlPath $ContainerOutputPath
-}
-function Stop-ReconciliationFixtureSession([int]$ConnectionId) {
-    if ((Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId;") -eq '1') {
-        Invoke-MySqlScalar "KILL $ConnectionId;" | Out-Null
-    }
-    $AbortDeadline = (Get-Date).AddSeconds(10)
-    do {
-        $AbortStatus = Invoke-MySqlScalar "SELECT CONCAT('SESSION_COUNT=', (SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$ConnectionId), ':NAMED_LOCK_FREE=', IS_FREE_LOCK('inc-base-001-reconciliation'));"
-        $FixtureAborted = $AbortStatus -eq 'SESSION_COUNT=0:NAMED_LOCK_FREE=1'
-        if (-not $FixtureAborted) { Start-Sleep -Seconds 1 }
-    } until ($FixtureAborted -or (Get-Date) -ge $AbortDeadline)
-    Remove-ReconciliationFixtureArtifacts
-    if (-not $FixtureAborted) { throw 'fixture session의 rollback과 named lock release를 확인하지 못했습니다.' }
-}
-$Sql = @"
-SELECT CONCAT('CONNECTION_ID:', CONNECTION_ID());
-SELECT GET_LOCK('inc-base-001-reconciliation',0) INTO @get_lock_result;
-SELECT @@SESSION.innodb_lock_wait_timeout INTO @lock_wait_timeout;
-SET @hold_seconds := @lock_wait_timeout + 40;
-SELECT COUNT(*), MIN(id) INTO @active_subscription_count, @candidate_subscription_id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE';
-SELECT COUNT(*) INTO @overdue_schedule_count FROM subscription_schedules WHERE subscription_id=@candidate_subscription_id AND status='SCHEDULED' AND effective_snapshot_id IS NULL AND scheduled_date<DATE(CONVERT_TZ(UTC_TIMESTAMP(),'+00:00','+09:00'));
-SET @subscription_id := NULL;
-START TRANSACTION;
-SELECT id INTO @subscription_id FROM subscriptions WHERE id=@candidate_subscription_id AND @get_lock_result=1 AND @active_subscription_count=1 AND @overdue_schedule_count=0 AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE;
-SELECT CASE
-    WHEN @get_lock_result IS NULL OR @get_lock_result<>1 THEN CONCAT('NAMED_LOCK_FAILED:', COALESCE(@get_lock_result, 'NULL'))
-    WHEN @active_subscription_count=0 THEN 'NO_ACTIVE_FIXTURE'
-    WHEN @active_subscription_count<>1 THEN CONCAT('UNSAFE_ACTIVE_FIXTURE_COUNT:', @active_subscription_count)
-    WHEN @overdue_schedule_count<>0 THEN CONCAT('UNSAFE_OVERDUE_FIXTURE_COUNT:', @overdue_schedule_count)
-    WHEN @subscription_id IS NULL THEN 'FIXTURE_CHANGED_BEFORE_LOCK'
-    ELSE CONCAT('LOCK_ACQUIRED:', @subscription_id, ':WAIT_TIMEOUT:', @lock_wait_timeout, ':HOLD_SECONDS:', @hold_seconds)
-END;
-SELECT IF(@get_lock_result=1 AND @subscription_id IS NOT NULL, SLEEP(@hold_seconds), NULL) INTO @sleep_result;
-ROLLBACK;
-SELECT IF(@get_lock_result=1, RELEASE_LOCK('inc-base-001-reconciliation'), NULL) INTO @release_lock_result;
-SELECT CONCAT('FIXTURE_RESULTS:GET_LOCK=', COALESCE(@get_lock_result, 'NULL'), ':SLEEP=', COALESCE(@sleep_result, 'NULL'), ':RELEASE_LOCK=', COALESCE(@release_lock_result, 'NULL'));
-"@
-[IO.File]::WriteAllText($SqlPath, $Sql, [Text.UTF8Encoding]::new($false))
-docker exec $MySqlContainer sh -c "rm -f '$ContainerOutputPath'"
-docker cp $SqlPath "${MySqlContainer}:$ContainerSqlPath"
-$MySqlCommand = $MySqlClient + ' --unbuffered < "' + $ContainerSqlPath + '" > "' + $ContainerOutputPath + '" 2>&1'
-docker exec -d $MySqlContainer sh -c $MySqlCommand
-$LockDeadline = (Get-Date).AddSeconds(10)
-do {
-    $LockOutput = (docker exec $MySqlContainer sh -c "test -f '$ContainerOutputPath' && cat '$ContainerOutputPath' || true") -join "`n"
-    $ConnectionMatch = [regex]::Match($LockOutput, '(?m)^CONNECTION_ID:([0-9]+)$')
-    $LockMatch = [regex]::Match($LockOutput, '(?m)^LOCK_ACQUIRED:([0-9]+):WAIT_TIMEOUT:([0-9]+):HOLD_SECONDS:([0-9]+)$')
-    $LockAcquired = $LockMatch.Success
-    $NoActiveFixture = $LockOutput -match '(?m)^NO_ACTIVE_FIXTURE$'
-    $NamedLockFailed = $LockOutput -match '(?m)^NAMED_LOCK_FAILED:'
-    $UnsafeFixture = $LockOutput -match '(?m)^(UNSAFE_ACTIVE_FIXTURE_COUNT|UNSAFE_OVERDUE_FIXTURE_COUNT|FIXTURE_CHANGED_BEFORE_LOCK):?'
-    if (-not $LockAcquired -and -not $NoActiveFixture -and -not $NamedLockFailed -and -not $UnsafeFixture) { Start-Sleep -Seconds 1 }
-} until ($LockAcquired -or $NoActiveFixture -or $NamedLockFailed -or $UnsafeFixture -or (Get-Date) -ge $LockDeadline)
-$LockOutput
-if ($NoActiveFixture -or $NamedLockFailed -or $UnsafeFixture) {
-    $TerminalDeadline = (Get-Date).AddSeconds(10)
-    do {
-        $LockOutput = (docker exec $MySqlContainer sh -c "cat '$ContainerOutputPath'") -join "`n"
-        $FixtureTerminated = $LockOutput -match '(?m)^FIXTURE_RESULTS:'
-        if (-not $FixtureTerminated) { Start-Sleep -Seconds 1 }
-    } until ($FixtureTerminated -or (Get-Date) -ge $TerminalDeadline)
-    Remove-ReconciliationFixtureArtifacts
-    if (-not $FixtureTerminated) { throw 'fixture 종료와 named lock release를 확인하지 못했습니다.' }
-    throw 'ACTIVE fixture row lock을 확인하지 못했습니다.'
-}
-if (-not $LockAcquired) {
-    if (-not $ConnectionMatch.Success) {
-        Remove-ReconciliationFixtureArtifacts
-        throw 'timeout된 MySQL fixture connection을 식별하지 못했습니다.'
-    }
-    $FixtureConnectionId = [int]$ConnectionMatch.Groups[1].Value
-    Stop-ReconciliationFixtureSession $FixtureConnectionId
-    throw 'ACTIVE fixture row lock을 10초 안에 확인하지 못해 fixture session을 종료했습니다.'
-}
-$FixtureConnectionId = [int]$ConnectionMatch.Groups[1].Value
-$FixtureSubscriptionId = [long]$LockMatch.Groups[1].Value
-$LockWaitTimeout = [int]$LockMatch.Groups[2].Value
-$HoldSeconds = [int]$LockMatch.Groups[3].Value
-try {
-    $FailuresBeforeFailure = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
-} catch {
-    Stop-ReconciliationFixtureSession $FixtureConnectionId
-    throw
-}
-if ($FailuresBeforeFailure -ne 0) {
-    Stop-ReconciliationFixtureSession $FixtureConnectionId
-    throw 'reconciliation failure metric이 0인 clean baseline이 아닙니다.'
-}
-$FailureStartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
-$FailureDeadline = (Get-Date).AddSeconds($LockWaitTimeout + 10)
-do {
-    try {
-        $FailuresAfterInjection = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
-        $FailureLogs = (docker compose --env-file .env.local @ComposeFiles logs --since $FailureStartedAt backend) -join "`n"
-        $FailureLogPattern = '(?s)Subscription reconciliation failed; subscriptionId=' + $FixtureSubscriptionId + '.*Lock wait timeout exceeded'
-        $FailureObserved = $FailuresAfterInjection -gt $FailuresBeforeFailure -and $FailureLogs -match $FailureLogPattern
-    } catch {
-        $FailureObserved = $false
-    }
-    if (-not $FailureObserved) { Start-Sleep -Seconds 1 }
-} until ($FailureObserved -or (Get-Date) -ge $FailureDeadline)
-if (-not $FailureObserved) {
-    Stop-ReconciliationFixtureSession $FixtureConnectionId
-    throw 'fixture 대상의 reconciliation failure metric 증가와 lock timeout log를 확인하지 못했습니다.'
-}
+Set-Location infra/local-integration
+& ./incident/verify-inc-base-001.ps1 -EnvFile ./.env.local
 ```
 
-`LOCK_ACQUIRED:<subscription_id>:WAIT_TIMEOUT:<seconds>:HOLD_SECONDS:<seconds>`가 출력되고 ACTIVE fixture가 정확히 하나이며 overdue schedule이 없을 때만 Backend를 재시작한다. `NO_ACTIVE_FIXTURE`, `UNSAFE_*`, `FIXTURE_CHANGED_BEFORE_LOCK`, `NAMED_LOCK_FAILED`가 출력되면 데이터 무변경을 보장할 수 없으므로 Backend를 재시작하지 않고 중단한다. fixture subscription ID와 일치하는 failure metric 증가 및 `Lock wait timeout exceeded` log를 제한 시간 안에 확인한 뒤 다음처럼 fixture 완료를 기다린다.
+다른 worktree의 `.env.local`을 사용할 때는 절대 경로만 전달하며 파일을 복사하거나 출력하지 않는다. 실패 관측 deadline은 Backend 기동 budget 180초 + 실제 `innodb_lock_wait_timeout` + Prometheus scrape interval 15초 + scrape timeout 10초다. lock holder는 이 합보다 긴 `lock wait + 240초` 동안 대기하지만, 신호 확인 직후 root session에서 `KILL`하여 transaction rollback을 발생시킨다.
 
-```powershell
-$ExecutionsBeforeRestart = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
-$FailuresBeforeRestart = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
-$FixtureDeadline = (Get-Date).AddSeconds($HoldSeconds + 10)
-do {
-    $LockOutput = (docker exec $MySqlContainer sh -c "cat '$ContainerOutputPath'") -join "`n"
-    $FixtureCompleted = $LockOutput -match '(?m)^FIXTURE_RESULTS:GET_LOCK=1:SLEEP=0:RELEASE_LOCK=1$'
-    if (-not $FixtureCompleted) { Start-Sleep -Seconds 1 }
-} until ($FixtureCompleted -or (Get-Date) -ge $FixtureDeadline)
-$LockOutput
-if (-not $FixtureCompleted) {
-    Stop-ReconciliationFixtureSession $FixtureConnectionId
-    throw 'fixture 완료 timeout으로 session을 종료했습니다.'
-}
-$RecoverySafetyStatus = Invoke-MySqlScalar "SELECT CONCAT('ACTIVE_FIXTURE_COUNT=', (SELECT COUNT(*) FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE'), ':TARGET_OVERDUE_COUNT=', (SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=$FixtureSubscriptionId AND status='SCHEDULED' AND effective_snapshot_id IS NULL AND scheduled_date<DATE(CONVERT_TZ(UTC_TIMESTAMP(),'+00:00','+09:00'))));"
-if ($RecoverySafetyStatus -ne 'ACTIVE_FIXTURE_COUNT=1:TARGET_OVERDUE_COUNT=0') {
-    Remove-ReconciliationFixtureArtifacts
-    throw "복구 실행의 데이터 무변경 precondition이 달라졌습니다: $RecoverySafetyStatus"
-}
-$RecoveryStartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-Remove-ReconciliationFixtureArtifacts
-docker compose --env-file .env.local @ComposeFiles restart --timeout 10 backend
-docker compose --env-file .env.local @ComposeFiles up --detach --wait --wait-timeout 180 backend
-$RecoveryDeadline = (Get-Date).AddSeconds(180)
-do {
-    $RecoveryExecutions = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
-    $RecoveryFailures = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
-    $RecoveryLogs = (docker compose --env-file .env.local @ComposeFiles logs --since $RecoveryStartedAt backend) -join "`n"
-    $RecoveryVerified = $null -ne $RecoveryExecutions -and $RecoveryExecutions -ge 1 -and $RecoveryFailures -eq 0 -and $RecoveryLogs -notmatch 'Lock wait timeout exceeded'
-    if (-not $RecoveryVerified) { Start-Sleep -Seconds 1 }
-} until ($RecoveryVerified -or (Get-Date) -ge $RecoveryDeadline)
-"RECOVERY_METRICS:BEFORE_RESTART_EXECUTIONS=$ExecutionsBeforeRestart`:BEFORE_RESTART_FAILURES=$FailuresBeforeRestart`:AFTER_RESTART_EXECUTIONS=$RecoveryExecutions`:AFTER_RESTART_FAILURES=$RecoveryFailures"
-if (-not $RecoveryVerified) { throw '원인 제거 후 reconciliation 실행 완료와 failure 비증가를 확인하지 못했습니다.' }
-```
+성공 출력은 다음 계약을 모두 포함한다.
 
-실측에서는 `2026-08-09T05:43:58Z` 기준 executions `1`, failures `0`에서 시작했다. `2026-08-09T05:45:41Z`에 health `UP`, `up=1`, executions `1`, processed `4`, failures `1`과 subscription `3`의 `Lock wait timeout exceeded` log를 확인했다. lock holder는 `ROLLBACK`과 named lock release를 완료했다. Backend를 재시작해 기존 즉시 실행을 사용한 `2026-08-09T05:46:30Z`에는 health `UP`, `up=1`, executions `1`, processed `4`, failures `0`이었다. 재시작으로 counter가 reset되므로 복구 판정은 과거 failure 값의 감소가 아니라 원인 제거 후 새 failure 증가가 없는지로 판단한다.
+- `FAILURE_EVIDENCE`: failure `>=1`, target `UP`, fixture subscription ID와 일치하는 `Lock wait timeout exceeded` log
+- `RECOVERY_EVIDENCE`: executions `>=1`, failures `0`, target `UP`, 복구 이후 reconciliation 오류 log 없음
+- `GRAFANA_EVIDENCE`: datasource UID, Dashboard UID, panel `13`
+- `FIXTURE_DATA_UNCHANGED=PASS`
+- `DISPOSABLE_CLEANUP=PASS`
+
+`2026-08-09` disposable 재검증에서는 ACTIVE subscription `1` 한 건으로 failures `1`, target `UP`, lock wait `50`초 log를 확인했다. 원인 제거 후 executions `1`, failures `0`, target `UP`과 새 failure 없음, Grafana datasource·Dashboard·13개 panel, fixture 불변과 전용 container·volume·network 정리를 확인했다.
+
+스크립트는 성공·실패 모두에서 전용 project에만 `down --volumes --remove-orphans --rmi local`을 실행한다. 시작 전후 공유 named volume의 존재와 생성 시각이 같은지도 확인한다. 전용 stack 정리나 lock-session rollback을 확인할 수 없으면 공유 stack으로 우회하지 않고 중단한다.
 
 ## 복구와 중단
 
-모든 시나리오 후 MySQL·Backend·Prometheus·Grafana·Proxy가 정상인지 다시 확인한다. lock fixture는 marker로 확인한 `$HoldSeconds` 동안만 보유된 뒤 스스로 `ROLLBACK`·release되며 데이터 변경이 없어야 한다. row lock 확인이 10초를 넘기면 connection ID로 session을 종료하고 rollback·named lock release를 확인한다. active fixture가 없거나 lock release를 확인할 수 없거나 데이터 변경이 필요하면 reconciliation 재현을 수행하지 않고 중단한다.
+모든 시나리오 후 MySQL·Backend·Prometheus·Grafana·Proxy가 정상인지 다시 확인한다. shared DB에 row lock이나 fixture를 만들지 않는다. disposable stack이 기존 shared volume을 mount하거나 current fixture가 변경되거나 cleanup이 실패하면 추가 lock/isolation 보강 없이 중단한다.
 
-최종 검증에서 Grafana health `ok`, Dashboard UID `pawcycle-local-observability`, 13개 panel과 `Backend scrape availability`의 `up{job="pawcycle-backend"}` query를 확인했다. Java 25와 격리된 MySQL 8.4에서 `ObservabilityIntegrationTests` 2개가 통과했다. 최종 local stack은 MySQL·Backend·Proxy healthy, Prometheus·Grafana running 상태였다.
+Grafana health `ok`, datasource UID `pawcycle-prometheus`, Dashboard UID `pawcycle-local-observability`, 13개 panel과 `Backend scrape availability`의 `up{job="pawcycle-backend"}` query를 확인한다. Java 25와 격리된 MySQL 8.4에서 `ObservabilityIntegrationTests` 2개가 통과해야 한다.
 
-저장소 변경의 rollback은 Dashboard와 이 Runbook을 일반 revert하는 것이다. local stack 종료는 `docker compose --env-file .env.local -f compose.yaml -f compose.observability.yaml down`을 사용하고 named volume은 삭제하지 않는다.
+저장소 변경의 rollback은 Dashboard, Runbook, disposable Compose override와 fixture script를 일반 revert하는 것이다. shared local stack 종료는 `docker compose --env-file .env.local -f compose.yaml -f compose.observability.yaml down`을 사용하고 named volume은 삭제하지 않는다. disposable project는 검증 스크립트가 출력한 project name으로만 정리한다.

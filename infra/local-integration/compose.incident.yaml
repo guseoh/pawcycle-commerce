@@ -1,0 +1,20 @@
+services:
+  mysql:
+    volumes:
+      - inc-base-001-mysql-data:/var/lib/mysql
+
+  prometheus:
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - inc-base-001-prometheus-data:/prometheus
+
+  grafana:
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - inc-base-001-grafana-data:/var/lib/grafana
+
+volumes:
+  inc-base-001-mysql-data:
+  inc-base-001-prometheus-data:
+  inc-base-001-grafana-data:

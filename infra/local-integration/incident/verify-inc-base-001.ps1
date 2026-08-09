@@ -1,0 +1,238 @@
+param(
+    [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.local')
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$LocalIntegrationDirectory = Split-Path $PSScriptRoot -Parent
+$ComposeFiles = @(
+    '-f', (Join-Path $LocalIntegrationDirectory 'compose.yaml'),
+    '-f', (Join-Path $LocalIntegrationDirectory 'compose.observability.yaml'),
+    '-f', (Join-Path $LocalIntegrationDirectory 'compose.incident.yaml')
+)
+$RunId = [guid]::NewGuid().ToString('N').Substring(0, 12)
+$ProjectName = "pawcycle-inc-base-001-$RunId"
+$ComposeArguments = @('--project-name', $ProjectName, '--env-file', (Resolve-Path -LiteralPath $EnvFile).Path) + $ComposeFiles
+$FixturePath = Join-Path $PSScriptRoot 'INC-BASE-001-reconciliation-fixture.sql'
+$LockSqlPath = Join-Path $env:TEMP "inc-base-001-lock-$RunId.sql"
+$LockContainerPath = "/tmp/inc-base-001-lock-$RunId.sql"
+$LockOutputPath = "/tmp/inc-base-001-lock-$RunId.out"
+$ScalarSqlPath = Join-Path $env:TEMP "inc-base-001-scalar-$RunId.sql"
+$ScalarContainerPath = "/tmp/inc-base-001-scalar-$RunId.sql"
+$SharedVolumeNames = @(
+    'pawcycle-local-integration-mysql-data',
+    'pawcycle-local-integration-prometheus-data',
+    'pawcycle-local-integration-grafana-data'
+)
+$PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
+$PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
+$StackCreated = $false
+$MySqlContainer = $null
+$FixtureConnectionId = $null
+
+function Invoke-Compose([string[]]$Command) {
+    & docker compose @ComposeArguments @Command
+    if ($LASTEXITCODE -ne 0) { throw "Docker Compose command failed: $($Command[0])" }
+}
+
+function Invoke-ComposeCapture([string[]]$Command) {
+    $Output = & docker compose @ComposeArguments @Command
+    if ($LASTEXITCODE -ne 0) { throw "Docker Compose command failed: $($Command[0])" }
+    return ($Output -join "`n").Trim()
+}
+
+function Invoke-MySqlScalar([string]$Statement, [switch]$Root) {
+    $UserArguments = if ($Root) {
+        'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user=root --database="$MYSQL_DATABASE" --batch --skip-column-names'
+    } else {
+        'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names'
+    }
+    [IO.File]::WriteAllText($ScalarSqlPath, $Statement + "`n", [Text.UTF8Encoding]::new($false))
+    & docker cp $ScalarSqlPath "${MySqlContainer}:$ScalarContainerPath" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Disposable MySQL scalar SQL copy failed.' }
+    $Command = $UserArguments + ' < "' + $ScalarContainerPath + '"'
+    $Output = & docker exec $MySqlContainer sh -c $Command
+    if ($LASTEXITCODE -ne 0) { throw 'Disposable MySQL query failed.' }
+    return ($Output -join "`n").Trim()
+}
+
+function Get-BackendJson([string]$Url) {
+    $Output = & docker exec $BackendContainer curl --fail --silent --show-error --max-time 10 $Url
+    if ($LASTEXITCODE -ne 0) { throw "Internal request failed: $Url" }
+    return (($Output -join "`n") | ConvertFrom-Json)
+}
+
+function Get-PrometheusMetricValue([string]$Query) {
+    $EncodedQuery = [uri]::EscapeDataString($Query)
+    $Response = Get-BackendJson "http://prometheus:9090/api/v1/query?query=$EncodedQuery"
+    if ($Response.status -ne 'success' -or $Response.data.result.Count -ne 1) { return $null }
+    return [double]$Response.data.result[0].value[1]
+}
+
+function Get-SharedVolumeState {
+    $State = @{}
+    foreach ($VolumeName in $SharedVolumeNames) {
+        $Value = & docker volume inspect --format '{{.Name}}|{{.CreatedAt}}' $VolumeName 2>$null
+        if ($LASTEXITCODE -eq 0) { $State[$VolumeName] = ($Value -join "`n").Trim() }
+    }
+    return $State
+}
+
+function Assert-SharedVolumesUnchanged([hashtable]$Before, [hashtable]$After) {
+    foreach ($VolumeName in $SharedVolumeNames) {
+        if ($Before.ContainsKey($VolumeName) -ne $After.ContainsKey($VolumeName)) {
+            throw "Shared volume presence changed: $VolumeName"
+        }
+        if ($Before.ContainsKey($VolumeName) -and $Before[$VolumeName] -ne $After[$VolumeName]) {
+            throw "Shared volume metadata changed: $VolumeName"
+        }
+    }
+}
+
+if (-not (Test-Path -LiteralPath $EnvFile)) { throw "Local env file not found: $EnvFile" }
+if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found: $FixturePath" }
+
+$SharedVolumesBefore = Get-SharedVolumeState
+$env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
+$env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
+
+try {
+    $ConfigText = Invoke-ComposeCapture @('config', '--format', 'json')
+    $Config = $ConfigText | ConvertFrom-Json
+    $ExpectedMounts = @{
+        mysql = 'inc-base-001-mysql-data'
+        prometheus = 'inc-base-001-prometheus-data'
+        grafana = 'inc-base-001-grafana-data'
+    }
+    foreach ($ServiceName in $ExpectedMounts.Keys) {
+        $DataMount = @($Config.services.$ServiceName.volumes | Where-Object { $_.type -eq 'volume' })
+        if ($DataMount.Count -ne 1 -or $DataMount[0].source -ne $ExpectedMounts[$ServiceName]) {
+            throw "Disposable volume isolation is invalid for service: $ServiceName"
+        }
+    }
+
+    Invoke-Compose @('config', '--quiet')
+    Invoke-Compose @('up', '--detach', '--build', '--wait', '--wait-timeout', '240', 'mysql', 'backend')
+    $StackCreated = $true
+    Invoke-Compose @('stop', '--timeout', '10', 'backend')
+
+    $MySqlContainer = Invoke-ComposeCapture @('ps', '--quiet', 'mysql')
+    if (-not $MySqlContainer) { throw 'Disposable MySQL container not found.' }
+    & docker cp $FixturePath "${MySqlContainer}:/tmp/inc-base-001-fixture.sql" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Disposable fixture copy failed.' }
+    $FixtureCommand = 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names < /tmp/inc-base-001-fixture.sql'
+    $FixtureOutput = (& docker exec $MySqlContainer sh -c $FixtureCommand) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $FixtureOutput -notmatch '(?m)^FIXTURE_READY:SUBSCRIPTION_ID=([0-9]+)$') {
+        throw 'Disposable fixture creation failed.'
+    }
+    $FixtureSubscriptionId = [long]$Matches[1]
+    $FixtureFingerprintQuery = "SELECT CONCAT_WS(':', status, version, current_snapshot_id, (SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=$FixtureSubscriptionId), (SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=$FixtureSubscriptionId AND scheduled_date<CURRENT_DATE)) FROM subscriptions WHERE id=$FixtureSubscriptionId;"
+    $FixtureFingerprintBefore = Invoke-MySqlScalar $FixtureFingerprintQuery
+
+    $LockSql = @"
+SELECT CONCAT('CONNECTION_ID:', CONNECTION_ID());
+SELECT @@GLOBAL.innodb_lock_wait_timeout INTO @lock_wait_timeout;
+SET @hold_seconds := @lock_wait_timeout + 240;
+START TRANSACTION;
+SELECT id FROM subscriptions WHERE id=$FixtureSubscriptionId FOR UPDATE;
+SELECT CONCAT('LOCK_ACQUIRED:${FixtureSubscriptionId}:WAIT_TIMEOUT:', @lock_wait_timeout, ':HOLD_SECONDS:', @hold_seconds);
+SELECT SLEEP(@hold_seconds);
+ROLLBACK;
+SELECT 'LOCK_RELEASED';
+"@
+    [IO.File]::WriteAllText($LockSqlPath, $LockSql, [Text.UTF8Encoding]::new($false))
+    & docker cp $LockSqlPath "${MySqlContainer}:$LockContainerPath" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Disposable lock SQL copy failed.' }
+    $LockCommand = 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --unbuffered < "' + $LockContainerPath + '" > "' + $LockOutputPath + '" 2>&1'
+    & docker exec --detach $MySqlContainer sh -c $LockCommand
+    if ($LASTEXITCODE -ne 0) { throw 'Disposable lock session start failed.' }
+
+    $LockDeadline = (Get-Date).AddSeconds(15)
+    do {
+        $LockOutput = (& docker exec $MySqlContainer sh -c "test -f '$LockOutputPath' && cat '$LockOutputPath' || true") -join "`n"
+        $LockMatch = [regex]::Match($LockOutput, '(?m)^LOCK_ACQUIRED:([0-9]+):WAIT_TIMEOUT:([0-9]+):HOLD_SECONDS:([0-9]+)$')
+        $ConnectionMatch = [regex]::Match($LockOutput, '(?m)^CONNECTION_ID:([0-9]+)$')
+        if (-not $LockMatch.Success -or -not $ConnectionMatch.Success) { Start-Sleep -Seconds 1 }
+    } until (($LockMatch.Success -and $ConnectionMatch.Success) -or (Get-Date) -ge $LockDeadline)
+    if (-not $LockMatch.Success -or -not $ConnectionMatch.Success) {
+        throw "Disposable row lock was not acquired. MySQL output: $LockOutput"
+    }
+    $FixtureConnectionId = [long]$ConnectionMatch.Groups[1].Value
+    $LockWaitTimeout = [int]$LockMatch.Groups[2].Value
+    $HoldSeconds = [int]$LockMatch.Groups[3].Value
+
+    $FailureStartedAt = (Get-Date).ToUniversalTime()
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', '180', 'backend', 'prometheus', 'grafana')
+    $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
+    if (-not $BackendContainer) { throw 'Disposable Backend container not found.' }
+
+    $FailureDeadline = $FailureStartedAt.AddSeconds(180 + $LockWaitTimeout + 15 + 10)
+    do {
+        try {
+            $FailureCount = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
+            $TargetUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
+            $FailureLogs = (& docker logs --since $FailureStartedAt.ToString('yyyy-MM-ddTHH:mm:ssZ') $BackendContainer) -join "`n"
+            $FailureObserved = $FailureCount -ge 1 -and $TargetUp -eq 1 -and $FailureLogs -match "(?s)Subscription reconciliation failed; subscriptionId=$FixtureSubscriptionId.*Lock wait timeout exceeded"
+        } catch {
+            $FailureObserved = $false
+        }
+        if (-not $FailureObserved) { Start-Sleep -Seconds 2 }
+    } until ($FailureObserved -or (Get-Date).ToUniversalTime() -ge $FailureDeadline)
+    if (-not $FailureObserved) { throw 'Disposable reconciliation failure signals were not observed.' }
+
+    Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null
+    $SessionCount = Invoke-MySqlScalar "SELECT COUNT(*) FROM information_schema.processlist WHERE ID=$FixtureConnectionId;" -Root
+    if ($SessionCount -ne '0') { throw 'Disposable lock session did not terminate.' }
+    $FixtureConnectionId = $null
+    $FixtureFingerprintAfterFailure = Invoke-MySqlScalar $FixtureFingerprintQuery
+    if ($FixtureFingerprintAfterFailure -ne $FixtureFingerprintBefore) { throw 'Disposable fixture changed during failure reproduction.' }
+
+    $RecoveryStartedAt = (Get-Date).ToUniversalTime()
+    Invoke-Compose @('restart', '--timeout', '10', 'backend')
+    Invoke-Compose @('up', '--detach', '--wait', '--wait-timeout', '180', 'backend')
+    $BackendContainer = Invoke-ComposeCapture @('ps', '--quiet', 'backend')
+    $RecoveryDeadline = $RecoveryStartedAt.AddSeconds(180 + 15 + 10)
+    do {
+        try {
+            $RecoveryExecutions = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_executions_total'
+            $RecoveryFailures = Get-PrometheusMetricValue 'pawcycle_subscription_reconciliation_failures_total'
+            $RecoveryUp = Get-PrometheusMetricValue 'up{job="pawcycle-backend"}'
+            $RecoveryLogs = (& docker logs --since $RecoveryStartedAt.ToString('yyyy-MM-ddTHH:mm:ssZ') $BackendContainer) -join "`n"
+            $RecoveryObserved = $RecoveryExecutions -ge 1 -and $RecoveryFailures -eq 0 -and $RecoveryUp -eq 1 -and $RecoveryLogs -notmatch 'Subscription reconciliation failed'
+        } catch {
+            $RecoveryObserved = $false
+        }
+        if (-not $RecoveryObserved) { Start-Sleep -Seconds 2 }
+    } until ($RecoveryObserved -or (Get-Date).ToUniversalTime() -ge $RecoveryDeadline)
+    if (-not $RecoveryObserved) { throw 'Disposable reconciliation recovery signals were not observed.' }
+
+    $GrafanaHealth = Get-BackendJson 'http://grafana:3000/api/health'
+    $GrafanaDatasource = Get-BackendJson 'http://grafana:3000/api/datasources/uid/pawcycle-prometheus'
+    $GrafanaDashboard = Get-BackendJson 'http://grafana:3000/api/dashboards/uid/pawcycle-local-observability'
+    if ($GrafanaHealth.database -ne 'ok' -or $GrafanaDatasource.uid -ne 'pawcycle-prometheus' -or $GrafanaDashboard.dashboard.panels.Count -ne 13) {
+        throw 'Disposable Grafana provisioning validation failed.'
+    }
+    $FixtureFingerprintAfterRecovery = Invoke-MySqlScalar $FixtureFingerprintQuery
+    if ($FixtureFingerprintAfterRecovery -ne $FixtureFingerprintBefore) { throw 'Disposable fixture changed after recovery.' }
+
+    "DISPOSABLE_PROJECT=$ProjectName"
+    "FAILURE_EVIDENCE:SUBSCRIPTION_ID=$FixtureSubscriptionId`:FAILURES=$FailureCount`:TARGET_UP=$TargetUp`:LOCK_WAIT_SECONDS=$LockWaitTimeout`:HOLD_SECONDS=$HoldSeconds"
+    "RECOVERY_EVIDENCE:EXECUTIONS=$RecoveryExecutions`:FAILURES=$RecoveryFailures`:TARGET_UP=$RecoveryUp"
+    'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=13'
+    'FIXTURE_DATA_UNCHANGED=PASS'
+} finally {
+    if ($MySqlContainer -and $FixtureConnectionId) {
+        try { Invoke-MySqlScalar "KILL $FixtureConnectionId;" -Root | Out-Null } catch {}
+    }
+    if ($StackCreated) {
+        try { Invoke-Compose @('down', '--volumes', '--remove-orphans', '--rmi', 'local') } catch {}
+    }
+    if (Test-Path -LiteralPath $LockSqlPath) { Remove-Item -LiteralPath $LockSqlPath }
+    if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath }
+    $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
+    $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
+    $SharedVolumesAfter = Get-SharedVolumeState
+    Assert-SharedVolumesUnchanged $SharedVolumesBefore $SharedVolumesAfter
+    'DISPOSABLE_CLEANUP=PASS'
+}
