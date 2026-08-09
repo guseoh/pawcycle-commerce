@@ -36,9 +36,9 @@ Secret 값은 출력하거나 문서화하지 않았다. 기존 local-integratio
 | `sum(jvm_memory_used_bytes{area="heap"})` | 51,658,824 bytes | 76,824,648 bytes | +25,165,824 bytes |
 | `sum(hikaricp_connections_usage_seconds_count)` | 60 | 73 | +13 |
 | Hikari active / idle / pending | 측정 후 확인 | 0 / 10 / 0 | pending 없음 |
-| reconciliation executions | 1 | 1 | 기존 조건부 trigger 실행 1회 확인 |
+| reconciliation executions | 1 (`2026-08-09T04:55:25Z`) | 2 (`2026-08-09T05:04:32Z`) | +1 |
 
-`FOUNDATION-004 smoke scenario passed: Full`을 확인했다. reconciliation metric은 기존 조건부 trigger의 실행 결과만 사용했으며 cadence를 변경하지 않았다. idempotency cleanup은 승인된 runtime trigger와 운영 batch size가 없으므로 실행시키지 않았고 Phase A Backend integration test 증거를 사용했다.
+`FOUNDATION-004 smoke scenario passed: Full`을 확인했다. reconciliation metric은 local Compose의 기존 `3600000ms` fixed delay를 변경하지 않고 다음 자연 실행 전후에 Prometheus에서 `1 → 2` 증가를 확인했다. idempotency cleanup은 승인된 runtime trigger와 운영 batch size가 없으므로 실행시키지 않았고 Phase A Backend integration test 증거를 사용했다.
 
 ## Resource snapshot
 
