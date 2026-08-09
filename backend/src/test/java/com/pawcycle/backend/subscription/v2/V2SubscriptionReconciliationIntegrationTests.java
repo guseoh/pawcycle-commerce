@@ -11,6 +11,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -46,6 +47,7 @@ class V2SubscriptionReconciliationIntegrationTests {
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
 	@Autowired private PasswordEncoder passwordEncoder;
+	@Autowired private MeterRegistry meterRegistry;
 
 	private Member member;
 	private long planVersionId;
@@ -77,6 +79,14 @@ class V2SubscriptionReconciliationIntegrationTests {
 
 	@Test
 	void failedSubscriptionRollsBackAndNextSubscriptionCommits(CapturedOutput output) {
+		double executionsBefore = meterRegistry.get(
+				"pawcycle.subscription.reconciliation.executions").counter().count();
+		double processedBefore = meterRegistry.get(
+				"pawcycle.subscription.reconciliation.processed").counter().count();
+		double failuresBefore = meterRegistry.get(
+				"pawcycle.subscription.reconciliation.failures").counter().count();
+		long durationCountBefore = meterRegistry.get(
+				"pawcycle.subscription.reconciliation.duration").timer().count();
 		long petId = ((Number) service.createPet(
 				member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
 		long failedSubscriptionId = createSubscription(petId, "failed");
@@ -100,6 +110,9 @@ class V2SubscriptionReconciliationIntegrationTests {
 			}
 			return updated;
 		}).when(jdbc).update(eq(EFFECTIVE_SNAPSHOT_UPDATE), any(Object[].class));
+		long activeSubscriptions = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE'",
+				Long.class);
 
 		service.reconcileActiveSubscriptions();
 
@@ -125,6 +138,14 @@ class V2SubscriptionReconciliationIntegrationTests {
 		assertThat(output).contains(
 				"Subscription reconciliation failed; subscriptionId=" + failedSubscriptionId,
 				"OPS-RECON-001 intentional failure");
+		assertThat(meterRegistry.get("pawcycle.subscription.reconciliation.executions").counter().count())
+				.isEqualTo(executionsBefore + 1);
+		assertThat(meterRegistry.get("pawcycle.subscription.reconciliation.processed").counter().count())
+				.isEqualTo(processedBefore + activeSubscriptions);
+		assertThat(meterRegistry.get("pawcycle.subscription.reconciliation.failures").counter().count())
+				.isEqualTo(failuresBefore + 1);
+		assertThat(meterRegistry.get("pawcycle.subscription.reconciliation.duration").timer().count())
+				.isEqualTo(durationCountBefore + 1);
 
 		service.reconcileActiveSubscriptions();
 

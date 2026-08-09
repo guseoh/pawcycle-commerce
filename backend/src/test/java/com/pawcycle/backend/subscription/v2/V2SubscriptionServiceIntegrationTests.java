@@ -9,6 +9,8 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -31,8 +33,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.transaction.TestTransaction;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -46,6 +52,9 @@ class V2SubscriptionServiceIntegrationTests {
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
 	@Autowired private PasswordEncoder passwordEncoder;
+	@Autowired private V2IdempotencyCleanupService cleanupService;
+	@Autowired private MeterRegistry meterRegistry;
+	@Autowired private PlatformTransactionManager transactionManager;
 	private Member member;
 	private Product product;
 	private Sku sku;
@@ -192,6 +201,7 @@ class V2SubscriptionServiceIntegrationTests {
 	}
 
 	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	void cleanupDeletesOnlyExpiredRowsWithinEachTableBatch() {
 		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
 		long subscriptionId = ((Number) service.createSubscription(member.getId(), "cleanup-subscription", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
@@ -212,7 +222,10 @@ class V2SubscriptionServiceIntegrationTests {
 		insertCommandResult(subscriptionId, "command-recent", cutoff.plusSeconds(1));
 		insertCommandReservation(subscriptionId, "command-incomplete");
 
-		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+		Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		V2SubscriptionMetrics metrics = new V2SubscriptionMetrics(registry, jdbc, cleanupClock);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, cleanupClock, metrics);
 		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
 
 		assertThat(first.creationRepaired()).isZero();
@@ -236,10 +249,15 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(second.commandDeleted()).isEqualTo(1);
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=? AND completed_at<?", Integer.class, member.getId(), cutoff)).isZero();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "creation", "operation", "delete").counter().count()).isEqualTo(3);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "command", "operation", "delete").counter().count()).isEqualTo(3);
 		assertThatThrownBy(() -> cleanup.deleteExpired(0)).isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	void cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting() {
 		long petId = ((Number) service.createPet(member.getId(), Map.of("name", "보리", "petType", "DOG")).get("petId")).longValue();
 		long subscriptionId = ((Number) service.createSubscription(member.getId(), "repair-subscription", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
@@ -255,7 +273,10 @@ class V2SubscriptionServiceIntegrationTests {
 
 		Instant now = Instant.parse("2026-08-09T00:00:00Z");
 		LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
-		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+		Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		V2SubscriptionMetrics metrics = new V2SubscriptionMetrics(registry, jdbc, cleanupClock);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, cleanupClock, metrics);
 
 		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
 
@@ -282,6 +303,59 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isEqualTo(expectedCompletedAt);
 		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
 		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "success").counter().count()).isEqualTo(2);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "failure").counter().count()).isZero();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.duration").timer().count()).isEqualTo(2);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "creation", "operation", "repair").counter().count()).isEqualTo(3);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "command", "operation", "repair").counter().count()).isEqualTo(3);
+		assertThat(registry.get("pawcycle.subscription.idempotency.retained.rows")
+				.tag("scope", "creation").gauge().value()).isEqualTo(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE completed_at IS NOT NULL",
+						Long.class).doubleValue());
+		assertThat(registry.get("pawcycle.subscription.idempotency.retained.rows")
+				.tag("scope", "command").gauge().value()).isEqualTo(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE completed_at IS NOT NULL",
+						Long.class).doubleValue());
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.candidates")
+				.tag("scope", "creation").gauge().value()).isZero();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.candidates")
+				.tag("scope", "command").gauge().value()).isZero();
+	}
+
+	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	void cleanupCommitFailureRecordsFailureMetricsAfterRollback() {
+		String idempotencyKey = "cleanup-commit-failure";
+		insertCreationResult(idempotencyKey, LocalDateTime.of(2000, 1, 1, 0, 0));
+		double successesBefore = meterRegistry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "success").counter().count();
+		double failuresBefore = meterRegistry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "failure").counter().count();
+		long durationCountBefore = meterRegistry.get("pawcycle.subscription.idempotency.cleanup.duration")
+				.timer().count();
+		TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+		assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void beforeCommit(boolean readOnly) {
+					throw new IllegalStateException("OBS-BASE-001 intentional commit failure");
+				}
+			});
+			cleanupService.deleteExpired(1);
+		})).isInstanceOf(RuntimeException.class);
+
+		assertThat(creationResultExists(idempotencyKey)).isTrue();
+		assertThat(meterRegistry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "success").counter().count()).isEqualTo(successesBefore);
+		assertThat(meterRegistry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "failure").counter().count()).isEqualTo(failuresBefore + 1);
+		assertThat(meterRegistry.get("pawcycle.subscription.idempotency.cleanup.duration")
+				.timer().count()).isEqualTo(durationCountBefore + 1);
 	}
 
 	@Test
