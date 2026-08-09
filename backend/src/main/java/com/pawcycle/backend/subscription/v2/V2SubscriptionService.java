@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.v2;
 
+import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -35,12 +36,14 @@ public class V2SubscriptionService {
 	private final ObjectMapper json;
 	private final Clock clock;
 	private final TransactionTemplate reconciliationTransaction;
+	private final V2SubscriptionMetrics metrics;
 
 	public V2SubscriptionService(JdbcTemplate jdbc, ObjectMapper json, Clock clock,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager, V2SubscriptionMetrics metrics) {
 		this.jdbc = jdbc;
 		this.json = json;
 		this.clock = clock;
+		this.metrics = metrics;
 		this.reconciliationTransaction = new TransactionTemplate(transactionManager);
 		this.reconciliationTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
@@ -156,15 +159,27 @@ public class V2SubscriptionService {
 	}
 
 	public void reconcileActiveSubscriptions() {
-		List<Long> active = jdbc.queryForList("SELECT id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id", Long.class);
-		for (Long id : active) {
-			try {
-				reconciliationTransaction.executeWithoutResult(status ->
-						one("SELECT * FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", id)
-								.ifPresent(this::reconcile));
-			} catch (RuntimeException exception) {
-				log.error("Subscription reconciliation failed; subscriptionId={}", id, exception);
+		Timer.Sample sample = metrics.startReconciliation();
+		int processed = 0;
+		int failures = 0;
+		try {
+			List<Long> active = jdbc.queryForList("SELECT id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id", Long.class);
+			for (Long id : active) {
+				processed++;
+				try {
+					reconciliationTransaction.executeWithoutResult(status ->
+							one("SELECT * FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", id)
+									.ifPresent(this::reconcile));
+				} catch (RuntimeException exception) {
+					failures++;
+					log.error("Subscription reconciliation failed; subscriptionId={}", id, exception);
+				}
 			}
+		} catch (RuntimeException exception) {
+			failures++;
+			throw exception;
+		} finally {
+			metrics.finishReconciliation(sample, processed, failures);
 		}
 	}
 

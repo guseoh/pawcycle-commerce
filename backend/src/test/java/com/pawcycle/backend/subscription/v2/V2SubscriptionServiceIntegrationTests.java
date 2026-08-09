@@ -9,6 +9,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.infra.MemberRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -212,7 +213,10 @@ class V2SubscriptionServiceIntegrationTests {
 		insertCommandResult(subscriptionId, "command-recent", cutoff.plusSeconds(1));
 		insertCommandReservation(subscriptionId, "command-incomplete");
 
-		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+		Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		V2SubscriptionMetrics metrics = new V2SubscriptionMetrics(registry, jdbc, cleanupClock);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, cleanupClock, metrics);
 		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
 
 		assertThat(first.creationRepaired()).isZero();
@@ -255,7 +259,10 @@ class V2SubscriptionServiceIntegrationTests {
 
 		Instant now = Instant.parse("2026-08-09T00:00:00Z");
 		LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
-		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+		Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		V2SubscriptionMetrics metrics = new V2SubscriptionMetrics(registry, jdbc, cleanupClock);
+		V2IdempotencyCleanupService cleanup = new V2IdempotencyCleanupService(jdbc, cleanupClock, metrics);
 
 		V2IdempotencyCleanupService.CleanupResult first = cleanup.deleteExpired(2);
 
@@ -282,6 +289,27 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-c")).isEqualTo(expectedCompletedAt);
 		assertThat(resultCompletedAt("subscription_creation_idempotency_results", "creation-repair-incomplete")).isNull();
 		assertThat(resultCompletedAt("subscription_command_idempotency_results", "command-repair-incomplete")).isNull();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "success").counter().count()).isEqualTo(2);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.executions")
+				.tag("result", "failure").counter().count()).isZero();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.duration").timer().count()).isEqualTo(2);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "creation", "operation", "repair").counter().count()).isEqualTo(3);
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.rows")
+				.tags("scope", "command", "operation", "repair").counter().count()).isEqualTo(3);
+		assertThat(registry.get("pawcycle.subscription.idempotency.retained.rows")
+				.tag("scope", "creation").gauge().value()).isEqualTo(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE completed_at IS NOT NULL",
+						Long.class).doubleValue());
+		assertThat(registry.get("pawcycle.subscription.idempotency.retained.rows")
+				.tag("scope", "command").gauge().value()).isEqualTo(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE completed_at IS NOT NULL",
+						Long.class).doubleValue());
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.candidates")
+				.tag("scope", "creation").gauge().value()).isZero();
+		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.candidates")
+				.tag("scope", "command").gauge().value()).isZero();
 	}
 
 	@Test

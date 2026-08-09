@@ -2,6 +2,7 @@ package com.pawcycle.backend.common.security;
 
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -37,6 +38,8 @@ public class SecurityConfig {
 				.csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
 				.securityContext(context -> context.securityContextRepository(securityContextRepository))
 				.authorizeHttpRequests(authorize -> authorize
+						.requestMatchers(EndpointRequest.to("health", "prometheus"))
+						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/auth/csrf")
 						.permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login")
