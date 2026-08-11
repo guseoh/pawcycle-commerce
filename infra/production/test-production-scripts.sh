@@ -5,7 +5,6 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
-trap 'printf "test-production-scripts ERR line=%s\\n" "$LINENO" >&2' ERR
 
 BIN_DIR="$TEST_ROOT/bin"
 RUNTIME_DIR="$TEST_ROOT/runtime"
@@ -651,7 +650,7 @@ if boundary_operation deploy "$SHA_B" "$boundary_failure_state" \
   exit 1
 fi
 unset FAKE_SMOKE_FAIL_SHA FAKE_SMOKE_FAIL_PATH FAKE_CONTRACT_MISMATCH_PAIR
-grep -Fq 'automatic release restoration is blocked' "$TEST_ROOT/contract-boundary-failure-output"
+grep -Fq 'automatic contract-boundary restoration is blocked' "$TEST_ROOT/contract-boundary-failure-output"
 [[ "$(<"$boundary_failure_state/current-sha")" == "$SHA_A" ]]
 [[ "$(<"$boundary_failure_state/contract-sha")" == "$SHA_A" ]]
 [[ "$(<"$boundary_failure_state/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]

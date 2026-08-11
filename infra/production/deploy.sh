@@ -122,7 +122,7 @@ if ! activate_release "$TARGET_SHA"; then
   printf 'Target release failed health or smoke validation: %s\n' "$TARGET_SHA" >&2
   if [[ "$CONTRACT_BOUNDARY" == "1" || "$SCHEMA_BOUNDARY" == "1" ]]; then
     stop_application_services
-    die "target release failed across an approved contract or database migration boundary; automatic release restoration is blocked, Scheduler remains OFF, and MySQL was preserved"
+    die "target release failed across an approved contract or database migration boundary; automatic pre-migration release restoration is blocked, and automatic contract-boundary restoration is blocked, Scheduler remains OFF, and MySQL was preserved"
   fi
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
     printf 'Restoring previous healthy release: %s\n' "$CURRENT_SHA" >&2

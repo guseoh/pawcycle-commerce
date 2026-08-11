@@ -675,7 +675,8 @@ def validate_scripts() -> None:
         and "migration_bundle_changed" in common
         and "require_migration_boundary_approval" in common
         and "require_no_migration_boundary_rollback" in rollback
-        and "automatic release restoration is blocked" in deploy
+        and "automatic pre-migration release restoration is blocked" in deploy
+        and "automatic contract-boundary restoration is blocked" in deploy
         and "MySQL was preserved" in deploy,
         "schema-boundary automatic and manual pre-migration rollback gates are incomplete",
     )
@@ -756,7 +757,7 @@ def validate_scripts() -> None:
         and "migration-boundary-missing-output" in script_tests
         and "both-boundaries-missing-output" in script_tests
         and 'boundary_state/previous-contract-sha")" == "$SHA_A"' in script_tests
-        and "automatic release restoration is blocked" in script_tests,
+        and "automatic contract-boundary restoration is blocked" in script_tests,
         "contract and migration boundary regression coverage is missing",
     )
     require(
