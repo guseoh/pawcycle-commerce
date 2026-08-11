@@ -58,6 +58,7 @@ if [[ "$OPERATION" == "preflight" ]]; then
   PAWCYCLE_PREFLIGHT_RECORD_IMAGES=false
   initialize_read_only_release_context
 else
+  PAWCYCLE_PREFLIGHT_RECORD_IMAGES=true
   initialize_release_context
 fi
 require_subscription_automation_mode false

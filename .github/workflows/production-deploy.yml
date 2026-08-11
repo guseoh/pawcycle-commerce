@@ -33,7 +33,7 @@ jobs:
   deploy:
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Validate workflow ref and target SHA
         env:
@@ -170,10 +170,17 @@ jobs:
           run_ssm_operation() {
             local operation="$1"
             local command_id
+            local command_timeout_seconds
             local deadline
             local invocations
             local invocation_count
             local status
+
+            case "$operation" in
+              preflight) command_timeout_seconds=900 ;;
+              deploy) command_timeout_seconds=1800 ;;
+              *) echo "unsupported SSM operation: $operation" >&2; return 1 ;;
+            esac
 
             command_id="$(aws ssm send-command \
               --region "$AWS_REGION" \
@@ -182,7 +189,7 @@ jobs:
               --instance-ids "$SSM_INSTANCE_ID" \
               --parameters "Operation=${operation},TargetSha=${TARGET_SHA},ApprovedContractFromSha=${APPROVED_CONTRACT_FROM_SHA},ApprovedControlSha=${APPROVED_CONTROL_SHA},ApprovedMigrationTargetSha=${APPROVED_MIGRATION_TARGET_SHA}" \
               --comment "PawCycle production ${operation} ${TARGET_SHA}" \
-              --timeout-seconds 1800 \
+              --timeout-seconds "$command_timeout_seconds" \
               --max-concurrency "1" \
               --max-errors "0" \
               --query "Command.CommandId" \
@@ -192,7 +199,7 @@ jobs:
               return 1
             fi
 
-            deadline=$((SECONDS + 2100))
+            deadline=$((SECONDS + command_timeout_seconds + 150))
             while (( SECONDS < deadline )); do
               invocations="$(aws ssm list-command-invocations \
                 --region "$AWS_REGION" \
