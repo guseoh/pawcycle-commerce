@@ -5,6 +5,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
+trap 'printf "test-production-scripts ERR line=%s\\n" "$LINENO" >&2' ERR
 
 BIN_DIR="$TEST_ROOT/bin"
 RUNTIME_DIR="$TEST_ROOT/runtime"
