@@ -179,7 +179,9 @@ fi
 publish_state_or_abort current-sha "$TARGET_SHA"
 
 if [[ -n "$PENDING_CONTRACT_SHA" ]]; then
-  publish_state_or_abort contract-sha "$PENDING_CONTRACT_SHA"
+  if ! write_state contract-sha "$PENDING_CONTRACT_SHA"; then
+    abort_state_publication
+  fi
   CONTRACT_SHA="$PENDING_CONTRACT_SHA"
   printf 'Production control contract adopted after target activation: %s\n' "$CONTRACT_SHA"
 fi
