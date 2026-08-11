@@ -11,11 +11,26 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: production-release-readiness-${{ github.ref_name }}-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
 jobs:
   readiness:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Validate workflow ref
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "Production release readiness must run from main." >&2
+            exit 1
+          fi
+
       - name: Checkout main
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
