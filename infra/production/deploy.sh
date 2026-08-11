@@ -34,6 +34,30 @@ APPROVED_MIGRATION_TARGET_SHA=""
 OPERATION="deploy"
 PAWCYCLE_RUNTIME_DIR="/opt/pawcycle/runtime"
 PAWCYCLE_STATE_DIR="/opt/pawcycle/state"
+STATE_TRANSITION_NAME="release-state-transition"
+
+stop_failed_release_applications() {
+  local running_backend_ids
+
+  compose stop proxy frontend backend \
+    || die "Application stop command failed after release failure; manual intervention is required and MySQL was preserved"
+  running_backend_ids="$(compose ps --status running --quiet backend)" \
+    || die "Application stop verification failed after release failure; manual intervention is required and MySQL was preserved"
+  [[ -z "$running_backend_ids" ]] \
+    || die "Backend remains running after release failure; manual intervention is required and MySQL was preserved"
+}
+
+abort_state_publication() {
+  stop_failed_release_applications
+  die "release state publication failed after target activation; the transition marker was preserved, Application services were stopped, and MySQL was preserved"
+}
+
+publish_state_or_abort() {
+  local name="$1"
+  local value="$2"
+
+  write_state "$name" "$value" || abort_state_publication
+}
 
 while (( $# > 0 )); do
   case "$1" in
@@ -62,6 +86,12 @@ else
   initialize_release_context
 fi
 require_subscription_automation_mode false
+
+if [[ -e "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME" \
+  || -L "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME" ]]; then
+  INCOMPLETE_TARGET_SHA="$(read_state_sha "$STATE_TRANSITION_NAME")"
+  die "incomplete release state transition detected for target $INCOMPLETE_TARGET_SHA; explicit recovery is required before another deploy"
+fi
 
 CURRENT_SHA=""
 if [[ -e "$PAWCYCLE_STATE_DIR/current-sha" || -L "$PAWCYCLE_STATE_DIR/current-sha" ]]; then
@@ -122,7 +152,7 @@ fi
 if ! activate_release "$TARGET_SHA"; then
   printf 'Target release failed health or smoke validation: %s\n' "$TARGET_SHA" >&2
   if [[ "$CONTRACT_BOUNDARY" == "1" || "$SCHEMA_BOUNDARY" == "1" ]]; then
-    stop_application_services
+    stop_failed_release_applications
     die "target release failed across an approved contract or database migration boundary; automatic pre-migration release restoration is blocked, and automatic contract-boundary restoration is blocked, Scheduler remains OFF, and MySQL was preserved"
   fi
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
@@ -132,22 +162,32 @@ if ! activate_release "$TARGET_SHA"; then
     fi
     die "target release and automatic restoration both failed; MySQL volume was not removed"
   fi
-  stop_application_services
+  stop_failed_release_applications
   die "initial release failed; application services were stopped and MySQL was preserved"
 fi
 
 PREVIOUS_CONTRACT_SHA="$CONTRACT_SHA"
+if ! write_state "$STATE_TRANSITION_NAME" "$TARGET_SHA"; then
+  stop_failed_release_applications
+  die "unable to start release state publication after target activation; Application services were stopped and MySQL was preserved"
+fi
+
+if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
+  publish_state_or_abort previous-sha "$CURRENT_SHA"
+  publish_state_or_abort previous-contract-sha "$PREVIOUS_CONTRACT_SHA"
+fi
+publish_state_or_abort current-sha "$TARGET_SHA"
+
 if [[ -n "$PENDING_CONTRACT_SHA" ]]; then
-  write_state contract-sha "$PENDING_CONTRACT_SHA"
+  publish_state_or_abort contract-sha "$PENDING_CONTRACT_SHA"
   CONTRACT_SHA="$PENDING_CONTRACT_SHA"
   printf 'Production control contract adopted after target activation: %s\n' "$CONTRACT_SHA"
 fi
 
-if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
-  write_state previous-sha "$CURRENT_SHA"
-  write_state previous-contract-sha "$PREVIOUS_CONTRACT_SHA"
+if ! rm -f -- "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME"; then
+  stop_failed_release_applications
+  die "release state transition marker cleanup failed; Application services were stopped and MySQL was preserved"
 fi
-write_state current-sha "$TARGET_SHA"
 
 ACTIVE_SHA="$TARGET_SHA"
 compose ps || printf 'WARNING: release succeeded, but final compose ps failed\n' >&2
