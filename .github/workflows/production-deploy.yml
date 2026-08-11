@@ -80,8 +80,8 @@ jobs:
 
           git cat-file -e "${TARGET_SHA}^{commit}"
           git merge-base --is-ancestor "$TARGET_SHA" HEAD
-          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}"
-          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}"
+          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}" >/dev/null
+          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}" >/dev/null
 
       - name: Validate production environment contract
         env:
