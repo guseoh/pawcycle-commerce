@@ -242,10 +242,14 @@ jobs:
         run: npm run build
 
   production:
-    name: Production contract validation
+    name: Production contract validation (${{ matrix.lane }})
     if: needs.classify.outputs.production == 'true'
     needs: [conventions, classify]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [contracts, compose, recovery, auth-lifecycle]
     steps:
       - name: Checkout pull request
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -253,6 +257,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate production deployment and recovery contracts
+        if: matrix.lane == 'contracts'
         run: |
           bash -n \
             infra/production/release-common.sh \
@@ -281,13 +286,22 @@ jobs:
           bash infra/production/test-production-scripts.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
-          bash infra/production/test-production-compose.sh
-          bash infra/production/test-db-backup-restore.sh
           bash infra/production/test-ec2-status-check-alarm.sh
           bash infra/production/test-production-auth-session-smoke.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
-          bash infra/production/test-create-production-auth-smoke-member-lifecycle.sh
+
+      - name: Validate production Compose lifecycle
+        if: matrix.lane == 'compose'
+        run: bash infra/production/test-production-compose.sh
+
+      - name: Validate production backup and restore lifecycle
+        if: matrix.lane == 'recovery'
+        run: bash infra/production/test-db-backup-restore.sh
+
+      - name: Validate production auth smoke member lifecycle
+        if: matrix.lane == 'auth-lifecycle'
+        run: bash infra/production/test-create-production-auth-smoke-member-lifecycle.sh
 
   application:
     name: Application validation
