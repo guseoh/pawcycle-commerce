@@ -68,8 +68,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}"
-          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}"
+          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}" >/dev/null
+          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}" >/dev/null
 
       - name: Write readiness summary
         env:
