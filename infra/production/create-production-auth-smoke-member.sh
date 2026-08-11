@@ -153,12 +153,12 @@ validate_backend_env_contract() {
       SPRING_DATASOURCE_USERNAME) (( username_count += 1 )) ;;
       SPRING_DATASOURCE_PASSWORD) (( password_count += 1 )) ;;
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED)
-        [[ "${encoded_value:1:${#encoded_value}-2}" == "true" || "${encoded_value:1:${#encoded_value}-2}" == "false" ]] \
+        [[ "$encoded_value" == "true" || "$encoded_value" == "false" ]] \
           || return 1
         (( automation_enabled_count += 1 ))
         ;;
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE|PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS)
-        [[ "${encoded_value:1:${#encoded_value}-2}" =~ ^[1-9][0-9]*$ ]] || return 1
+        [[ "$encoded_value" =~ ^[1-9][0-9]*$ ]] || return 1
         if [[ "$key" == "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" ]]; then
           (( automation_batch_size_count += 1 ))
         else
