@@ -371,8 +371,10 @@ validate_runtime_contract_compatibility() {
   git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null \
     || die "candidate release contract commit is unavailable: $candidate_sha"
 
-  release_contract_changed "$approved_contract_sha" "$candidate_sha" && \
+  if release_contract_changed "$approved_contract_sha" "$candidate_sha"; then
     die "production release contract differs from the approved contract SHA"
+  fi
+  return 0
 }
 
 release_contract_changed() {
