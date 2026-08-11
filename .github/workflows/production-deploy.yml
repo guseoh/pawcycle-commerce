@@ -1,0 +1,169 @@
+name: Production Deploy
+run-name: Production Deploy · ${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Lowercase 40-character commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pawcycle-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate workflow ref and target SHA
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "Production deploy must run from main." >&2
+            exit 1
+          fi
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "target_sha must be exactly 40 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify target commit and production images
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git cat-file -e "${TARGET_SHA}^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" HEAD
+          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}"
+          docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}"
+
+      - name: Validate production environment contract
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_PRODUCTION_DEPLOY_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_DOCUMENT_NAME: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME }}
+          SSM_TARGET_TAG_KEY: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY }}
+          SSM_TARGET_TAG_VALUE: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for required in AWS_ROLE_ARN AWS_REGION SSM_DOCUMENT_NAME SSM_TARGET_TAG_KEY SSM_TARGET_TAG_VALUE; do
+            if [ -z "${!required:-}" ]; then
+              echo "production environment variable is required: $required" >&2
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_PRODUCTION_DEPLOY_ROLE_ARN }}
+          role-session-name: pawcycle-production-deploy-${{ github.run_id }}
+          role-duration-seconds: 1800
+          mask-aws-account-id: true
+
+      - name: Run restricted production deploy document
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_DOCUMENT_NAME: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME }}
+          SSM_TARGET_TAG_KEY: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY }}
+          SSM_TARGET_TAG_VALUE: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          command_id="$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --document-name "$SSM_DOCUMENT_NAME" \
+            --targets "Key=tag:${SSM_TARGET_TAG_KEY},Values=${SSM_TARGET_TAG_VALUE}" \
+            --parameters "TargetSha=${TARGET_SHA}" \
+            --comment "PawCycle production deploy ${TARGET_SHA}" \
+            --timeout-seconds 1800 \
+            --max-concurrency "1" \
+            --max-errors "0" \
+            --query "Command.CommandId" \
+            --output text)"
+          if [ -z "$command_id" ] || [ "$command_id" = "None" ]; then
+            echo "SSM command ID was not returned" >&2
+            exit 1
+          fi
+          echo "COMMAND_ID=$command_id" >> "$GITHUB_ENV"
+
+      - name: Require successful SSM command result
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deadline=$((SECONDS + 2100))
+          while (( SECONDS < deadline )); do
+            invocations="$(aws ssm list-command-invocations \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --output json)"
+            invocation_count="$(jq '.CommandInvocations | length' <<<"$invocations")"
+            if [ "$invocation_count" -gt 1 ]; then
+              echo "SSM command matched more than one Production target" >&2
+              exit 1
+            fi
+            if [ "$invocation_count" -eq 1 ]; then
+              status="$(jq -r '.CommandInvocations[0].Status // empty' <<<"$invocations")"
+              case "$status" in
+                Success)
+                  exit 0
+                  ;;
+                Pending|InProgress|Delayed|Cancelling)
+                  ;;
+                *)
+                  echo "SSM command did not succeed: ${status:-unknown}" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            sleep 10
+          done
+
+          echo "SSM command status could not be determined before timeout" >&2
+          exit 1
+
+      - name: Write deployment command summary
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Production deploy command"
+            echo
+            echo "- Target SHA: \`$TARGET_SHA\`"
+            echo "- SSM deploy command: Success"
+          } >> "$GITHUB_STEP_SUMMARY"
