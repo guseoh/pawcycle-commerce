@@ -44,7 +44,7 @@ INC_BASE_TASK_ID_PATTERN = (
 )
 TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-[0-9]{{3}})"
 TASK_LINE = re.compile(rf"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?({TASK_ID_PATTERN})`?\s*$")
-FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])", re.IGNORECASE)
+FALLBACK_TASK = re.compile(rf"(?<![A-Za-z0-9_\-\x80-\U0010FFFF]){TASK_ID_PATTERN}(?![A-Za-z0-9_\-\x80-\U0010FFFF])", re.IGNORECASE)
 SECRET_PATTERNS = (
     (re.compile(r"-----BEGIN [^-\r\n]*PRIVATE KEY-----.*?-----END [^-\r\n]*PRIVATE KEY-----", re.IGNORECASE | re.DOTALL), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"https://(?:canary\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s`]+", re.IGNORECASE), "[REDACTED_WEBHOOK]"),

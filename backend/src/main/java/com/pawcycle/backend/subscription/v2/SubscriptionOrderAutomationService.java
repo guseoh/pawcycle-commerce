@@ -164,8 +164,6 @@ public class SubscriptionOrderAutomationService {
 		long effectiveSnapshotId;
 		if (appliesPending) {
 			effectiveSnapshotId = longValue(pending.orElseThrow(), "snapshot_id");
-		} else if (schedule.get("effective_snapshot_id") != null) {
-			effectiveSnapshotId = longValue(schedule, "effective_snapshot_id");
 		} else {
 			effectiveSnapshotId = currentSnapshotId;
 		}
@@ -173,10 +171,6 @@ public class SubscriptionOrderAutomationService {
 		int deliveryCycleWeeks = intValue(currentSnapshot, "delivery_cycle_weeks");
 		if (intValue(effectiveSnapshot, "delivery_cycle_weeks") != deliveryCycleWeeks) {
 			throw new IllegalStateException("Pending snapshot changed the existing delivery cycle");
-		}
-		if (schedule.get("effective_snapshot_id") != null
-				&& longValue(schedule, "effective_snapshot_id") != effectiveSnapshotId) {
-			throw new IllegalStateException("Schedule effective snapshot conflicts with the selected snapshot");
 		}
 
 		List<Map<String, Object>> items = jdbc.queryForList(

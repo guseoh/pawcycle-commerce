@@ -37,3 +37,4 @@ alert 시각, failure counter, safe log identifier/category, Order·Schedule car
 ## 후속 작업
 
 관리자 Retry API, dead-letter queue, retry count, exponential backoff 및 Production alert threshold는 이번 범위 밖이다.
+주문·구독 상태 전이, 수동 복구·재처리, 개인정보·데이터 손실 위험의 조치는 Product Owner의 재판단과 기록 전에는 수행하지 않는다.

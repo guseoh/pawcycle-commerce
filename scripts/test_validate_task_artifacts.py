@@ -537,7 +537,10 @@ legacy 형식이다.
                 self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_malformed_sub_auto_task_ids_do_not_partially_match_stdin(self) -> None:
-        for task_id in ("SUB-AUTO-001-EXTRA", "SUB-AUTO-001abc", "SUB-AUTO-001_extra", "X-SUB-AUTO-001"):
+        for task_id in (
+            "SUB-AUTO-001-EXTRA", "SUB-AUTO-001abc", "SUB-AUTO-001_extra", "X-SUB-AUTO-001",
+            "SUB-AUTO-001é", "SUB-AUTO-001\u0301", "SUB-AUTO-001\u200cfoo", "X_SUB-AUTO-001",
+        ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)

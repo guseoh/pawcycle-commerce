@@ -29,4 +29,3 @@
 - Production Scheduler 활성화, Production DB migration/deploy, 실제 결제·재고·배송은 수행하지 않았다.
 - local Docker 기반 검증은 Production 검증이 아니다. Production cadence, threshold, escalation/repeat 정책은 확정하지 않았다.
 - 전체 Backend test의 2건 process timeout은 local Docker Desktop bind-mount 성능 제한으로 미해결이며, CI에서의 required check 결과를 별도로 확인해야 한다.
-- Draft PR #121의 본문은 repository validator 필수 구획에 맞춰 보정했습니다. 기존 실패 workflow rerun은 최초 PR event payload를 재사용하므로, 이 보고서 갱신 commit으로 새 PR CI를 시작해 최종 required check와 AI review를 재확인합니다.

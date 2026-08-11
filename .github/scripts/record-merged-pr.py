@@ -65,7 +65,7 @@ def slugify(title: str) -> str:
 
 def task_id_from_text(*values: str) -> str:
     joined = "\n".join(values)
-    match = re.search(rf"(?<![A-Z0-9]){TASK_ID_PATTERN}(?![A-Z0-9])", joined, re.IGNORECASE)
+    match = re.search(rf"(?<![A-Za-z0-9_\-\x80-\U0010FFFF]){TASK_ID_PATTERN}(?![A-Za-z0-9_\-\x80-\U0010FFFF])", joined, re.IGNORECASE)
     return match.group(0).upper() if match else "기록 없음"
 
 
