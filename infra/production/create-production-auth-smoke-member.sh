@@ -136,6 +136,9 @@ validate_backend_env_contract() {
   local url_count=0
   local username_count=0
   local password_count=0
+  local automation_enabled_count=0
+  local automation_batch_size_count=0
+  local automation_fixed_delay_count=0
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
@@ -149,11 +152,25 @@ validate_backend_env_contract() {
       SPRING_DATASOURCE_URL) (( url_count += 1 )) ;;
       SPRING_DATASOURCE_USERNAME) (( username_count += 1 )) ;;
       SPRING_DATASOURCE_PASSWORD) (( password_count += 1 )) ;;
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED)
+        [[ "$encoded_value" == "true" || "$encoded_value" == "false" ]] \
+          || return 1
+        (( automation_enabled_count += 1 ))
+        ;;
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE|PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS)
+        [[ "$encoded_value" =~ ^[1-9][0-9]*$ ]] || return 1
+        if [[ "$key" == "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" ]]; then
+          (( automation_batch_size_count += 1 ))
+        else
+          (( automation_fixed_delay_count += 1 ))
+        fi
+        ;;
       *) return 1 ;;
     esac
   done < "$BACKEND_ENV_FILE"
 
-  (( url_count == 1 && username_count == 1 && password_count == 1 ))
+  (( url_count == 1 && username_count == 1 && password_count == 1 \
+    && automation_enabled_count == 1 && automation_batch_size_count == 1 && automation_fixed_delay_count == 1 ))
 }
 
 stream_backend_env() {
@@ -166,8 +183,12 @@ stream_backend_env() {
     encoded_value="${line#*=}"
     encoded_value="${encoded_value:1:${#encoded_value}-2}"
     encoded_value="${encoded_value//\\\'/\'}"
-    printf '%s=%s\n' "$key" "$encoded_value"
+    case "$key" in
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED|PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE|PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS) ;;
+      *) printf '%s=%s\n' "$key" "$encoded_value" ;;
+    esac
   done < "$BACKEND_ENV_FILE"
+  printf '%s\n' 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false'
 }
 
 while (( $# > 0 )); do

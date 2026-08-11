@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 PRODUCTION_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONTROL_WORKTREE_ROOT="$(cd -- "$PRODUCTION_DIR/../.." && pwd -P)"
 COMPOSE_FILE="$PRODUCTION_DIR/compose.yaml"
 PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
@@ -17,6 +18,7 @@ HTTPS_MARKER_NAME="https-enabled"
 HTTPS_DOMAIN_NAME="https-domain"
 HTTPS_NGINX_CONFIG_NAME="nginx.https.conf"
 HTTPS_MIN_CERT_VALIDITY_SECONDS="86400"
+MIGRATION_BUNDLE_PATH=':(top)backend/src/main/resources/db/migration'
 HTTPS_DOMAIN=""
 RELEASE_CONTRACT_PATHS=(
   ':(top)infra/production/compose.yaml'
@@ -28,11 +30,16 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/release-common.sh'
   ':(top)infra/production/deploy.sh'
   ':(top)infra/production/rollback.sh'
+  ':(top)infra/production/subscription-automation-control.sh'
+  ':(top)infra/production/subscription-automation-preflight.sh'
   ':(top)infra/production/production-db-restore.sh'
   ':(top)infra/production/materialize-ssm-env.sh'
 )
 CONTRACT_SHA=""
 ACTIVE_MYSQL_VOLUME=""
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=""
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=""
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=""
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -54,6 +61,45 @@ validate_image_repository() {
 
 validate_absolute_directory() {
   [[ "$1" == /* && "$1" != "/" ]] || die "$2 must be an absolute directory other than /"
+}
+
+read_runtime_setting() {
+  local file="$1"
+  local key="$2"
+  local destination="$3"
+  local line
+  local matches=0
+  local value=""
+
+  while IFS= read -r line; do
+    if [[ "$line" == "$key="* ]]; then
+      matches=$((matches + 1))
+      [[ "$line" =~ ^${key}=\'([^\']*)\'$ ]] \
+        || die "runtime setting must use the materialized single-quoted format: $key"
+      value="${BASH_REMATCH[1]}"
+    fi
+  done < "$file"
+  [[ "$matches" -eq 1 ]] || die "runtime setting must appear exactly once: $key"
+  printf -v "$destination" '%s' "$value"
+}
+
+validate_subscription_automation_settings() {
+  [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" == "true" \
+    || "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" == "false" ]] \
+    || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED must be exactly true or false"
+  [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] \
+    || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE must be a positive explicit integer"
+  [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" =~ ^[1-9][0-9]*$ ]] \
+    || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS must be a positive explicit integer"
+}
+
+require_subscription_automation_mode() {
+  local expected="$1"
+
+  [[ "$expected" == "true" || "$expected" == "false" ]] \
+    || die "internal automation mode expectation is invalid"
+  [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" == "$expected" ]] \
+    || die "subscription automation runtime must be explicitly $expected for this command"
 }
 
 validate_runtime_bundle() {
@@ -80,9 +126,20 @@ validate_runtime_bundle() {
     die "Backend runtime file must not contain the MySQL root password"
   fi
 
+  read_runtime_setting "$current/backend.env" \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED
+  read_runtime_setting "$current/backend.env" \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE
+  read_runtime_setting "$current/backend.env" \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
+  validate_subscription_automation_settings
+
   PAWCYCLE_MYSQL_ENV_FILE="$current/mysql.env"
   PAWCYCLE_BACKEND_ENV_FILE="$current/backend.env"
-  export PAWCYCLE_MYSQL_ENV_FILE PAWCYCLE_BACKEND_ENV_FILE
+  export PAWCYCLE_MYSQL_ENV_FILE PAWCYCLE_BACKEND_ENV_FILE \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
 }
 
 prepare_state_directory() {
@@ -189,6 +246,9 @@ compose() {
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
   PAWCYCLE_MYSQL_ENV_FILE="$PAWCYCLE_MYSQL_ENV_FILE" \
   PAWCYCLE_BACKEND_ENV_FILE="$PAWCYCLE_BACKEND_ENV_FILE" \
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" \
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" \
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" \
   PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME" \
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
@@ -296,6 +356,35 @@ validate_runtime_contract_compatibility() {
   fi
   [[ "$status" -eq 1 ]] || die "unable to compare production release contracts"
   die "production release contract differs from the approved contract SHA"
+}
+
+migration_bundle_changed() {
+  local current_sha="$1"
+  local target_sha="$2"
+  local status
+
+  [[ "$current_sha" != "$target_sha" ]] || return 1
+  git -C "$CONTROL_WORKTREE_ROOT" cat-file -e "${current_sha}^{commit}" 2>/dev/null \
+    || die "current release commit is unavailable for migration comparison: $current_sha"
+  git -C "$CONTROL_WORKTREE_ROOT" cat-file -e "${target_sha}^{commit}" 2>/dev/null \
+    || die "target release commit is unavailable for migration comparison: $target_sha"
+
+  if git -C "$CONTROL_WORKTREE_ROOT" diff --quiet "$current_sha" "$target_sha" -- "$MIGRATION_BUNDLE_PATH"; then
+    return 1
+  else
+    status=$?
+  fi
+  [[ "$status" -eq 1 ]] || die "unable to compare release migration bundles"
+  return 0
+}
+
+require_no_migration_boundary_rollback() {
+  local current_sha="$1"
+  local target_sha="$2"
+
+  if migration_bundle_changed "$current_sha" "$target_sha"; then
+    die "rollback crosses a database migration boundary; pre-migration release activation is blocked and MySQL was preserved"
+  fi
 }
 
 validate_current_release_for_contract_adoption() {
@@ -543,6 +632,24 @@ activate_release() {
   fi
 }
 
+activate_backend_runtime() {
+  local sha="$1"
+
+  ACTIVE_SHA="$sha"
+  export ACTIVE_SHA
+  compose up --detach --pull never --no-deps --force-recreate backend || return 1
+  wait_healthy backend || return 1
+  wait_healthy mysql || return 1
+  wait_healthy frontend || return 1
+  compose up --detach --pull never --no-deps --force-recreate proxy || return 1
+  wait_healthy proxy || return 1
+  verify_running_release || return 1
+  smoke_release || return 1
+  if https_enabled; then
+    verify_https_release || return 1
+  fi
+}
+
 write_state() {
   local name="$1"
   local value="$2"
@@ -563,6 +670,16 @@ stop_application_services() {
   compose stop proxy frontend backend || true
 }
 
+stop_backend_service() {
+  local running_backend_ids
+
+  compose stop backend || die "Backend stop command failed; Scheduler state cannot be confirmed"
+  running_backend_ids="$(compose ps --status running --quiet backend)" \
+    || die "Backend stop verification failed; Scheduler state cannot be confirmed"
+  [[ -z "$running_backend_ids" ]] \
+    || die "Backend remains running after stop; Scheduler state cannot be confirmed"
+}
+
 prepare_release_context() {
   require_command curl
   require_command cmp
@@ -577,6 +694,21 @@ prepare_release_context() {
   validate_image_repository "$FRONTEND_IMAGE"
   validate_runtime_bundle "$PAWCYCLE_RUNTIME_DIR"
   prepare_state_directory
+}
+
+prepare_read_only_release_context() {
+  require_command curl
+  require_command docker
+  require_command git
+  require_command grep
+  require_command stat
+
+  validate_image_repository "$BACKEND_IMAGE"
+  validate_image_repository "$FRONTEND_IMAGE"
+  validate_runtime_bundle "$PAWCYCLE_RUNTIME_DIR"
+  validate_absolute_directory "$PAWCYCLE_STATE_DIR" "state directory"
+  [[ ! -L "$PAWCYCLE_STATE_DIR" && -d "$PAWCYCLE_STATE_DIR" ]] \
+    || die "state directory must already exist as a non-symlink directory"
 }
 
 acquire_release_lock() {

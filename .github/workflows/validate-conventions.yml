@@ -259,6 +259,8 @@ jobs:
             infra/production/materialize-ssm-env.sh \
             infra/production/deploy.sh \
             infra/production/rollback.sh \
+            infra/production/subscription-automation-control.sh \
+            infra/production/subscription-automation-preflight.sh \
             infra/production/production-db-restore.sh \
             infra/production/https.sh \
             infra/production/db-backup-restore.sh \

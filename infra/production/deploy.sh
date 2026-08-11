@@ -38,6 +38,7 @@ while (( $# > 0 )); do
 done
 
 initialize_release_context
+require_subscription_automation_mode false
 
 CURRENT_SHA=""
 if [[ -e "$PAWCYCLE_STATE_DIR/current-sha" || -L "$PAWCYCLE_STATE_DIR/current-sha" ]]; then
@@ -65,11 +66,22 @@ if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
   preflight_release "$CURRENT_SHA"
 fi
 
+SCHEMA_BOUNDARY=0
+if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]] \
+  && migration_bundle_changed "$CURRENT_SHA" "$TARGET_SHA"; then
+  SCHEMA_BOUNDARY=1
+  printf 'Database migration boundary detected; automatic pre-migration release restoration is disabled\n'
+fi
+
 printf 'Preflighting target release without changing running containers: %s\n' "$TARGET_SHA"
 preflight_release "$TARGET_SHA"
 
 if ! activate_release "$TARGET_SHA"; then
   printf 'Target release failed health or smoke validation: %s\n' "$TARGET_SHA" >&2
+  if [[ "$SCHEMA_BOUNDARY" == "1" ]]; then
+    stop_application_services
+    die "target release failed across a database migration boundary; automatic pre-migration release restoration is blocked, Scheduler remains OFF, and MySQL was preserved"
+  fi
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
     printf 'Restoring previous healthy release: %s\n' "$CURRENT_SHA" >&2
     if activate_release "$CURRENT_SHA"; then
