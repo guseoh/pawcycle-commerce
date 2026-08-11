@@ -121,7 +121,7 @@ def role_for_branch(branch: str) -> str:
     return MISSING
 
 
-def readiness_target_sha(display_title: Any) -> str:
+def readiness_target_sha(display_title: object) -> str:
     if not isinstance(display_title, str):
         return MISSING
     match = READINESS_DISPLAY_TITLE.fullmatch(display_title)
@@ -479,15 +479,16 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
         if run.get("name") == "Production Release Readiness":
             conclusion = str(run.get("conclusion") or "unknown").lower()
             target_sha = readiness_target_sha(run.get("display_title"))
+            readiness_success = conclusion == "success" and target_sha != MISSING
             context.update(
                 {
-                    "event": "release_readiness_success" if conclusion == "success" else "release_readiness_failure",
+                    "event": "release_readiness_success" if readiness_success else "release_readiness_failure",
                     "actor": ((run.get("actor") or {}).get("login")) or context["actor"],
-                    "head": "main",
+                    "head": run.get("head_branch") or MISSING,
                     "base": "main",
                     "role": "Platform/SRE",
                     "sha": target_sha,
-                    "status": "Readiness 확인 완료" if conclusion == "success" else "Readiness 확인 실패",
+                    "status": "Readiness 확인 완료" if readiness_success else "Readiness 확인 실패",
                     "actions_url": run.get("html_url") or MISSING,
                     "url": run.get("html_url") or MISSING,
                     "title": "Production Release Readiness",
@@ -496,7 +497,7 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
                     "risks": "Readiness 결과는 실제 Production 배포 결과가 아님",
                     "next_action": (
                         "기존 OPS-010 수동 배포 절차 진행 여부를 사용자 판단"
-                        if conclusion == "success"
+                        if readiness_success
                         else "Actions 실행 원인 확인 후 입력·commit·image 검증을 최소 수정하고 재실행 판단"
                     ),
                 }
