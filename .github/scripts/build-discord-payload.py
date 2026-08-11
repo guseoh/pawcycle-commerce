@@ -44,6 +44,8 @@ COLORS = {
     "ci_neutral": 0xF1C40F,
     "ci_skipped": 0x95A5A6,
     "ci_unknown": 0x7F8C8D,
+    "release_readiness_success": 0x2ECC71,
+    "release_readiness_failure": 0xE74C3C,
     "pr_merged": 0x9B59B6,
     "issue_opened": 0x1ABC9C,
     "issue_closed": 0x95A5A6,
@@ -63,6 +65,8 @@ TITLES = {
     "ci_neutral": "🟡 Repository Validation 중립",
     "ci_skipped": "⏭️ Repository Validation 건너뜀",
     "ci_unknown": "❓ Repository Validation 상태 확인 필요",
+    "release_readiness_success": "✅ Production Release Readiness 완료",
+    "release_readiness_failure": "❌ Production Release Readiness 실패",
     "pr_merged": "🎉 PR 병합 완료",
     "issue_opened": "📌 Issue 등록",
     "issue_closed": "🗂️ Issue 완료",
@@ -207,6 +211,14 @@ def build_payload(context: dict[str, Any]) -> dict[str, Any]:
         embeds.append(embed(action_title, color, action_fields, context))
     else:
         embeds[0]["fields"].extend([field("📌 현재 상태", context.get("status"), True, 100), field("➡️ 다음 작업", context.get("next_action"), False, 500)])
+        if event.startswith("release_readiness_"):
+            embeds[0]["fields"].extend(
+                [
+                    field("🔖 Target SHA", context.get("sha"), False, 80),
+                    field("🔗 Actions", context.get("actions_url"), False, 500),
+                    field("⚠️ Readiness 안내", "Readiness 결과는 실제 Production 배포 결과가 아님", False, 160),
+                ]
+            )
 
     payload = {"username": "PawCycle Bot", "allowed_mentions": {"parse": []}, "embeds": embeds}
     if limits.payload_text_length(payload) > limits.MAX_TOTAL_TEXT:

@@ -35,6 +35,7 @@ BUILDER_SPEC.loader.exec_module(builder)
 REQUIRED = {
     "pr-opened.json", "pr-draft.json", "pr-synchronize.json", "review-approved.json",
     "changes-requested.json", "ci-success.json", "ci-failure.json", "pr-merged.json",
+    "release-readiness-success.json", "release-readiness-failure.json",
     "ci-cancelled.json", "ci-timed-out.json", "ci-neutral.json", "ci-skipped.json", "ci-unknown.json",
     "issue-opened.json", "issue-closed.json", "manual-test.json",
     "missing-task.json", "long-input.json", "long-review.json", "api-fallback.json",
