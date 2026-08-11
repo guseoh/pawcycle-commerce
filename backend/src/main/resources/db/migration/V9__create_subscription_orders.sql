@@ -1,0 +1,21 @@
+CREATE TABLE subscription_orders (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    member_id BIGINT NOT NULL,
+    subscription_id BIGINT NOT NULL,
+    schedule_id BIGINT NOT NULL,
+    effective_snapshot_id BIGINT NOT NULL,
+    source_plan_version_id BIGINT NOT NULL,
+    scheduled_date DATE NOT NULL,
+    processed_at DATETIME(6) NOT NULL,
+    package_total_krw BIGINT NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    CONSTRAINT pk_subscription_orders PRIMARY KEY (id),
+    CONSTRAINT uk_subscription_orders_schedule UNIQUE (schedule_id),
+    CONSTRAINT fk_subscription_orders_member FOREIGN KEY (member_id) REFERENCES members (id),
+    CONSTRAINT fk_subscription_orders_subscription FOREIGN KEY (subscription_id) REFERENCES subscriptions (id),
+    CONSTRAINT fk_subscription_orders_schedule FOREIGN KEY (schedule_id) REFERENCES subscription_schedules (id),
+    CONSTRAINT fk_subscription_orders_snapshot FOREIGN KEY (effective_snapshot_id) REFERENCES subscription_snapshots (id),
+    CONSTRAINT fk_subscription_orders_plan_version FOREIGN KEY (source_plan_version_id) REFERENCES plan_versions (id),
+    CONSTRAINT chk_subscription_orders_total CHECK (package_total_krw BETWEEN 0 AND 9007199254740991),
+    CONSTRAINT chk_subscription_orders_status CHECK (status = 'CREATED')
+) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

@@ -80,7 +80,7 @@ Set-Location infra/local-integration
 
 - `FAILURE_EVIDENCE`: failure `>=1`, target `UP`, fixture subscription ID와 일치하는 `Lock wait timeout exceeded` log
 - `RECOVERY_EVIDENCE`: executions `>=1`, failures `0`, target `UP`, 복구 이후 reconciliation 오류 log 없음
-- `GRAFANA_EVIDENCE`: datasource UID, Dashboard UID, panel `13`
+- `GRAFANA_EVIDENCE`: datasource UID, Dashboard UID, panel `15`
 - `FIXTURE_DATA_UNCHANGED=PASS`
 - `DISPOSABLE_CLEANUP=PASS`
 
@@ -92,6 +92,6 @@ Set-Location infra/local-integration
 
 모든 시나리오 후 MySQL·Backend·Prometheus·Grafana·Proxy가 정상인지 다시 확인한다. shared DB에 row lock이나 fixture를 만들지 않는다. disposable stack이 기존 shared volume을 mount하거나 current fixture가 변경되거나 cleanup이 실패하면 추가 lock/isolation 보강 없이 중단한다.
 
-Grafana health `ok`, datasource UID `pawcycle-prometheus`, Dashboard UID `pawcycle-local-observability`, 13개 panel과 `Backend scrape availability`의 `up{job="pawcycle-backend"}` query를 확인한다. Java 25와 격리된 MySQL 8.4에서 `ObservabilityIntegrationTests` 2개가 통과해야 한다.
+Grafana health `ok`, datasource UID `pawcycle-prometheus`, Dashboard UID `pawcycle-local-observability`, 15개 panel과 `Backend scrape availability`의 `up{job="pawcycle-backend"}` query를 확인한다. Java 25와 격리된 MySQL 8.4에서 `ObservabilityIntegrationTests` 2개가 통과해야 한다.
 
 저장소 변경의 rollback은 Dashboard, Runbook, disposable Compose override와 fixture script를 일반 revert하는 것이다. shared local stack 종료는 `docker compose --env-file .env.local -f compose.yaml -f compose.observability.yaml down`을 사용하고 named volume은 삭제하지 않는다. disposable project는 검증 스크립트가 출력한 project name으로만 정리한다.

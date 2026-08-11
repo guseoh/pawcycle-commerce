@@ -12,6 +12,7 @@
 - `OPS-009-aws-operations-foundation.md`: DEPLOY-001 AWS 운영 기반의 생성 전 게이트, 사용자 실행, 검증과 안전 정리
 - `OPS-010-production-single-release.md`: DEPLOY-002 production image 게시, 수동 단일 release, 상태 확인과 rollback
 - `OPS-011-production-https.md`: DuckDNS·Let's Encrypt HTTP-01 기반 HTTPS bootstrap, 갱신과 복구
+- `SUB-AUTO-001-subscription-automation.md`: local 정기배송 주문 자동화 failure 식별, 자동 retry 관찰과 조사 경계
 
 ## 최소 런북 구조
 

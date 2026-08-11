@@ -38,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 class V2SubscriptionCommandIntegrationTests {
 
 	@Autowired private V2SubscriptionService service;
+	@Autowired private SubscriptionOrderAutomationService automation;
 	@Autowired private JdbcTemplate jdbc;
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
@@ -87,6 +88,8 @@ class V2SubscriptionCommandIntegrationTests {
 		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);
@@ -211,21 +214,18 @@ class V2SubscriptionCommandIntegrationTests {
 	}
 
 	@Test
-	void overdueCommandCommitsReconciliationBeforeReturningVersionMismatch() {
+	void overduePauseDoesNotConsumeScheduleWithoutOrder() {
 		long subscriptionId = createSubscription("overdue-command");
 		jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=?", LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1), subscriptionId);
 
-		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", Map.of()))
-				.isInstanceOf(V2ApiException.class)
-				.hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
+		V2SubscriptionService.V2Result paused = service.command(
+				member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", Map.of());
 
+		assertThat(paused.body()).containsEntry("status", "PAUSED").containsEntry("version", 1L);
 		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL", Integer.class, subscriptionId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?", Integer.class, subscriptionId, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE subscription_id=? AND idempotency_key='overdue-pause'", Integer.class, subscriptionId)).isZero();
-
-		V2SubscriptionService.V2Result paused = service.command(member.getId(), subscriptionId, "pause", "overdue-pause", "\"1\"", Map.of());
-		assertThat(paused.body()).containsEntry("status", "PAUSED").containsEntry("version", 2L);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_orders WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='HELD' AND effective_snapshot_id IS NULL", Integer.class, subscriptionId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED'", Integer.class, subscriptionId)).isZero();
 	}
 
 	@Test
@@ -270,7 +270,7 @@ class V2SubscriptionCommandIntegrationTests {
 				LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1),
 				subscriptionId);
 
-		service.reconcileActiveSubscriptions();
+		SubscriptionOrderAutomationService.BatchResult processed = automation.processDueSchedules(10);
 
 		V2SubscriptionService.V2Result reconciled =
 				service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
@@ -280,6 +280,8 @@ class V2SubscriptionCommandIntegrationTests {
 		assertThat(castList(schedules.get("items")))
 				.anySatisfy(item ->
 						assertThat(castMap(item).get("effectiveSnapshotId")).isNotNull());
+		assertThat(processed.ordersCreated()).isGreaterThanOrEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_orders WHERE subscription_id=?", Integer.class, subscriptionId)).isEqualTo(1);
 	}
 
 	@Test

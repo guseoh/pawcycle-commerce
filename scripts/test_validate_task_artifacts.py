@@ -530,11 +530,19 @@ legacy 형식이다.
         self.assertIn("실행 구분 불일치", result.stderr)
 
     def test_supported_task_id_families_are_detected(self) -> None:
-        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "INC-BASE-001", "HARNESS-LEAN-001"):
+        for task_id in ("AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "SUB-AUTO-001", "INC-BASE-001", "HARNESS-LEAN-001"):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_malformed_sub_auto_task_ids_do_not_partially_match_stdin(self) -> None:
+        for task_id in ("SUB-AUTO-001-EXTRA", "SUB-AUTO-001abc", "SUB-AUTO-001_extra", "X-SUB-AUTO-001"):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("작업 ID", result.stderr)
 
 
 if __name__ == "__main__":

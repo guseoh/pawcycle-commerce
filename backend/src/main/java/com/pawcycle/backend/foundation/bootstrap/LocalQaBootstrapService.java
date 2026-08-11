@@ -85,6 +85,8 @@ public class LocalQaBootstrapService {
 		jdbcTemplate.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
 		jdbcTemplate.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
 		jdbcTemplate.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
+		jdbcTemplate.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbcTemplate.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
 		jdbcTemplate.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 		jdbcTemplate.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);

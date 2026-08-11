@@ -1,0 +1,554 @@
+package com.pawcycle.backend.subscription.v2;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
+
+import com.pawcycle.backend.catalog.product.domain.Product;
+import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.sku.domain.Sku;
+import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.member.domain.Member;
+import com.pawcycle.backend.member.infra.MemberRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+
+@SpringBootTest
+@ActiveProfiles("test")
+@Import(SubscriptionOrderAutomationServiceIntegrationTests.FixedClockConfiguration.class)
+@ExtendWith(OutputCaptureExtension.class)
+class SubscriptionOrderAutomationServiceIntegrationTests {
+
+	private static final LocalDate TODAY = LocalDate.of(2026, 8, 1);
+	private static final Instant NOW = Instant.parse("2026-07-31T15:00:00Z");
+	private static final String EMAIL_PREFIX = "sub-auto-001-";
+	private static final String PRODUCT_PREFIX = "SUB-AUTO-001 product ";
+	private static final String PLAN_PREFIX = "SUB-AUTO-001 plan ";
+
+	@Autowired private SubscriptionOrderAutomationService automation;
+	@Autowired private V2SubscriptionService subscriptions;
+	@Autowired private MemberRepository members;
+	@Autowired private ProductRepository products;
+	@Autowired private SkuRepository skus;
+	@Autowired private PasswordEncoder passwordEncoder;
+	@Autowired private MeterRegistry meterRegistry;
+	@Autowired private ApplicationContext applicationContext;
+	@MockitoSpyBean private JdbcTemplate jdbc;
+
+	private Member member;
+	private Product product;
+	private Sku firstSku;
+	private Sku secondSku;
+	private long basePlanVersionId;
+	private long alternatePlanVersionId;
+
+	@BeforeEach
+	void setUp() {
+		cleanFixtures();
+		String suffix = UUID.randomUUID().toString();
+		member = members.saveAndFlush(new Member(
+				EMAIL_PREFIX + suffix + "@example.test",
+				passwordEncoder.encode("test-password")));
+		product = products.saveAndFlush(new Product(
+				PRODUCT_PREFIX + suffix, "test", null, "DOG", null, "PUBLIC"));
+		firstSku = skus.saveAndFlush(new Sku(
+				product, "sub-auto-first-" + suffix, new BigDecimal("12000.00"), true, 1));
+		secondSku = skus.saveAndFlush(new Sku(
+				product, "sub-auto-second-" + suffix, new BigDecimal("11000.00"), true, 2));
+		basePlanVersionId = createPlanVersion("base-" + suffix, 24000, firstSku.getId(), 2);
+		alternatePlanVersionId = createPlanVersion("alternate-" + suffix, 33000, secondSku.getId(), 3);
+	}
+
+	@AfterEach
+	void tearDown() {
+		reset(jdbc);
+		cleanFixtures();
+	}
+
+	@Test
+	void dueTodayCreatesOneImmutableOrderAndOneFutureScheduleAndRerunIsSafe() {
+		long subscriptionId = createSubscription("due-today", basePlanVersionId, 2);
+		long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+		long currentSnapshotId = currentSnapshotId(subscriptionId);
+		double executionsBefore = counter("pawcycle.subscription.automation.executions");
+		double processedBefore = counter("pawcycle.subscription.automation.processed.candidates");
+		double createdBefore = counter("pawcycle.subscription.automation.orders.created");
+		long durationBefore = meterRegistry.get(
+				"pawcycle.subscription.automation.duration").timer().count();
+
+		SubscriptionOrderAutomationService.BatchResult first = automation.processDueSchedules(10);
+		SubscriptionOrderAutomationService.BatchResult second = automation.processDueSchedules(10);
+
+		assertThat(first).isEqualTo(new SubscriptionOrderAutomationService.BatchResult(1, 1, 0, 0));
+		assertThat(second).isEqualTo(new SubscriptionOrderAutomationService.BatchResult(0, 0, 0, 0));
+		Map<String, Object> order = jdbc.queryForMap(
+				"SELECT subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,"
+						+ "scheduled_date,processed_at,package_total_krw,status "
+						+ "FROM subscription_orders WHERE schedule_id=?",
+				scheduleId);
+		assertThat(((Number) order.get("SUBSCRIPTION_ID")).longValue()).isEqualTo(subscriptionId);
+		assertThat(((Number) order.get("EFFECTIVE_SNAPSHOT_ID")).longValue()).isEqualTo(currentSnapshotId);
+		assertThat(((Number) order.get("SOURCE_PLAN_VERSION_ID")).longValue()).isEqualTo(basePlanVersionId);
+		assertThat(order.get("SCHEDULED_DATE")).isEqualTo(java.sql.Date.valueOf(TODAY));
+		assertThat(order.get("PROCESSED_AT")).isEqualTo(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+		assertThat(((Number) order.get("PACKAGE_TOTAL_KRW")).longValue()).isEqualTo(24000);
+		assertThat(order.get("STATUS")).isEqualTo("CREATED");
+		long orderId = jdbc.queryForObject(
+				"SELECT id FROM subscription_orders WHERE schedule_id=?", Long.class, scheduleId);
+		assertThat(jdbc.queryForMap(
+				"SELECT sku_id,quantity FROM subscription_order_items WHERE order_id=?", orderId))
+				.containsEntry("SKU_ID", firstSku.getId())
+				.containsEntry("QUANTITY", 2);
+		assertThat(jdbc.queryForObject(
+				"SELECT effective_snapshot_id FROM subscription_schedules WHERE id=?",
+				Long.class,
+				scheduleId)).isEqualTo(currentSnapshotId);
+		assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+		assertThat(jdbc.queryForObject(
+				"SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_orders WHERE schedule_id=?", Integer.class, scheduleId))
+				.isEqualTo(1);
+		assertThat(counter("pawcycle.subscription.automation.executions")).isEqualTo(executionsBefore + 2);
+		assertThat(counter("pawcycle.subscription.automation.processed.candidates"))
+				.isEqualTo(processedBefore + 1);
+		assertThat(counter("pawcycle.subscription.automation.orders.created")).isEqualTo(createdBefore + 1);
+		assertThat(meterRegistry.get("pawcycle.subscription.automation.duration").timer().count())
+				.isEqualTo(durationBefore + 2);
+		assertThat(applicationContext.getBeansOfType(SubscriptionOrderAutomationTrigger.class)).isEmpty();
+	}
+
+	@Test
+	void futurePausedAndCanceledSchedulesDoNotCreateOrders() {
+		long future = createSubscription("future", basePlanVersionId, 2);
+		long paused = createSubscription("paused", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), paused, "pause", "pause-before-due", "\"0\"", Map.of());
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND status='HELD'",
+				TODAY,
+				paused);
+		long canceled = createSubscription("canceled", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), canceled, "cancel", "cancel-before-due", "\"0\"", Map.of());
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND status='CANCELED'",
+				TODAY,
+				canceled);
+
+		SubscriptionOrderAutomationService.BatchResult result = automation.processDueSchedules(10);
+
+		assertThat(result).isEqualTo(new SubscriptionOrderAutomationService.BatchResult(0, 0, 0, 0));
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_orders WHERE subscription_id IN (?,?,?)",
+				Integer.class,
+				future,
+				paused,
+				canceled)).isZero();
+	}
+
+	@Test
+	void pendingFailureRollsBackOneTargetLetsAnotherCommitAndNextTickRetries(CapturedOutput output) {
+		long failedSubscriptionId = createSubscription("failed", basePlanVersionId, 2);
+		subscriptions.command(
+				member.getId(),
+				failedSubscriptionId,
+				"change-plan",
+				"pending-before-failure",
+				"\"0\"",
+				Map.of("planVersionId", alternatePlanVersionId));
+		long failedScheduleId = moveOnlyUnprocessedSchedule(failedSubscriptionId, TODAY);
+		long originalSnapshotId = currentSnapshotId(failedSubscriptionId);
+		long pendingSnapshotId = jdbc.queryForObject(
+				"SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?",
+				Long.class,
+				failedSubscriptionId);
+		long successfulSubscriptionId = createSubscription("successful", basePlanVersionId, 2);
+		moveOnlyUnprocessedSchedule(successfulSubscriptionId, TODAY);
+
+		doAnswer(invocation -> {
+			int updated = (int) invocation.callRealMethod();
+			if (invocation.getArgument(2, Number.class).longValue() == failedScheduleId) {
+				throw new IllegalStateException("intentional transaction failure");
+			}
+			return updated;
+		}).when(jdbc).update(
+				eq(SubscriptionOrderAutomationService.UPDATE_SCHEDULE_EFFECTIVE_SQL),
+				any(Object[].class));
+
+		SubscriptionOrderAutomationService.BatchResult first = automation.processDueSchedules(10);
+
+		assertThat(first).isEqualTo(new SubscriptionOrderAutomationService.BatchResult(2, 1, 1, 0));
+		assertThat(orderCount(failedSubscriptionId)).isZero();
+		assertThat(orderCount(successfulSubscriptionId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject(
+				"SELECT effective_snapshot_id FROM subscription_schedules WHERE id=?",
+				Long.class,
+				failedScheduleId)).isNull();
+		assertThat(currentSnapshotId(failedSubscriptionId)).isEqualTo(originalSnapshotId);
+		assertThat(jdbc.queryForObject(
+				"SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?",
+				Long.class,
+				failedSubscriptionId)).isEqualTo(pendingSnapshotId);
+		assertThat(futureScheduledDates(failedSubscriptionId)).isEmpty();
+		assertThat(jdbc.queryForObject(
+				"SELECT version FROM subscriptions WHERE id=?",
+				Long.class,
+				failedSubscriptionId)).isEqualTo(1L);
+		assertThat(output).contains(
+				"subscriptionId=" + failedSubscriptionId,
+				"scheduleId=" + failedScheduleId,
+				"failureCategory=INVARIANT");
+
+		reset(jdbc);
+		SubscriptionOrderAutomationService.BatchResult retried = automation.processDueSchedules(10);
+
+		assertThat(retried).isEqualTo(new SubscriptionOrderAutomationService.BatchResult(1, 1, 0, 0));
+		assertThat(orderCount(failedSubscriptionId)).isEqualTo(1);
+		assertThat(currentSnapshotId(failedSubscriptionId)).isEqualTo(pendingSnapshotId);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?",
+				Integer.class,
+				failedSubscriptionId)).isZero();
+		Map<String, Object> order = jdbc.queryForMap(
+				"SELECT effective_snapshot_id,source_plan_version_id,package_total_krw "
+						+ "FROM subscription_orders WHERE subscription_id=?",
+				failedSubscriptionId);
+		assertThat(order)
+				.containsEntry("EFFECTIVE_SNAPSHOT_ID", pendingSnapshotId)
+				.containsEntry("SOURCE_PLAN_VERSION_ID", alternatePlanVersionId)
+				.containsEntry("PACKAGE_TOTAL_KRW", 33000L);
+		long orderId = jdbc.queryForObject(
+				"SELECT id FROM subscription_orders WHERE subscription_id=?",
+				Long.class,
+				failedSubscriptionId);
+		assertThat(jdbc.queryForMap(
+				"SELECT sku_id,quantity FROM subscription_order_items WHERE order_id=?", orderId))
+				.containsEntry("SKU_ID", secondSku.getId())
+				.containsEntry("QUANTITY", 3);
+		assertThat(futureScheduledDates(failedSubscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+		assertThat(jdbc.queryForObject(
+				"SELECT version FROM subscriptions WHERE id=?",
+				Long.class,
+				failedSubscriptionId)).isEqualTo(2L);
+	}
+
+	@Test
+	void longDowntimeCreatesNoBacklogOrdersAndJumpsFromOriginalDate() {
+		long subscriptionId = createSubscription("long-downtime", basePlanVersionId, 2);
+		moveOnlyUnprocessedSchedule(subscriptionId, LocalDate.of(2026, 7, 1));
+
+		SubscriptionOrderAutomationService.BatchResult result = automation.processDueSchedules(10);
+
+		assertThat(result.ordersCreated()).isEqualTo(1);
+		assertThat(jdbc.queryForList(
+				"SELECT scheduled_date FROM subscription_orders WHERE subscription_id=?",
+				LocalDate.class,
+				subscriptionId)).containsExactly(LocalDate.of(2026, 7, 1));
+		assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 12));
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? "
+						+ "AND scheduled_date IN ('2026-07-15','2026-07-29')",
+				Integer.class,
+				subscriptionId)).isZero();
+	}
+
+	@Test
+	void oneInvocationProcessesOnlyOldestDueSchedulePerSubscriptionAndHonorsBatchBound() {
+		long firstSubscription = createSubscription("multiple-due", basePlanVersionId, 2);
+		long oldestScheduleId = moveOnlyUnprocessedSchedule(
+				firstSubscription, LocalDate.of(2026, 7, 1));
+		jdbc.update(
+				"INSERT INTO subscription_schedules("
+						+ "subscription_id,scheduled_date,status,effective_snapshot_id"
+						+ ") VALUES (?,'2026-07-15','SCHEDULED',NULL)",
+				firstSubscription);
+		long secondSubscription = createSubscription("batch-second", basePlanVersionId, 2);
+		moveOnlyUnprocessedSchedule(secondSubscription, TODAY);
+		long thirdSubscription = createSubscription("batch-third", basePlanVersionId, 2);
+		moveOnlyUnprocessedSchedule(thirdSubscription, TODAY);
+
+		SubscriptionOrderAutomationService.BatchResult result = automation.processDueSchedules(2);
+
+		assertThat(result.processedCandidates()).isEqualTo(2);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_orders WHERE subscription_id=?",
+				Integer.class,
+				firstSubscription)).isEqualTo(1);
+		assertThat(jdbc.queryForObject(
+				"SELECT schedule_id FROM subscription_orders WHERE subscription_id=?",
+				Long.class,
+				firstSubscription)).isEqualTo(oldestScheduleId);
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_orders WHERE subscription_id IN (?,?)",
+				Integer.class,
+				secondSubscription,
+				thirdSubscription)).isEqualTo(1);
+	}
+
+	@Test
+	void twoSchedulerInvocationsConvergeToOneDatabaseOrder() throws Exception {
+		long subscriptionId = createSubscription("concurrent", basePlanVersionId, 2);
+		moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<SubscriptionOrderAutomationService.BatchResult> first = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				return automation.processDueSchedules(1);
+			});
+			Future<SubscriptionOrderAutomationService.BatchResult> second = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				return automation.processDueSchedules(1);
+			});
+			assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			List<SubscriptionOrderAutomationService.BatchResult> results = List.of(
+					first.get(15, TimeUnit.SECONDS),
+					second.get(15, TimeUnit.SECONDS));
+
+			assertThat(results.stream().mapToInt(
+					SubscriptionOrderAutomationService.BatchResult::ordersCreated).sum()).isEqualTo(1);
+			assertThat(results.stream().mapToInt(
+					SubscriptionOrderAutomationService.BatchResult::failures).sum()).isZero();
+			assertThat(orderCount(subscriptionId)).isEqualTo(1);
+			assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void activeCommandsAndAutomationPreserveOrderAndScheduleInvariants() throws Exception {
+		for (String command : List.of("change-plan", "skip-next", "pause", "cancel")) {
+			long subscriptionId = createSubscription("race-" + command, basePlanVersionId, 2);
+			moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+			Map<String, Object> body = "change-plan".equals(command)
+					? Map.of("planVersionId", alternatePlanVersionId)
+					: Map.of();
+			ExecutorService executor = Executors.newFixedThreadPool(2);
+			CountDownLatch ready = new CountDownLatch(2);
+			CountDownLatch start = new CountDownLatch(1);
+			try {
+				Future<String> commandResult = executor.submit(() -> {
+					ready.countDown();
+					start.await();
+					try {
+						subscriptions.command(
+								member.getId(),
+								subscriptionId,
+								command,
+								"race-key-" + command,
+								"\"0\"",
+								body);
+						return "SUCCESS";
+					} catch (V2ApiException exception) {
+						return exception.code();
+					}
+				});
+				Future<SubscriptionOrderAutomationService.BatchResult> automationResult = executor.submit(() -> {
+					ready.countDown();
+					start.await();
+					return automation.processDueSchedules(10);
+				});
+				assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+				start.countDown();
+				String outcome = commandResult.get(15, TimeUnit.SECONDS);
+				SubscriptionOrderAutomationService.BatchResult batch = automationResult.get(15, TimeUnit.SECONDS);
+
+				assertThat(outcome).isIn("SUCCESS", "SUBSCRIPTION_VERSION_MISMATCH");
+				assertThat(batch.failures()).isZero();
+				assertThat(orderCount(subscriptionId)).isBetween(0, 1);
+				assertThat(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM (SELECT schedule_id FROM subscription_orders "
+								+ "WHERE subscription_id=? GROUP BY schedule_id HAVING COUNT(*)>1) duplicates",
+						Integer.class,
+						subscriptionId)).isZero();
+				if (orderCount(subscriptionId) == 1) {
+					assertThat(futureScheduledDates(subscriptionId)).hasSize(1);
+				}
+			} finally {
+				executor.shutdownNow();
+			}
+		}
+	}
+
+	@Test
+	void pausedResumeRaceDoesNotTreatHeldScheduleAsDue() throws Exception {
+		long subscriptionId = createSubscription("resume-race", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), subscriptionId, "pause", "pause-for-resume", "\"0\"", Map.of());
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND status='HELD'",
+				TODAY,
+				subscriptionId);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<V2SubscriptionService.V2Result> resumed = executor.submit(() -> {
+				start.await();
+				return subscriptions.command(
+						member.getId(), subscriptionId, "resume", "resume-race", "\"1\"", Map.of());
+			});
+			Future<SubscriptionOrderAutomationService.BatchResult> batch = executor.submit(() -> {
+				start.await();
+				return automation.processDueSchedules(10);
+			});
+			start.countDown();
+
+			assertThat(resumed.get(15, TimeUnit.SECONDS).body()).containsEntry("status", "ACTIVE");
+			assertThat(batch.get(15, TimeUnit.SECONDS).failures()).isZero();
+			assertThat(orderCount(subscriptionId)).isZero();
+			assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	private long createPlanVersion(String suffix, long price, long skuId, int quantity) {
+		jdbc.update(
+				"INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)",
+				PLAN_PREFIX + suffix,
+				"DOG");
+		long planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update(
+				"INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,?,false)",
+				planId,
+				price);
+		long versionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update(
+				"INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,?)",
+				versionId,
+				skuId,
+				quantity);
+		jdbc.update(
+				"INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) "
+						+ "VALUES (?,2),(?,4)",
+				versionId,
+				versionId);
+		jdbc.update(
+				"UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?",
+				versionId,
+				planId);
+		return versionId;
+	}
+
+	private long createSubscription(String key, long planVersionId, int cycle) {
+		long petId = ((Number) subscriptions.createPet(
+				member.getId(), Map.of("name", "반려동물-" + key, "petType", "DOG")).get("petId"))
+				.longValue();
+		V2SubscriptionService.V2Result result = subscriptions.createSubscription(
+				member.getId(),
+				"create-" + key,
+				Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", cycle));
+		return ((Number) result.body().get("subscriptionId")).longValue();
+	}
+
+	private long moveOnlyUnprocessedSchedule(long subscriptionId, LocalDate scheduledDate) {
+		long scheduleId = jdbc.queryForObject(
+				"SELECT schedule.id FROM subscription_schedules schedule "
+						+ "LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id "
+						+ "WHERE schedule.subscription_id=? AND schedule.status='SCHEDULED' "
+						+ "AND existing_order.id IS NULL ORDER BY schedule.scheduled_date,schedule.id LIMIT 1",
+				Long.class,
+				subscriptionId);
+		jdbc.update(
+				"UPDATE subscription_schedules SET scheduled_date=? WHERE id=?",
+				scheduledDate,
+				scheduleId);
+		return scheduleId;
+	}
+
+	private long currentSnapshotId(long subscriptionId) {
+		return jdbc.queryForObject(
+				"SELECT current_snapshot_id FROM subscriptions WHERE id=?",
+				Long.class,
+				subscriptionId);
+	}
+
+	private int orderCount(long subscriptionId) {
+		return jdbc.queryForObject(
+				"SELECT COUNT(*) FROM subscription_orders WHERE subscription_id=?",
+				Integer.class,
+				subscriptionId);
+	}
+
+	private List<LocalDate> futureScheduledDates(long subscriptionId) {
+		return jdbc.queryForList(
+				"SELECT scheduled_date FROM subscription_schedules "
+						+ "WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>? "
+						+ "ORDER BY scheduled_date,id",
+				LocalDate.class,
+				subscriptionId,
+				TODAY);
+	}
+
+	private double counter(String name) {
+		return meterRegistry.get(name).counter().count();
+	}
+
+	private void cleanFixtures() {
+		String memberFilter = "SELECT id FROM members WHERE email LIKE '" + EMAIL_PREFIX + "%@example.test'";
+		jdbc.update("DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE schedule FROM subscription_schedules schedule JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE item FROM subscription_snapshot_items item JOIN subscription_snapshots snapshot ON snapshot.id=item.snapshot_id JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE snapshot FROM subscription_snapshots snapshot JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM subscriptions WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM pets WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=NULL WHERE name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE cycle FROM plan_version_delivery_cycles cycle JOIN plan_versions version ON version.id=cycle.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE item FROM plan_items item JOIN plan_versions version ON version.id=item.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE version FROM plan_versions version JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE FROM subscription_plans WHERE name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE sku FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
+		jdbc.update("DELETE FROM products WHERE name LIKE ?", PRODUCT_PREFIX + "%");
+		jdbc.update("DELETE FROM members WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class FixedClockConfiguration {
+		@Bean
+		@Primary
+		Clock fixedSubscriptionAutomationClock() {
+			return Clock.fixed(NOW, ZoneOffset.UTC);
+		}
+	}
+}

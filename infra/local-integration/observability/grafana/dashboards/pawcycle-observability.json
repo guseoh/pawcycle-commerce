@@ -176,6 +176,34 @@
       ],
       "title": "Backend scrape availability",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "id": 14,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_executions_total", "legendFormat": "executions", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_processed_candidates_total", "legendFormat": "processed candidates", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_orders_total", "legendFormat": "orders created", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_failures_total", "legendFormat": "failures", "range": true, "refId": "D" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_duplicate_noop_total", "legendFormat": "duplicate/no-op", "range": true, "refId": "E" }
+      ],
+      "title": "Subscription automation totals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "id": 15,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "rate(pawcycle_subscription_automation_duration_seconds_sum[5m]) / clamp_min(rate(pawcycle_subscription_automation_duration_seconds_count[5m]), 1e-9)", "legendFormat": "average", "range": true, "refId": "A" }
+      ],
+      "title": "Subscription automation duration",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",

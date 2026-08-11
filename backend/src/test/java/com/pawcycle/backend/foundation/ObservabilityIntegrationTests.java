@@ -30,6 +30,12 @@ import org.springframework.web.context.WebApplicationContext;
 @ActiveProfiles("test")
 class ObservabilityIntegrationTests {
 	private static final Set<String> CUSTOM_METRIC_NAMES = Set.of(
+			"pawcycle.subscription.automation.executions",
+			"pawcycle.subscription.automation.processed.candidates",
+			"pawcycle.subscription.automation.orders.created",
+			"pawcycle.subscription.automation.failures",
+			"pawcycle.subscription.automation.duplicate.noop",
+			"pawcycle.subscription.automation.duration",
 			"pawcycle.subscription.reconciliation.executions",
 			"pawcycle.subscription.reconciliation.processed",
 			"pawcycle.subscription.reconciliation.failures",
@@ -95,6 +101,8 @@ class ObservabilityIntegrationTests {
 				"process_cpu_usage",
 				"system_cpu_usage",
 				"hikaricp_connections",
+				"pawcycle_subscription_automation_executions_total",
+				"pawcycle_subscription_automation_orders_total",
 				"pawcycle_subscription_reconciliation_executions_total",
 				"pawcycle_subscription_idempotency_cleanup_executions_total",
 				"pawcycle_subscription_idempotency_retained_rows");
@@ -114,7 +122,7 @@ class ObservabilityIntegrationTests {
 					"creation", "command", "repair", "delete", "success", "failure");
 		}));
 		assertThat(customMeters).allSatisfy(meter -> assertThat(meter.getId().getTags())
-				.noneMatch(tag -> Set.of("memberId", "subscriptionId", "idempotencyKey")
+				.noneMatch(tag -> Set.of("memberId", "subscriptionId", "idempotencyKey", "orderId", "scheduleId")
 						.contains(tag.getKey())));
 	}
 }
