@@ -5,8 +5,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * The trigger has no order, payment, inventory, or delivery responsibility.  It only preserves
- * the approved Schedule cardinality for ACTIVE V2 subscriptions that receive no write command.
+ * This trigger is separate from normal order automation. It never consumes an unprocessed due
+ * Schedule and only repairs safely derivable cardinality after an Order already exists.
  */
 @Component
 @ConditionalOnProperty(prefix = "pawcycle.mvp2.reconciliation", name = "enabled", havingValue = "true")

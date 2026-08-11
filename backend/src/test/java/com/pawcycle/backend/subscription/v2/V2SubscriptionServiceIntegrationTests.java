@@ -98,6 +98,8 @@ class V2SubscriptionServiceIntegrationTests {
 		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);
@@ -360,7 +362,7 @@ class V2SubscriptionServiceIntegrationTests {
 
 	@Test
 	@Transactional(propagation = Propagation.NOT_SUPPORTED)
-	void legacyWhitespacePetTypeNormalizesHidesV1AndKeepsFutureReconciliation() {
+	void legacyWhitespacePetTypeNormalizesHidesV1AndDoesNotConsumeDueSchedule() {
 		jdbc.update("UPDATE products SET pet_type=' DOG ' WHERE id=?", sku.getProduct().getId());
 		jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date) VALUES (?,?,?,?,?,?)", member.getId(), sku.getId(), 1, 4, LocalDate.now(ZoneId.of("Asia/Seoul")).minusWeeks(4), LocalDate.now(ZoneId.of("Asia/Seoul")).plusWeeks(4));
 		long subscriptionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -379,12 +381,7 @@ class V2SubscriptionServiceIntegrationTests {
 		service.reconcileActiveSubscriptions();
 
 		assertThat(jdbc.queryForObject(
-				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND effective_snapshot_id IS NOT NULL",
-				Integer.class,
-				subscriptionId)).isEqualTo(1);
-
-		assertThat(jdbc.queryForObject(
-				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>?",
+				"SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date<=? AND effective_snapshot_id IS NULL",
 				Integer.class,
 				subscriptionId,
 				LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(1);

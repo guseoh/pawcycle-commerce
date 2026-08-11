@@ -78,7 +78,14 @@ class DatabaseFoundationIntegrationTests {
 				""",
 				String.class);
 
-		assertThat(tables).contains("members", "products", "skus", "subscriptions", "flyway_schema_history");
+		assertThat(tables).contains(
+				"members",
+				"products",
+				"skus",
+				"subscriptions",
+				"subscription_orders",
+				"subscription_order_items",
+				"flyway_schema_history");
 		assertThat(tables).doesNotContain("orders", "payments", "deliveries", "inventory");
 	}
 
@@ -114,7 +121,7 @@ class DatabaseFoundationIntegrationTests {
 		flyway.migrate();
 		Integer after = appliedMigrationCount();
 
-		assertThat(before).isEqualTo(8);
+		assertThat(before).isEqualTo(11);
 		assertThat(after).isEqualTo(before);
 	}
 

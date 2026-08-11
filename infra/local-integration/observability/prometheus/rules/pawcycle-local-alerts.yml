@@ -16,3 +16,10 @@ groups:
         annotations:
           summary: PawCycle reconciliation failure observed
           description: A reconciliation failure counter increase was observed in the local 30 second window. Follow the INC-BASE-001 runbook and Backend logs.
+      - alert: PawCycleSubscriptionAutomationFailure
+        expr: increase(pawcycle_subscription_automation_failures_total[30s]) > 0
+        labels:
+          scope: local
+        annotations:
+          summary: PawCycle subscription automation failure observed
+          description: A subscription automation failure counter increase was observed in the local 30 second window. Follow the SUB-AUTO-001 runbook and Backend logs.
