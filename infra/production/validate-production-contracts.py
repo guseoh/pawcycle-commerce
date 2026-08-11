@@ -191,6 +191,7 @@ def validate_compose() -> None:
         logging = service.get("logging", {})
         require(logging.get("driver") == "json-file", f"{name} log driver must be json-file")
         options = logging.get("options", {})
+        require(logging.get("driver") == "json-file", f"{name} log driver must be json-file")
         require(options.get("max-size") == "10m" and options.get("max-file") == "3", f"{name} log rotation is incomplete")
         require(
             float(service.get("mem_limit", 0)) > 0 and float(service.get("cpus", 0)) > 0,
@@ -303,15 +304,29 @@ def validate_oidc_deploy_contract() -> None:
     require("^[0-9a-f]{40}$" in workflow and "git merge-base --is-ancestor" in workflow, "target SHA must be validated against main")
     require("ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}" in workflow and "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}" in workflow, "Production deploy must reuse the PawCycle GHCR image contract")
     require("aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5" in workflow, "OIDC credentials action must use the approved pinned revision")
+    require("role-duration-seconds: 3600" in workflow, "OIDC session must outlive the bounded Production deployment workflow")
     for variable in (
         "vars.AWS_PRODUCTION_DEPLOY_ROLE_ARN",
         "vars.AWS_REGION",
         "vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME",
+        "vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_VERSION",
         "vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY",
         "vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE",
     ):
         require(variable in workflow, f"Production deploy must use the GitHub Environment variable: {variable}")
-    require("--targets \"Key=tag:${SSM_TARGET_TAG_KEY},Values=${SSM_TARGET_TAG_VALUE}\"" in workflow, "SSM target must be the approved fixed Production tag contract")
+    require(
+        "aws ssm describe-instance-information" in workflow
+        and "Key=tag:${SSM_TARGET_TAG_KEY},Values=${SSM_TARGET_TAG_VALUE}" in workflow
+        and "Production SSM target tag must resolve to exactly one managed node" in workflow
+        and "resolved Production target is not an online EC2 managed node" in workflow,
+        "Production deploy must resolve exactly one online EC2 SSM target before dispatch",
+    )
+    require("--instance-ids \"$SSM_INSTANCE_ID\"" in workflow and "--targets " not in workflow, "SSM dispatch must use only the pre-resolved Production instance")
+    require(
+        "SSM document version must be a positive immutable numeric version" in workflow
+        and "--document-version \"$SSM_DOCUMENT_VERSION\"" in workflow,
+        "Production deploy must pin an immutable numeric SSM document version",
+    )
     require("--parameters \"TargetSha=${TARGET_SHA}\"" in workflow, "SSM document must receive only the verified target SHA")
     require("--max-concurrency \"1\"" in workflow and "--max-errors \"0\"" in workflow, "SSM dispatch must fail closed")
     require("aws ssm list-command-invocations" in workflow and "Success)" in workflow and "status could not be determined" in workflow, "SSM result must fail closed unless exactly successful")
@@ -332,9 +347,22 @@ def validate_oidc_deploy_contract() -> None:
     steps = document.get("mainSteps")
     require(isinstance(steps, list) and len(steps) == 1 and steps[0].get("action") == "aws:runShellScript", "SSM document must contain one bounded Linux shell step")
     command = "\n".join(steps[0].get("inputs", {}).get("runCommand", []))
+    require(command.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail"), "SSM document must execute the bounded command under Bash fail-closed semantics")
     require("${SSM_TargetSha:-}" in command and "{{ TargetSha }}" not in command, "SSM document must not raw-interpolate TargetSha")
     require("/opt/pawcycle/control" in command and "infra/production/deploy.sh" in command, "SSM document must reuse the existing PawCycle control deploy script")
     require("git -C \"$control_dir\" config --get remote.origin.url" in command and "https://github.com/*/*.git" in command, "SSM document must derive the approved PawCycle GitHub repository without SSH")
+    require(
+        'cd "$control_dir"' in command
+        and "git fetch --prune origin refs/heads/main:refs/remotes/origin/main" in command
+        and 'git merge-base --is-ancestor "$target_sha" refs/remotes/origin/main' in command,
+        "SSM document must fetch and validate target main history without moving the approved control HEAD",
+    )
+    require(
+        'current_sha_file="$state_dir/current-sha"' in command
+        and 'git merge-base --is-ancestor "$current_sha" "$target_sha"' in command
+        and "use the protected rollback procedure" in command,
+        "automatic deploy must reject older or divergent releases and preserve the rollback boundary",
+    )
     require("ghcr.io/${repository}-backend" in command and "ghcr.io/${repository}-frontend" in command, "SSM document must derive both GHCR repositories from the PawCycle control contract")
     require("--sha \"$target_sha\"" in command and "--backend-image \"$backend_image\"" in command and "--frontend-image \"$frontend_image\"" in command, "SSM document must pass only bounded release inputs to deploy.sh")
     require("--adopt-contract-sha" not in command and "aws ssm" not in command and "ssh" not in command.lower(), "SSM document must not bypass deploy contract or accept remote shell paths")
