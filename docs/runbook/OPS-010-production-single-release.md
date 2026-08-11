@@ -199,12 +199,26 @@ sudo bash infra/production/deploy.sh \
 #   --adopt-contract-sha '<current-control-sha>'
 ```
 
+### Release contract·Flyway boundary의 Production Deploy 승인 경로
+
+GitHub `Production Deploy`는 일반 Release에도 먼저 SSM `preflight`, 그 성공 뒤 같은 target·승인 SHA로 `deploy`를 호출한다. `preflight`는 image를 pull·검증할 수 있지만 Container, MySQL, state 파일을 바꾸지 않는다. `deploy`는 preflight 결과를 신뢰하지 않고 동일 검사를 다시 수행한다. 실제 Production 실행은 이 Runbook의 별도 고위험 사용자 승인이 있어야 하며, 이 저장소 변경 자체는 실행 승인이 아니다.
+
+Release contract boundary가 감지되면 Control checkout 전환을 자동화하지 않는다. 사용자는 승인된 clean detached Control SHA로 별도 전환한 뒤 workflow dispatch에 아래 SHA를 정확히 입력한다.
+
+- `approved_contract_from_sha`: 현재 state의 `contract-sha`
+- `approved_control_sha`: 전환한 clean detached Control HEAD
+- `approved_migration_target_sha`: Flyway migration bundle도 바뀐 경우에만 target Release SHA
+
+contract boundary는 `stored contract-sha == approved_contract_from_sha`, `current clean Control HEAD == approved_control_sha`, 새 Control의 Release contract가 target Release와 같음, `target != current-sha`를 모두 만족해야 한다. migration boundary는 `approved_migration_target_sha == target_sha`여야 한다. 두 boundary가 함께 있으면 세 승인값 모두 필요하다. 빈 값, 불일치, dirty Control, target 외 SHA 또는 `--adopt-contract-sha`는 boundary 승인이 아니며 Container·DB·release state 전환 전에 거부한다.
+
+`--adopt-contract-sha`는 기존처럼 동일 Release contract에서 Control SHA를 채택하는 경로만 의미한다. boundary를 통과한 새 Control SHA도 target activation·health·smoke가 성공한 뒤에만 `contract-sha`로 기록하며, 그 전에는 기존 `contract-sha`와 `previous-contract-sha`를 보존한다. contract 또는 migration boundary에서 activation이 실패하면 이전 Release 자동복귀를 하지 않고 Application services를 중지한다. Scheduler는 OFF로 남고 MySQL·named volume은 보존한다.
+
 script는 실행 중인 Container를 바꾸기 전에 다음을 수행한다.
 
 1. SHA, GHCR repository 형식, runtime file mode와 완료 marker를 검증하고 release lock을 획득한다.
 2. 현재 Control 계약 파일의 staged·unstaged·untracked 변경이 없는지 확인하고 Control HEAD를 계산한다.
 3. `contract-sha`가 없으면 전달한 기존 운영 기준 SHA와 현재 Control HEAD의 Release 계약을 비교한다. `contract-sha`가 현재 Control HEAD와 다르면 전달한 값이 현재 HEAD와 정확히 같은지와 저장된 계약의 호환성을 확인한다.
-4. Control 전환이 필요한 경우 현재 Release의 image identity·digest·health·HTTP·HTTPS smoke를 확인한 뒤 현재 Control HEAD를 mode `600`으로 기록한다.
+4. 동일-contract Control 전환이 필요한 경우 현재 Release의 image identity·digest·health·HTTP·HTTPS smoke를 확인해 새 Control SHA를 activation 뒤 기록할 후보로만 보관한다.
 5. 승인된 `contract-sha`와 대상 Release SHA의 `compose.yaml`, `nginx.conf`, `nginx.https.conf`가 같은지 확인한다. commit 부재·Git 오류·차이 발견 시 image pull과 Container 변경 전에 중단한다.
 6. Compose config를 검증하고 digest로 고정된 MySQL·Nginx와 현재 복귀 Release image를 pull·검증해 복귀 가능성을 먼저 확보한다.
 7. 대상 Backend·Frontend의 정확한 SHA tag를 pull하고 revision label과 GHCR `sha256` RepoDigest를 확인한다.
@@ -295,7 +309,7 @@ rollback은 다음을 하지 않는다.
 | MySQL·Nginx pinned digest 불일치 | base image 불변성 훼손 | Compose pin과 pull 결과 비교 | tag로 우회하지 않고 중단 |
 | Control worktree 불결 | 승인되지 않은 로컬 Script·설정 실행 가능 | 지정된 일곱 파일의 `git status --porcelain` 확인 | 직접 수정 금지, clean 승인 checkout으로 복구 |
 | Control HEAD와 `contract-sha` 불일치 | 승인 Control 추적 불가 | 현재 HEAD와 mode `600` state 비교 | 별도 승인 후 현재 HEAD를 명시적으로 채택하거나 승인 checkout 복구 |
-| Release 계약 차이 | Application-only 전환 안전성 없음 | `contract-sha`와 대상 SHA의 Compose·Nginx 세 파일 비교 | Container·state·volume 변경 전 중단, 별도 Release bundle 설계 요청 |
+| Release 계약 차이 | Application-only 전환 안전성 없음 | SSM preflight와 deploy에서 `contract-sha`, clean Control HEAD, target의 Compose·Nginx 세 파일 비교 | 승인된 detached Control SHA와 두 contract SHA를 dispatch에 정확히 입력; activation 실패 시 자동복귀 없이 Application 중지·MySQL 보존 |
 | MySQL unhealthy | Backend 기동 차단 | `docker compose logs --tail 100 mysql` | volume 삭제 금지, disk·memory·credential 확인 |
 | Backend·Frontend unhealthy | proxy 전환 실패 | 해당 service 최근 로그와 health 확인 | 이전 SHA 자동 복귀 결과 확인 |
 | HTTP smoke 실패 | 외부 요청 처리 불가 | proxy와 upstream health·최근 로그 확인 | 이전 SHA 복귀, SG 확대 금지 |
