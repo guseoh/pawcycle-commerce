@@ -476,7 +476,7 @@ def collect(event_name: str, payload: dict[str, Any], repository: str, api: GitH
 
     if event_name == "workflow_run":
         run = payload.get("workflow_run") or {}
-        if run.get("name") == "Production Release Readiness":
+        if run.get("path") == ".github/workflows/production-release-readiness.yml":
             conclusion = str(run.get("conclusion") or "unknown").lower()
             target_sha = readiness_target_sha(run.get("display_title"))
             readiness_success = conclusion == "success" and target_sha != MISSING

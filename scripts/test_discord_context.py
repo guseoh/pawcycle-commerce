@@ -240,6 +240,7 @@ PRIVATE_KEY=hidden
 
     def test_release_readiness_maps_completed_runs_and_sanitizes_target_sha(self):
         target_sha = "a" * 40
+        readiness_path = ".github/workflows/production-release-readiness.yml"
         cases = {
             "success": ("release_readiness_success", "Readiness 확인 완료"),
             "failure": ("release_readiness_failure", "Readiness 확인 실패"),
@@ -251,16 +252,19 @@ PRIVATE_KEY=hidden
         }
         for conclusion, (event, status) in cases.items():
             with self.subTest(conclusion=conclusion):
+                run_name = f"Production Release Readiness · {target_sha}"
                 payload = {
                     "workflow_run": {
-                        "name": "Production Release Readiness",
-                        "display_title": f"Production Release Readiness · {target_sha}",
+                        "name": run_name,
+                        "display_title": run_name,
+                        "path": readiness_path,
                         "conclusion": conclusion,
                         "head_branch": "refs/heads/release-readiness-test",
                         "html_url": "https://example.invalid/actions/runs/21",
                     }
                 }
                 context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
+                self.assertTrue(context["notify"])
                 self.assertEqual(context["event"], event)
                 self.assertEqual(context["status"], status)
                 self.assertEqual(context["sha"], target_sha)
@@ -281,7 +285,8 @@ PRIVATE_KEY=hidden
         for invalid_title in malformed_titles:
             with self.subTest(display_title=invalid_title):
                 run = {
-                    "name": "Production Release Readiness",
+                    "name": invalid_title or "Production Release Readiness",
+                    "path": readiness_path,
                     "conclusion": "success",
                     "head_branch": "release-readiness-test",
                 }
@@ -293,11 +298,28 @@ PRIVATE_KEY=hidden
                     "guseoh/pawcycle-commerce",
                     FakeApi(),
                 )
+                self.assertTrue(invalid["notify"])
                 self.assertEqual(invalid["event"], "release_readiness_failure")
                 self.assertEqual(invalid["sha"], discord.MISSING)
                 self.assertEqual(invalid["head"], "release-readiness-test")
                 if invalid_title is not None:
                     self.assertNotIn(invalid_title, json.dumps(invalid, ensure_ascii=False))
+
+        spoofed = discord.collect(
+            "workflow_run",
+            {
+                "workflow_run": {
+                    "name": f"Production Release Readiness · {target_sha}",
+                    "display_title": f"Production Release Readiness · {target_sha}",
+                    "path": ".github/workflows/unrelated.yml",
+                    "conclusion": "success",
+                }
+            },
+            "guseoh/pawcycle-commerce",
+            FakeApi(),
+        )
+        self.assertFalse(spoofed["notify"])
+        self.assertEqual(spoofed["event"], "suppressed")
 
     def test_stale_workflow_run_preserves_run_sha_and_marks_context(self):
         payload = {"workflow_run": {"id": 8, "name": "Repository Validation", "conclusion": "success", "head_branch": "ops/sre", "head_sha": "old-sha", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}
