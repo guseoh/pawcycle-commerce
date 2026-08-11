@@ -102,7 +102,13 @@ case "${1:-}" in
     if [[ "$*" == *"backend/src/main/resources/db/migration"* ]]; then
       [[ "${FAKE_MIGRATION_MISMATCH:-}" != "1" ]] || exit 1
     else
-      [[ "${FAKE_CONTRACT_MISMATCH:-}" != "1" ]] || exit 1
+      if [[ "${FAKE_CONTRACT_MISMATCH:-}" == "1" ]]; then
+        exit 1
+      fi
+      if [[ -n "${FAKE_CONTRACT_MISMATCH_PAIR:-}" \
+        && "${3:-}:${4:-}" == "$FAKE_CONTRACT_MISMATCH_PAIR" ]]; then
+        exit 1
+      fi
     fi
     exit 0
     ;;
@@ -477,7 +483,26 @@ deploy() {
     || "$(<"$state_dir/contract-sha")" != "$FAKE_CONTROL_SHA" ]]; then
     arguments+=(--adopt-contract-sha "$FAKE_CONTROL_SHA")
   fi
+  if [[ "${FAKE_MIGRATION_MISMATCH:-}" == "1" ]]; then
+    arguments+=(--approved-migration-target-sha "$1")
+  fi
   "$SCRIPT_DIR/deploy.sh" "${arguments[@]}" >/dev/null
+}
+
+boundary_operation() {
+  local operation="$1"
+  local target_sha="$2"
+  local state_dir="$3"
+  shift 3
+
+  "$SCRIPT_DIR/deploy.sh" \
+    --operation "$operation" \
+    --sha "$target_sha" \
+    --backend-image "$BACKEND_IMAGE" \
+    --frontend-image "$FRONTEND_IMAGE" \
+    --runtime-dir "$RUNTIME_DIR" \
+    --state-dir "$state_dir" \
+    "$@"
 }
 
 rollback_without_sha() {
@@ -560,6 +585,131 @@ unset FAKE_CONTRACT_MISMATCH
 deploy "$SHA_A" "$control_state"
 [[ "$(<"$control_state/contract-sha")" == "$SHA_B" ]]
 [[ "$(stat -c '%a' "$control_state/contract-sha")" == "600" ]]
+
+boundary_state="$TEST_ROOT/approved-boundary-state"
+mkdir -p "$boundary_state"
+for state_name in active-mysql-volume current-sha contract-sha; do
+  case "$state_name" in
+    active-mysql-volume) printf '%s\n' 'pawcycle-production-mysql-data' >"$boundary_state/$state_name" ;;
+    *) printf '%s\n' "$SHA_A" >"$boundary_state/$state_name" ;;
+  esac
+  chmod 600 "$boundary_state/$state_name"
+done
+export FAKE_CONTRACT_MISMATCH_PAIR="$SHA_A:$SHA_B"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if boundary_operation deploy "$SHA_B" "$boundary_state" >"$TEST_ROOT/contract-boundary-missing-output" 2>&1; then
+  printf 'contract boundary without approvals did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'requires approved_contract_from_sha and approved_control_sha' "$TEST_ROOT/contract-boundary-missing-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+if boundary_operation deploy "$SHA_B" "$boundary_state" \
+  --approved-contract-from-sha "$SHA_B" \
+  --approved-control-sha "$SHA_B" >"$TEST_ROOT/contract-boundary-mismatch-output" 2>&1; then
+  printf 'contract boundary with a mismatched stored approval did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'approved_contract_from_sha does not match stored contract-sha' "$TEST_ROOT/contract-boundary-mismatch-output"
+
+up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
+boundary_operation preflight "$SHA_B" "$boundary_state" \
+  --approved-contract-from-sha "$SHA_A" \
+  --approved-control-sha "$SHA_B" >"$TEST_ROOT/contract-boundary-preflight-output"
+grep -Fq 'passed without changing containers, DB, or state' "$TEST_ROOT/contract-boundary-preflight-output"
+[[ "$(<"$boundary_state/contract-sha")" == "$SHA_A" ]]
+[[ "$(<"$boundary_state/current-sha")" == "$SHA_A" ]]
+[[ ! -e "$boundary_state/${SHA_B}.images" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/up-count")" == "$up_count_before" ]]
+
+boundary_operation deploy "$SHA_B" "$boundary_state" \
+  --approved-contract-from-sha "$SHA_A" \
+  --approved-control-sha "$SHA_B" >/dev/null
+[[ "$(<"$boundary_state/contract-sha")" == "$SHA_B" ]]
+[[ "$(<"$boundary_state/current-sha")" == "$SHA_B" ]]
+[[ "$(<"$boundary_state/previous-contract-sha")" == "$SHA_A" ]]
+unset FAKE_CONTRACT_MISMATCH_PAIR
+
+boundary_failure_state="$TEST_ROOT/approved-boundary-failure-state"
+mkdir -p "$boundary_failure_state"
+for state_name in active-mysql-volume current-sha contract-sha; do
+  case "$state_name" in
+    active-mysql-volume) printf '%s\n' 'pawcycle-production-mysql-data' >"$boundary_failure_state/$state_name" ;;
+    *) printf '%s\n' "$SHA_A" >"$boundary_failure_state/$state_name" ;;
+  esac
+  chmod 600 "$boundary_failure_state/$state_name"
+done
+export FAKE_CONTRACT_MISMATCH_PAIR="$SHA_A:$SHA_B"
+export FAKE_SMOKE_FAIL_SHA="$SHA_B"
+export FAKE_SMOKE_FAIL_PATH="/api/products"
+stop_count_before="$(<"$FAKE_DOCKER_STATE/stop-count")"
+if boundary_operation deploy "$SHA_B" "$boundary_failure_state" \
+  --approved-contract-from-sha "$SHA_A" \
+  --approved-control-sha "$SHA_B" >"$TEST_ROOT/contract-boundary-failure-output" 2>&1; then
+  printf 'approved contract boundary activation failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_SMOKE_FAIL_SHA FAKE_SMOKE_FAIL_PATH FAKE_CONTRACT_MISMATCH_PAIR
+grep -Fq 'automatic contract-boundary restoration is blocked' "$TEST_ROOT/contract-boundary-failure-output"
+[[ "$(<"$boundary_failure_state/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$boundary_failure_state/contract-sha")" == "$SHA_A" ]]
+[[ "$(<"$boundary_failure_state/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/stop-count")" -gt "$stop_count_before" ]]
+
+migration_boundary_state="$TEST_ROOT/migration-boundary-state"
+mkdir -p "$migration_boundary_state"
+for state_name in active-mysql-volume current-sha contract-sha; do
+  case "$state_name" in
+    active-mysql-volume) printf '%s\n' 'pawcycle-production-mysql-data' >"$migration_boundary_state/$state_name" ;;
+    *) printf '%s\n' "$SHA_A" >"$migration_boundary_state/$state_name" ;;
+  esac
+  chmod 600 "$migration_boundary_state/$state_name"
+done
+export FAKE_CONTROL_SHA="$SHA_A"
+export FAKE_MIGRATION_MISMATCH=1
+if boundary_operation deploy "$SHA_B" "$migration_boundary_state" >"$TEST_ROOT/migration-boundary-missing-output" 2>&1; then
+  printf 'migration boundary without approval did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'requires approved_migration_target_sha' "$TEST_ROOT/migration-boundary-missing-output"
+if boundary_operation deploy "$SHA_B" "$migration_boundary_state" \
+  --approved-migration-target-sha "$SHA_A" >"$TEST_ROOT/migration-boundary-mismatch-output" 2>&1; then
+  printf 'migration boundary with a mismatched target approval did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'approved_migration_target_sha does not match target SHA' "$TEST_ROOT/migration-boundary-mismatch-output"
+boundary_operation deploy "$SHA_B" "$migration_boundary_state" \
+  --approved-migration-target-sha "$SHA_B" >/dev/null
+[[ "$(<"$migration_boundary_state/current-sha")" == "$SHA_B" ]]
+unset FAKE_MIGRATION_MISMATCH
+
+both_boundaries_state="$TEST_ROOT/both-boundaries-state"
+mkdir -p "$both_boundaries_state"
+for state_name in active-mysql-volume current-sha contract-sha; do
+  case "$state_name" in
+    active-mysql-volume) printf '%s\n' 'pawcycle-production-mysql-data' >"$both_boundaries_state/$state_name" ;;
+    *) printf '%s\n' "$SHA_A" >"$both_boundaries_state/$state_name" ;;
+  esac
+  chmod 600 "$both_boundaries_state/$state_name"
+done
+export FAKE_CONTROL_SHA="$SHA_B"
+export FAKE_CONTRACT_MISMATCH_PAIR="$SHA_A:$SHA_B"
+export FAKE_MIGRATION_MISMATCH=1
+if boundary_operation deploy "$SHA_B" "$both_boundaries_state" \
+  --approved-contract-from-sha "$SHA_A" \
+  --approved-control-sha "$SHA_B" >"$TEST_ROOT/both-boundaries-missing-output" 2>&1; then
+  printf 'combined boundary without migration approval did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'requires approved_migration_target_sha' "$TEST_ROOT/both-boundaries-missing-output"
+boundary_operation deploy "$SHA_B" "$both_boundaries_state" \
+  --approved-contract-from-sha "$SHA_A" \
+  --approved-control-sha "$SHA_B" \
+  --approved-migration-target-sha "$SHA_B" >/dev/null
+[[ "$(<"$both_boundaries_state/contract-sha")" == "$SHA_B" ]]
+[[ "$(<"$both_boundaries_state/current-sha")" == "$SHA_B" ]]
+unset FAKE_CONTRACT_MISMATCH_PAIR FAKE_MIGRATION_MISMATCH
+export FAKE_CONTROL_SHA="$SHA_A"
 
 export FAKE_CONTROL_DIRTY=1
 docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"

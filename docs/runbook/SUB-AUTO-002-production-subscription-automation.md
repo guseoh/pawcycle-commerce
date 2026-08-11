@@ -17,6 +17,7 @@
 - `PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE`와 `PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS`도 양의 정수 명시값이어야 한다. Spring 기본값에 의존하지 않는다.
 - Scheduler 활성화는 현재 Application Release를 바꾸지 않고 Backend runtime만 다시 생성하는 별도 command다.
 - 현재 Release와 target Release의 `backend/src/main/resources/db/migration/**`가 다르면 schema boundary다. target 활성화 실패 시 이전 Release 자동복귀를 하지 않고 Application을 정지하며, `rollback.sh`도 pre-migration Release를 거부한다.
+- `Production Deploy`에서 migration bundle이 달라지면 target SHA와 정확히 같은 `approved_migration_target_sha`가 필요하다. Release contract도 바뀐 경우 clean detached Control SHA 승인까지 포함한 절차는 [OPS-010 Release contract·Flyway boundary](OPS-010-production-single-release.md#release-contractflyway-boundary의-production-deploy-승인-경로)를 따른다.
 - 모든 deploy·rollback·activation은 protected `active-mysql-volume`을 유지한다. `down --volumes`, volume 삭제, down migration, Flyway history 수정·repair, DROP, 직접 데이터 수정과 자동 재시도를 하지 않는다.
 
 중단 중에는 주문 자동 생성이 지연될 수 있다. 잘못 활성화하면 duplicate Order, Schedule 무Order advance, snapshot/cardinality 불일치 또는 반복 failure로 이어질 수 있으므로 아래 aggregate gate를 모두 통과하기 전에는 활성화하지 않는다.

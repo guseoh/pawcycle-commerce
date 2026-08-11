@@ -1,7 +1,15 @@
 {
   "schemaVersion": "2.2",
-  "description": "Runs the bounded PawCycle Production deploy contract for one verified forward release SHA.",
+  "description": "Runs bounded PawCycle Production approval preflight or deploy for one verified forward release SHA.",
   "parameters": {
+    "Operation": {
+      "type": "String",
+      "description": "Required bounded operation: preflight or deploy.",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^(preflight|deploy)$",
+      "minChars": 6,
+      "maxChars": 9
+    },
     "TargetSha": {
       "type": "String",
       "description": "Required lowercase 40-character PawCycle release commit SHA.",
@@ -9,12 +17,39 @@
       "allowedPattern": "^[0-9a-f]{40}$",
       "minChars": 40,
       "maxChars": 40
+    },
+    "ApprovedContractFromSha": {
+      "type": "String",
+      "description": "Optional approved stored contract SHA for a Release contract boundary.",
+      "default": "",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^$|^[0-9a-f]{40}$",
+      "minChars": 0,
+      "maxChars": 40
+    },
+    "ApprovedControlSha": {
+      "type": "String",
+      "description": "Optional approved clean Control SHA for a Release contract boundary.",
+      "default": "",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^$|^[0-9a-f]{40}$",
+      "minChars": 0,
+      "maxChars": 40
+    },
+    "ApprovedMigrationTargetSha": {
+      "type": "String",
+      "description": "Optional approved target SHA for a Flyway migration boundary.",
+      "default": "",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^$|^[0-9a-f]{40}$",
+      "minChars": 0,
+      "maxChars": 40
     }
   },
   "mainSteps": [
     {
       "action": "aws:runShellScript",
-      "name": "deployPawCycleProduction",
+      "name": "runPawCycleProductionOperation",
       "precondition": {
         "StringEquals": [
           "platformType",
@@ -23,7 +58,7 @@
       },
       "inputs": {
         "runCommand": [
-          "#!/usr/bin/env bash\nset -Eeuo pipefail\ntarget_sha=\"${SSM_TargetSha:-}\"\nif [[ ! \"$target_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n  echo \"TargetSha must be exactly 40 lowercase hexadecimal characters\" >&2\n  exit 1\nfi\n\ncontrol_dir=\"/opt/pawcycle/control\"\nstate_dir=\"/opt/pawcycle/state\"\nif [[ ! -d \"$control_dir/.git\" ]]; then\n  echo \"PawCycle Production control worktree is unavailable\" >&2\n  exit 1\nfi\n\norigin_url=\"$(git -C \"$control_dir\" config --get remote.origin.url)\"\ncase \"$origin_url\" in\n  https://github.com/*/*.git)\n    repository=\"${origin_url#https://github.com/}\"\n    repository=\"${repository%.git}\"\n    ;;\n  *)\n    echo \"PawCycle Production control origin must use the approved HTTPS GitHub form\" >&2\n    exit 1\n    ;;\nesac\nif [[ ! \"$repository\" =~ ^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$ ]]; then\n  echo \"PawCycle Production control origin repository is invalid\" >&2\n  exit 1\nfi\n\ncd \"$control_dir\"\ngit fetch --prune origin refs/heads/main:refs/remotes/origin/main\ngit cat-file -e \"${target_sha}^{commit}\"\ngit merge-base --is-ancestor \"$target_sha\" refs/remotes/origin/main || {\n  echo \"TargetSha is not contained in fetched origin/main\" >&2\n  exit 1\n}\n\ncurrent_sha_file=\"$state_dir/current-sha\"\nif [[ -e \"$current_sha_file\" || -L \"$current_sha_file\" ]]; then\n  if [[ -L \"$current_sha_file\" || ! -f \"$current_sha_file\" ]]; then\n    echo \"current-sha state must be a regular non-symlink file\" >&2\n    exit 1\n  fi\n  if [[ \"$(stat -c '%a' \"$current_sha_file\")\" != \"600\" ]]; then\n    echo \"current-sha state mode must be 600\" >&2\n    exit 1\n  fi\n  current_sha=\"$(<\"$current_sha_file\")\"\n  if [[ ! \"$current_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n    echo \"current-sha state is invalid\" >&2\n    exit 1\n  fi\n  git cat-file -e \"${current_sha}^{commit}\"\n  git merge-base --is-ancestor \"$current_sha\" refs/remotes/origin/main || {\n    echo \"current Production release is not contained in fetched origin/main\" >&2\n    exit 1\n  }\n  if [[ \"$target_sha\" != \"$current_sha\" ]] && ! git merge-base --is-ancestor \"$current_sha\" \"$target_sha\"; then\n    echo \"Production deploy refuses an older or divergent release; use the protected rollback procedure\" >&2\n    exit 1\n  fi\nfi\n\nbackend_image=\"ghcr.io/${repository}-backend\"\nfrontend_image=\"ghcr.io/${repository}-frontend\"\nexec /usr/bin/env bash \"$control_dir/infra/production/deploy.sh\" \\\n  --sha \"$target_sha\" \\\n  --backend-image \"$backend_image\" \\\n  --frontend-image \"$frontend_image\""
+          "#!/usr/bin/env bash\nset -Eeuo pipefail\noperation=\"${SSM_Operation:-}\"\ntarget_sha=\"${SSM_TargetSha:-}\"\napproved_contract_from_sha=\"${SSM_ApprovedContractFromSha:-}\"\napproved_control_sha=\"${SSM_ApprovedControlSha:-}\"\napproved_migration_target_sha=\"${SSM_ApprovedMigrationTargetSha:-}\"\n\nif [[ \"$operation\" != \"preflight\" && \"$operation\" != \"deploy\" ]]; then\n  echo \"Operation must be preflight or deploy\" >&2\n  exit 1\nfi\nif [[ ! \"$target_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n  echo \"TargetSha must be exactly 40 lowercase hexadecimal characters\" >&2\n  exit 1\nfi\nfor approved_sha in \"$approved_contract_from_sha\" \"$approved_control_sha\" \"$approved_migration_target_sha\"; do\n  if [[ -n \"$approved_sha\" && ! \"$approved_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n    echo \"approved SHA must be empty or exactly 40 lowercase hexadecimal characters\" >&2\n    exit 1\n  fi\ndone\n\ncontrol_dir=\"/opt/pawcycle/control\"\nstate_dir=\"/opt/pawcycle/state\"\nif [[ ! -d \"$control_dir/.git\" ]]; then\n  echo \"PawCycle Production control worktree is unavailable\" >&2\n  exit 1\nfi\n\norigin_url=\"$(git -C \"$control_dir\" config --get remote.origin.url)\"\ncase \"$origin_url\" in\n  https://github.com/*/*.git)\n    repository=\"${origin_url#https://github.com/}\"\n    repository=\"${repository%.git}\"\n    ;;\n  *)\n    echo \"PawCycle Production control origin must use the approved HTTPS GitHub form\" >&2\n    exit 1\n    ;;\nesac\nif [[ ! \"$repository\" =~ ^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$ ]]; then\n  echo \"PawCycle Production control origin repository is invalid\" >&2\n  exit 1\nfi\n\ncd \"$control_dir\"\ngit fetch --prune origin refs/heads/main:refs/remotes/origin/main\ncontrol_sha=\"$(git rev-parse --verify HEAD)\"\nif [[ ! \"$control_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n  echo \"Production control HEAD is invalid\" >&2\n  exit 1\nfi\ngit cat-file -e \"${control_sha}^{commit}\"\ngit merge-base --is-ancestor \"$control_sha\" refs/remotes/origin/main || {\n  echo \"Production control HEAD is not contained in fetched origin/main\" >&2\n  exit 1\n}\ngit cat-file -e \"${target_sha}^{commit}\"\ngit merge-base --is-ancestor \"$target_sha\" refs/remotes/origin/main || {\n  echo \"TargetSha is not contained in fetched origin/main\" >&2\n  exit 1\n}\n\ncurrent_sha_file=\"$state_dir/current-sha\"\nif [[ -e \"$current_sha_file\" || -L \"$current_sha_file\" ]]; then\n  if [[ -L \"$current_sha_file\" || ! -f \"$current_sha_file\" ]]; then\n    echo \"current-sha state must be a regular non-symlink file\" >&2\n    exit 1\n  fi\n  if [[ \"$(stat -c '%a' \"$current_sha_file\")\" != \"600\" ]]; then\n    echo \"current-sha state mode must be 600\" >&2\n    exit 1\n  fi\n  current_sha=\"$(<\"$current_sha_file\")\"\n  if [[ ! \"$current_sha\" =~ ^[0-9a-f]{40}$ ]]; then\n    echo \"current-sha state is invalid\" >&2\n    exit 1\n  fi\n  git cat-file -e \"${current_sha}^{commit}\"\n  git merge-base --is-ancestor \"$current_sha\" refs/remotes/origin/main || {\n    echo \"current Production release is not contained in fetched origin/main\" >&2\n    exit 1\n  }\n  if [[ \"$target_sha\" != \"$current_sha\" ]] && ! git merge-base --is-ancestor \"$current_sha\" \"$target_sha\"; then\n    echo \"Production deploy refuses an older or divergent release; use the protected rollback procedure\" >&2\n    exit 1\n  fi\nfi\n\nbackend_image=\"ghcr.io/${repository}-backend\"\nfrontend_image=\"ghcr.io/${repository}-frontend\"\nexec /usr/bin/env bash \"$control_dir/infra/production/deploy.sh\" \\\n  --operation \"$operation\" \\\n  --sha \"$target_sha\" \\\n  --backend-image \"$backend_image\" \\\n  --frontend-image \"$frontend_image\" \\\n  --approved-contract-from-sha \"$approved_contract_from_sha\" \\\n  --approved-control-sha \"$approved_control_sha\" \\\n  --approved-migration-target-sha \"$approved_migration_target_sha\""
         ]
       }
     }

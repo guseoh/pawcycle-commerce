@@ -300,7 +300,13 @@ def validate_oidc_deploy_contract() -> None:
     )
     require("group: pawcycle-production-deploy" in workflow and "cancel-in-progress: false" in workflow, "concurrent Production deploys must be blocked")
     require("AWS_ACCESS_KEY_ID" not in workflow and "AWS_SECRET_ACCESS_KEY" not in workflow and "ssh" not in workflow.lower(), "long-lived AWS keys and SSH are forbidden")
-    require("inputs:\n      target_sha:" in workflow and workflow.count("type: string") == 1, "target_sha must be the only workflow input")
+    for workflow_input in (
+        "target_sha",
+        "approved_contract_from_sha",
+        "approved_control_sha",
+        "approved_migration_target_sha",
+    ):
+        require(f"inputs:\n      {workflow_input}:" in workflow or f"\n      {workflow_input}:" in workflow, f"Production deploy workflow input is missing: {workflow_input}")
     require("^[0-9a-f]{40}$" in workflow and "git merge-base --is-ancestor" in workflow, "target SHA must be validated against main")
     require("ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}" in workflow and "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}" in workflow, "Production deploy must reuse the PawCycle GHCR image contract")
     require("aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5" in workflow, "OIDC credentials action must use the approved pinned revision")
@@ -327,14 +333,40 @@ def validate_oidc_deploy_contract() -> None:
         and "--document-version \"$SSM_DOCUMENT_VERSION\"" in workflow,
         "Production deploy must pin an immutable numeric SSM document version",
     )
-    require("--parameters \"TargetSha=${TARGET_SHA}\"" in workflow, "SSM document must receive only the verified target SHA")
+    require(
+        "Operation=${operation},TargetSha=${TARGET_SHA},ApprovedContractFromSha=${APPROVED_CONTRACT_FROM_SHA},ApprovedControlSha=${APPROVED_CONTROL_SHA},ApprovedMigrationTargetSha=${APPROVED_MIGRATION_TARGET_SHA}"
+        in workflow
+        and "run_ssm_operation preflight" in workflow
+        and "run_ssm_operation deploy" in workflow,
+        "workflow must run the same approved target and boundary values through preflight before deploy",
+    )
     require("--max-concurrency \"1\"" in workflow and "--max-errors \"0\"" in workflow, "SSM dispatch must fail closed")
-    require("aws ssm list-command-invocations" in workflow and "Success)" in workflow and "status could not be determined" in workflow, "SSM result must fail closed unless exactly successful")
-    require("SSM deploy command: Success" in workflow and "Production Verified" not in workflow, "summary must record command success without declaring Production verification")
+    require("aws ssm list-command-invocations" in workflow and "Success)" in workflow and "status could not be determined" in workflow and "print_ssm_plugin_output" in workflow and "CommandPlugins" in workflow, "SSM result must fail closed and show bounded plugin output on failure")
+    require("SSM preflight command: Success" in workflow and "SSM deploy command: Success" in workflow and "Production Verified" not in workflow, "summary must record both command successes without declaring Production verification")
 
     require(document.get("schemaVersion") == "2.2", "PawCycle deploy SSM document must use schema 2.2")
     parameters = document.get("parameters")
-    require(isinstance(parameters, dict) and set(parameters) == {"TargetSha"}, "SSM document must accept only TargetSha")
+    require(
+        isinstance(parameters, dict)
+        and set(parameters)
+        == {
+            "Operation",
+            "TargetSha",
+            "ApprovedContractFromSha",
+            "ApprovedControlSha",
+            "ApprovedMigrationTargetSha",
+        },
+        "SSM document must accept only the bounded operation, target, and boundary approvals",
+    )
+    operation = parameters["Operation"]
+    require(
+        operation.get("type") == "String"
+        and operation.get("interpolationType") == "ENV_VAR"
+        and operation.get("allowedPattern") == "^(preflight|deploy)$"
+        and operation.get("minChars") == 6
+        and operation.get("maxChars") == 9,
+        "SSM Operation must use bounded ENV_VAR interpolation",
+    )
     target = parameters["TargetSha"]
     require(
         target.get("type") == "String"
@@ -344,11 +376,34 @@ def validate_oidc_deploy_contract() -> None:
         and target.get("maxChars") == 40,
         "SSM TargetSha must use bounded ENV_VAR interpolation",
     )
+    for approval_name in (
+        "ApprovedContractFromSha",
+        "ApprovedControlSha",
+        "ApprovedMigrationTargetSha",
+    ):
+        approval = parameters[approval_name]
+        require(
+            approval.get("type") == "String"
+            and approval.get("default") == ""
+            and approval.get("interpolationType") == "ENV_VAR"
+            and approval.get("allowedPattern") == "^$|^[0-9a-f]{40}$"
+            and approval.get("minChars") == 0
+            and approval.get("maxChars") == 40,
+            f"SSM {approval_name} must be an optional bounded ENV_VAR SHA",
+        )
     steps = document.get("mainSteps")
     require(isinstance(steps, list) and len(steps) == 1 and steps[0].get("action") == "aws:runShellScript", "SSM document must contain one bounded Linux shell step")
     command = "\n".join(steps[0].get("inputs", {}).get("runCommand", []))
     require(command.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail"), "SSM document must execute the bounded command under Bash fail-closed semantics")
-    require("${SSM_TargetSha:-}" in command and "{{ TargetSha }}" not in command, "SSM document must not raw-interpolate TargetSha")
+    require(
+        "${SSM_Operation:-}" in command
+        and "${SSM_TargetSha:-}" in command
+        and "${SSM_ApprovedContractFromSha:-}" in command
+        and "${SSM_ApprovedControlSha:-}" in command
+        and "${SSM_ApprovedMigrationTargetSha:-}" in command
+        and "{{ TargetSha }}" not in command,
+        "SSM document must not raw-interpolate operation, target, or approvals",
+    )
     require("/opt/pawcycle/control" in command and "infra/production/deploy.sh" in command, "SSM document must reuse the existing PawCycle control deploy script")
     require("git -C \"$control_dir\" config --get remote.origin.url" in command and "https://github.com/*/*.git" in command, "SSM document must derive the approved PawCycle GitHub repository without SSH")
     require(
@@ -364,7 +419,7 @@ def validate_oidc_deploy_contract() -> None:
         "automatic deploy must reject older or divergent releases and preserve the rollback boundary",
     )
     require("ghcr.io/${repository}-backend" in command and "ghcr.io/${repository}-frontend" in command, "SSM document must derive both GHCR repositories from the PawCycle control contract")
-    require("--sha \"$target_sha\"" in command and "--backend-image \"$backend_image\"" in command and "--frontend-image \"$frontend_image\"" in command, "SSM document must pass only bounded release inputs to deploy.sh")
+    require("--operation \"$operation\"" in command and "--sha \"$target_sha\"" in command and "--backend-image \"$backend_image\"" in command and "--frontend-image \"$frontend_image\"" in command and "--approved-contract-from-sha \"$approved_contract_from_sha\"" in command and "--approved-control-sha \"$approved_control_sha\"" in command and "--approved-migration-target-sha \"$approved_migration_target_sha\"" in command, "SSM document must pass only bounded operation, target, and boundary approval inputs to deploy.sh")
     require("--adopt-contract-sha" not in command and "aws ssm" not in command and "ssh" not in command.lower(), "SSM document must not bypass deploy contract or accept remote shell paths")
 
 
@@ -598,6 +653,8 @@ def validate_scripts() -> None:
     )
     require(
         "validate_runtime_contract_compatibility" in common
+        and "release_contract_changed" in common
+        and "require_contract_boundary_approval" in common
         and "production release contract differs from the approved contract SHA" in common,
         "release contract compatibility gate is missing",
     )
@@ -616,8 +673,10 @@ def validate_scripts() -> None:
         and 'git -C "$CONTROL_WORKTREE_ROOT" cat-file' in common
         and 'git -C "$CONTROL_WORKTREE_ROOT" diff' in common
         and "migration_bundle_changed" in common
+        and "require_migration_boundary_approval" in common
         and "require_no_migration_boundary_rollback" in rollback
         and "automatic pre-migration release restoration is blocked" in deploy
+        and "automatic contract-boundary restoration is blocked" in deploy
         and "MySQL was preserved" in deploy,
         "schema-boundary automatic and manual pre-migration rollback gates are incomplete",
     )
@@ -672,13 +731,34 @@ def validate_scripts() -> None:
         "explicit clean control HEAD approval gate is missing",
     )
     require(
-        'write_state contract-sha "$control_sha"' in common
+        "PENDING_CONTRACT_SHA" in common
+        and 'write_state contract-sha "$PENDING_CONTRACT_SHA"' in deploy
         and "load_runtime_contract" in common
         and "load_runtime_contract" in rollback
         and "--adopt-contract-sha" in deploy
         and "previous-contract-sha" in deploy
         and "previous-contract-sha" in rollback,
         "application release and production control state must be separated",
+    )
+    require(
+        "--operation <preflight|deploy>" in deploy
+        and "initialize_read_only_release_context" in deploy
+        and "PAWCYCLE_PREFLIGHT_RECORD_IMAGES=false" in deploy
+        and "passed without changing containers, DB, or state" in deploy
+        and "record_images" in common
+        and "--approved-contract-from-sha" in deploy
+        and "--approved-control-sha" in deploy
+        and "--approved-migration-target-sha" in deploy,
+        "read-only approval preflight and repeated deploy boundary gates are incomplete",
+    )
+    require(
+        "contract-boundary-missing-output" in script_tests
+        and "contract-boundary-preflight-output" in script_tests
+        and "migration-boundary-missing-output" in script_tests
+        and "both-boundaries-missing-output" in script_tests
+        and 'boundary_state/previous-contract-sha")" == "$SHA_A"' in script_tests
+        and "automatic contract-boundary restoration is blocked" in script_tests,
+        "contract and migration boundary regression coverage is missing",
     )
     require(
         "acquire_release_lock" in rollback_initialize
@@ -1301,6 +1381,7 @@ def main() -> None:
     print("OPS-013 production backup and restore contracts validated")
     print("OPS-025 actual production DB restore contracts validated")
     print("OPS-AUTO-003 OIDC and restricted SSM deploy contracts validated")
+    print("OPS-AUTO-005 Production Deploy boundary approval contracts validated")
 
 
 if __name__ == "__main__":

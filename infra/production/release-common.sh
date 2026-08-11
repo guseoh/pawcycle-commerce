@@ -36,6 +36,7 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/materialize-ssm-env.sh'
 )
 CONTRACT_SHA=""
+PENDING_CONTRACT_SHA=""
 ACTIVE_MYSQL_VOLUME=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=""
@@ -191,6 +192,22 @@ current_control_sha() {
   printf '%s\n' "$sha"
 }
 
+current_clean_control_sha() {
+  local changes
+  local sha
+
+  if ! changes="$(git -C "$CONTROL_WORKTREE_ROOT" status --porcelain --untracked-files=all)"; then
+    die "unable to inspect Production control worktree"
+  fi
+  [[ -z "$changes" ]] || die "Production control worktree is not clean"
+
+  if ! sha="$(git -C "$CONTROL_WORKTREE_ROOT" rev-parse --verify HEAD)"; then
+    die "unable to resolve Production control HEAD"
+  fi
+  validate_sha "$sha"
+  printf '%s\n' "$sha"
+}
+
 validate_https_domain() {
   [[ "$1" =~ ^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\.duckdns\.org$ ]] \
     || die "domain must be one lowercase single-label duckdns.org hostname"
@@ -296,6 +313,7 @@ image_digest() {
 
 preflight_release() {
   local sha="$1"
+  local record_images="${2:-${PAWCYCLE_PREFLIGHT_RECORD_IMAGES:-true}}"
   local record="$PAWCYCLE_STATE_DIR/${sha}.images"
   local backend_digest
   local frontend_digest
@@ -304,6 +322,8 @@ preflight_release() {
   local candidate_record="${record}.tmp"
 
   validate_sha "$sha"
+  [[ "$record_images" == "true" || "$record_images" == "false" ]] \
+    || die "internal preflight image-recording mode is invalid"
   ACTIVE_SHA="$sha"
   export ACTIVE_SHA
 
@@ -313,23 +333,25 @@ preflight_release() {
   backend_digest="$(image_digest "$BACKEND_IMAGE" "$sha")"
   frontend_digest="$(image_digest "$FRONTEND_IMAGE" "$sha")"
 
-  {
-    printf 'RELEASE_SHA=%s\n' "$sha"
-    printf 'BACKEND_DIGEST=%s\n' "$backend_digest"
-    printf 'FRONTEND_DIGEST=%s\n' "$frontend_digest"
-    printf 'MYSQL_DIGEST=%s\n' "$mysql_digest"
-    printf 'PROXY_DIGEST=%s\n' "$proxy_digest"
-  } > "$candidate_record"
-  chmod 600 "$candidate_record"
+  if [[ "$record_images" == "true" ]]; then
+    {
+      printf 'RELEASE_SHA=%s\n' "$sha"
+      printf 'BACKEND_DIGEST=%s\n' "$backend_digest"
+      printf 'FRONTEND_DIGEST=%s\n' "$frontend_digest"
+      printf 'MYSQL_DIGEST=%s\n' "$mysql_digest"
+      printf 'PROXY_DIGEST=%s\n' "$proxy_digest"
+    } > "$candidate_record"
+    chmod 600 "$candidate_record"
 
-  if [[ -f "$record" ]]; then
-    if ! cmp -s "$candidate_record" "$record"; then
+    if [[ -f "$record" ]]; then
+      if ! cmp -s "$candidate_record" "$record"; then
+        rm -f -- "$candidate_record"
+        die "image digest drift detected for previously verified release SHA: $sha"
+      fi
       rm -f -- "$candidate_record"
-      die "image digest drift detected for previously verified release SHA: $sha"
+    else
+      mv "$candidate_record" "$record"
     fi
-    rm -f -- "$candidate_record"
-  else
-    mv "$candidate_record" "$record"
   fi
 
   printf 'Verified Backend digest: %s\n' "$backend_digest"
@@ -349,13 +371,69 @@ validate_runtime_contract_compatibility() {
   git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null \
     || die "candidate release contract commit is unavailable: $candidate_sha"
 
+  if release_contract_changed "$approved_contract_sha" "$candidate_sha"; then
+    die "production release contract differs from the approved contract SHA"
+  fi
+  return 0
+}
+
+release_contract_changed() {
+  local approved_contract_sha="$1"
+  local candidate_sha="$2"
+  local status
+
+  [[ "$approved_contract_sha" != "$candidate_sha" ]] || return 1
+  git cat-file -e "${approved_contract_sha}^{commit}" 2>/dev/null \
+    || die "approved release contract commit is unavailable: $approved_contract_sha"
+  git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null \
+    || die "candidate release contract commit is unavailable: $candidate_sha"
+
   if git diff --quiet "$approved_contract_sha" "$candidate_sha" -- "${RELEASE_CONTRACT_PATHS[@]}"; then
-    return 0
+    return 1
   else
     status=$?
   fi
   [[ "$status" -eq 1 ]] || die "unable to compare production release contracts"
-  die "production release contract differs from the approved contract SHA"
+  return 0
+}
+
+require_contract_boundary_approval() {
+  local stored_contract_sha="$1"
+  local current_release_sha="$2"
+  local target_sha="$3"
+  local approved_contract_from_sha="$4"
+  local approved_control_sha="$5"
+  local control_sha
+
+  [[ -n "$approved_contract_from_sha" && -n "$approved_control_sha" ]] \
+    || die "production release contract boundary requires approved_contract_from_sha and approved_control_sha"
+  validate_sha "$approved_contract_from_sha"
+  validate_sha "$approved_control_sha"
+  [[ "$stored_contract_sha" == "$approved_contract_from_sha" ]] \
+    || die "approved_contract_from_sha does not match stored contract-sha"
+  [[ "$target_sha" != "$current_release_sha" ]] \
+    || die "production release contract boundary requires a target different from current-sha"
+
+  control_sha="$(current_clean_control_sha)"
+  [[ "$control_sha" == "$approved_control_sha" ]] \
+    || die "approved_control_sha does not match the current clean Control HEAD"
+  validate_runtime_contract_compatibility "$control_sha" "$target_sha"
+
+  PENDING_CONTRACT_SHA="$control_sha"
+  printf 'Approved Production release contract boundary: %s -> %s\n' \
+    "$stored_contract_sha" "$control_sha"
+}
+
+require_migration_boundary_approval() {
+  local target_sha="$1"
+  local approved_migration_target_sha="$2"
+
+  [[ -n "$approved_migration_target_sha" ]] \
+    || die "database migration boundary requires approved_migration_target_sha"
+  validate_sha "$approved_migration_target_sha"
+  [[ "$approved_migration_target_sha" == "$target_sha" ]] \
+    || die "approved_migration_target_sha does not match target SHA"
+  printf 'Approved Production database migration boundary for target: %s\n' "$target_sha"
 }
 
 migration_bundle_changed() {
@@ -436,9 +514,9 @@ load_or_adopt_runtime_contract() {
   fi
 
   validate_current_release_for_contract_adoption "$current_release_sha"
-  write_state contract-sha "$control_sha"
+  PENDING_CONTRACT_SHA="$control_sha"
   CONTRACT_SHA="$control_sha"
-  printf 'Production control contract adopted: %s\n' "$CONTRACT_SHA"
+  printf 'Production control contract adoption validated: %s\n' "$CONTRACT_SHA"
 }
 
 load_runtime_contract() {
@@ -721,5 +799,11 @@ initialize_release_context() {
   validate_sha "$TARGET_SHA"
   prepare_release_context
   acquire_release_lock
+  load_active_mysql_volume
+}
+
+initialize_read_only_release_context() {
+  validate_sha "$TARGET_SHA"
+  prepare_read_only_release_context
   load_active_mysql_volume
 }
