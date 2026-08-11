@@ -65,18 +65,23 @@ jobs:
           AWS_ROLE_ARN: ${{ vars.AWS_PRODUCTION_DEPLOY_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           SSM_DOCUMENT_NAME: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME }}
+          SSM_DOCUMENT_VERSION: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_VERSION }}
           SSM_TARGET_TAG_KEY: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY }}
           SSM_TARGET_TAG_VALUE: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE }}
         shell: bash
         run: |
           set -euo pipefail
 
-          for required in AWS_ROLE_ARN AWS_REGION SSM_DOCUMENT_NAME SSM_TARGET_TAG_KEY SSM_TARGET_TAG_VALUE; do
+          for required in AWS_ROLE_ARN AWS_REGION SSM_DOCUMENT_NAME SSM_DOCUMENT_VERSION SSM_TARGET_TAG_KEY SSM_TARGET_TAG_VALUE; do
             if [ -z "${!required:-}" ]; then
               echo "production environment variable is required: $required" >&2
               exit 1
             fi
           done
+          if [[ ! "$SSM_DOCUMENT_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "SSM document version must be a positive immutable numeric version" >&2
+            exit 1
+          fi
 
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5
@@ -84,15 +89,47 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_PRODUCTION_DEPLOY_ROLE_ARN }}
           role-session-name: pawcycle-production-deploy-${{ github.run_id }}
-          role-duration-seconds: 1800
+          role-duration-seconds: 3600
           mask-aws-account-id: true
+
+      - name: Resolve single Production SSM target
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_TARGET_TAG_KEY: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY }}
+          SSM_TARGET_TAG_VALUE: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          target_json="$(aws ssm describe-instance-information \
+            --region "$AWS_REGION" \
+            --filters "Key=tag:${SSM_TARGET_TAG_KEY},Values=${SSM_TARGET_TAG_VALUE}" \
+            --query 'InstanceInformationList[].{InstanceId:InstanceId,PingStatus:PingStatus,ResourceType:ResourceType}' \
+            --output json)"
+          target_count="$(jq 'length' <<<"$target_json")"
+          if [ "$target_count" -ne 1 ]; then
+            echo "Production SSM target tag must resolve to exactly one managed node" >&2
+            exit 1
+          fi
+
+          instance_id="$(jq -r '.[0].InstanceId // empty' <<<"$target_json")"
+          ping_status="$(jq -r '.[0].PingStatus // empty' <<<"$target_json")"
+          resource_type="$(jq -r '.[0].ResourceType // empty' <<<"$target_json")"
+          if [[ ! "$instance_id" =~ ^i-[0-9a-f]{8}([0-9a-f]{9})?$ ]]; then
+            echo "resolved Production target is not an EC2 instance ID" >&2
+            exit 1
+          fi
+          if [ "$ping_status" != "Online" ] || [ "$resource_type" != "EC2Instance" ]; then
+            echo "resolved Production target is not an online EC2 managed node" >&2
+            exit 1
+          fi
+          echo "SSM_INSTANCE_ID=$instance_id" >> "$GITHUB_ENV"
 
       - name: Run restricted production deploy document
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           SSM_DOCUMENT_NAME: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME }}
-          SSM_TARGET_TAG_KEY: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_KEY }}
-          SSM_TARGET_TAG_VALUE: ${{ vars.PAWCYCLE_PRODUCTION_SSM_TARGET_TAG_VALUE }}
+          SSM_DOCUMENT_VERSION: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_VERSION }}
           TARGET_SHA: ${{ inputs.target_sha }}
         shell: bash
         run: |
@@ -101,7 +138,8 @@ jobs:
           command_id="$(aws ssm send-command \
             --region "$AWS_REGION" \
             --document-name "$SSM_DOCUMENT_NAME" \
-            --targets "Key=tag:${SSM_TARGET_TAG_KEY},Values=${SSM_TARGET_TAG_VALUE}" \
+            --document-version "$SSM_DOCUMENT_VERSION" \
+            --instance-ids "$SSM_INSTANCE_ID" \
             --parameters "TargetSha=${TARGET_SHA}" \
             --comment "PawCycle production deploy ${TARGET_SHA}" \
             --timeout-seconds 1800 \
@@ -131,7 +169,7 @@ jobs:
               --output json)"
             invocation_count="$(jq '.CommandInvocations | length' <<<"$invocations")"
             if [ "$invocation_count" -gt 1 ]; then
-              echo "SSM command matched more than one Production target" >&2
+              echo "SSM command returned more than one Production invocation" >&2
               exit 1
             fi
             if [ "$invocation_count" -eq 1 ]; then
