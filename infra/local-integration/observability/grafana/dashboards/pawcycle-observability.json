@@ -186,7 +186,7 @@
       "targets": [
         { "editorMode": "code", "expr": "pawcycle_subscription_automation_executions_total", "legendFormat": "executions", "range": true, "refId": "A" },
         { "editorMode": "code", "expr": "pawcycle_subscription_automation_processed_candidates_total", "legendFormat": "processed candidates", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "pawcycle_subscription_automation_orders_created_total", "legendFormat": "orders created", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "pawcycle_subscription_automation_orders_total", "legendFormat": "orders created", "range": true, "refId": "C" },
         { "editorMode": "code", "expr": "pawcycle_subscription_automation_failures_total", "legendFormat": "failures", "range": true, "refId": "D" },
         { "editorMode": "code", "expr": "pawcycle_subscription_automation_duplicate_noop_total", "legendFormat": "duplicate/no-op", "range": true, "refId": "E" }
       ],

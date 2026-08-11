@@ -102,7 +102,7 @@ class ObservabilityIntegrationTests {
 				"system_cpu_usage",
 				"hikaricp_connections",
 				"pawcycle_subscription_automation_executions_total",
-				"pawcycle_subscription_automation_orders_created_total",
+				"pawcycle_subscription_automation_orders_total",
 				"pawcycle_subscription_reconciliation_executions_total",
 				"pawcycle_subscription_idempotency_cleanup_executions_total",
 				"pawcycle_subscription_idempotency_retained_rows");
