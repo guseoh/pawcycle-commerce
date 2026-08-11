@@ -238,6 +238,46 @@ PRIVATE_KEY=hidden
         context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
         self.assertFalse(context["notify"])
 
+    def test_release_readiness_maps_completed_runs_and_sanitizes_target_sha(self):
+        target_sha = "a" * 40
+        cases = {
+            "success": ("release_readiness_success", "Readiness 확인 완료"),
+            "failure": ("release_readiness_failure", "Readiness 확인 실패"),
+            "cancelled": ("release_readiness_failure", "Readiness 확인 실패"),
+        }
+        for conclusion, (event, status) in cases.items():
+            with self.subTest(conclusion=conclusion):
+                payload = {
+                    "workflow_run": {
+                        "name": "Production Release Readiness",
+                        "display_title": f"Production Release Readiness · {target_sha}",
+                        "conclusion": conclusion,
+                        "html_url": "https://example.invalid/actions/runs/21",
+                    }
+                }
+                context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", FakeApi())
+                self.assertEqual(context["event"], event)
+                self.assertEqual(context["status"], status)
+                self.assertEqual(context["sha"], target_sha)
+                self.assertEqual(context["role"], "Platform/SRE")
+                self.assertEqual(context["actions_url"], "https://example.invalid/actions/runs/21")
+                if conclusion == "success":
+                    self.assertIn("OPS-010", context["next_action"])
+                else:
+                    self.assertIn("Actions 실행 원인", context["next_action"])
+                self.assertIn("실제 Production 배포 결과가 아님", context["risks"])
+
+        invalid_title = "Production Release Readiness · INVALID-SHA-DO-NOT-EXPOSE"
+        invalid = discord.collect(
+            "workflow_run",
+            {"workflow_run": {"name": "Production Release Readiness", "display_title": invalid_title, "conclusion": "failure"}},
+            "guseoh/pawcycle-commerce",
+            FakeApi(),
+        )
+        self.assertEqual(invalid["event"], "release_readiness_failure")
+        self.assertEqual(invalid["sha"], discord.MISSING)
+        self.assertNotIn(invalid_title, json.dumps(invalid, ensure_ascii=False))
+
     def test_stale_workflow_run_preserves_run_sha_and_marks_context(self):
         payload = {"workflow_run": {"id": 8, "name": "Repository Validation", "conclusion": "success", "head_branch": "ops/sre", "head_sha": "old-sha", "html_url": "https://example.invalid/run", "pull_requests": [{"number": 40}]}}
         context = discord.collect("workflow_run", payload, "guseoh/pawcycle-commerce", StalePrApi())
