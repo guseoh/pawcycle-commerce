@@ -73,12 +73,14 @@ validate_recorded_previous_release_contract() {
 }
 
 initialize_rollback_context
+require_subscription_automation_mode false
 
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
 [[ "$TARGET_SHA" != "$CURRENT_SHA" ]] || die "rollback target equals current release"
 
 validate_recorded_previous_release_contract "$CURRENT_SHA" "$TARGET_SHA"
+require_no_migration_boundary_rollback "$CURRENT_SHA" "$TARGET_SHA"
 
 printf 'Preflighting current recovery release: %s\n' "$CURRENT_SHA"
 preflight_release "$CURRENT_SHA"

@@ -49,6 +49,9 @@ def load_compose_config() -> dict[str, object]:
             "FRONTEND_IMAGE": "ghcr.io/example/pawcycle-commerce-frontend",
             "PAWCYCLE_MYSQL_ENV_FILE": str(mysql_env),
             "PAWCYCLE_BACKEND_ENV_FILE": str(backend_env),
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED": "false",
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE": "7",
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS": "12345",
         }
         completed = subprocess.run(
             [
@@ -92,6 +95,13 @@ def validate_compose() -> None:
     require(
         services["backend"].get("environment", {}).get("SESSION_COOKIE_SECURE") == "true",
         "Backend Secure session cookie contract must remain enabled",
+    )
+    backend_environment = services["backend"].get("environment", {})
+    require(
+        backend_environment.get("PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED") == "false"
+        and backend_environment.get("PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE") == "7"
+        and backend_environment.get("PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS") == "12345",
+        "Backend automation runtime values must be explicit Compose inputs",
     )
 
     for name, service in services.items():
@@ -144,6 +154,11 @@ def validate_workflow() -> None:
 
     require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
     require(
+        "infra/production/subscription-automation-control.sh" in validation_workflow
+        and "infra/production/subscription-automation-preflight.sh" in validation_workflow,
+        "Repository Validation must syntax-check the SUB-AUTO-002 production scripts",
+    )
+    require(
         "infra/production/db-backup-restore.sh" in validation_workflow,
         "Repository Validation must syntax-check the OPS-013 backup and restore script",
     )
@@ -191,6 +206,11 @@ def validate_scripts() -> None:
     common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
     deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
     rollback = (PRODUCTION / "rollback.sh").read_text(encoding="utf-8")
+    automation_control = (PRODUCTION / "subscription-automation-control.sh").read_text(encoding="utf-8")
+    automation_preflight = (PRODUCTION / "subscription-automation-preflight.sh").read_text(encoding="utf-8")
+    automation_runbook = (
+        ROOT / "docs" / "runbook" / "SUB-AUTO-002-production-subscription-automation.md"
+    ).read_text(encoding="utf-8")
     db_restore = (PRODUCTION / "production-db-restore.sh").read_text(encoding="utf-8")
     materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
     https = (PRODUCTION / "https.sh").read_text(encoding="utf-8")
@@ -207,7 +227,7 @@ def validate_scripts() -> None:
     auth_member_lifecycle = (
         PRODUCTION / "test-create-production-auth-smoke-member-lifecycle.sh"
     ).read_text(encoding="utf-8")
-    release_scripts = "\n".join((common, deploy, rollback, db_restore))
+    release_scripts = "\n".join((common, deploy, rollback, automation_control, db_restore))
     rollback_initialize = rollback[
         rollback.index("initialize_rollback_context() {") :
         rollback.index("\n}", rollback.index("initialize_rollback_context() {")) + 2
@@ -398,6 +418,8 @@ def validate_scripts() -> None:
         "infra/production/release-common.sh",
         "infra/production/deploy.sh",
         "infra/production/rollback.sh",
+        "infra/production/subscription-automation-control.sh",
+        "infra/production/subscription-automation-preflight.sh",
         "infra/production/production-db-restore.sh",
         "infra/production/materialize-ssm-env.sh",
     ):
@@ -413,6 +435,60 @@ def validate_scripts() -> None:
         and "production release contract differs from the approved contract SHA" in common,
         "release contract compatibility gate is missing",
     )
+    require(
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" in materialize
+        and "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" in materialize
+        and "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" in materialize
+        and "validate_subscription_automation_settings" in common
+        and "require_subscription_automation_mode false" in deploy
+        and "require_subscription_automation_mode false" in rollback,
+        "application deploy and rollback must require an explicit Scheduler OFF runtime",
+    )
+    require(
+        "MIGRATION_BUNDLE_PATH" in common
+        and "migration_bundle_changed" in common
+        and "require_no_migration_boundary_rollback" in rollback
+        and "automatic pre-migration release restoration is blocked" in deploy
+        and "MySQL was preserved" in deploy,
+        "schema-boundary automatic and manual pre-migration rollback gates are incomplete",
+    )
+    require(
+        "--max-due-candidates" in automation_control
+        and "activate_backend_runtime" in automation_control
+        and "stop_backend_service" in automation_control
+        and "subscription-automation-preflight.sh" in automation_control,
+        "Scheduler activation must be a separate bounded and fail-closed command",
+    )
+    for evidence in (
+        "FLYWAY_V9=",
+        "FLYWAY_V10=",
+        "FLYWAY_V11=",
+        "UNIQUE_SCHEDULE_ORDER=",
+        "DUE_INDEX=",
+        "DUE_CANDIDATE_COUNT=",
+        "OLDEST_DUE_DATE=",
+        "DUPLICATE_ORDER_SCHEDULE_GROUPS=",
+        "ORDERLESS_ADVANCED_SCHEDULES=",
+        "ORDER_SNAPSHOT_CARDINALITY_ANOMALIES=",
+        "PROCESSED_ACTIVE_FUTURE_SCHEDULE_ANOMALIES=",
+        "SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS",
+    ):
+        require(evidence in automation_preflight, f"SUB-AUTO-002 read-only preflight evidence is missing: {evidence}")
+    require(
+        "raw database output was suppressed" in automation_preflight
+        and "subscription, Schedule, or Order IDs" in automation_preflight
+        and not re.search(r"SELECT\s+(?:schedule|orders?)\.id", automation_preflight, re.IGNORECASE),
+        "SUB-AUTO-002 preflight output must remain aggregate and identifier-free",
+    )
+    for boundary in (
+        "Scheduler OFF",
+        "migration bundle",
+        "자동복귀를 차단",
+        "Flyway repair",
+        "OPS-025",
+        "실제 실행은 별도 고위험 사용자 승인",
+    ):
+        require(boundary in automation_runbook, f"SUB-AUTO-002 Runbook boundary is missing: {boundary}")
     require(
         "production control contract worktree is not clean" in common
         and "production control SHA differs from contract state" in common
@@ -472,6 +548,11 @@ def validate_scripts() -> None:
         "rollback with control SHA drift did not fail closed",
         "incompatible production runtime contract did not fail closed",
         "rollback with incompatible production runtime contract did not fail closed",
+        "application deploy enabled the Scheduler",
+        "unexpected due candidate count did not block activation",
+        "duplicate Order aggregate anomaly did not fail closed",
+        "schema-boundary target failure was reported as success",
+        "manual pre-migration rollback did not fail closed",
         "rollback previous-sha symlink did not fail closed",
         "rollback previous-sha mode violation did not fail closed",
         "missing active MySQL volume state did not fail closed",
@@ -483,6 +564,12 @@ def validate_scripts() -> None:
 
     for leaf in ("MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"):
         require(f"get_parameter {leaf}" in materialize, f"required SSM parameter is missing: {leaf}")
+    for leaf in (
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED",
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE",
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS",
+    ):
+        require(f"get_parameter {leaf}" in materialize, f"required automation SSM parameter is missing: {leaf}")
     require("--with-decryption" in materialize, "SecureString decryption flag is required")
     require(materialize.count("chmod 600") >= 2, "runtime files and completion marker must be mode 600")
     require("set +x" in materialize, "materializer must disable shell tracing")

@@ -37,6 +37,9 @@ case "$leaf" in
   MYSQL_USER) printf 'ops010_user' ;;
   MYSQL_PASSWORD) printf 'local-%%pa$$word#' ;;
   MYSQL_ROOT_PASSWORD) printf 'local-root-%%pa$$word#' ;;
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED) printf '%s' "${FAKE_AUTOMATION_ENABLED:-false}" ;;
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE) printf '%s' "${FAKE_AUTOMATION_BATCH_SIZE:-7}" ;;
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS) printf '%s' "${FAKE_AUTOMATION_FIXED_DELAY_MS:-12345}" ;;
   *) exit 254 ;;
 esac
 EOF
@@ -90,7 +93,11 @@ case "${1:-}" in
     exit 0
     ;;
   diff)
-    [[ "${FAKE_CONTRACT_MISMATCH:-}" != "1" ]] || exit 1
+    if [[ "$*" == *"backend/src/main/resources/db/migration"* ]]; then
+      [[ "${FAKE_MIGRATION_MISMATCH:-}" != "1" ]] || exit 1
+    else
+      [[ "${FAKE_CONTRACT_MISMATCH:-}" != "1" ]] || exit 1
+    fi
     exit 0
     ;;
 esac
@@ -137,6 +144,9 @@ if [[ "$1" == "compose" ]]; then
       printf '%s' "$FRONTEND_IMAGE" > "$FAKE_DOCKER_STATE/frontend-image"
       printf '%s' 'mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d' > "$FAKE_DOCKER_STATE/mysql-image"
       printf '%s' "$PAWCYCLE_MYSQL_VOLUME" > "$FAKE_DOCKER_STATE/mysql-volume"
+      printf '%s' "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" > "$FAKE_DOCKER_STATE/automation-enabled"
+      printf '%s' "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" > "$FAKE_DOCKER_STATE/automation-batch-size"
+      printf '%s' "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" > "$FAKE_DOCKER_STATE/automation-fixed-delay-ms"
       printf '%s' 'nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1' > "$FAKE_DOCKER_STATE/proxy-image"
       ;;
     ps)
@@ -217,6 +227,48 @@ if [[ "$1" == "run" ]]; then
 fi
 
 if [[ "$1" == "exec" ]]; then
+  if [[ "$*" == *"container-backend printenv PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED"* ]]; then
+    cat "$FAKE_DOCKER_STATE/automation-enabled"
+    exit 0
+  elif [[ "$*" == *"container-backend printenv PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE"* ]]; then
+    cat "$FAKE_DOCKER_STATE/automation-batch-size"
+    exit 0
+  elif [[ "$*" == *"container-backend printenv PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS"* ]]; then
+    cat "$FAKE_DOCKER_STATE/automation-fixed-delay-ms"
+    exit 0
+  elif [[ "$*" == *"container-backend curl"* && "$*" == *"/actuator/prometheus"* ]]; then
+    cat <<METRICS
+pawcycle_subscription_automation_executions_total ${FAKE_AUTOMATION_EXECUTIONS_TOTAL:-0}
+pawcycle_subscription_automation_processed_candidates_total ${FAKE_AUTOMATION_PROCESSED_TOTAL:-0}
+pawcycle_subscription_automation_orders_created_total ${FAKE_AUTOMATION_ORDERS_TOTAL:-0}
+pawcycle_subscription_automation_failures_total ${FAKE_AUTOMATION_FAILURES_TOTAL:-0}
+pawcycle_subscription_automation_duplicate_noop_total ${FAKE_AUTOMATION_DUPLICATE_TOTAL:-0}
+METRICS
+    exit 0
+  elif [[ "$*" == *"--interactive container-mysql"* && "$*" == *"exec mysql"* ]]; then
+    sql="$(cat)"
+    if [[ "$sql" == *"TABLE_SUBSCRIPTION_ORDERS"* ]]; then
+      cat <<SCHEMA
+FLYWAY_V9=${FAKE_FLYWAY_V9_STATUS:-SUCCESS}
+FLYWAY_V10=${FAKE_FLYWAY_V10_STATUS:-SUCCESS}
+FLYWAY_V11=${FAKE_FLYWAY_V11_STATUS:-SUCCESS}
+TABLE_SUBSCRIPTION_ORDERS=PRESENT
+TABLE_SUBSCRIPTION_ORDER_ITEMS=PRESENT
+UNIQUE_SCHEDULE_ORDER=PRESENT
+DUE_INDEX=PRESENT
+SCHEMA
+    else
+      cat <<DATA
+DUE_CANDIDATE_COUNT=${FAKE_DUE_CANDIDATE_COUNT:-2}
+OLDEST_DUE_DATE=${FAKE_OLDEST_DUE_DATE:-2026-08-01}
+DUPLICATE_ORDER_SCHEDULE_GROUPS=${FAKE_DUPLICATE_ORDER_GROUPS:-0}
+ORDERLESS_ADVANCED_SCHEDULES=${FAKE_ORDERLESS_ADVANCED:-0}
+ORDER_SNAPSHOT_CARDINALITY_ANOMALIES=${FAKE_SNAPSHOT_ANOMALIES:-0}
+PROCESSED_ACTIVE_FUTURE_SCHEDULE_ANOMALIES=${FAKE_FUTURE_SCHEDULE_ANOMALIES:-0}
+DATA
+    fi
+    exit 0
+  fi
   active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
   active_volume="$(<"$FAKE_DOCKER_STATE/mysql-volume")"
   request="${*: -1}"
@@ -308,6 +360,9 @@ output="$("$SCRIPT_DIR/materialize-ssm-env.sh" \
 [[ "$(stat -c '%a' "$RUNTIME_DIR/current/mysql.env")" == "600" ]]
 [[ "$(stat -c '%a' "$RUNTIME_DIR/current/backend.env")" == "600" ]]
 [[ "$(stat -c '%a' "$RUNTIME_DIR/current/.complete")" == "600" ]]
+grep -Fxq "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'" "$RUNTIME_DIR/current/backend.env"
+grep -Fxq "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='7'" "$RUNTIME_DIR/current/backend.env"
+grep -Fxq "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='12345'" "$RUNTIME_DIR/current/backend.env"
 original_bundle="$(readlink "$RUNTIME_DIR/current")"
 
 export FAKE_MISSING="MYSQL_PASSWORD"
@@ -319,6 +374,17 @@ if "$SCRIPT_DIR/materialize-ssm-env.sh" \
   exit 1
 fi
 unset FAKE_MISSING
+[[ "$(readlink "$RUNTIME_DIR/current")" == "$original_bundle" ]]
+
+export FAKE_AUTOMATION_ENABLED="TRUE"
+if "$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null 2>&1; then
+  printf 'invalid automation enabled value did not fail closed\n' >&2
+  exit 1
+fi
+unset FAKE_AUTOMATION_ENABLED
 [[ "$(readlink "$RUNTIME_DIR/current")" == "$original_bundle" ]]
 
 "$SCRIPT_DIR/materialize-ssm-env.sh" \
@@ -536,6 +602,46 @@ for smoke_path in /products /api/products; do
   [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
   [[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
 done
+
+migration_failure_state="$TEST_ROOT/migration-failure-state"
+mkdir -p "$migration_failure_state"
+cp -a -- "$STATE_DIR/." "$migration_failure_state/"
+export FAKE_MIGRATION_MISMATCH=1
+export FAKE_SMOKE_FAIL_SHA="$SHA_B"
+export FAKE_SMOKE_FAIL_PATH="/api/products"
+if deploy "$SHA_B" "$migration_failure_state" \
+  >"$TEST_ROOT/migration-failure-output" 2>&1; then
+  printf 'schema-boundary target failure was reported as success\n' >&2
+  exit 1
+fi
+unset FAKE_SMOKE_FAIL_SHA FAKE_SMOKE_FAIL_PATH
+grep -Fq 'automatic pre-migration release restoration is blocked' \
+  "$TEST_ROOT/migration-failure-output"
+[[ "$(<"$migration_failure_state/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_B" ]]
+
+printf '%s\n' "$SHA_B" >"$migration_failure_state/current-sha"
+printf '%s\n' "$SHA_A" >"$migration_failure_state/previous-sha"
+printf '%s\n' "$SHA_A" >"$migration_failure_state/previous-contract-sha"
+chmod 600 "$migration_failure_state/current-sha" \
+  "$migration_failure_state/previous-sha" \
+  "$migration_failure_state/previous-contract-sha"
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if "$SCRIPT_DIR/rollback.sh" \
+  --sha "$SHA_A" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$migration_failure_state" \
+  >"$TEST_ROOT/migration-rollback-output" 2>&1; then
+  printf 'manual pre-migration rollback did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'rollback crosses a database migration boundary' \
+  "$TEST_ROOT/migration-rollback-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+unset FAKE_MIGRATION_MISMATCH
+printf '%s' "$SHA_A" >"$FAKE_DOCKER_STATE/active-sha"
 
 deploy "$SHA_B"
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_B" ]]
@@ -902,6 +1008,75 @@ https_command disable
 [[ -f "$FAKE_DOCKER_STATE/volume-pawcycle-production-letsencrypt" ]]
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
 
+export FAKE_AUTOMATION_ENABLED=true
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null
+docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"
+if deploy "$SHA_B" "$STATE_DIR" >"$TEST_ROOT/automation-deploy-output" 2>&1; then
+  printf 'application deploy enabled the Scheduler\n' >&2
+  exit 1
+fi
+grep -Fq 'subscription automation runtime must be explicitly false' \
+  "$TEST_ROOT/automation-deploy-output"
+[[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
+
+if "$SCRIPT_DIR/subscription-automation-control.sh" activate \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --max-due-candidates 1 \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-limit-output" 2>&1; then
+  printf 'unexpected due candidate count did not block activation\n' >&2
+  exit 1
+fi
+grep -Fq 'due candidate count exceeds the explicitly approved activation maximum' \
+  "$TEST_ROOT/automation-limit-output"
+[[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "false" ]]
+
+"$SCRIPT_DIR/subscription-automation-control.sh" activate \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --max-due-candidates 2 \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-activation-output"
+grep -Fq 'SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS' \
+  "$TEST_ROOT/automation-activation-output"
+[[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "true" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+
+export FAKE_DUPLICATE_ORDER_GROUPS=1
+if "$SCRIPT_DIR/subscription-automation-preflight.sh" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --expect-bundle-enabled true \
+  --expect-running-enabled true \
+  --max-due-candidates 2 \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-anomaly-output" 2>&1; then
+  printf 'duplicate Order aggregate anomaly did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'subscription automation aggregate invariant failed' \
+  "$TEST_ROOT/automation-anomaly-output"
+unset FAKE_DUPLICATE_ORDER_GROUPS
+
+export FAKE_AUTOMATION_ENABLED=false
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null
+"$SCRIPT_DIR/subscription-automation-control.sh" deactivate \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-deactivation-output"
+grep -Fq 'SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS' \
+  "$TEST_ROOT/automation-deactivation-output"
+[[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "false" ]]
+unset FAKE_AUTOMATION_ENABLED
+
 CANDIDATE_VOLUME="pawcycle-production-mysql-candidate-fedcba9876543210"
 BACKUP_HASH="$(printf '%064d' 7)"
 MANIFEST_HASH="$(printf '%064d' 8)"
@@ -1037,4 +1212,5 @@ printf '%s' "$MANIFEST_HASH" >"$FAKE_DOCKER_STATE/volume-label-manifest-$CANDIDA
 [[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 
 printf 'OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed\n'
+printf 'SUB-AUTO-002 production Scheduler deployment, preflight, activation, and rollback contract tests passed\n'
 printf 'OPS-011 production script tests passed\n'
