@@ -74,30 +74,41 @@ if [[ "$ACTION" == "activate" ]]; then
 fi
 require_subscription_automation_mode "$EXPECTED_BUNDLE_ENABLED"
 
-printf 'Preflighting current application release before Scheduler %s: %s\n' "$ACTION" "$CURRENT_SHA"
-preflight_release "$CURRENT_SHA"
-"$SCRIPT_DIR/subscription-automation-preflight.sh" \
-  --backend-image "$BACKEND_IMAGE" \
-  --frontend-image "$FRONTEND_IMAGE" \
-  --expect-bundle-enabled "$EXPECTED_BUNDLE_ENABLED" \
-  --expect-running-enabled "$EXPECTED_RUNNING_ENABLED" \
-  --runtime-dir "$PAWCYCLE_RUNTIME_DIR" \
-  --state-dir "$PAWCYCLE_STATE_DIR" \
-  "${PREFLIGHT_ARGS[@]}"
+run_automation_preflight() {
+  local expected_running_enabled="$1"
+
+  "$SCRIPT_DIR/subscription-automation-preflight.sh" \
+    --backend-image "$BACKEND_IMAGE" \
+    --frontend-image "$FRONTEND_IMAGE" \
+    --expect-bundle-enabled "$EXPECTED_BUNDLE_ENABLED" \
+    --expect-running-enabled "$expected_running_enabled" \
+    --runtime-dir "$PAWCYCLE_RUNTIME_DIR" \
+    --state-dir "$PAWCYCLE_STATE_DIR" \
+    "${PREFLIGHT_ARGS[@]}"
+}
+
+if [[ "$ACTION" == "activate" ]]; then
+  printf 'Preflighting current application release before Scheduler activation: %s\n' "$CURRENT_SHA"
+  if ! preflight_release "$CURRENT_SHA" || ! run_automation_preflight false; then
+    stop_backend_service
+    die "Scheduler activation preflight failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
+  fi
+else
+  printf 'Recreating current application Backend with Scheduler OFF before postflight: %s\n' "$CURRENT_SHA"
+fi
 
 if ! activate_backend_runtime "$CURRENT_SHA"; then
   stop_backend_service
   die "Scheduler $ACTION failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
 fi
 
-"$SCRIPT_DIR/subscription-automation-preflight.sh" \
-  --backend-image "$BACKEND_IMAGE" \
-  --frontend-image "$FRONTEND_IMAGE" \
-  --expect-bundle-enabled "$EXPECTED_BUNDLE_ENABLED" \
-  --expect-running-enabled "$EXPECTED_BUNDLE_ENABLED" \
-  --runtime-dir "$PAWCYCLE_RUNTIME_DIR" \
-  --state-dir "$PAWCYCLE_STATE_DIR" \
-  "${PREFLIGHT_ARGS[@]}"
+if ! run_automation_preflight "$EXPECTED_BUNDLE_ENABLED"; then
+  if [[ "$ACTION" == "activate" ]]; then
+    stop_backend_service
+    die "Scheduler activation postflight failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
+  fi
+  die "Scheduler deactivation postflight failed; Scheduler remains OFF and MySQL was preserved"
+fi
 
 if [[ "$ACTION" == "activate" ]]; then
   printf 'Subscription automation activated for the current Release; continue aggregate observation before declaring success\n'

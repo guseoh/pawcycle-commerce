@@ -11,14 +11,25 @@
 
 SUB-AUTO-001 Application을 Scheduler OFF로 배포하고, V9~V11과 aggregate invariant를 확인한 뒤 별도 명시 입력으로만 활성화·중단할 수 있는 Production 저장소 계약을 준비한다.
 
-## 결과 또는 증거
+## 변경 파일 요약
+
+- Production runtime·release 계약: `infra/production/{release-common.sh,deploy.sh,rollback.sh,production-db-restore.sh,subscription-automation-control.sh,subscription-automation-preflight.sh,materialize-ssm-env.sh,compose.yaml}`
+- 회귀·계약 검증: `infra/production/{test-production-scripts.sh,test-rollback-control-compatibility.sh,validate-production-contracts.py}` 및 OPS-020 runtime consumer 검증
+- 운영 문서: 이 Runbook과 본 고위험 보고서
+
+## 검증 결과
 
 - Production runtime의 automation enabled, batch size, fixed delay를 명시 SSM/materialized env로 고정하고 Application deploy·rollback에서 OFF를 강제했다.
 - 현재와 target Release의 Flyway migration bundle이 다르면 target 실패 자동복귀와 수동 pre-migration rollback을 차단하고 MySQL volume을 보존한다.
 - read-only preflight는 V9~V11, table/index/unique, due candidate count·oldest date, Order·Schedule·snapshot·future Schedule aggregate invariant와 automation metric만 출력한다.
 - activation/deactivation은 Application SHA 변경과 분리된 command이며 candidate maximum, health와 기존 smoke를 fail-closed gate로 사용한다.
 - migration 실패·부분 적용에서 retry·repair·down migration·DROP·직접 데이터 수정을 금지하고 forward-fix 또는 기존 승인 restore를 별도 사용자 결정으로 남겼다.
-- 변경 Shell `bash -n`, `test-production-scripts.sh`, `test-rollback-control-compatibility.sh`, `validate-production-contracts.py`, SUB-AUTO-002 task artifact validator를 로컬에서 통과했다.
+- 변경 Shell `bash -n`, Production lifecycle·rollback compatibility test, Production contract validator, SUB-AUTO-002 artifact validator, `git diff --check`를 로컬에서 통과했다.
+- OPS-020 POSIX PTY fixture는 Windows Python의 `fcntl` 부재와 WSL root fixture timeout 때문에 완료하지 못했으며 PASS로 기록하지 않는다.
+
+## 완료 상태
+
+- 승인 범위 변경을 commit·push 완료했고 Draft PR #122에 반영했다. merge는 실행하지 않았다.
 - 실제 Production, AWS, 운영 DB, Secret과 restore 실행: 0건.
 
 ## 위험 또는 제한

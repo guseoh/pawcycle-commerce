@@ -73,7 +73,9 @@ validate_recorded_previous_release_contract() {
 }
 
 initialize_rollback_context
-require_subscription_automation_mode false
+if [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" != "false" ]]; then
+  die "subscription automation runtime must be explicitly false for rollback; first run subscription-automation-control.sh deactivate, and if deactivation fails stop Backend then escalate to the user"
+fi
 
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract

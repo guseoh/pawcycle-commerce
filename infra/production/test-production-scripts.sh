@@ -85,6 +85,12 @@ EOF
 cat > "$BIN_DIR/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == "-C" ]]; then
+  [[ -n "${2:-}" ]] || exit 1
+  shift 2
+elif [[ "${FAKE_REQUIRE_GIT_C:-}" == "1" ]]; then
+  exit 1
+fi
 case "${1:-}" in
   cat-file) exit 0 ;;
   rev-parse) printf '%s\n' "${FAKE_CONTROL_SHA:?}"; exit 0 ;;
@@ -148,9 +154,22 @@ if [[ "$1" == "compose" ]]; then
       printf '%s' "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" > "$FAKE_DOCKER_STATE/automation-batch-size"
       printf '%s' "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" > "$FAKE_DOCKER_STATE/automation-fixed-delay-ms"
       printf '%s' 'nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1' > "$FAKE_DOCKER_STATE/proxy-image"
+      if [[ " $* " == *" backend "* ]]; then
+        generation=0
+        [[ ! -f "$FAKE_DOCKER_STATE/backend-generation" ]] || generation="$(<"$FAKE_DOCKER_STATE/backend-generation")"
+        printf '%s' "$((generation + 1))" > "$FAKE_DOCKER_STATE/backend-generation"
+        : > "$FAKE_DOCKER_STATE/backend-running"
+      fi
+      if [[ " $* " == *" proxy "* ]]; then
+        cp "$FAKE_DOCKER_STATE/backend-generation" "$FAKE_DOCKER_STATE/proxy-upstream-generation"
+      fi
       ;;
     ps)
       if [[ "$*" == *"--quiet"* ]]; then
+        if [[ "$service" == "backend" && "$*" == *"--status running"* \
+          && ! -e "$FAKE_DOCKER_STATE/backend-running" ]]; then
+          exit 0
+        fi
         printf 'container-%s\n' "$service"
       elif [[ "${FAKE_PS_FAIL:-}" == "1" ]]; then
         exit 2
@@ -164,6 +183,9 @@ if [[ "$1" == "compose" ]]; then
       printf '%s' "$((count + 1))" > "$FAKE_DOCKER_STATE/stop-count"
       if [[ "${FAKE_STOP_FAIL_AT_COUNT:-}" == "$((count + 1))" ]]; then
         exit 1
+      fi
+      if [[ " $* " == *" backend "* && "${FAKE_BACKEND_REMAINS_RUNNING:-}" != "1" ]]; then
+        rm -f -- "$FAKE_DOCKER_STATE/backend-running"
       fi
       ;;
   esac
@@ -240,7 +262,7 @@ if [[ "$1" == "exec" ]]; then
     cat <<METRICS
 pawcycle_subscription_automation_executions_total ${FAKE_AUTOMATION_EXECUTIONS_TOTAL:-0}
 pawcycle_subscription_automation_processed_candidates_total ${FAKE_AUTOMATION_PROCESSED_TOTAL:-0}
-pawcycle_subscription_automation_orders_created_total ${FAKE_AUTOMATION_ORDERS_TOTAL:-0}
+pawcycle_subscription_automation_orders_total ${FAKE_AUTOMATION_ORDERS_TOTAL:-0}
 pawcycle_subscription_automation_failures_total ${FAKE_AUTOMATION_FAILURES_TOTAL:-0}
 pawcycle_subscription_automation_duplicate_noop_total ${FAKE_AUTOMATION_DUPLICATE_TOTAL:-0}
 METRICS
@@ -258,10 +280,17 @@ UNIQUE_SCHEDULE_ORDER=PRESENT
 DUE_INDEX=PRESENT
 SCHEMA
     else
+      data_preflight_count=0
+      [[ ! -f "$FAKE_DOCKER_STATE/data-preflight-count" ]] || data_preflight_count="$(<"$FAKE_DOCKER_STATE/data-preflight-count")"
+      printf '%s' "$((data_preflight_count + 1))" > "$FAKE_DOCKER_STATE/data-preflight-count"
+      duplicate_order_groups="${FAKE_DUPLICATE_ORDER_GROUPS:-0}"
+      if [[ "${FAKE_DUPLICATE_AFTER_DATA_PREFLIGHT:-}" == "$((data_preflight_count + 1))" ]]; then
+        duplicate_order_groups=1
+      fi
       cat <<DATA
 DUE_CANDIDATE_COUNT=${FAKE_DUE_CANDIDATE_COUNT:-2}
 OLDEST_DUE_DATE=${FAKE_OLDEST_DUE_DATE:-2026-08-01}
-DUPLICATE_ORDER_SCHEDULE_GROUPS=${FAKE_DUPLICATE_ORDER_GROUPS:-0}
+DUPLICATE_ORDER_SCHEDULE_GROUPS=${duplicate_order_groups}
 ORDERLESS_ADVANCED_SCHEDULES=${FAKE_ORDERLESS_ADVANCED:-0}
 ORDER_SNAPSHOT_CARDINALITY_ANOMALIES=${FAKE_SNAPSHOT_ANOMALIES:-0}
 PROCESSED_ACTIVE_FUTURE_SCHEDULE_ANOMALIES=${FAKE_FUTURE_SCHEDULE_ANOMALIES:-0}
@@ -272,6 +301,10 @@ DATA
   active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
   active_volume="$(<"$FAKE_DOCKER_STATE/mysql-volume")"
   request="${*: -1}"
+  if [[ "$*" == *"container-proxy wget"* && "${FAKE_PROXY_ROUTE_GUARD:-}" == "1" \
+    && "$(<"$FAKE_DOCKER_STATE/proxy-upstream-generation")" != "$(<"$FAKE_DOCKER_STATE/backend-generation")" ]]; then
+    exit 1
+  fi
   if [[ "$*" == *"nginx -s reload"* ]]; then
     count=0
     [[ ! -f "$FAKE_DOCKER_STATE/reload-count" ]] || count="$(<"$FAKE_DOCKER_STATE/reload-count")"
@@ -1022,6 +1055,30 @@ grep -Fq 'subscription automation runtime must be explicitly false' \
   "$TEST_ROOT/automation-deploy-output"
 [[ "$(<"$FAKE_DOCKER_STATE/docker-call-count")" == "$docker_call_count_before" ]]
 
+if "$SCRIPT_DIR/rollback.sh" \
+  --sha "$SHA_B" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-rollback-output" 2>&1; then
+  printf 'rollback enabled the Scheduler\n' >&2
+  exit 1
+fi
+grep -Fq 'subscription-automation-control.sh deactivate' "$TEST_ROOT/automation-rollback-output"
+grep -Fq 'stop Backend then escalate to the user' "$TEST_ROOT/automation-rollback-output"
+
+if "$SCRIPT_DIR/production-db-restore.sh" cutover \
+  --candidate-volume pawcycle-production-mysql-candidate-fedcba9876543210 \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-restore-output" 2>&1; then
+  printf 'database restore enabled the Scheduler\n' >&2
+  exit 1
+fi
+grep -Fq 'subscription automation runtime must be explicitly false' \
+  "$TEST_ROOT/automation-restore-output"
+
 if "$SCRIPT_DIR/subscription-automation-control.sh" activate \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
@@ -1035,16 +1092,21 @@ grep -Fq 'due candidate count exceeds the explicitly approved activation maximum
   "$TEST_ROOT/automation-limit-output"
 [[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "false" ]]
 
-"$SCRIPT_DIR/subscription-automation-control.sh" activate \
+export FAKE_PROXY_ROUTE_GUARD=1
+if ! "$SCRIPT_DIR/subscription-automation-control.sh" activate \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
   --max-due-candidates 2 \
   --runtime-dir "$RUNTIME_DIR" \
-  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-activation-output"
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-activation-output"; then
+  printf 'backend replacement did not refresh proxy routing\n' >&2
+  exit 1
+fi
 grep -Fq 'SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS' \
   "$TEST_ROOT/automation-activation-output"
 [[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "true" ]]
 [[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+unset FAKE_PROXY_ROUTE_GUARD
 
 export FAKE_DUPLICATE_ORDER_GROUPS=1
 if "$SCRIPT_DIR/subscription-automation-preflight.sh" \
@@ -1060,13 +1122,29 @@ if "$SCRIPT_DIR/subscription-automation-preflight.sh" \
 fi
 grep -Fq 'subscription automation aggregate invariant failed' \
   "$TEST_ROOT/automation-anomaly-output"
-unset FAKE_DUPLICATE_ORDER_GROUPS
 
 export FAKE_AUTOMATION_ENABLED=false
 "$SCRIPT_DIR/materialize-ssm-env.sh" \
   --ssm-prefix /pawcycle/production \
   --output-dir "$RUNTIME_DIR" \
   --region ap-northeast-2 >/dev/null
+mysql_volume_before="$(<"$FAKE_DOCKER_STATE/mysql-volume")"
+if "$SCRIPT_DIR/subscription-automation-control.sh" deactivate \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-deactivation-anomaly-output" 2>&1; then
+  printf 'deactivation aggregate anomaly did not fail closed\n' >&2
+  exit 1
+fi
+grep -Fq 'Scheduler deactivation postflight failed; Scheduler remains OFF' \
+  "$TEST_ROOT/automation-deactivation-anomaly-output"
+[[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "false" ]]
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "$mysql_volume_before" ]]
+printf 'deactivation aggregate anomaly did not leave Scheduler enabled\n'
+unset FAKE_DUPLICATE_ORDER_GROUPS
+
 "$SCRIPT_DIR/subscription-automation-control.sh" deactivate \
   --backend-image "$BACKEND_IMAGE" \
   --frontend-image "$FRONTEND_IMAGE" \
@@ -1075,6 +1153,72 @@ export FAKE_AUTOMATION_ENABLED=false
 grep -Fq 'SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS' \
   "$TEST_ROOT/automation-deactivation-output"
 [[ "$(<"$FAKE_DOCKER_STATE/automation-enabled")" == "false" ]]
+unset FAKE_AUTOMATION_ENABLED
+
+export FAKE_AUTOMATION_ENABLED=true
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null
+rm -f -- "$FAKE_DOCKER_STATE/data-preflight-count"
+export FAKE_DUPLICATE_AFTER_DATA_PREFLIGHT=2
+if "$SCRIPT_DIR/subscription-automation-control.sh" activate \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --max-due-candidates 2 \
+  --runtime-dir "$RUNTIME_DIR" \
+  --state-dir "$STATE_DIR" >"$TEST_ROOT/automation-postflight-output" 2>&1; then
+  printf 'activation postflight failure was reported as success\n' >&2
+  exit 1
+fi
+grep -Fq 'Scheduler activation postflight failed; Backend was stopped' \
+  "$TEST_ROOT/automation-postflight-output"
+if [[ -e "$FAKE_DOCKER_STATE/backend-running" ]]; then
+  printf 'activation postflight failure left a Scheduler ON Backend running\n' >&2
+  exit 1
+fi
+[[ "$(<"$STATE_DIR/current-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/mysql-volume")" == "$mysql_volume_before" ]]
+printf 'activation postflight failure did not leave a Scheduler ON Backend running\n'
+unset FAKE_DUPLICATE_AFTER_DATA_PREFLIGHT FAKE_AUTOMATION_ENABLED
+
+: > "$FAKE_DOCKER_STATE/backend-running"
+stop_count_before="$(<"$FAKE_DOCKER_STATE/stop-count")"
+export FAKE_STOP_FAIL_AT_COUNT="$((stop_count_before + 1))"
+if (source "$SCRIPT_DIR/release-common.sh"; PAWCYCLE_STATE_DIR="$STATE_DIR"; PAWCYCLE_RUNTIME_DIR="$RUNTIME_DIR"; PAWCYCLE_MYSQL_ENV_FILE="$RUNTIME_DIR/current/mysql.env"; PAWCYCLE_BACKEND_ENV_FILE="$RUNTIME_DIR/current/backend.env"; PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false; PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=7; PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=12345; BACKEND_IMAGE="$BACKEND_IMAGE"; FRONTEND_IMAGE="$FRONTEND_IMAGE"; ACTIVE_SHA="$SHA_A"; load_active_mysql_volume; stop_backend_service) \
+  >"$TEST_ROOT/backend-stop-command-output" 2>&1; then
+  printf 'Backend stop failure was not fail-closed\n' >&2
+  exit 1
+fi
+unset FAKE_STOP_FAIL_AT_COUNT
+if ! grep -Fq 'Backend stop command failed' "$TEST_ROOT/backend-stop-command-output"; then
+  cat "$TEST_ROOT/backend-stop-command-output" >&2
+  exit 1
+fi
+export FAKE_BACKEND_REMAINS_RUNNING=1
+if (source "$SCRIPT_DIR/release-common.sh"; PAWCYCLE_STATE_DIR="$STATE_DIR"; PAWCYCLE_RUNTIME_DIR="$RUNTIME_DIR"; PAWCYCLE_MYSQL_ENV_FILE="$RUNTIME_DIR/current/mysql.env"; PAWCYCLE_BACKEND_ENV_FILE="$RUNTIME_DIR/current/backend.env"; PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false; PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=7; PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=12345; BACKEND_IMAGE="$BACKEND_IMAGE"; FRONTEND_IMAGE="$FRONTEND_IMAGE"; ACTIVE_SHA="$SHA_A"; load_active_mysql_volume; stop_backend_service) \
+  >"$TEST_ROOT/backend-stop-running-output" 2>&1; then
+  printf 'Backend remaining running was not fail-closed\n' >&2
+  exit 1
+fi
+unset FAKE_BACKEND_REMAINS_RUNNING
+grep -Fq 'Backend remains running after stop' "$TEST_ROOT/backend-stop-running-output"
+rm -f -- "$FAKE_DOCKER_STATE/backend-running"
+printf 'Backend stop command and running-state failures were fail-closed\n'
+
+mkdir -p "$TEST_ROOT/migration-caller-cwd"
+export FAKE_REQUIRE_GIT_C=1 FAKE_MIGRATION_MISMATCH=1
+if ! (cd "$TEST_ROOT/migration-caller-cwd"; source "$SCRIPT_DIR/release-common.sh"; migration_bundle_changed "$SHA_A" "$SHA_B"); then
+  printf 'migration comparison depended on caller CWD\n' >&2
+  exit 1
+fi
+unset FAKE_REQUIRE_GIT_C FAKE_MIGRATION_MISMATCH
+
+export FAKE_AUTOMATION_ENABLED=false
+"$SCRIPT_DIR/materialize-ssm-env.sh" \
+  --ssm-prefix /pawcycle/production \
+  --output-dir "$RUNTIME_DIR" \
+  --region ap-northeast-2 >/dev/null
 unset FAKE_AUTOMATION_ENABLED
 
 CANDIDATE_VOLUME="pawcycle-production-mysql-candidate-fedcba9876543210"

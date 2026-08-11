@@ -135,7 +135,7 @@ sudo infra/production/subscription-automation-control.sh deactivate \
   --state-dir /opt/pawcycle/state
 ```
 
-deactivate가 health/smoke를 통과하지 못하면 Backend를 정지해 Scheduler가 계속 실행되지 않게 한다. state 파일 수동 편집이나 실행 중 env 덮어쓰기로 gate를 우회하지 않는다.
+deactivate는 current Release·control·보호된 MySQL volume과 OFF runtime만 먼저 확인하고, Backend를 OFF runtime으로 재생성한 뒤 full postflight를 실행한다. postflight anomaly·schema·metric 실패는 deactivate를 막지 않으며 Scheduler는 OFF로 남는다. Backend 재생성의 health/smoke 실패는 Backend를 정지해 Scheduler가 계속 실행되지 않게 한다. state 파일 수동 편집이나 실행 중 env 덮어쓰기로 gate를 우회하지 않는다.
 
 ## migration 실패·부분 적용 경계
 
@@ -145,6 +145,8 @@ V9, V10 또는 V11 실패·부분 적용은 Scheduler OFF와 Application 정지 
 
 1. 원인과 non-transactional DDL 상태를 확인한 forward-fix Release 준비
 2. 기존 OPS-013 검증 backup을 사용하는 OPS-025 restore 절차
+
+검증된 복구 선택지는 forward-fix 또는 기존 OPS-025 restore뿐이다. 두 선택 모두 Scheduler OFF와 MySQL volume 보존을 유지하고, 서비스 재기동은 MySQL health 확인 뒤 Backend·Frontend health 확인, 마지막 Proxy traffic 허용 순서로만 진행한다. 실제 downtime/RTO는 현재 증거가 없어 미확정이며, 별도 승인된 실제 실행에서 측정 후 기록한다. Flyway repair는 자동 복구 절차가 아니며 별도 판단 전까지 금지 경계다. 데이터 손실 가능성 때문에 forward-fix 또는 restore 실행은 별도 사용자 승인이 필요하다.
 
 OPS-025는 별도 candidate named volume에 복원·검증하고 source volume을 보존하는 고위험 실제 운영 절차다. 이 Runbook이나 `rollback.sh`가 restore를 대신하지 않는다. backup/restore 식별값, volume 실제 이름과 row count는 저장소 증거에 남기지 않는다.
 

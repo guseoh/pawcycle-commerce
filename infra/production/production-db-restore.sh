@@ -422,6 +422,7 @@ initialize_transition_context() {
   ACTIVE_SHA="$TARGET_SHA"
   load_active_mysql_volume
   load_runtime_contract
+  require_subscription_automation_mode false
 }
 
 verify_active_mysql_identity() {

@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 PRODUCTION_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONTROL_WORKTREE_ROOT="$(cd -- "$PRODUCTION_DIR/../.." && pwd -P)"
 COMPOSE_FILE="$PRODUCTION_DIR/compose.yaml"
 PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
@@ -363,12 +364,12 @@ migration_bundle_changed() {
   local status
 
   [[ "$current_sha" != "$target_sha" ]] || return 1
-  git cat-file -e "${current_sha}^{commit}" 2>/dev/null \
+  git -C "$CONTROL_WORKTREE_ROOT" cat-file -e "${current_sha}^{commit}" 2>/dev/null \
     || die "current release commit is unavailable for migration comparison: $current_sha"
-  git cat-file -e "${target_sha}^{commit}" 2>/dev/null \
+  git -C "$CONTROL_WORKTREE_ROOT" cat-file -e "${target_sha}^{commit}" 2>/dev/null \
     || die "target release commit is unavailable for migration comparison: $target_sha"
 
-  if git diff --quiet "$current_sha" "$target_sha" -- "$MIGRATION_BUNDLE_PATH"; then
+  if git -C "$CONTROL_WORKTREE_ROOT" diff --quiet "$current_sha" "$target_sha" -- "$MIGRATION_BUNDLE_PATH"; then
     return 1
   else
     status=$?
@@ -640,6 +641,7 @@ activate_backend_runtime() {
   wait_healthy backend || return 1
   wait_healthy mysql || return 1
   wait_healthy frontend || return 1
+  compose up --detach --pull never --no-deps --force-recreate proxy || return 1
   wait_healthy proxy || return 1
   verify_running_release || return 1
   smoke_release || return 1
@@ -669,7 +671,13 @@ stop_application_services() {
 }
 
 stop_backend_service() {
-  compose stop backend || true
+  local running_backend_ids
+
+  compose stop backend || die "Backend stop command failed; Scheduler state cannot be confirmed"
+  running_backend_ids="$(compose ps --status running --quiet backend)" \
+    || die "Backend stop verification failed; Scheduler state cannot be confirmed"
+  [[ -z "$running_backend_ids" ]] \
+    || die "Backend remains running after stop; Scheduler state cannot be confirmed"
 }
 
 prepare_release_context() {

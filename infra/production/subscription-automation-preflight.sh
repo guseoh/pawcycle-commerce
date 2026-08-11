@@ -253,7 +253,7 @@ metric_value() {
 
 printf 'AUTOMATION_EXECUTIONS_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_executions_total)"
 printf 'AUTOMATION_PROCESSED_CANDIDATES_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_processed_candidates_total)"
-printf 'AUTOMATION_ORDERS_CREATED_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_orders_created_total)"
+printf 'AUTOMATION_ORDERS_CREATED_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_orders_total)"
 printf 'AUTOMATION_FAILURES_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_failures_total)"
 printf 'AUTOMATION_DUPLICATE_NOOP_TOTAL=%s\n' "$(metric_value pawcycle_subscription_automation_duplicate_noop_total)"
 printf 'SUBSCRIPTION_AUTOMATION_PREFLIGHT=PASS\n'

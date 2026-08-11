@@ -120,10 +120,11 @@ case "${1:-}" in
     done
     [[ -n "$env_file" && -r "$env_file" ]]
     mapfile -t runtime_env_lines < "$env_file"
-    (( ${#runtime_env_lines[@]} == 3 ))
+    (( ${#runtime_env_lines[@]} == 4 ))
     [[ "${runtime_env_lines[0]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' ]]
     [[ "${runtime_env_lines[1]}" == 'SPRING_DATASOURCE_USERNAME=fixture_user' ]]
     [[ "${runtime_env_lines[2]}" == "SPRING_DATASOURCE_PASSWORD=fixture_db'password" ]]
+    [[ "${runtime_env_lines[3]}" == 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' ]]
     printf '%s\\n' 'runtime-env-contract-ok' >> "$FAKE_DOCKER_MARKER"
     IFS= read -r email
     IFS= read -r password
@@ -157,7 +158,10 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
     backend_env.write_text(
         "SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/fixture'\n"
         "SPRING_DATASOURCE_USERNAME='fixture_user'\n"
-        "SPRING_DATASOURCE_PASSWORD='fixture_db\\'password'\n",
+        "SPRING_DATASOURCE_PASSWORD='fixture_db\\'password'\n"
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='true'\n"
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='7'\n"
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='12345'\n",
         encoding="utf-8",
     )
     complete = bundle / ".complete"
