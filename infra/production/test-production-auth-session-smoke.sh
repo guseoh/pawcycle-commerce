@@ -140,9 +140,9 @@ case "$call_count:$method:$path" in
     ;;
   8:GET:/api/auth/me)
     if [[ "$FAKE_CURL_SCENARIO" == member-mismatch ]]; then
-      body='{"memberId":882345}'
+      body='{"memberId":882345,"role":"USER"}'
     else
-      body='{"memberId":771234}'
+      body='{"memberId":771234,"role":"USER"}'
     fi
     ;;
   9:POST:/api/auth/logout)
@@ -159,7 +159,7 @@ case "$call_count:$method:$path" in
   10:GET:/api/auth/me)
     if [[ "$FAKE_CURL_SCENARIO" == authenticated-after-logout ]]; then
       status=200
-      body='{"memberId":771234}'
+      body='{"memberId":771234,"role":"USER"}'
     else
       status=401
       body='{"code":"AUTH_REQUIRED","message":"test-only","fieldErrors":[]}'

@@ -3,6 +3,7 @@ package com.pawcycle.backend.foundation.bootstrap;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
@@ -28,6 +29,7 @@ public class LocalQaBootstrapService {
 	static final String PRODUCT_PET_TYPE = "DOG";
 	static final String PRODUCT_DISPLAY_STATUS = "PUBLIC";
 	static final String SKU_NAME = "[QA FOUNDATION-004] 2kg";
+	static final String SKU_CODE = "QA-FOUNDATION-004-SKU";
 	static final BigDecimal SKU_PRICE = new BigDecimal("19900.00");
 	static final int SKU_DISPLAY_ORDER = 1;
 
@@ -155,10 +157,12 @@ public class LocalQaBootstrapService {
 		if (candidates.isEmpty()) {
 			return skuRepository.saveAndFlush(new Sku(
 					product,
+					SKU_CODE,
 					SKU_NAME,
 					SKU_PRICE,
 					true,
-					SKU_DISPLAY_ORDER));
+					SKU_DISPLAY_ORDER,
+					SkuStatus.ACTIVE));
 		}
 		if (candidates.size() != 1 || !matchesSkuFixture(candidates.get(0), product)) {
 			throw new LocalQaBootstrapException("로컬 QA bootstrap SKU fixture가 기존 데이터와 충돌합니다.");
@@ -168,10 +172,12 @@ public class LocalQaBootstrapService {
 
 	private boolean matchesSkuFixture(Sku sku, Product product) {
 		return Objects.equals(product.getId(), sku.getProduct().getId())
+				&& SKU_CODE.equals(sku.getSkuCode())
 				&& SKU_NAME.equals(sku.getName())
 				&& SKU_PRICE.compareTo(sku.getPrice()) == 0
 				&& sku.isSubscribable()
-				&& sku.getDisplayOrder() == SKU_DISPLAY_ORDER;
+				&& sku.getDisplayOrder() == SKU_DISPLAY_ORDER
+				&& sku.getStatus() == SkuStatus.ACTIVE;
 	}
 
 	private LocalQaBootstrapException invalidCredentialConfiguration() {

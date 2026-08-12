@@ -3,6 +3,8 @@ package com.pawcycle.backend.catalog.sku.domain;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -11,9 +13,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "skus")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class Sku {
 
 	@Id
@@ -23,6 +29,9 @@ public class Sku {
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "product_id", nullable = false)
 	private Product product;
+
+	@Column(name = "sku_code", nullable = false, unique = true, length = 100)
+	private String skuCode;
 
 	@Column(nullable = false, length = 200)
 	private String name;
@@ -36,38 +45,36 @@ public class Sku {
 	@Column(name = "display_order", nullable = false)
 	private int displayOrder;
 
-	protected Sku() {
-	}
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 20)
+	private SkuStatus status;
 
-	public Sku(Product product, String name, BigDecimal price, boolean subscribable, int displayOrder) {
+	public Sku(
+			Product product,
+			String skuCode,
+			String name,
+			BigDecimal price,
+			boolean subscribable,
+			int displayOrder,
+			SkuStatus status) {
 		this.product = product;
+		this.skuCode = skuCode;
 		this.name = name;
 		this.price = price;
 		this.subscribable = subscribable;
 		this.displayOrder = displayOrder;
-	}
-
-	public Long getId() {
-		return id;
-	}
-
-	public Product getProduct() {
-		return product;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public BigDecimal getPrice() {
-		return price;
+		this.status = status;
 	}
 
 	public boolean isSubscribable() {
 		return subscribable;
 	}
 
-	public int getDisplayOrder() {
-		return displayOrder;
+	public void update(String name, BigDecimal price, Boolean subscribable, Integer displayOrder, SkuStatus status) {
+		if (name != null) this.name = name;
+		if (price != null) this.price = price;
+		if (subscribable != null) this.subscribable = subscribable;
+		if (displayOrder != null) this.displayOrder = displayOrder;
+		if (status != null) this.status = status;
 	}
 }

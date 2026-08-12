@@ -140,7 +140,7 @@ class LocalQaBootstrapIntegrationTests {
 				"CAT",
 				null,
 				"PUBLIC"));
-		Sku otherSku = skuRepository.saveAndFlush(new Sku(
+		Sku otherSku = skuRepository.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				otherProduct,
 				"비대상 SKU",
 				new BigDecimal("25000.00"),

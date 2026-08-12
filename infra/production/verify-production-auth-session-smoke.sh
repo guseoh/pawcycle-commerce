@@ -61,7 +61,10 @@ extract_csrf_token() {
 }
 
 extract_member_id() {
-  sed -n 's/^[[:space:]]*{[[:space:]]*"memberId"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*}[[:space:]]*$/\1/p' "$1"
+  sed -n \
+    -e 's/^[[:space:]]*{[[:space:]]*"memberId"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*}[[:space:]]*$/\1/p' \
+    -e 's/^[[:space:]]*{[[:space:]]*"memberId"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*,[[:space:]]*"role"[[:space:]]*:[[:space:]]*"\(USER\|ADMIN\)"[[:space:]]*}[[:space:]]*$/\1/p' \
+    "$1"
 }
 
 extract_session_id() {

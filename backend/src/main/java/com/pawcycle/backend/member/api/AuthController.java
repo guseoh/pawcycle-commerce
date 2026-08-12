@@ -36,9 +36,9 @@ public class AuthController {
 			@RequestBody LoginRequest loginRequest,
 			HttpServletRequest request,
 			HttpServletResponse response) {
-		Long memberId = authApplicationService.login(
+		AuthenticatedMemberPrincipal principal = authApplicationService.login(
 				loginRequest.email(), loginRequest.password(), request, response);
-		return new MemberIdResponse(memberId);
+		return new MemberIdResponse(principal.memberId());
 	}
 
 	@PostMapping("/logout")
@@ -48,7 +48,7 @@ public class AuthController {
 	}
 
 	@GetMapping("/me")
-	MemberIdResponse me(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-		return new MemberIdResponse(principal.memberId());
+	CurrentMemberResponse me(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+		return new CurrentMemberResponse(principal.memberId(), principal.role());
 	}
 }

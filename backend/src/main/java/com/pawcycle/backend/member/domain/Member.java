@@ -6,9 +6,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "members")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class Member {
 
 	@Id
@@ -21,23 +27,17 @@ public class Member {
 	@Column(name = "password_hash", nullable = false, length = 100)
 	private String passwordHash;
 
-	protected Member() {
-	}
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 20)
+	private MemberRole role;
 
 	public Member(String email, String passwordHash) {
+		this(email, passwordHash, MemberRole.USER);
+	}
+
+	public Member(String email, String passwordHash, MemberRole role) {
 		this.email = email;
 		this.passwordHash = passwordHash;
-	}
-
-	public Long getId() {
-		return id;
-	}
-
-	public String getEmail() {
-		return email;
-	}
-
-	public String getPasswordHash() {
-		return passwordHash;
+		this.role = role;
 	}
 }

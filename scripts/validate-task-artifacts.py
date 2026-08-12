@@ -19,6 +19,7 @@ INC_BASE_TASK_ID_PATTERN = (
     r"(?![A-Za-z0-9_\x80-\U0010FFFF-])"
 )
 TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+TASK_ID_PATTERN = rf"(?:MVP\d+-[A-Z][A-Z0-9]*-\d{{3}}|{TASK_ID_PATTERN})"
 TASK_ID_RE = re.compile(rf"(?<![A-Za-z0-9_\-\x80-\U0010FFFF]){TASK_ID_PATTERN}(?![A-Za-z0-9_\-\x80-\U0010FFFF])")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)

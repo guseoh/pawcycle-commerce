@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -57,7 +58,8 @@ class ProductQueryServiceTests {
 		Sku firstSku = sku(10L, first, "2kg", "19900.00", true);
 		Sku secondSku = sku(11L, first, "5kg", "39900.00", false);
 		when(productRepository.findAllPublicOrderById()).thenReturn(List.of(first, second));
-		when(skuRepository.findAllByProductIdInOrderByProductIdAscDisplayOrderAscIdAsc(List.of(1L, 2L)))
+		when(skuRepository.findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
+				List.of(1L, 2L), SkuStatus.ACTIVE))
 				.thenReturn(List.of(firstSku, secondSku));
 
 		ProductListView response = productQueryService.findProducts();
@@ -70,7 +72,8 @@ class ProductQueryServiceTests {
 		assertThat(response.products().get(1).skuPriceSummary().skuPrices()).isEmpty();
 		assertThat(response.products().get(1).hasSubscribableSku()).isFalse();
 		verify(productRepository).findAllPublicOrderById();
-		verify(skuRepository).findAllByProductIdInOrderByProductIdAscDisplayOrderAscIdAsc(List.of(1L, 2L));
+		verify(skuRepository).findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
+				List.of(1L, 2L), SkuStatus.ACTIVE);
 	}
 
 	@Test
@@ -79,7 +82,7 @@ class ProductQueryServiceTests {
 		Sku subscribable = sku(10L, product, "2kg", "19900.00", true);
 		Sku notSubscribable = sku(11L, product, "5kg", "39900.00", false);
 		when(productRepository.findPublicById(1L)).thenReturn(Optional.of(product));
-		when(skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(1L))
+		when(skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(1L, SkuStatus.ACTIVE))
 				.thenReturn(List.of(subscribable, notSubscribable));
 
 		ProductDetailView response = productQueryService.findProduct(1L);

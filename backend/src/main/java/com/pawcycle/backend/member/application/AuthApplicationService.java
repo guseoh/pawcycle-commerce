@@ -11,6 +11,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
@@ -46,7 +47,7 @@ public class AuthApplicationService {
 	}
 
 	@Transactional(readOnly = true)
-	public Long login(
+	public AuthenticatedMemberPrincipal login(
 			String email,
 			String password,
 			HttpServletRequest request,
@@ -60,15 +61,18 @@ public class AuthApplicationService {
 		}
 		Member member = candidate.get();
 
-		AuthenticatedMemberPrincipal principal = new AuthenticatedMemberPrincipal(member.getId());
-		Authentication authentication = new UsernamePasswordAuthenticationToken(principal, null, List.of());
+		AuthenticatedMemberPrincipal principal = new AuthenticatedMemberPrincipal(member.getId(), member.getRole());
+		Authentication authentication = new UsernamePasswordAuthenticationToken(
+				principal,
+				null,
+				List.of(new SimpleGrantedAuthority("ROLE_" + member.getRole().name())));
 		sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
 
 		SecurityContext context = SecurityContextHolder.createEmptyContext();
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);
 		securityContextRepository.saveContext(context, request, response);
-		return principal.memberId();
+		return principal;
 	}
 
 	public void logout(HttpServletRequest request, HttpServletResponse response) {

@@ -55,7 +55,8 @@ class V2SubscriptionCommandIntegrationTests {
 	void setUp() {
 		member = members.saveAndFlush(new Member("v2-command-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
 		product = products.saveAndFlush(new Product("V2 command product", "test", null, "DOG", null, "PUBLIC"));
-		sku = skus.saveAndFlush(new Sku(product, "v2-command-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
+		sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
+				product, "v2-command-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG command plan", "DOG");
 		planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", planId);

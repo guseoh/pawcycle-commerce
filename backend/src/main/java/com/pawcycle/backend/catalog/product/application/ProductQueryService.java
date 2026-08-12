@@ -8,6 +8,7 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,9 @@ public class ProductQueryService {
 		Product product;
 		try {
 			product = productRepository.findPublicById(productId).orElseThrow(ProductNotFoundException::new);
-			List<Sku> skus = skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(productId);
+			List<Sku> skus = skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(
+					productId,
+					SkuStatus.ACTIVE);
 			return new ProductDetailView(
 					product.getId(),
 					product.getName(),
@@ -67,8 +70,9 @@ public class ProductQueryService {
 	private Map<Long, List<Sku>> groupSkus(List<Product> products) {
 		List<Long> productIds = products.stream().map(Product::getId).toList();
 		Map<Long, List<Sku>> skusByProduct = new LinkedHashMap<>();
-		for (Sku sku : skuRepository
-				.findAllByProductIdInOrderByProductIdAscDisplayOrderAscIdAsc(productIds)) {
+		for (Sku sku : skuRepository.findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
+				productIds,
+				SkuStatus.ACTIVE)) {
 			skusByProduct.computeIfAbsent(sku.getProduct().getId(), ignored -> new java.util.ArrayList<>())
 					.add(sku);
 		}

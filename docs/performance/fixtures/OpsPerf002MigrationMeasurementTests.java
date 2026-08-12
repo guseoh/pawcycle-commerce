@@ -399,8 +399,11 @@ class OpsPerf002MigrationMeasurementTests {
 		);
 		long productId = jdbc.queryForObject("SELECT id FROM products WHERE name=?", Long.class, token);
 		jdbc.update(
-			"INSERT INTO skus(product_id,name,price,subscribable,display_order) VALUES (?,?,12000,true,1)",
-			productId, token
+			"""
+			INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status)
+			VALUES (?,?,?,12000,true,1,'ACTIVE')
+			""",
+			productId, "OPS-PERF-002-" + UUID.randomUUID(), token
 		);
 		long skuId = jdbc.queryForObject(
 			"SELECT id FROM skus WHERE product_id=? AND name=?", Long.class, productId, token

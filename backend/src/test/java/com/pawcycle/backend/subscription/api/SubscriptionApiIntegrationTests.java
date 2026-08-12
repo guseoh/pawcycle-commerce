@@ -364,7 +364,7 @@ class SubscriptionApiIntegrationTests {
 	}
 
 	private Sku saveSku(String name, String price, boolean subscribable, int displayOrder) {
-		return skuRepository.saveAndFlush(new Sku(
+		return skuRepository.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, name, new BigDecimal(price), subscribable, displayOrder));
 	}
 

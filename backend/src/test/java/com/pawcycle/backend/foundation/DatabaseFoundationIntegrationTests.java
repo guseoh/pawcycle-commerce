@@ -80,6 +80,7 @@ class DatabaseFoundationIntegrationTests {
 
 		assertThat(tables).contains(
 				"members",
+				"categories",
 				"products",
 				"skus",
 				"subscriptions",
@@ -121,7 +122,7 @@ class DatabaseFoundationIntegrationTests {
 		flyway.migrate();
 		Integer after = appliedMigrationCount();
 
-		assertThat(before).isEqualTo(11);
+		assertThat(before).isEqualTo(12);
 		assertThat(after).isEqualTo(before);
 	}
 
@@ -138,8 +139,9 @@ class DatabaseFoundationIntegrationTests {
 				"Foundation description",
 				"DOG",
 				null,
-				"VISIBLE"));
-		Sku sku = skuRepository.save(new Sku(product, "Foundation SKU", new BigDecimal("1000.00"), true, 1));
+				"DRAFT"));
+		Sku sku = skuRepository.save(com.pawcycle.backend.support.TestSkuFactory.sku(
+				product, "Foundation SKU", new BigDecimal("1000.00"), true, 1));
 
 		assertThat(member.getId()).isNotNull();
 		assertThat(memberRepository.findByEmail(email)).isPresent();
@@ -184,14 +186,15 @@ class DatabaseFoundationIntegrationTests {
 				null,
 				"TEST",
 				null,
-				"TEST"));
+				"DRAFT"));
 
 		Throwable thrown = catchThrowable(() -> jdbcTemplate.update(
 				"""
-				INSERT INTO skus (product_id, name, price, subscribable, display_order)
-				VALUES (?, ?, ?, ?, ?)
+				INSERT INTO skus (product_id, sku_code, name, price, subscribable, display_order, status)
+				VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE')
 				""",
 				product.getId(),
+				"NEGATIVE-PRICE-" + product.getId(),
 				"Negative price SKU",
 				new BigDecimal("-0.01"),
 				true,
