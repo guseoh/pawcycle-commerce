@@ -16,9 +16,19 @@ public final class TestSkuFactory {
 			BigDecimal price,
 			boolean subscribable,
 			int displayOrder) {
+		return sku(product, "TEST-" + UUID.randomUUID(), name, price, subscribable, displayOrder);
+	}
+
+	public static Sku sku(
+			Product product,
+			String skuCode,
+			String name,
+			BigDecimal price,
+			boolean subscribable,
+			int displayOrder) {
 		return new Sku(
 				product,
-				"TEST-" + UUID.randomUUID(),
+				skuCode,
 				name,
 				price,
 				subscribable,

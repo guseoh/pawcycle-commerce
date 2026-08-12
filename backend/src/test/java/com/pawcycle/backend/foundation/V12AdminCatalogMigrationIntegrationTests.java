@@ -48,6 +48,20 @@ class V12AdminCatalogMigrationIntegrationTests {
 			jdbc.update("INSERT INTO members(email,password_hash) VALUES ('v12-default@example.test',?)", "y".repeat(60));
 			assertThat(jdbc.queryForObject(
 					"SELECT role FROM members WHERE email='v12-default@example.test'", String.class)).isEqualTo("USER");
+
+			assertConstraint(jdbc, "members", "chk_members_role", "CHECK");
+			assertConstraint(jdbc, "categories", "uk_categories_slug", "UNIQUE");
+			assertConstraint(jdbc, "categories", "chk_categories_display_order_nonnegative", "CHECK");
+			assertConstraint(jdbc, "products", "fk_products_category", "FOREIGN KEY");
+			assertConstraint(jdbc, "skus", "uk_skus_sku_code", "UNIQUE");
+			assertConstraint(jdbc, "skus", "chk_skus_status", "CHECK");
+			assertNotNullable(jdbc, "members", "role");
+			assertNotNullable(jdbc, "categories", "name");
+			assertNotNullable(jdbc, "categories", "slug");
+			assertNotNullable(jdbc, "categories", "display_order");
+			assertNotNullable(jdbc, "categories", "active");
+			assertNotNullable(jdbc, "skus", "sku_code");
+			assertNotNullable(jdbc, "skus", "status");
 		} catch (Throwable failure) {
 			primaryFailure = failure;
 			throw failure;
@@ -120,5 +134,33 @@ class V12AdminCatalogMigrationIntegrationTests {
 				"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?",
 				Integer.class,
 				table) == 1;
+	}
+
+	private void assertConstraint(JdbcTemplate jdbc, String table, String constraint, String type) {
+		assertThat(jdbc.queryForObject(
+				"""
+				SELECT COUNT(*)
+				FROM information_schema.table_constraints
+				WHERE constraint_schema=DATABASE()
+				  AND table_name=?
+				  AND constraint_name=?
+				  AND constraint_type=?
+				""",
+				Integer.class,
+				table,
+				constraint,
+				type)).isEqualTo(1);
+	}
+
+	private void assertNotNullable(JdbcTemplate jdbc, String table, String column) {
+		assertThat(jdbc.queryForObject(
+				"""
+				SELECT is_nullable
+				FROM information_schema.columns
+				WHERE table_schema=DATABASE() AND table_name=? AND column_name=?
+				""",
+				String.class,
+				table,
+				column)).isEqualTo("NO");
 	}
 }

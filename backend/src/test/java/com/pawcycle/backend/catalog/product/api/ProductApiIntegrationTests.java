@@ -224,6 +224,12 @@ class ProductApiIntegrationTests {
 		mockMvc.perform(get("/api/products/{productId}", product.getId()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.skus").isEmpty());
+
+		mockMvc.perform(get("/api/products"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products[0].productId").value(product.getId()))
+				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices").isEmpty())
+				.andExpect(jsonPath("$.products[0].hasSubscribableSku").value(false));
 	}
 
 	private Product saveProduct(

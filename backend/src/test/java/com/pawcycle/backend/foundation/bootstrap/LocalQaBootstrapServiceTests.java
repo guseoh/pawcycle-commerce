@@ -196,6 +196,7 @@ class LocalQaBootstrapServiceTests {
 		Product product = matchingProduct();
 		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
+				LocalQaBootstrapService.SKU_CODE,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE.add(BigDecimal.ONE),
 				true,
@@ -207,6 +208,7 @@ class LocalQaBootstrapServiceTests {
 		Product product = matchingProduct();
 		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
+				LocalQaBootstrapService.SKU_CODE,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE,
 				false,
@@ -218,6 +220,7 @@ class LocalQaBootstrapServiceTests {
 		Product product = matchingProduct();
 		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
+				LocalQaBootstrapService.SKU_CODE,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE,
 				true,
