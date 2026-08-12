@@ -77,7 +77,7 @@ def posix_sh_command(values: dict[str, str] | None) -> list[str]:
     if shell is not None:
         return [shell]
     if os.name == "nt":
-        wsl_bash = Path(os.environ.get("SystemRoot", r"C:\\Windows")) / "System32" / "bash.exe"
+        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\\Windows")) / "System32" / "bash.exe"
         if wsl_bash.is_file():
             assignments = ""
             if values is not None:
