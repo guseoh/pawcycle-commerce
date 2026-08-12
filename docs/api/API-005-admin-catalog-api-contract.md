@@ -91,6 +91,7 @@ POST는 `skuCode`, `name`, 0 이상 `price`, `subscribable`, 0 이상 `displayOr
 - Product의 `categoryId`, `description`, `thumbnailUrl`은 명시적 `null`로 연결 또는 값을 해제할 수 있다.
 - SKU PATCH에는 `skuCode`가 없으며 name, price, subscribable, displayOrder, status만 수정한다.
 - 한 요청의 validation, 참조 조회, 상태 전이와 저장은 하나의 transaction이다.
+- Product PATCH는 동일 Product 행의 쓰기 잠금을 획득한 뒤 상태 전이와 필드 수정을 수행한다. 동시에 들어온 PATCH를 직렬화하여 동일 전이의 중복 성공과 필드 유실을 방지하며, 잠금 뒤 관찰한 최신 상태에서 허용되지 않은 전이는 409다.
 
 ## 오류 계약
 

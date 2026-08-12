@@ -89,7 +89,24 @@ class AdminCatalogConcurrencyIntegrationTests {
 				"SKU_CODE_CONFLICT");
 	}
 
+	@Test
+	void concurrentIdenticalProductTransitionsReturnOneSuccessAndOneConflict() throws Exception {
+		long productId = objectMapper.readTree(postJson("/api/admin/products", """
+				{"name":"전이 상품","shortDescription":"동시 전이 테스트","description":null,
+				 "petType":"DOG","thumbnailUrl":null}
+				""").getResponse().getContentAsByteArray()).get("productId").asLong();
+
+		assertConcurrentResults(
+				() -> patchJson("/api/admin/products/" + productId, "{\"status\":\"PUBLIC\"}"),
+				"PRODUCT_STATUS_TRANSITION_CONFLICT",
+				200);
+	}
+
 	private void assertConcurrentResults(Request request, String conflictCode) throws Exception {
+		assertConcurrentResults(request, conflictCode, 201);
+	}
+
+	private void assertConcurrentResults(Request request, String conflictCode, int successStatus) throws Exception {
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 		List<MvcResult> results = new ArrayList<>();
@@ -103,7 +120,7 @@ class AdminCatalogConcurrencyIntegrationTests {
 		}
 
 		assertThat(results).extracting(result -> result.getResponse().getStatus())
-				.containsExactlyInAnyOrder(201, 409);
+				.containsExactlyInAnyOrder(successStatus, 409);
 		MvcResult conflict = results.stream()
 				.filter(result -> result.getResponse().getStatus() == 409)
 				.findFirst()
@@ -119,7 +136,17 @@ class AdminCatalogConcurrencyIntegrationTests {
 	}
 
 	private MvcResult postJson(String path, String body) throws Exception {
-		return mockMvc.perform(post(path)
+		return performJson(post(path), body);
+	}
+
+	private MvcResult patchJson(String path, String body) throws Exception {
+		return performJson(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(path), body);
+	}
+
+	private MvcResult performJson(
+			org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+			String body) throws Exception {
+		return mockMvc.perform(request
 					.with(authentication(new UsernamePasswordAuthenticationToken(
 							new AuthenticatedMemberPrincipal(1L, MemberRole.ADMIN),
 							null,

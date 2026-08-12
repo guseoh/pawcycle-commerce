@@ -76,7 +76,7 @@ public class AdminCatalogService {
 
 	@Transactional(readOnly = true)
 	public AdminCatalogViews.ProductList products() {
-		return new AdminCatalogViews.ProductList(productRepository.findAllByOrderByIdAsc().stream()
+		return new AdminCatalogViews.ProductList(productRepository.findAllWithCategoryOrderByIdAsc().stream()
 				.map(this::productView)
 				.toList());
 	}
@@ -102,7 +102,7 @@ public class AdminCatalogService {
 	@Transactional
 	public AdminCatalogViews.Product updateProduct(Long productId, ProductPatch request) {
 		validate(request);
-		Product product = requireProduct(productId);
+		Product product = requireProductForUpdate(productId);
 		Category category = request.isCategoryIdPresent() && request.getCategoryId() != null
 				? requireCategory(request.getCategoryId())
 				: null;
@@ -180,6 +180,12 @@ public class AdminCatalogService {
 
 	private Product requireProduct(Long productId) {
 		return productRepository.findById(productId)
+				.orElseThrow(() -> new AdminCatalogNotFoundException(
+						"PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+	}
+
+	private Product requireProductForUpdate(Long productId) {
+		return productRepository.findByIdForUpdate(productId)
 				.orElseThrow(() -> new AdminCatalogNotFoundException(
 						"PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
 	}

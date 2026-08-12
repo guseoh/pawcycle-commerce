@@ -11,13 +11,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.domain.MemberRole;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +40,7 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @ActiveProfiles("test")
 @Transactional
 class AdminCatalogApiIntegrationTests {
@@ -44,6 +49,8 @@ class AdminCatalogApiIntegrationTests {
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final EntityManager entityManager;
+	private final Statistics statistics;
 	private MockMvc mockMvc;
 
 	@Autowired
@@ -52,12 +59,16 @@ class AdminCatalogApiIntegrationTests {
 			ObjectMapper objectMapper,
 			CategoryRepository categoryRepository,
 			ProductRepository productRepository,
-			SkuRepository skuRepository) {
+			SkuRepository skuRepository,
+			EntityManager entityManager,
+			EntityManagerFactory entityManagerFactory) {
 		this.applicationContext = applicationContext;
 		this.objectMapper = objectMapper;
 		this.categoryRepository = categoryRepository;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
+		this.entityManager = entityManager;
+		this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
 	}
 
 	@BeforeEach
@@ -157,6 +168,26 @@ class AdminCatalogApiIntegrationTests {
 				.andExpect(jsonPath("$.description").value(org.hamcrest.Matchers.nullValue()));
 
 		assertThat(productRepository.findById(productId).orElseThrow().getStatus()).isEqualTo(ProductStatus.PUBLIC);
+	}
+
+	@Test
+	void productListFetchesDistinctCategoriesInOneQuery() throws Exception {
+		Category first = categoryRepository.save(new Category("첫 카테고리", "first-category", 1, true));
+		Category second = categoryRepository.save(new Category("둘째 카테고리", "second-category", 2, true));
+		productRepository.save(new com.pawcycle.backend.catalog.product.domain.Product(
+				first, "첫 상품", "첫 설명", null, "DOG", null));
+		productRepository.save(new com.pawcycle.backend.catalog.product.domain.Product(
+				second, "둘째 상품", "둘째 설명", null, "CAT", null));
+		entityManager.flush();
+		entityManager.clear();
+		statistics.clear();
+
+		mockMvc.perform(get("/api/admin/products").with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products[0].categoryId").value(first.getId()))
+				.andExpect(jsonPath("$.products[1].categoryId").value(second.getId()));
+
+		assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
 	}
 
 	@Test
