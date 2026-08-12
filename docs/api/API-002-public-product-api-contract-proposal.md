@@ -325,3 +325,9 @@ D7: A
 ```
 
 위 D1~D7은 `Approved`다. 선택되지 않은 D1-B, D2-B, D3-B·C, D4-B, D5-B, D6-B, D7-B와 API-001의 나머지 후보는 승인되지 않았다.
+
+## MVP3-CATALOG-001 additive visibility 계약
+
+`MVP3-CATALOG-001` 사용자 승인으로 SKU 판매 status가 추가됐다. 기존 API-002 JSON shape, Product `PUBLIC` 기준, 정렬과 빈 배열 계약은 유지하면서 공개 목록의 `skuPriceSummary.skuPrices`와 상세의 `skus`에는 `status=ACTIVE` SKU만 포함한다.
+
+PUBLIC Product에 ACTIVE SKU가 없더라도 Product를 숨기지 않는다. 목록은 `skuPrices: []`, `hasSubscribableSku: false`, 상세는 `skus: []`를 반환한다. SKU status는 기존 `subscribable`과 독립이며 Subscription eligibility를 변경하지 않는다.

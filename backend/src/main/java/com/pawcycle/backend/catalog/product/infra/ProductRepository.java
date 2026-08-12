@@ -11,6 +11,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
 	List<Product> findAllByName(String name);
 
+	List<Product> findAllByOrderByIdAsc();
+
 	@Query(value = """
 			SELECT p.*
 			FROM products p

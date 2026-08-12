@@ -58,7 +58,7 @@ class SubscriptionDatabaseIntegrationTests {
 				passwordEncoder.encode(UUID.randomUUID().toString())));
 		Product product = productRepository.saveAndFlush(new Product(
 				"구독 DB 상품", "구독 DB 짧은 설명", null, "DOG", null, "PUBLIC"));
-		sku = skuRepository.saveAndFlush(new Sku(
+		sku = skuRepository.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "구독 DB SKU", new BigDecimal("19900.00"), true, 1));
 	}
 

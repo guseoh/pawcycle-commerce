@@ -39,7 +39,8 @@ class V2SubscriptionIdempotencyConcurrencyIntegrationTests {
 	void concurrentSameCommandKeyReturnsOneSuccessAndOneReplay() throws Exception {
 		Member member = members.saveAndFlush(new Member("v2-concurrent-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
 		Product product = products.saveAndFlush(new Product("V2 concurrent product", "test", null, "DOG", null, "PUBLIC"));
-		Sku sku = skus.saveAndFlush(new Sku(product, "v2-concurrent-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
+		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
+				product, "v2-concurrent-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG concurrent plan", "DOG");
 		long planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", planId);

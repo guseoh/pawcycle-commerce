@@ -65,7 +65,8 @@ class V2SubscriptionServiceIntegrationTests {
 	void setUp() {
 		member = members.saveAndFlush(new Member("v2-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
 		product = products.saveAndFlush(new Product("V2 plan product", "test", null, "DOG", null, "PUBLIC"));
-		sku = skus.saveAndFlush(new Sku(product, "v2-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
+		sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
+				product, "v2-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG starter", "DOG");
 		planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,24000,false)", planId);
@@ -157,7 +158,8 @@ class V2SubscriptionServiceIntegrationTests {
 
 		long firstSubscriptionId = ((Number) service.createSubscription(member.getId(), "list-first", Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4)).body().get("subscriptionId")).longValue();
 		long secondSubscriptionId = ((Number) service.createSubscription(member.getId(), "list-second", Map.of("petId", petId, "planVersionId", multiVersionId, "deliveryCycleWeeks", 2)).body().get("subscriptionId")).longValue();
-		Sku secondSku = skus.saveAndFlush(new Sku(sku.getProduct(), "v2-list-sku-" + UUID.randomUUID(), new BigDecimal("13000.00"), true, 1));
+		Sku secondSku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
+				sku.getProduct(), "v2-list-sku-" + UUID.randomUUID(), new BigDecimal("13000.00"), true, 1));
 		long secondSnapshotId = jdbc.queryForObject("SELECT current_snapshot_id FROM subscriptions WHERE id=?", Long.class, secondSubscriptionId);
 		jdbc.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) VALUES (?,?,?)", secondSnapshotId, secondSku.getId(), 1);
 		long firstSnapshotId = jdbc.queryForObject("SELECT current_snapshot_id FROM subscriptions WHERE id=?", Long.class, firstSubscriptionId);

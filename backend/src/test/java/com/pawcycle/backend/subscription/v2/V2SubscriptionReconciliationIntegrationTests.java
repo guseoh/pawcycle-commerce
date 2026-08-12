@@ -63,7 +63,7 @@ class V2SubscriptionReconciliationIntegrationTests {
 				passwordEncoder.encode("test-password")));
 		Product product = products.saveAndFlush(new Product(
 				PRODUCT_PREFIX + suffix, "test", null, "DOG", null, "PUBLIC"));
-		Sku sku = skus.saveAndFlush(new Sku(
+		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "ops-recon-001-sku-" + suffix, new BigDecimal("12000.00"), true, 1));
 		jdbc.update(
 				"INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)",

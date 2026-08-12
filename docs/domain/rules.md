@@ -26,6 +26,17 @@
 | DOMAIN-001 | 재고, 품절과 일반 판매 상태는 이번 구독 생성 조건에 연결하지 않는다. | PS-001, PS-002 | BE, API, QA | 구독 생성 조건은 SKU 구독 가능 여부만 사용 |
 | DOMAIN-001 | 다음 주문 예정일은 표시용 예정 정보이며 실제 정기 주문 자동 생성은 제외한다. | PS-001, PS-002 | BE, API, QA, UX | 예정일 도래만으로 주문 생성 책임을 만들지 않음 |
 
+## MVP3 Admin Catalog 승인 규칙
+
+| 작업 ID | 규칙 | 승인 출처 | 영향을 받는 역할 | 검증 기대 사항 |
+| --- | --- | --- | --- | --- |
+| MVP3-CATALOG-001 | 회원 role은 USER, ADMIN이며 기존 회원과 외부 role 입력이 없는 신규 회원은 USER다. | 사용자 명시 승인 | BE, Security, QA | backfill, `/api/auth/me`, anonymous 401·USER 403·ADMIN 허용 |
+| MVP3-CATALOG-001 | Category는 선택적 Product 연관이며 hard delete하지 않는다. active 변경은 Product 상태를 연쇄 변경하지 않는다. | 사용자 명시 승인 | BE, API, QA | nullable FK, CRUD와 404·slug 409 |
+| MVP3-CATALOG-001 | 신규 Product는 DRAFT이고 허용 전이는 DRAFT→PUBLIC, PUBLIC→INACTIVE, INACTIVE→PUBLIC뿐이다. | 사용자 명시 승인 | BE, API, QA | 허용 전이 성공과 그 밖의 409 |
+| MVP3-CATALOG-001 | 공개 Product API에는 PUBLIC Product와 ACTIVE SKU만 노출하며 ACTIVE SKU가 없어도 Product와 빈 SKU 배열을 유지한다. | 사용자 명시 승인 | BE, API, QA | API-002 shape 회귀와 빈 배열 |
+| MVP3-CATALOG-001 | skuCode는 unique·immutable이며 기존 값은 `SKU-{id}`, 기존 SKU status는 ACTIVE로 backfill한다. | 사용자 명시 승인 | BE, DB, API, QA | deterministic backfill, unique 409, PATCH 변경 경로 없음 |
+| MVP3-CATALOG-001 | SKU 판매 status는 Subscription eligibility인 subscribable과 독립이다. | 사용자 명시 승인 | BE, API, QA | INACTIVE라도 기존 구독 조건은 subscribable만 사용 |
+
 ## Product Decision이 필요한 정책 영역
 
 - 구독 변경 가능 마감 시점

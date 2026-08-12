@@ -48,6 +48,8 @@ public class SecurityConfig {
 						.authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/auth/me")
 						.authenticated()
+						.requestMatchers("/api/admin/**")
+						.hasRole("ADMIN")
 						.requestMatchers("/api/**")
 						.authenticated()
 						.anyRequest()

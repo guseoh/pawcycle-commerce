@@ -83,9 +83,9 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 				passwordEncoder.encode("test-password")));
 		product = products.saveAndFlush(new Product(
 				PRODUCT_PREFIX + suffix, "test", null, "DOG", null, "PUBLIC"));
-		firstSku = skus.saveAndFlush(new Sku(
+		firstSku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "sub-auto-first-" + suffix, new BigDecimal("12000.00"), true, 1));
-		secondSku = skus.saveAndFlush(new Sku(
+		secondSku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "sub-auto-second-" + suffix, new BigDecimal("11000.00"), true, 2));
 		basePlanVersionId = createPlanVersion("base-" + suffix, 24000, firstSku.getId(), 2);
 		alternatePlanVersionId = createPlanVersion("alternate-" + suffix, 33000, secondSku.getId(), 3);

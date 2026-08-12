@@ -24,6 +24,18 @@
 
 용량, 구성 등 선택 항목이 확정된 실제 구독 선택 단위다. 첫 번째 수직 MVP에서 회원은 상품 자체가 아니라 존재하며 구독 가능한 SKU 하나를 구독 대상으로 선택한다. 승인 출처: `PS-001`, `PS-002`, `DOMAIN-001`.
 
+### 카테고리(Category)
+
+관리자가 Product를 분류하기 위한 선택적 Catalog 단위다. name, unique slug, display order와 active 관리 상태를 가지며 Product는 Category 없이도 존재할 수 있다. Category active는 Product 공개 상태를 자동 변경하지 않는다. 승인 출처: `MVP3-CATALOG-001`.
+
+### 상품 관리 상태(Product Status)
+
+Product의 관리자 노출 lifecycle이다. `DRAFT`, `PUBLIC`, `INACTIVE`를 사용하며 공개 API에는 `PUBLIC`만 노출한다. 승인 출처: `MVP3-CATALOG-001`.
+
+### SKU 판매 상태(SKU Status)
+
+SKU의 공개 판매 노출 상태로 `ACTIVE`, `INACTIVE`를 사용한다. 기존 구독 가능 여부 `subscribable`과 독립이며 공개 Product API에는 `ACTIVE`만 노출한다. 승인 출처: `MVP3-CATALOG-001`.
+
 ### 구독(Subscription)
 
 회원 또는 고객이 상품을 반복 배송받기 위해 만든 약정이다. 전체 제품 개념에서는 하나 이상의 상품 또는 SKU를 포함할 수 있지만, 첫 번째 수직 MVP에서는 하나의 구독이 SKU 하나만 대상으로 한다. 승인 출처: `PS-001`, `PS-002`, `DOMAIN-001`.

@@ -123,7 +123,7 @@ class V2IdempotencyCleanupConcurrencyIntegrationTests {
 				passwordEncoder.encode("test-password")));
 		Product product = products.saveAndFlush(new Product(
 				"V2 cleanup race product", "test", null, "DOG", null, "PUBLIC"));
-		Sku sku = skus.saveAndFlush(new Sku(
+		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "v2-cleanup-race-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG cleanup race plan", "DOG");
 		long planId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);

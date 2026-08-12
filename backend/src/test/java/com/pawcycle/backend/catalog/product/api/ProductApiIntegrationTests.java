@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.persistence.EntityManager;
@@ -147,12 +148,10 @@ class ProductApiIntegrationTests {
 	}
 
 	@Test
-	void onlyExactUppercasePublicIsExposed() throws Exception {
+	void onlyPublicProductsAreExposed() throws Exception {
 		Product visible = saveProduct("공개", "DOG", null, null, "PUBLIC");
-		Product lower = saveProduct("소문자", "DOG", null, null, "public");
-		Product mixed = saveProduct("혼합", "DOG", null, null, "Public");
-		Product padded = saveProduct("공백", "DOG", null, null, " PUBLIC ");
-		Product other = saveProduct("기타", "DOG", null, null, "HIDDEN");
+		Product draft = saveProduct("초안", "DOG", null, null, "DRAFT");
+		Product inactive = saveProduct("비활성", "DOG", null, null, "INACTIVE");
 		flushAndResetStatistics();
 
 		mockMvc.perform(get("/api/products"))
@@ -160,7 +159,7 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.products.length()").value(1))
 				.andExpect(jsonPath("$.products[0].productId").value(visible.getId()));
 
-		for (Long hiddenId : List.of(lower.getId(), mixed.getId(), padded.getId(), other.getId())) {
+		for (Long hiddenId : List.of(draft.getId(), inactive.getId())) {
 			mockMvc.perform(get("/api/products/{productId}", hiddenId))
 					.andExpect(status().isNotFound())
 					.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
@@ -171,7 +170,7 @@ class ProductApiIntegrationTests {
 
 	@Test
 	void missingAndNonPublicDetailsReturnIdenticalErrors() throws Exception {
-		Product hidden = saveProduct("비공개", "CAT", null, null, "HIDDEN");
+		Product hidden = saveProduct("비공개", "CAT", null, null, "INACTIVE");
 		flushAndResetStatistics();
 
 		MvcResult hiddenResult = mockMvc.perform(get("/api/products/{productId}", hidden.getId()))
@@ -183,6 +182,48 @@ class ProductApiIntegrationTests {
 
 		assertThat(hiddenResult.getResponse().getContentAsString())
 				.isEqualTo(missingResult.getResponse().getContentAsString());
+	}
+
+	@Test
+	void publicApisExposeOnlyActiveSkusAndKeepProductWhenNoActiveSkuExists() throws Exception {
+		Product product = saveProduct("SKU 상태 상품", "DOG", null, null, "PUBLIC");
+		skuRepository.save(new Sku(
+				product,
+				"ACTIVE-" + product.getId(),
+				"활성 SKU",
+				new BigDecimal("1000.00"),
+				true,
+				1,
+				SkuStatus.ACTIVE));
+		skuRepository.save(new Sku(
+				product,
+				"INACTIVE-" + product.getId(),
+				"비활성 SKU",
+				new BigDecimal("2000.00"),
+				true,
+				2,
+				SkuStatus.INACTIVE));
+		flushAndResetStatistics();
+
+		mockMvc.perform(get("/api/products"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices.length()").value(1))
+				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[0].skuName").value("활성 SKU"));
+
+		mockMvc.perform(get("/api/products/{productId}", product.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.skus.length()").value(1))
+				.andExpect(jsonPath("$.skus[0].skuName").value("활성 SKU"));
+
+		skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(product.getId()).stream()
+				.filter(sku -> sku.getStatus() == SkuStatus.ACTIVE)
+				.forEach(sku -> sku.update(null, null, null, null, SkuStatus.INACTIVE));
+		entityManager.flush();
+		entityManager.clear();
+
+		mockMvc.perform(get("/api/products/{productId}", product.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.skus").isEmpty());
 	}
 
 	private Product saveProduct(
@@ -201,7 +242,8 @@ class ProductApiIntegrationTests {
 	}
 
 	private void saveSku(Product product, String name, String price, boolean subscribable, int displayOrder) {
-		skuRepository.save(new Sku(product, name, new BigDecimal(price), subscribable, displayOrder));
+		skuRepository.save(com.pawcycle.backend.support.TestSkuFactory.sku(
+				product, name, new BigDecimal(price), subscribable, displayOrder));
 	}
 
 	private void flushAndResetStatistics() {

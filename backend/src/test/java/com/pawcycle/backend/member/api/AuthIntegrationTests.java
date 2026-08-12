@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.domain.Member;
+import com.pawcycle.backend.member.domain.MemberRole;
 import com.pawcycle.backend.member.infra.MemberRepository;
 import jakarta.servlet.http.Cookie;
 import java.util.Map;
@@ -92,6 +93,7 @@ class AuthIntegrationTests {
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.memberId").value(member.getId()))
+				.andExpect(jsonPath("$.role").doesNotExist())
 				.andExpect(jsonPath("$.email").doesNotExist())
 				.andExpect(result -> assertThat(result.getResponse().getRedirectedUrl()).isNull())
 				.andReturn();
@@ -106,7 +108,8 @@ class AuthIntegrationTests {
 					.param("memberId", String.valueOf(member.getId() + 1))
 					.header("X-Member-Id", member.getId() + 1))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.memberId").value(member.getId()));
+				.andExpect(jsonPath("$.memberId").value(member.getId()))
+				.andExpect(jsonPath("$.role").value("USER"));
 
 		String tokenAfterLogin = csrfToken(csrfSession.session());
 		assertThat(tokenAfterLogin).isNotEqualTo(csrfSession.token());
@@ -116,6 +119,26 @@ class AuthIntegrationTests {
 		assertThat(context.getAuthentication().getPrincipal()).isInstanceOf(AuthenticatedMemberPrincipal.class);
 		assertThat(context.getAuthentication().getCredentials()).isNull();
 		assertThat(context.getAuthentication().getPrincipal()).isNotInstanceOf(Member.class);
+	}
+
+	@Test
+	void adminLoginAndMeExposeAdditiveAdminRole() throws Exception {
+		String adminPassword = "admin-password-" + UUID.randomUUID();
+		Member admin = memberRepository.saveAndFlush(new Member(
+				"admin-" + UUID.randomUUID() + "@example.com",
+				passwordEncoder.encode(adminPassword),
+				MemberRole.ADMIN));
+		CsrfSession csrfSession = csrfSession();
+
+		login(csrfSession, admin.getEmail(), adminPassword)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.memberId").value(admin.getId()))
+				.andExpect(jsonPath("$.role").doesNotExist());
+
+		mockMvc.perform(get("/api/auth/me").session(csrfSession.session()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.memberId").value(admin.getId()))
+				.andExpect(jsonPath("$.role").value("ADMIN"));
 	}
 
 	@Test

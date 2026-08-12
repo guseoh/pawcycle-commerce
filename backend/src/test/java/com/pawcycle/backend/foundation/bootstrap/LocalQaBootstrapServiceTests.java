@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
@@ -193,7 +194,7 @@ class LocalQaBootstrapServiceTests {
 	@Test
 	void singleSkuWithMismatchedPriceFailsWithoutMutation() {
 		Product product = matchingProduct();
-		assertMismatchedSkuFails(product, new Sku(
+		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE.add(BigDecimal.ONE),
@@ -204,7 +205,7 @@ class LocalQaBootstrapServiceTests {
 	@Test
 	void singleSkuWithMismatchedSubscribableFlagFailsWithoutMutation() {
 		Product product = matchingProduct();
-		assertMismatchedSkuFails(product, new Sku(
+		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE,
@@ -215,7 +216,7 @@ class LocalQaBootstrapServiceTests {
 	@Test
 	void singleSkuWithMismatchedDisplayOrderFailsWithoutMutation() {
 		Product product = matchingProduct();
-		assertMismatchedSkuFails(product, new Sku(
+		assertMismatchedSkuFails(product, com.pawcycle.backend.support.TestSkuFactory.sku(
 				product,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE,
@@ -265,10 +266,12 @@ class LocalQaBootstrapServiceTests {
 	private Sku matchingSku(Product product) {
 		return new Sku(
 				product,
+				LocalQaBootstrapService.SKU_CODE,
 				LocalQaBootstrapService.SKU_NAME,
 				LocalQaBootstrapService.SKU_PRICE,
 				true,
-				LocalQaBootstrapService.SKU_DISPLAY_ORDER);
+				LocalQaBootstrapService.SKU_DISPLAY_ORDER,
+				SkuStatus.ACTIVE);
 	}
 
 	private void assertMismatchedSkuFails(Product product, Sku sku) {
