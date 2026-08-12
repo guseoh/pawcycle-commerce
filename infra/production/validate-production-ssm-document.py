@@ -144,20 +144,29 @@ def validate_observed_v4_failure() -> None:
 def validate_trusted_directory_inheritance(command: str) -> None:
     generated = materialize_raw_parameters(command, VALID_VALUES)
     require("GIT_CONFIG_VALUE_0=/opt/pawcycle/control" in generated, "SSM trusted-directory value is not fixed to the control worktree")
-    setup = "fixture_repository=$(mktemp -d)\ngit init -q \"$fixture_repository\"\ngit -C \"$fixture_repository\" remote add origin https://github.com/example/repo.git\n"
+    setup = "fixture_repository=$(mktemp -d)\ngit init -q \"$fixture_repository\"\n"
     cleanup = 'rm -rf "$fixture_repository"\n'
     isolated_env = {
         "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_NOSYSTEM": "1",
     }
-    child_probe = 'git -C "$fixture_repository" config --get remote.origin.url\n'
-    without_process_config = setup + child_probe + cleanup
-    trusted = run_shell(setup + "\n".join(TRUSTED_CONFIG_LINES).replace(TRUSTED_DIRECTORY, "$fixture_repository") + "\n" + child_probe + cleanup, extra_env=isolated_env, force_wsl=True)
+    trusted_config = "\n".join(TRUSTED_CONFIG_LINES).replace(TRUSTED_DIRECTORY, "$fixture_repository") + "\n"
+    child_probe = (
+        'git -C "$fixture_repository" remote add origin https://github.com/example/repo.git\n'
+        'git -C "$fixture_repository" config --get remote.origin.url\n'
+    )
+    trusted = run_shell(
+        setup + trusted_config + child_probe + cleanup,
+        extra_env=isolated_env,
+        force_wsl=True,
+    )
     require(
         trusted.returncode == 0 and trusted.stdout == b"https://github.com/example/repo.git\n",
         "process-scoped safe.directory was not inherited by the child Git invocation",
     )
+
+
 def validate_parameter_contract(parameters: dict[str, object]) -> None:
     require(set(parameters) == set(PARAMETERS), "SSM document must accept only the five bounded parameters")
     expected = {
