@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
@@ -42,6 +43,7 @@ class AdminCatalogConcurrencyIntegrationTests {
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final JdbcTemplate jdbc;
 	private MockMvc mockMvc;
 
 	@Autowired
@@ -50,12 +52,14 @@ class AdminCatalogConcurrencyIntegrationTests {
 			ObjectMapper objectMapper,
 			CategoryRepository categoryRepository,
 			ProductRepository productRepository,
-			SkuRepository skuRepository) {
+			SkuRepository skuRepository,
+			JdbcTemplate jdbc) {
 		this.applicationContext = applicationContext;
 		this.objectMapper = objectMapper;
 		this.categoryRepository = categoryRepository;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
+		this.jdbc = jdbc;
 	}
 
 	@BeforeEach
@@ -161,6 +165,8 @@ class AdminCatalogConcurrencyIntegrationTests {
 	}
 
 	private void cleanCatalog() {
+		jdbc.update("DELETE FROM inventory_movements");
+		jdbc.update("DELETE FROM inventories");
 		skuRepository.deleteAllInBatch();
 		productRepository.deleteAllInBatch();
 		categoryRepository.deleteAllInBatch();

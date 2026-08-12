@@ -90,10 +90,19 @@ class V2SubscriptionReconciliationIntegrationTests {
 				"UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?",
 				planVersionId,
 				planId);
+		enableCommerceFulfillment();
 	}
 
 	private Category activeCategory(String suffix) {
 		return categories.saveAndFlush(new Category("ops-recon-" + suffix, "ops-recon-" + suffix, 0, true));
+	}
+
+	private void enableCommerceFulfillment() {
+		jdbc.update("UPDATE inventories SET available_quantity=100 WHERE sku_id IN (SELECT sku.id FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?)", PRODUCT_PREFIX + "%");
+		jdbc.update("INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at) VALUES (?,'test','recipient','01000000000','12345','test address',NULL,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))", member.getId());
+		long addressId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, member.getId());
+		jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?, 'ACTIVE',CURRENT_TIMESTAMP(6))", member.getId(), "customer-" + UUID.randomUUID(), "billing-" + UUID.randomUUID());
 	}
 
 	@AfterEach
@@ -231,10 +240,16 @@ class V2SubscriptionReconciliationIntegrationTests {
 		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE im FROM inventory_movements im JOIN payments p ON p.id=im.payment_id JOIN orders o ON o.id=p.order_id JOIN subscription_order_context c ON c.order_id=o.id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE p FROM payments p JOIN orders o ON o.id=p.order_id JOIN subscription_order_context c ON c.order_id=o.id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE oi FROM order_items oi JOIN subscription_order_context c ON c.order_id=oi.order_id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE c FROM subscription_order_context c JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM orders WHERE member_id IN (" + memberFilter + ") AND source='SUBSCRIPTION'");
 		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE schedule FROM subscription_schedules schedule JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE item FROM subscription_snapshot_items item JOIN subscription_snapshots snapshot ON snapshot.id=item.snapshot_id JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE shipping FROM subscription_shipping_snapshots shipping JOIN subscriptions s ON s.id=shipping.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE snapshot FROM subscription_snapshots snapshot JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM subscriptions WHERE member_id IN (" + memberFilter + ")");
@@ -244,8 +259,12 @@ class V2SubscriptionReconciliationIntegrationTests {
 		jdbc.update("DELETE item FROM plan_items item JOIN plan_versions version ON version.id=item.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
 		jdbc.update("DELETE version FROM plan_versions version JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
 		jdbc.update("DELETE FROM subscription_plans WHERE name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE inventory FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE sku FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE FROM products WHERE name LIKE ?", PRODUCT_PREFIX + "%");
+		jdbc.update("UPDATE members SET default_address_id=NULL WHERE id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM billing_payment_methods WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM member_addresses WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM members WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
 	}
 }

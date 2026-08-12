@@ -92,7 +92,7 @@ class DatabaseFoundationIntegrationTests {
 				"subscription_orders",
 				"subscription_order_items",
 				"flyway_schema_history");
-		assertThat(tables).contains("orders", "payments", "deliveries", "inventory");
+		assertThat(tables).contains("orders", "payments", "inventories", "inventory_movements");
 	}
 
 	@Test

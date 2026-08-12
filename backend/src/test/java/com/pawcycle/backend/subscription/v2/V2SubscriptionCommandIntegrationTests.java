@@ -68,11 +68,20 @@ class V2SubscriptionCommandIntegrationTests {
 		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,2)", planVersionId, sku.getId());
 		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4)", planVersionId);
 		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", planVersionId, planId);
+		enableCommerceFulfillment();
 	}
 
 	private Category activeCategory() {
 		String suffix = UUID.randomUUID().toString();
 		return categories.saveAndFlush(new Category("v2-command-" + suffix, "v2-command-" + suffix, 0, true));
+	}
+
+	private void enableCommerceFulfillment() {
+		jdbc.update("UPDATE inventories SET available_quantity=100 WHERE sku_id=?", sku.getId());
+		jdbc.update("INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at) VALUES (?,'test','recipient','01000000000','12345','test address',NULL,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))", member.getId());
+		long addressId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, member.getId());
+		jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?, 'ACTIVE',CURRENT_TIMESTAMP(6))", member.getId(), "customer-" + UUID.randomUUID(), "billing-" + UUID.randomUUID());
 	}
 
 	@AfterEach
@@ -98,10 +107,16 @@ class V2SubscriptionCommandIntegrationTests {
 		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", memberId);
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE im FROM inventory_movements im JOIN payments p ON p.id=im.payment_id JOIN orders o ON o.id=p.order_id JOIN subscription_order_context c ON c.order_id=o.id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE p FROM payments p JOIN orders o ON o.id=p.order_id JOIN subscription_order_context c ON c.order_id=o.id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE oi FROM order_items oi JOIN subscription_order_context c ON c.order_id=oi.order_id JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE c FROM subscription_order_context c JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE FROM orders WHERE member_id=? AND source='SUBSCRIPTION'", memberId);
 		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE sh FROM subscription_shipping_snapshots sh JOIN subscriptions s ON s.id=sh.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id=?", memberId);
 		jdbc.update("DELETE ss FROM subscription_snapshots ss JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE FROM subscriptions WHERE member_id=?", memberId);
@@ -116,11 +131,15 @@ class V2SubscriptionCommandIntegrationTests {
 		}
 
 		if (sku != null) {
+			jdbc.update("DELETE FROM inventories WHERE sku_id=?", sku.getId());
 			jdbc.update("DELETE FROM skus WHERE id=?", sku.getId());
 		}
 		if (product != null) {
 			jdbc.update("DELETE FROM products WHERE id=?", product.getId());
 		}
+		jdbc.update("UPDATE members SET default_address_id=NULL WHERE id=?", memberId);
+		jdbc.update("DELETE FROM billing_payment_methods WHERE member_id=?", memberId);
+		jdbc.update("DELETE FROM member_addresses WHERE member_id=?", memberId);
 		jdbc.update("DELETE FROM members WHERE id=?", memberId);
 	}
 

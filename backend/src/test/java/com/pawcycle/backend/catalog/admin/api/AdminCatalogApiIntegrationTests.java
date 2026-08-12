@@ -165,7 +165,7 @@ class AdminCatalogApiIntegrationTests {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		assertThat(productRepository.findById(productId).orElseThrow().getStatus()).isEqualTo(ProductStatus.PUBLIC);
+		assertThat(productRepository.findById(productId).orElseThrow().getStatus()).isEqualTo(ProductStatus.INACTIVE);
 	}
 
 	@Test
