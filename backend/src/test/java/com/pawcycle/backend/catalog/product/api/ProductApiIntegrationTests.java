@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -18,6 +20,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +42,7 @@ class ProductApiIntegrationTests {
 
 	private final WebApplicationContext applicationContext;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final EntityManager entityManager;
 	private final Statistics statistics;
@@ -48,11 +52,13 @@ class ProductApiIntegrationTests {
 	ProductApiIntegrationTests(
 			WebApplicationContext applicationContext,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			EntityManager entityManager,
 			EntityManagerFactory entityManagerFactory) {
 		this.applicationContext = applicationContext;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.entityManager = entityManager;
 		this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
@@ -238,13 +244,16 @@ class ProductApiIntegrationTests {
 			String description,
 			String thumbnailUrl,
 			String displayStatus) {
-		return productRepository.save(new Product(
+		String suffix = UUID.randomUUID().toString();
+		Category category = categoryRepository.saveAndFlush(new Category("product-api-" + suffix, "product-api-" + suffix, 0, true));
+		Product product = new Product(category,
 				name,
 				name + " 짧은 설명",
 				description,
 				petType,
 				thumbnailUrl,
-				displayStatus));
+				displayStatus);
+		return productRepository.save(product);
 	}
 
 	private void saveSku(Product product, String name, String price, boolean subscribable, int displayOrder) {

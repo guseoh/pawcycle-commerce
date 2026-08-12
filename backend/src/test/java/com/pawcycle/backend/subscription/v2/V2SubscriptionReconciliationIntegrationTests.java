@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -49,6 +51,7 @@ class V2SubscriptionReconciliationIntegrationTests {
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
+	@Autowired private CategoryRepository categories;
 	@Autowired private PasswordEncoder passwordEncoder;
 
 	private Member member;
@@ -61,8 +64,9 @@ class V2SubscriptionReconciliationIntegrationTests {
 		member = members.saveAndFlush(new Member(
 				EMAIL_PREFIX + suffix + "@example.test",
 				passwordEncoder.encode("test-password")));
-		Product product = products.saveAndFlush(new Product(
-				PRODUCT_PREFIX + suffix, "test", null, "DOG", null, "PUBLIC"));
+		Product product = new Product(activeCategory(suffix), PRODUCT_PREFIX + suffix, "test", null, "DOG", null);
+		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
+		product = products.saveAndFlush(product);
 		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "ops-recon-001-sku-" + suffix, new BigDecimal("12000.00"), true, 1));
 		jdbc.update(
@@ -86,6 +90,10 @@ class V2SubscriptionReconciliationIntegrationTests {
 				"UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?",
 				planVersionId,
 				planId);
+	}
+
+	private Category activeCategory(String suffix) {
+		return categories.saveAndFlush(new Category("ops-recon-" + suffix, "ops-recon-" + suffix, 0, true));
 	}
 
 	@AfterEach

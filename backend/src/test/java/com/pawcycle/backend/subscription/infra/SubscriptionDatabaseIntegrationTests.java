@@ -3,6 +3,8 @@ package com.pawcycle.backend.subscription.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -32,6 +34,7 @@ class SubscriptionDatabaseIntegrationTests {
 	private final JdbcTemplate jdbcTemplate;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final PasswordEncoder passwordEncoder;
 	private Member member;
@@ -42,11 +45,13 @@ class SubscriptionDatabaseIntegrationTests {
 			JdbcTemplate jdbcTemplate,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			PasswordEncoder passwordEncoder) {
 		this.jdbcTemplate = jdbcTemplate;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.passwordEncoder = passwordEncoder;
 	}
@@ -56,7 +61,9 @@ class SubscriptionDatabaseIntegrationTests {
 		member = memberRepository.saveAndFlush(new Member(
 				"subscription-db-" + UUID.randomUUID() + "@example.test",
 				passwordEncoder.encode(UUID.randomUUID().toString())));
+		String suffix = UUID.randomUUID().toString();
 		Product product = productRepository.saveAndFlush(new Product(
+				categoryRepository.saveAndFlush(new Category("subscription-db-" + suffix, "subscription-db-" + suffix, 0, true)),
 				"구독 DB 상품", "구독 DB 짧은 설명", null, "DOG", null, "PUBLIC"));
 		sku = skuRepository.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "구독 DB SKU", new BigDecimal("19900.00"), true, 1));

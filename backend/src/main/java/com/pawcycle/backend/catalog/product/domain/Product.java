@@ -64,6 +64,17 @@ public class Product {
 			String shortDescription,
 			String description,
 			String petType,
+			String thumbnailUrl,
+			String displayStatus) {
+		this(category, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
+	}
+
+	public Product(
+			Category category,
+			String name,
+			String shortDescription,
+			String description,
+			String petType,
 			String thumbnailUrl) {
 		this(category, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.DRAFT);
 	}

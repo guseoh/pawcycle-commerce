@@ -1,5 +1,7 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -37,6 +39,7 @@ public class LocalQaBootstrapService {
 	private final PasswordEncoder passwordEncoder;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final SubscriptionRepository subscriptionRepository;
 	private final JdbcTemplate jdbcTemplate;
@@ -48,7 +51,7 @@ public class LocalQaBootstrapService {
 			ProductRepository productRepository,
 			SkuRepository skuRepository,
 			SubscriptionRepository subscriptionRepository) {
-		this(emailNormalizer, passwordEncoder, memberRepository, productRepository, skuRepository, subscriptionRepository, null);
+		this(emailNormalizer, passwordEncoder, memberRepository, productRepository, null, skuRepository, subscriptionRepository, null);
 	}
 
 	@Autowired
@@ -57,6 +60,7 @@ public class LocalQaBootstrapService {
 			PasswordEncoder passwordEncoder,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			SubscriptionRepository subscriptionRepository,
 			JdbcTemplate jdbcTemplate) {
@@ -64,6 +68,7 @@ public class LocalQaBootstrapService {
 		this.passwordEncoder = passwordEncoder;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.subscriptionRepository = subscriptionRepository;
 		this.jdbcTemplate = jdbcTemplate;
@@ -129,7 +134,10 @@ public class LocalQaBootstrapService {
 	private Product loadOrCreateProduct() {
 		List<Product> candidates = productRepository.findAllByName(PRODUCT_NAME);
 		if (candidates.isEmpty()) {
-			return productRepository.saveAndFlush(new Product(
+			Category category = categoryRepository == null ? null : categoryRepository.findBySlug("qa-foundation-004")
+					.orElseGet(() -> categoryRepository.saveAndFlush(
+							new Category("QA Foundation", "qa-foundation-004", 0, true)));
+			return productRepository.saveAndFlush(new Product(category,
 					PRODUCT_NAME,
 					PRODUCT_SHORT_DESCRIPTION,
 					PRODUCT_DESCRIPTION,

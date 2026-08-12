@@ -3,6 +3,8 @@ package com.pawcycle.backend.subscription.v2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -43,6 +45,7 @@ class V2SubscriptionCommandIntegrationTests {
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
+	@Autowired private CategoryRepository categories;
 	@Autowired private PasswordEncoder passwordEncoder;
 
 	private Member member;
@@ -54,7 +57,8 @@ class V2SubscriptionCommandIntegrationTests {
 	@BeforeEach
 	void setUp() {
 		member = members.saveAndFlush(new Member("v2-command-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
-		product = products.saveAndFlush(new Product("V2 command product", "test", null, "DOG", null, "PUBLIC"));
+		product = products.saveAndFlush(new Product(activeCategory(), "V2 command product", "test", null, "DOG", null));
+		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
 		sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "v2-command-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG command plan", "DOG");
@@ -64,6 +68,11 @@ class V2SubscriptionCommandIntegrationTests {
 		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,2)", planVersionId, sku.getId());
 		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4)", planVersionId);
 		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", planVersionId, planId);
+	}
+
+	private Category activeCategory() {
+		String suffix = UUID.randomUUID().toString();
+		return categories.saveAndFlush(new Category("v2-command-" + suffix, "v2-command-" + suffix, 0, true));
 	}
 
 	@AfterEach

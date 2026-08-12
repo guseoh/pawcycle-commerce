@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
@@ -76,10 +77,11 @@ class AdminCatalogConcurrencyIntegrationTests {
 						"""),
 				"CATEGORY_SLUG_CONFLICT");
 
+		long categoryId = categoryRepository.saveAndFlush(new Category("concurrent-product", "concurrent-product", 0, true)).getId();
 		long productId = objectMapper.readTree(postJson("/api/admin/products", """
 				{"name":"동시 상품","shortDescription":"동시 생성 테스트","description":null,
 				 "petType":"DOG","thumbnailUrl":null}
-				""").getResponse().getContentAsByteArray()).get("productId").asLong();
+				""".replace("null}", "null,\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
 
 		assertConcurrentResults(
 				() -> postJson("/api/admin/products/" + productId + "/skus", """
@@ -91,10 +93,11 @@ class AdminCatalogConcurrencyIntegrationTests {
 
 	@Test
 	void concurrentIdenticalProductTransitionsReturnOneSuccessAndOneConflict() throws Exception {
+		long categoryId = categoryRepository.saveAndFlush(new Category("concurrent-transition", "concurrent-transition", 0, true)).getId();
 		long productId = objectMapper.readTree(postJson("/api/admin/products", """
 				{"name":"전이 상품","shortDescription":"동시 전이 테스트","description":null,
 				 "petType":"DOG","thumbnailUrl":null}
-				""").getResponse().getContentAsByteArray()).get("productId").asLong();
+				""".replace("null}", "null,\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
 
 		assertConcurrentResults(
 				() -> patchJson("/api/admin/products/" + productId, "{\"status\":\"PUBLIC\"}"),

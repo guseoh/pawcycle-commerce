@@ -2,6 +2,8 @@ package com.pawcycle.backend.subscription.v2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -38,6 +40,7 @@ class V2IdempotencyCleanupConcurrencyIntegrationTests {
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
+	@Autowired private CategoryRepository categories;
 	@Autowired private PasswordEncoder passwordEncoder;
 	@Autowired private PlatformTransactionManager transactionManager;
 
@@ -121,8 +124,10 @@ class V2IdempotencyCleanupConcurrencyIntegrationTests {
 		Member member = members.saveAndFlush(new Member(
 				"v2-cleanup-race-" + UUID.randomUUID() + "@example.test",
 				passwordEncoder.encode("test-password")));
-		Product product = products.saveAndFlush(new Product(
-				"V2 cleanup race product", "test", null, "DOG", null, "PUBLIC"));
+		String categorySuffix = UUID.randomUUID().toString();
+		Product product = new Product(categories.saveAndFlush(new Category("v2-cleanup-" + categorySuffix, "v2-cleanup-" + categorySuffix, 0, true)), "V2 cleanup race product", "test", null, "DOG", null);
+		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
+		product = products.saveAndFlush(product);
 		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "v2-cleanup-race-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG cleanup race plan", "DOG");

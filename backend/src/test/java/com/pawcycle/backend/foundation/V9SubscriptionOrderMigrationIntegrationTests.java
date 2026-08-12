@@ -49,7 +49,7 @@ class V9SubscriptionOrderMigrationIntegrationTests {
 			assertOrderSchema(jdbc);
 			assertThat(jdbc.queryForObject(
 					"SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",
-					Integer.class)).isEqualTo(12);
+					Integer.class)).isEqualTo(15);
 		} catch (Throwable failure) {
 			primaryFailure = failure;
 			throw failure;
@@ -73,8 +73,8 @@ class V9SubscriptionOrderMigrationIntegrationTests {
 				"x".repeat(60));
 		long memberId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update(
-				"INSERT INTO products(name,short_description,pet_type,display_status) "
-						+ "VALUES ('SUB-AUTO migration','fixture','DOG','PUBLIC')");
+				"INSERT INTO products(category_id,name,short_description,pet_type,display_status) "
+						+ "VALUES ((SELECT id FROM categories WHERE slug='uncategorized'),'SUB-AUTO migration','fixture','DOG','PUBLIC')");
 		long productId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update(
 				"INSERT INTO skus(product_id,name,price,subscribable,display_order) "

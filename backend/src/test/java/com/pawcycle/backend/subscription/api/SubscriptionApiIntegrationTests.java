@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -64,6 +66,7 @@ class SubscriptionApiIntegrationTests {
 	private final WebApplicationContext applicationContext;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final SubscriptionRepository subscriptionRepository;
 	private final PasswordEncoder passwordEncoder;
@@ -80,6 +83,7 @@ class SubscriptionApiIntegrationTests {
 			WebApplicationContext applicationContext,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			SubscriptionRepository subscriptionRepository,
 			PasswordEncoder passwordEncoder,
@@ -89,6 +93,7 @@ class SubscriptionApiIntegrationTests {
 		this.applicationContext = applicationContext;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.subscriptionRepository = subscriptionRepository;
 		this.passwordEncoder = passwordEncoder;
@@ -104,7 +109,9 @@ class SubscriptionApiIntegrationTests {
 				.build();
 		owner = saveMember("owner");
 		other = saveMember("other");
+		String suffix = UUID.randomUUID().toString();
 		product = productRepository.saveAndFlush(new Product(
+				categoryRepository.saveAndFlush(new Category("subscription-api-" + suffix, "subscription-api-" + suffix, 0, true)),
 				"반려견 사료", "반려견 사료 설명", "상세 설명", "DOG", null, "PUBLIC"));
 	}
 
