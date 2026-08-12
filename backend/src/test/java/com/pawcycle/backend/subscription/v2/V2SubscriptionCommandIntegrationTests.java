@@ -77,7 +77,7 @@ class V2SubscriptionCommandIntegrationTests {
 	}
 
 	private void enableCommerceFulfillment() {
-		jdbc.update("UPDATE inventories SET available_quantity=100 WHERE sku_id=?", sku.getId());
+		jdbc.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,100,0,0) ON DUPLICATE KEY UPDATE available_quantity=100", sku.getId());
 		jdbc.update("INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at) VALUES (?,'test','recipient','01000000000','12345','test address',NULL,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))", member.getId());
 		long addressId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, member.getId());

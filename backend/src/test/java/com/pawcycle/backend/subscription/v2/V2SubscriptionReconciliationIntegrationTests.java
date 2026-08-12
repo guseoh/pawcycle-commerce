@@ -98,7 +98,7 @@ class V2SubscriptionReconciliationIntegrationTests {
 	}
 
 	private void enableCommerceFulfillment() {
-		jdbc.update("UPDATE inventories SET available_quantity=100 WHERE sku_id IN (SELECT sku.id FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?)", PRODUCT_PREFIX + "%");
+		jdbc.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) SELECT sku.id,100,0,0 FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ? ON DUPLICATE KEY UPDATE available_quantity=100", PRODUCT_PREFIX + "%");
 		jdbc.update("INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at) VALUES (?,'test','recipient','01000000000','12345','test address',NULL,CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))", member.getId());
 		long addressId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, member.getId());
@@ -262,7 +262,7 @@ class V2SubscriptionReconciliationIntegrationTests {
 		jdbc.update("DELETE inventory FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE sku FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE FROM products WHERE name LIKE ?", PRODUCT_PREFIX + "%");
-		jdbc.update("UPDATE members SET default_address_id=NULL WHERE id IN (" + memberFilter + ")");
+		jdbc.update("UPDATE members SET default_address_id=NULL WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
 		jdbc.update("DELETE FROM billing_payment_methods WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM member_addresses WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM members WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
