@@ -361,20 +361,20 @@ def validate_oidc_deploy_contract() -> None:
     operation = parameters["Operation"]
     require(
         operation.get("type") == "String"
-        and operation.get("interpolationType") == "ENV_VAR"
+        and "interpolationType" not in operation
         and operation.get("allowedPattern") == "^(preflight|deploy)$"
         and operation.get("minChars") == 6
         and operation.get("maxChars") == 9,
-        "SSM Operation must use bounded ENV_VAR interpolation",
+        "SSM Operation must use the exact bounded raw parameter contract",
     )
     target = parameters["TargetSha"]
     require(
         target.get("type") == "String"
-        and target.get("interpolationType") == "ENV_VAR"
+        and "interpolationType" not in target
         and target.get("allowedPattern") == "^[0-9a-f]{40}$"
         and target.get("minChars") == 40
         and target.get("maxChars") == 40,
-        "SSM TargetSha must use bounded ENV_VAR interpolation",
+        "SSM TargetSha must use the exact bounded raw parameter contract",
     )
     for approval_name in (
         "ApprovedContractFromSha",
@@ -385,28 +385,45 @@ def validate_oidc_deploy_contract() -> None:
         require(
             approval.get("type") == "String"
             and approval.get("default") == ""
-            and approval.get("interpolationType") == "ENV_VAR"
+            and "interpolationType" not in approval
             and approval.get("allowedPattern") == "^$|^[0-9a-f]{40}$"
             and approval.get("minChars") == 0
             and approval.get("maxChars") == 40,
-            f"SSM {approval_name} must be an optional bounded ENV_VAR SHA",
+            f"SSM {approval_name} must be an optional bounded raw SHA",
         )
     steps = document.get("mainSteps")
     require(isinstance(steps, list) and len(steps) == 1 and steps[0].get("action") == "aws:runShellScript", "SSM document must contain one bounded Linux shell step")
     command = "\n".join(steps[0].get("inputs", {}).get("runCommand", []))
-    require(
-        command.startswith("exec /usr/bin/env bash <<'PAWCYCLE_PRODUCTION_SSM_SCRIPT'\n#!/usr/bin/env bash\nset -Eeuo pipefail")
-        and command.endswith("\nPAWCYCLE_PRODUCTION_SSM_SCRIPT"),
-        "SSM document must enter its bounded Bash command body from the runShellScript sh entrypoint",
+    expected_first_line = (
+        "exec /usr/bin/env bash -s -- "
+        '"{{Operation}}" "{{TargetSha}}" "{{ApprovedContractFromSha}}" '
+        '"{{ApprovedControlSha}}" "{{ApprovedMigrationTargetSha}}" '
+        "<<'PAWCYCLE_PRODUCTION_SSM_SCRIPT'"
     )
     require(
-        "${SSM_Operation:-}" in command
-        and "${SSM_TargetSha:-}" in command
-        and "${SSM_ApprovedContractFromSha:-}" in command
-        and "${SSM_ApprovedControlSha:-}" in command
-        and "${SSM_ApprovedMigrationTargetSha:-}" in command
+        command.startswith(expected_first_line + "\n#!/usr/bin/env bash\nset -Eeuo pipefail")
+        and command.endswith("\nPAWCYCLE_PRODUCTION_SSM_SCRIPT"),
+        "SSM document must enter its bounded Bash command body with exact positional parameters",
+    )
+    require(
+        command.splitlines()[0] == expected_first_line
+        and [*re.findall(r"\{\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}\}", command.splitlines()[0])] == [
+            "Operation",
+            "TargetSha",
+            "ApprovedContractFromSha",
+            "ApprovedControlSha",
+            "ApprovedMigrationTargetSha",
+        ]
+        and all(f'"${{{index}:-}}"' in command for index in range(1, 6))
+        and not any(f"SSM_{name}" in command for name in (
+            "Operation",
+            "TargetSha",
+            "ApprovedContractFromSha",
+            "ApprovedControlSha",
+            "ApprovedMigrationTargetSha",
+        ))
         and "{{ TargetSha }}" not in command,
-        "SSM document must not raw-interpolate operation, target, or approvals",
+        "SSM document must not depend on ENV_VAR materialization or interpolate outside the exact Bash argv",
     )
     require("/opt/pawcycle/control" in command and "infra/production/deploy.sh" in command, "SSM document must reuse the existing PawCycle control deploy script")
     require("git -C \"$control_dir\" config --get remote.origin.url" in command and "https://github.com/*/*.git" in command, "SSM document must derive the approved PawCycle GitHub repository without SSH")
