@@ -394,7 +394,11 @@ def validate_oidc_deploy_contract() -> None:
     steps = document.get("mainSteps")
     require(isinstance(steps, list) and len(steps) == 1 and steps[0].get("action") == "aws:runShellScript", "SSM document must contain one bounded Linux shell step")
     command = "\n".join(steps[0].get("inputs", {}).get("runCommand", []))
-    require(command.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail"), "SSM document must execute the bounded command under Bash fail-closed semantics")
+    require(
+        command.startswith("exec /usr/bin/env bash <<'PAWCYCLE_PRODUCTION_SSM_SCRIPT'\n#!/usr/bin/env bash\nset -Eeuo pipefail")
+        and command.endswith("\nPAWCYCLE_PRODUCTION_SSM_SCRIPT"),
+        "SSM document must enter its bounded Bash command body from the runShellScript sh entrypoint",
+    )
     require(
         "${SSM_Operation:-}" in command
         and "${SSM_TargetSha:-}" in command
