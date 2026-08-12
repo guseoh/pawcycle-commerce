@@ -425,6 +425,16 @@ def validate_oidc_deploy_contract() -> None:
         and "{{ TargetSha }}" not in command,
         "SSM document must not depend on ENV_VAR materialization or interpolate outside the exact Bash argv",
     )
+    for trusted_line in (
+        "export GIT_CONFIG_COUNT=1",
+        "export GIT_CONFIG_KEY_0=safe.directory",
+        "export GIT_CONFIG_VALUE_0=/opt/pawcycle/control",
+    ):
+        require(command.count(trusted_line) == 1, f"SSM trusted-directory contract must contain exactly one line: {trusted_line}")
+    require("safe.directory=*" not in command, "SSM trusted-directory contract must not allow wildcard safe.directory")
+    require("GIT_CONFIG_GLOBAL" not in command and "GIT_CONFIG_SYSTEM" not in command, "SSM trusted-directory contract must not alter persistent config paths")
+    require("git config --global" not in command and "git config --system" not in command, "SSM trusted-directory contract must not invoke persistent config mutation")
+    require("GIT_CONFIG_KEY_1" not in command and "GIT_CONFIG_VALUE_1" not in command, "SSM trusted-directory contract must contain one process config entry")
     require("/opt/pawcycle/control" in command and "infra/production/deploy.sh" in command, "SSM document must reuse the existing PawCycle control deploy script")
     require("git -C \"$control_dir\" config --get remote.origin.url" in command and "https://github.com/*/*.git" in command, "SSM document must derive the approved PawCycle GitHub repository without SSH")
     require(

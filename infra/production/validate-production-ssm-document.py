@@ -20,6 +20,12 @@ PARAMETERS = (
     "ApprovedControlSha",
     "ApprovedMigrationTargetSha",
 )
+TRUSTED_DIRECTORY = "/opt/pawcycle/control"
+TRUSTED_CONFIG_LINES = (
+    "export GIT_CONFIG_COUNT=1",
+    "export GIT_CONFIG_KEY_0=safe.directory",
+    f"export GIT_CONFIG_VALUE_0={TRUSTED_DIRECTORY}",
+)
 RAW_TEMPLATE_RE = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}\}")
 VALID_VALUES = {
     "Operation": "deploy",
@@ -59,7 +65,11 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"ERROR: {message}")
 
 
-def posix_sh_command() -> list[str]:
+def posix_sh_command(force_wsl: bool = False) -> list[str]:
+    if force_wsl and os.name == "nt":
+        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\\Windows")) / "System32" / "bash.exe"
+        if wsl_bash.is_file():
+            return [str(wsl_bash), "-c", "exec /bin/sh -s"]
     shell = shutil.which("sh")
     if shell is not None:
         return [shell]
@@ -70,7 +80,12 @@ def posix_sh_command() -> list[str]:
     raise SystemExit("ERROR: a POSIX sh is required to validate SSM runShellScript materialization")
 
 
-def run_shell(script: str, values: dict[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
+def run_shell(
+    script: str,
+    values: dict[str, str] | None = None,
+    extra_env: dict[str, str] | None = None,
+    force_wsl: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
     environment = os.environ.copy()
     for name in PARAMETERS:
         environment.pop(f"SSM_{name}", None)
@@ -80,8 +95,10 @@ def run_shell(script: str, values: dict[str, str] | None = None) -> subprocess.C
         script = "\n".join(
             f"export SSM_{name}={shlex.quote(value)}" for name, value in values.items()
         ) + "\n" + script
+    if extra_env is not None:
+        environment.update(extra_env)
     return subprocess.run(
-        posix_sh_command(),
+        posix_sh_command(force_wsl),
         input=script.encode("utf-8"),
         env=environment,
         capture_output=True,
@@ -124,6 +141,23 @@ def validate_observed_v4_failure() -> None:
     )
 
 
+def validate_trusted_directory_inheritance(command: str) -> None:
+    generated = materialize_raw_parameters(command, VALID_VALUES)
+    require("GIT_CONFIG_VALUE_0=/opt/pawcycle/control" in generated, "SSM trusted-directory value is not fixed to the control worktree")
+    setup = "fixture_repository=$(mktemp -d)\ngit init -q \"$fixture_repository\"\ngit -C \"$fixture_repository\" remote add origin https://github.com/example/repo.git\n"
+    cleanup = 'rm -rf "$fixture_repository"\n'
+    isolated_env = {
+        "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
+    child_probe = 'git -C "$fixture_repository" config --get remote.origin.url\n'
+    without_process_config = setup + child_probe + cleanup
+    trusted = run_shell(setup + "\n".join(TRUSTED_CONFIG_LINES).replace(TRUSTED_DIRECTORY, "$fixture_repository") + "\n" + child_probe + cleanup, extra_env=isolated_env, force_wsl=True)
+    require(
+        trusted.returncode == 0 and trusted.stdout == b"https://github.com/example/repo.git\n",
+        "process-scoped safe.directory was not inherited by the child Git invocation",
+    )
 def validate_parameter_contract(parameters: dict[str, object]) -> None:
     require(set(parameters) == set(PARAMETERS), "SSM document must accept only the five bounded parameters")
     expected = {
@@ -161,6 +195,12 @@ def validate_command_contract(command: str) -> None:
     require(templates == list(PARAMETERS), "SSM Bash argv must contain the five parameters in the approved order")
     require(RAW_TEMPLATE_RE.search("\n".join(command.splitlines()[1:])) is None, "raw document templates are forbidden inside the Bash body")
     require(not any(f"SSM_{name}" in command for name in PARAMETERS) and "interpolationType" not in command, "SSM command must not depend on ENV_VAR materialization")
+    for line in TRUSTED_CONFIG_LINES:
+        require(command.count(line) == 1, f"SSM trusted-directory contract must contain exactly one line: {line}")
+    require("safe.directory=*" not in command, "SSM trusted-directory contract must reject wildcard safe.directory")
+    require("GIT_CONFIG_GLOBAL" not in command and "GIT_CONFIG_SYSTEM" not in command, "SSM trusted-directory contract must not change persistent Git config paths")
+    require("git config --global" not in command and "git config --system" not in command, "SSM trusted-directory contract must not invoke persistent Git config")
+    require("GIT_CONFIG_KEY_1" not in command and "GIT_CONFIG_VALUE_1" not in command, "SSM trusted-directory contract must contain only one process config entry")
     for index, name in enumerate(PARAMETERS, start=1):
         require(f'"${{{index}:-}}"' in command, f"SSM {name} must be read from its bounded Bash positional argument")
     require("--adopt-contract-sha" not in command and "aws ssm" not in command and "ssh" not in command.lower(), "SSM document must not bypass the deploy boundary")
@@ -189,6 +229,7 @@ def main() -> None:
             run_document_parameter_probe(command, values) == [values[name] for name in PARAMETERS],
             "raw bounded SSM document parameters did not reach the Bash positional inputs",
         )
+    validate_trusted_directory_inheritance(command)
 
     print("OPS-AUTO-008 delta SSM raw parameter materialization contracts validated")
 
