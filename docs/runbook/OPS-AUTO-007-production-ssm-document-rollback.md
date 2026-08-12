@@ -16,7 +16,7 @@
 
 1. 병합된 `main`에서 Repository Validation의 Production contract lane이 성공했다.
 2. 새 document content가 병합된 `infra/production/pawcycle-production-deploy-ssm-document.json`과 일치한다.
-   `aws:runShellScript`는 generated script를 `sh`로 시작하므로, document의 Bash 본문은 `exec /usr/bin/env bash` heredoc wrapper 안에 있어야 한다. wrapper 밖에 Bash 전용 구문을 추가하지 않는다.
+   `aws:runShellScript`는 generated script를 `sh`로 시작하므로, document는 `ENV_VAR`/fallback에 의존하지 않고 정확히 제한된 5개 parameter를 Bash positional argument로 전달해야 한다. wrapper 밖에 Bash 전용 구문이나 추가 interpolation을 넣지 않는다.
 3. 현재 GitHub `production` Environment의 `PAWCYCLE_PRODUCTION_SSM_DOCUMENT_VERSION`이 가리키는 이전 immutable numeric version을 비민감 운영 증거로 기록한다.
 4. `/opt/pawcycle/state/current-sha`와 현재 Backend·Frontend·MySQL·Nginx 상태를 기존 `OPS-010-production-single-release.md` 절차로 확인한다.
 5. 새 version 반영 뒤 첫 실행은 `preflight` 성공을 먼저 요구하며, preflight가 실패하면 `deploy`를 실행하지 않는다.
