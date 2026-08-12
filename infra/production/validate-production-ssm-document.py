@@ -67,14 +67,19 @@ def require(condition: bool, message: str) -> None:
 
 def posix_sh_command(force_wsl: bool = False) -> list[str]:
     if force_wsl and os.name == "nt":
-        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\\Windows")) / "System32" / "bash.exe"
-        if wsl_bash.is_file():
-            return [str(wsl_bash), "-c", "exec /bin/sh -s"]
+        wsl = shutil.which("wsl.exe")
+        if wsl is None:
+            candidate = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "wsl.exe"
+            if candidate.is_file():
+                wsl = str(candidate)
+        if wsl is None:
+            raise SystemExit("ERROR: wsl.exe is required for the Windows SSM trusted-directory validation")
+        return [wsl, "--exec", "/bin/sh", "-s"]
     shell = shutil.which("sh")
     if shell is not None:
         return [shell]
     if os.name == "nt":
-        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\\Windows")) / "System32" / "bash.exe"
+        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "bash.exe"
         if wsl_bash.is_file():
             return [str(wsl_bash), "-c", "exec /bin/sh -s"]
     raise SystemExit("ERROR: a POSIX sh is required to validate SSM runShellScript materialization")
@@ -83,7 +88,6 @@ def posix_sh_command(force_wsl: bool = False) -> list[str]:
 def run_shell(
     script: str,
     values: dict[str, str] | None = None,
-    extra_env: dict[str, str] | None = None,
     force_wsl: bool = False,
 ) -> subprocess.CompletedProcess[bytes]:
     environment = os.environ.copy()
@@ -95,8 +99,6 @@ def run_shell(
         script = "\n".join(
             f"export SSM_{name}={shlex.quote(value)}" for name, value in values.items()
         ) + "\n" + script
-    if extra_env is not None:
-        environment.update(extra_env)
     return subprocess.run(
         posix_sh_command(force_wsl),
         input=script.encode("utf-8"),
@@ -144,26 +146,24 @@ def validate_observed_v4_failure() -> None:
 def validate_trusted_directory_inheritance(command: str) -> None:
     generated = materialize_raw_parameters(command, VALID_VALUES)
     require("GIT_CONFIG_VALUE_0=/opt/pawcycle/control" in generated, "SSM trusted-directory value is not fixed to the control worktree")
-    setup = "fixture_repository=$(mktemp -d)\ngit init -q \"$fixture_repository\"\n"
-    cleanup = 'rm -rf "$fixture_repository"\n'
-    isolated_env = {
-        "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_NOSYSTEM": "1",
-    }
-    trusted_config = "\n".join(TRUSTED_CONFIG_LINES).replace(TRUSTED_DIRECTORY, "$fixture_repository") + "\n"
-    child_probe = (
-        'git -C "$fixture_repository" remote add origin https://github.com/example/repo.git\n'
-        'git -C "$fixture_repository" config --get remote.origin.url\n'
-    )
-    trusted = run_shell(
-        setup + trusted_config + child_probe + cleanup,
-        extra_env=isolated_env,
-        force_wsl=True,
-    )
+    trusted_config = "\n".join(TRUSTED_CONFIG_LINES).replace(TRUSTED_DIRECTORY, "$fixture_repository")
+    probe = f'''fixture_repository="$(mktemp -d)"
+trap 'rm -rf "$fixture_repository"' EXIT
+git init -q "$fixture_repository"
+git -C "$fixture_repository" remote add origin https://github.com/example/repo.git
+if env GIT_TEST_ASSUME_DIFFERENT_OWNER=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \\
+  git -C "$fixture_repository" config --get remote.origin.url >/dev/null 2>&1; then
+  exit 20
+fi
+{trusted_config}
+trusted_origin="$(env GIT_TEST_ASSUME_DIFFERENT_OWNER=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \\
+  git -C "$fixture_repository" config --get remote.origin.url)" || exit 21
+printf '%s\n' "$trusted_origin"
+'''
+    trusted = run_shell(probe, force_wsl=True)
     require(
         trusted.returncode == 0 and trusted.stdout == b"https://github.com/example/repo.git\n",
-        "process-scoped safe.directory was not inherited by the child Git invocation",
+        "process-scoped safe.directory did not convert the isolated child Git probe from rejected to trusted",
     )
 
 
