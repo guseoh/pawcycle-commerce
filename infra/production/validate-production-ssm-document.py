@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 
 
@@ -49,7 +51,12 @@ def fallback_line(name: str) -> str:
 
 def raw_template_contract_ok(command: str) -> bool:
     fallback_lines = [fallback_line(name) for name in PARAMETERS]
-    expected_prefix = "#!/usr/bin/env bash\nset -Eeuo pipefail\n" + "\n".join(fallback_lines) + "\n"
+    expected_prefix = (
+        "exec /usr/bin/env bash <<'PAWCYCLE_PRODUCTION_SSM_SCRIPT'\n"
+        "#!/usr/bin/env bash\nset -Eeuo pipefail\n"
+        + "\n".join(fallback_lines)
+        + "\n"
+    )
     if not command.startswith(expected_prefix):
         return False
     if any(command.count(line) != 1 for line in fallback_lines):
@@ -65,14 +72,33 @@ def raw_template_contract_ok(command: str) -> bool:
     return RAW_TEMPLATE_RE.search(outside_fallbacks) is None
 
 
-def run_fallback_probe(command: str, values: dict[str, str] | None) -> list[str]:
-    fallback_block = "\n".join(fallback_line(name) for name in PARAMETERS)
-    for name, value in FALLBACK_VALUES.items():
-        fallback_block = fallback_block.replace(f"{{{{{name}}}}}", value)
+def posix_sh_command(values: dict[str, str] | None) -> list[str]:
+    shell = shutil.which("sh")
+    if shell is not None:
+        return [shell]
+    if os.name == "nt":
+        wsl_bash = Path(os.environ.get("SYSTEMROOT", r"C:\\Windows")) / "System32" / "bash.exe"
+        if wsl_bash.is_file():
+            assignments = ""
+            if values is not None:
+                assignments = " ".join(f"SSM_{name}={shlex.quote(value)}" for name, value in values.items()) + " "
+            return [str(wsl_bash), "-c", f"exec env {assignments}/bin/sh -s"]
+    raise SystemExit("ERROR: a POSIX sh is required to validate SSM runShellScript materialization")
 
-    probe = fallback_block + "\n" + "\n".join(
-        f'printf "%s\\n" "$SSM_{name}"' for name in PARAMETERS
-    )
+
+def run_materialized_shell(
+    command: str,
+    *,
+    values: dict[str, str] | None,
+    substitute_legacy_templates: bool,
+) -> list[str]:
+    require(command.count('operation="${SSM_Operation:-}"') == 1, "SSM command parameter probe is ambiguous")
+    probe = "\n".join(f'printf "%s\\n" "$SSM_{name}"' for name in PARAMETERS) + "\nexit 0"
+    generated_shell = command.replace('operation="${SSM_Operation:-}"', probe, 1)
+    if substitute_legacy_templates:
+        for name, value in FALLBACK_VALUES.items():
+            generated_shell = generated_shell.replace(f"{{{{{name}}}}}", value)
+
     environment = os.environ.copy()
     for name in PARAMETERS:
         environment.pop(f"SSM_{name}", None)
@@ -81,15 +107,18 @@ def run_fallback_probe(command: str, values: dict[str, str] | None) -> list[str]
             environment[f"SSM_{name}"] = value
 
     completed = subprocess.run(
-        ["bash", "-c", probe],
-        cwd=ROOT,
+        posix_sh_command(values),
+        input=generated_shell.encode("utf-8"),
         env=environment,
-        check=True,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
     )
-    return completed.stdout.splitlines()
+    stdout = completed.stdout.decode("utf-8")
+    stderr = completed.stderr.decode("utf-8")
+    require(
+        completed.returncode == 0,
+        f"SSM generated shell exited {completed.returncode}: {stderr.strip() or stdout.strip()}",
+    )
+    return stdout.splitlines()
 
 
 def main() -> None:
@@ -121,18 +150,35 @@ def main() -> None:
         "raw-template guard accepted an unexpected interpolation parameter",
     )
 
-    fallback_output = run_fallback_probe(command, None)
     require(
-        fallback_output == [FALLBACK_VALUES[name] for name in PARAMETERS],
-        "unset SSM ENV_VAR values did not use the bounded document fallbacks",
+        command.startswith("exec /usr/bin/env bash <<'PAWCYCLE_PRODUCTION_SSM_SCRIPT'\n#!/usr/bin/env bash\nset -Eeuo pipefail"),
+        "SSM runShellScript must enter Bash before its Bash-only command body",
     )
-    present_output = run_fallback_probe(command, PRESENT_VALUES)
     require(
-        present_output == [PRESENT_VALUES[name] for name in PARAMETERS],
-        "existing SSM ENV_VAR values did not retain precedence over document fallbacks",
+        command.endswith("\nPAWCYCLE_PRODUCTION_SSM_SCRIPT"),
+        "SSM runShellScript Bash wrapper must contain a closed heredoc body",
     )
 
-    print("OPS-AUTO-007 SSM fallback interpolation contracts validated")
+    fallback_output = run_materialized_shell(
+        command,
+        values=None,
+        substitute_legacy_templates=True,
+    )
+    require(
+        fallback_output == [FALLBACK_VALUES[name] for name in PARAMETERS],
+        "legacy SSM template materialization did not reach the Bash command body",
+    )
+    present_output = run_materialized_shell(
+        command,
+        values=PRESENT_VALUES,
+        substitute_legacy_templates=False,
+    )
+    require(
+        present_output == [PRESENT_VALUES[name] for name in PARAMETERS],
+        "SSM ENV_VAR materialization did not reach the Bash command body",
+    )
+
+    print("OPS-AUTO-008 SSM Bash materialization contracts validated")
 
 
 if __name__ == "__main__":
