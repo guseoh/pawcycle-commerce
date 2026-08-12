@@ -283,6 +283,7 @@ jobs:
             infra/production/test-production-compose.sh \
             infra/production/test-db-backup-restore.sh
           python infra/production/validate-production-contracts.py
+          python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
