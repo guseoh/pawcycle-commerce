@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,7 @@ public class AdminCatalogService {
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final JdbcTemplate jdbcTemplate;
 
 	@Transactional(readOnly = true)
 	public AdminCatalogViews.CategoryList categories() {
@@ -88,7 +90,7 @@ public class AdminCatalogService {
 
 	@Transactional
 	public AdminCatalogViews.Product createProduct(ProductCreate request) {
-		Category category = request.categoryId() == null ? null : requireCategory(request.categoryId());
+		Category category = requireAssignableCategory(request.categoryId());
 		Product product = productRepository.saveAndFlush(new Product(
 				category,
 				request.name(),
@@ -104,7 +106,7 @@ public class AdminCatalogService {
 		validate(request);
 		Product product = requireProductForUpdate(productId);
 		Category category = request.isCategoryIdPresent() && request.getCategoryId() != null
-				? requireCategory(request.getCategoryId())
+				? requireAssignableCategory(request.getCategoryId())
 				: null;
 		product.update(
 				category,
@@ -151,6 +153,7 @@ public class AdminCatalogService {
 					request.subscribable(),
 					request.displayOrder(),
 					request.status()));
+			jdbcTemplate.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,0,0,0)", sku.getId());
 			return skuView(sku);
 		} catch (DataIntegrityViolationException exception) {
 			throw skuCodeConflict();
@@ -176,6 +179,15 @@ public class AdminCatalogService {
 		return categoryRepository.findById(categoryId)
 				.orElseThrow(() -> new AdminCatalogNotFoundException(
 						"CATEGORY_NOT_FOUND", "카테고리를 확인할 수 없습니다."));
+	}
+
+	private Category requireAssignableCategory(Long categoryId) {
+		Category category = requireCategory(categoryId);
+		if (!category.isActive() || "uncategorized".equals(category.getSlug())) {
+			throw new AdminCatalogConflictException(
+					"CATEGORY_NOT_ASSIGNABLE", "신규 상품에는 활성 실제 카테고리만 지정할 수 있습니다.");
+		}
+		return category;
 	}
 
 	private Product requireProduct(Long productId) {
@@ -249,6 +261,9 @@ public class AdminCatalogService {
 				&& !request.isDescriptionPresent() && !request.isPetTypePresent()
 				&& !request.isThumbnailUrlPresent() && !request.isStatusPresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
+		}
+		if (request.isCategoryIdPresent() && request.getCategoryId() == null) {
+			errors.add(error("categoryId", "Category cannot be cleared."));
 		}
 		if (request.isCategoryIdPresent() && request.getCategoryId() != null && request.getCategoryId() <= 0) {
 			errors.add(error("categoryId", "0보다 커야 합니다."));

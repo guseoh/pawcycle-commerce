@@ -1,6 +1,7 @@
 package com.pawcycle.backend.subscription.v2;
 
 import io.micrometer.core.instrument.Timer;
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -10,6 +11,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -39,6 +41,16 @@ public class SubscriptionOrderAutomationService {
 			  AND schedule.status = 'SCHEDULED'
 			  AND schedule.scheduled_date <= ?
 			  AND existing_order.id IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1
+			      FROM subscription_schedules prior_schedule
+			      JOIN subscription_order_context prior_context ON prior_context.schedule_id = prior_schedule.id
+			      JOIN payments prior_payment ON prior_payment.order_id = prior_context.order_id
+			      WHERE prior_schedule.subscription_id = schedule.subscription_id
+			        AND (prior_schedule.scheduled_date < schedule.scheduled_date
+			             OR (prior_schedule.scheduled_date = schedule.scheduled_date AND prior_schedule.id < schedule.id))
+			        AND prior_payment.status <> 'SUCCEEDED'
+			  )
 			  AND NOT EXISTS (
 			      SELECT 1
 			      FROM subscription_schedules earlier
@@ -151,6 +163,17 @@ public class SubscriptionOrderAutomationService {
 		if (orderExists(candidate.scheduleId())) {
 			return ProcessingOutcome.NO_OP;
 		}
+		Map<String, Object> shipping = shippingSnapshotOrDefault(
+				candidate.subscriptionId(), longValue(subscription, "member_id"));
+		if (shipping == null) {
+			hold(candidate.scheduleId(), "MISSING_SHIPPING_ADDRESS");
+			return ProcessingOutcome.NO_OP;
+		}
+		if (one("SELECT id FROM billing_payment_methods WHERE member_id=? AND status='ACTIVE' FOR UPDATE",
+				longValue(subscription, "member_id")).isEmpty()) {
+			hold(candidate.scheduleId(), "MISSING_BILLING_METHOD");
+			return ProcessingOutcome.NO_OP;
+		}
 
 		long currentSnapshotId = longValue(subscription, "current_snapshot_id");
 		Map<String, Object> currentSnapshot = snapshot(candidate.subscriptionId(), currentSnapshotId);
@@ -181,6 +204,7 @@ public class SubscriptionOrderAutomationService {
 			throw new IllegalStateException("Effective snapshot has no order items");
 		}
 
+		createCommonOrder(subscription, schedule, effectiveSnapshot, shipping, items);
 		long orderId;
 		try {
 			jdbc.update(
@@ -258,6 +282,93 @@ public class SubscriptionOrderAutomationService {
 			throw new IllegalStateException("Subscription version changed while locked");
 		}
 		return ProcessingOutcome.CREATED;
+	}
+
+	private Map<String, Object> shippingSnapshotOrDefault(long subscriptionId, long memberId) {
+		Optional<Map<String, Object>> existing = one(
+				"SELECT recipient_name,recipient_phone,postal_code,address_line1,address_line2 "
+						+ "FROM subscription_shipping_snapshots WHERE subscription_id=? FOR UPDATE",
+				subscriptionId);
+		if (existing.isPresent()) return existing.get();
+		Optional<Map<String, Object>> defaultAddress = one("""
+				SELECT address.recipient_name,address.recipient_phone,address.postal_code,address.address_line1,address.address_line2
+				FROM members member JOIN member_addresses address ON address.id=member.default_address_id
+				WHERE member.id=? FOR UPDATE""", memberId);
+		if (defaultAddress.isEmpty()) return null;
+		Map<String, Object> address = defaultAddress.get();
+		jdbc.update("""
+				INSERT INTO subscription_shipping_snapshots(subscription_id,recipient_name,recipient_phone,postal_code,address_line1,address_line2,updated_at)
+				VALUES (?,?,?,?,?,?,?)""", subscriptionId, address.get("recipient_name"), address.get("recipient_phone"),
+				address.get("postal_code"), address.get("address_line1"), address.get("address_line2"),
+				LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+		return address;
+	}
+
+	private long createCommonOrder(
+			Map<String, Object> subscription,
+			Map<String, Object> schedule,
+			Map<String, Object> effectiveSnapshot,
+			Map<String, Object> shipping,
+			List<Map<String, Object>> snapshotItems) {
+		BigDecimal total = BigDecimal.valueOf(longValue(effectiveSnapshot, "package_total_krw"));
+		String orderNumber = "SUB-" + UUID.randomUUID();
+		LocalDateTime timestamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+		jdbc.update("""
+				INSERT INTO orders(order_number,member_id,source,status,original_amount,discount_amount,shipping_fee,payment_amount,
+				 recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at)
+				VALUES (?,?,'SUBSCRIPTION','PAYMENT_PENDING',?,0,0,?,?,?,?,?,?,?)""",
+				orderNumber, longValue(subscription, "member_id"), total, total, shipping.get("recipient_name"),
+				shipping.get("recipient_phone"), shipping.get("postal_code"), shipping.get("address_line1"),
+				shipping.get("address_line2"), timestamp);
+		long orderId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("""
+				INSERT INTO subscription_order_context(order_id,subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,scheduled_date)
+				VALUES (?,?,?,?,?,?)""", orderId, longValue(subscription, "id"), longValue(schedule, "id"),
+				longValue(effectiveSnapshot, "id"), longValue(effectiveSnapshot, "source_plan_version_id"),
+				dateValue(schedule, "scheduled_date"));
+		String providerOrderId = "TOSS-SUB-" + UUID.randomUUID();
+		jdbc.update("""
+				INSERT INTO payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,created_at)
+				VALUES (?,'BILLING','TOSS','READY',?,?,?,?,?,?)""", orderId, total, providerOrderId,
+				"billing-" + UUID.randomUUID(), 1, timestamp, timestamp);
+		long paymentId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		List<Map<String, Object>> items = jdbc.queryForList("""
+				SELECT item.sku_id,item.quantity,sku.sku_code,sku.name AS sku_name,sku.price,product.name AS product_name
+				FROM subscription_snapshot_items item JOIN skus sku ON sku.id=item.sku_id
+				JOIN products product ON product.id=sku.product_id WHERE item.snapshot_id=? ORDER BY item.sku_id""",
+				longValue(effectiveSnapshot, "id"));
+		if (items.size() != snapshotItems.size()) throw new IllegalStateException("Subscription snapshot SKU is missing");
+		for (Map<String, Object> item : items) {
+			int quantity = intValue(item, "quantity");
+			reserveInventory(longValue(item, "sku_id"), quantity, paymentId, timestamp);
+			BigDecimal unitPrice = (BigDecimal) item.get("price");
+			jdbc.update("""
+					INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount)
+					VALUES (?,?,'FULL',?,?,?,?,?,?)""", orderId, longValue(item, "sku_id"), item.get("sku_code"),
+					item.get("product_name"), item.get("sku_name"), unitPrice, quantity, unitPrice.multiply(BigDecimal.valueOf(quantity)));
+		}
+		return orderId;
+	}
+
+	private void reserveInventory(long skuId, int quantity, long paymentId, LocalDateTime timestamp) {
+		Map<String, Object> inventory = one("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?", skuId)
+				.orElseThrow(() -> new IllegalStateException("Inventory is missing"));
+		long available = longValue(inventory, "available_quantity");
+		long reserved = longValue(inventory, "reserved_quantity");
+		long version = longValue(inventory, "version");
+		if (available < quantity || jdbc.update("""
+				UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1
+				WHERE sku_id=? AND version=? AND available_quantity>=?""", quantity, quantity, skuId, version, quantity) != 1) {
+			throw new IllegalStateException("Inventory reservation conflict");
+		}
+		jdbc.update("""
+				INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at)
+				VALUES (?,?,'RESERVE',?,?,?,?,?,?)""", skuId, paymentId, quantity, available, available - quantity,
+				reserved, reserved + quantity, timestamp);
+	}
+
+	private void hold(long scheduleId, String reason) {
+		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason=? WHERE id=? AND status='SCHEDULED'", reason, scheduleId);
 	}
 
 	static LocalDate firstFutureDate(LocalDate scheduledDate, int deliveryCycleWeeks, LocalDate today) {

@@ -28,7 +28,7 @@ public final class AdminCatalogRequests {
 	}
 
 	public record ProductCreate(
-			@Positive Long categoryId,
+		@NotNull @Positive Long categoryId,
 			@NotBlank @Size(max = 200) String name,
 			@NotBlank @Size(max = 500) String shortDescription,
 			@Size(max = 2000) String description,

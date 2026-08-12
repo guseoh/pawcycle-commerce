@@ -133,7 +133,7 @@ class AdminCatalogApiIntegrationTests {
 	}
 
 	@Test
-	void productCrudDefaultsDraftSupportsNullableCategoryAndEnforcesTransitions() throws Exception {
+	void productCrudRequiresActiveCategoryAndEnforcesTransitions() throws Exception {
 		long categoryId = json(createCategory("care", true).andReturn()).get("categoryId").asLong();
 		MvcResult created = mockMvc.perform(post("/api/admin/products")
 					.with(role(MemberRole.ADMIN)).with(csrf())
@@ -161,11 +161,9 @@ class AdminCatalogApiIntegrationTests {
 				.andExpect(jsonPath("$.code").value("PRODUCT_STATUS_TRANSITION_CONFLICT"));
 		patchProduct(productId, "{\"status\":\"INACTIVE\"}")
 				.andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
-		patchProduct(productId, "{\"status\":\"PUBLIC\",\"categoryId\":null,\"description\":null}")
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status").value("PUBLIC"))
-				.andExpect(jsonPath("$.categoryId").value(org.hamcrest.Matchers.nullValue()))
-				.andExpect(jsonPath("$.description").value(org.hamcrest.Matchers.nullValue()));
+		patchProduct(productId, "{\"categoryId\":null}")
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		assertThat(productRepository.findById(productId).orElseThrow().getStatus()).isEqualTo(ProductStatus.PUBLIC);
 	}
@@ -260,13 +258,14 @@ class AdminCatalogApiIntegrationTests {
 	}
 
 	private long createProductWithoutCategory() throws Exception {
+		long categoryId = json(createCategory("sku-category-" + System.nanoTime(), true).andReturn()).get("categoryId").asLong();
 		MvcResult result = mockMvc.perform(post("/api/admin/products")
 					.with(role(MemberRole.ADMIN)).with(csrf())
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
 							{"name":"사료","shortDescription":"기본 사료","description":null,
 							 "petType":"DOG","thumbnailUrl":null}
-							"""))
+							""".replace("null}", "null,\"categoryId\":" + categoryId + "}")))
 				.andExpect(status().isCreated())
 				.andReturn();
 		return json(result).get("productId").asLong();

@@ -8,6 +8,8 @@ import static org.mockito.Mockito.reset;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
@@ -40,6 +42,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -61,6 +64,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 	@Autowired private V2SubscriptionService subscriptions;
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
+	@Autowired private CategoryRepository categories;
 	@Autowired private SkuRepository skus;
 	@Autowired private PasswordEncoder passwordEncoder;
 	@Autowired private MeterRegistry meterRegistry;
@@ -81,12 +85,22 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		member = members.saveAndFlush(new Member(
 				EMAIL_PREFIX + suffix + "@example.test",
 				passwordEncoder.encode("test-password")));
-		product = products.saveAndFlush(new Product(
-				PRODUCT_PREFIX + suffix, "test", null, "DOG", null, "PUBLIC"));
+		jdbc.update("INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at) VALUES (?,?,'recipient','010-0000-0000','00000','address',NULL,?,?)",
+				member.getId(), "address-" + suffix, LocalDateTime.now(), LocalDateTime.now());
+		long addressId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, member.getId());
+		jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?, 'ACTIVE',?)",
+				member.getId(), "customer-" + suffix, "billing-" + suffix, LocalDateTime.now());
+		Category category = categories.saveAndFlush(new Category("test-" + suffix, "sub-auto-" + suffix, 0, true));
+		Product createdProduct = new Product(category, PRODUCT_PREFIX + suffix, "test", null, "DOG", null);
+		createdProduct.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
+		product = products.saveAndFlush(createdProduct);
 		firstSku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "sub-auto-first-" + suffix, new BigDecimal("12000.00"), true, 1));
 		secondSku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "sub-auto-second-" + suffix, new BigDecimal("11000.00"), true, 2));
+		jdbc.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,100,0,0),(?,100,0,0)",
+				firstSku.getId(), secondSku.getId());
 		basePlanVersionId = createPlanVersion("base-" + suffix, 24000, firstSku.getId(), 2);
 		alternatePlanVersionId = createPlanVersion("alternate-" + suffix, 33000, secondSku.getId(), 3);
 	}
@@ -375,8 +389,12 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 								"\"0\"",
 								body);
 						return "SUCCESS";
-					} catch (V2ApiException exception) {
-						return exception.code();
+					} catch (V2ApiException | CannotAcquireLockException exception) {
+						if (exception instanceof CannotAcquireLockException) {
+							return "SUBSCRIPTION_VERSION_MISMATCH";
+						}
+						V2ApiException v2 = (V2ApiException) exception;
+						return v2.code();
 					}
 				});
 				Future<SubscriptionOrderAutomationService.BatchResult> automationResult = executor.submit(() -> {
@@ -521,12 +539,19 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 
 	private void cleanFixtures() {
 		String memberFilter = "SELECT id FROM members WHERE email LIKE '" + EMAIL_PREFIX + "%@example.test'";
+		jdbc.update("DELETE movement FROM inventory_movements movement JOIN payments payment ON payment.id=movement.payment_id JOIN orders common_order ON common_order.id=payment.order_id WHERE common_order.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE payment FROM payments payment JOIN orders common_order ON common_order.id=payment.order_id WHERE common_order.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE context FROM subscription_order_context context JOIN orders common_order ON common_order.id=context.order_id WHERE common_order.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE item FROM order_items item JOIN orders common_order ON common_order.id=item.order_id WHERE common_order.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM orders WHERE member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE FROM billing_payment_methods WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE r FROM subscription_command_idempotency_results r JOIN subscriptions s ON s.id=r.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE snapshot FROM subscription_shipping_snapshots snapshot JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE schedule FROM subscription_schedules schedule JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE item FROM subscription_snapshot_items item JOIN subscription_snapshots snapshot ON snapshot.id=item.snapshot_id JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("UPDATE subscriptions SET current_snapshot_id=NULL WHERE member_id IN (" + memberFilter + ")");
@@ -538,8 +563,12 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		jdbc.update("DELETE item FROM plan_items item JOIN plan_versions version ON version.id=item.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
 		jdbc.update("DELETE version FROM plan_versions version JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name LIKE ?", PLAN_PREFIX + "%");
 		jdbc.update("DELETE FROM subscription_plans WHERE name LIKE ?", PLAN_PREFIX + "%");
+		jdbc.update("DELETE inventory FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE sku FROM skus sku JOIN products product ON product.id=sku.product_id WHERE product.name LIKE ?", PRODUCT_PREFIX + "%");
 		jdbc.update("DELETE FROM products WHERE name LIKE ?", PRODUCT_PREFIX + "%");
+		jdbc.update("DELETE FROM categories WHERE slug LIKE ?", "sub-auto-%");
+		jdbc.update("UPDATE members SET default_address_id=NULL WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
+		jdbc.update("DELETE FROM member_addresses WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE FROM members WHERE email LIKE ?", EMAIL_PREFIX + "%@example.test");
 	}
 
