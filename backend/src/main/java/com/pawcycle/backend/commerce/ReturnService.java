@@ -89,7 +89,7 @@ public class ReturnService {
 			int qty = ((Number)item.get("quantity")).intValue();
 			Map<String,Object> inv = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", sku);
 			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,version=version+1 WHERE sku_id=?", qty, sku);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,return_id,source_id,created_at) VALUES (?,?, 'RETURN_RESTORE',?,?,?,?,?,?,?)", sku, null, qty, inv.get("available_quantity"), ((Number)inv.get("available_quantity")).intValue()+qty, inv.get("reserved_quantity"), inv.get("reserved_quantity"), returnId, returnId, Timestamp.from(Instant.now()));
+			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,return_id,source_id,created_at) VALUES (?,?, 'RETURN_RESTORE',?,?,?,?,?,?,?,?)", sku, null, qty, inv.get("available_quantity"), ((Number)inv.get("available_quantity")).intValue()+qty, inv.get("reserved_quantity"), inv.get("reserved_quantity"), returnId, returnId, Timestamp.from(Instant.now()));
 		}
 	}
 
