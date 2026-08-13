@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
@@ -49,6 +50,7 @@ class AdminCatalogApiIntegrationTests {
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final JdbcTemplate jdbc;
 	private final EntityManager entityManager;
 	private final Statistics statistics;
 	private MockMvc mockMvc;
@@ -60,6 +62,7 @@ class AdminCatalogApiIntegrationTests {
 			CategoryRepository categoryRepository,
 			ProductRepository productRepository,
 			SkuRepository skuRepository,
+			JdbcTemplate jdbc,
 			EntityManager entityManager,
 			EntityManagerFactory entityManagerFactory) {
 		this.applicationContext = applicationContext;
@@ -67,6 +70,7 @@ class AdminCatalogApiIntegrationTests {
 		this.categoryRepository = categoryRepository;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
+		this.jdbc = jdbc;
 		this.entityManager = entityManager;
 		this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
 	}
@@ -74,6 +78,7 @@ class AdminCatalogApiIntegrationTests {
 	@BeforeEach
 	void setUp() {
 		mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
+		jdbc.update("INSERT IGNORE INTO members(id,email,password_hash,role) VALUES (1,'admin-catalog-fixture@example.test','fixture','ADMIN')");
 	}
 
 	@Test

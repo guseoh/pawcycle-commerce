@@ -65,6 +65,7 @@ class AdminCatalogConcurrencyIntegrationTests {
 	@BeforeEach
 	void setUp() {
 		mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
+		jdbc.update("INSERT IGNORE INTO members(id,email,password_hash,role) VALUES (1,'admin-catalog-concurrency-fixture@example.test','fixture','ADMIN')");
 		cleanCatalog();
 	}
 
