@@ -8,7 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = CommerceController.class)
+@RestControllerAdvice(basePackages = "com.pawcycle.backend.commerce")
 public class CommerceExceptionHandler {
 	@ExceptionHandler(CommerceException.class)
 	ResponseEntity<ApiErrorResponse> commerce(CommerceException exception) { return ResponseEntity.status(exception.status()).body(ApiErrorResponse.withoutFieldErrors(exception.code(), exception.getMessage())); }

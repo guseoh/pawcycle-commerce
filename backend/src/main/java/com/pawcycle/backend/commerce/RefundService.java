@@ -1,0 +1,133 @@
+package com.pawcycle.backend.commerce;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import io.micrometer.core.instrument.Timer;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/** Two-transaction refund executor: provider I/O is always outside the database transaction. */
+@Service
+public class RefundService {
+	private final JdbcTemplate jdbc;
+	private final TransactionTemplate tx;
+	private final TossRefundAdapter provider;
+	private final NotificationService notifications;
+	private final CommerceService commerce;
+	private final AdminAuditService audits;
+	private final CommerceMetrics metrics;
+
+	public RefundService(
+			JdbcTemplate jdbc,
+			org.springframework.transaction.PlatformTransactionManager manager,
+			TossRefundAdapter provider,
+			NotificationService notifications,
+			CommerceService commerce,
+			AdminAuditService audits,
+			CommerceMetrics metrics) {
+		this.jdbc=jdbc;
+		this.tx=new TransactionTemplate(manager);
+		this.provider=provider;
+		this.notifications=notifications;
+		this.commerce=commerce;
+		this.audits=audits;
+		this.metrics=metrics;
+	}
+
+	public Map<String,Object> process(long id) { return process(id,null); }
+	public Map<String,Object> process(long id,Long adminId) {
+		Map<String,Object> work=tx.execute(status -> {
+			Map<String,Object> row=one("SELECT id,status,idempotency_key,amount FROM refunds WHERE id=? FOR UPDATE",id);
+			if(row==null)throw notFound();
+			if(!"READY".equals(row.get("status")))throw new CommerceException(409,"REFUND_STATE_CONFLICT","준비된 환불만 처리할 수 있습니다.");
+			jdbc.update("UPDATE refunds SET status='PROCESSING',processed_at=? WHERE id=?",now(),id);
+			return row;
+		});
+		TossRefundAdapter.RefundResult result;
+		if (((BigDecimal) work.get("amount")).signum() == 0) {
+			result = new TossRefundAdapter.RefundResult("SUCCEEDED","ZERO_AMOUNT");
+		} else {
+			if (!provider.isConfigured()) throw unavailable();
+			Timer.Sample sample = metrics.timer();
+			try { result=provider.refund((String)work.get("idempotency_key"),(BigDecimal)work.get("amount")); }
+			catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
+			finally { metrics.stop(sample,"refund.provider"); }
+		}
+		return complete(id,result,adminId,"REFUND_PROCESS");
+	}
+
+	public Map<String,Object> retry(long id) { return retry(id,null); }
+	public Map<String,Object> retry(long id,Long adminId) {
+		return tx.execute(status -> {
+			Map<String,Object> row=one("SELECT order_id,source,source_id,cancellation_id,return_id,status,attempt_no FROM refunds WHERE id=? FOR UPDATE",id);
+			if(row==null)throw notFound();
+			int attempt=((Number)row.get("attempt_no")).intValue()+1;
+			if(!"FAILED".equals(row.get("status")) || attempt>3)throw new CommerceException(409,"REFUND_RETRY_NOT_ALLOWED","환불 재시도를 만들 수 없습니다.");
+			Map<String,Object> existing=one("SELECT id AS refundId,status,attempt_no AS attemptNo FROM refunds WHERE source=? AND source_id=? AND attempt_no=? FOR UPDATE",row.get("source"),row.get("source_id"),attempt);
+			if(existing!=null)return existing;
+			jdbc.update("INSERT INTO refunds(order_id,source,cancellation_id,return_id,status,amount,provider,idempotency_key,attempt_no,requested_at) SELECT order_id,source,cancellation_id,return_id,'READY',amount,'TOSS',?, ?,? FROM refunds WHERE id=?","refund-"+UUID.randomUUID(),attempt,now(),id);
+			long next=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+			if(adminId!=null)audits.append(adminId,"REFUND_RETRY","REFUND",next);
+			return one("SELECT id AS refundId,status,attempt_no AS attemptNo FROM refunds WHERE id=?",next);
+		});
+	}
+
+	public Map<String,Object> reconcile(long id) { return reconcile(id,null); }
+	public Map<String,Object> reconcile(long id,Long adminId) {
+		if(!provider.isConfigured())throw unavailable();
+		Map<String,Object> work=tx.execute(status -> {
+			Map<String,Object> row=one("SELECT id,status,idempotency_key,reconciliation_attempts FROM refunds WHERE id=? FOR UPDATE",id);
+			if(row==null)throw notFound();
+			if(!"UNKNOWN".equals(row.get("status")) && !"PROCESSING".equals(row.get("status")))throw new CommerceException(409,"REFUND_RECONCILIATION_NOT_ALLOWED","UNKNOWN 또는 처리 중 환불만 대사할 수 있습니다.");
+			int attempts=((Number)row.get("reconciliation_attempts")).intValue();
+			if(attempts>=10)throw new CommerceException(409,"REFUND_RECONCILIATION_EXHAUSTED","환불 대사 횟수를 초과했습니다.");
+			jdbc.update("UPDATE refunds SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",attempts+1,now(),id);
+			return row;
+		});
+		TossRefundAdapter.RefundResult result;
+		Timer.Sample sample = metrics.timer();
+		try { result=provider.reconcile((String)work.get("idempotency_key")); }
+		catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
+		finally { metrics.stop(sample,"refund.provider"); }
+		return complete(id,result,adminId,"REFUND_RECONCILE");
+	}
+
+	private Map<String,Object> complete(long id,TossRefundAdapter.RefundResult result,Long adminId,String auditAction) {
+		return tx.execute(status -> {
+			Map<String,Object> row=one("SELECT refund.id,refund.order_id,refund.source,refund.cancellation_id,refund.return_id,refund.status,refund.reconciliation_attempts,orders.member_id FROM refunds refund JOIN orders ON orders.id=refund.order_id WHERE refund.id=? FOR UPDATE",id);
+			if(row==null)throw notFound();
+			if(!"PROCESSING".equals(row.get("status")) && !"UNKNOWN".equals(row.get("status")))return view(id);
+			String state=result.status();
+			if(!state.equals("SUCCEEDED")&&!state.equals("FAILED")&&!state.equals("UNKNOWN"))state="UNKNOWN";
+			if ("UNKNOWN".equals(state)) state = (String) row.get("status");
+			jdbc.update("UPDATE refunds SET status=?,provider_status=?,failure_code=?,completed_at=? WHERE id=?",state,result.providerStatus(),"FAILED".equals(state)?"TOSS_REJECTED":null,state.equals("SUCCEEDED")?now():null,id);
+			long memberId=((Number)row.get("member_id")).longValue();
+			if("SUCCEEDED".equals(state)) {
+				long orderId=((Number)row.get("order_id")).longValue();
+				jdbc.update("UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL,used_at=NULL WHERE reserved_order_id=? AND status='USED'",orderId);
+				if("CANCELLATION".equals(row.get("source")))jdbc.update("UPDATE order_cancellations SET status='COMPLETED',completed_at=? WHERE id=?",now(),row.get("cancellation_id"));
+				else jdbc.update("UPDATE order_returns SET status='COMPLETED',completed_at=? WHERE id=?",now(),row.get("return_id"));
+				commerce.evaluateMembership(memberId);
+				notifications.create(memberId,"CANCELLATION".equals(row.get("source"))?"CANCELLATION_COMPLETED":"RETURN_COMPLETED","REFUND",id);
+			} else if("UNKNOWN".equals(state)) {
+				notifications.create(memberId,"REFUND_ACTION_REQUIRED","REFUND",id);
+			}
+			metrics.count("refund",state);
+			if(adminId!=null)audits.append(adminId,auditAction,"REFUND",id);
+			return view(id);
+		});
+	}
+
+	private Map<String,Object> view(long id) {
+		return one("SELECT id AS refundId,order_id AS orderId,source,status,amount,attempt_no AS attemptNo,reconciliation_attempts AS reconciliationAttempts,provider_status AS providerStatus,failure_code AS failureCode,requested_at AS requestedAt,processed_at AS processedAt,completed_at AS completedAt FROM refunds WHERE id=?",id);
+	}
+	private static Timestamp now(){return Timestamp.from(Instant.now());}
+	private static CommerceException unavailable(){return new CommerceException(503,"REFUND_PROVIDER_UNAVAILABLE","Toss 환불 Provider가 현재 환경에 구성되지 않았습니다.");}
+	private static CommerceException notFound(){return new CommerceException(404,"REFUND_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");}
+	private Map<String,Object> one(String sql,Object...args){var rows=jdbc.queryForList(sql,args);return rows.isEmpty()?null:new LinkedHashMap<>(rows.getFirst());}
+}

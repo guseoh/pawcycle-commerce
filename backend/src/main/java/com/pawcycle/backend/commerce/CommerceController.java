@@ -6,13 +6,13 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,7 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class CommerceController {
 	private final CommerceService commerce;
-	public CommerceController(CommerceService commerce) { this.commerce = commerce; }
+	private final AdminAuditService audits;
+	public CommerceController(CommerceService commerce, AdminAuditService audits) { this.commerce = commerce; this.audits=audits; }
 
 	@GetMapping("/cart") Map<String,Object> cart(@AuthenticationPrincipal AuthenticatedMemberPrincipal p) { return commerce.cart(p.memberId()); }
 	@PostMapping("/cart/items") ResponseEntity<Void> addCart(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@Valid @RequestBody CartItemRequest r) { commerce.addCartItem(p.memberId(),r.skuId(),r.quantity()); return ResponseEntity.noContent().build(); }
@@ -57,14 +58,14 @@ public class CommerceController {
 	@GetMapping("/membership") Map<String,Object> membership(@AuthenticationPrincipal AuthenticatedMemberPrincipal p) { return commerce.membership(p.memberId()); }
 
 	@GetMapping("/admin/inventories") List<Map<String,Object>> inventories() { return commerce.inventories(); }
-	@PostMapping("/admin/inventories/{skuId}/adjustments") ResponseEntity<Void> adjustInventory(@PathVariable long skuId,@Valid @RequestBody AdjustmentRequest r) { commerce.adjustInventory(skuId,r.delta()); return ResponseEntity.noContent().build(); }
+	@PostMapping("/admin/inventories/{skuId}/adjustments") @Transactional ResponseEntity<Void> adjustInventory(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long skuId,@Valid @RequestBody AdjustmentRequest r) { commerce.adjustInventory(skuId,r.delta()); audits.append(p.memberId(),"INVENTORY_ADJUST","SKU",skuId); return ResponseEntity.noContent().build(); }
 	@GetMapping("/admin/coupons") List<Map<String,Object>> coupons() { return commerce.coupons(); }
-	@PostMapping("/admin/coupons") ResponseEntity<Map<String,Object>> createCoupon(@RequestBody Map<String,Object> request) { long id=commerce.createCoupon(request); return ResponseEntity.created(URI.create("/api/admin/coupons/"+id)).body(Map.of("couponId",id)); }
-	@PatchMapping("/admin/coupons/{couponId}") ResponseEntity<Void> patchCoupon(@PathVariable long couponId,@RequestBody Map<String,Object> request) { commerce.updateCoupon(couponId,request); return ResponseEntity.noContent().build(); }
-	@PostMapping("/admin/coupons/{couponId}/issues") ResponseEntity<Void> issueCoupon(@PathVariable long couponId,@Valid @RequestBody CouponIssueRequest request) { commerce.issueCoupon(couponId,request.memberId()); return ResponseEntity.noContent().build(); }
+	@PostMapping("/admin/coupons") @Transactional ResponseEntity<Map<String,Object>> createCoupon(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@RequestBody Map<String,Object> request) { long id=commerce.createCoupon(request); audits.append(p.memberId(),"COUPON_CREATE","COUPON",id); return ResponseEntity.created(URI.create("/api/admin/coupons/"+id)).body(Map.of("couponId",id)); }
+	@PatchMapping("/admin/coupons/{couponId}") @Transactional ResponseEntity<Void> patchCoupon(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long couponId,@RequestBody Map<String,Object> request) { commerce.updateCoupon(couponId,request); audits.append(p.memberId(),"COUPON_UPDATE","COUPON",couponId); return ResponseEntity.noContent().build(); }
+	@PostMapping("/admin/coupons/{couponId}/issues") @Transactional ResponseEntity<Void> issueCoupon(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long couponId,@Valid @RequestBody CouponIssueRequest request) { commerce.issueCoupon(couponId,request.memberId()); audits.append(p.memberId(),"COUPON_ISSUE","COUPON",couponId); return ResponseEntity.noContent().build(); }
 	@GetMapping("/admin/membership-grades") List<Map<String,Object>> membershipGrades() { return commerce.membershipGrades(); }
-	@PostMapping("/admin/membership-grades") ResponseEntity<Map<String,Object>> createMembershipGrade(@RequestBody Map<String,Object> request) { long id=commerce.createMembershipGrade(request); return ResponseEntity.created(URI.create("/api/admin/membership-grades/"+id)).body(Map.of("gradeId",id)); }
-	@PostMapping("/admin/members/{memberId}/membership/evaluate") ResponseEntity<Void> evaluateMembership(@PathVariable long memberId) { commerce.evaluateMembership(memberId); return ResponseEntity.noContent().build(); }
+	@PostMapping("/admin/membership-grades") @Transactional ResponseEntity<Map<String,Object>> createMembershipGrade(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@RequestBody Map<String,Object> request) { long id=commerce.createMembershipGrade(request); audits.append(p.memberId(),"MEMBERSHIP_GRADE_CREATE","MEMBERSHIP_GRADE",id); return ResponseEntity.created(URI.create("/api/admin/membership-grades/"+id)).body(Map.of("gradeId",id)); }
+	@PostMapping("/admin/members/{memberId}/membership/evaluate") @Transactional ResponseEntity<Void> evaluateMembership(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long memberId) { commerce.evaluateMembership(memberId); audits.append(p.memberId(),"MEMBERSHIP_EVALUATE","MEMBER",memberId); return ResponseEntity.noContent().build(); }
 
 	public record CartItemRequest(@NotNull @Positive Long skuId,@NotNull @Positive Integer quantity) {}
 	public record QuantityRequest(@NotNull @Positive Integer quantity) {}

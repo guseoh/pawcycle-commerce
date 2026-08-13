@@ -1,0 +1,58 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ErrorState, LoadingState } from "@/components/async-state";
+import { commerceFinalApi, type Notification } from "@/lib/commerce-final-api";
+import { useAuth } from "@/lib/auth-context";
+
+export function NotificationScreen() {
+  const { executeWithCsrf } = useAuth();
+  const [items, setItems] = useState<Notification[] | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+
+  const load = () => commerceFinalApi.notifications()
+    .then((result) => { setItems(result); setMessage(null); })
+    .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "알림을 불러오지 못했습니다."));
+
+  useEffect(() => { void load(); }, []);
+
+  async function readAll() {
+    setPending("all");
+    setMessage(null);
+    try {
+      await executeWithCsrf((csrf) => commerceFinalApi.readAll(csrf));
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "알림을 읽음 처리하지 못했습니다.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function readOne(id: number) {
+    setPending(String(id));
+    setMessage(null);
+    try {
+      await executeWithCsrf((csrf) => commerceFinalApi.readNotification(id, csrf));
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "알림을 읽음 처리하지 못했습니다.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  if (!items && !message) return <LoadingState>알림을 불러오고 있습니다.</LoadingState>;
+  if (!items) return <ErrorState title="알림을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()} />;
+
+  return <section className="section-card">
+    <h1>알림</h1>
+    {message ? <p role="alert">{message}</p> : null}
+    <button className="button button-secondary" disabled={pending !== null} onClick={() => void readAll()}>모두 읽음</button>
+    {items.length === 0 ? <p>새 알림이 없습니다.</p> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}>
+      <strong>{item.type}</strong><span>{item.readAt ? "읽음" : "읽지 않음"}</span>
+      {!item.readAt ? <button className="button button-secondary" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : null}
+    </li>)}</ul>}
+  </section>;
+}

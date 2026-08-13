@@ -18,14 +18,23 @@ public class CommerceService {
 	private final JdbcTemplate jdbc;
 	private final TransactionTemplate transaction;
 	private final TossPaymentAdapter tossPaymentAdapter;
+	private final TossBillingAdapter tossBillingAdapter;
+	private final DeliveryService deliveryService;
+	private final NotificationService notificationService;
+	private final int returnRequestDays;
 
 	public CommerceService(
 			JdbcTemplate jdbc,
 			org.springframework.transaction.PlatformTransactionManager transactionManager,
-			TossPaymentAdapter tossPaymentAdapter) {
+			TossPaymentAdapter tossPaymentAdapter, TossBillingAdapter tossBillingAdapter, DeliveryService deliveryService, NotificationService notificationService,
+			@org.springframework.beans.factory.annotation.Value("${pawcycle.commerce.return-request-days:7}") int returnRequestDays) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(transactionManager);
 		this.tossPaymentAdapter = tossPaymentAdapter;
+		this.tossBillingAdapter = tossBillingAdapter;
+		this.deliveryService = deliveryService;
+		this.notificationService = notificationService;
+		this.returnRequestDays = returnRequestDays;
 	}
 
 	public Map<String, Object> cart(long memberId) {
@@ -323,6 +332,19 @@ public class CommerceService {
 		order.put("items", jdbc.queryForList(
 				"SELECT sku_id AS skuId,snapshot_quality AS snapshotQuality,sku_code_snapshot AS skuCodeSnapshot,product_name_snapshot AS productNameSnapshot,sku_name_snapshot AS skuNameSnapshot,unit_price AS unitPrice,quantity,line_amount AS lineAmount FROM order_items WHERE order_id=? ORDER BY id",
 				orderId));
+		order.put("payment", one("SELECT id AS paymentId,type,status,amount,attempt_no AS attemptNo,provider_status AS providerStatus FROM payments WHERE order_id=? ORDER BY attempt_no DESC LIMIT 1",orderId));
+		order.put("delivery", one("SELECT id AS deliveryId,status,carrier_code AS carrierCode,tracking_number AS trackingNumber,failure_reason AS failureReason,shipped_at AS shippedAt,delivered_at AS deliveredAt FROM deliveries WHERE order_id=?",orderId));
+		order.put("cancellation", one("SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE order_id=?",orderId));
+		order.put("return", one("SELECT id AS returnId,status,reason,rejection_reason AS rejectionReason,restock,requested_at AS requestedAt,received_at AS receivedAt,completed_at AS completedAt FROM order_returns WHERE order_id=?",orderId));
+		order.put("refunds", jdbc.queryForList("SELECT id AS refundId,source,status,amount,attempt_no AS attemptNo,reconciliation_attempts AS reconciliationAttempts FROM refunds WHERE order_id=? ORDER BY attempt_no",orderId));
+		Map<String,Object> delivery=(Map<String,Object>)order.get("delivery");
+		List<String> actions=new java.util.ArrayList<>();
+		if ("PAID".equals(order.get("status")) && delivery != null && "PREPARING".equals(delivery.get("status")) && order.get("cancellation")==null) actions.add("REQUEST_CANCELLATION");
+		Timestamp deliveredAt = delivery == null ? null : (Timestamp) delivery.get("deliveredAt");
+		boolean returnWindowOpen = deliveredAt != null
+				&& !deliveredAt.toInstant().plus(returnRequestDays, ChronoUnit.DAYS).isBefore(Instant.now());
+		if (delivery != null && "DELIVERED".equals(delivery.get("status")) && returnWindowOpen && order.get("return")==null) actions.add("REQUEST_RETURN");
+		order.put("availableActions",actions);
 		return order;
 	}
 
@@ -336,22 +358,35 @@ public class CommerceService {
 	}
 
 	public void completeBilling(long memberId,String prepareToken,String authKey) {
-		if (!tossPaymentAdapter.isConfigured()) {
+		if (!tossBillingAdapter.isConfigured()) {
 			throw new CommerceException(503,"PAYMENT_PROVIDER_UNAVAILABLE","Toss Billing Provider가 현재 환경에 구성되지 않았습니다.");
 		}
 		if (authKey == null || authKey.isBlank()) {
 			throw new CommerceException(400,"VALIDATION_FAILED","authKey가 필요합니다.");
 		}
+		Map<String,Object> prepared = transaction.execute(status -> {
+			int claimed = jdbc.update("UPDATE billing_payment_method_preparations SET status='PROCESSING',claimed_at=? WHERE prepare_token=? AND member_id=? AND status='READY' AND expires_at>?", now(), prepareToken, memberId, now());
+			if (claimed != 1) {
+				Map<String,Object> current = one("SELECT status,expires_at FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=?", prepareToken, memberId);
+				if (current != null && "PROCESSING".equals(current.get("status"))) {
+					throw new CommerceException(409,"BILLING_PREPARATION_IN_PROGRESS","동일 Billing 준비 요청이 이미 Provider 처리 중입니다.");
+				}
+				throw new CommerceException(409,"BILLING_PREPARATION_INVALID","Billing 준비 정보가 유효하지 않습니다.");
+			}
+			return one("SELECT customer_key FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND status='PROCESSING'", prepareToken, memberId);
+		});
+		// Provider I/O is deliberately outside the persistence transaction.
+		String billingKey = tossBillingAdapter.issueBillingKey((String) prepared.get("customer_key"), authKey).billingKey();
 		transaction.executeWithoutResult(status -> {
 			Map<String,Object> prep = one(
-					"SELECT customer_key FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND expires_at>? FOR UPDATE",
-					prepareToken, memberId, now());
+					"SELECT customer_key,status FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND status='PROCESSING' FOR UPDATE",
+					prepareToken, memberId);
 			if (prep == null) {
 				throw new CommerceException(409,"BILLING_PREPARATION_INVALID","Billing 준비 정보가 유효하지 않습니다.");
 			}
 			jdbc.update("UPDATE billing_payment_methods SET status='REVOKED',revoked_at=? WHERE member_id=? AND status='ACTIVE'", now(), memberId);
 			jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?,'ACTIVE',?)",
-					memberId, prep.get("customer_key"), "billing-" + UUID.randomUUID(), now());
+					memberId, prep.get("customer_key"), billingKey, now());
 			jdbc.update("DELETE FROM billing_payment_method_preparations WHERE prepare_token=?", prepareToken);
 			jdbc.update("UPDATE subscription_schedules schedule JOIN subscriptions subscription ON subscription.id=schedule.subscription_id LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id SET schedule.status='SCHEDULED',schedule.hold_reason=NULL WHERE subscription.member_id=? AND subscription.status='ACTIVE' AND schedule.status='HELD' AND schedule.hold_reason='MISSING_BILLING_METHOD' AND context.order_id IS NULL",
 					memberId);
@@ -488,8 +523,10 @@ public class CommerceService {
 			}
 			jdbc.update("UPDATE payments SET status='SUCCEEDED',provider_status='DONE',payment_key=?,approved_at=? WHERE id=?", paymentKey, now(), paymentId);
 			jdbc.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?", now(), orderId);
+			deliveryService.createPreparing(orderId);
 			jdbc.update("UPDATE member_coupons SET status='USED',used_at=? WHERE reserved_order_id=? AND status='RESERVED'", now(), orderId);
 			long memberId = jdbc.queryForObject("SELECT member_id FROM orders WHERE id=?", Long.class, orderId);
+			notificationService.create(memberId,"ORDER_PAID","ORDER",orderId);
 			consumeCartForOrder(memberId, orderId);
 			evaluateMembership(memberId);
 			return Map.of("paymentId", paymentId, "status", "SUCCEEDED");
