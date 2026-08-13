@@ -88,6 +88,13 @@ class LocalQaBootstrapIntegrationTests {
 		jdbcTemplate.update("DELETE FROM pets WHERE member_id IN (SELECT id FROM members WHERE email LIKE 'qa-foundation-004@%' OR email LIKE 'other-foundation-004@%')");
 		deleteV2FixturePlans();
 		jdbcTemplate.update("""
+				DELETE inventory
+				FROM inventories inventory
+				JOIN skus sku ON sku.id = inventory.sku_id
+				JOIN products product ON product.id = sku.product_id
+				WHERE product.name = ? OR product.name LIKE ?
+				""", LocalQaBootstrapService.PRODUCT_NAME, OTHER_PRODUCT_PREFIX + "%");
+		jdbcTemplate.update("""
 				DELETE FROM skus
 				WHERE product_id IN (
 					SELECT id FROM products WHERE name = ? OR name LIKE ?
