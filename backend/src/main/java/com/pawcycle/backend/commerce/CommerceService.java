@@ -21,17 +21,20 @@ public class CommerceService {
 	private final TossBillingAdapter tossBillingAdapter;
 	private final DeliveryService deliveryService;
 	private final NotificationService notificationService;
+	private final int returnRequestDays;
 
 	public CommerceService(
 			JdbcTemplate jdbc,
 			org.springframework.transaction.PlatformTransactionManager transactionManager,
-			TossPaymentAdapter tossPaymentAdapter, TossBillingAdapter tossBillingAdapter, DeliveryService deliveryService, NotificationService notificationService) {
+			TossPaymentAdapter tossPaymentAdapter, TossBillingAdapter tossBillingAdapter, DeliveryService deliveryService, NotificationService notificationService,
+			@org.springframework.beans.factory.annotation.Value("${pawcycle.commerce.return-request-days:7}") int returnRequestDays) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(transactionManager);
 		this.tossPaymentAdapter = tossPaymentAdapter;
 		this.tossBillingAdapter = tossBillingAdapter;
 		this.deliveryService = deliveryService;
 		this.notificationService = notificationService;
+		this.returnRequestDays = returnRequestDays;
 	}
 
 	public Map<String, Object> cart(long memberId) {
@@ -337,7 +340,10 @@ public class CommerceService {
 		Map<String,Object> delivery=(Map<String,Object>)order.get("delivery");
 		List<String> actions=new java.util.ArrayList<>();
 		if ("PAID".equals(order.get("status")) && delivery != null && "PREPARING".equals(delivery.get("status")) && order.get("cancellation")==null) actions.add("REQUEST_CANCELLATION");
-		if (delivery != null && "DELIVERED".equals(delivery.get("status")) && order.get("return")==null) actions.add("REQUEST_RETURN");
+		Timestamp deliveredAt = delivery == null ? null : (Timestamp) delivery.get("deliveredAt");
+		boolean returnWindowOpen = deliveredAt != null
+				&& !deliveredAt.toInstant().plus(returnRequestDays, ChronoUnit.DAYS).isBefore(Instant.now());
+		if (delivery != null && "DELIVERED".equals(delivery.get("status")) && returnWindowOpen && order.get("return")==null) actions.add("REQUEST_RETURN");
 		order.put("availableActions",actions);
 		return order;
 	}
@@ -358,18 +364,23 @@ public class CommerceService {
 		if (authKey == null || authKey.isBlank()) {
 			throw new CommerceException(400,"VALIDATION_FAILED","authKey가 필요합니다.");
 		}
-		Map<String,Object> prepared = transaction.execute(status -> one(
-					"SELECT customer_key FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND expires_at>? FOR UPDATE",
-					prepareToken, memberId, now()));
-		if (prepared == null) {
-			throw new CommerceException(409,"BILLING_PREPARATION_INVALID","Billing 준비 정보가 유효하지 않습니다.");
-		}
+		Map<String,Object> prepared = transaction.execute(status -> {
+			int claimed = jdbc.update("UPDATE billing_payment_method_preparations SET status='PROCESSING',claimed_at=? WHERE prepare_token=? AND member_id=? AND status='READY' AND expires_at>?", now(), prepareToken, memberId, now());
+			if (claimed != 1) {
+				Map<String,Object> current = one("SELECT status,expires_at FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=?", prepareToken, memberId);
+				if (current != null && "PROCESSING".equals(current.get("status"))) {
+					throw new CommerceException(409,"BILLING_PREPARATION_IN_PROGRESS","동일 Billing 준비 요청이 이미 Provider 처리 중입니다.");
+				}
+				throw new CommerceException(409,"BILLING_PREPARATION_INVALID","Billing 준비 정보가 유효하지 않습니다.");
+			}
+			return one("SELECT customer_key FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND status='PROCESSING'", prepareToken, memberId);
+		});
 		// Provider I/O is deliberately outside the persistence transaction.
 		String billingKey = tossBillingAdapter.issueBillingKey((String) prepared.get("customer_key"), authKey).billingKey();
 		transaction.executeWithoutResult(status -> {
 			Map<String,Object> prep = one(
-					"SELECT customer_key FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND expires_at>? FOR UPDATE",
-					prepareToken, memberId, now());
+					"SELECT customer_key,status FROM billing_payment_method_preparations WHERE prepare_token=? AND member_id=? AND status='PROCESSING' FOR UPDATE",
+					prepareToken, memberId);
 			if (prep == null) {
 				throw new CommerceException(409,"BILLING_PREPARATION_INVALID","Billing 준비 정보가 유효하지 않습니다.");
 			}

@@ -16,10 +16,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SubscriptionBillingService {
 	private final JdbcTemplate jdbc;
 	private final TransactionTemplate transaction;
+	private final AdminAuditService audits;
 
-	public SubscriptionBillingService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager) {
+	public SubscriptionBillingService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager, AdminAuditService audits) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(manager);
+		this.audits = audits;
 	}
 
 	public void recordExplicitFailure(long paymentId, String failureCode) {
@@ -41,21 +43,48 @@ public class SubscriptionBillingService {
 
 	/** Creates the next attempt for the same order only after an explicit failed attempt. */
 	public long prepareNextAttempt(long failedPaymentId) {
+		return prepareNextAttempt(failedPaymentId, null, false);
+	}
+
+	public long retryHeldBilling(long failedPaymentId, long adminId) {
+		return prepareNextAttempt(failedPaymentId, adminId, true);
+	}
+
+	private long prepareNextAttempt(long failedPaymentId, Long adminId, boolean explicit) {
 		return transaction.execute(status -> {
-			Map<String,Object> payment = jdbc.query("SELECT order_id,attempt_no,status FROM payments WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("orderId",rs.getLong(1),"attemptNo",rs.getInt(2),"status",rs.getString(3)) : null, failedPaymentId);
+			Map<String,Object> payment = jdbc.query("""
+				SELECT payment.order_id,payment.attempt_no,payment.status,context.schedule_id
+				FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
+				WHERE payment.id=? FOR UPDATE""", rs -> rs.next() ? Map.of("orderId",rs.getLong(1),"attemptNo",rs.getInt(2),"status",rs.getString(3),"scheduleId",rs.getLong(4)) : null, failedPaymentId);
 			if (payment == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","결제를 찾을 수 없습니다.");
 			int nextAttempt = (Integer) payment.get("attemptNo") + 1;
 			if (!"FAILED".equals(payment.get("status")) || nextAttempt > 3) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","다음 결제 시도를 만들 수 없습니다.");
+			if (explicit && jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE id=? AND status='HELD' AND hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE'", Integer.class, payment.get("scheduleId")) != 1) {
+				throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","재고 부족으로 보류된 Billing만 명시적으로 재시도할 수 있습니다.");
+			}
 			Long existingAttempt = jdbc.query(
 					"SELECT id FROM payments WHERE order_id=? AND attempt_no=?",
 					rs -> rs.next() ? rs.getLong(1) : null,
 					payment.get("orderId"), nextAttempt);
-			if (existingAttempt != null) return existingAttempt;
+			if (existingAttempt != null) {
+				if (adminId != null) audits.append(adminId,"BILLING_RETRY_DUPLICATE","PAYMENT",failedPaymentId);
+				return existingAttempt;
+			}
 			Map<String,Object> order = jdbc.query("SELECT payment_amount,status FROM orders WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("amount",rs.getBigDecimal(1),"status",rs.getString(2)) : null, payment.get("orderId"));
 			if (order == null || "PAYMENT_ACTION_REQUIRED".equals(order.get("status"))) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","주문 결제를 재시도할 수 없습니다.");
-			reserveForOrder((Long) payment.get("orderId"));
+			try {
+				reserveForOrder((Long) payment.get("orderId"));
+			} catch (CommerceException exception) {
+				if (!"INVENTORY_INSUFFICIENT".equals(exception.code())) throw exception;
+				jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE' WHERE id=?", payment.get("scheduleId"));
+				if (adminId != null) audits.append(adminId,"BILLING_RETRY_STOCK_UNAVAILABLE","PAYMENT",failedPaymentId);
+				return 0L;
+			}
 			jdbc.update("INSERT INTO payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,created_at) VALUES (?,'BILLING','TOSS','READY',?,?,?,?,?,?)", payment.get("orderId"), order.get("amount"), "TOSS-SUB-" + UUID.randomUUID(), "billing-" + UUID.randomUUID(), nextAttempt, now(), now());
-			return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+			long nextId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+			jdbc.update("UPDATE subscription_schedules SET status='SCHEDULED',hold_reason=NULL WHERE id=? AND status='HELD' AND hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE'", payment.get("scheduleId"));
+			if (adminId != null) audits.append(adminId,"BILLING_RETRY","PAYMENT",nextId);
+			return nextId;
 		});
 	}
 
@@ -86,11 +115,21 @@ public class SubscriptionBillingService {
 	}
 
 	private void reserveForOrder(long orderId) {
-		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
-			long skuId=((Number)item.get("sku_id")).longValue(); int quantity=((Number)item.get("quantity")).intValue();
-			Map<String,Object> inventory=jdbc.query("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? Map.of("available",rs.getInt(1),"reserved",rs.getInt(2),"version",rs.getLong(3)) : null, skuId);
-			if(inventory==null || (Integer)inventory.get("available")<quantity) throw new CommerceException(409,"INVENTORY_INSUFFICIENT","재고가 부족합니다.");
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1 WHERE sku_id=? AND version=?",quantity,quantity,skuId,inventory.get("version"));
+		Map<Long, Map<String,Object>> inventories = new java.util.LinkedHashMap<>();
+		Map<Long, Integer> quantities = new java.util.LinkedHashMap<>();
+		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
+			long skuId=((Number)item.get("sku_id")).longValue();
+			int quantity=((Number)item.get("quantity")).intValue();
+			quantities.merge(skuId, quantity, Integer::sum);
+		}
+		for (Map.Entry<Long,Integer> entry : quantities.entrySet()) {
+			Map<String,Object> inventory=jdbc.query("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? Map.of("available",rs.getInt(1),"reserved",rs.getInt(2),"version",rs.getLong(3)) : null, entry.getKey());
+			if(inventory==null || ((Number)inventory.get("available")).intValue()<entry.getValue()) throw new CommerceException(409,"INVENTORY_INSUFFICIENT","재고가 부족합니다.");
+			inventories.put(entry.getKey(), inventory);
+		}
+		for (Map.Entry<Long,Integer> entry : quantities.entrySet()) {
+			Map<String,Object> inventory = inventories.get(entry.getKey());
+			jdbc.update("UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1 WHERE sku_id=? AND version=?",entry.getValue(),entry.getValue(),entry.getKey(),inventory.get("version"));
 		}
 	}
 }

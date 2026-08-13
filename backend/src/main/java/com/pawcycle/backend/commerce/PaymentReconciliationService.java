@@ -41,7 +41,8 @@ public class PaymentReconciliationService {
 		Map<String,Object> work = tx.execute(status -> {
 			Map<String,Object> row = one("SELECT id,type,status,provider_order_id,reconciliation_attempts FROM payments WHERE id=? FOR UPDATE", id);
 			if (row == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");
-			if (!"UNKNOWN".equals(row.get("status"))) throw new CommerceException(409,"PAYMENT_RECONCILIATION_NOT_ALLOWED","UNKNOWN 결제만 대사할 수 있습니다.");
+			boolean billingProcessing = "BILLING".equals(row.get("type")) && "PROCESSING".equals(row.get("status"));
+			if (!billingProcessing && !"UNKNOWN".equals(row.get("status"))) throw new CommerceException(409,"PAYMENT_RECONCILIATION_NOT_ALLOWED","UNKNOWN 결제 또는 처리 중 Billing만 대사할 수 있습니다.");
 			boolean configured = "BILLING".equals(row.get("type")) ? billingProvider.isConfigured() : paymentProvider.isConfigured();
 			if (!configured) throw new CommerceException(503,"PAYMENT_PROVIDER_UNAVAILABLE","Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
 			int attempts = ((Number)row.get("reconciliation_attempts")).intValue();
@@ -67,12 +68,13 @@ public class PaymentReconciliationService {
 		ProviderResult observation = result;
 		return tx.execute(status -> {
 			Map<String,Object> row = one("""
-				SELECT payment.id,payment.order_id,payment.status,payment.reconciliation_attempts,
+				SELECT payment.id,payment.order_id,payment.type,payment.status,payment.reconciliation_attempts,
 				       orders.member_id,orders.source
 				FROM payments payment JOIN orders ON orders.id=payment.order_id
 				WHERE payment.id=? FOR UPDATE""", id);
 			if (row == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");
-			if (!"UNKNOWN".equals(row.get("status"))) return view(id);
+			boolean billingProcessing = "BILLING".equals(row.get("type")) && "PROCESSING".equals(row.get("status"));
+			if (!billingProcessing && !"UNKNOWN".equals(row.get("status"))) return view(id);
 
 			String resultStatus = observation.status();
 			if ("SUCCEEDED".equals(resultStatus)) {

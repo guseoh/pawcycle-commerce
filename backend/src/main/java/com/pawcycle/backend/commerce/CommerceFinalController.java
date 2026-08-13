@@ -30,8 +30,9 @@ public class CommerceFinalController {
 	private final AdminAuditService audits;
 	private final TossPaymentAdapter provider;
 	private final JdbcTemplate jdbc;
+	private final SubscriptionBillingService billingService;
 
-	public CommerceFinalController(CancellationService cancellations,ReturnService returns,DeliveryService deliveries,RefundService refunds,PaymentReconciliationService payments,NotificationService notifications,OperationsQueryService operations,AdminAuditService audits,TossPaymentAdapter provider,JdbcTemplate jdbc) {
+	public CommerceFinalController(CancellationService cancellations,ReturnService returns,DeliveryService deliveries,RefundService refunds,PaymentReconciliationService payments,NotificationService notifications,OperationsQueryService operations,AdminAuditService audits,TossPaymentAdapter provider,JdbcTemplate jdbc,SubscriptionBillingService billingService) {
 		this.cancellations=cancellations;
 		this.returns=returns;
 		this.deliveries=deliveries;
@@ -42,6 +43,7 @@ public class CommerceFinalController {
 		this.audits=audits;
 		this.provider=provider;
 		this.jdbc=jdbc;
+		this.billingService=billingService;
 	}
 
 	@GetMapping("/payment-capabilities") Map<String,Object> capabilities(){return Map.of("paymentCapabilities",provider.isConfigured()?"SANDBOX":"UNAVAILABLE");}
@@ -61,6 +63,7 @@ public class CommerceFinalController {
 	@PostMapping("/admin/refunds/{id}/retry") Map<String,Object> retry(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long id){return refunds.retry(id,p.memberId());}
 	@PostMapping("/admin/refunds/{id}/reconcile") Map<String,Object> reconcileRefund(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long id){return refunds.reconcile(id,p.memberId());}
 	@PostMapping("/admin/payments/{id}/reconcile") Map<String,Object> reconcilePayment(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long id){return payments.reconcile(id,p.memberId());}
+	@PostMapping("/admin/payments/{id}/retry-billing") Map<String,Object> retryBilling(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@PathVariable long id){long next=billingService.retryHeldBilling(id,p.memberId());return Map.of("paymentId",id,"nextPaymentId",next,"status",next==0?"HELD":"READY");}
 	@GetMapping("/admin/orders") List<Map<String,Object>> orders(){return jdbc.queryForList("SELECT id AS orderId,order_number AS orderNumber,member_id AS memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders ORDER BY id DESC");}
 	@GetMapping("/admin/orders/{id}") Map<String,Object> order(@PathVariable long id){var rows=jdbc.queryForList("SELECT id AS orderId,order_number AS orderNumber,member_id AS memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders WHERE id=?",id);if(rows.isEmpty())throw new CommerceException(404,"ORDER_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");return rows.getFirst();}
 	@GetMapping("/admin/operations") List<Map<String,Object>> operations(){return operations.pending();}

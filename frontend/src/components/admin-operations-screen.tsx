@@ -31,7 +31,8 @@ export function AdminOperationsScreen() {
     if (action === "RETRY_REFUND") endpoint = `refunds/${item.referenceId}/retry`;
     if (action === "RECONCILE_REFUND") endpoint = `refunds/${item.referenceId}/reconcile`;
     if (action === "RECONCILE_PAYMENT") endpoint = `payments/${item.referenceId}/reconcile`;
-    if (action === "RESHIP_DELIVERY") {
+    if (action === "RETRY_BILLING") endpoint = `payments/${item.referenceId}/retry-billing`;
+    if (action === "SHIP_DELIVERY" || action === "RESHIP_DELIVERY") {
       const carrierCode = window.prompt("택배사 코드를 입력하세요.");
       if (!carrierCode) return;
       const trackingNumber = window.prompt("송장 번호를 입력하세요.");
@@ -39,6 +40,15 @@ export function AdminOperationsScreen() {
       endpoint = `deliveries/${item.referenceId}/ship`;
       body = { carrierCode, trackingNumber };
     }
+    if (action === "COMPLETE_DELIVERY") endpoint = `deliveries/${item.referenceId}/complete`;
+    if (action === "FAIL_DELIVERY") {
+      const reason = window.prompt("배송 실패 사유를 입력하세요.");
+      if (!reason) return;
+      endpoint = `deliveries/${item.referenceId}/fail`;
+      body = { reason };
+    }
+    if (action === "RECEIVE_RETURN") body = { restock: window.confirm("반품 상품을 재고로 복원하시겠습니까?") };
+    if (action === "RECEIVE_RETURN") endpoint = `returns/${item.referenceId}/receive`;
     const selectedEndpoint = endpoint;
     if (!selectedEndpoint) return;
 

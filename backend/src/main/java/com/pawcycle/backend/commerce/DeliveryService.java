@@ -4,6 +4,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -36,7 +37,8 @@ public class DeliveryService {
 
 	public Map<String,Object> ship(long id,String carrier,String tracking) { return ship(null,id,carrier,tracking); }
 	public Map<String,Object> ship(Long adminId,long id,String carrier,String tracking) {
-		return tx.execute(status -> {
+		Timer.Sample sample = metrics.timer();
+		try { return tx.execute(status -> {
 			Map<String,Object> row = one("SELECT id,order_id,status FROM deliveries WHERE id=? FOR UPDATE", id);
 			if (row == null) throw new CommerceException(404,"DELIVERY_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");
 			if (!"PREPARING".equals(row.get("status")) && !"FAILED".equals(row.get("status"))) throw new CommerceException(409,"DELIVERY_STATE_CONFLICT","배송 상태를 전이할 수 없습니다.");
@@ -46,7 +48,7 @@ public class DeliveryService {
 			metrics.count("delivery.transition","SHIPPED");
 			if (adminId != null) audits.append(adminId,"DELIVERY_SHIP","DELIVERY",id);
 			return view(id);
-		});
+		}); } finally { metrics.stop(sample,"delivery.transition"); }
 	}
 
 	public Map<String,Object> complete(long id) { return complete(null,id); }
@@ -55,7 +57,8 @@ public class DeliveryService {
 	public Map<String,Object> fail(Long adminId,long id,String reason) { return transition(adminId,id,"SHIPPED","FAILED",reason,null,"DELIVERY_FAIL"); }
 
 	private Map<String,Object> transition(Long adminId,long id,String from,String to,String failure,String notification,String auditAction) {
-		return tx.execute(status -> {
+		Timer.Sample sample = metrics.timer();
+		try { return tx.execute(status -> {
 			Map<String,Object> row = one("SELECT id,order_id,status FROM deliveries WHERE id=? FOR UPDATE", id);
 			if (row == null) throw new CommerceException(404,"DELIVERY_NOT_FOUND","요청한 리소스를 찾을 수 없습니다.");
 			if (!from.equals(row.get("status"))) throw new CommerceException(409,"DELIVERY_STATE_CONFLICT","배송 상태를 전이할 수 없습니다.");
@@ -69,7 +72,7 @@ public class DeliveryService {
 			metrics.count("delivery.transition",to);
 			if (adminId != null) audits.append(adminId,auditAction,"DELIVERY",id);
 			return view(id);
-		});
+		}); } finally { metrics.stop(sample,"delivery.transition"); }
 	}
 
 	private Map<String,Object> view(long id) {

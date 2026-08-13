@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -49,8 +50,10 @@ public class RefundService {
 			return row;
 		});
 		TossRefundAdapter.RefundResult result;
+		Timer.Sample sample = metrics.timer();
 		try { result=provider.refund((String)work.get("idempotency_key"),(BigDecimal)work.get("amount")); }
 		catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
+		finally { metrics.stop(sample,"refund.provider"); }
 		return complete(id,result,adminId,"REFUND_PROCESS");
 	}
 
@@ -76,15 +79,17 @@ public class RefundService {
 		Map<String,Object> work=tx.execute(status -> {
 			Map<String,Object> row=one("SELECT id,status,idempotency_key,reconciliation_attempts FROM refunds WHERE id=? FOR UPDATE",id);
 			if(row==null)throw notFound();
-			if(!"UNKNOWN".equals(row.get("status")))throw new CommerceException(409,"REFUND_RECONCILIATION_NOT_ALLOWED","UNKNOWN 환불만 대사할 수 있습니다.");
+			if(!"UNKNOWN".equals(row.get("status")) && !"PROCESSING".equals(row.get("status")))throw new CommerceException(409,"REFUND_RECONCILIATION_NOT_ALLOWED","UNKNOWN 또는 처리 중 환불만 대사할 수 있습니다.");
 			int attempts=((Number)row.get("reconciliation_attempts")).intValue();
 			if(attempts>=10)throw new CommerceException(409,"REFUND_RECONCILIATION_EXHAUSTED","환불 대사 횟수를 초과했습니다.");
 			jdbc.update("UPDATE refunds SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",attempts+1,now(),id);
 			return row;
 		});
 		TossRefundAdapter.RefundResult result;
+		Timer.Sample sample = metrics.timer();
 		try { result=provider.reconcile((String)work.get("idempotency_key")); }
 		catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
+		finally { metrics.stop(sample,"refund.provider"); }
 		return complete(id,result,adminId,"REFUND_RECONCILE");
 	}
 
@@ -95,6 +100,7 @@ public class RefundService {
 			if(!"PROCESSING".equals(row.get("status")) && !"UNKNOWN".equals(row.get("status")))return view(id);
 			String state=result.status();
 			if(!state.equals("SUCCEEDED")&&!state.equals("FAILED")&&!state.equals("UNKNOWN"))state="UNKNOWN";
+			if ("UNKNOWN".equals(state)) state = (String) row.get("status");
 			jdbc.update("UPDATE refunds SET status=?,provider_status=?,failure_code=?,completed_at=? WHERE id=?",state,result.providerStatus(),"FAILED".equals(state)?"TOSS_REJECTED":null,state.equals("SUCCEEDED")?now():null,id);
 			long memberId=((Number)row.get("member_id")).longValue();
 			if("SUCCEEDED".equals(state)) {
