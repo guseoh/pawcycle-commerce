@@ -16,6 +16,11 @@ inventory/membership state mutations, making parity changes difficult to review.
 - Move inventory movements, membership evaluation, checkout expiry processing, and HTTP adapters
   into responsibility-specific application services/controllers. State change and its required
   movement/audit remain inside the caller's transaction; Provider I/O remains outside it.
+- For the six admin mutations (inventory adjust, coupon create/update/issue, membership grade
+  create, and membership evaluate), `AdminCommerceService` is the transaction owner. It invokes
+  the mutation and `AdminAuditService.append` within the same `@Transactional` boundary, so an
+  audit failure rolls back the mutation. `AdminCommerceController` remains an HTTP adapter;
+  audit-log listing remains read-only through `AdminAuditService`.
 - Characterization tests, not JDBC call counts, protect HTTP results, final rows, Provider calls,
   idempotency, and inventory invariants before conversion.
 
