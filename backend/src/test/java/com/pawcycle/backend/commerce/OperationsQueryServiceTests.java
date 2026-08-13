@@ -25,7 +25,9 @@ class OperationsQueryServiceTests {
 				row("RETURN_APPROVED", 4L, now, null),
 				row("REFUND_PROCESSING", 5L, now, 1),
 				row("PAYMENT_PROCESSING", 6L, now, null),
-				row("PAYMENT_RETRY_STOCK_UNAVAILABLE", 7L, now, 1));
+				row("PAYMENT_RETRY_STOCK_UNAVAILABLE", 7L, now, 1),
+				row("PAYMENT_UNKNOWN", 8L, now, null),
+				row("REFUND_UNKNOWN", 9L, now, 1));
 		when(jdbc.queryForList(anyString())).thenReturn(rows);
 
 		List<Map<String,Object>> result = new OperationsQueryService(jdbc).pending();
@@ -37,7 +39,9 @@ class OperationsQueryServiceTests {
 				List.of("RECEIVE_RETURN"),
 				List.of("RECONCILE_REFUND"),
 				List.of("RECONCILE_PAYMENT"),
-				List.of("RETRY_BILLING"));
+				List.of("RETRY_BILLING"),
+				List.of("RECONCILE_PAYMENT"),
+				List.of("RECONCILE_REFUND"));
 	}
 
 	private static Map<String,Object> row(String type, long referenceId, Timestamp createdAt, Integer attemptNo) {
