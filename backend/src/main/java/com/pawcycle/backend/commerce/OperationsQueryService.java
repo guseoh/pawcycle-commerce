@@ -13,7 +13,7 @@ public class OperationsQueryService {
 
 	public List<Map<String,Object>> pending() {
 		List<Map<String,Object>> rows=jdbc.queryForList("""
-		SELECT 'DELIVERY_PREPARING' AS type,id AS referenceId,created_at AS createdAt,NULL AS attemptNo FROM deliveries WHERE status='PREPARING'
+			SELECT 'DELIVERY_PREPARING' AS type,id AS referenceId,COALESCE(shipped_at,delivered_at,failed_at,CURRENT_TIMESTAMP(6)) AS createdAt,NULL AS attemptNo FROM deliveries WHERE status='PREPARING'
 		UNION ALL SELECT 'DELIVERY_SHIPPED',id,shipped_at,NULL FROM deliveries WHERE status='SHIPPED'
 		UNION ALL SELECT 'DELIVERY_FAILED',id,failed_at,NULL FROM deliveries WHERE status='FAILED'
 		UNION ALL SELECT 'RETURN_REQUESTED',id,requested_at,NULL FROM order_returns WHERE status='REQUESTED'

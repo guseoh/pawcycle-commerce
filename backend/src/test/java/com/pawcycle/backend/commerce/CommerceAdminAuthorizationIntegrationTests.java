@@ -57,7 +57,7 @@ class CommerceAdminAuthorizationIntegrationTests {
 	@ParameterizedTest
 	@MethodSource("adminMutations")
 	void adminMutationsRequireCsrfAndAllowOnlyAdmin(String path, String body) throws Exception {
-		mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body))
+		mockMvc.perform(post(path).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(post(path).with(role(MemberRole.USER)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isForbidden());
