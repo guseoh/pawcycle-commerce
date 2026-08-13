@@ -13,4 +13,5 @@ class TossSandboxPaymentAdapter implements TossPaymentAdapter {
 		if (paymentKey.startsWith("fail_")) return new ConfirmResult("FAILED", "ABORTED");
 		return new ConfirmResult("SUCCEEDED", "DONE");
 	}
+	@Override public ConfirmResult queryPayment(String providerOrderId) { return providerOrderId.contains("unknown") ? new ConfirmResult("UNKNOWN","NO_RESPONSE") : new ConfirmResult("SUCCEEDED","DONE"); }
 }

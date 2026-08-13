@@ -204,6 +204,20 @@
       ],
       "title": "Subscription automation duration",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "pawcycle-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 64 },
+      "id": 16,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "pawcycle_commerce_operations_pending", "legendFormat": "pending operations", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(rate(pawcycle_commerce_delivery_transition_total[5m]))", "legendFormat": "delivery transitions/s", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(rate(pawcycle_commerce_refund_total[5m]))", "legendFormat": "refunds/s", "range": true, "refId": "C" }
+      ],
+      "title": "Commerce operations",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",
