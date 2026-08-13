@@ -46,6 +46,11 @@ public class SubscriptionBillingService {
 			if (payment == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","결제를 찾을 수 없습니다.");
 			int nextAttempt = (Integer) payment.get("attemptNo") + 1;
 			if (!"FAILED".equals(payment.get("status")) || nextAttempt > 3) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","다음 결제 시도를 만들 수 없습니다.");
+			Long existingAttempt = jdbc.query(
+					"SELECT id FROM payments WHERE order_id=? AND attempt_no=?",
+					rs -> rs.next() ? rs.getLong(1) : null,
+					payment.get("orderId"), nextAttempt);
+			if (existingAttempt != null) return existingAttempt;
 			Map<String,Object> order = jdbc.query("SELECT payment_amount,status FROM orders WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("amount",rs.getBigDecimal(1),"status",rs.getString(2)) : null, payment.get("orderId"));
 			if (order == null || "PAYMENT_ACTION_REQUIRED".equals(order.get("status"))) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","주문 결제를 재시도할 수 없습니다.");
 			reserveForOrder((Long) payment.get("orderId"));
@@ -59,7 +64,9 @@ public class SubscriptionBillingService {
 		return Boolean.TRUE.equals(transaction.execute(status -> {
 			Map<String,Object> payment = jdbc.query("SELECT reconciliation_attempts,status FROM payments WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("attempts",rs.getInt(1),"status",rs.getString(2)) : null, paymentId);
 			if (payment == null || !"UNKNOWN".equals(payment.get("status"))) return false;
-			int attempts=(Integer)payment.get("attempts")+1;
+			int currentAttempts = (Integer) payment.get("attempts");
+			if (currentAttempts >= 10) return false;
+			int attempts = currentAttempts + 1;
 			jdbc.update("UPDATE payments SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",attempts,now(),paymentId);
 			if(attempts>=10) jdbc.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=(SELECT order_id FROM payments WHERE id=?)",paymentId);
 			return attempts<10;

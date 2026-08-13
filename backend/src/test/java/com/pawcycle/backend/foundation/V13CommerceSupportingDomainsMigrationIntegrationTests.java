@@ -30,8 +30,8 @@ class V13CommerceSupportingDomainsMigrationIntegrationTests {
 
 			migrateTo("13");
 
-			assertThat(jdbc.queryForObject("SELECT slug FROM categories WHERE id=(SELECT category_id FROM products WHERE id=?)", String.class, productId)).isEqualTo("uncategorized");
-			assertThat(jdbc.queryForObject("SELECT active FROM categories WHERE slug='uncategorized'", Boolean.class)).isFalse();
+			assertThat(jdbc.queryForObject("SELECT slug FROM categories WHERE id=(SELECT category_id FROM products WHERE id=?)", String.class, productId)).isEqualTo("__pawcycle_uncategorized__");
+			assertThat(jdbc.queryForObject("SELECT active FROM categories WHERE slug='__pawcycle_uncategorized__'", Boolean.class)).isFalse();
 			assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, skuId)).isZero();
 			assertThat(jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='products' AND column_name='category_id'", String.class)).isEqualTo("NO");
 		} catch (Throwable current) {

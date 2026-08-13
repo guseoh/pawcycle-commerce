@@ -2,8 +2,9 @@ package com.pawcycle.backend.commerce;
 
 import java.math.BigDecimal;
 
-/** Test-only provider boundary. It never sends a network request or stores card data. */
+/** Provider boundary for Toss payment confirmation. */
 public interface TossPaymentAdapter {
+	default boolean isConfigured() { return true; }
 	ConfirmResult confirm(String paymentKey, String providerOrderId, BigDecimal amount);
 	record ConfirmResult(String status, String providerStatus) {}
 }

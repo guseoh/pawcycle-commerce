@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AdminCatalogService {
 	private static final Pattern SLUG_PATTERN = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
+	private static final String SYSTEM_UNCATEGORIZED_SLUG = "__pawcycle_uncategorized__";
 
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
@@ -183,7 +184,7 @@ public class AdminCatalogService {
 
 	private Category requireAssignableCategory(Long categoryId) {
 		Category category = requireCategory(categoryId);
-		if (!category.isActive() || "uncategorized".equals(category.getSlug())) {
+		if (!category.isActive() || SYSTEM_UNCATEGORIZED_SLUG.equals(category.getSlug())) {
 			throw new AdminCatalogConflictException(
 					"CATEGORY_NOT_ASSIGNABLE", "신규 상품에는 활성 실제 카테고리만 지정할 수 있습니다.");
 		}

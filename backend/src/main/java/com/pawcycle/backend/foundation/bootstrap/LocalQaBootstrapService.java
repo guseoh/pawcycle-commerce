@@ -79,11 +79,19 @@ public class LocalQaBootstrapService {
 		String normalizedEmail = validateCredentials(email, password);
 		Member member = loadOrCreateMember(normalizedEmail, password);
 		Product product = loadOrCreateProduct();
-		loadOrCreateSku(product);
+		Sku sku = loadOrCreateSku(product);
+		ensureInventory(sku);
 		if (resetSubscriptions) {
 			deleteV2SubscriptionChildren(member.getId());
 			subscriptionRepository.deleteAllByMemberId(member.getId());
 		}
+	}
+
+	private void ensureInventory(Sku sku) {
+		if (jdbcTemplate == null) return;
+		jdbcTemplate.update(
+				"INSERT IGNORE INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,0,0,0)",
+				sku.getId());
 	}
 
 	private void deleteV2SubscriptionChildren(Long memberId) {

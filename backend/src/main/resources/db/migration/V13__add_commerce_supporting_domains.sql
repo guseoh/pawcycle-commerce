@@ -1,8 +1,8 @@
 INSERT INTO categories (name, slug, display_order, active)
-VALUES ('미분류', 'uncategorized', 2147483647, false);
+VALUES ('미분류', '__pawcycle_uncategorized__', 2147483647, false);
 
 UPDATE products
-SET category_id = (SELECT id FROM categories WHERE slug = 'uncategorized')
+SET category_id = (SELECT id FROM categories WHERE slug = '__pawcycle_uncategorized__')
 WHERE category_id IS NULL;
 
 ALTER TABLE products
