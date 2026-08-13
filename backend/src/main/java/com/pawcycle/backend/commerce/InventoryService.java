@@ -19,6 +19,7 @@ public class InventoryService {
 	}
 
 	public void reserve(long skuId, int quantity, long paymentId) {
+		requirePositiveQuantity(quantity);
 		Map<String, Object> inventory = one("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?", skuId);
 		if (inventory == null || number(inventory, "available_quantity") < quantity) {
 			throw new CommerceException(409, "INVENTORY_INSUFFICIENT", "재고가 부족합니다.");
@@ -31,14 +32,18 @@ public class InventoryService {
 	}
 
 	public void release(long skuId, int quantity, long paymentId) {
+		requirePositiveQuantity(quantity);
 		Map<String, Object> inventory = lock(skuId);
+		requireReservedQuantity(inventory, quantity);
 		jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?", quantity, quantity, skuId);
 		movement(skuId, paymentId, "RELEASE", quantity, number(inventory, "available_quantity"), number(inventory, "available_quantity") + quantity,
 				number(inventory, "reserved_quantity"), number(inventory, "reserved_quantity") - quantity, null, null);
 	}
 
 	public void deduct(long skuId, int quantity, long paymentId) {
+		requirePositiveQuantity(quantity);
 		Map<String, Object> inventory = lock(skuId);
+		requireReservedQuantity(inventory, quantity);
 		jdbc.update("UPDATE inventories SET reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?", quantity, skuId);
 		movement(skuId, paymentId, "DEDUCT", quantity, number(inventory, "available_quantity"), number(inventory, "available_quantity"),
 				number(inventory, "reserved_quantity"), number(inventory, "reserved_quantity") - quantity, null, null);
@@ -53,7 +58,7 @@ public class InventoryService {
 	}
 
 	public void adjust(long skuId, int delta) {
-		Map<String, Object> inventory = lock(skuId);
+		Map<String, Object> inventory = lockForAdjustment(skuId);
 		int available = (int) number(inventory, "available_quantity");
 		if (available + delta < 0) throw new CommerceException(409, "INVENTORY_INSUFFICIENT", "재고가 부족합니다.");
 		jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,version=version+1 WHERE sku_id=?", delta, skuId);
@@ -62,6 +67,7 @@ public class InventoryService {
 	}
 
 	private void restore(long skuId, int quantity, long sourceId, String type, String sourceColumn) {
+		requirePositiveQuantity(quantity);
 		Map<String, Object> inventory = lock(skuId);
 		jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,version=version+1 WHERE sku_id=?", quantity, skuId);
 		String sql = "INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after," + sourceColumn + ",source_id,created_at) VALUES (?,NULL,?,?,?,?,?,?,?,?,?)";
@@ -73,6 +79,22 @@ public class InventoryService {
 		Map<String, Object> inventory = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
 		if (inventory == null) throw new IllegalStateException("Inventory is missing");
 		return inventory;
+	}
+
+	private Map<String, Object> lockForAdjustment(long skuId) {
+		Map<String, Object> inventory = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
+		if (inventory == null) throw new CommerceException(404, "INVENTORY_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
+		return inventory;
+	}
+
+	private static void requirePositiveQuantity(int quantity) {
+		if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
+	}
+
+	private static void requireReservedQuantity(Map<String, Object> inventory, int quantity) {
+		if (number(inventory, "reserved_quantity") < quantity) {
+			throw new IllegalStateException("Reserved inventory is inconsistent");
+		}
 	}
 
 	private void movement(long skuId, Long paymentId, String type, int quantity, long availableBefore, long availableAfter, long reservedBefore, long reservedAfter, Long cancellationId, Long returnId) {
