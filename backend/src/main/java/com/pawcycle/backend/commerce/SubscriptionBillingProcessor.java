@@ -16,6 +16,7 @@ public class SubscriptionBillingProcessor {
 	private final TransactionTemplate tx;
 	private final TossBillingAdapter provider;
 	private final SubscriptionBillingService retries;
+	private final PaymentReconciliationService reconciliation;
 	private final DeliveryService deliveries;
 	private final NotificationService notifications;
 
@@ -24,24 +25,30 @@ public class SubscriptionBillingProcessor {
 			org.springframework.transaction.PlatformTransactionManager manager,
 			TossBillingAdapter provider,
 			SubscriptionBillingService retries,
+			PaymentReconciliationService reconciliation,
 			DeliveryService deliveries,
 			NotificationService notifications) {
 		this.jdbc=jdbc;
 		this.tx=new TransactionTemplate(manager);
 		this.provider=provider;
 		this.retries=retries;
+		this.reconciliation=reconciliation;
 		this.deliveries=deliveries;
 		this.notifications=notifications;
 	}
 
 	public int processReadyPayments() {
 		if (!provider.isConfigured()) throw new CommerceException(503,"PAYMENT_PROVIDER_UNAVAILABLE","Toss Billing Provider가 현재 환경에 구성되지 않았습니다.");
-		List<Long> ready=jdbc.query("SELECT id FROM payments WHERE type='BILLING' AND status='READY' ORDER BY id",(rs,row)->rs.getLong(1));
-		for(long id:ready) {
-			try { process(id); }
+		List<Map<String,Object>> candidates=jdbc.query("SELECT id,status FROM payments WHERE type='BILLING' AND status IN ('READY','PROCESSING') ORDER BY id",(rs,row)->Map.of("id",rs.getLong(1),"status",rs.getString(2)));
+		for(Map<String,Object> candidate:candidates) {
+			long id=((Number)candidate.get("id")).longValue();
+			try {
+				if ("PROCESSING".equals(candidate.get("status"))) reconciliation.reconcile(id);
+				else process(id);
+			}
 			catch (CommerceException ignored) { /* isolate one payment so later READY attempts can continue */ }
 		}
-		return ready.size();
+		return candidates.size();
 	}
 
 	public void process(long paymentId) {
