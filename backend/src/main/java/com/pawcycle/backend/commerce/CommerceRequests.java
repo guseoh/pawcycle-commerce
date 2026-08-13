@@ -1,16 +1,21 @@
 package com.pawcycle.backend.commerce;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Typed HTTP input boundary; conversion for legacy SQL bindings remains in application services. */
 public final class CommerceRequests {
+	private static final DateTimeFormatter LEGACY_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
 	private CommerceRequests() { }
 	public record CartItem(@NotNull @Positive Long skuId, @NotNull @Positive Integer quantity) { }
 	public record Quantity(@NotNull @Positive Integer quantity) { }
@@ -38,25 +43,32 @@ public final class CommerceRequests {
 	}
 	public record Coupon(
 			@NotBlank @Size(max=100) String name,
-			@NotBlank String discountType,
-			@NotNull BigDecimal discountValue,
-			@NotNull BigDecimal minimumOrderAmount,
-			BigDecimal maximumDiscountAmount,
+			@NotBlank @Pattern(regexp = "FIXED_AMOUNT|PERCENTAGE") String discountType,
+			@NotNull @DecimalMin("0.00") BigDecimal discountValue,
+			@NotNull @DecimalMin("0.00") BigDecimal minimumOrderAmount,
+			@DecimalMin("0.00") BigDecimal maximumDiscountAmount,
 			@NotNull java.time.LocalDateTime validFrom,
 			@NotNull java.time.LocalDateTime validUntil,
 			@NotNull Boolean active) {
+		@AssertTrue
+		public boolean isValidRange() {
+			return validFrom == null || validUntil == null || validFrom.isBefore(validUntil);
+		}
+
 		Map<String, Object> legacyPayload() {
 			Map<String, Object> values = new LinkedHashMap<>();
 			values.put("name", name); values.put("discountType", discountType); values.put("discountValue", discountValue);
 			values.put("minimumOrderAmount", minimumOrderAmount); values.put("maximumDiscountAmount", maximumDiscountAmount);
-			values.put("validFrom", validFrom); values.put("validUntil", validUntil); values.put("active", active);
+			values.put("validFrom", validFrom == null ? null : validFrom.format(LEGACY_TIMESTAMP_FORMAT));
+			values.put("validUntil", validUntil == null ? null : validUntil.format(LEGACY_TIMESTAMP_FORMAT));
+			values.put("active", active);
 			return values;
 		}
 	}
 	public record MembershipGrade(
 			@NotBlank @Size(max=30) String code,
 			@NotBlank @Size(max=100) String name,
-			@NotNull BigDecimal minimumPurchaseAmount,
+			@NotNull @DecimalMin("0.00") BigDecimal minimumPurchaseAmount,
 			@NotNull Integer displayOrder,
 			@NotNull Boolean active,
 			Long benefitCouponId) {
