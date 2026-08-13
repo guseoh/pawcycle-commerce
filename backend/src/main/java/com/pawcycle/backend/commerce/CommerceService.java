@@ -21,12 +21,15 @@ public class CommerceService {
 	private final TossBillingAdapter tossBillingAdapter;
 	private final DeliveryService deliveryService;
 	private final NotificationService notificationService;
+	private final InventoryService inventoryService;
+	private final MembershipEvaluationService membershipEvaluation;
 	private final int returnRequestDays;
 
 	public CommerceService(
 			JdbcTemplate jdbc,
 			org.springframework.transaction.PlatformTransactionManager transactionManager,
 			TossPaymentAdapter tossPaymentAdapter, TossBillingAdapter tossBillingAdapter, DeliveryService deliveryService, NotificationService notificationService,
+			InventoryService inventoryService, MembershipEvaluationService membershipEvaluation,
 			@org.springframework.beans.factory.annotation.Value("${pawcycle.commerce.return-request-days:7}") int returnRequestDays) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(transactionManager);
@@ -34,6 +37,8 @@ public class CommerceService {
 		this.tossBillingAdapter = tossBillingAdapter;
 		this.deliveryService = deliveryService;
 		this.notificationService = notificationService;
+		this.inventoryService = inventoryService;
+		this.membershipEvaluation = membershipEvaluation;
 		this.returnRequestDays = returnRequestDays;
 	}
 
@@ -255,7 +260,7 @@ public class CommerceService {
 			for (Map<String,Object> item : items) {
 				long skuId = number(item,"sku_id");
 				int quantity = (int) number(item,"quantity");
-				reserveInventory(skuId, quantity, paymentId);
+				inventoryService.reserve(skuId, quantity, paymentId);
 				BigDecimal price = decimal(item,"price");
 				jdbc.update("INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount) VALUES (?,?,'FULL',?,?,?,?,?,?)",
 						orderId, skuId, item.get("sku_code"), item.get("product_name"), item.get("sku_name"),
@@ -401,18 +406,7 @@ public class CommerceService {
 		if (delta == 0) {
 			throw new CommerceException(400,"INVENTORY_ADJUSTMENT_INVALID","재고 조정 수량은 0일 수 없습니다.");
 		}
-		transaction.executeWithoutResult(status -> {
-			Map<String,Object> inventory = one("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
-			if (inventory == null) notFound("INVENTORY_NOT_FOUND");
-			long available = number(inventory,"available_quantity");
-			if (available + delta < 0) {
-				throw new CommerceException(409,"INVENTORY_INSUFFICIENT","재고가 부족합니다.");
-			}
-			jdbc.update("UPDATE inventories SET available_quantity=?,version=version+1 WHERE sku_id=?", available + delta, skuId);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,'ADMIN_ADJUST',?,?,?,?,?,?)",
-					skuId, Math.abs(delta), available, available + delta,
-					number(inventory,"reserved_quantity"), number(inventory,"reserved_quantity"), now());
-		});
+		transaction.executeWithoutResult(status -> inventoryService.adjust(skuId, delta));
 	}
 
 	public List<Map<String,Object>> memberCoupons(long memberId) {
@@ -475,34 +469,7 @@ public class CommerceService {
 	}
 
 	public void evaluateMembership(long memberId) {
-		transaction.executeWithoutResult(status -> {
-			if (jdbc.queryForObject("SELECT COUNT(*) FROM members WHERE id=?", Integer.class, memberId) != 1) {
-				notFound("MEMBER_NOT_FOUND");
-			}
-			BigDecimal amount = jdbc.queryForObject(
-					"SELECT COALESCE(SUM(payment_amount),0) FROM orders WHERE member_id=? AND status='PAID' AND paid_at>=?",
-					BigDecimal.class,
-					memberId,
-					Timestamp.from(Instant.now().minus(365,ChronoUnit.DAYS)));
-			Map<String,Object> grade = one("SELECT id,benefit_coupon_id FROM membership_grades WHERE active=true AND minimum_purchase_amount<=? ORDER BY minimum_purchase_amount DESC,id DESC LIMIT 1", amount);
-			if (grade == null) throw new CommerceException(409,"MEMBERSHIP_GRADE_MISSING","활성 등급이 없습니다.");
-			Map<String,Object> before = one("SELECT grade_id FROM member_memberships WHERE member_id=? FOR UPDATE", memberId);
-			if (before == null) {
-				jdbc.update("INSERT INTO member_memberships(member_id,grade_id,evaluated_purchase_amount,evaluated_at) VALUES (?,?,?,?)",
-						memberId, number(grade,"id"), amount, now());
-			} else {
-				jdbc.update("UPDATE member_memberships SET grade_id=?,evaluated_purchase_amount=?,evaluated_at=? WHERE member_id=?",
-						number(grade,"id"), amount, now(), memberId);
-			}
-			if (before == null || number(before,"grade_id") != number(grade,"id")) {
-				jdbc.update("INSERT INTO membership_histories(member_id,from_grade_id,to_grade_id,evaluated_purchase_amount,changed_at) VALUES (?,?,?,?,?)",
-						memberId, before == null ? null : number(before,"grade_id"), number(grade,"id"), amount, now());
-				if (grade.get("benefit_coupon_id") != null) {
-					jdbc.update("INSERT INTO member_coupons(member_id,coupon_id,status,issued_at) VALUES (?,?,'AVAILABLE',?)",
-							memberId, number(grade,"benefit_coupon_id"), now());
-				}
-			}
-		});
+		membershipEvaluation.evaluate(memberId);
 	}
 
 	private Map<String,Object> finalizePayment(long paymentId,String result,String paymentKey) {
@@ -519,7 +486,7 @@ public class CommerceService {
 		List<Map<String,Object>> items = jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId);
 		if ("SUCCEEDED".equals(result)) {
 			for (Map<String,Object> item : items) {
-				deductInventory(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
+				inventoryService.deduct(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
 			}
 			jdbc.update("UPDATE payments SET status='SUCCEEDED',provider_status='DONE',payment_key=?,approved_at=? WHERE id=?", paymentKey, now(), paymentId);
 			jdbc.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?", now(), orderId);
@@ -528,11 +495,11 @@ public class CommerceService {
 			long memberId = jdbc.queryForObject("SELECT member_id FROM orders WHERE id=?", Long.class, orderId);
 			notificationService.create(memberId,"ORDER_PAID","ORDER",orderId);
 			consumeCartForOrder(memberId, orderId);
-			evaluateMembership(memberId);
+			membershipEvaluation.evaluate(memberId);
 			return Map.of("paymentId", paymentId, "status", "SUCCEEDED");
 		}
 		for (Map<String,Object> item : items) {
-			releaseInventory(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
+			inventoryService.release(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
 		}
 		jdbc.update("UPDATE payments SET status='FAILED',provider_status='ABORTED',failure_code='TOSS_REJECTED',failed_at=? WHERE id=?", now(), paymentId);
 		jdbc.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);

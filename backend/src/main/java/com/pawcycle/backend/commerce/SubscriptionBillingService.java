@@ -17,11 +17,13 @@ public class SubscriptionBillingService {
 	private final JdbcTemplate jdbc;
 	private final TransactionTemplate transaction;
 	private final AdminAuditService audits;
+	private final InventoryService inventory;
 
-	public SubscriptionBillingService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager, AdminAuditService audits) {
+	public SubscriptionBillingService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager, AdminAuditService audits, InventoryService inventory) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(manager);
 		this.audits = audits;
+		this.inventory = inventory;
 	}
 
 	public void recordExplicitFailure(long paymentId, String failureCode) {
@@ -113,10 +115,7 @@ public class SubscriptionBillingService {
 	private void releaseReservation(long orderId, long paymentId) {
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
 			long skuId=((Number)item.get("sku_id")).longValue(); int quantity=((Number)item.get("quantity")).intValue();
-			Map<String,Object> inventory=jdbc.query("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? Map.of("available",rs.getInt(1),"reserved",rs.getInt(2)) : null, skuId);
-			if(inventory==null) throw new IllegalStateException("Inventory is missing");
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?",quantity,quantity,skuId);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'RELEASE',?,?,?,?,?,?)",skuId,paymentId,quantity,inventory.get("available"),((Integer)inventory.get("available"))+quantity,inventory.get("reserved"),((Integer)inventory.get("reserved"))-quantity,now());
+			inventory.release(skuId, quantity, paymentId);
 		}
 	}
 
@@ -141,8 +140,7 @@ public class SubscriptionBillingService {
 
 	private void applyReservations(java.util.List<Reservation> reservations, long paymentId) {
 		for (Reservation reservation : reservations) {
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1 WHERE sku_id=? AND version=?", reservation.quantity(), reservation.quantity(), reservation.skuId(), reservation.version());
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'RESERVE',?,?,?,?,?,?)", reservation.skuId(), paymentId, reservation.quantity(), reservation.availableBefore(), reservation.availableBefore()-reservation.quantity(), reservation.reservedBefore(), reservation.reservedBefore()+reservation.quantity(), now());
+			inventory.reserve(reservation.skuId(), reservation.quantity(), paymentId);
 		}
 	}
 

@@ -37,7 +37,7 @@ class RefundServiceTests {
 		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(work), List.of(completion), List.of(view));
 		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
 
-		RefundService service = new RefundService(jdbc, manager, provider, mock(NotificationService.class), mock(CommerceService.class), mock(AdminAuditService.class), mock(CommerceMetrics.class));
+		RefundService service = new RefundService(jdbc, manager, provider, mock(NotificationService.class), mock(MembershipEvaluationService.class), mock(AdminAuditService.class), mock(CommerceMetrics.class));
 
 		assertThat(service.process(7L)).containsEntry("status", "SUCCEEDED");
 		verify(provider, never()).refund(anyString(), any());
@@ -70,7 +70,7 @@ class RefundServiceTests {
 		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row));
 		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
 
-		RefundService service = new RefundService(jdbc, manager, provider, mock(NotificationService.class), mock(CommerceService.class), mock(AdminAuditService.class), metrics);
+		RefundService service = new RefundService(jdbc, manager, provider, mock(NotificationService.class), mock(MembershipEvaluationService.class), mock(AdminAuditService.class), metrics);
 
 		Map<String,Object> result = service.reconcile(91L);
 

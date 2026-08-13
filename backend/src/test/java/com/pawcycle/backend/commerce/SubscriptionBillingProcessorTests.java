@@ -21,17 +21,17 @@ class SubscriptionBillingProcessorTests {
 		JdbcTemplate jdbc = mock(JdbcTemplate.class);
 		PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
 		org.springframework.transaction.TransactionStatus status = mock(org.springframework.transaction.TransactionStatus.class);
-		CommerceService commerce = mock(CommerceService.class);
+		MembershipEvaluationService membership = mock(MembershipEvaluationService.class);
 		when(manager.getTransaction(any(org.springframework.transaction.TransactionDefinition.class))).thenReturn(status);
 		org.mockito.Mockito.doNothing().when(manager).commit(status);
 		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(
 				List.of(Map.of("id", 8L, "order_id", 9L, "member_id", 10L, "schedule_id", 11L)), List.of());
 		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
-		SubscriptionBillingProcessor processor = new SubscriptionBillingProcessor(jdbc, manager, mock(TossBillingAdapter.class), mock(SubscriptionBillingService.class), mock(PaymentReconciliationService.class), mock(DeliveryService.class), mock(NotificationService.class), commerce);
+		SubscriptionBillingProcessor processor = new SubscriptionBillingProcessor(jdbc, manager, mock(TossBillingAdapter.class), mock(SubscriptionBillingService.class), mock(PaymentReconciliationService.class), mock(DeliveryService.class), mock(NotificationService.class), membership, mock(InventoryService.class));
 
 		processor.completeSuccess(8L, "DONE");
 
-		verify(commerce).evaluateMembership(10L);
+		verify(membership).evaluate(10L);
 	}
 
 	@Test
@@ -45,7 +45,7 @@ class SubscriptionBillingProcessorTests {
 				.thenReturn(List.of(Map.of("id", 42L, "status", "PROCESSING")));
 
 		SubscriptionBillingProcessor processor = new SubscriptionBillingProcessor(
-				jdbc, mock(PlatformTransactionManager.class), provider, retries, reconciliation, mock(DeliveryService.class), mock(NotificationService.class), mock(CommerceService.class));
+				jdbc, mock(PlatformTransactionManager.class), provider, retries, reconciliation, mock(DeliveryService.class), mock(NotificationService.class), mock(MembershipEvaluationService.class), mock(InventoryService.class));
 
 		assertThat(processor.processReadyPayments()).isEqualTo(1);
 		verify(reconciliation).reconcile(42L);

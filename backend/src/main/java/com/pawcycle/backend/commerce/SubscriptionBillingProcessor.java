@@ -19,7 +19,8 @@ public class SubscriptionBillingProcessor {
 	private final PaymentReconciliationService reconciliation;
 	private final DeliveryService deliveries;
 	private final NotificationService notifications;
-	private final CommerceService commerce;
+	private final MembershipEvaluationService membershipEvaluation;
+	private final InventoryService inventory;
 
 	public SubscriptionBillingProcessor(
 			JdbcTemplate jdbc,
@@ -29,7 +30,7 @@ public class SubscriptionBillingProcessor {
 			PaymentReconciliationService reconciliation,
 			DeliveryService deliveries,
 			NotificationService notifications,
-			CommerceService commerce) {
+			MembershipEvaluationService membershipEvaluation, InventoryService inventory) {
 		this.jdbc=jdbc;
 		this.tx=new TransactionTemplate(manager);
 		this.provider=provider;
@@ -37,7 +38,8 @@ public class SubscriptionBillingProcessor {
 		this.reconciliation=reconciliation;
 		this.deliveries=deliveries;
 		this.notifications=notifications;
-		this.commerce=commerce;
+		this.membershipEvaluation=membershipEvaluation;
+		this.inventory=inventory;
 	}
 
 	public int processReadyPayments() {
@@ -95,25 +97,19 @@ public class SubscriptionBillingProcessor {
 				WHERE payment.id=? AND payment.status='PROCESSING' FOR UPDATE""",paymentId);
 			if(payment==null)return;
 			long orderId=((Number)payment.get("order_id")).longValue();
-			for(Map<String,Object> item:jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id",orderId)) deduct(((Number)item.get("sku_id")).longValue(),((Number)item.get("quantity")).intValue(),paymentId);
+			for(Map<String,Object> item:jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id",orderId)) inventory.deduct(((Number)item.get("sku_id")).longValue(),((Number)item.get("quantity")).intValue(),paymentId);
 			Timestamp now=Timestamp.from(Instant.now());
 			jdbc.update("UPDATE payments SET status='SUCCEEDED',provider_status=?,approved_at=? WHERE id=?",providerStatus,now,paymentId);
 			jdbc.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?",now,orderId);
 			jdbc.update("UPDATE subscription_schedules SET status='SCHEDULED',hold_reason=NULL WHERE id=? AND status='HELD' AND hold_reason='MISSING_BILLING_METHOD'",payment.get("schedule_id"));
 			deliveries.createPreparing(orderId);
-			commerce.evaluateMembership(((Number)payment.get("member_id")).longValue());
+			membershipEvaluation.evaluate(((Number)payment.get("member_id")).longValue());
 			notifications.create(((Number)payment.get("member_id")).longValue(),"ORDER_PAID","ORDER",orderId);
 		});
 	}
 
 	private void markUnknown(long paymentId,String providerStatus) {
 		tx.executeWithoutResult(status -> jdbc.update("UPDATE payments SET status='UNKNOWN',provider_status=?,failure_code='PROVIDER_RESULT_UNKNOWN' WHERE id=? AND status='PROCESSING'",providerStatus,paymentId));
-	}
-
-	private void deduct(long skuId,int quantity,long paymentId) {
-		Map<String,Object> inv=one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE",skuId);
-		jdbc.update("UPDATE inventories SET reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?",quantity,skuId);
-		jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'DEDUCT',?,?,?,?,?,?)",skuId,paymentId,quantity,inv.get("available_quantity"),inv.get("available_quantity"),inv.get("reserved_quantity"),((Number)inv.get("reserved_quantity")).intValue()-quantity,Timestamp.from(Instant.now()));
 	}
 
 	private Map<String,Object> one(String sql,Object...args) {
