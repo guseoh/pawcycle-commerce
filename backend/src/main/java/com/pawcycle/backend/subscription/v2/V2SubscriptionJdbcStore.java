@@ -33,154 +33,122 @@ class V2SubscriptionJdbcStore {
 		this.clock = clock;
 	}
 
-	Map<String, Object> createPet(long memberId, Map<String, Object> body) {
-		String name = requiredText(body, "name", 50);
-		if (name.chars().anyMatch(Character::isISOControl)) throw validation("name");
-		String type = requiredText(body, "petType", 3);
-		if (!("DOG".equals(type) || "CAT".equals(type))) throw validation("petType");
-		jdbc.update("INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", memberId, name, type);
-		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		return pet(memberId, id);
+	V2SubscriptionData.Pet findOwnedPet(long memberId, long petId) {
+		return one("SELECT id,name,pet_type FROM pets WHERE id=? AND member_id=?", petId, memberId)
+				.map(this::pet)
+				.orElseThrow(() -> new V2ApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다."));
 	}
 
-	Map<String, Object> pets(long memberId, int page, int size) {
-		Page pagination = page(page, size);
-		long total = jdbc.queryForObject("SELECT COUNT(*) FROM pets WHERE member_id=?", Long.class, memberId);
-		List<Map<String, Object>> items = jdbc.queryForList("SELECT id,name,pet_type FROM pets WHERE member_id=? ORDER BY id ASC LIMIT ? OFFSET ?", memberId, pagination.size(), pagination.offset());
-		return pageResult(pagination, total, items.stream().map(this::petDto).toList());
+	V2SubscriptionData.PlanVersion findPlanVersion(long versionId) {
+		return one("SELECT p.id plan_id,p.name plan_name,p.current_plan_version_id,p.target_pet_type,p.on_sale,p.sale_starts_on,p.sale_ends_on,v.id version_id,v.package_price_krw,v.is_migration_only FROM plan_versions v JOIN subscription_plans p ON p.id=v.plan_id WHERE v.id=?", versionId)
+				.map(this::planVersion)
+				.orElseThrow(() -> new V2ApiException(404, "PLAN_VERSION_NOT_FOUND", "PlanVersion을 찾을 수 없습니다."));
 	}
 
-	Map<String, Object> pet(long memberId, long petId) { return petDto(ownedPet(memberId, petId)); }
-
-	Map<String, Object> plans(long memberId, long petId, int page, int size) {
-		Page pagination = page(page, size); Map<String, Object> pet = ownedPet(memberId, petId); LocalDate today = today();
-		String where = " FROM subscription_plans p JOIN plan_versions v ON v.id=p.current_plan_version_id WHERE p.name IS NOT NULL AND p.target_pet_type=? AND p.on_sale=true AND v.is_migration_only=false AND (p.sale_starts_on IS NULL OR p.sale_starts_on<=?) AND (p.sale_ends_on IS NULL OR p.sale_ends_on>=?)";
-		long total = jdbc.queryForObject("SELECT COUNT(*)" + where, Long.class, pet.get("pet_type"), today, today);
-		List<Map<String,Object>> rows = jdbc.queryForList("SELECT p.id plan_id,p.name plan_name,p.target_pet_type,p.on_sale,p.sale_starts_on,p.sale_ends_on,v.id version_id,v.package_price_krw" + where + " ORDER BY p.id ASC,v.id ASC LIMIT ? OFFSET ?", pet.get("pet_type"), today, today, pagination.size(), pagination.offset());
-		return pageResult(pagination, total, planDtos(rows));
+	boolean deliveryCycleAllowed(long versionId, int cycle) {
+		return jdbc.queryForObject("SELECT COUNT(*) FROM plan_version_delivery_cycles WHERE plan_version_id=? AND delivery_cycle_weeks=?", Integer.class, versionId, cycle) > 0;
 	}
 
-	Map<String, Object> planVersion(long memberId, long petId, long versionId) {
-		Map<String,Object> pet = ownedPet(memberId, petId);
-		Map<String,Object> version = version(versionId);
-		validateVersionAvailability(pet, version);
-		return planDto(version);
+	boolean reserveCreation(long memberId, String key, String fingerprint) {
+		try { jdbc.update("INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint) VALUES (?,?,?)", memberId, key, fingerprint); return true; }
+		catch (DuplicateKeyException ignored) { return false; }
 	}
 
-	V2SubscriptionOperationResult createSubscription(long memberId, String key, Map<String, Object> body) {
-		validateKey(key); String fingerprint = fingerprint(body);
-		try { jdbc.update("INSERT INTO subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint) VALUES (?,?,?)", memberId,key,fingerprint); }
-		catch (DuplicateKeyException duplicate) {
-			Map<String,Object> row=one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE",memberId,key).orElseThrow(() -> duplicate);
-			StoredReplay replayed=replay(row,fingerprint);
-			if(replayed.bodyChanged()) jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=? WHERE member_id=? AND idempotency_key=?",bodyJson(replayed.result().body()),memberId,key);
-			return replayed.result();
-		}
-		long petId = requiredLong(body, "petId"); long versionId = requiredLong(body, "planVersionId"); int cycle = requiredInt(body, "deliveryCycleWeeks");
-		Map<String,Object> pet = ownedPet(memberId, petId); Map<String,Object> version = availableVersion(pet, versionId, cycle);
-		LocalDate created = today(); LocalDate next = created.plusWeeks(cycle);
+	V2SubscriptionData.StoredIdempotencyResult lockCreationResult(long memberId, String key) {
+		return one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE", memberId, key)
+				.map(this::storedIdempotency)
+				.orElseThrow();
+	}
+
+	void updateCreationResponse(long memberId, String key, long subscriptionId, V2SubscriptionOperationResult result, String bodyJson) {
+		jdbc.update("UPDATE subscription_creation_idempotency_results SET subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND idempotency_key=?", subscriptionId, result.status(), bodyJson, result.location(), result.etag(), memberId, key);
+	}
+	void updateStoredCreationBody(long memberId, String key, String bodyJson) { jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=? WHERE member_id=? AND idempotency_key=?", bodyJson, memberId, key); }
+
+	long insertSubscription(long memberId, long versionId, int cycle, long petId, LocalDate created, LocalDate next) {
 		jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,pet_id,status,version,current_snapshot_id,legacy_api_visible,mvp2_managed) VALUES (?,?,?,?,?,?,?,'ACTIVE',0,NULL,false,true)", memberId, firstSku(versionId), 1, cycle, created, next, petId);
-		long subscriptionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		long snapshotId = snapshot(subscriptionId, versionId, cycle, longValue(version, "package_price_krw"));
-		jdbc.update("UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshotId, subscriptionId);
-		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)", subscriptionId, next);
-		V2SubscriptionOperationResult result = result(201, detail(memberId, subscriptionId, 0, 20, 0, 20), "/api/v2/subscriptions/" + subscriptionId, "\"0\"", false);
-		jdbc.update("UPDATE subscription_creation_idempotency_results SET subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND idempotency_key=?",subscriptionId,result.status(),bodyJson(result.body()),result.location(),result.etag(),memberId,key);
-		return result;
+		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
-	Map<String,Object> subscriptions(long memberId, int page, int size) {
-		Page pagination = page(page,size); long total=jdbc.queryForObject("SELECT COUNT(*) FROM subscriptions WHERE member_id=? AND mvp2_managed=true",Long.class,memberId);
-		List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,status,version,next_order_date,pet_id,current_snapshot_id FROM subscriptions WHERE member_id=? AND mvp2_managed=true ORDER BY id DESC LIMIT ? OFFSET ?",memberId,pagination.size(),pagination.offset());
-		return pageResult(pagination,total,subscriptionSummaryDtos(memberId,rows));
+	void setCurrentSnapshot(long subscriptionId, long snapshotId) { jdbc.update("UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshotId, subscriptionId); }
+	void insertScheduled(long subscriptionId, LocalDate date) { jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)", subscriptionId, date); }
+	long createSnapshot(long subscriptionId, long versionId, int cycle, long price) { return snapshot(subscriptionId, versionId, cycle, price); }
+
+	V2SubscriptionData.Subscription lockOwnedSubscription(long memberId, long subscriptionId) {
+		return one("SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id FROM subscriptions WHERE id=? AND member_id=? AND mvp2_managed=true FOR UPDATE", subscriptionId, memberId)
+				.map(this::subscription)
+				.orElseThrow(() -> new V2ApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
 	}
 
-	V2SubscriptionOperationResult subscription(long memberId,long subscriptionId,int schedulePage,int scheduleSize,int commandPage,int commandSize) {
-		Map<String,Object> body=detail(memberId,subscriptionId,schedulePage,scheduleSize,commandPage,commandSize);
-		return result(200,body,null,"\""+body.get("version")+"\"",false);
+	V2SubscriptionData.Subscription findOwnedSubscription(long memberId, long subscriptionId) {
+		return one("SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id FROM subscriptions WHERE id=? AND member_id=? AND mvp2_managed=true", subscriptionId, memberId)
+				.map(this::subscription)
+				.orElseThrow(() -> new V2ApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
 	}
 
-	V2SubscriptionOperationResult command(long memberId,long subscriptionId,String rawCommand,String key,String ifMatch,Map<String,Object> body) {
-		String command = rawCommand.toUpperCase(Locale.ROOT).replace('-', '_'); if (!List.of("CHANGE_PLAN","SKIP_NEXT","PAUSE","RESUME","CANCEL").contains(command)) throw new V2ApiException(404,"SUBSCRIPTION_NOT_FOUND","Subscription을 찾을 수 없습니다.");
-		validateKey(key); String fp=fingerprint(body);
-		ownedSubscription(memberId,subscriptionId);
-		try { jdbc.update("INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,?,?,?)",memberId,subscriptionId,command,key,fp); }
-		catch(DuplicateKeyException duplicate) {
-			Map<String,Object> row=one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=? FOR UPDATE",memberId,subscriptionId,command,key).orElseThrow(() -> duplicate);
-			StoredReplay replayed=replay(row,fp);
-			if(replayed.bodyChanged()) jdbc.update("UPDATE subscription_command_idempotency_results SET response_body=? WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",bodyJson(replayed.result().body()),memberId,subscriptionId,command,key);
-			return replayed.result();
-		}
-		long expected=parseEtag(ifMatch); Map<String,Object> subscription=lockedOwnedSubscription(memberId,subscriptionId);
-		if(longValue(subscription,"version")!=expected) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
-		switch(command) {
-			case "CHANGE_PLAN" -> changePlan(memberId,subscription,body);
-			case "SKIP_NEXT" -> skip(subscription);
-			case "PAUSE" -> pause(subscription);
-			case "RESUME" -> resume(subscription);
-			case "CANCEL" -> cancel(subscription);
-			default -> throw new IllegalStateException();
-		}
-		int updated=jdbc.update("UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?",subscriptionId,expected);
-		if(updated==0) throw new V2ApiException(412,"SUBSCRIPTION_VERSION_MISMATCH","Subscription version이 일치하지 않습니다.");
-		jdbc.update("INSERT INTO subscription_command_history(subscription_id,command_type,occurred_at,version_before,version_after) VALUES (?,?,UTC_TIMESTAMP(6),?,?)",subscriptionId,command,expected,expected+1);
-		Map<String,Object> response=detail(memberId,subscriptionId,0,20,0,20); V2SubscriptionOperationResult outcome=result(200,response,null,"\""+(expected+1)+"\"",false);
-		jdbc.update("UPDATE subscription_command_idempotency_results SET response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",200,bodyJson(response),null,outcome.etag(),memberId,subscriptionId,command,key);
-		return outcome;
+	long insertPet(long memberId, String name, String petType) { jdbc.update("INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", memberId, name, petType); return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class); }
+	V2SubscriptionData.Page<V2SubscriptionData.Pet> findPets(long memberId, int page, int size) { long total = jdbc.queryForObject("SELECT COUNT(*) FROM pets WHERE member_id=?", Long.class, memberId); List<V2SubscriptionData.Pet> items = jdbc.query("SELECT id,name,pet_type FROM pets WHERE member_id=? ORDER BY id ASC LIMIT ? OFFSET ?", (rs,n) -> new V2SubscriptionData.Pet(rs.getLong("id"),rs.getString("name"),rs.getString("pet_type")), memberId,size,page*size); return new V2SubscriptionData.Page<>(page,size,total,items); }
+	V2SubscriptionData.Page<V2SubscriptionData.PlanVersion> findSalePlanVersions(String petType, LocalDate today, int page, int size) { String where=" FROM subscription_plans p JOIN plan_versions v ON v.id=p.current_plan_version_id WHERE p.name IS NOT NULL AND p.target_pet_type=? AND p.on_sale=true AND v.is_migration_only=false AND (p.sale_starts_on IS NULL OR p.sale_starts_on<=?) AND (p.sale_ends_on IS NULL OR p.sale_ends_on>=?)"; long total=jdbc.queryForObject("SELECT COUNT(*)"+where,Long.class,petType,today,today); List<V2SubscriptionData.PlanVersion> items=jdbc.query("SELECT p.id plan_id,p.name plan_name,p.current_plan_version_id,p.target_pet_type,p.on_sale,p.sale_starts_on,p.sale_ends_on,v.id version_id,v.package_price_krw,v.is_migration_only"+where+" ORDER BY p.id ASC,v.id ASC LIMIT ? OFFSET ?", (rs,n)->new V2SubscriptionData.PlanVersion(rs.getLong("plan_id"),rs.getString("plan_name"),(Long)rs.getObject("current_plan_version_id"),rs.getString("target_pet_type"),rs.getBoolean("on_sale"),rs.getDate("sale_starts_on")==null?null:rs.getDate("sale_starts_on").toLocalDate(),rs.getDate("sale_ends_on")==null?null:rs.getDate("sale_ends_on").toLocalDate(),rs.getLong("version_id"),rs.getLong("package_price_krw"),rs.getBoolean("is_migration_only")),petType,today,today,size,page*size); return new V2SubscriptionData.Page<>(page,size,total,items); }
+	List<V2SubscriptionData.Item> findPlanItems(long versionId) { return jdbc.query("SELECT sku_id,quantity FROM plan_items WHERE plan_version_id=? ORDER BY sku_id", (rs,n)->new V2SubscriptionData.Item(rs.getLong("sku_id"),rs.getInt("quantity")),versionId); }
+	List<Integer> findDeliveryCycles(long versionId) { return jdbc.queryForList("SELECT delivery_cycle_weeks FROM plan_version_delivery_cycles WHERE plan_version_id=? ORDER BY delivery_cycle_weeks",Integer.class,versionId); }
+	V2SubscriptionData.Snapshot findSnapshot(long snapshotId) { V2SubscriptionData.Snapshot base=one("SELECT id,source_plan_version_id,package_total_krw,delivery_cycle_weeks FROM subscription_snapshots WHERE id=?",snapshotId).map(row->new V2SubscriptionData.Snapshot(longValue(row,"id"),longValue(row,"source_plan_version_id"),longValue(row,"package_total_krw"),intValue(row,"delivery_cycle_weeks"),List.of())).orElseThrow(); return new V2SubscriptionData.Snapshot(base.id(),base.planVersionId(),base.packagePriceKrw(),base.deliveryCycleWeeks(),findPlanItemsForSnapshot(snapshotId)); }
+	private List<V2SubscriptionData.Item> findPlanItemsForSnapshot(long snapshotId) { return jdbc.query("SELECT sku_id,quantity FROM subscription_snapshot_items WHERE snapshot_id=? ORDER BY sku_id",(rs,n)->new V2SubscriptionData.Item(rs.getLong("sku_id"),rs.getInt("quantity")),snapshotId); }
+
+	boolean reserveCommand(long memberId, long subscriptionId, String command, String key, String fingerprint) {
+		try { jdbc.update("INSERT INTO subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint) VALUES (?,?,?,?,?)", memberId, subscriptionId, command, key, fingerprint); return true; }
+		catch (DuplicateKeyException ignored) { return false; }
 	}
 
+	V2SubscriptionData.StoredIdempotencyResult lockCommandResult(long memberId, long subscriptionId, String command, String key) {
+		return one("SELECT payload_fingerprint,response_status,response_body,location_header,etag_header FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=? FOR UPDATE", memberId, subscriptionId, command, key)
+				.map(this::storedIdempotency).orElseThrow();
+	}
+
+	void updateCommandResponse(long memberId, long subscriptionId, String command, String key, V2SubscriptionOperationResult result, String bodyJson) {
+		jdbc.update("UPDATE subscription_command_idempotency_results SET response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", result.status(), bodyJson, result.location(), result.etag(), memberId, subscriptionId, command, key);
+	}
+	void updateStoredCommandBody(long memberId, long subscriptionId, String command, String key, String bodyJson) { jdbc.update("UPDATE subscription_command_idempotency_results SET response_body=? WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?", bodyJson, memberId, subscriptionId, command, key); }
+
+	V2SubscriptionData.Schedule lockNextScheduled(long subscriptionId) {
+		return one("SELECT schedule.id,schedule.scheduled_date FROM subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND schedule.status='SCHEDULED' AND existing_order.id IS NULL ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE", subscriptionId)
+				.map(row -> new V2SubscriptionData.Schedule(longValue(row,"id"), date(row.get("scheduled_date"))))
+				.orElseThrow(() -> new V2ApiException(409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
+	}
+
+	void replacePendingPlanChange(long subscriptionId, long snapshotId, long scheduleId) { jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId); jdbc.update("INSERT INTO pending_plan_changes(subscription_id,snapshot_id,target_schedule_id) VALUES (?,?,?)", subscriptionId, snapshotId, scheduleId); }
+	void setSubscriptionPet(long subscriptionId, long petId) { jdbc.update("UPDATE subscriptions SET pet_id=? WHERE id=?", petId, subscriptionId); }
+	void markSkipped(long scheduleId) { jdbc.update("UPDATE subscription_schedules SET status='SKIPPED' WHERE id=?", scheduleId); }
+	long insertScheduledAndReturnId(long subscriptionId, LocalDate date) { insertScheduled(subscriptionId, date); return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class); }
+	void retargetPendingPlanChange(long subscriptionId, long scheduleId) { jdbc.update("UPDATE pending_plan_changes SET target_schedule_id=? WHERE subscription_id=?", scheduleId, subscriptionId); }
+	void setSubscriptionStatus(long subscriptionId, String status) { jdbc.update("UPDATE subscriptions SET status=? WHERE id=?", status, subscriptionId); }
+	void setScheduleStatus(long scheduleId, String status) { jdbc.update("UPDATE subscription_schedules SET status=? WHERE id=?", status, scheduleId); }
+	List<Long> heldScheduleIds(long subscriptionId) { return jdbc.queryForList("SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='HELD' ORDER BY scheduled_date,id", Long.class, subscriptionId); }
+	boolean scheduleDateTaken(long subscriptionId, LocalDate date, long excludedScheduleId) { return jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND scheduled_date=? AND id<>?", Integer.class, subscriptionId, date, excludedScheduleId) > 0; }
+	void rescheduleHeld(long scheduleId, LocalDate date) { jdbc.update("UPDATE subscription_schedules SET scheduled_date=?,status='SCHEDULED' WHERE id=?", date, scheduleId); }
+	void cancelUnorderedSchedules(long subscriptionId) { jdbc.update("UPDATE subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id SET schedule.status='CANCELED' WHERE schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD') AND existing_order.id IS NULL", subscriptionId); }
+	void deletePendingPlanChange(long subscriptionId) { jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId); }
+	boolean incrementVersion(long subscriptionId, long expected) { return jdbc.update("UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?", subscriptionId, expected) == 1; }
+	void insertCommandHistory(long subscriptionId, String command, long before, long after) { jdbc.update("INSERT INTO subscription_command_history(subscription_id,command_type,occurred_at,version_before,version_after) VALUES (?,?,UTC_TIMESTAMP(6),?,?)", subscriptionId, command, before, after); }
+
+	private V2SubscriptionData.Pet pet(Map<String,Object> row) { return new V2SubscriptionData.Pet(longValue(row,"id"), (String) row.get("name"), (String) row.get("pet_type")); }
+	private V2SubscriptionData.PlanVersion planVersion(Map<String,Object> row) { return new V2SubscriptionData.PlanVersion(longValue(row,"plan_id"), (String) row.get("plan_name"), row.get("current_plan_version_id") == null ? null : longValue(row,"current_plan_version_id"), (String) row.get("target_pet_type"), Boolean.TRUE.equals(row.get("on_sale")), date(row.get("sale_starts_on")), date(row.get("sale_ends_on")), longValue(row,"version_id"), longValue(row,"package_price_krw"), Boolean.TRUE.equals(row.get("is_migration_only"))); }
+	private V2SubscriptionData.Subscription subscription(Map<String,Object> row) { return new V2SubscriptionData.Subscription(longValue(row,"id"), longValue(row,"member_id"), (String) row.get("status"), longValue(row,"version"), row.get("pet_id") == null ? null : longValue(row,"pet_id"), intValue(row,"delivery_cycle_weeks"), longValue(row,"current_snapshot_id")); }
+	private V2SubscriptionData.StoredIdempotencyResult storedIdempotency(Map<String,Object> row) { return new V2SubscriptionData.StoredIdempotencyResult((String)row.get("payload_fingerprint"), intValue(row,"response_status"), (String)row.get("response_body"), (String)row.get("location_header"), (String)row.get("etag_header")); }
+	private LocalDate date(Object value) { return value == null ? null : ((java.sql.Date) value).toLocalDate(); }
+
+	V2SubscriptionData.Page<V2SubscriptionData.DetailProjection> findSubscriptionList(long memberId, int page, int size) { long total=jdbc.queryForObject("SELECT COUNT(*) FROM subscriptions WHERE member_id=? AND mvp2_managed=true",Long.class,memberId); List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,status,version,next_order_date,pet_id,current_snapshot_id FROM subscriptions WHERE member_id=? AND mvp2_managed=true ORDER BY id DESC LIMIT ? OFFSET ?",memberId,size,page*size); return new V2SubscriptionData.Page<>(page,size,total,subscriptionSummaryDtos(memberId,rows).stream().map(V2SubscriptionData.DetailProjection::new).toList()); }
 
 	List<Long> activeSubscriptionIds() {
 		return jdbc.queryForList("SELECT id FROM subscriptions WHERE mvp2_managed=true AND status='ACTIVE' ORDER BY id", Long.class);
 	}
 
-	void reconcileActiveSubscription(long subscriptionId) {
-		one("SELECT * FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", subscriptionId)
-				.ifPresent(this::reconcileProcessedScheduleCardinality);
-	}
+	Optional<V2SubscriptionData.Subscription> lockActiveSubscription(long subscriptionId) { return one("SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id FROM subscriptions WHERE id=? AND mvp2_managed=true AND status='ACTIVE' FOR UPDATE", subscriptionId).map(this::subscription); }
+	boolean hasUnprocessedDueSchedule(long subscriptionId, LocalDate today) { return !jdbc.queryForList("SELECT schedule.id FROM subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND schedule.status='SCHEDULED' AND schedule.scheduled_date<=? AND existing_order.id IS NULL ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE", subscriptionId, today).isEmpty(); }
+	List<V2SubscriptionData.Schedule> futureSchedulesForUpdate(long subscriptionId, LocalDate today) { return jdbc.query("SELECT id,scheduled_date FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>? ORDER BY scheduled_date,id FOR UPDATE", (rs, rowNum) -> new V2SubscriptionData.Schedule(rs.getLong("id"), rs.getDate("scheduled_date").toLocalDate()), subscriptionId, today); }
+	Optional<V2SubscriptionData.ProcessedSchedule> lastProcessedSchedule(long subscriptionId) { return one("SELECT orders.scheduled_date,snapshot.delivery_cycle_weeks FROM subscription_orders orders JOIN subscription_snapshots snapshot ON snapshot.id=orders.effective_snapshot_id WHERE orders.subscription_id=? ORDER BY orders.scheduled_date DESC,orders.id DESC LIMIT 1", subscriptionId).map(row -> new V2SubscriptionData.ProcessedSchedule(date(row.get("scheduled_date")), intValue(row,"delivery_cycle_weeks"))); }
+	boolean scheduleExists(long subscriptionId, LocalDate date) { return jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND scheduled_date=?", Integer.class, subscriptionId, date) > 0; }
 
-	private void changePlan(long memberId,Map<String,Object> sub,Map<String,Object> body) {
-		if(!"ACTIVE".equals(sub.get("status"))) throw state(); long petId=sub.get("pet_id")==null?requiredLong(body,"petId"):longValue(sub,"pet_id"); if(body.containsKey("petId")&&petId!=requiredLong(body,"petId")) throw new V2ApiException(404,"PET_NOT_FOUND","Pet을 찾을 수 없습니다.");
-		Map<String,Object> pet=ownedPet(memberId,petId); int cycle=intValue(sub,"delivery_cycle_weeks"); long versionId=requiredLong(body,"planVersionId"); Map<String,Object> version=availableVersion(pet,versionId,cycle);
-		long snapshot=snapshot(longValue(sub,"id"),versionId,cycle,longValue(version,"package_price_krw")); Map<String,Object> schedule=nextScheduled(longValue(sub,"id"));
-		jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?",sub.get("id")); jdbc.update("INSERT INTO pending_plan_changes(subscription_id,snapshot_id,target_schedule_id) VALUES (?,?,?)",sub.get("id"),snapshot,schedule.get("id"));
-		if(sub.get("pet_id")==null) jdbc.update("UPDATE subscriptions SET pet_id=? WHERE id=?",petId,sub.get("id"));
-	}
-	private void skip(Map<String,Object> sub) { if(!"ACTIVE".equals(sub.get("status"))) throw state(); Map<String,Object> schedule=nextScheduled(longValue(sub,"id")); jdbc.update("UPDATE subscription_schedules SET status='SKIPPED' WHERE id=?",schedule.get("id")); LocalDate date=SubscriptionOrderAutomationService.firstFutureDate(((java.sql.Date)schedule.get("scheduled_date")).toLocalDate(),intValue(sub,"delivery_cycle_weeks"),today()); jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)",sub.get("id"),date); long next=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class); jdbc.update("UPDATE pending_plan_changes SET target_schedule_id=? WHERE subscription_id=?",next,sub.get("id")); }
-	private void pause(Map<String,Object> sub) { if(!"ACTIVE".equals(sub.get("status"))) throw state(); Map<String,Object> schedule=nextScheduled(longValue(sub,"id")); jdbc.update("UPDATE subscriptions SET status='PAUSED' WHERE id=?",sub.get("id")); jdbc.update("UPDATE subscription_schedules SET status='HELD' WHERE id=?",schedule.get("id")); }
-	private void resume(Map<String,Object> sub) {
-		if(!"PAUSED".equals(sub.get("status"))) throw state();
-		long subscriptionId=longValue(sub,"id"); int cycle=intValue(sub,"delivery_cycle_weeks"); LocalDate candidate=today().plusWeeks(cycle);
-		List<Long> heldIds=jdbc.queryForList("SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='HELD' ORDER BY scheduled_date,id",Long.class,subscriptionId);
-		for(Long heldId:heldIds) {
-			while(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND scheduled_date=? AND id<>?",Integer.class,subscriptionId,candidate,heldId)>0) candidate=candidate.plusWeeks(cycle);
-			jdbc.update("UPDATE subscription_schedules SET scheduled_date=?,status='SCHEDULED' WHERE id=?",candidate,heldId);
-			candidate=candidate.plusWeeks(cycle);
-		}
-		jdbc.update("UPDATE subscriptions SET status='ACTIVE' WHERE id=?",subscriptionId);
-	}
-	private void cancel(Map<String,Object> sub) { if(!List.of("ACTIVE","PAUSED").contains(sub.get("status"))) throw state(); jdbc.update("UPDATE subscriptions SET status='CANCELED' WHERE id=?",sub.get("id")); jdbc.update("UPDATE subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id SET schedule.status='CANCELED' WHERE schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD') AND existing_order.id IS NULL",sub.get("id")); jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?",sub.get("id")); }
-
-	private void reconcileProcessedScheduleCardinality(Map<String,Object> sub) {
-		if(!"ACTIVE".equals(sub.get("status"))) return;
-		long id=longValue(sub,"id");
-		LocalDate today=today();
-		if(!jdbc.queryForList("SELECT schedule.id FROM subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND schedule.status='SCHEDULED' AND schedule.scheduled_date<=? AND existing_order.id IS NULL ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE",id,today).isEmpty()) return;
-		List<Map<String,Object>> future=jdbc.queryForList("SELECT id,scheduled_date FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>? ORDER BY scheduled_date,id FOR UPDATE",id,today);
-		if(future.size()==1) return;
-		if(future.size()>1) throw new IllegalStateException("Subscription has multiple future Schedules");
-		Optional<Map<String,Object>> processed=one("SELECT orders.scheduled_date,snapshot.delivery_cycle_weeks FROM subscription_orders orders JOIN subscription_snapshots snapshot ON snapshot.id=orders.effective_snapshot_id WHERE orders.subscription_id=? ORDER BY orders.scheduled_date DESC,orders.id DESC LIMIT 1",id);
-		if(processed.isEmpty()) return;
-		Map<String,Object> order=processed.get();
-		LocalDate next=SubscriptionOrderAutomationService.firstFutureDate(((java.sql.Date)order.get("scheduled_date")).toLocalDate(),intValue(order,"delivery_cycle_weeks"),today);
-		if (jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND scheduled_date=?", Integer.class, id, next) == 0) {
-			jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SCHEDULED',NULL)",id,next);
-		}
-		long version=longValue(sub,"version");
-		if(jdbc.update("UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?",id,version)!=1) throw new IllegalStateException("Subscription version changed while locked");
-		sub.put("version",version+1);
-	}
-
+	V2SubscriptionData.DetailProjection detailProjection(long memberId,long id,int schedulePage,int scheduleSize,int commandPage,int commandSize) { return new V2SubscriptionData.DetailProjection(detail(memberId,id,schedulePage,scheduleSize,commandPage,commandSize)); }
 	private Map<String,Object> detail(long memberId,long id,int schedulePage,int scheduleSize,int commandPage,int commandSize) { Page sp=page(schedulePage,scheduleSize), cp=page(commandPage,commandSize); Map<String,Object> sub=ownedSubscription(memberId,id); Map<String,Object> result=subscriptionSummaryDto(memberId,sub); Optional<Map<String,Object>> pending=one("SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?",id); result.put("pendingSnapshot",pending.map(p -> snapshotDto(longValue(p,"snapshot_id"))).orElse(null)); long st=jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=?",Long.class,id); List<Map<String,Object>> schedules=jdbc.queryForList("SELECT id,scheduled_date,status,effective_snapshot_id FROM subscription_schedules WHERE subscription_id=? ORDER BY scheduled_date DESC,id DESC LIMIT ? OFFSET ?",id,sp.size(),sp.offset()).stream().map(this::scheduleDto).toList(); result.put("schedules",pageResult(sp,st,schedules)); long ct=jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_history WHERE subscription_id=?",Long.class,id); List<Map<String,Object>> history=jdbc.query("SELECT command_type,occurred_at FROM subscription_command_history WHERE subscription_id=? ORDER BY occurred_at DESC,id DESC LIMIT ? OFFSET ?",(rs,rowNum) -> Map.<String,Object>of("commandType",rs.getString("command_type"),"result","SUCCEEDED","occurredAt",rs.getTimestamp("occurred_at").toInstant().atZone(SEOUL).toOffsetDateTime().toString()),id,cp.size(),cp.offset()); result.put("commandHistory",pageResult(cp,ct,history)); return result; }
 	private Map<String,Object> subscriptionSummaryDto(long memberId,Map<String,Object> sub) { Map<String,Object> result=new LinkedHashMap<>(); result.put("subscriptionId",longValue(sub,"id")); result.put("status",sub.get("status")); result.put("version",longValue(sub,"version")); result.put("pet",sub.get("pet_id")==null?null:petDto(ownedPet(memberId,longValue(sub,"pet_id")))); result.put("currentSnapshot",snapshotDto(longValue(sub,"current_snapshot_id"))); result.put("nextScheduledDate", "ACTIVE".equals(sub.get("status")) ? jdbc.query("SELECT schedule.scheduled_date FROM subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND schedule.status='SCHEDULED' AND schedule.scheduled_date>=? AND existing_order.id IS NULL ORDER BY schedule.scheduled_date,schedule.id LIMIT 1", rs -> rs.next()?rs.getDate(1).toLocalDate():null,longValue(sub,"id"),today()) : null); return result; }
 	private List<Map<String,Object>> subscriptionSummaryDtos(long memberId,List<Map<String,Object>> rows) { List<Long> ids=ids(rows,"id",false); Map<Long,Map<String,Object>> pets=rowsById("SELECT id,name,pet_type FROM pets WHERE member_id=? AND id IN ",ids(rows,"pet_id",true),memberId); Map<Long,Map<String,Object>> snapshots=rowsById("SELECT id,source_plan_version_id,package_total_krw,delivery_cycle_weeks FROM subscription_snapshots WHERE id IN ",ids(rows,"current_snapshot_id",false)); Map<Long,List<Map<String,Object>>> snapshotItems=groupedRows("SELECT snapshot_id,sku_id,quantity FROM subscription_snapshot_items WHERE snapshot_id IN ",ids(rows,"current_snapshot_id",false),"snapshot_id","sku_id"); Map<Long,LocalDate> schedules=nextSchedules(ids,today()); return rows.stream().map(sub -> subscriptionSummaryDto(memberId,sub,pets,snapshots,snapshotItems,schedules)).toList(); }
@@ -189,9 +157,6 @@ class V2SubscriptionJdbcStore {
 	private Map<String,Object> snapshotDto(long id) { Map<String,Object> s=one("SELECT id,source_plan_version_id,package_total_krw,delivery_cycle_weeks FROM subscription_snapshots WHERE id=?",id).orElseThrow(); List<Map<String,Object>> items=jdbc.queryForList("SELECT sku_id,quantity FROM subscription_snapshot_items WHERE snapshot_id=? ORDER BY sku_id",id); return snapshotDto(s,items); }
 	private Map<String,Object> snapshotDto(Map<String,Object> snapshot,List<Map<String,Object>> items) { return Map.of("planVersionId",longValue(snapshot,"source_plan_version_id"),"packagePriceKrw",longValue(snapshot,"package_total_krw"),"deliveryCycleWeeks",intValue(snapshot,"delivery_cycle_weeks"),"items",items.stream().map(i -> Map.<String,Object>of("skuId",longValue(i,"sku_id"),"quantity",intValue(i,"quantity"))).toList()); }
 	private long snapshot(long subscriptionId,long versionId,int cycle,long price) { jdbc.update("INSERT INTO subscription_snapshots(subscription_id,source_plan_version_id,package_total_krw,delivery_cycle_weeks) VALUES (?,?,?,?)",subscriptionId,versionId,price,cycle); long id=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class); jdbc.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?",id,versionId); return id; }
-	private Map<String,Object> availableVersion(Map<String,Object> pet,long versionId,int cycle) { Map<String,Object> version=version(versionId); validateVersionAvailability(pet,version); Integer allowed=jdbc.queryForObject("SELECT COUNT(*) FROM plan_version_delivery_cycles WHERE plan_version_id=? AND delivery_cycle_weeks=?",Integer.class,versionId,cycle); if(allowed==0) throw new V2ApiException(409,"DELIVERY_CYCLE_NOT_ALLOWED","허용되지 않은 배송 주기입니다."); return version; }
-	private Map<String,Object> version(long versionId) { return one("SELECT p.id plan_id,p.name plan_name,p.current_plan_version_id,p.target_pet_type,p.on_sale,p.sale_starts_on,p.sale_ends_on,v.id version_id,v.package_price_krw,v.is_migration_only FROM plan_versions v JOIN subscription_plans p ON p.id=v.plan_id WHERE v.id=?",versionId).orElseThrow(() -> new V2ApiException(404,"PLAN_VERSION_NOT_FOUND","PlanVersion을 찾을 수 없습니다.")); }
-	private void validateVersionAvailability(Map<String,Object> pet,Map<String,Object> version) { LocalDate today=today(); long versionId=longValue(version,"version_id"); if(!pet.get("pet_type").equals(version.get("target_pet_type"))) throw new V2ApiException(409,"PLAN_PET_TYPE_MISMATCH","Pet 종과 Plan이 호환되지 않습니다."); Object current=version.get("current_plan_version_id"); if(!(current instanceof Number) || ((Number)current).longValue()!=versionId || version.get("plan_name")==null || !Boolean.TRUE.equals(version.get("on_sale")) || Boolean.TRUE.equals(version.get("is_migration_only")) || (version.get("sale_starts_on") != null && ((java.sql.Date)version.get("sale_starts_on")).toLocalDate().isAfter(today)) || (version.get("sale_ends_on") != null && ((java.sql.Date)version.get("sale_ends_on")).toLocalDate().isBefore(today))) throw new V2ApiException(409,"PLAN_NOT_AVAILABLE","판매 가능한 PlanVersion이 아닙니다."); }
 	private Map<String,Object> ownedPet(long member,long id) { return one("SELECT id,name,pet_type FROM pets WHERE id=? AND member_id=?",id,member).orElseThrow(() -> new V2ApiException(404,"PET_NOT_FOUND","Pet을 찾을 수 없습니다.")); }
 	private Map<String,Object> ownedSubscription(long member,long id) { return one("SELECT * FROM subscriptions WHERE id=? AND member_id=? AND mvp2_managed=true",id,member).orElseThrow(() -> new V2ApiException(404,"SUBSCRIPTION_NOT_FOUND","Subscription을 찾을 수 없습니다.")); }
 	private Map<String,Object> lockedOwnedSubscription(long member,long id) { return one("SELECT * FROM subscriptions WHERE id=? AND member_id=? AND mvp2_managed=true FOR UPDATE",id,member).orElseThrow(() -> new V2ApiException(404,"SUBSCRIPTION_NOT_FOUND","Subscription을 찾을 수 없습니다.")); }
@@ -208,25 +173,11 @@ class V2SubscriptionJdbcStore {
 	private Object[] withLast(List<Long> ids,Object last) { List<Object> args=new ArrayList<>(ids); args.add(last); return args.toArray(); }
 	private String placeholders(int count) { return "("+String.join(",",Collections.nCopies(count,"?"))+")"; }
 	private Map<String,Object> petDto(Map<String,Object> p) { return Map.of("petId",longValue(p,"id"),"name",p.get("name"),"petType",p.get("pet_type")); }
-	private StoredReplay replay(Map<String,Object> row,String fingerprint) { if(!fingerprint.equals(row.get("payload_fingerprint"))) throw new V2ApiException(409,"IDEMPOTENCY_KEY_REUSED","동일 key에 다른 요청 본문을 사용할 수 없습니다."); try { @SuppressWarnings("unchecked") Map<String,Object> body=json.readValue((String)row.get("response_body"),Map.class); boolean changed=removeInternalSnapshotId(body.get("currentSnapshot"))|removeInternalSnapshotId(body.get("pendingSnapshot")); return new StoredReplay(result(intValue(row,"response_status"),body,(String)row.get("location_header"),(String)row.get("etag_header"),true),changed); } catch(Exception e) { throw new IllegalStateException("저장된 멱등 결과를 읽을 수 없습니다.",e); } }
-	private boolean removeInternalSnapshotId(Object snapshot) { if(!(snapshot instanceof Map<?,?> map)||!map.containsKey("snapshotId")) return false; map.remove("snapshotId"); return true; }
-	private V2SubscriptionOperationResult result(int status,Map<String,Object> body,String location,String etag,boolean replay) { return new V2SubscriptionOperationResult(status,body,location,etag,replay); }
-	private String bodyJson(Map<String,Object> body) { try { return json.writeValueAsString(body); } catch(Exception e) { throw new IllegalStateException(e); } }
-	private String fingerprint(Map<String,Object> body) { try { byte[] bytes=MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(canonical(body))); StringBuilder out=new StringBuilder(); for(byte b:bytes) out.append(String.format("%02x",b)); return out.toString(); } catch(Exception e) { throw new IllegalStateException(e); } }
-	private long parseEtag(String value) { if(value==null) throw new V2ApiException(428,"IF_MATCH_REQUIRED","If-Match가 필요합니다."); if(!value.matches("\\\"[0-9]+\\\"")) throw new V2ApiException(400,"IF_MATCH_INVALID","If-Match 형식이 올바르지 않습니다."); try{return Long.parseLong(value.substring(1,value.length()-1));}catch(NumberFormatException e){throw new V2ApiException(400,"IF_MATCH_INVALID","If-Match 형식이 올바르지 않습니다.",e);} }
-	private void validateKey(String key) { if(key==null||!key.matches("[A-Za-z0-9._-]{1,128}")) throw validation("Idempotency-Key"); }
-	private V2ApiException validation(String field) { return new V2ApiException(400,"VALIDATION_FAILED",field+" 값을 확인해 주세요."); }
-	private V2ApiException state() { return new V2ApiException(409,"SUBSCRIPTION_COMMAND_NOT_ALLOWED","현재 Subscription 상태에서는 명령을 실행할 수 없습니다."); }
-	private String requiredText(Map<String,Object>b,String key,int max){Object v=b.get(key);if(!(v instanceof String s))throw validation(key);s=s.trim();if(s.isBlank()||s.codePointCount(0,s.length())>max)throw validation(key);return s;}
-	private long requiredLong(Map<String,Object>b,String key){Object value=b.get(key);if(!(value instanceof Number number))throw validation(key);try{return new BigDecimal(number.toString()).longValueExact();}catch(NumberFormatException|ArithmeticException exception){throw validation(key);}}
-	private int requiredInt(Map<String,Object>b,String key){long n=requiredLong(b,key);if(n<Integer.MIN_VALUE||n>Integer.MAX_VALUE)throw validation(key);return(int)n;}
-	private Page page(int p,int s){if(p<0||s<1||s>100||p>Integer.MAX_VALUE/s)throw validation("page");return new Page(p,s,p*s);}
-	private Object canonical(Object value) { if(value instanceof Map<?,?> map) { Map<String,Object> sorted=new TreeMap<>(); map.forEach((key,item) -> sorted.put(String.valueOf(key),canonical(item))); return sorted; } if(value instanceof List<?> list) return list.stream().map(this::canonical).toList(); if(value instanceof Number number) return new BigDecimal(number.toString()).stripTrailingZeros(); return value; }
-	private Map<String,Object> pageResult(Page p,long total,List<Map<String,Object>> items){return Map.of("page",p.page(),"size",p.size(),"totalElements",total,"items",items);}
 	private Optional<Map<String,Object>> one(String sql,Object...args){List<Map<String,Object>> rows=jdbc.queryForList(sql,args);return rows.isEmpty()?Optional.empty():Optional.of(rows.getFirst());}
 	private long longValue(Map<String,Object> r,String k){return ((Number)r.get(k)).longValue();}
 	private int intValue(Map<String,Object> r,String k){return ((Number)r.get(k)).intValue();}
+	private Page page(int page, int size) { return new Page(page, size, page * size); }
+	private Map<String,Object> pageResult(Page page,long total,List<Map<String,Object>> items){return Map.of("page",page.page(),"size",page.size(),"totalElements",total,"items",items);}
 	private LocalDate today(){return LocalDate.now(clock.withZone(SEOUL));}
-	private record Page(int page,int size,int offset) {}
-	private record StoredReplay(V2SubscriptionOperationResult result,boolean bodyChanged) {}
+	private record Page(int page, int size, int offset) {}
 }

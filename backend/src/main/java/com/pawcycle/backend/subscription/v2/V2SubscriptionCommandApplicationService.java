@@ -1,17 +1,53 @@
 package com.pawcycle.backend.subscription.v2;
 
 import java.util.Map;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class V2SubscriptionCommandApplicationService {
 	private final V2SubscriptionJdbcStore store;
+	private final V2SubscriptionApplicationSupport support;
+	private final V2SubscriptionQueryApplicationService queries;
 
-	V2SubscriptionCommandApplicationService(V2SubscriptionJdbcStore store) { this.store = store; }
+	V2SubscriptionCommandApplicationService(V2SubscriptionJdbcStore store, V2SubscriptionQueryApplicationService queries, tools.jackson.databind.ObjectMapper json, java.time.Clock clock) { this.store = store; this.queries = queries; this.support = new V2SubscriptionApplicationSupport(json, clock); }
 
 	@Transactional
 	V2SubscriptionOperationResult command(long memberId, long subscriptionId, String command, String key, String ifMatch, Map<String, Object> body) {
-		return store.command(memberId, subscriptionId, command, key, ifMatch, body);
+		String normalized = command.toUpperCase(Locale.ROOT).replace('-', '_');
+		if (!List.of("CHANGE_PLAN", "SKIP_NEXT", "PAUSE", "RESUME", "CANCEL").contains(normalized)) throw new V2ApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다.");
+		support.validateKey(key);
+		String fingerprint = support.fingerprint(body);
+		store.findOwnedSubscription(memberId, subscriptionId);
+		if (!store.reserveCommand(memberId, subscriptionId, normalized, key, fingerprint)) return replay(memberId, subscriptionId, normalized, key, store.lockCommandResult(memberId, subscriptionId, normalized, key), fingerprint);
+
+		long expected = support.parseEtag(ifMatch);
+		V2SubscriptionData.Subscription subscription = store.lockOwnedSubscription(memberId, subscriptionId);
+		if (subscription.version() != expected) throw new V2ApiException(412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
+		switch (normalized) {
+			case "CHANGE_PLAN" -> changePlan(memberId, subscription, body);
+			case "SKIP_NEXT" -> skip(subscription);
+			case "PAUSE" -> pause(subscription);
+			case "RESUME" -> resume(subscription);
+			case "CANCEL" -> cancel(subscription);
+			default -> throw new IllegalStateException();
+		}
+		if (!store.incrementVersion(subscriptionId, expected)) throw new V2ApiException(412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
+		store.insertCommandHistory(subscriptionId, normalized, expected, expected + 1);
+		Map<String, Object> response = queries.detailBody(memberId, subscriptionId, 0, 20, 0, 20);
+		V2SubscriptionOperationResult result = new V2SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
+		store.updateCommandResponse(memberId, subscriptionId, normalized, key, result, support.bodyJson(response));
+		return result;
 	}
+
+	private V2SubscriptionOperationResult replay(long memberId, long subscriptionId, String command, String key, V2SubscriptionData.StoredIdempotencyResult stored, String fingerprint) { if (!fingerprint.equals(stored.fingerprint())) throw new V2ApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다."); Map<String, Object> body = support.responseBody(stored.bodyJson()); if (support.removeInternalSnapshotIds(body)) store.updateStoredCommandBody(memberId, subscriptionId, command, key, support.bodyJson(body)); return new V2SubscriptionOperationResult(stored.status(), body, stored.location(), stored.etag(), true); }
+	private void changePlan(long memberId, V2SubscriptionData.Subscription subscription, Map<String, Object> body) { if (!"ACTIVE".equals(subscription.status())) throw support.state(); long petId = subscription.petId() == null ? support.requiredLong(body, "petId") : subscription.petId(); if (body.containsKey("petId") && petId != support.requiredLong(body, "petId")) throw new V2ApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다."); V2SubscriptionData.Pet pet = store.findOwnedPet(memberId, petId); long versionId = support.requiredLong(body, "planVersionId"); V2SubscriptionData.PlanVersion version = availableVersion(pet, versionId, subscription.deliveryCycleWeeks()); long snapshot = store.createSnapshot(subscription.id(), versionId, subscription.deliveryCycleWeeks(), version.packagePriceKrw()); V2SubscriptionData.Schedule schedule = store.lockNextScheduled(subscription.id()); store.replacePendingPlanChange(subscription.id(), snapshot, schedule.id()); if (subscription.petId() == null) store.setSubscriptionPet(subscription.id(), petId); }
+	private void skip(V2SubscriptionData.Subscription subscription) { if (!"ACTIVE".equals(subscription.status())) throw support.state(); V2SubscriptionData.Schedule schedule = store.lockNextScheduled(subscription.id()); store.markSkipped(schedule.id()); LocalDate date = SubscriptionOrderAutomationService.firstFutureDate(schedule.scheduledDate(), subscription.deliveryCycleWeeks(), support.today()); long next = store.insertScheduledAndReturnId(subscription.id(), date); store.retargetPendingPlanChange(subscription.id(), next); }
+	private void pause(V2SubscriptionData.Subscription subscription) { if (!"ACTIVE".equals(subscription.status())) throw support.state(); V2SubscriptionData.Schedule schedule = store.lockNextScheduled(subscription.id()); store.setSubscriptionStatus(subscription.id(), "PAUSED"); store.setScheduleStatus(schedule.id(), "HELD"); }
+	private void resume(V2SubscriptionData.Subscription subscription) { if (!"PAUSED".equals(subscription.status())) throw support.state(); LocalDate candidate = support.today().plusWeeks(subscription.deliveryCycleWeeks()); for (Long heldId : store.heldScheduleIds(subscription.id())) { while (store.scheduleDateTaken(subscription.id(), candidate, heldId)) candidate = candidate.plusWeeks(subscription.deliveryCycleWeeks()); store.rescheduleHeld(heldId, candidate); candidate = candidate.plusWeeks(subscription.deliveryCycleWeeks()); } store.setSubscriptionStatus(subscription.id(), "ACTIVE"); }
+	private void cancel(V2SubscriptionData.Subscription subscription) { if (!List.of("ACTIVE", "PAUSED").contains(subscription.status())) throw support.state(); store.setSubscriptionStatus(subscription.id(), "CANCELED"); store.cancelUnorderedSchedules(subscription.id()); store.deletePendingPlanChange(subscription.id()); }
+	private V2SubscriptionData.PlanVersion availableVersion(V2SubscriptionData.Pet pet, long versionId, int cycle) { V2SubscriptionData.PlanVersion version = store.findPlanVersion(versionId); if (!pet.petType().equals(version.targetPetType())) throw new V2ApiException(409, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다."); LocalDate today = support.today(); if (version.currentPlanVersionId() == null || version.currentPlanVersionId() != version.id() || version.planName() == null || !version.onSale() || version.migrationOnly() || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today)) || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today))) throw new V2ApiException(409, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다."); if (!store.deliveryCycleAllowed(versionId, cycle)) throw new V2ApiException(409, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다."); return version; }
 }

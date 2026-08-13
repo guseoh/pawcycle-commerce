@@ -15,13 +15,16 @@ class V2SubscriptionReconciliationApplicationService {
 	private final V2SubscriptionJdbcStore store;
 	private final V2SubscriptionMetrics metrics;
 	private final TransactionTemplate transaction;
+	private final java.time.Clock clock;
 
 	V2SubscriptionReconciliationApplicationService(
 			V2SubscriptionJdbcStore store,
 			V2SubscriptionMetrics metrics,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			java.time.Clock clock) {
 		this.store = store;
 		this.metrics = metrics;
+		this.clock = clock;
 		this.transaction = new TransactionTemplate(transactionManager);
 		this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
@@ -35,7 +38,7 @@ class V2SubscriptionReconciliationApplicationService {
 			for (Long subscriptionId : active) {
 				processed++;
 				try {
-					transaction.executeWithoutResult(status -> store.reconcileActiveSubscription(subscriptionId));
+					transaction.executeWithoutResult(status -> reconcile(subscriptionId));
 				} catch (RuntimeException exception) {
 					failures++;
 					log.error("Subscription reconciliation failed; subscriptionId={}", subscriptionId, exception);
@@ -47,5 +50,20 @@ class V2SubscriptionReconciliationApplicationService {
 		} finally {
 			metrics.finishReconciliation(sample, processed, failures);
 		}
+	}
+
+	private void reconcile(long subscriptionId) {
+		store.lockActiveSubscription(subscriptionId).ifPresent(subscription -> {
+			java.time.LocalDate today = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul")));
+			if (store.hasUnprocessedDueSchedule(subscription.id(), today)) return;
+			java.util.List<V2SubscriptionData.Schedule> future = store.futureSchedulesForUpdate(subscription.id(), today);
+			if (future.size() == 1) return;
+			if (future.size() > 1) throw new IllegalStateException("Subscription has multiple future Schedules");
+			store.lastProcessedSchedule(subscription.id()).ifPresent(processed -> {
+				java.time.LocalDate next = SubscriptionOrderAutomationService.firstFutureDate(processed.scheduledDate(), processed.deliveryCycleWeeks(), today);
+				if (!store.scheduleExists(subscription.id(), next)) store.insertScheduled(subscription.id(), next);
+				if (!store.incrementVersion(subscription.id(), subscription.version())) throw new IllegalStateException("Subscription version changed while locked");
+			});
+		});
 	}
 }

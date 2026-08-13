@@ -7,8 +7,10 @@ Accepted
 ## Decision
 
 Subscription V2 keeps its explicit JDBC SQL, `FOR UPDATE`, version compare-and-set writes, and
-unique-conflict handling in `V2SubscriptionJdbcStore`.  Pet/Plan, creation, query, command, and
-reconciliation each have an application service; those services own the transaction boundary.
+unique-conflict handling in `V2SubscriptionJdbcStore`. The store exposes typed persistence
+projections only; it does not own validation, idempotency/replay decisions, state transitions, or
+API result assembly. Pet/Plan, creation, query, command, and reconciliation each have an
+application service; those services own use-case orchestration and transaction boundaries.
 
 `V2SubscriptionService` is a compatibility facade for existing in-process callers only.  It has
 no SQL, transaction annotation, or HTTP response construction.  The controller converts the typed
