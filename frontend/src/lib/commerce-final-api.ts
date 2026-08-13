@@ -1,6 +1,7 @@
 import { ApiError } from "./api.ts";
 
-export type AvailableAction = "REQUEST_CANCELLATION" | "REQUEST_RETURN";
+export const MEMBER_AVAILABLE_ACTIONS = ["REQUEST_CANCELLATION", "REQUEST_RETURN"] as const;
+export type AvailableAction = typeof MEMBER_AVAILABLE_ACTIONS[number];
 export interface OrderDetail { orderId:number; orderNumber:string; status:string; paymentAmount:number; delivery:{deliveryId:number;status:string;carrierCode?:string;trackingNumber?:string}|null; cancellation:{cancellationId:number;status:string}|null; return:{returnId:number;status:string;rejectionReason?:string}|null; refunds:Array<{refundId:number;status:string;attemptNo:number}>; availableActions:AvailableAction[]; }
 export interface Notification { notificationId:number; type:string; referenceType:string; referenceId:number; readAt:string|null; createdAt:string; }
 export interface OrderSummary { orderId:number; orderNumber:string; status:string; paymentAmount:number; createdAt:string; }

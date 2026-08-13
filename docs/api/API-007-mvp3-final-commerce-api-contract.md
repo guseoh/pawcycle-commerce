@@ -12,7 +12,7 @@
 
 관리자 API는 Delivery ship/complete/fail, Return approve/reject/receive, Refund process/retry/reconcile, Payment reconcile, Orders, Operations, Audit log 조회를 `/api/admin/**`에 제공한다. admin endpoint는 `ROLE_ADMIN`이고, 그 외 `/api/**`는 인증이 필요하다. 모든 mutation은 기존 CSRF 규칙을 사용하며 다른 회원 주문·알림은 404이다.
 
-취소는 PAID + PREPARING delivery + SUCCEEDED payment에서만 가능하고 같은 요청은 기존 aggregate를 반환한다. 반품은 delivered 후 7일 이내 전체 주문에 한해 요청할 수 있다. Refund provider 호출은 transaction 밖에서 이뤄지며, provider 미구성은 503, 상태 전이·retry 한도 위반은 409으로 기존 `ApiErrorResponse`로 응답한다.
+취소는 PAID + PREPARING delivery + SUCCEEDED payment에서만 가능하고 같은 요청은 기존 aggregate를 반환한다. 반품 요청 가능 기간은 `pawcycle.commerce.return-request-days` 설정을 사용하며 기본값은 배송 완료 후 7일이다. Refund provider 호출은 transaction 밖에서 이뤄지며, provider 미구성은 503, 상태 전이·retry 한도 위반은 409으로 기존 `ApiErrorResponse`로 응답한다.
 
 ## Provider와 운영 경계
 

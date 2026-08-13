@@ -8,6 +8,7 @@ import java.net.URI;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,11 +25,10 @@ public class AdminCatalogController {
 	private final AdminAuditService audits;
 
 	@GetMapping("/categories")
-	AdminCatalogViews.CategoryList categories() {
-		return adminCatalogService.categories();
-	}
+	AdminCatalogViews.CategoryList categories() { return adminCatalogService.categories(); }
 
 	@PostMapping("/categories")
+	@Transactional
 	ResponseEntity<AdminCatalogViews.Category> createCategory(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@Valid @RequestBody AdminCatalogRequests.CategoryCreate request) {
@@ -38,11 +38,10 @@ public class AdminCatalogController {
 	}
 
 	@GetMapping("/categories/{categoryId}")
-	AdminCatalogViews.Category category(@PathVariable Long categoryId) {
-		return adminCatalogService.category(categoryId);
-	}
+	AdminCatalogViews.Category category(@PathVariable Long categoryId) { return adminCatalogService.category(categoryId); }
 
 	@PatchMapping("/categories/{categoryId}")
+	@Transactional
 	AdminCatalogViews.Category updateCategory(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@PathVariable Long categoryId,
@@ -53,11 +52,10 @@ public class AdminCatalogController {
 	}
 
 	@GetMapping("/products")
-	AdminCatalogViews.ProductList products() {
-		return adminCatalogService.products();
-	}
+	AdminCatalogViews.ProductList products() { return adminCatalogService.products(); }
 
 	@PostMapping("/products")
+	@Transactional
 	ResponseEntity<AdminCatalogViews.Product> createProduct(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@Valid @RequestBody AdminCatalogRequests.ProductCreate request) {
@@ -67,11 +65,10 @@ public class AdminCatalogController {
 	}
 
 	@GetMapping("/products/{productId}")
-	AdminCatalogViews.Product product(@PathVariable Long productId) {
-		return adminCatalogService.product(productId);
-	}
+	AdminCatalogViews.Product product(@PathVariable Long productId) { return adminCatalogService.product(productId); }
 
 	@PatchMapping("/products/{productId}")
+	@Transactional
 	AdminCatalogViews.Product updateProduct(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@PathVariable Long productId,
@@ -82,22 +79,21 @@ public class AdminCatalogController {
 	}
 
 	@GetMapping("/products/{productId}/skus")
-	AdminCatalogViews.SkuList skus(@PathVariable Long productId) {
-		return adminCatalogService.skus(productId);
-	}
+	AdminCatalogViews.SkuList skus(@PathVariable Long productId) { return adminCatalogService.skus(productId); }
 
 	@PostMapping("/products/{productId}/skus")
+	@Transactional
 	ResponseEntity<AdminCatalogViews.Sku> createSku(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@PathVariable Long productId,
 			@Valid @RequestBody AdminCatalogRequests.SkuCreate request) {
 		AdminCatalogViews.Sku sku = adminCatalogService.createSku(productId, request);
 		audits.append(principal.memberId(), "CATALOG_SKU_CREATE", "SKU", sku.skuId());
-		return ResponseEntity.created(URI.create(
-				"/api/admin/products/" + productId + "/skus/" + sku.skuId())).body(sku);
+		return ResponseEntity.created(URI.create("/api/admin/products/" + productId + "/skus/" + sku.skuId())).body(sku);
 	}
 
 	@PatchMapping("/products/{productId}/skus/{skuId}")
+	@Transactional
 	AdminCatalogViews.Sku updateSku(
 			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@PathVariable Long productId,

@@ -13,6 +13,12 @@ class TossSandboxBillingAdapter implements TossBillingAdapter {
 		return new BillingKeyResult("sandbox-billing-" + UUID.randomUUID());
 	}
 	@Override public ChargeResult charge(String billingKey, String providerOrderId, BigDecimal amount) {
+		return outcome(providerOrderId);
+	}
+	@Override public ChargeResult queryCharge(String providerOrderId) {
+		return outcome(providerOrderId);
+	}
+	private ChargeResult outcome(String providerOrderId) {
 		if (providerOrderId.contains("unknown")) return new ChargeResult("UNKNOWN","NO_RESPONSE");
 		if (providerOrderId.contains("fail")) return new ChargeResult("FAILED","ABORTED");
 		return new ChargeResult("SUCCEEDED","DONE");
