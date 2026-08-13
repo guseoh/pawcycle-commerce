@@ -39,7 +39,7 @@ class PaymentReconciliationServiceTests {
 		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(work), List.of(locked), List.of(view));
 		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
 
-		PaymentReconciliationService service = new PaymentReconciliationService(jdbc, manager, mock(TossPaymentAdapter.class), billing, mock(NotificationService.class), mock(CommerceService.class), mock(AdminAuditService.class), failures);
+		PaymentReconciliationService service = new PaymentReconciliationService(jdbc, manager, mock(TossPaymentAdapter.class), billing, mock(NotificationService.class), mock(MembershipEvaluationService.class), mock(InventoryService.class), mock(AdminAuditService.class), failures);
 
 		assertThat(service.reconcile(44L)).containsEntry("status", "FAILED");
 		verify(failures).recordExplicitFailure(44L, "RECONCILED_FAILED", "DECLINED");

@@ -17,6 +17,7 @@ public class ReturnService {
 	private final TransactionTemplate tx;
 	private final NotificationService notifications;
 	private final AdminAuditService audits;
+	private final InventoryService inventory;
 	private final int requestDays;
 
 	public ReturnService(
@@ -24,11 +25,13 @@ public class ReturnService {
 			org.springframework.transaction.PlatformTransactionManager manager,
 			NotificationService notifications,
 			AdminAuditService audits,
+			InventoryService inventory,
 			@Value("${pawcycle.commerce.return-request-days:7}") int requestDays) {
 		this.jdbc = jdbc;
 		this.tx = new TransactionTemplate(manager);
 		this.notifications = notifications;
 		this.audits = audits;
+		this.inventory = inventory;
 		this.requestDays = requestDays;
 	}
 
@@ -87,9 +90,7 @@ public class ReturnService {
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
 			long sku = ((Number)item.get("sku_id")).longValue();
 			int qty = ((Number)item.get("quantity")).intValue();
-			Map<String,Object> inv = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", sku);
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,version=version+1 WHERE sku_id=?", qty, sku);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,return_id,source_id,created_at) VALUES (?,?, 'RETURN_RESTORE',?,?,?,?,?,?,?,?)", sku, null, qty, inv.get("available_quantity"), ((Number)inv.get("available_quantity")).intValue()+qty, inv.get("reserved_quantity"), inv.get("reserved_quantity"), returnId, returnId, Timestamp.from(Instant.now()));
+			inventory.restoreReturn(sku, qty, returnId);
 		}
 	}
 

@@ -15,7 +15,8 @@ public class PaymentReconciliationService {
 	private final TossPaymentAdapter paymentProvider;
 	private final TossBillingAdapter billingProvider;
 	private final NotificationService notifications;
-	private final CommerceService commerce;
+	private final MembershipEvaluationService membershipEvaluation;
+	private final InventoryService inventory;
 	private final AdminAuditService audits;
 	private final SubscriptionBillingService billingFailures;
 
@@ -25,7 +26,7 @@ public class PaymentReconciliationService {
 			TossPaymentAdapter paymentProvider,
 			TossBillingAdapter billingProvider,
 			NotificationService notifications,
-			CommerceService commerce,
+			MembershipEvaluationService membershipEvaluation, InventoryService inventory,
 			AdminAuditService audits,
 			SubscriptionBillingService billingFailures) {
 		this.jdbc = jdbc;
@@ -33,7 +34,8 @@ public class PaymentReconciliationService {
 		this.paymentProvider = paymentProvider;
 		this.billingProvider = billingProvider;
 		this.notifications = notifications;
-		this.commerce = commerce;
+		this.membershipEvaluation = membershipEvaluation;
+		this.inventory = inventory;
 		this.audits = audits;
 		this.billingFailures = billingFailures;
 	}
@@ -107,11 +109,7 @@ public class PaymentReconciliationService {
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
 			long skuId = ((Number)item.get("sku_id")).longValue();
 			int quantity = ((Number)item.get("quantity")).intValue();
-			Map<String,Object> inventory = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
-			int availableBefore = ((Number)inventory.get("available_quantity")).intValue();
-			int reservedBefore = ((Number)inventory.get("reserved_quantity")).intValue();
-			jdbc.update("UPDATE inventories SET reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?", quantity, skuId);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'DEDUCT',?,?,?,?,?,?)", skuId, paymentId, quantity, availableBefore, availableBefore, reservedBefore, reservedBefore - quantity, now());
+			inventory.deduct(skuId, quantity, paymentId);
 		}
 		Timestamp paidAt = now();
 		jdbc.update("UPDATE payments SET status='SUCCEEDED',provider_status=?,approved_at=? WHERE id=?", providerStatus, paidAt, paymentId);
@@ -120,7 +118,7 @@ public class PaymentReconciliationService {
 		jdbc.update("UPDATE member_coupons SET status='USED',used_at=? WHERE reserved_order_id=? AND status='RESERVED'", paidAt, orderId);
 		long memberId = ((Number)payment.get("member_id")).longValue();
 		if ("ONE_TIME".equals(payment.get("source"))) consumeCartForOrder(memberId,orderId);
-		commerce.evaluateMembership(memberId);
+		membershipEvaluation.evaluate(memberId);
 		notifications.create(memberId,"ORDER_PAID","ORDER",orderId);
 	}
 
@@ -129,11 +127,7 @@ public class PaymentReconciliationService {
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
 			long skuId = ((Number)item.get("sku_id")).longValue();
 			int quantity = ((Number)item.get("quantity")).intValue();
-			Map<String,Object> inventory = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
-			int availableBefore = ((Number)inventory.get("available_quantity")).intValue();
-			int reservedBefore = ((Number)inventory.get("reserved_quantity")).intValue();
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?", quantity, quantity, skuId);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'RELEASE',?,?,?,?,?,?)", skuId, paymentId, quantity, availableBefore, availableBefore + quantity, reservedBefore, reservedBefore - quantity, now());
+			inventory.release(skuId, quantity, paymentId);
 		}
 		jdbc.update("UPDATE payments SET status='FAILED',provider_status=?,failure_code='RECONCILED_FAILED',failed_at=? WHERE id=?", providerStatus, now(), paymentId);
 		jdbc.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);

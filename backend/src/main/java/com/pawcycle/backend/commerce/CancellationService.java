@@ -13,10 +13,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class CancellationService {
 	private final JdbcTemplate jdbc;
 	private final TransactionTemplate tx;
+	private final InventoryService inventory;
 
-	public CancellationService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager) {
+	public CancellationService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager, InventoryService inventory) {
 		this.jdbc = jdbc;
 		this.tx = new TransactionTemplate(manager);
+		this.inventory = inventory;
 	}
 
 	public Map<String,Object> request(long memberId, long orderId, String reason) {
@@ -37,19 +39,17 @@ public class CancellationService {
 			jdbc.update("INSERT INTO order_cancellations(order_id,status,reason,requested_at) VALUES (?,'REFUND_PENDING',?,?)", orderId, reason, now);
 			long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 			jdbc.update("UPDATE deliveries SET status='CANCELLED',cancelled_at=? WHERE id=?", now, delivery.get("id"));
-			restore(orderId, id, "CANCEL_RESTORE", "cancellation_id");
+			restore(orderId, id);
 			jdbc.update("INSERT INTO refunds(order_id,source,cancellation_id,status,amount,provider,idempotency_key,attempt_no,requested_at) SELECT ?,'CANCELLATION',?,'READY',payment_amount,'TOSS',?,1,? FROM orders WHERE id=?", orderId, id, "refund-" + UUID.randomUUID(), now, orderId);
 			return one("SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE id=?", id);
 		});
 	}
 
-	private void restore(long orderId, long sourceId, String type, String sourceColumn) {
+	private void restore(long orderId, long sourceId) {
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
 			long sku = ((Number)item.get("sku_id")).longValue();
 			int qty = ((Number)item.get("quantity")).intValue();
-			Map<String,Object> inv = one("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", sku);
-			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,version=version+1 WHERE sku_id=?", qty, sku);
-			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after," + sourceColumn + ",source_id,created_at) VALUES (?,?,?, ?,?,?,?,?,?,?,?)", sku, null, type, qty, inv.get("available_quantity"), ((Number)inv.get("available_quantity")).intValue() + qty, inv.get("reserved_quantity"), inv.get("reserved_quantity"), sourceId, sourceId, Timestamp.from(Instant.now()));
+			inventory.restoreCancellation(sku, qty, sourceId);
 		}
 	}
 

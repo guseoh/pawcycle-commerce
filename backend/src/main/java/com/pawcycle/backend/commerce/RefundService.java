@@ -18,7 +18,7 @@ public class RefundService {
 	private final TransactionTemplate tx;
 	private final TossRefundAdapter provider;
 	private final NotificationService notifications;
-	private final CommerceService commerce;
+	private final MembershipEvaluationService membershipEvaluation;
 	private final AdminAuditService audits;
 	private final CommerceMetrics metrics;
 
@@ -27,14 +27,14 @@ public class RefundService {
 			org.springframework.transaction.PlatformTransactionManager manager,
 			TossRefundAdapter provider,
 			NotificationService notifications,
-			CommerceService commerce,
+			MembershipEvaluationService membershipEvaluation,
 			AdminAuditService audits,
 			CommerceMetrics metrics) {
 		this.jdbc=jdbc;
 		this.tx=new TransactionTemplate(manager);
 		this.provider=provider;
 		this.notifications=notifications;
-		this.commerce=commerce;
+		this.membershipEvaluation=membershipEvaluation;
 		this.audits=audits;
 		this.metrics=metrics;
 	}
@@ -112,7 +112,7 @@ public class RefundService {
 				jdbc.update("UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL,used_at=NULL WHERE reserved_order_id=? AND status='USED'",orderId);
 				if("CANCELLATION".equals(row.get("source")))jdbc.update("UPDATE order_cancellations SET status='COMPLETED',completed_at=? WHERE id=?",now(),row.get("cancellation_id"));
 				else jdbc.update("UPDATE order_returns SET status='COMPLETED',completed_at=? WHERE id=?",now(),row.get("return_id"));
-				commerce.evaluateMembership(memberId);
+				membershipEvaluation.evaluate(memberId);
 				notifications.create(memberId,"CANCELLATION".equals(row.get("source"))?"CANCELLATION_COMPLETED":"RETURN_COMPLETED","REFUND",id);
 			} else if("UNKNOWN".equals(state)) {
 				notifications.create(memberId,"REFUND_ACTION_REQUIRED","REFUND",id);

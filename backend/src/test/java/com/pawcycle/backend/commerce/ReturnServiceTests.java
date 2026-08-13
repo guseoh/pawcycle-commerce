@@ -33,7 +33,7 @@ class ReturnServiceTests {
 		doNothing().when(manager).commit(status);
 		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(
 				List.of(Map.of("id", 1L, "status", "PAID")), List.of(projection));
-		ReturnService service = new ReturnService(jdbc, manager, mock(NotificationService.class), mock(AdminAuditService.class), 7);
+		ReturnService service = new ReturnService(jdbc, manager, mock(NotificationService.class), mock(AdminAuditService.class), mock(InventoryService.class), 7);
 
 		assertThat(service.request(1L, 2L, "different")).containsExactlyInAnyOrderEntriesOf(projection);
 	}
