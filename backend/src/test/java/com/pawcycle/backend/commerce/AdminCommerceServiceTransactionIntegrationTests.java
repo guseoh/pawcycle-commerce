@@ -17,18 +17,21 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 @ActiveProfiles("test")
 class AdminCommerceServiceTransactionIntegrationTests {
 	private static final String SKU_CODE = "TXN-ROLLBACK-ADMIN";
+	private static final String CATEGORY_SLUG = "txn-rollback-admin";
 
 	@Autowired private AdminCommerceService service;
 	@Autowired private JdbcTemplate jdbc;
 	@MockitoSpyBean private AdminAuditService audits;
 
+	private long categoryId;
 	private long skuId;
 	private long productId;
 
 	@BeforeEach
 	void setUp() {
-		long categoryId = jdbc.queryForObject(
-				"SELECT id FROM categories WHERE slug='__pawcycle_uncategorized__'", Long.class);
+		jdbc.update("INSERT INTO categories(name,slug,display_order,active) VALUES (?,'txn-rollback-admin',0,false)",
+				"rollback-test-category");
+		categoryId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO products(category_id,name,short_description,pet_type,display_status) VALUES (?,?,'rollback test','DOG','PUBLIC')",
 				categoryId, "rollback-test-product");
 		productId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -44,6 +47,7 @@ class AdminCommerceServiceTransactionIntegrationTests {
 		jdbc.update("DELETE FROM inventories WHERE sku_id=?", skuId);
 		jdbc.update("DELETE FROM skus WHERE id=?", skuId);
 		jdbc.update("DELETE FROM products WHERE id=?", productId);
+		jdbc.update("DELETE FROM categories WHERE id=?", categoryId);
 	}
 
 	@Test
