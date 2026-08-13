@@ -3,6 +3,7 @@ package com.pawcycle.backend.commerce;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.sql.Timestamp;
@@ -42,6 +43,9 @@ class OperationsQueryServiceTests {
 				List.of("RETRY_BILLING"),
 				List.of("RECONCILE_PAYMENT"),
 				List.of("RECONCILE_REFUND"));
+		org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+		verify(jdbc).queryForList(sql.capture());
+		assertThat(sql.getValue()).contains("status='PROCESSING' AND reconciliation_attempts<10", "status='UNKNOWN' AND reconciliation_attempts<10");
 	}
 
 	private static Map<String,Object> row(String type, long referenceId, Timestamp createdAt, Integer attemptNo) {

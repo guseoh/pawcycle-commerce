@@ -49,7 +49,7 @@ public class ReturnService {
 			Timestamp now = Timestamp.from(Instant.now());
 			jdbc.update("INSERT INTO order_returns(order_id,status,reason,requested_at) VALUES (?,'REQUESTED',?,?)", orderId, reason, now);
 			long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-			return one("SELECT id AS returnId,status,reason,requested_at AS requestedAt FROM order_returns WHERE id=?", id);
+			return one("SELECT id AS returnId,status,reason,rejection_reason AS rejectionReason,restock,requested_at AS requestedAt FROM order_returns WHERE id=?", id);
 		});
 	}
 

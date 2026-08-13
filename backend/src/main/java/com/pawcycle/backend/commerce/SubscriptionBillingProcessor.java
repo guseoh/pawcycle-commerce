@@ -19,6 +19,7 @@ public class SubscriptionBillingProcessor {
 	private final PaymentReconciliationService reconciliation;
 	private final DeliveryService deliveries;
 	private final NotificationService notifications;
+	private final CommerceService commerce;
 
 	public SubscriptionBillingProcessor(
 			JdbcTemplate jdbc,
@@ -27,7 +28,8 @@ public class SubscriptionBillingProcessor {
 			SubscriptionBillingService retries,
 			PaymentReconciliationService reconciliation,
 			DeliveryService deliveries,
-			NotificationService notifications) {
+			NotificationService notifications,
+			CommerceService commerce) {
 		this.jdbc=jdbc;
 		this.tx=new TransactionTemplate(manager);
 		this.provider=provider;
@@ -35,6 +37,7 @@ public class SubscriptionBillingProcessor {
 		this.reconciliation=reconciliation;
 		this.deliveries=deliveries;
 		this.notifications=notifications;
+		this.commerce=commerce;
 	}
 
 	public int processReadyPayments() {
@@ -82,7 +85,7 @@ public class SubscriptionBillingProcessor {
 		else markUnknown(paymentId,result.providerStatus());
 	}
 
-	private void completeSuccess(long paymentId,String providerStatus) {
+	void completeSuccess(long paymentId,String providerStatus) {
 		tx.executeWithoutResult(status -> {
 			Map<String,Object> payment=one("""
 				SELECT payment.id,payment.order_id,orders.member_id,context.schedule_id
@@ -98,6 +101,7 @@ public class SubscriptionBillingProcessor {
 			jdbc.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?",now,orderId);
 			jdbc.update("UPDATE subscription_schedules SET status='SCHEDULED',hold_reason=NULL WHERE id=? AND status='HELD' AND hold_reason='MISSING_BILLING_METHOD'",payment.get("schedule_id"));
 			deliveries.createPreparing(orderId);
+			commerce.evaluateMembership(((Number)payment.get("member_id")).longValue());
 			notifications.create(((Number)payment.get("member_id")).longValue(),"ORDER_PAID","ORDER",orderId);
 		});
 	}

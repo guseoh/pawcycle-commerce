@@ -41,7 +41,6 @@ public class RefundService {
 
 	public Map<String,Object> process(long id) { return process(id,null); }
 	public Map<String,Object> process(long id,Long adminId) {
-		if (!provider.isConfigured()) throw unavailable();
 		Map<String,Object> work=tx.execute(status -> {
 			Map<String,Object> row=one("SELECT id,status,idempotency_key,amount FROM refunds WHERE id=? FOR UPDATE",id);
 			if(row==null)throw notFound();
@@ -50,10 +49,15 @@ public class RefundService {
 			return row;
 		});
 		TossRefundAdapter.RefundResult result;
-		Timer.Sample sample = metrics.timer();
-		try { result=provider.refund((String)work.get("idempotency_key"),(BigDecimal)work.get("amount")); }
-		catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
-		finally { metrics.stop(sample,"refund.provider"); }
+		if (((BigDecimal) work.get("amount")).signum() == 0) {
+			result = new TossRefundAdapter.RefundResult("SUCCEEDED","ZERO_AMOUNT");
+		} else {
+			if (!provider.isConfigured()) throw unavailable();
+			Timer.Sample sample = metrics.timer();
+			try { result=provider.refund((String)work.get("idempotency_key"),(BigDecimal)work.get("amount")); }
+			catch(RuntimeException exception) { result=new TossRefundAdapter.RefundResult("UNKNOWN","NO_RESPONSE"); }
+			finally { metrics.stop(sample,"refund.provider"); }
+		}
 		return complete(id,result,adminId,"REFUND_PROCESS");
 	}
 

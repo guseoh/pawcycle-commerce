@@ -3,6 +3,7 @@ package com.pawcycle.backend.commerce;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,7 @@ public class CommerceFinalController {
 	@GetMapping("/admin/operations") List<Map<String,Object>> operations(){return operations.pending();}
 	@GetMapping("/admin/audit-logs") List<Map<String,Object>> audits(){return audits.list();}
 
-	public record ReasonRequest(@NotBlank String reason) {}
-	public record ShipRequest(@NotBlank String carrierCode,@NotBlank String trackingNumber) {}
+	public record ReasonRequest(@NotBlank @Size(max=500) String reason) {}
+	public record ShipRequest(@NotBlank @Size(max=50) String carrierCode,@NotBlank @Size(max=100) String trackingNumber) {}
 	public record ReceiveRequest(@NotNull Boolean restock) {}
 }

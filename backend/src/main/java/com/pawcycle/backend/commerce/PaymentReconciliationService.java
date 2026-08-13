@@ -17,6 +17,7 @@ public class PaymentReconciliationService {
 	private final NotificationService notifications;
 	private final CommerceService commerce;
 	private final AdminAuditService audits;
+	private final SubscriptionBillingService billingFailures;
 
 	public PaymentReconciliationService(
 			JdbcTemplate jdbc,
@@ -25,7 +26,8 @@ public class PaymentReconciliationService {
 			TossBillingAdapter billingProvider,
 			NotificationService notifications,
 			CommerceService commerce,
-			AdminAuditService audits) {
+			AdminAuditService audits,
+			SubscriptionBillingService billingFailures) {
 		this.jdbc = jdbc;
 		this.tx = new TransactionTemplate(manager);
 		this.paymentProvider = paymentProvider;
@@ -33,6 +35,7 @@ public class PaymentReconciliationService {
 		this.notifications = notifications;
 		this.commerce = commerce;
 		this.audits = audits;
+		this.billingFailures = billingFailures;
 	}
 
 	public Map<String,Object> reconcile(long id) { return reconcile(id,null); }
@@ -66,7 +69,7 @@ public class PaymentReconciliationService {
 		}
 
 		ProviderResult observation = result;
-		return tx.execute(status -> {
+		boolean billingFailure = Boolean.TRUE.equals(tx.execute(status -> {
 			Map<String,Object> row = one("""
 				SELECT payment.id,payment.order_id,payment.type,payment.status,payment.reconciliation_attempts,
 				       orders.member_id,orders.source
@@ -80,14 +83,23 @@ public class PaymentReconciliationService {
 			if ("SUCCEEDED".equals(resultStatus)) {
 				completeSuccess(id,row,observation.providerStatus());
 			} else if ("FAILED".equals(resultStatus)) {
+				if ("BILLING".equals(row.get("type"))) {
+					if (adminId != null) audits.append(adminId,"PAYMENT_RECONCILE","PAYMENT",id);
+					return true;
+				}
 				completeFailure(id,row,observation.providerStatus());
 			} else if (((Number)row.get("reconciliation_attempts")).intValue() >= 10) {
 				jdbc.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=?", row.get("order_id"));
 				notifications.create(((Number)row.get("member_id")).longValue(),"PAYMENT_ACTION_REQUIRED","PAYMENT",id);
 			}
 			if (adminId != null) audits.append(adminId,"PAYMENT_RECONCILE","PAYMENT",id);
-			return view(id);
-		});
+			return false;
+		}));
+		if (billingFailure) {
+			billingFailures.recordExplicitFailure(id,"RECONCILED_FAILED",observation.providerStatus());
+			billingFailures.prepareNextAttempt(id);
+		}
+		return view(id);
 	}
 
 	private void completeSuccess(long paymentId,Map<String,Object> payment,String providerStatus) {

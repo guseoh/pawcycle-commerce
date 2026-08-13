@@ -54,6 +54,19 @@ class CommerceAdminAuthorizationIntegrationTests {
 				.andExpect(status().isOk());
 	}
 
+	@Test
+	void requestLengthsUseBeanValidationBeforeAdminMutation() throws Exception {
+		mockMvc.perform(post("/api/admin/deliveries/1/fail").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"" + "x".repeat(501) + "\"}"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/admin/deliveries/1/ship").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"carrierCode\":\"" + "x".repeat(51) + "\",\"trackingNumber\":\"ok\"}"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/admin/deliveries/1/ship").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"carrierCode\":\"ok\",\"trackingNumber\":\"" + "x".repeat(101) + "\"}"))
+				.andExpect(status().isBadRequest());
+	}
+
 	@ParameterizedTest
 	@MethodSource("adminMutations")
 	void adminMutationsRequireCsrfAndAllowOnlyAdmin(String path, String body) throws Exception {

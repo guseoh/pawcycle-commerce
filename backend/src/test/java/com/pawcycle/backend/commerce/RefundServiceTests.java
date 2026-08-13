@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.Timer;
 import java.util.HashMap;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,28 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 
 class RefundServiceTests {
+	@Test
+	void zeroAmountRefundCompletesLocallyWithoutProviderWrite() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+		TransactionStatus transactionStatus = mock(TransactionStatus.class);
+		TossRefundAdapter provider = mock(TossRefundAdapter.class);
+		when(manager.getTransaction(any(TransactionDefinition.class))).thenReturn(transactionStatus);
+		doNothing().when(manager).commit(transactionStatus);
+		Map<String,Object> work = new HashMap<>();
+		work.put("id", 7L); work.put("status", "READY"); work.put("idempotency_key", "zero-key"); work.put("amount", BigDecimal.ZERO);
+		Map<String,Object> completion = new HashMap<>();
+		completion.put("id", 7L); completion.put("order_id", 11L); completion.put("source", "CANCELLATION"); completion.put("cancellation_id", 3L); completion.put("return_id", null); completion.put("status", "PROCESSING"); completion.put("reconciliation_attempts", 0); completion.put("member_id", 4L);
+		Map<String,Object> view = Map.of("refundId", 7L, "status", "SUCCEEDED");
+		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(work), List.of(completion), List.of(view));
+		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+
+		RefundService service = new RefundService(jdbc, manager, provider, mock(NotificationService.class), mock(CommerceService.class), mock(AdminAuditService.class), mock(CommerceMetrics.class));
+
+		assertThat(service.process(7L)).containsEntry("status", "SUCCEEDED");
+		verify(provider, never()).refund(anyString(), any());
+	}
+
 	@Test
 	void processingReconcileQueriesProviderWithoutIssuingAnotherRefund() {
 		JdbcTemplate jdbc = mock(JdbcTemplate.class);

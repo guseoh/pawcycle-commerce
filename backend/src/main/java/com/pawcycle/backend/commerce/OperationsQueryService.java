@@ -19,10 +19,10 @@ public class OperationsQueryService {
 		UNION ALL SELECT 'RETURN_REQUESTED',id,requested_at,NULL FROM order_returns WHERE status='REQUESTED'
 		UNION ALL SELECT 'RETURN_APPROVED',id,decided_at,NULL FROM order_returns WHERE status='APPROVED'
 		UNION ALL SELECT 'REFUND_READY',id,requested_at,attempt_no FROM refunds WHERE status='READY'
-		UNION ALL SELECT 'REFUND_PROCESSING',id,processed_at,attempt_no FROM refunds WHERE status='PROCESSING'
-		UNION ALL SELECT 'PAYMENT_UNKNOWN',id,created_at,NULL FROM payments WHERE status='UNKNOWN'
+		UNION ALL SELECT 'REFUND_PROCESSING',id,processed_at,attempt_no FROM refunds WHERE status='PROCESSING' AND reconciliation_attempts<10
+		UNION ALL SELECT 'PAYMENT_UNKNOWN',id,created_at,NULL FROM payments WHERE status='UNKNOWN' AND reconciliation_attempts<10
 		UNION ALL SELECT 'PAYMENT_ACTION_REQUIRED',id,created_at,NULL FROM orders WHERE status='PAYMENT_ACTION_REQUIRED'
-		UNION ALL SELECT 'REFUND_UNKNOWN',id,requested_at,attempt_no FROM refunds WHERE status='UNKNOWN'
+		UNION ALL SELECT 'REFUND_UNKNOWN',id,requested_at,attempt_no FROM refunds WHERE status='UNKNOWN' AND reconciliation_attempts<10
 		UNION ALL SELECT 'REFUND_FAILED',failed.id,failed.requested_at,failed.attempt_no
 		  FROM refunds failed
 		 WHERE failed.status='FAILED'
@@ -32,7 +32,7 @@ public class OperationsQueryService {
 		         AND newer.source_id=failed.source_id
 		         AND newer.attempt_no>failed.attempt_no
 		   )
-		UNION ALL SELECT 'PAYMENT_PROCESSING',id,created_at,NULL FROM payments WHERE type='BILLING' AND status='PROCESSING'
+		UNION ALL SELECT 'PAYMENT_PROCESSING',id,created_at,NULL FROM payments WHERE type='BILLING' AND status='PROCESSING' AND reconciliation_attempts<10
 		UNION ALL SELECT 'PAYMENT_RETRY_STOCK_UNAVAILABLE',payment.id,schedule.scheduled_date,payment.attempt_no
 		  FROM subscription_schedules schedule
 		  JOIN subscription_order_context context ON context.schedule_id=schedule.id
