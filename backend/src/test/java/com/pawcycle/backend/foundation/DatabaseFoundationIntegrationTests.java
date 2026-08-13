@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -38,6 +40,7 @@ class DatabaseFoundationIntegrationTests {
 	private final Flyway flyway;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final String datasourceUrl;
@@ -49,6 +52,7 @@ class DatabaseFoundationIntegrationTests {
 			Flyway flyway,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			PasswordEncoder passwordEncoder,
 			@Value("${spring.datasource.url}") String datasourceUrl) {
@@ -57,6 +61,7 @@ class DatabaseFoundationIntegrationTests {
 		this.flyway = flyway;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.datasourceUrl = datasourceUrl;
@@ -87,7 +92,7 @@ class DatabaseFoundationIntegrationTests {
 				"subscription_orders",
 				"subscription_order_items",
 				"flyway_schema_history");
-		assertThat(tables).doesNotContain("orders", "payments", "deliveries", "inventory");
+		assertThat(tables).contains("orders", "payments", "inventories", "inventory_movements");
 	}
 
 	@Test
@@ -122,7 +127,7 @@ class DatabaseFoundationIntegrationTests {
 		flyway.migrate();
 		Integer after = appliedMigrationCount();
 
-		assertThat(before).isEqualTo(12);
+		assertThat(before).isEqualTo(15);
 		assertThat(after).isEqualTo(before);
 	}
 
@@ -133,7 +138,7 @@ class DatabaseFoundationIntegrationTests {
 		String runtimePassword = UUID.randomUUID().toString();
 		Member member = memberRepository.save(new Member(email, passwordEncoder.encode(runtimePassword)));
 
-		Product product = productRepository.save(new Product(
+		Product product = productRepository.save(new Product(activeCategory(),
 				"Foundation product",
 				"Foundation short description",
 				"Foundation description",
@@ -180,7 +185,7 @@ class DatabaseFoundationIntegrationTests {
 		assertThat(checkConstraint.get("CONSTRAINT_TYPE")).isEqualTo("CHECK");
 		assertThat(checkConstraint.get("ENFORCED")).isEqualTo("YES");
 
-		Product product = productRepository.saveAndFlush(new Product(
+		Product product = productRepository.saveAndFlush(new Product(activeCategory(),
 				"Constraint product",
 				"Constraint short description",
 				null,
@@ -226,5 +231,10 @@ class DatabaseFoundationIntegrationTests {
 		return jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
 				Integer.class);
+	}
+
+	private Category activeCategory() {
+		String suffix = UUID.randomUUID().toString();
+		return categoryRepository.saveAndFlush(new Category("foundation-" + suffix, "foundation-" + suffix, 0, true));
 	}
 }

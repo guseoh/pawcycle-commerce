@@ -2,6 +2,8 @@ package com.pawcycle.backend.subscription.v2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -33,12 +35,16 @@ class V2SubscriptionIdempotencyConcurrencyIntegrationTests {
 	@Autowired private MemberRepository members;
 	@Autowired private ProductRepository products;
 	@Autowired private SkuRepository skus;
+	@Autowired private CategoryRepository categories;
 	@Autowired private PasswordEncoder passwordEncoder;
 
 	@Test
 	void concurrentSameCommandKeyReturnsOneSuccessAndOneReplay() throws Exception {
 		Member member = members.saveAndFlush(new Member("v2-concurrent-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
-		Product product = products.saveAndFlush(new Product("V2 concurrent product", "test", null, "DOG", null, "PUBLIC"));
+		String suffix = UUID.randomUUID().toString();
+		Product product = new Product(categories.saveAndFlush(new Category("v2-concurrent-" + suffix, "v2-concurrent-" + suffix, 0, true)), "V2 concurrent product", "test", null, "DOG", null);
+		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
+		product = products.saveAndFlush(product);
 		Sku sku = skus.saveAndFlush(com.pawcycle.backend.support.TestSkuFactory.sku(
 				product, "v2-concurrent-sku-" + UUID.randomUUID(), new BigDecimal("12000.00"), true, 1));
 		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "DOG concurrent plan", "DOG");

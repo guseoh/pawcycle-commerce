@@ -1,0 +1,96 @@
+package com.pawcycle.backend.commerce;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/**
+ * Transactional state transitions for billing attempts. Scheduling and provider execution are
+ * intentionally not enabled in this repository-preparation task.
+ */
+@Service
+public class SubscriptionBillingService {
+	private final JdbcTemplate jdbc;
+	private final TransactionTemplate transaction;
+
+	public SubscriptionBillingService(JdbcTemplate jdbc, org.springframework.transaction.PlatformTransactionManager manager) {
+		this.jdbc = jdbc;
+		this.transaction = new TransactionTemplate(manager);
+	}
+
+	public void recordExplicitFailure(long paymentId, String failureCode) {
+		transaction.executeWithoutResult(status -> {
+			Map<String,Object> payment = jdbc.query("""
+				SELECT payment.id,payment.order_id,payment.attempt_no,payment.status,context.schedule_id
+				FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
+				WHERE payment.id=? FOR UPDATE""", rs -> rs.next() ? Map.of("id",rs.getLong("id"),"orderId",rs.getLong("order_id"),"attemptNo",rs.getInt("attempt_no"),"status",rs.getString("status"),"scheduleId",rs.getLong("schedule_id")) : null, paymentId);
+			if (payment == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","결제를 찾을 수 없습니다.");
+			if (!"PROCESSING".equals(payment.get("status"))) throw new CommerceException(409,"PAYMENT_STATE_CONFLICT","처리 중인 Billing 결제만 실패 처리할 수 있습니다.");
+			jdbc.update("UPDATE payments SET status='FAILED',provider_status='ABORTED',failure_code=?,failed_at=? WHERE id=?", failureCode, now(), paymentId);
+			releaseReservation((Long) payment.get("orderId"), paymentId);
+			if ((Integer) payment.get("attemptNo") >= 3) {
+				jdbc.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=?", payment.get("orderId"));
+				jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason='PAYMENT_RETRY_EXHAUSTED' WHERE id=?", payment.get("scheduleId"));
+			}
+		});
+	}
+
+	/** Creates the next attempt for the same order only after an explicit failed attempt. */
+	public long prepareNextAttempt(long failedPaymentId) {
+		return transaction.execute(status -> {
+			Map<String,Object> payment = jdbc.query("SELECT order_id,attempt_no,status FROM payments WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("orderId",rs.getLong(1),"attemptNo",rs.getInt(2),"status",rs.getString(3)) : null, failedPaymentId);
+			if (payment == null) throw new CommerceException(404,"PAYMENT_NOT_FOUND","결제를 찾을 수 없습니다.");
+			int nextAttempt = (Integer) payment.get("attemptNo") + 1;
+			if (!"FAILED".equals(payment.get("status")) || nextAttempt > 3) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","다음 결제 시도를 만들 수 없습니다.");
+			Long existingAttempt = jdbc.query(
+					"SELECT id FROM payments WHERE order_id=? AND attempt_no=?",
+					rs -> rs.next() ? rs.getLong(1) : null,
+					payment.get("orderId"), nextAttempt);
+			if (existingAttempt != null) return existingAttempt;
+			Map<String,Object> order = jdbc.query("SELECT payment_amount,status FROM orders WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("amount",rs.getBigDecimal(1),"status",rs.getString(2)) : null, payment.get("orderId"));
+			if (order == null || "PAYMENT_ACTION_REQUIRED".equals(order.get("status"))) throw new CommerceException(409,"PAYMENT_RETRY_NOT_ALLOWED","주문 결제를 재시도할 수 없습니다.");
+			reserveForOrder((Long) payment.get("orderId"));
+			jdbc.update("INSERT INTO payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,created_at) VALUES (?,'BILLING','TOSS','READY',?,?,?,?,?,?)", payment.get("orderId"), order.get("amount"), "TOSS-SUB-" + UUID.randomUUID(), "billing-" + UUID.randomUUID(), nextAttempt, now(), now());
+			return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		});
+	}
+
+	/** Records one reconciliation observation; callers must not turn an UNKNOWN result into a retry. */
+	public boolean recordUnknownReconciliationAttempt(long paymentId) {
+		return Boolean.TRUE.equals(transaction.execute(status -> {
+			Map<String,Object> payment = jdbc.query("SELECT reconciliation_attempts,status FROM payments WHERE id=? FOR UPDATE", rs -> rs.next() ? Map.of("attempts",rs.getInt(1),"status",rs.getString(2)) : null, paymentId);
+			if (payment == null || !"UNKNOWN".equals(payment.get("status"))) return false;
+			int currentAttempts = (Integer) payment.get("attempts");
+			if (currentAttempts >= 10) return false;
+			int attempts = currentAttempts + 1;
+			jdbc.update("UPDATE payments SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",attempts,now(),paymentId);
+			if(attempts>=10) jdbc.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=(SELECT order_id FROM payments WHERE id=?)",paymentId);
+			return attempts<10;
+		}));
+	}
+
+	private static Timestamp now() { return Timestamp.from(Instant.now()); }
+
+	private void releaseReservation(long orderId, long paymentId) {
+		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
+			long skuId=((Number)item.get("sku_id")).longValue(); int quantity=((Number)item.get("quantity")).intValue();
+			Map<String,Object> inventory=jdbc.query("SELECT available_quantity,reserved_quantity FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? Map.of("available",rs.getInt(1),"reserved",rs.getInt(2)) : null, skuId);
+			if(inventory==null) throw new IllegalStateException("Inventory is missing");
+			jdbc.update("UPDATE inventories SET available_quantity=available_quantity+?,reserved_quantity=reserved_quantity-?,version=version+1 WHERE sku_id=?",quantity,quantity,skuId);
+			jdbc.update("INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at) VALUES (?,?,'RELEASE',?,?,?,?,?,?)",skuId,paymentId,quantity,inventory.get("available"),((Integer)inventory.get("available"))+quantity,inventory.get("reserved"),((Integer)inventory.get("reserved"))-quantity,now());
+		}
+	}
+
+	private void reserveForOrder(long orderId) {
+		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
+			long skuId=((Number)item.get("sku_id")).longValue(); int quantity=((Number)item.get("quantity")).intValue();
+			Map<String,Object> inventory=jdbc.query("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? Map.of("available",rs.getInt(1),"reserved",rs.getInt(2),"version",rs.getLong(3)) : null, skuId);
+			if(inventory==null || (Integer)inventory.get("available")<quantity) throw new CommerceException(409,"INVENTORY_INSUFFICIENT","재고가 부족합니다.");
+			jdbc.update("UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1 WHERE sku_id=? AND version=?",quantity,quantity,skuId,inventory.get("version"));
+		}
+	}
+}

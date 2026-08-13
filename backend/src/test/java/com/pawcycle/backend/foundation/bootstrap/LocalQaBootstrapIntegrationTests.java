@@ -3,6 +3,8 @@ package com.pawcycle.backend.foundation.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -37,6 +39,7 @@ class LocalQaBootstrapIntegrationTests {
 	private final V2SubscriptionService v2SubscriptionService;
 	private final MemberRepository memberRepository;
 	private final ProductRepository productRepository;
+	private final CategoryRepository categoryRepository;
 	private final SkuRepository skuRepository;
 	private final SubscriptionRepository subscriptionRepository;
 	private final PasswordEncoder passwordEncoder;
@@ -48,6 +51,7 @@ class LocalQaBootstrapIntegrationTests {
 			V2SubscriptionService v2SubscriptionService,
 			MemberRepository memberRepository,
 			ProductRepository productRepository,
+			CategoryRepository categoryRepository,
 			SkuRepository skuRepository,
 			SubscriptionRepository subscriptionRepository,
 			PasswordEncoder passwordEncoder,
@@ -56,6 +60,7 @@ class LocalQaBootstrapIntegrationTests {
 		this.v2SubscriptionService = v2SubscriptionService;
 		this.memberRepository = memberRepository;
 		this.productRepository = productRepository;
+		this.categoryRepository = categoryRepository;
 		this.skuRepository = skuRepository;
 		this.subscriptionRepository = subscriptionRepository;
 		this.passwordEncoder = passwordEncoder;
@@ -82,6 +87,13 @@ class LocalQaBootstrapIntegrationTests {
 				""", LocalQaBootstrapService.PRODUCT_NAME, OTHER_PRODUCT_PREFIX + "%");
 		jdbcTemplate.update("DELETE FROM pets WHERE member_id IN (SELECT id FROM members WHERE email LIKE 'qa-foundation-004@%' OR email LIKE 'other-foundation-004@%')");
 		deleteV2FixturePlans();
+		jdbcTemplate.update("""
+				DELETE inventory
+				FROM inventories inventory
+				JOIN skus sku ON sku.id = inventory.sku_id
+				JOIN products product ON product.id = sku.product_id
+				WHERE product.name = ? OR product.name LIKE ?
+				""", LocalQaBootstrapService.PRODUCT_NAME, OTHER_PRODUCT_PREFIX + "%");
 		jdbcTemplate.update("""
 				DELETE FROM skus
 				WHERE product_id IN (
@@ -133,7 +145,7 @@ class LocalQaBootstrapIntegrationTests {
 		Member otherMember = memberRepository.saveAndFlush(new Member(
 				"other-foundation-004@" + UUID.randomUUID() + ".example",
 				passwordEncoder.encode(UUID.randomUUID().toString())));
-		Product otherProduct = productRepository.saveAndFlush(new Product(
+		Product otherProduct = productRepository.saveAndFlush(new Product(activeCategory(),
 				OTHER_PRODUCT_PREFIX + UUID.randomUUID(),
 				"비대상 상품",
 				null,
@@ -227,7 +239,7 @@ class LocalQaBootstrapIntegrationTests {
 	}
 
 	private Product exactFixtureProduct() {
-		return new Product(
+		return new Product(activeCategory(),
 				LocalQaBootstrapService.PRODUCT_NAME,
 				LocalQaBootstrapService.PRODUCT_SHORT_DESCRIPTION,
 				LocalQaBootstrapService.PRODUCT_DESCRIPTION,
@@ -241,6 +253,11 @@ class LocalQaBootstrapIntegrationTests {
 				"SELECT COUNT(*) FROM subscriptions WHERE member_id = ?",
 				Long.class,
 				memberId);
+	}
+
+	private Category activeCategory() {
+		String suffix = UUID.randomUUID().toString();
+		return categoryRepository.saveAndFlush(new Category("qa-bootstrap-" + suffix, "qa-bootstrap-" + suffix, 0, true));
 	}
 
 	private String runtimeQaEmail() {
