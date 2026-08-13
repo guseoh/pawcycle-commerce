@@ -4,6 +4,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -65,6 +66,50 @@ class CommerceAdminAuthorizationIntegrationTests {
 		mockMvc.perform(post("/api/admin/deliveries/1/ship").with(role(MemberRole.ADMIN)).with(csrf())
 				.contentType(MediaType.APPLICATION_JSON).content("{\"carrierCode\":\"ok\",\"trackingNumber\":\"" + "x".repeat(101) + "\"}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void couponAndMembershipDomainValuesUseBeanValidationBeforeAdminMutation() throws Exception {
+		String negativeCoupon = """
+				{"name":"invalid","discountType":"FIXED_AMOUNT","discountValue":-1,"minimumOrderAmount":0,"maximumDiscountAmount":null,"validFrom":"2026-08-13T10:00:00","validUntil":"2026-08-14T10:00:00","active":true}
+				""";
+		mockMvc.perform(post("/api/admin/coupons").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(negativeCoupon))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+		mockMvc.perform(patch("/api/admin/coupons/999999").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(negativeCoupon))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+		String invalidType = """
+				{"name":"invalid","discountType":"UNKNOWN","discountValue":100,"minimumOrderAmount":0,"maximumDiscountAmount":null,"validFrom":"2026-08-13T10:00:00","validUntil":"2026-08-14T10:00:00","active":true}
+				""";
+		mockMvc.perform(post("/api/admin/coupons").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(invalidType))
+				.andExpect(status().isBadRequest());
+
+		String invalidRange = """
+				{"name":"invalid","discountType":"PERCENTAGE","discountValue":10,"minimumOrderAmount":0,"maximumDiscountAmount":1000,"validFrom":"2026-08-14T10:00:00","validUntil":"2026-08-13T10:00:00","active":true}
+				""";
+		mockMvc.perform(post("/api/admin/coupons").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(invalidRange))
+				.andExpect(status().isBadRequest());
+
+		String negativeGrade = """
+				{"code":"INVALID","name":"invalid","minimumPurchaseAmount":-1,"displayOrder":1,"active":true,"benefitCouponId":null}
+				""";
+		mockMvc.perform(post("/api/admin/membership-grades").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(negativeGrade))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void missingInventoryAdjustmentKeepsNotFoundContract() throws Exception {
+		mockMvc.perform(post("/api/admin/inventories/999999/adjustments").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"delta\":1}"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("INVENTORY_NOT_FOUND"));
 	}
 
 	@ParameterizedTest
