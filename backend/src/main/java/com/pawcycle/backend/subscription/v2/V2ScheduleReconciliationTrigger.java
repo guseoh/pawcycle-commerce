@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "pawcycle.mvp2.reconciliation", name = "enabled", havingValue = "true")
 public class V2ScheduleReconciliationTrigger {
 
-	private final V2SubscriptionService service;
+	private final V2SubscriptionReconciliationApplicationService service;
 
-	public V2ScheduleReconciliationTrigger(V2SubscriptionService service) { this.service = service; }
+	public V2ScheduleReconciliationTrigger(V2SubscriptionReconciliationApplicationService service) { this.service = service; }
 
 	@Scheduled(fixedDelayString = "${pawcycle.mvp2.reconciliation.fixed-delay-ms:60000}")
 	public void reconcileActiveSubscriptions() { service.reconcileActiveSubscriptions(); }
