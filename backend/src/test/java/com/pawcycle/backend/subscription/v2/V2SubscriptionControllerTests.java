@@ -79,4 +79,23 @@ class V2SubscriptionControllerTests {
 		assertThat(response.getHeaders().getFirst("Idempotency-Replayed")).isEqualTo("true");
 		verify(service).command(7L, 11L, "pause", "replay-key", "\"99\"", Map.of());
 	}
+
+	@Test
+	void createSubscriptionBuildsLocationAndEtagAtTheHttpBoundary() {
+		V2SubscriptionService.V2Result created = new V2SubscriptionService.V2Result(
+				201,
+				Map.of("subscriptionId", 11L, "version", 0L),
+				"/api/v2/subscriptions/11",
+				"\"0\"",
+				false);
+		when(service.createSubscription(7L, "create-key", Map.of("petId", 3L))).thenReturn(created);
+
+		ResponseEntity<Map<String, Object>> response = controller.createSubscription(
+				principal, "create-key", Map.of("petId", 3L));
+
+		assertThat(response.getStatusCode().value()).isEqualTo(201);
+		assertThat(response.getHeaders().getFirst("Location")).isEqualTo("/api/v2/subscriptions/11");
+		assertThat(response.getHeaders().getFirst("ETag")).isEqualTo("\"0\"");
+		assertThat(response.getHeaders().getFirst("Idempotency-Replayed")).isNull();
+	}
 }

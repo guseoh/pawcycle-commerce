@@ -55,7 +55,7 @@ public class V2SubscriptionController {
 	@PostMapping("/subscriptions")
 	ResponseEntity<Map<String, Object>> createSubscription(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
 			@RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body) {
-		return service.createSubscription(principal.memberId(), key, body).response();
+		return response(service.createSubscription(principal.memberId(), key, body));
 	}
 
 	@GetMapping("/subscriptions")
@@ -69,7 +69,7 @@ public class V2SubscriptionController {
 			@PathVariable long subscriptionId, @RequestParam(defaultValue = "0") int schedulePage,
 			@RequestParam(defaultValue = "20") int scheduleSize, @RequestParam(defaultValue = "0") int commandPage,
 			@RequestParam(defaultValue = "20") int commandSize) {
-		return service.subscription(principal.memberId(), subscriptionId, schedulePage, scheduleSize, commandPage, commandSize).response();
+		return response(service.subscription(principal.memberId(), subscriptionId, schedulePage, scheduleSize, commandPage, commandSize));
 	}
 
 	@PostMapping("/subscriptions/{subscriptionId}/commands/{command}")
@@ -78,7 +78,15 @@ public class V2SubscriptionController {
 			@RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestHeader(value = "If-Match", required = false) String ifMatch,
 			@RequestBody(required = false) Map<String, Object> body) {
 		validateIfMatchSyntax(ifMatch);
-		return service.command(principal.memberId(), subscriptionId, command, key, ifMatch, body == null ? Map.of() : body).response();
+		return response(service.command(principal.memberId(), subscriptionId, command, key, ifMatch, body == null ? Map.of() : body));
+	}
+
+	private ResponseEntity<Map<String, Object>> response(V2SubscriptionService.V2Result result) {
+		ResponseEntity.BodyBuilder response = ResponseEntity.status(result.status());
+		if (result.location() != null) response.header("Location", result.location());
+		if (result.etag() != null) response.header("ETag", result.etag());
+		if (result.replay()) response.header("Idempotency-Replayed", "true");
+		return response.body(result.body());
 	}
 
 	private void validateIfMatchSyntax(String value) {
