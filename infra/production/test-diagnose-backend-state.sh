@@ -8,6 +8,7 @@ TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
 SHA_CURRENT="1111111111111111111111111111111111111111"
 SHA_PREVIOUS="2222222222222222222222222222222222222222"
+SHA_CHANGED="3333333333333333333333333333333333333333"
 
 mkdir -p "$TEST_ROOT/bin"
 cat >"$TEST_ROOT/bin/docker" <<'EOF'
@@ -24,7 +25,14 @@ cat >"$TEST_ROOT/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 arguments="$*"
 case "$arguments" in
-  *'/api/products'*) printf '%s' "${FAKE_API_STATUS:-200}"; if [[ "${FAKE_API_CURL_FAIL:-false}" == true ]]; then exit 28; fi ;;
+  *'/api/products'*)
+    if [[ -n "${FAKE_MUTATE_STATE_DIR:-}" ]]; then
+      printf '%s\n' "${FAKE_MUTATE_CURRENT_SHA:?}" >"$FAKE_MUTATE_STATE_DIR/current-sha"
+      chmod 600 "$FAKE_MUTATE_STATE_DIR/current-sha"
+    fi
+    printf '%s' "${FAKE_API_STATUS:-200}"
+    if [[ "${FAKE_API_CURL_FAIL:-false}" == true ]]; then exit 28; fi
+    ;;
   *'/products'*) printf '200' ;;
   *'/actuator/prometheus'*) printf '%s' "${FAKE_METRICS_STATUS:-200}"; if [[ "${FAKE_METRICS_CURL_FAIL:-false}" == true ]]; then exit 28; fi ;;
   *'/api/v1/targets'*)
@@ -55,7 +63,7 @@ make_state() {
 
 run_case() {
   local name="$1" backend="$2" docker_query="$3" api="$4" metrics="$5" prometheus="$6" expected="$7"
-  local case_dir production_code final_code api_curl_fail=false metrics_curl_fail=false held_lock_fd=""
+  local case_dir production_code final_code api_curl_fail=false metrics_curl_fail=false held_lock_fd="" mutate_state_dir=""
   case_dir="$TEST_ROOT/$name"
   mkdir -p "$case_dir"
   make_state "$case_dir/state"
@@ -65,6 +73,7 @@ run_case() {
     missing-volume) rm -f -- "$case_dir/state/active-mysql-volume" ;;
     deployment-in-progress) printf '%s\n' "$SHA_CURRENT" >"$case_dir/state/release-state-transition" ;;
     deployment-lock-held) exec {held_lock_fd}<"$case_dir/state/deploy.lock"; flock --nonblock "$held_lock_fd" ;;
+    release-state-changed) mutate_state_dir="$case_dir/state" ;;
     missing-deploy-lock) rm -f -- "$case_dir/state/deploy.lock" ;;
     api-transfer-failure) api_curl_fail=true ;;
     metrics-transfer-failure) metrics_curl_fail=true ;;
@@ -72,6 +81,7 @@ run_case() {
 
   if PATH="$TEST_ROOT/bin:$PATH" FAKE_BACKEND_STATUS="$backend" FAKE_DOCKER_QUERY="$docker_query" \
     FAKE_API_STATUS="$api" FAKE_METRICS_STATUS="$metrics" FAKE_API_CURL_FAIL="$api_curl_fail" FAKE_METRICS_CURL_FAIL="$metrics_curl_fail" \
+    FAKE_MUTATE_STATE_DIR="$mutate_state_dir" FAKE_MUTATE_CURRENT_SHA="$SHA_CHANGED" \
     bash "$DIAGNOSTIC" --scope production --state-dir "$case_dir/state" >"$case_dir/production"; then
     production_code=0
   else
@@ -109,6 +119,7 @@ run_case invalid-previous healthy ok 200 200 up UNKNOWN
 run_case missing-volume healthy ok 200 200 up UNKNOWN
 run_case deployment-in-progress healthy ok 200 200 up UNKNOWN
 run_case deployment-lock-held healthy ok 200 200 up UNKNOWN
+run_case release-state-changed healthy ok 200 200 up UNKNOWN
 run_case missing-deploy-lock healthy ok 200 200 up UNKNOWN
 run_case api-transfer-failure healthy ok 200 200 up DEGRADED
 run_case metrics-transfer-failure healthy ok 200 200 down OBSERVABILITY_DEGRADED
@@ -138,8 +149,8 @@ fi
 [[ "$code" == 64 ]]
 grep -q '^usage:' "$TEST_ROOT/invalid-port-error"
 
-if grep -E 'docker (compose|start|stop|restart|rm)|aws |flyway|mysql ' "$DIAGNOSTIC"; then
-  printf 'diagnostic must remain read-only\n' >&2
+if grep -E 'docker (compose|start|stop|restart|rm)|aws |flyway|mysql |(^|[[:space:]])flock([[:space:]]|$)' "$DIAGNOSTIC"; then
+  printf 'diagnostic must remain read-only and must not acquire the Production release lock\n' >&2
   exit 1
 fi
 printf 'OPS-AUTO-009 two-host read-only backend diagnostic fixture tests passed\n'
