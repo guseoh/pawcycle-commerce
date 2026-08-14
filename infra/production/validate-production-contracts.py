@@ -236,6 +236,7 @@ def validate_workflow() -> None:
         require(bool(re.fullmatch(r"[0-9a-f]{40}", action_reference)), "workflow actions must be pinned to a 40-character commit")
 
     require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
+    require("infra/production/diagnose-backend-state.sh" in validation_workflow and "infra/production/test-diagnose-backend-state.sh" in validation_workflow, "Repository Validation must validate the OPS-AUTO-009 read-only diagnostic")
     require(
         "infra/production/subscription-automation-control.sh" in validation_workflow
         and "infra/production/subscription-automation-preflight.sh" in validation_workflow,
