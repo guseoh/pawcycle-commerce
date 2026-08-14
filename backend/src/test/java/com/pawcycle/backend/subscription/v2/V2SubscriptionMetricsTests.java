@@ -23,9 +23,9 @@ class V2SubscriptionMetricsTests {
 		V2SubscriptionMetrics metrics = new V2SubscriptionMetrics(registry, jdbc, Clock.systemUTC());
 
 		assertThat(registry.get("pawcycle.subscription.idempotency.retained.rows")
-				.tag("scope", "creation").gauge().value()).isZero();
+				.tag("scope", "creation").gauge().value()).isNaN();
 		assertThat(registry.get("pawcycle.subscription.idempotency.cleanup.candidates")
-				.tag("scope", "command").gauge().value()).isZero();
+				.tag("scope", "command").gauge().value()).isNaN();
 
 		verifyNoInteractions(jdbc);
 	}

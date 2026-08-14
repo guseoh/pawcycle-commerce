@@ -12,7 +12,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-touch "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
+printf 'admin\n' > "$TEMP_DIR/grafana-admin-user"
+printf 'validation-only-password\n' > "$TEMP_DIR/grafana-admin-password"
+chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
+docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
+  chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
 PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
 PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
 PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
@@ -50,5 +54,14 @@ for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE"; do
     exit 1
   }
 done
+
+PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
+PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
+PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
+  docker compose --file "$SCRIPT_DIR/compose.yaml" up --detach --wait --wait-timeout 60
+PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
+PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
+PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
+  docker compose --file "$SCRIPT_DIR/compose.yaml" down >/dev/null
 
 printf 'Production observability Compose, Prometheus, Grafana dashboard, and ARM64 image validation passed\n'

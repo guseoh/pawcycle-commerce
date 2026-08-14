@@ -40,7 +40,7 @@ INC_BASE_TASK_ID_PATTERN = (
     r"(?-i:[Ii][Nn][Cc]-[Bb][Aa][Ss][Ee])-[0-9]{3}"
     r"(?![A-Za-z0-9_\x80-\U0010FFFF-])"
 )
-TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}[A-Z]?|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 
 
 def safe_text(value: Any, default: str = "기록 없음") -> str:

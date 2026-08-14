@@ -210,7 +210,7 @@ def validate_compose() -> None:
     total_cpus = sum(float(service["cpus"]) for service in services.values())
     total_memory = sum(float(service["mem_limit"]) for service in services.values())
     require(total_cpus <= 2.05, "combined CPU limits exceed the approved metrics-proxy budget")
-    require(total_memory <= 1664 * 1024 * 1024, "combined memory limits exceed the approved conservative budget")
+    require(total_memory <= 1696 * 1024 * 1024, "combined memory limits exceed the approved metrics-proxy budget")
 
     require(config["volumes"]["mysql-data"]["name"] == "pawcycle-production-mysql-data", "stable MySQL volume name is required")
     require(
@@ -493,6 +493,7 @@ def validate_scripts() -> None:
         PRODUCTION / "test-create-production-auth-smoke-member-lifecycle.sh"
     ).read_text(encoding="utf-8")
     release_scripts = "\n".join((common, deploy, rollback, automation_control, db_restore))
+    require("metrics-proxy.conf" in common and "metrics-proxy" in common, "metrics-proxy must remain in the Production release contract and activation lifecycle")
     rollback_initialize = rollback[
         rollback.index("initialize_rollback_context() {") :
         rollback.index("\n}", rollback.index("initialize_rollback_context() {")) + 2

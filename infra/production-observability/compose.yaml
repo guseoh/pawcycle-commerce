@@ -25,7 +25,7 @@ services:
       - ./prometheus/prometheus.yml.tpl:/etc/prometheus/prometheus.yml.tpl:ro
       - prometheus-data:/prometheus
     tmpfs:
-      - /etc/prometheus-runtime:size=1m,mode=0755
+      - /etc/prometheus-runtime:size=1m,mode=1777
     restart: unless-stopped
     mem_limit: 768m
     cpus: 0.75

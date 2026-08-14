@@ -39,4 +39,9 @@ metrics-proxy는 `/actuator/prometheus`만 200이며 API 및 다른 path는 404�
 
 ## 실패·rollback 경계
 
+- metrics target down: Prometheus targets에서 원인을 확인하고 metrics-proxy의 endpoint-only health를 확인한다. scraper만 재기동하며 Application/DB에는 개입하지 않는다.
+- metrics-proxy failure: `/actuator/prometheus` 200과 다른 path 404를 확인한다. proxy만 재기동하고 release·migration·MySQL volume은 변경하지 않는다.
+- Prometheus startup failure: runtime config directory writable 조건과 target injection을 확인하고 Prometheus만 재기동한다.
+- Grafana startup failure: root가 UID 472 소유·mode 0400으로 준비한 admin runtime files의 readability를 확인하고 Grafana만 재기동한다. credential 값은 출력하지 않는다.
+
 scrape 또는 metrics-proxy 실패 시 application release, DB, Flyway migration, MySQL volume, Backend/Frontend release SHA와 current/previous SHA 상태를 바꾸지 않는다. Observability Compose는 named volume을 자동 삭제하지 않는다. 저장소 준비 자체의 복구는 이 변경을 되돌리는 일반 revert PR만 사용하며 reset·rebase·force push는 사용하지 않는다. 실제 운영 rollback은 Observability service와 SG ingress만 분리해 되돌리고, 기존 Production deploy/rollback 절차에는 개입하지 않는다.

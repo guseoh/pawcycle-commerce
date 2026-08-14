@@ -256,6 +256,7 @@ class V2SubscriptionServiceIntegrationTests {
 		assertThat(commandResultExists(subscriptionId, "command-incomplete")).isTrue();
 
 		V2IdempotencyCleanupService.CleanupResult second = cleanup.deleteExpired(2);
+		metrics.refreshIdempotencyGauges();
 
 		assertThat(second.creationRepaired()).isZero();
 		assertThat(second.commandRepaired()).isZero();

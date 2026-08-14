@@ -42,7 +42,7 @@ INC_BASE_TASK_ID_PATTERN = (
     r"(?-i:[Ii][Nn][Cc]-[Bb][Aa][Ss][Ee])-[0-9]{3}"
     r"(?![A-Za-z0-9_\x80-\U0010FFFF-])"
 )
-TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|(?:{'|'.join(TASK_ID_PREFIXES)})-[0-9]{{3}})"
+TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-[0-9]{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-[0-9]{{3}}[A-Z]?|(?:{'|'.join(TASK_ID_PREFIXES)})-[0-9]{{3}})"
 TASK_LINE = re.compile(rf"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?({TASK_ID_PATTERN})`?\s*$")
 FALLBACK_TASK = re.compile(rf"(?<![A-Z0-9])(?!SUB-AUTO-[0-9]{{3}}[A-Za-z0-9_\-\x80-\U0010FFFF]){TASK_ID_PATTERN}(?![A-Z0-9])", re.IGNORECASE)
 READINESS_DISPLAY_TITLE = re.compile(r"Production Release Readiness · ([0-9a-f]{40})")
