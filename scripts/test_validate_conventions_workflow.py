@@ -62,6 +62,9 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_production_only(self) -> None:
         self.assert_groups(["infra/production/deploy.sh"], production=True)
 
+    def test_standalone_metrics_proxy_is_production_only(self) -> None:
+        self.assert_groups(["infra/production-metrics-proxy/compose.yaml"], production=True)
+
     def test_production_rename_includes_old_and_new_paths(self) -> None:
         self.assert_groups(
             ["infra/production/deploy.sh", "docs/archive/deploy.sh"],

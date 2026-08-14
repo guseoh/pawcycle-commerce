@@ -2,7 +2,7 @@
 
 ## 상태와 경계
 
-작업 ID `OPS-OBS-001A`, 등급 `고위험`, 실행 구분 `저장소 변경`의 지속 Runbook이다. 이 문서는 AWS·Production·Secret·DB를 실행하지 않았고, Production Observability는 아직 **Production Verified가 아니다**. Managed Observability, Alertmanager, centralized logging은 범위 밖이다.
+작업 ID `OPS-OBS-001D`, 등급 `고위험`, 실행 구분 `저장소 변경`의 지속 Runbook이다. 이 문서는 AWS·Production·Secret·DB를 실행하지 않았고, Production Observability는 아직 **Production Verified가 아니다**. Managed Observability, Alertmanager, centralized logging은 범위 밖이다.
 
 ## Repository 검증
 
@@ -10,12 +10,13 @@
 
 ```bash
 bash infra/production-observability/validate-observability.sh
+bash infra/production-metrics-proxy/test-metrics-proxy.sh
 python infra/production/validate-production-contracts.py
 bash infra/production/test-production-nginx.sh
 bash infra/production/test-production-compose.sh
 ```
 
-첫 명령은 Compose interpolation, Prometheus config, 정확히 세 Grafana dashboard JSON, 고정 Prometheus/Grafana manifest의 `linux/arm64` 지원을 검증한다. Repository Validation은 같은 script와 기존 Production contract lanes를 실행한다.
+첫 두 명령은 Observability stack과 disposable external-network metrics-proxy lifecycle을 검증한다. Repository Validation은 같은 script와 기존 Production contract lanes를 실행한다.
 
 ## 실제 운영 실행 전 조건
 
@@ -26,6 +27,12 @@ bash infra/production/test-production-compose.sh
 - `PAWCYCLE_METRICS_TARGET`에는 Production metrics-proxy의 private target과 port만 runtime에서 주입한다. 실제 IP, hostname, account, instance ID는 repository에 기록하지 않는다.
 - Grafana admin user/password는 각각 root-only runtime file로 주입한다. plaintext 값과 file 내용은 명령 이력·Compose env·Git에 넣지 않는다.
 - Prometheus/Grafana의 published UI는 `127.0.0.1`만 사용한다. 운영자는 SSM port forwarding을 통해서만 접근한다.
+
+## Metrics-proxy 실제 적용 경계
+
+실제 운영 승인 후에도 기존 `/opt/pawcycle/control` HEAD를 변경하지 않는다. Application `current-sha`/`previous-sha`를 변경하지 않고 Backend/Frontend/MySQL/proxy를 recreate하지 않는다. 승인된 metrics-proxy artifact는 별도 sibling control/worktree(권장 `/opt/pawcycle/metrics-proxy-control`)에서 `infra/production-metrics-proxy` project로만 적용한다.
+
+적용 전 기존 `pawcycle-production-edge`·`pawcycle-production-app` network 존재, TCP 9464 충돌 여부, Application container IDs, current-sha/previous-sha와 active MySQL volume을 비민감 값으로 기록한다. metrics-proxy project만 기동하고 `/actuator/prometheus` 200 및 다른 path 404를 확인한다. 적용 후 같은 Application container IDs와 state가 그대로인지 비교한다. rollback은 metrics-proxy project만 `down`하며 external network, Application, DB, Flyway, volume은 건드리지 않는다.
 
 ## 적용 후 scrape·dashboard 확인
 

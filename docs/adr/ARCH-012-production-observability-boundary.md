@@ -2,11 +2,13 @@
 
 ## 상태
 
-Accepted — OPS-OBS-001A 저장소 변경. 실제 Production 적용·검증은 포함하지 않는다.
+Accepted — OPS-OBS-001D 저장소 변경. 실제 Production 적용·검증은 포함하지 않는다.
 
 ## 결정
 
-Prometheus와 Grafana는 Production application EC2와 분리된 arm64 `t4g.small` Observability EC2의 별도 Compose project로 운영한다. Production host는 Backend `:8080`을 계속 host에 공개하지 않는다. Observability host만 허용하는 Security Group ingress로 metrics 전용 port의 `metrics-proxy`에 연결하고, proxy는 `/actuator/prometheus`만 Backend에 전달하며 나머지 path는 거부한다.
+Prometheus와 Grafana는 Production application EC2와 분리된 arm64 `t4g.small` Observability EC2의 별도 Compose project로 운영한다. `metrics-proxy`도 Application release Compose와 분리된 `infra/production-metrics-proxy` sibling project로 운영한다. 이 project는 `pawcycle-production-edge`와 `pawcycle-production-app`을 external network로만 참조하고 backend fixture/service name `backend:8080`에 연결한다. Production Application Compose는 mysql/backend/frontend/proxy만 소유한다.
+
+Production host는 Backend `:8080`을 계속 host에 공개하지 않는다. Observability host만 허용하는 Security Group ingress로 metrics 전용 port의 standalone `metrics-proxy`에 연결하고, proxy는 `/actuator/prometheus`만 Backend에 전달하며 나머지 path는 거부한다.
 
 Prometheus는 30초 scrape, 7일·5GB retention과 persistent volume을 사용한다. Grafana와 Prometheus UI는 host loopback에만 bind하며, 이후 운영자 접근은 SSM port forwarding으로 한정한다. Grafana admin user/password는 runtime 외부 file로만 주입한다.
 
@@ -22,4 +24,4 @@ Prometheus는 30초 scrape, 7일·5GB retention과 persistent volume을 사용�
 
 Managed Observability(AMP/Managed Grafana)와 Alerting은 이번 결정에서 제외한다. 실제 SG·IAM·SSM·EC2·Secret 생성과 Production Compose 실행은 별도 고위험 실제 운영 실행 승인에서만 한다.
 
-Production release SHA, current/previous SHA, deploy·preflight·rollback, health/smoke/HTTPS, migration boundary와 active MySQL volume 계약은 변경하지 않는다. metrics-proxy 장애는 해당 scrape 경로만 실패시킬 수 있으며 DB·volume·migration state를 변경하는 경로를 갖지 않는다.
+Production release SHA, current/previous SHA, deploy·preflight·rollback, health/smoke/HTTPS, migration boundary와 active MySQL volume 계약은 변경하지 않는다. Application release lifecycle은 metrics-proxy를 recreate·wait·stop하지 않는다. metrics-proxy 장애는 해당 scrape 경로만 실패시킬 수 있으며 DB·volume·migration state를 변경하는 경로를 갖지 않는다.

@@ -24,7 +24,6 @@ RELEASE_CONTRACT_PATHS=(
   ':(top)infra/production/compose.yaml'
   ':(top)infra/production/nginx.conf'
   ':(top)infra/production/nginx.https.conf'
-  ':(top)infra/production/metrics-proxy.conf'
 )
 CONTROL_WORKTREE_PATHS=(
   "${RELEASE_CONTRACT_PATHS[@]}"
@@ -703,9 +702,7 @@ activate_release() {
     wait_healthy "$service" || return 1
   done
   compose up --detach --pull never --no-deps --force-recreate proxy || return 1
-  compose up --detach --pull never --no-deps --force-recreate metrics-proxy || return 1
   wait_healthy proxy || return 1
-  wait_healthy metrics-proxy || return 1
   verify_running_release || return 1
   smoke_release || return 1
   if https_enabled; then
@@ -723,9 +720,7 @@ activate_backend_runtime() {
   wait_healthy mysql || return 1
   wait_healthy frontend || return 1
   compose up --detach --pull never --no-deps --force-recreate proxy || return 1
-  compose up --detach --pull never --no-deps --force-recreate metrics-proxy || return 1
   wait_healthy proxy || return 1
-  wait_healthy metrics-proxy || return 1
   verify_running_release || return 1
   smoke_release || return 1
   if https_enabled; then

@@ -71,7 +71,7 @@ def classify(paths: list[str]) -> dict[str, bool]:
             result["backend"] = True
         elif path.startswith("frontend/"):
             result["frontend"] = True
-        elif path.startswith("infra/production/") or path.startswith("infra/production-observability/"):
+        elif path.startswith("infra/production/") or path.startswith("infra/production-observability/") or path.startswith("infra/production-metrics-proxy/"):
             result["production"] = True
         elif (
             path in HARNESS_FILES
