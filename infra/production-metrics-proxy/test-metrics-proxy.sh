@@ -35,8 +35,14 @@ start_backend_fixture() {
   local metric_value="$2"
 
   docker run --detach --name "$name" --network "$APP_NETWORK" --network-alias backend \
-    "$PROXY_IMAGE" sh -ec \
-    "printf '%s\\n' 'events { worker_connections 64; }' 'http { server { listen 8080; location = /actuator/prometheus { default_type text/plain; return 200 \\\"fixture_metric ${metric_value}\\\\n\\\"; } location / { return 404; } } }' > /tmp/nginx.conf && nginx -c /tmp/nginx.conf -g 'daemon off;'" >/dev/null
+    --env "FIXTURE_METRIC_VALUE=$metric_value" \
+    "$PROXY_IMAGE" sh -ec '
+      printf "%s\n" \
+        "events { worker_connections 64; }" \
+        "http { server { listen 8080; location = /actuator/prometheus { default_type text/plain; return 200 \"fixture_metric ${FIXTURE_METRIC_VALUE}\\n\"; } location / { return 404; } } }" \
+        > /tmp/nginx.conf
+      exec nginx -c /tmp/nginx.conf -g "daemon off;"
+    ' >/dev/null
 }
 
 wait_metric() {
@@ -75,7 +81,8 @@ assert proxy.get("read_only") is True, "metrics-proxy root filesystem must remai
 assert float(proxy["cpus"]) == 0.05, "metrics-proxy CPU limit drifted"
 assert int(proxy["mem_limit"]) == 32 * 1024 * 1024, "metrics-proxy memory limit drifted"
 assert int(proxy["pids_limit"]) == 32, "metrics-proxy PID limit drifted"
-assert "no-new-privileges:true" in proxy.get("security_opt", []), "no-new-privileges must remain enabled"
+security_opts = {item.replace("=", ":", 1) for item in proxy.get("security_opt", [])}
+assert "no-new-privileges:true" in security_opts, "no-new-privileges must remain enabled"
 assert not proxy.get("depends_on"), "standalone metrics-proxy must not own Application lifecycle"
 
 ports = proxy.get("ports", [])
