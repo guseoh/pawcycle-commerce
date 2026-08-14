@@ -28,11 +28,11 @@ final class V2SubscriptionData {
 	record ProcessedSchedule(LocalDate scheduledDate, int deliveryCycleWeeks) {}
 
 	record Snapshot(long id, long planVersionId, long packagePriceKrw, int deliveryCycleWeeks, List<Item> items) {}
+	record SnapshotBase(long id, long planVersionId, long packagePriceKrw, int deliveryCycleWeeks) {}
 	record Item(long skuId, int quantity) {}
 	record ScheduleView(long id, LocalDate scheduledDate, String status, Long effectiveSnapshotId) {}
 	record CommandHistory(String commandType, String occurredAt) {}
 	record Page<T>(int page, int size, long total, List<T> items) {}
-	record DetailProjection(java.util.Map<String, Object> body) {}
 
 	record StoredIdempotencyResult(String fingerprint, int status, String bodyJson, String location, String etag) {}
 }
