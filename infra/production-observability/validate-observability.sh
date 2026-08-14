@@ -39,6 +39,7 @@ chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
 compose_validation config --quiet
+compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
 docker run --rm --entrypoint sh \
   --volume "$SCRIPT_DIR/prometheus/prometheus.yml.tpl:/template:ro" \
@@ -50,12 +51,19 @@ if command -v python3 >/dev/null 2>&1; then
 else
   PYTHON=(py -3)
 fi
-"${PYTHON[@]}" - "$SCRIPT_DIR" <<'PY'
+"${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+compose_model = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+prometheus_command = compose_model["services"]["prometheus"]["command"]
+assert prometheus_command[:2] == ["sh", "-ec"], "Prometheus command must invoke sh -ec explicitly"
+assert len(prometheus_command) == 3, "Prometheus shell script must remain one command argument"
+assert "sed " in prometheus_command[2], "Prometheus command must render the runtime target"
+assert "exec /bin/prometheus" in prometheus_command[2], "Prometheus command must exec the server after rendering config"
+
 dashboards = sorted((root / "grafana" / "dashboards").glob("*.json"))
 assert len(dashboards) == 3, "exactly three Grafana dashboards must be provisioned"
 titles = {json.loads(path.read_text(encoding="utf-8"))["title"] for path in dashboards}
