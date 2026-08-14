@@ -11,6 +11,7 @@ SCOPE=""
 METRICS_PORT="${PAWCYCLE_METRICS_PORT:-9464}"
 CONNECT_TIMEOUT_SECONDS="${PAWCYCLE_DIAGNOSTIC_CONNECT_TIMEOUT_SECONDS:-5}"
 MAX_TIME_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_TIME_SECONDS:-10}"
+MAX_SNAPSHOT_AGE_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_SNAPSHOT_AGE_SECONDS:-120}"
 PYTHON_BIN="${PAWCYCLE_PYTHON_BIN:-python3}"
 
 usage() {
@@ -31,8 +32,13 @@ while (($#)); do
 done
 
 http_code() {
-  curl --silent --output /dev/null --write-out '%{http_code}' \
-    --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$MAX_TIME_SECONDS" "$1" || true
+  local code
+  if code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$MAX_TIME_SECONDS" "$1")"; then
+    printf '%s' "$code"
+  else
+    printf '000'
+  fi
 }
 
 valid_sha() {
@@ -79,7 +85,7 @@ read_previous_sha() {
 }
 
 production_assessment() {
-  local docker_query="$1" backend="$2" api="$3" metrics="$4" current="$5" previous="$6" volume="$7"
+  local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5" current="$6" previous="$7" volume="$8"
   local api_ok=false metrics_ok=false release_ok=false
   [[ "$api" =~ ^2[0-9][0-9]$ ]] && api_ok=true
   [[ "$metrics" =~ ^2[0-9][0-9]$ ]] && metrics_ok=true
@@ -87,7 +93,7 @@ production_assessment() {
     release_ok=true
   fi
 
-  if [[ "$docker_query" != ok || "$backend" == unknown || "$backend" == ambiguous || "$release_ok" != true ]]; then
+  if [[ "$coordination" != stable || "$docker_query" != ok || "$backend" == unknown || "$backend" == ambiguous || "$release_ok" != true ]]; then
     printf 'UNKNOWN'
   elif [[ "$backend" == healthy && "$api_ok" == true && "$metrics_ok" == true ]]; then
     printf 'READY'
@@ -102,13 +108,23 @@ production_assessment() {
 
 run_production() {
   local backend_ids backend_status docker_query api_status metrics_status
-  local current_sha previous_sha active_mysql_volume assessment
+  local current_sha previous_sha active_mysql_volume assessment generated_at_epoch
+  local release_coordination=stable diagnostic_lock_fd lock_path="$STATE_DIR/deploy.lock"
 
   [[ -z "$PROMETHEUS_URL" && -z "$PRODUCTION_RESULT" ]] || usage
+  [[ "$METRICS_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$METRICS_PORT >= 1 && 10#$METRICS_PORT <= 65535)) || usage
   if [[ -z "$HTTPS_ORIGIN" && -f "$STATE_DIR/https-domain" && ! -L "$STATE_DIR/https-domain" ]]; then
     HTTPS_ORIGIN="https://$(<"$STATE_DIR/https-domain")"
   fi
   [[ "$HTTPS_ORIGIN" =~ ^https://[^[:space:]]+$ ]] || usage
+
+  if [[ -L "$lock_path" || ! -f "$lock_path" || "$(stat -c '%a' "$lock_path" 2>/dev/null || true)" != 600 ]]; then
+    release_coordination=invalid
+  elif ! exec {diagnostic_lock_fd}<"$lock_path" || ! flock --nonblock "$diagnostic_lock_fd" 2>/dev/null; then
+    release_coordination=in_progress
+  elif [[ -e "$STATE_DIR/release-state-transition" || -L "$STATE_DIR/release-state-transition" ]]; then
+    release_coordination=in_progress
+  fi
 
   docker_query=ok
   if ! backend_ids="$(docker ps --all --quiet --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' 2>/dev/null)"; then
@@ -133,10 +149,11 @@ run_production() {
   current_sha="$(read_required_state current-sha sha)"
   previous_sha="$(read_previous_sha)"
   active_mysql_volume="$(read_required_state active-mysql-volume volume)"
-  assessment="$(production_assessment "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha" "$active_mysql_volume")"
+  generated_at_epoch="$(date +%s)"
+  assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha" "$active_mysql_volume")"
 
-  printf 'scope=production\nproduction_assessment=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\ncurrent_sha=%s\nprevious_sha=%s\nactive_mysql_volume=%s\n' \
-    "$assessment" "$docker_query" "$backend_status" "$api_status" "$metrics_status" \
+  printf 'scope=production\ngenerated_at_epoch=%s\nproduction_assessment=%s\nrelease_coordination=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\ncurrent_sha=%s\nprevious_sha=%s\nactive_mysql_volume=%s\n' \
+    "$generated_at_epoch" "$assessment" "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" \
     "$current_sha" "$previous_sha" "$active_mysql_volume"
   [[ "$assessment" == READY ]]
 }
@@ -149,22 +166,27 @@ load_production_result() {
   while IFS='=' read -r key value; do
     [[ -n "$key" && -n "$value" ]] || return 1
     case "$key" in
-      scope|production_assessment|docker_query|backend|api_products_http|metrics_proxy_http|current_sha|previous_sha|active_mysql_volume) ;;
+      scope|generated_at_epoch|production_assessment|release_coordination|docker_query|backend|api_products_http|metrics_proxy_http|current_sha|previous_sha|active_mysql_volume) ;;
       *) return 1 ;;
     esac
     [[ ! -v "SNAPSHOT[$key]" ]] || return 1
     SNAPSHOT["$key"]="$value"
   done <"$PRODUCTION_RESULT"
-  ((${#SNAPSHOT[@]} == 9)) && [[ "${SNAPSHOT[scope]:-}" == production ]]
+  ((${#SNAPSHOT[@]} == 11)) && [[ "${SNAPSHOT[scope]:-}" == production ]]
 }
 
 validate_production_result() {
-  local calculated
+  local calculated now snapshot_age
+  [[ "${SNAPSHOT[generated_at_epoch]:-}" =~ ^[0-9]{10}$ ]] || return 1
+  now="$(date +%s)"
+  snapshot_age=$((10#$now - 10#${SNAPSHOT[generated_at_epoch]}))
+  ((snapshot_age >= 0 && snapshot_age <= MAX_SNAPSHOT_AGE_SECONDS)) || return 1
+  [[ "${SNAPSHOT[release_coordination]:-}" =~ ^(stable|in_progress|invalid)$ ]] || return 1
   [[ "${SNAPSHOT[docker_query]:-}" =~ ^(ok|failed)$ ]] || return 1
   [[ "${SNAPSHOT[backend]:-}" =~ ^(healthy|unhealthy|stopped|missing|unknown|ambiguous)$ ]] || return 1
   [[ "${SNAPSHOT[api_products_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
   [[ "${SNAPSHOT[metrics_proxy_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
-  calculated="$(production_assessment "${SNAPSHOT[docker_query]}" "${SNAPSHOT[backend]}" \
+  calculated="$(production_assessment "${SNAPSHOT[release_coordination]}" "${SNAPSHOT[docker_query]}" "${SNAPSHOT[backend]}" \
     "${SNAPSHOT[api_products_http]}" "${SNAPSHOT[metrics_proxy_http]}" \
     "${SNAPSHOT[current_sha]:-}" "${SNAPSHOT[previous_sha]:-}" "${SNAPSHOT[active_mysql_volume]:-}")"
   [[ "$calculated" == "${SNAPSHOT[production_assessment]:-}" ]]
@@ -197,6 +219,7 @@ except Exception:
 run_observability() {
   local prometheus_target assessment state
   [[ -z "$HTTPS_ORIGIN" && "$STATE_DIR" == "${PAWCYCLE_STATE_DIR:-/opt/pawcycle/state}" ]] || usage
+  [[ "$MAX_SNAPSHOT_AGE_SECONDS" =~ ^[0-9]{1,4}$ ]] && ((10#$MAX_SNAPSHOT_AGE_SECONDS >= 1 && 10#$MAX_SNAPSHOT_AGE_SECONDS <= 3600)) || usage
   [[ "$PROMETHEUS_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/?$ ]] || usage
   [[ -n "$PRODUCTION_RESULT" ]] || usage
 

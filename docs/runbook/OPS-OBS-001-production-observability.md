@@ -135,7 +135,7 @@ bash <approved-repository-checkout>/infra/production/diagnose-backend-state.sh \
   --production-result /tmp/pawcycle-production-diagnostic
 ```
 
-최종 `NORMAL`만 exit `0`이다. `BACKEND_DOWN`, `OBSERVABILITY_DEGRADED`, `DEGRADED`, `UNKNOWN`은 non-zero다. Production snapshot 단계의 exit `0`은 로컬 필수 신호가 `READY`라는 뜻일 뿐 최종 `NORMAL`이 아니다. Docker 조회 실패, release state 손상, Prometheus 응답·파싱·target cardinality 불일치는 `UNKNOWN`으로 fail-closed 한다. `previous-sha`는 없을 수 있지만 존재하면 기존 state 계약과 같은 mode·SHA 형식이어야 한다. `/products` 응답은 판정에 사용하지 않는다.
+최종 `NORMAL`만 exit `0`이다. `BACKEND_DOWN`, `OBSERVABILITY_DEGRADED`, `DEGRADED`, `UNKNOWN`은 non-zero다. Production snapshot 단계의 exit `0`은 로컬 필수 신호가 `READY`라는 뜻일 뿐 최종 `NORMAL`이 아니다. Docker 조회 실패, 진행 중인 release transition, release state 손상, 기본 120초를 넘긴 snapshot, Prometheus 응답·파싱·target cardinality 불일치는 `UNKNOWN`으로 fail-closed 한다. `previous-sha`는 없을 수 있지만 존재하면 기존 state 계약과 같은 mode·SHA 형식이어야 한다. `/products` 응답은 판정에 사용하지 않는다.
 
 ## 실패·rollback 경계
 
