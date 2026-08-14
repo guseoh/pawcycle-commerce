@@ -85,7 +85,7 @@ read_previous_sha() {
 }
 
 release_coordination_status() {
-  local lock_path="$STATE_DIR/deploy.lock" lock_paths
+  local lock_path="$STATE_DIR/deploy.lock" fd
   if [[ -L "$lock_path" || ! -f "$lock_path" || "$(stat -c '%a' "$lock_path" 2>/dev/null || true)" != 600 ]]; then
     printf 'invalid'
     return
@@ -94,17 +94,13 @@ release_coordination_status() {
     printf 'in_progress'
     return
   fi
-  if ! command -v lslocks >/dev/null 2>&1; then
-    printf 'invalid'
-    return
-  fi
-  if ! lock_paths="$(lslocks --noheadings --raw --output PATH 2>/dev/null)"; then
-    printf 'invalid'
-  elif grep -Fxq "$lock_path" <<<"$lock_paths"; then
-    printf 'in_progress'
-  else
-    printf 'stable'
-  fi
+  for fd in /proc/[0-9]*/fd/*; do
+    if [[ -e "$fd" && "$fd" -ef "$lock_path" ]]; then
+      printf 'in_progress'
+      return
+    fi
+  done
+  printf 'stable'
 }
 
 production_assessment() {
