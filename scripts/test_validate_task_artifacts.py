@@ -150,7 +150,7 @@ health와 상태를 확인했다.
 
 class ValidateTaskArtifactsTest(unittest.TestCase):
     def test_ops_simple_and_subcategory_task_ids_pass(self) -> None:
-        for task_id in ("OPS-001", "OPS-PERF-001", "OPS-RECON-001", "OPS-IDEMP-001"):
+        for task_id in ("OPS-001", "OPS-PERF-001", "OPS-RECON-001", "OPS-IDEMP-001", "OPS-OBS-001A"):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(

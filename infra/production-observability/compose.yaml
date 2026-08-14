@@ -1,0 +1,65 @@
+name: pawcycle-production-observability
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
+    entrypoint: ["sh", "-ec"]
+    command: >-
+      sed "s|__PAWCYCLE_METRICS_TARGET__|$${PAWCYCLE_METRICS_TARGET}|g" /etc/prometheus/prometheus.yml.tpl
+      > /etc/prometheus-runtime/prometheus.yml && exec /bin/prometheus
+      --config.file=/etc/prometheus-runtime/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --storage.tsdb.retention.time=7d
+      --storage.tsdb.retention.size=5GB
+    environment:
+      PAWCYCLE_METRICS_TARGET: ${PAWCYCLE_METRICS_TARGET:?PAWCYCLE_METRICS_TARGET is required}
+    ports:
+      - "127.0.0.1:${PAWCYCLE_OBSERVABILITY_PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml.tpl:/etc/prometheus/prometheus.yml.tpl:ro
+      - prometheus-data:/prometheus
+    tmpfs:
+      - /etc/prometheus-runtime:size=1m,mode=1777
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 0.75
+    pids_limit: 128
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43
+    environment:
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER__FILE: /run/pawcycle-secrets/grafana-admin-user
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/pawcycle-secrets/grafana-admin-password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      prometheus:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${PAWCYCLE_OBSERVABILITY_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${PAWCYCLE_GRAFANA_ADMIN_USER_FILE:?PAWCYCLE_GRAFANA_ADMIN_USER_FILE is required}:/run/pawcycle-secrets/grafana-admin-user:ro
+      - ${PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE:?PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE is required}:/run/pawcycle-secrets/grafana-admin-password:ro
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.50
+    pids_limit: 128
+    logging: *default-logging
+
+volumes:
+  prometheus-data:
+    name: ${PAWCYCLE_OBSERVABILITY_PROMETHEUS_VOLUME:-pawcycle-production-observability-prometheus-data}
+  grafana-data:
+    name: ${PAWCYCLE_OBSERVABILITY_GRAFANA_VOLUME:-pawcycle-production-observability-grafana-data}

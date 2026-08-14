@@ -149,6 +149,42 @@ services:
     pids_limit: 64
     logging: *default-logging
 
+  metrics-proxy:
+    image: nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${PAWCYCLE_METRICS_PORT:-9464}:9464"
+    volumes:
+      - ./metrics-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --output-document=/dev/null
+        - http://127.0.0.1:9464/actuator/prometheus
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m,mode=0755
+      - /var/run:size=1m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+      - app
+    mem_limit: 32m
+    cpus: 0.05
+    pids_limit: 32
+    logging: *default-logging
+
 volumes:
   mysql-data:
     name: ${PAWCYCLE_MYSQL_VOLUME:-pawcycle-production-mysql-data}

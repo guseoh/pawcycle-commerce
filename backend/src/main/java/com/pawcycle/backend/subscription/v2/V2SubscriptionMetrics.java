@@ -8,7 +8,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -31,6 +33,9 @@ public class V2SubscriptionMetrics {
 	private final Counter commandRepairs;
 	private final Counter creationDeletes;
 	private final Counter commandDeletes;
+	private final AtomicReference<IdempotencyGaugeSnapshot> idempotencyGaugeSnapshot = new AtomicReference<>();
+	private final AtomicReference<java.time.Instant> lastGaugeRefresh = new AtomicReference<>();
+	private final Counter gaugeRefreshFailures;
 
 	public V2SubscriptionMetrics(MeterRegistry registry, JdbcTemplate jdbc, Clock clock) {
 		this.registry = registry;
@@ -45,12 +50,25 @@ public class V2SubscriptionMetrics {
 		this.cleanupFailures = registry.counter(
 				"pawcycle.subscription.idempotency.cleanup.executions", "result", "failure");
 		this.cleanupDuration = registry.timer("pawcycle.subscription.idempotency.cleanup.duration");
+		this.gaugeRefreshFailures = registry.counter("pawcycle.subscription.idempotency.metrics.refresh.failures");
 		this.creationRepairs = cleanupRows("creation", "repair");
 		this.commandRepairs = cleanupRows("command", "repair");
 		this.creationDeletes = cleanupRows("creation", "delete");
 		this.commandDeletes = cleanupRows("command", "delete");
 		registerIdempotencyGauges("creation", CREATION_TABLE);
 		registerIdempotencyGauges("command", COMMAND_TABLE);
+		Gauge.builder("pawcycle.subscription.idempotency.metrics.refresh.last.success", this, metrics -> metrics.lastGaugeRefresh.get() == null ? Double.NaN : metrics.lastGaugeRefresh.get().getEpochSecond()).register(registry);
+		Gauge.builder("pawcycle.subscription.idempotency.metrics.refresh.age.seconds", this, metrics -> metrics.lastGaugeRefresh.get() == null ? Double.NaN : Duration.between(metrics.lastGaugeRefresh.get(), metrics.clock.instant()).toSeconds()).register(registry);
+	}
+
+	@Scheduled(scheduler = "idempotencyMetricsTaskScheduler", fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}")
+	void refreshIdempotencyGauges() {
+		try {
+			idempotencyGaugeSnapshot.set(new IdempotencyGaugeSnapshot(countCompletedRows(CREATION_TABLE), countCleanupCandidates(CREATION_TABLE), countCompletedRows(COMMAND_TABLE), countCleanupCandidates(COMMAND_TABLE)));
+			lastGaugeRefresh.set(clock.instant());
+		} catch (RuntimeException exception) {
+			gaugeRefreshFailures.increment();
+		}
 	}
 
 	Timer.Sample startReconciliation() {
@@ -95,13 +113,13 @@ public class V2SubscriptionMetrics {
 		Gauge.builder(
 				"pawcycle.subscription.idempotency.retained.rows",
 				this,
-				metrics -> metrics.countCompletedRows(table))
+				metrics -> metrics.gaugeValue(scope, true))
 				.tag("scope", scope)
 				.register(registry);
 		Gauge.builder(
 				"pawcycle.subscription.idempotency.cleanup.candidates",
 				this,
-				metrics -> metrics.countCleanupCandidates(table))
+				metrics -> metrics.gaugeValue(scope, false))
 				.tag("scope", scope)
 				.register(registry);
 	}
@@ -123,6 +141,26 @@ public class V2SubscriptionMetrics {
 	private static void increment(Counter counter, int amount) {
 		if (amount > 0) {
 			counter.increment(amount);
+		}
+	}
+
+	private double gaugeValue(String scope, boolean retained) {
+		IdempotencyGaugeSnapshot snapshot = idempotencyGaugeSnapshot.get();
+		if (snapshot == null) return Double.NaN;
+		return retained ? snapshot.retainedRows(scope) : snapshot.cleanupCandidates(scope);
+	}
+
+	private record IdempotencyGaugeSnapshot(
+			double creationRetainedRows,
+			double creationCleanupCandidates,
+			double commandRetainedRows,
+			double commandCleanupCandidates) {
+		double retainedRows(String scope) {
+			return scope.equals("creation") ? creationRetainedRows : commandRetainedRows;
+		}
+
+		double cleanupCandidates(String scope) {
+			return scope.equals("creation") ? creationCleanupCandidates : commandCleanupCandidates;
 		}
 	}
 }

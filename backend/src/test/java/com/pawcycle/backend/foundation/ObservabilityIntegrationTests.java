@@ -44,7 +44,10 @@ class ObservabilityIntegrationTests {
 			"pawcycle.subscription.idempotency.cleanup.duration",
 			"pawcycle.subscription.idempotency.cleanup.rows",
 			"pawcycle.subscription.idempotency.retained.rows",
-			"pawcycle.subscription.idempotency.cleanup.candidates");
+			"pawcycle.subscription.idempotency.cleanup.candidates",
+			"pawcycle.subscription.idempotency.metrics.refresh.failures",
+			"pawcycle.subscription.idempotency.metrics.refresh.last.success",
+			"pawcycle.subscription.idempotency.metrics.refresh.age.seconds");
 
 	@Autowired private WebApplicationContext applicationContext;
 	@Autowired private MeterRegistry meterRegistry;
