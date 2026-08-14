@@ -6,7 +6,9 @@ Accepted — OPS-OBS-001D 저장소 변경. 실제 Production 적용·검증은 
 
 ## 결정
 
-Prometheus와 Grafana는 Production application EC2와 분리된 arm64 `t4g.small` Observability EC2의 별도 Compose project로 운영한다. `metrics-proxy`도 Application release Compose와 분리된 `infra/production-metrics-proxy` sibling project로 운영한다. 이 project는 `pawcycle-production-edge`와 `pawcycle-production-app`을 external network로만 참조하고 backend fixture/service name `backend:8080`에 연결한다. Production Application Compose는 mysql/backend/frontend/proxy만 소유한다.
+Prometheus와 Grafana는 Production application EC2와 분리된 arm64 `t4g.small` Observability EC2의 별도 Compose project로 운영한다. `metrics-proxy`도 Application release Compose와 분리된 `infra/production-metrics-proxy` sibling project로 운영한다. 이 project는 `pawcycle-production-edge`와 `pawcycle-production-app`을 external network로만 참조하고 backend service name `backend:8080`에 연결한다. Production Application Compose는 mysql/backend/frontend/proxy만 소유한다.
+
+Application release lifecycle이 metrics-proxy를 재기동하지 않으므로 metrics-proxy는 Docker embedded DNS resolver와 동적 upstream resolution을 사용한다. Backend container가 교체되어 `backend`의 IP가 바뀌어도 metrics-proxy를 recreate하지 않고 새 주소를 재해석할 수 있어야 한다.
 
 Production host는 Backend `:8080`을 계속 host에 공개하지 않는다. Observability host만 허용하는 Security Group ingress로 metrics 전용 port의 standalone `metrics-proxy`에 연결하고, proxy는 `/actuator/prometheus`만 Backend에 전달하며 나머지 path는 거부한다.
 

@@ -16,7 +16,7 @@ bash infra/production/test-production-nginx.sh
 bash infra/production/test-production-compose.sh
 ```
 
-첫 두 명령은 Observability stack과 disposable external-network metrics-proxy lifecycle을 검증한다. Repository Validation은 같은 script와 기존 Production contract lanes를 실행한다.
+첫 두 명령은 Observability stack과 disposable external-network metrics-proxy lifecycle을 검증한다. metrics-proxy 검증은 hardening 계약과 Backend container 교체 후 동적 DNS 재해석도 포함한다. Repository Validation은 같은 script와 기존 Production contract lanes를 실행한다.
 
 ## 실제 운영 실행 전 조건
 
@@ -30,9 +30,84 @@ bash infra/production/test-production-compose.sh
 
 ## Metrics-proxy 실제 적용 경계
 
-실제 운영 승인 후에도 기존 `/opt/pawcycle/control` HEAD를 변경하지 않는다. Application `current-sha`/`previous-sha`를 변경하지 않고 Backend/Frontend/MySQL/proxy를 recreate하지 않는다. 승인된 metrics-proxy artifact는 별도 sibling control/worktree(권장 `/opt/pawcycle/metrics-proxy-control`)에서 `infra/production-metrics-proxy` project로만 적용한다.
+실제 운영 승인 후에도 기존 `/opt/pawcycle/control` HEAD를 변경하지 않는다. Application `current-sha`/`previous-sha`를 변경하지 않고 Backend/Frontend/MySQL/proxy를 recreate하지 않는다. 승인된 metrics-proxy artifact는 별도 sibling worktree `/opt/pawcycle/metrics-proxy-control`에서 `infra/production-metrics-proxy` project로만 적용한다.
 
-적용 전 기존 `pawcycle-production-edge`·`pawcycle-production-app` network 존재, TCP 9464 충돌 여부, Application container IDs, current-sha/previous-sha와 active MySQL volume을 비민감 값으로 기록한다. metrics-proxy project만 기동하고 `/actuator/prometheus` 200 및 다른 path 404를 확인한다. 적용 후 같은 Application container IDs와 state가 그대로인지 비교한다. rollback은 metrics-proxy project만 `down`하며 external network, Application, DB, Flyway, volume은 건드리지 않는다.
+아래 명령은 **별도 고위험 실제 운영 실행 승인 후에만** Production EC2에서 사용한다. `APPROVED_SHA`에는 검토·병합이 끝난 승인 commit SHA만 넣는다.
+
+```bash
+APP_CONTROL=/opt/pawcycle/control
+METRICS_CONTROL=/opt/pawcycle/metrics-proxy-control
+APPROVED_SHA='<approved-merge-sha>'
+
+APP_CONTAINER_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
+  pawcycle-production-mysql-1 \
+  pawcycle-production-backend-1 \
+  pawcycle-production-frontend-1 \
+  pawcycle-production-proxy-1 | sort)"
+CURRENT_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/current-sha)"
+PREVIOUS_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)"
+MYSQL_VOLUME_BEFORE="$(sudo cat /opt/pawcycle/state/active-mysql-volume)"
+
+sudo docker network inspect pawcycle-production-app >/dev/null
+sudo docker network inspect pawcycle-production-edge >/dev/null
+if sudo ss -lnt | awk '{print $4}' | grep -Eq '(^|:)9464$'; then
+  echo 'TCP 9464 is already in use' >&2
+  exit 1
+fi
+
+if sudo test -e "$METRICS_CONTROL"; then
+  echo "$METRICS_CONTROL already exists; verify it explicitly instead of replacing it" >&2
+  exit 1
+fi
+
+sudo git -C "$APP_CONTROL" fetch --prune origin main
+sudo git -C "$APP_CONTROL" cat-file -e "${APPROVED_SHA}^{commit}"
+sudo git -C "$APP_CONTROL" worktree add --detach "$METRICS_CONTROL" "$APPROVED_SHA"
+test "$(sudo git -C "$METRICS_CONTROL" rev-parse HEAD)" = "$APPROVED_SHA"
+
+cd "$METRICS_CONTROL/infra/production-metrics-proxy"
+sudo env \
+  PAWCYCLE_APP_NETWORK=pawcycle-production-app \
+  PAWCYCLE_EDGE_NETWORK=pawcycle-production-edge \
+  PAWCYCLE_METRICS_PORT=9464 \
+  docker compose config --quiet
+sudo env \
+  PAWCYCLE_APP_NETWORK=pawcycle-production-app \
+  PAWCYCLE_EDGE_NETWORK=pawcycle-production-edge \
+  PAWCYCLE_METRICS_PORT=9464 \
+  docker compose pull metrics-proxy
+sudo env \
+  PAWCYCLE_APP_NETWORK=pawcycle-production-app \
+  PAWCYCLE_EDGE_NETWORK=pawcycle-production-edge \
+  PAWCYCLE_METRICS_PORT=9464 \
+  docker compose up --detach --wait --wait-timeout 60 --pull never
+
+curl -fsS http://127.0.0.1:9464/actuator/prometheus >/dev/null
+test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:9464/api/products)" = 404
+
+APP_CONTAINER_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
+  pawcycle-production-mysql-1 \
+  pawcycle-production-backend-1 \
+  pawcycle-production-frontend-1 \
+  pawcycle-production-proxy-1 | sort)"
+test "$APP_CONTAINER_IDS_AFTER" = "$APP_CONTAINER_IDS_BEFORE"
+test "$(sudo cat /opt/pawcycle/state/current-sha)" = "$CURRENT_SHA_BEFORE"
+test "$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)" = "$PREVIOUS_SHA_BEFORE"
+test "$(sudo cat /opt/pawcycle/state/active-mysql-volume)" = "$MYSQL_VOLUME_BEFORE"
+```
+
+실패 시 Application release나 DB를 복구 대상으로 삼지 않는다. 같은 sibling project에서 metrics-proxy만 내린다.
+
+```bash
+cd /opt/pawcycle/metrics-proxy-control/infra/production-metrics-proxy
+sudo env \
+  PAWCYCLE_APP_NETWORK=pawcycle-production-app \
+  PAWCYCLE_EDGE_NETWORK=pawcycle-production-edge \
+  PAWCYCLE_METRICS_PORT=9464 \
+  docker compose down --remove-orphans
+```
+
+`external: true` network는 standalone project가 소유하지 않으므로 rollback에서 삭제하지 않는다. sibling worktree 제거도 자동 rollback에 포함하지 않는다.
 
 ## 적용 후 scrape·dashboard 확인
 
@@ -47,8 +122,8 @@ metrics-proxy는 `/actuator/prometheus`만 200이며 API 및 다른 path는 404�
 ## 실패·rollback 경계
 
 - metrics target down: Prometheus targets에서 원인을 확인하고 metrics-proxy의 endpoint-only health를 확인한다. scraper만 재기동하며 Application/DB에는 개입하지 않는다.
-- metrics-proxy failure: `/actuator/prometheus` 200과 다른 path 404를 확인한다. proxy만 재기동하고 release·migration·MySQL volume은 변경하지 않는다.
+- metrics-proxy failure: `/actuator/prometheus` 200과 다른 path 404를 확인한다. standalone proxy만 재기동하거나 위 rollback 명령으로 제거하고 release·migration·MySQL volume은 변경하지 않는다.
 - Prometheus startup failure: runtime config directory writable 조건과 target injection을 확인하고 Prometheus만 재기동한다.
 - Grafana startup failure: root가 UID 472 소유·mode 0400으로 준비한 admin runtime files의 readability를 확인하고 Grafana만 재기동한다. credential 값은 출력하지 않는다.
 
-scrape 또는 metrics-proxy 실패 시 application release, DB, Flyway migration, MySQL volume, Backend/Frontend release SHA와 current/previous SHA 상태를 바꾸지 않는다. Observability Compose는 named volume을 자동 삭제하지 않는다. 저장소 준비 자체의 복구는 이 변경을 되돌리는 일반 revert PR만 사용하며 reset·rebase·force push는 사용하지 않는다. 실제 운영 rollback은 Observability service와 SG ingress만 분리해 되돌리고, 기존 Production deploy/rollback 절차에는 개입하지 않는다.
+scrape 또는 metrics-proxy 실패 시 application release, DB, Flyway migration, MySQL volume, Backend/Frontend release SHA와 current/previous SHA 상태를 바꾸지 않는다. Observability Compose는 named volume을 자동 삭제하지 않는다. 저장소 준비 자체의 복구는 이 변경을 되돌리는 일반 revert PR만 사용하며 reset·rebase·force push는 사용하지 않는다. 실제 운영 rollback은 Observability service와 standalone metrics-proxy runtime만 분리해 되돌리고, 기존 Production deploy/rollback 절차에는 개입하지 않는다.
