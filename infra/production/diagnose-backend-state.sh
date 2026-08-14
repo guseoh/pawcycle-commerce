@@ -84,6 +84,29 @@ read_previous_sha() {
   if valid_sha "$value"; then printf '%s' "$value"; else printf 'invalid'; fi
 }
 
+release_coordination_status() {
+  local lock_path="$STATE_DIR/deploy.lock" lock_paths
+  if [[ -L "$lock_path" || ! -f "$lock_path" || "$(stat -c '%a' "$lock_path" 2>/dev/null || true)" != 600 ]]; then
+    printf 'invalid'
+    return
+  fi
+  if [[ -e "$STATE_DIR/release-state-transition" || -L "$STATE_DIR/release-state-transition" ]]; then
+    printf 'in_progress'
+    return
+  fi
+  if ! command -v lslocks >/dev/null 2>&1; then
+    printf 'invalid'
+    return
+  fi
+  if ! lock_paths="$(lslocks --noheadings --raw --output PATH 2>/dev/null)"; then
+    printf 'invalid'
+  elif grep -Fxq "$lock_path" <<<"$lock_paths"; then
+    printf 'in_progress'
+  else
+    printf 'stable'
+  fi
+}
+
 production_assessment() {
   local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5" current="$6" previous="$7" volume="$8"
   local api_ok=false metrics_ok=false release_ok=false
@@ -108,8 +131,9 @@ production_assessment() {
 
 run_production() {
   local backend_ids backend_status docker_query api_status metrics_status
+  local current_sha_before previous_sha_before active_mysql_volume_before
   local current_sha previous_sha active_mysql_volume assessment generated_at_epoch
-  local release_coordination=stable diagnostic_lock_fd lock_path="$STATE_DIR/deploy.lock"
+  local release_coordination_before release_coordination_after release_coordination
 
   [[ -z "$PROMETHEUS_URL" && -z "$PRODUCTION_RESULT" ]] || usage
   [[ "$METRICS_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$METRICS_PORT >= 1 && 10#$METRICS_PORT <= 65535)) || usage
@@ -118,13 +142,10 @@ run_production() {
   fi
   [[ "$HTTPS_ORIGIN" =~ ^https://[^[:space:]]+$ ]] || usage
 
-  if [[ -L "$lock_path" || ! -f "$lock_path" || "$(stat -c '%a' "$lock_path" 2>/dev/null || true)" != 600 ]]; then
-    release_coordination=invalid
-  elif ! exec {diagnostic_lock_fd}<"$lock_path" || ! flock --nonblock "$diagnostic_lock_fd" 2>/dev/null; then
-    release_coordination=in_progress
-  elif [[ -e "$STATE_DIR/release-state-transition" || -L "$STATE_DIR/release-state-transition" ]]; then
-    release_coordination=in_progress
-  fi
+  release_coordination_before="$(release_coordination_status)"
+  current_sha_before="$(read_required_state current-sha sha)"
+  previous_sha_before="$(read_previous_sha)"
+  active_mysql_volume_before="$(read_required_state active-mysql-volume volume)"
 
   docker_query=ok
   if ! backend_ids="$(docker ps --all --quiet --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' 2>/dev/null)"; then
@@ -146,9 +167,24 @@ run_production() {
 
   api_status="$(http_code "$HTTPS_ORIGIN/api/products")"
   metrics_status="$(http_code "http://127.0.0.1:${METRICS_PORT}/actuator/prometheus")"
+
   current_sha="$(read_required_state current-sha sha)"
   previous_sha="$(read_previous_sha)"
   active_mysql_volume="$(read_required_state active-mysql-volume volume)"
+  release_coordination_after="$(release_coordination_status)"
+
+  if [[ "$release_coordination_before" != stable ]]; then
+    release_coordination="$release_coordination_before"
+  elif [[ "$release_coordination_after" != stable ]]; then
+    release_coordination="$release_coordination_after"
+  elif [[ "$current_sha_before" != "$current_sha" \
+    || "$previous_sha_before" != "$previous_sha" \
+    || "$active_mysql_volume_before" != "$active_mysql_volume" ]]; then
+    release_coordination=changed
+  else
+    release_coordination=stable
+  fi
+
   generated_at_epoch="$(date +%s)"
   assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha" "$active_mysql_volume")"
 
@@ -181,7 +217,7 @@ validate_production_result() {
   now="$(date +%s)"
   snapshot_age=$((10#$now - 10#${SNAPSHOT[generated_at_epoch]}))
   ((snapshot_age >= 0 && snapshot_age <= MAX_SNAPSHOT_AGE_SECONDS)) || return 1
-  [[ "${SNAPSHOT[release_coordination]:-}" =~ ^(stable|in_progress|invalid)$ ]] || return 1
+  [[ "${SNAPSHOT[release_coordination]:-}" =~ ^(stable|in_progress|invalid|changed)$ ]] || return 1
   [[ "${SNAPSHOT[docker_query]:-}" =~ ^(ok|failed)$ ]] || return 1
   [[ "${SNAPSHOT[backend]:-}" =~ ^(healthy|unhealthy|stopped|missing|unknown|ambiguous)$ ]] || return 1
   [[ "${SNAPSHOT[api_products_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
