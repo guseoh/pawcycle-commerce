@@ -39,6 +39,7 @@ chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
 compose_validation config --quiet
+compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
 docker run --rm --entrypoint sh \
   --volume "$SCRIPT_DIR/prometheus/prometheus.yml.tpl:/template:ro" \
@@ -50,12 +51,24 @@ if command -v python3 >/dev/null 2>&1; then
 else
   PYTHON=(py -3)
 fi
-"${PYTHON[@]}" - "$SCRIPT_DIR" <<'PY'
+"${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+compose_model = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+prometheus = compose_model["services"]["prometheus"]
+prometheus_entrypoint = prometheus["entrypoint"]
+prometheus_command = prometheus["command"]
+assert prometheus_entrypoint == ["sh", "-ec"], "Prometheus entrypoint must invoke sh -ec explicitly"
+assert len(prometheus_command) == 1, "Prometheus shell script must remain one command argument"
+script = prometheus_command[0]
+assert "sed " in script, "Prometheus command must render the runtime target"
+assert "__PAWCYCLE_METRICS_TARGET__" in script, "Prometheus command must preserve the template placeholder"
+assert "PAWCYCLE_METRICS_TARGET" in script, "Prometheus command must preserve runtime target expansion"
+assert "exec /bin/prometheus" in script, "Prometheus command must exec the server after rendering config"
+
 dashboards = sorted((root / "grafana" / "dashboards").glob("*.json"))
 assert len(dashboards) == 3, "exactly three Grafana dashboards must be provisioned"
 titles = {json.loads(path.read_text(encoding="utf-8"))["title"] for path in dashboards}
@@ -74,6 +87,8 @@ for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE"; do
 done
 
 compose_validation up --detach --wait --wait-timeout 60
+compose_validation exec --no-TTY prometheus \
+  grep -Fq 'metrics-proxy.example.invalid:9464' /etc/prometheus-runtime/prometheus.yml
 compose_validation down --volumes --remove-orphans >/dev/null
 
 printf 'Production observability Compose, Prometheus, Grafana dashboard, and ARM64 image validation passed\n'

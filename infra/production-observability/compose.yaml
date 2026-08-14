@@ -10,13 +10,14 @@ services:
   prometheus:
     image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
     entrypoint: ["sh", "-ec"]
-    command: >-
-      sed "s|__PAWCYCLE_METRICS_TARGET__|$${PAWCYCLE_METRICS_TARGET}|g" /etc/prometheus/prometheus.yml.tpl
-      > /etc/prometheus-runtime/prometheus.yml && exec /bin/prometheus
-      --config.file=/etc/prometheus-runtime/prometheus.yml
-      --storage.tsdb.path=/prometheus
-      --storage.tsdb.retention.time=7d
-      --storage.tsdb.retention.size=5GB
+    command:
+      - >-
+        sed "s|__PAWCYCLE_METRICS_TARGET__|$${PAWCYCLE_METRICS_TARGET}|g" /etc/prometheus/prometheus.yml.tpl
+        > /etc/prometheus-runtime/prometheus.yml && exec /bin/prometheus
+        --config.file=/etc/prometheus-runtime/prometheus.yml
+        --storage.tsdb.path=/prometheus
+        --storage.tsdb.retention.time=7d
+        --storage.tsdb.retention.size=5GB
     environment:
       PAWCYCLE_METRICS_TARGET: ${PAWCYCLE_METRICS_TARGET:?PAWCYCLE_METRICS_TARGET is required}
     ports:
