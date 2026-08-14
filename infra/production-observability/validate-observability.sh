@@ -6,9 +6,30 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROMETHEUS_IMAGE="prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69"
 GRAFANA_IMAGE="grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43"
 TEMP_DIR="$(mktemp -d)"
+VALIDATION_ID="obs-validation-${RANDOM}-$$"
+PROJECT_NAME="pawcycle-$VALIDATION_ID"
+PROMETHEUS_VOLUME="pawcycle-$VALIDATION_ID-prometheus-data"
+GRAFANA_VOLUME="pawcycle-$VALIDATION_ID-grafana-data"
+PROMETHEUS_PORT="$((20000 + RANDOM % 10000))"
+GRAFANA_PORT="$((30000 + RANDOM % 10000))"
+
+compose_validation() {
+  PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
+  PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
+  PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
+  PAWCYCLE_OBSERVABILITY_PROMETHEUS_VOLUME="$PROMETHEUS_VOLUME" \
+  PAWCYCLE_OBSERVABILITY_GRAFANA_VOLUME="$GRAFANA_VOLUME" \
+  PAWCYCLE_OBSERVABILITY_PROMETHEUS_PORT="$PROMETHEUS_PORT" \
+  PAWCYCLE_OBSERVABILITY_GRAFANA_PORT="$GRAFANA_PORT" \
+    docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
+}
 
 cleanup() {
+  local status=$?
+  set +e
+  compose_validation down --volumes --remove-orphans >/dev/null 2>&1
   rm -rf -- "$TEMP_DIR"
+  return "$status"
 }
 trap cleanup EXIT
 
@@ -17,10 +38,7 @@ printf 'validation-only-password\n' > "$TEMP_DIR/grafana-admin-password"
 chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
-PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
-PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
-PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
-  docker compose --file "$SCRIPT_DIR/compose.yaml" config --quiet
+compose_validation config --quiet
 
 docker run --rm --entrypoint sh \
   --volume "$SCRIPT_DIR/prometheus/prometheus.yml.tpl:/template:ro" \
@@ -55,13 +73,7 @@ for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE"; do
   }
 done
 
-PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
-PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
-PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
-  docker compose --file "$SCRIPT_DIR/compose.yaml" up --detach --wait --wait-timeout 60
-PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
-PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
-PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
-  docker compose --file "$SCRIPT_DIR/compose.yaml" down >/dev/null
+compose_validation up --detach --wait --wait-timeout 60
+compose_validation down --volumes --remove-orphans >/dev/null
 
 printf 'Production observability Compose, Prometheus, Grafana dashboard, and ARM64 image validation passed\n'
