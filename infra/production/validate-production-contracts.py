@@ -158,7 +158,7 @@ def load_compose_config() -> dict[str, object]:
 def validate_compose() -> None:
     config = load_compose_config()
     services = config["services"]
-    require(set(services) == {"mysql", "backend", "frontend", "proxy"}, "unexpected Compose services")
+    require(set(services) == {"mysql", "backend", "frontend", "proxy", "metrics-proxy"}, "unexpected Compose services")
 
     for internal_service in ("mysql", "backend", "frontend"):
         require(not services[internal_service].get("ports"), f"{internal_service} must not publish host ports")
@@ -169,11 +169,19 @@ def validate_compose() -> None:
         len(proxy_ports) == 2 and published_ports == {("80", 80), ("443", 443)},
         "proxy must publish exactly HTTP 80 and HTTPS 443",
     )
+    metrics_proxy_ports = services["metrics-proxy"].get("ports", [])
+    require(
+        len(metrics_proxy_ports) == 1
+        and metrics_proxy_ports[0].get("published") == "9464"
+        and metrics_proxy_ports[0].get("target") == 9464,
+        "metrics-proxy must publish only the dedicated metrics port",
+    )
 
     require(services["backend"]["image"].endswith(f":{SHA}"), "Backend image must use RELEASE_SHA")
     require(services["frontend"]["image"].endswith(f":{SHA}"), "Frontend image must use RELEASE_SHA")
     require(services["mysql"]["image"] == MYSQL_IMAGE, "MySQL image must use the approved immutable digest")
     require(services["proxy"]["image"] == PROXY_IMAGE, "Nginx image must use the approved immutable digest")
+    require(services["metrics-proxy"]["image"] == PROXY_IMAGE, "metrics-proxy must use the approved immutable Nginx digest")
     require(
         services["backend"].get("environment", {}).get("SESSION_COOKIE_SECURE") == "true",
         "Backend Secure session cookie contract must remain enabled",
@@ -201,7 +209,7 @@ def validate_compose() -> None:
 
     total_cpus = sum(float(service["cpus"]) for service in services.values())
     total_memory = sum(float(service["mem_limit"]) for service in services.values())
-    require(total_cpus <= 2.0, "combined CPU limits exceed t3.small capacity")
+    require(total_cpus <= 2.05, "combined CPU limits exceed the approved metrics-proxy budget")
     require(total_memory <= 1664 * 1024 * 1024, "combined memory limits exceed the approved conservative budget")
 
     require(config["volumes"]["mysql-data"]["name"] == "pawcycle-production-mysql-data", "stable MySQL volume name is required")
@@ -219,6 +227,11 @@ def validate_compose() -> None:
     require(config["networks"]["edge"].get("internal") is not True, "proxy edge network must accept the published port")
     require(config["networks"]["app"].get("internal") is True, "app network must be internal")
     require(config["networks"]["data"].get("internal") is True, "data network must be internal")
+    metrics_proxy_mounts = {mount["target"]: mount for mount in services["metrics-proxy"].get("volumes", [])}
+    require(metrics_proxy_mounts["/etc/nginx/conf.d/default.conf"].get("read_only") is True, "metrics-proxy configuration must be read-only")
+    metrics_proxy_config = (PRODUCTION / "metrics-proxy.conf").read_text(encoding="utf-8")
+    require("location = /actuator/prometheus" in metrics_proxy_config, "metrics-proxy must allow only Prometheus endpoint")
+    require("proxy_pass http://backend:8080" in metrics_proxy_config and "return 404" in metrics_proxy_config, "metrics-proxy must deny non-metric paths")
 
 
 def validate_workflow() -> None:

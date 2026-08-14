@@ -8,7 +8,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -31,6 +33,8 @@ public class V2SubscriptionMetrics {
 	private final Counter commandRepairs;
 	private final Counter creationDeletes;
 	private final Counter commandDeletes;
+	private final AtomicReference<IdempotencyGaugeSnapshot> idempotencyGaugeSnapshot =
+			new AtomicReference<>(IdempotencyGaugeSnapshot.empty());
 
 	public V2SubscriptionMetrics(MeterRegistry registry, JdbcTemplate jdbc, Clock clock) {
 		this.registry = registry;
@@ -51,6 +55,15 @@ public class V2SubscriptionMetrics {
 		this.commandDeletes = cleanupRows("command", "delete");
 		registerIdempotencyGauges("creation", CREATION_TABLE);
 		registerIdempotencyGauges("command", COMMAND_TABLE);
+	}
+
+	@Scheduled(fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}")
+	void refreshIdempotencyGauges() {
+		idempotencyGaugeSnapshot.set(new IdempotencyGaugeSnapshot(
+				countCompletedRows(CREATION_TABLE),
+				countCleanupCandidates(CREATION_TABLE),
+				countCompletedRows(COMMAND_TABLE),
+				countCleanupCandidates(COMMAND_TABLE)));
 	}
 
 	Timer.Sample startReconciliation() {
@@ -95,13 +108,13 @@ public class V2SubscriptionMetrics {
 		Gauge.builder(
 				"pawcycle.subscription.idempotency.retained.rows",
 				this,
-				metrics -> metrics.countCompletedRows(table))
+				metrics -> metrics.idempotencyGaugeSnapshot.get().retainedRows(scope))
 				.tag("scope", scope)
 				.register(registry);
 		Gauge.builder(
 				"pawcycle.subscription.idempotency.cleanup.candidates",
 				this,
-				metrics -> metrics.countCleanupCandidates(table))
+				metrics -> metrics.idempotencyGaugeSnapshot.get().cleanupCandidates(scope))
 				.tag("scope", scope)
 				.register(registry);
 	}
@@ -123,6 +136,24 @@ public class V2SubscriptionMetrics {
 	private static void increment(Counter counter, int amount) {
 		if (amount > 0) {
 			counter.increment(amount);
+		}
+	}
+
+	private record IdempotencyGaugeSnapshot(
+			double creationRetainedRows,
+			double creationCleanupCandidates,
+			double commandRetainedRows,
+			double commandCleanupCandidates) {
+		static IdempotencyGaugeSnapshot empty() {
+			return new IdempotencyGaugeSnapshot(0, 0, 0, 0);
+		}
+
+		double retainedRows(String scope) {
+			return scope.equals("creation") ? creationRetainedRows : commandRetainedRows;
+		}
+
+		double cleanupCandidates(String scope) {
+			return scope.equals("creation") ? creationCleanupCandidates : commandCleanupCandidates;
 		}
 	}
 }

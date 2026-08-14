@@ -282,6 +282,7 @@ jobs:
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
             infra/production/test-db-backup-restore.sh
+          bash -n infra/production-observability/validate-observability.sh
           python infra/production/validate-production-contracts.py
           python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
@@ -291,6 +292,7 @@ jobs:
           bash infra/production/test-production-auth-session-smoke.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
+          bash infra/production-observability/validate-observability.sh
 
       - name: Validate production Compose lifecycle
         if: matrix.lane == 'compose'

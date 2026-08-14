@@ -14,6 +14,7 @@ APP_NETWORK="pawcycle-$VALIDATION_ID-app"
 DATA_NETWORK="pawcycle-$VALIDATION_ID-data"
 HTTP_PORT="18080"
 HTTPS_PORT="18443"
+METRICS_PORT="19464"
 HTTPS_DOMAIN="ops011-compose-test.duckdns.org"
 BOOTSTRAP_DOMAIN="ops011-unapproved-test.duckdns.org"
 TEMP_DIR="$(mktemp -d)"
@@ -34,7 +35,7 @@ cleanup() {
   if (( status != 0 )); then
     printf 'OPS-011 validation failed; recent non-secret service logs follow\n' >&2
     ACTIVE_SHA="$SHA_A" compose ps >&2
-    ACTIVE_SHA="$SHA_A" compose logs --tail 100 mysql backend frontend proxy >&2
+    ACTIVE_SHA="$SHA_A" compose logs --tail 100 mysql backend frontend proxy metrics-proxy >&2
   fi
   ACTIVE_SHA="$SHA_A" compose down --remove-orphans >/dev/null 2>&1
   if [[ "$VALIDATION_VOLUME" == pawcycle-ops011-* \
@@ -83,6 +84,7 @@ compose() {
   PAWCYCLE_NGINX_CONFIG="$NGINX_CONFIG" \
   PAWCYCLE_HTTP_PORT="$HTTP_PORT" \
   PAWCYCLE_HTTPS_PORT="$HTTPS_PORT" \
+  PAWCYCLE_METRICS_PORT="$METRICS_PORT" \
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
@@ -123,7 +125,9 @@ activate_and_check() {
     wait_healthy "$service"
   done
   compose up --detach --pull never --no-deps --force-recreate proxy
+  compose up --detach --pull never --no-deps --force-recreate metrics-proxy
   wait_healthy proxy
+  wait_healthy metrics-proxy
   for service in mysql proxy; do
     container_id="$(compose ps --quiet "$service")"
     configured_image="$(docker inspect --format '{{.Config.Image}}' "$container_id")"
@@ -152,6 +156,8 @@ activate_and_check() {
     curl --fail --silent --show-error "http://127.0.0.1:${HTTP_PORT}/products" >/dev/null
     curl --fail --silent --show-error "http://127.0.0.1:${HTTP_PORT}/api/products" >/dev/null
   fi
+  curl --fail --silent --show-error "http://127.0.0.1:${METRICS_PORT}/actuator/prometheus" >/dev/null
+  [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${METRICS_PORT}/api/products")" == "404" ]]
 }
 
 build_release "$SHA_A"
