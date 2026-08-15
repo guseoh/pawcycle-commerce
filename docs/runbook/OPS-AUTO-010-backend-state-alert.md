@@ -33,7 +33,7 @@ git diff --check
 
 Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 `/tmp`에 복사하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 materialize한다.
 
-아래 운영 명령은 같은 승인된 shell session에서 순서대로 수행한다. 첫 실패에서 즉시 중단하고, 예측 가능한 `/tmp` 디렉터리를 미리 삭제·재생성하지 않는다. `mktemp -d`로 현재 실행 계정이 소유한 private 작업 디렉터리를 원자적으로 만든다.
+아래 운영 명령은 같은 승인된 shell session에서 순서대로 수행한다. 첫 실패에서 즉시 중단하고, 예측 가능한 `/tmp` 디렉터리를 미리 삭제·재생성하지 않는다. `mktemp -d`로 현재 실행 계정이 소유한 private 작업 디렉터리를 원자적으로 만들고, 생성 직후 `EXIT` trap을 등록해 성공·실패와 관계없이 이번 실행의 디렉터리만 정리한다.
 
 ```bash
 set -Eeuo pipefail
@@ -41,6 +41,13 @@ umask 077
 
 APPROVED_SHA='<approved-merge-sha>'
 ALERT_ROOT="$(mktemp -d /tmp/pawcycle-backend-alert.XXXXXX)"
+cleanup_alert_root() {
+  if [[ -n "${ALERT_ROOT:-}" && "$ALERT_ROOT" == /tmp/pawcycle-backend-alert.* ]]; then
+    rm -rf -- "$ALERT_ROOT"
+  fi
+}
+trap cleanup_alert_root EXIT
+
 REPO_RAW="https://raw.githubusercontent.com/guseoh/pawcycle-commerce/${APPROVED_SHA}"
 
 chmod 700 "$ALERT_ROOT"
@@ -135,12 +142,6 @@ printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 
 ## 정리와 후속 경계
 
-검증 후 이번 실행에서 `mktemp -d`로 생성한 private alert 디렉터리만 제거한다. `FINAL_RESULT`도 그 안에 있으므로 별도 고정 경로를 삭제하지 않는다.
-
-```bash
-if [[ -n "${ALERT_ROOT:-}" && "$ALERT_ROOT" == /tmp/pawcycle-backend-alert.* ]]; then
-  rm -rf -- "$ALERT_ROOT"
-fi
-```
+`ALERT_ROOT` 생성 직후 등록한 `EXIT` trap이 정상 종료와 중간 실패 모두에서 이번 실행의 private alert 디렉터리를 제거한다. `FINAL_RESULT`도 그 안에 있으므로 별도 고정 경로를 삭제하지 않는다. 수동 정리를 추가로 실행할 필요가 없다.
 
 Production snapshot과 diagnostic script 정리는 OPS-AUTO-009 Runbook 경계를 따른다. 실제 Slack App/Incoming Webhook 생성, Discord/Slack Secret 등록, cron/systemd timer 활성화, 중복 알림 억제는 별도 승인·후속 작업으로 판단한다.
