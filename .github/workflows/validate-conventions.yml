@@ -283,6 +283,8 @@ jobs:
             infra/production/test-production-compose.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
+            infra/production/dispatch-backend-state-alert.sh \
+            infra/production/test-dispatch-backend-state-alert.sh \
             infra/production/test-db-backup-restore.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
@@ -294,7 +296,12 @@ jobs:
           bash infra/production/test-ec2-status-check-alarm.sh
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
-          python -m py_compile infra/production/test-create-production-auth-smoke-member.py
+          bash infra/production/test-dispatch-backend-state-alert.sh
+          python -m py_compile \
+            infra/production/send-slack-notification.py \
+            infra/production/test-send-slack-notification.py \
+            infra/production/test-create-production-auth-smoke-member.py
+          python -m unittest infra.production.test_send_slack_notification
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
           bash infra/production-observability/validate-observability.sh
           bash infra/production-metrics-proxy/test-metrics-proxy.sh
