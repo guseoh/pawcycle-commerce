@@ -108,14 +108,17 @@ printf 'diagnostic_exit=%s\n' "$DIAG_RC"
 
 ## Discord + Slack dispatch
 
-`DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`은 승인된 runtime Secret 경계에서 환경 변수로 주입되어 있어야 한다. 값을 명령에 직접 쓰거나 `echo`, `env`, shell trace 등으로 출력하지 않는다.
+`DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`은 승인된 runtime Secret 경계에서 환경 변수로 주입되어 있어야 한다. 값을 명령에 직접 쓰거나 `echo`, `env`, shell trace 등으로 출력하지 않는다. dispatcher의 non-zero는 알림 전달 실패를 뜻할 수 있으므로 `set -e`에 의해 종료되기 전에 명시적으로 보존한다.
 
 ```bash
-PAWCYCLE_DISCORD_SENDER="$ALERT_ROOT/send-discord-notification.py" \
-PAWCYCLE_SLACK_SENDER="$ALERT_ROOT/send-slack-notification.py" \
-bash "$ALERT_ROOT/dispatch-backend-state-alert.sh" \
-  --result "$FINAL_RESULT"
-ALERT_RC=$?
+if PAWCYCLE_DISCORD_SENDER="$ALERT_ROOT/send-discord-notification.py" \
+  PAWCYCLE_SLACK_SENDER="$ALERT_ROOT/send-slack-notification.py" \
+  bash "$ALERT_ROOT/dispatch-backend-state-alert.sh" \
+    --result "$FINAL_RESULT"; then
+  ALERT_RC=0
+else
+  ALERT_RC=$?
+fi
 
 printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 ```
