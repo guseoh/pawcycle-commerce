@@ -173,17 +173,6 @@ bash /tmp/pawcycle-diagnose-backend-state.sh \
 
 최종 `NORMAL`만 exit `0`이다. `BACKEND_DOWN`, `OBSERVABILITY_DEGRADED`, `DEGRADED`, `UNKNOWN`은 non-zero다. Production snapshot 단계의 exit `0`은 로컬 필수 신호가 `READY`라는 뜻일 뿐 최종 `NORMAL`이 아니다. Docker 조회 실패, 진행 중이거나 진단 중 변경된 release, release state 손상, 기본 120초를 넘긴 snapshot, Prometheus 응답·파싱·target cardinality 불일치는 `UNKNOWN`으로 fail-closed 한다. `previous-sha`는 없을 수 있지만 존재하면 기존 state 계약과 같은 mode·SHA 형식이어야 한다. `/products` 응답은 판정에 사용하지 않는다.
 
-## OPS-AUTO-010 알림 dispatch
-
-Observability 호스트에서 최종 진단 결과 파일을 dispatcher에 전달한다. `NORMAL`은 두 채널 모두 전송하지 않고 종료한다. 다른 상태와 형식이 손상되었거나 신뢰할 수 없는 입력은 `UNKNOWN`으로 fail-closed 처리해 Discord와 Slack Incoming Webhook을 각각 시도한다. 한 채널 전송 실패는 다른 채널 시도를 막지 않으며, 전송 결과는 Production 상태 판정을 바꾸지 않는다.
-
-```bash
-bash /tmp/pawcycle-dispatch-backend-state-alert.sh \
-  --result /tmp/pawcycle-production-diagnostic-result
-```
-
-Discord와 Slack webhook 값은 각각 `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL` runtime secret 환경 변수로만 전달한다. dispatcher와 sender의 출력·payload·진단 파일에는 URL을 넣지 않는다. 실제 webhook 생성·secret 등록·cron 또는 systemd 활성화와 운영 전송은 이 저장소 변경 범위 밖이며, 별도 승인된 실제 운영 실행에서 수행한다.
-
 검증이 끝난 임시 진단 script와 snapshot은 두 호스트에서 제거할 수 있다. 이 정리는 Application control HEAD, release state, container, DB, volume을 변경하지 않는다.
 
 ```bash
