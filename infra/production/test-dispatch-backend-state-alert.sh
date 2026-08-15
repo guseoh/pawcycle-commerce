@@ -52,7 +52,7 @@ prometheus_target=down
 production_assessment=UNKNOWN
 prometheus_target=unknown
 '
-  run_case "$status" "$result" 1
+  run_case "$status" "$result" 0
   [[ "$(sort "$TEST_ROOT/$status/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
   grep -q "\"status\",\"value\":\"$status\"" "$TEST_ROOT/$status/discord.json"
   grep -q "status: $status" "$TEST_ROOT/$status/slack.json"
@@ -62,9 +62,16 @@ run_case malformed 'status=NORMAL
 production_assessment=READY
 prometheus_target=up
 unexpected=value
-' 1
+' 0
 [[ "$(sort "$TEST_ROOT/malformed/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
 grep -q '"value":"UNKNOWN"' "$TEST_ROOT/malformed/discord.json"
+
+run_case inconsistent-normal 'status=NORMAL
+production_assessment=UNKNOWN
+prometheus_target=down
+' 0
+[[ "$(sort "$TEST_ROOT/inconsistent-normal/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/inconsistent-normal/discord.json"
 
 abnormal='status=DEGRADED
 production_assessment=DEGRADED
