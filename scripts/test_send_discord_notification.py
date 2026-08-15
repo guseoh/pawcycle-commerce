@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import importlib.util
 import contextlib
+import http.client
+import importlib.util
 import io
 import json
 import sys
@@ -20,7 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / ".github" / "scripts" / "send-discord-notification.py"
 BUILDER = ROOT / ".github" / "scripts" / "build-discord-payload.py"
-WEBHOOK_URL = "https://example.invalid/webhook/opaque-value"
+WEBHOOK_URL = "https://discord.com/api/webhooks/123/opaque-value"
 
 
 def load_module(name, path):
@@ -75,6 +76,25 @@ class DiscordSenderTests(unittest.TestCase):
             code = sender.send(WEBHOOK_URL, self.payload, retries, event="pr_merged")
         return code, stdout.getvalue(), urlopen
 
+    def test_webhook_url_validation_is_restricted_and_secret_safe(self):
+        self.assertTrue(sender.valid_webhook_url(WEBHOOK_URL))
+        self.assertTrue(sender.valid_webhook_url("https://canary.discord.com/api/v10/webhooks/123/value"))
+        self.assertTrue(sender.valid_webhook_url("https://discordapp.com/api/webhooks/123/value?thread_id=7"))
+        for value in (
+            "",
+            "http://discord.com/api/webhooks/123/value",
+            "https://example.invalid/api/webhooks/123/value",
+            "https://user:password@discord.com/api/webhooks/123/value",
+            "https://discord.com:8443/api/webhooks/123/value",
+            "https://discord.com/api/webhooks/123/value#fragment",
+            "https://discord.com/api/webhooks/123/private value",
+            "https://discord.com/api/webhooks/123/private\nvalue",
+            "https://discord.com/not-api/webhooks/123/value",
+            "https://discord.com/api/webhooks/123",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(sender.valid_webhook_url(value))
+
     def test_build_request_sets_required_headers_without_exposing_url(self):
         request = sender.build_request(WEBHOOK_URL, self.payload)
         headers = "\n".join(str(value) for value in request.header_items())
@@ -118,6 +138,20 @@ class DiscordSenderTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("wait mode에는 --context-file이 필요함", stdout.getvalue())
 
+    def test_invalid_webhook_fails_without_request_or_secret_output(self):
+        invalid = "https://discord.com/api/webhooks/123/private secret"
+        with mock.patch.object(sender.urllib.request, "urlopen") as urlopen, redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(sender.send(invalid, self.payload, 1, event="pr_merged"), 1)
+            urlopen.assert_not_called()
+            self.assertNotIn("private secret", output.getvalue())
+
+    def test_invalid_url_exception_is_masked(self):
+        private_error = http.client.InvalidURL(f"invalid URL {WEBHOOK_URL}")
+        with mock.patch.object(sender.urllib.request, "urlopen", side_effect=private_error), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(sender.send(WEBHOOK_URL, self.payload, 1, event="pr_merged"), 1)
+        self.assertNotIn("opaque-value", output.getvalue())
+        self.assertIn("webhook URL 형식 오류", output.getvalue())
+
     def test_non_retryable_http_errors_fail_immediately(self):
         for status in (400, 401, 403, 404):
             with self.subTest(status=status):
@@ -152,12 +186,12 @@ class DiscordSenderTests(unittest.TestCase):
         self.assertIn("제한된 재시도 후 포기", output)
 
     def test_wait_query_is_added_and_existing_parameters_are_preserved(self):
-        result = sender.with_wait_query("https://example.invalid/hook?thread_id=7")
+        result = sender.with_wait_query(f"{WEBHOOK_URL}?thread_id=7")
         query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(result).query))
         self.assertEqual(query, {"thread_id": "7", "wait": "true"})
 
     def test_existing_wait_query_is_replaced(self):
-        result = sender.with_wait_query("https://example.invalid/hook?wait=false&thread_id=7")
+        result = sender.with_wait_query(f"{WEBHOOK_URL}?wait=false&thread_id=7")
         values = urllib.parse.parse_qs(urllib.parse.urlsplit(result).query)
         self.assertEqual(values["wait"], ["true"])
         self.assertEqual(values["thread_id"], ["7"])
@@ -167,7 +201,7 @@ class DiscordSenderTests(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse(200, json.dumps(message).encode())):
             output = io.StringIO()
             with redirect_stdout(output):
-                result = sender.send("https://example.invalid/hook", self.payload, 1, wait_for_message=True, event="pr_merged")
+                result = sender.send(WEBHOOK_URL, self.payload, 1, wait_for_message=True, event="pr_merged")
         self.assertEqual(result, 0)
         log = output.getvalue()
         self.assertIn("Discord Webhook 응답 수신: HTTP 200", log)
@@ -178,7 +212,7 @@ class DiscordSenderTests(unittest.TestCase):
 
     def test_wait_mode_rejects_message_embed_mismatch_without_logging_body_or_url(self):
         message = {"id": "message-id", "embeds": [{}], "content": "private-body"}
-        webhook = "https://example.invalid/hook/private-token"
+        webhook = "https://discord.com/api/webhooks/123/private-token"
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse(200, json.dumps(message).encode())):
             output = io.StringIO()
             with redirect_stdout(output):
@@ -203,7 +237,7 @@ class DiscordSenderTests(unittest.TestCase):
                 with mock.patch("urllib.request.urlopen", return_value=response):
                     output = io.StringIO()
                     with redirect_stdout(output):
-                        result = sender.send("https://example.invalid/hook", self.payload, 1, wait_for_message=True, event="pr_merged")
+                        result = sender.send(WEBHOOK_URL, self.payload, 1, wait_for_message=True, event="pr_merged")
                 self.assertEqual(result, 1)
                 self.assertNotIn("Discord 알림 전송 완료", output.getvalue())
 
@@ -211,7 +245,7 @@ class DiscordSenderTests(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse(204)):
             output = io.StringIO()
             with redirect_stdout(output):
-                result = sender.send("https://example.invalid/hook", self.payload, 1, event="pr_merged")
+                result = sender.send(WEBHOOK_URL, self.payload, 1, event="pr_merged")
         self.assertEqual(result, 0)
         self.assertIn("Discord Webhook 전송 완료: HTTP 204", output.getvalue())
         self.assertNotIn("Discord message contract: success", output.getvalue())
@@ -220,7 +254,7 @@ class DiscordSenderTests(unittest.TestCase):
         single = dict(self.payload)
         single["embeds"] = [self.payload["embeds"][0]]
         with mock.patch("urllib.request.urlopen") as urlopen:
-            self.assertEqual(sender.send("https://example.invalid/hook", single, 1, wait_for_message=True, event="pr_merged"), 1)
+            self.assertEqual(sender.send(WEBHOOK_URL, single, 1, wait_for_message=True, event="pr_merged"), 1)
         urlopen.assert_not_called()
 
     def test_retry_status_policy_is_preserved(self):
