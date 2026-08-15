@@ -41,7 +41,9 @@ try:
         os.close(fd)
         raise OSError
     with os.fdopen(fd, "rb") as handle:
-        raw = handle.read()
+        raw = handle.read(4097)
+    if len(raw) > 4096:
+        raise OSError
 except OSError:
     raise SystemExit(1)
 
