@@ -92,6 +92,17 @@ dispatch_case nul-input "$TEST_ROOT/nul-input/result" 0
 [[ "$(sort "$TEST_ROOT/nul-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
 grep -q '"value":"UNKNOWN"' "$TEST_ROOT/nul-input/discord.json"
 
+mkdir -p "$TEST_ROOT/oversized-input"
+python3 - "$TEST_ROOT/oversized-input/result" <<'PY'
+from pathlib import Path
+import sys
+
+Path(sys.argv[1]).write_bytes(b"x" * 4097)
+PY
+dispatch_case oversized-input "$TEST_ROOT/oversized-input/result" 0
+[[ "$(sort "$TEST_ROOT/oversized-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/oversized-input/discord.json"
+
 mkdir -p "$TEST_ROOT/symlink-input"
 printf '%s' "$normal" >"$TEST_ROOT/symlink-input/target"
 ln -s "$TEST_ROOT/symlink-input/target" "$TEST_ROOT/symlink-input/result"
