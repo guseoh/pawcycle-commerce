@@ -29,7 +29,7 @@ dispatch_case() {
   mkdir -p "$TEST_ROOT/$name"
   if CAPTURE_DIR="$TEST_ROOT/$name" FAIL_CHANNEL="$fail_channel" PAWCYCLE_DISCORD_SENDER="$TEST_ROOT/discord-sender.py" PAWCYCLE_SLACK_SENDER="$TEST_ROOT/slack-sender.py" \
     DISCORD_WEBHOOK_URL='https://example.invalid/private-discord' SLACK_WEBHOOK_URL='https://example.invalid/private-slack' \
-    bash "$DISPATCHER" --result "$result_path" >"$TEST_ROOT/$name/output" 2>&1; then code=0; else code=$?; fi
+    timeout 5s bash "$DISPATCHER" --result "$result_path" >"$TEST_ROOT/$name/output" 2>&1; then code=0; else code=$?; fi
   [[ "$code" == "$expected_code" ]]
   output="$(<"$TEST_ROOT/$name/output")"
   [[ "$output" != *private-* ]]
@@ -102,6 +102,12 @@ PY
 dispatch_case oversized-input "$TEST_ROOT/oversized-input/result" 0
 [[ "$(sort "$TEST_ROOT/oversized-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
 grep -q '"value":"UNKNOWN"' "$TEST_ROOT/oversized-input/discord.json"
+
+mkdir -p "$TEST_ROOT/fifo-input"
+mkfifo "$TEST_ROOT/fifo-input/result"
+dispatch_case fifo-input "$TEST_ROOT/fifo-input/result" 0
+[[ "$(sort "$TEST_ROOT/fifo-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/fifo-input/discord.json"
 
 mkdir -p "$TEST_ROOT/symlink-input"
 printf '%s' "$normal" >"$TEST_ROOT/symlink-input/target"
