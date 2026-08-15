@@ -57,6 +57,8 @@ class SlackSenderTests(unittest.TestCase):
             "http://hooks.slack.com/services/T000/B000/value",
             "https://example.invalid/services/T000/B000/value",
             "https://user:password@hooks.slack.com/services/T000/B000/value",
+            "https://hooks.slack.com:8443/services/T000/B000/value",
+            "https://hooks.slack.com:invalid/services/T000/B000/value",
             "https://hooks.slack.com/services/T000/B000/value?secret=query",
             "https://hooks.slack.com/services/T000/B000/value#fragment",
             "https://hooks.slack.com/services/T000/B000/secret value",
