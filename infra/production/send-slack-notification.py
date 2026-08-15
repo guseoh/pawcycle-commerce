@@ -22,11 +22,13 @@ def valid_webhook_url(url: str) -> bool:
         return False
     try:
         parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
     except ValueError:
         return False
     return (
         parsed.scheme == "https"
         and parsed.hostname in ALLOWED_WEBHOOK_HOSTS
+        and port in {None, 443}
         and parsed.username is None
         and parsed.password is None
         and not parsed.query
