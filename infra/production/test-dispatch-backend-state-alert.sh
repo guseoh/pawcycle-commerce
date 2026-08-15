@@ -73,6 +73,23 @@ prometheus_target=down
 [[ "$(sort "$TEST_ROOT/inconsistent-normal/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
 grep -q '"value":"UNKNOWN"' "$TEST_ROOT/inconsistent-normal/discord.json"
 
+mkdir -p "$TEST_ROOT/read-failure" "$TEST_ROOT/read-failure-bin"
+printf '%s' "$normal" >"$TEST_ROOT/read-failure/result"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TEST_ROOT/read-failure-bin/cat"
+chmod 500 "$TEST_ROOT/read-failure-bin/cat"
+if CAPTURE_DIR="$TEST_ROOT/read-failure" PAWCYCLE_DISCORD_SENDER="$TEST_ROOT/discord-sender.py" PAWCYCLE_SLACK_SENDER="$TEST_ROOT/slack-sender.py" \
+  DISCORD_WEBHOOK_URL='https://example.invalid/private-discord' SLACK_WEBHOOK_URL='https://example.invalid/private-slack' \
+  PATH="$TEST_ROOT/read-failure-bin:$PATH" bash "$DISPATCHER" --result "$TEST_ROOT/read-failure/result" >"$TEST_ROOT/read-failure/output" 2>&1; then
+  read_failure_code=0
+else
+  read_failure_code=$?
+fi
+[[ "$read_failure_code" == 0 ]]
+[[ "$(sort "$TEST_ROOT/read-failure/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/read-failure/discord.json"
+read_failure_output="$(<"$TEST_ROOT/read-failure/output")"
+[[ "$read_failure_output" != *private-* ]]
+
 abnormal='status=DEGRADED
 production_assessment=DEGRADED
 prometheus_target=up

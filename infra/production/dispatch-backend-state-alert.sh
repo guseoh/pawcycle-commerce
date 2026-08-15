@@ -26,9 +26,12 @@ status=UNKNOWN
 assessment=UNKNOWN
 prometheus_target=unknown
 trusted=true
+result_content=""
 declare -A RESULT=()
 
 if [[ ! -f "$RESULT_FILE" || -L "$RESULT_FILE" ]]; then
+  trusted=false
+elif ! result_content="$(cat -- "$RESULT_FILE" 2>/dev/null)"; then
   trusted=false
 else
   while IFS='=' read -r key value; do
@@ -37,7 +40,7 @@ else
       break
     fi
     RESULT["$key"]="$value"
-  done <"$RESULT_FILE"
+  done <<<"$result_content"
   if ((${#RESULT[@]} != 3)) \
     || [[ ! "${RESULT[status]:-}" =~ ^(NORMAL|BACKEND_DOWN|OBSERVABILITY_DEGRADED|DEGRADED|UNKNOWN)$ ]] \
     || [[ ! "${RESULT[production_assessment]:-}" =~ ^(READY|BACKEND_DOWN|OBSERVABILITY_DEGRADED|DEGRADED|UNKNOWN)$ ]] \

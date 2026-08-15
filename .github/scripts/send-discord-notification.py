@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import importlib.util
 import json
 import os
-import sys
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -39,6 +40,32 @@ def retry_delay(attempt: int) -> int:
 
 def should_retry(status: int) -> bool:
     return status == 429 or 500 <= status < 600
+
+
+def valid_webhook_url(url: str) -> bool:
+    if not url or any(character.isspace() or ord(character) < 32 for character in url):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    hostname = (parsed.hostname or "").lower()
+    host_allowed = (
+        hostname == "discord.com"
+        or hostname.endswith(".discord.com")
+        or hostname == "discordapp.com"
+        or hostname.endswith(".discordapp.com")
+    )
+    return (
+        parsed.scheme == "https"
+        and host_allowed
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, 443)
+        and not parsed.fragment
+        and re.fullmatch(r"/api(?:/v[0-9]+)?/webhooks/[^/]+/[^/]+/?", parsed.path) is not None
+    )
 
 
 def build_request(url: str, payload: dict[str, object]) -> urllib.request.Request:
@@ -75,7 +102,14 @@ def send(url: str, payload: dict[str, object], retries: int, *, wait_for_message
     except ValueError as exc:
         summary(f"Discord payload contract failure: {exc}")
         return 1
-    request_url = with_wait_query(url) if wait_for_message else url
+    if not valid_webhook_url(url):
+        summary("Discord 알림 실패: webhook URL 형식 오류")
+        return 1
+    try:
+        request_url = with_wait_query(url) if wait_for_message else url
+    except ValueError:
+        summary("Discord 알림 실패: webhook URL 형식 오류")
+        return 1
     for attempt in range(1, retries + 1):
         try:
             with urllib.request.urlopen(build_request(request_url, payload), timeout=15) as response:
@@ -115,6 +149,9 @@ def send(url: str, payload: dict[str, object], retries: int, *, wait_for_message
             summary(f"Discord 알림 전송 재시도: HTTP {status}, attempt={attempt}/{retries}")
         except urllib.error.URLError:
             summary(f"Discord 알림 전송 재시도: 네트워크 오류, attempt={attempt}/{retries}")
+        except (ValueError, http.client.InvalidURL):
+            summary("Discord 알림 실패: webhook URL 형식 오류")
+            return 1
 
         if attempt < retries:
             time.sleep(retry_delay(attempt))
