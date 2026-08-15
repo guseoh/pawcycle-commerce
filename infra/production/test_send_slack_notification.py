@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import importlib.util
 import io
-import json
 import sys
 import tempfile
 import unittest
@@ -17,7 +17,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "infra" / "production" / "send-slack-notification.py"
-WEBHOOK_URL = "https://example.invalid/slack/opaque-value"
+WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/opaque-value"
 
 
 def load_module():
@@ -49,6 +49,23 @@ class FakeResponse:
 class SlackSenderTests(unittest.TestCase):
     payload = {"text": "PawCycle Backend State Alert\nstatus: UNKNOWN"}
 
+    def test_webhook_url_validation_is_restricted_and_secret_safe(self):
+        self.assertTrue(sender.valid_webhook_url(WEBHOOK_URL))
+        self.assertTrue(sender.valid_webhook_url("https://hooks.slack-gov.com/services/T000/B000/value"))
+        for value in (
+            "",
+            "http://hooks.slack.com/services/T000/B000/value",
+            "https://example.invalid/services/T000/B000/value",
+            "https://user:password@hooks.slack.com/services/T000/B000/value",
+            "https://hooks.slack.com/services/T000/B000/value?secret=query",
+            "https://hooks.slack.com/services/T000/B000/value#fragment",
+            "https://hooks.slack.com/services/T000/B000/secret value",
+            "https://hooks.slack.com/services/T000/B000/secret\nvalue",
+            "https://hooks.slack.com/not-services/T000/B000/value",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(sender.valid_webhook_url(value))
+
     def test_request_uses_json_headers_without_exposing_url(self):
         request = sender.build_request(WEBHOOK_URL, self.payload)
         headers = "\n".join(str(value) for value in request.header_items())
@@ -58,13 +75,27 @@ class SlackSenderTests(unittest.TestCase):
         self.assertNotIn(WEBHOOK_URL, headers)
         self.assertNotIn("opaque-value", headers)
 
-    def test_success_and_failures_do_not_log_webhook_or_response_body(self):
-        for effect, expected in ((FakeResponse(200), 0), (urllib.error.HTTPError(WEBHOOK_URL, 403, "forbidden", {}, io.BytesIO(b"private-body")), 1), (urllib.error.URLError("network"), 1)):
+    def test_success_and_transport_failures_do_not_log_webhook_or_response_body(self):
+        effects = (
+            (FakeResponse(200), 0),
+            (urllib.error.HTTPError(WEBHOOK_URL, 403, "forbidden", {}, io.BytesIO(b"private-body")), 1),
+            (urllib.error.URLError("network"), 1),
+            (ValueError(f"invalid URL {WEBHOOK_URL}"), 1),
+            (http.client.InvalidURL(f"invalid URL {WEBHOOK_URL}"), 1),
+        )
+        for effect, expected in effects:
             side_effect = effect if isinstance(effect, BaseException) else lambda *_args, response=effect, **_kwargs: response
-            with self.subTest(expected=expected), mock.patch.object(sender.urllib.request, "urlopen", side_effect=side_effect), contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.subTest(effect=type(effect).__name__), mock.patch.object(sender.urllib.request, "urlopen", side_effect=side_effect), contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(sender.send(WEBHOOK_URL, self.payload), expected)
                 self.assertNotIn("opaque-value", output.getvalue())
                 self.assertNotIn("private-body", output.getvalue())
+
+    def test_invalid_webhook_fails_without_request_or_secret_output(self):
+        invalid = "https://hooks.slack.com/services/T000/B000/private value"
+        with mock.patch.object(sender.urllib.request, "urlopen") as urlopen, contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(sender.send(invalid, self.payload), 1)
+            urlopen.assert_not_called()
+            self.assertNotIn("private value", output.getvalue())
 
     def test_missing_webhook_and_invalid_payload_fail_closed(self):
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
