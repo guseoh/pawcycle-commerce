@@ -50,6 +50,13 @@ if [[ "$trusted" == true ]]; then
   status="${RESULT[status]}"
   assessment="${RESULT[production_assessment]}"
   prometheus_target="${RESULT[prometheus_target]}"
+
+  if [[ "$status" == NORMAL && ( "$assessment" != READY || "$prometheus_target" != up ) ]]; then
+    trusted=false
+    status=UNKNOWN
+    assessment=UNKNOWN
+    prometheus_target=unknown
+  fi
 fi
 
 if [[ "$status" == NORMAL ]]; then
@@ -83,4 +90,7 @@ slack_code=$?
 set -e
 
 printf 'Backend state alert dispatch: status=%s discord=%s slack=%s\n' "$status" "$discord_code" "$slack_code"
+if ((discord_code == 0 && slack_code == 0)); then
+  exit 0
+fi
 exit 1
