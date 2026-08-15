@@ -29,17 +29,22 @@ git diff --check
 
 ## 운영 artifact 준비
 
-병합 후 실제 운영 승인이 있을 때만 Observability EC2에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 승인 commit SHA여야 한다. 실행 중 기존 control checkout HEAD를 변경하지 않는다.
+병합 후 실제 운영 승인이 있을 때만 Observability EC2에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**여야 한다. 기존 control checkout의 HEAD나 working tree를 변경하지 않고, 이번 실행만을 위한 private 임시 Git 저장소에서 승인 commit을 검증한 뒤 그 commit object에서 artifact를 직접 materialize한다.
 
-Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 `/tmp`에 복사하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 materialize한다.
+Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 준비하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 꺼낸다.
 
-아래 운영 명령은 같은 승인된 shell session에서 순서대로 수행한다. 첫 실패에서 즉시 중단하고, 예측 가능한 `/tmp` 디렉터리를 미리 삭제·재생성하지 않는다. `mktemp -d`로 현재 실행 계정이 소유한 private 작업 디렉터리를 원자적으로 만들고, 생성 직후 `EXIT` trap을 등록해 성공·실패와 관계없이 이번 실행의 디렉터리만 정리한다.
+아래 운영 명령은 같은 승인된 shell session에서 순서대로 수행한다. 첫 실패에서 즉시 중단한다. `mktemp -d`로 현재 실행 계정이 소유한 private 작업 디렉터리를 원자적으로 만들고, 생성 직후 `EXIT` trap을 등록해 성공·실패와 관계없이 이번 실행의 디렉터리만 정리한다.
 
 ```bash
 set -Eeuo pipefail
 umask 077
 
 APPROVED_SHA='<approved-merge-sha>'
+[[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+  printf 'invalid approved merge SHA\n' >&2
+  exit 64
+}
+
 ALERT_ROOT="$(mktemp -d /tmp/pawcycle-backend-alert.XXXXXX)"
 cleanup_alert_root() {
   if [[ -n "${ALERT_ROOT:-}" && "$ALERT_ROOT" == /tmp/pawcycle-backend-alert.* ]]; then
@@ -47,26 +52,29 @@ cleanup_alert_root() {
   fi
 }
 trap cleanup_alert_root EXIT
-
-REPO_RAW="https://raw.githubusercontent.com/guseoh/pawcycle-commerce/${APPROVED_SHA}"
-
 chmod 700 "$ALERT_ROOT"
 
-curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
-  "$REPO_RAW/infra/production/dispatch-backend-state-alert.sh" \
-  -o "$ALERT_ROOT/dispatch-backend-state-alert.sh"
-curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
-  "$REPO_RAW/infra/production/send-slack-notification.py" \
-  -o "$ALERT_ROOT/send-slack-notification.py"
-curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
-  "$REPO_RAW/.github/scripts/send-discord-notification.py" \
-  -o "$ALERT_ROOT/send-discord-notification.py"
-curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
-  "$REPO_RAW/.github/scripts/discord-message-contract.py" \
-  -o "$ALERT_ROOT/discord-message-contract.py"
-curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
-  "$REPO_RAW/.github/scripts/discord-payload-limits.py" \
-  -o "$ALERT_ROOT/discord-payload-limits.py"
+VERIFY_REPO="$ALERT_ROOT/repository"
+git init -q "$VERIFY_REPO"
+git -C "$VERIFY_REPO" remote add origin https://github.com/guseoh/pawcycle-commerce.git
+git -C "$VERIFY_REPO" fetch --quiet --depth=1 origin "$APPROVED_SHA"
+VERIFIED_SHA="$(git -C "$VERIFY_REPO" rev-parse --verify 'FETCH_HEAD^{commit}')"
+[[ "$VERIFIED_SHA" == "$APPROVED_SHA" ]] || {
+  printf 'approved merge SHA verification failed\n' >&2
+  exit 1
+}
+
+materialize() {
+  local source_path="$1" destination_path="$2"
+  git -C "$VERIFY_REPO" cat-file -e "${VERIFIED_SHA}:${source_path}"
+  git -C "$VERIFY_REPO" show "${VERIFIED_SHA}:${source_path}" > "$destination_path"
+}
+
+materialize infra/production/dispatch-backend-state-alert.sh "$ALERT_ROOT/dispatch-backend-state-alert.sh"
+materialize infra/production/send-slack-notification.py "$ALERT_ROOT/send-slack-notification.py"
+materialize .github/scripts/send-discord-notification.py "$ALERT_ROOT/send-discord-notification.py"
+materialize .github/scripts/discord-message-contract.py "$ALERT_ROOT/discord-message-contract.py"
+materialize .github/scripts/discord-payload-limits.py "$ALERT_ROOT/discord-payload-limits.py"
 
 chmod 500 \
   "$ALERT_ROOT/dispatch-backend-state-alert.sh" \
@@ -83,7 +91,7 @@ python3 -m py_compile \
   "$ALERT_ROOT/discord-payload-limits.py"
 ```
 
-필요하면 실행 전에 각 파일의 `git hash-object` 결과를 승인 commit의 Git blob SHA와 대조한다. Secret 값은 artifact 검증과 무관하므로 이 단계에서 출력하거나 파일에 저장하지 않는다.
+`VERIFIED_SHA`가 승인된 전체 SHA와 다르거나 artifact가 그 commit에 존재하지 않으면 즉시 중단한다. artifact는 검증된 commit object에서 `git show`로 직접 생성하므로 별도의 선택적 hash 비교에 의존하지 않는다. Secret 값은 이 단계에서 필요하지 않으며 출력하거나 파일에 저장하지 않는다.
 
 ## 최종 진단 결과 파일 생성
 
@@ -134,7 +142,7 @@ printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 
 - `NORMAL`: 진단기의 결정표와 정확히 일치하는 `READY/up` 조합일 때만 두 sender를 호출하지 않고 dispatcher exit `0`
 - 비정상 상태: 진단기의 전체 상태 결정표와 입력 세 필드가 일치할 때 해당 상태로 Discord와 Slack 모두 시도
-- NUL, symlink, unreadable/non-regular file, 형식 손상, 허용 값만으로 구성됐더라도 상태 결정표와 모순되는 입력: `UNKNOWN`으로 fail-closed
+- NUL, symlink, unreadable/non-regular file, 4096 byte 초과 입력, 형식 손상, 허용 값만으로 구성됐더라도 상태 결정표와 모순되는 입력: `UNKNOWN`으로 fail-closed
 - 두 채널 전달 성공: dispatcher exit `0`
 - 한 채널 이상 전달 실패: dispatcher non-zero
 
@@ -142,6 +150,6 @@ printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 
 ## 정리와 후속 경계
 
-`ALERT_ROOT` 생성 직후 등록한 `EXIT` trap이 정상 종료와 중간 실패 모두에서 이번 실행의 private alert 디렉터리를 제거한다. `FINAL_RESULT`도 그 안에 있으므로 별도 고정 경로를 삭제하지 않는다. 수동 정리를 추가로 실행할 필요가 없다.
+`ALERT_ROOT` 생성 직후 등록한 `EXIT` trap이 정상 종료와 중간 실패 모두에서 이번 실행의 private alert 디렉터리와 임시 Git 저장소를 제거한다. `FINAL_RESULT`도 그 안에 있으므로 별도 고정 경로를 삭제하지 않는다. 수동 정리를 추가로 실행할 필요가 없다.
 
 Production snapshot과 diagnostic script 정리는 OPS-AUTO-009 Runbook 경계를 따른다. 실제 Slack App/Incoming Webhook 생성, Discord/Slack Secret 등록, cron/systemd timer 활성화, 중복 알림 억제는 별도 승인·후속 작업으로 판단한다.
