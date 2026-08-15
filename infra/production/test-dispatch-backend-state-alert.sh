@@ -24,16 +24,22 @@ EOF
 cp "$TEST_ROOT/sender.py" "$TEST_ROOT/discord-sender.py"
 cp "$TEST_ROOT/sender.py" "$TEST_ROOT/slack-sender.py"
 
-run_case() {
-  local name="$1" result="$2" expected_code="$3" fail_channel="${4:-}" code output
+dispatch_case() {
+  local name="$1" result_path="$2" expected_code="$3" fail_channel="${4:-}" code output
   mkdir -p "$TEST_ROOT/$name"
-  printf '%s' "$result" >"$TEST_ROOT/$name/result"
   if CAPTURE_DIR="$TEST_ROOT/$name" FAIL_CHANNEL="$fail_channel" PAWCYCLE_DISCORD_SENDER="$TEST_ROOT/discord-sender.py" PAWCYCLE_SLACK_SENDER="$TEST_ROOT/slack-sender.py" \
     DISCORD_WEBHOOK_URL='https://example.invalid/private-discord' SLACK_WEBHOOK_URL='https://example.invalid/private-slack' \
-    bash "$DISPATCHER" --result "$TEST_ROOT/$name/result" >"$TEST_ROOT/$name/output" 2>&1; then code=0; else code=$?; fi
+    bash "$DISPATCHER" --result "$result_path" >"$TEST_ROOT/$name/output" 2>&1; then code=0; else code=$?; fi
   [[ "$code" == "$expected_code" ]]
   output="$(<"$TEST_ROOT/$name/output")"
   [[ "$output" != *private-* ]]
+}
+
+run_case() {
+  local name="$1" result="$2" expected_code="$3" fail_channel="${4:-}"
+  mkdir -p "$TEST_ROOT/$name"
+  printf '%s' "$result" >"$TEST_ROOT/$name/result"
+  dispatch_case "$name" "$TEST_ROOT/$name/result" "$expected_code" "$fail_channel"
 }
 
 normal='status=NORMAL
@@ -73,22 +79,29 @@ prometheus_target=down
 [[ "$(sort "$TEST_ROOT/inconsistent-normal/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
 grep -q '"value":"UNKNOWN"' "$TEST_ROOT/inconsistent-normal/discord.json"
 
-mkdir -p "$TEST_ROOT/read-failure" "$TEST_ROOT/read-failure-bin"
-printf '%s' "$normal" >"$TEST_ROOT/read-failure/result"
-printf '#!/usr/bin/env bash\nexit 1\n' >"$TEST_ROOT/read-failure-bin/cat"
-chmod 500 "$TEST_ROOT/read-failure-bin/cat"
-if CAPTURE_DIR="$TEST_ROOT/read-failure" PAWCYCLE_DISCORD_SENDER="$TEST_ROOT/discord-sender.py" PAWCYCLE_SLACK_SENDER="$TEST_ROOT/slack-sender.py" \
-  DISCORD_WEBHOOK_URL='https://example.invalid/private-discord' SLACK_WEBHOOK_URL='https://example.invalid/private-slack' \
-  PATH="$TEST_ROOT/read-failure-bin:$PATH" bash "$DISPATCHER" --result "$TEST_ROOT/read-failure/result" >"$TEST_ROOT/read-failure/output" 2>&1; then
-  read_failure_code=0
-else
-  read_failure_code=$?
-fi
-[[ "$read_failure_code" == 0 ]]
-[[ "$(sort "$TEST_ROOT/read-failure/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
-grep -q '"value":"UNKNOWN"' "$TEST_ROOT/read-failure/discord.json"
-read_failure_output="$(<"$TEST_ROOT/read-failure/output")"
-[[ "$read_failure_output" != *private-* ]]
+run_case impossible-combination 'status=BACKEND_DOWN
+production_assessment=READY
+prometheus_target=up
+' 0
+[[ "$(sort "$TEST_ROOT/impossible-combination/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/impossible-combination/discord.json"
+
+mkdir -p "$TEST_ROOT/nul-input"
+printf 'status=NOR\0MAL\nproduction_assessment=READY\nprometheus_target=up\n' >"$TEST_ROOT/nul-input/result"
+dispatch_case nul-input "$TEST_ROOT/nul-input/result" 0
+[[ "$(sort "$TEST_ROOT/nul-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/nul-input/discord.json"
+
+mkdir -p "$TEST_ROOT/symlink-input"
+printf '%s' "$normal" >"$TEST_ROOT/symlink-input/target"
+ln -s "$TEST_ROOT/symlink-input/target" "$TEST_ROOT/symlink-input/result"
+dispatch_case symlink-input "$TEST_ROOT/symlink-input/result" 0
+[[ "$(sort "$TEST_ROOT/symlink-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/symlink-input/discord.json"
+
+dispatch_case missing-input "$TEST_ROOT/does-not-exist" 0
+[[ "$(sort "$TEST_ROOT/missing-input/calls" | tr -d '\r' | tr '\n' ' ')" == 'discord slack ' ]]
+grep -q '"value":"UNKNOWN"' "$TEST_ROOT/missing-input/discord.json"
 
 abnormal='status=DEGRADED
 production_assessment=DEGRADED

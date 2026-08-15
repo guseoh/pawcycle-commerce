@@ -25,40 +25,80 @@ done
 status=UNKNOWN
 assessment=UNKNOWN
 prometheus_target=unknown
-trusted=true
-result_content=""
-declare -A RESULT=()
+parsed_result=""
 
-if [[ ! -f "$RESULT_FILE" || -L "$RESULT_FILE" ]]; then
-  trusted=false
-elif ! result_content="$(cat -- "$RESULT_FILE" 2>/dev/null)"; then
-  trusted=false
-else
-  while IFS='=' read -r key value; do
-    if [[ -z "$key" || -z "$value" || ! "$key" =~ ^(status|production_assessment|prometheus_target)$ || -v "RESULT[$key]" ]]; then
-      trusted=false
-      break
-    fi
-    RESULT["$key"]="$value"
-  done <<<"$result_content"
-  if ((${#RESULT[@]} != 3)) \
-    || [[ ! "${RESULT[status]:-}" =~ ^(NORMAL|BACKEND_DOWN|OBSERVABILITY_DEGRADED|DEGRADED|UNKNOWN)$ ]] \
-    || [[ ! "${RESULT[production_assessment]:-}" =~ ^(READY|BACKEND_DOWN|OBSERVABILITY_DEGRADED|DEGRADED|UNKNOWN)$ ]] \
-    || [[ ! "${RESULT[prometheus_target]:-}" =~ ^(up|down|unknown)$ ]]; then
-    trusted=false
-  fi
-fi
+if parsed_result="$("$PYTHON_BIN" - "$RESULT_FILE" <<'PY'
+import os
+import stat
+import sys
 
-if [[ "$trusted" == true ]]; then
-  status="${RESULT[status]}"
-  assessment="${RESULT[production_assessment]}"
-  prometheus_target="${RESULT[prometheus_target]}"
+path = sys.argv[1]
+flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+try:
+    fd = os.open(path, flags)
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
+        os.close(fd)
+        raise OSError
+    with os.fdopen(fd, "rb") as handle:
+        raw = handle.read()
+except OSError:
+    raise SystemExit(1)
 
-  if [[ "$status" == NORMAL && ( "$assessment" != READY || "$prometheus_target" != up ) ]]; then
-    trusted=false
-    status=UNKNOWN
-    assessment=UNKNOWN
-    prometheus_target=unknown
+if b"\x00" in raw or b"\r" in raw:
+    raise SystemExit(1)
+try:
+    text = raw.decode("utf-8")
+except UnicodeDecodeError:
+    raise SystemExit(1)
+
+lines = text.split("\n")
+if lines and lines[-1] == "":
+    lines.pop()
+if len(lines) != 3:
+    raise SystemExit(1)
+
+result = {}
+for line in lines:
+    key, separator, value = line.partition("=")
+    if not separator or not key or not value or "=" in value or key in result:
+        raise SystemExit(1)
+    if key not in {"status", "production_assessment", "prometheus_target"}:
+        raise SystemExit(1)
+    result[key] = value
+
+statuses = {"NORMAL", "BACKEND_DOWN", "OBSERVABILITY_DEGRADED", "DEGRADED", "UNKNOWN"}
+assessments = {"READY", "BACKEND_DOWN", "OBSERVABILITY_DEGRADED", "DEGRADED", "UNKNOWN"}
+targets = {"up", "down", "unknown"}
+status = result.get("status", "")
+assessment = result.get("production_assessment", "")
+target = result.get("prometheus_target", "")
+if status not in statuses or assessment not in assessments or target not in targets:
+    raise SystemExit(1)
+
+if target == "unknown" or assessment == "UNKNOWN":
+    expected = "UNKNOWN"
+elif assessment == "READY" and target == "up":
+    expected = "NORMAL"
+elif assessment == "BACKEND_DOWN" and target == "down":
+    expected = "BACKEND_DOWN"
+elif assessment in {"READY", "OBSERVABILITY_DEGRADED"} and target == "down":
+    expected = "OBSERVABILITY_DEGRADED"
+else:
+    expected = "DEGRADED"
+if status != expected:
+    raise SystemExit(1)
+
+print(status)
+print(assessment)
+print(target)
+PY
+)"; then
+  mapfile -t parsed_fields <<<"$parsed_result"
+  if ((${#parsed_fields[@]} == 3)); then
+    status="${parsed_fields[0]}"
+    assessment="${parsed_fields[1]}"
+    prometheus_target="${parsed_fields[2]}"
   fi
 fi
 

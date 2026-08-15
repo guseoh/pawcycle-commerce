@@ -33,13 +33,17 @@ git diff --check
 
 Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 `/tmp`에 복사하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 materialize한다.
 
+아래 운영 명령은 같은 승인된 shell session에서 순서대로 수행한다. 첫 실패에서 즉시 중단하고, 예측 가능한 `/tmp` 디렉터리를 미리 삭제·재생성하지 않는다. `mktemp -d`로 현재 실행 계정이 소유한 private 작업 디렉터리를 원자적으로 만든다.
+
 ```bash
+set -Eeuo pipefail
+umask 077
+
 APPROVED_SHA='<approved-merge-sha>'
-ALERT_ROOT=/tmp/pawcycle-backend-alert
+ALERT_ROOT="$(mktemp -d /tmp/pawcycle-backend-alert.XXXXXX)"
 REPO_RAW="https://raw.githubusercontent.com/guseoh/pawcycle-commerce/${APPROVED_SHA}"
 
-rm -rf "$ALERT_ROOT"
-mkdir -m 700 "$ALERT_ROOT"
+chmod 700 "$ALERT_ROOT"
 
 curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 \
   "$REPO_RAW/infra/production/dispatch-backend-state-alert.sh" \
@@ -76,12 +80,15 @@ python3 -m py_compile \
 
 ## 최종 진단 결과 파일 생성
 
-Production snapshot을 Observability EC2로 전달한 뒤 localhost Prometheus와 결합한 **최종 결과를 파일로 보존**해야 한다. 진단의 non-zero exit도 별도로 보존하고, 결과 파일 생성 실패와 상태 판정을 섞지 않는다.
+Production snapshot을 Observability EC2로 전달한 뒤 localhost Prometheus와 결합한 **최종 결과를 fresh file로 보존**한다. 이전 실행의 고정 경로를 재사용하지 않는다. 결과 파일은 위에서 만든 private `ALERT_ROOT` 내부에 `mktemp`로 새로 만들고 mode `0600`으로 제한한다.
+
+진단의 non-zero exit도 별도로 보존한다. 비정상 상태 자체의 non-zero와 결과 파일 생성·쓰기 실패를 같은 의미로 해석하지 않는다. fresh file이 비어 있거나 부분적으로만 기록되면 dispatcher가 입력 검증에서 `UNKNOWN`으로 fail-closed 처리한다.
 
 ```bash
 DIAG_SCRIPT=/tmp/pawcycle-diagnose-backend-state.sh
 PRODUCTION_RESULT=/tmp/pawcycle-production-diagnostic
-FINAL_RESULT=/tmp/pawcycle-backend-diagnostic-result
+FINAL_RESULT="$(mktemp "$ALERT_ROOT/diagnostic-result.XXXXXX")"
+chmod 600 "$FINAL_RESULT"
 
 if bash "$DIAG_SCRIPT" \
   --scope observability \
@@ -115,8 +122,9 @@ printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 
 판정 계약은 다음과 같다.
 
-- `NORMAL`: 두 sender 모두 호출하지 않고 dispatcher exit `0`
-- 비정상 또는 fail-closed `UNKNOWN`: Discord와 Slack 모두 시도
+- `NORMAL`: 진단기의 결정표와 정확히 일치하는 `READY/up` 조합일 때만 두 sender를 호출하지 않고 dispatcher exit `0`
+- 비정상 상태: 진단기의 전체 상태 결정표와 입력 세 필드가 일치할 때 해당 상태로 Discord와 Slack 모두 시도
+- NUL, symlink, unreadable/non-regular file, 형식 손상, 허용 값만으로 구성됐더라도 상태 결정표와 모순되는 입력: `UNKNOWN`으로 fail-closed
 - 두 채널 전달 성공: dispatcher exit `0`
 - 한 채널 이상 전달 실패: dispatcher non-zero
 
@@ -124,11 +132,12 @@ printf 'alert_dispatch_exit=%s\n' "$ALERT_RC"
 
 ## 정리와 후속 경계
 
-검증 후 이 작업에서 만든 임시 artifact와 최종 결과 파일만 제거할 수 있다.
+검증 후 이번 실행에서 `mktemp -d`로 생성한 private alert 디렉터리만 제거한다. `FINAL_RESULT`도 그 안에 있으므로 별도 고정 경로를 삭제하지 않는다.
 
 ```bash
-rm -rf /tmp/pawcycle-backend-alert
-rm -f /tmp/pawcycle-backend-diagnostic-result
+if [[ -n "${ALERT_ROOT:-}" && "$ALERT_ROOT" == /tmp/pawcycle-backend-alert.* ]]; then
+  rm -rf -- "$ALERT_ROOT"
+fi
 ```
 
 Production snapshot과 diagnostic script 정리는 OPS-AUTO-009 Runbook 경계를 따른다. 실제 Slack App/Incoming Webhook 생성, Discord/Slack Secret 등록, cron/systemd timer 활성화, 중복 알림 억제는 별도 승인·후속 작업으로 판단한다.
