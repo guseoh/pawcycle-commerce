@@ -119,6 +119,66 @@ Prometheus의 `/-/ready`가 성공하고 targets API에서 `pawcycle-production-
 
 metrics-proxy는 `/actuator/prometheus`만 200이며 API 및 다른 path는 404여야 한다. Backend `:8080` host port가 새로 공개되지 않았는지 확인한다. 이 확인은 dashboard 데이터가 정상이라는 뜻일 뿐 Production Verified 판정을 대체하지 않는다.
 
+Backend 진단은 두 호스트의 localhost 경계를 넘지 않는다. 실제 read-only 운영 승인이 있을 때 Production EC2에서 먼저 Application 신호 snapshot을 만들고, 그 비민감 출력만 승인된 SSM 세션을 통해 Observability EC2로 옮긴 뒤 localhost Prometheus와 결합한다. 두 단계 모두 lifecycle·DB·AWS를 변경하지 않는다.
+
+진단 도구 때문에 기존 `/opt/pawcycle/control` 또는 `/opt/pawcycle/observability-control` HEAD를 변경하지 않는다. 병합 후 승인된 commit의 `infra/production/diagnose-backend-state.sh` blob만 각 호스트의 `/tmp`에 materialize하고 SHA-256을 원본 blob과 대조한다. 두 호스트에서 이 준비를 먼저 끝낸 뒤 Production snapshot을 생성해야 기본 120초 freshness 안에서 전달·최종 판정을 마칠 수 있다.
+
+```bash
+# Production EC2 — 승인 artifact 준비
+CONTROL=/opt/pawcycle/control
+APPROVED_SHA='<approved-merge-sha>'
+DIAG_SCRIPT=/tmp/pawcycle-diagnose-backend-state.sh
+
+git -C "$CONTROL" fetch --prune origin main
+git -C "$CONTROL" cat-file -e "${APPROVED_SHA}^{commit}"
+EXPECTED_DIAG_SHA256="$(git -C "$CONTROL" show "${APPROVED_SHA}:infra/production/diagnose-backend-state.sh" | sha256sum | awk '{print $1}')"
+git -C "$CONTROL" show "${APPROVED_SHA}:infra/production/diagnose-backend-state.sh" > "$DIAG_SCRIPT"
+chmod 500 "$DIAG_SCRIPT"
+test "$(sha256sum "$DIAG_SCRIPT" | awk '{print $1}')" = "$EXPECTED_DIAG_SHA256"
+```
+
+```bash
+# Observability EC2 — 같은 승인 artifact 준비
+CONTROL=/opt/pawcycle/observability-control
+APPROVED_SHA='<approved-merge-sha>'
+DIAG_SCRIPT=/tmp/pawcycle-diagnose-backend-state.sh
+
+git -C "$CONTROL" fetch --prune origin main
+git -C "$CONTROL" cat-file -e "${APPROVED_SHA}^{commit}"
+EXPECTED_DIAG_SHA256="$(git -C "$CONTROL" show "${APPROVED_SHA}:infra/production/diagnose-backend-state.sh" | sha256sum | awk '{print $1}')"
+git -C "$CONTROL" show "${APPROVED_SHA}:infra/production/diagnose-backend-state.sh" > "$DIAG_SCRIPT"
+chmod 500 "$DIAG_SCRIPT"
+test "$(sha256sum "$DIAG_SCRIPT" | awk '{print $1}')" = "$EXPECTED_DIAG_SHA256"
+```
+
+준비가 끝난 뒤 Production EC2에서 snapshot을 만든다. 진단은 `deploy.lock`을 획득하지 않는다. lock 보유 여부와 transition marker를 read-only로 전·후 확인하고, 그 사이 release state가 바뀌면 `UNKNOWN`으로 판정한다.
+
+```bash
+# Production EC2
+sudo bash /tmp/pawcycle-diagnose-backend-state.sh \
+  --scope production \
+  --https-origin 'https://<approved-production-domain>' \
+  --state-dir /opt/pawcycle/state > /tmp/pawcycle-production-diagnostic
+```
+
+위 snapshot 파일만 승인된 SSM 세션으로 Observability EC2에 전달한 뒤 즉시 localhost Prometheus와 결합한다.
+
+```bash
+# Observability EC2
+bash /tmp/pawcycle-diagnose-backend-state.sh \
+  --scope observability \
+  --prometheus-url http://127.0.0.1:9090 \
+  --production-result /tmp/pawcycle-production-diagnostic
+```
+
+최종 `NORMAL`만 exit `0`이다. `BACKEND_DOWN`, `OBSERVABILITY_DEGRADED`, `DEGRADED`, `UNKNOWN`은 non-zero다. Production snapshot 단계의 exit `0`은 로컬 필수 신호가 `READY`라는 뜻일 뿐 최종 `NORMAL`이 아니다. Docker 조회 실패, 진행 중이거나 진단 중 변경된 release, release state 손상, 기본 120초를 넘긴 snapshot, Prometheus 응답·파싱·target cardinality 불일치는 `UNKNOWN`으로 fail-closed 한다. `previous-sha`는 없을 수 있지만 존재하면 기존 state 계약과 같은 mode·SHA 형식이어야 한다. `/products` 응답은 판정에 사용하지 않는다.
+
+검증이 끝난 임시 진단 script와 snapshot은 두 호스트에서 제거할 수 있다. 이 정리는 Application control HEAD, release state, container, DB, volume을 변경하지 않는다.
+
+```bash
+rm -f /tmp/pawcycle-diagnose-backend-state.sh /tmp/pawcycle-production-diagnostic
+```
+
 ## 실패·rollback 경계
 
 - metrics target down: Prometheus targets에서 원인을 확인하고 metrics-proxy의 endpoint-only health를 확인한다. scraper만 재기동하며 Application/DB에는 개입하지 않는다.

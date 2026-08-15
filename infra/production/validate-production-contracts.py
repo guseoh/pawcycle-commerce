@@ -236,6 +236,11 @@ def validate_workflow() -> None:
         require(bool(re.fullmatch(r"[0-9a-f]{40}", action_reference)), "workflow actions must be pinned to a 40-character commit")
 
     require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
+    require("infra/production/diagnose-backend-state.sh" in validation_workflow and "infra/production/test-diagnose-backend-state.sh" in validation_workflow, "Repository Validation must validate the OPS-AUTO-009 read-only diagnostic")
+    diagnostic = (PRODUCTION / "diagnose-backend-state.sh").read_text(encoding="utf-8")
+    require("--scope production" in diagnostic and "--scope observability" in diagnostic, "OPS-AUTO-009 diagnostic must preserve the two-host boundary")
+    require("^http://(127\\.0\\.0\\.1|localhost)" in diagnostic, "Prometheus diagnostic must remain loopback-only")
+    require('/api/products' in diagnostic and 'HTTPS_ORIGIN/products' not in diagnostic, "Backend diagnosis must not use the frontend /products route")
     require(
         "infra/production/subscription-automation-control.sh" in validation_workflow
         and "infra/production/subscription-automation-preflight.sh" in validation_workflow,
