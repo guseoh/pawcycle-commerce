@@ -246,3 +246,5 @@ docker exec --env MYSQL_PWD=local-validation-only "$MYSQL_CONTAINER" \
 
 ACTIVE_SHA="$SHA_A" compose down --remove-orphans
 docker volume inspect "$VALIDATION_VOLUME" --format '{{.Name}}' | grep -qx "$VALIDATION_VOLUME"
+docker volume inspect "$LETSENCRYPT_VOLUME" --format '{{.Name}}' | grep -qx "$LETSENCRYPT_VOLUME"
+printf 'OPS-011 bootstrap and HTTPS Compose lifecycle, rollback, and volume preservation passed\n'
