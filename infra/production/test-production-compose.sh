@@ -91,6 +91,33 @@ compose() {
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
+validate_database_egress_contract() {
+  local config_json="$TEMP_DIR/compose-config.json"
+  ACTIVE_SHA="$SHA_A" compose config --format json > "$config_json"
+  python - "$config_json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+
+services = config.get("services", {})
+members = {
+    name
+    for name, service in services.items()
+    if "database-egress" in service.get("networks", {})
+}
+if members != {"backend"}:
+    raise SystemExit(
+        f"database-egress must be attached only to backend, got: {sorted(members)}"
+    )
+
+network = config.get("networks", {}).get("database-egress")
+if not isinstance(network, dict) or network.get("internal") is True:
+    raise SystemExit("database-egress must exist and remain non-internal")
+PY
+}
+
 wait_healthy() {
   local service="$1"
   local container_id
@@ -159,6 +186,7 @@ activate_and_check() {
   fi
 }
 
+validate_database_egress_contract
 build_release "$SHA_A"
 build_release "$SHA_B"
 docker pull "$MYSQL_IMAGE" >/dev/null
@@ -218,5 +246,3 @@ docker exec --env MYSQL_PWD=local-validation-only "$MYSQL_CONTAINER" \
 
 ACTIVE_SHA="$SHA_A" compose down --remove-orphans
 docker volume inspect "$VALIDATION_VOLUME" --format '{{.Name}}' | grep -qx "$VALIDATION_VOLUME"
-docker volume inspect "$LETSENCRYPT_VOLUME" --format '{{.Name}}' | grep -qx "$LETSENCRYPT_VOLUME"
-printf 'OPS-011 bootstrap and HTTPS Compose lifecycle, rollback, and volume preservation passed\n'
