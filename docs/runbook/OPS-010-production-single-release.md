@@ -49,7 +49,12 @@ infra/production/nginx.https.conf
 infra/production/release-common.sh
 infra/production/deploy.sh
 infra/production/rollback.sh
+infra/production/subscription-automation-control.sh
+infra/production/subscription-automation-preflight.sh
+infra/production/production-db-restore.sh
 infra/production/materialize-ssm-env.sh
+infra/production/rds-read-only-preflight.sh
+infra/production/rds-transition-gate.sh
 ```
 
 ## 생성·적용 전 게이트
@@ -155,7 +160,12 @@ test -z "$(git status --porcelain --untracked-files=all -- \
   infra/production/release-common.sh \
   infra/production/deploy.sh \
   infra/production/rollback.sh \
-  infra/production/materialize-ssm-env.sh)"
+  infra/production/subscription-automation-control.sh \
+  infra/production/subscription-automation-preflight.sh \
+  infra/production/production-db-restore.sh \
+  infra/production/materialize-ssm-env.sh \
+  infra/production/rds-read-only-preflight.sh \
+  infra/production/rds-transition-gate.sh)"
 ```
 
 명령이 실패하거나 Control 계약 worktree가 불결하면 배포하지 않는다. `/opt/pawcycle/control`에서 직접 파일을 수정하지 않는다.
@@ -307,7 +317,7 @@ rollback은 다음을 하지 않는다.
 | GHCR tag·digest 누락 | 대상 Release 식별 불가 | workflow와 package visibility 확인 | running Container를 바꾸지 않고 중단 |
 | 같은 SHA digest drift | 이미 검증한 Release 식별자 변조 가능 | 기존 `.images`와 registry digest 비교 | 기록을 덮어쓰지 않고 Container 변경 전 중단 |
 | MySQL·Nginx pinned digest 불일치 | base image 불변성 훼손 | Compose pin과 pull 결과 비교 | tag로 우회하지 않고 중단 |
-| Control worktree 불결 | 승인되지 않은 로컬 Script·설정 실행 가능 | 지정된 일곱 파일의 `git status --porcelain` 확인 | 직접 수정 금지, clean 승인 checkout으로 복구 |
+| Control worktree 불결 | 승인되지 않은 로컬 Script·설정 실행 가능 | 지정된 Control 파일의 `git status --porcelain` 확인 | 직접 수정 금지, clean 승인 checkout으로 복구 |
 | Control HEAD와 `contract-sha` 불일치 | 승인 Control 추적 불가 | 현재 HEAD와 mode `600` state 비교 | 별도 승인 후 현재 HEAD를 명시적으로 채택하거나 승인 checkout 복구 |
 | Release 계약 차이 | Application-only 전환 안전성 없음 | SSM preflight와 deploy에서 `contract-sha`, clean Control HEAD, target의 Compose·Nginx 세 파일 비교 | 승인된 detached Control SHA와 두 contract SHA를 dispatch에 정확히 입력; activation 실패 시 자동복귀 없이 Application 중지·MySQL 보존 |
 | MySQL unhealthy | Backend 기동 차단 | `docker compose logs --tail 100 mysql` | volume 삭제 금지, disk·memory·credential 확인 |
