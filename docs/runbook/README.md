@@ -11,6 +11,7 @@
 - `github-repository-settings.md`: GitHub Settings에서 사용자가 확인할 저장소 설정
 - `OPS-009-aws-operations-foundation.md`: DEPLOY-001 AWS 운영 기반의 생성 전 게이트, 사용자 실행, 검증과 안전 정리
 - `OPS-010-production-single-release.md`: DEPLOY-002 production image 게시, 수동 단일 release, 상태 확인과 rollback
+- `OPS-DB-002-rds-migration-cutover.md`: 현재 Docker MySQL을 보존하는 future private RDS MySQL Single-AZ rehearsal·cutover·rollback readiness
 - `OPS-011-production-https.md`: DuckDNS·Let's Encrypt HTTP-01 기반 HTTPS bootstrap, 갱신과 복구
 - `SUB-AUTO-001-subscription-automation.md`: local 정기배송 주문 자동화 failure 식별, 자동 retry 관찰과 조사 경계
 - `SUB-AUTO-002-production-subscription-automation.md`: Production Scheduler OFF 배포, read-only preflight, 별도 activation·중단과 schema-boundary 복구 경계

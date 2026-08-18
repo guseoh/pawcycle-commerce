@@ -1505,6 +1505,48 @@ printf '%s' "$MANIFEST_HASH" >"$FAKE_DOCKER_STATE/volume-label-manifest-$CANDIDA
 [[ "$(<"$FAKE_DOCKER_STATE/stop-count")" == "$stop_count_before" ]]
 [[ "$(<"$STATE_DIR/active-mysql-volume")" == "pawcycle-production-mysql-data" ]]
 
+"$SCRIPT_DIR/materialize-ssm-env.sh" --ssm-prefix /pawcycle/production --output-dir "$RUNTIME_DIR" --region ap-northeast-2 >/dev/null
+grep -Fxq "PAWCYCLE_DATASOURCE_HOST='mysql'" "$RUNTIME_DIR/current/backend.env"
+grep -Fxq "PAWCYCLE_DATASOURCE_PORT='3306'" "$RUNTIME_DIR/current/backend.env"
+grep -Fxq "PAWCYCLE_DATASOURCE_SSL_MODE='DISABLED'" "$RUNTIME_DIR/current/backend.env"
+grep -Fq 'sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC' "$RUNTIME_DIR/current/backend.env"
+docker_bundle="$(readlink "$RUNTIME_DIR/current")"
+"$SCRIPT_DIR/materialize-ssm-env.sh" --ssm-prefix /pawcycle/production --output-dir "$RUNTIME_DIR" --datasource-host pawcycle-db.ap-northeast-2.rds.amazonaws.com --datasource-port 3306 --datasource-ssl-mode REQUIRED >/dev/null
+grep -Fxq "PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'" "$RUNTIME_DIR/current/backend.env"
+grep -Fq 'sslMode=REQUIRED&serverTimezone=UTC' "$RUNTIME_DIR/current/backend.env"
+if grep -Fq allowPublicKeyRetrieval "$RUNTIME_DIR/current/backend.env"; then printf 'RDS runtime retained allowPublicKeyRetrieval\n' >&2; exit 1; fi
+rds_bundle="$(readlink "$RUNTIME_DIR/current")"
+invalid_datasource(){
+  if "$SCRIPT_DIR/materialize-ssm-env.sh" --ssm-prefix /pawcycle/production --output-dir "$RUNTIME_DIR" "$@" >/dev/null 2>&1; then printf 'invalid datasource runtime was reported as success\n' >&2; exit 1; fi
+  [[ "$(readlink "$RUNTIME_DIR/current")" == "$rds_bundle" ]]
+}
+invalid_datasource --datasource-host UPPER.ap-northeast-2.rds.amazonaws.com --datasource-port 3306 --datasource-ssl-mode REQUIRED
+invalid_datasource --datasource-host pawcycle-db.ap-northeast-2.rds.amazonaws.com --datasource-port 3307 --datasource-ssl-mode REQUIRED
+invalid_datasource --datasource-host mysql --datasource-port 3306 --datasource-ssl-mode VERIFY_IDENTITY
+invalid_datasource --datasource-host $'bad\nhost' --datasource-port 3306 --datasource-ssl-mode REQUIRED
+invalid_datasource --datasource-host mysql --datasource-host mysql
+if "$SCRIPT_DIR/materialize-ssm-env.sh" --ssm-prefix /pawcycle/production --output-dir "$RUNTIME_DIR" --datasource-host >/dev/null 2>&1; then printf 'missing datasource value was reported as success\n' >&2; exit 1; fi
+[[ "$(readlink "$RUNTIME_DIR/current")" == "$rds_bundle" && "$docker_bundle" != "$rds_bundle" ]]
+valid_backend="$RUNTIME_DIR/current/backend.env.valid"
+cp "$RUNTIME_DIR/current/backend.env" "$valid_backend"
+for mutation in duplicate missing unquoted rds-url unknown spaced colon cross-file; do
+  cp "$valid_backend" "$RUNTIME_DIR/current/backend.env"
+  case "$mutation" in
+    duplicate) printf "PAWCYCLE_DATASOURCE_HOST='mysql'\n" >>"$RUNTIME_DIR/current/backend.env" ;;
+    missing) sed -i '/^PAWCYCLE_DATASOURCE_PORT=/d' "$RUNTIME_DIR/current/backend.env" ;;
+    unquoted) sed -i "s/^PAWCYCLE_DATASOURCE_SSL_MODE=.*/PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED/" "$RUNTIME_DIR/current/backend.env" ;;
+    rds-url) sed -i 's/serverTimezone=UTC/serverTimezone=UTC\&allowPublicKeyRetrieval=true/' "$RUNTIME_DIR/current/backend.env" ;;
+    unknown) printf "UNEXPECTED_KEY='value'\n" >>"$RUNTIME_DIR/current/backend.env" ;;
+    spaced) sed -i "s/^PAWCYCLE_DATASOURCE_HOST=/PAWCYCLE_DATASOURCE_HOST =/" "$RUNTIME_DIR/current/backend.env" ;;
+    colon) sed -i "s/^PAWCYCLE_DATASOURCE_HOST=/PAWCYCLE_DATASOURCE_HOST:/" "$RUNTIME_DIR/current/backend.env" ;;
+    cross-file) printf "PAWCYCLE_DATASOURCE_HOST='mysql'\n" >>"$RUNTIME_DIR/current/mysql.env" ;;
+  esac
+  if (source "$SCRIPT_DIR/release-common.sh"; validate_runtime_bundle "$RUNTIME_DIR"); then printf "tampered datasource bundle %s was reported as success\n" "$mutation" >&2; exit 1; fi
+  cp "$valid_backend" "$RUNTIME_DIR/current/backend.env"
+  [[ "$(readlink "$RUNTIME_DIR/current")" == "$rds_bundle" ]]
+done
+rm -f -- "$valid_backend"
+printf 'OPS-DB-002 datasource materialization positive and fail-closed tests passed\n'
 printf 'OPS-025 production DB restore fake success, failure, cutover, and revert lifecycle tests passed\n'
 printf 'SUB-AUTO-002 production Scheduler deployment, preflight, activation, and rollback contract tests passed\n'
 printf 'OPS-011 production script tests passed\n'

@@ -2,7 +2,7 @@
 
 ## 목적과 상태
 
-이 Runbook은 DEPLOY-002의 첫 수동 단일 release를 준비·배포·확인·복구하는 사용자 실행 절차다. GitHub Actions는 병합된 `main`의 Backend와 Frontend를 동일한 40자 commit SHA tag로 공개 GHCR에 게시하고, EC2는 두 image를 pull한다. MySQL은 같은 EC2의 고정 named volume을 사용한다.
+이 Runbook은 DEPLOY-002의 첫 수동 단일 release를 준비·배포·확인·복구하는 사용자 실행 절차다. GitHub Actions는 병합된 `main`의 Backend와 Frontend를 동일한 40자 commit SHA tag로 공개 GHCR에 게시하고, EC2는 두 image를 pull한다. MySQL은 같은 EC2의 고정 named volume을 사용하며 보존한다.
 
 - 작업 등급: 고위험
 - Region: `ap-northeast-2`
@@ -162,7 +162,7 @@ test -z "$(git status --porcelain --untracked-files=all -- \
 
 ## Secret materialize
 
-SSM prefix는 실행 입력으로만 전달한다. script는 runtime directory의 `flock`을 먼저 획득해 동시 materialize를 거부하고, 네 parameter를 각각 `--with-decryption`으로 조회한다. 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
+SSM prefix는 실행 입력으로만 전달한다. script는 runtime directory의 `flock`을 먼저 획득해 동시 materialize를 거부하고, 네 parameter를 각각 `--with-decryption`으로 조회한다. 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 기본 datasource는 `mysql:3306`, `DISABLED`이며 backend.env에 명시한다. 미래 RDS는 별도 고위험 승인 후 `--datasource-host`, `--datasource-port 3306`, `--datasource-ssl-mode REQUIRED`만 사용할 수 있다. RDS 전환 경계는 [OPS-DB-002](OPS-DB-002-rds-migration-cutover.md)를 따른다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
 
 ```bash
 cd /opt/pawcycle/control

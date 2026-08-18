@@ -34,6 +34,8 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/subscription-automation-preflight.sh'
   ':(top)infra/production/production-db-restore.sh'
   ':(top)infra/production/materialize-ssm-env.sh'
+  ':(top)infra/production/rds-read-only-preflight.sh'
+  ':(top)infra/production/rds-transition-gate.sh'
 )
 CONTRACT_SHA=""
 PENDING_CONTRACT_SHA=""
@@ -41,6 +43,10 @@ ACTIVE_MYSQL_VOLUME=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=""
+PAWCYCLE_DATASOURCE_HOST=""
+PAWCYCLE_DATASOURCE_PORT=""
+PAWCYCLE_DATASOURCE_SSL_MODE=""
+declare -A RUNTIME_LOCK_FDS=()
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -71,13 +77,24 @@ read_runtime_setting() {
   local line
   local matches=0
   local value=""
+  local encoded
+  local quote="'"
+  local prefix="${key}=${quote}"
 
   while IFS= read -r line; do
     if [[ "$line" == "$key="* ]]; then
       matches=$((matches + 1))
-      [[ "$line" =~ ^${key}=\'([^\']*)\'$ ]] \
+      [[ "$line" == "$prefix"*"$quote" ]] \
         || die "runtime setting must use the materialized single-quoted format: $key"
-      value="${BASH_REMATCH[1]}"
+      value="${line#"$prefix"}"
+      value="${value%"$quote"}"
+      encoded="$value"
+      while [[ "$encoded" == *"$quote"* ]]; do
+        [[ "$encoded" == *"\\$quote"* ]] \
+          || die "runtime setting contains an unescaped quote: $key"
+        encoded="${encoded//\\$quote/}"
+      done
+      value="${value//\\$quote/$quote}"
     fi
   done < "$file"
   [[ "$matches" -eq 1 ]] || die "runtime setting must appear exactly once: $key"
@@ -92,6 +109,65 @@ validate_subscription_automation_settings() {
     || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE must be a positive explicit integer"
   [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" =~ ^[1-9][0-9]*$ ]] \
     || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS must be a positive explicit integer"
+}
+
+validate_datasource_settings() {
+  local database="$1"
+  local user="$2"
+  local password="$3"
+  local backend_password="$4"
+  local datasource_url="$5"
+  local expected_url
+
+  [[ "$database" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "MYSQL_DATABASE has an unsafe identifier shape"
+  [[ "$user" =~ ^[A-Za-z0-9_]{1,32}$ ]] || die "MYSQL_USER has an unsafe identifier shape"
+  [[ -n "$password" && "$password" != *$'\n'* && "$password" != *$'\r'* ]] || die "MYSQL_PASSWORD has an unsafe runtime shape"
+  [[ "$backend_password" == "$password" ]] || die "backend datasource password must match the MySQL user password"
+  [[ "$PAWCYCLE_DATASOURCE_PORT" == "3306" ]] || die "datasource port must be exactly 3306"
+  [[ "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" || "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]] || die "datasource ssl mode is invalid"
+  if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
+    expected_url="jdbc:mysql://mysql:3306/${database}?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+  elif [[ "$PAWCYCLE_DATASOURCE_HOST" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+ap-northeast-2\.rds\.amazonaws\.com$ && ${#PAWCYCLE_DATASOURCE_HOST} -le 253 && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
+    expected_url="jdbc:mysql://${PAWCYCLE_DATASOURCE_HOST}:3306/${database}?sslMode=REQUIRED&serverTimezone=UTC"
+  else
+    die "datasource runtime combination is not approved"
+  fi
+  [[ "$datasource_url" == "$expected_url" ]] || die "datasource URL does not exactly match the validated runtime fields"
+}
+
+acquire_runtime_read_lock() {
+  local runtime_dir="$1"
+  local lock="$runtime_dir/.materialize.lock"
+
+  local canonical_dir
+  local fd
+  canonical_dir="$(realpath -e "$runtime_dir")" || die "unable to resolve runtime directory: $runtime_dir"
+  if [[ -n "${RUNTIME_LOCK_FDS[$canonical_dir]:-}" ]]; then
+    return 0
+  fi
+  require_command flock
+  [[ -f "$lock" && ! -L "$lock" && "$(stat -c '%a' "$lock")" == "600" ]] \
+    || die "materialize lock must be a regular mode-600 file: $lock"
+  exec {fd}<"$lock"
+  flock --shared --nonblock "$fd" || die "runtime materialization is in progress"
+  RUNTIME_LOCK_FDS[$canonical_dir]="$fd"
+}
+
+validate_runtime_key_set() {
+  local file="$1"
+  shift
+  local line key
+  local -A allowed=()
+  local -A count=()
+  for key in "$@"; do allowed[$key]=1; count[$key]=0; done
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=\'.*\'$ ]] \
+      || die "runtime file must contain only canonical single-quoted key=value lines: $file"
+    key="${BASH_REMATCH[1]}"
+    [[ -n "${allowed[$key]:-}" ]] || die "runtime file contains an unknown or cross-file key: $key"
+    count[$key]=$((count[$key] + 1))
+  done < "$file"
+  for key in "$@"; do [[ "${count[$key]}" == "1" ]] || die "runtime key must appear exactly once: $key"; done
 }
 
 require_subscription_automation_mode() {
@@ -109,6 +185,7 @@ validate_runtime_bundle() {
   local file
 
   validate_absolute_directory "$runtime_dir" "runtime directory"
+  acquire_runtime_read_lock "$runtime_dir"
   [[ -d "$current" ]] || die "materialized runtime bundle is missing: $current"
   [[ -f "$current/.complete" ]] || die "runtime bundle completion marker is missing"
 
@@ -117,15 +194,25 @@ validate_runtime_bundle() {
     [[ "$(stat -c '%a' "$file")" == "600" ]] || die "runtime file mode must be 600: $file"
   done
 
+  validate_runtime_key_set "$current/mysql.env" MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
+  validate_runtime_key_set "$current/backend.env" PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
+
+  local MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
+  local SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD
   for key in MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
-    grep -Eq "^${key}=.+$" "$current/mysql.env" || die "required runtime key is missing: $key"
+    read_runtime_setting "$current/mysql.env" "$key" "$key"
   done
-  for key in SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD; do
-    grep -Eq "^${key}=.+$" "$current/backend.env" || die "required runtime key is missing: $key"
+  for key in PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD; do
+    read_runtime_setting "$current/backend.env" "$key" "$key"
   done
   if grep -Eq '^MYSQL_ROOT_PASSWORD=' "$current/backend.env"; then
     die "Backend runtime file must not contain the MySQL root password"
   fi
+  if grep -Eq '^PAWCYCLE_DATASOURCE_' "$current/mysql.env"; then
+    die "MySQL runtime file must not contain Backend-only datasource fields"
+  fi
+  [[ "$SPRING_DATASOURCE_USERNAME" == "$MYSQL_USER" ]] || die "backend datasource username must match MYSQL_USER"
+  validate_datasource_settings "$MYSQL_DATABASE" "$MYSQL_USER" "$MYSQL_PASSWORD" "$SPRING_DATASOURCE_PASSWORD" "$SPRING_DATASOURCE_URL"
 
   read_runtime_setting "$current/backend.env" \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED
@@ -138,6 +225,7 @@ validate_runtime_bundle() {
   PAWCYCLE_MYSQL_ENV_FILE="$current/mysql.env"
   PAWCYCLE_BACKEND_ENV_FILE="$current/backend.env"
   export PAWCYCLE_MYSQL_ENV_FILE PAWCYCLE_BACKEND_ENV_FILE \
+    PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
@@ -270,6 +358,7 @@ compose() {
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
   PAWCYCLE_DATA_NETWORK="pawcycle-production-data" \
+  PAWCYCLE_DATABASE_EGRESS_NETWORK="pawcycle-production-database-egress" \
   PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
   PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
   PAWCYCLE_NGINX_CONFIG="$nginx_config" \
