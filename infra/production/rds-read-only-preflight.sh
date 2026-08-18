@@ -10,7 +10,7 @@ while (($#)); do case "$1" in --subnet-id) [[ $# -gt 1 && -n "$2" && "$2" != --*
 if [[ -n "$RDS_SG" ]]; then [[ "$RDS_SG" =~ ^sg-[0-9a-f]{8,17}$ ]] || die 'RDS security group identifier shape is invalid'; fi
 (( ${#SUBNETS[@]} >= 2 )) || die 'at least two subnet IDs are required'; declare -A wanted=(); for s in "${SUBNETS[@]}"; do [[ "$s" =~ ^subnet-[0-9a-f]{8,17}$ && -z "${wanted[$s]:-}" ]] || die 'subnet IDs must be unique and valid'; wanted[$s]=1; done
 command -v aws >/dev/null || die 'AWS CLI is required'
-aws_ro(){ case "$1:$2" in ec2:describe-instances|ec2:describe-vpcs|ec2:describe-subnets|ec2:describe-security-groups|rds:describe-orderable-db-instance-options) ;; *) die 'AWS mutation or unsupported operation is forbidden';; esac; aws "$@"; }
+aws_ro(){ case "$1:$2" in ec2:describe-instances|ec2:describe-vpcs|ec2:describe-subnets|ec2:describe-security-groups|rds:describe-orderable-db-instance-options) ;; *) die 'AWS mutation or unsupported operation is forbidden';; esac; aws "$@" | tr -d '\r'; }
 AZ="$(aws_ro ec2 describe-instances --region "$REGION" --instance-ids "$INSTANCE" --query 'Reservations[0].Instances[0].Placement.AvailabilityZone' --output text)" || die 'EC2 AZ describe failed'
 ACTUAL_VPC="$(aws_ro ec2 describe-instances --region "$REGION" --instance-ids "$INSTANCE" --query 'Reservations[0].Instances[0].VpcId' --output text)" || die 'EC2 VPC describe failed'
 STATE="$(aws_ro ec2 describe-instances --region "$REGION" --instance-ids "$INSTANCE" --query 'Reservations[0].Instances[0].State.Name' --output text)" || die 'EC2 state describe failed'
