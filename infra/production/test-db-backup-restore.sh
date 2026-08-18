@@ -169,7 +169,7 @@ case "$operation" in
     printf '%s\n' 'ap-northeast-2'
     ;;
   get-public-access-block)
-    printf '%s\n' "${FAKE_AWS_PUBLIC_BLOCK:-True\tTrue\tTrue\tTrue}"
+    printf '%s\n' "${FAKE_AWS_PUBLIC_BLOCK:-True	True	True	True}"
     ;;
   get-bucket-encryption)
     printf '%s\n' "${FAKE_AWS_ENCRYPTION:-AES256}"
