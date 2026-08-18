@@ -2,7 +2,7 @@
 
 ## 목적과 상태
 
-이 Runbook은 DEPLOY-002의 첫 수동 단일 release를 준비·배포·확인·복구하는 사용자 실행 절차다. GitHub Actions는 병합된 `main`의 Backend와 Frontend를 동일한 40자 commit SHA tag로 공개 GHCR에 게시하고, EC2는 두 image를 pull한다. MySQL은 같은 EC2의 고정 named volume을 사용한다.
+이 Runbook은 DEPLOY-002의 첫 수동 단일 release를 준비·배포·확인·복구하는 사용자 실행 절차다. GitHub Actions는 병합된 `main`의 Backend와 Frontend를 동일한 40자 commit SHA tag로 공개 GHCR에 게시하고, EC2는 두 image를 pull한다. MySQL은 같은 EC2의 고정 named volume을 사용하며 보존한다.
 
 - 작업 등급: 고위험
 - Region: `ap-northeast-2`
@@ -49,7 +49,12 @@ infra/production/nginx.https.conf
 infra/production/release-common.sh
 infra/production/deploy.sh
 infra/production/rollback.sh
+infra/production/subscription-automation-control.sh
+infra/production/subscription-automation-preflight.sh
+infra/production/production-db-restore.sh
 infra/production/materialize-ssm-env.sh
+infra/production/rds-read-only-preflight.sh
+infra/production/rds-transition-gate.sh
 ```
 
 ## 생성·적용 전 게이트
@@ -155,14 +160,19 @@ test -z "$(git status --porcelain --untracked-files=all -- \
   infra/production/release-common.sh \
   infra/production/deploy.sh \
   infra/production/rollback.sh \
-  infra/production/materialize-ssm-env.sh)"
+  infra/production/subscription-automation-control.sh \
+  infra/production/subscription-automation-preflight.sh \
+  infra/production/production-db-restore.sh \
+  infra/production/materialize-ssm-env.sh \
+  infra/production/rds-read-only-preflight.sh \
+  infra/production/rds-transition-gate.sh)"
 ```
 
 명령이 실패하거나 Control 계약 worktree가 불결하면 배포하지 않는다. `/opt/pawcycle/control`에서 직접 파일을 수정하지 않는다.
 
 ## Secret materialize
 
-SSM prefix는 실행 입력으로만 전달한다. script는 runtime directory의 `flock`을 먼저 획득해 동시 materialize를 거부하고, 네 parameter를 각각 `--with-decryption`으로 조회한다. 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
+SSM prefix는 실행 입력으로만 전달한다. script는 runtime directory의 `flock`을 먼저 획득해 동시 materialize를 거부하고, 네 parameter를 각각 `--with-decryption`으로 조회한다. 하나라도 누락·빈 값·조회 실패면 현재 runtime symlink를 바꾸지 않고 실패한다. 기본 datasource는 `mysql:3306`, `DISABLED`이며 backend.env에 명시한다. 미래 RDS는 별도 고위험 승인 후 `--datasource-host`, `--datasource-port 3306`, `--datasource-ssl-mode REQUIRED`만 사용할 수 있다. RDS 전환 경계는 [OPS-DB-002](OPS-DB-002-rds-migration-cutover.md)를 따른다. 성공 시 `mysql.env`, `backend.env`, `.complete`를 mode `600`으로 만든 뒤 `current` symlink를 원자적으로 교체한다. 기존 symlink target이 관리 경로 안의 `.bundle.*`인지 resolved path로 확인한 뒤 이전 평문 bundle을 제거한다. 값은 stdout에 출력하지 않는다.
 
 ```bash
 cd /opt/pawcycle/control
@@ -307,7 +317,7 @@ rollback은 다음을 하지 않는다.
 | GHCR tag·digest 누락 | 대상 Release 식별 불가 | workflow와 package visibility 확인 | running Container를 바꾸지 않고 중단 |
 | 같은 SHA digest drift | 이미 검증한 Release 식별자 변조 가능 | 기존 `.images`와 registry digest 비교 | 기록을 덮어쓰지 않고 Container 변경 전 중단 |
 | MySQL·Nginx pinned digest 불일치 | base image 불변성 훼손 | Compose pin과 pull 결과 비교 | tag로 우회하지 않고 중단 |
-| Control worktree 불결 | 승인되지 않은 로컬 Script·설정 실행 가능 | 지정된 일곱 파일의 `git status --porcelain` 확인 | 직접 수정 금지, clean 승인 checkout으로 복구 |
+| Control worktree 불결 | 승인되지 않은 로컬 Script·설정 실행 가능 | 지정된 Control 파일의 `git status --porcelain` 확인 | 직접 수정 금지, clean 승인 checkout으로 복구 |
 | Control HEAD와 `contract-sha` 불일치 | 승인 Control 추적 불가 | 현재 HEAD와 mode `600` state 비교 | 별도 승인 후 현재 HEAD를 명시적으로 채택하거나 승인 checkout 복구 |
 | Release 계약 차이 | Application-only 전환 안전성 없음 | SSM preflight와 deploy에서 `contract-sha`, clean Control HEAD, target의 Compose·Nginx 세 파일 비교 | 승인된 detached Control SHA와 두 contract SHA를 dispatch에 정확히 입력; activation 실패 시 자동복귀 없이 Application 중지·MySQL 보존 |
 | MySQL unhealthy | Backend 기동 차단 | `docker compose logs --tail 100 mysql` | volume 삭제 금지, disk·memory·credential 확인 |

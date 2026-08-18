@@ -1407,6 +1407,45 @@ def validate_actual_production_restore() -> None:
         require(boundary in runbook, f"OPS-025 Runbook boundary is missing: {boundary}")
 
 
+def validate_ops_db_002() -> None:
+    materialize = (PRODUCTION / "materialize-ssm-env.sh").read_text(encoding="utf-8")
+    common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
+    compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    preflight = (PRODUCTION / "rds-read-only-preflight.sh").read_text(encoding="utf-8")
+    gate = (PRODUCTION / "rds-transition-gate.sh").read_text(encoding="utf-8")
+    readiness_test = (PRODUCTION / "test-rds-readiness.sh").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "runbook" / "OPS-DB-002-rds-migration-cutover.md").read_text(encoding="utf-8")
+    adr = (ROOT / "docs" / "adr" / "ARCH-013-rds-single-az.md").read_text(encoding="utf-8")
+    workflow = VALIDATION_WORKFLOW.read_text(encoding="utf-8")
+    for field in ("--datasource-host", "--datasource-port", "--datasource-ssl-mode"):
+        require(field in materialize, f"OPS-DB-002 materializer option is incomplete: {field}")
+    for field in ("PAWCYCLE_DATASOURCE_HOST", "PAWCYCLE_DATASOURCE_PORT", "PAWCYCLE_DATASOURCE_SSL_MODE"):
+        require(field in materialize and field in common, f"OPS-DB-002 datasource field is incomplete: {field}")
+    require("sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC" in materialize and "sslMode=REQUIRED&serverTimezone=UTC" in materialize, "Docker and RDS JDBC URL derivation is incomplete")
+    require("datasource runtime combination is not approved" in common and "materialized single-quoted format" in common, "runtime datasource bundle must fail closed")
+    egress_block = compose[compose.index("  database-egress:") :]
+    require("database-egress" in compose and "PAWCYCLE_DATABASE_EGRESS_NETWORK" in common and "internal: true" not in egress_block, "Backend RDS egress must be dedicated and non-internal")
+    allowed = {"ec2:describe-instances", "ec2:describe-vpcs", "ec2:describe-subnets", "ec2:describe-security-groups", "rds:describe-orderable-db-instance-options"}
+    require(all(token in preflight for token in allowed) and "aws_ro()" in preflight, "RDS preflight allowlist is incomplete")
+    require("--vpc --query" in preflight and "--vpc true" not in preflight and "MinStorageSize" in preflight and "MaxStorageSize" in preflight, "RDS orderability must use the AWS CLI --vpc boolean flag and verify 20 GiB support")
+    forbidden_aws = re.findall(r"\b(?:aws|aws_ro)\s+(?:ec2|rds)\s+([a-z0-9-]+)", preflight)
+    require(all(name.startswith("describe-") for name in forbidden_aws), "RDS preflight contains an AWS mutation surface")
+    require("Single-AZ" in preflight and "PubliclyAccessible=false" in preflight and "retention requires later cost" in preflight, "creation-time RDS boundaries are incomplete")
+    for boundary in ("db-restore-verified", "db-restore-candidate", "deploy.lock", "SOURCE_TARGET_DISTINCT", "PRODUCTION_CUTOVER", "EVIDENCE_PHASE", "FINAL_CONSISTENCY_VERIFIED", "TARGET_DATABASE_SHA256", "validate_evidence_target", "post-activation Backend health, API smoke, and HTTPS gates remain pending"):
+        require(boundary in gate, f"RDS transition gate boundary is missing: {boundary}")
+    require("acquire_runtime_read_lock" in common and ".materialize.lock" in common, "runtime bundle reads must share the materialization lock")
+    require("compose up" not in gate and not re.search(r"docker\s+(?:run|create|stop|rm|volume\s+rm)", gate), "RDS transition gate must remain read-only")
+    require("PAWCYCLE_RDS_GATE_TEST_MODE" not in gate and "source \"$SCRIPT_DIR/release-common.sh\"" in gate, "RDS transition gate must not bypass production verification or duplicate runtime parsing")
+    for boundary in ("validate_runtime_bundle", "read_runtime_setting", "com.docker.compose.project=pawcycle-production", "com.docker.compose.service=mysql", "TARGET_DATABASE_SHA256", "record contains an unknown or secret-shaped key", "git -C \"$CONTROL_WORKTREE_ROOT\" status", "flock -sn"):
+        require(boundary in gate, f"RDS transition gate boundary is missing: {boundary}")
+    require("rds-read-only-preflight.sh" in common and "rds-transition-gate.sh" in common, "new RDS controls must participate in clean Control worktree validation")
+    require("FAKE_AWS_MUTATION" in readiness_test and "gate cutover" in readiness_test and "secret identity mismatch did not fail closed" in readiness_test and "FAKE_GIT_DIRTY" in readiness_test and "FAKE_LOCK_BUSY" in readiness_test, "RDS fake readiness test evidence is incomplete")
+    require("ARCH-013" in adr and all(term in adr for term in ("Single-AZ", "Multi-AZ", "RDS Proxy", "VERIFY_IDENTITY", "PITR")), "ARCH-013 scope is incomplete")
+    for section in ("## Rehearsal", "## Production cutover", "## Rollback", "SOURCE_TARGET_DISTINCT=true", "PRODUCTION_CUTOVER=false", "Production Verified", "runtime-rds", "runtime-docker", "LatestRestorableTime", "deploy.lock concurrency"):
+        require(section in runbook, f"OPS-DB-002 Runbook boundary is missing: {section}")
+    require("rds-read-only-preflight.sh" in workflow and "rds-transition-gate.sh" in workflow and "test-rds-readiness.sh" in workflow and "py_compile infra/production/validate-production-contracts.py" in workflow, "workflow must validate OPS-DB-002 fixture contracts")
+
+
 def main() -> None:
     validate_compose()
     validate_workflow()
@@ -1415,10 +1454,12 @@ def main() -> None:
     validate_nginx()
     validate_backup_restore()
     validate_actual_production_restore()
+    validate_ops_db_002()
     print("OPS-013 production backup and restore contracts validated")
     print("OPS-025 actual production DB restore contracts validated")
     print("OPS-AUTO-003 OIDC and restricted SSM deploy contracts validated")
     print("OPS-AUTO-005 Production Deploy boundary approval contracts validated")
+    print("OPS-DB-002 RDS readiness contracts validated")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ LETSENCRYPT_VOLUME="pawcycle-$VALIDATION_ID-letsencrypt"
 EDGE_NETWORK="pawcycle-$VALIDATION_ID-edge"
 APP_NETWORK="pawcycle-$VALIDATION_ID-app"
 DATA_NETWORK="pawcycle-$VALIDATION_ID-data"
+DATABASE_EGRESS_NETWORK="pawcycle-$VALIDATION_ID-database-egress"
 HTTP_PORT="18080"
 HTTPS_PORT="18443"
 HTTPS_DOMAIN="ops011-compose-test.duckdns.org"
@@ -57,7 +58,10 @@ MYSQL_ROOT_PASSWORD=local-validation-root-only
 EOF
 
 cat > "$BACKEND_ENV" <<'EOF'
-SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ops010_validation?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+PAWCYCLE_DATASOURCE_HOST=mysql
+PAWCYCLE_DATASOURCE_PORT=3306
+PAWCYCLE_DATASOURCE_SSL_MODE=DISABLED
+SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ops010_validation?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC
 SPRING_DATASOURCE_USERNAME=ops010_validation
 SPRING_DATASOURCE_PASSWORD=local-validation-only
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false
@@ -78,12 +82,40 @@ compose() {
   PAWCYCLE_EDGE_NETWORK="$EDGE_NETWORK" \
   PAWCYCLE_APP_NETWORK="$APP_NETWORK" \
   PAWCYCLE_DATA_NETWORK="$DATA_NETWORK" \
+  PAWCYCLE_DATABASE_EGRESS_NETWORK="$DATABASE_EGRESS_NETWORK" \
   PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
   PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
   PAWCYCLE_NGINX_CONFIG="$NGINX_CONFIG" \
   PAWCYCLE_HTTP_PORT="$HTTP_PORT" \
   PAWCYCLE_HTTPS_PORT="$HTTPS_PORT" \
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
+}
+
+validate_database_egress_contract() {
+  local config_json="$TEMP_DIR/compose-config.json"
+  ACTIVE_SHA="$SHA_A" compose config --format json > "$config_json"
+  python - "$config_json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+
+services = config.get("services", {})
+members = {
+    name
+    for name, service in services.items()
+    if "database-egress" in service.get("networks", {})
+}
+if members != {"backend"}:
+    raise SystemExit(
+        f"database-egress must be attached only to backend, got: {sorted(members)}"
+    )
+
+network = config.get("networks", {}).get("database-egress")
+if not isinstance(network, dict) or network.get("internal") is True:
+    raise SystemExit("database-egress must exist and remain non-internal")
+PY
 }
 
 wait_healthy() {
@@ -154,6 +186,7 @@ activate_and_check() {
   fi
 }
 
+validate_database_egress_contract
 build_release "$SHA_A"
 build_release "$SHA_B"
 docker pull "$MYSQL_IMAGE" >/dev/null

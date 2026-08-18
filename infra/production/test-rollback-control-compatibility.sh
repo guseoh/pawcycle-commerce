@@ -13,21 +13,26 @@ REAL_FLOCK="$(command -v flock)"
 mkdir -p "$BIN_DIR" "$RUNTIME_DIR/current" "$DOCKER_STATE"
 
 cat >"$RUNTIME_DIR/current/mysql.env" <<'EOF'
-MYSQL_DATABASE=pawcycle
-MYSQL_USER=pawcycle
-MYSQL_PASSWORD=test-password
-MYSQL_ROOT_PASSWORD=test-root-password
+MYSQL_DATABASE='pawcycle'
+MYSQL_USER='pawcycle'
+MYSQL_PASSWORD='test-password'
+MYSQL_ROOT_PASSWORD='test-root-password'
 EOF
 cat >"$RUNTIME_DIR/current/backend.env" <<'EOF'
-SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/pawcycle
-SPRING_DATASOURCE_USERNAME=pawcycle
-SPRING_DATASOURCE_PASSWORD=test-password
+PAWCYCLE_DATASOURCE_HOST='mysql'
+PAWCYCLE_DATASOURCE_PORT='3306'
+PAWCYCLE_DATASOURCE_SSL_MODE='DISABLED'
+SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/pawcycle?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC'
+SPRING_DATASOURCE_USERNAME='pawcycle'
+SPRING_DATASOURCE_PASSWORD='test-password'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='7'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='12345'
 EOF
 : >"$RUNTIME_DIR/current/.complete"
+printf '%s\n' 'lock' >"$RUNTIME_DIR/.materialize.lock"
 chmod 600 \
+  "$RUNTIME_DIR/.materialize.lock" \
   "$RUNTIME_DIR/current/mysql.env" \
   "$RUNTIME_DIR/current/backend.env" \
   "$RUNTIME_DIR/current/.complete"

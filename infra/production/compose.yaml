@@ -72,6 +72,7 @@ services:
     networks:
       - app
       - data
+      - database-egress
     mem_limit: 640m
     cpus: 0.75
     pids_limit: 256
@@ -166,3 +167,5 @@ networks:
   data:
     name: ${PAWCYCLE_DATA_NETWORK:-pawcycle-production-data}
     internal: true
+  database-egress:
+    name: ${PAWCYCLE_DATABASE_EGRESS_NETWORK:-pawcycle-production-database-egress}

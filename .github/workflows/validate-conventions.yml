@@ -262,6 +262,8 @@ jobs:
           bash -n \
             infra/production/release-common.sh \
             infra/production/materialize-ssm-env.sh \
+            infra/production/rds-read-only-preflight.sh \
+            infra/production/rds-transition-gate.sh \
             infra/production/deploy.sh \
             infra/production/rollback.sh \
             infra/production/subscription-automation-control.sh \
@@ -281,14 +283,17 @@ jobs:
             infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
+            infra/production/test-rds-readiness.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
             infra/production/test-db-backup-restore.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
+          python -m py_compile infra/production/validate-production-contracts.py
           python infra/production/validate-production-contracts.py
           python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
+          bash infra/production/test-rds-readiness.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-ec2-status-check-alarm.sh
