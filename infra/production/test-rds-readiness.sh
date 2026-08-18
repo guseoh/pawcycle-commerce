@@ -8,10 +8,11 @@ cat >"$BIN/aws" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 printf '%s\n' "$*" >>"$FAKE_AWS_LOG"
+[[ "${FAKE_AWS_FORCE_FAILURE:-false}" == false ]] || exit 97
 fail(){ printf '%s\n' "$*" >>"$FAKE_AWS_ERROR"; exit 96; }
 common(){ [[ " $* " == *" --region ap-northeast-2 "* && " $* " == *" --output text "* ]] || fail "invalid common AWS arguments: $*"; }
 case "$1:$2" in
- ec2:describe-instances) common "$@"; [[ " $* " == *" --instance-ids i-1234abcd "* ]] || fail 'invalid instance ID'; case "$*" in *Placement.AvailabilityZone*) printf 'ap-northeast-2d\n';; *VpcId*) printf 'vpc-1234abcd\n';; *State.Name*) printf 'running\n';; *SecurityGroups*) printf 'sg-deadbeef\tsg-1234abcd\n';; *) fail 'unexpected instance scalar query';; esac;;
+ ec2:describe-instances) common "$@"; [[ " $* " == *" --instance-ids i-1234abcd "* ]] || fail 'invalid instance ID'; case "$*" in *Placement.AvailabilityZone*) printf 'ap-northeast-2d\n';; *VpcId*) printf 'vpc-1234abcd\n';; *State.Name*) printf 'running\n';; *SecurityGroups*) if [[ "${FAKE_AWS_CRLF:-false}" == true ]]; then printf 'sg-deadbeef\tsg-1234abcd\r\n'; else printf 'sg-deadbeef\tsg-1234abcd\n'; fi;; *) fail 'unexpected instance scalar query';; esac;;
  ec2:describe-vpcs) common "$@"; [[ " $* " == *" --vpc-ids vpc-1234abcd "* && "$*" == *'Vpcs[0].State'* ]] || fail 'invalid VPC query'; printf 'available\n';;
  ec2:describe-subnets) common "$@"; [[ " $* " == *" --subnet-ids subnet-1234abcd subnet-abcd1234 "* && "$*" == *'Subnets[].['* ]] || fail 'invalid subnet query'; case "${FAKE_AWS_SUBNET_MODE:-ok}" in one) printf 'subnet-1234abcd\tvpc-1234abcd\tap-northeast-2d\tavailable\t20\nsubnet-abcd1234\tvpc-1234abcd\tap-northeast-2d\tavailable\t20\n';; unavailable) printf 'subnet-1234abcd\tvpc-1234abcd\tap-northeast-2d\tavailable\t20\nsubnet-abcd1234\tvpc-1234abcd\tap-northeast-2c\tpending\t20\n';; *) printf 'subnet-1234abcd\tvpc-1234abcd\tap-northeast-2d\tavailable\t20\nsubnet-abcd1234\tvpc-1234abcd\tap-northeast-2c\tavailable\t20\n';; esac;;
  rds:describe-orderable-db-instance-options) common "$@"; [[ " $* " == *" --engine mysql "* && " $* " == *" --db-instance-class db.t4g.micro "* && " $* " == *" --vpc "* && "$*" == *MinStorageSize* && "$*" == *MaxStorageSize* ]] || fail 'invalid RDS orderability query'; [[ "${FAKE_AWS_ORDERABLE:-ok}" == ok ]] && printf 'mysql\t8.4.1\tdb.t4g.micro\tgp3\tTrue\tTrue\t20\t65536\n' || printf 'mysql\t8.3.1\tdb.t4g.micro\tgp2\tTrue\tTrue\t20\t65536\n';;
@@ -75,6 +76,11 @@ base_preflight >/dev/null
 full_preflight >/dev/null
 gate(){ bash "$SCRIPT_DIR/rds-transition-gate.sh" "$@" --state-dir "$STATE" --application-sha "$SHA" --control-sha "$SHA"; }
 expect_fail(){ if "$@" >/dev/null 2>&1; then printf 'expected fail-closed path was reported as success\n' >&2; exit 1; fi; }
+export FAKE_AWS_CRLF=true; base_preflight >/dev/null; unset FAKE_AWS_CRLF
+export FAKE_AWS_FORCE_FAILURE=true
+if aws_failure_output="$(base_preflight 2>&1)"; then printf 'AWS CLI failure did not fail closed\n' >&2; exit 1; fi
+unset FAKE_AWS_FORCE_FAILURE
+[[ "$aws_failure_output" == *'EC2 AZ describe failed'* ]] || { printf 'AWS CLI failure was not propagated through aws_ro pipeline\n' >&2; exit 1; }
 gate rehearsal --evidence "$EVIDENCE" --rds-runtime-dir "$RDS" --rollback-runtime-dir "$DOCKER" >/dev/null
 expect_fail gate cutover --evidence "$EVIDENCE" --rds-runtime-dir "$RDS" --rollback-runtime-dir "$DOCKER"
 sed -i 's/EVIDENCE_PHASE=REHEARSAL/EVIDENCE_PHASE=CUTOVER/; s/FINAL_CONSISTENCY_VERIFIED=false/FINAL_CONSISTENCY_VERIFIED=true/' "$EVIDENCE"
