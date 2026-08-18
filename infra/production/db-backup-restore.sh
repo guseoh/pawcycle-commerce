@@ -266,10 +266,28 @@ prepare_state_contract() {
   validate_mysql_volume "$PRODUCTION_MYSQL_VOLUME" "active"
 }
 
+candidate_runtime_value() {
+  local mysql_env="$1"
+  local key="$2"
+  local raw
+  local value
+
+  raw="$(grep -E "^${key}=.+$" "$mysql_env" | cut -d= -f2-)"
+  [[ ${#raw} -ge 2 && "${raw:0:1}" == "'" && "${raw: -1}" == "'" ]] \
+    || die "candidate restore runtime value must use the managed single-quoted format: $key"
+  value="${raw:1:${#raw}-2}"
+  value="${value//\\\'/\'}"
+  [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
+    || die "candidate restore runtime value is invalid: $key"
+  printf '%s' "$value"
+}
+
 prepare_candidate_runtime() {
   local mysql_env="$PAWCYCLE_RUNTIME_DIR/current/mysql.env"
   local database
   local user
+  local root_password
+  local user_password
   local key
   local root_secret="$WORK_DIR/candidate-root-password"
   local user_secret="$WORK_DIR/candidate-user-password"
@@ -280,12 +298,14 @@ prepare_candidate_runtime() {
     [[ "$(grep -Ec "^${key}=.+$" "$mysql_env")" == "1" ]] \
       || die "candidate restore runtime key must occur exactly once: $key"
   done
-  database="$(grep -E '^MYSQL_DATABASE=' "$mysql_env" | cut -d= -f2-)"
-  user="$(grep -E '^MYSQL_USER=' "$mysql_env" | cut -d= -f2-)"
+  database="$(candidate_runtime_value "$mysql_env" MYSQL_DATABASE)"
+  user="$(candidate_runtime_value "$mysql_env" MYSQL_USER)"
+  root_password="$(candidate_runtime_value "$mysql_env" MYSQL_ROOT_PASSWORD)"
+  user_password="$(candidate_runtime_value "$mysql_env" MYSQL_PASSWORD)"
   [[ "$database" =~ ^[A-Za-z0-9_]+$ ]] || die "candidate restore database name is invalid"
   [[ "$user" =~ ^[A-Za-z0-9_]+$ ]] || die "candidate restore database user is invalid"
-  grep -E '^MYSQL_ROOT_PASSWORD=' "$mysql_env" | cut -d= -f2- >"$root_secret"
-  grep -E '^MYSQL_PASSWORD=' "$mysql_env" | cut -d= -f2- >"$user_secret"
+  printf '%s' "$root_password" >"$root_secret"
+  printf '%s' "$user_password" >"$user_secret"
   [[ -s "$root_secret" && -s "$user_secret" ]] || die "candidate restore password file is empty"
   chmod 600 "$root_secret" "$user_secret"
   RESTORE_DATABASE="$database"
