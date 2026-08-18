@@ -333,10 +333,10 @@ sudo -n install -d -m 700 "$STATE_DIR" "$RUNTIME_DIR/current"
 printf '%s\n' "$PRODUCTION_VOLUME" | sudo -n tee "$STATE_DIR/active-mysql-volume" >/dev/null
 sudo -n chmod 600 "$STATE_DIR/active-mysql-volume"
 printf '%s\n' \
-  'MYSQL_DATABASE=ops013_source' \
-  'MYSQL_USER=ops025_candidate' \
-  'MYSQL_PASSWORD=local-candidate-only' \
-  'MYSQL_ROOT_PASSWORD=local-candidate-root-only' \
+  "MYSQL_DATABASE='ops013_source'" \
+  "MYSQL_USER='ops025_candidate'" \
+  "MYSQL_PASSWORD='local-candidate-only'" \
+  "MYSQL_ROOT_PASSWORD='local-candidate-root-only'" \
   | sudo -n tee "$RUNTIME_DIR/current/mysql.env" >/dev/null
 sudo -n chmod 600 "$RUNTIME_DIR/current/mysql.env"
 
@@ -363,7 +363,10 @@ sudo -n docker run --detach \
   --name "$CANDIDATE_CONTAINER" \
   --network none \
   --mount "type=volume,source=$CANDIDATE_VOLUME,destination=/var/lib/mysql" \
-  --env-file "$RUNTIME_DIR/current/mysql.env" \
+  --env MYSQL_DATABASE=ops013_source \
+  --env MYSQL_USER=ops025_candidate \
+  --env MYSQL_PASSWORD=local-candidate-only \
+  --env MYSQL_ROOT_PASSWORD=local-candidate-root-only \
   "$MYSQL_IMAGE" \
   --character-set-server=utf8mb4 \
   --collation-server=utf8mb4_0900_ai_ci >/dev/null
