@@ -91,4 +91,4 @@ fi
 grep -Fq 'production release contract boundary requires approved_contract_from_sha and approved_control_sha' "$changed_output" \
   || { cat "$changed_output" >&2; printf 'changed-SHA contract boundary failed for the wrong reason\n' >&2; exit 1; }
 
-printf 'same-SHA runtime activation regression passed\n'
+printf 'same-SHA runtime activation contract regression passed\n'
