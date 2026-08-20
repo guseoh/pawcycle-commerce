@@ -40,6 +40,8 @@ require_control_only_contract_adoption() {
 
   [[ -n "$approved_contract_from_sha" && -n "$approved_control_sha" ]] \
     || die 'control-only contract adoption requires approved_contract_from_sha and approved_control_sha'
+  validate_sha "$approved_contract_from_sha"
+  validate_sha "$approved_control_sha"
   [[ "$stored_contract_sha" == "$approved_contract_from_sha" ]] \
     || die 'approved_contract_from_sha does not match stored contract-sha'
   [[ "$target_sha" == "$current_release_sha" ]] \
@@ -69,6 +71,7 @@ CURRENT_SHA='1111111111111111111111111111111111111111'
 NEXT_SHA='2222222222222222222222222222222222222222'
 CONTROL_SHA='3333333333333333333333333333333333333333'
 OLD_CONTROL_SHA='4444444444444444444444444444444444444444'
+WRONG_CONTROL_SHA='5555555555555555555555555555555555555555'
 export FAKE_CONTROL_SHA="$CONTROL_SHA"
 
 new_state() {
@@ -112,6 +115,24 @@ fi
 grep -Fq 'control-only contract adoption requires approved_contract_from_sha and approved_control_sha' "$unapproved_output" \
   || { cat "$unapproved_output" >&2; printf 'unapproved same-SHA Control transition failed for the wrong reason\n' >&2; exit 1; }
 [[ "$(cat "$unapproved_state/contract-sha")" == "$OLD_CONTROL_SHA" ]]
+
+wrong_approval_state="$TEST_ROOT/wrong-approval-state"
+new_state "$wrong_approval_state" "$OLD_CONTROL_SHA"
+wrong_approval_output="$TEST_ROOT/wrong-approval-output"
+if "$TEST_ROOT/deploy.sh" \
+  --sha "$CURRENT_SHA" \
+  --backend-image "$BACKEND_IMAGE" \
+  --frontend-image "$FRONTEND_IMAGE" \
+  --runtime-dir "$TEST_ROOT/runtime" \
+  --state-dir "$wrong_approval_state" \
+  --approved-contract-from-sha "$OLD_CONTROL_SHA" \
+  --approved-control-sha "$WRONG_CONTROL_SHA" >"$wrong_approval_output" 2>&1; then
+  printf 'same-SHA transition accepted the wrong Control approval\n' >&2
+  exit 1
+fi
+grep -Fq 'approved_control_sha does not match the current clean Control HEAD' "$wrong_approval_output" \
+  || { cat "$wrong_approval_output" >&2; printf 'wrong Control approval failed for the wrong reason\n' >&2; exit 1; }
+[[ "$(cat "$wrong_approval_state/contract-sha")" == "$OLD_CONTROL_SHA" ]]
 
 quiesced_state="$TEST_ROOT/quiesced-control-state"
 new_state "$quiesced_state" "$OLD_CONTROL_SHA"
