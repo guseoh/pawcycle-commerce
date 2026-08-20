@@ -59,6 +59,34 @@ publish_state_or_abort() {
   write_state "$name" "$value" || abort_state_publication
 }
 
+require_quiesced_same_sha_control_transition() {
+  local stored_contract_sha="$1"
+  local current_release_sha="$2"
+  local target_sha="$3"
+  local approved_contract_from_sha="$4"
+  local approved_control_sha="$5"
+  local running_backend_ids
+
+  [[ -z "$ADOPT_CONTRACT_SHA" ]] \
+    || die "--adopt-contract-sha cannot approve a quiesced same-SHA control transition"
+
+  require_control_only_contract_adoption \
+    "$stored_contract_sha" "$current_release_sha" "$target_sha" \
+    "$approved_contract_from_sha" "$approved_control_sha"
+
+  ACTIVE_SHA="$current_release_sha"
+  export ACTIVE_SHA
+  running_backend_ids="$(compose ps --status running --quiet backend)" \
+    || die "unable to verify Backend quiesce before same-SHA control transition"
+  [[ -z "$running_backend_ids" ]] \
+    || die "same-SHA control transition requires Backend to be quiesced when Control HEAD differs from contract-sha"
+
+  CONTRACT_SHA="$stored_contract_sha"
+  CONTRACT_BOUNDARY=1
+  printf 'Approved quiesced same-SHA control transition: %s -> %s\n' \
+    "$stored_contract_sha" "$PENDING_CONTRACT_SHA"
+}
+
 while (( $# > 0 )); do
   case "$1" in
     --sha) TARGET_SHA="${2:-}"; shift 2 ;;
@@ -135,8 +163,15 @@ if [[ ! -e "$CONTRACT_STATE_PATH" && ! -L "$CONTRACT_STATE_PATH" ]]; then
 else
   STORED_CONTRACT_SHA="$(read_state_sha contract-sha)"
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" == "$TARGET_SHA" ]]; then
-    CONTRACT_BOUNDARY=0
-    load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
+    CONTROL_SHA="$(current_control_sha)"
+    if [[ "$STORED_CONTRACT_SHA" == "$CONTROL_SHA" ]]; then
+      CONTRACT_BOUNDARY=0
+      load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
+    else
+      require_quiesced_same_sha_control_transition \
+        "$STORED_CONTRACT_SHA" "$CURRENT_SHA" "$TARGET_SHA" \
+        "$APPROVED_CONTRACT_FROM_SHA" "$APPROVED_CONTROL_SHA"
+    fi
   elif release_contract_changed "$STORED_CONTRACT_SHA" "$TARGET_SHA"; then
     [[ -z "$ADOPT_CONTRACT_SHA" ]] \
       || die "--adopt-contract-sha cannot approve a production release contract boundary"
