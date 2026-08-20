@@ -164,13 +164,16 @@ else
   STORED_CONTRACT_SHA="$(read_state_sha contract-sha)"
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" == "$TARGET_SHA" ]]; then
     CONTROL_SHA="$(current_control_sha)"
-    if [[ "$STORED_CONTRACT_SHA" == "$CONTROL_SHA" ]]; then
+    if [[ "$STORED_CONTRACT_SHA" == "$CONTROL_SHA" || -n "$ADOPT_CONTRACT_SHA" ]]; then
       CONTRACT_BOUNDARY=0
       load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
-    else
+    elif [[ -n "$APPROVED_CONTRACT_FROM_SHA" || -n "$APPROVED_CONTROL_SHA" ]]; then
       require_quiesced_same_sha_control_transition \
         "$STORED_CONTRACT_SHA" "$CURRENT_SHA" "$TARGET_SHA" \
         "$APPROVED_CONTRACT_FROM_SHA" "$APPROVED_CONTROL_SHA"
+    else
+      CONTRACT_BOUNDARY=0
+      load_or_adopt_runtime_contract "" "$CURRENT_SHA"
     fi
   elif release_contract_changed "$STORED_CONTRACT_SHA" "$TARGET_SHA"; then
     [[ -z "$ADOPT_CONTRACT_SHA" ]] \
