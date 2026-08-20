@@ -398,7 +398,7 @@ fi
 exit 0
 EOF
 
-chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git"
+chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git" "$BIN_DIR/mv"
 export PATH="$BIN_DIR:$PATH"
 
 output="$("$SCRIPT_DIR/materialize-ssm-env.sh" \
