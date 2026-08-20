@@ -107,11 +107,34 @@ printf 'RUNNING_AUTOMATION_FIXED_DELAY_MS=%s\n' "$RUNNING_FIXED_DELAY_MS"
 run_mysql_read_only() {
   local sql="$1"
   local result
+  local mysql_database=""
+  local mysql_user=""
+  local mysql_password=""
 
-  if ! result="$(printf '%s\n' "$sql" | docker exec --interactive "$MYSQL_CONTAINER" sh -c \
-    'export MYSQL_PWD="$MYSQL_PASSWORD"; exec mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --raw' \
-    2>/dev/null)"; then
-    die "read-only Production MySQL preflight failed; raw database output was suppressed"
+  if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
+    DATABASE_PREFLIGHT_TARGET="DOCKER_MYSQL"
+    if ! result="$(printf '%s\n' "$sql" | docker exec --interactive "$MYSQL_CONTAINER" sh -c \
+      'export MYSQL_PWD="$MYSQL_PASSWORD"; exec mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --raw' \
+      2>/dev/null)"; then
+      die "read-only Production Docker MySQL preflight failed; raw database output was suppressed"
+    fi
+  elif [[ "$PAWCYCLE_DATASOURCE_HOST" != "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
+    DATABASE_PREFLIGHT_TARGET="RDS"
+    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_DATABASE mysql_database
+    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_USER mysql_user
+    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_PASSWORD mysql_password
+    if ! result="$(printf '%s\n' "$sql" | MYSQL_PWD="$mysql_password" docker run --rm --pull never \
+      --network "container:$BACKEND_CONTAINER" \
+      --read-only --tmpfs /tmp:size=16m,mode=1777 \
+      --security-opt no-new-privileges:true --cap-drop ALL \
+      --env MYSQL_PWD --entrypoint mysql "$MYSQL_IMAGE" \
+      --protocol=TCP --host="$PAWCYCLE_DATASOURCE_HOST" --port="$PAWCYCLE_DATASOURCE_PORT" \
+      --user="$mysql_user" --database="$mysql_database" --ssl-mode=REQUIRED \
+      --batch --skip-column-names --raw 2>/dev/null)"; then
+      die "read-only Production RDS preflight failed; raw database output was suppressed"
+    fi
+  else
+    die "active datasource runtime is not approved for subscription automation preflight"
   fi
   printf '%s\n' "$result"
 }
@@ -127,6 +150,7 @@ SELECT CONCAT('DUE_INDEX=', IF(COALESCE(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN
 SQL
 )
 SCHEMA_RESULT="$(run_mysql_read_only "$SCHEMA_SQL")"
+printf 'DATABASE_PREFLIGHT_TARGET=%s\n' "$DATABASE_PREFLIGHT_TARGET"
 printf '%s\n' "$SCHEMA_RESULT"
 for expected in \
   FLYWAY_V9=SUCCESS \
