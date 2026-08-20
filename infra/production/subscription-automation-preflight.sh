@@ -104,6 +104,14 @@ printf 'RUNNING_AUTOMATION_ENABLED=%s\n' "$RUNNING_ENABLED"
 printf 'RUNNING_AUTOMATION_BATCH_SIZE=%s\n' "$RUNNING_BATCH_SIZE"
 printf 'RUNNING_AUTOMATION_FIXED_DELAY_MS=%s\n' "$RUNNING_FIXED_DELAY_MS"
 
+if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
+  DATABASE_PREFLIGHT_TARGET="DOCKER_MYSQL"
+elif [[ "$PAWCYCLE_DATASOURCE_HOST" != "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
+  DATABASE_PREFLIGHT_TARGET="RDS"
+else
+  die "active datasource runtime is not approved for subscription automation preflight"
+fi
+
 run_mysql_read_only() {
   local sql="$1"
   local result
@@ -111,15 +119,13 @@ run_mysql_read_only() {
   local mysql_user=""
   local mysql_password=""
 
-  if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
-    DATABASE_PREFLIGHT_TARGET="DOCKER_MYSQL"
+  if [[ "$DATABASE_PREFLIGHT_TARGET" == "DOCKER_MYSQL" ]]; then
     if ! result="$(printf '%s\n' "$sql" | docker exec --interactive "$MYSQL_CONTAINER" sh -c \
       'export MYSQL_PWD="$MYSQL_PASSWORD"; exec mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --raw' \
       2>/dev/null)"; then
       die "read-only Production Docker MySQL preflight failed; raw database output was suppressed"
     fi
-  elif [[ "$PAWCYCLE_DATASOURCE_HOST" != "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
-    DATABASE_PREFLIGHT_TARGET="RDS"
+  else
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_DATABASE mysql_database
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_USER mysql_user
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_PASSWORD mysql_password
@@ -133,8 +139,6 @@ run_mysql_read_only() {
       --batch --skip-column-names --raw 2>/dev/null)"; then
       die "read-only Production RDS preflight failed; raw database output was suppressed"
     fi
-  else
-    die "active datasource runtime is not approved for subscription automation preflight"
   fi
   printf '%s\n' "$result"
 }
