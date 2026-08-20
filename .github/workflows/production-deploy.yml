@@ -1,9 +1,17 @@
 name: Production Deploy
-run-name: Production Deploy · ${{ inputs.target_sha }}
+run-name: Production Deploy · ${{ inputs.operation }} · ${{ inputs.target_sha }}
 
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Deploy an Application Release or adopt an approved Control SHA without activation
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - control-adopt
       target_sha:
         description: Lowercase 40-character commit SHA to deploy
         required: true
@@ -37,6 +45,7 @@ jobs:
     steps:
       - name: Validate workflow ref and target SHA
         env:
+          OPERATION: ${{ inputs.operation }}
           TARGET_SHA: ${{ inputs.target_sha }}
           APPROVED_CONTRACT_FROM_SHA: ${{ inputs.approved_contract_from_sha }}
           APPROVED_CONTROL_SHA: ${{ inputs.approved_control_sha }}
@@ -48,6 +57,11 @@ jobs:
 
           if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
             echo "Production deploy must run from main." >&2
+            exit 1
+          fi
+
+          if [[ "$OPERATION" != "deploy" && "$OPERATION" != "control-adopt" ]]; then
+            echo "operation must be deploy or control-adopt" >&2
             exit 1
           fi
 
@@ -153,6 +167,7 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
           SSM_DOCUMENT_NAME: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_NAME }}
           SSM_DOCUMENT_VERSION: ${{ vars.PAWCYCLE_PRODUCTION_SSM_DOCUMENT_VERSION }}
+          OPERATION: ${{ inputs.operation }}
           TARGET_SHA: ${{ inputs.target_sha }}
           APPROVED_CONTRACT_FROM_SHA: ${{ inputs.approved_contract_from_sha }}
           APPROVED_CONTROL_SHA: ${{ inputs.approved_control_sha }}
@@ -179,6 +194,7 @@ jobs:
             case "$operation" in
               preflight) command_timeout_seconds=900 ;;
               deploy) command_timeout_seconds=1800 ;;
+              control-adopt) command_timeout_seconds=900 ;;
               *) echo "unsupported SSM operation: $operation" >&2; return 1 ;;
             esac
 
@@ -235,20 +251,29 @@ jobs:
             return 1
           }
 
-          run_ssm_operation preflight
-          run_ssm_operation deploy
+          if [[ "$OPERATION" == "deploy" ]]; then
+            run_ssm_operation preflight
+            run_ssm_operation deploy
+          else
+            run_ssm_operation control-adopt
+          fi
 
       - name: Write deployment command summary
         env:
           TARGET_SHA: ${{ inputs.target_sha }}
+          OPERATION: ${{ inputs.operation }}
         shell: bash
         run: |
           set -euo pipefail
 
           {
-            echo "## Production deploy command"
+            echo "## Production $OPERATION command"
             echo
             echo "- Target SHA: \`$TARGET_SHA\`"
-            echo "- SSM preflight command: Success"
-            echo "- SSM deploy command: Success"
+            if [[ "$OPERATION" == "deploy" ]]; then
+              echo "- SSM preflight command: Success"
+              echo "- SSM deploy command: Success"
+            else
+              echo "- SSM control-adopt command: Success"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

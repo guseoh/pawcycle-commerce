@@ -11,8 +11,9 @@ RUNTIME_DIR="$TEST_ROOT/runtime"
 STATE_DIR="$TEST_ROOT/state"
 FAKE_DOCKER_STATE="$TEST_ROOT/docker-state"
 REAL_FLOCK="$(command -v flock)"
+REAL_MV="$(command -v mv)"
 mkdir -p "$BIN_DIR" "$FAKE_DOCKER_STATE"
-export FAKE_DOCKER_STATE REAL_FLOCK
+export FAKE_DOCKER_STATE REAL_FLOCK REAL_MV
 
 cat > "$BIN_DIR/aws" <<'EOF'
 #!/usr/bin/env bash
@@ -124,6 +125,15 @@ if [[ -n "${FAKE_FLOCK_PREVIOUS_STATE:-}" ]]; then
   chmod 600 "$FAKE_FLOCK_PREVIOUS_STATE"
 fi
 exec "$REAL_FLOCK" "$@"
+EOF
+
+cat > "$BIN_DIR/mv" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "${FAKE_STATE_PUBLICATION_FAIL:-}" == "1" && "$*" == *"contract-sha.tmp"* ]]; then
+  exit 1
+fi
+exec "$REAL_MV" "$@"
 EOF
 
 cat > "$BIN_DIR/docker" <<'EOF'
@@ -388,7 +398,7 @@ fi
 exit 0
 EOF
 
-chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git"
+chmod +x "$BIN_DIR/aws" "$BIN_DIR/curl" "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git" "$BIN_DIR/mv"
 export PATH="$BIN_DIR:$PATH"
 
 output="$("$SCRIPT_DIR/materialize-ssm-env.sh" \
@@ -505,6 +515,23 @@ boundary_operation() {
     "$@"
 }
 
+control_only_adopt() {
+  local target_sha="$1"
+  local state_dir="$2"
+  local approved_from_sha="$3"
+  local approved_control_sha="$4"
+
+  "$SCRIPT_DIR/deploy.sh" \
+    --operation control-adopt \
+    --sha "$target_sha" \
+    --backend-image "$BACKEND_IMAGE" \
+    --frontend-image "$FRONTEND_IMAGE" \
+    --runtime-dir "$RUNTIME_DIR" \
+    --state-dir "$state_dir" \
+    --approved-contract-from-sha "$approved_from_sha" \
+    --approved-control-sha "$approved_control_sha"
+}
+
 rollback_without_sha() {
   "$SCRIPT_DIR/rollback.sh" \
     --backend-image "$BACKEND_IMAGE" \
@@ -552,6 +579,62 @@ grep -Fq 'production runtime contract state is missing' "$missing_contract_outpu
 control_state="$TEST_ROOT/control-state"
 deploy "$SHA_A" "$control_state"
 [[ "$(<"$control_state/contract-sha")" == "$SHA_A" ]]
+
+control_only_state="$TEST_ROOT/control-only-state"
+cp -a -- "$control_state" "$control_only_state"
+export FAKE_CONTROL_SHA="$SHA_B"
+export FAKE_CONTRACT_MISMATCH_PAIR="$SHA_A:$SHA_B"
+up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
+control_only_adopt "$SHA_A" "$control_only_state" "$SHA_A" "$SHA_B" >/dev/null
+[[ "$(<"$control_only_state/contract-sha")" == "$SHA_B" ]]
+[[ "$(<"$control_only_state/current-sha")" == "$SHA_A" ]]
+[[ ! -e "$control_only_state/previous-contract-sha" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
+[[ "$(<"$FAKE_DOCKER_STATE/up-count")" == "$up_count_before" ]]
+unset FAKE_CONTRACT_MISMATCH_PAIR
+
+for approval_case in prior-control-mismatch new-control-mismatch; do
+  adoption_failure_state="$TEST_ROOT/control-only-$approval_case"
+  cp -a -- "$control_state" "$adoption_failure_state"
+  if [[ "$approval_case" == "prior-control-mismatch" ]]; then
+    control_only_adopt "$SHA_A" "$adoption_failure_state" "$SHA_B" "$SHA_B" \
+      >"$TEST_ROOT/$approval_case-output" 2>&1 && exit 1
+  else
+    control_only_adopt "$SHA_A" "$adoption_failure_state" "$SHA_A" "$SHA_C" \
+      >"$TEST_ROOT/$approval_case-output" 2>&1 && exit 1
+  fi
+  [[ "$(<"$adoption_failure_state/contract-sha")" == "$SHA_A" ]]
+  [[ "$(<"$adoption_failure_state/current-sha")" == "$SHA_A" ]]
+done
+grep -Fq 'approved_contract_from_sha does not match stored contract-sha' "$TEST_ROOT/prior-control-mismatch-output"
+grep -Fq 'approved_control_sha does not match the current clean Control HEAD' "$TEST_ROOT/new-control-mismatch-output"
+
+for failure_case in dirty-control health smoke state-publication; do
+  adoption_failure_state="$TEST_ROOT/control-only-$failure_case"
+  cp -a -- "$control_state" "$adoption_failure_state"
+  up_count_before="$(<"$FAKE_DOCKER_STATE/up-count")"
+  case "$failure_case" in
+    dirty-control) export FAKE_CONTROL_DIRTY=1 ;;
+    health) export FAKE_FAIL_SHA="$SHA_A" ;;
+    smoke) export FAKE_SMOKE_FAIL_SHA="$SHA_A" FAKE_SMOKE_FAIL_PATH="/api/products" ;;
+    state-publication) export FAKE_STATE_PUBLICATION_FAIL=1 ;;
+  esac
+  if control_only_adopt "$SHA_A" "$adoption_failure_state" "$SHA_A" "$SHA_B" \
+    >"$TEST_ROOT/control-only-$failure_case-output" 2>&1; then
+    printf 'control-only adoption did not fail for %s\n' "$failure_case" >&2
+    exit 1
+  fi
+  unset FAKE_CONTROL_DIRTY FAKE_FAIL_SHA FAKE_SMOKE_FAIL_SHA FAKE_SMOKE_FAIL_PATH FAKE_STATE_PUBLICATION_FAIL
+  [[ "$(<"$adoption_failure_state/contract-sha")" == "$SHA_A" ]]
+  [[ "$(<"$adoption_failure_state/current-sha")" == "$SHA_A" ]]
+  [[ "$(<"$FAKE_DOCKER_STATE/active-sha")" == "$SHA_A" ]]
+  [[ "$(<"$FAKE_DOCKER_STATE/up-count")" == "$up_count_before" ]]
+done
+grep -Fq 'Production control worktree is not clean' "$TEST_ROOT/control-only-dirty-control-output"
+grep -Fq 'running backend is not healthy' "$TEST_ROOT/control-only-health-output"
+grep -Fq 'running release smoke failed' "$TEST_ROOT/control-only-smoke-output"
+grep -Fq 'control-only contract state publication failed' "$TEST_ROOT/control-only-state-publication-output"
+
 export FAKE_CONTROL_SHA="$SHA_B"
 
 docker_call_count_before="$(<"$FAKE_DOCKER_STATE/docker-call-count")"

@@ -513,6 +513,32 @@ require_contract_boundary_approval() {
     "$stored_contract_sha" "$control_sha"
 }
 
+require_control_only_contract_adoption() {
+  local stored_contract_sha="$1"
+  local current_release_sha="$2"
+  local target_sha="$3"
+  local approved_contract_from_sha="$4"
+  local approved_control_sha="$5"
+  local control_sha
+
+  [[ -n "$approved_contract_from_sha" && -n "$approved_control_sha" ]] \
+    || die "control-only contract adoption requires approved_contract_from_sha and approved_control_sha"
+  validate_sha "$approved_contract_from_sha"
+  validate_sha "$approved_control_sha"
+  [[ "$stored_contract_sha" == "$approved_contract_from_sha" ]] \
+    || die "approved_contract_from_sha does not match stored contract-sha"
+  [[ "$target_sha" == "$current_release_sha" ]] \
+    || die "control-only contract adoption requires target SHA to match current-sha"
+
+  control_sha="$(current_clean_control_sha)"
+  [[ "$control_sha" == "$approved_control_sha" ]] \
+    || die "approved_control_sha does not match the current clean Control HEAD"
+
+  PENDING_CONTRACT_SHA="$control_sha"
+  printf 'Approved Production control-only contract adoption: %s -> %s\n' \
+    "$stored_contract_sha" "$control_sha"
+}
+
 require_migration_boundary_approval() {
   local target_sha="$1"
   local approved_migration_target_sha="$2"
@@ -556,12 +582,16 @@ require_no_migration_boundary_rollback() {
 
 validate_current_release_for_contract_adoption() {
   local current_release_sha="$1"
+  local service
 
   [[ -n "$current_release_sha" ]] || return 0
   ACTIVE_SHA="$current_release_sha"
   export ACTIVE_SHA
   printf 'Preflighting currently running release before control contract adoption: %s\n' "$current_release_sha"
   preflight_release "$current_release_sha"
+  for service in mysql backend frontend proxy; do
+    wait_healthy "$service" || die "running $service is not healthy during control contract adoption"
+  done
   verify_running_release || die "running release identity does not match current-sha during control contract adoption"
   smoke_release || die "running release smoke failed during control contract adoption"
   if https_enabled; then
