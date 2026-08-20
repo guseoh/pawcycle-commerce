@@ -88,7 +88,10 @@ else
   PAWCYCLE_PREFLIGHT_RECORD_IMAGES=true
   initialize_release_context
 fi
-require_subscription_automation_mode false
+# Control-only adoption preserves the current Scheduler mode because it does not activate Application containers.
+if [[ "$OPERATION" != "control-adopt" ]]; then
+  require_subscription_automation_mode false
+fi
 
 if [[ -e "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME" \
   || -L "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME" ]]; then
