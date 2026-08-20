@@ -306,6 +306,7 @@ def validate_oidc_deploy_contract() -> None:
     require("group: pawcycle-production-deploy" in workflow and "cancel-in-progress: false" in workflow, "concurrent Production deploys must be blocked")
     require("AWS_ACCESS_KEY_ID" not in workflow and "AWS_SECRET_ACCESS_KEY" not in workflow and "ssh" not in workflow.lower(), "long-lived AWS keys and SSH are forbidden")
     for workflow_input in (
+        "operation",
         "target_sha",
         "approved_contract_from_sha",
         "approved_control_sha",
@@ -342,8 +343,10 @@ def validate_oidc_deploy_contract() -> None:
         "Operation=${operation},TargetSha=${TARGET_SHA},ApprovedContractFromSha=${APPROVED_CONTRACT_FROM_SHA},ApprovedControlSha=${APPROVED_CONTROL_SHA},ApprovedMigrationTargetSha=${APPROVED_MIGRATION_TARGET_SHA}"
         in workflow
         and "run_ssm_operation preflight" in workflow
-        and "run_ssm_operation deploy" in workflow,
-        "workflow must run the same approved target and boundary values through preflight before deploy",
+        and "run_ssm_operation deploy" in workflow
+        and "run_ssm_operation control-adopt" in workflow
+        and 'OPERATION: ${{ inputs.operation }}' in workflow,
+        "workflow must run the same approved target and boundary values through deploy preflight or control-only adoption",
     )
     require("--max-concurrency \"1\"" in workflow and "--max-errors \"0\"" in workflow, "SSM dispatch must fail closed")
     require("aws ssm list-command-invocations" in workflow and "Success)" in workflow and "status could not be determined" in workflow and "print_ssm_plugin_output" in workflow and "CommandPlugins" in workflow, "SSM result must fail closed and show bounded plugin output on failure")
@@ -367,9 +370,9 @@ def validate_oidc_deploy_contract() -> None:
     require(
         operation.get("type") == "String"
         and "interpolationType" not in operation
-        and operation.get("allowedPattern") == "^(preflight|deploy)$"
+        and operation.get("allowedPattern") == "^(preflight|deploy|control-adopt)$"
         and operation.get("minChars") == 6
-        and operation.get("maxChars") == 9,
+        and operation.get("maxChars") == 13,
         "SSM Operation must use the exact bounded raw parameter contract",
     )
     target = parameters["TargetSha"]
@@ -778,7 +781,7 @@ def validate_scripts() -> None:
         "application release and production control state must be separated",
     )
     require(
-        "--operation <preflight|deploy>" in deploy
+        "--operation <preflight|deploy|control-adopt>" in deploy
         and "initialize_read_only_release_context" in deploy
         and "PAWCYCLE_PREFLIGHT_RECORD_IMAGES=false" in deploy
         and "passed without changing containers, DB, or state" in deploy
@@ -789,6 +792,15 @@ def validate_scripts() -> None:
         "read-only approval preflight and repeated deploy boundary gates are incomplete",
     )
     require(
+        "require_control_only_contract_adoption" in common
+        and "current_clean_control_sha" in common
+        and '"$target_sha" == "$current_release_sha"' in common
+        and "running $service is not healthy during control contract adoption" in common
+        and "control-only contract state publication failed" in deploy
+        and "Production control contract adopted without Application activation" in deploy,
+        "control-only contract adoption must bind both approved Control SHAs, revalidate the running Release, and publish only contract state",
+    )
+    require(
         "contract-boundary-missing-output" in script_tests
         and "contract-boundary-preflight-output" in script_tests
         and "migration-boundary-missing-output" in script_tests
@@ -796,6 +808,15 @@ def validate_scripts() -> None:
         and 'boundary_state/previous-contract-sha")" == "$SHA_A"' in script_tests
         and "automatic contract-boundary restoration is blocked" in script_tests,
         "contract and migration boundary regression coverage is missing",
+    )
+    require(
+        "control_only_adopt" in script_tests
+        and "prior-control-mismatch-output" in script_tests
+        and "new-control-mismatch-output" in script_tests
+        and "control-only-$failure_case" in script_tests
+        and "dirty-control health smoke state-publication" in script_tests
+        and "FAKE_STATE_PUBLICATION_FAIL" in script_tests,
+        "control-only contract adoption regression coverage is missing",
     )
     require(
         "acquire_release_lock" in rollback_initialize

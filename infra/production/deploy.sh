@@ -11,8 +11,8 @@ usage() {
 Usage: deploy.sh --sha <40-char-sha> --backend-image <ghcr-repository> --frontend-image <ghcr-repository> [options]
 
 Options:
-  --operation <preflight|deploy>
-                               Read-only approval preflight or activation (default: deploy)
+  --operation <preflight|deploy|control-adopt>
+                               Read-only approval preflight, activation, or control-only adoption (default: deploy)
   --runtime-dir <path>        Materialized runtime bundle root (default: /opt/pawcycle/runtime)
   --state-dir <path>          Release state directory (default: /opt/pawcycle/state)
   --adopt-contract-sha <sha>  When contract state is absent: approved prior baseline; when it differs: current clean control HEAD
@@ -76,11 +76,14 @@ while (( $# > 0 )); do
   esac
 done
 
-[[ "$OPERATION" == "preflight" || "$OPERATION" == "deploy" ]] \
-  || die "operation must be preflight or deploy"
+[[ "$OPERATION" == "preflight" || "$OPERATION" == "deploy" || "$OPERATION" == "control-adopt" ]] \
+  || die "operation must be preflight, deploy, or control-adopt"
 if [[ "$OPERATION" == "preflight" ]]; then
   PAWCYCLE_PREFLIGHT_RECORD_IMAGES=false
   initialize_read_only_release_context
+elif [[ "$OPERATION" == "control-adopt" ]]; then
+  PAWCYCLE_PREFLIGHT_RECORD_IMAGES=false
+  initialize_release_context
 else
   PAWCYCLE_PREFLIGHT_RECORD_IMAGES=true
   initialize_release_context
@@ -96,6 +99,26 @@ fi
 CURRENT_SHA=""
 if [[ -e "$PAWCYCLE_STATE_DIR/current-sha" || -L "$PAWCYCLE_STATE_DIR/current-sha" ]]; then
   CURRENT_SHA="$(read_state_sha current-sha)"
+fi
+
+if [[ "$OPERATION" == "control-adopt" ]]; then
+  [[ -z "$ADOPT_CONTRACT_SHA" ]] \
+    || die "--adopt-contract-sha is not accepted for control-only contract adoption"
+  [[ -z "$APPROVED_MIGRATION_TARGET_SHA" ]] \
+    || die "approved_migration_target_sha is not accepted for control-only contract adoption"
+  [[ -n "$CURRENT_SHA" ]] \
+    || die "control-only contract adoption requires current-sha state"
+
+  STORED_CONTRACT_SHA="$(read_state_sha contract-sha)"
+  require_control_only_contract_adoption \
+    "$STORED_CONTRACT_SHA" "$CURRENT_SHA" "$TARGET_SHA" \
+    "$APPROVED_CONTRACT_FROM_SHA" "$APPROVED_CONTROL_SHA"
+  validate_current_release_for_contract_adoption "$CURRENT_SHA"
+  if ! write_state contract-sha "$PENDING_CONTRACT_SHA"; then
+    die "control-only contract state publication failed; existing Application containers and release state were preserved"
+  fi
+  printf 'Production control contract adopted without Application activation: %s\n' "$PENDING_CONTRACT_SHA"
+  exit 0
 fi
 
 CONTRACT_STATE_PATH="$PAWCYCLE_STATE_DIR/contract-sha"

@@ -74,7 +74,8 @@ infra/production/rds-transition-gate.sh
 11. `/opt/pawcycle/state/contract-sha`는 현재 승인된 Control HEAD를 가리키는 mode `600` regular non-symlink file이다.
 12. `contract-sha`가 아직 없다면 `--adopt-contract-sha`에는 사용자가 이미 승인한 기존 운영 Control 기준 SHA를 전달한다. Script는 그 기준과 현재 clean Control HEAD의 Release 계약이 같은지, 현재 실행 Release의 image identity·digest·health·HTTP·HTTPS smoke가 정상인지 검증한 뒤 현재 Control HEAD를 `contract-sha`로 기록한다.
 13. `contract-sha`가 존재하지만 현재 Control HEAD와 다르면 `--adopt-contract-sha`에는 현재 Control HEAD를 정확히 전달한다. Script는 저장된 승인 Control과 현재 Control의 Release 계약이 같은지 검증하고 현재 실행 Release를 재검증한 뒤 상태를 갱신한다.
-14. 승인된 현재 `contract-sha`와 대상 Release SHA의 Release 계약이 다르면 image pull과 Container 변경 전에 중단한다.
+14. 새 Control의 Release 계약을 현재 Application SHA 변경 없이 채택해야 하면 `Production Deploy`의 `operation=control-adopt`에 현재 `current-sha`, 현재 `contract-sha`와 일치하는 `approved_contract_from_sha`, clean Control HEAD와 일치하는 `approved_control_sha`를 모두 전달한다. 이 경로는 `--adopt-contract-sha`와 migration 승인값을 받지 않는다.
+15. 승인된 현재 `contract-sha`와 대상 Release SHA의 Release 계약이 다르면 image pull과 Container 변경 전에 중단한다.
 
 ## GitHub Actions image 게시
 
@@ -223,6 +224,12 @@ contract boundary는 `stored contract-sha == approved_contract_from_sha`, `curre
 
 `--adopt-contract-sha`는 기존처럼 동일 Release contract에서 Control SHA를 채택하는 경로만 의미한다. boundary를 통과한 새 Control SHA도 target activation·health·smoke가 성공한 뒤에만 `contract-sha`로 기록하며, 그 전에는 기존 `contract-sha`와 `previous-contract-sha`를 보존한다. contract 또는 migration boundary에서 activation이 실패하면 이전 Release 자동복귀를 하지 않고 Application services를 중지한다. Scheduler는 OFF로 남고 MySQL·named volume은 보존한다.
 
+### Control-only adoption
+
+새 Control 계약(예: RDS 전환 control)을 현재 정상 Application Release에만 채택할 때는 `operation=control-adopt`를 명시한다. `target_sha`는 반드시 state의 `current-sha`와 같아야 하며, `approved_contract_from_sha`는 기존 `contract-sha`, `approved_control_sha`는 현재 clean Control HEAD와 각각 정확히 일치해야 한다. 이 경로는 이전·새 Control의 Release contract 동일성을 요구하지 않으므로, Application image 변경 없이 새 Control 계약을 채택할 수 있다.
+
+script는 shared `deploy.lock` 아래 현재 Release의 image identity·digest, MySQL·Backend·Frontend·Proxy health, HTTP `/products`·`/api/products` smoke와 HTTPS 활성화 시 HTTPS smoke를 다시 확인한다. 모든 검증 뒤에만 mode `600` 원자적 교체로 `contract-sha` 하나만 갱신한다. `current-sha`, `previous-sha`, `previous-contract-sha`, image record, MySQL volume과 실행 Container를 변경하거나 재생성하지 않는다. Control dirty, 승인 SHA 불일치, health·smoke 실패 또는 state publication 실패에서는 기존 state와 실행 Container를 그대로 보존한다.
+
 script는 실행 중인 Container를 바꾸기 전에 다음을 수행한다.
 
 1. SHA, GHCR repository 형식, runtime file mode와 완료 marker를 검증하고 release lock을 획득한다.
@@ -297,7 +304,7 @@ rollback은 현재 Control worktree가 깨끗하고 HEAD가 `contract-sha`와 �
 
 기록된 `previous-sha`가 아닌 명시적 대상, `previous-contract-sha` 누락 또는 `previous-sha == current-sha`인 부분 기록 상태는 이전 Control 경로를 사용하지 않는다. 이 경우 기존처럼 현재 `contract-sha`와 대상 commit의 Release 계약 세 파일이 같아야 한다. 조건을 통과한 뒤 현재 복구 Release와 rollback 대상을 모두 preflight하고 Application image를 바꾼다. 활성화 실패 시에는 검증을 통과한 직전 현재 SHA를 다시 복구한다. MySQL Container가 Compose 판단에 따라 재사용 또는 재생성될 수 있어도 동일 named volume을 사용한다.
 
-Control HEAD가 `contract-sha`와 다르면 rollback에서 계약을 채택하지 않는다. 먼저 실제 Production 실행 승인을 받고 `deploy.sh --adopt-contract-sha '<current-control-sha>'`로 현재 Release를 검증해 Control 계약을 전환하거나, 기존 승인 Control checkout으로 복귀한 뒤 rollback한다.
+Control HEAD가 `contract-sha`와 다르면 rollback에서 계약을 채택하지 않는다. 새 Control 계약을 현재 Application 변경 없이 채택해야 하면 먼저 실제 Production 실행 승인을 받고 `Production Deploy`의 `operation=control-adopt`에 현재 Application SHA, 이전 승인 `contract-sha`, 새 clean Control HEAD를 정확히 전달해 검증·채택하거나, 기존 승인 Control checkout으로 복귀한 뒤 rollback한다.
 
 rollback은 다음을 하지 않는다.
 

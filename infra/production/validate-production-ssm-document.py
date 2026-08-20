@@ -170,7 +170,7 @@ printf '%s\n' "$trusted_origin"
 def validate_parameter_contract(parameters: dict[str, object]) -> None:
     require(set(parameters) == set(PARAMETERS), "SSM document must accept only the five bounded parameters")
     expected = {
-        "Operation": ("^(preflight|deploy)$", 6, 9),
+        "Operation": ("^(preflight|deploy|control-adopt)$", 6, 13),
         "TargetSha": ("^[0-9a-f]{40}$", 40, 40),
         "ApprovedContractFromSha": ("^$|^[0-9a-f]{40}$", 0, 40),
         "ApprovedControlSha": ("^$|^[0-9a-f]{40}$", 0, 40),
