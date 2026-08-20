@@ -1,0 +1,27 @@
+name: Same-SHA Runtime Activation Validation
+
+on:
+  pull_request:
+    paths:
+      - 'infra/production/deploy.sh'
+      - 'infra/production/test-same-sha-runtime-activation.sh'
+      - '.github/workflows/validate-same-sha-runtime-activation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  same-sha-runtime-activation:
+    name: Same-SHA runtime activation regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Validate shell syntax
+        run: bash -n infra/production/deploy.sh infra/production/test-same-sha-runtime-activation.sh
+
+      - name: Run same-SHA activation regression
+        run: bash infra/production/test-same-sha-runtime-activation.sh
