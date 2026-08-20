@@ -1,0 +1,35 @@
+name: RDS Automation Preflight Validation
+
+on:
+  pull_request:
+    paths:
+      - 'infra/production/subscription-automation-preflight.sh'
+      - 'infra/production/test-subscription-automation-preflight-datasource.sh'
+      - 'infra/production/release-common.sh'
+      - '.github/workflows/validate-rds-automation-preflight.yml'
+
+concurrency:
+  group: rds-automation-preflight-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: RDS automation datasource preflight regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Validate shell syntax
+        run: |
+          bash -n \
+            infra/production/subscription-automation-preflight.sh \
+            infra/production/test-subscription-automation-preflight-datasource.sh
+
+      - name: Run datasource routing regression
+        run: bash infra/production/test-subscription-automation-preflight-datasource.sh
