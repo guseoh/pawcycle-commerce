@@ -24,7 +24,28 @@ validate_sha() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
 current_control_sha() { printf '%s\n' "$FAKE_CONTROL_SHA"; }
 current_clean_control_sha() { printf '%s\n' "$FAKE_CONTROL_SHA"; }
 validate_runtime_contract_compatibility() { :; }
-load_or_adopt_runtime_contract() { CONTRACT_SHA="$(cat "$PAWCYCLE_STATE_DIR/contract-sha")"; }
+load_or_adopt_runtime_contract() {
+  local requested_contract_sha="$1"
+  local stored_contract_sha
+  local control_sha
+
+  stored_contract_sha="$(cat "$PAWCYCLE_STATE_DIR/contract-sha")"
+  control_sha="$(current_control_sha)"
+  if [[ "$stored_contract_sha" == "$control_sha" ]]; then
+    if [[ -n "$requested_contract_sha" && "$requested_contract_sha" != "$control_sha" ]]; then
+      die 'requested runtime contract SHA does not match current control HEAD'
+    fi
+    CONTRACT_SHA="$stored_contract_sha"
+    return 0
+  fi
+
+  [[ -n "$requested_contract_sha" ]] \
+    || die 'production control SHA differs from contract state; --adopt-contract-sha with the current control HEAD is required'
+  [[ "$requested_contract_sha" == "$control_sha" ]] \
+    || die 'requested runtime contract SHA does not match current control HEAD'
+  PENDING_CONTRACT_SHA="$control_sha"
+  CONTRACT_SHA="$control_sha"
+}
 release_contract_changed() { return 0; }
 require_contract_boundary_approval() {
   [[ -n "$4" && -n "$5" ]] || die 'production release contract boundary requires approved_contract_from_sha and approved_control_sha'
@@ -112,7 +133,7 @@ if "$TEST_ROOT/deploy.sh" \
   printf 'unapproved same-SHA Control transition did not fail closed\n' >&2
   exit 1
 fi
-grep -Fq 'control-only contract adoption requires approved_contract_from_sha and approved_control_sha' "$unapproved_output" \
+grep -Fq 'production control SHA differs from contract state' "$unapproved_output" \
   || { cat "$unapproved_output" >&2; printf 'unapproved same-SHA Control transition failed for the wrong reason\n' >&2; exit 1; }
 [[ "$(cat "$unapproved_state/contract-sha")" == "$OLD_CONTROL_SHA" ]]
 
