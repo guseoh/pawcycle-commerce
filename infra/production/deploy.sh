@@ -134,7 +134,10 @@ if [[ ! -e "$CONTRACT_STATE_PATH" && ! -L "$CONTRACT_STATE_PATH" ]]; then
   load_or_adopt_runtime_contract "$CONTROL_SHA" "$CURRENT_SHA"
 else
   STORED_CONTRACT_SHA="$(read_state_sha contract-sha)"
-  if release_contract_changed "$STORED_CONTRACT_SHA" "$TARGET_SHA"; then
+  if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" == "$TARGET_SHA" ]]; then
+    CONTRACT_BOUNDARY=0
+    load_or_adopt_runtime_contract "$ADOPT_CONTRACT_SHA" "$CURRENT_SHA"
+  elif release_contract_changed "$STORED_CONTRACT_SHA" "$TARGET_SHA"; then
     [[ -z "$ADOPT_CONTRACT_SHA" ]] \
       || die "--adopt-contract-sha cannot approve a production release contract boundary"
     require_contract_boundary_approval \
