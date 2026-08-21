@@ -8,6 +8,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $Scripts = @('api-products.js', 'api-product-detail.js', 'products-page.js')
 $CapacityScripts = @('capacity-api-products.js', 'capacity-api-product-detail.js', 'capacity-products-page.js')
+$ProductionCapacityScript = Join-Path $PSScriptRoot 'production-capacity-api-products.js'
+$ProductionCapacityShared = Join-Path $PSScriptRoot 'lib\production-capacity.js'
 $DashboardPath = Join-Path $Root '..\local-integration\observability\grafana\dashboards\pawcycle-observability.json'
 
 foreach ($Script in $Scripts) {
@@ -34,6 +36,23 @@ $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).C
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
 if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0' -or $CapacityRedirectCount -lt 2 -or $CapacityGracefulStopCount -lt 2) {
     throw 'Capacity arrival-rate, measurement-window, redirect, graceful-stop, or fail-closed contract is missing.'
+}
+
+foreach ($ProductionScriptPath in @($ProductionCapacityScript, $ProductionCapacityShared, (Join-Path $PSScriptRoot 'run-production-capacity.sh'))) {
+    if (-not (Test-Path -LiteralPath $ProductionScriptPath)) { throw "Missing Production capacity artifact: $ProductionScriptPath" }
+}
+if (-not $SkipK6Inspect) {
+    & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://validator.invalid' -e 'PRODUCTION_TARGET_HOST=validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'k6 inspect failed: production-capacity-api-products.js' }
+}
+$ProductionCapacityContent = Get-Content -LiteralPath $ProductionCapacityShared -Raw
+$ProductionRunnerContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'run-production-capacity.sh') -Raw
+$ProductionRedirectCount = ([regex]::Matches($ProductionCapacityContent, 'redirects:\s*0')).Count
+if ($ProductionCapacityContent -notmatch 'SUPPORTED_RATES = \[25, 50, 100, 150, 200, 250\]' -or $ProductionCapacityContent -notmatch 'PRODUCTION_TARGET_URL' -or $ProductionCapacityContent -notmatch 'PRODUCTION_TARGET_HOST' -or $ProductionCapacityContent -notmatch 'PRODUCTION_LOAD_ACKNOWLEDGEMENT' -or $ProductionCapacityContent -notmatch 'rate==0' -or $ProductionCapacityContent -notmatch 'dropped_iterations' -or $ProductionCapacityContent -notmatch 'discardResponseBodies: true' -or $ProductionCapacityContent -notmatch 'responseType: "none"' -or $ProductionRedirectCount -ne 1 -or $ProductionCapacityContent -notmatch '\$\{productionTargetUrl\(\)\}/api/products') {
+    throw 'Production capacity target guard, read-only endpoint, redirect refusal, rate envelope, or fail-closed contract is missing.'
+}
+if ($ProductionRunnerContent -notmatch 'for target_rps in 25 50 100 150 200 250' -or $ProductionRunnerContent -notmatch 'set -euo pipefail' -or $ProductionRunnerContent -notmatch '-e "PRODUCTION_TARGET_URL=' -or $ProductionRunnerContent -notmatch '--confirm-target-host' -or $ProductionRunnerContent -notmatch '--acknowledge-production-load') {
+    throw 'Production capacity runner acknowledgement, target confirmation, step order, or stop boundary is missing.'
 }
 
 $SharedScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\baseline.js') -Raw
