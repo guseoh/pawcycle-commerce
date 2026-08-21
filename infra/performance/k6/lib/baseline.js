@@ -5,6 +5,7 @@ import { Counter, Rate, Trend } from "k6/metrics";
 const SUPPORTED_VUS = [1, 5, 10, 20];
 const WARMUP_DURATION = "30s";
 const MEASUREMENT_DURATION = "2m";
+const MEASUREMENT_SECONDS = 120;
 
 export const measurementRequests = new Counter("baseline_measurement_requests");
 export const expectedStatusErrorRate = new Rate("baseline_expected_status_error_rate");
@@ -104,7 +105,7 @@ export function handleSummaryFor(cohort, data) {
       warmup: "1 VU / 30s (excluded)",
       measurement: `${configuredVus()} VU / 2m`,
     },
-    throughput: values("baseline_measurement_requests").rate,
+    throughput: values("baseline_measurement_requests").count / MEASUREMENT_SECONDS,
     latencyMs: {
       p50: values("baseline_measurement_latency").med,
       p95: values("baseline_measurement_latency")["p(95)"],
