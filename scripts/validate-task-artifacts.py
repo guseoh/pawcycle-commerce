@@ -18,7 +18,8 @@ INC_BASE_TASK_ID_PATTERN = (
     r"INC-BASE-[0-9]{3}"
     r"(?![A-Za-z0-9_\x80-\U0010FFFF-])"
 )
-TASK_ID_PATTERN = rf"(?:{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}[A-Z]?|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
+PERF_PHASE_TASK_ID_PATTERN = r"PERF-PH[0-9]+-\d{3}"
+TASK_ID_PATTERN = rf"(?:{PERF_PHASE_TASK_ID_PATTERN}|{INC_BASE_TASK_ID_PATTERN}|HARNESS(?:-[A-Z][A-Z0-9]*)+-\d{{3}}|OPS(?:-[A-Z][A-Z0-9]*)?-\d{{3}}[A-Z]?|(?:{'|'.join(TASK_ID_PREFIXES)})-\d{{3}})"
 TASK_ID_PATTERN = rf"(?:MVP\d+-[A-Z][A-Z0-9]*-\d{{3}}|{TASK_ID_PATTERN})"
 TASK_ID_RE = re.compile(rf"(?<![A-Za-z0-9_\-\x80-\U0010FFFF]){TASK_ID_PATTERN}(?![A-Za-z0-9_\-\x80-\U0010FFFF])")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
