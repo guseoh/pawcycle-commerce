@@ -1,5 +1,6 @@
 import http from "k6/http";
 import { check } from "k6";
+import exec from "k6/execution";
 import { Counter, Rate, Trend } from "k6/metrics";
 
 const SUPPORTED_RATES = [25, 50, 100, 150, 200, 250];
@@ -90,28 +91,33 @@ export function request(measurement) {
     tags: { cohort: "production-capacity-api-products", name: "production-capacity-api-products" },
   });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
-  if (measurement) {
-    measurementIterations.add(1);
-    expectedStatusErrorRate.add(!expected);
-    measurementLatency.add(response.timings.duration);
-  } else {
+
+  if (!measurement) {
     warmupExpectedStatusErrorRate.add(!expected);
+    if (!expected) {
+      exec.test.abort("Production warm-up received a non-200 response.");
+    }
+    return;
   }
+
+  measurementIterations.add(1);
+  expectedStatusErrorRate.add(!expected);
+  measurementLatency.add(response.timings.duration);
 }
 
 export function handleSummaryForProductionCapacity(data) {
-  const values = (metric) => data.metrics[metric].values;
+  const values = (metric) => data.metrics[metric]?.values || {};
   const iterations = values("production_capacity_measurement_iterations");
   const latency = values("production_capacity_measurement_latency");
   const summary = {
     targetRps: configuredRate(),
-    actualRps: iterations.count / MEASUREMENT_SECONDS,
+    actualRps: (iterations.count || 0) / MEASUREMENT_SECONDS,
     droppedIterations: data.metrics.dropped_iterations ? data.metrics.dropped_iterations.values.count : 0,
-    p50Ms: latency.med,
-    p95Ms: latency["p(95)"],
-    p99Ms: latency["p(99)"],
-    maxMs: latency.max,
-    expectedStatusErrorRate: values("production_capacity_expected_status_error_rate").rate,
+    p50Ms: latency.med ?? null,
+    p95Ms: latency["p(95)"] ?? null,
+    p99Ms: latency["p(99)"] ?? null,
+    maxMs: latency.max ?? null,
+    expectedStatusErrorRate: values("production_capacity_expected_status_error_rate").rate ?? 0,
     allocatedVUs: data.metrics.vus_max ? data.metrics.vus_max.values.max : null,
     activeVUs: data.metrics.vus ? data.metrics.vus.values.max : null,
   };
