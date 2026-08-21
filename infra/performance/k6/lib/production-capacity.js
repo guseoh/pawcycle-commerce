@@ -7,8 +7,11 @@ const WARMUP_DURATION = "30s";
 const MEASUREMENT_DURATION = "2m";
 const MEASUREMENT_SECONDS = 120;
 const REQUIRED_ACKNOWLEDGEMENT = "YES";
+const PREALLOCATED_VUS = 250;
+const MAX_VUS = 1000;
 
 export const measurementIterations = new Counter("production_capacity_measurement_iterations");
+export const warmupExpectedStatusErrorRate = new Rate("production_capacity_warmup_expected_status_error_rate");
 export const expectedStatusErrorRate = new Rate("production_capacity_expected_status_error_rate");
 export const measurementLatency = new Trend("production_capacity_measurement_latency", true);
 
@@ -24,7 +27,7 @@ export function productionTargetUrl() {
   const targetUrl = __ENV.PRODUCTION_TARGET_URL || "";
   const targetHost = __ENV.PRODUCTION_TARGET_HOST || "";
   const acknowledgement = __ENV.PRODUCTION_LOAD_ACKNOWLEDGEMENT || "";
-  const match = targetUrl.match(/^https:\/\/([^\/?#:]+)(?::([0-9]{1,5}))?\/?$/i);
+  const match = targetUrl.match(/^https:\/\/([^\/?#:@]+)(?::([0-9]{1,5}))?\/?$/i);
 
   if (!match) {
     throw new Error("PRODUCTION_TARGET_URL must be an HTTPS origin without credentials, query, fragment, or path.");
@@ -43,30 +46,35 @@ export function productionTargetUrl() {
 
 export function optionsForProductionCapacity() {
   productionTargetUrl();
+  const targetRate = configuredRate();
   return {
     scenarios: {
       warmup: {
-        executor: "constant-vus",
+        executor: "constant-arrival-rate",
         exec: "warmup",
-        vus: 1,
+        rate: targetRate,
+        timeUnit: "1s",
         duration: WARMUP_DURATION,
         gracefulStop: "0s",
+        preAllocatedVUs: PREALLOCATED_VUS,
+        maxVUs: MAX_VUS,
         tags: { cohort: "production-capacity-api-products", phase: "warmup" },
       },
       measurement: {
         executor: "constant-arrival-rate",
         exec: "measure",
-        rate: configuredRate(),
+        rate: targetRate,
         timeUnit: "1s",
         duration: MEASUREMENT_DURATION,
         startTime: WARMUP_DURATION,
         gracefulStop: "0s",
-        preAllocatedVUs: 250,
-        maxVUs: 1000,
+        preAllocatedVUs: PREALLOCATED_VUS,
+        maxVUs: MAX_VUS,
         tags: { cohort: "production-capacity-api-products", phase: "measurement" },
       },
     },
     thresholds: {
+      production_capacity_warmup_expected_status_error_rate: ["rate==0"],
       production_capacity_expected_status_error_rate: ["rate==0"],
       dropped_iterations: ["count==0"],
     },
@@ -86,6 +94,8 @@ export function request(measurement) {
     measurementIterations.add(1);
     expectedStatusErrorRate.add(!expected);
     measurementLatency.add(response.timings.duration);
+  } else {
+    warmupExpectedStatusErrorRate.add(!expected);
   }
 }
 

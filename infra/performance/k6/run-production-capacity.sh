@@ -19,7 +19,7 @@ while (($#)); do
   esac
 done
 
-[[ "$target_url" =~ ^https://([^/?#:]+)(:[0-9]{1,5})?/?$ ]] || usage
+[[ "$target_url" =~ ^https://([^/?#:@]+)(:[0-9]{1,5})?/?$ ]] || usage
 target_host="${BASH_REMATCH[1]}"
 [[ -n "$confirmed_host" && "${target_host,,}" == "${confirmed_host,,}" ]] || usage
 [[ "$acknowledgement" == 'YES' ]] || usage
