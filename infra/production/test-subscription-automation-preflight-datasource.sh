@@ -138,6 +138,7 @@ fi
 if [[ "${1:-}" == "run" ]]; then
   [[ "${FAKE_FAIL_RDS_QUERY:-0}" != "1" ]] || exit 1
   [[ "$*" == *"--pull never"* ]] || exit 1
+  [[ "$*" == *"--interactive"* ]] || exit 1
   [[ "$*" == *"--network container:container-backend"* ]] || exit 1
   [[ "$*" == *"--entrypoint mysql"* ]] || exit 1
   [[ "$*" == *"--host=$RDS_HOST"* ]] || exit 1
