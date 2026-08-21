@@ -379,7 +379,7 @@ SELECT 'LOCK_RELEASED';
     $GrafanaHealth = Get-BackendJson 'http://grafana:3000/api/health'
     $GrafanaDatasource = Get-BackendJson 'http://grafana:3000/api/datasources/uid/pawcycle-prometheus'
     $GrafanaDashboard = Get-BackendJson 'http://grafana:3000/api/dashboards/uid/pawcycle-local-observability'
-    if ($GrafanaHealth.database -ne 'ok' -or $GrafanaDatasource.uid -ne 'pawcycle-prometheus' -or $GrafanaDashboard.dashboard.panels.Count -ne 15) {
+    if ($GrafanaHealth.database -ne 'ok' -or $GrafanaDatasource.uid -ne 'pawcycle-prometheus' -or $GrafanaDashboard.dashboard.panels.Count -ne 18) {
         throw 'Disposable Grafana provisioning validation failed.'
     }
     $FixtureFingerprintAfterRecovery = Invoke-MySqlScalar $FixtureFingerprintQuery
@@ -390,7 +390,7 @@ SELECT 'LOCK_RELEASED';
     "FAILURE_EVIDENCE:SUBSCRIPTION_ID=$FixtureSubscriptionId`:FAILURES=$FailureCount`:TARGET_UP=$TargetUp`:LOCK_WAIT_SECONDS=$LockWaitTimeout`:HOLD_SECONDS=$HoldSeconds"
     'RECONCILIATION_FAILURE_ALERT:FIRING=OBSERVED:RESOLVED=PASS'
     "RECOVERY_EVIDENCE:EXECUTIONS=$RecoveryExecutions`:FAILURES=$RecoveryFailures`:TARGET_UP=$RecoveryUp"
-    'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=15'
+    'GRAFANA_EVIDENCE:DATASOURCE=pawcycle-prometheus:DASHBOARD=pawcycle-local-observability:PANELS=18'
     'FIXTURE_DATA_UNCHANGED=PASS'
 } catch {
     $ExecutionError = $_
