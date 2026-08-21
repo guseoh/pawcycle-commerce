@@ -50,6 +50,7 @@ export function optionsFor(cohort) {
         exec: "warmup",
         vus: 1,
         duration: WARMUP_DURATION,
+        gracefulStop: "0s",
         tags: { cohort, phase: "warmup" },
       },
       measurement: {
@@ -58,6 +59,7 @@ export function optionsFor(cohort) {
         vus,
         duration: MEASUREMENT_DURATION,
         startTime: WARMUP_DURATION,
+        gracefulStop: "0s",
         tags: { cohort, phase: "measurement" },
       },
     },
@@ -67,6 +69,7 @@ export function optionsFor(cohort) {
 
 export function request(cohort, path, measurement) {
   const response = http.get(`${localBaseUrl()}${path}`, {
+    redirects: 0,
     tags: { cohort, name: cohort },
   });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
@@ -80,6 +83,7 @@ export function request(cohort, path, measurement) {
 
 export function selectPublicProductId() {
   const response = http.get(`${localBaseUrl()}/api/products`, {
+    redirects: 0,
     tags: { cohort: "api-product-detail", name: "api-product-list-setup" },
   });
   if (response.status !== 200) {

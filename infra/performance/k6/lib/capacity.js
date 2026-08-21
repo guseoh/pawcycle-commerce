@@ -26,6 +26,7 @@ export function optionsForCapacity(cohort) {
         exec: "warmup",
         vus: 1,
         duration: "30s",
+        gracefulStop: "0s",
         tags: { cohort, phase: "warmup" },
       },
       measurement: {
@@ -35,6 +36,7 @@ export function optionsForCapacity(cohort) {
         timeUnit: "1s",
         duration: "2m",
         startTime: "30s",
+        gracefulStop: "0s",
         preAllocatedVUs: 250,
         maxVUs: 1000,
         tags: { cohort, phase: "measurement" },
@@ -49,7 +51,10 @@ export function optionsForCapacity(cohort) {
 }
 
 export function request(cohort, path, measurement) {
-  const response = http.get(`${localBaseUrl()}${path}`, { tags: { cohort, name: cohort } });
+  const response = http.get(`${localBaseUrl()}${path}`, {
+    redirects: 0,
+    tags: { cohort, name: cohort },
+  });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
   if (measurement) {
     measurementIterations.add(1);
@@ -59,7 +64,10 @@ export function request(cohort, path, measurement) {
 }
 
 export function selectPublicProductId() {
-  const response = http.get(`${localBaseUrl()}/api/products`, { tags: { cohort: "capacity-api-product-detail", name: "capacity-api-product-list-setup" } });
+  const response = http.get(`${localBaseUrl()}/api/products`, {
+    redirects: 0,
+    tags: { cohort: "capacity-api-product-detail", name: "capacity-api-product-list-setup" },
+  });
   if (response.status !== 200) throw new Error("Public product list is unavailable for the detail cohort.");
   const products = response.json("products");
   if (!Array.isArray(products) || products.length === 0 || !products[0].productId) {

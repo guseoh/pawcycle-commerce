@@ -30,11 +30,17 @@ foreach ($Script in $CapacityScripts) {
     if (-not $SkipK6Inspect) { & $K6Command inspect $ScriptPath | Out-Null; if ($LASTEXITCODE -ne 0) { throw "k6 inspect failed: $Script" } }
 }
 $CapacityShared = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\capacity.js') -Raw
-if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0') { throw 'Capacity arrival-rate, measurement-window, or fail-closed contract is missing.' }
+$CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).Count
+$CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
+if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0' -or $CapacityRedirectCount -lt 2 -or $CapacityGracefulStopCount -lt 2) {
+    throw 'Capacity arrival-rate, measurement-window, redirect, graceful-stop, or fail-closed contract is missing.'
+}
 
 $SharedScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\baseline.js') -Raw
-if ($SharedScript -notmatch 'BASE_URL must be an http loopback origin' -or $SharedScript -notmatch 'baseline_measurement_latency' -or $SharedScript -notmatch 'baseline_expected_status_error_rate' -or $SharedScript -notmatch 'MEASUREMENT_SECONDS = 120' -or $SharedScript -notmatch 'count / MEASUREMENT_SECONDS') {
-    throw 'Local-only target guard or measurement-window aggregate metrics are missing.'
+$SharedRedirectCount = ([regex]::Matches($SharedScript, 'redirects:\s*0')).Count
+$SharedGracefulStopCount = ([regex]::Matches($SharedScript, 'gracefulStop:\s*"0s"')).Count
+if ($SharedScript -notmatch 'BASE_URL must be an http loopback origin' -or $SharedScript -notmatch 'baseline_measurement_latency' -or $SharedScript -notmatch 'baseline_expected_status_error_rate' -or $SharedScript -notmatch 'MEASUREMENT_SECONDS = 120' -or $SharedScript -notmatch 'count / MEASUREMENT_SECONDS' -or $SharedRedirectCount -lt 2 -or $SharedGracefulStopCount -lt 2) {
+    throw 'Local-only target guard, redirect refusal, graceful-stop boundary, or measurement-window aggregate metrics are missing.'
 }
 
 $Dashboard = Get-Content -LiteralPath $DashboardPath -Raw | ConvertFrom-Json
@@ -46,10 +52,12 @@ if ($HttpAverage.Count -ne 1 -or $HttpPercentiles.Count -ne 1 -or $HttpError.Cou
 if (($HttpRequests[0].targets.expr -join "`n") -notmatch '\$__rate_interval') { throw 'HTTP request rate panel must use Grafana rate interval.' }
 if (($HttpAverage[0].targets.expr -join "`n") -notmatch '\$__rate_interval') { throw 'HTTP average latency panel must use Grafana rate interval.' }
 $PercentileExpr = $HttpPercentiles[0].targets.expr -join "`n"
-if ($PercentileExpr -notmatch 'histogram_quantile\(0\.95' -or $PercentileExpr -notmatch 'histogram_quantile\(0\.99' -or $PercentileExpr -notmatch '\$__rate_interval') {
-    throw 'HTTP latency percentile panel must include p95/p99 and use Grafana rate interval.'
+if ($PercentileExpr -notmatch 'histogram_quantile\(0\.95' -or $PercentileExpr -notmatch 'histogram_quantile\(0\.99' -or $PercentileExpr -notmatch 'http_server_requests_seconds_bucket' -or $PercentileExpr -notmatch '\$__rate_interval') {
+    throw 'HTTP latency percentile panel must use the request histogram buckets, include p95/p99, and use Grafana rate interval.'
 }
 $ErrorExpr = $HttpError[0].targets.expr -join "`n"
-if ($ErrorExpr -notmatch 'http_server_requests_seconds_count' -or $ErrorExpr -notmatch '\$__rate_interval') { throw 'HTTP error ratio panel must use HTTP request totals and Grafana rate interval.' }
+if ($ErrorExpr -notmatch 'http_server_requests_seconds_count\{status=~"4\.\.\|5\.\."\}\[\$__rate_interval\]' -or $ErrorExpr -notmatch 'http_server_requests_seconds_count\[\$__rate_interval\]' -or $ErrorExpr -notmatch '\)\s*/\s*clamp_min\(' -or $ErrorExpr -notmatch '\$__rate_interval') {
+    throw 'HTTP error ratio panel must divide filtered 4xx/5xx request rate by the unfiltered total request rate using Grafana rate interval.'
+}
 
 'k6 baseline harness and local observability dashboard validation passed.'
