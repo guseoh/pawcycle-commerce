@@ -19,9 +19,9 @@ infra/performance/k6/run-production-capacity.sh \
   --acknowledge-production-load YES
 ```
 
-각 단계의 warm-up은 해당 단계와 같은 target RPS의 `constant-arrival-rate`로 30초 동안 실행하고, 이어서 같은 target RPS로 2분 measurement를 수행한다. 따라서 warm-up도 승인된 현재 단계 RPS를 넘기지 않는다. warm-up 또는 measurement에서 HTTP 200 이외 응답이 한 건이라도 발생하거나 dropped iteration이 발생하면 k6 threshold가 실패하고 shell의 `set -e`가 다음 RPS 단계를 막는다. scenario는 redirect를 따르지 않는다. health 이상, EC2/RDS 지표 악화 또는 load generator 이상도 즉시 k6 process를 종료하고 다음 단계를 실행하지 않는다. 입력 URL에는 path, query, fragment, credential 또는 HTTP scheme을 넣을 수 없다.
+각 단계의 warm-up은 해당 단계와 같은 target RPS의 `constant-arrival-rate`로 30초 동안 실행하고, 이어서 같은 target RPS로 2분 measurement를 수행한다. 따라서 warm-up도 승인된 현재 단계 RPS를 넘기지 않는다. warm-up에서 HTTP 200 이외 응답이 한 건이라도 발생하면 현재 k6 test를 즉시 abort하여 measurement로 진행하지 않는다. measurement의 HTTP 상태 오류와 warm-up/measurement의 dropped iteration은 fail-close threshold로 처리되며, k6가 non-zero로 종료하면 shell의 `set -e`가 다음 RPS 단계를 막는다. scenario는 redirect를 따르지 않는다. health 이상, EC2/RDS 지표 악화 또는 load generator 이상도 즉시 k6 process를 종료하고 다음 단계를 실행하지 않는다. 입력 URL에는 path, query, fragment, credential 또는 HTTP scheme을 넣을 수 없다.
 
-각 성공 단계의 stdout aggregate는 `targetRps`, `actualRps`, `droppedIterations`, `p50Ms`, `p95Ms`, `p99Ms`, `maxMs`, `expectedStatusErrorRate`, `allocatedVUs`, `activeVUs`만 포함한다. aggregate의 처리량·latency·expected-status error는 2분 measurement window 기준이며 warm-up 오류는 별도 fail-close threshold로만 사용한다. response body·product ID·cookie·session·credential·raw DB data는 출력하거나 저장하지 않는다. 결과는 외부 desktop/network/load-generator 한계를 포함한 단일 배포 경로의 관측값이며 Application 또는 RDS의 독립 최대 capacity로 해석하지 않는다.
+각 성공 단계의 stdout aggregate는 `targetRps`, `actualRps`, `droppedIterations`, `p50Ms`, `p95Ms`, `p99Ms`, `maxMs`, `expectedStatusErrorRate`, `allocatedVUs`, `activeVUs`만 포함한다. aggregate의 처리량·latency·expected-status error는 2분 measurement window 기준이며 warm-up 상태 오류는 즉시 중단용 별도 metric으로만 사용한다. response body·product ID·cookie·session·credential·raw DB data는 출력하거나 저장하지 않는다. 결과는 외부 desktop/network/load-generator 한계를 포함한 단일 배포 경로의 관측값이며 Application 또는 RDS의 독립 최대 capacity로 해석하지 않는다.
 
 ## 관측과 실행 후 확인
 
