@@ -8,6 +8,10 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $Scripts = @('api-products.js', 'api-product-detail.js', 'products-page.js')
 $CapacityScripts = @('capacity-api-products.js', 'capacity-api-product-detail.js', 'capacity-products-page.js')
+$ProductionCapacityScript = Join-Path $PSScriptRoot 'production-capacity-api-products.js'
+$ProductionCapacityShared = Join-Path $PSScriptRoot 'lib\production-capacity.js'
+$ProductionCapacityRunner = Join-Path $PSScriptRoot 'run-production-capacity.sh'
+$ProductionCapacityRunbook = Join-Path $Root '..\docs\runbook\PERF-PH8-002-production-k6-capacity.md'
 $DashboardPath = Join-Path $Root '..\local-integration\observability\grafana\dashboards\pawcycle-observability.json'
 
 foreach ($Script in $Scripts) {
@@ -34,6 +38,31 @@ $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).C
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
 if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0' -or $CapacityRedirectCount -lt 2 -or $CapacityGracefulStopCount -lt 2) {
     throw 'Capacity arrival-rate, measurement-window, redirect, graceful-stop, or fail-closed contract is missing.'
+}
+
+foreach ($ProductionScriptPath in @($ProductionCapacityScript, $ProductionCapacityShared, $ProductionCapacityRunner, $ProductionCapacityRunbook)) {
+    if (-not (Test-Path -LiteralPath $ProductionScriptPath)) { throw "Missing Production capacity artifact: $ProductionScriptPath" }
+}
+if (-not $SkipK6Inspect) {
+    & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://validator.invalid' -e 'PRODUCTION_TARGET_HOST=validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'k6 inspect failed: production-capacity-api-products.js' }
+
+    & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://operator@validator.invalid' -e 'PRODUCTION_TARGET_HOST=operator@validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { throw 'Production capacity target guard must reject URL userinfo.' }
+}
+$ProductionCapacityContent = Get-Content -LiteralPath $ProductionCapacityShared -Raw
+$ProductionRunnerContent = Get-Content -LiteralPath $ProductionCapacityRunner -Raw
+$ProductionRunbookContent = Get-Content -LiteralPath $ProductionCapacityRunbook -Raw
+$ProductionRedirectCount = ([regex]::Matches($ProductionCapacityContent, 'redirects:\s*0')).Count
+$ProductionArrivalRateCount = ([regex]::Matches($ProductionCapacityContent, 'executor:\s*"constant-arrival-rate"')).Count
+if ($ProductionCapacityContent -notmatch 'SUPPORTED_RATES = \[25, 50, 100, 150, 200, 250\]' -or $ProductionCapacityContent -notmatch 'PRODUCTION_TARGET_URL' -or $ProductionCapacityContent -notmatch 'PRODUCTION_TARGET_HOST' -or $ProductionCapacityContent -notmatch 'PRODUCTION_LOAD_ACKNOWLEDGEMENT' -or $ProductionCapacityContent -notmatch 'production_capacity_warmup_expected_status_error_rate' -or $ProductionCapacityContent -notmatch 'warmupExpectedStatusErrorRate\.add\(!expected\)' -or $ProductionCapacityContent -notmatch 'production_capacity_expected_status_error_rate' -or $ProductionCapacityContent -notmatch 'rate==0' -or $ProductionCapacityContent -notmatch 'dropped_iterations' -or $ProductionCapacityContent -notmatch 'discardResponseBodies: true' -or $ProductionCapacityContent -notmatch 'responseType: "none"' -or $ProductionRedirectCount -ne 1 -or $ProductionArrivalRateCount -ne 2 -or $ProductionCapacityContent -match 'executor:\s*"constant-vus"' -or $ProductionCapacityContent -notmatch 'warmup:\s*\{[\s\S]*?rate:\s*targetRate' -or $ProductionCapacityContent -notmatch 'measurement:\s*\{[\s\S]*?rate:\s*targetRate' -or -not $ProductionCapacityContent.Contains('[^\/?#:@]+') -or $ProductionCapacityContent -notmatch '\$\{productionTargetUrl\(\)\}/api/products') {
+    throw 'Production capacity target guard, fixed-rate warm-up, warm-up fail-close, read-only endpoint, redirect refusal, rate envelope, or measurement fail-close contract is missing.'
+}
+if ($ProductionRunnerContent -notmatch 'for target_rps in 25 50 100 150 200 250' -or $ProductionRunnerContent -notmatch 'set -euo pipefail' -or $ProductionRunnerContent -notmatch '-e "PRODUCTION_TARGET_URL=' -or $ProductionRunnerContent -notmatch '--confirm-target-host' -or $ProductionRunnerContent -notmatch '--acknowledge-production-load' -or -not $ProductionRunnerContent.Contains('[^/?#:@]+')) {
+    throw 'Production capacity runner acknowledgement, credential-free target confirmation, step order, or stop boundary is missing.'
+}
+if ($ProductionRunbookContent -notmatch 'production_assessment=READY' -or $ProductionRunbookContent -notmatch 'status=NORMAL' -or $ProductionRunbookContent -notmatch 'constant-arrival-rate' -or $ProductionRunbookContent -notmatch 'warm-up.*target RPS') {
+    throw 'Production capacity Runbook must preserve READY then NORMAL diagnostics and the fixed-rate warm-up boundary.'
 }
 
 $SharedScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\baseline.js') -Raw
