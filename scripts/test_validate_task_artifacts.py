@@ -177,6 +177,7 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             "OPS-RECON-001-EXTRA",
             "OPS-RECON-001abc",
             "OPS-RECON-001_extra",
+            "OPS-RECON-١٢٣",
         ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
@@ -532,12 +533,39 @@ legacy 형식이다.
     def test_supported_task_id_families_are_detected(self) -> None:
         for task_id in (
             "AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "SUB-AUTO-001",
-            "INC-BASE-001", "HARNESS-LEAN-001", "MVP3-CATALOG-001",
+            "INC-BASE-001", "HARNESS-LEAN-001", "MVP3-CATALOG-001", "PERF-PH8-001",
         ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
                 body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_malformed_perf_phase_task_ids_do_not_partially_match_stdin(self) -> None:
+        for task_id in (
+            "PERF-PH8-001-EXTRA",
+            "PERF-PH8-001abc",
+            "X-PERF-PH8-001",
+            "PERF-PH8-١٢٣",
+            "PERF-PH٨-001",
+        ):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 ID", result.stderr)
+
+    def test_unicode_digit_task_ids_are_rejected(self) -> None:
+        for task_id in (
+            "AUTH-١٢٣",
+            "HARNESS-LEAN-١٢٣",
+            "MVP٣-CATALOG-001",
+            "MVP3-CATALOG-١٢٣",
+        ):
+            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
+                body = pr_body().replace(TASK_ID, task_id)
+                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("작업 ID", result.stderr)
 
     def test_malformed_sub_auto_task_ids_do_not_partially_match_stdin(self) -> None:
         for task_id in (
