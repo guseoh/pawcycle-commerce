@@ -129,7 +129,7 @@ run_mysql_read_only() {
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_DATABASE mysql_database
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_USER mysql_user
     read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_PASSWORD mysql_password
-    if ! result="$(printf '%s\n' "$sql" | MYSQL_PWD="$mysql_password" docker run --rm --pull never \
+    if ! result="$(printf '%s\n' "$sql" | MYSQL_PWD="$mysql_password" docker run --rm --pull never --interactive \
       --network "container:$BACKEND_CONTAINER" \
       --read-only --tmpfs /tmp:size=16m,mode=1777 \
       --security-opt no-new-privileges:true --cap-drop ALL \
