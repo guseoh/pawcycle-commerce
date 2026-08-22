@@ -3,6 +3,7 @@ set -euo pipefail
 
 usage() { printf '%s\n' 'Usage: seed-phase8d-fixture.sh --member-email qa-foundation-004@<local-domain> --acknowledge-local-fixture YES [--reset-only]'; }
 member_email=''; acknowledgement=''; reset_only=false
+fixture_sku_code='QA-FOUNDATION-004-SKU'
 while (($#)); do
   case "$1" in
     --member-email) member_email="${2:-}"; shift 2 ;;
@@ -25,9 +26,14 @@ member_count="$("${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PAS
 if [[ "$member_count" != '1' ]]; then
   printf '%s\n' 'Phase 8-D seed requires exactly one existing local QA-bootstrap member; no data was changed.' >&2; exit 1
 fi
+sku_count="$("${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -N -uroot "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM skus WHERE sku_code=\"'"$fixture_sku_code"'\""')"
+if [[ "$sku_count" != '1' ]]; then
+  printf '%s\n' 'Phase 8-D seed requires exactly one QA fixture SKU code; no data was changed.' >&2; exit 1
+fi
 read -r -d '' reset_sql <<'SQL' || true
+START TRANSACTION;
 SET @member_id := (SELECT id FROM members WHERE email = '__MEMBER_EMAIL__');
-SET @sku_id := (SELECT sku.id FROM skus sku JOIN products product ON product.id = sku.product_id WHERE product.name = '[QA FOUNDATION-004] 정기배송 사료' AND sku.name = '[QA FOUNDATION-004] 2kg');
+SET @sku_id := (SELECT id FROM skus WHERE sku_code = '__FIXTURE_SKU_CODE__');
 DELETE item FROM order_items item JOIN orders o ON o.id = item.order_id WHERE o.member_id = @member_id AND o.order_number LIKE 'PERF-PH8-003-%';
 DELETE FROM orders WHERE member_id = @member_id AND order_number LIKE 'PERF-PH8-003-%';
 DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE member_id = @member_id) AND sku_id = @sku_id;
@@ -35,8 +41,9 @@ DELETE FROM wishlist_items WHERE member_id = @member_id AND product_id = (SELECT
 DELETE FROM subscriptions WHERE member_id = @member_id AND sku_id = @sku_id AND created_date = '2000-01-01' AND next_order_date = '2030-01-01';
 SQL
 reset_sql="${reset_sql//__MEMBER_EMAIL__/$member_email}"
+reset_sql="${reset_sql//__FIXTURE_SKU_CODE__/$fixture_sku_code}"
 if [[ "$reset_only" == true ]]; then
-  "${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' <<< "$reset_sql"
+  "${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' <<< "$reset_sql"$'\nCOMMIT;'
   printf '%s\n' 'Phase 8-D local fixture reset completed without printing credentials, sessions, tokens, rows, or IDs.'
   exit 0
 fi
@@ -55,6 +62,5 @@ SELECT o.id,@sku_id,'FULL',sku.sku_code,product.name,sku.name,sku.price,1,sku.pr
 FROM orders o JOIN skus sku ON sku.id=@sku_id JOIN products product ON product.id=sku.product_id
 WHERE o.order_number='PERF-PH8-003-ORDER' AND NOT EXISTS (SELECT 1 FROM order_items WHERE order_id=o.id AND sku_id=@sku_id);
 SQL
-seed_sql="${seed_sql//__MEMBER_EMAIL__/$member_email}"
-"${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' <<< "$reset_sql$seed_sql"
+"${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' <<< "$reset_sql"$'\n'"$seed_sql"$'\nCOMMIT;'
 printf '%s\n' 'Phase 8-D local fixture seed completed without printing credentials, sessions, tokens, rows, or IDs.'
