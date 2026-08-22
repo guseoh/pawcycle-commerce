@@ -11,7 +11,12 @@ $CapacityScripts = @('capacity-api-products.js', 'capacity-api-product-detail.js
 $ProductionCapacityScript = Join-Path $PSScriptRoot 'production-capacity-api-products.js'
 $ProductionCapacityShared = Join-Path $PSScriptRoot 'lib\production-capacity.js'
 $ProductionCapacityRunner = Join-Path $PSScriptRoot 'run-production-capacity.sh'
-$ProductionCapacityRunbook = Join-Path $Root '..\docs\runbook\PERF-PH8-002-production-k6-capacity.md'
+$ProductionCapacityRunbook = Join-Path $Root '..\..\docs\runbook\PERF-PH8-002-production-k6-capacity.md'
+$Phase8dScripts = @('phase8d-mixed-steady.js', 'phase8d-burst.js', 'phase8d-sustained.js', 'phase8d-bounded-write.js')
+$Phase8dShared = Join-Path $PSScriptRoot 'lib\phase8d.js'
+$Phase8dSeed = Join-Path $PSScriptRoot 'seed-phase8d-fixture.sh'
+$Phase8dRunner = Join-Path $PSScriptRoot 'run-phase8d.sh'
+$Phase8dRunbook = Join-Path $Root '..\..\docs\runbook\PERF-PH8-003-isolated-commerce-k6.md'
 $DashboardPath = Join-Path $Root '..\local-integration\observability\grafana\dashboards\pawcycle-observability.json'
 
 foreach ($Script in $Scripts) {
@@ -33,6 +38,30 @@ foreach ($Script in $CapacityScripts) {
     if ($Content -notmatch 'optionsForCapacity' -or $Content -notmatch 'export function warmup' -or $Content -notmatch 'export function measure') { throw "Capacity scenario contract missing: $Script" }
     if (-not $SkipK6Inspect) { & $K6Command inspect $ScriptPath | Out-Null; if ($LASTEXITCODE -ne 0) { throw "k6 inspect failed: $Script" } }
 }
+
+foreach ($Phase8dScript in $Phase8dScripts) {
+    $ScriptPath = Join-Path $PSScriptRoot $Phase8dScript
+    if (-not (Test-Path -LiteralPath $ScriptPath)) { throw "Missing Phase 8-D script: $Phase8dScript" }
+    if (-not $SkipK6Inspect) {
+        & $K6Command inspect -e 'BASE_URL=http://127.0.0.1:8080' -e 'TARGET_RPS=20' -e 'PERF_PHASE8D_MEMBER_EMAIL=qa-foundation-004@validator.test' -e 'PERF_PHASE8D_MEMBER_PASSWORD=not-an-artifact' $ScriptPath | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "k6 inspect failed: $Phase8dScript" }
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $K6Command inspect -e 'BASE_URL=https://production.invalid' -e 'TARGET_RPS=20' $ScriptPath 2>$null | Out-Null
+        $GuardExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $PreviousErrorActionPreference
+        if ($GuardExitCode -eq 0) { throw "Phase 8-D target guard must reject non-loopback URL: $Phase8dScript" }
+    }
+}
+foreach ($Phase8dArtifact in @($Phase8dShared, $Phase8dSeed, $Phase8dRunner, $Phase8dRunbook)) {
+    if (-not (Test-Path -LiteralPath $Phase8dArtifact)) { throw "Missing Phase 8-D artifact: $Phase8dArtifact" }
+}
+$Phase8dContent = Get-Content -LiteralPath $Phase8dShared -Raw
+$Phase8dSeedContent = Get-Content -LiteralPath $Phase8dSeed -Raw
+$Phase8dRunnerContent = Get-Content -LiteralPath $Phase8dRunner -Raw
+if ($Phase8dContent -notmatch '127\\.0\\.0\\.1\|localhost' -or $Phase8dContent -notmatch 'dropped_iterations' -or $Phase8dContent -notmatch 'phase8d_expected_status_error_rate' -or $Phase8dContent -notmatch 'constant-arrival-rate' -or $Phase8dContent -notmatch 'cartAdd' -or $Phase8dContent -notmatch 'wishlistDelete' -or $Phase8dContent -match '/checkout|payments/toss/confirm|/commands/' -or $Phase8dSeedContent -notmatch 'acknowledge-local-fixture' -or $Phase8dSeedContent -notmatch 'PERF-PH8-003' -or $Phase8dRunnerContent -notmatch 'refuses non-loopback targets') {
+    throw 'Phase 8-D target, aggregate, bounded-write, excluded-mutation, seed/reset, or runner fail-close contract is missing.'
+}
 $CapacityShared = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\capacity.js') -Raw
 $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).Count
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
@@ -47,8 +76,12 @@ if (-not $SkipK6Inspect) {
     & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://validator.invalid' -e 'PRODUCTION_TARGET_HOST=validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'k6 inspect failed: production-capacity-api-products.js' }
 
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://operator@validator.invalid' -e 'PRODUCTION_TARGET_HOST=operator@validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { throw 'Production capacity target guard must reject URL userinfo.' }
+    $ProductionGuardExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $PreviousErrorActionPreference
+    if ($ProductionGuardExitCode -eq 0) { throw 'Production capacity target guard must reject URL userinfo.' }
 }
 $ProductionCapacityContent = Get-Content -LiteralPath $ProductionCapacityShared -Raw
 $ProductionRunnerContent = Get-Content -LiteralPath $ProductionCapacityRunner -Raw
