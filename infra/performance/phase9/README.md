@@ -10,7 +10,7 @@
 powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
 ```
 
-진단 실행은 warm-up 30초 후 measurement 시작 snapshot, 250 RPS 2분 동안 5초 간격 sample, measurement 종료 snapshot 순서다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에 저장하며 credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
+진단 실행은 warm-up 30초 후 measurement 시작 snapshot, 250 RPS 2분 동안 5초 간격 sample, measurement 종료 snapshot 순서다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1
