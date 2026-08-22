@@ -104,6 +104,9 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
         hikariIdle = Query-Prometheus 'sum(hikaricp_connections_idle)'
         hikariPending = Query-Prometheus 'sum(hikaricp_connections_pending)'
         hikariMax = Query-Prometheus 'sum(hikaricp_connections_max)'
+        tomcatThreadsConfigMax = Query-Prometheus 'sum(tomcat_threads_config_max_threads)'
+        tomcatThreadsCurrent = Query-Prometheus 'sum(tomcat_threads_current_threads)'
+        tomcatThreadsBusy = Query-Prometheus 'sum(tomcat_threads_busy_threads)'
         jvmHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = Query-Prometheus 'sum(jvm_memory_committed_bytes{area="heap"})'
         jvmHeapMax = Query-Prometheus 'sum(jvm_memory_max_bytes{area="heap"})'
@@ -184,6 +187,9 @@ function New-EmptySnapshot([string]$Label) {
         hikariIdle = $null
         hikariPending = $null
         hikariMax = $null
+        tomcatThreadsConfigMax = $null
+        tomcatThreadsCurrent = $null
+        tomcatThreadsBusy = $null
         jvmHeapUsed = $null
         jvmHeapCommitted = $null
         jvmHeapMax = $null
@@ -211,6 +217,9 @@ function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath) {
         hikariIdle = 'sum(hikaricp_connections_idle)'
         hikariPending = 'sum(hikaricp_connections_pending)'
         hikariMax = 'sum(hikaricp_connections_max)'
+        tomcatThreadsConfigMax = 'sum(tomcat_threads_config_max_threads)'
+        tomcatThreadsCurrent = 'sum(tomcat_threads_current_threads)'
+        tomcatThreadsBusy = 'sum(tomcat_threads_busy_threads)'
         jvmHeapUsed = 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = 'sum(jvm_memory_committed_bytes{area="heap"})'
         jvmHeapMax = 'sum(jvm_memory_max_bytes{area="heap"})'
@@ -300,6 +309,7 @@ function Assert-CriticalMetrics([object]$Snapshot) {
         'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
         'hikari acquire' = @('hikariAcquireCount', 'hikariAcquireSeconds')
         'hikari pool' = @('hikariActive', 'hikariPending', 'hikariMax')
+        'tomcat threads' = @('tomcatThreadsConfigMax', 'tomcatThreadsCurrent', 'tomcatThreadsBusy')
         'jvm memory' = @('jvmHeapUsed', 'jvmNonHeapUsed')
         'jvm threads' = @('jvmLiveThreads', 'jvmPeakThreads')
     }
@@ -310,6 +320,9 @@ function Assert-CriticalMetrics([object]$Snapshot) {
     )
     if ($unavailable.Count -gt 0) {
         throw "Critical Prometheus metric categories unavailable: $($unavailable -join ', ')."
+    }
+    if ([double]$Snapshot.tomcatThreadsConfigMax -ne 64) {
+        throw 'Critical Prometheus Tomcat config max must be 64.'
     }
 }
 

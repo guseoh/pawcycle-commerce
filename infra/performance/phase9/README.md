@@ -18,6 +18,16 @@ docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml 
 Set-Location ../..
 ```
 
+Tomcat worker concurrency candidate 64는 local-only Before/After experiment에서만 사용한다. `compose.phase9-tomcat64.yaml`은 backend의 `SERVER_TOMCAT_THREADS_MAX=64`만 추가하며, Hikari/SQL/index/JVM/accept queue/max-connections 등 다른 성능 변수를 동시에 변경하지 않는다. 기존 resource-envelope와 Prometheus overlay에 이 tuning overlay를 함께 적용한다. 이 준비 단계에서는 250 RPS를 실행하지 않는다.
+
+진단 preflight는 Prometheus에서 `tomcat_threads_config_max_threads`, `tomcat_threads_current_threads`, `tomcat_threads_busy_threads`가 실제로 존재하고 config max가 64인지 확인한다. metric이 없거나 config max가 64가 아니면 load를 시작하지 않고 fail-close한다. sample과 summary에는 세 Tomcat metric을 그대로 보존한다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat64.yaml up --build -d mysql backend frontend proxy prometheus
+Set-Location ../..
+```
+
 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
 
 ```powershell

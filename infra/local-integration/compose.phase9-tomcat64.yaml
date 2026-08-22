@@ -1,0 +1,4 @@
+services:
+  backend:
+    environment:
+      SERVER_TOMCAT_THREADS_MAX: "64"
