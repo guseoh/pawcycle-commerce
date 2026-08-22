@@ -5,25 +5,31 @@ import { Counter, Rate, Trend } from "k6/metrics";
 const UNITS = { products: 8, productDetail: 5, subscriptions: 2, cart: 1, wishlist: 1, orders: 2, member: 1 };
 const TOTAL_UNITS = 20;
 const WRITE_REQUESTS_PER_CYCLE = 5;
+const BURST_STEADY_SECONDS = 30;
+const BURST_TRANSITION_SECONDS = 1;
+const BURST_PEAK_SECONDS = 30;
+const BURST_TOTAL_SECONDS = (BURST_STEADY_SECONDS * 2) + (BURST_TRANSITION_SECONDS * 2) + BURST_PEAK_SECONDS;
 const SYNTHETIC_MEMBER_EMAIL = /^qa-foundation-004@[A-Za-z0-9.-]+$/;
 const FIXTURE_PRODUCT_NAME = "[QA FOUNDATION-004] 정기배송 사료";
 const FIXTURE_SKU_NAME = "[QA FOUNDATION-004] 2kg";
 const FIXTURE_ORDER_NUMBER = "PERF-PH8-003-ORDER";
 const FIXTURE_SUBSCRIPTION_NEXT_ORDER_DATE = "2030-01-01";
 const PROFILES = {
-  steady: { duration: "2m", multiplier: 1 },
-  burst: { duration: "30s", multiplier: 2 },
-  sustained: { duration: "10m", multiplier: 1 },
+  steady: { duration: "2m" },
+  sustained: { duration: "10m" },
 };
+const OPERATION_NAMES = Object.keys(UNITS).concat(["cartAdd", "cartUpdate", "cartDelete", "wishlistAdd", "wishlistDelete"]);
 
 export const completed = new Counter("phase8d_completed_requests");
 export const expectedStatusErrorRate = new Rate("phase8d_expected_status_error_rate");
 export const latency = new Trend("phase8d_request_latency", true);
-const operationMetrics = Object.fromEntries(
-  Object.keys(UNITS)
-    .concat(["cartAdd", "cartUpdate", "cartDelete", "wishlistAdd", "wishlistDelete"])
-    .map((operation) => [operation, new Counter(`phase8d_${operation}_requests`)]),
-);
+const operationMetrics = Object.fromEntries(OPERATION_NAMES.map((operation) => [
+  operation,
+  {
+    requests: new Counter(`phase8d_${operation}_requests`),
+    latency: new Trend(`phase8d_${operation}_latency`, true),
+  },
+]));
 
 function baseUrl() {
   const raw = __ENV.BASE_URL || "http://127.0.0.1:8080";
@@ -42,6 +48,7 @@ function targetRps() {
 }
 
 function profile(name) {
+  if (name === "burst") return { duration: null };
   if (!PROFILES[name]) throw new Error(`Unsupported Phase 8-D profile: ${name}`);
   return PROFILES[name];
 }
@@ -58,9 +65,10 @@ function authenticatedRequest(data, operation, method, path, body, expectedStatu
   });
   const expected = check(response, { "expected status": (result) => result.status === expectedStatus });
   completed.add(1);
-  operationMetrics[operation].add(1);
+  operationMetrics[operation].requests.add(1);
   expectedStatusErrorRate.add(!expected);
   latency.add(response.timings.duration, { operation });
+  operationMetrics[operation].latency.add(response.timings.duration);
 }
 
 export function setup() {
@@ -137,13 +145,34 @@ export function setup() {
 export function optionsForReadProfile(name) {
   baseUrl();
   const selected = profile(name);
-  const total = targetRps() * selected.multiplier;
+  const baseTarget = targetRps();
   const scenarios = {};
   Object.entries(UNITS).forEach(([operation, units]) => {
+    const baseRate = (baseTarget * units) / TOTAL_UNITS;
+    if (name === "burst") {
+      scenarios[operation] = {
+        executor: "ramping-arrival-rate",
+        exec: operation,
+        startRate: baseRate,
+        timeUnit: "1s",
+        stages: [
+          { target: baseRate, duration: `${BURST_STEADY_SECONDS}s` },
+          { target: baseRate * 2, duration: `${BURST_TRANSITION_SECONDS}s` },
+          { target: baseRate * 2, duration: `${BURST_PEAK_SECONDS}s` },
+          { target: baseRate, duration: `${BURST_TRANSITION_SECONDS}s` },
+          { target: baseRate, duration: `${BURST_STEADY_SECONDS}s` },
+        ],
+        preAllocatedVUs: 20,
+        maxVUs: 200,
+        gracefulStop: "0s",
+        tags: { phase: name, operation },
+      };
+      return;
+    }
     scenarios[operation] = {
       executor: "constant-arrival-rate",
       exec: operation,
-      rate: (total * units) / TOTAL_UNITS,
+      rate: baseRate,
       timeUnit: "1s",
       duration: selected.duration,
       preAllocatedVUs: 20,
@@ -204,31 +233,40 @@ export function optionsForBoundedWrite() {
   };
 }
 
+function latencySummary(values) {
+  return {
+    p50: values.med ?? null,
+    p95: values["p(95)"] ?? null,
+    p99: values["p(99)"] ?? null,
+    max: values.max ?? null,
+  };
+}
+
 export function handleSummaryFor(profileName, data) {
   const metric = (name) => data.metrics[name]?.values || {};
   const requests = metric("phase8d_completed_requests").count || 0;
-  const durationSeconds = profileName === "burst" ? 30 : profileName === "sustained" ? 600 : 120;
-  const perOperation = Object.fromEntries(Object.keys(operationMetrics).map((operation) => {
+  const durationSeconds = profileName === "burst" ? BURST_TOTAL_SECONDS : profileName === "sustained" ? 600 : 120;
+  const perOperation = Object.fromEntries(OPERATION_NAMES.map((operation) => {
     const count = metric(`phase8d_${operation}_requests`).count || 0;
-    return [operation, { rps: count / durationSeconds, ratio: requests ? count / requests : 0 }];
-  }));
-  const trend = metric("phase8d_request_latency");
-  const requestedRps = targetRps() * (profileName === "burst" ? 2 : 1);
+    if (count === 0) return null;
+    return [operation, {
+      rps: count / durationSeconds,
+      ratio: requests ? count / requests : 0,
+      latencyMs: latencySummary(metric(`phase8d_${operation}_latency`)),
+    }];
+  }).filter(Boolean));
+  const baseTargetRps = targetRps();
   const summary = {
     profile: profileName,
-    targetRps: requestedRps,
+    targetRps: baseTargetRps,
     actualRps: requests / durationSeconds,
     operations: perOperation,
     droppedIterations: metric("dropped_iterations").count || 0,
     expectedStatusErrorRate: metric("phase8d_expected_status_error_rate").rate || 0,
-    latencyMs: {
-      p50: trend.med ?? null,
-      p95: trend["p(95)"] ?? null,
-      p99: trend["p(99)"] ?? null,
-      max: trend.max ?? null,
-    },
+    latencyMs: latencySummary(metric("phase8d_request_latency")),
     allocatedVUs: metric("vus_max").max ?? null,
     activeVUs: metric("vus").max ?? null,
   };
+  if (profileName === "burst") summary.peakTargetRps = baseTargetRps * 2;
   return { stdout: `${JSON.stringify(summary)}\n` };
 }

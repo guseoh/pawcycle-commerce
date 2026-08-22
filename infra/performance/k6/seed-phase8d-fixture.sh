@@ -41,6 +41,9 @@ if [[ "$reset_only" == true ]]; then
   exit 0
 fi
 read -r -d '' seed_sql <<'SQL' || true
+INSERT INTO carts(member_id,created_at,updated_at)
+SELECT @member_id,'2000-01-01 00:00:00.000000','2000-01-01 00:00:00.000000'
+WHERE NOT EXISTS (SELECT 1 FROM carts WHERE member_id=@member_id);
 INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date)
 SELECT @member_id,@sku_id,1,2,'2000-01-01','2030-01-01'
 WHERE NOT EXISTS (SELECT 1 FROM subscriptions WHERE member_id=@member_id AND sku_id=@sku_id AND created_date='2000-01-01' AND next_order_date='2030-01-01');
