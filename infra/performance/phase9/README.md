@@ -10,6 +10,14 @@ Windows에서는 PowerShell 7+(`pwsh`)로 실행한다. Windows PowerShell 5.1�
 
 Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
 
+Production-like backend resource-envelope 준비가 필요할 때는 Phase 9 전용 `compose.phase9-envelope.yaml` overlay를 추가한다. 이 overlay는 backend에만 memory 640 MB, CPU 0.75, PID 256, `JAVA_TOOL_OPTIONS`의 `MaxRAMPercentage=65.0`과 OOM 즉시 종료를 적용하며 base/production compose와 DB profile은 변경하지 않는다. Windows에서는 `pwsh`를 사용한다. 이 단계는 250 RPS를 실행하지 않는다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml up --build -d mysql backend frontend proxy prometheus
+Set-Location ../..
+```
+
 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
 
 ```powershell
@@ -40,10 +48,16 @@ k6를 시작하지 않고 aggregate summary의 필수 필드, cohort와 target �
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateK6AggregateOnly
 ```
 
+실제 k6를 시작하지 않고 non-zero process exit와 aggregate 보존, aggregate 누락 및 collector error에서도 failure summary가 생성되는 경로를 검증하려면 다음을 사용한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateFailureHandlingOnly
+```
+
 ## 해석 경계
 
 Prometheus에서 실제 payload로 확인된 HTTP, Hikari, JVM, GC, process metric을 snapshot한다. k6 시작 전 HTTP products, Hikari usage/acquire/pool, JVM memory/thread critical metric category를 preflight하고 unavailable이면 부하를 시작하지 않고 fail-close한다. container CPU/memory와 health/restart/OOM은 허용된 `docker stats` 및 명시적 `docker inspect --format`으로만 수집한다. MySQL은 container 내부의 Performance Schema에서 `products|skus` digest의 count, total wait, rows examined aggregate와 `Threads_connected`만 얻는다.
 
-HTTP `/api/products` counter, Hikari counters, digest counters에는 Prometheus scrape, backend healthcheck 및 기타 local traffic이 섞일 수 있다. 따라서 request당 query/borrow 값은 오염 가능성을 포함한 diagnostic estimate이며 exact per-request claim으로 사용하지 않는다. `connectionBorrowPerCompletedRequest`는 acquire count 기준이고 usage return count는 `connectionUsageReturnPerCompletedRequest`로 별도 보존한다. 0 또는 null denominator의 평균·비율은 null이다. metric이 없으면 critical category는 부하 시작 전에 fail-close하고 그 외 metric은 null/미확인으로 남길 수 있지만 Prometheus query, Docker 필수 조회, MySQL collector가 실패하면 diagnostic은 fail-close한다.
+HTTP `/api/products` counter, Hikari counters, digest counters에는 Prometheus scrape, backend healthcheck 및 기타 local traffic이 섞일 수 있다. 따라서 request당 query/borrow 값은 오염 가능성을 포함한 diagnostic estimate이며 exact per-request claim으로 사용하지 않는다. `connectionBorrowPerCompletedRequest`는 acquire count 기준이고 usage return count는 `connectionUsageReturnPerCompletedRequest`로 별도 보존한다. 0 또는 null denominator의 평균·비율은 null이다. k6 시작 전 critical category unavailable은 fail-close하지만, workload 시작 후 Prometheus/MySQL/Docker collector unavailable은 해당 metric을 null로 남기고 sanitized `collectionErrors`에 기록한 뒤 k6 실행을 계속한다.
 
-collector와 Docker 필수 조회는 native exit code와 기대 형식을 확인하고 실패 시 fail-close한다. k6는 snapshot 예외가 발생해도 `finally`에서 실행 중 child를 종료하고 wait/cleanup한다. 이 작업은 병목 후보를 좁히는 측정만 수행한다. SQL/index, Hikari, JVM, Tomcat, Nginx, Docker, RDS와 제품 코드는 변경하지 않는다.
+preflight의 collector와 Docker 필수 조회는 native exit code와 기대 형식을 확인하고 실패 시 fail-close한다. workload 시작 후 collector failure는 fail-soft evidence로 보존하며 running k6를 collector failure 때문에 조기 종료하지 않는다. k6 process가 non-zero로 끝나도 stdout aggregate를 먼저 parse하고, aggregate가 없거나 malformed여도 available samples, collection errors, narrow backend final state를 포함한 `diagnostic-summary.json`을 생성한다. threshold failure와 harness/collector failure는 outcome에서 구분한다. 외부/script abort 시 실행 중 child는 `finally`에서 종료하고 wait/cleanup한다. 이 작업은 병목 후보를 좁히는 측정만 수행한다. SQL/index, Hikari, JVM, Tomcat, Nginx, Docker, RDS와 제품 코드는 변경하지 않는다.

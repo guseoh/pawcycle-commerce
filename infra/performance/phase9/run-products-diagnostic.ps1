@@ -6,7 +6,8 @@ param(
     [string]$ResultsDir = (Join-Path $env:TEMP 'pawcycle-phase9-products'),
     [switch]$ValidateOnly,
     [switch]$ValidateCollectorOnly,
-    [switch]$ValidateK6AggregateOnly
+    [switch]$ValidateK6AggregateOnly,
+    [switch]$ValidateFailureHandlingOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,6 +45,7 @@ $runStdout = Join-Path $runDir 'k6.stdout.log'
 $runStderr = Join-Path $runDir 'k6.stderr.log'
 $summaryPath = Join-Path $runDir 'diagnostic-summary.json'
 $samplesPath = Join-Path $runDir 'measurement-samples.json'
+$backendFinalStatePath = Join-Path $runDir 'backend-final-state.json'
 
 function Query-Prometheus([string]$Query) {
     try {
@@ -104,6 +106,7 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
         hikariMax = Query-Prometheus 'sum(hikaricp_connections_max)'
         jvmHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = Query-Prometheus 'sum(jvm_memory_committed_bytes{area="heap"})'
+        jvmHeapMax = Query-Prometheus 'sum(jvm_memory_max_bytes{area="heap"})'
         jvmNonHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="nonheap"})'
         jvmLiveThreads = Query-Prometheus 'sum(jvm_threads_live_threads)'
         jvmPeakThreads = Query-Prometheus 'sum(jvm_threads_peak_threads)'
@@ -118,6 +121,146 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
 function Delta([object]$Before, [object]$After) {
     if ($null -eq $Before -or $null -eq $After) { return $null }
     return [double]$After - [double]$Before
+}
+
+function Save-MeasurementSamples([string]$Path, [System.Collections.Generic.List[object]]$Samples) {
+    $Samples | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Save-BackendFinalState([string]$Path) {
+    try {
+        $line = @(docker inspect --format '{{.Name}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|restart={{.RestartCount}}|oom={{.State.OOMKilled}}|exit={{.State.ExitCode}}|status={{.State.Status}}|memory={{.HostConfig.Memory}}|cpus={{.HostConfig.NanoCpus}}|pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1 2> $null)
+        if ($LASTEXITCODE -ne 0 -or $line.Count -ne 1) { throw 'backend final state unavailable.' }
+        $parts = $line[0] -split '\|'
+        $evidence = [ordered]@{
+            health = $parts[1] -replace '^health=', ''
+            restartCount = [int]($parts[2] -replace '^restart=', '')
+            oomKilled = [bool]::Parse(($parts[3] -replace '^oom=', ''))
+            exitCode = [int]($parts[4] -replace '^exit=', '')
+            status = $parts[5] -replace '^status=', ''
+            memoryLimitBytes = [int64]($parts[6] -replace '^memory=', '')
+            cpuLimitNanoCpus = [int64]($parts[7] -replace '^cpus=', '')
+            pidsLimit = [int64]($parts[8] -replace '^pids=', '')
+        }
+    } catch {
+        $evidence = [ordered]@{ available = $false; message = 'backend final state unavailable.' }
+    }
+    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8
+    return $evidence
+}
+
+function Write-DiagnosticSummaryArtifact([string]$Path, [object]$Summary) {
+    $Summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Add-CollectionError([string]$Stage, [string]$Source, [string]$Reason) {
+    $script:CollectionErrors.Add([ordered]@{
+        stage = $Stage
+        source = $Source
+        reason = $Reason
+    })
+}
+
+function New-EmptyMySqlAggregate() {
+    return [ordered]@{
+        digestCount = $null
+        digestWaitPs = $null
+        digestRowsExamined = $null
+        threadsConnected = $null
+    }
+}
+
+function New-EmptySnapshot([string]$Label) {
+    return [ordered]@{
+        label = $Label
+        timestampUtc = (Get-Date).ToUniversalTime().ToString('o')
+        httpProductsCount = $null
+        httpProductsSumSeconds = $null
+        hikariUsageCount = $null
+        hikariUsageSeconds = $null
+        hikariAcquireCount = $null
+        hikariAcquireSeconds = $null
+        hikariActive = $null
+        hikariIdle = $null
+        hikariPending = $null
+        hikariMax = $null
+        jvmHeapUsed = $null
+        jvmHeapCommitted = $null
+        jvmHeapMax = $null
+        jvmNonHeapUsed = $null
+        jvmLiveThreads = $null
+        jvmPeakThreads = $null
+        jvmGcPauseCount = $null
+        jvmGcPauseSeconds = $null
+        processCpuUsage = $null
+        mysql = New-EmptyMySqlAggregate
+        containers = $null
+    }
+}
+
+function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath) {
+    $snapshot = New-EmptySnapshot $Label
+    $metrics = [ordered]@{
+        httpProductsCount = 'sum(http_server_requests_seconds_count{method="GET",uri="/api/products"})'
+        httpProductsSumSeconds = 'sum(http_server_requests_seconds_sum{method="GET",uri="/api/products"})'
+        hikariUsageCount = 'sum(hikaricp_connections_usage_seconds_count)'
+        hikariUsageSeconds = 'sum(hikaricp_connections_usage_seconds_sum)'
+        hikariAcquireCount = 'sum(hikaricp_connections_acquire_seconds_count)'
+        hikariAcquireSeconds = 'sum(hikaricp_connections_acquire_seconds_sum)'
+        hikariActive = 'sum(hikaricp_connections_active)'
+        hikariIdle = 'sum(hikaricp_connections_idle)'
+        hikariPending = 'sum(hikaricp_connections_pending)'
+        hikariMax = 'sum(hikaricp_connections_max)'
+        jvmHeapUsed = 'sum(jvm_memory_used_bytes{area="heap"})'
+        jvmHeapCommitted = 'sum(jvm_memory_committed_bytes{area="heap"})'
+        jvmHeapMax = 'sum(jvm_memory_max_bytes{area="heap"})'
+        jvmNonHeapUsed = 'sum(jvm_memory_used_bytes{area="nonheap"})'
+        jvmLiveThreads = 'sum(jvm_threads_live_threads)'
+        jvmPeakThreads = 'sum(jvm_threads_peak_threads)'
+        jvmGcPauseCount = 'sum(jvm_gc_pause_seconds_count)'
+        jvmGcPauseSeconds = 'sum(jvm_gc_pause_seconds_sum)'
+        processCpuUsage = 'sum(process_cpu_usage)'
+    }
+    foreach ($metric in $metrics.GetEnumerator()) {
+        try {
+            $snapshot[$metric.Key] = Query-Prometheus $metric.Value
+            if ($null -eq $snapshot[$metric.Key]) { Add-CollectionError $Label 'Prometheus' "$($metric.Key) unavailable." }
+        } catch {
+            $snapshot[$metric.Key] = $null
+            Add-CollectionError $Label 'Prometheus' "$($metric.Key) collection unavailable."
+        }
+    }
+    try {
+        $snapshot.mysql = Get-MySqlAggregate $ErrorPath
+    } catch {
+        $snapshot.mysql = New-EmptyMySqlAggregate
+        Add-CollectionError $Label 'MySQL' 'aggregate collection unavailable.'
+    }
+    try {
+        $snapshot.containers = Get-ContainerEvidence $ErrorPath
+    } catch {
+        $snapshot.containers = $null
+        Add-CollectionError $Label 'Docker' 'container evidence unavailable.'
+    }
+    return $snapshot
+}
+
+function Get-DiagnosticOutcome([object]$K6Summary, [object]$ProcessExit, [bool]$CollectorFailure, [bool]$HarnessFailure) {
+    $aggregateAvailable = $null -ne $K6Summary
+    $thresholdFailure = $false
+    if ($aggregateAvailable -and (([double]$K6Summary.droppedIterations -gt 0) -or ([double]$K6Summary.expectedStatusErrorRate -gt 0))) {
+        $thresholdFailure = $true
+    }
+    $harnessFailure = $HarnessFailure -or $CollectorFailure -or (-not $aggregateAvailable) -or $null -eq $ProcessExit -or ([int]$ProcessExit -ne 0 -and -not $thresholdFailure)
+    $outcome = if ($thresholdFailure -and $harnessFailure) { 'threshold-and-harness-failure' } elseif ($thresholdFailure) { 'threshold-failure' } elseif ($harnessFailure) { 'harness-or-collector-failure' } else { 'success' }
+    return [ordered]@{
+        outcome = $outcome
+        aggregateAvailable = $aggregateAvailable
+        thresholdFailure = $thresholdFailure
+        harnessFailure = $harnessFailure
+        collectorFailure = $CollectorFailure
+        processExit = $ProcessExit
+    }
 }
 
 function Parse-K6Aggregate([string[]]$Lines) {
@@ -199,34 +342,91 @@ if ($ValidateK6AggregateOnly) {
     exit 0
 }
 
+if ($ValidateFailureHandlingOnly) {
+    $validFixture = '{"cohort":"capacity-api-products","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":30000,"latencyMs":{"p50":1,"p95":2,"p99":3,"max":4},"expectedStatusErrorRate":0}' | ConvertFrom-Json
+    $validNonZeroOutcome = Get-DiagnosticOutcome $validFixture 7 $false $false
+    if (-not $validNonZeroOutcome.aggregateAvailable -or $validNonZeroOutcome.processExit -ne 7 -or $validNonZeroOutcome.outcome -ne 'harness-or-collector-failure') {
+        throw 'valid aggregate/non-zero exit synthetic validation failed.'
+    }
+    $missingOutcome = Get-DiagnosticOutcome $null $null $true $false
+    $fixturePath = Join-Path $env:TEMP ("pawcycle-phase9-failure-fixture-$([guid]::NewGuid()).json")
+    try {
+        Write-DiagnosticSummaryArtifact $fixturePath ([ordered]@{
+            diagnostic = 'phase9-products-local'
+            k6 = $null
+            processExit = $null
+            outcome = $missingOutcome.outcome
+            collectorFailure = $true
+            collectionErrors = @([ordered]@{ stage = 'measurement-sample'; source = 'Prometheus'; reason = 'metric unavailable.' })
+            backendFinalState = [ordered]@{ available = $true; health = 'healthy'; restartCount = 0; oomKilled = $false }
+        })
+        $fixture = Get-Content -Raw -LiteralPath $fixturePath | ConvertFrom-Json
+        if (-not (Test-Path -LiteralPath $fixturePath) -or $fixture.outcome -ne 'harness-or-collector-failure' -or $null -ne $fixture.k6 -or $null -eq $fixture.collectionErrors -or $null -eq $fixture.backendFinalState) {
+            throw 'missing aggregate/failure summary synthetic validation failed.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $fixturePath -Force -ErrorAction SilentlyContinue
+    }
+    'Phase 9 failure handling synthetic validation passed.'
+    exit 0
+}
+
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
+$script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
+$samples = [System.Collections.Generic.List[object]]::new()
+Save-MeasurementSamples $samplesPath $samples
+$backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
 Assert-CriticalMetrics $preflight
+$measurementStart = New-EmptySnapshot 'measurement-start'
+$measurementEnd = New-EmptySnapshot 'measurement-end'
+$processExit = $null
+$harnessError = $null
 $process = $null
 try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
     Start-Sleep -Seconds $WarmupSeconds
-    $measurementStart = Get-Snapshot 'measurement-start' $collectorErrorPath
-    $samples = [System.Collections.Generic.List[object]]::new()
+    $measurementStart = Get-ResilientSnapshot 'measurement-start' $collectorErrorPath
     $deadline = (Get-Date).AddSeconds($MeasurementSeconds)
     while ((Get-Date) -lt $deadline -and -not $process.HasExited) {
-        $samples.Add((Get-Snapshot 'measurement-sample' $collectorErrorPath))
+        $samples.Add((Get-ResilientSnapshot 'measurement-sample' $collectorErrorPath))
+        Save-MeasurementSamples $samplesPath $samples
         Start-Sleep -Seconds $SampleSeconds
     }
-    $measurementEnd = Get-Snapshot 'measurement-end' $collectorErrorPath
+    $measurementEnd = Get-ResilientSnapshot 'measurement-end' $collectorErrorPath
     $process.WaitForExit()
     $processExit = $process.ExitCode
-    if ($processExit -ne 0) { throw "k6 process failed (exit code $processExit)." }
+} catch {
+    $harnessError = 'harness execution failed.'
+    Add-CollectionError 'harness' 'script' $harnessError
 } finally {
-    if ($process -and -not $process.HasExited) {
-        $process.Kill()
-        $process.WaitForExit()
+    try {
+        if ($process -and -not $process.HasExited) {
+            $process.Kill()
+            $process.WaitForExit()
+        }
+    } catch {
+        Add-CollectionError 'cleanup' 'script' 'k6 cleanup failed.'
     }
     if ($process) { $process.Dispose() }
+    try {
+        Save-MeasurementSamples $samplesPath $samples
+    } catch {
+        Add-CollectionError 'cleanup' 'samples' 'measurement sample persistence failed.'
+    }
+    $backendFinalState = Save-BackendFinalState $backendFinalStatePath
     Remove-Item -LiteralPath $collectorErrorPath -Force -ErrorAction SilentlyContinue
 }
 
-$k6Summary = Parse-K6Aggregate (Get-Content -LiteralPath $runStdout)
+$k6Summary = $null
+$aggregateParseError = $null
+try {
+    $k6Summary = Parse-K6Aggregate (Get-Content -LiteralPath $runStdout)
+} catch {
+    $aggregateParseError = 'k6 aggregate is missing or malformed.'
+    Add-CollectionError 'post-run' 'k6 aggregate' $aggregateParseError
+}
+$outcome = Get-DiagnosticOutcome $k6Summary $processExit ($CollectionErrors.Count -gt 0) ($null -ne $harnessError)
 $completed = if ($k6Summary) { [double]$k6Summary.iterations } else { $null }
 $digestDelta = Delta $measurementStart.mysql.digestCount $measurementEnd.mysql.digestCount
 $usageDelta = Delta $measurementStart.hikariUsageCount $measurementEnd.hikariUsageCount
@@ -239,11 +439,20 @@ $summary = [ordered]@{
     diagnostic = 'phase9-products-local'
     targetRps = $TargetRps
     processExit = $processExit
+    outcome = $outcome.outcome
+    thresholdFailure = $outcome.thresholdFailure
+    harnessFailure = $outcome.harnessFailure
+    collectorFailure = $outcome.collectorFailure
+    k6AggregateAvailable = $outcome.aggregateAvailable
+    k6AggregateError = $aggregateParseError
+    harnessError = $harnessError
+    collectionErrors = @($CollectionErrors)
     k6 = $k6Summary
     preflight = $preflight
     measurementStart = $measurementStart
     measurementEnd = $measurementEnd
     sampleCount = $samples.Count
+    backendFinalState = $backendFinalState
     queryIntervalSeconds = $SampleSeconds
     prometheusScrapeIntervalSeconds = 15
     peakObservationNote = 'activePeak and pendingPeak are maxima observed in stored Prometheus scrape samples; spikes between 15-second scrapes may be missed.'
@@ -267,8 +476,8 @@ $summary = [ordered]@{
     backgroundTrafficNote = 'Prometheus scrape, backend healthcheck, and other local traffic share HTTP/Hikari/Performance Schema counters; request-per-query and borrow-per-request are diagnostic estimates, not isolated exact values.'
     productionExecution = 'not run'
 }
-$summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryPath -Encoding utf8
-$samples | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $samplesPath -Encoding utf8
+Write-DiagnosticSummaryArtifact $summaryPath $summary
+Save-MeasurementSamples $samplesPath $samples
 "resultsDir=$runDir"
 "processExit=$processExit"
 if ($k6Summary) { $k6Summary | ConvertTo-Json -Compress }
