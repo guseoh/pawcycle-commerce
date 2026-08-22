@@ -4,6 +4,8 @@
 
 ## 실행
 
+Windows에서는 PowerShell 7+(`pwsh`)로 실행한다. Windows PowerShell 5.1의 native stdin 인코딩은 MySQL collector SQL 앞에 BOM을 전달할 수 있으므로 이 진단 entrypoint에 사용하지 않는다.
+
 먼저 local-integration과 Prometheus가 healthy인지 확인한 뒤 inspect만 수행할 수 있다.
 
 Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
@@ -17,25 +19,25 @@ Set-Location ../..
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
 ```
 
 진단 실행은 warm-up 30초 후 measurement 시작 snapshot, 250 RPS 2분 동안 5초 간격 sample, measurement 종료 snapshot 순서다. query interval은 5초지만 local Prometheus의 underlying scrape interval은 15초다. 따라서 `activePeak`/`pendingPeak`은 저장된 scrape sample 범위의 관측 max이며 scrape 사이의 짧은 spike는 놓칠 수 있다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
 ```
 
 실제 k6를 시작하지 않고 MySQL aggregate collector만 검증하려면 다음을 사용한다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateCollectorOnly
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateCollectorOnly
 ```
 
 k6를 시작하지 않고 aggregate summary의 필수 필드, cohort와 target 검증 및 malformed/missing fail-close 경로를 검증하려면 다음을 사용한다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateK6AggregateOnly
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateK6AggregateOnly
 ```
 
 ## 해석 경계
