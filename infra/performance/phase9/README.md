@@ -8,9 +8,11 @@
 
 Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
 
+현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
+
 ```powershell
 Set-Location infra/local-integration
-docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml up -d mysql backend frontend proxy prometheus
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml up --build -d mysql backend frontend proxy prometheus
 Set-Location ../..
 ```
 
