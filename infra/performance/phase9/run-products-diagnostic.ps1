@@ -7,7 +7,9 @@ param(
     [switch]$ValidateOnly,
     [switch]$ValidateCollectorOnly,
     [switch]$ValidateK6AggregateOnly,
-    [switch]$ValidateFailureHandlingOnly
+    [switch]$ValidateFailureHandlingOnly,
+    [switch]$ValidateTomcatOnly,
+    [int]$ExpectedTomcatThreadsMax = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -303,15 +305,17 @@ function Parse-K6Aggregate([string[]]$Lines) {
     return $aggregate
 }
 
-function Assert-CriticalMetrics([object]$Snapshot) {
+function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0) {
     $categories = [ordered]@{
         'http products' = @('httpProductsCount')
         'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
         'hikari acquire' = @('hikariAcquireCount', 'hikariAcquireSeconds')
         'hikari pool' = @('hikariActive', 'hikariPending', 'hikariMax')
-        'tomcat threads' = @('tomcatThreadsConfigMax', 'tomcatThreadsCurrent', 'tomcatThreadsBusy')
         'jvm memory' = @('jvmHeapUsed', 'jvmNonHeapUsed')
         'jvm threads' = @('jvmLiveThreads', 'jvmPeakThreads')
+    }
+    if ($ExpectedTomcatMax -gt 0) {
+        $categories['tomcat threads'] = @('tomcatThreadsConfigMax', 'tomcatThreadsCurrent', 'tomcatThreadsBusy')
     }
     $unavailable = @(
         foreach ($category in $categories.Keys) {
@@ -321,8 +325,17 @@ function Assert-CriticalMetrics([object]$Snapshot) {
     if ($unavailable.Count -gt 0) {
         throw "Critical Prometheus metric categories unavailable: $($unavailable -join ', ')."
     }
-    if ([double]$Snapshot.tomcatThreadsConfigMax -ne 64) {
-        throw 'Critical Prometheus Tomcat config max must be 64.'
+    if ($ExpectedTomcatMax -gt 0 -and [double]$Snapshot.tomcatThreadsConfigMax -ne $ExpectedTomcatMax) {
+        throw "Critical Prometheus Tomcat config max must be $ExpectedTomcatMax."
+    }
+}
+
+function Assert-TomcatExperimentMetrics([object]$Snapshot, [int]$ExpectedTomcatMax) {
+    if ($null -eq $Snapshot.tomcatThreadsConfigMax -or $null -eq $Snapshot.tomcatThreadsCurrent -or $null -eq $Snapshot.tomcatThreadsBusy) {
+        throw 'Tomcat experiment requires all three thread metrics.'
+    }
+    if ([double]$Snapshot.tomcatThreadsConfigMax -ne $ExpectedTomcatMax) {
+        throw "Tomcat experiment config max must be $ExpectedTomcatMax."
     }
 }
 
@@ -384,13 +397,37 @@ if ($ValidateFailureHandlingOnly) {
     exit 0
 }
 
+if ($ValidateTomcatOnly) {
+    $missing = New-EmptySnapshot 'tomcat-missing'
+    $wrongMax = New-EmptySnapshot 'tomcat-wrong-max'
+    $wrongMax.tomcatThreadsConfigMax = 63
+    $wrongMax.tomcatThreadsCurrent = 4
+    $wrongMax.tomcatThreadsBusy = 1
+    $valid = New-EmptySnapshot 'tomcat-valid'
+    $valid.tomcatThreadsConfigMax = 64
+    $valid.tomcatThreadsCurrent = 4
+    $valid.tomcatThreadsBusy = 1
+    foreach ($fixture in @($missing, $wrongMax)) {
+        $rejected = $false
+        try { Assert-TomcatExperimentMetrics $fixture 64 } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Tomcat experiment negative fixture unexpectedly passed.' }
+    }
+    Assert-TomcatExperimentMetrics $valid 64
+    'Phase 9 Tomcat experiment metric validation passed without starting k6.'
+    exit 0
+}
+
+if ($ExpectedTomcatThreadsMax -lt 0) {
+    throw 'ExpectedTomcatThreadsMax must be zero or positive.'
+}
+
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
 $script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
 $samples = [System.Collections.Generic.List[object]]::new()
 Save-MeasurementSamples $samplesPath $samples
 $backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
-Assert-CriticalMetrics $preflight
+Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax
 $measurementStart = New-EmptySnapshot 'measurement-start'
 $measurementEnd = New-EmptySnapshot 'measurement-end'
 $processExit = $null

@@ -18,14 +18,29 @@ docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml 
 Set-Location ../..
 ```
 
-Tomcat worker concurrency candidate 64는 local-only Before/After experiment에서만 사용한다. `compose.phase9-tomcat64.yaml`은 backend의 `SERVER_TOMCAT_THREADS_MAX=64`만 추가하며, Hikari/SQL/index/JVM/accept queue/max-connections 등 다른 성능 변수를 동시에 변경하지 않는다. 기존 resource-envelope와 Prometheus overlay에 이 tuning overlay를 함께 적용한다. 이 준비 단계에서는 250 RPS를 실행하지 않는다.
+Tomcat worker concurrency candidate 64는 local-only Before/After experiment에서만 사용한다. `compose.phase9-tomcat64.yaml`은 backend의 `SERVER_TOMCAT_THREADS_MAX=64`와 local observability instrumentation인 `SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true`만 추가하며, Hikari/SQL/index/JVM/accept queue/max-connections 등 다른 성능 변수를 동시에 변경하지 않는다. 기존 resource-envelope와 Prometheus overlay에 이 tuning overlay를 함께 적용한다. 이 준비 단계에서는 250 RPS를 실행하지 않는다.
 
-진단 preflight는 Prometheus에서 `tomcat_threads_config_max_threads`, `tomcat_threads_current_threads`, `tomcat_threads_busy_threads`가 실제로 존재하고 config max가 64인지 확인한다. metric이 없거나 config max가 64가 아니면 load를 시작하지 않고 fail-close한다. sample과 summary에는 세 Tomcat metric을 그대로 보존한다.
+일반 Phase 9 diagnostic preflight는 기존 HTTP/Hikari/JVM critical metric 계약만 적용한다. Tomcat64 experiment 경로에서만 `-ExpectedTomcatThreadsMax 64`를 전달하며, 이때 Prometheus의 `tomcat_threads_config_max_threads`, `tomcat_threads_current_threads`, `tomcat_threads_busy_threads` 존재와 config max=64를 확인한다. metric이 없거나 config max가 다르면 load를 시작하지 않고 fail-close한다. experiment sample과 summary에는 세 Tomcat metric을 그대로 보존한다.
 
 ```powershell
 Set-Location infra/local-integration
 docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat64.yaml up --build -d mysql backend frontend proxy prometheus
 Set-Location ../..
+```
+
+Tomcat64 experiment 실행 시에만 다음 expected max parameter를 함께 사용한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 64
+```
+
+Baseline 복귀는 Tomcat64 overlay와 expected max parameter를 제거한다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml up --build -d mysql backend frontend proxy prometheus
+Set-Location ../..
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
 ```
 
 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
@@ -62,6 +77,12 @@ pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -Vali
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateFailureHandlingOnly
+```
+
+Tomcat64 experiment metric preflight의 missing, wrong-max, valid fixture를 실제 k6 없이 검증하려면 다음을 사용한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly
 ```
 
 ## 해석 경계
