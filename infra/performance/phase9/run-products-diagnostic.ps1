@@ -13,11 +13,16 @@ $WarmupSeconds = 30
 $MeasurementSeconds = 120
 $SampleSeconds = 5
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+$ResultsDir = [IO.Path]::GetFullPath($ResultsDir)
+$repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
 $K6Script = Join-Path $RepoRoot 'infra\performance\k6\capacity-api-products.js'
 $MysqlContainer = 'pawcycle-local-integration-mysql-1'
 
 if ($BaseUrl -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$') {
     throw 'BaseUrl must be an http loopback origin.'
+}
+if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $ResultsDir.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ResultsDir must be outside the repository.'
 }
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
@@ -128,6 +133,7 @@ $summary = [ordered]@{
     targetRps = $TargetRps
     processExit = $processExit
     k6 = $k6Summary
+    preflight = $preflight
     measurementStart = $measurementStart
     measurementEnd = $measurementEnd
     sampleCount = $samples.Count
