@@ -33,7 +33,7 @@ fi
 read -r -d '' reset_sql <<'SQL' || true
 START TRANSACTION;
 SET @member_id := (SELECT id FROM members WHERE email = '__MEMBER_EMAIL__');
-SET @sku_id := (SELECT id FROM skus WHERE sku_code = 'QA-FOUNDATION-004-SKU');
+SET @sku_id := (SELECT id FROM skus WHERE sku_code = '__FIXTURE_SKU_CODE__');
 DELETE item FROM order_items item JOIN orders o ON o.id = item.order_id WHERE o.member_id = @member_id AND o.order_number LIKE 'PERF-PH8-003-%';
 DELETE FROM orders WHERE member_id = @member_id AND order_number LIKE 'PERF-PH8-003-%';
 DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE member_id = @member_id) AND sku_id = @sku_id;
@@ -41,6 +41,7 @@ DELETE FROM wishlist_items WHERE member_id = @member_id AND product_id = (SELECT
 DELETE FROM subscriptions WHERE member_id = @member_id AND sku_id = @sku_id AND created_date = '2000-01-01' AND next_order_date = '2030-01-01';
 SQL
 reset_sql="${reset_sql//__MEMBER_EMAIL__/$member_email}"
+reset_sql="${reset_sql//__FIXTURE_SKU_CODE__/$fixture_sku_code}"
 if [[ "$reset_only" == true ]]; then
   "${compose[@]}" exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' <<< "$reset_sql"$'\nCOMMIT;'
   printf '%s\n' 'Phase 8-D local fixture reset completed without printing credentials, sessions, tokens, rows, or IDs.'
