@@ -5,7 +5,8 @@ param(
     [string]$PrometheusUrl = 'http://127.0.0.1:9090',
     [string]$ResultsDir = (Join-Path $env:TEMP 'pawcycle-phase9-products'),
     [switch]$ValidateOnly,
-    [switch]$ValidateCollectorOnly
+    [switch]$ValidateCollectorOnly,
+    [switch]$ValidateK6AggregateOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,9 @@ $MysqlContainer = 'pawcycle-local-integration-mysql-1'
 
 if ($BaseUrl -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$') {
     throw 'BaseUrl must be an http loopback origin.'
+}
+if ($PrometheusUrl -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$') {
+    throw 'PrometheusUrl must be an http loopback origin.'
 }
 if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $ResultsDir.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ResultsDir must be outside the repository.'
@@ -116,6 +120,56 @@ function Delta([object]$Before, [object]$After) {
     return [double]$After - [double]$Before
 }
 
+function Parse-K6Aggregate([string[]]$Lines) {
+    $summaryLine = $Lines | Where-Object { $_ -match '"cohort"' -and $_ -match '"targetRps"' } | Select-Object -Last 1
+    if (-not $summaryLine -or $summaryLine.IndexOf('{') -lt 0) { throw 'k6 aggregate summary is missing.' }
+    try {
+        $aggregate = $summaryLine.Substring($summaryLine.IndexOf('{')) | ConvertFrom-Json
+    } catch {
+        throw 'k6 aggregate summary is malformed.'
+    }
+    $requiredProperties = @('cohort', 'targetRps', 'actualRps', 'iterations', 'droppedIterations', 'expectedStatusErrorRate', 'latencyMs')
+    foreach ($property in $requiredProperties) {
+        if (-not ($aggregate.PSObject.Properties.Name -contains $property) -or $null -eq $aggregate.$property) {
+            throw "k6 aggregate summary is missing required field: $property."
+        }
+    }
+    if ($aggregate.cohort -ne 'capacity-api-products' -or [double]$aggregate.targetRps -ne $TargetRps) {
+        throw 'k6 aggregate summary does not match the expected capacity cohort.'
+    }
+    if ([double]$aggregate.iterations -le 0) { throw 'k6 aggregate summary has no completed iterations.' }
+    foreach ($property in @('actualRps', 'droppedIterations', 'expectedStatusErrorRate')) {
+        if ($null -eq $aggregate.$property -or -not ($aggregate.$property -is [ValueType])) {
+            throw "k6 aggregate summary field is malformed: $property."
+        }
+    }
+    foreach ($property in @('p50', 'p95', 'p99', 'max')) {
+        if (-not ($aggregate.latencyMs.PSObject.Properties.Name -contains $property) -or $null -eq $aggregate.latencyMs.$property) {
+            throw "k6 aggregate latency field is missing: $property."
+        }
+    }
+    return $aggregate
+}
+
+function Assert-CriticalMetrics([object]$Snapshot) {
+    $categories = [ordered]@{
+        'http products' = @('httpProductsCount')
+        'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
+        'hikari acquire' = @('hikariAcquireCount', 'hikariAcquireSeconds')
+        'hikari pool' = @('hikariActive', 'hikariPending', 'hikariMax')
+        'jvm memory' = @('jvmHeapUsed', 'jvmNonHeapUsed')
+        'jvm threads' = @('jvmLiveThreads', 'jvmPeakThreads')
+    }
+    $unavailable = @(
+        foreach ($category in $categories.Keys) {
+            if ($categories[$category] | Where-Object { $null -eq $Snapshot.$_ }) { $category }
+        }
+    )
+    if ($unavailable.Count -gt 0) {
+        throw "Critical Prometheus metric categories unavailable: $($unavailable -join ', ')."
+    }
+}
+
 if ($ValidateCollectorOnly) {
     $validationErrorPath = [IO.Path]::GetTempFileName()
     try {
@@ -127,8 +181,27 @@ if ($ValidateCollectorOnly) {
     }
 }
 
+if ($ValidateK6AggregateOnly) {
+    $validFixture = '{"cohort":"capacity-api-products","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":30000,"latencyMs":{"p50":1,"p95":2,"p99":3,"max":4},"expectedStatusErrorRate":0}'
+    [void](Parse-K6Aggregate @($validFixture))
+    foreach ($invalidFixture in @(
+        '',
+        '{"cohort":"capacity-api-products","targetRps":250',
+        '{"cohort":"capacity-api-products","targetRps":250,"iterations":1}',
+        '{"cohort":"capacity-api-products","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":1,"latencyMs":{"p50":1,"p95":2,"p99":3},"expectedStatusErrorRate":0}',
+        '{"cohort":"other","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":1,"latencyMs":{"p50":1,"p95":2,"p99":3,"max":4},"expectedStatusErrorRate":0}'
+    )) {
+        $rejected = $false
+        try { [void](Parse-K6Aggregate @($invalidFixture)) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'k6 aggregate negative fixture unexpectedly passed.' }
+    }
+    'Phase 9 k6 aggregate validation passed.'
+    exit 0
+}
+
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
+Assert-CriticalMetrics $preflight
 $process = $null
 try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
@@ -153,15 +226,15 @@ try {
     Remove-Item -LiteralPath $collectorErrorPath -Force -ErrorAction SilentlyContinue
 }
 
-$summaryLine = Get-Content -LiteralPath $runStdout | Where-Object { $_ -match '"cohort"' -and $_ -match '"targetRps"' } | Select-Object -Last 1
-$k6Summary = $null
-if ($summaryLine) {
-    $k6Summary = $summaryLine.Substring($summaryLine.IndexOf('{')) | ConvertFrom-Json
-}
+$k6Summary = Parse-K6Aggregate (Get-Content -LiteralPath $runStdout)
 $completed = if ($k6Summary) { [double]$k6Summary.iterations } else { $null }
 $digestDelta = Delta $measurementStart.mysql.digestCount $measurementEnd.mysql.digestCount
 $usageDelta = Delta $measurementStart.hikariUsageCount $measurementEnd.hikariUsageCount
 $acquireDelta = Delta $measurementStart.hikariAcquireCount $measurementEnd.hikariAcquireCount
+$usageSecondsDelta = Delta $measurementStart.hikariUsageSeconds $measurementEnd.hikariUsageSeconds
+$acquireSecondsDelta = Delta $measurementStart.hikariAcquireSeconds $measurementEnd.hikariAcquireSeconds
+$relevantSqlWaitPsDelta = Delta $measurementStart.mysql.digestWaitPs $measurementEnd.mysql.digestWaitPs
+$relevantSqlRowsExaminedDelta = Delta $measurementStart.mysql.digestRowsExamined $measurementEnd.mysql.digestRowsExamined
 $summary = [ordered]@{
     diagnostic = 'phase9-products-local'
     targetRps = $TargetRps
@@ -180,12 +253,17 @@ $summary = [ordered]@{
     hikariUsageCountDelta = $usageDelta
     hikariAcquireCountDelta = $acquireDelta
     relevantSqlExecutionDelta = $digestDelta
-    connectionBorrowPerCompletedRequest = if ($completed -and $completed -gt 0) { $usageDelta / $completed } else { $null }
+    connectionBorrowPerCompletedRequest = if ($completed -and $completed -gt 0) { $acquireDelta / $completed } else { $null }
+    connectionUsageReturnPerCompletedRequest = if ($completed -and $completed -gt 0) { $usageDelta / $completed } else { $null }
     relevantSqlPerCompletedRequest = if ($completed -and $completed -gt 0) { $digestDelta / $completed } else { $null }
-    connectionUsageSecondsDelta = Delta $measurementStart.hikariUsageSeconds $measurementEnd.hikariUsageSeconds
-    connectionAcquireSecondsDelta = Delta $measurementStart.hikariAcquireSeconds $measurementEnd.hikariAcquireSeconds
-    relevantSqlWaitPsDelta = Delta $measurementStart.mysql.digestWaitPs $measurementEnd.mysql.digestWaitPs
-    relevantSqlRowsExaminedDelta = Delta $measurementStart.mysql.digestRowsExamined $measurementEnd.mysql.digestRowsExamined
+    connectionUsageSecondsDelta = $usageSecondsDelta
+    connectionAcquireSecondsDelta = $acquireSecondsDelta
+    connectionAcquireMeanMs = if ($null -ne $acquireDelta -and $acquireDelta -ne 0) { $acquireSecondsDelta / $acquireDelta * 1000 } else { $null }
+    connectionUsageMeanMs = if ($null -ne $usageDelta -and $usageDelta -ne 0) { $usageSecondsDelta / $usageDelta * 1000 } else { $null }
+    relevantSqlWaitPsDelta = $relevantSqlWaitPsDelta
+    relevantSqlRowsExaminedDelta = $relevantSqlRowsExaminedDelta
+    relevantSqlMeanMs = if ($null -ne $digestDelta -and $digestDelta -ne 0) { $relevantSqlWaitPsDelta / $digestDelta / 1000000000 } else { $null }
+    rowsExaminedPerRelevantSql = if ($null -ne $digestDelta -and $digestDelta -ne 0) { $relevantSqlRowsExaminedDelta / $digestDelta } else { $null }
     backgroundTrafficNote = 'Prometheus scrape, backend healthcheck, and other local traffic share HTTP/Hikari/Performance Schema counters; request-per-query and borrow-per-request are diagnostic estimates, not isolated exact values.'
     productionExecution = 'not run'
 }
