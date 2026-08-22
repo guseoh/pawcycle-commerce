@@ -1,0 +1,5 @@
+services:
+  backend:
+    environment:
+      SERVER_TOMCAT_THREADS_MAX: "128"
+      SERVER_TOMCAT_MBEANREGISTRY_ENABLED: "true"
