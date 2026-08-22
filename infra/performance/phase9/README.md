@@ -10,7 +10,9 @@ Windows에서는 PowerShell 7+(`pwsh`)로 실행한다. Windows PowerShell 5.1�
 
 Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
 
-Production-like backend resource-envelope 준비가 필요할 때는 Phase 9 전용 `compose.phase9-envelope.yaml` overlay를 추가한다. 이 overlay는 backend에만 memory 640 MB, CPU 0.75, PID 256, `JAVA_TOOL_OPTIONS`의 `MaxRAMPercentage=65.0`과 OOM 즉시 종료를 적용하며 base/production compose와 DB profile은 변경하지 않는다. Windows에서는 `pwsh`를 사용한다. 이 단계는 250 RPS를 실행하지 않는다.
+## Production-like envelope baseline
+
+Phase 9 baseline은 전용 `compose.phase9-envelope.yaml` overlay를 사용한다. backend에만 memory 640 MB, CPU 0.75, PID 256, `JAVA_TOOL_OPTIONS`의 `MaxRAMPercentage=65.0`과 OOM 즉시 종료를 적용하며 base/production compose와 DB profile은 변경하지 않는다. Windows에서는 `pwsh`를 사용한다. 이 단계에서는 250 RPS를 실행하지 않는다.
 
 ```powershell
 Set-Location infra/local-integration
@@ -18,7 +20,9 @@ docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml 
 Set-Location ../..
 ```
 
-Tomcat worker concurrency candidate 64는 local-only Before/After experiment에서만 사용한다. `compose.phase9-tomcat64.yaml`은 backend의 `SERVER_TOMCAT_THREADS_MAX=64`와 local observability instrumentation인 `SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true`만 추가하며, Hikari/SQL/index/JVM/accept queue/max-connections 등 다른 성능 변수를 동시에 변경하지 않는다. 기존 resource-envelope와 Prometheus overlay에 이 tuning overlay를 함께 적용한다. 이 준비 단계에서는 250 RPS를 실행하지 않는다.
+## Tomcat64 experiment
+
+Tomcat worker concurrency candidate 64는 local-only Before/After experiment에서만 사용한다. `compose.phase9-tomcat64.yaml`은 backend의 `SERVER_TOMCAT_THREADS_MAX=64`와 local observability instrumentation인 `SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true`만 추가하며, Hikari/SQL/index/JVM/accept queue/max-connections 등 다른 성능 변수를 동시에 변경하지 않는다. 이 experiment는 기존 resource-envelope와 Prometheus overlay에 tuning overlay를 추가한다. 이 준비 단계에서는 250 RPS를 실행하지 않는다.
 
 일반 Phase 9 diagnostic preflight는 기존 HTTP/Hikari/JVM critical metric 계약만 적용한다. Tomcat64 experiment 경로에서만 `-ExpectedTomcatThreadsMax 64`를 전달하며, 이때 Prometheus의 `tomcat_threads_config_max_threads`, `tomcat_threads_current_threads`, `tomcat_threads_busy_threads` 존재와 config max=64를 확인한다. metric이 없거나 config max가 다르면 load를 시작하지 않고 fail-close한다. experiment sample과 summary에는 세 Tomcat metric을 그대로 보존한다.
 
@@ -43,7 +47,9 @@ Set-Location ../..
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
 ```
 
-현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
+## 일반 local diagnostic
+
+일반 local diagnostic은 Tomcat64 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax 64`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
 
 ```powershell
 Set-Location infra/local-integration
