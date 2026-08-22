@@ -409,6 +409,9 @@ if ($ValidateFailureHandlingOnly) {
 }
 
 if ($ValidateTomcatOnly) {
+    if ($ExpectedTomcatThreadsMax -le 0) {
+        throw 'ValidateTomcatOnly requires ExpectedTomcatThreadsMax.'
+    }
     $base = New-EmptySnapshot 'tomcat-base'
     foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
         $base[$property] = 1
@@ -419,22 +422,22 @@ if ($ValidateTomcatOnly) {
     foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
         $wrongMax[$property] = 1
     }
-    $wrongMax.tomcatThreadsConfigMax = 63
+    $wrongMax.tomcatThreadsConfigMax = $ExpectedTomcatThreadsMax - 1
     $wrongMax.tomcatThreadsCurrent = 4
     $wrongMax.tomcatThreadsBusy = 1
     $valid = New-EmptySnapshot 'tomcat-valid'
     foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
         $valid[$property] = 1
     }
-    $valid.tomcatThreadsConfigMax = 64
+    $valid.tomcatThreadsConfigMax = $ExpectedTomcatThreadsMax
     $valid.tomcatThreadsCurrent = 4
     $valid.tomcatThreadsBusy = 1
     foreach ($fixture in @($missing, $wrongMax)) {
         $rejected = $false
-        try { Assert-CriticalMetrics $fixture 64 } catch { $rejected = $true }
+        try { Assert-CriticalMetrics $fixture $ExpectedTomcatThreadsMax } catch { $rejected = $true }
         if (-not $rejected) { throw 'Tomcat experiment negative fixture unexpectedly passed.' }
     }
-    Assert-CriticalMetrics $valid 64
+    Assert-CriticalMetrics $valid $ExpectedTomcatThreadsMax
     'Phase 9 Tomcat experiment metric validation passed without starting k6.'
     exit 0
 }
