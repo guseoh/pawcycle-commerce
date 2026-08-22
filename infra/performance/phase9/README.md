@@ -51,6 +51,8 @@ pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
 
 PERF-PH9-004의 Tomcat128 + 0.75 CPU first-result를 control로 재사용한다. control을 재실행하지 않고, `compose.phase9-cpu15.yaml`으로 backend CPU limit만 1.5로 변경한다. Tomcat max 128, MBean instrumentation, memory 640MiB, PID 256, `MaxRAMPercentage=65.0`은 유지한다. CPU1.5는 local-only causality experiment이며 Production 권장값이 아니다. Hikari/SQL/index/JVM/memory/PID/accept queue/max-connections는 변경하지 않는다.
 
+이것만 실행해주세요.
+
 ```powershell
 Set-Location infra/local-integration
 docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml up --build -d mysql backend frontend proxy prometheus
@@ -58,7 +60,18 @@ Set-Location ../..
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 128
 ```
 
-CPU1.5 rollback은 `compose.phase9-cpu15.yaml`만 제거하고, Tomcat128 overlay와 envelope를 유지한다. baseline 복귀는 별도로 Tomcat128 overlay와 expected max parameter까지 제거한다. 이 preparation 단계에서는 250 RPS를 실행하지 않는다.
+CPU1.5 rollback은 `compose.phase9-cpu15.yaml`만 제거하고, Tomcat128 overlay와 envelope를 유지한다. compose 파일을 제외하는 것만으로 실행 중인 backend 설정이 바뀌지는 않으므로, 아래 명령으로 CPU1.5 overlay를 제외한 동일 backend 구성을 강제로 재생성한다. baseline 복귀는 별도로 Tomcat128 overlay와 expected max parameter까지 제거한다. 이 preparation 단계에서는 250 RPS를 실행하지 않는다.
+
+이것만 실행해주세요.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml up -d --no-deps --force-recreate backend
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+Set-Location ../..
+```
+
+rollback 확인값은 backend `health=healthy`, `cpu=750000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
 
 ## 일반 local diagnostic
 
