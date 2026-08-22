@@ -7,7 +7,9 @@ param(
     [switch]$ValidateOnly,
     [switch]$ValidateCollectorOnly,
     [switch]$ValidateK6AggregateOnly,
-    [switch]$ValidateFailureHandlingOnly
+    [switch]$ValidateFailureHandlingOnly,
+    [switch]$ValidateTomcatOnly,
+    [int]$ExpectedTomcatThreadsMax = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -104,6 +106,9 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
         hikariIdle = Query-Prometheus 'sum(hikaricp_connections_idle)'
         hikariPending = Query-Prometheus 'sum(hikaricp_connections_pending)'
         hikariMax = Query-Prometheus 'sum(hikaricp_connections_max)'
+        tomcatThreadsConfigMax = Query-Prometheus 'sum(tomcat_threads_config_max_threads)'
+        tomcatThreadsCurrent = Query-Prometheus 'sum(tomcat_threads_current_threads)'
+        tomcatThreadsBusy = Query-Prometheus 'sum(tomcat_threads_busy_threads)'
         jvmHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = Query-Prometheus 'sum(jvm_memory_committed_bytes{area="heap"})'
         jvmHeapMax = Query-Prometheus 'sum(jvm_memory_max_bytes{area="heap"})'
@@ -184,6 +189,9 @@ function New-EmptySnapshot([string]$Label) {
         hikariIdle = $null
         hikariPending = $null
         hikariMax = $null
+        tomcatThreadsConfigMax = $null
+        tomcatThreadsCurrent = $null
+        tomcatThreadsBusy = $null
         jvmHeapUsed = $null
         jvmHeapCommitted = $null
         jvmHeapMax = $null
@@ -198,7 +206,11 @@ function New-EmptySnapshot([string]$Label) {
     }
 }
 
-function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath) {
+function Should-RecordMetricCollectionError([string]$MetricKey, [int]$ExpectedTomcatMax) {
+    return $ExpectedTomcatMax -gt 0 -or $MetricKey -notlike 'tomcatThreads*'
+}
+
+function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$ExpectedTomcatMax = 0) {
     $snapshot = New-EmptySnapshot $Label
     $metrics = [ordered]@{
         httpProductsCount = 'sum(http_server_requests_seconds_count{method="GET",uri="/api/products"})'
@@ -211,6 +223,9 @@ function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath) {
         hikariIdle = 'sum(hikaricp_connections_idle)'
         hikariPending = 'sum(hikaricp_connections_pending)'
         hikariMax = 'sum(hikaricp_connections_max)'
+        tomcatThreadsConfigMax = 'sum(tomcat_threads_config_max_threads)'
+        tomcatThreadsCurrent = 'sum(tomcat_threads_current_threads)'
+        tomcatThreadsBusy = 'sum(tomcat_threads_busy_threads)'
         jvmHeapUsed = 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = 'sum(jvm_memory_committed_bytes{area="heap"})'
         jvmHeapMax = 'sum(jvm_memory_max_bytes{area="heap"})'
@@ -224,10 +239,14 @@ function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath) {
     foreach ($metric in $metrics.GetEnumerator()) {
         try {
             $snapshot[$metric.Key] = Query-Prometheus $metric.Value
-            if ($null -eq $snapshot[$metric.Key]) { Add-CollectionError $Label 'Prometheus' "$($metric.Key) unavailable." }
+            if ($null -eq $snapshot[$metric.Key] -and (Should-RecordMetricCollectionError $metric.Key $ExpectedTomcatMax)) {
+                Add-CollectionError $Label 'Prometheus' "$($metric.Key) unavailable."
+            }
         } catch {
             $snapshot[$metric.Key] = $null
-            Add-CollectionError $Label 'Prometheus' "$($metric.Key) collection unavailable."
+            if (Should-RecordMetricCollectionError $metric.Key $ExpectedTomcatMax) {
+                Add-CollectionError $Label 'Prometheus' "$($metric.Key) collection unavailable."
+            }
         }
     }
     try {
@@ -294,7 +313,7 @@ function Parse-K6Aggregate([string[]]$Lines) {
     return $aggregate
 }
 
-function Assert-CriticalMetrics([object]$Snapshot) {
+function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0) {
     $categories = [ordered]@{
         'http products' = @('httpProductsCount')
         'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
@@ -303,6 +322,9 @@ function Assert-CriticalMetrics([object]$Snapshot) {
         'jvm memory' = @('jvmHeapUsed', 'jvmNonHeapUsed')
         'jvm threads' = @('jvmLiveThreads', 'jvmPeakThreads')
     }
+    if ($ExpectedTomcatMax -gt 0) {
+        $categories['tomcat threads'] = @('tomcatThreadsConfigMax', 'tomcatThreadsCurrent', 'tomcatThreadsBusy')
+    }
     $unavailable = @(
         foreach ($category in $categories.Keys) {
             if ($categories[$category] | Where-Object { $null -eq $Snapshot.$_ }) { $category }
@@ -310,6 +332,18 @@ function Assert-CriticalMetrics([object]$Snapshot) {
     )
     if ($unavailable.Count -gt 0) {
         throw "Critical Prometheus metric categories unavailable: $($unavailable -join ', ')."
+    }
+    if ($ExpectedTomcatMax -gt 0) {
+        Assert-TomcatExperimentMetrics $Snapshot $ExpectedTomcatMax
+    }
+}
+
+function Assert-TomcatExperimentMetrics([object]$Snapshot, [int]$ExpectedTomcatMax) {
+    if ($null -eq $Snapshot.tomcatThreadsConfigMax -or $null -eq $Snapshot.tomcatThreadsCurrent -or $null -eq $Snapshot.tomcatThreadsBusy) {
+        throw 'Tomcat experiment requires all three thread metrics.'
+    }
+    if ([double]$Snapshot.tomcatThreadsConfigMax -ne $ExpectedTomcatMax) {
+        throw "Tomcat experiment config max must be $ExpectedTomcatMax."
     }
 }
 
@@ -348,6 +382,9 @@ if ($ValidateFailureHandlingOnly) {
     if (-not $validNonZeroOutcome.aggregateAvailable -or $validNonZeroOutcome.processExit -ne 7 -or $validNonZeroOutcome.outcome -ne 'harness-or-collector-failure') {
         throw 'valid aggregate/non-zero exit synthetic validation failed.'
     }
+    if (Should-RecordMetricCollectionError 'tomcatThreadsBusy' 0 -or -not (Should-RecordMetricCollectionError 'httpProductsCount' 0)) {
+        throw 'general diagnostic Tomcat optional metric synthetic validation failed.'
+    }
     $missingOutcome = Get-DiagnosticOutcome $null $null $true $false
     $fixturePath = Join-Path $env:TEMP ("pawcycle-phase9-failure-fixture-$([guid]::NewGuid()).json")
     try {
@@ -371,13 +408,48 @@ if ($ValidateFailureHandlingOnly) {
     exit 0
 }
 
+if ($ValidateTomcatOnly) {
+    $base = New-EmptySnapshot 'tomcat-base'
+    foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
+        $base[$property] = 1
+    }
+    $missing = $base.PSObject.Copy()
+    $missing.label = 'tomcat-missing'
+    $wrongMax = New-EmptySnapshot 'tomcat-wrong-max'
+    foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
+        $wrongMax[$property] = 1
+    }
+    $wrongMax.tomcatThreadsConfigMax = 63
+    $wrongMax.tomcatThreadsCurrent = 4
+    $wrongMax.tomcatThreadsBusy = 1
+    $valid = New-EmptySnapshot 'tomcat-valid'
+    foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
+        $valid[$property] = 1
+    }
+    $valid.tomcatThreadsConfigMax = 64
+    $valid.tomcatThreadsCurrent = 4
+    $valid.tomcatThreadsBusy = 1
+    foreach ($fixture in @($missing, $wrongMax)) {
+        $rejected = $false
+        try { Assert-CriticalMetrics $fixture 64 } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Tomcat experiment negative fixture unexpectedly passed.' }
+    }
+    Assert-CriticalMetrics $valid 64
+    'Phase 9 Tomcat experiment metric validation passed without starting k6.'
+    exit 0
+}
+
+if ($ExpectedTomcatThreadsMax -lt 0) {
+    throw 'ExpectedTomcatThreadsMax must be zero or positive.'
+}
+
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
 $script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
 $samples = [System.Collections.Generic.List[object]]::new()
 Save-MeasurementSamples $samplesPath $samples
 $backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
-Assert-CriticalMetrics $preflight
+Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax
 $measurementStart = New-EmptySnapshot 'measurement-start'
 $measurementEnd = New-EmptySnapshot 'measurement-end'
 $processExit = $null
@@ -386,14 +458,14 @@ $process = $null
 try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
     Start-Sleep -Seconds $WarmupSeconds
-    $measurementStart = Get-ResilientSnapshot 'measurement-start' $collectorErrorPath
+    $measurementStart = Get-ResilientSnapshot 'measurement-start' $collectorErrorPath $ExpectedTomcatThreadsMax
     $deadline = (Get-Date).AddSeconds($MeasurementSeconds)
     while ((Get-Date) -lt $deadline -and -not $process.HasExited) {
-        $samples.Add((Get-ResilientSnapshot 'measurement-sample' $collectorErrorPath))
+        $samples.Add((Get-ResilientSnapshot 'measurement-sample' $collectorErrorPath $ExpectedTomcatThreadsMax))
         Save-MeasurementSamples $samplesPath $samples
         Start-Sleep -Seconds $SampleSeconds
     }
-    $measurementEnd = Get-ResilientSnapshot 'measurement-end' $collectorErrorPath
+    $measurementEnd = Get-ResilientSnapshot 'measurement-end' $collectorErrorPath $ExpectedTomcatThreadsMax
     $process.WaitForExit()
     $processExit = $process.ExitCode
 } catch {
