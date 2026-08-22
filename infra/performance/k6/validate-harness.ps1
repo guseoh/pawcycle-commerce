@@ -11,7 +11,12 @@ $CapacityScripts = @('capacity-api-products.js', 'capacity-api-product-detail.js
 $ProductionCapacityScript = Join-Path $PSScriptRoot 'production-capacity-api-products.js'
 $ProductionCapacityShared = Join-Path $PSScriptRoot 'lib\production-capacity.js'
 $ProductionCapacityRunner = Join-Path $PSScriptRoot 'run-production-capacity.sh'
-$ProductionCapacityRunbook = Join-Path $Root '..\docs\runbook\PERF-PH8-002-production-k6-capacity.md'
+$ProductionCapacityRunbook = Join-Path $Root '..\..\docs\runbook\PERF-PH8-002-production-k6-capacity.md'
+$Phase8dScripts = @('phase8d-mixed-steady.js', 'phase8d-burst.js', 'phase8d-sustained.js', 'phase8d-bounded-write.js')
+$Phase8dShared = Join-Path $PSScriptRoot 'lib\phase8d.js'
+$Phase8dSeed = Join-Path $PSScriptRoot 'seed-phase8d-fixture.sh'
+$Phase8dRunner = Join-Path $PSScriptRoot 'run-phase8d.sh'
+$Phase8dRunbook = Join-Path $Root '..\..\docs\runbook\PERF-PH8-003-isolated-commerce-k6.md'
 $DashboardPath = Join-Path $Root '..\local-integration\observability\grafana\dashboards\pawcycle-observability.json'
 
 foreach ($Script in $Scripts) {
@@ -33,6 +38,55 @@ foreach ($Script in $CapacityScripts) {
     if ($Content -notmatch 'optionsForCapacity' -or $Content -notmatch 'export function warmup' -or $Content -notmatch 'export function measure') { throw "Capacity scenario contract missing: $Script" }
     if (-not $SkipK6Inspect) { & $K6Command inspect $ScriptPath | Out-Null; if ($LASTEXITCODE -ne 0) { throw "k6 inspect failed: $Script" } }
 }
+
+foreach ($Phase8dScript in $Phase8dScripts) {
+    $ScriptPath = Join-Path $PSScriptRoot $Phase8dScript
+    if (-not (Test-Path -LiteralPath $ScriptPath)) { throw "Missing Phase 8-D script: $Phase8dScript" }
+    if (-not $SkipK6Inspect) {
+        & $K6Command inspect -e 'BASE_URL=http://127.0.0.1:8080' -e 'TARGET_RPS=20' -e 'PERF_PHASE8D_MEMBER_EMAIL=qa-foundation-004@validator.test' -e 'PERF_PHASE8D_MEMBER_PASSWORD=not-an-artifact' $ScriptPath | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "k6 inspect failed: $Phase8dScript" }
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $K6Command inspect -e 'BASE_URL=https://production.invalid' -e 'TARGET_RPS=20' $ScriptPath 2>$null | Out-Null
+        $GuardExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $PreviousErrorActionPreference
+        if ($GuardExitCode -eq 0) { throw "Phase 8-D target guard must reject non-loopback URL: $Phase8dScript" }
+    }
+}
+foreach ($Phase8dArtifact in @($Phase8dShared, $Phase8dSeed, $Phase8dRunner, $Phase8dRunbook)) {
+    if (-not (Test-Path -LiteralPath $Phase8dArtifact)) { throw "Missing Phase 8-D artifact: $Phase8dArtifact" }
+}
+$Phase8dContent = Get-Content -LiteralPath $Phase8dShared -Raw
+$Phase8dSeedContent = Get-Content -LiteralPath $Phase8dSeed -Raw
+$Phase8dRunnerContent = Get-Content -LiteralPath $Phase8dRunner -Raw
+$Phase8dRunbookContent = Get-Content -LiteralPath $Phase8dRunbook -Raw
+$Phase8dSingleVuPreallocated = ([regex]::Matches($Phase8dContent, 'preAllocatedVUs:\s*1')).Count
+$Phase8dSingleVuMax = ([regex]::Matches($Phase8dContent, 'maxVUs:\s*1')).Count
+if ($Phase8dContent -notmatch '127\\.0\\.0\\.1\|localhost' -or
+    $Phase8dContent -notmatch 'dropped_iterations' -or
+    $Phase8dContent -notmatch 'phase8d_expected_status_error_rate' -or
+    $Phase8dContent -notmatch 'constant-arrival-rate' -or
+    $Phase8dContent -notmatch 'SYNTHETIC_MEMBER_EMAIL' -or
+    $Phase8dContent -notmatch 'qa-foundation-004@' -or
+    $Phase8dContent -notmatch 'FIXTURE_SKU_NAME = "\[QA FOUNDATION-004\] 2kg"' -or
+    $Phase8dContent -notmatch 'FIXTURE_ORDER_NUMBER = "PERF-PH8-003-ORDER"' -or
+    $Phase8dContent -notmatch 'FIXTURE_SUBSCRIPTION_NEXT_ORDER_DATE = "2030-01-01"' -or
+    $Phase8dContent -notmatch 'WRITE_REQUESTS_PER_CYCLE = 5' -or
+    $Phase8dContent -notmatch 'rate:\s*targetRps\(\) / WRITE_REQUESTS_PER_CYCLE' -or
+    $Phase8dSingleVuPreallocated -ne 1 -or
+    $Phase8dSingleVuMax -ne 1 -or
+    $Phase8dContent -notmatch 'cartAdd' -or
+    $Phase8dContent -notmatch 'wishlistDelete' -or
+    $Phase8dContent -match '/checkout|payments/toss/confirm|/commands/' -or
+    $Phase8dSeedContent -notmatch 'acknowledge-local-fixture' -or
+    $Phase8dSeedContent -notmatch 'PERF-PH8-003' -or
+    $Phase8dRunnerContent -notmatch 'refuses non-loopback targets' -or
+    $Phase8dRunnerContent -notmatch 'qa-foundation-004@' -or
+    $Phase8dRunbookContent -notmatch 'single VU' -or
+    $Phase8dRunbookContent -notmatch '동시 write capacity') {
+    throw 'Phase 8-D target, synthetic identity, exact fixture, serialized bounded-write, aggregate, excluded-mutation, seed/reset, runner, or Runbook contract is missing.'
+}
+
 $CapacityShared = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\capacity.js') -Raw
 $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).Count
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
@@ -47,8 +101,12 @@ if (-not $SkipK6Inspect) {
     & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://validator.invalid' -e 'PRODUCTION_TARGET_HOST=validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'k6 inspect failed: production-capacity-api-products.js' }
 
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & $K6Command inspect -e 'PRODUCTION_TARGET_URL=https://operator@validator.invalid' -e 'PRODUCTION_TARGET_HOST=operator@validator.invalid' -e 'PRODUCTION_LOAD_ACKNOWLEDGEMENT=YES' -e 'TARGET_RPS=25' $ProductionCapacityScript 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { throw 'Production capacity target guard must reject URL userinfo.' }
+    $ProductionGuardExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $PreviousErrorActionPreference
+    if ($ProductionGuardExitCode -eq 0) { throw 'Production capacity target guard must reject URL userinfo.' }
 }
 $ProductionCapacityContent = Get-Content -LiteralPath $ProductionCapacityShared -Raw
 $ProductionRunnerContent = Get-Content -LiteralPath $ProductionCapacityRunner -Raw
