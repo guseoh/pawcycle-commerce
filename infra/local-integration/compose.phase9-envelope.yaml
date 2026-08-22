@@ -1,0 +1,9 @@
+services:
+  backend:
+    mem_limit: 640m
+    cpus: 0.75
+    pids_limit: 256
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -XX:MaxRAMPercentage=65.0
+        -XX:+ExitOnOutOfMemoryError

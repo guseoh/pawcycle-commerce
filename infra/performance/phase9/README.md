@@ -10,6 +10,14 @@ Windows에서는 PowerShell 7+(`pwsh`)로 실행한다. Windows PowerShell 5.1�
 
 Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
 
+Production-like backend resource-envelope 준비가 필요할 때는 Phase 9 전용 `compose.phase9-envelope.yaml` overlay를 추가한다. 이 overlay는 backend에만 memory 640 MB, CPU 0.75, PID 256, `JAVA_TOOL_OPTIONS`의 `MaxRAMPercentage=65.0`과 OOM 즉시 종료를 적용하며 base/production compose와 DB profile은 변경하지 않는다. Windows에서는 `pwsh`를 사용한다. 이 단계는 250 RPS를 실행하지 않는다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml up --build -d mysql backend frontend proxy prometheus
+Set-Location ../..
+```
+
 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
 
 ```powershell

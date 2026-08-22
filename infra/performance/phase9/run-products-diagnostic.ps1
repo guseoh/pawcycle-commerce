@@ -44,6 +44,7 @@ $runStdout = Join-Path $runDir 'k6.stdout.log'
 $runStderr = Join-Path $runDir 'k6.stderr.log'
 $summaryPath = Join-Path $runDir 'diagnostic-summary.json'
 $samplesPath = Join-Path $runDir 'measurement-samples.json'
+$backendFinalStatePath = Join-Path $runDir 'backend-final-state.json'
 
 function Query-Prometheus([string]$Query) {
     try {
@@ -104,6 +105,7 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
         hikariMax = Query-Prometheus 'sum(hikaricp_connections_max)'
         jvmHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="heap"})'
         jvmHeapCommitted = Query-Prometheus 'sum(jvm_memory_committed_bytes{area="heap"})'
+        jvmHeapMax = Query-Prometheus 'sum(jvm_memory_max_bytes{area="heap"})'
         jvmNonHeapUsed = Query-Prometheus 'sum(jvm_memory_used_bytes{area="nonheap"})'
         jvmLiveThreads = Query-Prometheus 'sum(jvm_threads_live_threads)'
         jvmPeakThreads = Query-Prometheus 'sum(jvm_threads_peak_threads)'
@@ -118,6 +120,32 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
 function Delta([object]$Before, [object]$After) {
     if ($null -eq $Before -or $null -eq $After) { return $null }
     return [double]$After - [double]$Before
+}
+
+function Save-MeasurementSamples([string]$Path, [System.Collections.Generic.List[object]]$Samples) {
+    $Samples | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Save-BackendFinalState([string]$Path) {
+    try {
+        $line = @(docker inspect --format '{{.Name}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|restart={{.RestartCount}}|oom={{.State.OOMKilled}}|exit={{.State.ExitCode}}|status={{.State.Status}}|memory={{.HostConfig.Memory}}|cpus={{.HostConfig.NanoCpus}}|pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1 2> $null)
+        if ($LASTEXITCODE -ne 0 -or $line.Count -ne 1) { throw 'backend final state unavailable.' }
+        $parts = $line[0] -split '\|'
+        $evidence = [ordered]@{
+            health = $parts[1] -replace '^health=', ''
+            restartCount = [int]($parts[2] -replace '^restart=', '')
+            oomKilled = [bool]::Parse(($parts[3] -replace '^oom=', ''))
+            exitCode = [int]($parts[4] -replace '^exit=', '')
+            status = $parts[5] -replace '^status=', ''
+            memoryLimitBytes = [int64]($parts[6] -replace '^memory=', '')
+            cpuLimitNanoCpus = [int64]($parts[7] -replace '^cpus=', '')
+            pidsLimit = [int64]($parts[8] -replace '^pids=', '')
+        }
+    } catch {
+        $evidence = [ordered]@{ available = $false; message = 'backend final state unavailable.' }
+    }
+    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8
+    return $evidence
 }
 
 function Parse-K6Aggregate([string[]]$Lines) {
@@ -200,6 +228,9 @@ if ($ValidateK6AggregateOnly) {
 }
 
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
+$samples = [System.Collections.Generic.List[object]]::new()
+Save-MeasurementSamples $samplesPath $samples
+$backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
 Assert-CriticalMetrics $preflight
 $process = $null
@@ -207,10 +238,10 @@ try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
     Start-Sleep -Seconds $WarmupSeconds
     $measurementStart = Get-Snapshot 'measurement-start' $collectorErrorPath
-    $samples = [System.Collections.Generic.List[object]]::new()
     $deadline = (Get-Date).AddSeconds($MeasurementSeconds)
     while ((Get-Date) -lt $deadline -and -not $process.HasExited) {
         $samples.Add((Get-Snapshot 'measurement-sample' $collectorErrorPath))
+        Save-MeasurementSamples $samplesPath $samples
         Start-Sleep -Seconds $SampleSeconds
     }
     $measurementEnd = Get-Snapshot 'measurement-end' $collectorErrorPath
@@ -223,6 +254,8 @@ try {
         $process.WaitForExit()
     }
     if ($process) { $process.Dispose() }
+    Save-MeasurementSamples $samplesPath $samples
+    $backendFinalState = Save-BackendFinalState $backendFinalStatePath
     Remove-Item -LiteralPath $collectorErrorPath -Force -ErrorAction SilentlyContinue
 }
 
@@ -244,6 +277,7 @@ $summary = [ordered]@{
     measurementStart = $measurementStart
     measurementEnd = $measurementEnd
     sampleCount = $samples.Count
+    backendFinalState = $backendFinalState
     queryIntervalSeconds = $SampleSeconds
     prometheusScrapeIntervalSeconds = 15
     peakObservationNote = 'activePeak and pendingPeak are maxima observed in stored Prometheus scrape samples; spikes between 15-second scrapes may be missed.'
