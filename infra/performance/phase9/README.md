@@ -6,6 +6,14 @@
 
 먼저 local-integration과 Prometheus가 healthy인지 확인한 뒤 inspect만 수행할 수 있다.
 
+Phase 9 local diagnostic은 `infra/local-integration/compose.yaml`과 secret 없는 `compose.prometheus.yaml`만 사용한다. Alertmanager, Grafana와 Discord webhook secret이 포함된 `compose.observability.yaml` 전체는 이 diagnostic의 runtime 준비에 필요하지 않다. 기존 named volume은 보존한다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml up -d mysql backend frontend proxy prometheus
+Set-Location ../..
+```
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
 ```
