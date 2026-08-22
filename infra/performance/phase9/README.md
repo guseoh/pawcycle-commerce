@@ -47,6 +47,19 @@ Set-Location ../..
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
 ```
 
+## CPU1.5 causality experiment
+
+PERF-PH9-004의 Tomcat128 + 0.75 CPU first-result를 control로 재사용한다. control을 재실행하지 않고, `compose.phase9-cpu15.yaml`으로 backend CPU limit만 1.5로 변경한다. Tomcat max 128, MBean instrumentation, memory 640MiB, PID 256, `MaxRAMPercentage=65.0`은 유지한다. CPU1.5는 local-only causality experiment이며 Production 권장값이 아니다. Hikari/SQL/index/JVM/memory/PID/accept queue/max-connections는 변경하지 않는다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml up --build -d mysql backend frontend proxy prometheus
+Set-Location ../..
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 128
+```
+
+CPU1.5 rollback은 `compose.phase9-cpu15.yaml`만 제거하고, Tomcat128 overlay와 envelope를 유지한다. baseline 복귀는 별도로 Tomcat128 overlay와 expected max parameter까지 제거한다. 이 preparation 단계에서는 250 RPS를 실행하지 않는다.
+
 ## 일반 local diagnostic
 
 일반 local diagnostic은 Tomcat128 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
