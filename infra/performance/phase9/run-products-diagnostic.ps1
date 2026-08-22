@@ -34,6 +34,17 @@ if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $Re
 }
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
+$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateTomcatOnly) | Where-Object { $_ }
+if ($validationFlags.Count -gt 1) {
+    throw 'Validation modes are mutually exclusive.'
+}
+if ($ValidateTomcatOnly -and $ExpectedTomcatThreadsMax -le 0) {
+    throw 'ValidateTomcatOnly requires ExpectedTomcatThreadsMax.'
+}
+if ($ExpectedTomcatThreadsMax -lt 0) {
+    throw 'ExpectedTomcatThreadsMax must be zero or positive.'
+}
+
 if ($ValidateOnly) {
     & $K6Command inspect -e "BASE_URL=$BaseUrl" -e "TARGET_RPS=$TargetRps" $K6Script | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'k6 inspect failed.' }
@@ -409,9 +420,6 @@ if ($ValidateFailureHandlingOnly) {
 }
 
 if ($ValidateTomcatOnly) {
-    if ($ExpectedTomcatThreadsMax -le 0) {
-        throw 'ValidateTomcatOnly requires ExpectedTomcatThreadsMax.'
-    }
     $base = New-EmptySnapshot 'tomcat-base'
     foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
         $base[$property] = 1
@@ -440,10 +448,6 @@ if ($ValidateTomcatOnly) {
     Assert-CriticalMetrics $valid $ExpectedTomcatThreadsMax
     'Phase 9 Tomcat experiment metric validation passed without starting k6.'
     exit 0
-}
-
-if ($ExpectedTomcatThreadsMax -lt 0) {
-    throw 'ExpectedTomcatThreadsMax must be zero or positive.'
 }
 
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
