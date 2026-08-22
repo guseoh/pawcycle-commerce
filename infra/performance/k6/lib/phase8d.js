@@ -4,6 +4,12 @@ import { Counter, Rate, Trend } from "k6/metrics";
 
 const UNITS = { products: 8, productDetail: 5, subscriptions: 2, cart: 1, wishlist: 1, orders: 2, member: 1 };
 const TOTAL_UNITS = 20;
+const WRITE_REQUESTS_PER_CYCLE = 5;
+const SYNTHETIC_MEMBER_EMAIL = /^qa-foundation-004@[A-Za-z0-9.-]+$/;
+const FIXTURE_PRODUCT_NAME = "[QA FOUNDATION-004] 정기배송 사료";
+const FIXTURE_SKU_NAME = "[QA FOUNDATION-004] 2kg";
+const FIXTURE_ORDER_NUMBER = "PERF-PH8-003-ORDER";
+const FIXTURE_SUBSCRIPTION_NEXT_ORDER_DATE = "2030-01-01";
 const PROFILES = {
   steady: { duration: "2m", multiplier: 1 },
   burst: { duration: "30s", multiplier: 2 },
@@ -13,7 +19,11 @@ const PROFILES = {
 export const completed = new Counter("phase8d_completed_requests");
 export const expectedStatusErrorRate = new Rate("phase8d_expected_status_error_rate");
 export const latency = new Trend("phase8d_request_latency", true);
-const operationMetrics = Object.fromEntries(Object.keys(UNITS).concat(["cartAdd", "cartUpdate", "cartDelete", "wishlistAdd", "wishlistDelete"]).map((operation) => [operation, new Counter(`phase8d_${operation}_requests`)]));
+const operationMetrics = Object.fromEntries(
+  Object.keys(UNITS)
+    .concat(["cartAdd", "cartUpdate", "cartDelete", "wishlistAdd", "wishlistDelete"])
+    .map((operation) => [operation, new Counter(`phase8d_${operation}_requests`)]),
+);
 
 function baseUrl() {
   const raw = __ENV.BASE_URL || "http://127.0.0.1:8080";
@@ -39,7 +49,11 @@ function profile(name) {
 function authenticatedRequest(data, operation, method, path, body, expectedStatus) {
   const response = http.request(method, `${baseUrl()}${path}`, body, {
     redirects: 0,
-    headers: { Cookie: `JSESSIONID=${data.sessionId}`, "X-CSRF-TOKEN": data.csrfToken, "Content-Type": "application/json" },
+    headers: {
+      Cookie: `JSESSIONID=${data.sessionId}`,
+      "X-CSRF-TOKEN": data.csrfToken,
+      "Content-Type": "application/json",
+    },
     tags: { cohort: "phase8d", name: operation },
   });
   const expected = check(response, { "expected status": (result) => result.status === expectedStatus });
@@ -52,22 +66,71 @@ function authenticatedRequest(data, operation, method, path, body, expectedStatu
 export function setup() {
   const email = __ENV.PERF_PHASE8D_MEMBER_EMAIL || "";
   const password = __ENV.PERF_PHASE8D_MEMBER_PASSWORD || "";
-  if (!email || !password) throw new Error("PERF_PHASE8D_MEMBER_EMAIL and PERF_PHASE8D_MEMBER_PASSWORD are required in the environment.");
+  if (!SYNTHETIC_MEMBER_EMAIL.test(email) || !password) {
+    throw new Error("Phase 8-D requires qa-foundation-004@<local-domain> and PERF_PHASE8D_MEMBER_PASSWORD.");
+  }
+
   const csrf = http.get(`${baseUrl()}/api/auth/csrf`, { redirects: 0 });
+  if (csrf.status !== 200) throw new Error("Phase 8-D setup could not obtain the pre-login CSRF token.");
   const token = csrf.json("token");
-  const login = http.post(`${baseUrl()}/api/auth/login`, JSON.stringify({ email, password }), { redirects: 0, headers: { "X-CSRF-TOKEN": token, "Content-Type": "application/json" } });
-  if (login.status !== 200 || !login.cookies.JSESSIONID || !login.cookies.JSESSIONID[0]) throw new Error("Phase 8-D setup login failed.");
+  if (!token) throw new Error("Phase 8-D setup received an empty pre-login CSRF token.");
+
+  const login = http.post(`${baseUrl()}/api/auth/login`, JSON.stringify({ email, password }), {
+    redirects: 0,
+    headers: { "X-CSRF-TOKEN": token, "Content-Type": "application/json" },
+  });
+  if (login.status !== 200 || !login.cookies.JSESSIONID || !login.cookies.JSESSIONID[0]) {
+    throw new Error("Phase 8-D setup login failed.");
+  }
+
   const sessionId = login.cookies.JSESSIONID[0].value;
-  const postLoginCsrf = http.get(`${baseUrl()}/api/auth/csrf`, { redirects: 0, headers: { Cookie: `JSESSIONID=${sessionId}` } });
+  const sessionHeaders = { Cookie: `JSESSIONID=${sessionId}` };
+  const postLoginCsrf = http.get(`${baseUrl()}/api/auth/csrf`, { redirects: 0, headers: sessionHeaders });
+  if (postLoginCsrf.status !== 200) throw new Error("Phase 8-D setup could not refresh the post-login CSRF token.");
   const csrfToken = postLoginCsrf.json("token");
+  if (!csrfToken) throw new Error("Phase 8-D setup received an empty post-login CSRF token.");
+
   const list = http.get(`${baseUrl()}/api/products`, { redirects: 0 });
+  if (list.status !== 200) throw new Error("Phase 8-D setup product fixture list is unavailable.");
   const products = list.json("products");
-  const fixtureProduct = Array.isArray(products) ? products.find((product) => product.name === "[QA FOUNDATION-004] 정기배송 사료") : null;
+  const fixtureProduct = Array.isArray(products)
+    ? products.find((product) => product.name === FIXTURE_PRODUCT_NAME)
+    : null;
   const productId = fixtureProduct ? fixtureProduct.productId : null;
+  if (!productId) throw new Error("Phase 8-D setup product fixture is unavailable.");
+
   const detail = http.get(`${baseUrl()}/api/products/${encodeURIComponent(productId)}`, { redirects: 0 });
+  if (detail.status !== 200) throw new Error("Phase 8-D setup product-detail fixture is unavailable.");
   const skus = detail.json("skus");
-  const skuId = Array.isArray(skus) && skus[0] ? skus[0].skuId : null;
-  if (postLoginCsrf.status !== 200 || list.status !== 200 || detail.status !== 200 || !productId || !skuId) throw new Error("Phase 8-D setup fixture is unavailable.");
+  const fixtureSku = Array.isArray(skus) ? skus.find((sku) => sku.skuName === FIXTURE_SKU_NAME) : null;
+  const skuId = fixtureSku ? fixtureSku.skuId : null;
+  if (!skuId) throw new Error("Phase 8-D setup requires the exact QA fixture SKU.");
+
+  const subscriptionsResponse = http.get(`${baseUrl()}/api/subscriptions`, {
+    redirects: 0,
+    headers: sessionHeaders,
+  });
+  if (subscriptionsResponse.status !== 200) throw new Error("Phase 8-D marker subscription is unavailable.");
+  const subscriptions = subscriptionsResponse.json("subscriptions");
+  const markerSubscription = Array.isArray(subscriptions)
+    ? subscriptions.some((subscription) =>
+      String(subscription.sku?.skuId) === String(skuId)
+      && subscription.quantity === 1
+      && subscription.deliveryCycleWeeks === 2
+      && subscription.nextOrderDate === FIXTURE_SUBSCRIPTION_NEXT_ORDER_DATE)
+    : false;
+
+  const ordersResponse = http.get(`${baseUrl()}/api/orders`, { redirects: 0, headers: sessionHeaders });
+  if (ordersResponse.status !== 200) throw new Error("Phase 8-D marker order is unavailable.");
+  const orders = ordersResponse.json();
+  const markerOrder = Array.isArray(orders)
+    ? orders.some((order) => order.orderNumber === FIXTURE_ORDER_NUMBER)
+    : false;
+
+  if (!markerSubscription || !markerOrder) {
+    throw new Error("Phase 8-D marker subscription/order fixture is missing; run the approved local seed first.");
+  }
+
   return { sessionId, csrfToken, productId: String(productId), skuId: String(skuId) };
 }
 
@@ -77,9 +140,26 @@ export function optionsForReadProfile(name) {
   const total = targetRps() * selected.multiplier;
   const scenarios = {};
   Object.entries(UNITS).forEach(([operation, units]) => {
-    scenarios[operation] = { executor: "constant-arrival-rate", exec: operation, rate: (total * units) / TOTAL_UNITS, timeUnit: "1s", duration: selected.duration, preAllocatedVUs: 20, maxVUs: 200, gracefulStop: "0s", tags: { phase: name, operation } };
+    scenarios[operation] = {
+      executor: "constant-arrival-rate",
+      exec: operation,
+      rate: (total * units) / TOTAL_UNITS,
+      timeUnit: "1s",
+      duration: selected.duration,
+      preAllocatedVUs: 20,
+      maxVUs: 200,
+      gracefulStop: "0s",
+      tags: { phase: name, operation },
+    };
   });
-  return { scenarios, thresholds: { phase8d_expected_status_error_rate: ["rate==0"], dropped_iterations: ["count==0"] }, summaryTrendStats: ["med", "p(95)", "p(99)", "max"] };
+  return {
+    scenarios,
+    thresholds: {
+      phase8d_expected_status_error_rate: ["rate==0"],
+      dropped_iterations: ["count==0"],
+    },
+    summaryTrendStats: ["med", "p(95)", "p(99)", "max"],
+  };
 }
 
 export const operations = {
@@ -102,7 +182,26 @@ export function writeCycle(data) {
 
 export function optionsForBoundedWrite() {
   baseUrl();
-  return { scenarios: { boundedWrite: { executor: "constant-arrival-rate", exec: "boundedWrite", rate: targetRps() / TOTAL_UNITS, timeUnit: "1s", duration: "2m", preAllocatedVUs: 5, maxVUs: 50, gracefulStop: "0s", tags: { phase: "bounded-write", operation: "boundedWrite" } } }, thresholds: { phase8d_expected_status_error_rate: ["rate==0"], dropped_iterations: ["count==0"] }, summaryTrendStats: ["med", "p(95)", "p(99)", "max"] };
+  return {
+    scenarios: {
+      boundedWrite: {
+        executor: "constant-arrival-rate",
+        exec: "boundedWrite",
+        rate: targetRps() / WRITE_REQUESTS_PER_CYCLE,
+        timeUnit: "1s",
+        duration: "2m",
+        preAllocatedVUs: 1,
+        maxVUs: 1,
+        gracefulStop: "0s",
+        tags: { phase: "bounded-write", operation: "boundedWrite" },
+      },
+    },
+    thresholds: {
+      phase8d_expected_status_error_rate: ["rate==0"],
+      dropped_iterations: ["count==0"],
+    },
+    summaryTrendStats: ["med", "p(95)", "p(99)", "max"],
+  };
 }
 
 export function handleSummaryFor(profileName, data) {
@@ -115,6 +214,21 @@ export function handleSummaryFor(profileName, data) {
   }));
   const trend = metric("phase8d_request_latency");
   const requestedRps = targetRps() * (profileName === "burst" ? 2 : 1);
-  const summary = { profile: profileName, targetRps: profileName === "bounded-write" ? requestedRps / 4 : requestedRps, actualRps: requests / durationSeconds, operations: perOperation, droppedIterations: metric("dropped_iterations").count || 0, expectedStatusErrorRate: metric("phase8d_expected_status_error_rate").rate || 0, latencyMs: { p50: trend.med ?? null, p95: trend["p(95)"] ?? null, p99: trend["p(99)"] ?? null, max: trend.max ?? null }, allocatedVUs: metric("vus_max").max ?? null, activeVUs: metric("vus").max ?? null };
+  const summary = {
+    profile: profileName,
+    targetRps: requestedRps,
+    actualRps: requests / durationSeconds,
+    operations: perOperation,
+    droppedIterations: metric("dropped_iterations").count || 0,
+    expectedStatusErrorRate: metric("phase8d_expected_status_error_rate").rate || 0,
+    latencyMs: {
+      p50: trend.med ?? null,
+      p95: trend["p(95)"] ?? null,
+      p99: trend["p(99)"] ?? null,
+      max: trend.max ?? null,
+    },
+    allocatedVUs: metric("vus_max").max ?? null,
+    activeVUs: metric("vus").max ?? null,
+  };
   return { stdout: `${JSON.stringify(summary)}\n` };
 }

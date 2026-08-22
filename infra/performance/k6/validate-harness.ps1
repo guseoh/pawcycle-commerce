@@ -59,9 +59,34 @@ foreach ($Phase8dArtifact in @($Phase8dShared, $Phase8dSeed, $Phase8dRunner, $Ph
 $Phase8dContent = Get-Content -LiteralPath $Phase8dShared -Raw
 $Phase8dSeedContent = Get-Content -LiteralPath $Phase8dSeed -Raw
 $Phase8dRunnerContent = Get-Content -LiteralPath $Phase8dRunner -Raw
-if ($Phase8dContent -notmatch '127\\.0\\.0\\.1\|localhost' -or $Phase8dContent -notmatch 'dropped_iterations' -or $Phase8dContent -notmatch 'phase8d_expected_status_error_rate' -or $Phase8dContent -notmatch 'constant-arrival-rate' -or $Phase8dContent -notmatch 'cartAdd' -or $Phase8dContent -notmatch 'wishlistDelete' -or $Phase8dContent -match '/checkout|payments/toss/confirm|/commands/' -or $Phase8dSeedContent -notmatch 'acknowledge-local-fixture' -or $Phase8dSeedContent -notmatch 'PERF-PH8-003' -or $Phase8dRunnerContent -notmatch 'refuses non-loopback targets') {
-    throw 'Phase 8-D target, aggregate, bounded-write, excluded-mutation, seed/reset, or runner fail-close contract is missing.'
+$Phase8dRunbookContent = Get-Content -LiteralPath $Phase8dRunbook -Raw
+$Phase8dSingleVuPreallocated = ([regex]::Matches($Phase8dContent, 'preAllocatedVUs:\s*1')).Count
+$Phase8dSingleVuMax = ([regex]::Matches($Phase8dContent, 'maxVUs:\s*1')).Count
+if ($Phase8dContent -notmatch '127\\.0\\.0\\.1\|localhost' -or
+    $Phase8dContent -notmatch 'dropped_iterations' -or
+    $Phase8dContent -notmatch 'phase8d_expected_status_error_rate' -or
+    $Phase8dContent -notmatch 'constant-arrival-rate' -or
+    $Phase8dContent -notmatch 'SYNTHETIC_MEMBER_EMAIL' -or
+    $Phase8dContent -notmatch 'qa-foundation-004@' -or
+    $Phase8dContent -notmatch 'FIXTURE_SKU_NAME = "\[QA FOUNDATION-004\] 2kg"' -or
+    $Phase8dContent -notmatch 'FIXTURE_ORDER_NUMBER = "PERF-PH8-003-ORDER"' -or
+    $Phase8dContent -notmatch 'FIXTURE_SUBSCRIPTION_NEXT_ORDER_DATE = "2030-01-01"' -or
+    $Phase8dContent -notmatch 'WRITE_REQUESTS_PER_CYCLE = 5' -or
+    $Phase8dContent -notmatch 'rate:\s*targetRps\(\) / WRITE_REQUESTS_PER_CYCLE' -or
+    $Phase8dSingleVuPreallocated -ne 1 -or
+    $Phase8dSingleVuMax -ne 1 -or
+    $Phase8dContent -notmatch 'cartAdd' -or
+    $Phase8dContent -notmatch 'wishlistDelete' -or
+    $Phase8dContent -match '/checkout|payments/toss/confirm|/commands/' -or
+    $Phase8dSeedContent -notmatch 'acknowledge-local-fixture' -or
+    $Phase8dSeedContent -notmatch 'PERF-PH8-003' -or
+    $Phase8dRunnerContent -notmatch 'refuses non-loopback targets' -or
+    $Phase8dRunnerContent -notmatch 'qa-foundation-004@' -or
+    $Phase8dRunbookContent -notmatch 'single VU' -or
+    $Phase8dRunbookContent -notmatch '동시 write capacity') {
+    throw 'Phase 8-D target, synthetic identity, exact fixture, serialized bounded-write, aggregate, excluded-mutation, seed/reset, runner, or Runbook contract is missing.'
 }
+
 $CapacityShared = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\capacity.js') -Raw
 $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).Count
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
