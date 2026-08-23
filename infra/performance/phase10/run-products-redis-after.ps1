@@ -110,6 +110,17 @@ function Save-Marker([object]$Marker) {
     $Marker | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $FirstResultMarker -Encoding utf8
 }
 
+function Get-ValidWorkloadStartedMarker([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw 'Redis After diagnostic did not record an authoritative workload-start marker.'
+    }
+    $marker = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    if (-not $marker.workloadInvocationStarted -or $null -eq $marker.k6ProcessId) {
+        throw 'Redis After workload-start marker is invalid.'
+    }
+    return $marker
+}
+
 Assert-SafeResultsDir $ResultsDir
 $modes = @($ValidateOnly, $ValidateRuntimeCapability, $RunAfterFirstResult) | Where-Object { $_ }
 if ($modes.Count -ne 1) { throw 'Specify exactly one mode: ValidateOnly, ValidateRuntimeCapability, or RunAfterFirstResult.' }
@@ -122,6 +133,28 @@ if ($ValidateOnly) {
     }
     & $DiagnosticScript -ValidateProductListCacheOnly
     if ($LASTEXITCODE -ne 0) { throw 'Product list cache diagnostic validation failed.' }
+    $syntheticMarker = Join-Path $TempRoot ("pawcycle-phase10-redis-after-marker-validation-$([guid]::NewGuid()).json")
+    try {
+        $preWorkloadRejected = $false
+        try {
+            & $DiagnosticScript -ValidateProductListCacheOnly -BaseUrl 'https://invalid.example' -WorkloadStartedMarkerPath $syntheticMarker
+        } catch {
+            $preWorkloadRejected = $true
+        }
+        if (-not $preWorkloadRejected -or (Test-Path -LiteralPath $syntheticMarker)) {
+            throw 'Synthetic pre-workload failure unexpectedly consumed the first-result marker.'
+        }
+
+        & $DiagnosticScript -ValidateWorkloadStartMarkerOnly -WorkloadStartedMarkerPath $syntheticMarker
+        $startedMarker = Get-ValidWorkloadStartedMarker $syntheticMarker
+        try { throw 'synthetic post-workload-start failure' } catch { }
+        $retainedMarker = Get-ValidWorkloadStartedMarker $syntheticMarker
+        if (-not $retainedMarker.workloadInvocationStarted -or $retainedMarker.k6ProcessId -ne $startedMarker.k6ProcessId) {
+            throw 'Synthetic post-workload-start failure did not preserve the consumed marker.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $syntheticMarker -Force -ErrorAction SilentlyContinue
+    }
     'Phase 10 Redis After harness validation passed without starting k6.'
     exit 0
 }
@@ -148,21 +181,21 @@ try {
 }
 
 $runtime = Assert-RuntimeCapability $composeArgs $freshAfter
+$baseUrl = Get-PublishedLoopbackUrl $composeArgs 'proxy' 80
+& $DiagnosticScript -K6Command $K6Command -BaseUrl $baseUrl -PrometheusUrl $runtime.prometheusUrl -ResultsDir (Join-Path $ResultsDir 'diagnostic') -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10 -RequireProductListCache -WorkloadStartedMarkerPath $FirstResultMarker
+
+$startedMarker = Get-ValidWorkloadStartedMarker $FirstResultMarker
 $marker = [ordered]@{
     diagnostic = 'phase10-products-redis-after-local'
     beforeEvidence = 'PERF-PH9-010'
-    startedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-    workloadInvocationStarted = $false
+    startedAtUtc = $startedMarker.workloadStartedAtUtc
+    workloadInvocationStarted = $true
+    k6ProcessId = $startedMarker.k6ProcessId
     completed = $false
     outcome = $null
     runtime = $runtime
 }
 Save-Marker $marker
-
-$marker.workloadInvocationStarted = $true
-Save-Marker $marker
-$baseUrl = Get-PublishedLoopbackUrl $composeArgs 'proxy' 80
-& $DiagnosticScript -K6Command $K6Command -BaseUrl $baseUrl -PrometheusUrl $runtime.prometheusUrl -ResultsDir (Join-Path $ResultsDir 'diagnostic') -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10 -RequireProductListCache
 
 $summaries = @(Get-ChildItem -LiteralPath (Join-Path $ResultsDir 'diagnostic') -Filter 'diagnostic-summary.json' -Recurse -File)
 if ($summaries.Count -ne 1) { throw 'Redis After diagnostic summary was not produced exactly once.' }

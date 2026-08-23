@@ -12,9 +12,11 @@ param(
     [switch]$ValidateTomcatOnly,
     [switch]$ValidateHikariOnly,
     [switch]$ValidateProductListCacheOnly,
+    [switch]$ValidateWorkloadStartMarkerOnly,
     [int]$ExpectedTomcatThreadsMax = 0,
     [int]$ExpectedHikariPoolMax = 0,
-    [switch]$RequireProductListCache
+    [switch]$RequireProductListCache,
+    [string]$WorkloadStartedMarkerPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +31,8 @@ $MeasurementEndFreshnessQuery = 'max(timestamp(jvm_threads_live_threads))'
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $ResultsDir = [IO.Path]::GetFullPath($ResultsDir)
 $repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
+$TempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$tempRootPrefix = $TempRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
 $K6Script = Join-Path $RepoRoot 'infra\performance\k6\capacity-api-products.js'
 $MysqlContainer = 'pawcycle-local-integration-mysql-1'
 
@@ -41,9 +45,18 @@ if ($PrometheusUrl -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{
 if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $ResultsDir.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ResultsDir must be outside the repository.'
 }
+if ($WorkloadStartedMarkerPath) {
+    $WorkloadStartedMarkerPath = [IO.Path]::GetFullPath($WorkloadStartedMarkerPath)
+    if ($WorkloadStartedMarkerPath.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $WorkloadStartedMarkerPath.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'WorkloadStartedMarkerPath must be outside the repository.'
+    }
+    if (-not ($WorkloadStartedMarkerPath.Equals($TempRoot, [StringComparison]::OrdinalIgnoreCase) -or $WorkloadStartedMarkerPath.StartsWith($tempRootPrefix, [StringComparison]::OrdinalIgnoreCase))) {
+        throw 'WorkloadStartedMarkerPath must be the host local temp directory or one of its descendants.'
+    }
+}
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
-$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly, $ValidateHikariOnly, $ValidateProductListCacheOnly) | Where-Object { $_ }
+$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly, $ValidateHikariOnly, $ValidateProductListCacheOnly, $ValidateWorkloadStartMarkerOnly) | Where-Object { $_ }
 if ($validationFlags.Count -gt 1) {
     throw 'Validation modes are mutually exclusive.'
 }
@@ -720,6 +733,16 @@ if ($ValidateHikariOnly) {
     exit 0
 }
 
+function Write-WorkloadStartedMarker([int]$K6ProcessId) {
+    if (-not $WorkloadStartedMarkerPath) { return }
+    [ordered]@{
+        diagnostic = 'phase9-products-local'
+        workloadInvocationStarted = $true
+        workloadStartedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        k6ProcessId = $K6ProcessId
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $WorkloadStartedMarkerPath -Encoding utf8
+}
+
 if ($ValidateProductListCacheOnly) {
     $before = New-EmptySnapshot 'cache-before'
     $after = New-EmptySnapshot 'cache-after'
@@ -742,6 +765,17 @@ if ($ValidateProductListCacheOnly) {
     if (-not $noHitRejected) { throw 'No-hit product list cache fixture unexpectedly passed.' }
 
     'Phase 10 product list cache metric validation passed without starting k6.'
+    exit 0
+}
+
+if ($ValidateWorkloadStartMarkerOnly) {
+    if (-not $WorkloadStartedMarkerPath) { throw 'ValidateWorkloadStartMarkerOnly requires WorkloadStartedMarkerPath.' }
+    Write-WorkloadStartedMarker 1
+    $marker = Get-Content -Raw -LiteralPath $WorkloadStartedMarkerPath | ConvertFrom-Json
+    if (-not $marker.workloadInvocationStarted -or $marker.k6ProcessId -ne 1) {
+        throw 'Synthetic workload-start marker validation failed.'
+    }
+    'Phase 9 workload-start marker synthetic validation passed without starting k6.'
     exit 0
 }
 
@@ -772,6 +806,7 @@ $harnessError = $null
 $process = $null
 try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
+    Write-WorkloadStartedMarker $process.Id
     Start-Sleep -Seconds $WarmupSeconds
     $measurementStart = Get-ResilientSnapshot 'measurement-start' $collectorErrorPath $ExpectedTomcatThreadsMax
     if ($RequireProductListCache) { Assert-ProductListCacheWarmup $preflight $measurementStart }
