@@ -52,8 +52,10 @@ function Assert-Cpu2BackendState {
 }
 
 function Assert-EffectiveMaxRamPercentage {
-    $flagLines = @(docker exec $BackendContainer java -XX:+PrintFlagsFinal -version 2>&1 | Where-Object { [string]$_ -match '^\s*double\s+MaxRAMPercentage\s*=' })
-    if ($LASTEXITCODE -ne 0 -or $flagLines.Count -ne 1) {
+    $jvmOutput = @(docker exec $BackendContainer sh -lc 'java -XX:+PrintFlagsFinal -version 2>&1')
+    $dockerExitCode = $LASTEXITCODE
+    $flagLines = @($jvmOutput | Where-Object { [string]$_ -match '^\s*double\s+MaxRAMPercentage\s*=' })
+    if ($dockerExitCode -ne 0 -or $flagLines.Count -ne 1) {
         throw 'Effective MaxRAMPercentage flag line was not observed exactly once.'
     }
     $match = [regex]::Match([string]$flagLines[0], 'MaxRAMPercentage\s*=\s*(?<value>[0-9]+(?:\.[0-9]+)?)')
