@@ -73,6 +73,26 @@ Set-Location ../..
 
 rollback 확인값은 backend `health=healthy`, `cpu=750000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
 
+## Memory1GiB causality experiment
+
+PERF-PH9-005의 Tomcat128 + CPU1.5 + memory640MiB first-result를 control로 재사용한다. control과 PERF-PH9-005를 재실행하지 않고, `compose.phase9-memory1g.yaml`으로 backend memory limit만 1GiB로 변경한다. overlay 순서는 `compose.phase9-envelope.yaml` → `compose.phase9-tomcat128.yaml` → `compose.phase9-cpu15.yaml` → `compose.phase9-memory1g.yaml`이다. CPU1.5, PID256, Tomcat max 128, MBean instrumentation, `MaxRAMPercentage=65.0`은 유지한다. 이 candidate는 local-only causality experiment이며 Production/Cloud/AWS 실행과 실제 250 RPS를 포함하지 않는다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml -f compose.phase9-memory1g.yaml up --build -d mysql backend frontend proxy prometheus
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+Set-Location ../..
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
+```
+
+Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+
+```powershell
+Set-Location infra/local-integration
+docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml up -d --no-deps --force-recreate backend
+Set-Location ../..
+```
+
 ## 일반 local diagnostic
 
 일반 local diagnostic은 Tomcat128 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
