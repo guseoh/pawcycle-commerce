@@ -30,9 +30,9 @@ Before는 완료된 PERF-PH9-010 CPU2.0 결과를 그대로 재사용하며 재�
 | workload | 기존 `capacity-api-products.js`, target 250 RPS |
 | warm-up / measurement | 30초 / 120초 |
 | backend | Tomcat128, CPU2.0, memory1GiB, PID256, MaxRAMPercentage65, Hikari10 |
-| cache | `pawcycle:catalog:product-list:v1`, local Redis, warm-up 중 hit counter 증가 필수 |
+| cache | data key `pawcycle:catalog:product-list:v1` + generation key `pawcycle:catalog:product-list:v1:generation`, local Redis, warm-up 중 hit counter 증가 필수 |
 
-`infra/performance/phase10/run-products-redis-after.ps1`은 host local temp 외의 artifact 경로를 거부한다. `-ValidateOnly`와 `-ValidateRuntimeCapability`는 k6를 시작하지 않는다. `-RunAfterFirstResult`는 외부에서 별도 승인된 first-result에만 사용하며 workload 호출 전에 영구 marker를 생성한다. marker가 있으면 결과 성공 여부와 관계없이 `NEVER RERUN`으로 중단한다.
+`infra/performance/phase10/run-products-redis-after.ps1`은 host local temp 외의 artifact 경로를 거부한다. `-ValidateOnly`와 `-ValidateRuntimeCapability`는 k6를 시작하지 않는다. `-RunAfterFirstResult`는 외부에서 별도 승인된 first-result에만 사용한다. child diagnostic의 preflight가 끝나고 실제 `Start-Process`가 성공한 직후 workload-start marker를 기록하며, 그 이전 실패는 first-result를 소비하지 않는다. marker가 한 번 생성된 뒤에는 이후 성공·실패와 관계없이 `NEVER RERUN`으로 중단한다.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase10/run-products-redis-after.ps1 -ValidateOnly
@@ -46,6 +46,20 @@ pwsh -NoProfile -File infra/performance/phase10/run-products-redis-after.ps1 -Ru
 ```
 
 After summary는 기존 actual RPS, dropped iterations, p50/p95/p99/max, backend CPU/memory/GC/threads, Hikari active/pending/acquire/usage와 SQL delta에 cache hit/miss/error delta 및 Redis container health/resource를 추가한다. Redis 효과는 처리량·tail·dropped 개선과 함께 miss 이후 measurement의 SQL/Hikari 감소가 일관될 때만 지지한다.
+
+### Read Scale cache correctness
+
+단순 delete-only cache-aside는 concurrent miss가 이전 DB snapshot을 읽은 뒤 Admin commit의 delete보다 늦게 stale 값을 다시 쓸 수 있다. PERF-PH10-001은 이를 막기 위해 miss 시작 시 generation을 캡처하고, Redis conditional-set script가 generation이 그대로일 때만 data key를 저장한다. Product/SKU commit의 after-commit invalidation은 generation 증가와 data key 삭제를 Redis 원자 연산으로 수행한다. 따라서 invalidation 이전에 시작한 miss가 뒤늦게 완료되어도 stale value가 재삽입되지 않아야 한다.
+
+## Local Redis rollback 계약
+
+이번 변경은 local integration 전용이며 Production Redis/AWS resource를 만들지 않는다. 롤백은 authoritative MySQL과 `mysql-data` volume을 보존한 채 cache 경로만 제거하는 것을 원칙으로 한다.
+
+- 즉시 기능 우회가 필요하면 Backend의 product-list cache enable 값을 `false`로 되돌리고 Backend를 기존 local integration 방식으로 재생성한다. 이 상태에서는 Redis가 남아 있어도 `/api/products`는 authoritative DB reader만 사용해야 한다.
+- 전체 repository rollback은 PR 변경을 일반 revert하여 Redis dependency, local Redis service, cache 설정과 After harness를 함께 제거한다. history rewrite, reset, force push는 사용하지 않는다.
+- Redis container는 persistence와 named volume을 사용하지 않으므로 cache data는 disposable artifact다. Redis service 제거 시 해당 local Redis container만 명시적으로 정리하고 `mysql-data`, 다른 service container·volume, 결과 artifact는 임의 삭제하지 않는다. `--remove-orphans`는 사용하지 않는다.
+- rollback 후 Backend health와 `/api/products` 정상 응답, Redis 비의존 동작, MySQL data 보존을 확인한다. performance first-result marker와 이미 생성된 측정 artifact는 rollback과 무관하게 보존하며 재실행 근거로 삭제하지 않는다.
+- rollback target인 base `main` local topology와 기존 DB-only product read 경로는 이 PR 이전 repository/CI 기준선이다. 이번 PR에서는 실제 destructive rollback이나 Production 실행을 수행하지 않았으며, forward compose syntax/runtime capability와 repository validation만 검증했다.
 
 ## 다음 Scale Scenario: Subscription Burst
 

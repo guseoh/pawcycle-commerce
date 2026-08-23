@@ -3,15 +3,30 @@ package com.pawcycle.backend.catalog.product.application;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.util.List;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class ProductListCache {
 	static final String CACHE_KEY = "pawcycle:catalog:product-list:v1";
+	static final String GENERATION_KEY = CACHE_KEY + ":generation";
+	static final DefaultRedisScript<Long> STORE_IF_GENERATION_UNCHANGED_SCRIPT = new DefaultRedisScript<>("""
+			local current = redis.call('GET', KEYS[1])
+			if not current then current = '0' end
+			if current ~= ARGV[1] then return 0 end
+			redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])
+			return 1
+			""", Long.class);
+	static final DefaultRedisScript<Long> INVALIDATE_SCRIPT = new DefaultRedisScript<>("""
+			redis.call('INCR', KEYS[1])
+			redis.call('DEL', KEYS[2])
+			return 1
+			""", Long.class);
 	private static final String METRIC_NAME = "pawcycle.catalog.product.list.cache.operations";
 
 	private final StringRedisTemplate redisTemplate;
@@ -30,8 +45,8 @@ public class ProductListCache {
 			@Value("${pawcycle.catalog.product-list-cache.enabled:false}") boolean enabled) {
 		this.redisTemplate = redisTemplate;
 		this.objectMapper = objectMapper;
-		if (ttl.isZero() || ttl.isNegative()) {
-			throw new IllegalArgumentException("product list cache ttl must be positive");
+		if (ttl.isZero() || ttl.isNegative() || ttl.toMillis() == 0) {
+			throw new IllegalArgumentException("product list cache ttl must be at least one millisecond");
 		}
 		this.ttl = ttl;
 		this.enabled = enabled;
@@ -45,15 +60,19 @@ public class ProductListCache {
 			return loader.get();
 		}
 
-		String cached;
+		String generation;
 		try {
-			cached = redisTemplate.opsForValue().get(CACHE_KEY);
+			String cached = redisTemplate.opsForValue().get(CACHE_KEY);
 			if (cached != null) {
 				ProductListView value = objectMapper.readValue(cached, ProductListView.class);
 				hitCounter.increment();
 				return value;
 			}
 			missCounter.increment();
+			generation = redisTemplate.opsForValue().get(GENERATION_KEY);
+			if (generation == null) {
+				generation = "0";
+			}
 		} catch (RuntimeException exception) {
 			errorCounter.increment();
 			return loader.get();
@@ -61,7 +80,13 @@ public class ProductListCache {
 
 		ProductListView value = loader.get();
 		try {
-			redisTemplate.opsForValue().set(CACHE_KEY, objectMapper.writeValueAsString(value), ttl);
+			String serialized = objectMapper.writeValueAsString(value);
+			redisTemplate.execute(
+					STORE_IF_GENERATION_UNCHANGED_SCRIPT,
+					List.of(GENERATION_KEY, CACHE_KEY),
+					generation,
+					serialized,
+					Long.toString(ttl.toMillis()));
 		} catch (RuntimeException exception) {
 			errorCounter.increment();
 		}
@@ -73,7 +98,7 @@ public class ProductListCache {
 			return;
 		}
 		try {
-			redisTemplate.delete(CACHE_KEY);
+			redisTemplate.execute(INVALIDATE_SCRIPT, List.of(GENERATION_KEY, CACHE_KEY));
 		} catch (RuntimeException exception) {
 			errorCounter.increment();
 		}
