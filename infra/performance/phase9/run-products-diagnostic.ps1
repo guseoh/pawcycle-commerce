@@ -20,6 +20,8 @@ $MeasurementSeconds = 120
 $SampleSeconds = 5
 $MeasurementEndPrometheusMaxAttempts = 4
 $MeasurementEndPrometheusRetrySeconds = 5
+$PrometheusRequestTimeoutSeconds = 2
+$MeasurementEndFreshnessQuery = 'max(timestamp(jvm_threads_live_threads))'
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $ResultsDir = [IO.Path]::GetFullPath($ResultsDir)
 $repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
@@ -63,25 +65,34 @@ $summaryPath = Join-Path $runDir 'diagnostic-summary.json'
 $samplesPath = Join-Path $runDir 'measurement-samples.json'
 $backendFinalStatePath = Join-Path $runDir 'backend-final-state.json'
 
-function Query-PrometheusSample([string]$Query) {
+function Invoke-PrometheusInstantQuery([string]$Query) {
+    $request = @{
+        Uri = "$PrometheusUrl/api/v1/query"
+        Body = @{ query = $Query }
+    }
+    if ($PSVersionTable.PSVersion -ge [version]'7.4') {
+        return Invoke-RestMethod @request `
+            -ConnectionTimeoutSeconds $PrometheusRequestTimeoutSeconds `
+            -OperationTimeoutSeconds $PrometheusRequestTimeoutSeconds
+    }
+    return Invoke-RestMethod @request -TimeoutSec $PrometheusRequestTimeoutSeconds
+}
+
+function Query-Prometheus([string]$Query) {
     try {
-        $response = Invoke-RestMethod -Uri "$PrometheusUrl/api/v1/query" -Body @{ query = $Query }
+        $response = Invoke-PrometheusInstantQuery $Query
         if ($response.data.result.Count -eq 0) { return $null }
-        $unixSeconds = [double]$response.data.result[0].value[0]
-        return [ordered]@{
-            value = [double]$response.data.result[0].value[1]
-            timestampUtc = [DateTimeOffset]::FromUnixTimeMilliseconds(
-                [long][Math]::Round($unixSeconds * 1000)).UtcDateTime.ToString('o')
-        }
+        return [double]$response.data.result[0].value[1]
     } catch {
         throw 'Prometheus query failed.'
     }
 }
 
-function Query-Prometheus([string]$Query) {
-    $sample = Query-PrometheusSample $Query
-    if ($null -eq $sample) { return $null }
-    return $sample.value
+function Query-PrometheusFreshnessTimestamp() {
+    $unixSeconds = Query-Prometheus $MeasurementEndFreshnessQuery
+    if ($null -eq $unixSeconds) { return $null }
+    return [DateTimeOffset]::FromUnixTimeMilliseconds(
+        [long][Math]::Round([double]$unixSeconds * 1000)).UtcDateTime
 }
 
 function Get-MySqlAggregate([string]$ErrorPath) {
@@ -298,7 +309,8 @@ function Get-MeasurementEndPrometheusEvidence(
         [int]$ExpectedTomcatMax,
         [int]$MaxAttempts,
         [int]$RetrySeconds,
-        [scriptblock]$QuerySample,
+        [scriptblock]$QueryValue,
+        [scriptblock]$QueryFreshness,
         [scriptblock]$SleepAction) {
     $snapshot = New-EmptySnapshot 'measurement-end'
     $metrics = Get-PrometheusMetricQueries
@@ -308,16 +320,24 @@ function Get-MeasurementEndPrometheusEvidence(
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         $attemptsUsed = $attempt
+        $freshnessUtc = $null
+        try {
+            $freshnessUtc = & $QueryFreshness
+        } catch {
+            $freshnessUtc = $null
+        }
+        if ($null -eq $freshnessUtc -or $freshnessUtc -lt $MeasurementBoundaryUtc) {
+            if ($attempt -lt $MaxAttempts) { & $SleepAction $RetrySeconds }
+            continue
+        }
+        $latestEvidenceUtc = $freshnessUtc
+
         foreach ($metric in $metrics.GetEnumerator()) {
             if ($null -ne $snapshot[$metric.Key]) { continue }
             try {
-                $sample = & $QuerySample $metric.Value
-                if ($null -eq $sample) { continue }
-                $sampleUtc = [DateTimeOffset]::Parse($sample.timestampUtc).UtcDateTime
-                if ($sampleUtc -lt $MeasurementBoundaryUtc) { continue }
-                $snapshot[$metric.Key] = [double]$sample.value
-                if ($null -eq $latestEvidenceUtc -or $sampleUtc -gt $latestEvidenceUtc) {
-                    $latestEvidenceUtc = $sampleUtc
+                $value = & $QueryValue $metric.Value
+                if ($null -ne $value) {
+                    $snapshot[$metric.Key] = [double]$value
                 }
             } catch {
                 $snapshot[$metric.Key] = $null
@@ -335,6 +355,14 @@ function Get-MeasurementEndPrometheusEvidence(
         if ($attempt -lt $MaxAttempts) { & $SleepAction $RetrySeconds }
     }
 
+    if ($null -eq $latestEvidenceUtc) {
+        $persistentUnavailable = @(
+            foreach ($metricKey in $metrics.Keys) {
+                if (Should-RecordMetricCollectionError $metricKey $ExpectedTomcatMax) { $metricKey }
+            }
+        )
+    }
+
     $snapshot.timestampUtc = (Get-Date).ToUniversalTime().ToString('o')
     $snapshot['prometheusEvidenceTimestampUtc'] = if ($latestEvidenceUtc) { $latestEvidenceUtc.ToString('o') } else { $null }
     return [ordered]@{
@@ -343,7 +371,9 @@ function Get-MeasurementEndPrometheusEvidence(
             attemptsUsed = $attemptsUsed
             maxAttempts = $MaxAttempts
             retryIntervalSeconds = $RetrySeconds
+            requestTimeoutSeconds = $PrometheusRequestTimeoutSeconds
             measurementBoundaryUtc = $MeasurementBoundaryUtc.ToString('o')
+            freshnessAnchor = 'jvm_threads_live_threads'
             finalEvidenceTimestampUtc = $snapshot.prometheusEvidenceTimestampUtc
             recoveredAfterRetry = $attemptsUsed -gt 1 -and $persistentUnavailable.Count -eq 0
             persistentUnavailable = $persistentUnavailable.Count -gt 0
@@ -505,24 +535,46 @@ if ($ValidateFailureHandlingOnly) {
 if ($ValidateMeasurementEndRetryOnly) {
     $boundaryUtc = [DateTimeOffset]::Parse('2026-01-01T00:00:00Z').UtcDateTime
     $metricCount = (Get-PrometheusMetricQueries).Count
-    $transientState = [pscustomobject]@{ queryCalls = 0 }
+    $noSleep = { param([int]$Seconds) }
+
+    $transientFreshnessState = [pscustomobject]@{ calls = 0 }
+    $transientFreshness = {
+        $transientFreshnessState.calls++
+        if ($transientFreshnessState.calls -eq 1) { return $boundaryUtc.AddSeconds(-1) }
+        return $boundaryUtc.AddSeconds(1)
+    }.GetNewClosure()
+    $transientValueState = [pscustomobject]@{ calls = 0 }
     $transientQuery = {
         param([string]$Query)
-        $transientState.queryCalls++
-        if ($transientState.queryCalls -le $metricCount) { return $null }
-        return [ordered]@{ value = 1; timestampUtc = $boundaryUtc.AddSeconds(1).ToString('o') }
+        $transientValueState.calls++
+        return 1
     }.GetNewClosure()
-    $noSleep = { param([int]$Seconds) }
-    $transient = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $transientQuery $noSleep
+    $transient = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $transientQuery $transientFreshness $noSleep
     if ($transient.retry.attemptsUsed -ne 2 -or -not $transient.retry.recoveredAfterRetry -or
             $transient.retry.persistentUnavailable -or $null -eq $transient.snapshot.httpProductsCount -or
+            $transientValueState.calls -ne $metricCount -or
             $null -eq $transient.retry.finalEvidenceTimestampUtc -or
-            $transient.retry.retryIntervalSeconds -ne $MeasurementEndPrometheusRetrySeconds) {
-        throw "measurement-end transient Prometheus recovery validation failed (attempts=$($transient.retry.attemptsUsed), recovered=$($transient.retry.recoveredAfterRetry), persistent=$($transient.retry.persistentUnavailable), unavailable=$($transient.retry.unavailableMetrics.Count))."
+            $transient.retry.retryIntervalSeconds -ne $MeasurementEndPrometheusRetrySeconds -or
+            $transient.retry.requestTimeoutSeconds -ne $PrometheusRequestTimeoutSeconds) {
+        throw "measurement-end stale-to-fresh Prometheus recovery validation failed (attempts=$($transient.retry.attemptsUsed), recovered=$($transient.retry.recoveredAfterRetry), persistent=$($transient.retry.persistentUnavailable), unavailable=$($transient.retry.unavailableMetrics.Count))."
+    }
+
+    $freshQuery = { return $boundaryUtc.AddSeconds(1) }.GetNewClosure()
+    $exceptionState = [pscustomobject]@{ queryCalls = 0 }
+    $exceptionQuery = {
+        param([string]$Query)
+        $exceptionState.queryCalls++
+        if ($exceptionState.queryCalls -le $metricCount) { throw 'synthetic Prometheus request timeout' }
+        return 1
+    }.GetNewClosure()
+    $exceptionRecovery = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $exceptionQuery $freshQuery $noSleep
+    if ($exceptionRecovery.retry.attemptsUsed -ne 2 -or -not $exceptionRecovery.retry.recoveredAfterRetry -or
+            $exceptionRecovery.retry.persistentUnavailable -or $null -eq $exceptionRecovery.snapshot.hikariUsageCount) {
+        throw 'measurement-end Prometheus query exception retry validation failed.'
     }
 
     $persistentQuery = { param([string]$Query) return $null }
-    $persistent = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $persistentQuery $noSleep
+    $persistent = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $persistentQuery $freshQuery $noSleep
     $script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
     Add-MeasurementEndPrometheusErrors $persistent
     $validFixture = '{"cohort":"capacity-api-products","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":30000,"latencyMs":{"p50":1,"p95":2,"p99":3,"max":4},"expectedStatusErrorRate":0}' | ConvertFrom-Json
@@ -603,7 +655,9 @@ $measurementEndPrometheusRetry = [ordered]@{
     attemptsUsed = 0
     maxAttempts = $MeasurementEndPrometheusMaxAttempts
     retryIntervalSeconds = $MeasurementEndPrometheusRetrySeconds
+    requestTimeoutSeconds = $PrometheusRequestTimeoutSeconds
     measurementBoundaryUtc = $null
+    freshnessAnchor = 'jvm_threads_live_threads'
     finalEvidenceTimestampUtc = $null
     recoveredAfterRetry = $false
     persistentUnavailable = $false
@@ -630,7 +684,8 @@ try {
         $ExpectedTomcatThreadsMax `
         $MeasurementEndPrometheusMaxAttempts `
         $MeasurementEndPrometheusRetrySeconds `
-        { param([string]$Query) Query-PrometheusSample $Query } `
+        { param([string]$Query) Query-Prometheus $Query } `
+        { Query-PrometheusFreshnessTimestamp } `
         { param([int]$Seconds) Start-Sleep -Seconds $Seconds }
     $measurementEnd = $measurementEndEvidence.snapshot
     $measurementEndPrometheusRetry = $measurementEndEvidence.retry
