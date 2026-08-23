@@ -9,6 +9,7 @@ import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuPatch;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -34,6 +35,7 @@ public class AdminCatalogService {
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
 	private final JdbcTemplate jdbcTemplate;
+	private final ProductListCacheInvalidator productListCacheInvalidator;
 
 	@Transactional(readOnly = true)
 	public AdminCatalogViews.CategoryList categories() {
@@ -99,6 +101,7 @@ public class AdminCatalogService {
 				request.description(),
 				request.petType(),
 				request.thumbnailUrl()));
+		productListCacheInvalidator.invalidateAfterCommit();
 		return productView(product);
 	}
 
@@ -127,7 +130,9 @@ public class AdminCatalogService {
 			}
 			product.transitionTo(request.getStatus());
 		}
-		return productView(productRepository.saveAndFlush(product));
+		AdminCatalogViews.Product view = productView(productRepository.saveAndFlush(product));
+		productListCacheInvalidator.invalidateAfterCommit();
+		return view;
 	}
 
 	@Transactional(readOnly = true)
@@ -155,6 +160,7 @@ public class AdminCatalogService {
 					request.displayOrder(),
 					request.status()));
 			jdbcTemplate.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,0,0,0)", sku.getId());
+			productListCacheInvalidator.invalidateAfterCommit();
 			return skuView(sku);
 		} catch (DataIntegrityViolationException exception) {
 			throw skuCodeConflict();
@@ -173,7 +179,9 @@ public class AdminCatalogService {
 				request.getSubscribable(),
 				request.getDisplayOrder(),
 				request.getStatus());
-		return skuView(skuRepository.saveAndFlush(sku));
+		AdminCatalogViews.Sku view = skuView(skuRepository.saveAndFlush(sku));
+		productListCacheInvalidator.invalidateAfterCommit();
+		return view;
 	}
 
 	private Category requireCategory(Long categoryId) {
