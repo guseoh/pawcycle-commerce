@@ -8,6 +8,7 @@ param(
     [switch]$ValidateCollectorOnly,
     [switch]$ValidateK6AggregateOnly,
     [switch]$ValidateFailureHandlingOnly,
+    [switch]$ValidateMeasurementEndRetryOnly,
     [switch]$ValidateTomcatOnly,
     [int]$ExpectedTomcatThreadsMax = 0
 )
@@ -17,6 +18,8 @@ $TargetRps = 250
 $WarmupSeconds = 30
 $MeasurementSeconds = 120
 $SampleSeconds = 5
+$MeasurementEndPrometheusMaxAttempts = 4
+$MeasurementEndPrometheusRetrySeconds = 5
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $ResultsDir = [IO.Path]::GetFullPath($ResultsDir)
 $repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
@@ -34,7 +37,7 @@ if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $Re
 }
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
-$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateTomcatOnly) | Where-Object { $_ }
+$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly) | Where-Object { $_ }
 if ($validationFlags.Count -gt 1) {
     throw 'Validation modes are mutually exclusive.'
 }
@@ -60,14 +63,25 @@ $summaryPath = Join-Path $runDir 'diagnostic-summary.json'
 $samplesPath = Join-Path $runDir 'measurement-samples.json'
 $backendFinalStatePath = Join-Path $runDir 'backend-final-state.json'
 
-function Query-Prometheus([string]$Query) {
+function Query-PrometheusSample([string]$Query) {
     try {
         $response = Invoke-RestMethod -Uri "$PrometheusUrl/api/v1/query" -Body @{ query = $Query }
         if ($response.data.result.Count -eq 0) { return $null }
-        return [double]$response.data.result[0].value[1]
+        $unixSeconds = [double]$response.data.result[0].value[0]
+        return [ordered]@{
+            value = [double]$response.data.result[0].value[1]
+            timestampUtc = [DateTimeOffset]::FromUnixTimeMilliseconds(
+                [long][Math]::Round($unixSeconds * 1000)).UtcDateTime.ToString('o')
+        }
     } catch {
         throw 'Prometheus query failed.'
     }
+}
+
+function Query-Prometheus([string]$Query) {
+    $sample = Query-PrometheusSample $Query
+    if ($null -eq $sample) { return $null }
+    return $sample.value
 }
 
 function Get-MySqlAggregate([string]$ErrorPath) {
@@ -221,9 +235,8 @@ function Should-RecordMetricCollectionError([string]$MetricKey, [int]$ExpectedTo
     return $ExpectedTomcatMax -gt 0 -or $MetricKey -notlike 'tomcatThreads*'
 }
 
-function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$ExpectedTomcatMax = 0) {
-    $snapshot = New-EmptySnapshot $Label
-    $metrics = [ordered]@{
+function Get-PrometheusMetricQueries() {
+    return [ordered]@{
         httpProductsCount = 'sum(http_server_requests_seconds_count{method="GET",uri="/api/products"})'
         httpProductsSumSeconds = 'sum(http_server_requests_seconds_sum{method="GET",uri="/api/products"})'
         hikariUsageCount = 'sum(hikaricp_connections_usage_seconds_count)'
@@ -247,6 +260,11 @@ function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$Expecte
         jvmGcPauseSeconds = 'sum(jvm_gc_pause_seconds_sum)'
         processCpuUsage = 'sum(process_cpu_usage)'
     }
+}
+
+function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$ExpectedTomcatMax = 0) {
+    $snapshot = New-EmptySnapshot $Label
+    $metrics = Get-PrometheusMetricQueries
     foreach ($metric in $metrics.GetEnumerator()) {
         try {
             $snapshot[$metric.Key] = Query-Prometheus $metric.Value
@@ -273,6 +291,71 @@ function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$Expecte
         Add-CollectionError $Label 'Docker' 'container evidence unavailable.'
     }
     return $snapshot
+}
+
+function Get-MeasurementEndPrometheusEvidence(
+        [datetime]$MeasurementBoundaryUtc,
+        [int]$ExpectedTomcatMax,
+        [int]$MaxAttempts,
+        [int]$RetrySeconds,
+        [scriptblock]$QuerySample,
+        [scriptblock]$SleepAction) {
+    $snapshot = New-EmptySnapshot 'measurement-end'
+    $metrics = Get-PrometheusMetricQueries
+    $attemptsUsed = 0
+    $latestEvidenceUtc = $null
+    $persistentUnavailable = @()
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $attemptsUsed = $attempt
+        foreach ($metric in $metrics.GetEnumerator()) {
+            if ($null -ne $snapshot[$metric.Key]) { continue }
+            try {
+                $sample = & $QuerySample $metric.Value
+                if ($null -eq $sample) { continue }
+                $sampleUtc = [DateTimeOffset]::Parse($sample.timestampUtc).UtcDateTime
+                if ($sampleUtc -lt $MeasurementBoundaryUtc) { continue }
+                $snapshot[$metric.Key] = [double]$sample.value
+                if ($null -eq $latestEvidenceUtc -or $sampleUtc -gt $latestEvidenceUtc) {
+                    $latestEvidenceUtc = $sampleUtc
+                }
+            } catch {
+                $snapshot[$metric.Key] = $null
+            }
+        }
+
+        $persistentUnavailable = @(
+            foreach ($metricKey in $metrics.Keys) {
+                if ($null -eq $snapshot[$metricKey] -and (Should-RecordMetricCollectionError $metricKey $ExpectedTomcatMax)) {
+                    $metricKey
+                }
+            }
+        )
+        if ($persistentUnavailable.Count -eq 0) { break }
+        if ($attempt -lt $MaxAttempts) { & $SleepAction $RetrySeconds }
+    }
+
+    $snapshot.timestampUtc = (Get-Date).ToUniversalTime().ToString('o')
+    $snapshot['prometheusEvidenceTimestampUtc'] = if ($latestEvidenceUtc) { $latestEvidenceUtc.ToString('o') } else { $null }
+    return [ordered]@{
+        snapshot = $snapshot
+        retry = [ordered]@{
+            attemptsUsed = $attemptsUsed
+            maxAttempts = $MaxAttempts
+            retryIntervalSeconds = $RetrySeconds
+            measurementBoundaryUtc = $MeasurementBoundaryUtc.ToString('o')
+            finalEvidenceTimestampUtc = $snapshot.prometheusEvidenceTimestampUtc
+            recoveredAfterRetry = $attemptsUsed -gt 1 -and $persistentUnavailable.Count -eq 0
+            persistentUnavailable = $persistentUnavailable.Count -gt 0
+            unavailableMetrics = $persistentUnavailable
+        }
+    }
+}
+
+function Add-MeasurementEndPrometheusErrors([object]$Evidence) {
+    foreach ($metricKey in $Evidence.retry.unavailableMetrics) {
+        Add-CollectionError 'measurement-end' 'Prometheus' "$metricKey fresh evidence unavailable after bounded retry."
+    }
 }
 
 function Get-DiagnosticOutcome([object]$K6Summary, [object]$ProcessExit, [bool]$CollectorFailure, [bool]$HarnessFailure) {
@@ -419,6 +502,62 @@ if ($ValidateFailureHandlingOnly) {
     exit 0
 }
 
+if ($ValidateMeasurementEndRetryOnly) {
+    $boundaryUtc = [DateTimeOffset]::Parse('2026-01-01T00:00:00Z').UtcDateTime
+    $metricCount = (Get-PrometheusMetricQueries).Count
+    $transientState = [pscustomobject]@{ queryCalls = 0 }
+    $transientQuery = {
+        param([string]$Query)
+        $transientState.queryCalls++
+        if ($transientState.queryCalls -le $metricCount) { return $null }
+        return [ordered]@{ value = 1; timestampUtc = $boundaryUtc.AddSeconds(1).ToString('o') }
+    }.GetNewClosure()
+    $noSleep = { param([int]$Seconds) }
+    $transient = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $transientQuery $noSleep
+    if ($transient.retry.attemptsUsed -ne 2 -or -not $transient.retry.recoveredAfterRetry -or
+            $transient.retry.persistentUnavailable -or $null -eq $transient.snapshot.httpProductsCount -or
+            $null -eq $transient.retry.finalEvidenceTimestampUtc -or
+            $transient.retry.retryIntervalSeconds -ne $MeasurementEndPrometheusRetrySeconds) {
+        throw "measurement-end transient Prometheus recovery validation failed (attempts=$($transient.retry.attemptsUsed), recovered=$($transient.retry.recoveredAfterRetry), persistent=$($transient.retry.persistentUnavailable), unavailable=$($transient.retry.unavailableMetrics.Count))."
+    }
+
+    $persistentQuery = { param([string]$Query) return $null }
+    $persistent = Get-MeasurementEndPrometheusEvidence $boundaryUtc 0 $MeasurementEndPrometheusMaxAttempts $MeasurementEndPrometheusRetrySeconds $persistentQuery $noSleep
+    $script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
+    Add-MeasurementEndPrometheusErrors $persistent
+    $validFixture = '{"cohort":"capacity-api-products","targetRps":250,"actualRps":250,"droppedIterations":0,"iterations":30000,"latencyMs":{"p50":1,"p95":2,"p99":3,"max":4},"expectedStatusErrorRate":0}' | ConvertFrom-Json
+    $persistentOutcome = Get-DiagnosticOutcome $validFixture 0 ($CollectionErrors.Count -gt 0) $false
+    if ($persistent.retry.attemptsUsed -ne $MeasurementEndPrometheusMaxAttempts -or -not $persistent.retry.persistentUnavailable -or
+            $null -ne $persistent.snapshot.httpProductsCount -or -not $persistentOutcome.collectorFailure) {
+        throw 'measurement-end persistent Prometheus failure validation failed.'
+    }
+    $fixturePath = Join-Path $env:TEMP ("pawcycle-phase9-measurement-end-retry-fixture-$([guid]::NewGuid()).json")
+    try {
+        Write-DiagnosticSummaryArtifact $fixturePath ([ordered]@{
+            outcome = $persistentOutcome.outcome
+            collectorFailure = $persistentOutcome.collectorFailure
+            collectionErrors = @($CollectionErrors)
+            measurementEnd = $persistent.snapshot
+            measurementEndPrometheusRetry = $persistent.retry
+        })
+        $failureSummary = Get-Content -Raw -LiteralPath $fixturePath | ConvertFrom-Json
+        if (-not $failureSummary.collectorFailure -or $null -ne $failureSummary.measurementEnd.httpProductsCount -or
+                -not $failureSummary.measurementEndPrometheusRetry.persistentUnavailable -or
+                $failureSummary.measurementEndPrometheusRetry.attemptsUsed -ne $MeasurementEndPrometheusMaxAttempts -or
+                $null -eq $failureSummary.collectionErrors) {
+            throw 'measurement-end persistent failure summary preservation validation failed.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $fixturePath -Force -ErrorAction SilentlyContinue
+    }
+
+    $preflightRejected = $false
+    try { Assert-CriticalMetrics (New-EmptySnapshot 'preflight') } catch { $preflightRejected = $true }
+    if (-not $preflightRejected) { throw 'preflight fail-close regression validation failed.' }
+    'Phase 9 measurement-end Prometheus bounded retry validation passed without starting k6.'
+    exit 0
+}
+
 if ($ValidateTomcatOnly) {
     $base = New-EmptySnapshot 'tomcat-base'
     foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'hikariMax', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
@@ -459,6 +598,17 @@ $preflight = Get-Snapshot 'preflight' $collectorErrorPath
 Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax
 $measurementStart = New-EmptySnapshot 'measurement-start'
 $measurementEnd = New-EmptySnapshot 'measurement-end'
+$measurementBoundaryUtc = $null
+$measurementEndPrometheusRetry = [ordered]@{
+    attemptsUsed = 0
+    maxAttempts = $MeasurementEndPrometheusMaxAttempts
+    retryIntervalSeconds = $MeasurementEndPrometheusRetrySeconds
+    measurementBoundaryUtc = $null
+    finalEvidenceTimestampUtc = $null
+    recoveredAfterRetry = $false
+    persistentUnavailable = $false
+    unavailableMetrics = @()
+}
 $processExit = $null
 $harnessError = $null
 $process = $null
@@ -472,9 +622,31 @@ try {
         Save-MeasurementSamples $samplesPath $samples
         Start-Sleep -Seconds $SampleSeconds
     }
-    $measurementEnd = Get-ResilientSnapshot 'measurement-end' $collectorErrorPath $ExpectedTomcatThreadsMax
+    $measurementBoundaryUtc = (Get-Date).ToUniversalTime()
     $process.WaitForExit()
     $processExit = $process.ExitCode
+    $measurementEndEvidence = Get-MeasurementEndPrometheusEvidence `
+        $measurementBoundaryUtc `
+        $ExpectedTomcatThreadsMax `
+        $MeasurementEndPrometheusMaxAttempts `
+        $MeasurementEndPrometheusRetrySeconds `
+        { param([string]$Query) Query-PrometheusSample $Query } `
+        { param([int]$Seconds) Start-Sleep -Seconds $Seconds }
+    $measurementEnd = $measurementEndEvidence.snapshot
+    $measurementEndPrometheusRetry = $measurementEndEvidence.retry
+    Add-MeasurementEndPrometheusErrors $measurementEndEvidence
+    try {
+        $measurementEnd.mysql = Get-MySqlAggregate $collectorErrorPath
+    } catch {
+        $measurementEnd.mysql = New-EmptyMySqlAggregate
+        Add-CollectionError 'measurement-end' 'MySQL' 'aggregate collection unavailable.'
+    }
+    try {
+        $measurementEnd.containers = Get-ContainerEvidence $collectorErrorPath
+    } catch {
+        $measurementEnd.containers = $null
+        Add-CollectionError 'measurement-end' 'Docker' 'container evidence unavailable.'
+    }
 } catch {
     $harnessError = 'harness execution failed.'
     Add-CollectionError 'harness' 'script' $harnessError
@@ -530,6 +702,8 @@ $summary = [ordered]@{
     preflight = $preflight
     measurementStart = $measurementStart
     measurementEnd = $measurementEnd
+    measurementBoundaryUtc = if ($measurementBoundaryUtc) { $measurementBoundaryUtc.ToString('o') } else { $null }
+    measurementEndPrometheusRetry = $measurementEndPrometheusRetry
     sampleCount = $samples.Count
     backendFinalState = $backendFinalState
     queryIntervalSeconds = $SampleSeconds

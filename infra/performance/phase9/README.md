@@ -159,7 +159,7 @@ Set-Location ../..
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
 ```
 
-진단 실행은 warm-up 30초 후 measurement 시작 snapshot, 250 RPS 2분 동안 5초 간격 sample, measurement 종료 snapshot 순서다. query interval은 5초지만 local Prometheus의 underlying scrape interval은 15초다. 따라서 `activePeak`/`pendingPeak`은 저장된 scrape sample 범위의 관측 max이며 scrape 사이의 짧은 spike는 놓칠 수 있다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
+진단 실행은 warm-up 30초 후 measurement 시작 snapshot과 250 RPS 2분 동안 5초 간격 sample을 수집한다. measurement loop가 끝난 UTC 시각을 boundary로 고정하고 k6 종료를 기다린 뒤, 해당 boundary 이상 timestamp의 fresh Prometheus measurement-end evidence를 우선 수집한다. fresh evidence가 아직 없으면 총 4회, 5초 간격으로 bounded retry하며, 계속 unavailable이면 해당 metric은 null과 sanitized collector failure로 보존한다. retry 횟수·간격·boundary·최종 evidence timestamp는 summary의 `measurementEndPrometheusRetry`에서 확인한다. query interval은 5초지만 local Prometheus의 underlying scrape interval은 15초다. 따라서 `activePeak`/`pendingPeak`은 retry snapshot이 아닌 실행 중 저장된 scrape sample 범위의 관측 max이며 scrape 사이의 짧은 spike는 놓칠 수 있다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
@@ -181,6 +181,12 @@ pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -Vali
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateFailureHandlingOnly
+```
+
+실제 k6를 시작하지 않고 measurement-end Prometheus transient recovery와 persistent unavailable의 bounded retry, null 및 collector failure 보존을 검증하려면 다음을 사용한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateMeasurementEndRetryOnly
 ```
 
 Tomcat experiment metric preflight의 missing, wrong-max, valid fixture를 expected=128로 실제 k6 없이 검증하려면 다음을 사용한다.
