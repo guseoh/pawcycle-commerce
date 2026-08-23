@@ -51,7 +51,7 @@ class ProductQueryServiceTests {
 		ProductListView response = productQueryService.findProducts();
 
 		assertThat(response.products()).isEmpty();
-		verifyNoInteractions(skuRepository);
+		verifyNoInteractions(productRepository, skuRepository);
 	}
 
 	@Test
@@ -82,6 +82,7 @@ class ProductQueryServiceTests {
 		assertThat(response.products().get(1).skuPriceSummary().skuPrices()).isEmpty();
 		assertThat(response.products().get(1).hasSubscribableSku()).isFalse();
 		verify(productListReader).read();
+		verifyNoInteractions(productRepository, skuRepository);
 	}
 
 	@Test
