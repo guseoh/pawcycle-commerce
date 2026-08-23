@@ -77,21 +77,30 @@ rollback 확인값은 backend `health=healthy`, `cpu=750000000`, `memory=6710886
 
 PERF-PH9-005의 Tomcat128 + CPU1.5 + memory640MiB first-result를 control로 재사용한다. control과 PERF-PH9-005를 재실행하지 않고, `compose.phase9-memory1g.yaml`으로 backend memory limit만 1GiB로 변경한다. overlay 순서는 `compose.phase9-envelope.yaml` → `compose.phase9-tomcat128.yaml` → `compose.phase9-cpu15.yaml` → `compose.phase9-memory1g.yaml`이다. CPU1.5, PID256, Tomcat max 128, MBean instrumentation, `MaxRAMPercentage=65.0`은 유지한다. 이 candidate는 local-only causality experiment이며 Production/Cloud/AWS 실행과 실제 250 RPS를 포함하지 않는다.
 
+이것만 실행해주세요.
+
 ```powershell
 Set-Location infra/local-integration
 docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml -f compose.phase9-memory1g.yaml up --build -d mysql backend frontend proxy prometheus
 docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+$tomcat = Invoke-RestMethod -Uri 'http://127.0.0.1:9090/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29'
+if ($tomcat.status -ne 'success' -or $tomcat.data.result.Count -ne 1 -or [int]$tomcat.data.result[0].value[1] -ne 128) { throw 'Tomcat runtime max must be 128.' }
+$tomcat.data.result[0].value[1]
 Set-Location ../..
-pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
 ```
 
-Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+
+이것만 실행해주세요.
 
 ```powershell
 Set-Location infra/local-integration
 docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml up -d --no-deps --force-recreate backend
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
 Set-Location ../..
 ```
+
+rollback 확인값은 backend `health=healthy`, `cpu=1500000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
 
 ## 일반 local diagnostic
 
