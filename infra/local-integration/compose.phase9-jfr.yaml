@@ -1,0 +1,7 @@
+services:
+  backend:
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -XX:MaxRAMPercentage=65.0
+        -XX:+ExitOnOutOfMemoryError
+        -XX:StartFlightRecording=name=phase9-products,settings=profile,filename=${PAWCYCLE_PHASE9_JFR_RECORDING_PATH:?PAWCYCLE_PHASE9_JFR_RECORDING_PATH is required},duration=300s
