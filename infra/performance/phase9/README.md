@@ -242,6 +242,108 @@ if ($LASTEXITCODE -ne 0) { throw 'Hikari20 rollback backend did not become healt
 Set-Location ../..
 ```
 
+## CPU2.0 causality experiment
+
+PERF-PH9-007 After first-result를 control로 재사용하며 **절대로 재실행하지 않는다**. 이 local-only candidate는 `compose.phase9-cpu20.yaml`으로 backend CPU limit만 `1.5`에서 `2.0`으로 변경한다. memory1GiB, PID256, Tomcat128, `MaxRAMPercentage=65.0`, Hikari max10, target 250 RPS, 기존 k6 workload와 Prometheus/MySQL/container collector semantics는 유지한다. Production 권장값이나 Production/Cloud/AWS 실행을 의미하지 않는다.
+
+No-load 준비에서는 다음 overlay 순서를 유지한다. backend health와 narrow container state가 정확히 일치하지 않으면 fail-close한다. `JAVA_TOOL_OPTIONS` startup message는 검증 근거로 사용하지 않고, `-XX:+PrintFlagsFinal`이 출력한 정확한 `MaxRAMPercentage` flag line만 수용한다. candidate 서비스가 healthy가 된 뒤의 새 Prometheus scrape에서 Tomcat max `128`과 Hikari max `10`을 함께 확인해야 하며 이전 runtime의 stale sample은 허용하지 않는다.
+
+```powershell
+Set-Location infra/local-integration
+$composeArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml',
+    '-f', 'compose.phase9-cpu20.yaml'
+)
+docker compose @composeArgs up --build -d --wait --wait-timeout 120 mysql backend frontend proxy prometheus
+if ($LASTEXITCODE -ne 0) { throw 'CPU2.0 candidate services did not become healthy.' }
+$backendState = @(docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|cpu={{.HostConfig.NanoCpus}}|memory={{.HostConfig.Memory}}|pids={{.HostConfig.PidsLimit}}|restart={{.RestartCount}}|oom={{.State.OOMKilled}}' pawcycle-local-integration-backend-1)
+if ($LASTEXITCODE -ne 0 -or $backendState.Count -ne 1 -or $backendState[0] -ne 'health=healthy|cpu=2000000000|memory=1073741824|pids=256|restart=0|oom=false') { throw 'CPU2.0 candidate backend state is not the expected local envelope.' }
+$backendState[0]
+$maxRamFlag = @(docker exec pawcycle-local-integration-backend-1 java -XX:+PrintFlagsFinal -version 2>&1 | Select-String -Pattern '^\s*double\s+MaxRAMPercentage\s*=\s*65\.000000\s+\{product\}\s+\{environment\}\s*$')
+if ($maxRamFlag.Count -ne 1) { throw 'Effective MaxRAMPercentage=65 flag line was not observed.' }
+$maxRamFlag[0].Line.Trim()
+$portOutput = docker compose @composeArgs port prometheus 9090
+if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
+$portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
+if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
+$prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
+$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$deadline = (Get-Date).AddSeconds(45)
+$hikariValue = $null
+$tomcatValue = $null
+do {
+    Start-Sleep -Seconds 2
+    try {
+        $evaluationTime = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $hikari = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=sum%28hikaricp_connections_max%29&time=$evaluationTime"
+        $hikariTimestamp = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28hikaricp_connections_max%29%29&time=$evaluationTime"
+        $tomcat = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29&time=$evaluationTime"
+        $tomcatTimestamp = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29&time=$evaluationTime"
+        if (
+            $hikari.status -eq 'success' -and $hikari.data.result.Count -eq 1 -and
+            $hikariTimestamp.status -eq 'success' -and $hikariTimestamp.data.result.Count -eq 1 -and
+            $tomcat.status -eq 'success' -and $tomcat.data.result.Count -eq 1 -and
+            $tomcatTimestamp.status -eq 'success' -and $tomcatTimestamp.data.result.Count -eq 1
+        ) {
+            $candidateHikari = [int]$hikari.data.result[0].value[1]
+            $candidateTomcat = [int]$tomcat.data.result[0].value[1]
+            $hikariScrapeTimestamp = [double]$hikariTimestamp.data.result[0].value[1]
+            $tomcatScrapeTimestamp = [double]$tomcatTimestamp.data.result[0].value[1]
+            if (
+                $candidateHikari -eq 10 -and $candidateTomcat -eq 128 -and
+                $hikariScrapeTimestamp -ge $freshAfter -and
+                $tomcatScrapeTimestamp -ge $freshAfter
+            ) {
+                $hikariValue = $candidateHikari
+                $tomcatValue = $candidateTomcat
+                break
+            }
+        }
+    } catch {
+    }
+} while ((Get-Date) -lt $deadline)
+if ($null -eq $hikariValue -or $null -eq $tomcatValue) { throw 'Fresh CPU2.0 Hikari10/Tomcat128 runtime scrape was not observed.' }
+Write-Host "TomcatMax=$tomcatValue HikariMax=$hikariValue"
+Set-Location ../..
+```
+
+Existing no-load validators confirm the expected Tomcat128 and Hikari10 contracts without starting k6.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateHikariOnly -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10
+```
+
+The following is documentation for a separately approved first-result only. **Do not execute it in this repository-preparation task.** It must pass both expected contracts before k6 starts, and once the candidate load starts it must never be rerun automatically.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10
+```
+
+Rollback removes only `compose.phase9-cpu20.yaml` and force-recreates backend under the CPU1.5 + memory1GiB + Tomcat128 envelope.
+
+```powershell
+Set-Location infra/local-integration
+$rollbackArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml'
+)
+docker compose @rollbackArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
+if ($LASTEXITCODE -ne 0) { throw 'CPU2.0 rollback backend did not become healthy.' }
+Set-Location ../..
+```
+
 ## 일반 local diagnostic
 
 일반 local diagnostic은 Tomcat128 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
