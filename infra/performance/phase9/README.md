@@ -149,7 +149,7 @@ rollback 확인값은 backend `health=healthy`, `cpu=1500000000`, `memory=671088
 
 PERF-PH9-007 After first-result를 control로 재사용하며 **절대로 재실행하지 않는다**. 이 local-only candidate는 `compose.phase9-hikari20.yaml`으로 Hikari maximum pool capacity만 `10`에서 `20`으로 변경한다. `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=10`은 control 조건을 보존하기 위한 명시값이며 두 번째 실험 변수가 아니다. Tomcat128, CPU1.5, memory1GiB, PID256, `MaxRAMPercentage=65.0`, target 250 RPS, 기존 k6 workload와 Prometheus/MySQL/container collector semantics는 모두 유지한다. Production 권장값이나 Production/Cloud/AWS 실행을 의미하지 않는다.
 
-No-load 준비에서는 다음 overlay 순서를 유지한다.
+No-load 준비에서는 다음 overlay 순서를 유지한다. candidate 서비스가 healthy가 된 뒤의 새 Prometheus scrape에서 Tomcat max `128`과 Hikari max `20`을 함께 확인해야 하며, 이전 runtime의 stale sample은 허용하지 않는다.
 
 ```powershell
 Set-Location infra/local-integration
@@ -171,13 +171,47 @@ if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
 $portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
 if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
 $prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
-$hikari = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28hikaricp_connections_max%29"
-if ($hikari.status -ne 'success' -or $hikari.data.result.Count -ne 1 -or [int]$hikari.data.result[0].value[1] -ne 20) { throw 'Hikari runtime max 20 was not observed.' }
-[int]$hikari.data.result[0].value[1]
+$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$deadline = (Get-Date).AddSeconds(45)
+$hikariValue = $null
+$tomcatValue = $null
+do {
+    Start-Sleep -Seconds 2
+    try {
+        $evaluationTime = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $hikari = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=sum%28hikaricp_connections_max%29&time=$evaluationTime"
+        $hikariTimestamp = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28hikaricp_connections_max%29%29&time=$evaluationTime"
+        $tomcat = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29&time=$evaluationTime"
+        $tomcatTimestamp = Invoke-RestMethod -TimeoutSec 2 -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29&time=$evaluationTime"
+        if (
+            $hikari.status -eq 'success' -and $hikari.data.result.Count -eq 1 -and
+            $hikariTimestamp.status -eq 'success' -and $hikariTimestamp.data.result.Count -eq 1 -and
+            $tomcat.status -eq 'success' -and $tomcat.data.result.Count -eq 1 -and
+            $tomcatTimestamp.status -eq 'success' -and $tomcatTimestamp.data.result.Count -eq 1
+        ) {
+            $candidateHikari = [int]$hikari.data.result[0].value[1]
+            $candidateTomcat = [int]$tomcat.data.result[0].value[1]
+            $hikariScrapeTimestamp = [double]$hikariTimestamp.data.result[0].value[1]
+            $tomcatScrapeTimestamp = [double]$tomcatTimestamp.data.result[0].value[1]
+            if (
+                $candidateHikari -eq 20 -and $candidateTomcat -eq 128 -and
+                $hikariScrapeTimestamp -ge $freshAfter -and
+                $tomcatScrapeTimestamp -ge $freshAfter
+            ) {
+                $hikariValue = $candidateHikari
+                $tomcatValue = $candidateTomcat
+                break
+            }
+        }
+    } catch {
+    }
+} while ((Get-Date) -lt $deadline)
+if ($null -eq $hikariValue -or $null -eq $tomcatValue) { throw 'Fresh Hikari20/Tomcat128 runtime scrape was not observed.' }
+Write-Host "TomcatMax=$tomcatValue HikariMax=$hikariValue"
 Set-Location ../..
 ```
 
-Expected narrow runtime evidence is backend `health=healthy`, CPU `1500000000`, memory `1073741824`, PID `256`, Tomcat max `128`, Hikari max `20`, and Hikari minimum idle `10`. Before any candidate load, run only the no-load validators below; `-ValidateHikariOnly` verifies synthetic missing/wrong/exact pool max handling and does not start k6.
+Expected narrow container evidence is backend `health=healthy`, CPU `1500000000`, memory `1073741824`, PID `256`; fresh Prometheus runtime evidence is Tomcat max `128` and Hikari max `20`. Hikari minimum idle `10`은 candidate overlay에 고정된 구성 조건이며 이 절차에서 별도 runtime metric으로 관측한다고 주장하지 않는다. Before any candidate load, run only the no-load validators below; `-ValidateHikariOnly` verifies synthetic missing/wrong/exact pool max handling and does not start k6.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
