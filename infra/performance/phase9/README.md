@@ -73,6 +73,78 @@ Set-Location ../..
 
 rollback 확인값은 backend `health=healthy`, `cpu=750000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
 
+## Memory1GiB causality experiment
+
+PERF-PH9-005의 Tomcat128 + CPU1.5 + memory640MiB first-result를 control로 재사용한다. control과 PERF-PH9-005를 재실행하지 않고, `compose.phase9-memory1g.yaml`으로 backend memory limit만 1GiB로 변경한다. overlay 순서는 `compose.phase9-envelope.yaml` → `compose.phase9-tomcat128.yaml` → `compose.phase9-cpu15.yaml` → `compose.phase9-memory1g.yaml`이다. CPU1.5, PID256, Tomcat max 128, MBean instrumentation, `MaxRAMPercentage=65.0`은 유지한다. 이 candidate는 local-only causality experiment이며 Production/Cloud/AWS 실행과 실제 250 RPS를 포함하지 않는다.
+
+이것만 실행해주세요.
+
+```powershell
+Set-Location infra/local-integration
+$composeArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml'
+)
+docker compose @composeArgs up --build -d --wait --wait-timeout 120 mysql backend frontend proxy prometheus
+if ($LASTEXITCODE -ne 0) { throw 'Memory1GiB candidate services did not become healthy.' }
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+$portOutput = docker compose @composeArgs port prometheus 9090
+if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
+$portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
+if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
+$prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
+$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$deadline = (Get-Date).AddSeconds(45)
+$tomcatValue = $null
+do {
+    Start-Sleep -Seconds 2
+    try {
+        $evaluationTime = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $tomcat = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29&time=$evaluationTime"
+        $tomcatTimestamp = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29&time=$evaluationTime"
+        if ($tomcat.status -eq 'success' -and $tomcat.data.result.Count -eq 1 -and $tomcatTimestamp.status -eq 'success' -and $tomcatTimestamp.data.result.Count -eq 1) {
+            $candidateValue = [int]$tomcat.data.result[0].value[1]
+            $scrapeTimestamp = [double]$tomcatTimestamp.data.result[0].value[1]
+            if ($candidateValue -eq 128 -and $scrapeTimestamp -ge $freshAfter) {
+                $tomcatValue = $candidateValue
+                break
+            }
+        }
+    } catch {
+    }
+} while ((Get-Date) -lt $deadline)
+if ($null -eq $tomcatValue) { throw 'Fresh Tomcat runtime max 128 was not observed.' }
+$tomcatValue
+Set-Location ../..
+```
+
+Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. Prometheus published port는 동일 compose stack에서 조회하며, Tomcat 값과 scrape timestamp는 동일 evaluation time에서 검증하고 candidate가 healthy가 된 뒤의 새 scrape timestamp까지 확인한다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+
+이것만 실행해주세요.
+
+```powershell
+Set-Location infra/local-integration
+$rollbackArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml'
+)
+docker compose @rollbackArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
+if ($LASTEXITCODE -ne 0) { throw 'Memory1GiB rollback backend did not become healthy.' }
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+Set-Location ../..
+```
+
+rollback 확인값은 backend `health=healthy`, `cpu=1500000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
+
 ## 일반 local diagnostic
 
 일반 local diagnostic은 Tomcat128 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
