@@ -328,6 +328,31 @@ The following is documentation for a separately approved first-result only. **Do
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10
 ```
 
+## PERF-PH9-011 JFR profiling preparation
+
+PERF-PH9-007 first-result는 control이며 **절대로 재실행하지 않는다**. 이 경로는 CPU2.0 envelope(Tomcat128, CPU2.0, memory1GiB, PID256, `MaxRAMPercentage=65.0`, Hikari max10)에서 향후 한 번의 local-only application/JVM CPU hotspot profiling evidence를 수집하기 위한 준비다. JFR profile은 benchmark 비교 결과가 아니며, actual 250 RPS workload는 이 repository-preparation에서 실행하지 않는다. Production/Cloud/AWS는 실행하지 않는다.
+
+현재 backend runtime은 `jcmd`가 없을 수 있으므로, helper는 `jcmd`를 요구하거나 설치하지 않는다. `java`와 `jfr` command를 capability gate로 확인하고, JVM startup의 `-XX:StartFlightRecording`으로 bounded 300초 recording을 시작한 뒤 duration 종료 시 자동 dump한다. backend 재생성 후 existing diagnostic의 preflight와 workload가 실행되므로 measurement window(30초 warmup/120초 measurement)와 collector semantics는 변경하지 않는다. CPU2.0 state, MaxRAM flag line, fresh Prometheus scrape의 Tomcat128/Hikari10은 기존 CPU2.0 no-load preflight에서 먼저 fail-close해야 한다.
+
+다음은 no-load validation이다. 외부 temp results directory만 허용하며, repository 내부 경로·invalid recording path·missing JFR tool fixture·overwrite 경로는 fail-close한다. 이 validation은 k6를 시작하지 않는다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-jfr-diagnostic.ps1 -ValidateOnly
+pwsh -NoProfile -File infra/performance/phase9/run-products-jfr-diagnostic.ps1 -ValidateRuntimeCapability
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateHikariOnly -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10
+```
+
+별도 승인 뒤의 exact first-result command는 아래와 같다. 결과는 repository 밖의 timestamp/UUID directory에 `products-profile.jfr`, JFR summary, diagnostic evidence와 lifecycle metadata로 보존한다. JFR startup/collection 실패가 workload 전이면 시작하지 않고 fail-close한다. workload가 시작된 뒤에는 **절대로 자동 재실행하지 않는다**. bounded recovery wait 안에 dump를 복사할 수 없으면 backend는 evidence recovery를 위해 그대로 두고, metadata의 container artifact path contract에 따라 사용자가 수동 recovery/rollback을 결정한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-jfr-diagnostic.ps1 -RunProfiling -ResultsDir (Join-Path $env:TEMP 'pawcycle-phase9-jfr')
+```
+
+JFR artifact은 host local temp에만 저장한다. future analysis에는 host `jfr` command가 필요하며 helper가 preflight에서 이를 확인한다; 설치하지 않는다. `jfr summary <artifact>`로 event coverage를 확인하고, CPU sample/stack, allocation, GC, monitor/lock/thread contention event를 대상으로 review해 product-list stack이 application mapping/collection/serialization인지 framework/runtime인지 구분한다. raw request body, credential, session/cookie, CSRF, raw user row/ID를 기록하거나 PR/Issue에 올리지 않는다.
+
+정상 artifact copy 뒤 helper는 JFR overlay를 제외한 CPU2.0 overlay order로 backend를 force-recreate한다. 수동 rollback도 `compose.phase9-jfr.yaml`만 제거하고 기존 CPU2.0 overlays로 backend를 recreate한다. 이 rollback은 CPU2.0, memory1GiB, PID256, Tomcat128, MaxRAM65와 Hikari10을 유지한다.
+
 Rollback removes only `compose.phase9-cpu20.yaml` and force-recreates backend under the CPU1.5 + memory1GiB + Tomcat128 envelope.
 
 ```powershell
