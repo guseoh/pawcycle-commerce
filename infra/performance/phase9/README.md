@@ -320,6 +320,8 @@ pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -Vali
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateHikariOnly -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 10
 ```
 
+The complete CPU2.0 no-load preflight above MUST be executed immediately before the separately approved first-result. Between that PASS and starting the load, do not recreate the backend, change compose overlays, or modify runtime/resource settings. The harness command below fail-closes Tomcat128 and Hikari10 itself; CPU2.0, memory1GiB, PID256, restart/OOM state, MaxRAMPercentage65, and fresh runtime evidence are guaranteed by the immediately preceding no-load preflight and must remain unchanged.
+
 The following is documentation for a separately approved first-result only. **Do not execute it in this repository-preparation task.** It must pass both expected contracts before k6 starts, and once the candidate load starts it must never be rerun automatically.
 
 ```powershell
