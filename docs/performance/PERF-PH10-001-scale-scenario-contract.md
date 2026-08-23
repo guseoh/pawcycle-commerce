@@ -4,6 +4,23 @@
 
 Phase 10은 기존 구조의 단일 method 최적화가 아니라 증거가 있는 scale 문제에 기술 후보를 하나씩 적용하고 동일 조건으로 검증한다. 이번 순서는 Read Scale의 Redis After 준비와 다음 Subscription Burst 측정 계약까지다. 이 문서는 동적 진행 상태나 Production 권고가 아니다.
 
+## 상위 방향과 기술 선택 흐름
+
+PawCycle 후반부는 AI Agent 결과를 통제하는 Lean Harness와 실행 환경, 배포·관측·장애 대응·복구를 포함한 운영 자동화, 대규모 트래픽 Scale Scenario 기반 아키텍처 역량을 함께 발전시킨다. Phase 10은 세 번째 축을 본격적으로 수행한다.
+
+각 Scale Scenario는 다음 순서를 지킨다.
+
+```text
+Scale Scenario → Before evidence → 병목·운영 요구 확인 → 기술 후보 비교
+→ 기술 선택 → 구현 → After measurement → 유지 또는 보류
+```
+
+Redis나 Kafka 자체는 목표가 아니다. 반대로 대규모 트래픽 아키텍처 구현도 프로젝트의 명시적 목표이므로, 측정된 문제·운영 요구와 후보 기술의 해결 능력이 충분히 연결되면 운영 복잡성만을 이유로 회피하지 않고 승인된 범위에서 적극적으로 구현·검증한다.
+
+후보는 cache와 messaging에 한정하지 않는다. 측정 결과에 따라 bounded worker/async executor, Transactional Outbox, idempotent consumer, retry/backoff/DLQ, backpressure/rate limiting, query/read model과 데이터 확장, CDN/object storage, vertical scaling, multi-instance/LB/autoscaling, container orchestration까지 비교할 수 있다. 선택은 현재 병목, correctness·failure handling·operability 요구, 예상 비용과 복구 경계를 함께 설명할 수 있어야 한다.
+
+PERF-PH10-001의 구현 범위는 아래 Read Scale Redis 준비와 Subscription Burst 측정 계약까지로 유지한다. Kafka, Queue, multi-instance, LB와 다른 후보 기술을 이 작업에 추가 구현하지 않는다.
+
 ## Read Scale: Redis After
 
 Before는 완료된 PERF-PH9-010 CPU2.0 결과를 그대로 재사용하며 재실행하지 않는다. After는 다음 조건을 함께 고정한다.
@@ -51,7 +68,7 @@ After summary는 기존 actual RPS, dropped iterations, p50/p95/p99/max, backend
 
 ### Kafka 후보 진입 조건
 
-Kafka는 현재 구조에서 backlog가 허용 시간 안에 소진되지 않거나, 주문 생성과 후속 처리 속도 분리가 필요하거나, process 재시작을 넘는 durable 전달·독립 consumer 확장·명시적 재처리가 필요하다는 증거가 함께 확인될 때만 후속 후보로 검토한다. 해당 증거 없이 queue, topic, producer/consumer 또는 Kafka 운영 구성을 설계·구현하지 않는다.
+Kafka는 현재 구조에서 backlog가 허용 시간 안에 소진되지 않거나, 주문 생성과 후속 처리 속도 분리가 필요하거나, process 재시작을 넘는 durable 전달·독립 consumer 확장·명시적 재처리가 필요하다는 증거가 함께 확인될 때 후속 후보로 비교한다. 해당 요구와 Kafka의 해결 능력이 충분히 연결되면 적극적으로 도입·검증하되, 증거 없이 queue, topic, producer/consumer 또는 Kafka 운영 구성을 설계·구현하지 않는다.
 
 ## 실행 상태
 
