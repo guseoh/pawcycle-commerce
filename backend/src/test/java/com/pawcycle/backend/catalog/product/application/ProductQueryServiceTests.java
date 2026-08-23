@@ -29,6 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 class ProductQueryServiceTests {
 
 	@Mock
+	private ProductListReader productListReader;
+
+	@Mock
 	private ProductRepository productRepository;
 
 	@Mock
@@ -38,12 +41,12 @@ class ProductQueryServiceTests {
 
 	@BeforeEach
 	void setUp() {
-		productQueryService = new ProductQueryService(productRepository, skuRepository);
+		productQueryService = new ProductQueryService(productListReader, productRepository, skuRepository);
 	}
 
 	@Test
 	void emptyListSkipsSkuQuery() {
-		when(productRepository.findAllPublicOrderById()).thenReturn(List.of());
+		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(List.of(), List.of()));
 
 		ProductListView response = productQueryService.findProducts();
 
@@ -57,10 +60,17 @@ class ProductQueryServiceTests {
 		Product second = product(2L, "둘째 상품", "CAT", "둘째 설명", null, null);
 		Sku firstSku = sku(10L, first, "2kg", "19900.00", true);
 		Sku secondSku = sku(11L, first, "5kg", "39900.00", false);
-		when(productRepository.findAllPublicOrderById()).thenReturn(List.of(first, second));
-		when(skuRepository.findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
-				List.of(1L, 2L), SkuStatus.ACTIVE))
-				.thenReturn(List.of(firstSku, secondSku));
+		ProductListReader.ProductSnapshot firstSnapshot = productSnapshot(first);
+		ProductListReader.ProductSnapshot secondSnapshot = productSnapshot(second);
+		ProductListReader.SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
+		ProductListReader.SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
+		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
+				List.of(
+						firstSnapshot,
+						secondSnapshot),
+				List.of(
+						firstSkuSnapshot,
+						secondSkuSnapshot)));
 
 		ProductListView response = productQueryService.findProducts();
 
@@ -71,9 +81,7 @@ class ProductQueryServiceTests {
 		assertThat(response.products().get(0).hasSubscribableSku()).isTrue();
 		assertThat(response.products().get(1).skuPriceSummary().skuPrices()).isEmpty();
 		assertThat(response.products().get(1).hasSubscribableSku()).isFalse();
-		verify(productRepository).findAllPublicOrderById();
-		verify(skuRepository).findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
-				List.of(1L, 2L), SkuStatus.ACTIVE);
+		verify(productListReader).read();
 	}
 
 	@Test
@@ -103,7 +111,7 @@ class ProductQueryServiceTests {
 
 	@Test
 	void unexpectedRepositoryFailuresUseEndpointSpecificExceptions() {
-		when(productRepository.findAllPublicOrderById()).thenThrow(new IllegalStateException("table details"));
+		when(productListReader.read()).thenThrow(new IllegalStateException("table details"));
 		when(productRepository.findPublicById(1L)).thenThrow(new IllegalStateException("column details"));
 
 		assertThatThrownBy(productQueryService::findProducts)
@@ -117,12 +125,34 @@ class ProductQueryServiceTests {
 		Transactional listTransaction = ProductQueryService.class
 				.getMethod("findProducts")
 				.getAnnotation(Transactional.class);
+		Transactional readerTransaction = ProductListReader.class
+				.getMethod("read")
+				.getAnnotation(Transactional.class);
 		Transactional detailTransaction = ProductQueryService.class
 				.getMethod("findProduct", Long.class)
 				.getAnnotation(Transactional.class);
 
-		assertThat(listTransaction.readOnly()).isTrue();
+		assertThat(listTransaction).isNull();
+		assertThat(readerTransaction.readOnly()).isTrue();
 		assertThat(detailTransaction.readOnly()).isTrue();
+	}
+
+	private ProductListReader.ProductSnapshot productSnapshot(Product product) {
+		return new ProductListReader.ProductSnapshot(
+				product.getId(),
+				product.getName(),
+				product.getPetType(),
+				product.getShortDescription(),
+				product.getThumbnailUrl());
+	}
+
+	private ProductListReader.SkuSnapshot skuSnapshot(Product product, Sku sku) {
+		return new ProductListReader.SkuSnapshot(
+				product.getId(),
+				sku.getId(),
+				sku.getName(),
+				sku.getPrice(),
+				sku.isSubscribable());
 	}
 
 	private Product product(
