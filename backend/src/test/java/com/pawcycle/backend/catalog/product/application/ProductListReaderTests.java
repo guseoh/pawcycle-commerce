@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
@@ -65,6 +66,7 @@ class ProductListReaderTests {
 
 		assertThat(snapshot.products()).isEmpty();
 		assertThat(snapshot.skus()).isEmpty();
+		verifyNoInteractions(skuRepository);
 	}
 
 	@Test
