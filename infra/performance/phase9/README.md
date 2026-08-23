@@ -159,7 +159,7 @@ Set-Location ../..
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateOnly
 ```
 
-진단 실행은 warm-up 30초 후 measurement 시작 snapshot, 250 RPS 2분 동안 5초 간격 sample, measurement 종료 snapshot 순서다. query interval은 5초지만 local Prometheus의 underlying scrape interval은 15초다. 따라서 `activePeak`/`pendingPeak`은 저장된 scrape sample 범위의 관측 max이며 scrape 사이의 짧은 spike는 놓칠 수 있다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
+진단 실행은 warm-up 30초 후 measurement 시작 snapshot과 250 RPS 2분 동안 5초 간격 sample을 수집한다. measurement loop가 끝난 UTC 시각을 boundary로 고정하고 k6 종료를 기다린 뒤 measurement-end evidence를 수집한다. fresh 여부는 instant query 응답의 evaluation timestamp가 아니라 `max(timestamp(jvm_threads_live_threads))`가 반환하는 backend raw scrape timestamp를 anchor로 판정하며, anchor가 boundary보다 오래되면 metric 값 자체를 수용하지 않는다. fresh scrape가 아직 없으면 총 4회, 5초 간격으로 bounded retry한다. 각 Prometheus HTTP 요청에도 2초 timeout을 적용하므로 요청 자체가 무기한 대기하지 않는다. 계속 unavailable이면 해당 metric은 null과 sanitized collector failure로 보존한다. retry 횟수·간격·request timeout·boundary·freshness anchor·최종 evidence timestamp는 summary의 `measurementEndPrometheusRetry`에서 확인한다. query interval은 5초지만 local Prometheus의 underlying scrape interval은 15초다. 따라서 `activePeak`/`pendingPeak`은 retry snapshot이 아닌 실행 중 저장된 scrape sample 범위의 관측 max이며 scrape 사이의 짧은 spike는 놓칠 수 있다. k6 stdout/stderr와 summary는 Git 밖의 임시 결과 디렉터리에만 저장하며 repository 내부 `ResultsDir` 입력은 fail-closed로 거부한다. credential, cookie, session, CSRF, response body, raw ID와 raw digest text는 저장하지 않는다.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1
@@ -183,11 +183,23 @@ pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -Vali
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateFailureHandlingOnly
 ```
 
+실제 k6를 시작하지 않고 measurement-end Prometheus stale scrape 거부, transient recovery, query exception retry, persistent unavailable의 bounded retry, null 및 collector failure 보존을 검증하려면 다음을 사용한다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateMeasurementEndRetryOnly
+```
+
 Tomcat experiment metric preflight의 missing, wrong-max, valid fixture를 expected=128로 실제 k6 없이 검증하려면 다음을 사용한다.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
 ```
+
+### measurement-end collector rollback
+
+measurement-end retry가 결과 생성을 지연시키거나 collector evidence를 신뢰하기 어렵게 만들면 현재 실행의 bounded retry가 끝날 때까지 추가 workload를 시작하지 않는다. 이미 생성된 Git 밖 임시 `k6.stdout.log`, `k6.stderr.log`, `measurement-samples.json`, `diagnostic-summary.json`, `backend-final-state.json`은 first-result 증거로 보존하고, 같은 workload를 자동 재실행하거나 결과를 덮어쓰지 않는다.
+
+구현 자체를 되돌려야 하면 reset, rebase, force push 또는 history rewrite를 사용하지 않는다. 이 변경을 도입한 commit을 대상으로 새 `revert` commit을 만들어 이전 단일 measurement-end 수집 동작으로 복귀한 뒤 validator와 CI를 다시 확인한다. synthetic validation이 만든 임시 fixture는 validator가 자체 정리하며, first-result artifact는 rollback 과정에서 삭제하지 않는다.
 
 ## 해석 경계
 
