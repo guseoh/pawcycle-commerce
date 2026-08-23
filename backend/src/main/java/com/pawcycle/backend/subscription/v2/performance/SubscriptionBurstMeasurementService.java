@@ -40,6 +40,7 @@ public class SubscriptionBurstMeasurementService {
 	private final SubscriptionOrderAutomationService automation;
 	private final Clock clock;
 	private final Path workloadStartMarker;
+	private final boolean runArmed;
 	private final AtomicBoolean drainRunning = new AtomicBoolean();
 
 	public SubscriptionBurstMeasurementService(
@@ -47,15 +48,18 @@ public class SubscriptionBurstMeasurementService {
 			SubscriptionOrderAutomationService automation,
 			Clock clock,
 			@Value("${pawcycle.subscription-burst-measurement.workload-start-marker-path}")
-			String workloadStartMarkerPath) {
+			String workloadStartMarkerPath,
+			@Value("${pawcycle.subscription-burst-measurement.run-armed:false}") boolean runArmed) {
 		this.jdbc = jdbc;
 		this.automation = automation;
 		this.clock = clock;
 		this.workloadStartMarker = Path.of(workloadStartMarkerPath).toAbsolutePath().normalize();
+		this.runArmed = runArmed;
 	}
 
 	@Transactional
 	public synchronized FixtureSummary setup(int cohortSize) {
+		assertRunArmed();
 		if (cohortSize < 1 || cohortSize > MAX_COHORT_SIZE) {
 			throw new IllegalArgumentException("cohortSize must be between 1 and 10000");
 		}
@@ -79,11 +83,13 @@ public class SubscriptionBurstMeasurementService {
 	}
 
 	public DrainSummary drain() {
+		assertRunArmed();
 		if (!drainRunning.compareAndSet(false, true)) {
 			throw new IllegalStateException("Subscription Burst drain is already running");
 		}
 		try {
 			int initialBacklog = dueBacklog();
+			assertEligibleCandidateScope(initialBacklog);
 			if (initialBacklog < 1) {
 				throw new IllegalStateException("Synthetic due backlog is unavailable");
 			}
@@ -160,8 +166,57 @@ public class SubscriptionBurstMeasurementService {
 		}
 	}
 
+	private void assertRunArmed() {
+		if (!runArmed) {
+			throw new IllegalStateException("Subscription Burst measurement endpoint is disarmed");
+		}
+	}
+
+	private void assertEligibleCandidateScope(int expectedFixtureCandidates) {
+		var scope = jdbc.queryForMap("""
+				SELECT
+				  COALESCE(SUM(CASE WHEN member.email LIKE ? THEN 1 ELSE 0 END), 0) AS fixture_candidates,
+				  COALESCE(SUM(CASE WHEN member.email NOT LIKE ? THEN 1 ELSE 0 END), 0) AS non_fixture_candidates
+				FROM subscription_schedules schedule
+				JOIN subscriptions subscription ON subscription.id = schedule.subscription_id
+				JOIN members member ON member.id = subscription.member_id
+				LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id = schedule.id
+				WHERE subscription.mvp2_managed = true
+				  AND subscription.status = 'ACTIVE'
+				  AND schedule.status = 'SCHEDULED'
+				  AND schedule.scheduled_date <= ?
+				  AND existing_order.id IS NULL
+				  AND NOT EXISTS (
+				      SELECT 1
+				      FROM subscription_schedules prior_schedule
+				      JOIN subscription_order_context prior_context ON prior_context.schedule_id = prior_schedule.id
+				      JOIN payments prior_payment ON prior_payment.order_id = prior_context.order_id
+				      WHERE prior_schedule.subscription_id = schedule.subscription_id
+				        AND (prior_schedule.scheduled_date < schedule.scheduled_date
+				             OR (prior_schedule.scheduled_date = schedule.scheduled_date AND prior_schedule.id < schedule.id))
+				        AND prior_payment.status <> 'SUCCEEDED'
+				  )
+				  AND NOT EXISTS (
+				      SELECT 1
+				      FROM subscription_schedules earlier
+				      LEFT JOIN subscription_orders earlier_order ON earlier_order.schedule_id = earlier.id
+				      WHERE earlier.subscription_id = schedule.subscription_id
+				        AND earlier.status = 'SCHEDULED'
+				        AND earlier.scheduled_date <= ?
+				        AND earlier_order.id IS NULL
+				        AND (earlier.scheduled_date < schedule.scheduled_date
+				             OR (earlier.scheduled_date = schedule.scheduled_date AND earlier.id < schedule.id))
+				  )
+				""", fixtureEmailLike(), fixtureEmailLike(), LocalDate.ofInstant(clock.instant(), SEOUL), LocalDate.ofInstant(clock.instant(), SEOUL));
+		long fixtureCandidates = ((Number) scope.get("fixture_candidates")).longValue();
+		long nonFixtureCandidates = ((Number) scope.get("non_fixture_candidates")).longValue();
+		if (fixtureCandidates != expectedFixtureCandidates || nonFixtureCandidates != 0) {
+			throw new IllegalStateException("Eligible automation candidates are outside the synthetic fixture scope");
+		}
+	}
+
 	private void writeWorkloadStartMarker() {
-		String startedAt = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC).toString() + "Z";
+		String startedAt = clock.instant().toString();
 		String marker = "{\"workloadInvocationStarted\":true,\"workloadStartedAtUtc\":\""
 				+ startedAt + "\"}";
 		try {

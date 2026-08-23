@@ -17,13 +17,15 @@ local-only `subscription-burst-measurement` profile이 다음 두 endpoint를 �
 - setup: isolated fixture를 만들고 initial backlog를 검증한다.
 - drain: backend JVM 안에서 `processDueSchedules(100)`을 artificial sleep 없이 반복한다.
 
-drain은 첫 service 호출 직전에 bind-mounted host local temp marker를 `CREATE_NEW`로 기록한다. marker 이전 실패는 disposable project/volume을 정리한 뒤 재시도할 수 있다. marker 이후에는 driver, collector, summary 또는 correctness 결과와 관계없이 `NEVER RERUN`이다. marker와 ResultsDir은 repository 밖 host local temp에만 둔다.
+두 endpoint는 측정 profile에서만 인증 없이 허용되고 CSRF가 비활성이다. Docker publish는 loopback으로 한정하며 application-level remote-address 제한은 Docker bridge/NAT 정상 호출을 막을 수 있어 사용하지 않는다. 대신 Compose 기본값은 `run-armed=false`이고 `-RunBeforeFirstResult`가 명시적 cohort와 함께 시작한 runtime에서만 arm한다. capability validation runtime은 endpoint를 직접 호출해도 disarmed 상태여야 한다.
+
+drain은 production automation과 동등한 eligible candidate 조건으로 fixture 외 candidate가 0이고 fixture candidate가 기대 backlog와 같은지 marker 전에 fail-close 검증한다. 그 후 첫 service 호출 직전에 bind-mounted host local temp marker를 `CREATE_NEW`로 기록한다. marker 이전 실패는 disposable project/volume을 정리한 뒤 재시도할 수 있다. marker 이후에는 driver, collector, summary 또는 correctness 결과와 관계없이 `NEVER RERUN`이다. full summary가 privacy/serialization 검증에 실패하면 민감 payload를 버리고 whitelist 기반 failure artifact를 남긴다. marker와 ResultsDir은 repository 밖 host local temp에만 둔다.
 
 Raw drain은 실제 호출들의 elapsed time과 batch duration이다. Default scheduler projection은 측정값이 아니며 `raw drain elapsed + (projected ticks - 1) × 60,000ms`로 별도 기록한다. 기본 batch size는 100이고 projected ticks는 `ceil(initial backlog / 100)`이다.
 
 ## Evidence와 판정 입력
 
-summary는 source SHA, cohort, backlog, processed/created/failure/duplicate-no-op, batch duration p50/p95/max, raw orders/sec와 scheduler projection을 기록한다. 같은 window의 automation counter, JVM CPU/memory/GC/thread, Hikari active/pending/max/acquire/usage, Backend container CPU/memory/PID/health/restart/OOM과 MySQL relevant statement, connection, row-lock wait aggregate를 함께 보존한다. DB order cardinality, schedule당 중복 부재와 다음 future schedule 수를 service aggregate와 대조한다.
+summary는 source SHA, cohort, backlog, processed/created/failure/duplicate-no-op, batch duration p50/p95/max, raw orders/sec와 scheduler projection을 기록한다. same-window runtime capability evidence와 workload 종료 뒤 fresh Prometheus scrape를 보존하고, automation counter delta를 driver aggregate와 대조한다. Backend actuator를 measurement-only 200ms sampling하여 Hikari active/pending 및 runtime peak를 보강한다. JVM CPU/memory/GC/thread, Hikari max/acquire/usage, Backend container CPU/memory/PID/health/restart/OOM과 MySQL relevant statement, connection, row-lock wait aggregate도 함께 보존한다. DB order cardinality, schedule당 중복 부재와 다음 future schedule 수를 service aggregate와 대조한다.
 
 Before 이후에는 cadence/batch 설정, 순차 처리량, connection/transaction/lock pressure와 downstream 속도 결합을 먼저 구분한다. 그 뒤 no-change 또는 scheduler/batch 조정, bounded worker/async, durable queue, Kafka·동등 messaging, Outbox/idempotent consumer/retry/DLQ를 해결 능력과 운영 요구에 따라 비교한다.
 

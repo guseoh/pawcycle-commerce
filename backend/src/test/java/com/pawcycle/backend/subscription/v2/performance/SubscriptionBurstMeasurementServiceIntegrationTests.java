@@ -1,6 +1,7 @@
 package com.pawcycle.backend.subscription.v2.performance;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,8 +13,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest(properties =
-		"pawcycle.subscription-burst-measurement.workload-start-marker-path=${java.io.tmpdir}/pawcycle-perf-ph10-002-test-workload-started.json")
+@SpringBootTest(properties = {
+		"pawcycle.subscription-burst-measurement.workload-start-marker-path=${java.io.tmpdir}/pawcycle-perf-ph10-002-test-workload-started.json",
+		"pawcycle.subscription-burst-measurement.run-armed=true"
+})
 @ActiveProfiles({"test", "subscription-burst-measurement"})
 class SubscriptionBurstMeasurementServiceIntegrationTests {
 
@@ -70,6 +73,44 @@ class SubscriptionBurstMeasurementServiceIntegrationTests {
 		assertThat(result.futureScheduleCount()).isEqualTo(2);
 		assertThat(result.harnessFailure()).isFalse();
 		assertThat(result.defaultSchedulerProjectedTicks()).isEqualTo(1);
+	}
+
+	@Test
+	void drainRejectsAnExistingMarkerAfterFixtureSetup() throws Exception {
+		measurementService.setup(1);
+		Files.writeString(MARKER, "{\"workloadInvocationStarted\":true}");
+
+		assertThatThrownBy(measurementService::drain)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("workload-start marker");
+	}
+
+	@Test
+	void setupRejectsExistingFixtureAndOutOfRangeCohorts() {
+		measurementService.setup(1);
+
+		assertThatThrownBy(() -> measurementService.setup(1))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("fixture already exists");
+		assertThatThrownBy(() -> measurementService.setup(0))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> measurementService.setup(10_001))
+				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void drainRejectsNonFixtureEligibleCandidateBeforeWritingMarker() {
+		measurementService.setup(1);
+		try {
+			jdbc.update("UPDATE members SET email='nonfixture-perf-ph10-002@synthetic.invalid' WHERE email='perf-ph10-002-0@synthetic.invalid'");
+
+			assertThatThrownBy(measurementService::drain)
+					.isInstanceOf(IllegalStateException.class)
+					.hasMessageContaining("outside the synthetic fixture scope");
+			assertThat(Files.exists(MARKER)).isFalse();
+		} finally {
+			jdbc.update("UPDATE members SET email='perf-ph10-002-0@synthetic.invalid' WHERE email='nonfixture-perf-ph10-002@synthetic.invalid'");
+		}
 	}
 
 	private void cleanFixture() {

@@ -151,9 +151,34 @@ function Assert-RuntimeMetrics([string]$PrometheusUrl, [double]$FreshAfter) {
     throw 'Fresh Tomcat128/Hikari10/automation runtime evidence was not observed.'
 }
 
+function Assert-MeasurementEndMetrics([string]$PrometheusUrl, [double]$FinishedAfter) {
+    $deadline = (Get-Date).AddSeconds(60)
+    do {
+        try {
+            $snapshot = Get-PrometheusSnapshot $PrometheusUrl 'measurement-end'
+            if ($snapshot.freshnessTimestamp -ge $FinishedAfter) {
+                return $snapshot
+            }
+        } catch {
+        }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+    throw 'Measurement-end Prometheus scrape was not fresh after the workload finished.'
+}
+
+function Assert-MeasurementEndpointsDisarmed([string]$BackendUrl) {
+    $response = Invoke-WebRequest -TimeoutSec 5 -SkipHttpErrorCheck -Method Post -Uri "$BackendUrl/internal/performance/subscription-burst/setup?cohortSize=100"
+    if ($response.StatusCode -lt 400) {
+        throw 'Measurement setup endpoint was armed during runtime capability validation.'
+    }
+    if (Test-Path -LiteralPath $FirstResultMarker) {
+        throw 'Disarmed runtime capability validation unexpectedly created a workload-start marker.'
+    }
+}
+
 function Get-MySqlSnapshot([string]$Label) {
     $command = @'
-MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --execute="
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user=root --database="$MYSQL_DATABASE" --batch --skip-column-names --execute="
 SELECT CONCAT('relevant_statements=',COALESCE(SUM(COUNT_STAR),0)) FROM performance_schema.events_statements_summary_by_digest WHERE SCHEMA_NAME=DATABASE() AND (DIGEST_TEXT LIKE '%SUBSCRIPTION%' OR DIGEST_TEXT LIKE '%ORDERS%' OR DIGEST_TEXT LIKE '%PAYMENTS%' OR DIGEST_TEXT LIKE '%INVENTOR%');
 SELECT CONCAT('threads_connected=',COALESCE(MAX(CASE WHEN VARIABLE_NAME='Threads_connected' THEN VARIABLE_VALUE END),0)) FROM performance_schema.global_status;
 SELECT CONCAT('row_lock_waits=',COALESCE(MAX(CASE WHEN VARIABLE_NAME='Innodb_row_lock_waits' THEN VARIABLE_VALUE END),0)) FROM performance_schema.global_status;
@@ -187,15 +212,30 @@ function Get-ContainerSample {
     }
 }
 
-function Get-MeasurementSample([string]$PrometheusUrl) {
+function Query-BackendGauge([string]$BackendUrl, [string]$Metric) {
+    $metrics = Invoke-WebRequest -TimeoutSec 3 -Uri "$BackendUrl/actuator/prometheus"
+    $pattern = '(?m)^' + [regex]::Escape($Metric) + '(?:\{[^}]*\})?\s+(?<value>[-+0-9.eE]+)\s*$'
+    $metricMatches = [regex]::Matches($metrics.Content, $pattern)
+    if ($metricMatches.Count -lt 1) { throw "Backend actuator gauge unavailable: $Metric" }
+    return [double](($metricMatches | ForEach-Object { [double]$_.Groups['value'].Value } | Measure-Object -Sum).Sum)
+}
+
+function Get-MeasurementSample([string]$BackendUrl) {
     $container = Get-ContainerSample
-    $container['processCpuUsage'] = Query-Prometheus $PrometheusUrl 'sum(process_cpu_usage)'
-    $container['jvmHeapUsed'] = Query-Prometheus $PrometheusUrl 'sum(jvm_memory_used_bytes{area="heap"})'
-    $container['jvmNonHeapUsed'] = Query-Prometheus $PrometheusUrl 'sum(jvm_memory_used_bytes{area="nonheap"})'
-    $container['jvmLiveThreads'] = Query-Prometheus $PrometheusUrl 'sum(jvm_threads_live_threads)'
-    $container['hikariActive'] = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_active)'
-    $container['hikariPending'] = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_pending)'
+    $container['processCpuUsage'] = Query-BackendGauge $BackendUrl 'process_cpu_usage'
+    $container['jvmLiveThreads'] = Query-BackendGauge $BackendUrl 'jvm_threads_live_threads'
+    $container['hikariActive'] = Query-BackendGauge $BackendUrl 'hikaricp_connections_active'
+    $container['hikariPending'] = Query-BackendGauge $BackendUrl 'hikaricp_connections_pending'
     return $container
+}
+
+function Get-MeasurementPeaks([object[]]$Samples) {
+    $peaks = [ordered]@{}
+    foreach ($property in @('cpuPercent', 'memoryPercent', 'pids', 'processCpuUsage', 'jvmLiveThreads', 'hikariActive', 'hikariPending')) {
+        $values = @($Samples | ForEach-Object { $_.$property } | Where-Object { $null -ne $_ })
+        $peaks[$property] = if ($values.Count -gt 0) { ($values | Measure-Object -Maximum).Maximum } else { $null }
+    }
+    return $peaks
 }
 
 function Delta([object]$Before, [object]$After) {
@@ -233,6 +273,24 @@ function Write-Json([string]$Path, [object]$Value) {
     $json | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function Write-MinimalRedactedFailureArtifact([string]$Path, [object]$Summary) {
+    $artifact = [ordered]@{
+        diagnostic = [string]$Summary.diagnostic
+        sourceCommit = [string]$Summary.sourceCommit
+        syntheticCohortSize = [int]$Summary.syntheticCohortSize
+        batchSize = [int]$Summary.batchSize
+        fixedDelayMs = [long]$Summary.fixedDelayMs
+        actualPerformanceWorkload = [bool]$Summary.actualPerformanceWorkload
+        workloadInvocationStarted = [bool]$Summary.workloadInvocationStarted
+        workloadStartedAtUtc = if ($Summary.Contains('workloadStartedAtUtc')) { [string]$Summary.workloadStartedAtUtc } else { $null }
+        harnessFailure = $true
+        collectorFailure = [bool]$Summary.collectorFailure
+        artifactWriteFailure = 'Full summary was discarded because the artifact privacy boundary rejected or could not serialize it.'
+        completedAtUtc = [string]$Summary.completedAtUtc
+    }
+    $artifact | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
 function Validate-SyntheticContracts {
     foreach ($value in @(100, 500, 1000, 2500, 5000, 10000)) {
         if ($value -lt 1 -or $value -gt 10000) { throw 'Approved synthetic cohort contract is invalid.' }
@@ -243,6 +301,10 @@ function Validate-SyntheticContracts {
     if ($markerIndex -lt 0 -or $workloadIndex -lt 0 -or $markerIndex -gt $workloadIndex) {
         throw 'Backend workload-start marker is not authoritative.'
     }
+
+    if ($serviceSource -notmatch 'assertRunArmed\(\)' -or $serviceSource -notmatch 'assertEligibleCandidateScope\(initialBacklog\)') {
+        throw 'Backend run-arm or synthetic scope guard is missing.'
+    }
     $overlay = Get-Content -Raw -LiteralPath $OverlayPath
     if ($overlay -notmatch 'pawcycle-phase10-subscription-burst-mysql-data' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR' -or
@@ -250,6 +312,7 @@ function Validate-SyntheticContracts {
         throw 'Subscription Burst isolated compose boundary is invalid.'
     }
     $syntheticMarker = Join-Path $TempRoot ("pawcycle-phase10-subscription-burst-marker-validation-$([guid]::NewGuid()).json")
+    $syntheticArtifact = Join-Path $TempRoot ("pawcycle-phase10-subscription-burst-artifact-validation-$([guid]::NewGuid()).json")
     try {
         if (Test-Path -LiteralPath $syntheticMarker) { throw 'Synthetic pre-workload marker unexpectedly exists.' }
         [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:00:00Z' } |
@@ -257,8 +320,30 @@ function Validate-SyntheticContracts {
         try { throw 'synthetic post-start collector failure' } catch { }
         $retained = Get-Content -Raw -LiteralPath $syntheticMarker | ConvertFrom-Json
         if (-not $retained.workloadInvocationStarted) { throw 'Synthetic post-start marker was not retained.' }
+
+        $unsafeSummary = [ordered]@{
+            diagnostic = 'synthetic'
+            sourceCommit = 'synthetic'
+            syntheticCohortSize = 100
+            batchSize = 100
+            fixedDelayMs = 60000
+            actualPerformanceWorkload = $true
+            workloadInvocationStarted = $true
+            collectorFailure = $false
+            completedAtUtc = '2026-01-01T00:00:00Z'
+            customerKey = 'must-not-persist'
+        }
+        $privacyRejected = $false
+        try { Write-Json $syntheticArtifact $unsafeSummary } catch { $privacyRejected = $true }
+        if (-not $privacyRejected) { throw 'Synthetic privacy validation did not reject the unsafe summary.' }
+        Write-MinimalRedactedFailureArtifact $syntheticArtifact $unsafeSummary
+        $artifactJson = Get-Content -Raw -LiteralPath $syntheticArtifact
+        if ($artifactJson -match 'customerKey' -or $artifactJson -notmatch '"harnessFailure":\s*true') {
+            throw 'Synthetic redacted failure artifact contract is invalid.'
+        }
     } finally {
         Remove-Item -LiteralPath $syntheticMarker -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $syntheticArtifact -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -268,6 +353,10 @@ $modes = @($ValidateOnly, $ValidateRuntimeCapability, $RunBeforeFirstResult, $Cl
 if ($modes.Count -ne 1) {
     throw 'Specify exactly one mode: ValidateOnly, ValidateRuntimeCapability, RunBeforeFirstResult, or CleanupIsolatedRuntime.'
 }
+if ($RunBeforeFirstResult -and -not $PSBoundParameters.ContainsKey('CohortSize')) {
+    throw 'RunBeforeFirstResult requires an explicit approved CohortSize before any workload preparation.'
+}
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_RUN_ARMED = if ($RunBeforeFirstResult) { 'true' } else { 'false' }
 
 if ($ValidateOnly) {
     Validate-SyntheticContracts
@@ -286,14 +375,16 @@ if ($RunBeforeFirstResult -and (Test-Path -LiteralPath $FirstResultMarker)) {
     throw 'Subscription Burst Before first-result was already started; NEVER RERUN.'
 }
 
-$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
 Invoke-Compose @('up', '--build', '-d', '--wait', '--wait-timeout', '180', 'mysql', 'redis', 'backend', 'prometheus')
 Assert-IsolatedRuntime
 $backendUrl = Get-PublishedLoopbackUrl 'backend' 8080
 $prometheusUrl = Get-PublishedLoopbackUrl 'prometheus' 9090
 $runtime = Assert-RuntimeMetrics $prometheusUrl $freshAfter
+$runtimeMySql = Get-MySqlSnapshot 'runtime-capability'
 
 if ($ValidateRuntimeCapability) {
+    Assert-MeasurementEndpointsDisarmed $backendUrl
     "Phase 10 Subscription Burst isolated runtime capability passed (backend=$backendUrl, prometheus=$prometheusUrl)."
     exit 0
 }
@@ -317,6 +408,8 @@ $summary = [ordered]@{
     harnessFailure = $false
     collectorFailure = $false
     error = $null
+    runtimeCapability = $runtime
+    runtimeCapabilityMySql = $runtimeMySql
 }
 try {
     $fixture = Invoke-RestMethod -Method Post -TimeoutSec 900 -Uri "$backendUrl/internal/performance/subscription-burst/setup?cohortSize=$CohortSize"
@@ -343,13 +436,14 @@ try {
             $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
         }
         try {
-            $samples.Add((Get-MeasurementSample $prometheusUrl))
+            $samples.Add((Get-MeasurementSample $backendUrl))
         } catch {
             $summary.collectorFailure = $true
         }
-        if (-not $process.HasExited) { Start-Sleep -Seconds 1 }
+        if (-not $process.HasExited) { Start-Sleep -Milliseconds 200 }
     } while (-not $process.HasExited)
     $process.WaitForExit()
+    $workloadFinishedAfter = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
         $started = Get-Content -Raw -LiteralPath $FirstResultMarker | ConvertFrom-Json
         $consumed = [bool]$started.workloadInvocationStarted
@@ -359,15 +453,32 @@ try {
     if (-not $consumed) { throw 'Backend rejected the driver before the workload-start boundary.' }
 
     $driver = Get-Content -Raw -LiteralPath $DriverStdout | ConvertFrom-Json
-    $endPrometheus = Get-PrometheusSnapshot $prometheusUrl 'measurement-end'
+    $endPrometheus = Assert-MeasurementEndMetrics $prometheusUrl $workloadFinishedAfter
     $endMySql = Get-MySqlSnapshot 'measurement-end'
+    $automationDelta = Get-DeltaSnapshot $baselinePrometheus $endPrometheus
+    $automationMetricsMatch =
+        $automationDelta.automationExecutions -eq [double]$driver.batchCount -and
+        $automationDelta.automationProcessed -eq [double]$driver.processed -and
+        $automationDelta.automationCreated -eq [double]$driver.created -and
+        $automationDelta.automationFailures -eq [double]$driver.failures -and
+        $automationDelta.automationDuplicateNoOp -eq [double]$driver.duplicateOrNoOp
     $summary['driver'] = $driver
-    $summary['automationAndRuntimeDelta'] = Get-DeltaSnapshot $baselinePrometheus $endPrometheus
+    $summary['automationAndRuntimeDelta'] = $automationDelta
+    $summary['automationMetricReconciliation'] = [ordered]@{
+        matched = $automationMetricsMatch
+        expectedBatchCount = [int]$driver.batchCount
+        expectedProcessed = [int]$driver.processed
+        expectedCreated = [int]$driver.created
+        expectedFailures = [int]$driver.failures
+        expectedDuplicateNoOp = [int]$driver.duplicateOrNoOp
+    }
     $summary['prometheus'] = [ordered]@{ baseline = $baselinePrometheus; measurementEnd = $endPrometheus }
     $summary['mysql'] = [ordered]@{ baseline = $baselineMySql; measurementEnd = $endMySql; delta = Get-MySqlDelta $baselineMySql $endMySql }
     $summary['containerSamples'] = @($samples)
+    $summary['measurementPeaks'] = Get-MeasurementPeaks @($samples)
     $summary['backendFinalState'] = @(docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|restart={{.RestartCount}}|oom={{.State.OOMKilled}}' $BackendContainer | Select-Object -First 1)
-    $summary.harnessFailure = [bool]$driver.harnessFailure -or $process.ExitCode -ne 0
+    $summary.harnessFailure = [bool]$driver.harnessFailure -or $process.ExitCode -ne 0 -or -not $automationMetricsMatch
+    if (-not $automationMetricsMatch) { $summary.error = 'Automation metric delta did not match the driver aggregate.' }
     $summary['driverExitCode'] = $process.ExitCode
 } catch {
     $summary.harnessFailure = $true
@@ -386,7 +497,13 @@ try {
     if ($process) { $process.Dispose() }
     if ($consumed) {
         $summary['completedAtUtc'] = (Get-Date).ToUniversalTime().ToString('o')
-        Write-Json $SummaryPath $summary
+        try {
+            Write-Json $SummaryPath $summary
+        } catch {
+            $summary.harnessFailure = $true
+            $summary.error = 'Full summary artifact was discarded after a privacy or serialization failure.'
+            Write-MinimalRedactedFailureArtifact $SummaryPath $summary
+        }
     }
 }
 
