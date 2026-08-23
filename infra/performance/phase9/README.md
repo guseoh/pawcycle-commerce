@@ -104,8 +104,9 @@ $tomcatValue = $null
 do {
     Start-Sleep -Seconds 2
     try {
-        $tomcat = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29"
-        $tomcatTimestamp = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29"
+        $evaluationTime = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $tomcat = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29&time=$evaluationTime"
+        $tomcatTimestamp = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29&time=$evaluationTime"
         if ($tomcat.status -eq 'success' -and $tomcat.data.result.Count -eq 1 -and $tomcatTimestamp.status -eq 'success' -and $tomcatTimestamp.data.result.Count -eq 1) {
             $candidateValue = [int]$tomcat.data.result[0].value[1]
             $scrapeTimestamp = [double]$tomcatTimestamp.data.result[0].value[1]
@@ -122,7 +123,7 @@ $tomcatValue
 Set-Location ../..
 ```
 
-Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. Prometheus published port는 동일 compose stack에서 조회하며, Tomcat 검증은 candidate가 healthy가 된 뒤의 새 scrape timestamp까지 확인한다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. Prometheus published port는 동일 compose stack에서 조회하며, Tomcat 값과 scrape timestamp는 동일 evaluation time에서 검증하고 candidate가 healthy가 된 뒤의 새 scrape timestamp까지 확인한다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
 
 이것만 실행해주세요.
 
