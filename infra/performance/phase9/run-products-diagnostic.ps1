@@ -10,7 +10,9 @@ param(
     [switch]$ValidateFailureHandlingOnly,
     [switch]$ValidateMeasurementEndRetryOnly,
     [switch]$ValidateTomcatOnly,
-    [int]$ExpectedTomcatThreadsMax = 0
+    [switch]$ValidateHikariOnly,
+    [int]$ExpectedTomcatThreadsMax = 0,
+    [int]$ExpectedHikariPoolMax = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,15 +41,21 @@ if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $Re
 }
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
-$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly) | Where-Object { $_ }
+$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly, $ValidateHikariOnly) | Where-Object { $_ }
 if ($validationFlags.Count -gt 1) {
     throw 'Validation modes are mutually exclusive.'
 }
 if ($ValidateTomcatOnly -and $ExpectedTomcatThreadsMax -le 0) {
     throw 'ValidateTomcatOnly requires ExpectedTomcatThreadsMax.'
 }
+if ($ValidateHikariOnly -and $ExpectedHikariPoolMax -le 0) {
+    throw 'ValidateHikariOnly requires ExpectedHikariPoolMax.'
+}
 if ($ExpectedTomcatThreadsMax -lt 0) {
     throw 'ExpectedTomcatThreadsMax must be zero or positive.'
+}
+if ($ExpectedHikariPoolMax -lt 0) {
+    throw 'ExpectedHikariPoolMax must be zero or positive.'
 }
 
 if ($ValidateOnly) {
@@ -437,7 +445,7 @@ function Parse-K6Aggregate([string[]]$Lines) {
     return $aggregate
 }
 
-function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0) {
+function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0, [int]$ExpectedHikariMax = 0) {
     $categories = [ordered]@{
         'http products' = @('httpProductsCount')
         'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
@@ -460,6 +468,9 @@ function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0) 
     if ($ExpectedTomcatMax -gt 0) {
         Assert-TomcatExperimentMetrics $Snapshot $ExpectedTomcatMax
     }
+    if ($ExpectedHikariMax -gt 0) {
+        Assert-HikariExperimentMetrics $Snapshot $ExpectedHikariMax
+    }
 }
 
 function Assert-TomcatExperimentMetrics([object]$Snapshot, [int]$ExpectedTomcatMax) {
@@ -468,6 +479,15 @@ function Assert-TomcatExperimentMetrics([object]$Snapshot, [int]$ExpectedTomcatM
     }
     if ([double]$Snapshot.tomcatThreadsConfigMax -ne $ExpectedTomcatMax) {
         throw "Tomcat experiment config max must be $ExpectedTomcatMax."
+    }
+}
+
+function Assert-HikariExperimentMetrics([object]$Snapshot, [int]$ExpectedHikariMax) {
+    if ($null -eq $Snapshot.hikariMax) {
+        throw 'Hikari experiment requires the pool max metric.'
+    }
+    if ([double]$Snapshot.hikariMax -ne $ExpectedHikariMax) {
+        throw "Hikari experiment pool max must be $ExpectedHikariMax."
     }
 }
 
@@ -633,11 +653,38 @@ if ($ValidateTomcatOnly) {
     $valid.tomcatThreadsBusy = 1
     foreach ($fixture in @($missing, $wrongMax)) {
         $rejected = $false
-        try { Assert-CriticalMetrics $fixture $ExpectedTomcatThreadsMax } catch { $rejected = $true }
+        try { Assert-CriticalMetrics $fixture $ExpectedTomcatThreadsMax 0 } catch { $rejected = $true }
         if (-not $rejected) { throw 'Tomcat experiment negative fixture unexpectedly passed.' }
     }
-    Assert-CriticalMetrics $valid $ExpectedTomcatThreadsMax
+    Assert-CriticalMetrics $valid $ExpectedTomcatThreadsMax 0
     'Phase 9 Tomcat experiment metric validation passed without starting k6.'
+    exit 0
+}
+
+if ($ValidateHikariOnly) {
+    $missing = New-EmptySnapshot 'hikari-missing'
+    $wrongMax = New-EmptySnapshot 'hikari-wrong-max'
+    $valid = New-EmptySnapshot 'hikari-valid'
+    foreach ($fixture in @($missing, $wrongMax, $valid)) {
+        foreach ($property in @('httpProductsCount', 'hikariUsageCount', 'hikariUsageSeconds', 'hikariAcquireCount', 'hikariAcquireSeconds', 'hikariActive', 'hikariPending', 'jvmHeapUsed', 'jvmNonHeapUsed', 'jvmLiveThreads', 'jvmPeakThreads')) {
+            $fixture[$property] = 1
+        }
+        if ($ExpectedTomcatThreadsMax -gt 0) {
+            $fixture.tomcatThreadsConfigMax = $ExpectedTomcatThreadsMax
+            $fixture.tomcatThreadsCurrent = 4
+            $fixture.tomcatThreadsBusy = 1
+        }
+    }
+    $wrongMax.hikariMax = $ExpectedHikariPoolMax - 1
+    $valid.hikariMax = $ExpectedHikariPoolMax
+    foreach ($fixture in @($missing, $wrongMax)) {
+        $rejected = $false
+        try { Assert-CriticalMetrics $fixture $ExpectedTomcatThreadsMax $ExpectedHikariPoolMax } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Hikari experiment negative fixture unexpectedly passed.' }
+    }
+    Assert-CriticalMetrics $valid $ExpectedTomcatThreadsMax $ExpectedHikariPoolMax
+    Assert-CriticalMetrics $valid 0 0
+    'Phase 9 Hikari experiment metric validation passed without starting k6.'
     exit 0
 }
 
@@ -647,7 +694,7 @@ $samples = [System.Collections.Generic.List[object]]::new()
 Save-MeasurementSamples $samplesPath $samples
 $backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
-Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax
+Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax $ExpectedHikariPoolMax
 $measurementStart = New-EmptySnapshot 'measurement-start'
 $measurementEnd = New-EmptySnapshot 'measurement-end'
 $measurementBoundaryUtc = $null
