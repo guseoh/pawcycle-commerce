@@ -11,8 +11,12 @@ param(
     [switch]$ValidateMeasurementEndRetryOnly,
     [switch]$ValidateTomcatOnly,
     [switch]$ValidateHikariOnly,
+    [switch]$ValidateProductListCacheOnly,
+    [switch]$ValidateWorkloadStartMarkerOnly,
     [int]$ExpectedTomcatThreadsMax = 0,
-    [int]$ExpectedHikariPoolMax = 0
+    [int]$ExpectedHikariPoolMax = 0,
+    [switch]$RequireProductListCache,
+    [string]$WorkloadStartedMarkerPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +31,8 @@ $MeasurementEndFreshnessQuery = 'max(timestamp(jvm_threads_live_threads))'
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $ResultsDir = [IO.Path]::GetFullPath($ResultsDir)
 $repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
+$TempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$tempRootPrefix = $TempRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
 $K6Script = Join-Path $RepoRoot 'infra\performance\k6\capacity-api-products.js'
 $MysqlContainer = 'pawcycle-local-integration-mysql-1'
 
@@ -39,9 +45,18 @@ if ($PrometheusUrl -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{
 if ($ResultsDir.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $ResultsDir.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ResultsDir must be outside the repository.'
 }
+if ($WorkloadStartedMarkerPath) {
+    $WorkloadStartedMarkerPath = [IO.Path]::GetFullPath($WorkloadStartedMarkerPath)
+    if ($WorkloadStartedMarkerPath.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or $WorkloadStartedMarkerPath.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'WorkloadStartedMarkerPath must be outside the repository.'
+    }
+    if (-not ($WorkloadStartedMarkerPath.Equals($TempRoot, [StringComparison]::OrdinalIgnoreCase) -or $WorkloadStartedMarkerPath.StartsWith($tempRootPrefix, [StringComparison]::OrdinalIgnoreCase))) {
+        throw 'WorkloadStartedMarkerPath must be the host local temp directory or one of its descendants.'
+    }
+}
 if (-not (Test-Path -LiteralPath $K6Script)) { throw "Missing existing capacity script: $K6Script" }
 
-$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly, $ValidateHikariOnly) | Where-Object { $_ }
+$validationFlags = @($ValidateOnly, $ValidateCollectorOnly, $ValidateK6AggregateOnly, $ValidateFailureHandlingOnly, $ValidateMeasurementEndRetryOnly, $ValidateTomcatOnly, $ValidateHikariOnly, $ValidateProductListCacheOnly, $ValidateWorkloadStartMarkerOnly) | Where-Object { $_ }
 if ($validationFlags.Count -gt 1) {
     throw 'Validation modes are mutually exclusive.'
 }
@@ -124,14 +139,18 @@ SELECT CONCAT(CHAR(116,104,114,101,97,100,115,95,99,111,110,110,101,99,116,101,1
 }
 
 function Get-ContainerEvidence([string]$ErrorPath) {
-    $stats = @(docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.PIDs}}' 2> $ErrorPath | Where-Object { $_ -match 'pawcycle-local-integration-(backend|mysql|frontend|proxy)-1' })
+    $containerPattern = if ($RequireProductListCache) { 'pawcycle-local-integration-(backend|mysql|redis|frontend|proxy)-1' } else { 'pawcycle-local-integration-(backend|mysql|frontend|proxy)-1' }
+    $expectedContainerCount = if ($RequireProductListCache) { 5 } else { 4 }
+    $stats = @(docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.PIDs}}' 2> $ErrorPath | Where-Object { $_ -match $containerPattern })
     $statsExitCode = $LASTEXITCODE
     Remove-Item -LiteralPath $ErrorPath -Force -ErrorAction SilentlyContinue
-    if ($statsExitCode -ne 0 -or $stats.Count -ne 4) { throw 'Docker stats collection failed.' }
-    $health = @(docker inspect --format '{{.Name}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|restarts={{.RestartCount}}|oom={{.State.OOMKilled}}' pawcycle-local-integration-backend-1 pawcycle-local-integration-mysql-1 pawcycle-local-integration-frontend-1 pawcycle-local-integration-proxy-1 2> $ErrorPath)
+    if ($statsExitCode -ne 0 -or $stats.Count -ne $expectedContainerCount) { throw 'Docker stats collection failed.' }
+    $containerNames = @('pawcycle-local-integration-backend-1', 'pawcycle-local-integration-mysql-1', 'pawcycle-local-integration-frontend-1', 'pawcycle-local-integration-proxy-1')
+    if ($RequireProductListCache) { $containerNames += 'pawcycle-local-integration-redis-1' }
+    $health = @(docker inspect --format '{{.Name}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}|restarts={{.RestartCount}}|oom={{.State.OOMKilled}}' @containerNames 2> $ErrorPath)
     $healthExitCode = $LASTEXITCODE
     Remove-Item -LiteralPath $ErrorPath -Force -ErrorAction SilentlyContinue
-    if ($healthExitCode -ne 0 -or $health.Count -ne 4) { throw 'Docker health collection failed.' }
+    if ($healthExitCode -ne 0 -or $health.Count -ne $expectedContainerCount) { throw 'Docker health collection failed.' }
     if ($health | Where-Object { $_ -notmatch 'health=healthy\|restarts=0\|oom=False$' }) { throw 'Docker health state is not healthy.' }
     return [ordered]@{ stats = $stats; health = $health }
 }
@@ -162,6 +181,9 @@ function Get-Snapshot([string]$Label, [string]$ErrorPath) {
         jvmGcPauseCount = Query-Prometheus 'sum(jvm_gc_pause_seconds_count)'
         jvmGcPauseSeconds = Query-Prometheus 'sum(jvm_gc_pause_seconds_sum)'
         processCpuUsage = Query-Prometheus 'sum(process_cpu_usage)'
+        productListCacheHit = if ($RequireProductListCache) { Query-Prometheus 'sum(pawcycle_catalog_product_list_cache_operations_total{result="hit"})' } else { $null }
+        productListCacheMiss = if ($RequireProductListCache) { Query-Prometheus 'sum(pawcycle_catalog_product_list_cache_operations_total{result="miss"})' } else { $null }
+        productListCacheError = if ($RequireProductListCache) { Query-Prometheus 'sum(pawcycle_catalog_product_list_cache_operations_total{result="error"})' } else { $null }
         mysql = Get-MySqlAggregate $ErrorPath
         containers = Get-ContainerEvidence $ErrorPath
     }
@@ -245,6 +267,9 @@ function New-EmptySnapshot([string]$Label) {
         jvmGcPauseCount = $null
         jvmGcPauseSeconds = $null
         processCpuUsage = $null
+        productListCacheHit = $null
+        productListCacheMiss = $null
+        productListCacheError = $null
         mysql = New-EmptyMySqlAggregate
         containers = $null
     }
@@ -255,7 +280,7 @@ function Should-RecordMetricCollectionError([string]$MetricKey, [int]$ExpectedTo
 }
 
 function Get-PrometheusMetricQueries() {
-    return [ordered]@{
+    $queries = [ordered]@{
         httpProductsCount = 'sum(http_server_requests_seconds_count{method="GET",uri="/api/products"})'
         httpProductsSumSeconds = 'sum(http_server_requests_seconds_sum{method="GET",uri="/api/products"})'
         hikariUsageCount = 'sum(hikaricp_connections_usage_seconds_count)'
@@ -279,6 +304,12 @@ function Get-PrometheusMetricQueries() {
         jvmGcPauseSeconds = 'sum(jvm_gc_pause_seconds_sum)'
         processCpuUsage = 'sum(process_cpu_usage)'
     }
+    if ($RequireProductListCache) {
+        $queries.productListCacheHit = 'sum(pawcycle_catalog_product_list_cache_operations_total{result="hit"})'
+        $queries.productListCacheMiss = 'sum(pawcycle_catalog_product_list_cache_operations_total{result="miss"})'
+        $queries.productListCacheError = 'sum(pawcycle_catalog_product_list_cache_operations_total{result="error"})'
+    }
+    return $queries
 }
 
 function Get-ResilientSnapshot([string]$Label, [string]$ErrorPath, [int]$ExpectedTomcatMax = 0) {
@@ -445,7 +476,7 @@ function Parse-K6Aggregate([string[]]$Lines) {
     return $aggregate
 }
 
-function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0, [int]$ExpectedHikariMax = 0) {
+function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0, [int]$ExpectedHikariMax = 0, [bool]$ExpectedProductListCache = $false) {
     $categories = [ordered]@{
         'http products' = @('httpProductsCount')
         'hikari usage' = @('hikariUsageCount', 'hikariUsageSeconds')
@@ -456,6 +487,9 @@ function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0, 
     }
     if ($ExpectedTomcatMax -gt 0) {
         $categories['tomcat threads'] = @('tomcatThreadsConfigMax', 'tomcatThreadsCurrent', 'tomcatThreadsBusy')
+    }
+    if ($ExpectedProductListCache) {
+        $categories['product list cache'] = @('productListCacheHit', 'productListCacheMiss', 'productListCacheError')
     }
     $unavailable = @(
         foreach ($category in $categories.Keys) {
@@ -470,6 +504,17 @@ function Assert-CriticalMetrics([object]$Snapshot, [int]$ExpectedTomcatMax = 0, 
     }
     if ($ExpectedHikariMax -gt 0) {
         Assert-HikariExperimentMetrics $Snapshot $ExpectedHikariMax
+    }
+}
+
+function Assert-ProductListCacheWarmup([object]$Before, [object]$After) {
+    foreach ($metric in @('productListCacheHit', 'productListCacheMiss', 'productListCacheError')) {
+        if ($null -eq $Before.$metric -or $null -eq $After.$metric) {
+            throw 'Product list cache metrics are unavailable.'
+        }
+    }
+    if ([double]$After.productListCacheHit -le [double]$Before.productListCacheHit) {
+        throw 'Product list cache hit did not increase during warm-up.'
     }
 }
 
@@ -688,13 +733,59 @@ if ($ValidateHikariOnly) {
     exit 0
 }
 
+function Write-WorkloadStartedMarker([int]$K6ProcessId) {
+    if (-not $WorkloadStartedMarkerPath) { return }
+    [ordered]@{
+        diagnostic = 'phase9-products-local'
+        workloadInvocationStarted = $true
+        workloadStartedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        k6ProcessId = $K6ProcessId
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $WorkloadStartedMarkerPath -Encoding utf8
+}
+
+if ($ValidateProductListCacheOnly) {
+    $before = New-EmptySnapshot 'cache-before'
+    $after = New-EmptySnapshot 'cache-after'
+    foreach ($snapshot in @($before, $after)) {
+        $snapshot.productListCacheHit = 0
+        $snapshot.productListCacheMiss = 0
+        $snapshot.productListCacheError = 0
+    }
+    $after.productListCacheHit = 1
+    Assert-ProductListCacheWarmup $before $after
+
+    $missingRejected = $false
+    $after.productListCacheHit = $null
+    try { Assert-ProductListCacheWarmup $before $after } catch { $missingRejected = $true }
+    if (-not $missingRejected) { throw 'Missing product list cache fixture unexpectedly passed.' }
+
+    $noHitRejected = $false
+    $after.productListCacheHit = 0
+    try { Assert-ProductListCacheWarmup $before $after } catch { $noHitRejected = $true }
+    if (-not $noHitRejected) { throw 'No-hit product list cache fixture unexpectedly passed.' }
+
+    'Phase 10 product list cache metric validation passed without starting k6.'
+    exit 0
+}
+
+if ($ValidateWorkloadStartMarkerOnly) {
+    if (-not $WorkloadStartedMarkerPath) { throw 'ValidateWorkloadStartMarkerOnly requires WorkloadStartedMarkerPath.' }
+    Write-WorkloadStartedMarker 1
+    $marker = Get-Content -Raw -LiteralPath $WorkloadStartedMarkerPath | ConvertFrom-Json
+    if (-not $marker.workloadInvocationStarted -or $marker.k6ProcessId -ne 1) {
+        throw 'Synthetic workload-start marker validation failed.'
+    }
+    'Phase 9 workload-start marker synthetic validation passed without starting k6.'
+    exit 0
+}
+
 $collectorErrorPath = Join-Path $runDir 'collector-errors.tmp'
 $script:CollectionErrors = [System.Collections.Generic.List[object]]::new()
 $samples = [System.Collections.Generic.List[object]]::new()
 Save-MeasurementSamples $samplesPath $samples
 $backendFinalState = $null
 $preflight = Get-Snapshot 'preflight' $collectorErrorPath
-Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax $ExpectedHikariPoolMax
+Assert-CriticalMetrics $preflight $ExpectedTomcatThreadsMax $ExpectedHikariPoolMax $RequireProductListCache
 $measurementStart = New-EmptySnapshot 'measurement-start'
 $measurementEnd = New-EmptySnapshot 'measurement-end'
 $measurementBoundaryUtc = $null
@@ -715,8 +806,10 @@ $harnessError = $null
 $process = $null
 try {
     $process = Start-Process -FilePath $K6Command -ArgumentList @('run', '-e', "BASE_URL=$BaseUrl", '-e', "TARGET_RPS=$TargetRps", $K6Script) -RedirectStandardOutput $runStdout -RedirectStandardError $runStderr -PassThru -NoNewWindow
+    Write-WorkloadStartedMarker $process.Id
     Start-Sleep -Seconds $WarmupSeconds
     $measurementStart = Get-ResilientSnapshot 'measurement-start' $collectorErrorPath $ExpectedTomcatThreadsMax
+    if ($RequireProductListCache) { Assert-ProductListCacheWarmup $preflight $measurementStart }
     $deadline = (Get-Date).AddSeconds($MeasurementSeconds)
     while ((Get-Date) -lt $deadline -and -not $process.HasExited) {
         $samples.Add((Get-ResilientSnapshot 'measurement-sample' $collectorErrorPath $ExpectedTomcatThreadsMax))
@@ -826,6 +919,9 @@ $summary = [ordered]@{
     connectionUsageMeanMs = if ($null -ne $usageDelta -and $usageDelta -ne 0) { $usageSecondsDelta / $usageDelta * 1000 } else { $null }
     relevantSqlWaitPsDelta = $relevantSqlWaitPsDelta
     relevantSqlRowsExaminedDelta = $relevantSqlRowsExaminedDelta
+    productListCacheHitDelta = Delta $measurementStart.productListCacheHit $measurementEnd.productListCacheHit
+    productListCacheMissDelta = Delta $measurementStart.productListCacheMiss $measurementEnd.productListCacheMiss
+    productListCacheErrorDelta = Delta $measurementStart.productListCacheError $measurementEnd.productListCacheError
     relevantSqlMeanMs = if ($null -ne $digestDelta -and $digestDelta -ne 0) { $relevantSqlWaitPsDelta / $digestDelta / 1000000000 } else { $null }
     rowsExaminedPerRelevantSql = if ($null -ne $digestDelta -and $digestDelta -ne 0) { $relevantSqlRowsExaminedDelta / $digestDelta } else { $null }
     backgroundTrafficNote = 'Prometheus scrape, backend healthcheck, and other local traffic share HTTP/Hikari/Performance Schema counters; request-per-query and borrow-per-request are diagnostic estimates, not isolated exact values.'

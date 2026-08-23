@@ -3,6 +3,9 @@ package com.pawcycle.backend.catalog.product.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -15,6 +18,7 @@ import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 class ProductQueryServiceTests {
 
 	@Mock
+	private ProductListCache productListCache;
+
+	@Mock
 	private ProductListReader productListReader;
 
 	@Mock
@@ -41,7 +48,21 @@ class ProductQueryServiceTests {
 
 	@BeforeEach
 	void setUp() {
-		productQueryService = new ProductQueryService(productListReader, productRepository, skuRepository);
+		lenient().when(productListCache.getOrLoad(any())).thenAnswer(invocation -> {
+			Supplier<ProductListView> loader = invocation.getArgument(0);
+			return loader.get();
+		});
+		productQueryService = new ProductQueryService(
+				productListCache, productListReader, productRepository, skuRepository);
+	}
+
+	@Test
+	void cacheHitBypassesProductListReader() {
+		ProductListView cached = new ProductListView(List.of());
+		doReturn(cached).when(productListCache).getOrLoad(any());
+
+		assertThat(productQueryService.findProducts()).isSameAs(cached);
+		verifyNoInteractions(productListReader, productRepository, skuRepository);
 	}
 
 	@Test

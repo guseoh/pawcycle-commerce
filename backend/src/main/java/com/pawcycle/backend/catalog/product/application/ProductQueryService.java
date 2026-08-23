@@ -19,14 +19,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductQueryService {
 	private static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
+	private final ProductListCache productListCache;
 	private final ProductListReader productListReader;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
 
 	public ProductQueryService(
+			ProductListCache productListCache,
 			ProductListReader productListReader,
 			ProductRepository productRepository,
 			SkuRepository skuRepository) {
+		this.productListCache = productListCache;
 		this.productListReader = productListReader;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
@@ -34,19 +37,23 @@ public class ProductQueryService {
 
 	public ProductListView findProducts() {
 		try {
-			ProductListReader.ProductListSnapshot snapshot = productListReader.read();
-			if (snapshot.products().isEmpty()) {
-				return new ProductListView(List.of());
-			}
-
-			Map<Long, List<ProductListReader.SkuSnapshot>> skusByProduct = groupSkus(snapshot.skus());
-			List<ProductSummary> summaries = snapshot.products().stream()
-					.map(product -> toSummary(product, skusByProduct.getOrDefault(product.productId(), List.of())))
-					.toList();
-			return new ProductListView(summaries);
+			return productListCache.getOrLoad(this::loadProducts);
 		} catch (RuntimeException exception) {
 			throw new ProductListUnavailableException(exception);
 		}
+	}
+
+	private ProductListView loadProducts() {
+		ProductListReader.ProductListSnapshot snapshot = productListReader.read();
+		if (snapshot.products().isEmpty()) {
+			return new ProductListView(List.of());
+		}
+
+		Map<Long, List<ProductListReader.SkuSnapshot>> skusByProduct = groupSkus(snapshot.skus());
+		List<ProductSummary> summaries = snapshot.products().stream()
+				.map(product -> toSummary(product, skusByProduct.getOrDefault(product.productId(), List.of())))
+				.toList();
+		return new ProductListView(summaries);
 	}
 
 	@Transactional(readOnly = true)
