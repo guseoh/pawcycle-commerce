@@ -81,21 +81,63 @@ PERF-PH9-005의 Tomcat128 + CPU1.5 + memory640MiB first-result를 control로 재
 
 ```powershell
 Set-Location infra/local-integration
-docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml -f compose.phase9-memory1g.yaml up --build -d mysql backend frontend proxy prometheus
+$composeArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml'
+)
+docker compose @composeArgs up --build -d --wait --wait-timeout 120 mysql backend frontend proxy prometheus
+if ($LASTEXITCODE -ne 0) { throw 'Memory1GiB candidate services did not become healthy.' }
 docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
-$tomcat = Invoke-RestMethod -Uri 'http://127.0.0.1:9090/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29'
-if ($tomcat.status -ne 'success' -or $tomcat.data.result.Count -ne 1 -or [int]$tomcat.data.result[0].value[1] -ne 128) { throw 'Tomcat runtime max must be 128.' }
-$tomcat.data.result[0].value[1]
+$portOutput = docker compose @composeArgs port prometheus 9090
+if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
+$portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
+if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
+$prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
+$freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$deadline = (Get-Date).AddSeconds(45)
+$tomcatValue = $null
+do {
+    Start-Sleep -Seconds 2
+    try {
+        $tomcat = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28tomcat_threads_config_max_threads%29"
+        $tomcatTimestamp = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=max%28timestamp%28tomcat_threads_config_max_threads%29%29"
+        if ($tomcat.status -eq 'success' -and $tomcat.data.result.Count -eq 1 -and $tomcatTimestamp.status -eq 'success' -and $tomcatTimestamp.data.result.Count -eq 1) {
+            $candidateValue = [int]$tomcat.data.result[0].value[1]
+            $scrapeTimestamp = [double]$tomcatTimestamp.data.result[0].value[1]
+            if ($candidateValue -eq 128 -and $scrapeTimestamp -ge $freshAfter) {
+                $tomcatValue = $candidateValue
+                break
+            }
+        }
+    } catch {
+    }
+} while ((Get-Date) -lt $deadline)
+if ($null -eq $tomcatValue) { throw 'Fresh Tomcat runtime max 128 was not observed.' }
+$tomcatValue
 Set-Location ../..
 ```
 
-Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
+Runtime 확인값은 Tomcat max `128`, CPU `1500000000`, memory `1073741824`, PID `256`이다. Prometheus published port는 동일 compose stack에서 조회하며, Tomcat 검증은 candidate가 healthy가 된 뒤의 새 scrape timestamp까지 확인한다. `-ValidateTomcatOnly`는 synthetic fixture 검증용이므로 이 runtime 확인에 사용하지 않는다. 실제 candidate load에서는 기존 `-ExpectedTomcatThreadsMax 128` preflight가 실제 Prometheus Tomcat metric을 fail-close로 검증한 뒤 k6를 시작한다. rollback은 `compose.phase9-memory1g.yaml`만 제거하고 envelope + Tomcat128 + CPU1.5 overlay를 유지한 채 backend를 재생성한다. 그러면 PERF-PH9-005 조건인 Tomcat128 + CPU1.5 + memory640MiB로 복귀한다.
 
 이것만 실행해주세요.
 
 ```powershell
 Set-Location infra/local-integration
-docker compose --env-file .env.local -f compose.yaml -f compose.prometheus.yaml -f compose.phase9-envelope.yaml -f compose.phase9-tomcat128.yaml -f compose.phase9-cpu15.yaml up -d --no-deps --force-recreate backend
+$rollbackArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml'
+)
+docker compose @rollbackArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
+if ($LASTEXITCODE -ne 0) { throw 'Memory1GiB rollback backend did not become healthy.' }
 docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
 Set-Location ../..
 ```
