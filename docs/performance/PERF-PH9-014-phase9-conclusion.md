@@ -87,7 +87,7 @@ JFR은 JVM startup에서 `duration=300s`로 시작된다. 그러나 wrapper의 `
 ## 검증과 실행 경계
 
 - `ProductListReaderTests`와 `ProductQueryServiceTests` 9개는 통과해 scalar snapshot, 빈 목록의 second query 생략, grouping/response 조립과 read-only transaction 경계를 확인했다.
-- `ProductApiIntegrationTests` 7개는 local host에 JDBC URL이 제공되지 않아 ApplicationContext 시작 전 실패했다(`'url' must start with "jdbc"`). local MySQL은 host port를 publish하지 않으며, 코드 실패로 판정하지 않는다. 2-query·JSON 계약의 CI 확인은 repository MySQL service 환경에 남긴다.
+- `ProductApiIntegrationTests` 7개는 local host에 JDBC URL이 제공되지 않아 ApplicationContext 시작 전 실패했다(`'url' must start with "jdbc"`). local MySQL은 host port를 publish하지 않으며, 코드 실패로 판정하지 않는다. 문서-only diff라 CI의 Backend/MySQL lane도 skip됐으므로 2-query·JSON 통합 계약은 이번 PR에서 미검증으로 남긴다.
 - compile/test class 생성, 문서·commit·PR validator와 `git diff --check`를 실행한다.
 - k6, JFR, PERF-PH9-010·011 및 추가 성능 workload는 실행하지 않는다.
 - CI 성공은 Production Verified 또는 성능 개선 증거로 표현하지 않는다.
