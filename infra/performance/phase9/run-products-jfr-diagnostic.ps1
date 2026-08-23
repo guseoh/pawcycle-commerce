@@ -94,20 +94,31 @@ function Test-ExpectedFreshRuntimeMetrics(
     )
 }
 
-function Assert-FreshJfrBackendRuntime([object[]]$ComposeArgs) {
-    Assert-Cpu2BackendState
-    $maxRamPercentage = Assert-EffectiveMaxRamPercentage
+function Get-Cpu2ComposeArgs {
+    return @('--env-file', '.env.local', '-f', 'compose.yaml', '-f', 'compose.prometheus.yaml', '-f', 'compose.phase9-envelope.yaml', '-f', 'compose.phase9-tomcat128.yaml', '-f', 'compose.phase9-cpu15.yaml', '-f', 'compose.phase9-memory1g.yaml', '-f', 'compose.phase9-cpu20.yaml')
+}
 
+function Get-JfrComposeArgs([object[]]$Cpu2ComposeArgs) {
+    return @($Cpu2ComposeArgs + @('-f', 'compose.phase9-jfr.yaml'))
+}
+
+function Get-PrometheusUrl([object[]]$ComposeArgs) {
     Push-Location (Join-Path $RepoRoot 'infra\local-integration')
     try {
         $portOutput = docker compose @ComposeArgs port prometheus 9090
         if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
         $portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
         if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
-        $prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
+        return "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
     } finally {
         Pop-Location
     }
+}
+
+function Assert-FreshJfrBackendRuntime([object[]]$Cpu2ComposeArgs) {
+    Assert-Cpu2BackendState
+    $maxRamPercentage = Assert-EffectiveMaxRamPercentage
+    $prometheusUrl = Get-PrometheusUrl $Cpu2ComposeArgs
 
     $freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $deadline = (Get-Date).AddSeconds(45)
@@ -171,7 +182,7 @@ function Write-JfrSummary([object]$Paths) {
 }
 
 function Invoke-Cpu2Rollback {
-    $composeArgs = @('--env-file', '.env.local', '-f', 'compose.yaml', '-f', 'compose.prometheus.yaml', '-f', 'compose.phase9-envelope.yaml', '-f', 'compose.phase9-tomcat128.yaml', '-f', 'compose.phase9-cpu15.yaml', '-f', 'compose.phase9-memory1g.yaml', '-f', 'compose.phase9-cpu20.yaml')
+    $composeArgs = Get-Cpu2ComposeArgs
     Push-Location (Join-Path $RepoRoot 'infra\local-integration')
     try {
         docker compose @composeArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
@@ -233,6 +244,12 @@ if ($ValidateOnly) {
     if (Test-ExpectedFreshRuntimeMetrics 10 128 999.0 1001.0 $freshAfter) { throw 'Stale Hikari runtime fixture unexpectedly passed.' }
     if (Test-ExpectedFreshRuntimeMetrics 20 128 1001.0 1001.0 $freshAfter) { throw 'Wrong Hikari runtime fixture unexpectedly passed.' }
 
+    $cpu2ComposeArgs = Get-Cpu2ComposeArgs
+    $jfrComposeArgs = Get-JfrComposeArgs $cpu2ComposeArgs
+    if ($cpu2ComposeArgs -contains 'compose.phase9-jfr.yaml' -or -not ($jfrComposeArgs -contains 'compose.phase9-jfr.yaml')) {
+        throw 'JFR compose overlay separation validation failed.'
+    }
+
     Assert-ProfilingDiagnosticSummary ([pscustomobject]@{ k6AggregateAvailable = $true; harnessFailure = $false; thresholdFailure = $true; collectorFailure = $false; outcome = 'threshold-failure' })
     $harnessFailureRejected = $false
     try { Assert-ProfilingDiagnosticSummary ([pscustomobject]@{ k6AggregateAvailable = $true; harnessFailure = $true; thresholdFailure = $false; collectorFailure = $false; outcome = 'harness-failure' }) } catch { $harnessFailureRejected = $true }
@@ -248,7 +265,18 @@ if ($ValidateRuntimeCapability) {
     Assert-JfrRuntimeCapability $tools
     & $JfrCommand --version | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Host JFR command is unavailable.' }
-    "Phase 9 JFR runtime capability passed (jcmd available: $($tools.jcmd))."
+    $previousRecordingPath = [Environment]::GetEnvironmentVariable('PAWCYCLE_PHASE9_JFR_RECORDING_PATH', 'Process')
+    try {
+        Remove-Item Env:PAWCYCLE_PHASE9_JFR_RECORDING_PATH -ErrorAction SilentlyContinue
+        $prometheusUrl = Get-PrometheusUrl (Get-Cpu2ComposeArgs)
+    } finally {
+        if ($null -eq $previousRecordingPath) {
+            Remove-Item Env:PAWCYCLE_PHASE9_JFR_RECORDING_PATH -ErrorAction SilentlyContinue
+        } else {
+            $env:PAWCYCLE_PHASE9_JFR_RECORDING_PATH = $previousRecordingPath
+        }
+    }
+    "Phase 9 JFR runtime capability passed (jcmd available: $($tools.jcmd); fresh-runtime Prometheus lookup: $prometheusUrl)."
     exit 0
 }
 
@@ -296,8 +324,9 @@ try {
     $env:PAWCYCLE_PHASE9_JFR_RECORDING_PATH = $paths.containerArtifactPath
     Push-Location (Join-Path $RepoRoot 'infra\local-integration')
     try {
-        $composeArgs = @('--env-file', '.env.local', '-f', 'compose.yaml', '-f', 'compose.prometheus.yaml', '-f', 'compose.phase9-envelope.yaml', '-f', 'compose.phase9-tomcat128.yaml', '-f', 'compose.phase9-cpu15.yaml', '-f', 'compose.phase9-memory1g.yaml', '-f', 'compose.phase9-cpu20.yaml', '-f', 'compose.phase9-jfr.yaml')
-        docker compose @composeArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
+        $cpu2ComposeArgs = Get-Cpu2ComposeArgs
+        $jfrComposeArgs = Get-JfrComposeArgs $cpu2ComposeArgs
+        docker compose @jfrComposeArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
         if ($LASTEXITCODE -ne 0) { throw 'JFR backend start did not become healthy.' }
         $jfrBackendStarted = $true
     } finally {
@@ -305,7 +334,7 @@ try {
         Remove-Item Env:PAWCYCLE_PHASE9_JFR_RECORDING_PATH -ErrorAction SilentlyContinue
     }
 
-    $runtimeEvidence = Assert-FreshJfrBackendRuntime $composeArgs
+    $runtimeEvidence = Assert-FreshJfrBackendRuntime $cpu2ComposeArgs
     $metadata.jfrBackendRuntimeGuardPassed = $true
     $metadata.maxRamPercentage = $runtimeEvidence.maxRamPercentage
     $metadata.hikariMax = $runtimeEvidence.hikariMax
