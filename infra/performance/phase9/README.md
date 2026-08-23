@@ -145,6 +145,69 @@ Set-Location ../..
 
 rollback 확인값은 backend `health=healthy`, `cpu=1500000000`, `memory=671088640`, `pids=256`이다. 이 확인은 credential이나 전체 container 설정을 출력하지 않는 좁은 상태 조회만 사용한다.
 
+## Hikari20 causality experiment
+
+PERF-PH9-007 After first-result를 control로 재사용하며 **절대로 재실행하지 않는다**. 이 local-only candidate는 `compose.phase9-hikari20.yaml`으로 Hikari maximum pool capacity만 `10`에서 `20`으로 변경한다. `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=10`은 control 조건을 보존하기 위한 명시값이며 두 번째 실험 변수가 아니다. Tomcat128, CPU1.5, memory1GiB, PID256, `MaxRAMPercentage=65.0`, target 250 RPS, 기존 k6 workload와 Prometheus/MySQL/container collector semantics는 모두 유지한다. Production 권장값이나 Production/Cloud/AWS 실행을 의미하지 않는다.
+
+No-load 준비에서는 다음 overlay 순서를 유지한다.
+
+```powershell
+Set-Location infra/local-integration
+$composeArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml',
+    '-f', 'compose.phase9-hikari20.yaml'
+)
+docker compose @composeArgs up --build -d --wait --wait-timeout 120 mysql backend frontend proxy prometheus
+if ($LASTEXITCODE -ne 0) { throw 'Hikari20 candidate services did not become healthy.' }
+docker inspect --format 'health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}} cpu={{.HostConfig.NanoCpus}} memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}' pawcycle-local-integration-backend-1
+$portOutput = docker compose @composeArgs port prometheus 9090
+if ($LASTEXITCODE -ne 0) { throw 'Prometheus published port lookup failed.' }
+$portMatch = [regex]::Match(($portOutput | Select-Object -First 1), ':(?<port>[0-9]+)$')
+if (-not $portMatch.Success) { throw 'Prometheus published port is unavailable.' }
+$prometheusUrl = "http://127.0.0.1:$($portMatch.Groups['port'].Value)"
+$hikari = Invoke-RestMethod -Uri "$prometheusUrl/api/v1/query?query=sum%28hikaricp_connections_max%29"
+if ($hikari.status -ne 'success' -or $hikari.data.result.Count -ne 1 -or [int]$hikari.data.result[0].value[1] -ne 20) { throw 'Hikari runtime max 20 was not observed.' }
+[int]$hikari.data.result[0].value[1]
+Set-Location ../..
+```
+
+Expected narrow runtime evidence is backend `health=healthy`, CPU `1500000000`, memory `1073741824`, PID `256`, Tomcat max `128`, Hikari max `20`, and Hikari minimum idle `10`. Before any candidate load, run only the no-load validators below; `-ValidateHikariOnly` verifies synthetic missing/wrong/exact pool max handling and does not start k6.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateTomcatOnly -ExpectedTomcatThreadsMax 128
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ValidateHikariOnly -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 20
+```
+
+The following is documentation for a separately approved first-result only. **Do not execute it in this repository-preparation task.** It must pass both expected contracts before k6 starts, and once the candidate load starts it must not be rerun automatically.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase9/run-products-diagnostic.ps1 -ExpectedTomcatThreadsMax 128 -ExpectedHikariPoolMax 20
+```
+
+Rollback removes only `compose.phase9-hikari20.yaml`, preserves the PERF-PH9-007 envelope overlays, and force-recreates backend. The expected rollback Hikari max is `10`.
+
+```powershell
+Set-Location infra/local-integration
+$rollbackArgs = @(
+    '--env-file', '.env.local',
+    '-f', 'compose.yaml',
+    '-f', 'compose.prometheus.yaml',
+    '-f', 'compose.phase9-envelope.yaml',
+    '-f', 'compose.phase9-tomcat128.yaml',
+    '-f', 'compose.phase9-cpu15.yaml',
+    '-f', 'compose.phase9-memory1g.yaml'
+)
+docker compose @rollbackArgs up -d --no-deps --force-recreate --wait --wait-timeout 120 backend
+if ($LASTEXITCODE -ne 0) { throw 'Hikari20 rollback backend did not become healthy.' }
+Set-Location ../..
+```
+
 ## 일반 local diagnostic
 
 일반 local diagnostic은 Tomcat128 overlay 없이 baseline 또는 기본 local compose를 사용한다. Tomcat metric이 없어도 일반 resilient snapshot의 collector failure로 처리하지 않으며, Tomcat metric 검증은 `-ExpectedTomcatThreadsMax`를 명시한 experiment 경로에서만 fail-close한다. 현재 checkout 소스와 runtime image가 일치하도록 backend/frontend를 다시 build한 뒤 필요한 service만 시작한다.
