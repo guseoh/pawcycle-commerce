@@ -44,6 +44,8 @@ public class SubscriptionBurstMeasurementService {
 	private final String markerWorkloadIdentity;
 	private final String markerSourceSha;
 	private final int markerCohort;
+	private final int measurementBatchSize;
+	private final long measurementFixedDelayMs;
 	private final AtomicBoolean drainRunning = new AtomicBoolean();
 
 	public SubscriptionBurstMeasurementService(
@@ -55,7 +57,9 @@ public class SubscriptionBurstMeasurementService {
 			@Value("${pawcycle.subscription-burst-measurement.run-armed:false}") boolean runArmed,
 			@Value("${pawcycle.subscription-burst-measurement.marker-workload-identity:}") String markerWorkloadIdentity,
 			@Value("${pawcycle.subscription-burst-measurement.marker-source-sha:}") String markerSourceSha,
-			@Value("${pawcycle.subscription-burst-measurement.marker-cohort:0}") int markerCohort) {
+			@Value("${pawcycle.subscription-burst-measurement.marker-cohort:0}") int markerCohort,
+			@Value("${pawcycle.subscription-burst-measurement.batch-size:100}") int measurementBatchSize,
+			@Value("${pawcycle.subscription-burst-measurement.fixed-delay-ms:60000}") long measurementFixedDelayMs) {
 		this.jdbc = jdbc;
 		this.automation = automation;
 		this.clock = clock;
@@ -64,6 +68,11 @@ public class SubscriptionBurstMeasurementService {
 		this.markerWorkloadIdentity = markerWorkloadIdentity;
 		this.markerSourceSha = markerSourceSha;
 		this.markerCohort = markerCohort;
+		if (measurementBatchSize < 1 || measurementFixedDelayMs < 1) {
+			throw new IllegalArgumentException("Subscription Burst measurement batch-size and fixed-delay-ms must be positive");
+		}
+		this.measurementBatchSize = measurementBatchSize;
+		this.measurementFixedDelayMs = measurementFixedDelayMs;
 	}
 
 	@Transactional
@@ -88,7 +97,7 @@ public class SubscriptionBurstMeasurementService {
 		if (backlog != cohortSize || fixtureOrderCount() != 0) {
 			throw new IllegalStateException("Synthetic fixture is not a clean due backlog");
 		}
-		return new FixtureSummary(cohortSize, backlog, DEFAULT_BATCH_SIZE, DEFAULT_FIXED_DELAY_MS);
+		return new FixtureSummary(cohortSize, backlog, measurementBatchSize, measurementFixedDelayMs);
 	}
 
 	public DrainSummary drain() {
@@ -103,7 +112,7 @@ public class SubscriptionBurstMeasurementService {
 				throw new IllegalStateException("Synthetic due backlog is unavailable");
 			}
 			assertWorkloadMarkerContract(initialBacklog);
-			int expectedTicks = (initialBacklog + DEFAULT_BATCH_SIZE - 1) / DEFAULT_BATCH_SIZE;
+			int expectedTicks = (initialBacklog + measurementBatchSize - 1) / measurementBatchSize;
 			int safetyLimit = expectedTicks + 2;
 			List<BatchMeasurement> batches = new ArrayList<>();
 			int processed = 0;
@@ -115,7 +124,7 @@ public class SubscriptionBurstMeasurementService {
 			for (int sequence = 1; sequence <= safetyLimit; sequence++) {
 				long batchStart = System.nanoTime();
 				SubscriptionOrderAutomationService.BatchResult result =
-						automation.processDueSchedules(DEFAULT_BATCH_SIZE);
+						automation.processDueSchedules(measurementBatchSize);
 				double durationMs = elapsedMilliseconds(batchStart);
 				batches.add(new BatchMeasurement(
 						sequence,
@@ -140,7 +149,7 @@ public class SubscriptionBurstMeasurementService {
 			List<Double> durations = batches.stream().map(BatchMeasurement::durationMs).sorted().toList();
 			double ordersPerSecond = rawDrainElapsedMs > 0 ? created / (rawDrainElapsedMs / 1_000.0) : 0;
 			long projectedCompletionMs = Math.round(rawDrainElapsedMs)
-					+ Math.max(0, expectedTicks - 1) * DEFAULT_FIXED_DELAY_MS;
+					+ Math.max(0, expectedTicks - 1) * measurementFixedDelayMs;
 			boolean harnessFailure = finalBacklog != 0
 					|| created != initialBacklog
 					|| failures != 0
@@ -161,11 +170,12 @@ public class SubscriptionBurstMeasurementService {
 					percentile(durations, 0.50),
 					percentile(durations, 0.95),
 					durations.isEmpty() ? 0 : durations.getLast(),
-					DEFAULT_BATCH_SIZE,
-					DEFAULT_FIXED_DELAY_MS,
+					measurementBatchSize,
+					measurementFixedDelayMs,
 					expectedTicks,
 					projectedCompletionMs,
-					"projection: observed raw drain duration plus 60000ms fixed delay between default scheduler ticks",
+					"projection: observed raw drain duration plus " + measurementFixedDelayMs
+							+ "ms fixed delay between configured scheduler ticks",
 					orderCount,
 					duplicateScheduleOrders,
 					futureSchedules,

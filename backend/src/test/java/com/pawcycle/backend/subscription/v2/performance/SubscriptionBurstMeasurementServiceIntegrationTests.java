@@ -15,7 +15,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {
 		"pawcycle.subscription-burst-measurement.workload-start-marker-path=${java.io.tmpdir}/pawcycle-perf-ph10-002-test-workload-started.json",
-		"pawcycle.subscription-burst-measurement.run-armed=true"
+		"pawcycle.subscription-burst-measurement.run-armed=true",
+		"pawcycle.subscription-burst-measurement.batch-size=500",
+		"pawcycle.subscription-burst-measurement.fixed-delay-ms=15000"
 })
 @ActiveProfiles({"test", "subscription-burst-measurement"})
 class SubscriptionBurstMeasurementServiceIntegrationTests {
@@ -45,6 +47,8 @@ class SubscriptionBurstMeasurementServiceIntegrationTests {
 
 		assertThat(fixture.cohortSize()).isEqualTo(2);
 		assertThat(fixture.initialBacklog()).isEqualTo(2);
+		assertThat(fixture.batchSize()).isEqualTo(500);
+		assertThat(fixture.fixedDelayMs()).isEqualTo(15_000);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*)
 				FROM subscriptions subscription
@@ -72,6 +76,8 @@ class SubscriptionBurstMeasurementServiceIntegrationTests {
 		assertThat(result.duplicateScheduleOrderCount()).isZero();
 		assertThat(result.futureScheduleCount()).isEqualTo(2);
 		assertThat(result.harnessFailure()).isFalse();
+		assertThat(result.defaultSchedulerBatchSize()).isEqualTo(500);
+		assertThat(result.defaultSchedulerFixedDelayMs()).isEqualTo(15_000);
 		assertThat(result.defaultSchedulerProjectedTicks()).isEqualTo(1);
 	}
 
