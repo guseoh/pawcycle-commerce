@@ -13,17 +13,10 @@ type LoadState =
   | { status: "error"; message: string };
 
 function ProductsContent() {
-  const router = useRouter(); const searchParams = useSearchParams();
+  const searchParams = useSearchParams();
   const q = searchParams.get("q") ?? ""; const petType = searchParams.get("petType") ?? ""; const category = searchParams.get("category") ?? "";
-  const [draftQ, setDraftQ] = useState(q); const [draftPetType, setDraftPetType] = useState(petType); const [draftCategory, setDraftCategory] = useState(category);
   const [retryKey, setRetryKey] = useState(0);
   const [state, setState] = useState<LoadState>({ status: "loading" });
-
-  useEffect(() => {
-    setDraftQ(q);
-    setDraftPetType(petType);
-    setDraftCategory(category);
-  }, [q, petType, category]);
 
   useEffect(() => {
     let active = true;
@@ -47,8 +40,6 @@ function ProductsContent() {
     };
   }, [retryKey, q, petType, category]);
 
-  function applyFilters(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const next = new URLSearchParams(); if (draftQ.trim()) next.set("q", draftQ.trim()); if (draftPetType) next.set("petType", draftPetType); if (draftCategory.trim()) next.set("category", draftCategory.trim()); router.push(`/products${next.size ? `?${next}` : ""}`); }
-
   return (
     <>
       <header className="page-heading">
@@ -60,12 +51,7 @@ function ProductsContent() {
         </p>
       </header>
 
-      <form className="section-card" onSubmit={applyFilters}>
-        <label className="form-field">검색어<input className="input" value={draftQ} onChange={(event) => setDraftQ(event.target.value)} /></label>
-        <label className="form-field">반려동물 타입<select className="input" value={draftPetType} onChange={(event) => setDraftPetType(event.target.value)}><option value="">전체</option><option value="DOG">강아지</option><option value="CAT">고양이</option></select></label>
-        <label className="form-field">카테고리 slug<input className="input" value={draftCategory} onChange={(event) => setDraftCategory(event.target.value)} /></label>
-        <div className="button-row"><button className="button button-primary" type="submit">검색</button><button className="button button-secondary" type="button" onClick={() => { setDraftQ(""); setDraftPetType(""); setDraftCategory(""); router.push("/products"); }}>초기화</button></div>
-      </form>
+      <ProductFilters key={`${q}\u0000${petType}\u0000${category}`} q={q} petType={petType} category={category} />
 
       {state.status === "loading" ? (
         <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState>
@@ -137,6 +123,20 @@ function ProductsContent() {
       ) : null}
     </>
   );
+}
+
+function ProductFilters({ q, petType, category }: { q: string; petType: string; category: string }) {
+  const router = useRouter();
+  const [draftQ, setDraftQ] = useState(q);
+  const [draftPetType, setDraftPetType] = useState(petType);
+  const [draftCategory, setDraftCategory] = useState(category);
+  function applyFilters(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const next = new URLSearchParams(); if (draftQ.trim()) next.set("q", draftQ.trim()); if (draftPetType) next.set("petType", draftPetType); if (draftCategory.trim()) next.set("category", draftCategory.trim()); router.push(`/products${next.size ? `?${next}` : ""}`); }
+  return <form className="section-card" onSubmit={applyFilters}>
+    <label className="form-field">검색어<input className="input" value={draftQ} onChange={(event) => setDraftQ(event.target.value)} /></label>
+    <label className="form-field">반려동물 타입<select className="input" value={draftPetType} onChange={(event) => setDraftPetType(event.target.value)}><option value="">전체</option><option value="DOG">강아지</option><option value="CAT">고양이</option></select></label>
+    <label className="form-field">카테고리 slug<input className="input" value={draftCategory} onChange={(event) => setDraftCategory(event.target.value)} /></label>
+    <div className="button-row"><button className="button button-primary" type="submit">검색</button><button className="button button-secondary" type="button" onClick={() => router.push("/products")}>초기화</button></div>
+  </form>;
 }
 
 export default function ProductsPage() {
