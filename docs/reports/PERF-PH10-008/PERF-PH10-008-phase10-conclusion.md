@@ -1,5 +1,9 @@
 # PERF-PH10-008 Phase 10 Conclusion
 
+## 목적
+
+Phase 10 Read Scale와 Subscription Burst의 authoritative evidence를 연결해 기술 선택과 Phase 11 residual limit를 확정한다.
+
 ## Evidence boundary
 
 This note connects the completed Phase 10 synthetic/local decision evidence. It does not report a Production capacity limit, customer count, Production traffic result, SLA, or SLO. No workload was rerun for this conclusion.
@@ -50,6 +54,10 @@ The residual limit after Phase 10 is the scale and failure domain beyond a singl
 - horizontal scaling Before/After
 
 These Phase 10 results do not establish that multi-instance, Load Balancing, ECS, or EKS is required.
+
+## 위험·제한
+
+This conclusion is limited to the documented synthetic/local evidence. It neither validates Production capacity nor removes the need for separate Phase 11 evidence before selecting single-instance scaling, multi-instance, or failure-isolation technology.
 
 ## Future candidates
 
