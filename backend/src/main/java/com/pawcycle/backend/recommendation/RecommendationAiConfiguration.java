@@ -2,6 +2,9 @@ package com.pawcycle.backend.recommendation;
 
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -11,8 +14,17 @@ import org.springframework.context.annotation.Configuration;
 class RecommendationAiConfiguration {
 	@Bean
 	@ConditionalOnProperty(prefix = "pawcycle.recommendation.ai", name = "enabled", havingValue = "true")
-	RecommendationAiClient openAiRecommendationClient(ChatClient.Builder chatClientBuilder, RecommendationMetrics metrics) {
-		ChatClient chatClient = chatClientBuilder.build();
+	RecommendationAiClient openAiRecommendationClient(
+			@Value("${spring.ai.openai.api-key:}") String apiKey,
+			@Value("${pawcycle.recommendation.ai.model:}") String model,
+			RecommendationMetrics metrics) {
+		if (apiKey == null || apiKey.isBlank() || model == null || model.isBlank()) {
+			throw new IllegalStateException("Recommendation AI requires an external API key and model when enabled");
+		}
+		OpenAiChatModel chatModel = OpenAiChatModel.builder()
+				.options(OpenAiChatOptions.builder().apiKey(apiKey).model(model).build())
+				.build();
+		ChatClient chatClient = ChatClient.builder(chatModel).build();
 		return (candidates, categories) -> metrics.recordAiCall(() -> {
 			AiRecommendationResponse response = chatClient.prompt()
 					.system("""
@@ -39,7 +51,7 @@ class RecommendationAiConfiguration {
 				.map(candidate -> "productId=" + candidate.productId()
 						+ ", name=" + candidate.name()
 						+ ", shortDescription=" + candidate.shortDescription()
-						+ ", category=" + (candidate.category() == null ? "" : candidate.category().slug()))
+						+ ", category=" + candidate.category().slug())
 				.collect(java.util.stream.Collectors.joining("\n"));
 		return "선호 카테고리 순서: " + String.join(", ", categories)
 				+ "\n후보 상품:\n" + products

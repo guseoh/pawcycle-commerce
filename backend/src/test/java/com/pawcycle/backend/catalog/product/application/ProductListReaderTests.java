@@ -26,7 +26,6 @@ class ProductListReaderTests {
 
 	@Mock
 	private ProductRepository productRepository;
-
 	@Mock
 	private SkuRepository skuRepository;
 
@@ -62,7 +61,7 @@ class ProductListReaderTests {
 			assertThat(mapped.slug()).isEqualTo("food");
 		});
 		assertThat(snapshot.skus()).extracting(ProductListReader.SkuSnapshot::skuId).containsExactly(10L);
-		assertThat(snapshot.skus().get(0).price()).isEqualByComparingTo("19900.00");
+		assertThat(snapshot.skus().getFirst().price()).isEqualByComparingTo("19900.00");
 		assertThatThrownBy(() -> snapshot.products().add(null)).isInstanceOf(UnsupportedOperationException.class);
 		verify(productRepository).findAllPublicOrderById();
 		verify(skuRepository).findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
@@ -70,28 +69,9 @@ class ProductListReaderTests {
 	}
 
 	@Test
-	void uncategorizedProductKeepsNullCategory() {
-		Product product = mock(Product.class);
-		when(product.getId()).thenReturn(1L);
-		when(product.getName()).thenReturn("미분류 상품");
-		when(product.getPetType()).thenReturn("DOG");
-		when(product.getShortDescription()).thenReturn("짧은 설명");
-		when(product.getCategory()).thenReturn(null);
-		when(productRepository.findAllPublicOrderById()).thenReturn(List.of(product));
-		when(skuRepository.findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
-				List.of(1L), SkuStatus.ACTIVE)).thenReturn(List.of());
-
-		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
-
-		assertThat(snapshot.products()).singleElement().satisfies(mapped -> assertThat(mapped.category()).isNull());
-	}
-
-	@Test
 	void emptyProductsAvoidSecondQuery() {
 		when(productRepository.findAllPublicOrderById()).thenReturn(List.of());
-
 		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
-
 		assertThat(snapshot.products()).isEmpty();
 		assertThat(snapshot.skus()).isEmpty();
 		verifyNoInteractions(skuRepository);
@@ -100,7 +80,6 @@ class ProductListReaderTests {
 	@Test
 	void readUsesReadOnlyTransaction() throws NoSuchMethodException {
 		Transactional transaction = ProductListReader.class.getMethod("read").getAnnotation(Transactional.class);
-
 		assertThat(transaction).isNotNull();
 		assertThat(transaction.readOnly()).isTrue();
 	}

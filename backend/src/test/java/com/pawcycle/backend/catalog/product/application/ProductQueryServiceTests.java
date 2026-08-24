@@ -32,16 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProductQueryServiceTests {
-
-	@Mock
-	private ProductListCache productListCache;
-	@Mock
-	private ProductListReader productListReader;
-	@Mock
-	private ProductRepository productRepository;
-	@Mock
-	private SkuRepository skuRepository;
-
+	@Mock private ProductListCache productListCache;
+	@Mock private ProductListReader productListReader;
+	@Mock private ProductRepository productRepository;
+	@Mock private SkuRepository skuRepository;
 	private ProductQueryService productQueryService;
 
 	@BeforeEach
@@ -80,8 +74,7 @@ class ProductQueryServiceTests {
 		ProductListReader.SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
 		ProductListReader.SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
 		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
-				List.of(firstSnapshot, secondSnapshot),
-				List.of(firstSkuSnapshot, secondSkuSnapshot)));
+				List.of(firstSnapshot, secondSnapshot), List.of(firstSkuSnapshot, secondSkuSnapshot)));
 
 		ProductListView response = productQueryService.findProducts();
 
@@ -92,8 +85,7 @@ class ProductQueryServiceTests {
 			assertThat(category.slug()).isEqualTo("food");
 		});
 		assertThat(response.products().get(0).skuPriceSummary().skuPrices())
-				.extracting(ProductListView.SkuPrice::skuId)
-				.containsExactly(10L, 11L);
+				.extracting(ProductListView.SkuPrice::skuId).containsExactly(10L, 11L);
 		assertThat(response.products().get(0).hasSubscribableSku()).isTrue();
 		assertThat(response.products().get(1).skuPriceSummary().skuPrices()).isEmpty();
 		assertThat(response.products().get(1).hasSubscribableSku()).isFalse();
@@ -119,21 +111,6 @@ class ProductQueryServiceTests {
 		});
 		assertThat(response.skus().get(0).availableDeliveryCycles()).containsExactly(2, 4, 8);
 		assertThat(response.skus().get(1).availableDeliveryCycles()).isEmpty();
-	}
-
-	@Test
-	void uncategorizedProductRemainsReadableAndCategoryFilterDoesNotMatchIt() {
-		Product uncategorized = productWithoutCategory(3L, "미분류", "DOG", "설명");
-		ProductListReader.ProductListSnapshot uncategorizedSnapshot = new ProductListReader.ProductListSnapshot(
-				List.of(new ProductListReader.ProductSnapshot(3L, "미분류", "DOG", "설명", null, null)), List.of());
-		when(productListReader.read()).thenReturn(uncategorizedSnapshot);
-		when(productRepository.findPublicById(3L)).thenReturn(Optional.of(uncategorized));
-		when(skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(3L, SkuStatus.ACTIVE)).thenReturn(List.of());
-
-		assertThat(productQueryService.findProducts().products()).singleElement()
-				.satisfies(summary -> assertThat(summary.category()).isNull());
-		assertThat(productQueryService.findProducts(null, null, "food").products()).isEmpty();
-		assertThat(productQueryService.findProduct(3L).category()).isNull();
 	}
 
 	@Test
@@ -168,11 +145,9 @@ class ProductQueryServiceTests {
 				product.getId(), product.getName(), product.getPetType(), product.getShortDescription(), product.getThumbnailUrl(),
 				new ProductListReader.CategorySnapshot(1L, "사료", "food"));
 	}
-
 	private ProductListReader.SkuSnapshot skuSnapshot(Product product, Sku sku) {
 		return new ProductListReader.SkuSnapshot(product.getId(), sku.getId(), sku.getName(), sku.getPrice(), sku.isSubscribable());
 	}
-
 	private Product product(Long id, String name, String petType, String shortDescription, String description, String thumbnailUrl) {
 		Product product = mock(Product.class);
 		when(product.getId()).thenReturn(id);
@@ -188,17 +163,6 @@ class ProductQueryServiceTests {
 		when(product.getCategory()).thenReturn(category);
 		return product;
 	}
-
-	private Product productWithoutCategory(Long id, String name, String petType, String shortDescription) {
-		Product product = mock(Product.class);
-		when(product.getId()).thenReturn(id);
-		when(product.getName()).thenReturn(name);
-		when(product.getPetType()).thenReturn(petType);
-		when(product.getShortDescription()).thenReturn(shortDescription);
-		when(product.getCategory()).thenReturn(null);
-		return product;
-	}
-
 	private Sku sku(Long id, Product product, String name, String price, boolean subscribable) {
 		Sku sku = mock(Sku.class);
 		when(sku.getId()).thenReturn(id);

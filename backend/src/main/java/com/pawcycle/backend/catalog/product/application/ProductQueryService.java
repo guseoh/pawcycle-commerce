@@ -1,15 +1,15 @@
 package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailView.SkuDetail;
-import com.pawcycle.backend.catalog.product.application.ProductListView.CategorySummary;
 import com.pawcycle.backend.catalog.product.application.ProductListView.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPriceSummary;
+import com.pawcycle.backend.catalog.product.application.ProductListView.CategorySummary;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +81,8 @@ public class ProductQueryService {
 					product.getPetType(),
 					product.getDescription(),
 					product.getThumbnailUrl(),
-					toDetailCategory(product),
+					new ProductDetailView.CategorySummary(
+							product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug()),
 					skus.stream().map(this::toDetail).toList());
 		} catch (ProductNotFoundException exception) {
 			throw exception;
@@ -112,27 +113,15 @@ public class ProductQueryService {
 				product.petType(),
 				product.shortDescription(),
 				product.thumbnailUrl(),
-				toListCategory(product.category()),
+				new CategorySummary(product.category().categoryId(), product.category().name(), product.category().slug()),
 				new SkuPriceSummary(prices),
 				skus.stream().anyMatch(ProductListReader.SkuSnapshot::subscribable));
-	}
-
-	private ProductDetailView.CategorySummary toDetailCategory(Product product) {
-		if (product.getCategory() == null) return null;
-		return new ProductDetailView.CategorySummary(
-				product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug());
-	}
-
-	private CategorySummary toListCategory(ProductListReader.CategorySnapshot category) {
-		if (category == null) return null;
-		return new CategorySummary(category.categoryId(), category.name(), category.slug());
 	}
 
 	private boolean matches(ProductSummary product, String q, String petType, String category) {
 		return matchesQuery(product, q)
 				&& (petType == null || petType.isBlank() || product.petType().equalsIgnoreCase(petType.trim()))
-				&& (category == null || category.isBlank()
-						|| (product.category() != null && product.category().slug().equalsIgnoreCase(category.trim())));
+				&& (category == null || category.isBlank() || product.category().slug().equalsIgnoreCase(category.trim()));
 	}
 
 	private boolean matchesQuery(ProductSummary product, String q) {

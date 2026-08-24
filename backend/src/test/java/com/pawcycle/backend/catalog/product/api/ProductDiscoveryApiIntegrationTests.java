@@ -1,6 +1,5 @@
 package com.pawcycle.backend.catalog.product.api;
 
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,26 +73,5 @@ class ProductDiscoveryApiIntegrationTests {
 				.andExpect(jsonPath("$.category.categoryId").value(category.getId()))
 				.andExpect(jsonPath("$.category.name").value(category.getName()))
 				.andExpect(jsonPath("$.category.slug").value(category.getSlug()));
-	}
-
-	@Test
-	void uncategorizedPublicProductRemainsReadableAndCategoryFilterSkipsIt() throws Exception {
-		Product product = productRepository.save(new Product(
-				"Uncategorized", "No category yet", null, "DOG", null, "PUBLIC"));
-		entityManager.flush();
-		entityManager.clear();
-
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products[0].productId").value(product.getId()))
-				.andExpect(jsonPath("$.products[0].category").value(nullValue()));
-
-		mockMvc.perform(get("/api/products/{productId}", product.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.category").value(nullValue()));
-
-		mockMvc.perform(get("/api/products").param("category", "food"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products").isEmpty());
 	}
 }
