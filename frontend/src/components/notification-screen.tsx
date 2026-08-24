@@ -46,12 +46,12 @@ export function NotificationScreen() {
   if (!items && !message) return <LoadingState>알림을 불러오고 있습니다.</LoadingState>;
   if (!items) return <ErrorState title="알림을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()} />;
 
-  return <section className="section-card">
-    <h1>알림</h1>
+  return <section className="section-card notification-panel">
+    <div className="section-title"><div><p className="eyebrow">Notifications</p><h1>알림</h1></div></div>
     {message ? <p role="alert">{message}</p> : null}
     <button className="button button-secondary" disabled={pending !== null} onClick={() => void readAll()}>모두 읽음</button>
     {items.length === 0 ? <p>새 알림이 없습니다.</p> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}>
-      <strong>{item.type}</strong><span>{item.readAt ? "읽음" : "읽지 않음"}</span>
+      <strong>{item.type}</strong><span className={item.readAt ? "status-badge" : "status-badge tag-positive"}>{item.readAt ? "읽음" : "새 알림"}</span>
       {!item.readAt ? <button className="button button-secondary" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : null}
     </li>)}</ul>}
   </section>;

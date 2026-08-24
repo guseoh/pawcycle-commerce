@@ -52,7 +52,7 @@ export function AppHeader() {
           <Link className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
           <Link className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
           <Link className={pathname.startsWith("/notifications") ? "nav-active" : undefined} href="/notifications">알림</Link>
-          {status === "authenticated" ? <><Link className={pathname === "/wishlist" ? "nav-utility" : undefined} href="/wishlist">찜</Link><Link className={pathname === "/cart" ? "nav-utility" : undefined} href="/cart">장바구니</Link><Link className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
+          {status === "authenticated" ? <><Link className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜</Link><Link className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니</Link><Link className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
           {status === "loading" ? (
             <span className="nav-status" role="status">회원 정보 확인 중</span>
           ) : status === "authenticated" ? (
