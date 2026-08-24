@@ -37,7 +37,7 @@ PERF-PH10-003은 workload 실행 여부와 durable evidence 존재 여부를 다
 
 marker가 있는데 candidate가 없으면 `CONSUMED_SUMMARY_MISSING`이며 재실행 근거가 아니다. 이 first-result는 Issue #206의 권위 사실로 이미 소비된 상태를 harness에 고정하므로, 새 PC에서 host-local marker가 보이지 않아도 `-RunBeforeFirstResult`는 항상 fail-close한다. 기존 `RunBeforeFirstResult`의 marker-before-workload 경계는 변경하지 않는다.
 
-full summary와 marker를 확보한 경우에만 다음 non-workload 경로로 `docs/reports/PERF-PH10-003/evidence-candidates/` 아래 redacted candidate를 생성할 수 있다. 이 명령은 workload, commit, push를 실행하지 않으며 기존 파일을 덮어쓰지 않는다. source SHA가 저장소 commit인지, workload identity와 cohort·batch/fixed-delay 계약이 일치하는지, marker와 summary의 시작 시각 및 완료 시각이 일관적인지, 필요한 driver/runtime/Hikari/MySQL aggregate가 있는지 확인한 뒤 whitelist projection만 기록한다. 원시 row·식별자·주소·결제·credential·driver stdout/stderr 또는 privacy denylist field가 원본에 있으면 promotion을 거부한다.
+full summary와 marker를 확보한 경우에만 다음 non-workload 경로로 `docs/reports/PERF-PH10-003/evidence-candidates/` 아래 redacted candidate를 생성할 수 있다. 이 명령은 workload, commit, push를 실행하지 않으며 기존 파일을 덮어쓰지 않는다. schema-valid 여부만으로는 충분하지 않다. historical first-result의 workload identity `phase10-subscription-burst-before-local`, cohort `5,000`, source SHA `3f11a5cc6489d3096d024290008a1b91fabe634c`와 source summary·candidate가 모두 일치해야 한다. 그 다음 source SHA가 저장소 commit인지, batch/fixed-delay 계약, marker와 summary의 시작 시각 및 완료 시각, 필요한 driver/runtime/Hikari/MySQL aggregate를 검증한 뒤 whitelist projection만 기록한다. 원시 row·식별자·주소·결제·credential·driver stdout/stderr 또는 privacy denylist field가 원본에 있으면 promotion을 거부한다.
 
 ```powershell
 pwsh -NoProfile -File infra/performance/phase10/run-subscription-burst-before.ps1 -InspectEvidenceState

@@ -27,7 +27,12 @@ $MarkerDir = Join-Path $TempRoot 'pawcycle-phase10-subscription-burst-before-mar
 $FirstResultMarker = Join-Path $MarkerDir 'workload-started.json'
 $SummaryPath = Join-Path $ResultsDir 'subscription-burst-before-summary.json'
 $DurableEvidenceDir = Join-Path $RepoRoot 'docs\reports\PERF-PH10-003\evidence-candidates'
-$WorkloadIdentity = 'phase10-subscription-burst-before-local'
+$HistoricalFirstResultContract = [ordered]@{
+    workloadIdentity = 'phase10-subscription-burst-before-local'
+    cohort = 5000
+    sourceSha = '3f11a5cc6489d3096d024290008a1b91fabe634c'
+}
+$WorkloadIdentity = [string]$HistoricalFirstResultContract.workloadIdentity
 $FirstResultAuthoritativelyConsumed = $true
 $EvidenceSourceSummaryPath = if ([string]::IsNullOrWhiteSpace($EvidenceSourceSummaryPath)) { $SummaryPath } else { [IO.Path]::GetFullPath($EvidenceSourceSummaryPath) }
 $EvidenceMarkerPath = if ([string]::IsNullOrWhiteSpace($EvidenceMarkerPath)) { $FirstResultMarker } else { [IO.Path]::GetFullPath($EvidenceMarkerPath) }
@@ -287,10 +292,23 @@ function Write-Json([string]$Path, [object]$Value) {
 }
 
 function Get-RequiredProperty([object]$Value, [string]$Name, [string]$Context) {
-    if ($null -eq $Value -or $null -eq $Value.PSObject.Properties[$Name] -or $null -eq $Value.$Name) {
+    if ($null -eq $Value) {
         throw "$Context is missing required field: $Name."
     }
+    if ($Value -is [System.Collections.IDictionary]) {
+        if (-not $Value.Contains($Name) -or $null -eq $Value[$Name]) { throw "$Context is missing required field: $Name." }
+        return $Value[$Name]
+    }
+    if ($null -eq $Value.PSObject.Properties[$Name] -or $null -eq $Value.$Name) { throw "$Context is missing required field: $Name." }
     return $Value.$Name
+}
+
+function Assert-AuthoritativeEvidenceIdentity([string]$Identity, [int]$Cohort, [string]$SourceSha, [object]$AuthoritativeContract, [string]$Context) {
+    if ($Identity -ne [string](Get-RequiredProperty $AuthoritativeContract 'workloadIdentity' 'Authoritative first-result contract') -or
+            $Cohort -ne [int](Get-RequiredProperty $AuthoritativeContract 'cohort' 'Authoritative first-result contract') -or
+            -not $SourceSha.Equals([string](Get-RequiredProperty $AuthoritativeContract 'sourceSha' 'Authoritative first-result contract'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Context does not match the authoritative historical first-result identity."
+    }
 }
 
 function Assert-SourceSummaryPrivacy([object]$Summary) {
@@ -324,7 +342,7 @@ function Select-Aggregate([object]$Value, [string[]]$Names, [string]$Context) {
     return $projection
 }
 
-function New-DurableEvidenceProjection([object]$Summary, [object]$Marker) {
+function New-DurableEvidenceProjection([object]$Summary, [object]$Marker, [object]$AuthoritativeContract = $HistoricalFirstResultContract) {
     Assert-SourceSummaryPrivacy $Summary
     $sourceCommit = [string](Get-RequiredProperty $Summary 'sourceCommit' 'Source summary')
     if ($sourceCommit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Source summary SHA is malformed.' }
@@ -333,7 +351,6 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker) {
     if ($LASTEXITCODE -ne 0) { throw 'Source summary SHA is not available as a repository commit.' }
 
     $identity = [string](Get-RequiredProperty $Summary 'diagnostic' 'Source summary')
-    if ($identity -ne $WorkloadIdentity) { throw 'Source summary workload identity is invalid.' }
     if ((Get-RequiredProperty $Summary 'actualPerformanceWorkload' 'Source summary') -ne $true -or
             (Get-RequiredProperty $Summary 'workloadInvocationStarted' 'Source summary') -ne $true) {
         throw 'Source summary does not record a consumed performance workload.'
@@ -341,6 +358,7 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker) {
 
     $cohort = [int](Get-RequiredProperty $Summary 'syntheticCohortSize' 'Source summary')
     if ($cohort -notin @(100, 500, 1000, 2500, 5000, 10000)) { throw 'Source summary cohort is outside the approved contract.' }
+    Assert-AuthoritativeEvidenceIdentity $identity $cohort $sourceCommit $AuthoritativeContract 'Source summary'
     $driver = Get-RequiredProperty $Summary 'driver' 'Source summary'
     if ([int](Get-RequiredProperty $driver 'initialBacklog' 'Driver aggregate') -ne $cohort) { throw 'Source summary cohort does not match the driver initial backlog.' }
     $batchSize = [int](Get-RequiredProperty $Summary 'batchSize' 'Source summary')
@@ -406,27 +424,27 @@ function Write-DurableEvidenceCandidate([object]$Projection, [string]$Directory)
     return $path
 }
 
-function Export-DurableEvidence([string]$SourceSummaryPath, [string]$MarkerPath, [string]$DestinationDirectory) {
+function Export-DurableEvidence([string]$SourceSummaryPath, [string]$MarkerPath, [string]$DestinationDirectory, [object]$AuthoritativeContract = $HistoricalFirstResultContract) {
     Assert-SafeHostTempPath $SourceSummaryPath 'Evidence source summary'
     Assert-SafeHostTempPath $MarkerPath 'Evidence marker'
     if (-not (Test-Path -LiteralPath $SourceSummaryPath -PathType Leaf)) { throw 'Evidence source summary is unavailable.' }
     $marker = Get-ValidatedMarker $MarkerPath
     $summary = Get-Content -Raw -LiteralPath $SourceSummaryPath | ConvertFrom-Json
-    return Write-DurableEvidenceCandidate (New-DurableEvidenceProjection $summary $marker) $DestinationDirectory
+    return Write-DurableEvidenceCandidate (New-DurableEvidenceProjection $summary $marker $AuthoritativeContract) $DestinationDirectory
 }
 
-function Test-DurableEvidenceCandidate([string]$Path) {
+function Test-DurableEvidenceCandidate([string]$Path, [object]$AuthoritativeContract = $HistoricalFirstResultContract) {
     try {
         $candidate = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
         Assert-SourceSummaryPrivacy $candidate
-        if ((Get-RequiredProperty $candidate 'evidenceSchema' 'Durable evidence') -ne 'pawcycle.subscription-burst.redacted.v1' -or
-                (Get-RequiredProperty $candidate 'workloadIdentity' 'Durable evidence') -ne $WorkloadIdentity) { return $false }
+        if ((Get-RequiredProperty $candidate 'evidenceSchema' 'Durable evidence') -ne 'pawcycle.subscription-burst.redacted.v1') { return $false }
         $sourceSha = [string](Get-RequiredProperty $candidate 'sourceSha' 'Durable evidence')
         if ($sourceSha -notmatch '^[0-9a-f]{40}$') { return $false }
         git -C $RepoRoot cat-file -e "$sourceSha`^{commit}" 2>$null
         if ($LASTEXITCODE -ne 0) { return $false }
         $cohort = [int](Get-RequiredProperty $candidate 'cohort' 'Durable evidence')
         if ($cohort -notin @(100, 500, 1000, 2500, 5000, 10000)) { return $false }
+        Assert-AuthoritativeEvidenceIdentity ([string](Get-RequiredProperty $candidate 'workloadIdentity' 'Durable evidence')) $cohort $sourceSha $AuthoritativeContract 'Durable evidence'
         $contract = Get-RequiredProperty $candidate 'contract' 'Durable evidence'
         if ([int](Get-RequiredProperty $contract 'batchSize' 'Durable evidence contract') -ne $DefaultBatchSize -or
                 [long](Get-RequiredProperty $contract 'fixedDelayMs' 'Durable evidence contract') -ne $DefaultFixedDelayMs) { return $false }
@@ -452,9 +470,9 @@ function Test-DurableEvidenceCandidate([string]$Path) {
     }
 }
 
-function Get-EvidenceState([string]$MarkerPath, [string]$DurableDirectory, [bool]$AuthoritativelyConsumed) {
+function Get-EvidenceState([string]$MarkerPath, [string]$DurableDirectory, [bool]$AuthoritativelyConsumed, [object]$AuthoritativeContract = $HistoricalFirstResultContract) {
     $candidates = if (Test-Path -LiteralPath $DurableDirectory -PathType Container) { @(Get-ChildItem -LiteralPath $DurableDirectory -Filter 'subscription-burst-before-*.json' -File) } else { @() }
-    if (@($candidates | Where-Object { Test-DurableEvidenceCandidate $_.FullName }).Count -gt 0) { return 'CONSUMED_SUMMARY_AVAILABLE' }
+    if (@($candidates | Where-Object { Test-DurableEvidenceCandidate $_.FullName $AuthoritativeContract }).Count -gt 0) { return 'CONSUMED_SUMMARY_AVAILABLE' }
     if ($AuthoritativelyConsumed -or (Test-Path -LiteralPath $MarkerPath -PathType Leaf)) {
         if (Test-Path -LiteralPath $MarkerPath -PathType Leaf) { $null = Get-ValidatedMarker $MarkerPath }
         return 'CONSUMED_SUMMARY_MISSING'
@@ -481,6 +499,11 @@ function Write-MinimalRedactedFailureArtifact([string]$Path, [object]$Summary) {
 }
 
 function Validate-SyntheticContracts {
+    if ($HistoricalFirstResultContract.workloadIdentity -ne 'phase10-subscription-burst-before-local' -or
+            $HistoricalFirstResultContract.cohort -ne 5000 -or
+            $HistoricalFirstResultContract.sourceSha -ne '3f11a5cc6489d3096d024290008a1b91fabe634c') {
+        throw 'Historical first-result authoritative identity contract is invalid.'
+    }
     foreach ($value in @(100, 500, 1000, 2500, 5000, 10000)) {
         if ($value -lt 1 -or $value -gt 10000) { throw 'Approved synthetic cohort contract is invalid.' }
     }
@@ -535,18 +558,23 @@ function Validate-SyntheticContracts {
 
         $sourceCommit = (git -C $RepoRoot rev-parse HEAD)
         if ($LASTEXITCODE -ne 0) { throw 'Synthetic source commit could not be resolved.' }
+        $syntheticAuthoritativeContract = [ordered]@{
+            workloadIdentity = $WorkloadIdentity
+            cohort = 5000
+            sourceSha = [string]$sourceCommit
+        }
         $safeSummary = [ordered]@{
             diagnostic = $WorkloadIdentity
             sourceCommit = [string]$sourceCommit
-            syntheticCohortSize = 100
+            syntheticCohortSize = [int]$syntheticAuthoritativeContract.cohort
             batchSize = 100
             fixedDelayMs = 60000
             actualPerformanceWorkload = $true
             workloadInvocationStarted = $true
             workloadStartedAtUtc = '2026-01-01T00:00:00Z'
             driver = [ordered]@{
-                initialBacklog = 100; finalBacklog = 0; processed = 100; created = 100; failures = 0; duplicateOrNoOp = 0
-                rawDrainElapsedMs = 1; ordersPerSecond = 100; batchCount = 1
+                initialBacklog = [int]$syntheticAuthoritativeContract.cohort; finalBacklog = 0; processed = [int]$syntheticAuthoritativeContract.cohort; created = [int]$syntheticAuthoritativeContract.cohort; failures = 0; duplicateOrNoOp = 0
+                rawDrainElapsedMs = 1; ordersPerSecond = [int]$syntheticAuthoritativeContract.cohort; batchCount = 1
                 batchDurationP50Ms = 1; batchDurationP95Ms = 1; batchDurationMaxMs = 1
                 defaultSchedulerBatchSize = 100; defaultSchedulerFixedDelayMs = 60000
                 defaultSchedulerProjectedTicks = 1; defaultSchedulerProjectedCompletionMs = 1
@@ -558,7 +586,7 @@ function Validate-SyntheticContracts {
                 hikariAcquireCount = 0; hikariAcquireSeconds = 0; hikariUsageCount = 0; hikariUsageSeconds = 0
             }
             automationAndRuntimeDelta = [ordered]@{
-                automationExecutions = 1; automationProcessed = 100; automationCreated = 100; automationFailures = 0
+                automationExecutions = 1; automationProcessed = [int]$syntheticAuthoritativeContract.cohort; automationCreated = [int]$syntheticAuthoritativeContract.cohort; automationFailures = 0
                 automationDuplicateNoOp = 0; automationDurationCount = 1; automationDurationSeconds = 0
                 jvmGcPauseCount = 0; jvmGcPauseSeconds = 0; hikariAcquireCount = 0; hikariAcquireSeconds = 0
                 hikariUsageCount = 0; hikariUsageSeconds = 0
@@ -571,14 +599,52 @@ function Validate-SyntheticContracts {
             driverExitCode = 0
             completedAtUtc = '2026-01-01T00:00:00Z'
         }
+
+        $wrongCohortSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $wrongCohortSummary.syntheticCohortSize = 100
+        $wrongCohortSummary.driver.initialBacklog = 100
+        $wrongCohortSummary.driver.processed = 100
+        $wrongCohortSummary.driver.created = 100
+        $wrongCohortSummary.driver.ordersPerSecond = 100
+        $wrongCohortSummary.automationAndRuntimeDelta.automationProcessed = 100
+        $wrongCohortSummary.automationAndRuntimeDelta.automationCreated = 100
+        $wrongCohortSummary.workloadStartedAtUtc = '2026-01-01T00:01:00Z'
+        $wrongCohortSummary.completedAtUtc = '2026-01-01T00:01:00Z'
+        $wrongCohortSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
+        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:01:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        $wrongCohortRejected = $false
+        try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongCohortRejected = $true }
+        if (-not $wrongCohortRejected) { throw 'Synthetic wrong cohort promotion was not rejected.' }
+        $wrongCohortContract = [ordered]@{ workloadIdentity = $WorkloadIdentity; cohort = 100; sourceSha = [string]$sourceCommit }
+        $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $wrongCohortContract
+        if ((Get-EvidenceState $syntheticMarker $syntheticDurable $false $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_MISSING') {
+            throw 'Synthetic wrong cohort candidate was accepted as available evidence.'
+        }
+
+        $wrongSourceSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $wrongSourceSummary.sourceCommit = [string]$HistoricalFirstResultContract.sourceSha
+        $wrongSourceSummary.workloadStartedAtUtc = '2026-01-01T00:02:00Z'
+        $wrongSourceSummary.completedAtUtc = '2026-01-01T00:02:00Z'
+        $wrongSourceSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
+        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:02:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        $wrongSourceRejected = $false
+        try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongSourceRejected = $true }
+        if (-not $wrongSourceRejected) { throw 'Synthetic wrong source SHA promotion was not rejected.' }
+        $wrongSourceContract = [ordered]@{ workloadIdentity = $WorkloadIdentity; cohort = [int]$syntheticAuthoritativeContract.cohort; sourceSha = [string]$HistoricalFirstResultContract.sourceSha }
+        $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $wrongSourceContract
+        if ((Get-EvidenceState $syntheticMarker $syntheticDurable $false $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_MISSING') {
+            throw 'Synthetic wrong source candidate was accepted as available evidence.'
+        }
+
         $safeSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        $promoted = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable
-        if ((Get-EvidenceState $syntheticMarker $syntheticDurable $false) -ne 'CONSUMED_SUMMARY_AVAILABLE') {
+        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:00:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        $promoted = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract
+        if ((Get-EvidenceState $syntheticMarker $syntheticDurable $false $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_AVAILABLE') {
             throw 'Synthetic CONSUMED_SUMMARY_AVAILABLE evidence state validation failed.'
         }
         $beforeCollision = Get-Content -Raw -LiteralPath $promoted
         $collisionRejected = $false
-        try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable } catch { $collisionRejected = $true }
+        try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $collisionRejected = $true }
         if (-not $collisionRejected -or (Get-Content -Raw -LiteralPath $promoted) -ne $beforeCollision) {
             throw 'Synthetic durable evidence collision protection validation failed.'
         }
@@ -586,7 +652,7 @@ function Validate-SyntheticContracts {
         $unsafeSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
         $unsafeSummary | Add-Member -NotePropertyName customerKey -NotePropertyValue 'must-not-persist'
         $privacyRejected = $false
-        try { $null = New-DurableEvidenceProjection $unsafeSummary (Get-ValidatedMarker $syntheticMarker) } catch { $privacyRejected = $true }
+        try { $null = New-DurableEvidenceProjection $unsafeSummary (Get-ValidatedMarker $syntheticMarker) $syntheticAuthoritativeContract } catch { $privacyRejected = $true }
         if (-not $privacyRejected) { throw 'Synthetic privacy validation did not reject the unsafe summary.' }
     } finally {
         Remove-Item -LiteralPath $syntheticRoot -Recurse -Force -ErrorAction SilentlyContinue
