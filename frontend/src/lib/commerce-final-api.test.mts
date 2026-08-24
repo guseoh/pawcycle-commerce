@@ -68,3 +68,9 @@ test("admin delivery and return operations serialize required bodies", async () 
     globalThis.fetch = original;
   }
 });
+
+test("cart, wishlist, address, checkout and shipping recovery use the Commerce contract", async () => {
+  const original = globalThis.fetch; const requests: Array<{ path:string; method:string; body:string; csrf:string; key:string }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => { const headers=new Headers(init?.headers); requests.push({path:String(input),method:String(init?.method),body:String(init?.body??""),csrf:headers.get("X-CSRF-TOKEN")??"",key:headers.get("Idempotency-Key")??""}); return new Response("{}", {status:200,headers:{"Content-Type":"application/json"}}); }) as typeof fetch;
+  try { const address={name:"집",recipientName:"보호자",recipientPhone:"010",postalCode:"1",addressLine1:"서울",addressLine2:""}; await commerceFinalApi.addCart(5,2,"csrf"); await commerceFinalApi.addWishlist(3,"csrf"); await commerceFinalApi.createAddress(address,"csrf"); await commerceFinalApi.updateSubscriptionShipping(8,address,"csrf"); await commerceFinalApi.checkout(2,"csrf","checkout-key"); assert.deepEqual(requests.map(r=>[r.method,r.path,r.csrf,r.key]), [["POST","/api/cart/items","csrf",""],["POST","/api/wishlist/3","csrf",""],["POST","/api/addresses","csrf",""],["PUT","/api/subscriptions/8/shipping-address","csrf",""],["POST","/api/checkout","csrf","checkout-key"]]); assert.equal(requests[0].body,JSON.stringify({skuId:5,quantity:2})); assert.equal(requests[4].body,JSON.stringify({addressId:2})); } finally { globalThis.fetch=original; }
+});

@@ -195,7 +195,7 @@ export const productApi = {
     requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
 };
 
-export interface RecommendationItem extends Omit<ProductSummary, "skuPriceSummary" | "hasSubscribableSku"> { reason: string }
+export interface RecommendationItem extends Omit<ProductSummary, "petType" | "skuPriceSummary" | "hasSubscribableSku"> { reason: string }
 export const recommendationApi = {
   products: (petId: number) => requestJson<{ products: RecommendationItem[] }>(`/api/recommendations/products?petId=${encodeURIComponent(petId)}`),
 };

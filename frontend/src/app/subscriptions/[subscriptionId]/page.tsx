@@ -13,6 +13,7 @@ export default async function SubscriptionDetailPage({ params, searchParams }: S
       subscriptionId={subscriptionId}
       created={query.created === "1"}
       replayed={query.replayed === "1"}
+      basePath="/subscriptions"
       />
   );
 }

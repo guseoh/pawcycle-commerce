@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
+import { commerceFinalApi } from "@/lib/commerce-final-api";
 import {
   buildLoginHref,
   formatPetType,
@@ -37,6 +38,8 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [errors, setErrors] = useState<SubscriptionDraftErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [commerceMessage, setCommerceMessage] = useState<string | null>(null);
+  const [commerceSubmitting, setCommerceSubmitting] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -160,6 +163,25 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     }
   }
 
+  async function addWishlist() {
+    if (!loadedProduct || commerceSubmitting) return;
+    if (auth.status === "anonymous") { router.push(buildLoginHref(`/products/${loadedProduct.productId}`)); return; }
+    setCommerceSubmitting(true); setCommerceMessage(null);
+    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addWishlist(loadedProduct.productId, csrf)); setCommerceMessage("위시리스트에 담았습니다."); }
+    catch (error) { setCommerceMessage(error instanceof ApiError ? error.message : "위시리스트에 담지 못했습니다."); }
+    finally { setCommerceSubmitting(false); }
+  }
+  async function addCart() {
+    if (!loadedProduct || !selectedSkuId || commerceSubmitting) { setCommerceMessage("먼저 상품 옵션을 선택해 주세요."); return; }
+    if (auth.status === "anonymous") { router.push(buildLoginHref(`/products/${loadedProduct.productId}`)); return; }
+    const parsedQuantity = Number(quantity);
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) { setCommerceMessage("수량을 확인해 주세요."); return; }
+    setCommerceSubmitting(true); setCommerceMessage(null);
+    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSkuId, parsedQuantity, csrf)); setCommerceMessage("장바구니에 담았습니다."); }
+    catch (error) { setCommerceMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했습니다."); }
+    finally { setCommerceSubmitting(false); }
+  }
+
   if (state.status === "loading") {
     return <LoadingState>상품 정보를 불러오고 있습니다.</LoadingState>;
   }
@@ -202,6 +224,8 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
           {product.thumbnailUrl ? (
             <img className="product-thumbnail" src={product.thumbnailUrl} alt="" />
           ) : null}
+          {commerceMessage ? <p role="status" className="field-help">{commerceMessage}</p> : null}
+          <div className="button-row"><button className="button button-secondary" type="button" disabled={commerceSubmitting} onClick={() => void addWishlist()}>위시리스트에 담기</button><button className="button button-primary" type="button" disabled={commerceSubmitting || selectedSkuId === null} onClick={() => void addCart()}>장바구니에 담기</button></div>
         </section>
 
         <form className="section-card" onSubmit={handleSubmit} noValidate>
