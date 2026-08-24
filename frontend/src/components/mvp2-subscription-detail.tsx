@@ -12,8 +12,10 @@ import { buildLoginHref, formatIsoLocalDate, formatPrice } from "@/lib/frontend-
 import { newIdempotencyKey, v2Api, type PlanVersion, type V2SubscriptionDetail } from "@/lib/v2-api";
 
 type Command = "change-plan" | "change-delivery-cycle" | "reschedule-next" | "skip-next" | "pause" | "resume" | "cancel";
+type CommandKey = { key: string; fingerprint: string };
 const LABEL: Record<Command, string> = { "change-plan": "플랜 변경", "change-delivery-cycle": "배송 주기 변경", "reschedule-next": "다음 배송일 변경", "skip-next": "다음 회차 건너뛰기", pause: "일시정지", resume: "재개", cancel: "해지" };
 const EMPTY_ADDRESS: AddressRequest = { name: "", recipientName: "", recipientPhone: "", postalCode: "", addressLine1: "", addressLine2: "" };
+const fingerprint = (body: Record<string, unknown>) => JSON.stringify(body, Object.keys(body).sort());
 
 export function Mvp2SubscriptionDetail({ subscriptionId, created, replayed, basePath = "/mvp2/subscriptions" }: { subscriptionId: string; created: boolean; replayed: boolean; basePath?: string }) {
   const auth = useAuth(); const router = useRouter();
@@ -23,7 +25,7 @@ export function Mvp2SubscriptionDetail({ subscriptionId, created, replayed, base
   const [scheduledDate, setScheduledDate] = useState(""); const [deliveryCycleWeeks, setDeliveryCycleWeeks] = useState("");
   const [plans, setPlans] = useState<PlanVersion[] | null>(null); const [planVersionId, setPlanVersionId] = useState("");
   const [address, setAddress] = useState<AddressRequest>(EMPTY_ADDRESS); const [addressSaving, setAddressSaving] = useState(false);
-  const keys = useRef<Partial<Record<Command, string>>>({}); const errorRef = useRef<HTMLDivElement>(null);
+  const keys = useRef<Partial<Record<Command, CommandKey>>>({}); const errorRef = useRef<HTMLDivElement>(null);
   const returnTo = `${basePath}/${subscriptionId}`; const focusError = () => requestAnimationFrame(() => errorRef.current?.focus());
   const reload = useCallback(() => { setSubscription(null); setMessage(null); setMessageKind(null); setRequestKey((key) => key + 1); }, []);
 
@@ -42,8 +44,12 @@ export function Mvp2SubscriptionDetail({ subscriptionId, created, replayed, base
   const changePlanCandidates = plans?.filter((plan) => effectiveCycle !== undefined && plan.allowedDeliveryCycleWeeks.includes(effectiveCycle)) ?? [];
   async function runCommand(command: Command, body: Record<string, unknown> = {}) {
     if (!subscription || !etag || pending) { setMessage("최신 구독 정보를 다시 불러온 뒤 시도해 주세요."); setMessageKind("error"); focusError(); return; }
-    setMessage(null); setMessageKind(null); setPending(command); const key = keys.current[command] ?? newIdempotencyKey(); keys.current[command] = key;
-    try { const response = await auth.executeWithCsrf((csrf) => v2Api.subscriptions.command(subscription.subscriptionId, command, body, csrf, etag, key)); setSubscription(response.body); setEtag(response.etag); keys.current[command] = undefined; setScheduledDate(response.body.nextDelivery?.scheduledDate ?? ""); setDeliveryCycleWeeks(String(response.body.nextDelivery?.deliveryCycleWeeks ?? response.body.currentSnapshot.deliveryCycleWeeks)); setMessage(response.replayed ? "이전 성공 결과를 다시 표시했습니다." : `${LABEL[command]} 요청이 반영되었습니다.`); setMessageKind("success"); }
+    const bodyFingerprint = fingerprint(body);
+    const stored = keys.current[command];
+    const commandKey = stored?.fingerprint === bodyFingerprint ? stored : { key: newIdempotencyKey(), fingerprint: bodyFingerprint };
+    keys.current[command] = commandKey;
+    setMessage(null); setMessageKind(null); setPending(command);
+    try { const response = await auth.executeWithCsrf((csrf) => v2Api.subscriptions.command(subscription.subscriptionId, command, body, csrf, etag, commandKey.key)); setSubscription(response.body); setEtag(response.etag); keys.current[command] = undefined; setScheduledDate(response.body.nextDelivery?.scheduledDate ?? ""); setDeliveryCycleWeeks(String(response.body.nextDelivery?.deliveryCycleWeeks ?? response.body.currentSnapshot.deliveryCycleWeeks)); setMessage(response.replayed ? "이전 성공 결과를 다시 표시했습니다." : `${LABEL[command]} 요청이 반영되었습니다.`); setMessageKind("success"); }
     catch (error) { setMessageKind("error"); if (error instanceof CsrfRefreshError) setMessage("보안 정보를 갱신하지 못했습니다. 같은 요청으로 다시 시도할 수 있습니다."); else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.push(buildLoginHref(returnTo)); return; } else if (error instanceof ApiError && error.code === "SUBSCRIPTION_VERSION_MISMATCH") { setMessage("다른 변경이 먼저 반영되었습니다. 최신 정보를 확인한 뒤 다시 선택해 주세요."); setRequestKey((key) => key + 1); } else setMessage(error instanceof ApiError ? error.message : "요청을 처리하지 못했습니다."); focusError(); }
     finally { setPending(null); }
   }

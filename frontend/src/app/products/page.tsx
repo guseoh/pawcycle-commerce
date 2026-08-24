@@ -20,6 +20,12 @@ function ProductsContent() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    setDraftQ(q);
+    setDraftPetType(petType);
+    setDraftCategory(category);
+  }, [q, petType, category]);
+
+  useEffect(() => {
     let active = true;
     productApi
       .list({ q, petType, category })
