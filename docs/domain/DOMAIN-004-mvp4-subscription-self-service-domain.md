@@ -46,10 +46,13 @@ MVP4에서는 pending snapshot의 배송 주기가 current snapshot과 같아야
 - 상품명·이미지·SKU 이름은 기존 Product·SKU 조회 데이터를 사용자 표시용으로 결합한다. 주문 이력의 불변 snapshot을 대체하지 않는다.
 - Schedule의 내부 `hold_reason`은 그대로 노출하지 않고 사용자용 issue code와 안내 문구로 변환한다.
 - Backend는 현재 상태와 실제 다음 Schedule 상태로 실행 가능한 `availableActions`를 결정한다. Subscription에 새 HELD 상태를 추가하지 않는다.
+- 배송지 누락 HELD는 기존 배송지 변경 경로를 `UPDATE_SHIPPING_ADDRESS`로 안내하고, 결제수단 누락 HELD는 기존 Billing Method 등록 경로를 `REGISTER_BILLING_METHOD`로 안내한다. 이는 재시도 명령이 아니라 기존 선행조건 보완 기능으로 연결하는 것이다.
+- 정상 ACTIVE 회차와 PAUSED에서도 기존 API가 허용하는 배송지 변경은 `UPDATE_SHIPPING_ADDRESS`로 노출할 수 있으며, Payment 재시도·재고 강제 재처리 같은 새 action은 추가하지 않는다.
 
 ## 안전성과 복구 경계
 
 - 두 새 명령은 기존 command scope 멱등성, replay 우선 판정, stale `If-Match`와 command history 규칙을 그대로 사용한다.
 - 날짜 변경, pending 교체, version 증가, history와 성공 replay는 기존 단일 command transaction 안에서 처리한다.
+- 배송지·결제수단 누락은 기존 Commerce 복구 경계를 재사용하고, 사용자가 필요한 선행조건을 보완하면 기존 로직이 HELD를 정상화한다.
 - 새 table·column·Flyway migration·의존성·Queue·Kafka·Redis·별도 retry API를 추가하지 않는다.
 - 저장소 변경은 일반 revert PR로 복구한다. Production·운영 DB·Secret·배포·자동 merge는 이 문서가 승인하지 않는다.
