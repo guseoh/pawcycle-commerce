@@ -8,7 +8,7 @@
 
 ## 격리와 one-shot 상태
 
-`compose.phase10-subscription-burst-decision-10k.yaml`은 project와 MySQL·Prometheus named volume을 PERF-PH10-004 전용 이름으로 분리한다. marker는 repository 밖 host-local `%TEMP%/pawcycle-phase10-subscription-burst-decision-10k-v1-marker/workload-started.json`을 사용한다. marker는 backend가 첫 raw drain service 호출 직전에 `CREATE_NEW`로 기록하며, marker 이전 실패만 disposable runtime 정리 후 재시도할 수 있다. marker 이후에는 workload·collector·summary·correctness 결과와 관계없이 항상 `NEVER RERUN`이다.
+`compose.phase10-subscription-burst-decision-10k.yaml`은 project와 MySQL·Prometheus named volume을 PERF-PH10-004 전용 이름으로 분리한다. marker는 repository 밖 host-local `%TEMP%/pawcycle-phase10-subscription-burst-decision-10k-v1-marker/workload-started.json`을 사용한다. marker는 backend가 첫 raw drain service 호출 직전에 workload identity, 승인 source SHA, cohort `10,000`, workload 시작 여부와 시각을 결합해 `CREATE_NEW`로 기록한다. marker 이전 실패만 disposable runtime 정리 후 재시도할 수 있다. marker 이후에는 workload·collector·summary·correctness 결과와 관계없이 항상 `NEVER RERUN`이다.
 
 evidence state는 다음과 같다.
 
@@ -42,6 +42,12 @@ raw sequential drain은 artificial scheduler delay 없이 backend service를 순
 ## evidence durability와 privacy
 
 full summary와 driver stdout/stderr는 host-local `%TEMP%` intermediate artifact로 유지한다. workload가 marker 이후 종료되면 harness는 `docs/reports/PERF-PH10-004/evidence-candidates/`에 redacted candidate를 자동 생성한다. 파일명은 source SHA 일부와 workload 시작 시각을 포함하며 `CREATE_NEW`로 생성되어 기존 파일을 덮어쓰지 않는다. harness는 Git commit/push를 하지 않으며, 사용자가 candidate를 검토한 뒤 별도 commit/PR 여부를 결정한다.
+
+자동 promotion이 실패했지만 실행 당시 full summary와 marker를 보존한 경우에만 아래 수동 복구 경로를 사용한다. 사용자는 실행 당시 source SHA가 marker·summary와 일치하는지 먼저 확인하고 그 SHA를 명시적으로 승인해야 한다. 이 명령도 workload, Git commit 또는 push를 실행하지 않는다.
+
+```powershell
+pwsh -NoProfile -File infra/performance/phase10/run-subscription-burst-decision-10k.ps1 -PromoteEvidence -ApprovedSourceSha <approved-40-character-sha> -EvidenceSourceSummaryPath <host-temp-summary> -EvidenceMarkerPath <host-temp-marker>
+```
 
 candidate는 whitelist projection으로 다음 aggregate만 보존한다.
 

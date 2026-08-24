@@ -46,6 +46,9 @@ $DefaultBatchSize = 100
 $DefaultFixedDelayMs = 60000
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR = $MarkerDir
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY = ''
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = ''
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT = '0'
 
 function Assert-SafeHostTempPath([string]$Path, [string]$Label) {
     $normalized = [IO.Path]::GetFullPath($Path)
@@ -337,6 +340,16 @@ function New-AuthoritativeRunContract([string]$SourceSha) {
     }
 }
 
+function New-SyntheticMarker([object]$AuthoritativeContract, [string]$StartedAtUtc) {
+    return [ordered]@{
+        workloadIdentity = [string]$AuthoritativeContract.workloadIdentity
+        sourceSha = [string]$AuthoritativeContract.sourceSha
+        cohort = [int]$AuthoritativeContract.cohort
+        workloadInvocationStarted = $true
+        workloadStartedAtUtc = $StartedAtUtc
+    }
+}
+
 function Resolve-EvidenceContract([string]$SourceSha) {
     if ([string]::IsNullOrWhiteSpace($SourceSha)) { return $null }
     if ($SourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'ApprovedSourceSha must be an explicit 40-character Git commit SHA.' }
@@ -376,11 +389,19 @@ function ConvertTo-UtcTimestamp([object]$Value, [string]$Context) {
     }
 }
 
-function Get-ValidatedMarker([string]$Path) {
+function Get-ValidatedMarker([string]$Path, [object]$AuthoritativeContract = $null) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'Authoritative workload marker is unavailable.' }
     $marker = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
     if ((Get-RequiredProperty $marker 'workloadInvocationStarted' 'Authoritative workload marker') -ne $true) {
         throw 'Authoritative workload marker does not record a consumed workload.'
+    }
+    if ($null -ne $AuthoritativeContract) {
+        Assert-AuthoritativeEvidenceIdentity `
+            ([string](Get-RequiredProperty $marker 'workloadIdentity' 'Authoritative workload marker')) `
+            ([int](Get-RequiredProperty $marker 'cohort' 'Authoritative workload marker')) `
+            ([string](Get-RequiredProperty $marker 'sourceSha' 'Authoritative workload marker')) `
+            $AuthoritativeContract `
+            'Authoritative workload marker'
     }
     $null = ConvertTo-UtcTimestamp (Get-RequiredProperty $marker 'workloadStartedAtUtc' 'Authoritative workload marker') 'Authoritative workload marker timestamp'
     return $marker
@@ -409,6 +430,12 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker, [objec
     $cohort = [int](Get-RequiredProperty $Summary 'syntheticCohortSize' 'Source summary')
     if ($cohort -ne 10000) { throw 'Source summary cohort is outside the fixed 10,000 decision contract.' }
     Assert-AuthoritativeEvidenceIdentity $identity $cohort $sourceCommit $AuthoritativeContract 'Source summary'
+    Assert-AuthoritativeEvidenceIdentity `
+        ([string](Get-RequiredProperty $Marker 'workloadIdentity' 'Authoritative workload marker')) `
+        ([int](Get-RequiredProperty $Marker 'cohort' 'Authoritative workload marker')) `
+        ([string](Get-RequiredProperty $Marker 'sourceSha' 'Authoritative workload marker')) `
+        $AuthoritativeContract `
+        'Authoritative workload marker'
     $driver = Get-RequiredProperty $Summary 'driver' 'Source summary'
     if ([int](Get-RequiredProperty $driver 'initialBacklog' 'Driver aggregate') -ne $cohort) { throw 'Source summary cohort does not match the driver initial backlog.' }
     $batchSize = [int](Get-RequiredProperty $Summary 'batchSize' 'Source summary')
@@ -441,12 +468,12 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker, [objec
     $failures = [int](Get-RequiredProperty $driver 'failures' 'Driver aggregate')
     $duplicateOrNoOp = [int](Get-RequiredProperty $driver 'duplicateOrNoOp' 'Driver aggregate')
     $finalBacklog = [int](Get-RequiredProperty $driver 'finalBacklog' 'Driver aggregate')
-    $orderCount = [int](Get-RequiredProperty $driver 'orderCount' 'Driver correctness aggregate')
-    $duplicateScheduleOrders = [int](Get-RequiredProperty $driver 'duplicateScheduleOrders' 'Driver correctness aggregate')
-    $futureSchedules = [int](Get-RequiredProperty $driver 'futureSchedules' 'Driver correctness aggregate')
+    $databaseOrderCount = [int](Get-RequiredProperty $driver 'databaseOrderCount' 'Driver correctness aggregate')
+    $duplicateScheduleOrderCount = [int](Get-RequiredProperty $driver 'duplicateScheduleOrderCount' 'Driver correctness aggregate')
+    $futureScheduleCount = [int](Get-RequiredProperty $driver 'futureScheduleCount' 'Driver correctness aggregate')
     $expectedDriverFailure = $finalBacklog -ne 0 -or $processed -ne $cohort -or $created -ne $cohort -or
-        $failures -ne 0 -or $duplicateOrNoOp -ne 0 -or $orderCount -ne $cohort -or
-        $duplicateScheduleOrders -ne 0 -or $futureSchedules -ne $cohort
+        $failures -ne 0 -or $duplicateOrNoOp -ne 0 -or $databaseOrderCount -ne $cohort -or
+        $duplicateScheduleOrderCount -ne 0 -or $futureScheduleCount -ne $cohort
     if ([bool](Get-RequiredProperty $driver 'harnessFailure' 'Driver correctness aggregate') -ne $expectedDriverFailure) {
         throw 'Source summary driver correctness verdict is internally inconsistent.'
     }
@@ -471,9 +498,9 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker, [objec
         timestamps = [ordered]@{ workloadStartedAtUtc = $summaryStarted.ToString('o'); workloadCompletedAtUtc = $completed.ToString('o'); markerStartedAtUtc = $markerStarted.ToString('o') }
         workloadAggregate = Select-Aggregate $driver @('initialBacklog', 'finalBacklog', 'processed', 'created', 'failures', 'duplicateOrNoOp') 'Driver aggregate'
         correctnessAggregate = [ordered]@{
-            orderCount = $orderCount
-            duplicateScheduleOrders = $duplicateScheduleOrders
-            futureSchedules = $futureSchedules
+            databaseOrderCount = $databaseOrderCount
+            duplicateScheduleOrderCount = $duplicateScheduleOrderCount
+            futureScheduleCount = $futureScheduleCount
             driverHarnessFailure = $expectedDriverFailure
             automationMetricReconciliationMatched = [bool](Get-RequiredProperty $reconciliation 'matched' 'Automation reconciliation')
         }
@@ -520,7 +547,7 @@ function Export-DurableEvidence([string]$SourceSummaryPath, [string]$MarkerPath,
     Assert-SafeHostTempPath $SourceSummaryPath 'Evidence source summary'
     Assert-SafeHostTempPath $MarkerPath 'Evidence marker'
     if (-not (Test-Path -LiteralPath $SourceSummaryPath -PathType Leaf)) { throw 'Evidence source summary is unavailable.' }
-    $marker = Get-ValidatedMarker $MarkerPath
+    $marker = Get-ValidatedMarker $MarkerPath $AuthoritativeContract
     $summary = Get-Content -Raw -LiteralPath $SourceSummaryPath | ConvertFrom-Json
     return Write-DurableEvidenceCandidate (New-DurableEvidenceProjection $summary $marker $AuthoritativeContract) $DestinationDirectory
 }
@@ -557,9 +584,9 @@ function Test-DurableEvidenceCandidate([string]$Path, [object]$AuthoritativeCont
         $correctness = Get-RequiredProperty $candidate 'correctnessAggregate' 'Durable evidence'
         $candidateCorrectnessFailure = [int]$workloadAggregate.finalBacklog -ne 0 -or [int]$workloadAggregate.processed -ne $cohort -or
             [int]$workloadAggregate.created -ne $cohort -or [int]$workloadAggregate.failures -ne 0 -or
-            [int]$workloadAggregate.duplicateOrNoOp -ne 0 -or [int](Get-RequiredProperty $correctness 'orderCount' 'Durable correctness aggregate') -ne $cohort -or
-            [int](Get-RequiredProperty $correctness 'duplicateScheduleOrders' 'Durable correctness aggregate') -ne 0 -or
-            [int](Get-RequiredProperty $correctness 'futureSchedules' 'Durable correctness aggregate') -ne $cohort
+            [int]$workloadAggregate.duplicateOrNoOp -ne 0 -or [int](Get-RequiredProperty $correctness 'databaseOrderCount' 'Durable correctness aggregate') -ne $cohort -or
+            [int](Get-RequiredProperty $correctness 'duplicateScheduleOrderCount' 'Durable correctness aggregate') -ne 0 -or
+            [int](Get-RequiredProperty $correctness 'futureScheduleCount' 'Durable correctness aggregate') -ne $cohort
         if ([bool](Get-RequiredProperty $correctness 'driverHarnessFailure' 'Durable correctness aggregate') -ne $candidateCorrectnessFailure) { return $false }
         $null = Get-RequiredProperty $correctness 'automationMetricReconciliationMatched' 'Durable correctness aggregate'
         $raw = Get-RequiredProperty $candidate 'rawPerformanceAggregate' 'Durable evidence'
@@ -584,7 +611,14 @@ function Get-EvidenceState([string]$MarkerPath, [string]$DurableDirectory, [obje
     $candidates = if (Test-Path -LiteralPath $DurableDirectory -PathType Container) { @(Get-ChildItem -LiteralPath $DurableDirectory -Filter 'subscription-burst-decision-10k-*.json' -File) } else { @() }
     $markerExists = Test-Path -LiteralPath $MarkerPath -PathType Leaf
     if (-not $markerExists -and $candidates.Count -eq 0) { return 'NOT_STARTED' }
-    $validatedMarker = if ($markerExists) { Get-ValidatedMarker $MarkerPath } else { $null }
+    $validatedMarker = $null
+    if ($markerExists) {
+        try {
+            $validatedMarker = if ($null -ne $AuthoritativeContract) { Get-ValidatedMarker $MarkerPath $AuthoritativeContract } else { Get-ValidatedMarker $MarkerPath }
+        } catch {
+            return 'CONSUMED_SUMMARY_MISSING'
+        }
+    }
     if ($null -ne $AuthoritativeContract -and @($candidates | Where-Object { Test-DurableEvidenceCandidate $_.FullName $AuthoritativeContract $validatedMarker }).Count -gt 0) {
         return 'CONSUMED_SUMMARY_AVAILABLE'
     }
@@ -617,28 +651,37 @@ function Validate-SyntheticContracts {
         throw 'Decision first-result authoritative contract is invalid.'
     }
     $serviceSource = Get-Content -Raw -LiteralPath $MeasurementServiceSource
+    $markerContractIndex = $serviceSource.IndexOf('assertWorkloadMarkerContract(initialBacklog);', [StringComparison]::Ordinal)
     $markerIndex = $serviceSource.IndexOf('writeWorkloadStartMarker();', [StringComparison]::Ordinal)
     $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(DEFAULT_BATCH_SIZE)', [StringComparison]::Ordinal)
-    if ($markerIndex -lt 0 -or $workloadIndex -lt 0 -or $markerIndex -gt $workloadIndex) {
+    if ($markerContractIndex -lt 0 -or $markerIndex -lt 0 -or $workloadIndex -lt 0 -or
+            $markerContractIndex -gt $markerIndex -or $markerIndex -gt $workloadIndex) {
         throw 'Backend workload-start marker is not authoritative.'
     }
 
     if ($serviceSource -notmatch 'assertRunArmed\(\)' -or $serviceSource -notmatch 'assertEligibleCandidateScope\(initialBacklog\)') {
         throw 'Backend run-arm or synthetic scope guard is missing.'
     }
+    foreach ($driverField in @('databaseOrderCount', 'duplicateScheduleOrderCount', 'futureScheduleCount')) {
+        if ($serviceSource -notmatch ("int\s+" + [regex]::Escape($driverField))) {
+            throw "Backend DrainSummary JSON contract is missing: $driverField."
+        }
+    }
     $historicalHarnessPath = Join-Path $PSScriptRoot 'run-subscription-burst-before.ps1'
     $historicalHarnessSource = Get-Content -Raw -LiteralPath $historicalHarnessPath
-    $permanentGateIndex = $historicalHarnessSource.IndexOf('if ($RunBeforeFirstResult -and $FirstResultAuthoritativelyConsumed)', [StringComparison]::Ordinal)
-    $historicalRuntimeStartIndex = $historicalHarnessSource.IndexOf("Invoke-Compose @('up', '--build'", [StringComparison]::Ordinal)
-    if ($historicalHarnessSource -notmatch '\$FirstResultAuthoritativelyConsumed\s*=\s*\$true' -or $permanentGateIndex -lt 0 -or
-            $historicalRuntimeStartIndex -lt 0 -or $permanentGateIndex -gt $historicalRuntimeStartIndex) {
+    $permanentGate = [regex]::Match($historicalHarnessSource, '(?s)if\s*\(\s*\$RunBeforeFirstResult\s+-and\s+\$FirstResultAuthoritativelyConsumed\s*\)')
+    $historicalRuntimeStart = [regex]::Match($historicalHarnessSource, '(?s)Invoke-Compose\s+@\(\s*''up''\s*,\s*''--build''')
+    if ($historicalHarnessSource -notmatch '\$FirstResultAuthoritativelyConsumed\s*=\s*\$true' -or -not $permanentGate.Success -or
+            -not $historicalRuntimeStart.Success -or $permanentGate.Index -gt $historicalRuntimeStart.Index) {
         throw 'PERF-PH10-002 permanent consumed gate is not preserved before runtime startup.'
     }
     $harnessSource = Get-Content -Raw -LiteralPath $PSCommandPath
     $sourceBindIndex = $harnessSource.LastIndexOf('Assert-ApprovedSourceSha $ApprovedSourceSha $true', [StringComparison]::Ordinal)
+    $markerSourceBindIndex = $harnessSource.LastIndexOf('$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = [string]$runContract.sourceSha', [StringComparison]::Ordinal)
     $runtimeStartIndex = $harnessSource.LastIndexOf("Invoke-Compose @('up', '--build'", [StringComparison]::Ordinal)
-    if ($sourceBindIndex -lt 0 -or $runtimeStartIndex -lt 0 -or $sourceBindIndex -gt $runtimeStartIndex) {
-        throw 'ApprovedSourceSha is not bound to local HEAD before runtime startup.'
+    if ($sourceBindIndex -lt 0 -or $markerSourceBindIndex -lt $sourceBindIndex -or $runtimeStartIndex -lt 0 -or
+            $markerSourceBindIndex -gt $runtimeStartIndex) {
+        throw 'ApprovedSourceSha is not bound to local HEAD and the marker contract before runtime startup.'
     }
     $sampleBlock = [regex]::Match($harnessSource, '(?s)function Get-MeasurementSample.*?function Get-MeasurementPeaks').Value
     if (([regex]::Matches($sampleBlock, 'Get-BackendMetricsPayload')).Count -ne 1 -or
@@ -649,6 +692,9 @@ function Validate-SyntheticContracts {
     if ($overlay -notmatch 'name:\s*pawcycle-phase10-subscription-burst-decision-10k' -or
             $overlay -notmatch 'pawcycle-phase10-subscription-burst-decision-10k-mysql-data' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR' -or
+            $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY' -or
+            $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA' -or
+            $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT' -or
             $overlay -match 'remove-orphans') {
         throw 'Subscription Burst 10k isolated compose boundary is invalid.'
     }
@@ -675,9 +721,8 @@ function Validate-SyntheticContracts {
             throw 'Synthetic NOT_STARTED evidence state validation failed.'
         }
         if (Test-Path -LiteralPath $syntheticMarker) { throw 'Synthetic pre-workload marker unexpectedly exists.' }
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:00:00Z' } |
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z' |
             ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
-        try { throw 'synthetic post-start collector failure' } catch { }
         $retained = Get-Content -Raw -LiteralPath $syntheticMarker | ConvertFrom-Json
         if (-not $retained.workloadInvocationStarted) { throw 'Synthetic post-start marker was not retained.' }
         if ((Get-EvidenceState $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_MISSING') {
@@ -702,7 +747,7 @@ function Validate-SyntheticContracts {
                 defaultSchedulerBatchSize = 100; defaultSchedulerFixedDelayMs = 60000
                 defaultSchedulerProjectedTicks = 1; defaultSchedulerProjectedCompletionMs = 1
                 projectionBasis = 'synthetic validation projection'
-                orderCount = [int]$syntheticAuthoritativeContract.cohort; duplicateScheduleOrders = 0; futureSchedules = [int]$syntheticAuthoritativeContract.cohort
+                databaseOrderCount = [int]$syntheticAuthoritativeContract.cohort; duplicateScheduleOrderCount = 0; futureScheduleCount = [int]$syntheticAuthoritativeContract.cohort
                 harnessFailure = $false
             }
             runtimeCapability = [ordered]@{
@@ -725,6 +770,21 @@ function Validate-SyntheticContracts {
             completedAtUtc = '2026-01-01T00:00:00Z'
         }
 
+        $safeSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
+        foreach ($markerMismatch in @('workloadIdentity', 'sourceSha', 'cohort')) {
+            $wrongMarker = New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z'
+            if ($markerMismatch -eq 'workloadIdentity') { $wrongMarker[$markerMismatch] = 'phase10-subscription-burst-decision-10k-wrong' }
+            if ($markerMismatch -eq 'sourceSha') { $wrongMarker[$markerMismatch] = $wrongHead }
+            if ($markerMismatch -eq 'cohort') { $wrongMarker[$markerMismatch] = 9999 }
+            $wrongMarker | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+            $wrongMarkerRejected = $false
+            try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongMarkerRejected = $true }
+            if (-not $wrongMarkerRejected) { throw "Synthetic wrong marker $markerMismatch promotion was not rejected." }
+            if ((Get-EvidenceState $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_MISSING') {
+                throw "Synthetic wrong marker $markerMismatch was accepted by evidence state validation."
+            }
+        }
+
         $wrongCohortSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
         $wrongCohortSummary.syntheticCohortSize = 5000
         $wrongCohortSummary.driver.initialBacklog = 5000
@@ -736,14 +796,14 @@ function Validate-SyntheticContracts {
         $wrongCohortSummary.workloadStartedAtUtc = '2026-01-01T00:01:00Z'
         $wrongCohortSummary.completedAtUtc = '2026-01-01T00:01:00Z'
         $wrongCohortSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:01:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:01:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         $wrongCohortRejected = $false
         try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongCohortRejected = $true }
         if (-not $wrongCohortRejected) { throw 'Synthetic wrong cohort promotion was not rejected.' }
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:00:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         try {
             $safeSummaryRoundTrip = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
-            $wrongCohortProjection = New-DurableEvidenceProjection $safeSummaryRoundTrip (Get-ValidatedMarker $syntheticMarker) $syntheticAuthoritativeContract
+            $wrongCohortProjection = New-DurableEvidenceProjection $safeSummaryRoundTrip (Get-ValidatedMarker $syntheticMarker $syntheticAuthoritativeContract) $syntheticAuthoritativeContract
         } catch { throw "Synthetic wrong-cohort candidate fixture construction failed: $($_.Exception.Message)" }
         $wrongCohortProjection.cohort = 5000
         $wrongCohortProjection.workloadAggregate.initialBacklog = 5000
@@ -758,11 +818,12 @@ function Validate-SyntheticContracts {
         $wrongSourceSummary.workloadStartedAtUtc = '2026-01-01T00:02:00Z'
         $wrongSourceSummary.completedAtUtc = '2026-01-01T00:02:00Z'
         $wrongSourceSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:02:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:02:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         $wrongSourceRejected = $false
         try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongSourceRejected = $true }
         if (-not $wrongSourceRejected) { throw 'Synthetic wrong source SHA promotion was not rejected.' }
         $wrongSourceContract = New-AuthoritativeRunContract $wrongHead
+        New-SyntheticMarker $wrongSourceContract '2026-01-01T00:02:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         try {
             $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $wrongSourceContract
         } catch { throw "Synthetic wrong-source candidate fixture construction failed: $($_.Exception.Message)" }
@@ -775,7 +836,7 @@ function Validate-SyntheticContracts {
         $wrongIdentitySummary.workloadStartedAtUtc = '2026-01-01T00:03:00Z'
         $wrongIdentitySummary.completedAtUtc = '2026-01-01T00:03:00Z'
         $wrongIdentitySummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:03:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:03:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         $wrongIdentityRejected = $false
         try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongIdentityRejected = $true }
         if (-not $wrongIdentityRejected) { throw 'Synthetic wrong workload identity promotion was not rejected.' }
@@ -784,7 +845,7 @@ function Validate-SyntheticContracts {
         $timestampMismatchSummary.workloadStartedAtUtc = '2026-01-01T00:04:00Z'
         $timestampMismatchSummary.completedAtUtc = '2026-01-01T00:04:00Z'
         $timestampMismatchSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:05:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:05:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         $timestampMismatchRejected = $false
         try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $timestampMismatchRejected = $true }
         if (-not $timestampMismatchRejected) { throw 'Synthetic marker/summary timestamp mismatch was not rejected.' }
@@ -794,13 +855,13 @@ function Validate-SyntheticContracts {
         $wrongDecisionSummary.workloadStartedAtUtc = '2026-01-01T00:06:00Z'
         $wrongDecisionSummary.completedAtUtc = '2026-01-01T00:06:00Z'
         $wrongDecisionSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:06:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:06:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         $wrongDecisionRejected = $false
         try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongDecisionRejected = $true }
         if (-not $wrongDecisionRejected) { throw 'Synthetic rawDecisionTargetMet mismatch was not rejected.' }
 
         $safeSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
-        [ordered]@{ workloadInvocationStarted = $true; workloadStartedAtUtc = '2026-01-01T00:00:00Z' } | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+        New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
         try {
             $promoted = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract
         } catch { throw "Synthetic authoritative promotion failed: $($_.Exception.Message)" }
@@ -825,7 +886,7 @@ function Validate-SyntheticContracts {
         $unsafeSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
         $unsafeSummary | Add-Member -NotePropertyName customerKey -NotePropertyValue 'must-not-persist'
         $privacyRejected = $false
-        try { $null = New-DurableEvidenceProjection $unsafeSummary (Get-ValidatedMarker $syntheticMarker) $syntheticAuthoritativeContract } catch { $privacyRejected = $true }
+        try { $null = New-DurableEvidenceProjection $unsafeSummary (Get-ValidatedMarker $syntheticMarker $syntheticAuthoritativeContract) $syntheticAuthoritativeContract } catch { $privacyRejected = $true }
         if (-not $privacyRejected) { throw 'Synthetic privacy validation did not reject the unsafe summary.' }
     } finally {
         Remove-Item -LiteralPath $syntheticRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -884,6 +945,9 @@ if ($RunDecisionFirstResult) {
     if ($preRunEvidenceState -ne 'NOT_STARTED') {
         throw "PERF-PH10-004 decision first-result is already consumed or has conflicting evidence (evidenceState=$preRunEvidenceState); NEVER RERUN."
     }
+    $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY = [string]$runContract.workloadIdentity
+    $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = [string]$runContract.sourceSha
+    $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT = [string]$runContract.cohort
 }
 
 $freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
@@ -938,10 +1002,9 @@ try {
 
     do {
         if (Test-Path -LiteralPath $FirstResultMarker) {
-            $started = Get-Content -Raw -LiteralPath $FirstResultMarker | ConvertFrom-Json
-            if (-not $started.workloadInvocationStarted) { throw 'Authoritative workload-start marker is invalid.' }
             $consumed = $true
             $summary.workloadInvocationStarted = $true
+            $started = Get-ValidatedMarker $FirstResultMarker $runContract
             $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
         }
         if ($consumed) {
@@ -956,9 +1019,9 @@ try {
     $process.WaitForExit()
     $workloadFinishedAfter = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
-        $started = Get-Content -Raw -LiteralPath $FirstResultMarker | ConvertFrom-Json
-        $consumed = [bool]$started.workloadInvocationStarted
-        $summary.workloadInvocationStarted = $consumed
+        $consumed = $true
+        $summary.workloadInvocationStarted = $true
+        $started = Get-ValidatedMarker $FirstResultMarker $runContract
         $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
     }
     if (-not $consumed) { throw 'Backend rejected the driver before the workload-start boundary.' }
@@ -996,10 +1059,14 @@ try {
     $summary.harnessFailure = $true
     $summary.error = 'Subscription Burst 10k decision harness execution failed.'
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
-        $started = Get-Content -Raw -LiteralPath $FirstResultMarker | ConvertFrom-Json
-        $consumed = [bool]$started.workloadInvocationStarted
-        $summary.workloadInvocationStarted = $consumed
-        $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
+        $consumed = $true
+        $summary.workloadInvocationStarted = $true
+        try {
+            $started = Get-ValidatedMarker $FirstResultMarker $runContract
+            $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
+        } catch {
+            $summary.error = 'Authoritative workload-start marker identity validation failed; the workload remains consumed.'
+        }
     }
     if (-not $consumed) {
         try { Reset-IsolatedRuntime } catch { }
