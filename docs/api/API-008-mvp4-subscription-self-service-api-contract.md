@@ -68,7 +68,8 @@
     "RESCHEDULE_NEXT",
     "SKIP_NEXT",
     "PAUSE",
-    "CANCEL"
+    "CANCEL",
+    "UPDATE_SHIPPING_ADDRESS"
   ]
 }
 ```
@@ -94,12 +95,16 @@
 
 | 상태와 다음 회차 | actions |
 | --- | --- |
-| ACTIVE + Order 미생성 SCHEDULED | `CHANGE_PLAN`, `CHANGE_DELIVERY_CYCLE`, `RESCHEDULE_NEXT`, `SKIP_NEXT`, `PAUSE`, `CANCEL` |
-| ACTIVE + HELD 또는 실행 가능한 SCHEDULED 없음 | `CANCEL` |
-| PAUSED | `RESUME`, `CANCEL` |
+| ACTIVE + Order 미생성 SCHEDULED | `CHANGE_PLAN`, `CHANGE_DELIVERY_CYCLE`, `RESCHEDULE_NEXT`, `SKIP_NEXT`, `PAUSE`, `CANCEL`, `UPDATE_SHIPPING_ADDRESS` |
+| ACTIVE + HELD + `MISSING_SHIPPING_ADDRESS` | `UPDATE_SHIPPING_ADDRESS`, `CANCEL` |
+| ACTIVE + HELD + `MISSING_BILLING_METHOD` | `REGISTER_BILLING_METHOD`, `CANCEL` |
+| ACTIVE + 그 밖의 HELD 또는 실행 가능한 SCHEDULED 없음 | `CANCEL` |
+| PAUSED | `RESUME`, `CANCEL`, `UPDATE_SHIPPING_ADDRESS` |
 | CANCELED | 빈 배열 |
 
-Backend가 실제 명령 선행 조건과 같은 기준으로 결정한다. 새 Subscription HELD 상태나 별도 retry action은 추가하지 않는다.
+`UPDATE_SHIPPING_ADDRESS`는 기존 `PUT /api/subscriptions/{subscriptionId}/shipping-address`를 사용한다. `REGISTER_BILLING_METHOD`는 기존 Toss Billing Method 등록 흐름을 사용한다. 두 action은 별도 retry 명령이 아니라 기존 선행조건 보완 경로이며, 배송지·결제수단 보완 후 기존 Commerce 로직이 해당 HELD를 정상화한다.
+
+Backend가 실제 명령 선행 조건과 기존 Commerce 복구 경계에 맞춰 `availableActions`를 결정한다. 새 Subscription HELD 상태나 별도 retry action은 추가하지 않는다.
 
 ## transaction·자동 주문 delta
 
