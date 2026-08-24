@@ -33,6 +33,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [retryKey, setRetryKey] = useState(0);
   const [state, setState] = useState<ProductState>({ status: "loading" });
   const [selectedSkuId, setSelectedSkuId] = useState<number | null>(null);
+  const [cartSkuId, setCartSkuId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [deliveryCycleWeeks, setDeliveryCycleWeeks] = useState<number | null>(null);
   const [errors, setErrors] = useState<SubscriptionDraftErrors>({});
@@ -172,12 +173,12 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     finally { setCommerceSubmitting(false); }
   }
   async function addCart() {
-    if (!loadedProduct || !selectedSkuId || commerceSubmitting) { setCommerceMessage("먼저 상품 옵션을 선택해 주세요."); return; }
+    if (!loadedProduct || !cartSkuId || commerceSubmitting) { setCommerceMessage("먼저 일반 구매 옵션을 선택해 주세요."); return; }
     if (auth.status === "anonymous") { router.push(buildLoginHref(`/products/${loadedProduct.productId}`)); return; }
     const parsedQuantity = Number(quantity);
     if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) { setCommerceMessage("수량을 확인해 주세요."); return; }
     setCommerceSubmitting(true); setCommerceMessage(null);
-    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSkuId, parsedQuantity, csrf)); setCommerceMessage("장바구니에 담았습니다."); }
+    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(cartSkuId, parsedQuantity, csrf)); setCommerceMessage("장바구니에 담았습니다."); }
     catch (error) { setCommerceMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했습니다."); }
     finally { setCommerceSubmitting(false); }
   }
@@ -225,7 +226,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
             <img className="product-thumbnail" src={product.thumbnailUrl} alt="" />
           ) : null}
           {commerceMessage ? <p role="status" className="field-help">{commerceMessage}</p> : null}
-          <div className="button-row"><button className="button button-secondary" type="button" disabled={commerceSubmitting} onClick={() => void addWishlist()}>위시리스트에 담기</button><button className="button button-primary" type="button" disabled={commerceSubmitting || selectedSkuId === null} onClick={() => void addCart()}>장바구니에 담기</button></div>
+          <div className="button-row"><button className="button button-secondary" type="button" disabled={commerceSubmitting} onClick={() => void addWishlist()}>위시리스트에 담기</button><label className="form-field">일반 구매 옵션<select className="input" value={cartSkuId ?? ""} onChange={(event) => setCartSkuId(Number(event.target.value) || null)}><option value="">선택하세요</option>{product.skus.map((sku) => <option key={sku.skuId} value={sku.skuId}>{sku.skuName}</option>)}</select></label><button className="button button-primary" type="button" disabled={commerceSubmitting || cartSkuId === null} onClick={() => void addCart()}>장바구니에 담기</button></div>
         </section>
 
         <form className="section-card" onSubmit={handleSubmit} noValidate>

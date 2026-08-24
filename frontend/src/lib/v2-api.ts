@@ -58,8 +58,8 @@ export interface V2SubscriptionDetail extends V2SubscriptionSummary {
   pendingSnapshot: Snapshot | null;
   schedules: Page<Schedule>;
   commandHistory: Page<CommandHistory>;
-  nextDelivery?: { scheduledDate: string; status: string; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; thumbnailUrl: string | null; quantity: number }[] } | null;
-  pendingChange?: { appliesOn: string; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; quantity: number }[] } | null;
+  nextDelivery?: { scheduledDate: string; status: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; thumbnailUrl: string | null; quantity: number }[] } | null;
+  pendingChange?: { appliesOn: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; quantity: number }[] } | null;
   issue?: { code: "SHIPPING_ADDRESS_REQUIRED" | "BILLING_METHOD_REQUIRED" | "PAYMENT_SUPPORT_REQUIRED" | "STOCK_UNAVAILABLE"; message: string } | null;
   availableActions?: string[];
 }
