@@ -41,7 +41,7 @@ class V2SubscriptionQueryApplicationService {
 		V2SubscriptionData.Snapshot pending=pendingChange.map(V2SubscriptionData.PendingChange::snapshotId).map(store::findSnapshot).orElse(null);
 		V2SubscriptionData.NextDeliverySchedule nextDelivery="ACTIVE".equals(subscription.status())?store.findNextDeliverySchedule(subscriptionId).orElse(null):null;
 		V2SubscriptionData.Page<V2SubscriptionData.ScheduleView> schedules=store.findScheduleViews(subscriptionId,checkedSchedulePage,scheduleSize);
-		V2SubscriptionData.Page<V2SubscriptionData.CommandHistory> history=store.findCommandHistory(subscriptionId,checkedCommandPage,checkedCommandSize(commandSize));
+		V2SubscriptionData.Page<V2SubscriptionData.CommandHistory> history=store.findCommandHistory(subscriptionId,checkedCommandPage,commandSize);
 		Map<String,Object> result=new LinkedHashMap<>(summary(subscription,pet,snapshot(current),store.findNextSchedule(subscriptionId,support.today()).orElse(null)));
 		result.put("pendingSnapshot",pending==null?null:snapshot(pending));
 		result.put("nextDelivery",nextDelivery==null?null:nextDelivery(nextDelivery,current,pendingChange.orElse(null),pending));
@@ -52,7 +52,6 @@ class V2SubscriptionQueryApplicationService {
 		result.put("commandHistory",page(history,history.items().stream().map(this::history).toList()));
 		return result;
 	}
-	private int checkedCommandSize(int commandSize){return commandSize;}
 	private Map<String,Object> summary(V2SubscriptionData.Subscription subscription,V2SubscriptionData.Pet pet,Map<String,Object> currentSnapshot,java.time.LocalDate nextScheduledDate){if(subscription.petId()!=null&&pet==null)throw new V2ApiException(404,"PET_NOT_FOUND","Pet을 찾을 수 없습니다.");Map<String,Object> result=new LinkedHashMap<>();result.put("subscriptionId",subscription.id());result.put("status",subscription.status());result.put("version",subscription.version());result.put("pet",pet==null?null:pet(pet));result.put("currentSnapshot",currentSnapshot);result.put("nextScheduledDate","ACTIVE".equals(subscription.status())?nextScheduledDate:null);return result;}
 	private Map<String,Object> pet(V2SubscriptionData.Pet value){return Map.of("petId",value.id(),"name",value.name(),"petType",value.petType());}
 	private Map<String,Object> snapshot(V2SubscriptionData.SnapshotBase value,List<V2SubscriptionData.Item> items){if(value==null)throw new IllegalStateException("Subscription snapshot을 찾을 수 없습니다.");return Map.of("planVersionId",value.planVersionId(),"packagePriceKrw",value.packagePriceKrw(),"deliveryCycleWeeks",value.deliveryCycleWeeks(),"items",items.stream().map(item->Map.<String,Object>of("skuId",item.skuId(),"quantity",item.quantity())).toList());}
