@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -25,12 +26,11 @@ class ProductListReaderTests {
 
 	@Mock
 	private ProductRepository productRepository;
-
 	@Mock
 	private SkuRepository skuRepository;
 
 	@Test
-	void materializesProductAndSkuFieldsWithoutReturningEntities() {
+	void materializesProductSkuAndCategoryFieldsWithoutReturningEntities() {
 		Product product = mock(Product.class);
 		Sku sku = mock(Sku.class);
 		when(product.getId()).thenReturn(1L);
@@ -38,6 +38,11 @@ class ProductListReaderTests {
 		when(product.getPetType()).thenReturn("DOG");
 		when(product.getShortDescription()).thenReturn("짧은 설명");
 		when(product.getThumbnailUrl()).thenReturn("thumbnail");
+		Category category = mock(Category.class);
+		when(category.getId()).thenReturn(7L);
+		when(category.getName()).thenReturn("사료");
+		when(category.getSlug()).thenReturn("food");
+		when(product.getCategory()).thenReturn(category);
 		when(sku.getProduct()).thenReturn(product);
 		when(sku.getId()).thenReturn(10L);
 		when(sku.getName()).thenReturn("2kg");
@@ -50,8 +55,13 @@ class ProductListReaderTests {
 		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
 
 		assertThat(snapshot.products()).extracting(ProductListReader.ProductSnapshot::productId).containsExactly(1L);
+		assertThat(snapshot.products().getFirst().category()).satisfies(mapped -> {
+			assertThat(mapped.categoryId()).isEqualTo(7L);
+			assertThat(mapped.name()).isEqualTo("사료");
+			assertThat(mapped.slug()).isEqualTo("food");
+		});
 		assertThat(snapshot.skus()).extracting(ProductListReader.SkuSnapshot::skuId).containsExactly(10L);
-		assertThat(snapshot.skus().get(0).price()).isEqualByComparingTo("19900.00");
+		assertThat(snapshot.skus().getFirst().price()).isEqualByComparingTo("19900.00");
 		assertThatThrownBy(() -> snapshot.products().add(null)).isInstanceOf(UnsupportedOperationException.class);
 		verify(productRepository).findAllPublicOrderById();
 		verify(skuRepository).findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
@@ -61,9 +71,7 @@ class ProductListReaderTests {
 	@Test
 	void emptyProductsAvoidSecondQuery() {
 		when(productRepository.findAllPublicOrderById()).thenReturn(List.of());
-
 		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
-
 		assertThat(snapshot.products()).isEmpty();
 		assertThat(snapshot.skus()).isEmpty();
 		verifyNoInteractions(skuRepository);
@@ -72,7 +80,6 @@ class ProductListReaderTests {
 	@Test
 	void readUsesReadOnlyTransaction() throws NoSuchMethodException {
 		Transactional transaction = ProductListReader.class.getMethod("read").getAnnotation(Transactional.class);
-
 		assertThat(transaction).isNotNull();
 		assertThat(transaction.readOnly()).isTrue();
 	}

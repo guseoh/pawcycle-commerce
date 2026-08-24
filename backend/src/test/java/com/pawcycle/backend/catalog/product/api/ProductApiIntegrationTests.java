@@ -85,6 +85,9 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.products.length()").value(2))
 				.andExpect(jsonPath("$.products[0].productId").value(first.getId()))
 				.andExpect(jsonPath("$.products[0].petType").value("DOG"))
+				.andExpect(jsonPath("$.products[0].category.categoryId").isNumber())
+				.andExpect(jsonPath("$.products[0].category.name").isString())
+				.andExpect(jsonPath("$.products[0].category.slug").isString())
 				.andExpect(jsonPath("$.products[0].thumbnailUrl").value(nullValue()))
 				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[0].skuName").value("첫 SKU"))
 				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[1].skuName").value("동률 뒤 SKU"))
@@ -125,6 +128,7 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.productId").value(product.getId()))
 				.andExpect(jsonPath("$.description").value(nullValue()))
 				.andExpect(jsonPath("$.thumbnailUrl").value(nullValue()))
+				.andExpect(jsonPath("$.category.categoryId").isNumber())
 				.andExpect(jsonPath("$.skus[0].subscribable").value(true))
 				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles.length()").value(3))
 				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[0]").value(2))
@@ -236,6 +240,26 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.products[0].productId").value(product.getId()))
 				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices").isEmpty())
 				.andExpect(jsonPath("$.products[0].hasSubscribableSku").value(false));
+	}
+
+	@Test
+	void listFiltersByQueryPetTypeAndCategorySlug() throws Exception {
+		Product dogFood = saveProduct("강아지 사료", "DOG", null, null, "PUBLIC");
+		saveProduct("고양이 모래", "CAT", null, null, "PUBLIC");
+		flushAndResetStatistics();
+
+		mockMvc.perform(get("/api/products")
+					.param("q", "사료")
+					.param("petType", "dog")
+					.param("category", dogFood.getCategory().getSlug()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products.length()").value(1))
+				.andExpect(jsonPath("$.products[0].productId").value(dogFood.getId()));
+
+		mockMvc.perform(get("/api/products").param("q", "모래").param("petType", "DOG"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.products").isEmpty());
+		assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
 	}
 
 	private Product saveProduct(

@@ -45,7 +45,7 @@ class ProductControllerTests {
 
 	@Test
 	void listFailureDoesNotExposeInternalDetails() throws Exception {
-		when(productQueryService.findProducts())
+		when(productQueryService.findProducts(null, null, null))
 				.thenThrow(new ProductListUnavailableException(new IllegalStateException("products table")));
 
 		mockMvc.perform(get("/api/products"))

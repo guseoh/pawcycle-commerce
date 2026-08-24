@@ -4,6 +4,7 @@ import com.pawcycle.backend.catalog.product.application.ProductDetailView.SkuDet
 import com.pawcycle.backend.catalog.product.application.ProductListView.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPriceSummary;
+import com.pawcycle.backend.catalog.product.application.ProductListView.CategorySummary;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -35,12 +36,22 @@ public class ProductQueryService {
 		this.skuRepository = skuRepository;
 	}
 
-	public ProductListView findProducts() {
+	public ProductListView findProducts(String q, String petType, String category) {
 		try {
-			return productListCache.getOrLoad(this::loadProducts);
+			ProductListView allProducts = productListCache.getOrLoad(this::loadProducts);
+			if ((q == null || q.isBlank()) && (petType == null || petType.isBlank()) && (category == null || category.isBlank())) {
+				return allProducts;
+			}
+			return new ProductListView(allProducts.products().stream()
+					.filter(product -> matches(product, q, petType, category))
+					.toList());
 		} catch (RuntimeException exception) {
 			throw new ProductListUnavailableException(exception);
 		}
+	}
+
+	public ProductListView findProducts() {
+		return findProducts(null, null, null);
 	}
 
 	private ProductListView loadProducts() {
@@ -70,6 +81,8 @@ public class ProductQueryService {
 					product.getPetType(),
 					product.getDescription(),
 					product.getThumbnailUrl(),
+					new ProductDetailView.CategorySummary(
+							product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug()),
 					skus.stream().map(this::toDetail).toList());
 		} catch (ProductNotFoundException exception) {
 			throw exception;
@@ -100,8 +113,22 @@ public class ProductQueryService {
 				product.petType(),
 				product.shortDescription(),
 				product.thumbnailUrl(),
+				new CategorySummary(product.category().categoryId(), product.category().name(), product.category().slug()),
 				new SkuPriceSummary(prices),
 				skus.stream().anyMatch(ProductListReader.SkuSnapshot::subscribable));
+	}
+
+	private boolean matches(ProductSummary product, String q, String petType, String category) {
+		return matchesQuery(product, q)
+				&& (petType == null || petType.isBlank() || product.petType().equalsIgnoreCase(petType.trim()))
+				&& (category == null || category.isBlank() || product.category().slug().equalsIgnoreCase(category.trim()));
+	}
+
+	private boolean matchesQuery(ProductSummary product, String q) {
+		if (q == null || q.isBlank()) return true;
+		String needle = q.trim().toLowerCase(java.util.Locale.ROOT);
+		return product.name().toLowerCase(java.util.Locale.ROOT).contains(needle)
+				|| product.shortDescription().toLowerCase(java.util.Locale.ROOT).contains(needle);
 	}
 
 	private SkuDetail toDetail(Sku sku) {

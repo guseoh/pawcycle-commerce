@@ -20,19 +20,21 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 	@Query("SELECT p FROM Product p WHERE p.id = :productId")
 	Optional<Product> findByIdForUpdate(@Param("productId") Long productId);
 
-	@Query(value = """
-			SELECT p.*
-			FROM products p
-			WHERE BINARY p.display_status = 'PUBLIC'
+	@Query("""
+			SELECT p
+			FROM Product p
+			LEFT JOIN FETCH p.category
+			WHERE p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
 			ORDER BY p.id ASC
-			""", nativeQuery = true)
+			""")
 	List<Product> findAllPublicOrderById();
 
-	@Query(value = """
-			SELECT p.*
-			FROM products p
+	@Query("""
+			SELECT p
+			FROM Product p
+			LEFT JOIN FETCH p.category
 			WHERE p.id = :productId
-			  AND BINARY p.display_status = 'PUBLIC'
-			""", nativeQuery = true)
+			  AND p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
+			""")
 	Optional<Product> findPublicById(@Param("productId") Long productId);
 }

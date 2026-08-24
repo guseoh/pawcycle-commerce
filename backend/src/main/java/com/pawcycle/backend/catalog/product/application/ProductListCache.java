@@ -13,7 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class ProductListCache {
-	static final String CACHE_KEY = "pawcycle:catalog:product-list:v1";
+	static final String CACHE_KEY = "pawcycle:catalog:product-list:v2";
 	static final String GENERATION_KEY = CACHE_KEY + ":generation";
 	static final DefaultRedisScript<Long> STORE_IF_GENERATION_UNCHANGED_SCRIPT = new DefaultRedisScript<>("""
 			local current = redis.call('GET', KEYS[1])

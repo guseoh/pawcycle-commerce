@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/products")
@@ -20,8 +21,11 @@ public class ProductController {
 	}
 
 	@GetMapping
-	ProductListView products() {
-		return productQueryService.findProducts();
+	ProductListView products(
+			@RequestParam(required = false) String q,
+			@RequestParam(required = false) String petType,
+			@RequestParam(required = false) String category) {
+		return productQueryService.findProducts(q, petType, category);
 	}
 
 	@GetMapping("/{productId}")
