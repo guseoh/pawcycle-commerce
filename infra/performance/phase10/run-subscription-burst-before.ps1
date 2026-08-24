@@ -510,6 +510,9 @@ function Validate-SyntheticContracts {
     $serviceSource = Get-Content -Raw -LiteralPath $MeasurementServiceSource
     $markerIndex = $serviceSource.IndexOf('writeWorkloadStartMarker();', [StringComparison]::Ordinal)
     $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(DEFAULT_BATCH_SIZE)', [StringComparison]::Ordinal)
+    if ($workloadIndex -lt 0) {
+        $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(measurementBatchSize)', [StringComparison]::Ordinal)
+    }
     if ($markerIndex -lt 0 -or $workloadIndex -lt 0 -or $markerIndex -gt $workloadIndex) {
         throw 'Backend workload-start marker is not authoritative.'
     }

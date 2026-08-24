@@ -60,6 +60,37 @@ class SubscriptionBurstMeasurementMarkerContractTests {
 		assertThat(marker).doesNotExist();
 	}
 
+	@Test
+	void measurementBatchAndFixedDelayMustBePositive() {
+		assertThatThrownBy(() -> new SubscriptionBurstMeasurementService(
+				null,
+				null,
+				Clock.fixed(STARTED_AT, ZoneOffset.UTC),
+				tempDir.resolve("invalid-contract-marker.json").toString(),
+				true,
+				IDENTITY,
+				SOURCE_SHA,
+				10_000,
+				0,
+				15_000))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("batch-size and fixed-delay-ms must be positive");
+
+		assertThatThrownBy(() -> new SubscriptionBurstMeasurementService(
+				null,
+				null,
+				Clock.fixed(STARTED_AT, ZoneOffset.UTC),
+				tempDir.resolve("invalid-delay-contract-marker.json").toString(),
+				true,
+				IDENTITY,
+				SOURCE_SHA,
+				10_000,
+				500,
+				0))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("batch-size and fixed-delay-ms must be positive");
+	}
+
 	private SubscriptionBurstMeasurementService service(
 			Path marker,
 			String workloadIdentity,
@@ -73,6 +104,8 @@ class SubscriptionBurstMeasurementMarkerContractTests {
 				true,
 				workloadIdentity,
 				sourceSha,
-				cohort);
+				cohort,
+				100,
+				60_000);
 	}
 }

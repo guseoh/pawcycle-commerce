@@ -4,14 +4,14 @@ param(
     [int]$CohortSize = 10000,
     [string]$ApprovedSourceSha = '',
     [string]$HttpCommand = 'curl.exe',
-    [string]$ResultsDir = (Join-Path $env:TEMP 'pawcycle-phase10-subscription-burst-decision-10k-v1'),
+    [string]$ResultsDir = (Join-Path $env:TEMP 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-v1'),
     [string]$EvidenceSourceSummaryPath = '',
     [string]$EvidenceMarkerPath = '',
     [switch]$ValidateOnly,
     [switch]$ValidateRuntimeCapability,
     [switch]$InspectEvidenceState,
     [switch]$PromoteEvidence,
-    [switch]$RunDecisionFirstResult,
+    [switch]$RunAfterFirstResult,
     [switch]$CleanupIsolatedRuntime
 )
 
@@ -23,32 +23,36 @@ $repoRootPrefix = $RepoRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar,
 $tempRootPrefix = $TempRoot.TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar
 $LocalIntegrationDir = Join-Path $RepoRoot 'infra\local-integration'
 $MeasurementServiceSource = Join-Path $RepoRoot 'backend\src\main\java\com\pawcycle\backend\subscription\v2\performance\SubscriptionBurstMeasurementService.java'
-$OverlayPath = Join-Path $LocalIntegrationDir 'compose.phase10-subscription-burst-decision-10k.yaml'
-$MarkerDir = Join-Path $TempRoot 'pawcycle-phase10-subscription-burst-decision-10k-v1-marker'
+$OverlayPath = Join-Path $LocalIntegrationDir 'compose.phase10-subscription-burst-scheduler-tuning-after-10k.yaml'
+$MarkerDir = Join-Path $TempRoot 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-v1-marker'
 $FirstResultMarker = Join-Path $MarkerDir 'workload-started.json'
-$SummaryPath = Join-Path $ResultsDir 'subscription-burst-decision-10k-summary.json'
-$DurableEvidenceDir = Join-Path $RepoRoot 'docs\reports\PERF-PH10-004\evidence-candidates'
-$DecisionContract = [ordered]@{
-    workloadIdentity = 'phase10-subscription-burst-decision-10k-v1'
+$SummaryPath = Join-Path $ResultsDir 'subscription-burst-scheduler-tuning-after-10k-summary.json'
+$DurableEvidenceDir = Join-Path $RepoRoot 'docs\reports\PERF-PH10-006\evidence-candidates'
+$AfterContract = [ordered]@{
+    workloadIdentity = 'phase10-subscription-burst-scheduler-tuning-after-10k-v1'
     cohort = 10000
+    batchSize = 500
+    fixedDelayMs = 15000
     decisionTargetSeconds = 900
     requiredRawThroughput = (10000.0 / 900.0)
 }
-$WorkloadIdentity = [string]$DecisionContract.workloadIdentity
+$WorkloadIdentity = [string]$AfterContract.workloadIdentity
 $EvidenceSourceSummaryPath = if ([string]::IsNullOrWhiteSpace($EvidenceSourceSummaryPath)) { $SummaryPath } else { [IO.Path]::GetFullPath($EvidenceSourceSummaryPath) }
 $EvidenceMarkerPath = if ([string]::IsNullOrWhiteSpace($EvidenceMarkerPath)) { $FirstResultMarker } else { [IO.Path]::GetFullPath($EvidenceMarkerPath) }
 $DriverStdout = Join-Path $ResultsDir 'driver.stdout.json'
 $DriverStderr = Join-Path $ResultsDir 'driver.stderr.log'
-$BackendContainer = 'pawcycle-phase10-subscription-burst-decision-10k-backend-1'
-$MysqlContainer = 'pawcycle-phase10-subscription-burst-decision-10k-mysql-1'
-$ExpectedMysqlVolume = 'pawcycle-phase10-subscription-burst-decision-10k-mysql-data'
-$DefaultBatchSize = 100
-$DefaultFixedDelayMs = 60000
+$BackendContainer = 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-backend-1'
+$MysqlContainer = 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-mysql-1'
+$ExpectedMysqlVolume = 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-mysql-data'
+$DefaultBatchSize = 500
+$DefaultFixedDelayMs = 15000
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR = $MarkerDir
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY = ''
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = ''
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT = '0'
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_BATCH_SIZE = ''
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_FIXED_DELAY_MS = ''
 
 function Assert-SafeHostTempPath([string]$Path, [string]$Label) {
     $normalized = [IO.Path]::GetFullPath($Path)
@@ -70,7 +74,7 @@ function Get-ComposeArgs {
         '-f', 'compose.phase9-cpu15.yaml',
         '-f', 'compose.phase9-memory1g.yaml',
         '-f', 'compose.phase9-cpu20.yaml',
-        '-f', 'compose.phase10-subscription-burst-decision-10k.yaml'
+        '-f', 'compose.phase10-subscription-burst-scheduler-tuning-after-10k.yaml'
     )
 }
 
@@ -326,7 +330,7 @@ function Assert-AuthoritativeEvidenceIdentity([string]$Identity, [int]$Cohort, [
     if ($Identity -ne [string](Get-RequiredProperty $AuthoritativeContract 'workloadIdentity' 'Authoritative first-result contract') -or
             $Cohort -ne [int](Get-RequiredProperty $AuthoritativeContract 'cohort' 'Authoritative first-result contract') -or
             -not $SourceSha.Equals([string](Get-RequiredProperty $AuthoritativeContract 'sourceSha' 'Authoritative first-result contract'), [StringComparison]::OrdinalIgnoreCase)) {
-        throw "$Context does not match the approved decision first-result identity."
+        throw "$Context does not match the approved After first-result identity."
     }
 }
 
@@ -340,18 +344,20 @@ function Assert-ApprovedSourceSha([string]$SourceSha, [bool]$RequireCleanWorktre
     }
     if ($RequireCleanWorktree) {
         $dirty = @(git -C $RepoRoot status --porcelain)
-        if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'Decision first-result requires a clean reviewed worktree.' }
+        if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'After first-result requires a clean reviewed worktree.' }
     }
     return $headSha.ToLowerInvariant()
 }
 
 function New-AuthoritativeRunContract([string]$SourceSha) {
     return [ordered]@{
-        workloadIdentity = [string]$DecisionContract.workloadIdentity
-        cohort = [int]$DecisionContract.cohort
+        workloadIdentity = [string]$AfterContract.workloadIdentity
+        cohort = [int]$AfterContract.cohort
+        batchSize = [int]$AfterContract.batchSize
+        fixedDelayMs = [long]$AfterContract.fixedDelayMs
         sourceSha = $SourceSha.ToLowerInvariant()
-        decisionTargetSeconds = [int]$DecisionContract.decisionTargetSeconds
-        requiredRawThroughput = [double]$DecisionContract.requiredRawThroughput
+        decisionTargetSeconds = [int]$AfterContract.decisionTargetSeconds
+        requiredRawThroughput = [double]$AfterContract.requiredRawThroughput
     }
 }
 
@@ -457,7 +463,8 @@ function New-DurableEvidenceProjection([object]$Summary, [object]$Marker, [objec
     $fixedDelayMs = [long](Get-RequiredProperty $Summary 'fixedDelayMs' 'Source summary')
     $decisionTargetSeconds = [int](Get-RequiredProperty $Summary 'decisionTargetSeconds' 'Source summary')
     $requiredRawThroughput = [double](Get-RequiredProperty $Summary 'requiredRawThroughput' 'Source summary')
-    if ($batchSize -ne $DefaultBatchSize -or $fixedDelayMs -ne $DefaultFixedDelayMs -or
+    if ($batchSize -ne [int]$AuthoritativeContract.batchSize -or $fixedDelayMs -ne [long]$AuthoritativeContract.fixedDelayMs -or
+            $batchSize -ne $DefaultBatchSize -or $fixedDelayMs -ne $DefaultFixedDelayMs -or
             [int](Get-RequiredProperty $driver 'defaultSchedulerBatchSize' 'Driver aggregate') -ne $batchSize -or
             [long](Get-RequiredProperty $driver 'defaultSchedulerFixedDelayMs' 'Driver aggregate') -ne $fixedDelayMs) {
         throw 'Source summary batch/fixed-delay contract is inconsistent.'
@@ -543,7 +550,7 @@ function Write-DurableEvidenceCandidate([object]$Projection, [string]$Directory)
     Assert-SourceSummaryPrivacy $Projection
     $json = $Projection | ConvertTo-Json -Depth 12
     $started = ConvertTo-UtcTimestamp $Projection.timestamps.workloadStartedAtUtc 'Durable evidence workload timestamp'
-    $fileName = 'subscription-burst-decision-10k-{0}-{1}.json' -f $Projection.sourceSha.Substring(0, 12), $started.ToString('yyyyMMddTHHmmssfffffffZ')
+    $fileName = 'subscription-burst-scheduler-tuning-after-10k-{0}-{1}.json' -f $Projection.sourceSha.Substring(0, 12), $started.ToString('yyyyMMddTHHmmssfffffffZ')
     New-Item -ItemType Directory -Path $Directory -Force | Out-Null
     $path = Join-Path $Directory $fileName
     try {
@@ -580,7 +587,9 @@ function Test-DurableEvidenceCandidate([string]$Path, [object]$AuthoritativeCont
         if ($cohort -ne 10000) { return $false }
         Assert-AuthoritativeEvidenceIdentity ([string](Get-RequiredProperty $candidate 'workloadIdentity' 'Durable evidence')) $cohort $sourceSha $AuthoritativeContract 'Durable evidence'
         $contract = Get-RequiredProperty $candidate 'contract' 'Durable evidence'
-        if ([int](Get-RequiredProperty $contract 'batchSize' 'Durable evidence contract') -ne $DefaultBatchSize -or
+        if ([int](Get-RequiredProperty $contract 'batchSize' 'Durable evidence contract') -ne [int]$AuthoritativeContract.batchSize -or
+                [long](Get-RequiredProperty $contract 'fixedDelayMs' 'Durable evidence contract') -ne [long]$AuthoritativeContract.fixedDelayMs -or
+                [int](Get-RequiredProperty $contract 'batchSize' 'Durable evidence contract') -ne $DefaultBatchSize -or
                 [long](Get-RequiredProperty $contract 'fixedDelayMs' 'Durable evidence contract') -ne $DefaultFixedDelayMs -or
                 [int](Get-RequiredProperty $contract 'decisionTargetSeconds' 'Durable evidence contract') -ne [int]$AuthoritativeContract.decisionTargetSeconds -or
                 [math]::Abs([double](Get-RequiredProperty $contract 'requiredRawThroughput' 'Durable evidence contract') - [double]$AuthoritativeContract.requiredRawThroughput) -gt 0.000000001) { return $false }
@@ -623,7 +632,7 @@ function Test-DurableEvidenceCandidate([string]$Path, [object]$AuthoritativeCont
 }
 
 function Get-EvidenceState([string]$MarkerPath, [string]$DurableDirectory, [object]$AuthoritativeContract = $null) {
-    $candidates = if (Test-Path -LiteralPath $DurableDirectory -PathType Container) { @(Get-ChildItem -LiteralPath $DurableDirectory -Filter 'subscription-burst-decision-10k-*.json' -File) } else { @() }
+    $candidates = if (Test-Path -LiteralPath $DurableDirectory -PathType Container) { @(Get-ChildItem -LiteralPath $DurableDirectory -Filter 'subscription-burst-scheduler-tuning-after-10k-*.json' -File) } else { @() }
     $markerExists = Test-Path -LiteralPath $MarkerPath -PathType Leaf
     if (-not $markerExists -and $candidates.Count -eq 0) { return 'NOT_STARTED' }
     $validatedMarker = $null
@@ -659,26 +668,24 @@ function Write-MinimalRedactedFailureArtifact([string]$Path, [object]$Summary) {
 }
 
 function Validate-SyntheticContracts {
-    if ($DecisionContract.workloadIdentity -ne 'phase10-subscription-burst-decision-10k-v1' -or
-            $DecisionContract.cohort -ne 10000 -or
-            $DecisionContract.decisionTargetSeconds -ne 900 -or
-            [math]::Abs([double]$DecisionContract.requiredRawThroughput - (10000.0 / 900.0)) -gt 0.000000001) {
-        throw 'Decision first-result authoritative contract is invalid.'
+    if ($AfterContract.workloadIdentity -ne 'phase10-subscription-burst-scheduler-tuning-after-10k-v1' -or
+            $AfterContract.cohort -ne 10000 -or $AfterContract.batchSize -ne 500 -or $AfterContract.fixedDelayMs -ne 15000 -or
+            $AfterContract.decisionTargetSeconds -ne 900 -or
+            [math]::Abs([double]$AfterContract.requiredRawThroughput - (10000.0 / 900.0)) -gt 0.000000001) {
+        throw 'After first-result authoritative contract is invalid.'
     }
     $serviceSource = Get-Content -Raw -LiteralPath $MeasurementServiceSource
     $markerContractIndex = $serviceSource.IndexOf('assertWorkloadMarkerContract(initialBacklog);', [StringComparison]::Ordinal)
     $markerIndex = $serviceSource.IndexOf('writeWorkloadStartMarker();', [StringComparison]::Ordinal)
-    $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(DEFAULT_BATCH_SIZE)', [StringComparison]::Ordinal)
-    if ($workloadIndex -lt 0) {
-        $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(measurementBatchSize)', [StringComparison]::Ordinal)
-    }
+    $workloadIndex = $serviceSource.IndexOf('automation.processDueSchedules(measurementBatchSize)', [StringComparison]::Ordinal)
     if ($markerContractIndex -lt 0 -or $markerIndex -lt 0 -or $workloadIndex -lt 0 -or
             $markerContractIndex -gt $markerIndex -or $markerIndex -gt $workloadIndex) {
         throw 'Backend workload-start marker is not authoritative.'
     }
 
-    if ($serviceSource -notmatch 'assertRunArmed\(\)' -or $serviceSource -notmatch 'assertEligibleCandidateScope\(initialBacklog\)') {
-        throw 'Backend run-arm or synthetic scope guard is missing.'
+    if ($serviceSource -notmatch 'assertRunArmed\(\)' -or $serviceSource -notmatch 'assertEligibleCandidateScope\(initialBacklog\)' -or
+            $serviceSource -notmatch 'measurementBatchSize' -or $serviceSource -notmatch 'measurementFixedDelayMs') {
+        throw 'Backend run-arm, measurement contract, or synthetic scope guard is missing.'
     }
     foreach ($driverField in @('databaseOrderCount', 'duplicateScheduleOrderCount', 'futureScheduleCount')) {
         if ($serviceSource -notmatch ("int\s+" + [regex]::Escape($driverField))) {
@@ -696,10 +703,13 @@ function Validate-SyntheticContracts {
     $harnessSource = Get-Content -Raw -LiteralPath $PSCommandPath
     $sourceBindIndex = $harnessSource.LastIndexOf('Assert-ApprovedSourceSha $ApprovedSourceSha $true', [StringComparison]::Ordinal)
     $markerSourceBindIndex = $harnessSource.LastIndexOf('$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = [string]$runContract.sourceSha', [StringComparison]::Ordinal)
+    $batchSourceBindIndex = $harnessSource.LastIndexOf('$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_BATCH_SIZE = [string]$runContract.batchSize', [StringComparison]::Ordinal)
+    $fixedDelaySourceBindIndex = $harnessSource.LastIndexOf('$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_FIXED_DELAY_MS = [string]$runContract.fixedDelayMs', [StringComparison]::Ordinal)
     $runtimeStartIndex = $harnessSource.LastIndexOf("Invoke-Compose @('up', '--build'", [StringComparison]::Ordinal)
-    if ($sourceBindIndex -lt 0 -or $markerSourceBindIndex -lt $sourceBindIndex -or $runtimeStartIndex -lt 0 -or
-            $markerSourceBindIndex -gt $runtimeStartIndex) {
-        throw 'ApprovedSourceSha is not bound to local HEAD and the marker contract before runtime startup.'
+    if ($sourceBindIndex -lt 0 -or $markerSourceBindIndex -lt $sourceBindIndex -or $batchSourceBindIndex -lt $sourceBindIndex -or
+            $fixedDelaySourceBindIndex -lt $sourceBindIndex -or $runtimeStartIndex -lt 0 -or $markerSourceBindIndex -gt $runtimeStartIndex -or
+            $batchSourceBindIndex -gt $runtimeStartIndex -or $fixedDelaySourceBindIndex -gt $runtimeStartIndex) {
+        throw 'ApprovedSourceSha, marker identity, and measurement batch/fixed-delay are not bound before runtime startup.'
     }
     $sampleBlock = [regex]::Match($harnessSource, '(?s)function Get-MeasurementSample.*?function Get-MeasurementPeaks').Value
     if (([regex]::Matches($sampleBlock, 'Get-BackendMetricsPayload')).Count -ne 1 -or
@@ -748,14 +758,16 @@ function Validate-SyntheticContracts {
         throw 'Synthetic fixed evaluation snapshot mixed Prometheus scrape generations.'
     }
     $overlay = Get-Content -Raw -LiteralPath $OverlayPath
-    if ($overlay -notmatch 'name:\s*pawcycle-phase10-subscription-burst-decision-10k' -or
-            $overlay -notmatch 'pawcycle-phase10-subscription-burst-decision-10k-mysql-data' -or
+    if ($overlay -notmatch 'name:\s*pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k' -or
+            $overlay -notmatch 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-mysql-data' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA' -or
             $overlay -notmatch 'PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT' -or
+            $overlay -notmatch 'PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_BATCH_SIZE' -or
+            $overlay -notmatch 'PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_FIXED_DELAY_MS' -or
             $overlay -match 'remove-orphans') {
-        throw 'Subscription Burst 10k isolated compose boundary is invalid.'
+        throw 'Subscription Burst scheduler tuning After 10k isolated compose boundary is invalid.'
     }
     $syntheticRoot = Join-Path $TempRoot "pawcycle-phase10-subscription-burst-evidence-validation-$([guid]::NewGuid())"
     $syntheticMarker = Join-Path $syntheticRoot 'workload-started.json'
@@ -791,8 +803,8 @@ function Validate-SyntheticContracts {
             diagnostic = $WorkloadIdentity
             sourceCommit = [string]$sourceCommit
             syntheticCohortSize = [int]$syntheticAuthoritativeContract.cohort
-            batchSize = 100
-            fixedDelayMs = 60000
+            batchSize = [int]$syntheticAuthoritativeContract.batchSize
+            fixedDelayMs = [long]$syntheticAuthoritativeContract.fixedDelayMs
             decisionTargetSeconds = 900
             requiredRawThroughput = (10000.0 / 900.0)
             actualPerformanceWorkload = $true
@@ -803,7 +815,7 @@ function Validate-SyntheticContracts {
                 initialBacklog = [int]$syntheticAuthoritativeContract.cohort; finalBacklog = 0; processed = [int]$syntheticAuthoritativeContract.cohort; created = [int]$syntheticAuthoritativeContract.cohort; failures = 0; duplicateOrNoOp = 0
                 rawDrainElapsedMs = 1; ordersPerSecond = [int]$syntheticAuthoritativeContract.cohort; batchCount = 1
                 batchDurationP50Ms = 1; batchDurationP95Ms = 1; batchDurationMaxMs = 1
-                defaultSchedulerBatchSize = 100; defaultSchedulerFixedDelayMs = 60000
+                defaultSchedulerBatchSize = [int]$syntheticAuthoritativeContract.batchSize; defaultSchedulerFixedDelayMs = [long]$syntheticAuthoritativeContract.fixedDelayMs
                 defaultSchedulerProjectedTicks = 1; defaultSchedulerProjectedCompletionMs = 1
                 projectionBasis = 'synthetic validation projection'
                 databaseOrderCount = [int]$syntheticAuthoritativeContract.cohort; duplicateScheduleOrderCount = 0; futureScheduleCount = [int]$syntheticAuthoritativeContract.cohort
@@ -832,7 +844,7 @@ function Validate-SyntheticContracts {
         $safeSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
         foreach ($markerMismatch in @('workloadIdentity', 'sourceSha', 'cohort')) {
             $wrongMarker = New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z'
-            if ($markerMismatch -eq 'workloadIdentity') { $wrongMarker[$markerMismatch] = 'phase10-subscription-burst-decision-10k-wrong' }
+            if ($markerMismatch -eq 'workloadIdentity') { $wrongMarker[$markerMismatch] = 'phase10-subscription-burst-scheduler-tuning-after-10k-wrong' }
             if ($markerMismatch -eq 'sourceSha') { $wrongMarker[$markerMismatch] = $wrongHead }
             if ($markerMismatch -eq 'cohort') { $wrongMarker[$markerMismatch] = 9999 }
             $wrongMarker | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
@@ -872,6 +884,34 @@ function Validate-SyntheticContracts {
         }
         Remove-Item -LiteralPath $wrongCohortCandidate -Force
 
+        foreach ($measurementMismatch in @(
+                [ordered]@{ name = 'batch-size'; batchSize = 100; fixedDelayMs = [long]$syntheticAuthoritativeContract.fixedDelayMs },
+                [ordered]@{ name = 'fixed-delay-ms'; batchSize = [int]$syntheticAuthoritativeContract.batchSize; fixedDelayMs = 60000 })) {
+            $wrongMeasurementSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+            $wrongMeasurementSummary.batchSize = [int]$measurementMismatch.batchSize
+            $wrongMeasurementSummary.fixedDelayMs = [long]$measurementMismatch.fixedDelayMs
+            $wrongMeasurementSummary.driver.defaultSchedulerBatchSize = [int]$measurementMismatch.batchSize
+            $wrongMeasurementSummary.driver.defaultSchedulerFixedDelayMs = [long]$measurementMismatch.fixedDelayMs
+            $wrongMeasurementSummary.workloadStartedAtUtc = '2026-01-01T00:01:00Z'
+            $wrongMeasurementSummary.completedAtUtc = '2026-01-01T00:01:00Z'
+            $wrongMeasurementSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
+            New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:01:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+            $wrongMeasurementRejected = $false
+            try { $null = Export-DurableEvidence $syntheticArtifact $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract } catch { $wrongMeasurementRejected = $true }
+            if (-not $wrongMeasurementRejected) { throw "Synthetic wrong $($measurementMismatch.name) promotion was not rejected." }
+
+            New-SyntheticMarker $syntheticAuthoritativeContract '2026-01-01T00:00:00Z' | ConvertTo-Json | Set-Content -LiteralPath $syntheticMarker -Encoding utf8
+            $safeSummaryRoundTrip = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+            $wrongMeasurementProjection = New-DurableEvidenceProjection $safeSummaryRoundTrip (Get-ValidatedMarker $syntheticMarker $syntheticAuthoritativeContract) $syntheticAuthoritativeContract
+            $wrongMeasurementProjection.contract.batchSize = [int]$measurementMismatch.batchSize
+            $wrongMeasurementProjection.contract.fixedDelayMs = [long]$measurementMismatch.fixedDelayMs
+            $wrongMeasurementCandidate = Write-DurableEvidenceCandidate $wrongMeasurementProjection $syntheticDurable
+            if ((Get-EvidenceState $syntheticMarker $syntheticDurable $syntheticAuthoritativeContract) -ne 'CONSUMED_SUMMARY_MISSING') {
+                throw "Synthetic wrong $($measurementMismatch.name) candidate was accepted as available evidence."
+            }
+            Remove-Item -LiteralPath $wrongMeasurementCandidate -Force
+        }
+
         $wrongSourceSummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
         $wrongSourceSummary.sourceCommit = $wrongHead
         $wrongSourceSummary.workloadStartedAtUtc = '2026-01-01T00:02:00Z'
@@ -891,7 +931,7 @@ function Validate-SyntheticContracts {
         }
 
         $wrongIdentitySummary = $safeSummary | ConvertTo-Json -Depth 12 | ConvertFrom-Json
-        $wrongIdentitySummary.diagnostic = 'phase10-subscription-burst-decision-10k-wrong'
+        $wrongIdentitySummary.diagnostic = 'phase10-subscription-burst-scheduler-tuning-after-10k-wrong'
         $wrongIdentitySummary.workloadStartedAtUtc = '2026-01-01T00:03:00Z'
         $wrongIdentitySummary.completedAtUtc = '2026-01-01T00:03:00Z'
         $wrongIdentitySummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $syntheticArtifact -Encoding utf8
@@ -954,18 +994,18 @@ function Validate-SyntheticContracts {
 
 Assert-SafeHostTempPath $ResultsDir 'ResultsDir'
 Assert-SafeHostTempPath $MarkerDir 'first-result marker directory'
-$modes = @($ValidateOnly, $ValidateRuntimeCapability, $InspectEvidenceState, $PromoteEvidence, $RunDecisionFirstResult, $CleanupIsolatedRuntime) | Where-Object { $_ }
+$modes = @($ValidateOnly, $ValidateRuntimeCapability, $InspectEvidenceState, $PromoteEvidence, $RunAfterFirstResult, $CleanupIsolatedRuntime) | Where-Object { $_ }
 if ($modes.Count -ne 1) {
-    throw 'Specify exactly one mode: ValidateOnly, ValidateRuntimeCapability, InspectEvidenceState, PromoteEvidence, RunDecisionFirstResult, or CleanupIsolatedRuntime.'
+    throw 'Specify exactly one mode: ValidateOnly, ValidateRuntimeCapability, InspectEvidenceState, PromoteEvidence, RunAfterFirstResult, or CleanupIsolatedRuntime.'
 }
-if ($CohortSize -ne [int]$DecisionContract.cohort) {
-    throw 'PERF-PH10-004 cohort is fixed at 10,000.'
+if ($CohortSize -ne [int]$AfterContract.cohort) {
+    throw 'PERF-PH10-006 cohort is fixed at 10,000.'
 }
-$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_RUN_ARMED = if ($RunDecisionFirstResult) { 'true' } else { 'false' }
+$env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_RUN_ARMED = if ($RunAfterFirstResult) { 'true' } else { 'false' }
 
 if ($ValidateOnly) {
     Validate-SyntheticContracts
-    'Phase 10 Subscription Burst 10k decision harness validation passed without starting Docker or the performance workload.'
+    'Phase 10 Subscription Burst scheduler tuning After 10k harness validation passed without starting Docker or the performance workload.'
     exit 0
 }
 
@@ -990,23 +1030,25 @@ if ($CleanupIsolatedRuntime) {
     exit 0
 }
 
-if ($RunDecisionFirstResult -and (Test-Path -LiteralPath $FirstResultMarker)) {
-    throw 'PERF-PH10-004 decision first-result was already started; NEVER RERUN.'
+if ($RunAfterFirstResult -and (Test-Path -LiteralPath $FirstResultMarker)) {
+    throw 'PERF-PH10-006 After first-result was already started; NEVER RERUN.'
 }
 
 $runContract = $null
 $sourceCommit = $null
-if ($RunDecisionFirstResult) {
-    if ([string]::IsNullOrWhiteSpace($ApprovedSourceSha)) { throw 'RunDecisionFirstResult requires an explicit user-approved ApprovedSourceSha.' }
+if ($RunAfterFirstResult) {
+    if ([string]::IsNullOrWhiteSpace($ApprovedSourceSha)) { throw 'RunAfterFirstResult requires an explicit user-approved ApprovedSourceSha.' }
     $sourceCommit = Assert-ApprovedSourceSha $ApprovedSourceSha $true
     $runContract = New-AuthoritativeRunContract $sourceCommit
     $preRunEvidenceState = Get-EvidenceState $FirstResultMarker $DurableEvidenceDir $runContract
     if ($preRunEvidenceState -ne 'NOT_STARTED') {
-        throw "PERF-PH10-004 decision first-result is already consumed or has conflicting evidence (evidenceState=$preRunEvidenceState); NEVER RERUN."
+        throw "PERF-PH10-006 After first-result is already consumed or has conflicting evidence (evidenceState=$preRunEvidenceState); NEVER RERUN."
     }
     $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY = [string]$runContract.workloadIdentity
     $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA = [string]$runContract.sourceSha
     $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT = [string]$runContract.cohort
+    $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_BATCH_SIZE = [string]$runContract.batchSize
+    $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_FIXED_DELAY_MS = [string]$runContract.fixedDelayMs
 }
 
 $freshAfter = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
@@ -1033,8 +1075,8 @@ $summary = [ordered]@{
     syntheticCohortSize = $CohortSize
     batchSize = $DefaultBatchSize
     fixedDelayMs = $DefaultFixedDelayMs
-    decisionTargetSeconds = [int]$DecisionContract.decisionTargetSeconds
-    requiredRawThroughput = [double]$DecisionContract.requiredRawThroughput
+    decisionTargetSeconds = [int]$AfterContract.decisionTargetSeconds
+    requiredRawThroughput = [double]$AfterContract.requiredRawThroughput
     actualPerformanceWorkload = $true
     workloadInvocationStarted = $false
     harnessFailure = $false
@@ -1045,7 +1087,7 @@ $summary = [ordered]@{
 }
 try {
     $fixture = Invoke-RestMethod -Method Post -TimeoutSec 900 -Uri "$backendUrl/internal/performance/subscription-burst/setup?cohortSize=$CohortSize"
-    if ($fixture.initialBacklog -ne $CohortSize -or $fixture.batchSize -ne $DefaultBatchSize) {
+    if ($fixture.initialBacklog -ne $CohortSize -or $fixture.batchSize -ne $DefaultBatchSize -or $fixture.fixedDelayMs -ne $DefaultFixedDelayMs) {
         throw 'Synthetic fixture setup did not produce the approved backlog.'
     }
     $baselinePrometheus = Get-PrometheusSnapshot $prometheusUrl 'baseline'
@@ -1116,7 +1158,7 @@ try {
     $summary['driverExitCode'] = $process.ExitCode
 } catch {
     $summary.harnessFailure = $true
-    $summary.error = 'Subscription Burst 10k decision harness execution failed.'
+    $summary.error = 'Subscription Burst scheduler tuning After 10k harness execution failed.'
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
         $consumed = $true
         $summary.workloadInvocationStarted = $true
@@ -1157,6 +1199,6 @@ try {
 }
 
 if ($summary.harnessFailure) {
-    throw "Subscription Burst 10k decision first-result was consumed with a harness failure; NEVER RERUN. Summary: $SummaryPath"
+    throw "Subscription Burst scheduler tuning After 10k After first-result was consumed with a harness failure; NEVER RERUN. Summary: $SummaryPath"
 }
-"Subscription Burst 10k decision first-result completed once: $SummaryPath"
+"Subscription Burst scheduler tuning After 10k After first-result completed once: $SummaryPath"
