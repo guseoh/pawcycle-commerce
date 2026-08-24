@@ -18,7 +18,7 @@ The generated durable redacted candidate is preserved without modification:
 - raw drain: `495193.796ms`; raw throughput: `20.1941 orders/s`
 - synthetic 15-minute decision target: PASS
 - default scheduler projection: `6435194ms`
-- resource saturation evidence: none observed (Hikari active peak `2`, pending `0`; MySQL row-lock wait/time `0 / 0ms`; backend healthy with restart `0` and OOM false)
+- resource saturation evidence: none observed in the preserved candidate metrics (Hikari active peak `2`, pending `0`; MySQL row-lock wait/time `0 / 0ms`)
 
 The harness result remains `harnessFailure=true`. The reason is the Prometheus metric reconciliation mismatch: the driver expected `100` batches, `10,000` processed, and `10,000` created, while the collected end metrics were `98 / 9,800 / 9,800` with duration count `100`. This PR does not retroactively change that historical harness result to success.
 
