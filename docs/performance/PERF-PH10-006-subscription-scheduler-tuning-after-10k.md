@@ -40,6 +40,17 @@ pwsh -File infra/performance/phase10/run-subscription-burst-scheduler-tuning-aft
 
 durable evidence는 correctness, initial/final backlog, processed/created/failures/duplicate-no-op, raw elapsed/throughput, batch p50/p95/max, configured batch/fixed delay, scheduler projection, 900초 target, CPU/JVM, Hikari, MySQL row-lock과 automation metric reconciliation을 포함한다.
 
+`rawDecisionTargetMet`은 fixed delay를 제외한 raw drain과 throughput이 synthetic 900초 기준을 만족하는지 나타낸다. scheduler 설정 튜닝의 최종 15분 판정은 이 값과 별개다.
+
+scheduler projection의 canonical 판정은 durable evidence에 보존된 `contract.decisionTargetSeconds`와 `schedulerProjection.defaultSchedulerProjectedCompletionMs` 두 값을 사용해 다음 식으로 파생한다.
+
+```text
+schedulerProjectionTargetMet =
+    defaultSchedulerProjectedCompletionMs <= decisionTargetSeconds * 1000
+```
+
+현재 계약에서는 `defaultSchedulerProjectedCompletionMs <= 900000`이면 PASS, 초과하면 FAIL이다. 이 판정은 저장된 두 authoritative aggregate에서 결정적으로 재계산할 수 있으므로 별도 중복 boolean을 evidence에 저장하지 않는다. `schedulerProjectionTargetMet=false`는 기술 선택 결과가 REJECT라는 뜻이며 measurement harness 자체의 실패를 의미하지 않는다. 따라서 `harnessFailure`와 섞지 않는다.
+
 Prometheus measurement-end snapshot은 workload 종료 뒤 freshness를 확인한 하나의 evaluation timestamp를 모든 instant query에 사용한다. 이는 collector consistency를 위한 것으로 애플리케이션 metric 의미를 변경하지 않는다.
 
 After 결과가 correctness를 유지하고 scheduler projection이 900초 이내이며 CPU/JVM/Hikari/MySQL saturation이 없으면 설정 튜닝을 우선한다. 그렇지 않을 때만 후속 task에서 bounded catch-up 등의 다른 설계를 검토한다. 이 문서는 그 구현이나 Production 적용을 승인하지 않는다.
