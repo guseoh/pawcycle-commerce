@@ -11,9 +11,12 @@ This note connects the completed Phase 10 synthetic/local decision evidence. It 
 The evidence sources are:
 
 - Read Scale Before: [PERF-PH9-014 Phase 9 conclusion](../../performance/PERF-PH9-014-phase9-conclusion.md)
+- Read Scale After result: [Issue #202 PERF-PH10-001 Read Scale result](https://github.com/guseoh/pawcycle-commerce/issues/202#issuecomment-5386957588)
 - Read Scale After contract and fixed target: [PERF-PH10-001 scale scenario contract](../../performance/PERF-PH10-001-scale-scenario-contract.md)
 - Subscription Burst Before: [PERF-PH10-005 historical result note](../PERF-PH10-004/PERF-PH10-005-historical-result-note.md)
 - Subscription Burst After and Gate A: [PERF-PH10-007 decision note](../PERF-PH10-006/PERF-PH10-007-gate-a-decision-note.md)
+
+The authoritative Redis After measured result is the Issue #202 result linked above; the repository scale-scenario document defines the experiment contract and fixed target rather than serving as the measured-result record.
 
 ## Read Scale conclusion
 
