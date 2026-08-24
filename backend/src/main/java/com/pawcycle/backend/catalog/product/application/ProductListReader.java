@@ -2,7 +2,6 @@ package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
-import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
 import java.math.BigDecimal;
@@ -35,10 +34,7 @@ public class ProductListReader {
 						product.getPetType(),
 						product.getShortDescription(),
 						product.getThumbnailUrl(),
-						new CategorySnapshot(
-								product.getCategory().getId(),
-								product.getCategory().getName(),
-								product.getCategory().getSlug())))
+						categorySnapshot(product)))
 				.toList();
 		List<Long> productIds = products.stream().map(Product::getId).toList();
 		List<SkuSnapshot> skuSnapshots = skuRepository
@@ -52,6 +48,14 @@ public class ProductListReader {
 						sku.isSubscribable()))
 				.toList();
 		return new ProductListSnapshot(productSnapshots, skuSnapshots);
+	}
+
+	private CategorySnapshot categorySnapshot(Product product) {
+		if (product.getCategory() == null) return null;
+		return new CategorySnapshot(
+				product.getCategory().getId(),
+				product.getCategory().getName(),
+				product.getCategory().getSlug());
 	}
 
 	public record ProductListSnapshot(List<ProductSnapshot> products, List<SkuSnapshot> skus) {

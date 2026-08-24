@@ -35,10 +35,11 @@ class RecommendationAiConfiguration {
 
 	private String userPrompt(List<RecommendationCandidate> candidates, List<String> categories) {
 		String products = candidates.stream()
+				.limit(10)
 				.map(candidate -> "productId=" + candidate.productId()
 						+ ", name=" + candidate.name()
 						+ ", shortDescription=" + candidate.shortDescription()
-						+ ", category=" + candidate.category().slug())
+						+ ", category=" + (candidate.category() == null ? "" : candidate.category().slug()))
 				.collect(java.util.stream.Collectors.joining("\n"));
 		return "선호 카테고리 순서: " + String.join(", ", categories)
 				+ "\n후보 상품:\n" + products

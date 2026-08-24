@@ -19,16 +19,21 @@ class RecommendationRepository {
 		return jdbc.query("""
 				SELECT product.id,product.name,product.short_description,product.thumbnail_url,product.pet_type,
 				       category.id,category.name,category.slug
-				FROM products product JOIN categories category ON category.id=product.category_id
+				FROM products product LEFT JOIN categories category ON category.id=product.category_id
 				WHERE product.pet_type=? AND product.display_status='PUBLIC'
 				  AND EXISTS (
 				    SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id
 				    WHERE sku.product_id=product.id AND sku.status='ACTIVE' AND inventory.available_quantity>0
 				  )
 				ORDER BY product.id
-				""", (rs, row) -> new RecommendationCandidate(
-					rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
-					new RecommendationCandidate.Category(rs.getLong(6), rs.getString(7), rs.getString(8))), petType);
+				""", (rs, row) -> {
+			Long categoryId = rs.getObject(6, Long.class);
+			RecommendationCandidate.Category category = categoryId == null
+					? null
+					: new RecommendationCandidate.Category(categoryId, rs.getString(7), rs.getString(8));
+			return new RecommendationCandidate(
+					rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), category);
+		}, petType);
 	}
 
 	List<String> subscriptionCategorySlugs(long memberId, long petId) {

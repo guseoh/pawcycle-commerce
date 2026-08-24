@@ -7,8 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
@@ -31,7 +31,7 @@ class ProductListReaderTests {
 	private SkuRepository skuRepository;
 
 	@Test
-	void materializesProductAndSkuFieldsWithoutReturningEntities() {
+	void materializesProductSkuAndCategoryFieldsWithoutReturningEntities() {
 		Product product = mock(Product.class);
 		Sku sku = mock(Sku.class);
 		when(product.getId()).thenReturn(1L);
@@ -40,7 +40,7 @@ class ProductListReaderTests {
 		when(product.getShortDescription()).thenReturn("짧은 설명");
 		when(product.getThumbnailUrl()).thenReturn("thumbnail");
 		Category category = mock(Category.class);
-		when(category.getId()).thenReturn(1L);
+		when(category.getId()).thenReturn(7L);
 		when(category.getName()).thenReturn("사료");
 		when(category.getSlug()).thenReturn("food");
 		when(product.getCategory()).thenReturn(category);
@@ -56,12 +56,34 @@ class ProductListReaderTests {
 		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
 
 		assertThat(snapshot.products()).extracting(ProductListReader.ProductSnapshot::productId).containsExactly(1L);
+		assertThat(snapshot.products().getFirst().category()).satisfies(mapped -> {
+			assertThat(mapped.categoryId()).isEqualTo(7L);
+			assertThat(mapped.name()).isEqualTo("사료");
+			assertThat(mapped.slug()).isEqualTo("food");
+		});
 		assertThat(snapshot.skus()).extracting(ProductListReader.SkuSnapshot::skuId).containsExactly(10L);
 		assertThat(snapshot.skus().get(0).price()).isEqualByComparingTo("19900.00");
 		assertThatThrownBy(() -> snapshot.products().add(null)).isInstanceOf(UnsupportedOperationException.class);
 		verify(productRepository).findAllPublicOrderById();
 		verify(skuRepository).findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
 				List.of(1L), SkuStatus.ACTIVE);
+	}
+
+	@Test
+	void uncategorizedProductKeepsNullCategory() {
+		Product product = mock(Product.class);
+		when(product.getId()).thenReturn(1L);
+		when(product.getName()).thenReturn("미분류 상품");
+		when(product.getPetType()).thenReturn("DOG");
+		when(product.getShortDescription()).thenReturn("짧은 설명");
+		when(product.getCategory()).thenReturn(null);
+		when(productRepository.findAllPublicOrderById()).thenReturn(List.of(product));
+		when(skuRepository.findAllByProductIdInAndStatusOrderByProductIdAscDisplayOrderAscIdAsc(
+				List.of(1L), SkuStatus.ACTIVE)).thenReturn(List.of());
+
+		ProductListReader.ProductListSnapshot snapshot = new ProductListReader(productRepository, skuRepository).read();
+
+		assertThat(snapshot.products()).singleElement().satisfies(mapped -> assertThat(mapped.category()).isNull());
 	}
 
 	@Test

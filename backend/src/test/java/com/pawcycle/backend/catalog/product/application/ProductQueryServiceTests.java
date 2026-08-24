@@ -2,16 +2,16 @@ package com.pawcycle.backend.catalog.product.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
@@ -35,13 +35,10 @@ class ProductQueryServiceTests {
 
 	@Mock
 	private ProductListCache productListCache;
-
 	@Mock
 	private ProductListReader productListReader;
-
 	@Mock
 	private ProductRepository productRepository;
-
 	@Mock
 	private SkuRepository skuRepository;
 
@@ -53,15 +50,13 @@ class ProductQueryServiceTests {
 			Supplier<ProductListView> loader = invocation.getArgument(0);
 			return loader.get();
 		});
-		productQueryService = new ProductQueryService(
-				productListCache, productListReader, productRepository, skuRepository);
+		productQueryService = new ProductQueryService(productListCache, productListReader, productRepository, skuRepository);
 	}
 
 	@Test
 	void cacheHitBypassesProductListReader() {
 		ProductListView cached = new ProductListView(List.of());
 		doReturn(cached).when(productListCache).getOrLoad(any());
-
 		assertThat(productQueryService.findProducts()).isSameAs(cached);
 		verifyNoInteractions(productListReader, productRepository, skuRepository);
 	}
@@ -69,34 +64,29 @@ class ProductQueryServiceTests {
 	@Test
 	void emptyListSkipsSkuQuery() {
 		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(List.of(), List.of()));
-
 		ProductListView response = productQueryService.findProducts();
-
 		assertThat(response.products()).isEmpty();
 		verifyNoInteractions(productRepository, skuRepository);
 	}
 
 	@Test
-	void listUsesOneProductQueryAndOneBatchSkuQuery() {
+	void listUsesOneProductQueryOneBatchSkuQueryAndMapsCategoryFields() {
 		Product first = product(1L, "첫 상품", "DOG", "첫 설명", null, null);
 		Product second = product(2L, "둘째 상품", "CAT", "둘째 설명", null, null);
 		Sku firstSku = sku(10L, first, "2kg", "19900.00", true);
 		Sku secondSku = sku(11L, first, "5kg", "39900.00", false);
-		ProductListReader.ProductSnapshot firstSnapshot = productSnapshot(first);
-		ProductListReader.ProductSnapshot secondSnapshot = productSnapshot(second);
-		ProductListReader.SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
-		ProductListReader.SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
 		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
-				List.of(
-						firstSnapshot,
-						secondSnapshot),
-				List.of(
-						firstSkuSnapshot,
-						secondSkuSnapshot)));
+				List.of(productSnapshot(first), productSnapshot(second)),
+				List.of(skuSnapshot(first, firstSku), skuSnapshot(first, secondSku))));
 
 		ProductListView response = productQueryService.findProducts();
 
 		assertThat(response.products()).hasSize(2);
+		assertThat(response.products().getFirst().category()).satisfies(category -> {
+			assertThat(category.categoryId()).isEqualTo(1L);
+			assertThat(category.name()).isEqualTo("사료");
+			assertThat(category.slug()).isEqualTo("food");
+		});
 		assertThat(response.products().get(0).skuPriceSummary().skuPrices())
 				.extracting(ProductListView.SkuPrice::skuId)
 				.containsExactly(10L, 11L);
@@ -108,7 +98,7 @@ class ProductQueryServiceTests {
 	}
 
 	@Test
-	void detailMapsDeliveryCyclesBySubscribableValue() {
+	void detailMapsDeliveryCyclesAndCategoryFields() {
 		Product product = product(1L, "상품", "DOG", "짧은 설명", null, null);
 		Sku subscribable = sku(10L, product, "2kg", "19900.00", true);
 		Sku notSubscribable = sku(11L, product, "5kg", "39900.00", false);
@@ -118,14 +108,32 @@ class ProductQueryServiceTests {
 
 		ProductDetailView response = productQueryService.findProduct(1L);
 
+		assertThat(response.category()).satisfies(category -> {
+			assertThat(category.categoryId()).isEqualTo(1L);
+			assertThat(category.name()).isEqualTo("사료");
+			assertThat(category.slug()).isEqualTo("food");
+		});
 		assertThat(response.skus().get(0).availableDeliveryCycles()).containsExactly(2, 4, 8);
 		assertThat(response.skus().get(1).availableDeliveryCycles()).isEmpty();
 	}
 
 	@Test
+	void uncategorizedProductRemainsReadableAndCategoryFilterDoesNotMatchIt() {
+		Product uncategorized = productWithoutCategory(3L, "미분류", "DOG", "설명");
+		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
+				List.of(new ProductListReader.ProductSnapshot(3L, "미분류", "DOG", "설명", null, null)), List.of()));
+		when(productRepository.findPublicById(3L)).thenReturn(Optional.of(uncategorized));
+		when(skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(3L, SkuStatus.ACTIVE)).thenReturn(List.of());
+
+		assertThat(productQueryService.findProducts().products()).singleElement()
+				.satisfies(summary -> assertThat(summary.category()).isNull());
+		assertThat(productQueryService.findProducts(null, null, "food").products()).isEmpty();
+		assertThat(productQueryService.findProduct(3L).category()).isNull();
+	}
+
+	@Test
 	void missingOrNonPublicProductUsesNotFoundException() {
 		when(productRepository.findPublicById(99L)).thenReturn(Optional.empty());
-
 		assertThatThrownBy(() -> productQueryService.findProduct(99L))
 				.isInstanceOf(ProductNotFoundException.class)
 				.hasMessage("상품을 확인할 수 없습니다.");
@@ -136,25 +144,15 @@ class ProductQueryServiceTests {
 	void unexpectedRepositoryFailuresUseEndpointSpecificExceptions() {
 		when(productListReader.read()).thenThrow(new IllegalStateException("table details"));
 		when(productRepository.findPublicById(1L)).thenThrow(new IllegalStateException("column details"));
-
-		assertThatThrownBy(productQueryService::findProducts)
-				.isInstanceOf(ProductListUnavailableException.class);
-		assertThatThrownBy(() -> productQueryService.findProduct(1L))
-				.isInstanceOf(ProductDetailUnavailableException.class);
+		assertThatThrownBy(productQueryService::findProducts).isInstanceOf(ProductListUnavailableException.class);
+		assertThatThrownBy(() -> productQueryService.findProduct(1L)).isInstanceOf(ProductDetailUnavailableException.class);
 	}
 
 	@Test
 	void queryMethodsUseReadOnlyTransactions() throws NoSuchMethodException {
-		Transactional listTransaction = ProductQueryService.class
-				.getMethod("findProducts")
-				.getAnnotation(Transactional.class);
-		Transactional readerTransaction = ProductListReader.class
-				.getMethod("read")
-				.getAnnotation(Transactional.class);
-		Transactional detailTransaction = ProductQueryService.class
-				.getMethod("findProduct", Long.class)
-				.getAnnotation(Transactional.class);
-
+		Transactional listTransaction = ProductQueryService.class.getMethod("findProducts").getAnnotation(Transactional.class);
+		Transactional readerTransaction = ProductListReader.class.getMethod("read").getAnnotation(Transactional.class);
+		Transactional detailTransaction = ProductQueryService.class.getMethod("findProduct", Long.class).getAnnotation(Transactional.class);
 		assertThat(listTransaction).isNull();
 		assertThat(readerTransaction.readOnly()).isTrue();
 		assertThat(detailTransaction.readOnly()).isTrue();
@@ -162,30 +160,15 @@ class ProductQueryServiceTests {
 
 	private ProductListReader.ProductSnapshot productSnapshot(Product product) {
 		return new ProductListReader.ProductSnapshot(
-				product.getId(),
-				product.getName(),
-				product.getPetType(),
-				product.getShortDescription(),
-				product.getThumbnailUrl(),
+				product.getId(), product.getName(), product.getPetType(), product.getShortDescription(), product.getThumbnailUrl(),
 				new ProductListReader.CategorySnapshot(1L, "사료", "food"));
 	}
 
 	private ProductListReader.SkuSnapshot skuSnapshot(Product product, Sku sku) {
-		return new ProductListReader.SkuSnapshot(
-				product.getId(),
-				sku.getId(),
-				sku.getName(),
-				sku.getPrice(),
-				sku.isSubscribable());
+		return new ProductListReader.SkuSnapshot(product.getId(), sku.getId(), sku.getName(), sku.getPrice(), sku.isSubscribable());
 	}
 
-	private Product product(
-			Long id,
-			String name,
-			String petType,
-			String shortDescription,
-			String description,
-			String thumbnailUrl) {
+	private Product product(Long id, String name, String petType, String shortDescription, String description, String thumbnailUrl) {
 		Product product = mock(Product.class);
 		when(product.getId()).thenReturn(id);
 		when(product.getName()).thenReturn(name);
@@ -198,6 +181,16 @@ class ProductQueryServiceTests {
 		when(category.getName()).thenReturn("사료");
 		when(category.getSlug()).thenReturn("food");
 		when(product.getCategory()).thenReturn(category);
+		return product;
+	}
+
+	private Product productWithoutCategory(Long id, String name, String petType, String shortDescription) {
+		Product product = mock(Product.class);
+		when(product.getId()).thenReturn(id);
+		when(product.getName()).thenReturn(name);
+		when(product.getPetType()).thenReturn(petType);
+		when(product.getShortDescription()).thenReturn(shortDescription);
+		when(product.getCategory()).thenReturn(null);
 		return product;
 	}
 

@@ -2,8 +2,8 @@ package com.pawcycle.backend.foundation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -77,6 +77,20 @@ class SecurityFoundationIntegrationTests {
 	}
 
 	@Test
+	void recommendationApiRequiresAuthenticationAndHidesNonOwnedPet() throws Exception {
+		mockMvc.perform(get("/api/recommendations/products").param("petId", "42"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
+
+		mockMvc.perform(get("/api/recommendations/products")
+					.param("petId", String.valueOf(Long.MAX_VALUE))
+					.with(authentication(new UsernamePasswordAuthenticationToken(
+							new AuthenticatedMemberPrincipal(1L), null, java.util.List.of()))))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("PET_NOT_FOUND"));
+	}
+
+	@Test
 	void anonymousLogoutWithValidCsrfReturnsAuthRequiredJsonWithoutRedirect() throws Exception {
 		mockMvc.perform(post("/api/auth/logout").with(csrf()))
 				.andExpect(status().isUnauthorized())
@@ -118,5 +132,4 @@ class SecurityFoundationIntegrationTests {
 		assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("\"code\":\"ACCESS_DENIED\"");
 		assertThat(response.getContentAsString(StandardCharsets.UTF_8)).contains("\"fieldErrors\":[]");
 	}
-
 }
