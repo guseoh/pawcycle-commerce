@@ -42,7 +42,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -398,8 +397,8 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 				try {
 					subscriptions.command(member.getId(), subscriptionId, "reschedule-next", "reschedule-race", "\"0\"", Map.of("scheduledDate", requestedDate.toString()));
 					return "SUCCESS";
-				} catch (V2ApiException | CannotAcquireLockException exception) {
-					return exception instanceof V2ApiException v2 ? v2.code() : "SUBSCRIPTION_VERSION_MISMATCH";
+				} catch (V2ApiException exception) {
+					return exception.code();
 				}
 			});
 			Future<SubscriptionOrderAutomationService.BatchResult> scheduler = executor.submit(() -> {
@@ -450,12 +449,8 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 								"\"0\"",
 								body);
 						return "SUCCESS";
-					} catch (V2ApiException | CannotAcquireLockException exception) {
-						if (exception instanceof CannotAcquireLockException) {
-							return "SUBSCRIPTION_VERSION_MISMATCH";
-						}
-						V2ApiException v2 = (V2ApiException) exception;
-						return v2.code();
+					} catch (V2ApiException exception) {
+						return exception.code();
 					}
 				});
 				Future<SubscriptionOrderAutomationService.BatchResult> automationResult = executor.submit(() -> {
