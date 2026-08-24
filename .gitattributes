@@ -13,3 +13,6 @@
 *.pdf binary
 *.zip binary
 *.jar binary
+
+# Generated durable evidence must retain its original bytes for SHA-256 verification.
+docs/reports/PERF-PH10-006/evidence-candidates/*.json -text
