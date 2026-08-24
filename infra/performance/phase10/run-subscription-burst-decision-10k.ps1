@@ -118,38 +118,49 @@ function Assert-IsolatedRuntime {
     }
 }
 
-function Query-Prometheus([string]$PrometheusUrl, [string]$Query) {
-    $response = Invoke-RestMethod -TimeoutSec 3 -Uri "$PrometheusUrl/api/v1/query" -Body @{ query = $Query }
+function Query-Prometheus([string]$PrometheusUrl, [string]$Query, [double]$EvaluationTimestamp = 0) {
+    $request = [ordered]@{ query = $Query }
+    if ($EvaluationTimestamp -gt 0) {
+        $request['time'] = $EvaluationTimestamp.ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $response = Invoke-RestMethod -TimeoutSec 3 -Uri "$PrometheusUrl/api/v1/query" -Body $request
     if ($response.status -ne 'success' -or $response.data.result.Count -ne 1) { throw "Prometheus metric unavailable: $Query" }
     return [double]$response.data.result[0].value[1]
 }
 
-function Get-PrometheusSnapshot([string]$PrometheusUrl, [string]$Label) {
+function Get-PrometheusSnapshot([string]$PrometheusUrl, [string]$Label, [double]$EvaluationTimestamp = 0, [scriptblock]$QueryMetric = $null) {
+    if ($null -eq $QueryMetric) {
+        $QueryMetric = {
+            param([string]$MetricQuery, [double]$MetricEvaluationTimestamp)
+            Query-Prometheus $PrometheusUrl $MetricQuery $MetricEvaluationTimestamp
+        }
+    }
     return [ordered]@{
         label = $Label
         capturedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-        automationExecutions = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_executions_total)'
-        automationProcessed = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_processed_candidates_total)'
-        automationCreated = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_orders_total)'
-        automationFailures = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_failures_total)'
-        automationDuplicateNoOp = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_duplicate_noop_total)'
-        automationDurationCount = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_duration_seconds_count)'
-        automationDurationSeconds = Query-Prometheus $PrometheusUrl 'sum(pawcycle_subscription_automation_duration_seconds_sum)'
-        processCpuUsage = Query-Prometheus $PrometheusUrl 'sum(process_cpu_usage)'
-        jvmHeapUsed = Query-Prometheus $PrometheusUrl 'sum(jvm_memory_used_bytes{area="heap"})'
-        jvmNonHeapUsed = Query-Prometheus $PrometheusUrl 'sum(jvm_memory_used_bytes{area="nonheap"})'
-        jvmGcPauseCount = Query-Prometheus $PrometheusUrl 'sum(jvm_gc_pause_seconds_count)'
-        jvmGcPauseSeconds = Query-Prometheus $PrometheusUrl 'sum(jvm_gc_pause_seconds_sum)'
-        jvmLiveThreads = Query-Prometheus $PrometheusUrl 'sum(jvm_threads_live_threads)'
-        jvmPeakThreads = Query-Prometheus $PrometheusUrl 'sum(jvm_threads_peak_threads)'
-        hikariActive = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_active)'
-        hikariPending = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_pending)'
-        hikariMax = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_max)'
-        hikariAcquireCount = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_acquire_seconds_count)'
-        hikariAcquireSeconds = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_acquire_seconds_sum)'
-        hikariUsageCount = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_usage_seconds_count)'
-        hikariUsageSeconds = Query-Prometheus $PrometheusUrl 'sum(hikaricp_connections_usage_seconds_sum)'
-        freshnessTimestamp = Query-Prometheus $PrometheusUrl 'min(timestamp({__name__=~"tomcat_threads_config_max_threads|hikaricp_connections_max|pawcycle_subscription_automation_executions_total"}))'
+        evaluationTimestamp = if ($EvaluationTimestamp -gt 0) { $EvaluationTimestamp } else { $null }
+        automationExecutions = & $QueryMetric 'sum(pawcycle_subscription_automation_executions_total)' $EvaluationTimestamp
+        automationProcessed = & $QueryMetric 'sum(pawcycle_subscription_automation_processed_candidates_total)' $EvaluationTimestamp
+        automationCreated = & $QueryMetric 'sum(pawcycle_subscription_automation_orders_total)' $EvaluationTimestamp
+        automationFailures = & $QueryMetric 'sum(pawcycle_subscription_automation_failures_total)' $EvaluationTimestamp
+        automationDuplicateNoOp = & $QueryMetric 'sum(pawcycle_subscription_automation_duplicate_noop_total)' $EvaluationTimestamp
+        automationDurationCount = & $QueryMetric 'sum(pawcycle_subscription_automation_duration_seconds_count)' $EvaluationTimestamp
+        automationDurationSeconds = & $QueryMetric 'sum(pawcycle_subscription_automation_duration_seconds_sum)' $EvaluationTimestamp
+        processCpuUsage = & $QueryMetric 'sum(process_cpu_usage)' $EvaluationTimestamp
+        jvmHeapUsed = & $QueryMetric 'sum(jvm_memory_used_bytes{area="heap"})' $EvaluationTimestamp
+        jvmNonHeapUsed = & $QueryMetric 'sum(jvm_memory_used_bytes{area="nonheap"})' $EvaluationTimestamp
+        jvmGcPauseCount = & $QueryMetric 'sum(jvm_gc_pause_seconds_count)' $EvaluationTimestamp
+        jvmGcPauseSeconds = & $QueryMetric 'sum(jvm_gc_pause_seconds_sum)' $EvaluationTimestamp
+        jvmLiveThreads = & $QueryMetric 'sum(jvm_threads_live_threads)' $EvaluationTimestamp
+        jvmPeakThreads = & $QueryMetric 'sum(jvm_threads_peak_threads)' $EvaluationTimestamp
+        hikariActive = & $QueryMetric 'sum(hikaricp_connections_active)' $EvaluationTimestamp
+        hikariPending = & $QueryMetric 'sum(hikaricp_connections_pending)' $EvaluationTimestamp
+        hikariMax = & $QueryMetric 'sum(hikaricp_connections_max)' $EvaluationTimestamp
+        hikariAcquireCount = & $QueryMetric 'sum(hikaricp_connections_acquire_seconds_count)' $EvaluationTimestamp
+        hikariAcquireSeconds = & $QueryMetric 'sum(hikaricp_connections_acquire_seconds_sum)' $EvaluationTimestamp
+        hikariUsageCount = & $QueryMetric 'sum(hikaricp_connections_usage_seconds_count)' $EvaluationTimestamp
+        hikariUsageSeconds = & $QueryMetric 'sum(hikaricp_connections_usage_seconds_sum)' $EvaluationTimestamp
+        freshnessTimestamp = & $QueryMetric 'min(timestamp({__name__=~"tomcat_threads_config_max_threads|hikaricp_connections_max|pawcycle_subscription_automation_executions_total"}))' $EvaluationTimestamp
     }
 }
 
@@ -173,8 +184,12 @@ function Assert-MeasurementEndMetrics([string]$PrometheusUrl, [double]$FinishedA
     $deadline = (Get-Date).AddSeconds(60)
     do {
         try {
-            $snapshot = Get-PrometheusSnapshot $PrometheusUrl 'measurement-end'
-            if ($snapshot.freshnessTimestamp -ge $FinishedAfter) {
+            $evaluationTimestamp = Query-Prometheus $PrometheusUrl 'min(timestamp({__name__=~"tomcat_threads_config_max_threads|hikaricp_connections_max|pawcycle_subscription_automation_executions_total"}))'
+            if ($evaluationTimestamp -ge $FinishedAfter) {
+                $snapshot = Get-PrometheusSnapshot $PrometheusUrl 'measurement-end' $evaluationTimestamp
+                if ([math]::Abs([double]$snapshot.freshnessTimestamp - $evaluationTimestamp) -gt 0.000001) {
+                    throw 'Measurement-end Prometheus snapshot did not retain the fresh evaluation boundary.'
+                }
                 return $snapshot
             }
         } catch {
@@ -687,6 +702,47 @@ function Validate-SyntheticContracts {
     if (([regex]::Matches($sampleBlock, 'Get-BackendMetricsPayload')).Count -ne 1 -or
             ([regex]::Matches($sampleBlock, 'Query-BackendGauge')).Count -ne 4) {
         throw 'Measurement sample must fetch actuator metrics once and parse four gauges from that payload.'
+    }
+    $measurementEndBlock = [regex]::Match($harnessSource, '(?s)function Assert-MeasurementEndMetrics.*?function Assert-MeasurementEndpointsDisarmed').Value
+    if ($measurementEndBlock -notmatch '\$evaluationTimestamp\s*=\s*Query-Prometheus' -or
+            $measurementEndBlock -notmatch '\$evaluationTimestamp\s*-ge\s*\$FinishedAfter' -or
+            $measurementEndBlock -notmatch "Get-PrometheusSnapshot\s+\`$PrometheusUrl\s+'measurement-end'\s+\`$evaluationTimestamp") {
+        throw 'Measurement-end Prometheus freshness and fixed evaluation boundary are not preserved.'
+    }
+    $syntheticGeneration = [pscustomobject]@{ Value = 0 }
+    $syntheticQueryCalls = [System.Collections.Generic.List[object]]::new()
+    $syntheticQueryMetric = {
+        param([string]$MetricQuery, [double]$MetricEvaluationTimestamp)
+        if ($MetricEvaluationTimestamp -gt 0) {
+            $generation = $MetricEvaluationTimestamp
+        } else {
+            $syntheticGeneration.Value++
+            $generation = [double]$syntheticGeneration.Value
+        }
+        [void]$syntheticQueryCalls.Add([pscustomobject]@{
+                query = $MetricQuery
+                evaluationTimestamp = $MetricEvaluationTimestamp
+                generation = $generation
+            })
+        return [double]$generation
+    }
+    $unpinnedSnapshot = Get-PrometheusSnapshot 'synthetic-prometheus' 'unpinned' -QueryMetric $syntheticQueryMetric
+    if ($unpinnedSnapshot.automationExecutions -eq $unpinnedSnapshot.automationProcessed) {
+        throw 'Synthetic scrape-advance fixture did not demonstrate mixed unpinned metric generations.'
+    }
+    $syntheticQueryCalls.Clear()
+    $fixedEvaluationTimestamp = 1724472971.25
+    $pinnedSnapshot = Get-PrometheusSnapshot 'synthetic-prometheus' 'pinned' $fixedEvaluationTimestamp $syntheticQueryMetric
+    $pinnedAutomationValues = @(
+        $pinnedSnapshot.automationExecutions,
+        $pinnedSnapshot.automationProcessed,
+        $pinnedSnapshot.automationCreated,
+        $pinnedSnapshot.automationDurationCount
+    )
+    if ($pinnedSnapshot.evaluationTimestamp -ne $fixedEvaluationTimestamp -or
+            @($pinnedAutomationValues | Where-Object { $_ -ne $fixedEvaluationTimestamp }).Count -ne 0 -or
+            @($syntheticQueryCalls | Where-Object { $_.evaluationTimestamp -ne $fixedEvaluationTimestamp }).Count -ne 0) {
+        throw 'Synthetic fixed evaluation snapshot mixed Prometheus scrape generations.'
     }
     $overlay = Get-Content -Raw -LiteralPath $OverlayPath
     if ($overlay -notmatch 'name:\s*pawcycle-phase10-subscription-burst-decision-10k' -or
