@@ -75,9 +75,13 @@ class ProductQueryServiceTests {
 		Product second = product(2L, "둘째 상품", "CAT", "둘째 설명", null, null);
 		Sku firstSku = sku(10L, first, "2kg", "19900.00", true);
 		Sku secondSku = sku(11L, first, "5kg", "39900.00", false);
+		ProductListReader.ProductSnapshot firstSnapshot = productSnapshot(first);
+		ProductListReader.ProductSnapshot secondSnapshot = productSnapshot(second);
+		ProductListReader.SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
+		ProductListReader.SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
 		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
-				List.of(productSnapshot(first), productSnapshot(second)),
-				List.of(skuSnapshot(first, firstSku), skuSnapshot(first, secondSku))));
+				List.of(firstSnapshot, secondSnapshot),
+				List.of(firstSkuSnapshot, secondSkuSnapshot)));
 
 		ProductListView response = productQueryService.findProducts();
 
@@ -120,8 +124,9 @@ class ProductQueryServiceTests {
 	@Test
 	void uncategorizedProductRemainsReadableAndCategoryFilterDoesNotMatchIt() {
 		Product uncategorized = productWithoutCategory(3L, "미분류", "DOG", "설명");
-		when(productListReader.read()).thenReturn(new ProductListReader.ProductListSnapshot(
-				List.of(new ProductListReader.ProductSnapshot(3L, "미분류", "DOG", "설명", null, null)), List.of()));
+		ProductListReader.ProductListSnapshot uncategorizedSnapshot = new ProductListReader.ProductListSnapshot(
+				List.of(new ProductListReader.ProductSnapshot(3L, "미분류", "DOG", "설명", null, null)), List.of());
+		when(productListReader.read()).thenReturn(uncategorizedSnapshot);
 		when(productRepository.findPublicById(3L)).thenReturn(Optional.of(uncategorized));
 		when(skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(3L, SkuStatus.ACTIVE)).thenReturn(List.of());
 
