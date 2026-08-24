@@ -177,7 +177,6 @@ class V2SubscriptionCommandIntegrationTests {
 		Map<String,Object> commandBody = Map.of("planVersionId", planVersionId);
 		V2SubscriptionService.V2Result result = service.command(
 				member.getId(), subscriptionId, "change-plan", "change-plan", "\"0\"", commandBody);
-
 		assertThat(result.etag()).isEqualTo("\"1\"");
 		assertThat(result.body()).containsEntry("version", 1L);
 		assertThat(result.body().get("pendingSnapshot")).isNotNull();
@@ -281,6 +280,12 @@ class V2SubscriptionCommandIntegrationTests {
 		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "duplicate-reschedule", "\"0\"", Map.of("scheduledDate", existingDate.toString())))
 				.isInstanceOf(V2ApiException.class)
 				.hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_CONFLICT");
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "invalid-calendar-reschedule", "\"0\"", Map.of("scheduledDate", "2026-02-30")))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "non-string-reschedule", "\"0\"", Map.of("scheduledDate", 20260910)))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
 	}
 
 	@Test
@@ -296,12 +301,17 @@ class V2SubscriptionCommandIntegrationTests {
 		Map<String,Object> item = castMap(castList(nextDelivery.get("items")).getFirst());
 		assertThat(item).containsEntry("productName", "V2 command product").containsEntry("thumbnailUrl", "https://cdn.example.test/product.png");
 		assertThat(pendingChange).containsEntry("deliveryCycleWeeks", 8).containsKey("appliesOn");
-		assertThat(castList(detail.get("availableActions"))).containsExactly("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "CANCEL");
+		assertThat(castList(detail.get("availableActions"))).containsExactly("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "CANCEL", "UPDATE_SHIPPING_ADDRESS");
 
 		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason='MISSING_BILLING_METHOD' WHERE subscription_id=? AND status='SCHEDULED'", subscriptionId);
 		Map<String,Object> heldDetail = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
 		assertThat(castMap(heldDetail.get("issue"))).containsEntry("code", "BILLING_METHOD_REQUIRED").doesNotContainValue("MISSING_BILLING_METHOD");
-		assertThat(castList(heldDetail.get("availableActions"))).containsExactly("CANCEL");
+		assertThat(castList(heldDetail.get("availableActions"))).containsExactly("REGISTER_BILLING_METHOD", "CANCEL");
+
+		jdbc.update("UPDATE subscription_schedules SET hold_reason='MISSING_SHIPPING_ADDRESS' WHERE subscription_id=? AND status='HELD'", subscriptionId);
+		Map<String,Object> shippingHeldDetail = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+		assertThat(castMap(shippingHeldDetail.get("issue"))).containsEntry("code", "SHIPPING_ADDRESS_REQUIRED").doesNotContainValue("MISSING_SHIPPING_ADDRESS");
+		assertThat(castList(shippingHeldDetail.get("availableActions"))).containsExactly("UPDATE_SHIPPING_ADDRESS", "CANCEL");
 	}
 
 	@Test
@@ -357,7 +367,6 @@ class V2SubscriptionCommandIntegrationTests {
 
 		V2SubscriptionService.V2Result paused = service.command(
 				member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", Map.of());
-
 		assertThat(paused.body()).containsEntry("status", "PAUSED").containsEntry("version", 1L);
 		assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isEqualTo(1L);
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_orders WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
