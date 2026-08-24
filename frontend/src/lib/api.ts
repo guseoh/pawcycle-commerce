@@ -28,6 +28,7 @@ export interface ProductPrice {
   skuName: string;
   price: number;
 }
+export interface Category { categoryId: number; name: string; slug: string }
 
 export interface ProductSummary {
   productId: number;
@@ -35,6 +36,7 @@ export interface ProductSummary {
   petType: string;
   shortDescription: string;
   thumbnailUrl: string | null;
+  category: Category;
   skuPriceSummary: { skuPrices: ProductPrice[] };
   hasSubscribableSku: boolean;
 }
@@ -57,6 +59,7 @@ export interface ProductDetail {
   petType: string;
   description: string | null;
   thumbnailUrl: string | null;
+  category: Category;
   skus: ProductSku[];
 }
 
@@ -183,9 +186,18 @@ async function requestVoid(path: string, init: RequestInit): Promise<void> {
 }
 
 export const productApi = {
-  list: () => requestJson<ProductListResponse>("/api/products"),
+  list: (filters: { q?: string; petType?: string; category?: string } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
+    return requestJson<ProductListResponse>(`/api/products${query.size ? `?${query}` : ""}`);
+  },
   detail: (productId: string) =>
     requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+};
+
+export interface RecommendationItem extends Omit<ProductSummary, "skuPriceSummary" | "hasSubscribableSku"> { reason: string }
+export const recommendationApi = {
+  products: (petId: number) => requestJson<{ products: RecommendationItem[] }>(`/api/recommendations/products?petId=${encodeURIComponent(petId)}`),
 };
 
 export const authApi = {

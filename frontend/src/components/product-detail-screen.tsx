@@ -197,11 +197,10 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
           <p className="eyebrow">Product #{product.productId}</p>
           <h1 id="product-title">{product.name}</h1>
           <p className="tag">대상: {formatPetType(product.petType)}</p>
+          <p className="tag">카테고리: {product.category.name}</p>
           <p className="description">{product.description ?? "상세 설명이 준비되지 않았습니다."}</p>
           {product.thumbnailUrl ? (
-            <a className="image-link" href={product.thumbnailUrl} target="_blank" rel="noreferrer">
-              대표 이미지 보기
-            </a>
+            <img className="product-thumbnail" src={product.thumbnailUrl} alt="" />
           ) : null}
         </section>
 

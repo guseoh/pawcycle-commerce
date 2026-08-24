@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function MyPage() { return <section className="section-card"><h1>내 정보</h1><p>현재 제공되는 사용자 기능으로 이동합니다.</p><div className="button-row"><Link className="button button-secondary" href="/subscriptions">반려동물·정기배송</Link><Link className="button button-secondary" href="/orders">주문</Link><Link className="button button-secondary" href="/notifications">알림</Link><Link className="button button-secondary" href="/products">상품</Link></div></section>; }
