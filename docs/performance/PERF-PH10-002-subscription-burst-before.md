@@ -25,7 +25,7 @@ Raw drain은 실제 호출들의 elapsed time과 batch duration이다. Default s
 
 ## Evidence와 판정 입력
 
-summary는 source SHA, cohort, backlog, processed/created/failure/duplicate-no-op, batch duration p50/p95/max, raw orders/sec와 scheduler projection을 기록한다. same-window runtime capability evidence와 workload 종료 뒤 fresh Prometheus scrape를 보존하고, automation counter delta를 driver aggregate와 대조한다. Backend actuator를 measurement-only 200ms sampling하여 Hikari active/pending 및 runtime peak를 보강한다. JVM CPU/memory/GC/thread, Hikari max/acquire/usage, Backend container CPU/memory/PID/health/restart/OOM과 MySQL relevant statement, connection, row-lock wait aggregate도 함께 보존한다. DB order cardinality, schedule당 중복 부재와 다음 future schedule 수를 service aggregate와 대조한다.
+summary는 source SHA, cohort, backlog, processed/created/failure/duplicate-no-op, batch duration p50/p95/max, raw orders/sec와 scheduler projection을 기록한다. same-window runtime capability evidence와 workload 종료 뒤 fresh Prometheus scrape를 보존하고, automation counter delta를 driver aggregate와 대조한다. Backend actuator payload를 measurement-only sample마다 한 번 fetch해 Hikari active/pending 및 runtime peak를 보강한 뒤 200ms sleep을 적용한다. 따라서 200ms는 정확한 sample 주기가 아니라 sample collection time에 뒤따르는 sleep 간격이다. JVM CPU/memory/GC/thread, Hikari max/acquire/usage, Backend container CPU/memory/PID/health/restart/OOM과 MySQL relevant statement, connection, row-lock wait aggregate도 함께 보존한다. DB order cardinality, schedule당 중복 부재와 다음 future schedule 수를 service aggregate와 대조한다.
 
 Before 이후에는 cadence/batch 설정, 순차 처리량, connection/transaction/lock pressure와 downstream 속도 결합을 먼저 구분한다. 그 뒤 no-change 또는 scheduler/batch 조정, bounded worker/async, durable queue, Kafka·동등 messaging, Outbox/idempotent consumer/retry/DLQ를 해결 능력과 운영 요구에 따라 비교한다.
 

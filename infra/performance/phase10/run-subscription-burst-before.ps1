@@ -212,20 +212,24 @@ function Get-ContainerSample {
     }
 }
 
-function Query-BackendGauge([string]$BackendUrl, [string]$Metric) {
-    $metrics = Invoke-WebRequest -TimeoutSec 3 -Uri "$BackendUrl/actuator/prometheus"
+function Get-BackendMetricsPayload([string]$BackendUrl) {
+    return (Invoke-WebRequest -TimeoutSec 3 -Uri "$BackendUrl/actuator/prometheus").Content
+}
+
+function Query-BackendGauge([string]$MetricsPayload, [string]$Metric) {
     $pattern = '(?m)^' + [regex]::Escape($Metric) + '(?:\{[^}]*\})?\s+(?<value>[-+0-9.eE]+)\s*$'
-    $metricMatches = [regex]::Matches($metrics.Content, $pattern)
+    $metricMatches = [regex]::Matches($MetricsPayload, $pattern)
     if ($metricMatches.Count -lt 1) { throw "Backend actuator gauge unavailable: $Metric" }
     return [double](($metricMatches | ForEach-Object { [double]$_.Groups['value'].Value } | Measure-Object -Sum).Sum)
 }
 
 function Get-MeasurementSample([string]$BackendUrl) {
     $container = Get-ContainerSample
-    $container['processCpuUsage'] = Query-BackendGauge $BackendUrl 'process_cpu_usage'
-    $container['jvmLiveThreads'] = Query-BackendGauge $BackendUrl 'jvm_threads_live_threads'
-    $container['hikariActive'] = Query-BackendGauge $BackendUrl 'hikaricp_connections_active'
-    $container['hikariPending'] = Query-BackendGauge $BackendUrl 'hikaricp_connections_pending'
+    $metricsPayload = Get-BackendMetricsPayload $BackendUrl
+    $container['processCpuUsage'] = Query-BackendGauge $metricsPayload 'process_cpu_usage'
+    $container['jvmLiveThreads'] = Query-BackendGauge $metricsPayload 'jvm_threads_live_threads'
+    $container['hikariActive'] = Query-BackendGauge $metricsPayload 'hikaricp_connections_active'
+    $container['hikariPending'] = Query-BackendGauge $metricsPayload 'hikaricp_connections_pending'
     return $container
 }
 
@@ -304,6 +308,12 @@ function Validate-SyntheticContracts {
 
     if ($serviceSource -notmatch 'assertRunArmed\(\)' -or $serviceSource -notmatch 'assertEligibleCandidateScope\(initialBacklog\)') {
         throw 'Backend run-arm or synthetic scope guard is missing.'
+    }
+    $harnessSource = Get-Content -Raw -LiteralPath $PSCommandPath
+    $sampleBlock = [regex]::Match($harnessSource, '(?s)function Get-MeasurementSample.*?function Get-MeasurementPeaks').Value
+    if (([regex]::Matches($sampleBlock, 'Get-BackendMetricsPayload')).Count -ne 1 -or
+            ([regex]::Matches($sampleBlock, 'Query-BackendGauge')).Count -ne 4) {
+        throw 'Measurement sample must fetch actuator metrics once and parse four gauges from that payload.'
     }
     $overlay = Get-Content -Raw -LiteralPath $OverlayPath
     if ($overlay -notmatch 'pawcycle-phase10-subscription-burst-mysql-data' -or
