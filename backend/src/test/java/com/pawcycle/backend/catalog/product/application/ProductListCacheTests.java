@@ -185,6 +185,7 @@ class ProductListCacheTests {
 				"CAT",
 				"설명",
 				null,
+				new ProductListView.CategorySummary(1L, "사료", "food"),
 				new ProductListView.SkuPriceSummary(List.of(
 						new ProductListView.SkuPrice(20L, "2kg", new BigDecimal("19900.00")))),
 				true)));

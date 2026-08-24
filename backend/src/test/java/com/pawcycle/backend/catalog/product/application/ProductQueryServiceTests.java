@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
@@ -165,7 +166,8 @@ class ProductQueryServiceTests {
 				product.getName(),
 				product.getPetType(),
 				product.getShortDescription(),
-				product.getThumbnailUrl());
+				product.getThumbnailUrl(),
+				new ProductListReader.CategorySnapshot(1L, "사료", "food"));
 	}
 
 	private ProductListReader.SkuSnapshot skuSnapshot(Product product, Sku sku) {
@@ -191,6 +193,11 @@ class ProductQueryServiceTests {
 		when(product.getShortDescription()).thenReturn(shortDescription);
 		when(product.getDescription()).thenReturn(description);
 		when(product.getThumbnailUrl()).thenReturn(thumbnailUrl);
+		Category category = mock(Category.class);
+		when(category.getId()).thenReturn(id);
+		when(category.getName()).thenReturn("사료");
+		when(category.getSlug()).thenReturn("food");
+		when(product.getCategory()).thenReturn(category);
 		return product;
 	}
 

@@ -15,9 +15,12 @@ public record ProductListView(List<ProductSummary> products) {
 			String petType,
 			String shortDescription,
 			String thumbnailUrl,
+			CategorySummary category,
 			SkuPriceSummary skuPriceSummary,
 			boolean hasSubscribableSku) {
 	}
+
+	public record CategorySummary(Long categoryId, String name, String slug) {}
 
 	public record SkuPriceSummary(List<SkuPrice> skuPrices) {
 

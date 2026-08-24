@@ -9,11 +9,14 @@ public record ProductDetailView(
 		String petType,
 		String description,
 		String thumbnailUrl,
+		CategorySummary category,
 		List<SkuDetail> skus) {
 
 	public ProductDetailView {
 		skus = List.copyOf(skus);
 	}
+
+	public record CategorySummary(Long categoryId, String name, String slug) {}
 
 	public record SkuDetail(
 			Long skuId,

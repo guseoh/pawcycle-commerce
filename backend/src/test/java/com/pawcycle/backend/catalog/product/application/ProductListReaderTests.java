@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
@@ -38,6 +39,11 @@ class ProductListReaderTests {
 		when(product.getPetType()).thenReturn("DOG");
 		when(product.getShortDescription()).thenReturn("짧은 설명");
 		when(product.getThumbnailUrl()).thenReturn("thumbnail");
+		Category category = mock(Category.class);
+		when(category.getId()).thenReturn(1L);
+		when(category.getName()).thenReturn("사료");
+		when(category.getSlug()).thenReturn("food");
+		when(product.getCategory()).thenReturn(category);
 		when(sku.getProduct()).thenReturn(product);
 		when(sku.getId()).thenReturn(10L);
 		when(sku.getName()).thenReturn("2kg");

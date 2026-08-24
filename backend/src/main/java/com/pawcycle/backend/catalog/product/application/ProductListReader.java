@@ -34,7 +34,11 @@ public class ProductListReader {
 						product.getName(),
 						product.getPetType(),
 						product.getShortDescription(),
-						product.getThumbnailUrl()))
+						product.getThumbnailUrl(),
+						new CategorySnapshot(
+								product.getCategory().getId(),
+								product.getCategory().getName(),
+								product.getCategory().getSlug())))
 				.toList();
 		List<Long> productIds = products.stream().map(Product::getId).toList();
 		List<SkuSnapshot> skuSnapshots = skuRepository
@@ -62,8 +66,11 @@ public class ProductListReader {
 			String name,
 			String petType,
 			String shortDescription,
-			String thumbnailUrl) {
+			String thumbnailUrl,
+			CategorySnapshot category) {
 	}
+
+	public record CategorySnapshot(Long categoryId, String name, String slug) {}
 
 	public record SkuSnapshot(
 			Long productId,
