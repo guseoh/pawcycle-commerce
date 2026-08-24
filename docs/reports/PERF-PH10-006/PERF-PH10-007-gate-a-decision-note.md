@@ -26,6 +26,8 @@ PERF-PH10-006 is consumed and `NEVER RERUN`. The generated durable redacted cand
 | MySQL row locks | waits/time `0 / 0ms` | waits/time `0 / 0ms`; final current lock waits `0` |
 | harness / reconciliation | historical `harnessFailure=true`; reconciliation mismatch | `harnessFailure=false`; `collectorFailure=false`; reconciliation `true`; driver exit `0` |
 
+The durable candidate retains its generated integer `rawDrainElapsedMs=458710` unchanged; `458710.08151ms` is the authoritative driver summary value.
+
 The After raw decision target is `true`, and its scheduler projection passes: `743710 <= 900000`. `743710ms` is not a measured scheduler completion time: it is the measured raw drain plus configured `15,000ms` fixed delays between projected scheduler ticks.
 
 After runtime aggregates: CPU peak `123.06%` in the isolated 2 CPU envelope, process CPU peak `0.52`, memory peak `36.48%`, PIDs peak `41`, JVM live threads `27`, MySQL relevant statements `210074`, and final backend `health=healthy|restart=0|oom=false`.
