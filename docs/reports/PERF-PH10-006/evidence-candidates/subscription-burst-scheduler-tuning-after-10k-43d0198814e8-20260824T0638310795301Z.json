@@ -1,0 +1,101 @@
+{
+  "evidenceSchema": "pawcycle.subscription-burst.redacted.v1",
+  "sourceSha": "43d0198814e8b9d5640f39a4298323651248aa77",
+  "workloadIdentity": "phase10-subscription-burst-scheduler-tuning-after-10k-v1",
+  "cohort": 10000,
+  "contract": {
+    "batchSize": 500,
+    "fixedDelayMs": 15000,
+    "decisionTargetSeconds": 900,
+    "requiredRawThroughput": 11.11111111111111
+  },
+  "timestamps": {
+    "workloadStartedAtUtc": "2026-08-24T06:38:31.0795301+00:00",
+    "workloadCompletedAtUtc": "2026-08-24T06:46:21.7964336+00:00",
+    "markerStartedAtUtc": "2026-08-24T06:38:31.0795301+00:00"
+  },
+  "workloadAggregate": {
+    "initialBacklog": 10000,
+    "finalBacklog": 0,
+    "processed": 10000,
+    "created": 10000,
+    "failures": 0,
+    "duplicateOrNoOp": 0
+  },
+  "correctnessAggregate": {
+    "databaseOrderCount": 10000,
+    "duplicateScheduleOrderCount": 0,
+    "futureScheduleCount": 10000,
+    "driverHarnessFailure": false,
+    "automationMetricReconciliationMatched": true
+  },
+  "rawPerformanceAggregate": {
+    "rawDrainElapsedMs": 458710,
+    "ordersPerSecond": 21.80026208946968,
+    "rawDecisionTargetMet": true
+  },
+  "batchAggregate": {
+    "batchCount": 20,
+    "batchDurationP50Ms": 22603.944866,
+    "batchDurationP95Ms": 25470.042458,
+    "batchDurationMaxMs": 26634.926627
+  },
+  "schedulerProjection": {
+    "defaultSchedulerProjectedTicks": 20,
+    "defaultSchedulerProjectedCompletionMs": 743710,
+    "projectionBasis": "projection: observed raw drain duration plus 15000ms fixed delay between configured scheduler ticks"
+  },
+  "runtimeAggregate": {
+    "processCpuUsage": 0.9323287671232877,
+    "jvmHeapUsed": 78312760.0,
+    "jvmNonHeapUsed": 140411344.0,
+    "jvmGcPauseCount": 1.0,
+    "jvmGcPauseSeconds": 0.13,
+    "jvmLiveThreads": 27.0,
+    "jvmPeakThreads": 27.0,
+    "hikariActive": 0.0,
+    "hikariPending": 0.0,
+    "hikariMax": 10.0,
+    "hikariAcquireCount": 6.0,
+    "hikariAcquireSeconds": 0.002474131,
+    "hikariUsageCount": 6.0,
+    "hikariUsageSeconds": 0.162
+  },
+  "runtimeDeltaAggregate": {
+    "automationExecutions": 20.0,
+    "automationProcessed": 10000.0,
+    "automationCreated": 10000.0,
+    "automationFailures": 0.0,
+    "automationDuplicateNoOp": 0.0,
+    "automationDurationCount": 20.0,
+    "automationDurationSeconds": 458.632898106,
+    "jvmGcPauseCount": 97.0,
+    "jvmGcPauseSeconds": 0.31200000000000006,
+    "hikariAcquireCount": 10166.0,
+    "hikariAcquireSeconds": 0.09251071,
+    "hikariUsageCount": 10167.0,
+    "hikariUsageSeconds": 518.342
+  },
+  "runtimePeakAggregate": {
+    "cpuPercent": 123.06,
+    "memoryPercent": 36.48,
+    "pids": 41.0,
+    "processCpuUsage": 0.52,
+    "jvmLiveThreads": 27.0,
+    "hikariActive": 2.0,
+    "hikariPending": 0.0
+  },
+  "mysqlAggregate": {
+    "relevantStatements": 210074.0,
+    "rowLockWaits": 0.0,
+    "rowLockTimeMs": 0.0,
+    "finalThreadsConnected": 11,
+    "finalCurrentLockWaits": 0
+  },
+  "harnessCollectorState": {
+    "harnessFailure": false,
+    "collectorFailure": false,
+    "driverExitCode": 0,
+    "automationMetricReconciliationMatched": true
+  }
+}
