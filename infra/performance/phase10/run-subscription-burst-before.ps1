@@ -168,8 +168,8 @@ function Assert-MeasurementEndMetrics([string]$PrometheusUrl, [double]$FinishedA
 
 function Assert-MeasurementEndpointsDisarmed([string]$BackendUrl) {
     $response = Invoke-WebRequest -TimeoutSec 5 -SkipHttpErrorCheck -Method Post -Uri "$BackendUrl/internal/performance/subscription-burst/setup?cohortSize=100"
-    if ($response.StatusCode -lt 400) {
-        throw 'Measurement setup endpoint was armed during runtime capability validation.'
+    if ($response.StatusCode -lt 400 -or $response.StatusCode -in @(404, 405)) {
+        throw 'Measurement setup endpoint did not demonstrate the expected disarmed runtime boundary.'
     }
     if (Test-Path -LiteralPath $FirstResultMarker) {
         throw 'Disarmed runtime capability validation unexpectedly created a workload-start marker.'
@@ -445,10 +445,12 @@ try {
             $summary.workloadInvocationStarted = $true
             $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
         }
-        try {
-            $samples.Add((Get-MeasurementSample $backendUrl))
-        } catch {
-            $summary.collectorFailure = $true
+        if ($consumed) {
+            try {
+                $samples.Add((Get-MeasurementSample $backendUrl))
+            } catch {
+                $summary.collectorFailure = $true
+            }
         }
         if (-not $process.HasExited) { Start-Sleep -Milliseconds 200 }
     } while (-not $process.HasExited)
