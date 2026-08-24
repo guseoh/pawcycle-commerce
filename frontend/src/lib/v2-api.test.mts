@@ -50,3 +50,13 @@ test("API-004 subscription JSON fixture remains assignable to the frontend contr
   assert.equal(fixture.schedules.items[0].effectiveSnapshotId, null);
   assert.equal(fixture.commandHistory.items[0].result, "SUCCEEDED");
 });
+
+test("MVP4 reschedule and delivery-cycle commands keep ETag and idempotency headers", async () => {
+  const originalFetch = globalThis.fetch; const paths: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => { paths.push(String(input)); assert.equal((init?.headers as Record<string, string>)["If-Match"], "\"8\""); return new Response("{}", { status: 200 }); }) as typeof fetch;
+  try {
+    await v2Api.subscriptions.command(7, "reschedule-next", { scheduledDate: "2026-09-10" }, "csrf", "\"8\"", "reschedule-key");
+    await v2Api.subscriptions.command(7, "change-delivery-cycle", { deliveryCycleWeeks: 8 }, "csrf", "\"8\"", "cycle-key");
+    assert.match(paths[0], /reschedule-next/); assert.match(paths[1], /change-delivery-cycle/);
+  } finally { globalThis.fetch = originalFetch; }
+});

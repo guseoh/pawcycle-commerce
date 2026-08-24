@@ -58,6 +58,10 @@ export interface V2SubscriptionDetail extends V2SubscriptionSummary {
   pendingSnapshot: Snapshot | null;
   schedules: Page<Schedule>;
   commandHistory: Page<CommandHistory>;
+  nextDelivery?: { scheduledDate: string; status: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; thumbnailUrl: string | null; quantity: number }[] } | null;
+  pendingChange?: { appliesOn: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; quantity: number }[] } | null;
+  issue?: { code: "SHIPPING_ADDRESS_REQUIRED" | "BILLING_METHOD_REQUIRED" | "PAYMENT_SUPPORT_REQUIRED" | "STOCK_UNAVAILABLE"; message: string } | null;
+  availableActions?: string[];
 }
 
 export interface V2Response<T> { body: T; etag: string | null; location: string | null; replayed: boolean }
@@ -123,7 +127,7 @@ export const v2Api = {
     create: (request: { petId: number; planVersionId: number; deliveryCycleWeeks: number }, csrfToken: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>("/api/v2/subscriptions", {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken, "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request),
     }),
-    command: (id: number, command: "change-plan" | "skip-next" | "pause" | "resume" | "cancel", request: Record<string, unknown>, csrfToken: string, etag: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>(`/api/v2/subscriptions/${encodeURIComponent(id)}/commands/${command}`, {
+    command: (id: number, command: "change-plan" | "change-delivery-cycle" | "reschedule-next" | "skip-next" | "pause" | "resume" | "cancel", request: Record<string, unknown>, csrfToken: string, etag: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>(`/api/v2/subscriptions/${encodeURIComponent(id)}/commands/${command}`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken, "If-Match": etag, "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request),
     }),
   },

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError, ProductSummary, productApi } from "@/lib/api";
 import { formatPetType, formatPrice } from "@/lib/frontend-utils";
@@ -11,14 +12,16 @@ type LoadState =
   | { status: "success"; products: ProductSummary[] }
   | { status: "error"; message: string };
 
-export default function ProductsPage() {
+function ProductsContent() {
+  const searchParams = useSearchParams();
+  const q = searchParams.get("q") ?? ""; const petType = searchParams.get("petType") ?? ""; const category = searchParams.get("category") ?? "";
   const [retryKey, setRetryKey] = useState(0);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
     let active = true;
     productApi
-      .list()
+      .list({ q, petType, category })
       .then((response) => {
         if (active) setState({ status: "success", products: response.products });
       })
@@ -35,7 +38,7 @@ export default function ProductsPage() {
     return () => {
       active = false;
     };
-  }, [retryKey]);
+  }, [retryKey, q, petType, category]);
 
   return (
     <>
@@ -44,9 +47,11 @@ export default function ProductsPage() {
         <h1>함께 오래 먹을 사료를 찾아보세요.</h1>
         <p>
           상품과 SKU별 표시 가격, 구독 가능한 옵션을 로그인 없이 확인할 수 있습니다.
-          검색·필터 없이 공개 상품을 승인된 순서로 보여드립니다.
+          상품명·설명, 반려동물 타입, 카테고리로 함께 검색할 수 있습니다.
         </p>
       </header>
+
+      <ProductFilters key={`${q}\u0000${petType}\u0000${category}`} q={q} petType={petType} category={category} />
 
       {state.status === "loading" ? (
         <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState>
@@ -76,15 +81,13 @@ export default function ProductsPage() {
           {state.products.map((product) => (
             <article className="product-card" key={product.productId}>
               <div className="card-meta">
-                <span className="tag">상품 #{product.productId}</span>
                 <span className="tag">대상: {formatPetType(product.petType)}</span>
+                <span className="tag">{product.category.name}</span>
               </div>
               <h2>{product.name}</h2>
               <p>{product.shortDescription}</p>
               {product.thumbnailUrl ? (
-                <a className="image-link" href={product.thumbnailUrl} target="_blank" rel="noreferrer">
-                  대표 이미지 보기
-                </a>
+                <img className="product-thumbnail" src={product.thumbnailUrl} alt="" />
               ) : (
                 <p className="field-help">대표 이미지가 준비되지 않았습니다.</p>
               )}
@@ -120,4 +123,22 @@ export default function ProductsPage() {
       ) : null}
     </>
   );
+}
+
+function ProductFilters({ q, petType, category }: { q: string; petType: string; category: string }) {
+  const router = useRouter();
+  const [draftQ, setDraftQ] = useState(q);
+  const [draftPetType, setDraftPetType] = useState(petType);
+  const [draftCategory, setDraftCategory] = useState(category);
+  function applyFilters(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const next = new URLSearchParams(); if (draftQ.trim()) next.set("q", draftQ.trim()); if (draftPetType) next.set("petType", draftPetType); if (draftCategory.trim()) next.set("category", draftCategory.trim()); router.push(`/products${next.size ? `?${next}` : ""}`); }
+  return <form className="section-card" onSubmit={applyFilters}>
+    <label className="form-field">검색어<input className="input" value={draftQ} onChange={(event) => setDraftQ(event.target.value)} /></label>
+    <label className="form-field">반려동물 타입<select className="input" value={draftPetType} onChange={(event) => setDraftPetType(event.target.value)}><option value="">전체</option><option value="DOG">강아지</option><option value="CAT">고양이</option></select></label>
+    <label className="form-field">카테고리 slug<input className="input" value={draftCategory} onChange={(event) => setDraftCategory(event.target.value)} /></label>
+    <div className="button-row"><button className="button button-primary" type="submit">검색</button><button className="button button-secondary" type="button" onClick={() => router.push("/products")}>초기화</button></div>
+  </form>;
+}
+
+export default function ProductsPage() {
+  return <Suspense fallback={<LoadingState>상품 목록을 준비하고 있습니다.</LoadingState>}><ProductsContent /></Suspense>;
 }

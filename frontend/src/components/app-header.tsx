@@ -22,7 +22,7 @@ export function AppHeader() {
     setNotice(null);
     try {
       await logout();
-      router.push("/products");
+      router.push("/");
     } catch (error) {
       const reason = error instanceof CsrfRefreshError
         ? "CSRF_REFRESH_FAILED"
@@ -40,7 +40,7 @@ export function AppHeader() {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link className="brand" href="/products" aria-label="PawCycle 상품 목록">
+        <Link className="brand" href="/" aria-label="PawCycle 홈">
           <span className="brand-mark" aria-hidden="true">P</span>
           <span>
             <strong>PawCycle</strong>
@@ -50,9 +50,9 @@ export function AppHeader() {
         <nav className="main-nav" aria-label="주요 메뉴">
           <Link href="/products">상품</Link>
           <Link href="/subscriptions">내 구독</Link>
-		  <Link href="/orders">주문</Link>
-		  <Link href="/notifications">알림</Link>
-          <Link href="/mvp2/subscriptions">MVP2 구독</Link>
+          <Link href="/orders">주문</Link>
+          <Link href="/notifications">알림</Link>
+          {status === "authenticated" ? <Link href="/my">내 정보</Link> : null}
           {status === "loading" ? (
             <span className="nav-status" role="status">회원 정보 확인 중</span>
           ) : status === "authenticated" ? (
