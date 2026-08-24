@@ -1,0 +1,28 @@
+name: pawcycle-phase10-subscription-burst-decision-10k
+
+services:
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: local-integration,subscription-burst-measurement
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: "false"
+      PAWCYCLE_MVP2_RECONCILIATION_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: "false"
+      PAWCYCLE_COMMERCE_BILLING_ENABLED: "false"
+      PAWCYCLE_PRODUCT_LIST_CACHE_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_WORKLOAD_START_MARKER_PATH: /pawcycle-measurement-marker/workload-started.json
+      PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_RUN_ARMED: ${PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_RUN_ARMED:-false}
+      PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_MARKER_WORKLOAD_IDENTITY: ${PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY:-}
+      PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_MARKER_SOURCE_SHA: ${PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_SOURCE_SHA:-}
+      PAWCYCLE_SUBSCRIPTION_BURST_MEASUREMENT_MARKER_COHORT: ${PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_COHORT:-0}
+    ports:
+      - "127.0.0.1::8080"
+    volumes:
+      - type: bind
+        source: ${PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR:?PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR is required}
+        target: /pawcycle-measurement-marker
+
+volumes:
+  mysql-data:
+    name: pawcycle-phase10-subscription-burst-decision-10k-mysql-data
+  prometheus-data:
+    name: pawcycle-phase10-subscription-burst-decision-10k-prometheus-data

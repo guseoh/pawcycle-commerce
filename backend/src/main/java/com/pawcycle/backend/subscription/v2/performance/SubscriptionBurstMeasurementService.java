@@ -41,6 +41,9 @@ public class SubscriptionBurstMeasurementService {
 	private final Clock clock;
 	private final Path workloadStartMarker;
 	private final boolean runArmed;
+	private final String markerWorkloadIdentity;
+	private final String markerSourceSha;
+	private final int markerCohort;
 	private final AtomicBoolean drainRunning = new AtomicBoolean();
 
 	public SubscriptionBurstMeasurementService(
@@ -49,12 +52,18 @@ public class SubscriptionBurstMeasurementService {
 			Clock clock,
 			@Value("${pawcycle.subscription-burst-measurement.workload-start-marker-path}")
 			String workloadStartMarkerPath,
-			@Value("${pawcycle.subscription-burst-measurement.run-armed:false}") boolean runArmed) {
+			@Value("${pawcycle.subscription-burst-measurement.run-armed:false}") boolean runArmed,
+			@Value("${pawcycle.subscription-burst-measurement.marker-workload-identity:}") String markerWorkloadIdentity,
+			@Value("${pawcycle.subscription-burst-measurement.marker-source-sha:}") String markerSourceSha,
+			@Value("${pawcycle.subscription-burst-measurement.marker-cohort:0}") int markerCohort) {
 		this.jdbc = jdbc;
 		this.automation = automation;
 		this.clock = clock;
 		this.workloadStartMarker = Path.of(workloadStartMarkerPath).toAbsolutePath().normalize();
 		this.runArmed = runArmed;
+		this.markerWorkloadIdentity = markerWorkloadIdentity;
+		this.markerSourceSha = markerSourceSha;
+		this.markerCohort = markerCohort;
 	}
 
 	@Transactional
@@ -93,6 +102,7 @@ public class SubscriptionBurstMeasurementService {
 			if (initialBacklog < 1) {
 				throw new IllegalStateException("Synthetic due backlog is unavailable");
 			}
+			assertWorkloadMarkerContract(initialBacklog);
 			int expectedTicks = (initialBacklog + DEFAULT_BATCH_SIZE - 1) / DEFAULT_BATCH_SIZE;
 			int safetyLimit = expectedTicks + 2;
 			List<BatchMeasurement> batches = new ArrayList<>();
@@ -215,10 +225,25 @@ public class SubscriptionBurstMeasurementService {
 		}
 	}
 
-	private void writeWorkloadStartMarker() {
+	void assertWorkloadMarkerContract(int initialBacklog) {
+		boolean legacyContract = markerWorkloadIdentity.isBlank() && markerSourceSha.isBlank() && markerCohort == 0;
+		if (legacyContract) return;
+		if (!markerWorkloadIdentity.matches("[a-z0-9-]+")
+				|| !markerSourceSha.matches("[0-9a-fA-F]{40}")
+				|| markerCohort != initialBacklog) {
+			throw new IllegalStateException("Authoritative workload-start marker identity contract is invalid");
+		}
+	}
+
+	void writeWorkloadStartMarker() {
 		String startedAt = clock.instant().toString();
-		String marker = "{\"workloadInvocationStarted\":true,\"workloadStartedAtUtc\":\""
-				+ startedAt + "\"}";
+		boolean legacyContract = markerWorkloadIdentity.isBlank() && markerSourceSha.isBlank() && markerCohort == 0;
+		String marker = legacyContract
+				? "{\"workloadInvocationStarted\":true,\"workloadStartedAtUtc\":\"" + startedAt + "\"}"
+				: "{\"workloadIdentity\":\"" + markerWorkloadIdentity
+						+ "\",\"sourceSha\":\"" + markerSourceSha.toLowerCase(java.util.Locale.ROOT)
+						+ "\",\"cohort\":" + markerCohort
+						+ ",\"workloadInvocationStarted\":true,\"workloadStartedAtUtc\":\"" + startedAt + "\"}";
 		try {
 			Files.writeString(
 					workloadStartMarker,
