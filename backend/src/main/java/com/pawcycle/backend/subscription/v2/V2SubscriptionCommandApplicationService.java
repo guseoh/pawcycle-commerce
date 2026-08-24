@@ -21,11 +21,10 @@ class V2SubscriptionCommandApplicationService {
 		if (!List.of("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "RESUME", "CANCEL").contains(normalized)) throw new V2ApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다.");
 		support.validateKey(key);
 		String fingerprint = support.fingerprint(body);
-		store.findOwnedSubscription(memberId, subscriptionId);
+		V2SubscriptionData.Subscription subscription = store.lockOwnedSubscription(memberId, subscriptionId);
 		if (!store.reserveCommand(memberId, subscriptionId, normalized, key, fingerprint)) return replay(memberId, subscriptionId, normalized, key, store.lockCommandResult(memberId, subscriptionId, normalized, key), fingerprint);
 
 		long expected = support.parseEtag(ifMatch);
-		V2SubscriptionData.Subscription subscription = store.lockOwnedSubscription(memberId, subscriptionId);
 		if (subscription.version() != expected) throw new V2ApiException(412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
 		switch (normalized) {
 			case "CHANGE_PLAN" -> changePlan(memberId, subscription, body);
