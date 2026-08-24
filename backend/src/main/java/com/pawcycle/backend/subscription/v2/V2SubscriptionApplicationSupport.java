@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -28,6 +29,7 @@ final class V2SubscriptionApplicationSupport {
 	String bodyJson(Map<String,Object> body) { try { return json.writeValueAsString(body); } catch(Exception e) { throw new IllegalStateException(e); } }
 	long requiredLong(Map<String,Object>b,String key){Object value=b.get(key);if(!(value instanceof Number number))throw validation(key);try{return new BigDecimal(number.toString()).longValueExact();}catch(NumberFormatException|ArithmeticException exception){throw validation(key);}}
 	int requiredInt(Map<String,Object>b,String key){long n=requiredLong(b,key);if(n<Integer.MIN_VALUE||n>Integer.MAX_VALUE)throw validation(key);return(int)n;}
+	LocalDate requiredDate(Map<String,Object>b,String key){Object value=b.get(key);if(!(value instanceof String text))throw validation(key);try{return LocalDate.parse(text);}catch(DateTimeParseException exception){throw validation(key);}}
 	String requiredText(Map<String,Object>b,String key,int max){Object v=b.get(key);if(!(v instanceof String s))throw validation(key);s=s.trim();if(s.isBlank()||s.codePointCount(0,s.length())>max)throw validation(key);return s;}
 	LocalDate today() { return LocalDate.now(clock.withZone(SEOUL)); }
 	V2ApiException validation(String field) { return new V2ApiException(400,"VALIDATION_FAILED",field+" 값을 확인해 주세요."); }

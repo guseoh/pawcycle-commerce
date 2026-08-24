@@ -197,6 +197,114 @@ class V2SubscriptionCommandIntegrationTests {
 	}
 
 	@Test
+	void planAndCycleChangesComposeInBothOrdersAndKeepOnePendingSnapshot() {
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,8)", planVersionId);
+		long alternateVersionId = createAlternatePlanVersion("compose", List.of(4, 8));
+
+		long planFirst = createSubscription("plan-first");
+		service.command(member.getId(), planFirst, "change-plan", "plan-first-plan", "\"0\"", Map.of("planVersionId", alternateVersionId));
+		service.command(member.getId(), planFirst, "change-delivery-cycle", "plan-first-cycle", "\"1\"", Map.of("deliveryCycleWeeks", 8));
+
+		assertPendingSnapshot(planFirst, alternateVersionId, 8);
+		assertThat(jdbc.queryForObject("SELECT delivery_cycle_weeks FROM subscriptions WHERE id=?", Integer.class, planFirst)).isEqualTo(4);
+
+		long cycleFirst = createSubscription("cycle-first");
+		service.command(member.getId(), cycleFirst, "change-delivery-cycle", "cycle-first-cycle", "\"0\"", Map.of("deliveryCycleWeeks", 8));
+		service.command(member.getId(), cycleFirst, "change-plan", "cycle-first-plan", "\"1\"", Map.of("planVersionId", alternateVersionId));
+
+		assertPendingSnapshot(cycleFirst, alternateVersionId, 8);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id IN (?,?)", Integer.class, planFirst, cycleFirst)).isEqualTo(2);
+	}
+
+	@Test
+	void cycleChangeUsesPendingPlanSupportAndRejectsUnsupportedCycle() {
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,8)", planVersionId);
+		long fourWeekOnlyVersionId = createAlternatePlanVersion("four-week-only", List.of(4));
+		long subscriptionId = createSubscription("pending-plan-cycle-validation");
+		service.command(member.getId(), subscriptionId, "change-plan", "pending-plan", "\"0\"", Map.of("planVersionId", fourWeekOnlyVersionId));
+
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "change-delivery-cycle", "unsupported-pending-cycle", "\"1\"", Map.of("deliveryCycleWeeks", 8)))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "DELIVERY_CYCLE_NOT_ALLOWED");
+	}
+
+	@Test
+	void pendingCycleSurvivesSkipPauseResumeAndCancelRemovesIt() {
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,8)", planVersionId);
+		long subscriptionId = createSubscription("cycle-state-commands");
+		service.command(member.getId(), subscriptionId, "change-delivery-cycle", "cycle-before-state", "\"0\"", Map.of("deliveryCycleWeeks", 8));
+		long originalTarget = jdbc.queryForObject("SELECT target_schedule_id FROM pending_plan_changes WHERE subscription_id=?", Long.class, subscriptionId);
+
+		service.command(member.getId(), subscriptionId, "skip-next", "skip-with-cycle", "\"1\"", Map.of());
+		long skippedTarget = jdbc.queryForObject("SELECT target_schedule_id FROM pending_plan_changes WHERE subscription_id=?", Long.class, subscriptionId);
+		assertThat(skippedTarget).isNotEqualTo(originalTarget);
+		service.command(member.getId(), subscriptionId, "pause", "pause-with-cycle", "\"2\"", Map.of());
+		service.command(member.getId(), subscriptionId, "resume", "resume-with-cycle", "\"3\"", Map.of());
+
+		assertPendingSnapshot(subscriptionId, planVersionId, 8);
+		assertThat(jdbc.queryForObject("SELECT target_schedule_id FROM pending_plan_changes WHERE subscription_id=?", Long.class, subscriptionId)).isEqualTo(skippedTarget);
+		assertThat(jdbc.queryForObject("SELECT delivery_cycle_weeks FROM subscriptions WHERE id=?", Integer.class, subscriptionId)).isEqualTo(4);
+
+		service.command(member.getId(), subscriptionId, "cancel", "cancel-with-cycle", "\"4\"", Map.of());
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+	}
+
+	@Test
+	void reschedulePreservesScheduleIdAndSupportsReplayBeforeStaleIfMatch() {
+		long subscriptionId = createSubscription("reschedule");
+		long scheduleId = jdbc.queryForObject("SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED'", Long.class, subscriptionId);
+		LocalDate requestedDate = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(10);
+		Map<String,Object> body = Map.of("scheduledDate", requestedDate.toString());
+
+		V2SubscriptionService.V2Result first = service.command(member.getId(), subscriptionId, "reschedule-next", "reschedule-key", "\"0\"", body);
+		V2SubscriptionService.V2Result replay = service.command(member.getId(), subscriptionId, "reschedule-next", "reschedule-key", null, body);
+
+		assertThat(first.etag()).isEqualTo("\"1\"");
+		assertThat(replay.replay()).isTrue();
+		assertThat(jdbc.queryForObject("SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='SCHEDULED'", Long.class, subscriptionId)).isEqualTo(scheduleId);
+		assertThat(jdbc.queryForObject("SELECT scheduled_date FROM subscription_schedules WHERE id=?", LocalDate.class, scheduleId)).isEqualTo(requestedDate);
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "stale-reschedule", "\"0\"", Map.of("scheduledDate", requestedDate.plusDays(1).toString())))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
+	}
+
+	@Test
+	void rescheduleRejectsTodayAndExistingScheduleDate() {
+		long subscriptionId = createSubscription("reschedule-validation");
+		LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+		LocalDate existingDate = today.plusDays(20);
+		jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id) VALUES (?,?,'SKIPPED',NULL)", subscriptionId, existingDate);
+
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "today-reschedule", "\"0\"", Map.of("scheduledDate", today.toString())))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_NOT_FUTURE");
+		assertThatThrownBy(() -> service.command(member.getId(), subscriptionId, "reschedule-next", "duplicate-reschedule", "\"0\"", Map.of("scheduledDate", existingDate.toString())))
+				.isInstanceOf(V2ApiException.class)
+				.hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_CONFLICT");
+	}
+
+	@Test
+	void detailAddsUserProjectionWithProductIssueAndServerActions() {
+		jdbc.update("UPDATE products SET thumbnail_url='https://cdn.example.test/product.png' WHERE id=?", product.getId());
+		jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,8)", planVersionId);
+		long subscriptionId = createSubscription("detail-projection");
+		service.command(member.getId(), subscriptionId, "change-delivery-cycle", "detail-pending", "\"0\"", Map.of("deliveryCycleWeeks", 8));
+
+		Map<String,Object> detail = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+		Map<String,Object> nextDelivery = castMap(detail.get("nextDelivery"));
+		Map<String,Object> pendingChange = castMap(detail.get("pendingChange"));
+		Map<String,Object> item = castMap(castList(nextDelivery.get("items")).getFirst());
+		assertThat(item).containsEntry("productName", "V2 command product").containsEntry("thumbnailUrl", "https://cdn.example.test/product.png");
+		assertThat(pendingChange).containsEntry("deliveryCycleWeeks", 8).containsKey("appliesOn");
+		assertThat(castList(detail.get("availableActions"))).containsExactly("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "CANCEL");
+
+		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason='MISSING_BILLING_METHOD' WHERE subscription_id=? AND status='SCHEDULED'", subscriptionId);
+		Map<String,Object> heldDetail = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+		assertThat(castMap(heldDetail.get("issue"))).containsEntry("code", "BILLING_METHOD_REQUIRED").doesNotContainValue("MISSING_BILLING_METHOD");
+		assertThat(castList(heldDetail.get("availableActions"))).containsExactly("CANCEL");
+	}
+
+	@Test
 	void skipNextMarksCurrentScheduleAndCreatesReplacement() {
 		long subscriptionId = createSubscription("skip-next");
 
@@ -362,6 +470,23 @@ class V2SubscriptionCommandIntegrationTests {
 
 	private long createPet(String key, String petType) {
 		return ((Number) service.createPet(member.getId(), Map.of("name", "반려동물-" + key, "petType", petType)).get("petId")).longValue();
+	}
+
+	private long createAlternatePlanVersion(String key, List<Integer> cycles) {
+		jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)", "alternate-" + key, "DOG");
+		long alternatePlanId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,26000,false)", alternatePlanId);
+		long alternateVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		jdbc.update("INSERT INTO plan_items(plan_version_id,sku_id,quantity) VALUES (?,?,2)", alternateVersionId, sku.getId());
+		for (Integer cycle : cycles) jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,?)", alternateVersionId, cycle);
+		jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", alternateVersionId, alternatePlanId);
+		return alternateVersionId;
+	}
+
+	private void assertPendingSnapshot(long subscriptionId, long expectedPlanVersionId, int expectedCycle) {
+		Map<String,Object> pending = jdbc.queryForMap("SELECT snapshot.source_plan_version_id,snapshot.delivery_cycle_weeks FROM pending_plan_changes pending JOIN subscription_snapshots snapshot ON snapshot.id=pending.snapshot_id WHERE pending.subscription_id=?", subscriptionId);
+		assertThat(pending).containsEntry("SOURCE_PLAN_VERSION_ID", expectedPlanVersionId).containsEntry("DELIVERY_CYCLE_WEEKS", expectedCycle);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isEqualTo(1);
 	}
 
 	@SuppressWarnings("unchecked")

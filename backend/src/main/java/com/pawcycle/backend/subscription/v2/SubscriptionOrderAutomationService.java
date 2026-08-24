@@ -134,7 +134,7 @@ public class SubscriptionOrderAutomationService {
 
 	private ProcessingOutcome processCandidate(Candidate candidate, LocalDate today) {
 		Optional<Map<String, Object>> maybeSubscription = one(
-				"SELECT id,member_id,status,mvp2_managed,version,current_snapshot_id "
+				"SELECT id,member_id,status,mvp2_managed,version,current_snapshot_id,delivery_cycle_weeks "
 						+ "FROM subscriptions WHERE id=? FOR UPDATE",
 				candidate.subscriptionId());
 		if (maybeSubscription.isEmpty()) {
@@ -191,10 +191,11 @@ public class SubscriptionOrderAutomationService {
 			effectiveSnapshotId = currentSnapshotId;
 		}
 		Map<String, Object> effectiveSnapshot = snapshot(candidate.subscriptionId(), effectiveSnapshotId);
-		int deliveryCycleWeeks = intValue(currentSnapshot, "delivery_cycle_weeks");
-		if (intValue(effectiveSnapshot, "delivery_cycle_weeks") != deliveryCycleWeeks) {
-			throw new IllegalStateException("Pending snapshot changed the existing delivery cycle");
+		int currentDeliveryCycleWeeks = intValue(currentSnapshot, "delivery_cycle_weeks");
+		if (intValue(subscription, "delivery_cycle_weeks") != currentDeliveryCycleWeeks) {
+			throw new IllegalStateException("Subscription delivery cycle differs from current snapshot");
 		}
+		int effectiveDeliveryCycleWeeks = intValue(effectiveSnapshot, "delivery_cycle_weeks");
 
 		List<Map<String, Object>> items = jdbc.queryForList(
 				"SELECT sku_id,quantity FROM subscription_snapshot_items "
@@ -238,11 +239,13 @@ public class SubscriptionOrderAutomationService {
 		jdbc.update(UPDATE_SCHEDULE_EFFECTIVE_SQL, effectiveSnapshotId, candidate.scheduleId());
 		if (appliesPending) {
 			int promoted = jdbc.update(
-					"UPDATE subscriptions SET current_snapshot_id=? "
-							+ "WHERE id=? AND current_snapshot_id=?",
+					"UPDATE subscriptions SET current_snapshot_id=?,delivery_cycle_weeks=? "
+							+ "WHERE id=? AND current_snapshot_id=? AND delivery_cycle_weeks=?",
 					effectiveSnapshotId,
+					effectiveDeliveryCycleWeeks,
 					candidate.subscriptionId(),
-					currentSnapshotId);
+					currentSnapshotId,
+					currentDeliveryCycleWeeks);
 			int removed = jdbc.update(
 					"DELETE FROM pending_plan_changes "
 							+ "WHERE subscription_id=? AND snapshot_id=? AND target_schedule_id=?",
@@ -254,7 +257,7 @@ public class SubscriptionOrderAutomationService {
 			}
 		}
 
-		LocalDate nextScheduledDate = firstFutureDate(scheduledDate, deliveryCycleWeeks, today);
+		LocalDate nextScheduledDate = firstFutureDate(scheduledDate, effectiveDeliveryCycleWeeks, today);
 		List<Map<String, Object>> futureSchedules = jdbc.queryForList(
 				"SELECT id,scheduled_date FROM subscription_schedules "
 						+ "WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>? "

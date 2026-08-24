@@ -278,6 +278,24 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 	}
 
 	@Test
+	void pendingCyclePromotesSubscriptionAndSchedulesFromAppliedSnapshotCycle() {
+		long subscriptionId = createSubscription("cycle-promotion", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), subscriptionId, "change-delivery-cycle", "cycle-promotion", "\"0\"", Map.of("deliveryCycleWeeks", 4));
+		assertThat(jdbc.queryForObject("SELECT delivery_cycle_weeks FROM subscriptions WHERE id=?", Integer.class, subscriptionId)).isEqualTo(2);
+		long pendingSnapshotId = jdbc.queryForObject("SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?", Long.class, subscriptionId);
+		moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+
+		SubscriptionOrderAutomationService.BatchResult result = automation.processDueSchedules(10);
+
+		assertThat(result.ordersCreated()).isEqualTo(1);
+		assertThat(jdbc.queryForMap("SELECT current_snapshot_id,delivery_cycle_weeks FROM subscriptions WHERE id=?", subscriptionId))
+				.containsEntry("CURRENT_SNAPSHOT_ID", pendingSnapshotId)
+				.containsEntry("DELIVERY_CYCLE_WEEKS", 4);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?", Integer.class, subscriptionId)).isZero();
+		assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 29));
+	}
+
+	@Test
 	void longDowntimeCreatesNoBacklogOrdersAndJumpsFromOriginalDate() {
 		long subscriptionId = createSubscription("long-downtime", basePlanVersionId, 2);
 		moveOnlyUnprocessedSchedule(subscriptionId, LocalDate.of(2026, 7, 1));
@@ -360,6 +378,49 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 					SubscriptionOrderAutomationService.BatchResult::failures).sum()).isZero();
 			assertThat(orderCount(subscriptionId)).isEqualTo(1);
 			assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void rescheduleAndSchedulerRaceCannotBothChangeDateAndCreateOrder() throws Exception {
+		long subscriptionId = createSubscription("reschedule-race", basePlanVersionId, 2);
+		long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+		LocalDate requestedDate = LocalDate.of(2026, 8, 20);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<String> command = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				try {
+					subscriptions.command(member.getId(), subscriptionId, "reschedule-next", "reschedule-race", "\"0\"", Map.of("scheduledDate", requestedDate.toString()));
+					return "SUCCESS";
+				} catch (V2ApiException | CannotAcquireLockException exception) {
+					return exception instanceof V2ApiException v2 ? v2.code() : "SUBSCRIPTION_VERSION_MISMATCH";
+				}
+			});
+			Future<SubscriptionOrderAutomationService.BatchResult> scheduler = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				return automation.processDueSchedules(10);
+			});
+			assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			String commandOutcome = command.get(15, TimeUnit.SECONDS);
+			SubscriptionOrderAutomationService.BatchResult batch = scheduler.get(15, TimeUnit.SECONDS);
+
+			assertThat(commandOutcome).isIn("SUCCESS", "SUBSCRIPTION_VERSION_MISMATCH");
+			assertThat(batch.failures()).isZero();
+			if ("SUCCESS".equals(commandOutcome)) {
+				assertThat(orderCount(subscriptionId)).isZero();
+				assertThat(jdbc.queryForObject("SELECT scheduled_date FROM subscription_schedules WHERE id=?", LocalDate.class, scheduleId)).isEqualTo(requestedDate);
+			} else {
+				assertThat(orderCount(subscriptionId)).isEqualTo(1);
+				assertThat(futureScheduledDates(subscriptionId)).containsExactly(LocalDate.of(2026, 8, 15));
+			}
 		} finally {
 			executor.shutdownNow();
 		}
