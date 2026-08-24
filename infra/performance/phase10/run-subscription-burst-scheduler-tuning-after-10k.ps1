@@ -46,6 +46,7 @@ $MysqlContainer = 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10
 $ExpectedMysqlVolume = 'pawcycle-phase10-subscription-burst-scheduler-tuning-after-10k-mysql-data'
 $DefaultBatchSize = 500
 $DefaultFixedDelayMs = 15000
+$DriverTimeoutSeconds = 1200
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_DIR = $MarkerDir
 $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
 $env:PAWCYCLE_PHASE10_SUBSCRIPTION_BURST_MARKER_WORKLOAD_IDENTITY = ''
@@ -426,6 +427,23 @@ function Get-ValidatedMarker([string]$Path, [object]$AuthoritativeContract = $nu
     }
     $null = ConvertTo-UtcTimestamp (Get-RequiredProperty $marker 'workloadStartedAtUtc' 'Authoritative workload marker') 'Authoritative workload marker timestamp'
     return $marker
+}
+
+function Get-ValidatedMarkerWithRetry(
+    [string]$Path,
+    [object]$AuthoritativeContract = $null,
+    [int]$Attempts = 10,
+    [int]$DelayMilliseconds = 50) {
+    $lastFailure = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            return Get-ValidatedMarker $Path $AuthoritativeContract
+        } catch {
+            $lastFailure = $_
+            if ($attempt -lt $Attempts) { Start-Sleep -Milliseconds $DelayMilliseconds }
+        }
+    }
+    throw $lastFailure
 }
 
 function Select-Aggregate([object]$Value, [string[]]$Names, [string]$Context) {
@@ -1077,6 +1095,7 @@ $summary = [ordered]@{
     fixedDelayMs = $DefaultFixedDelayMs
     decisionTargetSeconds = [int]$AfterContract.decisionTargetSeconds
     requiredRawThroughput = [double]$AfterContract.requiredRawThroughput
+    driverTimeoutSeconds = $DriverTimeoutSeconds
     actualPerformanceWorkload = $true
     workloadInvocationStarted = $false
     harnessFailure = $false
@@ -1095,7 +1114,7 @@ try {
     $samples = [System.Collections.Generic.List[object]]::new()
 
     $process = Start-Process -FilePath $HttpCommand `
-        -ArgumentList @('--fail-with-body', '--silent', '--show-error', '--request', 'POST', "$backendUrl/internal/performance/subscription-burst/drain") `
+        -ArgumentList @('--fail-with-body', '--silent', '--show-error', '--max-time', [string]$DriverTimeoutSeconds, '--request', 'POST', "$backendUrl/internal/performance/subscription-burst/drain") `
         -RedirectStandardOutput $DriverStdout `
         -RedirectStandardError $DriverStderr `
         -PassThru `
@@ -1105,7 +1124,7 @@ try {
         if (Test-Path -LiteralPath $FirstResultMarker) {
             $consumed = $true
             $summary.workloadInvocationStarted = $true
-            $started = Get-ValidatedMarker $FirstResultMarker $runContract
+            $started = Get-ValidatedMarkerWithRetry $FirstResultMarker $runContract
             $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
         }
         if ($consumed) {
@@ -1122,7 +1141,7 @@ try {
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
         $consumed = $true
         $summary.workloadInvocationStarted = $true
-        $started = Get-ValidatedMarker $FirstResultMarker $runContract
+        $started = Get-ValidatedMarkerWithRetry $FirstResultMarker $runContract
         $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
     }
     if (-not $consumed) { throw 'Backend rejected the driver before the workload-start boundary.' }
@@ -1159,11 +1178,14 @@ try {
 } catch {
     $summary.harnessFailure = $true
     $summary.error = 'Subscription Burst scheduler tuning After 10k harness execution failed.'
+    if ($process -and $process.HasExited) {
+        $summary['driverExitCode'] = $process.ExitCode
+    }
     if (-not $consumed -and (Test-Path -LiteralPath $FirstResultMarker)) {
         $consumed = $true
         $summary.workloadInvocationStarted = $true
         try {
-            $started = Get-ValidatedMarker $FirstResultMarker $runContract
+            $started = Get-ValidatedMarkerWithRetry $FirstResultMarker $runContract
             $summary['workloadStartedAtUtc'] = $started.workloadStartedAtUtc
         } catch {
             $summary.error = 'Authoritative workload-start marker identity validation failed; the workload remains consumed.'
