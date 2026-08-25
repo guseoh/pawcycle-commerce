@@ -170,6 +170,11 @@ class ProductApiIntegrationTests {
 		Product visible = saveProduct("공개", "DOG", null, null, "PUBLIC");
 		Product draft = saveProduct("초안", "DOG", null, null, "DRAFT");
 		Product inactive = saveProduct("비활성", "DOG", null, null, "INACTIVE");
+		String suffix = UUID.randomUUID().toString();
+		Category inactiveCategory = categoryRepository.saveAndFlush(
+				new Category("숨김 " + suffix, "hidden-" + suffix, 0, false));
+		Product publicProductInInactiveCategory = productRepository.save(new Product(inactiveCategory,
+				"숨김 카테고리 공개 상품", "공개이지만 카테고리가 비활성입니다.", null, "DOG", null, "PUBLIC"));
 		flushAndResetStatistics();
 
 		mockMvc.perform(get("/api/products"))
@@ -177,7 +182,7 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.items.length()").value(1))
 				.andExpect(jsonPath("$.items[0].productId").value(visible.getId()));
 
-		for (Long hiddenId : List.of(draft.getId(), inactive.getId())) {
+		for (Long hiddenId : List.of(draft.getId(), inactive.getId(), publicProductInInactiveCategory.getId())) {
 			mockMvc.perform(get("/api/products/{productId}", hiddenId))
 					.andExpect(status().isNotFound())
 					.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))

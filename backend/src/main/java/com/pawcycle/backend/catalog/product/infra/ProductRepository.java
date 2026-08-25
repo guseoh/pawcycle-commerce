@@ -23,8 +23,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 	@Query("""
 			SELECT p
 			FROM Product p
-			LEFT JOIN FETCH p.category
+			JOIN FETCH p.category c
 			WHERE p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
+			  AND c.active = true
 			ORDER BY p.id ASC
 			""")
 	List<Product> findAllPublicOrderById();
@@ -32,9 +33,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 	@Query("""
 			SELECT p
 			FROM Product p
-			LEFT JOIN FETCH p.category
+			JOIN FETCH p.category c
 			WHERE p.id = :productId
 			  AND p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
+			  AND c.active = true
 			""")
 	Optional<Product> findPublicById(@Param("productId") Long productId);
 }

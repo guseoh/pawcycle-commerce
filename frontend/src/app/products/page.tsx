@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError, Category, ProductListResponse, ProductSummary, categoryApi, productApi } from "@/lib/api";
-import { formatPetType, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
+import { formatPetType, formatPrice } from "@/lib/frontend-utils";
 
 type LoadState = { status: "loading" } | { status: "success"; response: ProductListResponse } | { status: "error"; message: string };
 type CategoryLoadState = { status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string };
@@ -66,15 +66,18 @@ function ProductsContent() {
 
 function ProductGrid({ products }: { products: ProductSummary[] }) {
   return <section aria-label="상품 목록" className="product-grid">{products.map((product) => {
-    const productName = userFacingCatalogLabel(product.name, "반려동물 상품");
-    const categoryName = userFacingCatalogLabel(product.category.name, "상품");
-    const description = userFacingCatalogLabel(product.shortDescription, "상품 정보를 확인해 보세요.");
     return <article className="product-card" key={product.productId}>
-      <div className="product-visual">{product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt={productName} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}</div>
-      <h2>{productName}</h2><strong className="price-heading">{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</strong>
-      <div className="card-meta"><span className="tag">대상: {formatPetType(product.petType)}</span><span className="tag">{categoryName}</span></div>
-      <p><span className={`tag ${product.purchasable ? "tag-positive" : "tag-muted"}`}>{product.purchasable ? "구매 가능" : "품절"}</span></p><p>{description}</p>
-      <div className="card-actions"><Link className="button button-primary" href={`/products/${product.productId}`}>상세 보기</Link></div>
+      <Link className="product-card-media" href={`/products/${product.productId}`} aria-label={`${product.name} 상품 상세 보기`}>
+        {product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt={`${product.name} 상품 이미지`} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}
+      </Link>
+      <div className="product-card-copy">
+        <p className="product-card-meta">{formatPetType(product.petType)} · {product.category.name}</p>
+        <h2><Link href={`/products/${product.productId}`}>{product.name}</Link></h2>
+        <strong className="price-heading">{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</strong>
+        <p className={`product-availability ${product.purchasable ? "is-available" : "is-unavailable"}`}>{product.purchasable ? "구매 가능" : "현재 품절"}</p>
+        <p className="product-description">{product.shortDescription}</p>
+        <div className="card-actions"><Link className="button button-secondary" href={`/products/${product.productId}`}>상세 보기</Link></div>
+      </div>
     </article>;
   })}</section>;
 }

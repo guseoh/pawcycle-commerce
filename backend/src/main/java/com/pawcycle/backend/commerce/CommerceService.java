@@ -47,9 +47,10 @@ public class CommerceService {
 			SELECT item.sku_id AS skuId,item.quantity,sku.sku_code AS skuCode,sku.name AS skuName,sku.price,sku.price AS unitPrice,
 			       sku.price * item.quantity AS lineAmount,product.id AS productId,product.name AS productName,
 			       inventory.available_quantity AS availableQuantity,
-			       (sku.status='ACTIVE' AND product.display_status='PUBLIC' AND inventory.available_quantity >= item.quantity) AS purchasable
+			       (sku.status='ACTIVE' AND product.display_status='PUBLIC' AND category.active=true AND inventory.available_quantity >= item.quantity) AS purchasable
 			FROM carts cart JOIN cart_items item ON item.cart_id=cart.id
 			JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id
+			JOIN categories category ON category.id=product.category_id
 			JOIN inventories inventory ON inventory.sku_id=sku.id
 			WHERE cart.member_id=? ORDER BY item.sku_id""", memberId);
 		BigDecimal original = items.stream()
@@ -611,7 +612,7 @@ public class CommerceService {
 	}
 
 	private void requirePurchasableSku(long skuId) {
-		if (jdbc.queryForObject("SELECT COUNT(*) FROM skus sku JOIN products product ON product.id=sku.product_id WHERE sku.id=? AND sku.status='ACTIVE' AND product.display_status='PUBLIC'", Integer.class, skuId) != 1) {
+		if (jdbc.queryForObject("SELECT COUNT(*) FROM skus sku JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id WHERE sku.id=? AND sku.status='ACTIVE' AND product.display_status='PUBLIC' AND category.active=true", Integer.class, skuId) != 1) {
 			throw new CommerceException(409,"SKU_NOT_PURCHASABLE","구매할 수 없는 SKU입니다.");
 		}
 	}

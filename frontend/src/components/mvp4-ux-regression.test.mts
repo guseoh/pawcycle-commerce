@@ -71,8 +71,10 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
   assert.match(homeSource, /products\?petType=DOG/);
   assert.match(homeSource, /products\?petType=CAT/);
   assert.match(homeSource, /products\?category=\$\{encodeURIComponent\(category\.slug\)\}/);
+  assert.match(homeSource, /productApi\.list\(\{ page: 0, size: 4, sort: "NEWEST" \}\)/);
   assert.match(homeSource, /buildLoginHref\("\/"\)/);
-  assert.match(headerSource, /<details className="category-navigation">/);
+  assert.match(headerSource, /<details className="category-navigation"/);
+  assert.match(headerSource, />카테고리<\/summary>/);
   assert.match(headerSource, /categoryApi\.list\(\)/);
   assert.match(headerSource, /status === "anonymous" \|\| status === "error"/);
   assert.match(headerSource, /buildLoginHref\(pathname\)/);
@@ -108,15 +110,21 @@ test("Root layout은 공통 Footer를 연결한다", () => {
   assert.match(footerSource, /\/faq/);
   assert.match(footerSource, /\/notice/);
   assert.match(footerSource, /\/support/);
+  assert.match(footerSource, /쇼핑/);
+  assert.match(footerSource, /주문 \/ 계정/);
+  assert.match(footerSource, /고객지원/);
 });
 
 test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => {
   assert.match(homeSource, /aria-labelledby="home-title"/);
   assert.match(homeSource, /href="\/products"/);
   assert.match(homeSource, /href="\/subscriptions"/);
+  assert.match(homeSource, /function CompactDiscovery/);
+  assert.match(homeSource, /function HomeProductPreview/);
+  assert.match(homeSource, /function SubscriptionValue/);
+  assert.doesNotMatch(homeSource, /function QuickActions/);
   assert.match(homeSource, /recommendationApi\.products/);
   assert.match(homeSource, /v2Api\.pets\.list/);
-  assert.match(homeSource, /className="quick-grid"/);
   assert.match(homeSource, /auth\.status === "loading"/);
   assert.match(homeSource, /auth\.status === "anonymous"/);
   assert.match(homeSource, /auth\.status === "authenticated"/);
@@ -127,6 +135,18 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(globalStylesSource, /@media \(max-width: 767px\)/);
   assert.match(globalStylesSource, /@media \(max-width: 380px\)/);
   assert.match(globalStylesSource, /:focus-visible/);
+  assert.match(globalStylesSource, /aspect-ratio: 4 \/ 3/);
+  assert.match(globalStylesSource, /@media \(max-width: 480px\)/);
+});
+
+test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이지 상태를 제공한다", () => {
+  assert.match(productsSource, /className="product-card-media"/);
+  assert.match(productsSource, /aria-label=\{`\$\{product\.name\} 상품 상세 보기`\}/);
+  assert.match(productsSource, /className=\{`product-availability/);
+  assert.match(productsSource, /className="pagination-row"/);
+  assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
+  assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 4 \/ 3/);
+  assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
 });
 
 test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계를 유지한다", () => {

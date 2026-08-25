@@ -30,6 +30,7 @@ public class LocalQaBootstrapService {
 	static final String PRODUCT_DESCRIPTION = "FOUNDATION-004 local-only QA fixture";
 	static final String PRODUCT_PET_TYPE = "DOG";
 	static final String PRODUCT_DISPLAY_STATUS = "PUBLIC";
+	static final String QA_CATEGORY_SLUG = "qa-foundation-004";
 	static final String SKU_NAME = "[QA FOUNDATION-004] 2kg";
 	static final String SKU_CODE = "QA-FOUNDATION-004-SKU";
 	static final BigDecimal SKU_PRICE = new BigDecimal("19900.00");
@@ -142,9 +143,10 @@ public class LocalQaBootstrapService {
 	private Product loadOrCreateProduct() {
 		List<Product> candidates = productRepository.findAllByName(PRODUCT_NAME);
 		if (candidates.isEmpty()) {
-			Category category = categoryRepository == null ? null : categoryRepository.findBySlug("qa-foundation-004")
+			Category category = categoryRepository == null ? null : categoryRepository.findBySlug(QA_CATEGORY_SLUG)
+					.map(this::deactivateFixtureCategory)
 					.orElseGet(() -> categoryRepository.saveAndFlush(
-							new Category("QA Foundation", "qa-foundation-004", 0, true)));
+							new Category("QA Foundation", QA_CATEGORY_SLUG, 0, false)));
 			return productRepository.saveAndFlush(new Product(category,
 					PRODUCT_NAME,
 					PRODUCT_SHORT_DESCRIPTION,
@@ -156,7 +158,16 @@ public class LocalQaBootstrapService {
 		if (candidates.size() != 1 || !matchesProductFixture(candidates.get(0))) {
 			throw new LocalQaBootstrapException("로컬 QA bootstrap 상품 fixture가 기존 데이터와 충돌합니다.");
 		}
-		return candidates.get(0);
+		Product product = candidates.get(0);
+		if (product.getCategory() != null && QA_CATEGORY_SLUG.equals(product.getCategory().getSlug())) {
+			deactivateFixtureCategory(product.getCategory());
+		}
+		return product;
+	}
+
+	private Category deactivateFixtureCategory(Category category) {
+		category.update(null, null, null, false);
+		return category;
 	}
 
 	private boolean matchesProductFixture(Product product) {

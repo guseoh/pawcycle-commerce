@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError, Category, categoryApi, recommendationApi, type RecommendationItem } from "@/lib/api";
+import { ApiError, Category, ProductSummary, categoryApi, productApi, recommendationApi, type RecommendationItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref } from "@/lib/frontend-utils";
+import { buildLoginHref, formatPetType, formatPrice } from "@/lib/frontend-utils";
 import { v2Api, type Pet } from "@/lib/v2-api";
+
+type CategoryLoadState = { status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string };
+type ProductPreviewState = { status: "loading" } | { status: "success"; products: ProductSummary[] } | { status: "error"; message: string };
 
 export default function Home() {
   const auth = useAuth();
-  const authReady = auth.status !== "loading" && auth.status !== "error";
 
   return (
     <div className="home-stack">
@@ -33,41 +35,20 @@ export default function Home() {
         </aside>
       </section>
 
-      <section className="home-discovery" aria-labelledby="home-discovery-title">
-        <div className="section-title">
-          <div>
-            <p className="eyebrow">Start here</p>
-            <h2 id="home-discovery-title">상품과 루틴을 한 곳에서</h2>
-            <p>지금 필요한 일을 골라 바로 시작해 보세요.</p>
-          </div>
-        </div>
-        <div className="home-discovery-grid">
-          <Link className="home-discovery-card" href="/products">
-            <span className="home-card-number" aria-hidden="true">01</span>
-            <span className="home-card-content"><strong>상품 탐색</strong><span>상품과 옵션을 비교하고 필요한 것을 찾아보세요.</span></span>
-            <span className="home-card-arrow" aria-hidden="true">→</span>
-          </Link>
-          <Link className="home-discovery-card" href="/subscriptions">
-            <span className="home-card-number" aria-hidden="true">02</span>
-            <span className="home-card-content"><strong>정기배송 관리</strong><span>우리 아이의 다음 배송과 구독 상태를 확인해요.</span></span>
-            <span className="home-card-arrow" aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </section>
-
-      <CategoryDiscovery />
+      <CompactDiscovery />
+      <HomeProductPreview />
+      <SubscriptionValue />
 
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
       {auth.status === "error" ? <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()}><Link className="button button-secondary" href={buildLoginHref("/")}>로그인</Link></ErrorState> : null}
-      {auth.status === "anonymous" ? <GuestValue /> : null}
       {auth.status === "authenticated" && auth.memberId !== null ? <PersonalizedRecommendations key={auth.memberId} /> : null}
-      {authReady ? <QuickActions /> : null}
+      <TrustLinks />
     </div>
   );
 }
 
-function CategoryDiscovery() {
-  const [state, setState] = useState<{ status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string }>({ status: "loading" });
+function CompactDiscovery() {
+  const [state, setState] = useState<CategoryLoadState>({ status: "loading" });
 
   useEffect(() => {
     let active = true;
@@ -79,49 +60,59 @@ function CategoryDiscovery() {
     return () => { active = false; };
   }, []);
 
-  return <section className="home-category-discovery" aria-labelledby="home-category-title">
+  return <section className="home-discovery" aria-labelledby="home-discovery-title">
     <div className="section-title">
-      <div><p className="eyebrow">Category</p><h2 id="home-category-title">카테고리로 찾아보세요</h2><p>반려동물 종류와 필요한 상품을 함께 고를 수 있어요.</p></div>
+      <div><p className="eyebrow">Shop by</p><h2 id="home-discovery-title">우리 아이에게 필요한 것부터 찾아보세요</h2><p>반려동물과 카테고리를 고르면 바로 상품 목록으로 이어집니다.</p></div>
     </div>
-    <nav className="pet-discovery-links" aria-label="반려동물별 상품 탐색"><Link href="/products?petType=DOG">강아지 상품</Link><Link href="/products?petType=CAT">고양이 상품</Link></nav>
-    {state.status === "loading" ? <LoadingState>카테고리를 불러오고 있습니다.</LoadingState> : null}
-    {state.status === "error" ? <ErrorState title="카테고리를 불러오지 못했습니다." message={state.message}><Link className="button button-secondary" href="/products">상품 목록 보기</Link></ErrorState> : null}
+    <nav className="pet-discovery-links" aria-label="반려동물별 상품 탐색"><Link href="/products?petType=DOG">강아지 상품 <span aria-hidden="true">→</span></Link><Link href="/products?petType=CAT">고양이 상품 <span aria-hidden="true">→</span></Link></nav>
+    {state.status === "loading" ? <p className="discovery-status" role="status">카테고리를 불러오는 중입니다.</p> : null}
+    {state.status === "error" ? <div className="discovery-status discovery-status-error" role="alert"><span>{state.message}</span><Link href="/products">상품 목록 보기</Link></div> : null}
     {state.status === "success" ? <nav className="home-category-grid" aria-label="상품 카테고리">{state.categories.map((category) => <Link key={category.categoryId} href={`/products?category=${encodeURIComponent(category.slug)}`}>{category.name}<span aria-hidden="true">→</span></Link>)}</nav> : null}
   </section>;
 }
 
-function GuestValue() {
-  return (
-    <section className="home-audience" aria-labelledby="guest-value-title">
-      <div>
-        <p className="eyebrow">For every day</p>
-        <h2 id="guest-value-title">로그인하면 우리 아이에게 더 가까워져요.</h2>
-      </div>
-      <div className="home-value-list">
-        <div><strong>필요한 것만, 쉽게</strong><span>공개 상품을 바로 탐색할 수 있어요.</span></div>
-        <div><strong>내 반려동물에 맞게</strong><span>Pet을 선택하고 맞춤 상품을 확인해요.</span></div>
-        <div><strong>다음 배송을 한눈에</strong><span>정기배송을 시작하고 일정도 직접 관리해요.</span></div>
-      </div>
-    </section>
-  );
+function HomeProductPreview() {
+  const [state, setState] = useState<ProductPreviewState>({ status: "loading" });
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void productApi.list({ page: 0, size: 4, sort: "NEWEST" }).then((response) => {
+      if (active) setState({ status: "success", products: (response.items ?? response.products ?? []).slice(0, 4) });
+    }).catch((error: unknown) => {
+      if (active) setState({ status: "error", message: error instanceof ApiError ? error.message : "상품을 불러오지 못했습니다." });
+    });
+    return () => { active = false; };
+  }, [retry]);
+
+  return <section className="home-product-preview" aria-labelledby="home-products-title">
+    <div className="section-title">
+      <div><p className="eyebrow">New in store</p><h2 id="home-products-title">지금 둘러보기</h2><p>현재 공개된 상품을 바로 살펴보세요.</p></div>
+      <Link className="text-link" href="/products">전체 상품 보기</Link>
+    </div>
+    {state.status === "loading" ? <LoadingState>상품을 불러오고 있습니다.</LoadingState> : null}
+    {state.status === "error" ? <ErrorState title="상품을 불러오지 못했습니다." message={state.message} onRetry={() => { setState({ status: "loading" }); setRetry((value) => value + 1); }} /> : null}
+    {state.status === "success" && state.products.length === 0 ? <div className="empty-callout"><strong>현재 둘러볼 공개 상품이 없습니다.</strong><Link href="/products">상품 목록 확인하기</Link></div> : null}
+    {state.status === "success" && state.products.length > 0 ? <div className="home-product-grid">{state.products.map((product) => <Link className="home-product-card" href={`/products/${product.productId}`} key={product.productId}>
+      <span className="home-product-image">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt={`${product.name} 상품 이미지`} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}</span>
+      <span className="home-product-copy"><span>{product.category.name} · {formatPetType(product.petType)}</span><strong>{product.name}</strong><b>{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</b></span>
+    </Link>)}</div> : null}
+  </section>;
 }
 
-function QuickActions() {
-  return (
-    <section className="quick-section" aria-labelledby="quick-actions-title">
-      <div className="section-title">
-        <div>
-          <p className="eyebrow">빠른 이동</p>
-          <h2 id="quick-actions-title">필요한 일을 바로 시작하세요</h2>
-        </div>
-      </div>
-      <nav className="quick-grid" aria-label="빠른 이동">
-        <Link href="/products"><strong>상품 탐색</strong><span>상품과 옵션을 찾아보세요</span><span className="quick-arrow" aria-hidden="true">→</span></Link>
-        <Link href="/subscriptions"><strong>정기배송 관리</strong><span>다음 배송과 변경 사항을 확인해요</span><span className="quick-arrow" aria-hidden="true">→</span></Link>
-        <Link href="/orders"><strong>주문 내역</strong><span>주문과 배송 상태를 확인해요</span><span className="quick-arrow" aria-hidden="true">→</span></Link>
-      </nav>
-    </section>
-  );
+function SubscriptionValue() {
+  return <section className="home-subscription-value" aria-labelledby="subscription-value-title">
+    <div><p className="eyebrow">Regular delivery</p><h2 id="subscription-value-title">반복 구매는 정기배송으로 더 간편하게</h2><p>필요한 배송 주기를 선택하고, 다음 일정과 상품 구성을 내 정기배송에서 조정하세요.</p></div>
+    <ul><li><strong>반복 구매</strong><span>자주 필요한 상품을 놓치지 않아요.</span></li><li><strong>배송 주기</strong><span>우리 아이의 생활 리듬에 맞춰요.</span></li><li><strong>일정 관리</strong><span>다음 배송과 변경 사항을 확인해요.</span></li></ul>
+    <Link className="button button-secondary" href="/subscriptions">정기배송 살펴보기</Link>
+  </section>;
+}
+
+function TrustLinks() {
+  return <section className="home-trust-links" aria-labelledby="home-trust-title">
+    <div><p className="eyebrow">Help & policy</p><h2 id="home-trust-title">안심하고 이어가는 쇼핑</h2></div>
+    <nav aria-label="쇼핑 안내"><Link href="/shipping">배송 안내</Link><Link href="/returns">교환·반품</Link><Link href="/faq">FAQ</Link><Link href="/support">고객지원</Link></nav>
+  </section>;
 }
 
 function PersonalizedRecommendations() {

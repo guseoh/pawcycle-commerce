@@ -83,7 +83,7 @@ public class ProductDiscoveryReader {
 	}
 
 	private String whereClause(String q, String petType, String category, List<Object> parameters) {
-		StringBuilder where = new StringBuilder(" WHERE p.display_status='PUBLIC'");
+		StringBuilder where = new StringBuilder(" WHERE p.display_status='PUBLIC' AND c.active=true");
 		if (q != null && !q.isBlank()) {
 			where.append(" AND (LOWER(p.name) LIKE ? OR LOWER(p.short_description) LIKE ? OR LOWER(COALESCE(p.description,'')) LIKE ?)");
 			String needle = "%" + q.trim().toLowerCase(java.util.Locale.ROOT) + "%";
