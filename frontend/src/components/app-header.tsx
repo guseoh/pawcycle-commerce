@@ -12,7 +12,7 @@ import { getLogoutFailureFeedback } from "@/lib/logout-feedback";
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const { status, memberId, logout } = useAuth();
+  const { status, logout } = useAuth();
   const [logoutPending, setLogoutPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -48,16 +48,16 @@ export function AppHeader() {
           </span>
         </Link>
         <nav className="main-nav" aria-label="주요 메뉴">
-          <Link href="/products">상품</Link>
-          <Link href="/subscriptions">내 구독</Link>
-          <Link href="/orders">주문</Link>
-          <Link href="/notifications">알림</Link>
-          {status === "authenticated" ? <Link href="/my">내 정보</Link> : null}
+          <Link className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
+          <Link className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
+          <Link className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
+          <Link className={pathname.startsWith("/notifications") ? "nav-active" : undefined} href="/notifications">알림</Link>
+          {status === "authenticated" ? <><Link className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜</Link><Link className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니</Link><Link className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
           {status === "loading" ? (
             <span className="nav-status" role="status">회원 정보 확인 중</span>
           ) : status === "authenticated" ? (
             <button type="button" onClick={handleLogout} disabled={logoutPending}>
-              {logoutPending ? "로그아웃 중" : `로그아웃 · 회원 ${memberId}`}
+              {logoutPending ? "로그아웃 중" : "로그아웃"}
             </button>
           ) : (
             <Link href={buildLoginHref(pathname)}>로그인</Link>
