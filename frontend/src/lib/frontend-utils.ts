@@ -24,6 +24,73 @@ export function formatPrice(value: number): string {
   return `${new Intl.NumberFormat("ko-KR").format(value)}원`;
 }
 
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  CREATED: "주문 준비",
+  PAYMENT_PENDING: "결제 대기",
+  PAID: "결제 완료",
+  PAYMENT_FAILED: "결제 실패",
+  PAYMENT_ACTION_REQUIRED: "결제 확인 필요",
+  EXPIRED: "주문 만료",
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  READY: "결제 대기",
+  PROCESSING: "결제 확인 중",
+  SUCCEEDED: "결제 완료",
+  FAILED: "결제 실패",
+  UNKNOWN: "결제 확인 필요",
+};
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  PREPARING: "배송 준비 중",
+  SHIPPED: "배송 중",
+  DELIVERED: "배송 완료",
+  FAILED: "배송 확인 필요",
+};
+
+export function formatOrderStatus(value: string): string { return ORDER_STATUS_LABELS[value] ?? "주문 상태 확인 중"; }
+export function formatPaymentStatus(value: string | undefined): string { return value ? (PAYMENT_STATUS_LABELS[value] ?? "결제 상태 확인 중") : "결제 정보 준비 중"; }
+export function formatDeliveryStatus(value: string | undefined): string { return value ? (DELIVERY_STATUS_LABELS[value] ?? "배송 상태 확인 중") : "배송 준비 전"; }
+
+export function notifyCommerceChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("pawcycle-commerce-changed"));
+}
+
+export interface RecentProduct {
+  productId: number;
+  name: string;
+  thumbnailUrl: string | null;
+  price: number | null;
+}
+
+const RECENT_PRODUCTS_KEY = "pawcycle.recent-products.v1";
+const RECENT_PRODUCTS_LIMIT = 6;
+
+export function getRecentProducts(): RecentProduct[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(RECENT_PRODUCTS_KEY) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is RecentProduct => Boolean(item && typeof item === "object" && typeof item.productId === "number" && typeof item.name === "string"));
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentProduct(product: RecentProduct): RecentProduct[] {
+  const next = [product, ...getRecentProducts().filter((item) => item.productId !== product.productId)].slice(0, RECENT_PRODUCTS_LIMIT);
+  try { window.localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(next)); } catch { /* localStorage is an optional convenience */ }
+  return next;
+}
+
 export function formatPetType(value: string): string {
   if (value === "DOG") return "개";
   if (value === "CAT") return "고양이";
