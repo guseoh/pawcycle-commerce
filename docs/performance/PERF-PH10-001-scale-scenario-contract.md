@@ -30,7 +30,7 @@ Before는 완료된 PERF-PH9-010 CPU2.0 결과를 그대로 재사용하며 재�
 | workload | 기존 `capacity-api-products.js`, target 250 RPS |
 | warm-up / measurement | 30초 / 120초 |
 | backend | Tomcat128, CPU2.0, memory1GiB, PID256, MaxRAMPercentage65, Hikari10 |
-| cache | data key `pawcycle:catalog:product-list:v1` + generation key `pawcycle:catalog:product-list:v1:generation`, local Redis, warm-up 중 hit counter 증가 필수 |
+| cache | legacy reader 검증 시 data key `pawcycle:catalog:product-list:v2` + generation key `pawcycle:catalog:product-list:v2:generation`; pageable 공개 목록은 DB-native 경로로 Redis를 우회 |
 
 `infra/performance/phase10/run-products-redis-after.ps1`은 host local temp 외의 artifact 경로를 거부한다. `-ValidateOnly`와 `-ValidateRuntimeCapability`는 k6를 시작하지 않는다. `-RunAfterFirstResult`는 외부에서 별도 승인된 first-result에만 사용한다. child diagnostic의 preflight가 끝나고 실제 `Start-Process`가 성공한 직후 workload-start marker를 기록하며, 그 이전 실패는 first-result를 소비하지 않는다. marker가 한 번 생성된 뒤에는 이후 성공·실패와 관계없이 `NEVER RERUN`으로 중단한다.
 

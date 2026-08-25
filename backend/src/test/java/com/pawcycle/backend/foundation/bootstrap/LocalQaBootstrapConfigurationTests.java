@@ -112,6 +112,7 @@ class LocalQaBootstrapConfigurationTests {
 				.run(context -> {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
 					runner.run(null);
+					context.getBean("localDemoCatalogBootstrapRunner", ApplicationRunner.class).run(null);
 					verify(bootstrapService).bootstrap(email, password, true);
 					verify(mvp2FixtureService).bootstrap();
 					verify(commerceDemoFixtureService).bootstrap();
@@ -175,7 +176,9 @@ class LocalQaBootstrapConfigurationTests {
 						"pawcycle.local-qa-bootstrap.password=" + password)
 				.run(context -> {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
-					assertThatThrownBy(() -> runner.run(null))
+					runner.run(null);
+					ApplicationRunner demoRunner = context.getBean("localDemoCatalogBootstrapRunner", ApplicationRunner.class);
+					assertThatThrownBy(() -> demoRunner.run(null))
 							.isInstanceOf(LocalQaBootstrapException.class);
 					verify(bootstrapService).bootstrap(email, password, false);
 					verify(mvp2FixtureService).bootstrap();

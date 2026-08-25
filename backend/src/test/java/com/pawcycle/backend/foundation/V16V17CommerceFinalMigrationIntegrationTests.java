@@ -40,7 +40,7 @@ class V16V17CommerceFinalMigrationIntegrationTests {
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='billing_payment_method_preparations' AND column_name='status'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='billing_payment_method_preparations' AND column_name='claimed_at'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema=DATABASE() AND constraint_name='chk_refunds_amount'", String.class)).contains(">= 0");
-			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(19);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(20);
 		} catch (Throwable failure) {
 			primaryFailure = failure;
 			throw failure;

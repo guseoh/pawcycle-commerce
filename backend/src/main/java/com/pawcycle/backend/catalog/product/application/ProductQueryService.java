@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailView.SkuDetail;
+import com.pawcycle.backend.catalog.product.application.ProductDiscoveryReader.ProductDetailSkuRow;
 import com.pawcycle.backend.catalog.product.application.ProductListView.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPriceSummary;
@@ -13,6 +14,7 @@ import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,7 @@ public class ProductQueryService {
 	private final ProductListReader productListReader;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final ProductDiscoveryReader productDiscoveryReader;
 
 	public ProductQueryService(
 			ProductListCache productListCache,
@@ -34,9 +37,43 @@ public class ProductQueryService {
 		this.productListReader = productListReader;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
+		this.productDiscoveryReader = null;
+	}
+
+	@Autowired
+	public ProductQueryService(
+			ProductListCache productListCache,
+			ProductListReader productListReader,
+			ProductRepository productRepository,
+			SkuRepository skuRepository,
+			ProductDiscoveryReader productDiscoveryReader) {
+		this.productListCache = productListCache;
+		this.productListReader = productListReader;
+		this.productRepository = productRepository;
+		this.skuRepository = skuRepository;
+		this.productDiscoveryReader = productDiscoveryReader;
+	}
+
+	public ProductListView findProducts(String q, String petType, String category, int page, int size, ProductSort sort) {
+		if (page < 0 || size < 1 || size > 100) {
+			throw new IllegalArgumentException("page는 0 이상, size는 1~100이어야 합니다.");
+		}
+		try {
+			Math.multiplyExact(page, size);
+		} catch (ArithmeticException exception) {
+			throw new IllegalArgumentException("page가 너무 큽니다.", exception);
+		}
+		try {
+			return productDiscoveryReader.read(q, petType, category, page, size, sort == null ? ProductSort.NEWEST : sort);
+		} catch (RuntimeException exception) {
+			throw new ProductListUnavailableException(exception);
+		}
 	}
 
 	public ProductListView findProducts(String q, String petType, String category) {
+		if (productDiscoveryReader != null) {
+			return findProducts(q, petType, category, 0, 20, ProductSort.NEWEST);
+		}
 		try {
 			ProductListView allProducts = productListCache.getOrLoad(this::loadProducts);
 			if ((q == null || q.isBlank()) && (petType == null || petType.isBlank()) && (category == null || category.isBlank())) {
@@ -72,9 +109,10 @@ public class ProductQueryService {
 		Product product;
 		try {
 			product = productRepository.findPublicById(productId).orElseThrow(ProductNotFoundException::new);
-			List<Sku> skus = skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(
-					productId,
-					SkuStatus.ACTIVE);
+			List<SkuDetail> skuDetails = productDiscoveryReader == null
+					? skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(productId, SkuStatus.ACTIVE)
+							.stream().map(this::toDetail).toList()
+					: productDiscoveryReader.readDetailSkus(productId).stream().map(this::toDetail).toList();
 			return new ProductDetailView(
 					product.getId(),
 					product.getName(),
@@ -83,7 +121,7 @@ public class ProductQueryService {
 					product.getThumbnailUrl(),
 					new ProductDetailView.CategorySummary(
 							product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug()),
-					skus.stream().map(this::toDetail).toList());
+					skuDetails);
 		} catch (ProductNotFoundException exception) {
 			throw exception;
 		} catch (RuntimeException exception) {
@@ -137,6 +175,19 @@ public class ProductQueryService {
 				sku.getName(),
 				sku.getPrice(),
 				sku.isSubscribable(),
-				sku.isSubscribable() ? DELIVERY_CYCLES : List.of());
+				sku.isSubscribable() ? DELIVERY_CYCLES : List.of(),
+				1,
+				true);
+	}
+
+	private SkuDetail toDetail(ProductDetailSkuRow sku) {
+		return new SkuDetail(
+				sku.skuId(),
+				sku.skuName(),
+				sku.price(),
+				sku.subscribable(),
+				sku.subscribable() ? DELIVERY_CYCLES : List.of(),
+				sku.availableQuantity(),
+				sku.availableQuantity() > 0);
 	}
 }

@@ -3,19 +3,45 @@ import test from "node:test";
 import {
   buildLoginHref,
   formatIsoLocalDate,
+  formatSubscriptionStatus,
   sanitizeReturnTo,
   validateSubscriptionDraft,
 } from "./frontend-utils.ts";
 
 test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
+  for (const route of [
+    "/",
+    "/products",
+    "/products/42",
+    "/subscriptions",
+    "/subscriptions/new",
+    "/subscriptions/7",
+    "/orders",
+    "/orders/9",
+    "/notifications",
+    "/wishlist",
+    "/cart",
+    "/checkout",
+    "/addresses",
+    "/billing-methods",
+    "/my",
+  ]) {
+    assert.equal(sanitizeReturnTo(route), route);
+  }
   assert.equal(sanitizeReturnTo("/products"), "/products");
   assert.equal(sanitizeReturnTo("/products/42"), "/products/42");
+  assert.equal(sanitizeReturnTo("/subscriptions/new"), "/subscriptions/new");
   assert.equal(sanitizeReturnTo("/subscriptions/7"), "/subscriptions/7");
   assert.equal(sanitizeReturnTo("/mvp2/subscriptions/new"), "/mvp2/subscriptions/new");
   assert.equal(sanitizeReturnTo("/mvp2/subscriptions/7"), "/mvp2/subscriptions/7");
   assert.equal(sanitizeReturnTo("https://evil.example"), "/products");
   assert.equal(sanitizeReturnTo("//evil.example"), "/products");
   assert.equal(sanitizeReturnTo("/login"), "/products");
+  assert.equal(sanitizeReturnTo("/admin/users"), "/products");
+  assert.equal(sanitizeReturnTo("/unknown"), "/products");
+  assert.equal(sanitizeReturnTo("/orders/0"), "/products");
+  assert.equal(sanitizeReturnTo("/products/-1"), "/products");
+  assert.equal(sanitizeReturnTo("/my?next=/admin"), "/products");
   assert.equal(sanitizeReturnTo("/subscriptions/0"), "/products");
   assert.equal(
     buildLoginHref("/subscriptions/7"),
@@ -26,6 +52,13 @@ test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
 test("ISO local date는 timezone 변환 없이 표시한다", () => {
   assert.equal(formatIsoLocalDate("2026-07-14"), "2026. 7. 14.");
   assert.equal(formatIsoLocalDate("invalid"), "invalid");
+});
+
+test("구독 상태는 사용자 표현으로 표시한다", () => {
+  assert.equal(formatSubscriptionStatus("ACTIVE"), "이용 중");
+  assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지");
+  assert.equal(formatSubscriptionStatus("CANCELED"), "해지됨");
+  assert.equal(formatSubscriptionStatus("UNKNOWN"), "UNKNOWN");
 });
 
 test("구독 입력은 수량 경계와 서버 제공 선택지를 검증한다", () => {

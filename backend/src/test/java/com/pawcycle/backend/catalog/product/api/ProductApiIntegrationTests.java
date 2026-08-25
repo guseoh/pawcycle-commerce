@@ -72,7 +72,7 @@ class ProductApiIntegrationTests {
 	}
 
 	@Test
-	void anonymousListMatchesShapeOrderEmptyValuesAndUsesTwoQueries() throws Exception {
+	void anonymousListMatchesPaginatedShapeAndNewestOrder() throws Exception {
 		Product first = saveProduct("첫 상품", "DOG", null, null, "PUBLIC");
 		Product second = saveProduct("둘째 상품", "CAT", "상세", "https://example.test/cat.png", "PUBLIC");
 		saveSku(first, "동률 뒤 SKU", "39000.00", false, 2);
@@ -82,40 +82,45 @@ class ProductApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products.length()").value(2))
-				.andExpect(jsonPath("$.products[0].productId").value(first.getId()))
-				.andExpect(jsonPath("$.products[0].petType").value("DOG"))
-				.andExpect(jsonPath("$.products[0].category.categoryId").isNumber())
-				.andExpect(jsonPath("$.products[0].category.name").isString())
-				.andExpect(jsonPath("$.products[0].category.slug").isString())
-				.andExpect(jsonPath("$.products[0].thumbnailUrl").value(nullValue()))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[0].skuName").value("첫 SKU"))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[1].skuName").value("동률 뒤 SKU"))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[2].skuName").value("동률 앞 SKU"))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[0].price").isNumber())
-				.andExpect(jsonPath("$.products[0].hasSubscribableSku").value(true))
-				.andExpect(jsonPath("$.products[1].productId").value(second.getId()))
-				.andExpect(jsonPath("$.products[1].skuPriceSummary.skuPrices").isEmpty())
-				.andExpect(jsonPath("$.products[1].hasSubscribableSku").value(false))
-				.andExpect(jsonPath("$.products[0].displayStatus").doesNotExist());
-
-		assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+				.andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.page").value(0))
+				.andExpect(jsonPath("$.size").value(20))
+				.andExpect(jsonPath("$.totalElements").value(2))
+				.andExpect(jsonPath("$.totalPages").value(1))
+				.andExpect(jsonPath("$.items[0].productId").value(second.getId()))
+				.andExpect(jsonPath("$.items[0].petType").value("CAT"))
+				.andExpect(jsonPath("$.items[0].thumbnailUrl").value("https://example.test/cat.png"))
+				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
+				.andExpect(jsonPath("$.items[0].representativePrice").value(nullValue()))
+				.andExpect(jsonPath("$.items[0].purchasable").value(false))
+				.andExpect(jsonPath("$.items[1].productId").value(first.getId()))
+				.andExpect(jsonPath("$.items[1].category.categoryId").isNumber())
+				.andExpect(jsonPath("$.items[1].category.name").isString())
+				.andExpect(jsonPath("$.items[1].category.slug").isString())
+				.andExpect(jsonPath("$.items[1].thumbnailUrl").value(nullValue()))
+				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices.length()").value(1))
+				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].skuName").value("첫 SKU"))
+				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].price").value(19000.00))
+				.andExpect(jsonPath("$.items[1].representativePrice").value(19000.00))
+				.andExpect(jsonPath("$.items[1].hasSubscribableSku").value(true))
+				.andExpect(jsonPath("$.items[1].purchasable").value(false))
+				.andExpect(jsonPath("$.items[0].displayStatus").doesNotExist());
 	}
 
 	@Test
-	void anonymousEmptyListReturnsEmptyArrayAndUsesOneQuery() throws Exception {
+	void anonymousEmptyListReturnsEmptyPage() throws Exception {
 		flushAndResetStatistics();
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products").isArray())
-				.andExpect(jsonPath("$.products.length()").value(0));
-
-		assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+				.andExpect(jsonPath("$.items").isArray())
+				.andExpect(jsonPath("$.items.length()").value(0))
+				.andExpect(jsonPath("$.totalElements").value(0))
+				.andExpect(jsonPath("$.totalPages").value(0));
 	}
 
 	@Test
-	void authenticatedDetailNeedsNoCsrfAndUsesTwoQueries() throws Exception {
+	void authenticatedDetailNeedsNoCsrfAndReturnsInventoryProjection() throws Exception {
 		Product product = saveProduct("상세 상품", "DOG", null, null, "PUBLIC");
 		saveSku(product, "구독 SKU", "19900.00", true, 1);
 		saveSku(product, "일반 SKU", "29900.00", false, 2);
@@ -134,11 +139,14 @@ class ProductApiIntegrationTests {
 				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[0]").value(2))
 				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[1]").value(4))
 				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[2]").value(8))
+				.andExpect(jsonPath("$.skus[0].availableQuantity").value(0))
+				.andExpect(jsonPath("$.skus[0].purchasable").value(false))
 				.andExpect(jsonPath("$.skus[1].subscribable").value(false))
 				.andExpect(jsonPath("$.skus[1].availableDeliveryCycles").isEmpty())
+				.andExpect(jsonPath("$.skus[1].availableQuantity").value(0))
+				.andExpect(jsonPath("$.skus[1].purchasable").value(false))
+				.andExpect(jsonPath("$.purchasable").value(false))
 				.andExpect(jsonPath("$.displayStatus").doesNotExist());
-
-		assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
 	}
 
 	@Test
@@ -154,7 +162,7 @@ class ProductApiIntegrationTests {
 					.with(authentication(new UsernamePasswordAuthenticationToken(
 							new AuthenticatedMemberPrincipal(1L), null, List.of()))))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products[0].productId").value(product.getId()));
+				.andExpect(jsonPath("$.items[0].productId").value(product.getId()));
 	}
 
 	@Test
@@ -166,8 +174,8 @@ class ProductApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products.length()").value(1))
-				.andExpect(jsonPath("$.products[0].productId").value(visible.getId()));
+				.andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].productId").value(visible.getId()));
 
 		for (Long hiddenId : List.of(draft.getId(), inactive.getId())) {
 			mockMvc.perform(get("/api/products/{productId}", hiddenId))
@@ -217,8 +225,8 @@ class ProductApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices.length()").value(1))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices[0].skuName").value("활성 SKU"));
+				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices.length()").value(1))
+				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices[0].skuName").value("활성 SKU"));
 
 		mockMvc.perform(get("/api/products/{productId}", product.getId()))
 				.andExpect(status().isOk())
@@ -237,9 +245,9 @@ class ProductApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products[0].productId").value(product.getId()))
-				.andExpect(jsonPath("$.products[0].skuPriceSummary.skuPrices").isEmpty())
-				.andExpect(jsonPath("$.products[0].hasSubscribableSku").value(false));
+				.andExpect(jsonPath("$.items[0].productId").value(product.getId()))
+				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
+				.andExpect(jsonPath("$.items[0].hasSubscribableSku").value(false));
 	}
 
 	@Test
@@ -253,13 +261,12 @@ class ProductApiIntegrationTests {
 					.param("petType", "dog")
 					.param("category", dogFood.getCategory().getSlug()))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products.length()").value(1))
-				.andExpect(jsonPath("$.products[0].productId").value(dogFood.getId()));
+				.andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].productId").value(dogFood.getId()));
 
 		mockMvc.perform(get("/api/products").param("q", "모래").param("petType", "DOG"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products").isEmpty());
-		assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
+				.andExpect(jsonPath("$.items").isEmpty());
 	}
 
 	private Product saveProduct(

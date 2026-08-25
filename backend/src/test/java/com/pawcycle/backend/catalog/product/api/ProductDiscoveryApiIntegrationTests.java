@@ -62,11 +62,11 @@ class ProductDiscoveryApiIntegrationTests {
 					.param("petType", "dog")
 					.param("category", category.getSlug().toUpperCase(java.util.Locale.ROOT)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products.length()").value(1))
-				.andExpect(jsonPath("$.products[0].productId").value(product.getId()))
-				.andExpect(jsonPath("$.products[0].category.categoryId").value(category.getId()))
-				.andExpect(jsonPath("$.products[0].category.name").value(category.getName()))
-				.andExpect(jsonPath("$.products[0].category.slug").value(category.getSlug()));
+				.andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].productId").value(product.getId()))
+				.andExpect(jsonPath("$.items[0].category.categoryId").value(category.getId()))
+				.andExpect(jsonPath("$.items[0].category.name").value(category.getName()))
+				.andExpect(jsonPath("$.items[0].category.slug").value(category.getSlug()));
 
 		mockMvc.perform(get("/api/products/{productId}", product.getId()))
 				.andExpect(status().isOk())

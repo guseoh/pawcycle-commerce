@@ -9,26 +9,34 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration(proxyBeanMethods = false)
 @Profile("local-integration & !test & !production & !prod")
-@ConditionalOnProperty(
-		prefix = "pawcycle.local-qa-bootstrap",
-		name = "enabled",
-		havingValue = "true")
 @EnableConfigurationProperties(LocalQaBootstrapProperties.class)
 public class LocalQaBootstrapConfiguration {
 
 	@Bean
+	@ConditionalOnProperty(
+			prefix = "pawcycle.local-qa-bootstrap",
+			name = "enabled",
+			havingValue = "true")
 	ApplicationRunner localQaBootstrapRunner(
 			LocalQaBootstrapProperties properties,
 			LocalQaBootstrapService bootstrapService,
-			LocalQaMvp2FixtureService mvp2FixtureService,
-			LocalCommerceDemoFixtureService commerceDemoFixtureService) {
+			LocalQaMvp2FixtureService mvp2FixtureService) {
 		return arguments -> {
 			bootstrapService.bootstrap(
 					properties.email(),
 					properties.password(),
 					properties.resetSubscriptions());
 			mvp2FixtureService.bootstrap();
-			commerceDemoFixtureService.bootstrap();
 		};
+	}
+
+	@Bean
+	@ConditionalOnProperty(
+			prefix = "pawcycle.local-demo-catalog",
+			name = "enabled",
+			havingValue = "true",
+			matchIfMissing = true)
+	ApplicationRunner localDemoCatalogBootstrapRunner(LocalCommerceDemoFixtureService commerceDemoFixtureService) {
+		return arguments -> commerceDemoFixtureService.bootstrap();
 	}
 }

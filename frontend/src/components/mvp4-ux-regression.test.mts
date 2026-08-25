@@ -21,6 +21,7 @@ test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   assert.match(cartSource, /onChange=\{\(event\) => updateDraft\(item\.skuId, event\.target\.value\)\}/);
   assert.match(cartSource, /onClick=\{\(\) => void applyQuantity\(item\)\}/);
   assert.equal((cartSource.match(/commerceFinalApi\.updateCart/g) ?? []).length, 1);
+  assert.doesNotMatch(cartSource, /item\.skuCode/);
 });
 
 test("구독 플랜 조회는 오류와 정상 empty 상태를 분리한다", () => {
@@ -42,4 +43,16 @@ test("회원별 계정 화면은 새 인스턴스와 stale 응답 guard를 사�
 test("알림 재조회 실패는 기존 목록을 무효화한다", () => {
   assert.match(notificationSource, /async function refresh\(\) \{\s*setItems\(null\)/);
   assert.match(notificationSource, /if \(!items\) return <ErrorState/);
+});
+
+test("header와 My의 계정 action 경계를 유지한다", () => {
+  const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
+  const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(headerSource, /로그아웃/);
+  assert.match(mySource, /LogoutControl/);
+});
+
+test("Root layout은 공통 Footer를 연결한다", () => {
+  const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  assert.match(layoutSource, /AppFooter/);
 });

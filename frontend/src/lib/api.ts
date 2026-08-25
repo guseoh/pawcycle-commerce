@@ -39,10 +39,18 @@ export interface ProductSummary {
   category: Category;
   skuPriceSummary: { skuPrices: ProductPrice[] };
   hasSubscribableSku: boolean;
+  representativePrice: number | null;
+  purchasable: boolean;
 }
 
 export interface ProductListResponse {
-  products: ProductSummary[];
+  items: ProductSummary[];
+  /** Legacy reader/cache compatibility; new pageable responses use items. */
+  products?: ProductSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }
 
 export interface ProductSku {
@@ -51,6 +59,8 @@ export interface ProductSku {
   price: number;
   subscribable: boolean;
   availableDeliveryCycles: number[];
+  availableQuantity: number;
+  purchasable: boolean;
 }
 
 export interface ProductDetail {
@@ -61,6 +71,7 @@ export interface ProductDetail {
   thumbnailUrl: string | null;
   category: Category;
   skus: ProductSku[];
+  purchasable: boolean;
 }
 
 export interface MemberResponse {
@@ -186,9 +197,9 @@ async function requestVoid(path: string, init: RequestInit): Promise<void> {
 }
 
 export const productApi = {
-  list: (filters: { q?: string; petType?: string; category?: string } = {}) => {
+  list: (filters: { q?: string; petType?: string; category?: string; page?: number; size?: number; sort?: string } = {}) => {
     const query = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
     return requestJson<ProductListResponse>(`/api/products${query.size ? `?${query}` : ""}`);
   },
   detail: (productId: string) =>

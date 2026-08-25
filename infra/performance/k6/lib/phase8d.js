@@ -100,7 +100,7 @@ export function setup() {
 
   const list = http.get(`${baseUrl()}/api/products`, { redirects: 0 });
   if (list.status !== 200) throw new Error("Phase 8-D setup product fixture list is unavailable.");
-  const products = list.json("products");
+  const products = list.json("items") || list.json("products");
   const fixtureProduct = Array.isArray(products)
     ? products.find((product) => product.name === FIXTURE_PRODUCT_NAME)
     : null;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
@@ -24,6 +25,7 @@ export default function RootLayout({
           <main id="main-content" className="page-shell">
             {children}
           </main>
+          <AppFooter />
         </AuthProvider>
       </body>
     </html>
