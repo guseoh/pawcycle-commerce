@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
@@ -29,6 +30,7 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
 	private final ObjectMapper objectMapper;
 	private final HttpClient httpClient;
 
+	@Autowired
 	TossTestPaymentAdapter(
 			@Value("${pawcycle.toss.test.secret-key:}") String secretKey,
 			ObjectMapper objectMapper) {
