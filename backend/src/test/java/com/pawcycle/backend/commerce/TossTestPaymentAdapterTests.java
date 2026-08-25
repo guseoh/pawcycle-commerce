@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.http.HttpClient;
@@ -16,8 +17,17 @@ class TossTestPaymentAdapterTests {
 	}
 
 	@Test
+	void browserTestCapabilityIsExposedOnlyByTheRealTossTestAdapter() {
+		TossPaymentAdapter fake = new TossSandboxPaymentAdapter();
+		TossPaymentAdapter actualTest = new TossTestPaymentAdapter("test_sk_example", "https://api.tosspayments.com", new ObjectMapper(), HttpClient.newHttpClient());
+
+		assertThat(fake.browserTestEnabled()).isFalse();
+		assertThat(actualTest.browserTestEnabled()).isTrue();
+	}
+
+	@Test
 	void sandboxAdapterRemainsTheDefaultWhenTestOptInIsAbsent() {
 		TossPaymentAdapter adapter = new TossSandboxPaymentAdapter();
-		org.assertj.core.api.Assertions.assertThat(adapter.confirm("payment-key", "order-1", java.math.BigDecimal.TEN).status()).isEqualTo("SUCCEEDED");
+		assertThat(adapter.confirm("payment-key", "order-1", java.math.BigDecimal.TEN).status()).isEqualTo("SUCCEEDED");
 	}
 }

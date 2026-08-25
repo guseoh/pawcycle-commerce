@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError, ProductListResponse, ProductSummary, productApi } from "@/lib/api";
-import { formatPetType, formatPrice, isInternalDemoLabel } from "@/lib/frontend-utils";
+import { formatPetType, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 
 type LoadState = { status: "loading" } | { status: "success"; response: ProductListResponse } | { status: "error"; message: string };
 const DEFAULT_SIZE = 12;
@@ -37,9 +37,7 @@ function ProductsContent() {
     router.push(`/products${next.size ? `?${next}` : ""}`);
   }
 
-  const products = state.status === "success"
-    ? (state.response.items ?? state.response.products ?? []).filter((product) => !isInternalDemoLabel(product.name) && !isInternalDemoLabel(product.category.name))
-    : [];
+  const products = state.status === "success" ? (state.response.items ?? state.response.products ?? []) : [];
 
   return <>
     <header className="page-heading"><p className="eyebrow">상품 탐색</p><h1>우리 아이에게 필요한 상품을 찾아보세요.</h1><p>상품명과 설명을 검색하거나 반려동물·카테고리·정렬로 좁혀볼 수 있어요.</p></header>
@@ -47,7 +45,7 @@ function ProductsContent() {
     {state.status === "loading" ? <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState> : null}
     {state.status === "error" ? <ErrorState title="상품 목록을 불러오지 못했습니다." message={state.message} onRetry={() => { setState({ status: "loading" }); setRetryKey((value) => value + 1); }} /> : null}
     {state.status === "success" ? <>
-      <p className="catalog-count" aria-live="polite">총 {products.length.toLocaleString()}개 상품</p>
+      <p className="catalog-count" aria-live="polite">총 {state.response.totalElements.toLocaleString()}개 상품</p>
       {products.length === 0 ? <section className="state-panel empty-state"><p className="eyebrow">Empty</p><h1>조건에 맞는 상품이 없습니다.</h1><p>검색어와 필터를 바꾸거나 공개 상품이 준비될 때까지 기다려 주세요.</p></section> : <ProductGrid products={products} />}
       {state.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" type="button" disabled={state.response.page <= 0} onClick={() => movePage(state.response.page - 1)}>이전</button><span>{state.response.page + 1} / {state.response.totalPages}</span><button className="button button-secondary" type="button" disabled={state.response.page + 1 >= state.response.totalPages} onClick={() => movePage(state.response.page + 1)}>다음</button></nav> : null}
     </> : null}
@@ -55,13 +53,18 @@ function ProductsContent() {
 }
 
 function ProductGrid({ products }: { products: ProductSummary[] }) {
-  return <section aria-label="상품 목록" className="product-grid">{products.map((product) => <article className="product-card" key={product.productId}>
-    <div className="product-visual">{product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt={product.name} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}</div>
-    <h2>{product.name}</h2><strong className="price-heading">{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</strong>
-    <div className="card-meta"><span className="tag">대상: {formatPetType(product.petType)}</span><span className="tag">{product.category.name}</span></div>
-    <p><span className={`tag ${product.purchasable ? "tag-positive" : "tag-muted"}`}>{product.purchasable ? "구매 가능" : "품절"}</span></p><p>{product.shortDescription}</p>
-    <div className="card-actions"><Link className="button button-primary" href={`/products/${product.productId}`}>상세 보기</Link></div>
-  </article>)}</section>;
+  return <section aria-label="상품 목록" className="product-grid">{products.map((product) => {
+    const productName = userFacingCatalogLabel(product.name, "반려동물 상품");
+    const categoryName = userFacingCatalogLabel(product.category.name, "상품");
+    const description = userFacingCatalogLabel(product.shortDescription, "상품 정보를 확인해 보세요.");
+    return <article className="product-card" key={product.productId}>
+      <div className="product-visual">{product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt={productName} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}</div>
+      <h2>{productName}</h2><strong className="price-heading">{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</strong>
+      <div className="card-meta"><span className="tag">대상: {formatPetType(product.petType)}</span><span className="tag">{categoryName}</span></div>
+      <p><span className={`tag ${product.purchasable ? "tag-positive" : "tag-muted"}`}>{product.purchasable ? "구매 가능" : "품절"}</span></p><p>{description}</p>
+      <div className="card-actions"><Link className="button button-primary" href={`/products/${product.productId}`}>상세 보기</Link></div>
+    </article>;
+  })}</section>;
 }
 
 function ProductFilters({ q, petType, category, sort }: { q: string; petType: string; category: string; sort: string }) {

@@ -24,12 +24,15 @@ test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
     "/wishlist",
     "/cart",
     "/checkout",
+    "/checkout/success",
     "/addresses",
     "/billing-methods",
     "/my",
   ]) {
     assert.equal(sanitizeReturnTo(route), route);
   }
+  assert.equal(buildLoginHref("/checkout/success"), "/login?returnTo=%2Fcheckout%2Fsuccess");
+  assert.equal(sanitizeReturnTo("/checkout/success?paymentKey=secret"), "/products");
   assert.equal(sanitizeReturnTo("/products"), "/products");
   assert.equal(sanitizeReturnTo("/products/42"), "/products/42");
   assert.equal(sanitizeReturnTo("/subscriptions/new"), "/subscriptions/new");

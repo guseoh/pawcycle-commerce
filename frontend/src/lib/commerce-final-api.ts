@@ -14,7 +14,7 @@ export interface MemberCoupon { memberCouponId:number; couponId:number; name:str
 export interface WishlistItem { productId:number; productName:string; createdAt:string; }
 export interface AddressRequest { name:string; recipientName:string; recipientPhone:string; postalCode:string; addressLine1:string; addressLine2:string; }
 export interface Address extends AddressRequest { addressId:number; isDefault:boolean; }
-export interface CheckoutResult { orderId:number; orderNumber:string; paymentId:number; providerOrderId:string; orderName:string; amount:number; pricing?:PricingBreakdown; }
+export interface CheckoutResult { orderId:number; orderNumber:string; paymentId:number; providerOrderId:string; orderName:string; amount:number; pricing?:PricingBreakdown; tossTestEnabled:boolean; }
 export interface TossConfirmResult { paymentId:number; orderId:number; status:"SUCCEEDED"|"FAILED"|"UNKNOWN"; }
 export interface BillingMethodStatus { provider:"TOSS"; configured:boolean; registered:boolean; }
 async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,cache:"no-store",credentials:"same-origin",headers:{Accept:"application/json",...init?.headers}});const body=await response.json().catch(()=>null);if(!response.ok)throw new ApiError(response.status,body&&typeof body.code==="string"?body:{code:"INTERNAL_ERROR",message:"요청을 처리하지 못했습니다.",fieldErrors:[]});return body as T;}

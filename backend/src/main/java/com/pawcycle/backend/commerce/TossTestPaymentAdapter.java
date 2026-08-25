@@ -22,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(name = "pawcycle.toss.test.enabled", havingValue = "true")
 class TossTestPaymentAdapter implements TossPaymentAdapter {
 	private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+	private static final String TOSS_API_BASE_URL = "https://api.tosspayments.com";
 
 	private final String secretKey;
 	private final String baseUrl;
@@ -30,9 +31,8 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
 
 	TossTestPaymentAdapter(
 			@Value("${pawcycle.toss.test.secret-key:}") String secretKey,
-			@Value("${pawcycle.toss.test.base-url:https://api.tosspayments.com}") String baseUrl,
 			ObjectMapper objectMapper) {
-		this(secretKey, baseUrl, objectMapper, HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build());
+		this(secretKey, TOSS_API_BASE_URL, objectMapper, HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build());
 	}
 
 	TossTestPaymentAdapter(String secretKey, String baseUrl, ObjectMapper objectMapper, HttpClient httpClient) {
@@ -46,6 +46,11 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
 		this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
 		this.objectMapper = objectMapper;
 		this.httpClient = httpClient;
+	}
+
+	@Override
+	public boolean browserTestEnabled() {
+		return true;
 	}
 
 	@Override
