@@ -30,6 +30,17 @@ export function formatPetType(value: string): string {
   return value;
 }
 
+export function cartQuantityError(value: string): string | null {
+  const quantity = Number(value);
+  return Number.isInteger(quantity) && quantity >= 1
+    ? null
+    : "수량은 1 이상의 정수여야 합니다.";
+}
+
+export function cartQuantityForUpdate(value: string): number | null {
+  return cartQuantityError(value) === null ? Number(value) : null;
+}
+
 export interface SubscriptionDraft {
   skuId: number | null;
   quantity: string;
