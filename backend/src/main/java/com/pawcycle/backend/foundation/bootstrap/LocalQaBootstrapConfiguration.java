@@ -20,13 +20,15 @@ public class LocalQaBootstrapConfiguration {
 	ApplicationRunner localQaBootstrapRunner(
 			LocalQaBootstrapProperties properties,
 			LocalQaBootstrapService bootstrapService,
-			LocalQaMvp2FixtureService mvp2FixtureService) {
+			LocalQaMvp2FixtureService mvp2FixtureService,
+			LocalCommerceDemoFixtureService commerceDemoFixtureService) {
 		return arguments -> {
 			bootstrapService.bootstrap(
 					properties.email(),
 					properties.password(),
 					properties.resetSubscriptions());
 			mvp2FixtureService.bootstrap();
+			commerceDemoFixtureService.bootstrap();
 		};
 	}
 }
