@@ -93,7 +93,7 @@ class CommercePurchaseIntegrationTests {
 		assertAmount(pricing.get("discountAmount"), BigDecimal.ZERO);
 		assertAmount(pricing.get("shippingFee"), BigDecimal.ZERO);
 		assertAmount(pricing.get("finalAmount"), BigDecimal.valueOf(3000));
-		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(3);
 
 		Map<String, Object> order = commerce.order(member.getId(), ((Number) checkout.get("orderId")).longValue());
 		assertThat(order).containsKeys("items", "payment", "delivery", "recipientName", "originalAmount", "discountAmount", "shippingFee", "paymentAmount");
