@@ -118,11 +118,11 @@ export function SubscriptionDetailScreen({ subscriptionId, created }: Subscripti
       ) : null}
 
       <section className="section-card" aria-labelledby="subscription-title">
-        <p className="eyebrow">Subscription #{subscription.subscriptionId}</p>
+        <p className="eyebrow">정기배송 상세</p>
         <h1 id="subscription-title">{subscription.product.name}</h1>
         <dl className="detail-list">
-          <dt>SKU</dt>
-          <dd>{subscription.sku.skuName} (#{subscription.sku.skuId})</dd>
+          <dt>상품 옵션</dt>
+          <dd>{subscription.sku.skuName}</dd>
           <dt>단가</dt>
           <dd>{formatPrice(subscription.sku.price)}</dd>
           <dt>수량</dt>

@@ -9,6 +9,8 @@ const addressesSource = readFileSync(new URL("../app/addresses/page.tsx", import
 const wishlistSource = readFileSync(new URL("../app/wishlist/page.tsx", import.meta.url), "utf8");
 const billingSource = readFileSync(new URL("../app/billing-methods/page.tsx", import.meta.url), "utf8");
 const notificationSource = readFileSync(new URL("./notification-screen.tsx", import.meta.url), "utf8");
+const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.tsx", import.meta.url), "utf8");
+const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
 
 test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   const typedDrafts = ["1", "12"];
@@ -18,7 +20,7 @@ test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   assert.deepEqual(pastedDrafts.map(cartQuantityError), [null]);
   assert.deepEqual([cartQuantityForUpdate(typedDrafts.at(-1)!)], [12]);
   assert.deepEqual([cartQuantityForUpdate(pastedDrafts.at(-1)!)], [12]);
-  assert.match(cartSource, /onChange=\{\(event\) => updateDraft\(item\.skuId, event\.target\.value\)\}/);
+  assert.match(cartSource, /onChange=\{\(event\) => updateDraft\(item\.skuId, event\.target\.value, item\.availableQuantity\)\}/);
   assert.match(cartSource, /onClick=\{\(\) => void applyQuantity\(item\)\}/);
   assert.equal((cartSource.match(/commerceFinalApi\.updateCart/g) ?? []).length, 1);
   assert.doesNotMatch(cartSource, /item\.skuCode/);
@@ -79,5 +81,34 @@ test("관련 상품은 상세 조회와 독립된 loading·retry 상태를 사�
 
 test("Root layout은 공통 Footer를 연결한다", () => {
   const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const footerSource = readFileSync(new URL("./app-footer.tsx", import.meta.url), "utf8");
   assert.match(layoutSource, /AppFooter/);
+  assert.match(footerSource, /\/shipping/);
+  assert.match(footerSource, /\/returns/);
+  assert.match(footerSource, /\/faq/);
+  assert.match(footerSource, /\/notice/);
+  assert.match(footerSource, /\/support/);
+});
+
+test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계를 유지한다", () => {
+  const checkoutSource = readFileSync(new URL("../app/checkout/page.tsx", import.meta.url), "utf8");
+  const widgetSource = readFileSync(new URL("./toss-payment-widget.tsx", import.meta.url), "utf8");
+  const successSource = readFileSync(new URL("../app/checkout/success/page.tsx", import.meta.url), "utf8");
+  const failSource = readFileSync(new URL("../app/checkout/fail/page.tsx", import.meta.url), "utf8");
+  assert.match(checkoutSource, /TossPaymentWidget/);
+  assert.match(widgetSource, /setAmount\(\{ currency: "KRW", value: checkout\.amount \}\)/);
+  assert.match(widgetSource, /renderPaymentMethods/);
+  assert.match(widgetSource, /renderAgreement/);
+  assert.match(widgetSource, /requestPayment/);
+  assert.match(widgetSource, /NEXT_PUBLIC_TOSS_TEST_CLIENT_KEY/);
+  assert.match(successSource, /commerceFinalApi\.confirmToss/);
+  assert.match(successSource, /expected\.amount/);
+  assert.doesNotMatch(failSource, /confirmToss/);
+});
+
+test("사용자 화면은 내부 식별자를 노출하지 않는다", () => {
+  const successSource = readFileSync(new URL("../app/checkout/success/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(subscriptionStartSource, /상품 #\$\{productContext\}|옵션 #/);
+  assert.doesNotMatch(legacySubscriptionDetailSource, /Subscription #|\( #/);
+  assert.doesNotMatch(successSource, /결제 확인 번호/);
 });

@@ -6,7 +6,7 @@ import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi, type CartItem, type PricingBreakdown } from "@/lib/commerce-final-api";
-import { buildLoginHref, cartQuantityError, cartQuantityForUpdate, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
+import { buildLoginHref, cartQuantityErrorForMaximum, cartQuantityForUpdate, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 
 export default function CartPage() {
   const auth = useAuth();
@@ -39,9 +39,9 @@ export default function CartPage() {
     if (auth.status === "authenticated") load();
   }, [auth.status, load]);
 
-  function updateDraft(skuId: number, raw: string) {
+  function updateDraft(skuId: number, raw: string, maximum: number) {
     setDraft((value) => ({ ...value, [skuId]: raw }));
-    const validationError = cartQuantityError(raw);
+    const validationError = cartQuantityErrorForMaximum(raw, maximum);
     setQuantityErrors((value) => {
       if (validationError) return { ...value, [skuId]: validationError };
       const next = { ...value };
@@ -53,9 +53,9 @@ export default function CartPage() {
   async function applyQuantity(item: CartItem) {
     if (busy !== null) return;
     const raw = draft[item.skuId] ?? String(item.quantity);
-    const quantity = cartQuantityForUpdate(raw);
+    const quantity = cartQuantityForUpdate(raw, item.availableQuantity);
     if (quantity === null) {
-      setQuantityErrors((value) => ({ ...value, [item.skuId]: cartQuantityError(raw)! }));
+      setQuantityErrors((value) => ({ ...value, [item.skuId]: cartQuantityErrorForMaximum(raw, item.availableQuantity)! }));
       return;
     }
     setBusy(item.skuId);
@@ -106,7 +106,7 @@ export default function CartPage() {
           return <li className="cart-item" key={item.skuId}>
             <div className="cart-item-visual"><span className="image-placeholder" aria-hidden="true">PawCycle</span></div>
             <div className="cart-item-main"><Link href={`/products/${item.productId}`}><strong>{item.productName}</strong></Link><span className="cart-sku">{item.skuName} · 옵션 단가 {formatPrice(item.unitPrice ?? item.price)}</span><span className={`cart-availability${item.purchasable ? " is-available" : " is-unavailable"}`}>{stockMessage}</span><strong className="cart-price">상품 금액 {formatPrice(item.lineAmount)}</strong></div>
-            <div className="cart-item-controls"><label>수량<input className="input" type="number" min="1" max={item.availableQuantity > 0 ? item.availableQuantity : undefined} inputMode="numeric" value={draft[item.skuId] ?? String(item.quantity)} disabled={busy === item.skuId} onChange={(event) => updateDraft(item.skuId, event.target.value)} /></label>{quantityErrors[item.skuId] ? <p className="field-error" role="alert">{quantityErrors[item.skuId]}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy !== null || quantityErrors[item.skuId] !== undefined} onClick={() => void applyQuantity(item)}>수량 적용</button><button className="button button-danger" type="button" disabled={busy !== null} onClick={() => void remove(item.skuId)}>삭제</button></div></div>
+            <div className="cart-item-controls"><label htmlFor={`cart-quantity-${item.skuId}`}>수량<input id={`cart-quantity-${item.skuId}`} className="input" type="number" min="1" max={item.availableQuantity > 0 ? item.availableQuantity : undefined} inputMode="numeric" aria-describedby={quantityErrors[item.skuId] ? `cart-quantity-error-${item.skuId}` : undefined} aria-invalid={quantityErrors[item.skuId] ? "true" : undefined} value={draft[item.skuId] ?? String(item.quantity)} disabled={busy === item.skuId} onChange={(event) => updateDraft(item.skuId, event.target.value, item.availableQuantity)} /></label>{quantityErrors[item.skuId] ? <p id={`cart-quantity-error-${item.skuId}`} className="field-error" role="alert">{quantityErrors[item.skuId]}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy !== null || quantityErrors[item.skuId] !== undefined} onClick={() => void applyQuantity(item)}>수량 적용</button><button className="button button-danger" type="button" disabled={busy !== null} onClick={() => void remove(item.skuId)}>삭제</button></div></div>
           </li>;
         })}</ul> : <div className="empty-callout"><strong>장바구니가 비어 있어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
       </section>

@@ -136,7 +136,7 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
   if (state === "error") return <ErrorState title="반려동물 목록을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => setRetryKey((key) => key + 1)} />;
 
   return <div className="detail-stack">
-    <header className="page-heading"><h1>반려동물과 플랜 선택</h1><p>판매 중인 호환 플랜과 서버가 제공한 배송 주기만 선택할 수 있습니다.</p>{productContext ? <p className="field-help">상품 #{productContext}{skuContext ? ` · 옵션 #${skuContext}` : ""}에서 이어서 선택 중입니다.</p> : null}</header>
+    <header className="page-heading"><h1>반려동물과 플랜 선택</h1><p>판매 중인 호환 플랜과 서버가 제공한 배송 주기만 선택할 수 있습니다.</p>{productContext ? <p className="field-help">상품 상세에서 선택한 {skuContext ? "옵션으로 " : "상품으로 "}이어서 선택 중입니다.</p> : null}</header>
     {message ? <div className="error-summary" ref={errorRef} tabIndex={-1} role="alert"><h2>확인이 필요합니다.</h2><p>{message}</p></div> : null}
     <section className="section-card" aria-labelledby="pet-select-title">
       <h2 id="pet-select-title">1. 반려동물 선택</h2>

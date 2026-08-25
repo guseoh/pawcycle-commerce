@@ -24,7 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "local-integration"})
 class CommercePurchaseIntegrationTests {
 
 	private final CommerceService commerce;
@@ -140,5 +140,64 @@ class CommercePurchaseIntegrationTests {
 		assertThatThrownBy(() -> commerce.order(other.getId(), ((Number) checkout.get("orderId")).longValue()))
 				.isInstanceOf(CommerceException.class)
 				.satisfies(error -> assertThat(((CommerceException) error).code()).isEqualTo("ORDER_NOT_FOUND"));
+	}
+
+	@Test
+	void successfulConfirmReturnsOrderIdAndReplayDoesNotConsumeCartTwice() {
+		commerce.addCartItem(member.getId(), sku.getId(), 1);
+		Map<String, Object> checkout = commerce.checkout(member.getId(), "payment-" + UUID.randomUUID(), addressId, null);
+		String providerOrderId = (String) checkout.get("providerOrderId");
+		Map<String, Object> confirmed = commerce.confirm(member.getId(), "payment-key", providerOrderId, new BigDecimal(checkout.get("amount").toString()));
+
+		assertThat(confirmed).containsEntry("status", "SUCCEEDED").containsKey("orderId");
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM cart_items item JOIN carts cart ON cart.id=item.cart_id WHERE cart.member_id=? AND item.sku_id=?", Integer.class, member.getId(), sku.getId())).isZero();
+		Map<String, Object> replayed = commerce.confirm(member.getId(), "payment-key", providerOrderId, new BigDecimal(checkout.get("amount").toString()));
+		assertThat(replayed).containsEntry("status", "SUCCEEDED").containsEntry("orderId", confirmed.get("orderId"));
+		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(4);
+	}
+
+	@Test
+	void confirmRejectsWrongMemberAndAmountWithoutChangingPayment() {
+		commerce.addCartItem(member.getId(), sku.getId(), 1);
+		Map<String, Object> checkout = commerce.checkout(member.getId(), "ownership-payment-" + UUID.randomUUID(), addressId, null);
+		Member other = memberRepository.saveAndFlush(new Member("payment-other-" + UUID.randomUUID() + "@example.test", passwordEncoder.encode("test-password")));
+		String providerOrderId = (String) checkout.get("providerOrderId");
+
+		assertThatThrownBy(() -> commerce.confirm(other.getId(), "payment-key", providerOrderId, new BigDecimal(checkout.get("amount").toString())))
+				.isInstanceOf(CommerceException.class)
+				.satisfies(error -> assertThat(((CommerceException) error).code()).isEqualTo("PAYMENT_FORBIDDEN"));
+		assertThatThrownBy(() -> commerce.confirm(member.getId(), "payment-key", providerOrderId, BigDecimal.valueOf(1)))
+				.isInstanceOf(CommerceException.class)
+				.satisfies(error -> assertThat(((CommerceException) error).code()).isEqualTo("PAYMENT_CONFIRM_CONFLICT"));
+		assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE provider_order_id=?", String.class, providerOrderId)).isEqualTo("READY");
+	}
+
+	@Test
+	void failedConfirmReleasesReservationAndMarksOrderFailed() {
+		commerce.addCartItem(member.getId(), sku.getId(), 1);
+		Map<String, Object> checkout = commerce.checkout(member.getId(), "failed-payment-" + UUID.randomUUID(), addressId, null);
+		String providerOrderId = (String) checkout.get("providerOrderId");
+
+		Map<String, Object> failed = commerce.confirm(member.getId(), "fail_test", providerOrderId, new BigDecimal(checkout.get("amount").toString()));
+
+		assertThat(failed).containsEntry("status", "FAILED").containsKey("orderId");
+		assertThat(jdbc.queryForObject("SELECT orders.status FROM orders JOIN payments ON payments.order_id=orders.id WHERE payments.provider_order_id=?", String.class, providerOrderId)).isEqualTo("PAYMENT_FAILED");
+		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(5);
+		assertThat(jdbc.queryForObject("SELECT reserved_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isZero();
+	}
+
+	@Test
+	void unknownConfirmKeepsReservationForReconciliation() {
+		commerce.addCartItem(member.getId(), sku.getId(), 1);
+		Map<String, Object> checkout = commerce.checkout(member.getId(), "unknown-payment-" + UUID.randomUUID(), addressId, null);
+		String providerOrderId = (String) checkout.get("providerOrderId");
+
+		Map<String, Object> unknown = commerce.confirm(member.getId(), "unknown_test", providerOrderId, new BigDecimal(checkout.get("amount").toString()));
+
+		assertThat(unknown).containsEntry("status", "UNKNOWN").containsKey("orderId");
+		assertThat(jdbc.queryForObject("SELECT orders.status FROM orders JOIN payments ON payments.order_id=orders.id WHERE payments.provider_order_id=?", String.class, providerOrderId)).isEqualTo("PAYMENT_PENDING");
+		assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE provider_order_id=?", String.class, providerOrderId)).isEqualTo("UNKNOWN");
+		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(4);
+		assertThat(jdbc.queryForObject("SELECT reserved_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(1);
 	}
 }

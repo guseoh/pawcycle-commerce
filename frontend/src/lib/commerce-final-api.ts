@@ -15,6 +15,7 @@ export interface WishlistItem { productId:number; productName:string; createdAt:
 export interface AddressRequest { name:string; recipientName:string; recipientPhone:string; postalCode:string; addressLine1:string; addressLine2:string; }
 export interface Address extends AddressRequest { addressId:number; isDefault:boolean; }
 export interface CheckoutResult { orderId:number; orderNumber:string; paymentId:number; providerOrderId:string; orderName:string; amount:number; pricing?:PricingBreakdown; }
+export interface TossConfirmResult { paymentId:number; orderId:number; status:"SUCCEEDED"|"FAILED"|"UNKNOWN"; }
 export interface BillingMethodStatus { provider:"TOSS"; configured:boolean; registered:boolean; }
 async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,cache:"no-store",credentials:"same-origin",headers:{Accept:"application/json",...init?.headers}});const body=await response.json().catch(()=>null);if(!response.ok)throw new ApiError(response.status,body&&typeof body.code==="string"?body:{code:"INTERNAL_ERROR",message:"요청을 처리하지 못했습니다.",fieldErrors:[]});return body as T;}
 export const commerceFinalApi={
@@ -42,6 +43,7 @@ export const commerceFinalApi={
   defaultAddress:(addressId:number,csrf:string)=>request<void>(`/api/addresses/${encodeURIComponent(addressId)}/default`,{method:"PUT",headers:{"X-CSRF-TOKEN":csrf}}),
   updateSubscriptionShipping:(subscriptionId:number,address:AddressRequest,csrf:string)=>request<void>(`/api/subscriptions/${encodeURIComponent(subscriptionId)}/shipping-address`,{method:"PUT",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf},body:JSON.stringify(address)}),
   checkout:(addressId:number,csrf:string,idempotencyKey:string,memberCouponId?:number)=>request<CheckoutResult>("/api/checkout",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf,"Idempotency-Key":idempotencyKey},body:JSON.stringify(memberCouponId === undefined ? {addressId} : {addressId,memberCouponId})}),
+  confirmToss:(paymentKey:string,providerOrderId:string,amount:number,csrf:string)=>request<TossConfirmResult>("/api/payments/toss/confirm",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf},body:JSON.stringify({paymentKey,providerOrderId,amount})}),
   billingMethod:()=>request<BillingMethodStatus>("/api/payment-methods/toss/billing"),
   prepareBilling:(csrf:string)=>request<{prepareToken:string}>("/api/payment-methods/toss/billing/prepare",{method:"POST",headers:{"X-CSRF-TOKEN":csrf}}),
 };

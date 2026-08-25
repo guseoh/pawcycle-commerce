@@ -24,6 +24,8 @@
 
 Checkout 응답은 `orderId`, `orderNumber`, `paymentId`, `providerOrderId`, `orderName`, `amount`를 포함한다. Cart는 가격·재고를 예약하지 않으며 Checkout에서 PUBLIC Product, ACTIVE SKU, 현재 가격과 재고를 다시 검증한다. Checkout은 회원 단위로 직렬화하여 동일 `Idempotency-Key`의 동시 요청도 기존 결과를 재생한다. Cart 차감은 결제 성공 시 Order에 포함된 수량만 반영한다.
 
+Toss confirm의 성공·실패·미확정 및 동일 요청 replay 응답은 기존 `paymentId`, `status`에 `orderId`를 additive하게 포함한다. Frontend는 confirm 요청의 금액으로 Checkout 응답의 서버 금액을 사용하고, Toss redirect URL의 금액은 일치성 검증에만 사용한다.
+
 일반 Checkout의 READY Payment는 생성 시점부터 30분의 만료 시각을 가진다. 만료 전 confirm되지 않은 주문은 멱등적으로 `EXPIRED` 처리하며 Inventory reservation과 예약 Coupon을 반환한다. PROCESSING/UNKNOWN Payment는 이 만료 처리 대상이 아니다.
 
 `/complete`는 opaque `prepareToken`, Toss `authKey`만 받고 `customerKey`, `billingKey`를 응답·로그·예외에 포함하지 않는다. Sandbox adapter는 `local-integration` 프로필에서만 활성화한다. 그 외 환경에 실제 Provider가 구성되지 않은 경우 결제 confirm과 Billing 등록은 fail-closed로 종료하며 가짜 결제 성공을 만들지 않는다.

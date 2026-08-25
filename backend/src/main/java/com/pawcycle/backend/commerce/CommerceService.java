@@ -320,7 +320,7 @@ public class CommerceService {
 		});
 
 		if (Boolean.TRUE.equals(work.get("replay"))) {
-			return Map.of("paymentId", number(work,"id"), "status", "SUCCEEDED");
+			return Map.of("paymentId", number(work,"id"), "orderId", number(work,"order_id"), "status", "SUCCEEDED");
 		}
 
 		try {
@@ -484,12 +484,12 @@ public class CommerceService {
 		Map<String,Object> payment = one("SELECT id,order_id,status FROM payments WHERE id=? FOR UPDATE", paymentId);
 		if (payment == null) notFound("PAYMENT_NOT_FOUND");
 		if (!"PROCESSING".equals(payment.get("status"))) {
-			return Map.of("paymentId", paymentId, "status", payment.get("status"));
+			return Map.of("paymentId", paymentId, "orderId", payment.get("order_id"), "status", payment.get("status"));
 		}
 		long orderId = number(payment,"order_id");
 		if ("UNKNOWN".equals(result)) {
 			jdbc.update("UPDATE payments SET status='UNKNOWN',provider_status='UNKNOWN' WHERE id=?", paymentId);
-			return Map.of("paymentId", paymentId, "status", "UNKNOWN");
+			return Map.of("paymentId", paymentId, "orderId", orderId, "status", "UNKNOWN");
 		}
 		List<Map<String,Object>> items = jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId);
 		if ("SUCCEEDED".equals(result)) {
@@ -504,7 +504,7 @@ public class CommerceService {
 			notificationService.create(memberId,"ORDER_PAID","ORDER",orderId);
 			consumeCartForOrder(memberId, orderId);
 			membershipEvaluation.evaluate(memberId);
-			return Map.of("paymentId", paymentId, "status", "SUCCEEDED");
+			return Map.of("paymentId", paymentId, "orderId", orderId, "status", "SUCCEEDED");
 		}
 		for (Map<String,Object> item : items) {
 			inventoryService.release(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
@@ -512,16 +512,16 @@ public class CommerceService {
 		jdbc.update("UPDATE payments SET status='FAILED',provider_status='ABORTED',failure_code='TOSS_REJECTED',failed_at=? WHERE id=?", now(), paymentId);
 		jdbc.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);
 		jdbc.update("UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL WHERE reserved_order_id=? AND status='RESERVED'", orderId);
-		return Map.of("paymentId", paymentId, "status", "FAILED");
+		return Map.of("paymentId", paymentId, "orderId", orderId, "status", "FAILED");
 	}
 
 	private Map<String,Object> markProviderUnknown(long paymentId) {
-		Map<String,Object> payment = one("SELECT status FROM payments WHERE id=? FOR UPDATE", paymentId);
+		Map<String,Object> payment = one("SELECT order_id,status FROM payments WHERE id=? FOR UPDATE", paymentId);
 		if (payment == null) notFound("PAYMENT_NOT_FOUND");
 		if ("PROCESSING".equals(payment.get("status"))) {
 			jdbc.update("UPDATE payments SET status='UNKNOWN',provider_status='UNKNOWN',failure_code='PROVIDER_RESULT_UNKNOWN' WHERE id=?", paymentId);
 		}
-		return Map.of("paymentId", paymentId, "status", "UNKNOWN");
+		return Map.of("paymentId", paymentId, "orderId", payment.get("order_id"), "status", "UNKNOWN");
 	}
 
 	private void reserveInventory(long skuId,int quantity,long paymentId) {

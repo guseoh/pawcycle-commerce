@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 import { commerceFinalApi, type Address, type CartItem, type CheckoutResult, type MemberCoupon, type PricingBreakdown } from "@/lib/commerce-final-api";
 import { newIdempotencyKey } from "@/lib/v2-api";
+import { TossPaymentWidget } from "@/components/toss-payment-widget";
 
 function PriceSummary({ pricing, couponSelected }: { pricing: PricingBreakdown; couponSelected: boolean }) {
   return <dl className="price-summary"><div><dt>상품 금액</dt><dd>{formatPrice(pricing.originalAmount)}</dd></div><div><dt>할인</dt><dd>{couponSelected && pricing.discountAmount === 0 ? "주문 시 확정" : pricing.discountAmount ? `-${formatPrice(pricing.discountAmount)}` : formatPrice(0)}</dd></div><div><dt>배송비</dt><dd>{pricing.shippingFee ? formatPrice(pricing.shippingFee) : "무료"}</dd></div><div className="price-summary-total"><dt>최종 결제 금액</dt><dd>{formatPrice(pricing.paymentAmount)}</dd></div></dl>;
@@ -99,7 +100,7 @@ export default function CheckoutPage() {
 
   if (result) {
     const confirmedPricing = result.pricing ?? { ...pricing, paymentAmount: result.amount, finalAmount: result.amount };
-    return <section className="checkout-success section-card"><p className="eyebrow">주문 생성</p><h1>주문이 생성되었습니다.</h1><p>{result.orderName} · 주문 번호 {result.orderNumber}</p><PriceSummary pricing={confirmedPricing} couponSelected={Boolean(couponId)} /><div className="provider-block"><strong>결제 안내</strong><p>결제 Provider 브라우저 연동은 이번 범위가 아니며, 주문 생성 결과와 결제 상태는 주문 상세에서 확인할 수 있습니다.</p></div><Link className="button button-primary" href={`/orders/${result.orderId}`}>주문 상세 확인</Link></section>;
+    return <section className="checkout-success section-card"><p className="eyebrow">주문 생성</p><h1>주문이 생성되었습니다.</h1><p>{result.orderName} · 주문 번호 {result.orderNumber}</p><PriceSummary pricing={confirmedPricing} couponSelected={Boolean(couponId)} /><TossPaymentWidget checkout={result} /><Link className="button button-secondary" href={`/orders/${result.orderId}`}>주문 상세 확인</Link></section>;
   }
 
   const unavailable = cart.filter((item) => !item.purchasable);
