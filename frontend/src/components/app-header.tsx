@@ -2,15 +2,61 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { status } = useAuth();
+  const { status, memberId } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const [wishlistCount, setWishlistCount] = useState(0);
+  const requestRef = useRef(0);
   const closeMenu = () => setMenuOpen(false);
+
+  useEffect(() => {
+    requestRef.current += 1;
+    let active = true;
+    if (status !== "authenticated") {
+      const resetTimer = window.setTimeout(() => {
+        if (!active) return;
+        setCartCount(0);
+        setWishlistCount(0);
+      }, 0);
+      return () => {
+        active = false;
+        requestRef.current += 1;
+        window.clearTimeout(resetTimer);
+      };
+    }
+    const refreshBadges = () => {
+      const request = ++requestRef.current;
+      void Promise.all([commerceFinalApi.cart(), commerceFinalApi.wishlist()]).then(([cart, wishlist]) => {
+        if (!active || request !== requestRef.current) return;
+        setCartCount(cart.items.reduce((total, item) => total + item.quantity, 0));
+        setWishlistCount(wishlist.items.length);
+      }).catch(() => {
+        if (!active || request !== requestRef.current) return;
+        setCartCount(0);
+        setWishlistCount(0);
+      });
+    };
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setCartCount(0);
+      setWishlistCount(0);
+      refreshBadges();
+    }, 0);
+    window.addEventListener("pawcycle-commerce-changed", refreshBadges);
+    return () => {
+      active = false;
+      requestRef.current += 1;
+      window.clearTimeout(timer);
+      window.removeEventListener("pawcycle-commerce-changed", refreshBadges);
+    };
+  }, [memberId, status]);
 
   return (
     <header className="site-header">
@@ -39,7 +85,7 @@ export function AppHeader() {
             <Link onClick={closeMenu} className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
           </div>
           <div className="nav-utility-group">
-            {status === "authenticated" ? <><Link onClick={closeMenu} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜</Link><Link onClick={closeMenu} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니</Link><Link onClick={closeMenu} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeMenu} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
+            {status === "authenticated" ? <><Link onClick={closeMenu} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜 <span className="nav-badge" aria-label={`찜 ${wishlistCount}개`}>{wishlistCount > 99 ? "99+" : wishlistCount}</span></Link><Link onClick={closeMenu} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니 <span className="nav-badge" aria-label={`장바구니 ${cartCount}개`}>{cartCount > 99 ? "99+" : cartCount}</span></Link><Link onClick={closeMenu} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeMenu} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
             {status === "loading" ? <span className="nav-status" role="status">회원 정보 확인 중</span> : status === "anonymous" ? <Link onClick={closeMenu} href={buildLoginHref(pathname)}>로그인</Link> : null}
           </div>
         </nav>

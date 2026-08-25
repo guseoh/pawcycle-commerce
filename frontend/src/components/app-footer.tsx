@@ -12,6 +12,11 @@ export function AppFooter() {
           <Link href="/products">상품</Link>
           <Link href="/subscriptions">정기배송</Link>
           <Link href="/orders">주문</Link>
+          <Link href="/shipping">배송 정책</Link>
+          <Link href="/returns">교환·반품</Link>
+          <Link href="/faq">FAQ</Link>
+          <Link href="/notice">공지사항</Link>
+          <Link href="/support">고객지원</Link>
         </nav>
       </div>
     </footer>

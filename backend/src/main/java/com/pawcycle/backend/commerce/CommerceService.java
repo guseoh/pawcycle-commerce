@@ -44,12 +44,18 @@ public class CommerceService {
 
 	public Map<String, Object> cart(long memberId) {
 		List<Map<String, Object>> items = jdbc.queryForList("""
-			SELECT item.sku_id AS skuId,item.quantity,sku.sku_code AS skuCode,sku.name AS skuName,sku.price,
-			       product.id AS productId,product.name AS productName
+			SELECT item.sku_id AS skuId,item.quantity,sku.sku_code AS skuCode,sku.name AS skuName,sku.price,sku.price AS unitPrice,
+			       sku.price * item.quantity AS lineAmount,product.id AS productId,product.name AS productName,
+			       inventory.available_quantity AS availableQuantity,
+			       (sku.status='ACTIVE' AND product.display_status='PUBLIC' AND inventory.available_quantity >= item.quantity) AS purchasable
 			FROM carts cart JOIN cart_items item ON item.cart_id=cart.id
 			JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id
+			JOIN inventories inventory ON inventory.sku_id=sku.id
 			WHERE cart.member_id=? ORDER BY item.sku_id""", memberId);
-		return Map.of("items", items);
+		BigDecimal original = items.stream()
+				.map(item -> decimal(item, "lineAmount"))
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+		return Map.of("items", items, "pricing", pricing(original, BigDecimal.ZERO, BigDecimal.ZERO, original));
 	}
 
 	public void addCartItem(long memberId, long skuId, int quantity) {
@@ -272,13 +278,15 @@ public class CommerceService {
 			}
 			jdbc.update("INSERT INTO checkout_idempotency_results(member_id,idempotency_key,order_id,payment_id,created_at) VALUES (?,?,?,?,?)",
 					memberId, idempotencyKey, orderId, paymentId, now());
-			return Map.of(
+			Map<String, Object> result = new LinkedHashMap<>(Map.of(
 					"orderId", orderId,
 					"orderNumber", orderNumber,
 					"paymentId", paymentId,
 					"providerOrderId", providerOrderId,
 					"orderName", orderName(items),
-					"amount", amount);
+					"amount", amount));
+			result.put("pricing", pricing(original, discount, BigDecimal.ZERO, amount));
+			return result;
 		});
 	}
 
@@ -337,7 +345,7 @@ public class CommerceService {
 		order.put("items", jdbc.queryForList(
 				"SELECT sku_id AS skuId,snapshot_quality AS snapshotQuality,sku_code_snapshot AS skuCodeSnapshot,product_name_snapshot AS productNameSnapshot,sku_name_snapshot AS skuNameSnapshot,unit_price AS unitPrice,quantity,line_amount AS lineAmount FROM order_items WHERE order_id=? ORDER BY id",
 				orderId));
-		order.put("payment", one("SELECT id AS paymentId,type,status,amount,attempt_no AS attemptNo,provider_status AS providerStatus FROM payments WHERE order_id=? ORDER BY attempt_no DESC LIMIT 1",orderId));
+		order.put("payment", one("SELECT id AS paymentId,type,provider,status,amount,attempt_no AS attemptNo,provider_status AS providerStatus FROM payments WHERE order_id=? ORDER BY attempt_no DESC LIMIT 1",orderId));
 		order.put("delivery", one("SELECT id AS deliveryId,status,carrier_code AS carrierCode,tracking_number AS trackingNumber,failure_reason AS failureReason,shipped_at AS shippedAt,delivered_at AS deliveredAt FROM deliveries WHERE order_id=?",orderId));
 		order.put("cancellation", one("SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE order_id=?",orderId));
 		order.put("return", one("SELECT id AS returnId,status,reason,rejection_reason AS rejectionReason,restock,requested_at AS requestedAt,received_at AS receivedAt,completed_at AS completedAt FROM order_returns WHERE order_id=?",orderId));
@@ -671,12 +679,25 @@ public class CommerceService {
 		List<Map<String,Object>> items = jdbc.queryForList(
 				"SELECT product_name_snapshot AS product_name FROM order_items WHERE order_id=? ORDER BY id",
 				orderId);
-		return Map.of(
+		Map<String, Object> result = new LinkedHashMap<>(Map.of(
 				"orderId", row.get("orderId"),
 				"orderNumber", row.get("orderNumber"),
 				"paymentId", row.get("paymentId"),
 				"providerOrderId", row.get("providerOrderId"),
 				"orderName", orderName(items),
-				"amount", row.get("amount"));
+				"amount", row.get("amount")));
+		Map<String, Object> order = one("SELECT original_amount AS originalAmount,discount_amount AS discountAmount,shipping_fee AS shippingFee,payment_amount AS paymentAmount FROM orders WHERE id=?", orderId);
+		result.put("pricing", pricing(decimal(order, "originalAmount"), decimal(order, "discountAmount"), decimal(order, "shippingFee"), decimal(order, "paymentAmount")));
+		return result;
+	}
+
+	private static Map<String, Object> pricing(BigDecimal original, BigDecimal discount, BigDecimal shipping, BigDecimal payment) {
+		return Map.of(
+				"originalAmount", original,
+				"subtotalAmount", original.subtract(discount),
+				"discountAmount", discount,
+				"shippingFee", shipping,
+				"finalAmount", payment,
+				"paymentAmount", payment);
 	}
 }

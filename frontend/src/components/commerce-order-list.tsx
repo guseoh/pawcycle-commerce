@@ -1,16 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
+import { ApiError } from "@/lib/api";
 import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
-import { formatPrice } from "@/lib/frontend-utils";
+import { useAuth } from "@/lib/auth-context";
+import { buildLoginHref, formatDateTime, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
 
 export function CommerceOrderList() {
-  const [orders, setOrders] = useState<OrderSummary[] | null>(null); const [error, setError] = useState<string | null>(null);
-  const load = () => commerceFinalApi.orders().then(setOrders).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "주문을 불러오지 못했습니다."));
-  useEffect(() => { void load(); }, []);
+  const auth = useAuth();
+  const [orders, setOrders] = useState<OrderSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    void commerceFinalApi.orders().then(setOrders).catch((reason: unknown) => {
+      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
+      setError(reason instanceof ApiError ? reason.message : "주문을 불러오지 못했습니다.");
+    });
+  }, [auth]);
+  useEffect(() => { if (auth.status === "authenticated") load(); }, [auth.status, load]);
+
+  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="주문 내역을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/orders")}>로그인</Link></ErrorState>;
+  if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (!orders && !error) return <LoadingState>주문을 불러오고 있습니다.</LoadingState>;
-  if (!orders) return <ErrorState title="주문을 불러오지 못했습니다." message={error ?? "다시 시도해 주세요."} onRetry={() => void load()} />;
-  return <section className="section-card order-panel"><div className="section-title"><div><p className="eyebrow">Orders</p><h1>주문 내역</h1></div></div>{orders.length === 0 ? <div className="empty-callout">주문 내역이 없습니다. <Link href="/products">상품 둘러보기 →</Link></div> : <ul className="history-list">{orders.map((order) => <li className="order-row" key={order.orderId}><strong>{order.orderNumber}</strong><span className="status-badge">{order.status}</span><span>{formatPrice(order.paymentAmount)}</span><Link className="button button-secondary" href={`/orders/${order.orderId}`}>상세</Link></li>)}</ul>}</section>;
+  if (!orders) return <ErrorState title="주문을 불러오지 못했습니다." message={error ?? "다시 시도해 주세요."} onRetry={load} />;
+  return <section className="section-card order-panel"><div className="section-title"><div><p className="eyebrow">Orders</p><h1>주문 내역</h1><p>주문 상품과 배송 상태는 주문 상세에서 확인할 수 있어요.</p></div></div>{orders.length === 0 ? <div className="empty-callout">주문 내역이 없습니다. <Link href="/products">상품 둘러보기 →</Link></div> : <ul className="history-list order-history-list">{orders.map((order) => <li className="order-row" key={order.orderId}><div><strong>주문 {order.orderNumber}</strong><span>{formatDateTime(order.createdAt)}</span></div><span className="status-badge">{formatOrderStatus(order.status)}</span><strong>{formatPrice(order.paymentAmount)}</strong><Link className="button button-secondary" href={`/orders/${order.orderId}`}>상세 보기</Link></li>)}</ul>}</section>;
 }

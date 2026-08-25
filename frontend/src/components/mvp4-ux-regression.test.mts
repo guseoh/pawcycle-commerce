@@ -49,7 +49,32 @@ test("header와 My의 계정 action 경계를 유지한다", () => {
   const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
   const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(headerSource, /로그아웃/);
+  assert.match(headerSource, /const \{ status, memberId \} = useAuth\(\)/);
+  assert.match(headerSource, /request !== requestRef\.current/);
+  assert.match(headerSource, /setCartCount\(0\);\s*setWishlistCount\(0\)/);
+  assert.match(mySource, /async function loadAllSubscriptions/);
+  assert.match(mySource, /subscriptions\.length < first\.body\.totalElements/);
+  assert.match(mySource, /sort\(\(left, right\) => left\.nextScheduledDate!/);
   assert.match(mySource, /LogoutControl/);
+});
+
+test("주문 재담기와 요청 dialog는 부분 성공과 키보드 경계를 보호한다", () => {
+  const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
+  assert.match(orderSource, /reorderedSkuIds\.current\.has\(item\.skuId\)/);
+  assert.match(orderSource, /if \(addedThisAttempt > 0\) notifyCommerceChanged\(\)/);
+  assert.match(orderSource, /다시 시도하면 성공한 상품은 중복으로 담지 않습니다/);
+  assert.match(orderSource, /event\.key === "Escape"/);
+  assert.match(orderSource, /event\.key !== "Tab"/);
+  assert.match(orderSource, /requestOpener\.current\?\.focus\(\)/);
+});
+
+test("관련 상품은 상세 조회와 독립된 loading·retry 상태를 사용한다", () => {
+  const productSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
+  assert.match(productSource, /const \[relatedRetry, setRelatedRetry\]/);
+  assert.match(productSource, /const \[relatedLoading, setRelatedLoading\]/);
+  assert.match(productSource, /onRetry=\{\(\) => setRelatedRetry/);
+  assert.match(productSource, /relatedLoading \? <section/);
+  assert.match(productSource, /같은 카테고리의 다른 상품이 아직 없습니다/);
 });
 
 test("Root layout은 공통 Footer를 연결한다", () => {

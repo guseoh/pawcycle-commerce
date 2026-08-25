@@ -54,12 +54,13 @@ export interface V2SubscriptionSummary {
   nextScheduledDate: string | null;
 }
 
+export interface SubscriptionItemDetail { skuId?: number; skuName: string; productId?: number; productName: string; thumbnailUrl?: string | null; quantity: number }
 export interface V2SubscriptionDetail extends V2SubscriptionSummary {
   pendingSnapshot: Snapshot | null;
   schedules: Page<Schedule>;
   commandHistory: Page<CommandHistory>;
-  nextDelivery?: { scheduledDate: string; status: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; thumbnailUrl: string | null; quantity: number }[] } | null;
-  pendingChange?: { appliesOn: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: { skuName: string; productName: string; quantity: number }[] } | null;
+  nextDelivery?: { scheduledDate: string; status: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: SubscriptionItemDetail[] } | null;
+  pendingChange?: { appliesOn: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: SubscriptionItemDetail[] } | null;
   issue?: { code: "SHIPPING_ADDRESS_REQUIRED" | "BILLING_METHOD_REQUIRED" | "PAYMENT_SUPPORT_REQUIRED" | "STOCK_UNAVAILABLE"; message: string } | null;
   availableActions?: string[];
 }
