@@ -85,18 +85,7 @@ function ProductsContent() {
               <h2>{product.name}</h2>
               <p>{product.shortDescription}</p>
               <div>
-                <strong className="price-heading">대표 가격</strong>
-                {product.skuPriceSummary.skuPrices.length > 0 ? (
-                  <ul className="price-list">
-                    {product.skuPriceSummary.skuPrices.map((sku) => (
-                      <li key={sku.skuId}>
-                        {sku.skuName} · {formatPrice(sku.price)}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="field-help">표시할 SKU가 없습니다.</p>
-                )}
+                <strong className="price-heading">{product.skuPriceSummary.skuPrices[0] ? formatPrice(product.skuPriceSummary.skuPrices[0].price) : "가격 준비 중"}</strong>
               </div>
               <p>
                 <span className={`tag ${product.hasSubscribableSku ? "tag-positive" : "tag-muted"}`}>

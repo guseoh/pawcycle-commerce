@@ -1,6 +1,6 @@
 export const PRODUCTS_PATH = "/products";
 
-const SAFE_RETURN_PATH = /^(?:\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/[1-9]\d*)?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?)$/;
+const SAFE_RETURN_PATH = /^(?:\/|\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/orders(?:\/[1-9]\d*)?|\/notifications|\/wishlist|\/cart|\/checkout|\/addresses|\/billing-methods|\/my)$/;
 const ISO_LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function sanitizeReturnTo(value: string | null | undefined): string {
@@ -27,6 +27,13 @@ export function formatPrice(value: number): string {
 export function formatPetType(value: string): string {
   if (value === "DOG") return "개";
   if (value === "CAT") return "고양이";
+  return value;
+}
+
+export function formatSubscriptionStatus(value: string): string {
+  if (value === "ACTIVE") return "이용 중";
+  if (value === "PAUSED") return "일시정지";
+  if (value === "CANCELED") return "해지됨";
   return value;
 }
 

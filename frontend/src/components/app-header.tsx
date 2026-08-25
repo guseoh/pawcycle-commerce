@@ -1,41 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
-import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
-import { getLogoutFailureFeedback } from "@/lib/logout-feedback";
 
 export function AppHeader() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { status, logout } = useAuth();
-  const [logoutPending, setLogoutPending] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  async function handleLogout() {
-    if (logoutPending) return;
-    setLogoutPending(true);
-    setNotice(null);
-    try {
-      await logout();
-      router.push("/");
-    } catch (error) {
-      const reason = error instanceof CsrfRefreshError
-        ? "CSRF_REFRESH_FAILED"
-        : error instanceof ApiError && (error.code === "CSRF_INVALID" || error.code === "AUTH_REQUIRED")
-          ? error.code
-          : "GENERAL";
-      const feedback = getLogoutFailureFeedback(reason);
-      setNotice(feedback.notice);
-      if (feedback.redirectTo) router.push(feedback.redirectTo);
-    } finally {
-      setLogoutPending(false);
-    }
-  }
+  const { status } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <header className="site-header">
@@ -47,24 +22,28 @@ export function AppHeader() {
             <small>반려생활의 좋은 순환</small>
           </span>
         </Link>
-        <nav className="main-nav" aria-label="주요 메뉴">
-          <Link className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
-          <Link className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
-          <Link className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
-          <Link className={pathname.startsWith("/notifications") ? "nav-active" : undefined} href="/notifications">알림</Link>
-          {status === "authenticated" ? <><Link className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜</Link><Link className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니</Link><Link className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
-          {status === "loading" ? (
-            <span className="nav-status" role="status">회원 정보 확인 중</span>
-          ) : status === "authenticated" ? (
-            <button type="button" onClick={handleLogout} disabled={logoutPending}>
-              {logoutPending ? "로그아웃 중" : "로그아웃"}
-            </button>
-          ) : (
-            <Link href={buildLoginHref(pathname)}>로그인</Link>
-          )}
+        <button
+          className="header-menu-toggle"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls="main-navigation"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <span className="sr-only">메뉴</span>
+          <span aria-hidden="true">{menuOpen ? "닫기" : "메뉴"}</span>
+        </button>
+        <nav id="main-navigation" className={`main-nav${menuOpen ? " is-open" : ""}`} aria-label="주요 메뉴">
+          <div className="nav-primary">
+            <Link onClick={closeMenu} className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
+            <Link onClick={closeMenu} className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
+            <Link onClick={closeMenu} className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
+          </div>
+          <div className="nav-utility-group">
+            {status === "authenticated" ? <><Link onClick={closeMenu} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜</Link><Link onClick={closeMenu} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니</Link><Link onClick={closeMenu} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeMenu} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
+            {status === "loading" ? <span className="nav-status" role="status">회원 정보 확인 중</span> : status === "anonymous" ? <Link onClick={closeMenu} href={buildLoginHref(pathname)}>로그인</Link> : null}
+          </div>
         </nav>
       </div>
-      {notice ? <p className="header-notice" role="status">{notice}</p> : null}
     </header>
   );
 }

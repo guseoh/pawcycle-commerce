@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api";
 import { commerceFinalApi, type AddressRequest } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
-import { buildLoginHref, formatIsoLocalDate, formatPrice } from "@/lib/frontend-utils";
+import { buildLoginHref, formatIsoLocalDate, formatPrice, formatSubscriptionStatus } from "@/lib/frontend-utils";
 import { newIdempotencyKey, v2Api, type PlanVersion, type V2SubscriptionDetail } from "@/lib/v2-api";
 
 type Command = "change-plan" | "change-delivery-cycle" | "reschedule-next" | "skip-next" | "pause" | "resume" | "cancel";
@@ -66,7 +66,7 @@ export function Mvp2SubscriptionDetail({ subscriptionId, created, replayed, base
     <Link className="breadcrumb" href={basePath}>← 내 구독</Link>
     {created ? <div className="notice-success" role="status">구독이 생성되었습니다. {replayed ? "이전 성공 결과를 다시 표시했습니다." : ""}</div> : null}
     {message ? <div className={messageKind === "error" ? "error-summary" : "notice-success"} ref={errorRef} tabIndex={-1} role={messageKind === "error" ? "alert" : "status"}>{message}</div> : null}
-    <section className="section-card"><h1>{subscription.pet?.name ?? "내 정기배송"}</h1><dl className="detail-list"><dt>상태</dt><dd>{subscription.status}</dd><dt>현재 금액</dt><dd>{formatPrice(subscription.currentSnapshot.packagePriceKrw)}</dd><dt>배송 주기</dt><dd>{subscription.currentSnapshot.deliveryCycleWeeks}주마다</dd></dl></section>
+    <section className="section-card subscription-overview"><p className="eyebrow">정기배송 관리</p><h1>{subscription.pet?.name ?? "내 정기배송"}</h1><dl className="detail-list"><dt>상태</dt><dd><span className="status-badge">{formatSubscriptionStatus(subscription.status)}</span></dd><dt>현재 금액</dt><dd>{formatPrice(subscription.currentSnapshot.packagePriceKrw)}</dd><dt>배송 주기</dt><dd>{subscription.currentSnapshot.deliveryCycleWeeks}주마다</dd></dl></section>
     <DeliverySection subscription={subscription} />
     {subscription.pendingChange ? <section className="section-card"><h2>적용 예정 변경</h2><dl className="detail-list"><dt>적용일</dt><dd>{formatIsoLocalDate(subscription.pendingChange.appliesOn)}</dd><dt>변경 금액</dt><dd>{formatPrice(subscription.pendingChange.packagePriceKrw)}</dd><dt>변경 주기</dt><dd>{subscription.pendingChange.deliveryCycleWeeks}주마다</dd></dl><ItemList items={subscription.pendingChange.items} /></section> : null}
     <section className="section-card subscription-actions"><h2>구독 관리</h2><p>표시되는 작업은 서버가 현재 허용한 작업입니다.</p><div className="button-row">{(["skip-next", "pause", "resume", "cancel"] as Command[]).filter((command) => hasAction(command.replaceAll("-", "_").toUpperCase())).map((command) => <button key={command} className={`button ${command === "cancel" ? "button-danger" : "button-secondary"}`} type="button" disabled={Boolean(pending)} onClick={() => void runCommand(command)}>{pending === command ? "처리 중" : LABEL[command]}</button>)}</div>
