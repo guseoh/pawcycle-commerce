@@ -124,7 +124,7 @@ class LocalQaBootstrapIntegrationTests {
 
 		assertThat(memberRepository.findByEmail(email)).isPresent();
 		assertThat(productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME)).hasSize(1);
-		assertThat(product.getCategory().isActive()).isFalse();
+		assertThat(categoryRepository.findBySlug(LocalQaBootstrapService.QA_CATEGORY_SLUG).orElseThrow().isActive()).isFalse();
 		assertThat(skuRepository.findAllByProductIdAndName(product.getId(), LocalQaBootstrapService.SKU_NAME))
 				.hasSize(1);
 		assertThat(subscriptionCount(member.getId())).isEqualTo(1);
