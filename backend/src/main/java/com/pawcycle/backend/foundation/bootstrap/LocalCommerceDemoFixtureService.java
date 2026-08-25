@@ -2,14 +2,21 @@ package com.pawcycle.backend.foundation.bootstrap;
 
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import java.math.BigDecimal;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @Profile("local-integration & !test & !production & !prod")
@@ -18,61 +25,39 @@ public class LocalCommerceDemoFixtureService {
 	static final int DEMO_PRODUCT_COUNT = 12;
 	static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
-	private static final List<CategoryFixture> CATEGORIES = List.of(
-			new CategoryFixture("사료", "food", 1),
-			new CategoryFixture("간식", "treats", 2),
-			new CategoryFixture("위생", "hygiene", 3),
-			new CategoryFixture("배변·모래", "toilet", 4));
-
-	private static final List<ProductFixture> PRODUCTS = List.of(
-			product("데일리 밸런스 연어 사료", "food", "매일 먹기 좋은 연어 기반 강아지 사료", "DOG", "2kg", "19900", true, "DEMO-DOG-FOOD-SALMON-2KG", 50),
-			product("그레인프리 치킨 사료", "food", "담백한 치킨을 사용한 그레인프리 강아지 사료", "DOG", "2kg", "22900", true, "DEMO-DOG-FOOD-CHICKEN-2KG", 40),
-			product("소프트 오리 트릿", "treats", "부드럽게 급여할 수 있는 오리 간식", "DOG", "200g", "8900", false, "DEMO-DOG-TREATS-DUCK-200G", 60),
-			product("데일리 덴탈츄", "hygiene", "매일 간편하게 급여하는 덴탈 케어 츄", "DOG", "14개입", "12900", true, "DEMO-DOG-HYGIENE-DENTAL-14PCS", 45),
-			product("산책 후 풋 클렌저", "hygiene", "산책 후 발을 부드럽게 씻는 강아지용 클렌저", "DOG", "300ml", "10900", false, "DEMO-DOG-HYGIENE-FOOT-CLEANER-300ML", 35),
-			product("데일리 배변패드", "toilet", "매일 사용하는 흡수형 강아지 배변패드", "DOG", "50매", "14900", true, "DEMO-DOG-TOILET-PAD-50PCS", 70),
-			product("인도어 참치 사료", "food", "실내 생활 고양이를 위한 참치 기반 사료", "CAT", "1.5kg", "18900", true, "DEMO-CAT-FOOD-TUNA-1-5KG", 50),
-			product("헤어볼 케어 연어 사료", "food", "헤어볼 케어를 고려한 연어 기반 고양이 사료", "CAT", "1.5kg", "21900", true, "DEMO-CAT-FOOD-SALMON-HAIRBALL-1-5KG", 40),
-			product("참치 파우치 12팩", "food", "한 끼씩 간편하게 급여하는 참치 파우치", "CAT", "12팩", "15900", true, "DEMO-CAT-FOOD-TUNA-POUCH-12PACK", 55),
-			product("동결건조 닭가슴살 트릿", "treats", "바삭하게 즐기는 닭가슴살 동결건조 간식", "CAT", "100g", "9900", false, "DEMO-CAT-TREATS-CHICKEN-FD-100G", 60),
-			product("저자극 두부 모래", "toilet", "가볍고 관리하기 편한 고양이 두부 모래", "CAT", "7L", "13900", true, "DEMO-CAT-TOILET-TOFU-7L", 65),
-			product("무향 벤토나이트 모래", "toilet", "향을 더하지 않은 고양이용 벤토나이트 모래", "CAT", "6L", "11900", true, "DEMO-CAT-TOILET-BENTONITE-6L", 65));
-
-	private static final List<PlanFixture> PLANS = List.of(
-			new PlanFixture("데일리 밸런스 플랜", "DOG", 19_900, List.of(new PlanItemFixture("DEMO-DOG-FOOD-SALMON-2KG", 1))),
-			new PlanFixture("데일리 케어 플랜", "DOG", 29_900, List.of(
-					new PlanItemFixture("DEMO-DOG-FOOD-SALMON-2KG", 1),
-					new PlanItemFixture("DEMO-DOG-HYGIENE-DENTAL-14PCS", 1))),
-			new PlanFixture("인도어 캣 플랜", "CAT", 29_900, List.of(
-					new PlanItemFixture("DEMO-CAT-FOOD-TUNA-1-5KG", 1),
-					new PlanItemFixture("DEMO-CAT-TOILET-TOFU-7L", 1))));
-
 	private final JdbcTemplate jdbcTemplate;
 	private final ProductListCacheInvalidator productListCacheInvalidator;
+	private final ObjectMapper objectMapper;
+	@Value("${pawcycle.local-demo-catalog.manifest:classpath:catalog/demo-catalog.json}")
+	private String manifestLocation;
 
 	public LocalCommerceDemoFixtureService(
 			JdbcTemplate jdbcTemplate,
 			ProductListCacheInvalidator productListCacheInvalidator) {
 		this.jdbcTemplate = jdbcTemplate;
 		this.productListCacheInvalidator = productListCacheInvalidator;
+		this.objectMapper = new ObjectMapper();
 	}
 
 	@Transactional
 	public void bootstrap() {
+		CatalogManifest manifest = loadManifest();
 		Map<String, Long> categoryIds = new HashMap<>();
-		for (CategoryFixture fixture : CATEGORIES) {
+		for (CategoryFixture fixture : manifest.categories()) {
 			categoryIds.put(fixture.slug(), ensureCategory(fixture));
 		}
 
 		Map<String, Long> skuIds = new LinkedHashMap<>();
-		for (ProductFixture fixture : PRODUCTS) {
+		for (ProductFixture fixture : manifest.products()) {
 			long productId = ensureProduct(fixture, categoryIds.get(fixture.categorySlug()));
-			long skuId = ensureSku(fixture, productId);
-			ensureInventory(fixture, skuId);
-			skuIds.put(fixture.skuCode(), skuId);
+			for (SkuFixture sku : fixture.skus()) {
+				long skuId = ensureSku(sku, productId);
+				ensureInventory(sku, skuId);
+				skuIds.put(sku.skuCode(), skuId);
+			}
 		}
 
-		for (PlanFixture fixture : PLANS) {
+		for (PlanFixture fixture : manifest.plans()) {
 			ensurePlan(fixture, skuIds);
 		}
 		productListCacheInvalidator.invalidateAfterCommit();
@@ -87,8 +72,13 @@ public class LocalCommerceDemoFixtureService {
 					fixture.name(), fixture.slug(), fixture.displayOrder());
 			return lastInsertedId();
 		}
-		if (rows.size() != 1 || !matchesCategory(rows.getFirst(), fixture)) {
+		if (rows.size() != 1) {
 			throw fixtureConflict("category " + fixture.slug());
+		}
+		if (!matchesCategory(rows.getFirst(), fixture)) {
+			if (number(rows.getFirst(), "display_order") == fixture.displayOrder() && trueValue(rows.getFirst().get("active"))) {
+				jdbcTemplate.update("UPDATE categories SET name=? WHERE id=?", fixture.name(), number(rows.getFirst(), "id"));
+			} else throw fixtureConflict("category " + fixture.slug());
 		}
 		return number(rows.getFirst(), "id");
 	}
@@ -96,51 +86,68 @@ public class LocalCommerceDemoFixtureService {
 	private long ensureProduct(ProductFixture fixture, long categoryId) {
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 				"""
-				SELECT id,category_id,name,short_description,description,pet_type,thumbnail_url,display_status
+				SELECT id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status
 				FROM products
-				WHERE name=?
+				WHERE catalog_key=?
 				FOR UPDATE
 				""",
-				fixture.name());
+				fixture.catalogKey());
 		if (rows.isEmpty()) {
+			List<Map<String, Object>> nameRows = jdbcTemplate.queryForList(
+					"SELECT id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status FROM products WHERE name=? FOR UPDATE", fixture.name());
+			if (nameRows.size() == 1 && String.valueOf(nameRows.getFirst().get("catalog_key")).startsWith("legacy-product-")
+					&& matchesProductFields(nameRows.getFirst(), fixture, categoryId, true, false)) {
+				jdbcTemplate.update("UPDATE products SET catalog_key=?,thumbnail_url=? WHERE id=?",
+						fixture.catalogKey(), fixture.thumbnailUrl(), number(nameRows.getFirst(), "id"));
+				return number(nameRows.getFirst(), "id");
+			}
+			if (!nameRows.isEmpty()) throw fixtureConflict("product " + fixture.catalogKey());
 			jdbcTemplate.update(
 					"""
-					INSERT INTO products(category_id,name,short_description,description,pet_type,thumbnail_url,display_status)
-					VALUES (?,?,?,?,?,NULL,'PUBLIC')
+					INSERT INTO products(catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status)
+					VALUES (?,?,?,?,?,?,?,'PUBLIC')
 					""",
-					categoryId, fixture.name(), fixture.description(), fixture.description(), fixture.petType());
+					fixture.catalogKey(), categoryId, fixture.name(), fixture.shortDescription(), fixture.description(), fixture.petType(), fixture.thumbnailUrl());
 			return lastInsertedId();
 		}
-		if (rows.size() != 1 || !matchesProduct(rows.getFirst(), fixture, categoryId)) {
+		if (rows.size() != 1) {
 			throw fixtureConflict("product " + fixture.name());
+		}
+		if (!matchesProduct(rows.getFirst(), fixture, categoryId)) {
+			if (fixture.catalogKey().equals(rows.getFirst().get("catalog_key"))
+					&& matchesProductFields(rows.getFirst(), fixture, categoryId, false, true)) {
+				jdbcTemplate.update("UPDATE products SET name=? WHERE id=?", fixture.name(), number(rows.getFirst(), "id"));
+			} else throw fixtureConflict("product " + fixture.name());
 		}
 		return number(rows.getFirst(), "id");
 	}
 
-	private long ensureSku(ProductFixture fixture, long productId) {
+	private long ensureSku(SkuFixture fixture, long productId) {
 		List<Map<String, Object>> codeRows = jdbcTemplate.queryForList(
 				"SELECT id,product_id,sku_code,name,price,subscribable,display_order,status FROM skus WHERE sku_code=? FOR UPDATE",
 				fixture.skuCode());
 		List<Map<String, Object>> nameRows = jdbcTemplate.queryForList(
-				"SELECT id,sku_code FROM skus WHERE product_id=? AND name=? FOR UPDATE",
-				productId, fixture.skuName());
+				"SELECT id,sku_code FROM skus WHERE product_id=? AND sku_code=? FOR UPDATE",
+				productId, fixture.skuCode());
 		if (codeRows.isEmpty() && nameRows.isEmpty()) {
 			jdbcTemplate.update(
 					"""
 					INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status)
-					VALUES (?,?,?,?,?,1,'ACTIVE')
+					VALUES (?,?,?,?,?,?,?)
 					""",
-					productId, fixture.skuCode(), fixture.skuName(), fixture.price(), fixture.subscribable());
+					productId, fixture.skuCode(), fixture.name(), fixture.price(), fixture.subscribable(), fixture.displayOrder(), fixture.status());
 			return lastInsertedId();
 		}
-		if (codeRows.size() != 1 || nameRows.size() != 1
-				|| !matchesSku(codeRows.getFirst(), fixture, productId)) {
+		if (codeRows.size() != 1 || nameRows.size() != 1 || !matchesSku(codeRows.getFirst(), fixture, productId, true)) {
 			throw fixtureConflict("SKU " + fixture.skuCode());
+		}
+		if (!fixture.name().equals(codeRows.getFirst().get("name"))) {
+			jdbcTemplate.update("UPDATE skus SET name=? WHERE id=?", fixture.name(), number(codeRows.getFirst(), "id"));
 		}
 		return number(codeRows.getFirst(), "id");
 	}
 
-	private void ensureInventory(ProductFixture fixture, long skuId) {
+	private void ensureInventory(SkuFixture fixture, long skuId) {
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 				"SELECT sku_id,available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE", skuId);
 		if (rows.isEmpty()) {
@@ -161,26 +168,38 @@ public class LocalCommerceDemoFixtureService {
 	private void ensurePlan(PlanFixture fixture, Map<String, Long> skuIds) {
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 				"""
-				SELECT id,target_pet_type,on_sale,sale_starts_on,sale_ends_on,current_plan_version_id
+				SELECT id,plan_key,name,target_pet_type,on_sale,sale_starts_on,sale_ends_on,current_plan_version_id
 				FROM subscription_plans
-				WHERE name=?
+				WHERE plan_key=?
 				FOR UPDATE
 				""",
-				fixture.name());
+				fixture.planKey());
 		if (rows.isEmpty()) {
+			List<Map<String, Object>> nameRows = jdbcTemplate.queryForList(
+					"SELECT id,plan_key,name,target_pet_type,on_sale,sale_starts_on,sale_ends_on,current_plan_version_id FROM subscription_plans WHERE name=? FOR UPDATE", fixture.name());
+			if (nameRows.size() == 1 && String.valueOf(nameRows.getFirst().get("plan_key")).startsWith("legacy-plan-")) {
+				jdbcTemplate.update("UPDATE subscription_plans SET plan_key=? WHERE id=?", fixture.planKey(), number(nameRows.getFirst(), "id"));
+				rows = nameRows;
+			}
+			if (!nameRows.isEmpty() && rows.isEmpty()) throw fixtureConflict("plan " + fixture.planKey());
+			if (rows.isEmpty()) {
 				createPlan(fixture, skuIds);
 				return;
+			}
 		}
 		if (rows.size() != 1) {
 			throw fixtureConflict("plan " + fixture.name());
+		}
+		if (!fixture.name().equals(rows.getFirst().get("name"))) {
+			jdbcTemplate.update("UPDATE subscription_plans SET name=? WHERE id=?", fixture.name(), number(rows.getFirst(), "id"));
 		}
 		validatePlan(rows.getFirst(), fixture, skuIds);
 	}
 
 	private void createPlan(PlanFixture fixture, Map<String, Long> skuIds) {
 		jdbcTemplate.update(
-				"INSERT INTO subscription_plans(name,target_pet_type,on_sale,sale_starts_on,sale_ends_on,current_plan_version_id) VALUES (?,?,true,NULL,NULL,NULL)",
-				fixture.name(), fixture.petType());
+			"INSERT INTO subscription_plans(plan_key,name,target_pet_type,on_sale,sale_starts_on,sale_ends_on,current_plan_version_id) VALUES (?,?,?,true,NULL,NULL,NULL)",
+				fixture.planKey(), fixture.name(), fixture.petType());
 		long planId = lastInsertedId();
 		jdbcTemplate.update(
 				"INSERT INTO plan_versions(plan_id,package_price_krw,is_migration_only) VALUES (?,?,false)",
@@ -252,23 +271,28 @@ public class LocalCommerceDemoFixtureService {
 	}
 
 	private boolean matchesProduct(Map<String, Object> row, ProductFixture fixture, long categoryId) {
+		return fixture.catalogKey().equals(row.get("catalog_key")) && matchesProductFields(row, fixture, categoryId, false, false);
+	}
+
+	private boolean matchesProductFields(Map<String, Object> row, ProductFixture fixture, long categoryId, boolean allowLegacyImage, boolean allowNameChange) {
 		return number(row, "category_id") == categoryId
-				&& fixture.name().equals(row.get("name"))
-				&& fixture.description().equals(row.get("short_description"))
+				&& (allowNameChange || fixture.name().equals(row.get("name")))
+				&& fixture.shortDescription().equals(row.get("short_description"))
 				&& fixture.description().equals(row.get("description"))
 				&& fixture.petType().equals(row.get("pet_type"))
-				&& row.get("thumbnail_url") == null
+				&& (java.util.Objects.equals(fixture.thumbnailUrl(), row.get("thumbnail_url"))
+						|| (allowLegacyImage && row.get("thumbnail_url") == null))
 				&& "PUBLIC".equals(row.get("display_status"));
 	}
 
-	private boolean matchesSku(Map<String, Object> row, ProductFixture fixture, long productId) {
+	private boolean matchesSku(Map<String, Object> row, SkuFixture fixture, long productId, boolean allowNameChange) {
 		return number(row, "product_id") == productId
 				&& fixture.skuCode().equals(row.get("sku_code"))
-				&& fixture.skuName().equals(row.get("name"))
+				&& (allowNameChange || fixture.name().equals(row.get("name")))
 				&& fixture.price().compareTo(new BigDecimal(row.get("price").toString())) == 0
 				&& fixture.subscribable() == trueValue(row.get("subscribable"))
-				&& number(row, "display_order") == 1
-				&& "ACTIVE".equals(row.get("status"));
+				&& number(row, "display_order") == fixture.displayOrder()
+				&& fixture.status().equals(row.get("status"));
 	}
 
 	private boolean matchesPlanVersion(Map<String, Object> row, long versionId, long planId, long price) {
@@ -295,34 +319,70 @@ public class LocalCommerceDemoFixtureService {
 		return value instanceof Number number && number.intValue() == 1;
 	}
 
-	private static ProductFixture product(
-			String name,
-			String categorySlug,
-			String description,
-			String petType,
-			String skuName,
-			String price,
-			boolean subscribable,
-			String skuCode,
-			int initialInventory) {
-		return new ProductFixture(name, categorySlug, description, petType, skuName,
-				new BigDecimal(price), subscribable, skuCode, initialInventory);
+	private CatalogManifest loadManifest() {
+		try {
+			String location = manifestLocation == null || manifestLocation.isBlank()
+					? "classpath:catalog/demo-catalog.json" : manifestLocation;
+			Resource resource = new DefaultResourceLoader().getResource(location);
+			CatalogManifest manifest = objectMapper.readValue(resource.getInputStream(), CatalogManifest.class);
+			if (manifest.version() != 1 || manifest.categories() == null || manifest.products() == null || manifest.plans() == null) {
+				throw new LocalQaBootstrapException("로컬 Commerce Demo manifest 버전 또는 필수 목록이 올바르지 않습니다.");
+			}
+			Set<String> categorySlugs = new HashSet<>();
+			for (CategoryFixture category : manifest.categories()) {
+				if (category == null || category.slug() == null || !categorySlugs.add(category.slug())) {
+					throw new LocalQaBootstrapException("로컬 Commerce Demo manifest의 Category slug가 중복/누락되었습니다.");
+				}
+			}
+			Set<String> catalogKeys = new HashSet<>();
+			Set<String> skuCodes = new HashSet<>();
+			for (ProductFixture product : manifest.products()) {
+				if (product == null || product.catalogKey() == null || !catalogKeys.add(product.catalogKey())
+						|| product.categorySlug() == null || !categorySlugs.contains(product.categorySlug())
+						|| product.skus() == null || product.skus().isEmpty()) {
+					throw new LocalQaBootstrapException("로컬 Commerce Demo manifest의 Product business key 또는 SKU 목록이 중복/누락되었습니다.");
+				}
+				for (SkuFixture sku : product.skus()) {
+					if (sku == null || sku.skuCode() == null || !skuCodes.add(sku.skuCode())) {
+						throw new LocalQaBootstrapException("로컬 Commerce Demo manifest의 SKU business key가 중복/누락되었습니다.");
+					}
+				}
+			}
+			Set<String> planKeys = new HashSet<>();
+			for (PlanFixture plan : manifest.plans()) {
+				if (plan == null || plan.planKey() == null || !planKeys.add(plan.planKey()) || plan.items() == null || plan.items().isEmpty()) {
+					throw new LocalQaBootstrapException("로컬 Commerce Demo manifest의 Plan business key 또는 item 목록이 중복/누락되었습니다.");
+				}
+				Set<String> planSkuCodes = new HashSet<>();
+				for (PlanItemFixture item : plan.items()) {
+					if (item == null || item.skuCode() == null || !skuCodes.contains(item.skuCode()) || !planSkuCodes.add(item.skuCode())) {
+						throw new LocalQaBootstrapException("로컬 Commerce Demo manifest의 Plan item SKU가 중복/누락되었습니다.");
+					}
+				}
+			}
+			return manifest;
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof LocalQaBootstrapException conflict) throw conflict;
+			throw new LocalQaBootstrapException("로컬 Commerce Demo manifest를 읽을 수 없습니다.", exception);
+		}
 	}
 
+	private record CatalogManifest(int version, List<CategoryFixture> categories, List<ProductFixture> products, List<PlanFixture> plans) {}
 	private record CategoryFixture(String name, String slug, int displayOrder) {}
 
 	private record ProductFixture(
+			String catalogKey,
 			String name,
 			String categorySlug,
+			String shortDescription,
 			String description,
 			String petType,
-			String skuName,
-			BigDecimal price,
-			boolean subscribable,
-			String skuCode,
-			int initialInventory) {}
+			String thumbnailUrl,
+			List<SkuFixture> skus) {}
 
-	private record PlanFixture(String name, String petType, long packagePriceKrw, List<PlanItemFixture> items) {}
+	private record SkuFixture(String skuCode, String name, BigDecimal price, boolean subscribable, int displayOrder, String status, int initialInventory) {}
+
+	private record PlanFixture(String planKey, String name, String petType, long packagePriceKrw, List<PlanItemFixture> items) {}
 
 	private record PlanItemFixture(String skuCode, int quantity) {}
 }

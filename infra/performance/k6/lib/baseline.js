@@ -90,7 +90,7 @@ export function selectPublicProductId() {
     throw new Error("Public product list is unavailable for the detail cohort.");
   }
 
-  const products = response.json("products");
+  const products = response.json("items") || response.json("products");
   if (!Array.isArray(products) || products.length === 0 || !products[0].productId) {
     throw new Error("Public product list has no product available for the detail cohort.");
   }

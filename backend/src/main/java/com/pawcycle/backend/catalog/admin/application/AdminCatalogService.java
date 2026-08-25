@@ -57,6 +57,7 @@ public class AdminCatalogService {
 		try {
 			Category category = categoryRepository.saveAndFlush(new Category(
 					request.name(), request.slug(), request.displayOrder(), request.active()));
+			productListCacheInvalidator.invalidateAfterCommit();
 			return categoryView(category);
 		} catch (DataIntegrityViolationException exception) {
 			throw slugConflict();
@@ -73,7 +74,9 @@ public class AdminCatalogService {
 		}
 		category.update(request.getName(), request.getSlug(), request.getDisplayOrder(), request.getActive());
 		try {
-			return categoryView(categoryRepository.saveAndFlush(category));
+			AdminCatalogViews.Category view = categoryView(categoryRepository.saveAndFlush(category));
+			productListCacheInvalidator.invalidateAfterCommit();
+			return view;
 		} catch (DataIntegrityViolationException exception) {
 			throw slugConflict();
 		}

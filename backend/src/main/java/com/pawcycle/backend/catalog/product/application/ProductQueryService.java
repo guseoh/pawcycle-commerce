@@ -13,6 +13,7 @@ import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,7 @@ public class ProductQueryService {
 	private final ProductListReader productListReader;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
+	private final ProductDiscoveryReader productDiscoveryReader;
 
 	public ProductQueryService(
 			ProductListCache productListCache,
@@ -34,9 +36,43 @@ public class ProductQueryService {
 		this.productListReader = productListReader;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
+		this.productDiscoveryReader = null;
+	}
+
+	@Autowired
+	public ProductQueryService(
+			ProductListCache productListCache,
+			ProductListReader productListReader,
+			ProductRepository productRepository,
+			SkuRepository skuRepository,
+			ProductDiscoveryReader productDiscoveryReader) {
+		this.productListCache = productListCache;
+		this.productListReader = productListReader;
+		this.productRepository = productRepository;
+		this.skuRepository = skuRepository;
+		this.productDiscoveryReader = productDiscoveryReader;
+	}
+
+	public ProductListView findProducts(String q, String petType, String category, int page, int size, ProductSort sort) {
+		if (page < 0 || size < 1 || size > 100) {
+			throw new IllegalArgumentException("page는 0 이상, size는 1~100이어야 합니다.");
+		}
+		try {
+			Math.multiplyExact(page, size);
+		} catch (ArithmeticException exception) {
+			throw new IllegalArgumentException("page가 너무 큽니다.", exception);
+		}
+		try {
+			return productDiscoveryReader.read(q, petType, category, page, size, sort == null ? ProductSort.NEWEST : sort);
+		} catch (RuntimeException exception) {
+			throw new ProductListUnavailableException(exception);
+		}
 	}
 
 	public ProductListView findProducts(String q, String petType, String category) {
+		if (productDiscoveryReader != null) {
+			return findProducts(q, petType, category, 0, 20, ProductSort.NEWEST);
+		}
 		try {
 			ProductListView allProducts = productListCache.getOrLoad(this::loadProducts);
 			if ((q == null || q.isBlank()) && (petType == null || petType.isBlank()) && (category == null || category.isBlank())) {
@@ -132,11 +168,13 @@ public class ProductQueryService {
 	}
 
 	private SkuDetail toDetail(Sku sku) {
+		int availableQuantity = productDiscoveryReader == null ? 1 : productDiscoveryReader.availableQuantity(sku.getId());
 		return new SkuDetail(
 				sku.getId(),
 				sku.getName(),
 				sku.getPrice(),
 				sku.isSubscribable(),
-				sku.isSubscribable() ? DELIVERY_CYCLES : List.of());
+				sku.isSubscribable() ? DELIVERY_CYCLES : List.of(),
+				availableQuantity, availableQuantity > 0);
 	}
 }

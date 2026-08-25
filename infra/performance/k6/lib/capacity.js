@@ -6,6 +6,10 @@ import { localBaseUrl } from "./baseline.js";
 const SUPPORTED_RATES = [250, 500, 750, 1000];
 const MEASUREMENT_SECONDS = 120;
 
+function catalogCardinality() {
+  return String(__ENV.CATALOG_CARDINALITY || "unknown");
+}
+
 export const measurementIterations = new Counter("capacity_measurement_iterations");
 export const expectedStatusErrorRate = new Rate("capacity_expected_status_error_rate");
 export const measurementLatency = new Trend("capacity_measurement_latency", true);
@@ -53,7 +57,7 @@ export function optionsForCapacity(cohort) {
 export function request(cohort, path, measurement) {
   const response = http.get(`${localBaseUrl()}${path}`, {
     redirects: 0,
-    tags: { cohort, name: cohort },
+    tags: { cohort, name: cohort, catalog_cardinality: catalogCardinality() },
   });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
   if (measurement) {
@@ -66,10 +70,10 @@ export function request(cohort, path, measurement) {
 export function selectPublicProductId() {
   const response = http.get(`${localBaseUrl()}/api/products`, {
     redirects: 0,
-    tags: { cohort: "capacity-api-product-detail", name: "capacity-api-product-list-setup" },
+    tags: { cohort: "capacity-api-product-detail", name: "capacity-api-product-list-setup", catalog_cardinality: catalogCardinality() },
   });
   if (response.status !== 200) throw new Error("Public product list is unavailable for the detail cohort.");
-  const products = response.json("products");
+  const products = response.json("items") || response.json("products");
   if (!Array.isArray(products) || products.length === 0 || !products[0].productId) {
     throw new Error("Public product list has no product available for the detail cohort.");
   }
@@ -81,6 +85,7 @@ export function handleSummaryForCapacity(cohort, data) {
   const iterations = values("capacity_measurement_iterations");
   const summary = {
     cohort,
+    catalogCardinality: catalogCardinality(),
     targetRps: configuredRate(),
     actualRps: iterations.count / MEASUREMENT_SECONDS,
     droppedIterations: data.metrics.dropped_iterations ? data.metrics.dropped_iterations.values.count : 0,

@@ -8,9 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailUnavailableException;
+import com.pawcycle.backend.catalog.product.application.ProductListView;
 import com.pawcycle.backend.catalog.product.application.ProductListUnavailableException;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
 import com.pawcycle.backend.catalog.product.application.ProductQueryService;
+import com.pawcycle.backend.catalog.product.application.ProductSort;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -41,6 +44,20 @@ class ProductControllerTests {
 				.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
 				.andExpect(jsonPath("$.message").value("상품을 확인할 수 없습니다."))
 				.andExpect(jsonPath("$.fieldErrors").isEmpty());
+	}
+
+	@Test
+	void pageableListUsesItemsResponseContract() throws Exception {
+		when(productQueryService.findProducts(null, null, null, 0, 20, ProductSort.NEWEST))
+				.thenReturn(new ProductListView(List.of(), 0, 20, 0));
+
+		mockMvc.perform(get("/api/products"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items").isArray())
+				.andExpect(jsonPath("$.page").value(0))
+				.andExpect(jsonPath("$.size").value(20))
+				.andExpect(jsonPath("$.totalElements").value(0))
+				.andExpect(jsonPath("$.totalPages").value(0));
 	}
 
 	@Test

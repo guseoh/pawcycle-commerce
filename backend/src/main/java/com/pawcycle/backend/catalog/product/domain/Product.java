@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import java.util.UUID;
 
 @Entity
 @Table(name = "products")
@@ -24,6 +25,9 @@ public class Product {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+
+	@Column(name = "catalog_key", length = 150, unique = true)
+	private String catalogKey;
 
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "category_id")
@@ -54,33 +58,46 @@ public class Product {
 			String description,
 			String petType,
 			String thumbnailUrl,
-			String displayStatus) {
-		this(null, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
+		String displayStatus) {
+		this(null, generatedCatalogKey(), name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
 	}
 
 	public Product(
 			Category category,
+			String name,
+			String shortDescription,
+			String description,
+			String petType,
+		String thumbnailUrl,
+		String displayStatus) {
+		this(category, generatedCatalogKey(), name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
+	}
+
+	public Product(
+			Category category,
+			String name,
+			String shortDescription,
+			String description,
+			String petType,
+		String thumbnailUrl) {
+		this(category, generatedCatalogKey(), name, shortDescription, description, petType, thumbnailUrl, ProductStatus.DRAFT);
+	}
+
+	public Product(
+			Category category,
+			String catalogKey,
 			String name,
 			String shortDescription,
 			String description,
 			String petType,
 			String thumbnailUrl,
 			String displayStatus) {
-		this(category, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
-	}
-
-	public Product(
-			Category category,
-			String name,
-			String shortDescription,
-			String description,
-			String petType,
-			String thumbnailUrl) {
-		this(category, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.DRAFT);
+		this(category, catalogKey, name, shortDescription, description, petType, thumbnailUrl, ProductStatus.valueOf(displayStatus));
 	}
 
 	private Product(
 			Category category,
+			String catalogKey,
 			String name,
 			String shortDescription,
 			String description,
@@ -88,12 +105,17 @@ public class Product {
 			String thumbnailUrl,
 			ProductStatus status) {
 		this.category = category;
+		this.catalogKey = catalogKey;
 		this.name = name;
 		this.shortDescription = shortDescription;
 		this.description = description;
 		this.petType = petType;
 		this.thumbnailUrl = thumbnailUrl;
 		this.status = status;
+	}
+
+	private static String generatedCatalogKey() {
+		return "catalog-" + UUID.randomUUID();
 	}
 
 	public String getDisplayStatus() {
