@@ -738,4 +738,3 @@ Scope notice: This checklist is for App UI (iOS/Android/React Native/Flutter).
 - [ ] Auto-rotating content has pause/stop controls and stops on focus or reduced motion
 - [ ] Failed forms retain inline field errors; multi-error forms also focus a linked error summary after submit
 - [ ] Accessibility traits/roles/states (selected, disabled, expanded) are announced correctly
-
