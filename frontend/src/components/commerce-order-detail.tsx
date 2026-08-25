@@ -123,8 +123,9 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
             await commerceFinalApi.addCart(item.skuId, item.quantity, csrf);
             reorderedSkuIds.current.add(item.skuId);
             addedThisAttempt += 1;
-          } catch {
-            // Continue so independent items can still be restored to the cart.
+          } catch (error) {
+            if (error instanceof ApiError && (error.code === "CSRF_INVALID" || error.code === "AUTH_REQUIRED")) throw error;
+            // Inventory and sale-state failures are independent per item.
           }
         }
       });
@@ -142,6 +143,10 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
       }
     } catch (error) {
       if (addedThisAttempt > 0) notifyCommerceChanged();
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") {
+        auth.markAnonymous();
+        return;
+      }
       setMessageKind("error");
       setMessage(error instanceof ApiError ? error.message : "주문 상품을 다시 담지 못했습니다. 구매 가능 상태를 확인해 주세요.");
     } finally {
