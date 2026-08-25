@@ -61,10 +61,25 @@ public class ProductDiscoveryReader {
 		return new ProductListView(items, page, size, total);
 	}
 
-	public int availableQuantity(Long skuId) {
-		Integer quantity = jdbcTemplate.queryForObject(
-				"SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, skuId);
-		return quantity == null ? 0 : quantity;
+	@Transactional(readOnly = true)
+	public List<ProductDetailSkuRow> readDetailSkus(Long productId) {
+		return jdbcTemplate.query(
+				"""
+				SELECT s.id, s.name, s.price, s.subscribable,
+				       COALESCE(i.available_quantity, 0) AS available_quantity
+				FROM skus s
+				LEFT JOIN inventories i ON i.sku_id = s.id
+				WHERE s.product_id = ?
+				  AND s.status = 'ACTIVE'
+				ORDER BY s.display_order ASC, s.id ASC
+				""",
+				(rs, rowNum) -> new ProductDetailSkuRow(
+						rs.getLong("id"),
+						rs.getString("name"),
+						rs.getBigDecimal("price"),
+						rs.getBoolean("subscribable"),
+						rs.getInt("available_quantity")),
+				productId);
 	}
 
 	private String whereClause(String q, String petType, String category, List<Object> parameters) {
@@ -84,4 +99,11 @@ public class ProductDiscoveryReader {
 		}
 		return where.toString();
 	}
+
+	public record ProductDetailSkuRow(
+			Long skuId,
+			String skuName,
+			BigDecimal price,
+			boolean subscribable,
+			int availableQuantity) {}
 }

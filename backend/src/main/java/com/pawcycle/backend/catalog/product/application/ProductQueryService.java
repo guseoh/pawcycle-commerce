@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailView.SkuDetail;
+import com.pawcycle.backend.catalog.product.application.ProductDiscoveryReader.ProductDetailSkuRow;
 import com.pawcycle.backend.catalog.product.application.ProductListView.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.ProductListView.SkuPriceSummary;
@@ -108,9 +109,10 @@ public class ProductQueryService {
 		Product product;
 		try {
 			product = productRepository.findPublicById(productId).orElseThrow(ProductNotFoundException::new);
-			List<Sku> skus = skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(
-					productId,
-					SkuStatus.ACTIVE);
+			List<SkuDetail> skuDetails = productDiscoveryReader == null
+					? skuRepository.findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(productId, SkuStatus.ACTIVE)
+							.stream().map(this::toDetail).toList()
+					: productDiscoveryReader.readDetailSkus(productId).stream().map(this::toDetail).toList();
 			return new ProductDetailView(
 					product.getId(),
 					product.getName(),
@@ -119,7 +121,7 @@ public class ProductQueryService {
 					product.getThumbnailUrl(),
 					new ProductDetailView.CategorySummary(
 							product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug()),
-					skus.stream().map(this::toDetail).toList());
+					skuDetails);
 		} catch (ProductNotFoundException exception) {
 			throw exception;
 		} catch (RuntimeException exception) {
@@ -168,13 +170,24 @@ public class ProductQueryService {
 	}
 
 	private SkuDetail toDetail(Sku sku) {
-		int availableQuantity = productDiscoveryReader == null ? 1 : productDiscoveryReader.availableQuantity(sku.getId());
 		return new SkuDetail(
 				sku.getId(),
 				sku.getName(),
 				sku.getPrice(),
 				sku.isSubscribable(),
 				sku.isSubscribable() ? DELIVERY_CYCLES : List.of(),
-				availableQuantity, availableQuantity > 0);
+				1,
+				true);
+	}
+
+	private SkuDetail toDetail(ProductDetailSkuRow sku) {
+		return new SkuDetail(
+				sku.skuId(),
+				sku.skuName(),
+				sku.price(),
+				sku.subscribable(),
+				sku.subscribable() ? DELIVERY_CYCLES : List.of(),
+				sku.availableQuantity(),
+				sku.availableQuantity() > 0);
 	}
 }

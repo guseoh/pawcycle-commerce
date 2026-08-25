@@ -328,7 +328,7 @@ class SubscriptionApiIntegrationTests {
 
 		mockMvc.perform(get("/api/products"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.products").isArray());
+				.andExpect(jsonPath("$.items").isArray());
 		mockMvc.perform(get("/api/products/{productId}", product.getId()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.productId").value(product.getId()));
