@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError, recommendationApi, type RecommendationItem } from "@/lib/api";
+import { ApiError, Category, categoryApi, recommendationApi, type RecommendationItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
 import { v2Api, type Pet } from "@/lib/v2-api";
@@ -55,13 +55,39 @@ export default function Home() {
         </div>
       </section>
 
+      <CategoryDiscovery />
+
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
-      {auth.status === "error" ? <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} /> : null}
+      {auth.status === "error" ? <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()}><Link className="button button-secondary" href={buildLoginHref("/")}>로그인</Link></ErrorState> : null}
       {auth.status === "anonymous" ? <GuestValue /> : null}
       {auth.status === "authenticated" && auth.memberId !== null ? <PersonalizedRecommendations key={auth.memberId} /> : null}
       {authReady ? <QuickActions /> : null}
     </div>
   );
+}
+
+function CategoryDiscovery() {
+  const [state, setState] = useState<{ status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string }>({ status: "loading" });
+
+  useEffect(() => {
+    let active = true;
+    void categoryApi.list().then((response) => {
+      if (active) setState({ status: "success", categories: response.items });
+    }).catch((error: unknown) => {
+      if (active) setState({ status: "error", message: error instanceof ApiError ? error.message : "카테고리를 불러오지 못했습니다." });
+    });
+    return () => { active = false; };
+  }, []);
+
+  return <section className="home-category-discovery" aria-labelledby="home-category-title">
+    <div className="section-title">
+      <div><p className="eyebrow">Category</p><h2 id="home-category-title">카테고리로 찾아보세요</h2><p>반려동물 종류와 필요한 상품을 함께 고를 수 있어요.</p></div>
+    </div>
+    <nav className="pet-discovery-links" aria-label="반려동물별 상품 탐색"><Link href="/products?petType=DOG">강아지 상품</Link><Link href="/products?petType=CAT">고양이 상품</Link></nav>
+    {state.status === "loading" ? <LoadingState>카테고리를 불러오고 있습니다.</LoadingState> : null}
+    {state.status === "error" ? <ErrorState title="카테고리를 불러오지 못했습니다." message={state.message}><Link className="button button-secondary" href="/products">상품 목록 보기</Link></ErrorState> : null}
+    {state.status === "success" ? <nav className="home-category-grid" aria-label="상품 카테고리">{state.categories.map((category) => <Link key={category.categoryId} href={`/products?category=${encodeURIComponent(category.slug)}`}>{category.name}<span aria-hidden="true">→</span></Link>)}</nav> : null}
+  </section>;
 }
 
 function GuestValue() {

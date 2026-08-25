@@ -12,6 +12,8 @@ const notificationSource = readFileSync(new URL("./notification-screen.tsx", imp
 const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.tsx", import.meta.url), "utf8");
 const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const productsSource = readFileSync(new URL("../app/products/page.tsx", import.meta.url), "utf8");
+const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
@@ -50,7 +52,6 @@ test("알림 재조회 실패는 기존 목록을 무효화한다", () => {
 });
 
 test("header와 My의 계정 action 경계를 유지한다", () => {
-  const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
   const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(headerSource, /로그아웃/);
   assert.match(headerSource, /const \{ status, memberId \} = useAuth\(\)/);
@@ -60,6 +61,23 @@ test("header와 My의 계정 action 경계를 유지한다", () => {
   assert.match(mySource, /subscriptions\.length < first\.body\.totalElements/);
   assert.match(mySource, /sort\(\(left, right\) => left\.nextScheduledDate!/);
   assert.match(mySource, /LogoutControl/);
+});
+
+test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사용한다", () => {
+  assert.match(productsSource, /categoryApi\.list\(\)/);
+  assert.match(productsSource, /categoryState\.categories\.map/);
+  assert.doesNotMatch(productsSource, /value="food"|value="treats"|value="hygiene"|value="toilet"/);
+  assert.match(homeSource, /categoryApi\.list\(\)/);
+  assert.match(homeSource, /products\?petType=DOG/);
+  assert.match(homeSource, /products\?petType=CAT/);
+  assert.match(homeSource, /products\?category=\$\{encodeURIComponent\(category\.slug\)\}/);
+  assert.match(homeSource, /buildLoginHref\("\/"\)/);
+  assert.match(headerSource, /<details className="category-navigation">/);
+  assert.match(headerSource, /categoryApi\.list\(\)/);
+  assert.match(headerSource, /status === "anonymous" \|\| status === "error"/);
+  assert.match(headerSource, /buildLoginHref\(pathname\)/);
+  assert.match(globalStylesSource, /\.category-navigation summary/);
+  assert.match(globalStylesSource, /\.category-navigation-menu \{ position: static/);
 });
 
 test("주문 재담기와 요청 dialog는 부분 성공과 키보드 경계를 보호한다", () => {

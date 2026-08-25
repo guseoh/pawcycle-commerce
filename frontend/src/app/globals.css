@@ -297,12 +297,20 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 .nav-primary, .nav-utility-group { display: flex; align-items: center; gap: 0.2rem; }
 .nav-primary { margin-left: 1rem; }
 .nav-utility-group { margin-left: auto; }
-.main-nav a, .main-nav button {
+.main-nav a, .main-nav button, .category-navigation summary {
   min-height: 38px;
   border-radius: 8px;
   padding: 0.5rem 0.7rem;
   font-size: 0.9rem;
 }
+.category-navigation { position: relative; min-width: 0; }
+.category-navigation summary { display: flex; align-items: center; list-style: none; color: var(--brand-dark); cursor: pointer; }
+.category-navigation summary::-webkit-details-marker { display: none; }
+.category-navigation summary::after { content: "⌄"; margin-left: 0.35rem; font-size: 0.8rem; }
+.category-navigation[open] summary { background: #e5f1e7; color: var(--brand-dark); font-weight: 800; }
+.category-navigation-menu { position: absolute; z-index: 20; top: calc(100% + 0.35rem); left: 0; display: grid; min-width: 190px; max-width: min(280px, calc(100vw - 2rem)); padding: 0.45rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 24px rgba(49, 64, 45, 0.12); }
+.category-navigation-menu a { min-height: 38px; text-decoration: none; }
+.category-navigation-menu p { margin: 0; padding: 0.6rem; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
 .main-nav .nav-utility { color: var(--muted); font-size: 0.85rem; }
 .main-nav .nav-active { background: #e5f1e7; color: var(--brand-dark); }
 .nav-status { white-space: nowrap; }
@@ -346,6 +354,13 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 .empty-callout { border: 1px dashed var(--line); border-radius: 8px; padding: 0.85rem; background: var(--surface-soft); }
 
 .home-stack { gap: 2rem; }
+.home-category-discovery { display: grid; gap: 1rem; padding: 1.25rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.home-category-discovery .section-title { margin: 0; }
+.pet-discovery-links, .home-category-grid { display: grid; gap: 0.65rem; }
+.pet-discovery-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pet-discovery-links a, .home-category-grid a { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-width: 0; min-height: 44px; padding: 0.75rem 0.85rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--brand-dark); font-weight: 750; text-decoration: none; }
+.pet-discovery-links a:hover, .home-category-grid a:hover { border-color: var(--brand); background: #edf5eb; }
+.home-category-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .home-hero { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.5fr); gap: 1.5rem; padding: 2rem; border-radius: 12px; background: #e8f1e6; border: 1px solid #d2e0d0; }
 .home-hero h1 { max-width: 660px; margin: 0.35rem 0 0.8rem; font-size: clamp(2.5rem, 5vw, 3rem); line-height: 1.05; letter-spacing: -0.055em; }
 .home-hero p { max-width: 600px; font-size: 1rem; line-height: 1.6; }
@@ -432,6 +447,7 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .home-hero, .product-detail-layout, .cart-layout, .checkout-layout { grid-template-columns: 1fr; }
   .recommendation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cart-summary { order: 2; }
 }
 
@@ -441,7 +457,8 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
   .main-nav { display: none; position: absolute; left: 0.5rem; right: 0.5rem; top: calc(100% + 0.4rem); flex-direction: column; align-items: stretch; gap: 0.35rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
   .main-nav.is-open { display: flex; }
   .nav-primary, .nav-utility-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem; margin: 0; }
-  .main-nav a, .main-nav .nav-status { min-height: 42px; padding: 0.6rem; }
+  .main-nav a, .main-nav .nav-status, .category-navigation summary { min-height: 42px; padding: 0.6rem; }
+  .category-navigation-menu { position: static; min-width: 0; max-width: none; margin-top: 0.25rem; box-shadow: none; }
   .page-shell { width: calc(100% - 1.25rem); padding: 1.5rem 0 2.5rem; }
   .page-heading { margin-bottom: 1.1rem; }
   .page-heading h1 { font-size: 2rem; }
@@ -459,6 +476,7 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
   .product-gallery, .product-hero-image { min-height: 260px; }
   .product-summary h1 { font-size: 2rem; }
   .catalog-filters { grid-template-columns: 1fr; }
+  .pet-discovery-links, .home-category-grid { grid-template-columns: 1fr; }
   .recommendation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
   .recommendation-card img, .recommendation-card .image-placeholder { height: 110px; }
   .subscription-row { grid-template-columns: 1fr auto; gap: 0.65rem; }

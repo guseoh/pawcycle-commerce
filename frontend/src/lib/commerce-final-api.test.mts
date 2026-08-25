@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { commerceFinalApi } from "./commerce-final-api.ts";
+import { categoryApi } from "./api.ts";
+
+test("public category API uses the readonly category authority", async () => {
+  const original = globalThis.fetch;
+  let path = "";
+  let method = "";
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    path = String(input);
+    method = String(init?.method ?? "GET");
+    return new Response(JSON.stringify({ items: [{ categoryId: 1, name: "사료", slug: "food" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await categoryApi.list(), { items: [{ categoryId: 1, name: "사료", slug: "food" }] });
+    assert.equal(path, "/api/categories");
+    assert.equal(method, "GET");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test("admin operation uses the provided endpoint once with CSRF", async () => {
   const original = globalThis.fetch;
