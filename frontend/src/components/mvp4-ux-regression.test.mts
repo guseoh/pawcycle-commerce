@@ -11,6 +11,8 @@ const billingSource = readFileSync(new URL("../app/billing-methods/page.tsx", im
 const notificationSource = readFileSync(new URL("./notification-screen.tsx", import.meta.url), "utf8");
 const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.tsx", import.meta.url), "utf8");
 const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
+const homeSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   const typedDrafts = ["1", "12"];
@@ -88,6 +90,25 @@ test("Root layout은 공통 Footer를 연결한다", () => {
   assert.match(footerSource, /\/faq/);
   assert.match(footerSource, /\/notice/);
   assert.match(footerSource, /\/support/);
+});
+
+test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => {
+  assert.match(homeSource, /aria-labelledby="home-title"/);
+  assert.match(homeSource, /href="\/products"/);
+  assert.match(homeSource, /href="\/subscriptions"/);
+  assert.match(homeSource, /recommendationApi\.products/);
+  assert.match(homeSource, /v2Api\.pets\.list/);
+  assert.match(homeSource, /className="quick-grid"/);
+  assert.match(homeSource, /auth\.status === "loading"/);
+  assert.match(homeSource, /auth\.status === "anonymous"/);
+  assert.match(homeSource, /auth\.status === "authenticated"/);
+  assert.match(homeSource, /auth\.status === "error"/);
+  assert.match(homeSource, /recommendationLoading/);
+  assert.match(homeSource, /aria-describedby="recommendation-help"/);
+  assert.match(homeSource, /alt=\{`\$\{item\.name\} 상품 이미지`\}/);
+  assert.match(globalStylesSource, /@media \(max-width: 767px\)/);
+  assert.match(globalStylesSource, /@media \(max-width: 380px\)/);
+  assert.match(globalStylesSource, /:focus-visible/);
 });
 
 test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계를 유지한다", () => {
