@@ -23,8 +23,6 @@ function SuccessContent() {
   const urlAmount = params.get("amount");
   const confirmPromiseRef = useRef<Promise<TossConfirmResult> | null>(null);
   const confirmKeyRef = useRef<string | null>(null);
-  const [callbackReady, setCallbackReady] = useState(false);
-  const [hasCallback, setHasCallback] = useState(false);
   const [state, setState] = useState<{ status: "loading" } | { status: "error"; message: string } | { status: "done"; paymentId: number; orderId: number; result: "SUCCEEDED" | "FAILED" | "UNKNOWN"; amount: number }>({ status: "loading" });
 
   useEffect(() => {
@@ -32,15 +30,14 @@ function SuccessContent() {
     if (callback) {
       saveTossSuccessCallback(callback);
       window.history.replaceState({}, "", "/checkout/success");
-      setHasCallback(true);
-    } else {
-      setHasCallback(Boolean(readTossSuccessCallback()));
     }
-    setCallbackReady(true);
   }, [paymentKey, providerOrderId, urlAmount]);
 
+  const callbackFromUrl = callbackFromParams(paymentKey, providerOrderId, urlAmount);
+  const hasCallback = Boolean(callbackFromUrl ?? readTossSuccessCallback());
+
   useEffect(() => {
-    if (!callbackReady || status !== "authenticated") return;
+    if (status !== "authenticated") return;
     const callback = callbackFromParams(paymentKey, providerOrderId, urlAmount) ?? readTossSuccessCallback();
     const expected = readTossCheckoutContext();
     const validationError = validateTossSuccess(
@@ -74,9 +71,9 @@ function SuccessContent() {
       setState({ status: "error", message: reason instanceof ApiError ? reason.message : "결제 확인을 완료하지 못했습니다." });
     });
     return () => { active = false; };
-  }, [callbackReady, executeWithCsrf, markAnonymous, paymentKey, providerOrderId, status, urlAmount]);
+  }, [executeWithCsrf, markAnonymous, paymentKey, providerOrderId, status, urlAmount]);
 
-  if (!callbackReady || status === "loading") return <LoadingState>결제를 확인하고 있습니다.</LoadingState>;
+  if (status === "loading") return <LoadingState>결제를 확인하고 있습니다.</LoadingState>;
   if (status === "anonymous") {
     if (!hasCallback) return <ErrorState title="결제 확인 정보를 찾을 수 없습니다." message="주문 내역에서 결제 상태를 확인해 주세요."><Link className="button button-secondary" href="/orders">주문 내역 확인</Link></ErrorState>;
     return <ErrorState title="로그인이 필요합니다." message="결제 확인을 이어서 처리하려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/checkout/success")}>로그인 후 결제 확인</Link></ErrorState>;

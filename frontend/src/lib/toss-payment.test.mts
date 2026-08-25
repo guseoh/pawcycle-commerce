@@ -31,5 +31,8 @@ test("Toss browser flow requires backend opt-in and Strict Mode reuses the in-fl
   assert.match(successSource, /confirmKeyRef/);
   assert.doesNotMatch(successSource, /attemptedRef/);
   assert.match(successSource, /saveTossSuccessCallback/);
+  assert.match(successSource, /window\.history\.replaceState/);
+  assert.match(successSource, /const hasCallback = Boolean\(callbackFromUrl \?\? readTossSuccessCallback\(\)\)/);
+  assert.doesNotMatch(successSource, /setCallbackReady|setHasCallback/);
   assert.match(successSource, /buildLoginHref\("\/checkout\/success"\)/);
 });
