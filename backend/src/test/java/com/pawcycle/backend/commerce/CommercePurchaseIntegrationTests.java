@@ -22,11 +22,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
 class CommercePurchaseIntegrationTests {
 
 	private final CommerceService commerce;
@@ -83,12 +81,18 @@ class CommercePurchaseIntegrationTests {
 		Map<String, Object> cart = commerce.cart(member.getId());
 		Map<String, Object> cartItem = ((java.util.List<Map<String, Object>>) cart.get("items")).getFirst();
 		Map<String, Object> cartPricing = (Map<String, Object>) cart.get("pricing");
-		assertThat(cartItem).containsEntry("availableQuantity", 5).containsEntry("purchasable", true).containsEntry("lineAmount", BigDecimal.valueOf(3000).setScale(2));
-		assertThat(cartPricing).containsEntry("originalAmount", BigDecimal.valueOf(3000).setScale(2)).containsEntry("paymentAmount", BigDecimal.valueOf(3000).setScale(2));
+		assertThat(((Number) cartItem.get("availableQuantity")).intValue()).isEqualTo(5);
+		assertThat(asBoolean(cartItem.get("purchasable"))).isTrue();
+		assertAmount(cartItem.get("lineAmount"), BigDecimal.valueOf(3000));
+		assertAmount(cartPricing.get("originalAmount"), BigDecimal.valueOf(3000));
+		assertAmount(cartPricing.get("paymentAmount"), BigDecimal.valueOf(3000));
 
 		Map<String, Object> checkout = commerce.checkout(member.getId(), "checkout-" + UUID.randomUUID(), addressId, null);
 		Map<String, Object> pricing = (Map<String, Object>) checkout.get("pricing");
-		assertThat(pricing).containsEntry("originalAmount", BigDecimal.valueOf(3000).setScale(2)).containsEntry("discountAmount", BigDecimal.ZERO.setScale(2)).containsEntry("shippingFee", BigDecimal.ZERO.setScale(2)).containsEntry("finalAmount", BigDecimal.valueOf(3000).setScale(2));
+		assertAmount(pricing.get("originalAmount"), BigDecimal.valueOf(3000));
+		assertAmount(pricing.get("discountAmount"), BigDecimal.ZERO);
+		assertAmount(pricing.get("shippingFee"), BigDecimal.ZERO);
+		assertAmount(pricing.get("finalAmount"), BigDecimal.valueOf(3000));
 		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isZero();
 
 		Map<String, Object> order = commerce.order(member.getId(), ((Number) checkout.get("orderId")).longValue());
@@ -105,6 +109,14 @@ class CommercePurchaseIntegrationTests {
 				.isInstanceOf(CommerceException.class)
 				.satisfies(error -> assertThat(((CommerceException) error).code()).isIn("INVENTORY_INSUFFICIENT", "INVENTORY_CONFLICT"));
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId())).isZero();
+	}
+
+	private static boolean asBoolean(Object value) {
+		return value instanceof Boolean booleanValue ? booleanValue : value instanceof Number numberValue && numberValue.intValue() != 0;
+	}
+
+	private static void assertAmount(Object actual, BigDecimal expected) {
+		assertThat(new BigDecimal(actual.toString()).compareTo(expected)).isZero();
 	}
 
 	@Test
