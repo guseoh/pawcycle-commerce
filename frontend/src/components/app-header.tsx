@@ -2,39 +2,49 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { status } = useAuth();
+  const { status, memberId } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const requestRef = useRef(0);
   const closeMenu = () => setMenuOpen(false);
 
   useEffect(() => {
+    requestRef.current += 1;
+    setCartCount(0);
+    setWishlistCount(0);
     if (status !== "authenticated") {
       return;
     }
     let active = true;
     const refreshBadges = () => {
+      const request = ++requestRef.current;
       void Promise.all([commerceFinalApi.cart(), commerceFinalApi.wishlist()]).then(([cart, wishlist]) => {
-        if (!active) return;
+        if (!active || request !== requestRef.current) return;
         setCartCount(cart.items.reduce((total, item) => total + item.quantity, 0));
         setWishlistCount(wishlist.items.length);
-      }).catch(() => undefined);
+      }).catch(() => {
+        if (!active || request !== requestRef.current) return;
+        setCartCount(0);
+        setWishlistCount(0);
+      });
     };
     const timer = window.setTimeout(refreshBadges, 0);
     window.addEventListener("pawcycle-commerce-changed", refreshBadges);
     return () => {
       active = false;
+      requestRef.current += 1;
       window.clearTimeout(timer);
       window.removeEventListener("pawcycle-commerce-changed", refreshBadges);
     };
-  }, [status]);
+  }, [memberId, status]);
 
   return (
     <header className="site-header">

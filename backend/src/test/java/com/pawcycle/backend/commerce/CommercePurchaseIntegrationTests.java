@@ -87,12 +87,24 @@ class CommercePurchaseIntegrationTests {
 		assertAmount(cartPricing.get("originalAmount"), BigDecimal.valueOf(3000));
 		assertAmount(cartPricing.get("paymentAmount"), BigDecimal.valueOf(3000));
 
-		Map<String, Object> checkout = commerce.checkout(member.getId(), "checkout-" + UUID.randomUUID(), addressId, null);
+		String idempotencyKey = "checkout-" + UUID.randomUUID();
+		Map<String, Object> checkout = commerce.checkout(member.getId(), idempotencyKey, addressId, null);
 		Map<String, Object> pricing = (Map<String, Object>) checkout.get("pricing");
 		assertAmount(pricing.get("originalAmount"), BigDecimal.valueOf(3000));
 		assertAmount(pricing.get("discountAmount"), BigDecimal.ZERO);
 		assertAmount(pricing.get("shippingFee"), BigDecimal.ZERO);
 		assertAmount(pricing.get("finalAmount"), BigDecimal.valueOf(3000));
+		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(3);
+
+		Map<String, Object> replayed = commerce.checkout(member.getId(), idempotencyKey, addressId, null);
+		Map<String, Object> replayedPricing = (Map<String, Object>) replayed.get("pricing");
+		assertThat(replayed.get("orderId")).isEqualTo(checkout.get("orderId"));
+		assertAmount(replayedPricing.get("originalAmount"), BigDecimal.valueOf(3000));
+		assertAmount(replayedPricing.get("subtotalAmount"), BigDecimal.valueOf(3000));
+		assertAmount(replayedPricing.get("discountAmount"), BigDecimal.ZERO);
+		assertAmount(replayedPricing.get("shippingFee"), BigDecimal.ZERO);
+		assertAmount(replayedPricing.get("finalAmount"), BigDecimal.valueOf(3000));
+		assertAmount(replayedPricing.get("paymentAmount"), BigDecimal.valueOf(3000));
 		assertThat(jdbc.queryForObject("SELECT available_quantity FROM inventories WHERE sku_id=?", Integer.class, sku.getId())).isEqualTo(3);
 
 		Map<String, Object> order = commerce.order(member.getId(), ((Number) checkout.get("orderId")).longValue());

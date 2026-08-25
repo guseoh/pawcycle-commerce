@@ -15,6 +15,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const auth = useAuth();
   const [state, setState] = useState<ProductState>({ status: "loading" });
   const [retry, setRetry] = useState(0);
+  const [relatedRetry, setRelatedRetry] = useState(0);
   const [cartSkuId, setCartSkuId] = useState<number | null>(null);
   const [subscriptionSkuId, setSubscriptionSkuId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("1");
@@ -25,18 +26,20 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [recentProducts, setRecentProducts] = useState<RecentProduct[]>([]);
   const [relatedProducts, setRelatedProducts] = useState<ProductSummary[] | null>(null);
   const [relatedError, setRelatedError] = useState<string | null>(null);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setState({ status: "loading" });
+    setRelatedProducts(null);
+    setRelatedError(null);
+    setRelatedLoading(false);
     void productApi.detail(productId).then((product) => {
       if (!active) return;
       setState({ status: "success", product });
       setSubscriptionSkuId(product.skus.find((sku) => sku.subscribable)?.skuId ?? null);
       const recent = rememberRecentProduct({ productId: product.productId, name: product.name, thumbnailUrl: product.thumbnailUrl, price: product.skus[0]?.price ?? null });
       setRecentProducts(recent.filter((item) => item.productId !== product.productId).slice(0, 4));
-      void productApi.list({ category: product.category.slug, petType: product.petType, size: 5, sort: "NEWEST" }).then((response) => {
-        if (active) { setRelatedProducts((response.items ?? response.products ?? []).filter((item) => item.productId !== product.productId).slice(0, 4)); setRelatedError(null); }
-      }).catch((error: unknown) => { if (active) setRelatedError(error instanceof ApiError ? error.message : "관련 상품을 불러오지 못했습니다."); });
     }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.code === "PRODUCT_NOT_FOUND") setState({ status: "not-found" });
@@ -45,12 +48,40 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     return () => { active = false; };
   }, [productId, retry]);
 
+  const product = state.status === "success" ? state.product : null;
+  const relatedProductId = product?.productId ?? null;
+  const relatedCategorySlug = product?.category.slug ?? null;
+  const relatedPetType = product?.petType ?? null;
+
+  useEffect(() => {
+    if (relatedProductId === null || relatedCategorySlug === null || relatedPetType === null) {
+      setRelatedProducts(null);
+      setRelatedError(null);
+      setRelatedLoading(false);
+      return;
+    }
+    let active = true;
+    setRelatedProducts(null);
+    setRelatedError(null);
+    setRelatedLoading(true);
+    void productApi.list({ category: relatedCategorySlug, petType: relatedPetType, size: 5, sort: "NEWEST" }).then((response) => {
+      if (!active) return;
+      setRelatedProducts((response.items ?? response.products ?? []).filter((item) => item.productId !== relatedProductId).slice(0, 4));
+      setRelatedError(null);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setRelatedError(error instanceof ApiError ? error.message : "관련 상품을 불러오지 못했습니다.");
+    }).finally(() => {
+      if (active) setRelatedLoading(false);
+    });
+    return () => { active = false; };
+  }, [relatedCategorySlug, relatedPetType, relatedProductId, relatedRetry]);
+
   useEffect(() => {
     if (auth.status !== "authenticated") return;
     void commerceFinalApi.wishlist().then((result) => setWishlisted(result.items.some((item) => item.productId === Number(productId)))).catch(() => undefined);
   }, [auth.status, productId]);
 
-  const product = state.status === "success" ? state.product : null;
   const selectedSku = product?.skus.find((sku) => sku.skuId === cartSkuId) ?? null;
   const selectedSubscriptionSkuId = product?.skus.find((sku) => sku.skuId === cartSkuId && sku.subscribable)?.skuId ?? subscriptionSkuId;
 
@@ -98,6 +129,6 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
       </div>
     </div>
     {recentProducts.length ? <section className="section-card product-context-section" aria-labelledby="recent-products-title"><div className="section-title"><h2 id="recent-products-title">최근 본 상품</h2><Link className="text-link" href="/products">상품 더 보기</Link></div><div className="mini-product-grid">{recentProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{item.name}</strong>{item.price !== null ? <span>{formatPrice(item.price)}</span> : null}</Link>)}</div></section> : null}
-    {relatedError ? <section className="section-card"><ErrorState title="관련 상품을 불러오지 못했습니다." message={relatedError} onRetry={() => setRetry((value) => value + 1)} /></section> : relatedProducts?.length ? <section className="section-card product-context-section" aria-labelledby="related-products-title"><div className="section-title"><h2 id="related-products-title">함께 살펴보기</h2><span className="field-help">같은 카테고리의 공개 상품</span></div><div className="mini-product-grid">{relatedProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{item.name}</strong><span>{item.representativePrice === null ? "가격 준비 중" : formatPrice(item.representativePrice)}</span></Link>)}</div></section> : null}
+    {relatedLoading ? <section className="section-card"><LoadingState>관련 상품을 불러오고 있습니다.</LoadingState></section> : relatedError ? <section className="section-card"><ErrorState title="관련 상품을 불러오지 못했습니다." message={relatedError} onRetry={() => setRelatedRetry((value) => value + 1)} /></section> : relatedProducts?.length ? <section className="section-card product-context-section" aria-labelledby="related-products-title"><div className="section-title"><h2 id="related-products-title">함께 살펴보기</h2><span className="field-help">같은 카테고리의 공개 상품</span></div><div className="mini-product-grid">{relatedProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{item.name}</strong><span>{item.representativePrice === null ? "가격 준비 중" : formatPrice(item.representativePrice)}</span></Link>)}</div></section> : relatedProducts ? <section className="section-card"><div className="empty-callout">같은 카테고리의 다른 상품이 아직 없습니다.</div></section> : null}
   </>;
 }
