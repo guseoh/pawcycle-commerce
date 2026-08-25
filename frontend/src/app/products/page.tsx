@@ -78,14 +78,13 @@ function ProductsContent() {
           {state.products.map((product) => (
             <article className="product-card" key={product.productId}>
               <div className="product-visual">{product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt="" /> : <span className="image-placeholder">PawCycle</span>}</div>
+              <h2>{product.name}</h2>
+              <div>
+                <strong className="price-heading">{product.skuPriceSummary.skuPrices[0] ? formatPrice(product.skuPriceSummary.skuPrices[0].price) : "가격 준비 중"}</strong>
+              </div>
               <div className="card-meta">
                 <span className="tag">대상: {formatPetType(product.petType)}</span>
                 <span className="tag">{product.category.name}</span>
-              </div>
-              <h2>{product.name}</h2>
-              <p>{product.shortDescription}</p>
-              <div>
-                <strong className="price-heading">{product.skuPriceSummary.skuPrices[0] ? formatPrice(product.skuPriceSummary.skuPrices[0].price) : "가격 준비 중"}</strong>
               </div>
               <p>
                 <span className={`tag ${product.hasSubscribableSku ? "tag-positive" : "tag-muted"}`}>
@@ -94,6 +93,7 @@ function ProductsContent() {
                     : "현재 구독 가능한 옵션 없음"}
                 </span>
               </p>
+              <p>{product.shortDescription}</p>
               <div className="card-actions">
                 <Link className="button button-primary" href={`/products/${product.productId}`}>
                   상세 보기
