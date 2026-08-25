@@ -15,6 +15,11 @@ const homeSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "ut
 const productsSource = readFileSync(new URL("../app/products/page.tsx", import.meta.url), "utf8");
 const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
+const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
+const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import.meta.url), "utf8");
+const subscriptionListSource = readFileSync(new URL("./mvp2-subscription-list.tsx", import.meta.url), "utf8");
+const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
 test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   const typedDrafts = ["1", "12"];
@@ -147,6 +152,45 @@ test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이
   assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
   assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 4 \/ 3/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
+});
+
+test("상품 상세는 구매 결정 정보와 정보 section을 분리한다", () => {
+  assert.match(productDetailSource, /className="product-purchase-zone"/);
+  assert.match(productDetailSource, /className="purchase-price"/);
+  assert.match(productDetailSource, /className="product-info-nav"/);
+  for (const sectionId of ["product-intro", "product-details", "product-shipping", "product-returns", "product-subscription"]) {
+    assert.match(productDetailSource, new RegExp(`id="${sectionId}"`));
+  }
+  assert.match(productDetailSource, /className="mini-product-grid"/);
+  assert.match(globalStylesSource, /\.product-gallery \{ width: min\(100%, 600px\); min-height: 0; aspect-ratio: 4 \/ 3/);
+  assert.match(globalStylesSource, /\.product-info-grid/);
+});
+
+test("My는 snapshot과 관리 기능을 별도 hierarchy로 제공한다", () => {
+  assert.match(mySource, /className="my-dashboard"/);
+  assert.match(mySource, /className="my-snapshot-section"/);
+  assert.match(mySource, /className="inline-alert" role="alert"/);
+  assert.match(mySource, /function ManagementSection/);
+  assert.match(mySource, /ManagementSection id="my-shopping-title" title="내 쇼핑"/);
+  assert.match(mySource, /ManagementSection id="my-account-title" title="계정 \/ 관리"/);
+  assert.match(globalStylesSource, /\.management-grid/);
+});
+
+test("주문과 정기배송 empty state는 다음 행동과 사용자 가치를 안내한다", () => {
+  assert.match(orderListSource, /아직 주문한 상품이 없어요/);
+  assert.match(orderListSource, /상품 둘러보기/);
+  assert.match(subscriptionListSource, /아직 시작한 정기배송이 없어요/);
+  assert.match(subscriptionListSource, /원하는 주기로 받아보세요/);
+  assert.match(subscriptionListSource, /href="\/products"/);
+  assert.match(globalStylesSource, /\.empty-state-panel/);
+});
+
+test("짧은 화면에서도 app shell이 footer를 viewport 아래에 붙인다", () => {
+  assert.match(layoutSource, /<main id="main-content"/);
+  assert.match(layoutSource, /<AppFooter \/>/);
+  assert.match(globalStylesSource, /min-height: 100dvh/);
+  assert.match(globalStylesSource, /\.page-shell \{ flex: 1 0 auto; display: flex; flex-direction: column;/);
+  assert.match(globalStylesSource, /\.site-footer \{ flex: 0 0 auto;/);
 });
 
 test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계를 유지한다", () => {

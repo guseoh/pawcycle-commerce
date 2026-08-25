@@ -25,8 +25,8 @@ async function loadAllSubscriptions(): Promise<V2SubscriptionSummary[]> {
 }
 
 function CommerceSnapshotPanel({ snapshot, error, onRetry }: { snapshot: CommerceSnapshot | null; error: string | null; onRetry: () => void }) {
-  if (error) return <section className="section-card"><ErrorState title="Commerce 요약을 불러오지 못했습니다." message={error} onRetry={onRetry} /></section>;
-  if (!snapshot) return <section className="section-card"><LoadingState>내 Commerce 요약을 불러오고 있습니다.</LoadingState></section>;
+  if (error) return <section className="my-snapshot-section" aria-labelledby="commerce-snapshot-title"><div className="inline-alert" role="alert"><strong>일부 쇼핑 정보를 불러오지 못했습니다.</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={onRetry}>다시 시도</button></div></section>;
+  if (!snapshot) return <section className="my-snapshot-section"><LoadingState>내 Commerce 요약을 불러오고 있습니다.</LoadingState></section>;
   const latestOrder = snapshot.orders[0];
   const activeSubscriptions = snapshot.subscriptions.filter((item) => item.status === "ACTIVE");
   const nextSubscription = activeSubscriptions
@@ -59,6 +59,11 @@ export default function MyPage() {
   if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="내 정보를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/my")}>로그인</Link></ErrorState>;
   if (auth.status === "loading") return <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "로그인 상태를 확인할 수 없습니다."} onRetry={() => void auth.refresh()} />;
-  const links = [["/subscriptions", "정기배송", "다음 배송과 구독 변경을 관리해요"], ["/orders", "주문", "주문과 배송 상태를 확인해요"], ["/wishlist", "위시리스트", "나중에 볼 상품을 모아뒀어요"], ["/cart", "장바구니", "선택한 상품을 주문해요"], ["/addresses", "배송지", "배송지와 기본 주소를 관리해요"], ["/billing-methods", "결제수단", "등록 상태를 확인해요"], ["/notifications", "알림", "주문과 배송 소식을 확인해요"]] as const;
-  return <section><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel snapshot={snapshot} error={snapshotError} onRetry={() => { setSnapshotError(null); setSnapshot(null); setRetry((value) => value + 1); }} /><nav className="my-settings-list" aria-label="내 정보 메뉴">{links.map(([href, title, description]) => <Link key={href} href={href}><span><strong>{title}</strong><small>{description}</small></span><span className="settings-arrow" aria-hidden="true">→</span></Link>)}</nav><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
+  const shoppingLinks = [["/subscriptions", "정기배송", "다음 배송과 구독 변경을 관리해요"], ["/orders", "주문", "주문과 배송 상태를 확인해요"], ["/wishlist", "위시리스트", "나중에 볼 상품을 모아뒀어요"], ["/cart", "장바구니", "선택한 상품을 주문해요"]] as const;
+  const accountLinks = [["/addresses", "배송지", "배송지와 기본 주소를 관리해요"], ["/billing-methods", "결제수단", "등록 상태를 확인해요"], ["/notifications", "알림", "주문과 배송 소식을 확인해요"]] as const;
+  return <section className="my-dashboard"><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel snapshot={snapshot} error={snapshotError} onRetry={() => { setSnapshotError(null); setSnapshot(null); setRetry((value) => value + 1); }} /><ManagementSection id="my-shopping-title" title="내 쇼핑" links={shoppingLinks} /><ManagementSection id="my-account-title" title="계정 / 관리" links={accountLinks} /><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
+}
+
+function ManagementSection({ id, title, links }: { id: string; title: string; links: readonly (readonly [string, string, string])[] }) {
+  return <section className="management-section" aria-labelledby={id}><div className="section-title"><div><p className="eyebrow">Management</p><h2 id={id}>{title}</h2></div></div><nav className="management-grid" aria-label={title}>{links.map(([href, linkTitle, description]) => <Link key={href} href={href}><strong>{linkTitle}</strong><span>{description}</span><span className="settings-arrow" aria-hidden="true">→</span></Link>)}</nav></section>;
 }
