@@ -30,22 +30,25 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
 
   useEffect(() => {
     let active = true;
-    setState({ status: "loading" });
-    setRelatedProducts(null);
-    setRelatedError(null);
-    setRelatedLoading(false);
-    void productApi.detail(productId).then((product) => {
+    const timer = window.setTimeout(() => {
       if (!active) return;
-      setState({ status: "success", product });
-      setSubscriptionSkuId(product.skus.find((sku) => sku.subscribable)?.skuId ?? null);
-      const recent = rememberRecentProduct({ productId: product.productId, name: product.name, thumbnailUrl: product.thumbnailUrl, price: product.skus[0]?.price ?? null });
-      setRecentProducts(recent.filter((item) => item.productId !== product.productId).slice(0, 4));
-    }).catch((error: unknown) => {
-      if (!active) return;
-      if (error instanceof ApiError && error.code === "PRODUCT_NOT_FOUND") setState({ status: "not-found" });
-      else setState({ status: "error", message: error instanceof ApiError ? error.message : "상품 정보를 불러오지 못했습니다." });
-    });
-    return () => { active = false; };
+      setState({ status: "loading" });
+      setRelatedProducts(null);
+      setRelatedError(null);
+      setRelatedLoading(false);
+      void productApi.detail(productId).then((product) => {
+        if (!active) return;
+        setState({ status: "success", product });
+        setSubscriptionSkuId(product.skus.find((sku) => sku.subscribable)?.skuId ?? null);
+        const recent = rememberRecentProduct({ productId: product.productId, name: product.name, thumbnailUrl: product.thumbnailUrl, price: product.skus[0]?.price ?? null });
+        setRecentProducts(recent.filter((item) => item.productId !== product.productId).slice(0, 4));
+      }).catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.code === "PRODUCT_NOT_FOUND") setState({ status: "not-found" });
+        else setState({ status: "error", message: error instanceof ApiError ? error.message : "상품 정보를 불러오지 못했습니다." });
+      });
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [productId, retry]);
 
   const product = state.status === "success" ? state.product : null;
@@ -54,27 +57,30 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const relatedPetType = product?.petType ?? null;
 
   useEffect(() => {
-    if (relatedProductId === null || relatedCategorySlug === null || relatedPetType === null) {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      if (relatedProductId === null || relatedCategorySlug === null || relatedPetType === null) {
+        setRelatedProducts(null);
+        setRelatedError(null);
+        setRelatedLoading(false);
+        return;
+      }
       setRelatedProducts(null);
       setRelatedError(null);
-      setRelatedLoading(false);
-      return;
-    }
-    let active = true;
-    setRelatedProducts(null);
-    setRelatedError(null);
-    setRelatedLoading(true);
-    void productApi.list({ category: relatedCategorySlug, petType: relatedPetType, size: 5, sort: "NEWEST" }).then((response) => {
-      if (!active) return;
-      setRelatedProducts((response.items ?? response.products ?? []).filter((item) => item.productId !== relatedProductId).slice(0, 4));
-      setRelatedError(null);
-    }).catch((error: unknown) => {
-      if (!active) return;
-      setRelatedError(error instanceof ApiError ? error.message : "관련 상품을 불러오지 못했습니다.");
-    }).finally(() => {
-      if (active) setRelatedLoading(false);
-    });
-    return () => { active = false; };
+      setRelatedLoading(true);
+      void productApi.list({ category: relatedCategorySlug, petType: relatedPetType, size: 5, sort: "NEWEST" }).then((response) => {
+        if (!active) return;
+        setRelatedProducts((response.items ?? response.products ?? []).filter((item) => item.productId !== relatedProductId).slice(0, 4));
+        setRelatedError(null);
+      }).catch((error: unknown) => {
+        if (!active) return;
+        setRelatedError(error instanceof ApiError ? error.message : "관련 상품을 불러오지 못했습니다.");
+      }).finally(() => {
+        if (active) setRelatedLoading(false);
+      });
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [relatedCategorySlug, relatedPetType, relatedProductId, relatedRetry]);
 
   useEffect(() => {

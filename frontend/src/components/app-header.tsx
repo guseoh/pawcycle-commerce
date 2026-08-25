@@ -18,12 +18,19 @@ export function AppHeader() {
 
   useEffect(() => {
     requestRef.current += 1;
-    setCartCount(0);
-    setWishlistCount(0);
-    if (status !== "authenticated") {
-      return;
-    }
     let active = true;
+    if (status !== "authenticated") {
+      const resetTimer = window.setTimeout(() => {
+        if (!active) return;
+        setCartCount(0);
+        setWishlistCount(0);
+      }, 0);
+      return () => {
+        active = false;
+        requestRef.current += 1;
+        window.clearTimeout(resetTimer);
+      };
+    }
     const refreshBadges = () => {
       const request = ++requestRef.current;
       void Promise.all([commerceFinalApi.cart(), commerceFinalApi.wishlist()]).then(([cart, wishlist]) => {
@@ -36,7 +43,12 @@ export function AppHeader() {
         setWishlistCount(0);
       });
     };
-    const timer = window.setTimeout(refreshBadges, 0);
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setCartCount(0);
+      setWishlistCount(0);
+      refreshBadges();
+    }, 0);
     window.addEventListener("pawcycle-commerce-changed", refreshBadges);
     return () => {
       active = false;
