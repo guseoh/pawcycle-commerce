@@ -82,7 +82,7 @@ class ProductEngagementApiIntegrationTests {
     }
 
     @Test
-    void reviewRequiresDeliveredPurchaseAndHiddenReviewLeavesTrustAggregateAtZero() throws Exception {
+    void reviewRequiresDeliveredPurchaseAndHiddenReviewLeavesTrustAggregateEmpty() throws Exception {
         mockMvc.perform(post("/api/products/{productId}/reviews", productId).with(user()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":5,\"content\":\"좋아요\"}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REVIEW_PURCHASE_REQUIRED"));
@@ -102,7 +102,7 @@ class ProductEngagementApiIntegrationTests {
         mockMvc.perform(get("/api/products/{productId}/reviews", productId))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
         mockMvc.perform(get("/api/products/{productId}", productId))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.trust.averageRating").value(0))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.trust.averageRating").doesNotExist())
                 .andExpect(jsonPath("$.trust.reviewCount").value(0));
     }
 

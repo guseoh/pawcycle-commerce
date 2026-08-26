@@ -18,7 +18,7 @@
 }
 ```
 
-공개 상세 섹션은 `visible=true`, `displayOrder ASC, sectionId ASC`로만 노출하며 없으면 `[]`다. title/body는 plain text 저장 계약이며 HTML 렌더링·HTML 저장 계약은 추가하지 않는다. trust의 Review 평균·개수와 Q&A 개수는 visible 항목만 집계한다.
+공개 상세 섹션은 `visible=true`, `displayOrder ASC, sectionId ASC`로만 노출하며 없으면 `[]`다. title/body는 plain text 저장 계약이며 HTML 렌더링·HTML 저장 계약은 추가하지 않는다. trust의 Review 평균·개수와 Q&A 개수는 visible 항목만 집계한다. visible Review가 하나도 없으면 `averageRating`은 `null`, `reviewCount`는 `0`이다.
 
 ## Admin Detail Section
 

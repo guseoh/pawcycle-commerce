@@ -30,7 +30,7 @@ public class ProductDetailContentReader {
     @Transactional(readOnly = true)
     public ProductTrustView trust(long productId) {
         return jdbc.queryForObject("""
-                SELECT COALESCE(AVG(CASE WHEN r.visible=true THEN r.rating END),0) AS average_rating,
+                SELECT AVG(CASE WHEN r.visible=true THEN r.rating END) AS average_rating,
                        COALESCE(SUM(CASE WHEN r.visible=true THEN 1 ELSE 0 END),0) AS review_count,
                        (SELECT COUNT(*) FROM product_questions q WHERE q.product_id=? AND q.visible=true) AS question_count
                 FROM reviews r

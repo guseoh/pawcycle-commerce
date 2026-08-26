@@ -38,8 +38,8 @@ public record ProductDetailView(
 
 	public record CategorySummary(Long categoryId, String name, String slug) {}
 
-	public record Trust(java.math.BigDecimal averageRating, long reviewCount, long questionCount) {
-		public static Trust empty() { return new Trust(java.math.BigDecimal.ZERO, 0, 0); }
+	public record Trust(BigDecimal averageRating, long reviewCount, long questionCount) {
+		public static Trust empty() { return new Trust(null, 0, 0); }
 	}
 
 	public record SkuDetail(

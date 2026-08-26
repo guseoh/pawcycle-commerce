@@ -16,13 +16,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController @RequestMapping("/api")
 class CheckoutController {
 	private final CommerceService commerce;
+	private final CheckoutIdempotencyService checkoutIdempotencyService;
 	private final TossPaymentAdapter tossPaymentAdapter;
-	CheckoutController(CommerceService commerce, TossPaymentAdapter tossPaymentAdapter) {
+	CheckoutController(CommerceService commerce, CheckoutIdempotencyService checkoutIdempotencyService, TossPaymentAdapter tossPaymentAdapter) {
 		this.commerce = commerce;
+		this.checkoutIdempotencyService = checkoutIdempotencyService;
 		this.tossPaymentAdapter = tossPaymentAdapter;
 	}
 	@PostMapping("/checkout") Map<String,Object> checkout(@AuthenticationPrincipal AuthenticatedMemberPrincipal p,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody CommerceRequests.Checkout r) {
-		Map<String,Object> result = new LinkedHashMap<>(commerce.checkout(p.memberId(),key,r.addressId(),r.memberCouponId(),r.cartVersion()));
+		Map<String,Object> result = new LinkedHashMap<>(checkoutIdempotencyService.checkout(p.memberId(),key,r.addressId(),r.memberCouponId(),r.cartVersion()));
 		result.put("tossTestEnabled", tossPaymentAdapter.browserTestEnabled());
 		return result;
 	}

@@ -82,7 +82,7 @@ class ProductDiscoveryApiIntegrationTests {
 				.andExpect(jsonPath("$.shortDescription").value(product.getShortDescription()))
 				.andExpect(jsonPath("$.detailSections").isArray())
 				.andExpect(jsonPath("$.detailSections").isEmpty())
-				.andExpect(jsonPath("$.trust.averageRating").value(0))
+				.andExpect(jsonPath("$.trust.averageRating").doesNotExist())
 				.andExpect(jsonPath("$.trust.reviewCount").value(0))
 				.andExpect(jsonPath("$.trust.questionCount").value(0))
 				.andExpect(jsonPath("$.category.categoryId").value(category.getId()))

@@ -14,11 +14,14 @@
 
 기존 `POST /api/checkout` request에 선택 필드 `cartVersion`을 추가한다.
 
-- 전달된 값이 잠긴 Cart version과 다르면 `409 CART_CHANGED`를 반환한다.
-- 생략하면 잠긴 Cart의 실제 version을 사용한다.
-- `Idempotency-Key` 결과에는 `addressId`, `memberCouponId` 또는 `none`, 실제 Cart version의 SHA-256 fingerprint를 저장한다.
-- 같은 key·fingerprint는 기존 결과를 replay한다.
-- 다른 fingerprint 또는 fingerprint가 없는 legacy row는 `409 IDEMPOTENCY_KEY_CONFLICT`로 fail-close한다.
+- 새 Idempotency-Key의 최초 요청에서 전달된 `cartVersion`이 잠긴 현재 Cart version과 다르면 `409 CART_CHANGED`를 반환한다.
+- 최초 요청에서 `cartVersion`을 생략하면 잠긴 현재 Cart version을 요청 identity로 사용한다.
+- Idempotency 결과에는 `addressId`, `memberCouponId` 또는 `none`, 최초 요청 Cart version의 SHA-256 fingerprint와 최초 `request_cart_version`을 저장한다.
+- 기존 Idempotency-Key가 있으면 현재 Cart stale 검증보다 먼저 저장된 최초 요청 identity를 검증한다.
+- 같은 key·같은 address/coupon/최초 Cart version은 현재 Cart가 이후 변경되거나 결제 성공으로 소비되었어도 기존 결과를 replay한다.
+- replay 요청에서 `cartVersion`을 생략하면 저장된 최초 `request_cart_version`을 사용해 identity를 검증한다.
+- 같은 key에 다른 address, coupon 또는 명시적으로 다른 cartVersion을 사용하면 `409 IDEMPOTENCY_KEY_CONFLICT`다.
+- fingerprint 또는 `request_cart_version`이 없는 legacy row는 잘못 replay하지 않고 `409 IDEMPOTENCY_KEY_CONFLICT`로 fail-close한다.
 - replay/conflict 경로에서는 Order, Payment, Inventory reservation, Coupon reservation을 새로 만들지 않는다.
 
 ## Quick Reorder
@@ -31,4 +34,4 @@ Quick Reorder 결과는 회원·key·source order와 함께 저장한다. 같은
 
 ## Migration / transaction boundary
 
-기존 migration은 수정하지 않고 V22에서 `carts.version`, Checkout request fingerprint와 Quick Reorder idempotency 결과 테이블을 추가한다. 회원 row 잠금이 Cart·Checkout·Quick Reorder의 직렬화 경계이며, Cart 실제 변경과 해당 idempotency 결과 저장은 동일 transaction에 둔다. Production migration이나 데이터 적용은 수행하지 않는다.
+기존 migration은 수정하지 않는다. V22에서 `carts.version`, Checkout fingerprint와 Quick Reorder idempotency 결과 테이블을 추가하고, review correction의 V23에서 Checkout 최초 요청의 `request_cart_version`을 additive하게 추가한다. `CheckoutIdempotencyService`가 public Checkout의 request identity/replay 경계를 맡고, 최초 실행의 Order·Payment·Inventory·Coupon 처리는 기존 `CommerceService`를 재사용한다. 회원 row 잠금과 Cart row 잠금을 통해 최초 요청을 직렬화하며, 최초 Checkout 결과와 `request_cart_version` 저장은 하나의 transaction 경계에 둔다. Production migration이나 데이터 적용은 수행하지 않는다.
