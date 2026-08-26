@@ -260,10 +260,11 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     try {
       await auth.executeWithCsrf((csrf) => productApi.createQuestion(productId, questionContent, csrf));
       setQuestionContent("");
+      const pageChangeWillReloadQuestions = questionPage !== 0;
       setQuestionPage(0);
       setQuestionMessage("상품 문의를 등록했습니다.");
       const [questionsFresh, trustFresh] = await Promise.all([
-        loadQuestions(0),
+        pageChangeWillReloadQuestions ? Promise.resolve(true) : loadQuestions(0),
         onTrustRefresh().then(() => true).catch(() => false),
       ]);
       if (!questionsFresh || !trustFresh) {
