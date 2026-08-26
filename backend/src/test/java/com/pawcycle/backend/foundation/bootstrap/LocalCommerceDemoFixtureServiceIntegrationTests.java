@@ -3,12 +3,14 @@ package com.pawcycle.backend.foundation.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -36,25 +38,48 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 				"SELECT COUNT(*) FROM categories WHERE slug IN ('food','treats','hygiene','toilet')", Integer.class))
 				.isEqualTo(4);
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM products WHERE name IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Integer.class,
-				"데일리 밸런스 연어 사료", "그레인프리 치킨 사료", "소프트 오리 트릿", "데일리 덴탈츄",
-				"산책 후 풋 클렌저", "데일리 배변패드", "인도어 참치 사료", "헤어볼 케어 연어 사료",
-				"참치 파우치 12팩", "동결건조 닭가슴살 트릿", "저자극 두부 모래", "무향 벤토나이트 모래"))
+				"SELECT COUNT(*) FROM products WHERE catalog_key LIKE 'demo-%'", Integer.class))
 				.isEqualTo(LocalCommerceDemoFixtureService.DEMO_PRODUCT_COUNT);
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM skus WHERE sku_code LIKE 'DEMO-%'", Integer.class)).isEqualTo(12);
+				"SELECT COUNT(*) FROM skus WHERE sku_code LIKE 'DEMO-%'", Integer.class)).isEqualTo(42);
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id WHERE sku.sku_code LIKE 'DEMO-%' AND inventory.available_quantity>0",
-				Integer.class)).isEqualTo(12);
+				"SELECT COUNT(*) FROM subscription_plans WHERE plan_key LIKE 'demo-%'", Integer.class)).isEqualTo(6);
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM subscription_plans WHERE name IN ('데일리 밸런스 플랜','데일리 케어 플랜','인도어 캣 플랜')",
-				Integer.class)).isEqualTo(3);
+				"SELECT COUNT(*) FROM plan_versions version JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.plan_key LIKE 'demo-%'",
+				Integer.class)).isEqualTo(6);
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM plan_versions version JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name IN ('데일리 밸런스 플랜','데일리 케어 플랜','인도어 캣 플랜')",
-				Integer.class)).isEqualTo(3);
+				"SELECT COUNT(*) FROM plan_version_delivery_cycles cycle JOIN plan_versions version ON version.id=cycle.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.plan_key LIKE 'demo-%'",
+				Integer.class)).isEqualTo(18);
+	}
+
+	@Test
+	void datasetHasBalancedPetCategoryAndCommerceStateCoverage() {
+		fixtureService.bootstrap();
+
+		Map<String, Integer> categoryCounts = new java.util.HashMap<>();
+		for (Map<String, Object> row : jdbcTemplate.queryForList(
+				"SELECT pet_type,category.slug category_slug,COUNT(*) count FROM products product JOIN categories category ON category.id=product.category_id WHERE product.catalog_key LIKE 'demo-%' GROUP BY pet_type,category.slug")) {
+			categoryCounts.put(row.get("pet_type") + "/" + row.get("category_slug"), ((Number) row.get("count")).intValue());
+		}
+		assertThat(categoryCounts).containsExactlyInAnyOrderEntriesOf(Map.of(
+				"DOG/food", 5, "DOG/treats", 4, "DOG/hygiene", 3, "DOG/toilet", 4,
+				"CAT/food", 5, "CAT/treats", 4, "CAT/hygiene", 2, "CAT/toilet", 5));
 		assertThat(jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM plan_version_delivery_cycles cycle JOIN plan_versions version ON version.id=cycle.plan_version_id JOIN subscription_plans plan ON plan.id=version.plan_id WHERE plan.name IN ('데일리 밸런스 플랜','데일리 케어 플랜','인도어 캣 플랜')",
-				Integer.class)).isEqualTo(9);
+				"SELECT COUNT(*) FROM (SELECT product_id FROM skus WHERE sku_code LIKE 'DEMO-%' GROUP BY product_id HAVING COUNT(*) = 1) single_sku", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM (SELECT product_id FROM skus WHERE sku_code LIKE 'DEMO-%' GROUP BY product_id HAVING COUNT(*) > 1) multi_sku", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) - COUNT(DISTINCT sku_code) FROM skus WHERE sku_code LIKE 'DEMO-%'", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM skus WHERE sku_code LIKE 'DEMO-%' AND subscribable=true", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM skus WHERE sku_code LIKE 'DEMO-%' AND subscribable=false", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id WHERE sku.sku_code LIKE 'DEMO-%' AND inventory.available_quantity BETWEEN 1 AND 5", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM products product WHERE product.catalog_key LIKE 'demo-%' AND EXISTS (SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id WHERE sku.product_id=product.id AND inventory.available_quantity=0) AND EXISTS (SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id WHERE sku.product_id=product.id AND inventory.available_quantity>0)", Integer.class)).isGreaterThan(0);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM products product WHERE product.catalog_key LIKE 'demo-%' AND NOT EXISTS (SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id WHERE sku.product_id=product.id AND inventory.available_quantity>0)", Integer.class)).isBetween(2, 3);
 	}
 
 	@Test
@@ -89,5 +114,14 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT inventory.version FROM inventories inventory JOIN skus sku ON sku.id=inventory.sku_id WHERE sku.sku_code=?",
 				Long.class, "DEMO-DOG-FOOD-SALMON-2KG")).isEqualTo(3L);
+	}
+
+	@Test
+	void invalidManifestReferenceFailsClosed() {
+		ReflectionTestUtils.setField(fixtureService, "manifestLocation", "classpath:catalog/missing-demo-catalog.json");
+
+		assertThatThrownBy(fixtureService::bootstrap)
+				.isInstanceOf(LocalQaBootstrapException.class)
+				.hasMessageContaining("manifest");
 	}
 }
