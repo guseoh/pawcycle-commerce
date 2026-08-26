@@ -700,10 +700,14 @@ public class CommerceService {
 	private String reorderSkipReason(Map<String,Object> sourceItem, int quantity) {
 		if (!"ACTIVE".equals(sourceItem.get("skuStatus"))
 				|| !"PUBLIC".equals(sourceItem.get("productStatus"))
-				|| !Boolean.TRUE.equals(sourceItem.get("categoryActive"))) return "SKU_NOT_PURCHASABLE";
+				|| !booleanValue(sourceItem.get("categoryActive"))) return "SKU_NOT_PURCHASABLE";
 		Object available = sourceItem.get("availableQuantity");
 		if (!(available instanceof Number number) || number.intValue() < quantity) return "OUT_OF_STOCK";
 		return null;
+	}
+
+	private static boolean booleanValue(Object value) {
+		return value instanceof Boolean booleanValue ? booleanValue : value instanceof Number number && number.intValue() != 0;
 	}
 
 	private Map<String,Object> storedResponse(String responseJson) {
