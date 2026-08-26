@@ -4,7 +4,9 @@ import {
   buildLoginHref,
   formatIsoLocalDate,
   formatSubscriptionStatus,
+  isInternalDemoLabel,
   sanitizeReturnTo,
+  userFacingCatalogLabel,
   validateSubscriptionDraft,
 } from "./frontend-utils.ts";
 
@@ -22,12 +24,15 @@ test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
     "/wishlist",
     "/cart",
     "/checkout",
+    "/checkout/success",
     "/addresses",
     "/billing-methods",
     "/my",
   ]) {
     assert.equal(sanitizeReturnTo(route), route);
   }
+  assert.equal(buildLoginHref("/checkout/success"), "/login?returnTo=%2Fcheckout%2Fsuccess");
+  assert.equal(sanitizeReturnTo("/checkout/success?paymentKey=secret"), "/products");
   assert.equal(sanitizeReturnTo("/products"), "/products");
   assert.equal(sanitizeReturnTo("/products/42"), "/products/42");
   assert.equal(sanitizeReturnTo("/subscriptions/new"), "/subscriptions/new");
@@ -59,6 +64,14 @@ test("구독 상태는 사용자 표현으로 표시한다", () => {
   assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지");
   assert.equal(formatSubscriptionStatus("CANCELED"), "해지됨");
   assert.equal(formatSubscriptionStatus("UNKNOWN"), "UNKNOWN");
+});
+
+test("QA·Demo 상품명은 사용자 노출 문구로 대체한다", () => {
+  assert.equal(isInternalDemoLabel("V2 concurrent product"), true);
+  assert.equal(isInternalDemoLabel("v2-concurrent-fixture"), true);
+  assert.equal(isInternalDemoLabel("무향 벤토나이트 모래"), false);
+  assert.equal(userFacingCatalogLabel("test option", "상품 옵션"), "상품 옵션");
+  assert.equal(userFacingCatalogLabel("2kg", "상품 옵션"), "2kg");
 });
 
 test("구독 입력은 수량 경계와 서버 제공 선택지를 검증한다", () => {

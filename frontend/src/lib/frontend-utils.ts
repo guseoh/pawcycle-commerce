@@ -1,6 +1,6 @@
 export const PRODUCTS_PATH = "/products";
 
-const SAFE_RETURN_PATH = /^(?:\/|\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/orders(?:\/[1-9]\d*)?|\/notifications|\/wishlist|\/cart|\/checkout|\/addresses|\/billing-methods|\/my)$/;
+const SAFE_RETURN_PATH = /^(?:\/|\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/orders(?:\/[1-9]\d*)?|\/notifications|\/wishlist|\/cart|\/checkout(?:\/success)?|\/addresses|\/billing-methods|\/my)$/;
 const ISO_LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function sanitizeReturnTo(value: string | null | undefined): string {
@@ -60,6 +60,16 @@ export function formatOrderStatus(value: string): string { return ORDER_STATUS_L
 export function formatPaymentStatus(value: string | undefined): string { return value ? (PAYMENT_STATUS_LABELS[value] ?? "결제 상태 확인 중") : "결제 정보 준비 중"; }
 export function formatDeliveryStatus(value: string | undefined): string { return value ? (DELIVERY_STATUS_LABELS[value] ?? "배송 상태 확인 중") : "배송 준비 전"; }
 
+const INTERNAL_DEMO_LABEL = /(^|[\s_-])(?:qa|test|fixture|demo|foundation|v\d+|commerce|concurrent|cleanup)(?=$|[\s_-])/i;
+
+export function isInternalDemoLabel(value: string | null | undefined): boolean {
+  return typeof value === "string" && INTERNAL_DEMO_LABEL.test(value);
+}
+
+export function userFacingCatalogLabel(value: string | null | undefined, fallback: string): string {
+  return value && !isInternalDemoLabel(value) ? value : fallback;
+}
+
 export function notifyCommerceChanged(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event("pawcycle-commerce-changed"));
 }
@@ -79,13 +89,14 @@ export function getRecentProducts(): RecentProduct[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(RECENT_PRODUCTS_KEY) ?? "[]");
     if (!Array.isArray(value)) return [];
-    return value.filter((item): item is RecentProduct => Boolean(item && typeof item === "object" && typeof item.productId === "number" && typeof item.name === "string"));
+    return value.filter((item): item is RecentProduct => Boolean(item && typeof item === "object" && typeof item.productId === "number" && typeof item.name === "string" && !isInternalDemoLabel(item.name)));
   } catch {
     return [];
   }
 }
 
 export function rememberRecentProduct(product: RecentProduct): RecentProduct[] {
+  if (isInternalDemoLabel(product.name)) return getRecentProducts();
   const next = [product, ...getRecentProducts().filter((item) => item.productId !== product.productId)].slice(0, RECENT_PRODUCTS_LIMIT);
   try { window.localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(next)); } catch { /* localStorage is an optional convenience */ }
   return next;
@@ -106,13 +117,16 @@ export function formatSubscriptionStatus(value: string): string {
 
 export function cartQuantityError(value: string): string | null {
   const quantity = Number(value);
-  return Number.isInteger(quantity) && quantity >= 1
-    ? null
-    : "수량은 1 이상의 정수여야 합니다.";
+  if (!Number.isInteger(quantity) || quantity < 1) return "수량은 1 이상의 정수여야 합니다.";
+  return null;
 }
 
-export function cartQuantityForUpdate(value: string): number | null {
-  return cartQuantityError(value) === null ? Number(value) : null;
+export function cartQuantityErrorForMaximum(value: string, maximum: number): string | null {
+  return cartQuantityError(value) ?? (Number(value) > maximum ? `현재 재고 ${maximum.toLocaleString()}개 이하로 선택해 주세요.` : null);
+}
+
+export function cartQuantityForUpdate(value: string, maximum?: number): number | null {
+  return (maximum === undefined ? cartQuantityError(value) : cartQuantityErrorForMaximum(value, maximum)) === null ? Number(value) : null;
 }
 
 export interface SubscriptionDraft {

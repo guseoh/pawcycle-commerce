@@ -20,7 +20,7 @@ class RecommendationRepository {
 				SELECT product.id,product.name,product.short_description,product.thumbnail_url,product.pet_type,
 				       category.id,category.name,category.slug
 				FROM products product JOIN categories category ON category.id=product.category_id
-				WHERE product.pet_type=? AND product.display_status='PUBLIC'
+				WHERE product.pet_type=? AND product.display_status='PUBLIC' AND category.active=true
 				  AND EXISTS (
 				    SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id
 				    WHERE sku.product_id=product.id AND sku.status='ACTIVE' AND inventory.available_quantity>0

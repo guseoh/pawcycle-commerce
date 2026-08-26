@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError, subscriptionApi, type SubscriptionDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref, formatIsoLocalDate, formatPrice } from "@/lib/frontend-utils";
+import { buildLoginHref, formatIsoLocalDate, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 
 interface SubscriptionDetailScreenProps {
   subscriptionId: string;
@@ -109,6 +109,9 @@ export function SubscriptionDetailScreen({ subscriptionId, created }: Subscripti
     return <LoadingState>구독 상세를 불러오고 있습니다.</LoadingState>;
   }
 
+  const productName = userFacingCatalogLabel(subscription.product.name, "정기배송 상품");
+  const skuName = userFacingCatalogLabel(subscription.sku.skuName, "상품 옵션");
+
   return (
     <div className="detail-stack">
       {created ? (
@@ -118,11 +121,11 @@ export function SubscriptionDetailScreen({ subscriptionId, created }: Subscripti
       ) : null}
 
       <section className="section-card" aria-labelledby="subscription-title">
-        <p className="eyebrow">Subscription #{subscription.subscriptionId}</p>
-        <h1 id="subscription-title">{subscription.product.name}</h1>
+        <p className="eyebrow">정기배송 상세</p>
+        <h1 id="subscription-title">{productName}</h1>
         <dl className="detail-list">
-          <dt>SKU</dt>
-          <dd>{subscription.sku.skuName} (#{subscription.sku.skuId})</dd>
+          <dt>상품 옵션</dt>
+          <dd>{skuName}</dd>
           <dt>단가</dt>
           <dd>{formatPrice(subscription.sku.price)}</dd>
           <dt>수량</dt>

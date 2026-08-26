@@ -43,7 +43,7 @@ public class SecurityConfig {
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(EndpointRequest.to("health", "prometheus"))
 						.permitAll()
-						.requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/auth/csrf")
+						.requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/categories", "/api/auth/csrf")
 						.permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login")
 						.permitAll()

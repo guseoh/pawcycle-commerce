@@ -29,6 +29,7 @@ export interface ProductPrice {
   price: number;
 }
 export interface Category { categoryId: number; name: string; slug: string }
+export interface CategoryListResponse { items: Category[] }
 
 export interface ProductSummary {
   productId: number;
@@ -204,6 +205,10 @@ export const productApi = {
   },
   detail: (productId: string) =>
     requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+};
+
+export const categoryApi = {
+  list: () => requestJson<CategoryListResponse>("/api/categories"),
 };
 
 export interface RecommendationItem extends Omit<ProductSummary, "petType" | "skuPriceSummary" | "hasSubscribableSku"> { reason: string }

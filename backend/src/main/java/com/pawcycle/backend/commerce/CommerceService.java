@@ -47,9 +47,10 @@ public class CommerceService {
 			SELECT item.sku_id AS skuId,item.quantity,sku.sku_code AS skuCode,sku.name AS skuName,sku.price,sku.price AS unitPrice,
 			       sku.price * item.quantity AS lineAmount,product.id AS productId,product.name AS productName,
 			       inventory.available_quantity AS availableQuantity,
-			       (sku.status='ACTIVE' AND product.display_status='PUBLIC' AND inventory.available_quantity >= item.quantity) AS purchasable
+			       (sku.status='ACTIVE' AND product.display_status='PUBLIC' AND category.active=true AND inventory.available_quantity >= item.quantity) AS purchasable
 			FROM carts cart JOIN cart_items item ON item.cart_id=cart.id
 			JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id
+			JOIN categories category ON category.id=product.category_id
 			JOIN inventories inventory ON inventory.sku_id=sku.id
 			WHERE cart.member_id=? ORDER BY item.sku_id""", memberId);
 		BigDecimal original = items.stream()
@@ -320,7 +321,7 @@ public class CommerceService {
 		});
 
 		if (Boolean.TRUE.equals(work.get("replay"))) {
-			return Map.of("paymentId", number(work,"id"), "status", "SUCCEEDED");
+			return Map.of("paymentId", number(work,"id"), "orderId", number(work,"order_id"), "status", "SUCCEEDED");
 		}
 
 		try {
@@ -484,12 +485,12 @@ public class CommerceService {
 		Map<String,Object> payment = one("SELECT id,order_id,status FROM payments WHERE id=? FOR UPDATE", paymentId);
 		if (payment == null) notFound("PAYMENT_NOT_FOUND");
 		if (!"PROCESSING".equals(payment.get("status"))) {
-			return Map.of("paymentId", paymentId, "status", payment.get("status"));
+			return Map.of("paymentId", paymentId, "orderId", payment.get("order_id"), "status", payment.get("status"));
 		}
 		long orderId = number(payment,"order_id");
 		if ("UNKNOWN".equals(result)) {
 			jdbc.update("UPDATE payments SET status='UNKNOWN',provider_status='UNKNOWN' WHERE id=?", paymentId);
-			return Map.of("paymentId", paymentId, "status", "UNKNOWN");
+			return Map.of("paymentId", paymentId, "orderId", orderId, "status", "UNKNOWN");
 		}
 		List<Map<String,Object>> items = jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId);
 		if ("SUCCEEDED".equals(result)) {
@@ -504,7 +505,7 @@ public class CommerceService {
 			notificationService.create(memberId,"ORDER_PAID","ORDER",orderId);
 			consumeCartForOrder(memberId, orderId);
 			membershipEvaluation.evaluate(memberId);
-			return Map.of("paymentId", paymentId, "status", "SUCCEEDED");
+			return Map.of("paymentId", paymentId, "orderId", orderId, "status", "SUCCEEDED");
 		}
 		for (Map<String,Object> item : items) {
 			inventoryService.release(number(item,"sku_id"), (int) number(item,"quantity"), paymentId);
@@ -512,16 +513,16 @@ public class CommerceService {
 		jdbc.update("UPDATE payments SET status='FAILED',provider_status='ABORTED',failure_code='TOSS_REJECTED',failed_at=? WHERE id=?", now(), paymentId);
 		jdbc.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);
 		jdbc.update("UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL WHERE reserved_order_id=? AND status='RESERVED'", orderId);
-		return Map.of("paymentId", paymentId, "status", "FAILED");
+		return Map.of("paymentId", paymentId, "orderId", orderId, "status", "FAILED");
 	}
 
 	private Map<String,Object> markProviderUnknown(long paymentId) {
-		Map<String,Object> payment = one("SELECT status FROM payments WHERE id=? FOR UPDATE", paymentId);
+		Map<String,Object> payment = one("SELECT order_id,status FROM payments WHERE id=? FOR UPDATE", paymentId);
 		if (payment == null) notFound("PAYMENT_NOT_FOUND");
 		if ("PROCESSING".equals(payment.get("status"))) {
 			jdbc.update("UPDATE payments SET status='UNKNOWN',provider_status='UNKNOWN',failure_code='PROVIDER_RESULT_UNKNOWN' WHERE id=?", paymentId);
 		}
-		return Map.of("paymentId", paymentId, "status", "UNKNOWN");
+		return Map.of("paymentId", paymentId, "orderId", payment.get("order_id"), "status", "UNKNOWN");
 	}
 
 	private void reserveInventory(long skuId,int quantity,long paymentId) {
@@ -611,7 +612,7 @@ public class CommerceService {
 	}
 
 	private void requirePurchasableSku(long skuId) {
-		if (jdbc.queryForObject("SELECT COUNT(*) FROM skus sku JOIN products product ON product.id=sku.product_id WHERE sku.id=? AND sku.status='ACTIVE' AND product.display_status='PUBLIC'", Integer.class, skuId) != 1) {
+		if (jdbc.queryForObject("SELECT COUNT(*) FROM skus sku JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id WHERE sku.id=? AND sku.status='ACTIVE' AND product.display_status='PUBLIC' AND category.active=true", Integer.class, skuId) != 1) {
 			throw new CommerceException(409,"SKU_NOT_PURCHASABLE","구매할 수 없는 SKU입니다.");
 		}
 	}

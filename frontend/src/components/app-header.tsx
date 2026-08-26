@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
+import { ApiError, Category, categoryApi } from "@/lib/api";
 import { buildLoginHref } from "@/lib/frontend-utils";
+
+type CategoryLoadState = { status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string };
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -13,8 +16,13 @@ export function AppHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const [categoryState, setCategoryState] = useState<CategoryLoadState>({ status: "loading" });
   const requestRef = useRef(0);
-  const closeMenu = () => setMenuOpen(false);
+  const categoryNavigationRef = useRef<HTMLDetailsElement>(null);
+  const closeNavigation = () => {
+    setMenuOpen(false);
+    categoryNavigationRef.current?.removeAttribute("open");
+  };
 
   useEffect(() => {
     requestRef.current += 1;
@@ -58,6 +66,16 @@ export function AppHeader() {
     };
   }, [memberId, status]);
 
+  useEffect(() => {
+    let active = true;
+    void categoryApi.list().then((response) => {
+      if (active) setCategoryState({ status: "success", categories: response.items });
+    }).catch((error: unknown) => {
+      if (active) setCategoryState({ status: "error", message: error instanceof ApiError ? error.message : "카테고리를 불러오지 못했습니다." });
+    });
+    return () => { active = false; };
+  }, []);
+
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -80,13 +98,21 @@ export function AppHeader() {
         </button>
         <nav id="main-navigation" className={`main-nav${menuOpen ? " is-open" : ""}`} aria-label="주요 메뉴">
           <div className="nav-primary">
-            <Link onClick={closeMenu} className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
-            <Link onClick={closeMenu} className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
-            <Link onClick={closeMenu} className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
+            <Link onClick={closeNavigation} className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
+            <details className="category-navigation" ref={categoryNavigationRef}>
+              <summary>카테고리</summary>
+              <div className="category-navigation-menu">
+                {categoryState.status === "loading" ? <span className="nav-status" role="status">카테고리를 불러오는 중</span> : null}
+                {categoryState.status === "success" ? categoryState.categories.map((category) => <Link key={category.categoryId} onClick={closeNavigation} href={`/products?category=${encodeURIComponent(category.slug)}`}>{category.name}</Link>) : null}
+                {categoryState.status === "error" ? <p role="alert">{categoryState.message} 상품 목록에서 검색할 수 있습니다.</p> : null}
+              </div>
+            </details>
+            <Link onClick={closeNavigation} className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>
+            <Link onClick={closeNavigation} className={pathname.startsWith("/orders") ? "nav-active" : undefined} href="/orders">주문</Link>
           </div>
           <div className="nav-utility-group">
-            {status === "authenticated" ? <><Link onClick={closeMenu} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜 <span className="nav-badge" aria-label={`찜 ${wishlistCount}개`}>{wishlistCount > 99 ? "99+" : wishlistCount}</span></Link><Link onClick={closeMenu} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니 <span className="nav-badge" aria-label={`장바구니 ${cartCount}개`}>{cartCount > 99 ? "99+" : cartCount}</span></Link><Link onClick={closeMenu} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeMenu} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
-            {status === "loading" ? <span className="nav-status" role="status">회원 정보 확인 중</span> : status === "anonymous" ? <Link onClick={closeMenu} href={buildLoginHref(pathname)}>로그인</Link> : null}
+            {status === "authenticated" ? <><Link onClick={closeNavigation} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜 <span className="nav-badge" aria-label={`찜 ${wishlistCount}개`}>{wishlistCount > 99 ? "99+" : wishlistCount}</span></Link><Link onClick={closeNavigation} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니 <span className="nav-badge" aria-label={`장바구니 ${cartCount}개`}>{cartCount > 99 ? "99+" : cartCount}</span></Link><Link onClick={closeNavigation} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeNavigation} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
+            {status === "loading" ? <span className="nav-status" role="status">회원 정보 확인 중</span> : status === "anonymous" || status === "error" ? <Link onClick={closeNavigation} href={buildLoginHref(pathname)}>로그인</Link> : null}
           </div>
         </nav>
       </div>
