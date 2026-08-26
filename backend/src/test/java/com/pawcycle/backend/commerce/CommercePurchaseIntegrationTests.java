@@ -282,7 +282,10 @@ class CommercePurchaseIntegrationTests {
 
 		Map<String, Object> replay = commerce.reorder(member.getId(), sourceOrderId, "reorder-replay");
 		Map<String, Object> replayAgain = commerce.reorder(member.getId(), sourceOrderId, "reorder-replay");
-		assertThat(replayAgain.get("addedItems")).isEqualTo(replay.get("addedItems"));
+		@SuppressWarnings("unchecked") Map<String, Object> replayItem = ((List<Map<String, Object>>) replayAgain.get("addedItems")).getFirst();
+		assertThat(((Number) replayItem.get("skuId")).longValue()).isEqualTo(sku.getId());
+		assertThat(((Number) replayItem.get("quantity")).intValue()).isEqualTo(2);
+		assertThat(replayAgain).containsKey("cartVersion").containsKey("skippedItems");
 		assertThat(jdbc.queryForObject("SELECT quantity FROM cart_items item JOIN carts cart ON cart.id=item.cart_id WHERE cart.member_id=? AND item.sku_id=?", Integer.class, member.getId(), sku.getId())).isEqualTo(4);
 	}
 
