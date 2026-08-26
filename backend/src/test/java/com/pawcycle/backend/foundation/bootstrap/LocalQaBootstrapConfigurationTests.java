@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -29,6 +30,8 @@ class LocalQaBootstrapConfigurationTests {
 				.withBean(LocalCommerceDemoFixtureService.class, () -> commerceDemoFixtureService);
 	private final ApplicationContextRunner demoFixtureContextRunner = new ApplicationContextRunner()
 			.withUserConfiguration(DemoFixtureConfiguration.class);
+	private final ApplicationContextRunner detailFixtureContextRunner = new ApplicationContextRunner()
+			.withUserConfiguration(DetailFixtureConfiguration.class);
 
 	@Test
 	void defaultAndNonLocalProfilesDoNotCreateBootstrapRunner() {
@@ -84,6 +87,17 @@ class LocalQaBootstrapConfigurationTests {
 		demoFixtureContextRunner
 				.withPropertyValues("spring.profiles.active=production")
 				.run(context -> assertThat(context).doesNotHaveBean(LocalCommerceDemoFixtureService.class));
+	}
+
+	@Test
+	void detailFixtureServiceIsNotCreatedInTestOrProductionProfile() {
+		detailFixtureContextRunner
+				.withPropertyValues("spring.profiles.active=test")
+				.run(context -> assertThat(context).doesNotHaveBean(DemoProductDetailSectionFixtureService.class));
+
+		detailFixtureContextRunner
+				.withPropertyValues("spring.profiles.active=production")
+				.run(context -> assertThat(context).doesNotHaveBean(DemoProductDetailSectionFixtureService.class));
 	}
 
 	@Test
@@ -193,4 +207,8 @@ class LocalQaBootstrapConfigurationTests {
 	@Configuration(proxyBeanMethods = false)
 	@Import(LocalCommerceDemoFixtureService.class)
 	static class DemoFixtureConfiguration {}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import(DemoProductDetailSectionFixtureService.class)
+	static class DetailFixtureConfiguration {}
 }
