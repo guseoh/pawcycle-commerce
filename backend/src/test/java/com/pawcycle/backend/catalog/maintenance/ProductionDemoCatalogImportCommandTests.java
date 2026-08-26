@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -57,6 +58,45 @@ class ProductionDemoCatalogImportCommandTests {
 		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.mode=validate");
 		assertThat(captured.get()).contains("--spring.flyway.enabled=false");
 		assertThat(captured.get()).contains("--spring.main.web-application-type=none");
+	}
+
+	@Test
+	void applyCommandFailsWithoutExplicitCommandLineConfirmation() {
+		AtomicBoolean called = new AtomicBoolean();
+		int result = ProductionDemoCatalogImportCommand.runIfRequested(
+				new String[] {
+						"--spring.main.web-application-type=none",
+						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.mode=apply"
+				},
+				Map.of("pawcycle.catalog.manifest-import.confirm-apply", "true"),
+				Map.of(), args -> {
+					called.set(true);
+					return 0;
+				}, errorStream());
+
+		assertThat(result).isEqualTo(ProductionDemoCatalogImportCommand.FAILURE);
+		assertThat(called).isFalse();
+	}
+
+	@Test
+	void applyCommandRunsOnlyWithExplicitCommandLineConfirmation() {
+		AtomicReference<String[]> captured = new AtomicReference<>();
+		int result = ProductionDemoCatalogImportCommand.runIfRequested(
+				new String[] {
+						"--spring.main.web-application-type=none",
+						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.mode=apply",
+						"--pawcycle.catalog.manifest-import.confirm-apply=true"
+				},
+				Map.of(), Map.of(), args -> {
+					captured.set(args);
+					return 0;
+				}, errorStream());
+
+		assertThat(result).isZero();
+		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.mode=apply");
+		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.confirm-apply=true");
 	}
 
 	private PrintStream errorStream() {
