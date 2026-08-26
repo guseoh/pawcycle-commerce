@@ -39,6 +39,7 @@ import java.time.LocalDateTime;
 @Entity @Table(name="carts") class CartEntity {
 	@Id @GeneratedValue(strategy=GenerationType.IDENTITY) Long id;
 	@Column(name="member_id", nullable=false) Long memberId;
+	@Column(nullable=false) long version;
 	@Column(name="created_at", nullable=false) LocalDateTime createdAt;
 	@Column(name="updated_at", nullable=false) LocalDateTime updatedAt;
 }
@@ -144,6 +145,7 @@ import java.time.LocalDateTime;
 	@EmbeddedId CheckoutIdempotencyId id;
 	@Column(name="order_id", nullable=false) Long orderId;
 	@Column(name="payment_id", nullable=false) Long paymentId;
+	@Column(name="request_fingerprint", length=64) String requestFingerprint;
 	@Column(name="created_at", nullable=false) LocalDateTime createdAt;
 }
 @Entity @Table(name="billing_payment_methods") class BillingPaymentMethodEntity {

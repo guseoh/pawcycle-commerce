@@ -2,9 +2,12 @@ package com.pawcycle.backend.commerce;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +15,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class CommerceService {
@@ -23,6 +27,7 @@ public class CommerceService {
 	private final NotificationService notificationService;
 	private final InventoryService inventoryService;
 	private final MembershipEvaluationService membershipEvaluation;
+	private final ObjectMapper objectMapper;
 	private final int returnRequestDays;
 
 	public CommerceService(
@@ -30,6 +35,7 @@ public class CommerceService {
 			org.springframework.transaction.PlatformTransactionManager transactionManager,
 			TossPaymentAdapter tossPaymentAdapter, TossBillingAdapter tossBillingAdapter, DeliveryService deliveryService, NotificationService notificationService,
 			InventoryService inventoryService, MembershipEvaluationService membershipEvaluation,
+			ObjectMapper objectMapper,
 			@org.springframework.beans.factory.annotation.Value("${pawcycle.commerce.return-request-days:7}") int returnRequestDays) {
 		this.jdbc = jdbc;
 		this.transaction = new TransactionTemplate(transactionManager);
@@ -39,6 +45,7 @@ public class CommerceService {
 		this.notificationService = notificationService;
 		this.inventoryService = inventoryService;
 		this.membershipEvaluation = membershipEvaluation;
+		this.objectMapper = objectMapper;
 		this.returnRequestDays = returnRequestDays;
 	}
 
@@ -56,7 +63,8 @@ public class CommerceService {
 		BigDecimal original = items.stream()
 				.map(item -> decimal(item, "lineAmount"))
 				.reduce(BigDecimal.ZERO, BigDecimal::add);
-		return Map.of("items", items, "pricing", pricing(original, BigDecimal.ZERO, BigDecimal.ZERO, original));
+		Long version = jdbc.query("SELECT version FROM carts WHERE member_id=?", rs -> rs.next() ? rs.getLong(1) : 0L, memberId);
+		return Map.of("items", items, "version", version, "pricing", pricing(original, BigDecimal.ZERO, BigDecimal.ZERO, original));
 	}
 
 	public void addCartItem(long memberId, long skuId, int quantity) {
@@ -77,7 +85,7 @@ public class CommerceService {
 			if (updated == 0) {
 				jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,?)", cartId, skuId, quantity);
 			}
-			jdbc.update("UPDATE carts SET updated_at=? WHERE id=?", now(), cartId);
+			incrementCartVersion(cartId);
 		});
 	}
 
@@ -87,17 +95,24 @@ public class CommerceService {
 					"SELECT id FROM carts WHERE member_id=? FOR UPDATE",
 					rs -> rs.next() ? rs.getLong(1) : null,
 					memberId);
-			if (cartId == null
-					|| jdbc.update("UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?", quantity, cartId, skuId) != 1) {
+			if (cartId == null) {
 				notFound("CART_ITEM_NOT_FOUND");
+			}
+			Integer current = jdbc.query("SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE", rs -> rs.next() ? rs.getInt(1) : null, cartId, skuId);
+			if (current == null) notFound("CART_ITEM_NOT_FOUND");
+			if (current != quantity) {
+				jdbc.update("UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?", quantity, cartId, skuId);
+				incrementCartVersion(cartId);
 			}
 		});
 	}
 
 	public void deleteCartItem(long memberId, long skuId) {
-		transaction.executeWithoutResult(status -> jdbc.update(
-				"DELETE item FROM cart_items item JOIN carts cart ON cart.id=item.cart_id WHERE cart.member_id=? AND item.sku_id=?",
-				memberId, skuId));
+		transaction.executeWithoutResult(status -> {
+			Long cartId = jdbc.query("SELECT id FROM carts WHERE member_id=? FOR UPDATE", rs -> rs.next() ? rs.getLong(1) : null, memberId);
+			if (cartId == null) return;
+			if (jdbc.update("DELETE FROM cart_items WHERE cart_id=? AND sku_id=?", cartId, skuId) == 1) incrementCartVersion(cartId);
+		});
 	}
 
 	public Map<String, Object> wishlist(long memberId) {
@@ -217,16 +232,30 @@ public class CommerceService {
 	}
 
 	public Map<String,Object> checkout(long memberId, String idempotencyKey, long addressId, Long memberCouponId) {
+		return checkout(memberId, idempotencyKey, addressId, memberCouponId, null);
+	}
+
+	public Map<String,Object> checkout(long memberId, String idempotencyKey, long addressId, Long memberCouponId, Long requestedCartVersion) {
 		if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 128) {
 			throw new CommerceException(400,"IDEMPOTENCY_KEY_REQUIRED","Idempotency-Key가 필요합니다.");
 		}
 		return transaction.execute(status -> {
 			lockMember(memberId);
+			CartLock cart = lockCart(memberId);
+			if (requestedCartVersion != null && requestedCartVersion.longValue() != cart.version()) {
+				throw new CommerceException(409,"CART_CHANGED","장바구니가 변경되었습니다.");
+			}
+			String fingerprint = checkoutFingerprint(addressId, memberCouponId, cart.version());
 			Map<String,Object> replay = one("""
-				SELECT orders.id AS orderId,orders.order_number AS orderNumber,payment.id AS paymentId,payment.provider_order_id AS providerOrderId,orders.payment_amount AS amount
+				SELECT result.request_fingerprint AS requestFingerprint,orders.id AS orderId,orders.order_number AS orderNumber,payment.id AS paymentId,payment.provider_order_id AS providerOrderId,orders.payment_amount AS amount
 				FROM checkout_idempotency_results result JOIN orders ON orders.id=result.order_id JOIN payments payment ON payment.id=result.payment_id
-				WHERE result.member_id=? AND result.idempotency_key=?""", memberId, idempotencyKey);
-			if (replay != null) return checkoutResponse(replay);
+				WHERE result.member_id=? AND result.idempotency_key=? FOR UPDATE""", memberId, idempotencyKey);
+			if (replay != null) {
+				if (replay.get("requestFingerprint") == null || !fingerprint.equals(replay.get("requestFingerprint"))) {
+					throw new CommerceException(409,"IDEMPOTENCY_KEY_CONFLICT","Idempotency-Key가 다른 요청에 사용되었습니다.");
+				}
+				return checkoutResponse(replay);
+			}
 
 			Map<String,Object> address = one(
 					"SELECT id,recipient_name,recipient_phone,postal_code,address_line1,address_line2 FROM member_addresses WHERE id=? AND member_id=?",
@@ -236,7 +265,7 @@ public class CommerceService {
 			List<Map<String,Object>> items = jdbc.queryForList("""
 				SELECT item.sku_id,item.quantity,sku.sku_code,sku.name AS sku_name,sku.price,product.name AS product_name
 				FROM carts cart JOIN cart_items item ON item.cart_id=cart.id JOIN skus sku ON sku.id=item.sku_id
-				JOIN products product ON product.id=sku.product_id WHERE cart.member_id=? FOR UPDATE""", memberId);
+				JOIN products product ON product.id=sku.product_id WHERE cart.id=? FOR UPDATE""", cart.id());
 			if (items.isEmpty()) throw new CommerceException(409,"CART_EMPTY","장바구니가 비어 있습니다.");
 
 			BigDecimal original = BigDecimal.ZERO;
@@ -277,8 +306,8 @@ public class CommerceService {
 				jdbc.update("UPDATE member_coupons SET status='RESERVED',reserved_order_id=? WHERE id=? AND member_id=? AND status='AVAILABLE'",
 						orderId, memberCouponId, memberId);
 			}
-			jdbc.update("INSERT INTO checkout_idempotency_results(member_id,idempotency_key,order_id,payment_id,created_at) VALUES (?,?,?,?,?)",
-					memberId, idempotencyKey, orderId, paymentId, now());
+			jdbc.update("INSERT INTO checkout_idempotency_results(member_id,idempotency_key,order_id,payment_id,request_fingerprint,created_at) VALUES (?,?,?,?,?,?)",
+					memberId, idempotencyKey, orderId, paymentId, fingerprint, now());
 			Map<String, Object> result = new LinkedHashMap<>(Map.of(
 					"orderId", orderId,
 					"orderNumber", orderNumber,
@@ -360,6 +389,54 @@ public class CommerceService {
 		if (delivery != null && "DELIVERED".equals(delivery.get("status")) && returnWindowOpen && order.get("return")==null) actions.add("REQUEST_RETURN");
 		order.put("availableActions",actions);
 		return order;
+	}
+
+	public Map<String,Object> reorder(long memberId, long sourceOrderId, String idempotencyKey) {
+		if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 128) {
+			throw new CommerceException(400,"IDEMPOTENCY_KEY_REQUIRED","Idempotency-Key가 필요합니다.");
+		}
+		return transaction.execute(status -> {
+			lockMember(memberId);
+			Map<String,Object> existing = one("SELECT source_order_id AS sourceOrderId,response_json AS responseJson FROM quick_reorder_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE", memberId, idempotencyKey);
+			if (existing != null) {
+				if (number(existing,"sourceOrderId") != sourceOrderId) {
+					throw new CommerceException(409,"IDEMPOTENCY_KEY_CONFLICT","Idempotency-Key가 다른 주문에 사용되었습니다.");
+				}
+				return storedResponse((String) existing.get("responseJson"));
+			}
+
+			if (jdbc.queryForObject("SELECT COUNT(*) FROM orders WHERE id=? AND member_id=?", Integer.class, sourceOrderId, memberId) != 1) {
+				notFound("ORDER_NOT_FOUND");
+			}
+			CartLock cart = lockCart(memberId);
+			List<Map<String,Object>> sourceItems = jdbc.queryForList("SELECT item.sku_id AS skuId,item.quantity,sku.status AS skuStatus,product.display_status AS productStatus,category.active AS categoryActive,inventory.available_quantity AS availableQuantity FROM order_items item JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id LEFT JOIN inventories inventory ON inventory.sku_id=sku.id WHERE item.order_id=? ORDER BY item.id FOR UPDATE", sourceOrderId);
+			List<Map<String,Object>> addedItems = new ArrayList<>();
+			List<Map<String,Object>> skippedItems = new ArrayList<>();
+			for (Map<String,Object> sourceItem : sourceItems) {
+				long skuId = number(sourceItem,"skuId");
+				int quantity = (int) number(sourceItem,"quantity");
+				String reason = reorderSkipReason(sourceItem, quantity);
+				if (reason != null) {
+					skippedItems.add(Map.of("skuId", skuId, "quantity", quantity, "reason", reason));
+					continue;
+				}
+				int changed = jdbc.update("UPDATE cart_items SET quantity=quantity+? WHERE cart_id=? AND sku_id=?", quantity, cart.id(), skuId);
+				if (changed == 0) jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,?)", cart.id(), skuId, quantity);
+				addedItems.add(Map.of("skuId", skuId, "quantity", quantity));
+			}
+			long resultCartVersion = cart.version();
+			if (!addedItems.isEmpty()) resultCartVersion = incrementCartVersion(cart.id());
+			Map<String,Object> result = new LinkedHashMap<>();
+			result.put("addedItems", addedItems);
+			result.put("skippedItems", skippedItems);
+			result.put("cartVersion", resultCartVersion);
+			try {
+				jdbc.update("INSERT INTO quick_reorder_idempotency_results(member_id,idempotency_key,source_order_id,response_json,cart_version,created_at) VALUES (?,?,?,?,?,?)", memberId, idempotencyKey, sourceOrderId, objectMapper.writeValueAsString(result), resultCartVersion, now());
+			} catch (Exception exception) {
+				throw new IllegalStateException("Quick Reorder 결과를 저장할 수 없습니다.", exception);
+			}
+			return result;
+		});
 	}
 
 	public Map<String,Object> prepareBilling(long memberId) {
@@ -573,26 +650,69 @@ public class CommerceService {
 	}
 
 	private void consumeCartForOrder(long memberId, long orderId) {
-		Long cartId = jdbc.query(
-				"SELECT id FROM carts WHERE member_id=? FOR UPDATE",
-				rs -> rs.next() ? rs.getLong(1) : null,
-				memberId);
-		if (cartId == null) return;
+		CartLock cart = lockCart(memberId);
+		boolean changed = false;
 		for (Map<String,Object> item : jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
 			long skuId = number(item,"sku_id");
 			int purchased = (int) number(item,"quantity");
 			Integer current = jdbc.query(
 					"SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
 					rs -> rs.next() ? rs.getInt(1) : null,
-					cartId, skuId);
+					cart.id(), skuId);
 			if (current == null) continue;
 			if (current <= purchased) {
-				jdbc.update("DELETE FROM cart_items WHERE cart_id=? AND sku_id=?", cartId, skuId);
+				jdbc.update("DELETE FROM cart_items WHERE cart_id=? AND sku_id=?", cart.id(), skuId);
 			} else {
-				jdbc.update("UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?", current - purchased, cartId, skuId);
+				jdbc.update("UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?", current - purchased, cart.id(), skuId);
 			}
+			changed = true;
 		}
-		jdbc.update("UPDATE carts SET updated_at=? WHERE id=?", now(), cartId);
+		if (changed) incrementCartVersion(cart.id());
+	}
+
+	private CartLock lockCart(long memberId) {
+		Long cartId = jdbc.query("SELECT id FROM carts WHERE member_id=? FOR UPDATE", rs -> rs.next() ? rs.getLong(1) : null, memberId);
+		if (cartId == null) {
+			jdbc.update("INSERT INTO carts(member_id,created_at,updated_at) VALUES (?,?,?)", memberId, now(), now());
+			cartId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		}
+		Map<String,Object> row = one("SELECT id,version FROM carts WHERE id=? FOR UPDATE", cartId);
+		return new CartLock(cartId, number(row,"version"));
+	}
+
+	private long incrementCartVersion(long cartId) {
+		jdbc.update("UPDATE carts SET version=version+1,updated_at=? WHERE id=?", now(), cartId);
+		return jdbc.queryForObject("SELECT version FROM carts WHERE id=?", Long.class, cartId);
+	}
+
+	private static String checkoutFingerprint(long addressId, Long memberCouponId, long cartVersion) {
+		String payload = addressId + "|" + (memberCouponId == null ? "none" : memberCouponId) + "|" + cartVersion;
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8));
+			StringBuilder result = new StringBuilder(64);
+			for (byte value : digest) result.append(String.format("%02x", value));
+			return result.toString();
+		} catch (java.security.NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
+		}
+	}
+
+	private String reorderSkipReason(Map<String,Object> sourceItem, int quantity) {
+		if (!"ACTIVE".equals(sourceItem.get("skuStatus"))
+				|| !"PUBLIC".equals(sourceItem.get("productStatus"))
+				|| !Boolean.TRUE.equals(sourceItem.get("categoryActive"))) return "SKU_NOT_PURCHASABLE";
+		Object available = sourceItem.get("availableQuantity");
+		if (!(available instanceof Number number) || number.intValue() < quantity) return "OUT_OF_STOCK";
+		return null;
+	}
+
+	private Map<String,Object> storedResponse(String responseJson) {
+		try {
+			@SuppressWarnings("unchecked") Map<String,Object> response = objectMapper.readValue(responseJson, Map.class);
+			return response;
+		} catch (Exception exception) {
+			throw new CommerceException(409,"IDEMPOTENCY_KEY_CONFLICT","저장된 Quick Reorder 결과를 읽을 수 없습니다.");
+		}
 	}
 
 	private void releaseAddressHolds(long memberId) {
@@ -701,4 +821,6 @@ public class CommerceService {
 				"finalAmount", payment,
 				"paymentAmount", payment);
 	}
+
+	private record CartLock(long id, long version) { }
 }

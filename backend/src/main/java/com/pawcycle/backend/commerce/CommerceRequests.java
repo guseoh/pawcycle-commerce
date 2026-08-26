@@ -2,6 +2,7 @@ package com.pawcycle.backend.commerce;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -19,7 +20,7 @@ public final class CommerceRequests {
 	private CommerceRequests() { }
 	public record CartItem(@NotNull @Positive Long skuId, @NotNull @Positive Integer quantity) { }
 	public record Quantity(@NotNull @Positive Integer quantity) { }
-	public record Checkout(@NotNull @Positive Long addressId, @Positive Long memberCouponId) { }
+	public record Checkout(@NotNull @Positive Long addressId, @Positive Long memberCouponId, @Min(0) Long cartVersion) { }
 	public record Confirm(@NotBlank String paymentKey, @NotBlank String providerOrderId, @NotNull @DecimalMin("0.00") BigDecimal amount) { }
 	public record BillingComplete(@NotBlank String prepareToken, @NotBlank String authKey) { }
 	public record Adjustment(@NotNull Integer delta) { }
