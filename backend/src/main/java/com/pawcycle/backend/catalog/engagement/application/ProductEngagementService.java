@@ -88,7 +88,7 @@ public class ProductEngagementService {
 
     @Transactional
     public void deleteReview(long reviewId, long memberId) {
-        Map<String, Object> current = jdbc.queryForList("SELECT member_id FROM reviews WHERE id=?", reviewId)
+        Map<String, Object> current = jdbc.queryForList("SELECT member_id FROM reviews WHERE id=? FOR UPDATE", reviewId)
                 .stream().findFirst().orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
         if (((Number) current.get("member_id")).longValue() != memberId) throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 삭제할 수 있습니다.");
         jdbc.update("DELETE FROM reviews WHERE id=?", reviewId);
@@ -147,7 +147,7 @@ public class ProductEngagementService {
 
     @Transactional
     public void deleteQuestion(long questionId, long memberId) {
-        Map<String, Object> current = jdbc.queryForList("SELECT * FROM product_questions WHERE id=?", questionId)
+        Map<String, Object> current = jdbc.queryForList("SELECT * FROM product_questions WHERE id=? FOR UPDATE", questionId)
                 .stream().findFirst().orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
         if (((Number) current.get("member_id")).longValue() != memberId) throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 삭제할 수 있습니다.");
         if (current.get("answered_at") != null) throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 삭제할 수 없습니다.");
@@ -220,7 +220,11 @@ public class ProductEngagementService {
 
     private PageInput page(int page, int size) {
         if (page < 0 || size < 1 || size > 100) throw error(400, "VALIDATION_FAILED", "page는 0 이상, size는 1~100이어야 합니다.");
-        return new PageInput(page, size, Math.multiplyExact(page, size));
+        try {
+            return new PageInput(page, size, Math.multiplyExact(page, size));
+        } catch (ArithmeticException exception) {
+            throw error(400, "VALIDATION_FAILED", "page가 너무 큽니다.");
+        }
     }
 
     private int totalPages(long total, int size) { return (int) Math.ceil((double) total / size); }

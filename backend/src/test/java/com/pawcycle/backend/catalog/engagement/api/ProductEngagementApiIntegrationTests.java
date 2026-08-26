@@ -65,8 +65,10 @@ class ProductEngagementApiIntegrationTests {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
-        jdbc.update("INSERT IGNORE INTO members(id,email,password_hash,role) VALUES (1,?,?, 'ADMIN'),(2,?,?, 'USER')",
-                "mvp4-admin-" + UUID.randomUUID() + "@example.test", "fixture", "mvp4-user-" + UUID.randomUUID() + "@example.test", "fixture");
+        jdbc.update("INSERT IGNORE INTO members(id,email,password_hash,role) VALUES (1,?,?, 'ADMIN'),(2,?,?, 'USER'),(3,?,?, 'USER')",
+                "mvp4-admin-" + UUID.randomUUID() + "@example.test", "fixture",
+                "mvp4-user-" + UUID.randomUUID() + "@example.test", "fixture",
+                "mvp4-other-" + UUID.randomUUID() + "@example.test", "fixture");
         Category category = categories.saveAndFlush(new Category("MVP4 " + UUID.randomUUID(), "mvp4-" + UUID.randomUUID(), 0, true));
         Product product = products.saveAndFlush(new Product(category, "MVP4 product", "short", "description", "DOG", null, "PUBLIC"));
         Sku sku = skus.saveAndFlush(new Sku(product, "MVP4-" + UUID.randomUUID(), "2kg", new BigDecimal("1000.00"), true, 1,
@@ -87,7 +89,7 @@ class ProductEngagementApiIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":5,\"content\":\"좋아요\"}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REVIEW_PURCHASE_REQUIRED"));
 
-        jdbc.update("UPDATE deliveries SET status='DELIVERED',delivered_at=? WHERE order_id=(SELECT order_id FROM order_items WHERE sku_id=? LIMIT 1)", Timestamp.from(Instant.now()), skuId);
+        deliverOrder();
         mockMvc.perform(post("/api/products/{productId}/reviews", productId).with(user()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":5,\"content\":\"좋아요\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.memberId").doesNotExist());
@@ -107,6 +109,44 @@ class ProductEngagementApiIntegrationTests {
     }
 
     @Test
+    void reviewAndQuestionMutationsEnforceOwnershipAndPreserveModeration() throws Exception {
+        deliverOrder();
+        mockMvc.perform(post("/api/products/{productId}/reviews", productId).with(user()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":5,\"content\":\"owner review\"}"))
+                .andExpect(status().isOk());
+        long reviewId = jdbc.queryForObject("SELECT id FROM reviews WHERE product_id=? AND member_id=2", Long.class, productId);
+
+        mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId).with(otherUser()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":4}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REVIEW_OWNER_REQUIRED"));
+        mockMvc.perform(delete("/api/reviews/{reviewId}", reviewId).with(otherUser()).with(csrf()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REVIEW_OWNER_REQUIRED"));
+        mockMvc.perform(patch("/api/admin/product-reviews/{reviewId}/visibility", reviewId).with(admin()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"visible\":false}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId).with(user()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":4,\"content\":\"owner update\"}"))
+                .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT visible FROM reviews WHERE id=?", Boolean.class, reviewId)).isFalse();
+
+        mockMvc.perform(post("/api/products/{productId}/questions", productId).with(user()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"owner question\"}"))
+                .andExpect(status().isOk());
+        long questionId = jdbc.queryForObject("SELECT id FROM product_questions WHERE product_id=? AND member_id=2", Long.class, productId);
+        mockMvc.perform(patch("/api/product-questions/{questionId}", questionId).with(otherUser()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"other edit\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_OWNER_REQUIRED"));
+        mockMvc.perform(delete("/api/product-questions/{questionId}", questionId).with(otherUser()).with(csrf()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_OWNER_REQUIRED"));
+        mockMvc.perform(patch("/api/product-questions/{questionId}", questionId).with(user()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"owner edit\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/products/{productId}/questions", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].memberId").doesNotExist());
+    }
+
+    @Test
     void answeredQuestionCannotBeChangedAndAnswerNotificationIsNotDuplicated() throws Exception {
         mockMvc.perform(post("/api/products/{productId}/questions", productId).with(user()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"문의합니다\"}"))
@@ -118,6 +158,8 @@ class ProductEngagementApiIntegrationTests {
         mockMvc.perform(patch("/api/product-questions/{questionId}", questionId).with(user()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"수정\"}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_LOCKED"));
+        mockMvc.perform(delete("/api/product-questions/{questionId}", questionId).with(user()).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_LOCKED"));
         mockMvc.perform(put("/api/admin/product-questions/{questionId}/answer", questionId).with(admin()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"answer\":\"수정 답변\"}"))
                 .andExpect(status().isOk());
@@ -125,11 +167,13 @@ class ProductEngagementApiIntegrationTests {
     }
 
     @Test
-    void adminEndpointsKeepExistingUserBoundary() throws Exception {
+    void adminEndpointsKeepExistingUserBoundaryAndRejectOverflowPagination() throws Exception {
         mockMvc.perform(get("/api/products/{productId}/reviews/me", productId)).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/admin/product-reviews")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/admin/product-reviews").with(user())).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/product-reviews").with(admin())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/product-reviews").with(admin()).param("page", String.valueOf(Integer.MAX_VALUE)).param("size", "100"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -146,7 +190,12 @@ class ProductEngagementApiIntegrationTests {
                 .andExpect(jsonPath("$.detailSections[0].body").value("plain"));
     }
 
+    private void deliverOrder() {
+        jdbc.update("UPDATE deliveries SET status='DELIVERED',delivered_at=? WHERE order_id=(SELECT order_id FROM order_items WHERE sku_id=? LIMIT 1)", Timestamp.from(Instant.now()), skuId);
+    }
+
     private RequestPostProcessor user() { return role(MemberRole.USER, 2L); }
+    private RequestPostProcessor otherUser() { return role(MemberRole.USER, 3L); }
     private RequestPostProcessor admin() { return role(MemberRole.ADMIN, 1L); }
     private RequestPostProcessor role(MemberRole role, long id) {
         return authentication(new UsernamePasswordAuthenticationToken(new AuthenticatedMemberPrincipal(id, role), null,
