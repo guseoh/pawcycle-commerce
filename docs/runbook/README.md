@@ -15,6 +15,7 @@
 - `OPS-011-production-https.md`: DuckDNS·Let's Encrypt HTTP-01 기반 HTTPS bootstrap, 갱신과 복구
 - `SUB-AUTO-001-subscription-automation.md`: local 정기배송 주문 자동화 failure 식별, 자동 retry 관찰과 조사 경계
 - `SUB-AUTO-002-production-subscription-automation.md`: Production Scheduler OFF 배포, read-only preflight, 별도 activation·중단과 schema-boundary 복구 경계
+- `MVP4-DATA-002-demo-catalog-import.md`: Demo Catalog manifest의 Production one-shot validation/apply 경계
 
 ## 최소 런북 구조
 

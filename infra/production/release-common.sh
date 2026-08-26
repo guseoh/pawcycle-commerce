@@ -24,6 +24,7 @@ RELEASE_CONTRACT_PATHS=(
   ':(top)infra/production/compose.yaml'
   ':(top)infra/production/nginx.conf'
   ':(top)infra/production/nginx.https.conf'
+  ':(top)infra/production/import-demo-catalog.sh'
 )
 CONTROL_WORKTREE_PATHS=(
   "${RELEASE_CONTRACT_PATHS[@]}"

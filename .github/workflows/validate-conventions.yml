@@ -279,6 +279,8 @@ jobs:
             infra/production/test-production-auth-session-smoke.sh \
             infra/production/create-production-auth-smoke-member.sh \
             infra/production/test-create-production-auth-smoke-member-lifecycle.sh \
+            infra/production/import-demo-catalog.sh \
+            infra/production/test-demo-catalog-import.sh \
             infra/production/test-production-scripts.sh \
             infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
@@ -293,6 +295,7 @@ jobs:
           python infra/production/validate-production-contracts.py
           python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
+          bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-rds-readiness.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
