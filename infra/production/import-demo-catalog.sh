@@ -108,7 +108,7 @@ done
 [[ "$OPERATION" != "apply" || "$CONFIRM_APPLY" == "1" ]] || die "apply requires --confirm-apply"
 [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || die "approved release SHA is invalid"
 [[ "$BACKEND_IMAGE" =~ ^ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$ ]] || die "Backend image repository is invalid"
-for command in docker flock grep readlink stat timeout; do require_command "$command"; done
+for command in docker flock grep readlink stat; do require_command "$command"; done
 
 validate_root_directory "$RUNTIME_DIR" "runtime directory"
 validate_root_directory "$STATE_DIR" "state directory"
@@ -153,8 +153,18 @@ docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1 && die "one-shot Cont
 APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIGEST")"
 [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] || die "production Backend image identity is invalid"
 
+IMPORT_ARGUMENTS=(
+  --spring.main.web-application-type=none
+  --pawcycle.catalog.manifest-import.enabled=true
+  --pawcycle.catalog.manifest-import.mode="$OPERATION"
+  --pawcycle.catalog.manifest-import.manifest=classpath:catalog/demo-catalog.json
+)
+if [[ "$OPERATION" == "apply" ]]; then
+  IMPORT_ARGUMENTS+=(--pawcycle.catalog.manifest-import.confirm-apply=true)
+fi
+
 set +e
-COMMAND_OUTPUT="$(timeout --signal=TERM --kill-after=10s 180s docker run --rm --name "$CONTAINER_NAME" --network "$DATA_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" --spring.main.web-application-type=none --pawcycle.catalog.manifest-import.enabled=true --pawcycle.catalog.manifest-import.mode="$OPERATION" --pawcycle.catalog.manifest-import.manifest=classpath:catalog/demo-catalog.json 2>/dev/null)"
+COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATA_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
 COMMAND_STATUS=$?
 set -e
 [[ "$COMMAND_STATUS" == "0" && "$COMMAND_OUTPUT" == CATALOG_IMPORT_RESULT\ operation=* ]] || die "catalog import command failed"
