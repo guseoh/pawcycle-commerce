@@ -5,9 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
-import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
@@ -42,13 +42,13 @@ class ProductDiscoveryApiIntegrationTests {
 			CategoryRepository categoryRepository,
 			ProductRepository productRepository,
 			EntityManager entityManager,
-			ProductListCacheInvalidator productListCacheInvalidator,
+			DemoCatalogManifestImportService importService,
 			JdbcTemplate jdbcTemplate) {
 		this.applicationContext = applicationContext;
 		this.categoryRepository = categoryRepository;
 		this.productRepository = productRepository;
 		this.entityManager = entityManager;
-		this.fixtureService = new LocalCommerceDemoFixtureService(jdbcTemplate, productListCacheInvalidator);
+		this.fixtureService = new LocalCommerceDemoFixtureService(importService);
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
@@ -72,6 +72,7 @@ class ProductDiscoveryApiIntegrationTests {
 					.param("category", category.getSlug().toUpperCase(java.util.Locale.ROOT)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.page").exists())
 				.andExpect(jsonPath("$.items[0].productId").value(product.getId()))
 				.andExpect(jsonPath("$.items[0].category.categoryId").value(category.getId()))
 				.andExpect(jsonPath("$.items[0].category.name").value(category.getName()))
