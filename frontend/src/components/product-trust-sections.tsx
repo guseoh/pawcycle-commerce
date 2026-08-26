@@ -173,7 +173,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       setReviewMutationError(engagementError(error, "내 리뷰를 불러오지 못했습니다."));
       return false;
     }
-  }, [auth.status, auth.markAnonymous, productId]);
+  }, [auth, productId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadReviews(reviewPage); }, 0);
