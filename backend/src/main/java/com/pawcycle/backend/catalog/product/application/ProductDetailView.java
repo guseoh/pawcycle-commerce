@@ -6,25 +6,41 @@ import java.util.List;
 public record ProductDetailView(
 		Long productId,
 		String name,
+		String shortDescription,
 		String petType,
 		String description,
 		String thumbnailUrl,
 		CategorySummary category,
+		List<ProductDetailSectionView> detailSections,
+		Trust trust,
 		List<SkuDetail> skus,
 		boolean purchasable) {
 
 	public ProductDetailView(
 			Long productId, String name, String petType, String description, String thumbnailUrl,
 			CategorySummary category, List<SkuDetail> skus) {
-		this(productId, name, petType, description, thumbnailUrl, category, skus,
+		this(productId, name, null, petType, description, thumbnailUrl, category, List.of(), Trust.empty(), skus,
+				skus.stream().anyMatch(SkuDetail::purchasable));
+	}
+
+	public ProductDetailView(
+			Long productId, String name, String shortDescription, String petType, String description, String thumbnailUrl,
+			CategorySummary category, List<ProductDetailSectionView> detailSections, Trust trust, List<SkuDetail> skus) {
+		this(productId, name, shortDescription, petType, description, thumbnailUrl, category, detailSections, trust, skus,
 				skus.stream().anyMatch(SkuDetail::purchasable));
 	}
 
 	public ProductDetailView {
+		detailSections = List.copyOf(detailSections);
 		skus = List.copyOf(skus);
+		trust = trust == null ? Trust.empty() : trust;
 	}
 
 	public record CategorySummary(Long categoryId, String name, String slug) {}
+
+	public record Trust(java.math.BigDecimal averageRating, long reviewCount, long questionCount) {
+		public static Trust empty() { return new Trust(java.math.BigDecimal.ZERO, 0, 0); }
+	}
 
 	public record SkuDetail(
 			Long skuId,

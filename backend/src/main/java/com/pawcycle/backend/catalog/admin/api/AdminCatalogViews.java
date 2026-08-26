@@ -42,4 +42,18 @@ public final class AdminCatalogViews {
 			int displayOrder,
 			SkuStatus status) {
 	}
+
+	public record DetailSectionList(List<DetailSection> detailSections) {
+	}
+
+	public record DetailSection(
+			Long sectionId,
+			Long productId,
+			String title,
+			String body,
+			int displayOrder,
+			boolean visible,
+			java.time.Instant createdAt,
+			java.time.Instant updatedAt) {
+	}
 }
