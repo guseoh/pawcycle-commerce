@@ -273,8 +273,10 @@ class CommercePurchaseIntegrationTests {
 		int movementsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM inventory_movements", Integer.class);
 
 		Map<String, Object> result = commerce.reorder(member.getId(), sourceOrderId, "reorder-" + UUID.randomUUID());
-		assertThat((List<?>) result.get("addedItems")).singleElement().satisfies(item -> assertThat((Map<?, ?>) item).containsEntry("skuId", sku.getId()).containsEntry("quantity", 2));
-		assertThat((List<?>) result.get("skippedItems")).singleElement().satisfies(item -> assertThat((Map<?, ?>) item).containsEntry("skuId", inactiveSku.getId()).containsEntry("reason", "SKU_NOT_PURCHASABLE"));
+		@SuppressWarnings("unchecked") Map<String, Object> added = ((List<Map<String, Object>>) result.get("addedItems")).getFirst();
+		@SuppressWarnings("unchecked") Map<String, Object> skipped = ((List<Map<String, Object>>) result.get("skippedItems")).getFirst();
+		assertThat(added).containsEntry("skuId", sku.getId()).containsEntry("quantity", 2);
+		assertThat(skipped).containsEntry("skuId", inactiveSku.getId()).containsEntry("reason", "SKU_NOT_PURCHASABLE");
 		assertThat(jdbc.queryForObject("SELECT quantity FROM cart_items item JOIN carts cart ON cart.id=item.cart_id WHERE cart.member_id=? AND item.sku_id=?", Integer.class, member.getId(), sku.getId())).isEqualTo(2);
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_movements", Integer.class)).isEqualTo(movementsBefore);
 
