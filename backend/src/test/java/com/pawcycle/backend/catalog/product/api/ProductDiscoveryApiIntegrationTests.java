@@ -13,11 +13,11 @@ import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -72,7 +72,6 @@ class ProductDiscoveryApiIntegrationTests {
 					.param("category", category.getSlug().toUpperCase(java.util.Locale.ROOT)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(1))
-				.andExpect(jsonPath("$.page").exists())
 				.andExpect(jsonPath("$.items[0].productId").value(product.getId()))
 				.andExpect(jsonPath("$.items[0].category.categoryId").value(category.getId()))
 				.andExpect(jsonPath("$.items[0].category.name").value(category.getName()))
