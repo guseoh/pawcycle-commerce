@@ -35,6 +35,15 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 
 	@Test
 	void dryRunValidatesFreshDatabaseWithoutMutation() {
+		int categoriesBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories", Integer.class);
+		int productsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class);
+		int skusBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM skus", Integer.class);
+		int inventoriesBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM inventories", Integer.class);
+		int plansBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_plans", Integer.class);
+		int versionsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_versions", Integer.class);
+		int itemsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_items", Integer.class);
+		int cyclesBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_version_delivery_cycles", Integer.class);
+
 		DemoCatalogManifestImportService.ImportResult result = importService.validate();
 
 		assertThat(result.operation()).isEqualTo(DemoCatalogManifestImportService.Operation.VALIDATE);
@@ -43,9 +52,14 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 		assertThat(result.skusCreated()).isEqualTo(42);
 		assertThat(result.inventoriesCreated()).isEqualTo(42);
 		assertThat(result.plansCreated()).isEqualTo(6);
-		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories", Integer.class)).isZero();
-		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class)).isZero();
-		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM skus", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories", Integer.class)).isEqualTo(categoriesBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class)).isEqualTo(productsBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM skus", Integer.class)).isEqualTo(skusBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM inventories", Integer.class)).isEqualTo(inventoriesBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM subscription_plans", Integer.class)).isEqualTo(plansBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_versions", Integer.class)).isEqualTo(versionsBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_items", Integer.class)).isEqualTo(itemsBefore);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM plan_version_delivery_cycles", Integer.class)).isEqualTo(cyclesBefore);
 	}
 
 	@Test
