@@ -209,9 +209,13 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !reviewContent.trim()) {
         throw new ApiError(400, { code: "VALIDATION_FAILED", message: "평점과 리뷰 내용을 확인해 주세요.", fieldErrors: [] });
       }
-      await auth.executeWithCsrf((csrf) => myReview
+      const saved = await auth.executeWithCsrf((csrf) => myReview
         ? productApi.updateReview(myReview.reviewId, rating, reviewContent, csrf)
         : productApi.createReview(productId, rating, reviewContent, csrf));
+      setMyReview(saved);
+      setReviewRating(String(saved.rating));
+      setReviewContent(saved.content);
+      setMyReviewStatus("ready");
       setReviewMessage(updating ? "리뷰를 수정했습니다." : "리뷰를 작성했습니다.");
       if (!(await refreshReviewData())) {
         setReviewMutationError("리뷰 저장은 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
@@ -231,6 +235,10 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     setReviewMessage(null);
     try {
       await auth.executeWithCsrf((csrf) => productApi.deleteReview(myReview.reviewId, csrf));
+      setMyReview(null);
+      setReviewRating("5");
+      setReviewContent("");
+      setMyReviewStatus("empty");
       setReviewMessage("리뷰를 삭제했습니다.");
       if (!(await refreshReviewData())) {
         setReviewMutationError("리뷰 삭제는 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
