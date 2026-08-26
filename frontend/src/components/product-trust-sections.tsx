@@ -149,9 +149,18 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     }
   }, [auth.status, productId]);
 
-  useEffect(() => { void loadReviews(reviewPage); }, [loadReviews, reviewPage]);
-  useEffect(() => { void loadQuestions(questionPage); }, [loadQuestions, questionPage]);
-  useEffect(() => { void loadMyReview(); }, [loadMyReview]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadReviews(reviewPage); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadReviews, reviewPage]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadQuestions(questionPage); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadQuestions, questionPage]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadMyReview(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadMyReview]);
 
   async function refreshReviewData() {
     await Promise.all([loadReviews(reviewPage), loadMyReview(), onTrustRefresh()]);
