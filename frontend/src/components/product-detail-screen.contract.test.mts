@@ -29,8 +29,19 @@ test("Product Detail consumes additive trust content without HTML interpretation
   assert.match(trustSource, /productApi\.deleteReview/);
   assert.match(trustSource, /productApi\.questions/);
   assert.match(trustSource, /productApi\.createQuestion/);
-  assert.match(trustSource, /Promise\.all\(\[loadReviews\(reviewPage\), loadMyReview\(\), onTrustRefresh\(\)\]\)/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(trustSource, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(trustSource, /memberId|email/);
+});
+
+test("Product Trust ignores stale requests and separates mutation success from refresh failure", () => {
+  assert.match(trustSource, /reviewRequestGeneration/);
+  assert.match(trustSource, /questionRequestGeneration/);
+  assert.match(trustSource, /myReviewRequestGeneration/);
+  assert.match(trustSource, /generation !== reviewRequestGeneration\.current/);
+  assert.match(trustSource, /generation !== questionRequestGeneration\.current/);
+  assert.match(trustSource, /generation !== myReviewRequestGeneration\.current/);
+  assert.match(trustSource, /리뷰 저장은 완료됐지만 최신 정보를 모두 불러오지 못했습니다/);
+  assert.match(trustSource, /상품 문의 등록은 완료됐지만 최신 정보를 모두 불러오지 못했습니다/);
+  assert.match(trustSource, /error\.code === "AUTH_REQUIRED"\) auth\.markAnonymous\(\)/);
 });
