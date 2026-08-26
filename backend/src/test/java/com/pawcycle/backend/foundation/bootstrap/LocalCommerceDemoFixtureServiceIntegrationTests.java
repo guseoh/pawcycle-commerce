@@ -8,7 +8,6 @@ import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,11 +27,10 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 	@Autowired
 	LocalCommerceDemoFixtureServiceIntegrationTests(
 			JdbcTemplate jdbcTemplate,
-			ProductListCacheInvalidator productListCacheInvalidator,
 			DemoCatalogManifestImportService importService) {
 		this.jdbcTemplate = jdbcTemplate;
-		this.fixtureService = new LocalCommerceDemoFixtureService(jdbcTemplate, productListCacheInvalidator);
 		this.importService = importService;
+		this.fixtureService = new LocalCommerceDemoFixtureService(importService);
 	}
 
 	@Test
@@ -119,19 +117,19 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 
 	@Test
 	@Transactional(propagation = Propagation.NOT_SUPPORTED)
-	void conflictRollsBackRowsCreatedBeforeTheConflict() {
+	void conflictRollsBackRowsCreatedBeforeTheConflictThroughLocalWrapper() {
 		try {
 			jdbcTemplate.update(
 					"INSERT INTO categories(name,slug,display_order,active) VALUES (?,?,?,false)",
 					"충돌 카테고리", "treats", 999);
 
-			assertThatThrownBy(importService::apply)
-					.isInstanceOf(CatalogManifestImportException.class)
+			assertThatThrownBy(fixtureService::bootstrap)
+					.isInstanceOf(LocalQaBootstrapException.class)
 					.hasMessageContaining("category treats");
 			assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories WHERE slug='food'", Integer.class)).isZero();
 			assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class)).isZero();
 		} finally {
-			jdbcTemplate.update("DELETE FROM categories WHERE slug IN ('food','treats')");
+			jdbcTemplate.update("DELETE FROM categories WHERE slug IN ('food','treats','hygiene','toilet')");
 		}
 	}
 
