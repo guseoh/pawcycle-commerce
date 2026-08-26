@@ -3,6 +3,8 @@ package com.pawcycle.backend.foundation.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
+import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -20,13 +23,31 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 
 	private final JdbcTemplate jdbcTemplate;
 	private final LocalCommerceDemoFixtureService fixtureService;
+	private final DemoCatalogManifestImportService importService;
 
 	@Autowired
 	LocalCommerceDemoFixtureServiceIntegrationTests(
 			JdbcTemplate jdbcTemplate,
-			ProductListCacheInvalidator productListCacheInvalidator) {
+			ProductListCacheInvalidator productListCacheInvalidator,
+			DemoCatalogManifestImportService importService) {
 		this.jdbcTemplate = jdbcTemplate;
 		this.fixtureService = new LocalCommerceDemoFixtureService(jdbcTemplate, productListCacheInvalidator);
+		this.importService = importService;
+	}
+
+	@Test
+	void dryRunValidatesFreshDatabaseWithoutMutation() {
+		DemoCatalogManifestImportService.ImportResult result = importService.validate();
+
+		assertThat(result.operation()).isEqualTo(DemoCatalogManifestImportService.Operation.VALIDATE);
+		assertThat(result.categoriesCreated()).isEqualTo(4);
+		assertThat(result.productsCreated()).isEqualTo(LocalCommerceDemoFixtureService.DEMO_PRODUCT_COUNT);
+		assertThat(result.skusCreated()).isEqualTo(42);
+		assertThat(result.inventoriesCreated()).isEqualTo(42);
+		assertThat(result.plansCreated()).isEqualTo(6);
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM skus", Integer.class)).isZero();
 	}
 
 	@Test
@@ -94,6 +115,24 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 				"SELECT COUNT(*) FROM products WHERE name=?", Integer.class, "데일리 밸런스 연어 사료")).isEqualTo(1);
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT short_description FROM products WHERE name=?", String.class, "데일리 밸런스 연어 사료")).isEqualTo("충돌 데이터");
+	}
+
+	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	void conflictRollsBackRowsCreatedBeforeTheConflict() {
+		try {
+			jdbcTemplate.update(
+					"INSERT INTO categories(name,slug,display_order,active) VALUES (?,?,?,false)",
+					"충돌 카테고리", "treats", 999);
+
+			assertThatThrownBy(importService::apply)
+					.isInstanceOf(CatalogManifestImportException.class)
+					.hasMessageContaining("category treats");
+			assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM categories WHERE slug='food'", Integer.class)).isZero();
+			assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products", Integer.class)).isZero();
+		} finally {
+			jdbcTemplate.update("DELETE FROM categories WHERE slug IN ('food','treats')");
+		}
 	}
 
 	@Test
