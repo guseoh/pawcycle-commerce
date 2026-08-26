@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, productApi, type EngagementPage, type ProductQuestion, type ProductReview, type ProductTrust } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime } from "@/lib/frontend-utils";
@@ -98,56 +98,82 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
   const [questionMutation, setQuestionMutation] = useState(false);
   const [questionMessage, setQuestionMessage] = useState<string | null>(null);
   const [questionMutationError, setQuestionMutationError] = useState<string | null>(null);
+  const reviewRequestGeneration = useRef(0);
+  const questionRequestGeneration = useRef(0);
+  const myReviewRequestGeneration = useRef(0);
 
-  const loadReviews = useCallback(async (page: number) => {
+  const loadReviews = useCallback(async (page: number): Promise<boolean> => {
+    const generation = ++reviewRequestGeneration.current;
     setReviewStatus("loading");
     setReviewError(null);
     try {
-      setReviews(await productApi.reviews(productId, page));
+      const next = await productApi.reviews(productId, page);
+      if (generation !== reviewRequestGeneration.current) return false;
+      setReviews(next);
       setReviewStatus("ready");
+      return true;
     } catch (error) {
+      if (generation !== reviewRequestGeneration.current) return false;
       setReviewStatus("error");
       setReviewError(engagementError(error, "리뷰를 불러오지 못했습니다."));
+      return false;
     }
   }, [productId]);
 
-  const loadQuestions = useCallback(async (page: number) => {
+  const loadQuestions = useCallback(async (page: number): Promise<boolean> => {
+    const generation = ++questionRequestGeneration.current;
     setQuestionStatus("loading");
     setQuestionError(null);
     try {
-      setQuestions(await productApi.questions(productId, page));
+      const next = await productApi.questions(productId, page);
+      if (generation !== questionRequestGeneration.current) return false;
+      setQuestions(next);
       setQuestionStatus("ready");
+      return true;
     } catch (error) {
+      if (generation !== questionRequestGeneration.current) return false;
       setQuestionStatus("error");
       setQuestionError(engagementError(error, "상품 문의를 불러오지 못했습니다."));
+      return false;
     }
   }, [productId]);
 
-  const loadMyReview = useCallback(async () => {
+  const loadMyReview = useCallback(async (): Promise<boolean> => {
+    const generation = ++myReviewRequestGeneration.current;
     if (auth.status !== "authenticated") {
       setMyReview(null);
+      setReviewRating("5");
+      setReviewContent("");
       setMyReviewStatus("empty");
-      return;
+      return true;
     }
     setMyReviewStatus("loading");
     try {
       const review = await productApi.myReview(productId);
+      if (generation !== myReviewRequestGeneration.current) return false;
       setMyReview(review);
       setReviewRating(String(review.rating));
       setReviewContent(review.content);
       setMyReviewStatus("ready");
+      return true;
     } catch (error) {
+      if (generation !== myReviewRequestGeneration.current) return false;
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") {
+        auth.markAnonymous();
+        return false;
+      }
       if (error instanceof ApiError && error.code === "REVIEW_NOT_FOUND") {
         setMyReview(null);
         setReviewRating("5");
         setReviewContent("");
         setMyReviewStatus("empty");
-      } else {
-        setMyReviewStatus("error");
-        setReviewMutationError(engagementError(error, "내 리뷰를 불러오지 못했습니다."));
+        return true;
       }
+      setMyReviewStatus("error");
+      setReviewMutationError(engagementError(error, "내 리뷰를 불러오지 못했습니다."));
+      return false;
     }
-  }, [auth.status, productId]);
+  }, [auth.status, auth.markAnonymous, productId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadReviews(reviewPage); }, 0);
@@ -162,8 +188,13 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     return () => window.clearTimeout(timer);
   }, [loadMyReview]);
 
-  async function refreshReviewData() {
-    await Promise.all([loadReviews(reviewPage), loadMyReview(), onTrustRefresh()]);
+  async function refreshReviewData(): Promise<boolean> {
+    const [reviewsFresh, myReviewFresh, trustFresh] = await Promise.all([
+      loadReviews(reviewPage),
+      loadMyReview(),
+      onTrustRefresh().then(() => true).catch(() => false),
+    ]);
+    return reviewsFresh && myReviewFresh && trustFresh;
   }
 
   async function submitReview(event: FormEvent<HTMLFormElement>) {
@@ -172,6 +203,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     setReviewMutation(true);
     setReviewMutationError(null);
     setReviewMessage(null);
+    const updating = myReview !== null;
     try {
       const rating = Number(reviewRating);
       if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !reviewContent.trim()) {
@@ -180,10 +212,13 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       await auth.executeWithCsrf((csrf) => myReview
         ? productApi.updateReview(myReview.reviewId, rating, reviewContent, csrf)
         : productApi.createReview(productId, rating, reviewContent, csrf));
-      await refreshReviewData();
-      setReviewMessage(myReview ? "리뷰를 수정했습니다." : "리뷰를 작성했습니다.");
+      setReviewMessage(updating ? "리뷰를 수정했습니다." : "리뷰를 작성했습니다.");
+      if (!(await refreshReviewData())) {
+        setReviewMutationError("리뷰 저장은 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
+      }
     } catch (error) {
-      setReviewMutationError(engagementError(error, "리뷰를 저장하지 못했습니다."));
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+      else setReviewMutationError(engagementError(error, "리뷰를 저장하지 못했습니다."));
     } finally {
       setReviewMutation(false);
     }
@@ -196,10 +231,13 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     setReviewMessage(null);
     try {
       await auth.executeWithCsrf((csrf) => productApi.deleteReview(myReview.reviewId, csrf));
-      await refreshReviewData();
       setReviewMessage("리뷰를 삭제했습니다.");
+      if (!(await refreshReviewData())) {
+        setReviewMutationError("리뷰 삭제는 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
+      }
     } catch (error) {
-      setReviewMutationError(engagementError(error, "리뷰를 삭제하지 못했습니다."));
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+      else setReviewMutationError(engagementError(error, "리뷰를 삭제하지 못했습니다."));
     } finally {
       setReviewMutation(false);
     }
@@ -214,11 +252,18 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     try {
       await auth.executeWithCsrf((csrf) => productApi.createQuestion(productId, questionContent, csrf));
       setQuestionContent("");
-      await Promise.all([loadQuestions(0), onTrustRefresh()]);
       setQuestionPage(0);
       setQuestionMessage("상품 문의를 등록했습니다.");
+      const [questionsFresh, trustFresh] = await Promise.all([
+        loadQuestions(0),
+        onTrustRefresh().then(() => true).catch(() => false),
+      ]);
+      if (!questionsFresh || !trustFresh) {
+        setQuestionMutationError("상품 문의 등록은 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
+      }
     } catch (error) {
-      setQuestionMutationError(engagementError(error, "상품 문의를 등록하지 못했습니다."));
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+      else setQuestionMutationError(engagementError(error, "상품 문의를 등록하지 못했습니다."));
     } finally {
       setQuestionMutation(false);
     }
