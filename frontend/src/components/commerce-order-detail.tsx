@@ -28,6 +28,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
   const [messageKind, setMessageKind] = useState<"success" | "error" | null>(null);
   const [pending, setPending] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [quickReorderSkipped, setQuickReorderSkipped] = useState(0);
   const [requestAction, setRequestAction] = useState<RequestAction | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     quickReorderAttempt.current = null;
+    setQuickReorderSkipped(0);
   }, [orderId]);
 
   useEffect(() => {
@@ -115,12 +117,14 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     setReordering(true);
     setMessage(null);
     setMessageKind(null);
+    setQuickReorderSkipped(0);
     try {
       const attempt = quickReorderAttempt.current?.orderId === orderId
         ? quickReorderAttempt.current
         : { orderId, key: newIdempotencyKey() };
       quickReorderAttempt.current = attempt;
       const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.quickReorder(orderId, csrf, attempt.key));
+      setQuickReorderSkipped(response.skippedItems.length);
       if (response.addedItems.length > 0) notifyCommerceChanged();
       if (response.addedItems.length > 0 && response.skippedItems.length === 0) {
         setMessageKind("success");
@@ -159,7 +163,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     <section className="section-card" aria-labelledby="order-items-title"><div className="section-title"><h2 id="order-items-title">주문 상품</h2><span className="count-badge">{order.items.length}개</span></div><ul className="order-item-list">{order.items.map((item) => <li key={item.skuId}><div><strong>{item.productNameSnapshot}</strong><span>{item.skuNameSnapshot} · {item.quantity}개</span></div><span>{formatPrice(item.unitPrice)} × {item.quantity}</span><strong>{formatPrice(item.lineAmount)}</strong></li>)}</ul></section>
     <section className="section-card" aria-labelledby="order-price-title"><h2 id="order-price-title">결제 금액</h2><dl className="price-summary"><div><dt>상품 금액</dt><dd>{formatPrice(order.originalAmount)}</dd></div><div><dt>할인</dt><dd>{order.discountAmount ? `-${formatPrice(order.discountAmount)}` : formatPrice(0)}</dd></div><div><dt>배송비</dt><dd>{order.shippingFee ? formatPrice(order.shippingFee) : "무료"}</dd></div><div className="price-summary-total"><dt>최종 결제 금액</dt><dd>{formatPrice(order.paymentAmount)}</dd></div></dl>{order.refunds.length ? <p className="field-help">{order.refunds.map((refund) => `${refundLabel(refund.status)} · ${formatPrice(refund.amount)}`).join(" / ")}</p> : null}</section>
     <section className="section-card" aria-labelledby="order-address-title"><h2 id="order-address-title">배송지</h2><address className="order-address"><strong>{order.recipientName ?? "배송지 정보 없음"}</strong><span>{order.recipientPhone ?? ""}</span><span>{order.postalCode ? `(${order.postalCode}) ` : ""}{order.addressLine1 ?? ""} {order.addressLine2 ?? ""}</span></address></section>
-    <section className="section-card order-actions"><h2>주문 관리</h2><div className="button-row"><button className="button button-primary" type="button" disabled={reordering || pending} onClick={() => void quickReorder()}>{reordering ? "장바구니에 담는 중" : "다시 담기"}</button>{order.availableActions.includes("REQUEST_CANCELLATION") ? <button className="button button-danger" disabled={pending || reordering} onClick={() => openRequest("cancel")}>주문 취소</button> : null}{order.availableActions.includes("REQUEST_RETURN") ? <button className="button button-secondary" disabled={pending || reordering} onClick={() => openRequest("return")}>반품 요청</button> : null}</div>{message?.includes("건너뛰었습니다") ? <p className="field-help">판매 중지·품절 상품은 서버 결과에 따라 건너뛰었습니다.</p> : null}{order.refunds.some((refund) => refund.status === "UNKNOWN") ? <p className="provider-block">환불 상태를 확인 중입니다. 중복 환불 요청은 할 수 없습니다.</p> : null}</section>
+    <section className="section-card order-actions"><h2>주문 관리</h2><div className="button-row"><button className="button button-primary" type="button" disabled={reordering || pending} onClick={() => void quickReorder()}>{reordering ? "장바구니에 담는 중" : "다시 담기"}</button>{order.availableActions.includes("REQUEST_CANCELLATION") ? <button className="button button-danger" disabled={pending || reordering} onClick={() => openRequest("cancel")}>주문 취소</button> : null}{order.availableActions.includes("REQUEST_RETURN") ? <button className="button button-secondary" disabled={pending || reordering} onClick={() => openRequest("return")}>반품 요청</button> : null}</div>{quickReorderSkipped > 0 ? <p className="field-help">판매 중지·품절 상품 {quickReorderSkipped}개는 서버 결과에 따라 건너뛰었습니다.</p> : null}{order.refunds.some((refund) => refund.status === "UNKNOWN") ? <p className="provider-block">환불 상태를 확인 중입니다. 중복 환불 요청은 할 수 없습니다.</p> : null}</section>
     {requestAction ? <div className="dialog-backdrop" role="presentation"><div className="request-dialog" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title" onKeyDown={handleDialogKeyDown}><h2 id="request-dialog-title">{ACTION_LABEL[requestAction]}</h2><p>처리를 위해 사유를 남겨 주세요.</p><form onSubmit={submitRequest}><label className="form-field" htmlFor="request-reason">사유<textarea id="request-reason" className="input textarea" maxLength={500} value={reason} onChange={(event) => { setReason(event.target.value); setReasonError(null); }} autoFocus aria-describedby={reasonError ? "request-reason-error" : undefined} /></label>{reasonError ? <p id="request-reason-error" className="field-error" role="alert">{reasonError}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={pending} onClick={closeRequest}>닫기</button><button className="button button-primary" type="submit" disabled={pending}>{pending ? "접수 중" : "접수하기"}</button></div></form></div></div> : null}
   </section>;
 }
