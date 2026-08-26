@@ -28,7 +28,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
   const [messageKind, setMessageKind] = useState<"success" | "error" | null>(null);
   const [pending, setPending] = useState(false);
   const [reordering, setReordering] = useState(false);
-  const [quickReorderSkipped, setQuickReorderSkipped] = useState(0);
+  const [quickReorderResult, setQuickReorderResult] = useState<{ orderId: string; skipped: number } | null>(null);
   const [requestAction, setRequestAction] = useState<RequestAction | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -50,7 +50,6 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     quickReorderAttempt.current = null;
-    setQuickReorderSkipped(0);
   }, [orderId]);
 
   useEffect(() => {
@@ -117,14 +116,14 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     setReordering(true);
     setMessage(null);
     setMessageKind(null);
-    setQuickReorderSkipped(0);
+    setQuickReorderResult(null);
     try {
       const attempt = quickReorderAttempt.current?.orderId === orderId
         ? quickReorderAttempt.current
         : { orderId, key: newIdempotencyKey() };
       quickReorderAttempt.current = attempt;
       const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.quickReorder(orderId, csrf, attempt.key));
-      setQuickReorderSkipped(response.skippedItems.length);
+      setQuickReorderResult({ orderId, skipped: response.skippedItems.length });
       if (response.addedItems.length > 0) notifyCommerceChanged();
       if (response.addedItems.length > 0 && response.skippedItems.length === 0) {
         setMessageKind("success");
@@ -152,6 +151,8 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
       setReordering(false);
     }
   }
+
+  const quickReorderSkipped = quickReorderResult?.orderId === orderId ? quickReorderResult.skipped : 0;
 
   if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="주문 상세를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref(`/orders/${orderId}`)}>로그인</Link></ErrorState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
