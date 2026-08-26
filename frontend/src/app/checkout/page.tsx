@@ -39,14 +39,20 @@ export default function CheckoutPage() {
       setCartVersion(cartResult.version);
       setPricing(cartResult.pricing);
       setAddresses(addressResult);
-      setAddressId((current) => current ?? addressResult.find((address) => address.isDefault)?.addressId ?? addressResult[0]?.addressId ?? null);
+      setAddressId((current) => {
+        if (current !== null && addressResult.some((address) => address.addressId === current)) return current;
+        return addressResult.find((address) => address.isDefault)?.addressId ?? addressResult[0]?.addressId ?? null;
+      });
       setError(null);
       try {
         const couponResult = await commerceFinalApi.coupons();
-        setCoupons(couponResult.filter((coupon) => coupon.status === "AVAILABLE"));
+        const availableCoupons = couponResult.filter((coupon) => coupon.status === "AVAILABLE");
+        setCoupons(availableCoupons);
+        setCouponId((current) => current !== null && availableCoupons.some((coupon) => coupon.memberCouponId === current) ? current : null);
         setCouponError(null);
       } catch (reason) {
         setCoupons([]);
+        setCouponId(null);
         setCouponError(reason instanceof ApiError ? reason.message : "사용 가능한 쿠폰을 확인하지 못했습니다.");
       }
       return true;
