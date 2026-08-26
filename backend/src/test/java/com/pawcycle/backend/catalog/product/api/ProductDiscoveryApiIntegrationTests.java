@@ -7,10 +7,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +32,8 @@ class ProductDiscoveryApiIntegrationTests {
 	private final CategoryRepository categoryRepository;
 	private final ProductRepository productRepository;
 	private final EntityManager entityManager;
+	private final LocalCommerceDemoFixtureService fixtureService;
+	private final JdbcTemplate jdbcTemplate;
 	private MockMvc mockMvc;
 
 	@Autowired
@@ -36,11 +41,15 @@ class ProductDiscoveryApiIntegrationTests {
 			WebApplicationContext applicationContext,
 			CategoryRepository categoryRepository,
 			ProductRepository productRepository,
-			EntityManager entityManager) {
+			EntityManager entityManager,
+			ProductListCacheInvalidator productListCacheInvalidator,
+			JdbcTemplate jdbcTemplate) {
 		this.applicationContext = applicationContext;
 		this.categoryRepository = categoryRepository;
 		this.productRepository = productRepository;
 		this.entityManager = entityManager;
+		this.fixtureService = new LocalCommerceDemoFixtureService(jdbcTemplate, productListCacheInvalidator);
+		this.jdbcTemplate = jdbcTemplate;
 	}
 
 	@BeforeEach
@@ -73,5 +82,60 @@ class ProductDiscoveryApiIntegrationTests {
 				.andExpect(jsonPath("$.category.categoryId").value(category.getId()))
 				.andExpect(jsonPath("$.category.name").value(category.getName()))
 				.andExpect(jsonPath("$.category.slug").value(category.getSlug()));
+	}
+
+	@Test
+	void demoCatalogSupportsPaginationSearchSortAndOutOfStockDetail() throws Exception {
+		fixtureService.bootstrap();
+
+		mockMvc.perform(get("/api/products")
+					.param("petType", "DOG")
+					.param("category", "food")
+					.param("page", "1")
+					.param("size", "2")
+					.param("sort", "PRICE_ASC"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.page").value(1))
+				.andExpect(jsonPath("$.size").value(2))
+				.andExpect(jsonPath("$.totalElements").value(5))
+				.andExpect(jsonPath("$.totalPages").value(3))
+				.andExpect(jsonPath("$.items[0].petType").value("DOG"))
+				.andExpect(jsonPath("$.items[0].category.slug").value("food"));
+
+		mockMvc.perform(get("/api/products")
+					.param("q", "퍼피")
+					.param("petType", "DOG")
+					.param("category", "food"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(1))
+				.andExpect(jsonPath("$.items[0].name").value("퍼피 스타터 사료"));
+
+		mockMvc.perform(get("/api/products")
+					.param("petType", "DOG")
+					.param("category", "food")
+					.param("size", "100")
+					.param("sort", "PRICE_ASC"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items[0].representativePrice").value(15900.00))
+				.andExpect(jsonPath("$.items[4].representativePrice").value(22900.00));
+
+		mockMvc.perform(get("/api/products")
+					.param("petType", "DOG")
+					.param("category", "food")
+					.param("size", "100")
+					.param("sort", "PRICE_DESC"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items[0].representativePrice").value(22900.00))
+				.andExpect(jsonPath("$.items[4].representativePrice").value(15900.00));
+
+		Long outOfStockProductId = jdbcTemplate.queryForObject(
+				"SELECT id FROM products WHERE catalog_key=?", Long.class, "demo-dog-treats-training");
+		mockMvc.perform(get("/api/products/{productId}", outOfStockProductId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.skus.length()").value(1))
+				.andExpect(jsonPath("$.skus[0].availableQuantity").value(0))
+				.andExpect(jsonPath("$.skus[0].purchasable").value(false))
+				.andExpect(jsonPath("$.purchasable").value(false));
 	}
 }

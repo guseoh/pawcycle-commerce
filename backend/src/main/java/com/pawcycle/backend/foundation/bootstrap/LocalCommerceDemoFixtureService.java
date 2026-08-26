@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Profile("local-integration & !test & !production & !prod")
 public class LocalCommerceDemoFixtureService {
 
-	static final int DEMO_PRODUCT_COUNT = 12;
+	static final int DEMO_PRODUCT_COUNT = 32;
 	static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
 	private final JdbcTemplate jdbcTemplate;
