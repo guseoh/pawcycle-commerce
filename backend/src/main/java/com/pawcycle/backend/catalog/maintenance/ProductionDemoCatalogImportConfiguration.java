@@ -25,11 +25,17 @@ public class ProductionDemoCatalogImportConfiguration {
 			DemoCatalogManifestImportService importService,
 			ProductionDemoCatalogImportResultHolder resultHolder,
 			@Value("${pawcycle.catalog.manifest-import.mode:}") String mode,
+			@Value("${pawcycle.catalog.manifest-import.confirm-apply:false}") boolean confirmApply,
 			@Value("${pawcycle.catalog.manifest-import.manifest:classpath:catalog/demo-catalog.json}") String manifestLocation) {
 		return arguments -> {
 			ImportResult result = switch (mode.toLowerCase(java.util.Locale.ROOT)) {
 				case "validate" -> importService.validate(manifestLocation);
-				case "apply" -> importService.apply(manifestLocation);
+				case "apply" -> {
+					if (!confirmApply) {
+						throw new CatalogManifestImportException("production catalog import apply confirmation is required");
+					}
+					yield importService.apply(manifestLocation);
+				}
 				default -> throw new CatalogManifestImportException("production catalog import mode is invalid");
 			};
 			resultHolder.set(result);
