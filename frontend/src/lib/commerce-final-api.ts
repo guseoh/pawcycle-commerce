@@ -9,12 +9,15 @@ export interface Notification { notificationId:number; type:string; referenceTyp
 export interface OrderSummary { orderId:number; orderNumber:string; status:string; paymentAmount:number; createdAt:string; }
 export interface Operation { type:string; referenceId:number; createdAt:string; availableActions:string[]; }
 export interface CartItem { skuId:number; quantity:number; skuCode:string; skuName:string; price:number; unitPrice:number; lineAmount:number; productId:number; productName:string; availableQuantity:number; purchasable:boolean; }
-export interface CartResult { items:CartItem[]; pricing:PricingBreakdown; }
+export interface CartResult { items:CartItem[]; pricing:PricingBreakdown; version:number; }
 export interface MemberCoupon { memberCouponId:number; couponId:number; name:string; discountType:"FIXED_AMOUNT"|"PERCENTAGE"; discountValue:number; status:"AVAILABLE"|"RESERVED"|"USED"; validFrom:string; validUntil:string; }
 export interface WishlistItem { productId:number; productName:string; createdAt:string; }
 export interface AddressRequest { name:string; recipientName:string; recipientPhone:string; postalCode:string; addressLine1:string; addressLine2:string; }
 export interface Address extends AddressRequest { addressId:number; isDefault:boolean; }
 export interface CheckoutResult { orderId:number; orderNumber:string; paymentId:number; providerOrderId:string; orderName:string; amount:number; pricing?:PricingBreakdown; tossTestEnabled:boolean; }
+export interface QuickReorderItem { skuId:number; quantity:number; }
+export interface QuickReorderSkippedItem extends QuickReorderItem { reason:string; }
+export interface QuickReorderResult { addedItems:QuickReorderItem[]; skippedItems:QuickReorderSkippedItem[]; cartVersion:number; }
 export interface TossConfirmResult { paymentId:number; orderId:number; status:"SUCCEEDED"|"FAILED"|"UNKNOWN"; }
 export interface BillingMethodStatus { provider:"TOSS"; configured:boolean; registered:boolean; }
 async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,cache:"no-store",credentials:"same-origin",headers:{Accept:"application/json",...init?.headers}});const body=await response.json().catch(()=>null);if(!response.ok)throw new ApiError(response.status,body&&typeof body.code==="string"?body:{code:"INTERNAL_ERROR",message:"요청을 처리하지 못했습니다.",fieldErrors:[]});return body as T;}
@@ -42,7 +45,8 @@ export const commerceFinalApi={
   deleteAddress:(addressId:number,csrf:string)=>request<void>(`/api/addresses/${encodeURIComponent(addressId)}`,{method:"DELETE",headers:{"X-CSRF-TOKEN":csrf}}),
   defaultAddress:(addressId:number,csrf:string)=>request<void>(`/api/addresses/${encodeURIComponent(addressId)}/default`,{method:"PUT",headers:{"X-CSRF-TOKEN":csrf}}),
   updateSubscriptionShipping:(subscriptionId:number,address:AddressRequest,csrf:string)=>request<void>(`/api/subscriptions/${encodeURIComponent(subscriptionId)}/shipping-address`,{method:"PUT",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf},body:JSON.stringify(address)}),
-  checkout:(addressId:number,csrf:string,idempotencyKey:string,memberCouponId?:number)=>request<CheckoutResult>("/api/checkout",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf,"Idempotency-Key":idempotencyKey},body:JSON.stringify(memberCouponId === undefined ? {addressId} : {addressId,memberCouponId})}),
+  checkout:(addressId:number,csrf:string,idempotencyKey:string,memberCouponId?:number,cartVersion?:number)=>request<CheckoutResult>("/api/checkout",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf,"Idempotency-Key":idempotencyKey},body:JSON.stringify({addressId,...(memberCouponId === undefined ? {} : {memberCouponId}),...(cartVersion === undefined ? {} : {cartVersion})})}),
+  quickReorder:(orderId:string,csrf:string,idempotencyKey:string)=>request<QuickReorderResult>(`/api/orders/${encodeURIComponent(orderId)}/reorder`,{method:"POST",headers:{"X-CSRF-TOKEN":csrf,"Idempotency-Key":idempotencyKey}}),
   confirmToss:(paymentKey:string,providerOrderId:string,amount:number,csrf:string)=>request<TossConfirmResult>("/api/payments/toss/confirm",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":csrf},body:JSON.stringify({paymentKey,providerOrderId,amount})}),
   billingMethod:()=>request<BillingMethodStatus>("/api/payment-methods/toss/billing"),
   prepareBilling:(csrf:string)=>request<{prepareToken:string}>("/api/payment-methods/toss/billing/prepare",{method:"POST",headers:{"X-CSRF-TOKEN":csrf}}),

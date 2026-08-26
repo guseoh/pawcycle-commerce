@@ -87,11 +87,15 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
   assert.match(globalStylesSource, /\.category-navigation-menu \{ position: static/);
 });
 
-test("주문 재담기와 요청 dialog는 부분 성공과 키보드 경계를 보호한다", () => {
+test("서버 재주문과 요청 dialog는 부분 성공과 키보드 경계를 보호한다", () => {
   const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
-  assert.match(orderSource, /reorderedSkuIds\.current\.has\(item\.skuId\)/);
-  assert.match(orderSource, /if \(addedThisAttempt > 0\) notifyCommerceChanged\(\)/);
-  assert.match(orderSource, /다시 시도하면 성공한 상품은 중복으로 담지 않습니다/);
+  assert.match(orderSource, /commerceFinalApi\.quickReorder\(orderId, csrf, attempt\.key\)/);
+  assert.doesNotMatch(orderSource, /commerceFinalApi\.addCart/);
+  assert.doesNotMatch(orderSource, /for \(const item of order\.items\)/);
+  assert.match(orderSource, /quickReorderAttempt\.current/);
+  assert.match(orderSource, /response\.addedItems\.length > 0/);
+  assert.match(orderSource, /response\.skippedItems\.length/);
+  assert.match(orderSource, /newIdempotencyKey\(\)/);
   assert.match(orderSource, /event\.key === "Escape"/);
   assert.match(orderSource, /event\.key !== "Tab"/);
   assert.match(orderSource, /requestOpener\.current\?\.focus\(\)/);
@@ -207,6 +211,16 @@ test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계
   assert.match(successSource, /commerceFinalApi\.confirmToss/);
   assert.match(successSource, /expected\.amount/);
   assert.doesNotMatch(failSource, /confirmToss/);
+});
+
+test("Checkout cart version and idempotency conflict recovery keep the user in control", () => {
+  const checkoutSource = readFileSync(new URL("../app/checkout/page.tsx", import.meta.url), "utf8");
+  assert.match(checkoutSource, /setCartVersion\(cartResult\.version\)/);
+  assert.match(checkoutSource, /commerceFinalApi\.checkout\(addressId, csrf, key\.current!, couponId \?\? undefined, cartVersion\)/);
+  assert.match(checkoutSource, /const identity = `\$\{addressId\}\|\$\{couponId \?\? "none"\}\|\$\{cartVersion\}`/);
+  assert.match(checkoutSource, /reason\.code === "CART_CHANGED"/);
+  assert.match(checkoutSource, /reason\.code === "IDEMPOTENCY_KEY_CONFLICT"/);
+  assert.match(checkoutSource, /Network\/unknown failures keep this key/);
 });
 
 test("사용자 화면은 내부 식별자를 노출하지 않는다", () => {
