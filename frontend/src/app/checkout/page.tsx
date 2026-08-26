@@ -31,8 +31,8 @@ export default function CheckoutPage() {
   const key = useRef<string | null>(null);
   const keyIdentity = useRef<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (auth.status !== "authenticated") return;
+  const load = useCallback(async (): Promise<boolean> => {
+    if (auth.status !== "authenticated") return false;
     try {
       const [cartResult, addressResult] = await Promise.all([commerceFinalApi.cart(), commerceFinalApi.addresses()]);
       setCart(cartResult.items);
@@ -49,12 +49,17 @@ export default function CheckoutPage() {
         setCoupons([]);
         setCouponError(reason instanceof ApiError ? reason.message : "사용 가능한 쿠폰을 확인하지 못했습니다.");
       }
+      return true;
     } catch (reason) {
+      setCart(null);
+      setCartVersion(null);
+      setPricing(null);
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") {
         auth.markAnonymous();
-        return;
+        return false;
       }
       setError(reason instanceof ApiError ? reason.message : "주문 정보를 불러오지 못했습니다.");
+      return false;
     }
   }, [auth]);
 
@@ -103,8 +108,11 @@ export default function CheckoutPage() {
         key.current = null;
         keyIdentity.current = null;
         setResult(null);
-        await load();
-        setError("장바구니가 변경되었습니다. 현재 장바구니를 확인한 뒤 다시 주문해 주세요.");
+        setCartVersion(null);
+        const refreshed = await load();
+        setError(refreshed
+          ? "장바구니가 변경되었습니다. 현재 장바구니를 확인한 뒤 다시 주문해 주세요."
+          : "장바구니가 변경되었지만 최신 정보를 다시 불러오지 못했습니다. 장바구니를 다시 불러온 뒤 주문해 주세요.");
       } else if (reason instanceof ApiError && reason.code === "IDEMPOTENCY_KEY_CONFLICT") {
         key.current = null;
         keyIdentity.current = null;
