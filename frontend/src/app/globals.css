@@ -589,6 +589,22 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 .mini-product-card span:last-child { color:var(--muted); font-size:.88rem; }
 .product-context-section { display:grid; gap:1rem; }
 .product-context-section .section-title { margin:0; }
+.product-trust-stack { display:grid; gap:1rem; margin-top:1rem; }
+.product-trust-summary .section-title, .product-engagement-section .section-title { margin:0; }
+.product-engagement-section { display:grid; gap:1rem; }
+.product-engagement-form-wrap { display:grid; gap:.8rem; margin-top:1rem; border-top:1px solid var(--line); padding-top:1.25rem; }
+.product-engagement-form-wrap h3 { margin:0; }
+.product-engagement-form { display:grid; gap:.8rem; }
+.product-engagement-form .input { width:100%; }
+.engagement-list { display:grid; gap:.75rem; list-style:none; margin:0; padding:0; }
+.engagement-list li { display:grid; gap:.45rem; padding:1rem; border:1px solid var(--line); border-radius:14px; background:var(--surface); }
+.engagement-list p { margin:0; }
+.engagement-list-heading { display:flex; justify-content:space-between; gap:1rem; }
+.engagement-list-heading time { color:var(--muted); font-size:.86rem; }
+.engagement-answer { display:grid; gap:.35rem; margin-top:.35rem; border-left:3px solid var(--brand); padding-left:.8rem; }
+.product-detail-sections { display:grid; gap:1rem; }
+.product-detail-section + .product-detail-section { border-top:1px solid var(--line); padding-top:1rem; }
+.product-detail-section h3 { margin:.1rem 0 .4rem; font-size:1.1rem; }
 .trust-page { display:grid; gap:1rem; }
 .trust-page .page-heading { margin-bottom:0; }
 .trust-card-list { display:grid; gap:.75rem; }

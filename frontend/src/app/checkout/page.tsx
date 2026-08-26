@@ -17,6 +17,7 @@ function PriceSummary({ pricing, couponSelected }: { pricing: PricingBreakdown; 
 export default function CheckoutPage() {
   const auth = useAuth();
   const [cart, setCart] = useState<CartItem[] | null>(null);
+  const [cartVersion, setCartVersion] = useState<number | null>(null);
   const [pricing, setPricing] = useState<PricingBreakdown | null>(null);
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [coupons, setCoupons] = useState<MemberCoupon[]>([]);
@@ -28,30 +29,43 @@ export default function CheckoutPage() {
   const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const key = useRef<string | null>(null);
+  const keyIdentity = useRef<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (auth.status !== "authenticated") return;
+  const load = useCallback(async (): Promise<boolean> => {
+    if (auth.status !== "authenticated") return false;
     try {
       const [cartResult, addressResult] = await Promise.all([commerceFinalApi.cart(), commerceFinalApi.addresses()]);
       setCart(cartResult.items);
+      setCartVersion(cartResult.version);
       setPricing(cartResult.pricing);
       setAddresses(addressResult);
-      setAddressId((current) => current ?? addressResult.find((address) => address.isDefault)?.addressId ?? addressResult[0]?.addressId ?? null);
+      setAddressId((current) => {
+        if (current !== null && addressResult.some((address) => address.addressId === current)) return current;
+        return addressResult.find((address) => address.isDefault)?.addressId ?? addressResult[0]?.addressId ?? null;
+      });
       setError(null);
       try {
         const couponResult = await commerceFinalApi.coupons();
-        setCoupons(couponResult.filter((coupon) => coupon.status === "AVAILABLE"));
+        const availableCoupons = couponResult.filter((coupon) => coupon.status === "AVAILABLE");
+        setCoupons(availableCoupons);
+        setCouponId((current) => current !== null && availableCoupons.some((coupon) => coupon.memberCouponId === current) ? current : null);
         setCouponError(null);
       } catch (reason) {
         setCoupons([]);
+        setCouponId(null);
         setCouponError(reason instanceof ApiError ? reason.message : "사용 가능한 쿠폰을 확인하지 못했습니다.");
       }
+      return true;
     } catch (reason) {
+      setCart(null);
+      setCartVersion(null);
+      setPricing(null);
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") {
         auth.markAnonymous();
-        return;
+        return false;
       }
       setError(reason instanceof ApiError ? reason.message : "주문 정보를 불러오지 못했습니다.");
+      return false;
     }
   }, [auth]);
 
@@ -63,12 +77,14 @@ export default function CheckoutPage() {
   function chooseAddress(value: string) {
     setAddressId(Number(value) || null);
     key.current = null;
+    keyIdentity.current = null;
     setResult(null);
   }
 
   function chooseCoupon(value: string) {
     setCouponId(Number(value) || null);
     key.current = null;
+    keyIdentity.current = null;
     setResult(null);
   }
 
@@ -78,16 +94,41 @@ export default function CheckoutPage() {
       setError("구매할 수 없는 상품이 있습니다. 장바구니에서 상품 상태를 확인해 주세요.");
       return;
     }
+    if (cartVersion === null) {
+      setError("장바구니 버전을 확인하지 못했습니다. 다시 불러와 주세요.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      key.current ??= newIdempotencyKey();
-      const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.checkout(addressId, csrf, key.current!, couponId ?? undefined));
+      const identity = `${addressId}|${couponId ?? "none"}|${cartVersion}`;
+      if (keyIdentity.current !== identity) {
+        key.current = newIdempotencyKey();
+        keyIdentity.current = identity;
+      }
+      const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.checkout(addressId, csrf, key.current!, couponId ?? undefined, cartVersion));
       setResult(response);
       notifyCommerceChanged();
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : "주문을 만들지 못했습니다.");
-      if (reason instanceof ApiError && ["INVENTORY_CONFLICT", "INVENTORY_INSUFFICIENT", "SKU_NOT_PURCHASABLE"].includes(reason.code)) void load();
+      if (reason instanceof ApiError && reason.code === "CART_CHANGED") {
+        key.current = null;
+        keyIdentity.current = null;
+        setResult(null);
+        setCartVersion(null);
+        const refreshed = await load();
+        setError(refreshed
+          ? "장바구니가 변경되었습니다. 현재 장바구니를 확인한 뒤 다시 주문해 주세요."
+          : "장바구니가 변경되었지만 최신 정보를 다시 불러오지 못했습니다. 장바구니를 다시 불러온 뒤 주문해 주세요.");
+      } else if (reason instanceof ApiError && reason.code === "IDEMPOTENCY_KEY_CONFLICT") {
+        key.current = null;
+        keyIdentity.current = null;
+        setResult(null);
+        setError("주문 요청 정보가 이전 요청과 달라졌습니다. 새 주문으로 다시 시도해 주세요.");
+      } else {
+        // Network/unknown failures keep this key so the same request identity can replay safely.
+        setError(reason instanceof ApiError ? reason.message : "주문 결과를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요.");
+        if (reason instanceof ApiError && ["INVENTORY_CONFLICT", "INVENTORY_INSUFFICIENT", "SKU_NOT_PURCHASABLE"].includes(reason.code)) void load();
+      }
     } finally {
       setBusy(false);
     }

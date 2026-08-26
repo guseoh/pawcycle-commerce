@@ -67,12 +67,56 @@ export interface ProductSku {
 export interface ProductDetail {
   productId: number;
   name: string;
+  shortDescription: string | null;
   petType: string;
   description: string | null;
   thumbnailUrl: string | null;
   category: Category;
+  detailSections: ProductDetailSection[];
+  trust: ProductTrust;
   skus: ProductSku[];
   purchasable: boolean;
+}
+
+export interface ProductDetailSection {
+  sectionId: number;
+  title: string;
+  body: string;
+  displayOrder: number;
+  visible: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductTrust {
+  averageRating: number | null;
+  reviewCount: number;
+  questionCount: number;
+}
+
+export interface EngagementPage<T> {
+  items: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface ProductReview {
+  reviewId: number;
+  rating: number;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductQuestion {
+  questionId: number;
+  content: string;
+  answer: string | null;
+  answered: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MemberResponse {
@@ -205,6 +249,35 @@ export const productApi = {
   },
   detail: (productId: string) =>
     requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  reviews: (productId: string, page = 0, size = 20) =>
+    requestJson<EngagementPage<ProductReview>>(`/api/products/${encodeURIComponent(productId)}/reviews?page=${page}&size=${size}`),
+  myReview: (productId: string) =>
+    requestJson<ProductReview>(`/api/products/${encodeURIComponent(productId)}/reviews/me`),
+  createReview: (productId: string, rating: number, content: string, csrfToken: string) =>
+    requestJson<ProductReview>(`/api/products/${encodeURIComponent(productId)}/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken },
+      body: JSON.stringify({ rating, content }),
+    }),
+  updateReview: (reviewId: number, rating: number, content: string, csrfToken: string) =>
+    requestJson<ProductReview>(`/api/reviews/${encodeURIComponent(reviewId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken },
+      body: JSON.stringify({ rating, content }),
+    }),
+  deleteReview: (reviewId: number, csrfToken: string) =>
+    requestVoid(`/api/reviews/${encodeURIComponent(reviewId)}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-TOKEN": csrfToken },
+    }),
+  questions: (productId: string, page = 0, size = 20) =>
+    requestJson<EngagementPage<ProductQuestion>>(`/api/products/${encodeURIComponent(productId)}/questions?page=${page}&size=${size}`),
+  createQuestion: (productId: string, content: string, csrfToken: string) =>
+    requestJson<ProductQuestion>(`/api/products/${encodeURIComponent(productId)}/questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken },
+      body: JSON.stringify({ content }),
+    }),
 };
 
 export const categoryApi = {

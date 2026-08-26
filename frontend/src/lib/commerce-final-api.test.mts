@@ -99,3 +99,23 @@ test("billing method accepts the Backend active fixture without a wrapper", asyn
   globalThis.fetch = (async () => new Response(JSON.stringify({ provider: "TOSS", configured: true, registered: false }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
   try { assert.deepEqual(await commerceFinalApi.billingMethod(), { provider: "TOSS", configured: true, registered: false }); } finally { globalThis.fetch = original; }
 });
+
+test("checkout sends the server cart version and quick reorder uses one idempotent request", async () => {
+  const original = globalThis.fetch;
+  const requests: Array<{ path: string; method: string; body: string; key: string }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    requests.push({ path: String(input), method: String(init?.method ?? "GET"), body: String(init?.body ?? ""), key: headers.get("Idempotency-Key") ?? "" });
+    return new Response(JSON.stringify({ addedItems: [{ skuId: 7, quantity: 2 }], skippedItems: [], cartVersion: 4 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await commerceFinalApi.checkout(3, "csrf", "checkout-key", 8, 4);
+    assert.deepEqual(await commerceFinalApi.quickReorder("12", "csrf", "reorder-key"), { addedItems: [{ skuId: 7, quantity: 2 }], skippedItems: [], cartVersion: 4 });
+    assert.deepEqual(requests, [
+      { path: "/api/checkout", method: "POST", body: JSON.stringify({ addressId: 3, memberCouponId: 8, cartVersion: 4 }), key: "checkout-key" },
+      { path: "/api/orders/12/reorder", method: "POST", body: "", key: "reorder-key" },
+    ]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
