@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.admin.api;
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
+import com.pawcycle.backend.catalog.admin.application.ProductDetailSectionService;
 import com.pawcycle.backend.commerce.AdminAuditService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AdminCatalogController {
 	private final AdminCatalogService adminCatalogService;
+	private final ProductDetailSectionService productDetailSectionService;
 	private final AdminAuditService audits;
 
 	@GetMapping("/categories")
@@ -102,5 +105,41 @@ public class AdminCatalogController {
 		AdminCatalogViews.Sku sku = adminCatalogService.updateSku(productId, skuId, request);
 		audits.append(principal.memberId(), "CATALOG_SKU_UPDATE", "SKU", skuId);
 		return sku;
+	}
+
+	@GetMapping("/products/{productId}/detail-sections")
+	AdminCatalogViews.DetailSectionList detailSections(@PathVariable Long productId) {
+		return productDetailSectionService.list(productId);
+	}
+
+	@PostMapping("/products/{productId}/detail-sections")
+	@Transactional
+	ResponseEntity<AdminCatalogViews.DetailSection> createDetailSection(
+			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+			@PathVariable Long productId,
+			@Valid @RequestBody AdminCatalogRequests.DetailSectionCreate request) {
+		AdminCatalogViews.DetailSection section = productDetailSectionService.create(productId, request);
+		audits.append(principal.memberId(), "CATALOG_DETAIL_SECTION_CREATE", "PRODUCT_DETAIL_SECTION", section.sectionId());
+		return ResponseEntity.created(URI.create("/api/admin/products/" + productId + "/detail-sections/" + section.sectionId())).body(section);
+	}
+
+	@PatchMapping("/products/{productId}/detail-sections/{sectionId}")
+	@Transactional
+	AdminCatalogViews.DetailSection updateDetailSection(
+			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+			@PathVariable Long productId, @PathVariable Long sectionId,
+			@RequestBody AdminCatalogRequests.DetailSectionPatch request) {
+		AdminCatalogViews.DetailSection section = productDetailSectionService.update(productId, sectionId, request);
+		audits.append(principal.memberId(), "CATALOG_DETAIL_SECTION_UPDATE", "PRODUCT_DETAIL_SECTION", sectionId);
+		return section;
+	}
+
+	@DeleteMapping("/products/{productId}/detail-sections/{sectionId}")
+	@Transactional
+	void deleteDetailSection(
+			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+			@PathVariable Long productId, @PathVariable Long sectionId) {
+		productDetailSectionService.delete(productId, sectionId);
+		audits.append(principal.memberId(), "CATALOG_DETAIL_SECTION_DELETE", "PRODUCT_DETAIL_SECTION", sectionId);
 	}
 }

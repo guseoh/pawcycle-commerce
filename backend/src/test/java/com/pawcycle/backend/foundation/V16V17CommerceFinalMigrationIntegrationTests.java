@@ -32,15 +32,21 @@ class V16V17CommerceFinalMigrationIntegrationTests {
 			latest.migrate();
 
 			List<String> tables = jdbc.queryForList("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()", String.class);
-			assertThat(tables).contains("deliveries", "order_cancellations", "order_returns", "refunds", "notifications", "admin_audit_logs");
+			assertThat(tables).contains("deliveries", "order_cancellations", "order_returns", "refunds", "notifications", "admin_audit_logs",
+					"product_detail_sections", "reviews", "product_questions");
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM deliveries WHERE order_id=?", Integer.class, paidOrderId)).isZero();
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND table_name='deliveries' AND constraint_name='uk_deliveries_order'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND table_name='refunds' AND constraint_name='uk_refunds_succeeded_order'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND table_name='refunds' AND constraint_name='uk_refunds_source_attempt'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='billing_payment_method_preparations' AND column_name='status'", Integer.class)).isEqualTo(1);
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='billing_payment_method_preparations' AND column_name='claimed_at'", Integer.class)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema=DATABASE() AND constraint_name='chk_notifications_type'", String.class)).contains("PRODUCT_QUESTION_ANSWERED");
 			assertThat(jdbc.queryForObject("SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema=DATABASE() AND constraint_name='chk_refunds_amount'", String.class)).contains(">= 0");
-			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(20);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='carts' AND column_name='version' AND is_nullable='NO'", Integer.class)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='checkout_idempotency_results' AND column_name='request_fingerprint'", Integer.class)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='checkout_idempotency_results' AND column_name='request_cart_version'", Integer.class)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='quick_reorder_idempotency_results'", Integer.class)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(23);
 		} catch (Throwable failure) {
 			primaryFailure = failure;
 			throw failure;

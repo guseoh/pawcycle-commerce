@@ -27,6 +27,7 @@ public class ProductQueryService {
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
 	private final ProductDiscoveryReader productDiscoveryReader;
+	private final ProductDetailContentReader productDetailContentReader;
 
 	public ProductQueryService(
 			ProductListCache productListCache,
@@ -38,6 +39,7 @@ public class ProductQueryService {
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
 		this.productDiscoveryReader = null;
+		this.productDetailContentReader = null;
 	}
 
 	@Autowired
@@ -46,12 +48,14 @@ public class ProductQueryService {
 			ProductListReader productListReader,
 			ProductRepository productRepository,
 			SkuRepository skuRepository,
-			ProductDiscoveryReader productDiscoveryReader) {
+			ProductDiscoveryReader productDiscoveryReader,
+			ProductDetailContentReader productDetailContentReader) {
 		this.productListCache = productListCache;
 		this.productListReader = productListReader;
 		this.productRepository = productRepository;
 		this.skuRepository = skuRepository;
 		this.productDiscoveryReader = productDiscoveryReader;
+		this.productDetailContentReader = productDetailContentReader;
 	}
 
 	public ProductListView findProducts(String q, String petType, String category, int page, int size, ProductSort sort) {
@@ -116,17 +120,24 @@ public class ProductQueryService {
 			return new ProductDetailView(
 					product.getId(),
 					product.getName(),
+					product.getShortDescription(),
 					product.getPetType(),
 					product.getDescription(),
 					product.getThumbnailUrl(),
 					new ProductDetailView.CategorySummary(
 							product.getCategory().getId(), product.getCategory().getName(), product.getCategory().getSlug()),
+					productDetailContentReader == null ? List.of() : productDetailContentReader.visibleSections(productId),
+					productDetailContentReader == null ? ProductDetailView.Trust.empty() : toTrust(productDetailContentReader.trust(productId)),
 					skuDetails);
 		} catch (ProductNotFoundException exception) {
 			throw exception;
 		} catch (RuntimeException exception) {
 			throw new ProductDetailUnavailableException(exception);
 		}
+	}
+
+	private ProductDetailView.Trust toTrust(ProductDetailContentReader.ProductTrustView trust) {
+		return new ProductDetailView.Trust(trust.averageRating(), trust.reviewCount(), trust.questionCount());
 	}
 
 	private Map<Long, List<ProductListReader.SkuSnapshot>> groupSkus(

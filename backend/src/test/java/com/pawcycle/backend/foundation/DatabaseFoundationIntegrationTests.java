@@ -127,7 +127,7 @@ class DatabaseFoundationIntegrationTests {
 		flyway.migrate();
 		Integer after = appliedMigrationCount();
 
-		assertThat(before).isEqualTo(20);
+		assertThat(before).isEqualTo(23);
 		assertThat(after).isEqualTo(before);
 	}
 

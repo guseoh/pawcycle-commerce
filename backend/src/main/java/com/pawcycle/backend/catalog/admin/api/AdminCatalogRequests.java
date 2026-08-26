@@ -46,6 +46,13 @@ public final class AdminCatalogRequests {
 			@NotNull SkuStatus status) {
 	}
 
+	public record DetailSectionCreate(
+			@NotBlank @Size(max = 200) String title,
+			@NotBlank @Size(max = 10000) String body,
+			@NotNull @PositiveOrZero Integer displayOrder,
+			@NotNull Boolean visible) {
+	}
+
 	@Getter
 	@NoArgsConstructor
 	public static final class CategoryPatch {
@@ -110,5 +117,23 @@ public final class AdminCatalogRequests {
 		@JsonSetter("subscribable") public void readSubscribable(Boolean value) { subscribable = value; subscribablePresent = true; }
 		@JsonSetter("displayOrder") public void readDisplayOrder(Integer value) { displayOrder = value; displayOrderPresent = true; }
 		@JsonSetter("status") public void readStatus(SkuStatus value) { status = value; statusPresent = true; }
+	}
+
+	@Getter
+	@NoArgsConstructor
+	public static final class DetailSectionPatch {
+		private String title;
+		private boolean titlePresent;
+		private String body;
+		private boolean bodyPresent;
+		private Integer displayOrder;
+		private boolean displayOrderPresent;
+		private Boolean visible;
+		private boolean visiblePresent;
+
+		@JsonSetter("title") public void readTitle(String value) { title = value; titlePresent = true; }
+		@JsonSetter("body") public void readBody(String value) { body = value; bodyPresent = true; }
+		@JsonSetter("displayOrder") public void readDisplayOrder(Integer value) { displayOrder = value; displayOrderPresent = true; }
+		@JsonSetter("visible") public void readVisible(Boolean value) { visible = value; visiblePresent = true; }
 	}
 }
