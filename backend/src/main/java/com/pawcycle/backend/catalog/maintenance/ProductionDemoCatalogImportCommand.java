@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.boot.Banner;
@@ -24,6 +23,7 @@ public final class ProductionDemoCatalogImportCommand {
 	private static final String WEB_APPLICATION_TYPE = "spring.main.web-application-type";
 	private static final String ENABLED = "pawcycle.catalog.manifest-import.enabled";
 	private static final String MODE = "pawcycle.catalog.manifest-import.mode";
+	private static final String CONFIRM_APPLY = "pawcycle.catalog.manifest-import.confirm-apply";
 	private static final Map<String, String> ENVIRONMENT_KEYS = Map.of(
 			WEB_APPLICATION_TYPE, "SPRING_MAIN_WEB_APPLICATION_TYPE",
 			ENABLED, "PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED",
@@ -85,6 +85,14 @@ public final class ProductionDemoCatalogImportCommand {
 				|| (!"validate".equalsIgnoreCase(mode.value()) && !"apply".equalsIgnoreCase(mode.value()))) {
 			error.println(ERROR_MESSAGE);
 			return FAILURE;
+		}
+		if ("apply".equalsIgnoreCase(mode.value())) {
+			ResolvedProperty confirmation = resolveCommandLine(args, CONFIRM_APPLY);
+			if (!confirmation.present() || confirmation.ambiguous()
+					|| !"true".equalsIgnoreCase(confirmation.value())) {
+				error.println(ERROR_MESSAGE);
+				return FAILURE;
+			}
 		}
 
 		try {
@@ -154,21 +162,25 @@ public final class ProductionDemoCatalogImportCommand {
 			Map<String, String> systemProperties,
 			Map<String, String> environment,
 			String key) {
-		List<String> commandLineValues = new ArrayList<>();
-		String prefix = "--" + key + "=";
-		for (String argument : args) {
-			if (argument.equals("--" + key)) commandLineValues.add("");
-			else if (argument.startsWith(prefix)) commandLineValues.add(argument.substring(prefix.length()));
-		}
-		if (!commandLineValues.isEmpty()) {
-			return new ResolvedProperty(true, commandLineValues.getLast(), commandLineValues.size() != 1);
-		}
+		ResolvedProperty commandLine = resolveCommandLine(args, key);
+		if (commandLine.present()) return commandLine;
 		if (systemProperties.containsKey(key)) return new ResolvedProperty(true, systemProperties.get(key), false);
 		String environmentKey = ENVIRONMENT_KEYS.get(key);
 		if (environmentKey != null && environment.containsKey(environmentKey)) {
 			return new ResolvedProperty(true, environment.get(environmentKey), false);
 		}
 		return new ResolvedProperty(false, "", false);
+	}
+
+	private static ResolvedProperty resolveCommandLine(String[] args, String key) {
+		List<String> commandLineValues = new ArrayList<>();
+		String prefix = "--" + key + "=";
+		for (String argument : args) {
+			if (argument.equals("--" + key)) commandLineValues.add("");
+			else if (argument.startsWith(prefix)) commandLineValues.add(argument.substring(prefix.length()));
+		}
+		if (commandLineValues.isEmpty()) return new ResolvedProperty(false, "", false);
+		return new ResolvedProperty(true, commandLineValues.getLast(), commandLineValues.size() != 1);
 	}
 
 	private static String option(String key, String value) {
