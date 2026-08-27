@@ -71,10 +71,9 @@ public class CatalogExpansionAdminService {
 		} catch (DataIntegrityViolationException exception) {
 			throw conflict("PRODUCT_MAIN_IMAGE_CONFLICT", "상품에는 MAIN 이미지를 하나만 지정할 수 있습니다.");
 		}
+		long imageId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		cacheInvalidator.invalidateAfterCommit();
-		return jdbc.query(
-				"SELECT id,product_id,image_url,alt_text,display_order,image_type FROM product_images WHERE product_id=? ORDER BY id DESC LIMIT 1",
-				(rs, n) -> image(rs), productId).getFirst();
+		return image(productId, imageId);
 	}
 
 	@Transactional
@@ -331,6 +330,14 @@ public class CatalogExpansionAdminService {
 
 	@Transactional
 	public void removeCategoryFacet(long categoryId, long definitionId) {
+		requireCategory(categoryId);
+		lockAllProducts();
+		lockCategoryFacetScope(categoryId);
+		if (jdbc.queryForObject(
+				"SELECT COUNT(*) FROM category_facets WHERE category_id=? AND facet_definition_id=?",
+				Long.class, categoryId, definitionId) == 0) {
+			throw missing("CATEGORY_FACET_NOT_FOUND", "카테고리 facet 배정을 확인할 수 없습니다.");
+		}
 		Long inUse = jdbc.queryForObject("""
 				SELECT COUNT(*)
 				FROM product_facet_values pfv
@@ -341,14 +348,13 @@ public class CatalogExpansionAdminService {
 		if (inUse != null && inUse > 0) {
 			throw conflict("CATEGORY_FACET_IN_USE", "상품이 사용 중인 facet 배정은 제거할 수 없습니다.");
 		}
-		if (jdbc.update("DELETE FROM category_facets WHERE category_id=? AND facet_definition_id=?", categoryId, definitionId) == 0) {
-			throw missing("CATEGORY_FACET_NOT_FOUND", "카테고리 facet 배정을 확인할 수 없습니다.");
-		}
+		jdbc.update("DELETE FROM category_facets WHERE category_id=? AND facet_definition_id=?", categoryId, definitionId);
 	}
 
 	@Transactional
 	public AdminCatalogViews.ProductFacetValues setProductFacetValues(long productId, AdminCatalogRequests.ProductFacetValues request) {
-		long categoryId = requireProduct(productId);
+		long categoryId = lockProductAndGetCategory(productId);
+		lockCategoryFacetScope(categoryId);
 		List<Long> ids = distinct(request.facetOptionIds(), "facetOptionIds");
 		if (!ids.isEmpty()) {
 			List<Long> allowed = jdbc.query(
@@ -416,6 +422,20 @@ public class CatalogExpansionAdminService {
 		if (jdbc.query("SELECT id FROM products WHERE id=? FOR UPDATE", (rs, n) -> rs.getLong(1), productId).isEmpty()) {
 			throw missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다.");
 		}
+	}
+
+	private long lockProductAndGetCategory(long productId) {
+		return jdbc.query("SELECT category_id FROM products WHERE id=? FOR UPDATE", (rs, n) -> rs.getLong(1), productId)
+				.stream().findFirst().orElseThrow(() -> missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+	}
+
+	private void lockAllProducts() {
+		jdbc.query("SELECT id FROM products ORDER BY id FOR UPDATE", (rs, n) -> rs.getLong(1));
+	}
+
+	private void lockCategoryFacetScope(long categoryId) {
+		jdbc.query("SELECT facet_definition_id FROM category_facets WHERE category_id=? ORDER BY facet_definition_id FOR UPDATE",
+				(rs, n) -> rs.getLong(1), categoryId);
 	}
 
 	private long requireProduct(long productId) {
