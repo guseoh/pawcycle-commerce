@@ -338,14 +338,16 @@ public class CatalogExpansionAdminService {
 				Long.class, categoryId, definitionId) == 0) {
 			throw missing("CATEGORY_FACET_NOT_FOUND", "카테고리 facet 배정을 확인할 수 없습니다.");
 		}
-		Long inUse = jdbc.queryForObject("""
-				SELECT COUNT(*)
+		boolean inUse = !jdbc.query("""
+				SELECT pfv.product_id
 				FROM product_facet_values pfv
 				JOIN facet_options fo ON fo.id=pfv.facet_option_id
 				JOIN products p ON p.id=pfv.product_id
 				WHERE p.category_id=? AND fo.facet_definition_id=?
-				""", Long.class, categoryId, definitionId);
-		if (inUse != null && inUse > 0) {
+				LIMIT 1
+				FOR UPDATE
+				""", (rs, n) -> rs.getLong(1), categoryId, definitionId).isEmpty();
+		if (inUse) {
 			throw conflict("CATEGORY_FACET_IN_USE", "상품이 사용 중인 facet 배정은 제거할 수 없습니다.");
 		}
 		jdbc.update("DELETE FROM category_facets WHERE category_id=? AND facet_definition_id=?", categoryId, definitionId);
