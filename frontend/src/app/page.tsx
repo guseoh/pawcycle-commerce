@@ -9,6 +9,7 @@ import { buildLoginHref } from "@/lib/frontend-utils";
 import { CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { catalogHref } from "@/lib/catalog-filters";
+import { reviewCollectionCopy } from "@/lib/review-collection-copy";
 import { v2Api, type Pet } from "@/lib/v2-api";
 
 type ProductPreviewState = { status: "loading" } | { status: "success"; products: ProductSummary[] } | { status: "error"; message: string };
@@ -80,8 +81,10 @@ function HomeProductPreview({ id, title, description, sort, subscribable }: { id
     return () => { active = false; };
   }, [retry, sort, subscribable]);
 
+  const copy = sort === "REVIEW_COUNT" && state.status === "success" ? reviewCollectionCopy(state.products) : null;
+
   return <section className="home-product-preview" aria-labelledby={`home-products-${id}`}>
-    <div className="section-title"><div><h2 id={`home-products-${id}`}>{title}</h2><p>{description}</p></div><Link className="text-link" href={catalogHref({ sort, subscribable })}>더 보기 →</Link></div>
+    <div className="section-title"><div><h2 id={`home-products-${id}`}>{copy?.title ?? title}</h2><p>{copy?.description ?? description}</p></div><Link className="text-link" href={catalogHref({ sort, subscribable })}>더 보기 →</Link></div>
     {state.status === "loading" ? <LoadingState>상품을 불러오고 있습니다.</LoadingState> : null}
     {state.status === "error" ? <ErrorState headingLevel={3} title="상품을 불러오지 못했습니다." message={state.message} onRetry={() => { setState({ status: "loading" }); setRetry((value) => value + 1); }} /> : null}
     {state.status === "success" && state.products.length === 0 ? <div className="empty-callout"><strong>새로운 상품을 준비하고 있어요.</strong><Link href="/products">다른 상품 둘러보기</Link></div> : null}
