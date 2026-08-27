@@ -1,0 +1,12 @@
+name: pawcycle-mvp4-customer-qa
+
+services:
+  backend:
+    environment:
+      PAWCYCLE_LOCAL_CUSTOMER_CATALOG_V3_ENABLED: "true"
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: ${PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED:-false}
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS: "false"
+
+volumes:
+  mysql-data:
+    name: pawcycle-mvp4-customer-qa-mysql-data
