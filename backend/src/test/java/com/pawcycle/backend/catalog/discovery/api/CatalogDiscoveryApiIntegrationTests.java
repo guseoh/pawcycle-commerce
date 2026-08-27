@@ -94,6 +94,9 @@ class CatalogDiscoveryApiIntegrationTests {
 		assertThat(testFieldValues(protein.path("options"), "value", fixture.proteinEarlyValue(), fixture.proteinLateValue()))
 				.containsExactly(fixture.proteinEarlyValue(), fixture.proteinLateValue());
 		assertThat(facetKeys(childFacets.path("facets"))).doesNotContain(fixture.otherFacetKey());
+		assertThat(findByField(root.path("categoryFacets"), "categorySlug", fixture.grandchildSlug())).isNull();
+		assertThat(findByField(root.path("categoryFacets"), "categorySlug", fixture.inactiveTopSlug())).isNull();
+		assertThat(findByField(root.path("categoryFacets"), "categorySlug", fixture.orphanSlug())).isNull();
 	}
 
 	@Test
@@ -130,7 +133,7 @@ class CatalogDiscoveryApiIntegrationTests {
 		String childSecondSlug = "discovery-child-second-" + suffix;
 		long childSecondId = insertCategory("탐색 하위 둘째", childSecondSlug, 1, true, topId);
 		String grandchildSlug = "discovery-grandchild-" + suffix;
-		insertCategory("탐색 손자", grandchildSlug, 0, true, childSecondId);
+		long grandchildId = insertCategory("탐색 손자", grandchildSlug, 0, true, childSecondId);
 
 		String otherTopSlug = "discovery-other-top-" + suffix;
 		long otherTopId = insertCategory("탐색 다른 상위", otherTopSlug, 1, true, null);
@@ -139,7 +142,7 @@ class CatalogDiscoveryApiIntegrationTests {
 		String inactiveChildSlug = "discovery-inactive-child-" + suffix;
 		insertCategory("비활성 하위", inactiveChildSlug, 0, false, topId);
 		String orphanSlug = "discovery-orphan-" + suffix;
-		insertCategory("비활성 상위의 활성 하위", orphanSlug, 0, true, inactiveTopId);
+		long orphanId = insertCategory("비활성 상위의 활성 하위", orphanSlug, 0, true, inactiveTopId);
 
 		String brandOneSlug = "discovery-brand-one-" + suffix;
 		insertBrand("탐색 브랜드 하나", brandOneSlug, true, 5);
@@ -165,6 +168,9 @@ class CatalogDiscoveryApiIntegrationTests {
 		long otherFacetId = insertFacet(otherFacetKey, "다른 카테고리용");
 		insertOption(otherFacetId, "다른 값-" + suffix, 0);
 		assignFacet(otherTopId, otherFacetId, 0);
+		assignFacet(grandchildId, otherFacetId, 1);
+		assignFacet(inactiveTopId, otherFacetId, 1);
+		assignFacet(orphanId, otherFacetId, 1);
 
 		return new Fixture(topId, topSlug, childFirstSlug, childSecondSlug, grandchildSlug, otherTopSlug,
 				inactiveTopSlug, orphanSlug, brandOneSlug, brandTwoSlug, inactiveBrandSlug, proteinKey, textureKey,

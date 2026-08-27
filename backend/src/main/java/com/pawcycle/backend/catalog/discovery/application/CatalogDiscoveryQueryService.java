@@ -1,12 +1,11 @@
 package com.pawcycle.backend.catalog.discovery.application;
 
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.Brand;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.Category;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.CategoryFacets;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.Child;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.Facet;
-import com.pawcycle.backend.catalog.discovery.api.CatalogDiscoveryView.Option;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Brand;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Category;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.CategoryFacets;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Child;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Facet;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Option;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.pawcycle.backend.catalog.discovery.api;
+package com.pawcycle.backend.catalog.discovery.application;
 
 import java.util.List;
 
