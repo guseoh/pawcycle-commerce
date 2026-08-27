@@ -178,7 +178,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 		}
 	}
 
-	static final class RollbackProbe {
+	static class RollbackProbe {
 		private final ProductListCacheInvalidator invalidator;
 
 		RollbackProbe(ProductListCacheInvalidator invalidator) {
@@ -186,7 +186,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 		}
 
 		@Transactional
-		void invalidateThenFail() {
+		public void invalidateThenFail() {
 			invalidator.invalidateAfterCommit();
 			throw new IllegalStateException("rollback probe");
 		}
