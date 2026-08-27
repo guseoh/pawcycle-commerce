@@ -1,22 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError, Category, categoryApi } from "@/lib/api";
+import { useCatalogDiscovery } from "./catalog-discovery";
 import { buildLoginHref } from "@/lib/frontend-utils";
-
-type CategoryLoadState = { status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string };
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const { status, memberId } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
-  const [categoryState, setCategoryState] = useState<CategoryLoadState>({ status: "loading" });
+  const discovery = useCatalogDiscovery();
+  const menuButton = useRef<HTMLButtonElement>(null);
   const requestRef = useRef(0);
   const categoryNavigationRef = useRef<HTMLDetailsElement>(null);
   const closeNavigation = () => {
@@ -66,18 +66,14 @@ export function AppHeader() {
     };
   }, [memberId, status]);
 
-  useEffect(() => {
-    let active = true;
-    void categoryApi.list().then((response) => {
-      if (active) setCategoryState({ status: "success", categories: response.items });
-    }).catch((error: unknown) => {
-      if (active) setCategoryState({ status: "error", message: error instanceof ApiError ? error.message : "카테고리를 불러오지 못했습니다." });
-    });
-    return () => { active = false; };
-  }, []);
-
   return (
-    <header className="site-header">
+    <header className="site-header shopping-header" onKeyDown={(event) => {
+      if (event.key !== "Escape") return;
+      if (!menuOpen && !categoryNavigationRef.current?.open) return;
+      closeNavigation();
+      if (menuOpen) menuButton.current?.focus();
+      else categoryNavigationRef.current?.querySelector("summary")?.focus();
+    }}>
       <div className="header-inner">
         <Link className="brand" href="/" aria-label="PawCycle 홈">
           <span className="brand-mark" aria-hidden="true">P</span>
@@ -87,6 +83,7 @@ export function AppHeader() {
           </span>
         </Link>
         <button
+          ref={menuButton}
           className="header-menu-toggle"
           type="button"
           aria-expanded={menuOpen}
@@ -96,15 +93,20 @@ export function AppHeader() {
           <span className="sr-only">메뉴</span>
           <span aria-hidden="true">{menuOpen ? "닫기" : "메뉴"}</span>
         </button>
+        <form className="header-search" role="search" onSubmit={(event) => { event.preventDefault(); const query = String(new FormData(event.currentTarget).get("q") ?? "").trim(); closeNavigation(); router.push(query ? `/products?q=${encodeURIComponent(query)}` : "/products"); }}>
+          <label className="sr-only" htmlFor="header-search">전체 상품 검색</label><input id="header-search" name="q" type="search" placeholder="우리 아이에게 필요한 상품 찾기" /><button type="submit">검색</button>
+        </form>
         <nav id="main-navigation" className={`main-nav${menuOpen ? " is-open" : ""}`} aria-label="주요 메뉴">
           <div className="nav-primary">
             <Link onClick={closeNavigation} className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
+            <Link onClick={closeNavigation} href="/products?petType=DOG">DOG</Link>
+            <Link onClick={closeNavigation} href="/products?petType=CAT">CAT</Link>
             <details className="category-navigation" ref={categoryNavigationRef}>
               <summary>카테고리</summary>
               <div className="category-navigation-menu">
-                {categoryState.status === "loading" ? <span className="nav-status" role="status">카테고리를 불러오는 중</span> : null}
-                {categoryState.status === "success" ? categoryState.categories.map((category) => <Link key={category.categoryId} onClick={closeNavigation} href={`/products?category=${encodeURIComponent(category.slug)}`}>{category.name}</Link>) : null}
-                {categoryState.status === "error" ? <p role="alert">{categoryState.message} 상품 목록에서 검색할 수 있습니다.</p> : null}
+                {discovery.state.status === "loading" ? <span className="nav-status" role="status">카테고리를 불러오는 중</span> : null}
+                {discovery.state.status === "success" ? discovery.state.data.categories.length ? discovery.state.data.categories.map((category) => <div className="category-navigation-group" key={category.categoryId}><Link onClick={closeNavigation} href={`/products?category=${encodeURIComponent(category.slug)}`}><strong>{category.name}</strong></Link>{category.children.map((child) => <Link key={child.categoryId} onClick={closeNavigation} href={`/products?category=${encodeURIComponent(category.slug)}&subcategory=${encodeURIComponent(child.slug)}`}>{child.name}</Link>)}</div>) : <p>준비된 카테고리가 없습니다. 전체 상품을 확인해 주세요.</p> : null}
+                {discovery.state.status === "error" ? <div role="alert"><p>{discovery.state.message} 상품 목록에서 검색할 수 있습니다.</p><button onClick={discovery.retry}>다시 시도</button></div> : null}
               </div>
             </details>
             <Link onClick={closeNavigation} className={pathname.startsWith("/subscriptions") ? "nav-active" : undefined} href="/subscriptions">정기배송</Link>

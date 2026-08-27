@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 export function LoadingState({ children }: { children: React.ReactNode }) {
   return (
     <div className="state-panel" role="status" aria-live="polite">
@@ -8,6 +10,7 @@ export function LoadingState({ children }: { children: React.ReactNode }) {
 }
 
 interface ErrorStateProps {
+  headingLevel?: 1 | 2 | 3;
   title: string;
   message: string;
   retryLabel?: string;
@@ -16,21 +19,24 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({
+  headingLevel = 1,
   title,
   message,
   retryLabel = "다시 시도",
   onRetry,
   children,
 }: ErrorStateProps) {
+  const titleId = useId();
+  const Heading = headingLevel === 3 ? "h3" : headingLevel === 2 ? "h2" : "h1";
   return (
     <section
       className="state-panel state-panel-error"
       role="alert"
       aria-atomic="true"
-      aria-labelledby="error-state-title"
+      aria-labelledby={titleId}
     >
       <p className="eyebrow">확인할 수 없음</p>
-      <h1 id="error-state-title">{title}</h1>
+      <Heading id={titleId}>{title}</Heading>
       <p>{message}</p>
       <div className="button-row">
         {onRetry ? (

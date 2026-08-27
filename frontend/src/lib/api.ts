@@ -30,6 +30,36 @@ export interface ProductPrice {
 }
 export interface Category { categoryId: number; name: string; slug: string }
 export interface CategoryListResponse { items: Category[] }
+export interface Brand { brandId: number; name: string; slug: string; logoUrl: string | null }
+export interface DiscoveryCategoryChild extends Category { displayOrder: number }
+export interface DiscoveryCategory extends DiscoveryCategoryChild { children: DiscoveryCategoryChild[] }
+export interface CatalogFacet {
+  key: string;
+  name: string;
+  displayOrder: number;
+  options: { optionId: number; value: string; displayOrder: number }[];
+}
+export interface CatalogDiscovery {
+  categories: DiscoveryCategory[];
+  brands: (Brand & { displayOrder: number })[];
+  categoryFacets: { categorySlug: string; facets: CatalogFacet[] }[];
+}
+export type ProductSort = "RECOMMENDED" | "NEWEST" | "PRICE_ASC" | "PRICE_DESC" | "RATING" | "REVIEW_COUNT";
+export interface ProductFilters {
+  q?: string;
+  petType?: string;
+  category?: string;
+  subcategory?: string;
+  brand?: string;
+  facet?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  subscribable?: boolean;
+  purchasable?: boolean;
+  page?: number;
+  size?: number;
+  sort?: ProductSort;
+}
 
 export interface ProductSummary {
   productId: number;
@@ -41,6 +71,11 @@ export interface ProductSummary {
   skuPriceSummary: { skuPrices: ProductPrice[] };
   hasSubscribableSku: boolean;
   representativePrice: number | null;
+  brand: Brand | null;
+  compareAtPrice: number | null;
+  discountRate: number | null;
+  averageRating: number | null;
+  reviewCount: number;
   purchasable: boolean;
 }
 
@@ -58,11 +93,19 @@ export interface ProductSku {
   skuId: number;
   skuName: string;
   price: number;
+  compareAtPrice: number | null;
+  discountRate: number | null;
+  selectedOptions: SelectedOption[];
   subscribable: boolean;
   availableDeliveryCycles: number[];
   availableQuantity: number;
   purchasable: boolean;
 }
+
+export interface ProductImage { imageId: number; imageUrl: string; altText: string | null; displayOrder: number; imageType: string }
+export interface ProductOptionValue { optionValueId: number; value: string; displayOrder: number }
+export interface ProductOptionGroup { optionGroupId: number; name: string; displayOrder: number; values: ProductOptionValue[] }
+export interface SelectedOption { optionGroupId: number; groupName: string; optionValueId: number; value: string }
 
 export interface ProductDetail {
   productId: number;
@@ -72,6 +115,9 @@ export interface ProductDetail {
   description: string | null;
   thumbnailUrl: string | null;
   category: Category;
+  brand: Brand | null;
+  images: ProductImage[];
+  optionGroups: ProductOptionGroup[];
   detailSections: ProductDetailSection[];
   trust: ProductTrust;
   skus: ProductSku[];
@@ -242,9 +288,12 @@ async function requestVoid(path: string, init: RequestInit): Promise<void> {
 }
 
 export const productApi = {
-  list: (filters: { q?: string; petType?: string; category?: string; page?: number; size?: number; sort?: string } = {}) => {
+  list: (filters: ProductFilters = {}) => {
     const query = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
+      else if (value !== undefined && value !== "") query.set(key, String(value));
+    });
     return requestJson<ProductListResponse>(`/api/products${query.size ? `?${query}` : ""}`);
   },
   detail: (productId: string) =>
@@ -284,7 +333,11 @@ export const categoryApi = {
   list: () => requestJson<CategoryListResponse>("/api/categories"),
 };
 
-export interface RecommendationItem extends Omit<ProductSummary, "petType" | "skuPriceSummary" | "hasSubscribableSku"> { reason: string }
+export const catalogDiscoveryApi = {
+  get: () => requestJson<CatalogDiscovery>("/api/catalog/discovery"),
+};
+
+export interface RecommendationItem extends Pick<ProductSummary, "productId" | "name" | "shortDescription" | "thumbnailUrl" | "category"> { reason: string }
 export const recommendationApi = {
   products: (petId: number) => requestJson<{ products: RecommendationItem[] }>(`/api/recommendations/products?petId=${encodeURIComponent(petId)}`),
 };

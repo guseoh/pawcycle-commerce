@@ -13,6 +13,8 @@ const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.
 const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const productsSource = readFileSync(new URL("../app/products/page.tsx", import.meta.url), "utf8");
+const productCardSource = readFileSync(new URL("./catalog-product-card.tsx", import.meta.url), "utf8");
+const discoverySource = readFileSync(new URL("./catalog-discovery.ts", import.meta.url), "utf8");
 const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
@@ -69,18 +71,19 @@ test("header와 My의 계정 action 경계를 유지한다", () => {
 });
 
 test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사용한다", () => {
-  assert.match(productsSource, /categoryApi\.list\(\)/);
-  assert.match(productsSource, /categoryState\.categories\.map/);
+  assert.match(productsSource, /useCatalogDiscovery/);
+  assert.match(productsSource, /metadata\?\.categories\.map/);
   assert.doesNotMatch(productsSource, /value="food"|value="treats"|value="hygiene"|value="toilet"/);
-  assert.match(homeSource, /categoryApi\.list\(\)/);
+  assert.match(homeSource, /useCatalogDiscovery/);
   assert.match(homeSource, /products\?petType=DOG/);
   assert.match(homeSource, /products\?petType=CAT/);
   assert.match(homeSource, /products\?category=\$\{encodeURIComponent\(category\.slug\)\}/);
-  assert.match(homeSource, /productApi\.list\(\{ page: 0, size: 4, sort: "NEWEST" \}\)/);
+  assert.match(homeSource, /productApi\.list\(\{ page: 0, size: 4, sort, subscribable \}\)/);
   assert.match(homeSource, /buildLoginHref\("\/"\)/);
   assert.match(headerSource, /<details className="category-navigation"/);
   assert.match(headerSource, />카테고리<\/summary>/);
-  assert.match(headerSource, /categoryApi\.list\(\)/);
+  assert.match(headerSource, /useCatalogDiscovery/);
+  assert.match(discoverySource, /catalogDiscoveryApi\.get\(\)/);
   assert.match(headerSource, /status === "anonymous" \|\| status === "error"/);
   assert.match(headerSource, /buildLoginHref\(pathname\)/);
   assert.match(globalStylesSource, /\.category-navigation summary/);
@@ -149,9 +152,9 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
 });
 
 test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이지 상태를 제공한다", () => {
-  assert.match(productsSource, /className="product-card-media"/);
-  assert.match(productsSource, /aria-label=\{`\$\{product\.name\} 상품 상세 보기`\}/);
-  assert.match(productsSource, /className=\{`product-availability/);
+  assert.match(productCardSource, /className="product-card-media"/);
+  assert.match(productCardSource, /aria-label=\{`\$\{product\.name\} 상품 상세 보기`\}/);
+  assert.match(productCardSource, /className=\{`product-availability/);
   assert.match(productsSource, /className="pagination-row"/);
   assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
   assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 4 \/ 3/);
