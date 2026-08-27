@@ -3,6 +3,7 @@ import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
 import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
+import "./shopping.css";
 
 export const metadata: Metadata = {
   title: "PawCycle Commerce",

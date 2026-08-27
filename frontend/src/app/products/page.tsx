@@ -1,98 +1,93 @@
 "use client";
 
-import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError, Category, ProductListResponse, ProductSummary, categoryApi, productApi } from "@/lib/api";
-import { formatPetType, formatPrice } from "@/lib/frontend-utils";
+import { CatalogProductCard } from "@/components/catalog-product-card";
+import { useCatalogDiscovery } from "@/components/catalog-discovery";
+import { ApiError, type CatalogDiscovery, type ProductFilters, type ProductListResponse, type ProductSort } from "@/lib/api";
+import { catalogHref, catalogMetadata, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "@/lib/catalog-filters";
+import { loadProductResults } from "@/lib/catalog-products";
 
-type LoadState = { status: "loading" } | { status: "success"; response: ProductListResponse } | { status: "error"; message: string };
-type CategoryLoadState = { status: "loading" } | { status: "success"; categories: Category[] } | { status: "error"; message: string };
-const DEFAULT_SIZE = 12;
+type LoadState = { key: string; status: "success"; response: ProductListResponse } | { key: string; status: "error"; message: string };
 
 function ProductsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const q = searchParams.get("q") ?? "";
-  const petType = searchParams.get("petType") ?? "";
-  const category = searchParams.get("category") ?? "";
-  const sort = searchParams.get("sort") ?? "NEWEST";
-  const page = Math.max(0, Number(searchParams.get("page") ?? "0") || 0);
+  const filters = parseCatalogFilters(new URLSearchParams(searchParams.toString()));
+  const query = catalogQuery(filters);
   const [retryKey, setRetryKey] = useState(0);
-  const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [categoryState, setCategoryState] = useState<CategoryLoadState>({ status: "loading" });
+  const [state, setState] = useState<LoadState | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterButton = useRef<HTMLButtonElement>(null);
+  const discovery = useCatalogDiscovery();
+  const metadata = discovery.state.status === "success" ? discovery.state.data : null;
+  const requestKey = `${query}|${retryKey}`;
 
-  useEffect(() => {
-    let active = true;
-    productApi.list({ q, petType, category, page, size: DEFAULT_SIZE, sort }).then((response) => {
-      if (active) setState({ status: "success", response });
-    }).catch((error: unknown) => {
-      if (active) setState({ status: "error", message: error instanceof ApiError ? error.message : "상품 목록을 불러오지 못했습니다." });
-    });
-    return () => { active = false; };
-  }, [retryKey, q, petType, category, page, sort]);
+  useEffect(() => loadProductResults(parseCatalogFilters(new URLSearchParams(query)),
+    (response) => setState({ key: requestKey, status: "success", response }),
+    (error) => setState({ key: requestKey, status: "error", message: error instanceof ApiError ? error.message : "상품 목록을 불러오지 못했습니다." })),
+  [query, requestKey]);
 
-  useEffect(() => {
-    let active = true;
-    void categoryApi.list().then((response) => {
-      if (active) setCategoryState({ status: "success", categories: response.items });
-    }).catch((error: unknown) => {
-      if (active) setCategoryState({ status: "error", message: error instanceof ApiError ? error.message : "카테고리를 불러오지 못했습니다." });
-    });
-    return () => { active = false; };
-  }, []);
+  function change(patch: Partial<ProductFilters>) { router.push(catalogHref(changeCatalogFilters(filters, patch))); }
+  const current = state?.key === requestKey ? state : null;
+  const products = current?.status === "success" ? (current.response.items ?? current.response.products ?? []) : [];
 
-  function movePage(nextPage: number) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (nextPage > 0) next.set("page", String(nextPage)); else next.delete("page");
-    router.push(`/products${next.size ? `?${next}` : ""}`);
-  }
-
-  const products = state.status === "success" ? (state.response.items ?? state.response.products ?? []) : [];
-
-  return <>
-    <header className="page-heading"><p className="eyebrow">상품 탐색</p><h1>우리 아이에게 필요한 상품을 찾아보세요.</h1><p>상품명과 설명을 검색하거나 반려동물·카테고리·정렬로 좁혀볼 수 있어요.</p></header>
-    <ProductFilters key={`${q}\u0000${petType}\u0000${category}\u0000${sort}`} q={q} petType={petType} category={category} sort={sort} categoryState={categoryState} />
-    {state.status === "loading" ? <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState> : null}
-    {state.status === "error" ? <ErrorState title="상품 목록을 불러오지 못했습니다." message={state.message} onRetry={() => { setState({ status: "loading" }); setRetryKey((value) => value + 1); }} /> : null}
-    {state.status === "success" ? <>
-      <p className="catalog-count" aria-live="polite">총 {state.response.totalElements.toLocaleString()}개 상품</p>
-      {products.length === 0 ? <section className="state-panel empty-state"><p className="eyebrow">Empty</p><h1>조건에 맞는 상품이 없습니다.</h1><p>검색어와 필터를 바꾸거나 공개 상품이 준비될 때까지 기다려 주세요.</p></section> : <ProductGrid products={products} />}
-      {state.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" type="button" disabled={state.response.page <= 0} onClick={() => movePage(state.response.page - 1)}>이전</button><span>{state.response.page + 1} / {state.response.totalPages}</span><button className="button button-secondary" type="button" disabled={state.response.page + 1 >= state.response.totalPages} onClick={() => movePage(state.response.page + 1)}>다음</button></nav> : null}
-    </> : null}
-  </>;
+  return <div className="catalog-page">
+    <header className="page-heading"><p className="eyebrow">Find their everyday</p><h1>우리 아이의 매일을 위한 선택</h1><p>먹고, 놀고, 쉬는 순간마다 필요한 상품을 만나보세요.</p></header>
+    <form className="catalog-search" key={query} onSubmit={(event) => { event.preventDefault(); change({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() }); }} role="search">
+      <label className="sr-only" htmlFor="catalog-search">상품 검색</label><input id="catalog-search" className="input" name="q" type="search" defaultValue={filters.q ?? ""} placeholder="상품명 또는 설명으로 검색" /><button className="button button-primary" type="submit">검색</button>
+    </form>
+    <div className="catalog-toolbar"><p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p><div className="button-row"><button ref={filterButton} className="button button-secondary catalog-filter-toggle" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => setFilterOpen((open) => !open)}>필터</button><label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div></div>
+    <FilterChips filters={filters} metadata={metadata} onChange={change} onReset={() => router.push("/products")} />
+    <div className="catalog-layout">
+      <aside id="catalog-filter-panel" className={`catalog-filter-panel${filterOpen ? " is-open" : ""}`} aria-label="상품 필터">
+        <h2>상세 필터</h2>
+        {discovery.state.status === "loading" ? <p role="status">탐색 정보를 불러오는 중입니다.</p> : null}
+        {discovery.state.status === "error" ? <div className="inline-alert" role="alert"><p>{discovery.state.message} 검색과 기본 필터는 계속 사용할 수 있습니다.</p><button className="button button-secondary" onClick={discovery.retry}>탐색 정보 재시도</button></div> : null}
+        <CatalogFilterForm key={query} filters={filters} metadata={metadata} onApply={(next) => { router.push(catalogHref({ ...next, page: 0 })); setFilterOpen(false); filterButton.current?.focus(); }} onReset={() => router.push("/products")} />
+      </aside>
+      <section className="catalog-results" aria-label="상품 검색 결과" aria-busy={!current}>
+        <h2 className="sr-only">상품 목록</h2>
+        {!current ? <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState> : null}
+        {current?.status === "error" ? <ErrorState headingLevel={3} title="상품 목록을 불러오지 못했습니다." message={current.message} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
+        {current?.status === "success" ? <>
+          {products.length ? <div className="catalog-products-grid">{products.map((product) => <CatalogProductCard key={product.productId} product={product} />)}</div> : <div className="state-panel"><h3>조건에 맞는 상품이 없어요.</h3><p>필터를 줄이거나 다른 검색어로 찾아보세요.</p><button className="button button-secondary" onClick={() => router.push("/products")}>전체 상품 보기</button></div>}
+          {current.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" disabled={current.response.page <= 0} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page - 1 }))}>이전</button><span>{current.response.page + 1} / {current.response.totalPages}</span><button className="button button-secondary" disabled={current.response.page + 1 >= current.response.totalPages} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page + 1 }))}>다음</button></nav> : null}
+        </> : null}
+      </section>
+    </div>
+  </div>;
 }
 
-function ProductGrid({ products }: { products: ProductSummary[] }) {
-  return <section aria-label="상품 목록" className="product-grid">{products.map((product) => {
-    return <article className="product-card" key={product.productId}>
-      <Link className="product-card-media" href={`/products/${product.productId}`} aria-label={`${product.name} 상품 상세 보기`}>
-        {product.thumbnailUrl ? <img className="product-thumbnail" src={product.thumbnailUrl} alt={`${product.name} 상품 이미지`} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}
-      </Link>
-      <div className="product-card-copy">
-        <p className="product-card-meta">{formatPetType(product.petType)} · {product.category.name}</p>
-        <h2><Link href={`/products/${product.productId}`}>{product.name}</Link></h2>
-        <strong className="price-heading">{product.representativePrice === null ? "가격 준비 중" : formatPrice(product.representativePrice)}</strong>
-        <p className={`product-availability ${product.purchasable ? "is-available" : "is-unavailable"}`}>{product.purchasable ? "구매 가능" : "현재 품절"}</p>
-        <p className="product-description">{product.shortDescription}</p>
-        <div className="card-actions"><Link className="button button-secondary" href={`/products/${product.productId}`}>상세 보기</Link></div>
-      </div>
-    </article>;
-  })}</section>;
-}
-
-function ProductFilters({ q, petType, category, sort, categoryState }: { q: string; petType: string; category: string; sort: string; categoryState: CategoryLoadState }) {
-  const router = useRouter();
-  const [draftQ, setDraftQ] = useState(q); const [draftPetType, setDraftPetType] = useState(petType); const [draftCategory, setDraftCategory] = useState(category); const [draftSort, setDraftSort] = useState(sort);
-  function applyFilters(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const next = new URLSearchParams(); if (draftQ.trim()) next.set("q", draftQ.trim()); if (draftPetType) next.set("petType", draftPetType); if (draftCategory) next.set("category", draftCategory); if (draftSort !== "NEWEST") next.set("sort", draftSort); router.push(`/products${next.size ? `?${next}` : ""}`); }
-  return <form className="catalog-filters" onSubmit={applyFilters}>
-    <label className="form-field search-field">상품 검색<input className="input" placeholder="상품명 또는 설명으로 검색" value={draftQ} onChange={(event) => setDraftQ(event.target.value)} /></label>
-    <label className="form-field">반려동물<select className="input" value={draftPetType} onChange={(event) => setDraftPetType(event.target.value)}><option value="">전체</option><option value="DOG">강아지</option><option value="CAT">고양이</option></select></label>
-    <label className="form-field">카테고리<select className="input" value={draftCategory} disabled={categoryState.status !== "success"} onChange={(event) => setDraftCategory(event.target.value)}>{categoryState.status === "success" ? <><option value="">전체</option>{categoryState.categories.map((item) => <option key={item.categoryId} value={item.slug}>{item.name}</option>)}</> : <option value={draftCategory}>{draftCategory ? "현재 선택 카테고리" : categoryState.status === "loading" ? "카테고리를 불러오는 중" : "카테고리를 불러올 수 없습니다"}</option>}</select>{categoryState.status === "loading" ? <span className="field-help" role="status">카테고리를 불러오는 중입니다.</span> : null}{categoryState.status === "error" ? <span className="field-error" role="alert">{categoryState.message} 카테고리 필터를 사용할 수 없습니다.</span> : null}</label>
-    <label className="form-field">정렬<select className="input" value={draftSort} onChange={(event) => setDraftSort(event.target.value)}><option value="NEWEST">최신순</option><option value="PRICE_ASC">낮은 가격순</option><option value="PRICE_DESC">높은 가격순</option></select></label>
-    <div className="button-row"><button className="button button-primary" type="submit">검색</button><button className="button button-secondary" type="button" onClick={() => router.push("/products")}>초기화</button></div>
+function CatalogFilterForm({ filters, metadata, onApply, onReset }: { filters: ProductFilters; metadata: CatalogDiscovery | null; onApply: (filters: ProductFilters) => void; onReset: () => void }) {
+  const [draft, setDraft] = useState(filters);
+  const { children, facets } = catalogMetadata(metadata, draft);
+  const change = (patch: Partial<ProductFilters>) => setDraft((current) => changeCatalogFilters(current, patch));
+  return <form className="catalog-filter-form" onSubmit={(event) => { event.preventDefault(); onApply(draft); }}>
+    <fieldset><legend>반려동물</legend><div className="catalog-toggle-row">{[{ value: "", label: "전체" }, { value: "DOG", label: "강아지" }, { value: "CAT", label: "고양이" }].map((item) => <button type="button" aria-pressed={(draft.petType ?? "") === item.value} key={item.value} onClick={() => change({ petType: item.value })}>{item.label}</button>)}</div></fieldset>
+    <label className="form-field">카테고리<select className="input" value={draft.category ?? ""} disabled={!metadata} onChange={(event) => change({ category: event.target.value })}><option value="">전체 카테고리</option>{draft.category && !metadata?.categories.some((item) => item.slug === draft.category) ? <option value={draft.category}>현재 URL 카테고리</option> : null}{metadata?.categories.map((category) => <option key={category.categoryId} value={category.slug}>{category.name}</option>)}</select></label>
+    {children.length > 0 ? <label className="form-field">세부 카테고리<select className="input" value={draft.subcategory ?? ""} onChange={(event) => change({ subcategory: event.target.value })}><option value="">전체</option>{draft.subcategory && !children.some((item) => item.slug === draft.subcategory) ? <option value={draft.subcategory}>현재 URL 세부 카테고리</option> : null}{children.map((child) => <option key={child.categoryId} value={child.slug}>{child.name}</option>)}</select></label> : null}
+    <label className="form-field">브랜드<select className="input" value={draft.brand ?? ""} disabled={!metadata} onChange={(event) => change({ brand: event.target.value })}><option value="">전체 브랜드</option>{draft.brand && !metadata?.brands.some((brand) => brand.slug === draft.brand) ? <option value={draft.brand}>현재 URL 브랜드</option> : null}{metadata?.brands.map((brand) => <option key={brand.brandId} value={brand.slug}>{brand.name}</option>)}</select></label>
+    {facets.map((facet) => <fieldset key={facet.key}><legend>{facet.name}</legend>{facet.options.map((option) => { const value = `${facet.key}:${option.value}`; return <label className="catalog-check" key={option.optionId}><input type="checkbox" checked={draft.facet?.includes(value) ?? false} onChange={(event) => change({ facet: event.target.checked ? [...(draft.facet ?? []), value] : draft.facet?.filter((item) => item !== value) })} />{option.value}</label>; })}</fieldset>)}
+    <fieldset><legend>가격 범위</legend><div className="catalog-price-inputs"><label className="form-field">최소 가격<input className="input" type="number" min="0" value={draft.minPrice ?? ""} onChange={(event) => change({ minPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label><label className="form-field">최대 가격<input className="input" type="number" min="0" value={draft.maxPrice ?? ""} onChange={(event) => change({ maxPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div></fieldset>
+    <fieldset><legend>구매 조건</legend><label className="catalog-check"><input type="checkbox" checked={draft.subscribable === true} onChange={(event) => change({ subscribable: event.target.checked ? true : undefined })} />정기배송 가능</label><label className="catalog-check"><input type="checkbox" checked={draft.purchasable === true} onChange={(event) => change({ purchasable: event.target.checked ? true : undefined })} />구매 가능한 상품만</label></fieldset>
+    <div className="button-row"><button className="button button-primary" type="submit">필터 적용</button><button className="button button-secondary" type="button" onClick={() => { setDraft(parseCatalogFilters(new URLSearchParams())); onReset(); }}>초기화</button></div>
   </form>;
+}
+
+function FilterChips({ filters, metadata, onChange, onReset }: { filters: ProductFilters; metadata: CatalogDiscovery | null; onChange: (patch: Partial<ProductFilters>) => void; onReset: () => void }) {
+  const chips: { key: string; label: string; remove: () => void }[] = [];
+  const category = metadata?.categories.find((item) => item.slug === filters.category);
+  const labels = { q: "검색", petType: "반려동물", category: "카테고리", subcategory: "세부 카테고리", brand: "브랜드", minPrice: "최소 가격", maxPrice: "최대 가격", subscribable: "정기배송", purchasable: "구매 가능" };
+  for (const key of Object.keys(labels) as (keyof typeof labels)[]) {
+    const value = filters[key];
+    if (value === undefined || value === "") continue;
+    const display = key === "category" ? category?.name ?? value : key === "subcategory" ? category?.children.find((item) => item.slug === value)?.name ?? value : key === "brand" ? metadata?.brands.find((item) => item.slug === value)?.name ?? value : typeof value === "boolean" ? (value ? "예" : "아니오") : value;
+    chips.push({ key, label: `${labels[key]}: ${display}`, remove: () => onChange({ [key]: undefined }) });
+  }
+  filters.facet?.forEach((value, index) => chips.push({ key: `facet-${index}`, label: value, remove: () => onChange({ facet: filters.facet?.filter((_, itemIndex) => itemIndex !== index) }) }));
+  return chips.length ? <div className="catalog-filter-chips" aria-label="선택한 필터">{chips.map((chip) => <button key={chip.key} onClick={chip.remove} aria-label={`${chip.label} 필터 제거`}>{chip.label} <span aria-hidden="true">×</span></button>)}<button onClick={onReset}>전체 초기화</button></div> : null;
 }
 
 export default function ProductsPage() { return <Suspense fallback={<LoadingState>상품 목록을 준비하고 있습니다.</LoadingState>}><ProductsContent /></Suspense>; }
