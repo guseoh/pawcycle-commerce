@@ -61,6 +61,7 @@ public class Sku {
 			boolean subscribable,
 			int displayOrder,
 			SkuStatus status) {
+		validatePriceRelation(price, compareAtPrice);
 		this.product = product;
 		this.skuCode = skuCode;
 		this.name = name;
@@ -83,12 +84,28 @@ public class Sku {
 		update(name, price, null, false, subscribable, displayOrder, status);
 	}
 
-	public void update(String name, BigDecimal price, BigDecimal compareAtPrice, boolean compareAtPricePresent, Boolean subscribable, Integer displayOrder, SkuStatus status) {
+	public void update(
+			String name,
+			BigDecimal price,
+			BigDecimal compareAtPrice,
+			boolean compareAtPricePresent,
+			Boolean subscribable,
+			Integer displayOrder,
+			SkuStatus status) {
+		BigDecimal nextPrice = price == null ? this.price : price;
+		BigDecimal nextCompareAtPrice = compareAtPricePresent ? compareAtPrice : this.compareAtPrice;
+		validatePriceRelation(nextPrice, nextCompareAtPrice);
 		if (name != null) this.name = name;
 		if (price != null) this.price = price;
 		if (compareAtPricePresent) this.compareAtPrice = compareAtPrice;
 		if (subscribable != null) this.subscribable = subscribable;
 		if (displayOrder != null) this.displayOrder = displayOrder;
 		if (status != null) this.status = status;
+	}
+
+	private static void validatePriceRelation(BigDecimal price, BigDecimal compareAtPrice) {
+		if (price != null && compareAtPrice != null && compareAtPrice.compareTo(price) <= 0) {
+			throw new IllegalArgumentException("compareAtPrice는 price보다 커야 합니다.");
+		}
 	}
 }

@@ -31,6 +31,7 @@ ADMIN이 Category, Product, SKU를 생성·조회·수정하고 노출·판매 �
 | GET, PATCH | `/api/admin/products/{productId}` | 200 |
 | GET, POST | `/api/admin/products/{productId}/skus` | GET 200, POST 201 |
 | PATCH | `/api/admin/products/{productId}/skus/{skuId}` | 200 |
+| GET, POST | `/api/admin/brands` | GET 200, POST 201 |
 
 ## MVP4 Catalog 확장 delta
 
@@ -69,6 +70,7 @@ POST 성공은 생성 리소스 URI를 `Location` header로 제공한다. 목록
 ```json
 {
   "categoryId": 10,
+  "parentId": null,
   "name": "사료",
   "slug": "food",
   "displayOrder": 1,
@@ -76,7 +78,7 @@ POST 성공은 생성 리소스 URI를 `Location` header로 제공한다. 목록
 }
 ```
 
-POST는 `name`, `slug`, `displayOrder`, `active`를 모두 받는다. `name`은 1~100자, `slug`는 1~100자의 소문자 영숫자와 단일 `-` 구분 형식, `displayOrder`는 0 이상이다. slug는 ASCII binary 기준 unique다. Category 비활성은 관리 상태이며 연결 Product의 공개 상태를 자동 변경하지 않는다.
+POST는 `name`, `slug`, `displayOrder`, `active`를 모두 받고 `parentId`는 선택적으로 받는다. `parentId`가 없으면 top-level, 있으면 해당 top-level 아래의 second-level Category다. 3-depth는 허용하지 않는다. `name`은 1~100자, `slug`는 1~100자의 소문자 영숫자와 단일 `-` 구분 형식, `displayOrder`는 0 이상이다. slug는 ASCII binary 기준 unique다. Category 비활성은 관리 상태이며 연결 Product의 공개 상태를 자동 변경하지 않는다.
 
 ### Product
 
@@ -105,20 +107,22 @@ POST는 필수 `categoryId`, `brandId`, `name`, `shortDescription`, `petType`과
   "skuCode": "DOG-FOOD-2KG",
   "name": "2kg",
   "price": 19900.00,
+  "compareAtPrice": 22900.00,
   "subscribable": true,
   "displayOrder": 1,
   "status": "ACTIVE"
 }
 ```
 
-POST는 `skuCode`, `name`, 0 이상 `price`, `subscribable`, 0 이상 `displayOrder`, `ACTIVE | INACTIVE` status를 모두 받는다. skuCode는 ASCII 영숫자로 시작하고 ASCII 영숫자·`.`·`_`·`-`만 허용하며 ASCII binary 기준 unique다. 생성 뒤 PATCH에서 skuCode를 받지 않아 변경할 수 없다. 판매 status와 기존 Subscription eligibility인 `subscribable`은 서로 독립이다.
+POST는 `skuCode`, `name`, 0 이상 `price`, `subscribable`, 0 이상 `displayOrder`, `ACTIVE | INACTIVE` status를 모두 받고 `compareAtPrice`는 선택적으로 받는다. `compareAtPrice`를 설정하면 `price`보다 커야 한다. skuCode는 ASCII 영숫자로 시작하고 ASCII 영숫자·`.`·`_`·`-`만 허용하며 ASCII binary 기준 unique다. 생성 뒤 PATCH에서 skuCode를 받지 않아 변경할 수 없다. 판매 status와 기존 Subscription eligibility인 `subscribable`은 서로 독립이다.
 
 ## PATCH 규칙
 
 - omitted 필드는 유지한다. 수정 필드가 하나도 없으면 400이다.
 - non-null 필드를 명시적 `null`로 보내면 400이다.
-- Product의 `categoryId`, `description`, `thumbnailUrl`은 명시적 `null`로 연결 또는 값을 해제할 수 있다.
-- SKU PATCH에는 `skuCode`가 없으며 name, price, subscribable, displayOrder, status만 수정한다.
+- Product의 `description`, `thumbnailUrl`은 명시적 `null`로 값을 해제할 수 있다. `categoryId`, `brandId`는 해제할 수 없다.
+- Brand의 `logoUrl`, Product Image의 `altText`는 명시적 `null`로 값을 해제할 수 있다. 그 외 Brand/Image/Option/Facet PATCH 필드는 명시적 `null`을 허용하지 않는다.
+- SKU PATCH에는 `skuCode`가 없으며 `name`, `price`, `compareAtPrice`, `subscribable`, `displayOrder`, `status`를 수정할 수 있다. `compareAtPrice`는 명시적 `null`로 할인 기준가를 해제할 수 있다.
 - 한 요청의 validation, 참조 조회, 상태 전이와 저장은 하나의 transaction이다.
 - Product PATCH는 동일 Product 행의 쓰기 잠금을 획득한 뒤 상태 전이와 필드 수정을 수행한다. 동시에 들어온 PATCH를 직렬화하여 동일 전이의 중복 성공과 필드 유실을 방지하며, 잠금 뒤 관찰한 최신 상태에서 허용되지 않은 전이는 409다.
 
@@ -139,6 +143,7 @@ POST는 `skuCode`, `name`, 0 이상 `price`, `subscribable`, 0 이상 `displayOr
 | 409 | `CATEGORY_DEPTH_EXCEEDED` | 최대 2-depth 초과 |
 | 409 | `SKU_CODE_CONFLICT` | skuCode 중복 |
 | 409 | `OPTION_GROUP_LIMIT_EXCEEDED` | Product당 option group 2개 초과 |
+| 409 | `SKU_OPTION_COMBINATION_CONFLICT` | 동일 Product에서 다른 SKU와 option value 조합 중복 |
 | 409 | `CATEGORY_FACET_IN_USE` | 상품이 사용 중인 Category facet 배정 해제 |
 | 409 | `PRODUCT_FACET_CATEGORY_CONFLICT` | 새 Category에서 기존 Product facet 값이 허용되지 않음 |
 | 409 | `PRODUCT_STATUS_TRANSITION_CONFLICT` | 허용되지 않은 Product 상태 전이 |

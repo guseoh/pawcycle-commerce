@@ -21,6 +21,12 @@ public class ProductExceptionHandler {
 				"PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
 	}
 
+	@ExceptionHandler(IllegalArgumentException.class)
+	ResponseEntity<ApiErrorResponse> handleValidation(IllegalArgumentException exception) {
+		return ResponseEntity.badRequest().body(ApiErrorResponse.withoutFieldErrors(
+				"VALIDATION_FAILED", exception.getMessage()));
+	}
+
 	@ExceptionHandler(ProductListUnavailableException.class)
 	ResponseEntity<ApiErrorResponse> handleListUnavailable(ProductListUnavailableException exception) {
 		log.error("Unexpected exception while querying public product list", exception);

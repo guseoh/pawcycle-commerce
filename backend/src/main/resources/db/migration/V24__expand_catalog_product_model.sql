@@ -18,7 +18,9 @@ ALTER TABLE products
     ADD COLUMN brand_id BIGINT NULL AFTER id,
     ADD CONSTRAINT fk_products_brand FOREIGN KEY (brand_id) REFERENCES brands (id);
 
-UPDATE products SET brand_id = 1 WHERE brand_id IS NULL;
+UPDATE products
+SET brand_id = 1
+WHERE brand_id IS NULL;
 
 ALTER TABLE products
     MODIFY COLUMN brand_id BIGINT NOT NULL;

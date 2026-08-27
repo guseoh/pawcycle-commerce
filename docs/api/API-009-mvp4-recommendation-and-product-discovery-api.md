@@ -52,11 +52,11 @@ Secret과 실제 모델 선택은 저장소에 고정하지 않는다. API key �
 | `category` | Category `slug` 필터(대소문자 비구분) |
 | `page` | 0부터 시작하는 페이지 번호(기본 0) |
 | `size` | 페이지 크기(기본 20, 최대 100) |
-| `subcategory` | 2·3 depth Category의 leaf `slug` 필터 |
+| `subcategory` | 2-depth Category의 `slug` 필터 |
 | `brand` | Brand `slug` 필터 |
 | `facet` | `key:value` 형식 facet option 필터(여러 번 전달 가능) |
 | `minPrice`, `maxPrice` | ACTIVE SKU 가격 범위 필터 |
-| `sort` | `NEWEST`, `PRICE_ASC`, `PRICE_DESC`, `RATING`, `REVIEW_COUNT` (기본 `NEWEST`) |
+| `sort` | `RECOMMENDED`, `NEWEST`, `PRICE_ASC`, `PRICE_DESC`, `RATING`, `REVIEW_COUNT` (기본 `NEWEST`) |
 
 상품 목록의 `items[]`와 `GET /api/products/{productId}` 상세에 다음 `category` 필드를 추가한다.
 

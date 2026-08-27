@@ -7,9 +7,9 @@ import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuCreate;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuPatch;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
-import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.brand.domain.Brand;
 import com.pawcycle.backend.catalog.brand.infra.BrandRepository;
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
@@ -22,9 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,13 +53,22 @@ public class AdminCatalogService {
 	}
 
 	@Transactional(readOnly = true)
-	public AdminCatalogViews.BrandList brands() { return new AdminCatalogViews.BrandList(brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream().map(this::brandView).toList()); }
+	public AdminCatalogViews.BrandList brands() {
+		return new AdminCatalogViews.BrandList(
+				brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream().map(this::brandView).toList());
+	}
 
 	@Transactional
 	public AdminCatalogViews.Brand createBrand(com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.BrandCreate request) {
-		if (brandRepository.existsBySlug(request.slug())) throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
-		try { return brandView(brandRepository.saveAndFlush(new Brand(request.name(), request.slug(), request.logoUrl(), request.active(), request.displayOrder()))); }
-		catch (DataIntegrityViolationException exception) { throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다."); }
+		if (brandRepository.existsBySlug(request.slug())) {
+			throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
+		}
+		try {
+			return brandView(brandRepository.saveAndFlush(
+					new Brand(request.name(), request.slug(), request.logoUrl(), request.active(), request.displayOrder())));
+		} catch (DataIntegrityViolationException exception) {
+			throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
+		}
 	}
 
 	@Transactional(readOnly = true)
@@ -80,7 +89,8 @@ public class AdminCatalogService {
 			throw slugConflict();
 		}
 		try {
-			Category category = categoryRepository.saveAndFlush(new Category(request.name(), request.slug(), request.displayOrder(), request.active()));
+			Category category = categoryRepository.saveAndFlush(
+					new Category(request.name(), request.slug(), request.displayOrder(), request.active()));
 			if (request.parentId() != null) category.updateParent(requireParentCategory(request.parentId(), null));
 			productListCacheInvalidator.invalidateAfterCommit();
 			return categoryView(category);
@@ -93,9 +103,10 @@ public class AdminCatalogService {
 	public AdminCatalogViews.Category updateCategory(Long categoryId, CategoryPatch request) {
 		validate(request);
 		Category category = requireCategory(categoryId);
-		if (request.isParentIdPresent()) category.updateParent(request.getParentId() == null ? null : requireParentCategory(request.getParentId(), categoryId));
-		if (request.isSlugPresent()
-				&& categoryRepository.existsBySlugAndIdNot(request.getSlug(), categoryId)) {
+		if (request.isParentIdPresent()) {
+			category.updateParent(request.getParentId() == null ? null : requireParentCategory(request.getParentId(), categoryId));
+		}
+		if (request.isSlugPresent() && categoryRepository.existsBySlugAndIdNot(request.getSlug(), categoryId)) {
 			throw slugConflict();
 		}
 		category.update(request.getName(), request.getSlug(), request.getDisplayOrder(), request.getActive());
@@ -123,7 +134,9 @@ public class AdminCatalogService {
 	@Transactional
 	public AdminCatalogViews.Product createProduct(ProductCreate request) {
 		Category category = requireAssignableCategory(request.categoryId());
-		if (request.brandId() == null) throw new AdminCatalogValidationException(List.of(error("brandId", "필수 입력입니다.")));
+		if (request.brandId() == null) {
+			throw new AdminCatalogValidationException(List.of(error("brandId", "필수 입력입니다.")));
+		}
 		long brandId = request.brandId();
 		requireActiveBrand(brandId);
 		Product product = productRepository.saveAndFlush(new Product(
@@ -149,7 +162,13 @@ public class AdminCatalogService {
 				&& (product.getCategory() == null || !category.getId().equals(product.getCategory().getId()))) {
 			requireFacetValuesCompatibleWithCategory(productId, category.getId());
 		}
-		if (request.isBrandIdPresent()) { if (request.getBrandId() == null) throw new AdminCatalogValidationException(List.of(error("brandId", "Brand cannot be cleared."))); requireActiveBrand(request.getBrandId()); product.updateBrandId(request.getBrandId()); }
+		if (request.isBrandIdPresent()) {
+			if (request.getBrandId() == null) {
+				throw new AdminCatalogValidationException(List.of(error("brandId", "Brand cannot be cleared.")));
+			}
+			requireActiveBrand(request.getBrandId());
+			product.updateBrandId(request.getBrandId());
+		}
 		product.update(
 				category,
 				request.isCategoryIdPresent(),
@@ -201,7 +220,9 @@ public class AdminCatalogService {
 					request.subscribable(),
 					request.displayOrder(),
 					request.status()));
-			jdbcTemplate.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,0,0,0)", sku.getId());
+			jdbcTemplate.update(
+					"INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,0,0,0)",
+					sku.getId());
 			productListCacheInvalidator.invalidateAfterCommit();
 			return skuView(sku);
 		} catch (DataIntegrityViolationException exception) {
@@ -223,7 +244,8 @@ public class AdminCatalogService {
 		sku.update(
 				request.getName(),
 				request.getPrice(),
-				request.getCompareAtPrice(), request.isCompareAtPricePresent(),
+				request.getCompareAtPrice(),
+				request.isCompareAtPricePresent(),
 				request.getSubscribable(),
 				request.getDisplayOrder(),
 				request.getStatus());
@@ -249,7 +271,9 @@ public class AdminCatalogService {
 
 	private Category requireParentCategory(Long parentId, Long childId) {
 		Category parent = requireCategory(parentId);
-		if (childId != null && parent.getId().equals(childId)) throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "자기 자신을 상위 카테고리로 지정할 수 없습니다.");
+		if (childId != null && parent.getId().equals(childId)) {
+			throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "자기 자신을 상위 카테고리로 지정할 수 없습니다.");
+		}
 		for (Category ancestor = parent; ancestor != null; ancestor = ancestor.getParent()) {
 			if (childId != null && ancestor.getId().equals(childId)) {
 				throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "하위 카테고리를 상위 카테고리로 지정할 수 없습니다.");
@@ -263,8 +287,11 @@ public class AdminCatalogService {
 
 	private Brand requireActiveBrand(Long brandId) {
 		if (brandRepository == null) return null;
-		Brand brand = brandRepository.findById(brandId).orElseThrow(() -> new AdminCatalogNotFoundException("BRAND_NOT_FOUND", "브랜드를 확인할 수 없습니다."));
-		if (!brand.isActive()) throw new AdminCatalogConflictException("BRAND_INACTIVE", "비활성 브랜드는 상품에 지정할 수 없습니다.");
+		Brand brand = brandRepository.findById(brandId)
+				.orElseThrow(() -> new AdminCatalogNotFoundException("BRAND_NOT_FOUND", "브랜드를 확인할 수 없습니다."));
+		if (!brand.isActive()) {
+			throw new AdminCatalogConflictException("BRAND_INACTIVE", "비활성 브랜드는 상품에 지정할 수 없습니다.");
+		}
 		return brand;
 	}
 
@@ -292,7 +319,8 @@ public class AdminCatalogService {
 				  )
 				""", Long.class, productId, categoryId);
 		if (invalid != null && invalid > 0) {
-			throw new AdminCatalogConflictException("PRODUCT_FACET_CATEGORY_CONFLICT", "현재 상품 facet 값이 새 카테고리에서 허용되지 않습니다.");
+			throw new AdminCatalogConflictException(
+					"PRODUCT_FACET_CATEGORY_CONFLICT", "현재 상품 facet 값이 새 카테고리에서 허용되지 않습니다.");
 		}
 	}
 
@@ -306,10 +334,18 @@ public class AdminCatalogService {
 
 	private AdminCatalogViews.Category categoryView(Category category) {
 		return new AdminCatalogViews.Category(
-				category.getId(), category.getParent() == null ? null : category.getParent().getId(), category.getName(), category.getSlug(), category.getDisplayOrder(), category.isActive());
+				category.getId(),
+				category.getParent() == null ? null : category.getParent().getId(),
+				category.getName(),
+				category.getSlug(),
+				category.getDisplayOrder(),
+				category.isActive());
 	}
 
-	private AdminCatalogViews.Brand brandView(Brand brand) { return new AdminCatalogViews.Brand(brand.getId(), brand.getName(), brand.getSlug(), brand.getLogoUrl(), brand.isActive(), brand.getDisplayOrder()); }
+	private AdminCatalogViews.Brand brandView(Brand brand) {
+		return new AdminCatalogViews.Brand(
+				brand.getId(), brand.getName(), brand.getSlug(), brand.getLogoUrl(), brand.isActive(), brand.getDisplayOrder());
+	}
 
 	private AdminCatalogViews.Product productView(Product product) {
 		return new AdminCatalogViews.Product(
@@ -355,8 +391,8 @@ public class AdminCatalogService {
 
 	private void validate(ProductPatch request) {
 		List<FieldErrorResponse> errors = new ArrayList<>();
-		if (!request.isCategoryIdPresent() && !request.isBrandIdPresent() && !request.isNamePresent() && !request.isShortDescriptionPresent()
-				&& !request.isDescriptionPresent() && !request.isPetTypePresent()
+		if (!request.isCategoryIdPresent() && !request.isBrandIdPresent() && !request.isNamePresent()
+				&& !request.isShortDescriptionPresent() && !request.isDescriptionPresent() && !request.isPetTypePresent()
 				&& !request.isThumbnailUrlPresent() && !request.isStatusPresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
 		}
@@ -377,14 +413,14 @@ public class AdminCatalogService {
 
 	private void validate(SkuPatch request) {
 		List<FieldErrorResponse> errors = new ArrayList<>();
-		if (!request.isNamePresent() && !request.isPricePresent() && !request.isCompareAtPricePresent() && !request.isSubscribablePresent()
-				&& !request.isDisplayOrderPresent() && !request.isStatusPresent()) {
+		if (!request.isNamePresent() && !request.isPricePresent() && !request.isCompareAtPricePresent()
+				&& !request.isSubscribablePresent() && !request.isDisplayOrderPresent() && !request.isStatusPresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
 		}
 		validateRequiredText(errors, "name", request.isNamePresent(), request.getName(), 200);
-		validatePrice(errors, request.isPricePresent(), request.getPrice());
+		validatePrice(errors, "price", request.isPricePresent(), request.getPrice());
 		if (request.isCompareAtPricePresent() && request.getCompareAtPrice() != null) {
-			validatePrice(errors, true, request.getCompareAtPrice());
+			validatePrice(errors, "compareAtPrice", true, request.getCompareAtPrice());
 		}
 		validateRequired(errors, "subscribable", request.isSubscribablePresent(), request.getSubscribable());
 		validateNonnegative(errors, "displayOrder", request.isDisplayOrderPresent(), request.getDisplayOrder());
@@ -420,12 +456,12 @@ public class AdminCatalogService {
 		else if (value < 0) errors.add(error(field, "0 이상이어야 합니다."));
 	}
 
-	private void validatePrice(List<FieldErrorResponse> errors, boolean present, BigDecimal value) {
+	private void validatePrice(List<FieldErrorResponse> errors, String field, boolean present, BigDecimal value) {
 		if (!present) return;
 		if (value == null) {
-			errors.add(error("price", "필수 입력입니다."));
+			errors.add(error(field, "필수 입력입니다."));
 		} else if (value.signum() < 0 || value.scale() > 2 || value.precision() - value.scale() > 10) {
-			errors.add(error("price", "0 이상이며 정수 10자리, 소수 2자리 이하여야 합니다."));
+			errors.add(error(field, "0 이상이며 정수 10자리, 소수 2자리 이하여야 합니다."));
 		}
 	}
 
