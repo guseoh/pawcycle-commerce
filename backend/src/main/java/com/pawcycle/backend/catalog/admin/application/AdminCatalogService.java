@@ -8,6 +8,8 @@ import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuCreate;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuPatch;
 import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
 import com.pawcycle.backend.catalog.category.domain.Category;
+import com.pawcycle.backend.catalog.brand.domain.Brand;
+import com.pawcycle.backend.catalog.brand.infra.BrandRepository;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
@@ -22,20 +24,43 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class AdminCatalogService {
 	private static final Pattern SLUG_PATTERN = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
 	private static final String SYSTEM_UNCATEGORIZED_SLUG = "__pawcycle_uncategorized__";
 
 	private final CategoryRepository categoryRepository;
+	private final BrandRepository brandRepository;
 	private final ProductRepository productRepository;
 	private final SkuRepository skuRepository;
 	private final JdbcTemplate jdbcTemplate;
 	private final ProductListCacheInvalidator productListCacheInvalidator;
+
+	/** Preserves isolated legacy service tests; the Spring-managed constructor always supplies brands. */
+	public AdminCatalogService(CategoryRepository categoryRepository, ProductRepository productRepository,
+			SkuRepository skuRepository, JdbcTemplate jdbcTemplate, ProductListCacheInvalidator productListCacheInvalidator) {
+		this.categoryRepository = categoryRepository;
+		this.brandRepository = null;
+		this.productRepository = productRepository;
+		this.skuRepository = skuRepository;
+		this.jdbcTemplate = jdbcTemplate;
+		this.productListCacheInvalidator = productListCacheInvalidator;
+	}
+
+	@Transactional(readOnly = true)
+	public AdminCatalogViews.BrandList brands() { return new AdminCatalogViews.BrandList(brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream().map(this::brandView).toList()); }
+
+	@Transactional
+	public AdminCatalogViews.Brand createBrand(com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.BrandCreate request) {
+		if (brandRepository.existsBySlug(request.slug())) throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
+		try { return brandView(brandRepository.saveAndFlush(new Brand(request.name(), request.slug(), request.logoUrl(), request.active(), request.displayOrder()))); }
+		catch (DataIntegrityViolationException exception) { throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다."); }
+	}
 
 	@Transactional(readOnly = true)
 	public AdminCatalogViews.CategoryList categories() {
@@ -55,8 +80,8 @@ public class AdminCatalogService {
 			throw slugConflict();
 		}
 		try {
-			Category category = categoryRepository.saveAndFlush(new Category(
-					request.name(), request.slug(), request.displayOrder(), request.active()));
+			Category category = categoryRepository.saveAndFlush(new Category(request.name(), request.slug(), request.displayOrder(), request.active()));
+			if (request.parentId() != null) category.updateParent(requireParentCategory(request.parentId(), null));
 			productListCacheInvalidator.invalidateAfterCommit();
 			return categoryView(category);
 		} catch (DataIntegrityViolationException exception) {
@@ -68,6 +93,7 @@ public class AdminCatalogService {
 	public AdminCatalogViews.Category updateCategory(Long categoryId, CategoryPatch request) {
 		validate(request);
 		Category category = requireCategory(categoryId);
+		if (request.isParentIdPresent()) category.updateParent(request.getParentId() == null ? null : requireParentCategory(request.getParentId(), categoryId));
 		if (request.isSlugPresent()
 				&& categoryRepository.existsBySlugAndIdNot(request.getSlug(), categoryId)) {
 			throw slugConflict();
@@ -97,6 +123,8 @@ public class AdminCatalogService {
 	@Transactional
 	public AdminCatalogViews.Product createProduct(ProductCreate request) {
 		Category category = requireAssignableCategory(request.categoryId());
+		long brandId = request.brandId() == null ? 1L : request.brandId();
+		requireActiveBrand(brandId);
 		Product product = productRepository.saveAndFlush(new Product(
 				category,
 				request.name(),
@@ -104,6 +132,7 @@ public class AdminCatalogService {
 				request.description(),
 				request.petType(),
 				request.thumbnailUrl()));
+		product.updateBrandId(brandId);
 		productListCacheInvalidator.invalidateAfterCommit();
 		return productView(product);
 	}
@@ -115,6 +144,7 @@ public class AdminCatalogService {
 		Category category = request.isCategoryIdPresent() && request.getCategoryId() != null
 				? requireAssignableCategory(request.getCategoryId())
 				: null;
+		if (request.isBrandIdPresent()) { if (request.getBrandId() == null) throw new AdminCatalogValidationException(List.of(error("brandId", "Brand cannot be cleared."))); requireActiveBrand(request.getBrandId()); product.updateBrandId(request.getBrandId()); }
 		product.update(
 				category,
 				request.isCategoryIdPresent(),
@@ -150,6 +180,9 @@ public class AdminCatalogService {
 	@Transactional
 	public AdminCatalogViews.Sku createSku(Long productId, SkuCreate request) {
 		Product product = requireProduct(productId);
+		if (request.compareAtPrice() != null && request.compareAtPrice().compareTo(request.price()) <= 0) {
+			throw new AdminCatalogValidationException(List.of(error("compareAtPrice", "판매가보다 커야 합니다.")));
+		}
 		if (skuRepository.existsBySkuCode(request.skuCode())) {
 			throw skuCodeConflict();
 		}
@@ -159,6 +192,7 @@ public class AdminCatalogService {
 					request.skuCode(),
 					request.name(),
 					request.price(),
+					request.compareAtPrice(),
 					request.subscribable(),
 					request.displayOrder(),
 					request.status()));
@@ -176,9 +210,15 @@ public class AdminCatalogService {
 		requireProduct(productId);
 		Sku sku = skuRepository.findByIdAndProductId(skuId, productId)
 				.orElseThrow(() -> new AdminCatalogNotFoundException("SKU_NOT_FOUND", "SKU를 확인할 수 없습니다."));
+		BigDecimal nextPrice = request.isPricePresent() ? request.getPrice() : sku.getPrice();
+		BigDecimal nextCompareAtPrice = request.isCompareAtPricePresent() ? request.getCompareAtPrice() : sku.getCompareAtPrice();
+		if (nextCompareAtPrice != null && nextCompareAtPrice.compareTo(nextPrice) <= 0) {
+			throw new AdminCatalogValidationException(List.of(error("compareAtPrice", "판매가보다 커야 합니다.")));
+		}
 		sku.update(
 				request.getName(),
 				request.getPrice(),
+				request.getCompareAtPrice(), request.isCompareAtPricePresent(),
 				request.getSubscribable(),
 				request.getDisplayOrder(),
 				request.getStatus());
@@ -200,6 +240,27 @@ public class AdminCatalogService {
 					"CATEGORY_NOT_ASSIGNABLE", "신규 상품에는 활성 실제 카테고리만 지정할 수 있습니다.");
 		}
 		return category;
+	}
+
+	private Category requireParentCategory(Long parentId, Long childId) {
+		Category parent = requireCategory(parentId);
+		if (childId != null && parent.getId().equals(childId)) throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "자기 자신을 상위 카테고리로 지정할 수 없습니다.");
+		if (parent.getParent() != null && parent.getParent().getParent() != null) {
+			throw new AdminCatalogConflictException("CATEGORY_DEPTH_EXCEEDED", "카테고리는 최대 3 depth까지만 지원합니다.");
+		}
+		for (Category ancestor = parent; ancestor != null; ancestor = ancestor.getParent()) {
+			if (childId != null && ancestor.getId().equals(childId)) {
+				throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "하위 카테고리를 상위 카테고리로 지정할 수 없습니다.");
+			}
+		}
+		return parent;
+	}
+
+	private Brand requireActiveBrand(Long brandId) {
+		if (brandRepository == null) return null;
+		Brand brand = brandRepository.findById(brandId).orElseThrow(() -> new AdminCatalogNotFoundException("BRAND_NOT_FOUND", "브랜드를 확인할 수 없습니다."));
+		if (!brand.isActive()) throw new AdminCatalogConflictException("BRAND_INACTIVE", "비활성 브랜드는 상품에 지정할 수 없습니다.");
+		return brand;
 	}
 
 	private Product requireProduct(Long productId) {
@@ -224,13 +285,16 @@ public class AdminCatalogService {
 
 	private AdminCatalogViews.Category categoryView(Category category) {
 		return new AdminCatalogViews.Category(
-				category.getId(), category.getName(), category.getSlug(), category.getDisplayOrder(), category.isActive());
+				category.getId(), category.getParent() == null ? null : category.getParent().getId(), category.getName(), category.getSlug(), category.getDisplayOrder(), category.isActive());
 	}
+
+	private AdminCatalogViews.Brand brandView(Brand brand) { return new AdminCatalogViews.Brand(brand.getId(), brand.getName(), brand.getSlug(), brand.getLogoUrl(), brand.isActive(), brand.getDisplayOrder()); }
 
 	private AdminCatalogViews.Product productView(Product product) {
 		return new AdminCatalogViews.Product(
 				product.getId(),
 				product.getCategory() == null ? null : product.getCategory().getId(),
+				product.getBrandId(),
 				product.getName(),
 				product.getShortDescription(),
 				product.getDescription(),
@@ -246,6 +310,7 @@ public class AdminCatalogService {
 				sku.getSkuCode(),
 				sku.getName(),
 				sku.getPrice(),
+				sku.getCompareAtPrice(),
 				sku.isSubscribable(),
 				sku.getDisplayOrder(),
 				sku.getStatus());
@@ -253,7 +318,7 @@ public class AdminCatalogService {
 
 	private void validate(CategoryPatch request) {
 		List<FieldErrorResponse> errors = new ArrayList<>();
-		if (!request.isNamePresent() && !request.isSlugPresent()
+		if (!request.isNamePresent() && !request.isSlugPresent() && !request.isParentIdPresent()
 				&& !request.isDisplayOrderPresent() && !request.isActivePresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
 		}
@@ -269,7 +334,7 @@ public class AdminCatalogService {
 
 	private void validate(ProductPatch request) {
 		List<FieldErrorResponse> errors = new ArrayList<>();
-		if (!request.isCategoryIdPresent() && !request.isNamePresent() && !request.isShortDescriptionPresent()
+		if (!request.isCategoryIdPresent() && !request.isBrandIdPresent() && !request.isNamePresent() && !request.isShortDescriptionPresent()
 				&& !request.isDescriptionPresent() && !request.isPetTypePresent()
 				&& !request.isThumbnailUrlPresent() && !request.isStatusPresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
@@ -291,12 +356,15 @@ public class AdminCatalogService {
 
 	private void validate(SkuPatch request) {
 		List<FieldErrorResponse> errors = new ArrayList<>();
-		if (!request.isNamePresent() && !request.isPricePresent() && !request.isSubscribablePresent()
+		if (!request.isNamePresent() && !request.isPricePresent() && !request.isCompareAtPricePresent() && !request.isSubscribablePresent()
 				&& !request.isDisplayOrderPresent() && !request.isStatusPresent()) {
 			errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
 		}
 		validateRequiredText(errors, "name", request.isNamePresent(), request.getName(), 200);
 		validatePrice(errors, request.isPricePresent(), request.getPrice());
+		if (request.isCompareAtPricePresent() && request.getCompareAtPrice() != null) {
+			validatePrice(errors, true, request.getCompareAtPrice());
+		}
 		validateRequired(errors, "subscribable", request.isSubscribablePresent(), request.getSubscribable());
 		validateNonnegative(errors, "displayOrder", request.isDisplayOrderPresent(), request.getDisplayOrder());
 		validateRequired(errors, "status", request.isStatusPresent(), request.getStatus());

@@ -32,6 +32,33 @@ ADMIN이 Category, Product, SKU를 생성·조회·수정하고 노출·판매 �
 | GET, POST | `/api/admin/products/{productId}/skus` | GET 200, POST 201 |
 | PATCH | `/api/admin/products/{productId}/skus/{skuId}` | 200 |
 
+## MVP4 Catalog 확장 delta
+
+V24 이후 `/api/admin/**`의 기존 ADMIN, CSRF, Audit 계약을 그대로 적용한다. 상태 변경 요청은 모두 CSRF 토큰이 필요하며, 생성 요청은 `201 Location`을 반환한다.
+
+| Method | URI | 용도 |
+| --- | --- | --- |
+| GET, PATCH | `/api/admin/brands/{brandId}` | Brand 상세·부분 수정 |
+| GET, POST | `/api/admin/products/{productId}/images` | Image Gallery 조회·생성 |
+| PATCH, DELETE | `/api/admin/products/{productId}/images/{imageId}` | Image 수정·삭제 |
+| GET, POST | `/api/admin/products/{productId}/option-groups` | Option group 조회·생성 |
+| PATCH, DELETE | `/api/admin/products/{productId}/option-groups/{groupId}` | Option group 수정·삭제 |
+| POST | `/api/admin/products/{productId}/option-groups/{groupId}/values` | Option value 생성 |
+| PATCH, DELETE | `/api/admin/products/{productId}/option-groups/{groupId}/values/{valueId}` | Option value 수정·삭제 |
+| PUT | `/api/admin/products/{productId}/skus/{skuId}/option-values` | SKU의 option value 집합 교체 |
+| GET, POST | `/api/admin/facets` | Facet definition 조회·생성 |
+| GET, PATCH, DELETE | `/api/admin/facets/{definitionId}` | Facet definition 상세·수정·삭제 |
+| POST | `/api/admin/facets/{definitionId}/options` | Facet option 생성 |
+| PATCH, DELETE | `/api/admin/facets/{definitionId}/options/{optionId}` | Facet option 수정·삭제 |
+| PUT, DELETE | `/api/admin/categories/{categoryId}/facets/{definitionId}` | Category의 허용 facet 배정·해제 |
+| PUT | `/api/admin/products/{productId}/facet-values` | Product facet option 집합 교체 |
+
+- `compareAtPrice`는 SKU 생성·수정 시 선택 필드이며 설정하면 `price`보다 반드시 커야 한다.
+- Product당 `MAIN` 이미지는 하나만 허용한다. 공개 thumbnail은 MAIN image가 있으면 그 URL, 없으면 기존 `thumbnailUrl`을 사용한다.
+- SKU option value는 해당 Product의 group에 속해야 하고 group당 하나만 지정할 수 있다. 같은 option value 집합을 가진 다른 SKU는 `409 SKU_OPTION_COMBINATION_CONFLICT`다.
+- Product facet option은 Product Category에 배정된 facet definition에 속해야 한다. 그 외 assignment는 `409 PRODUCT_FACET_NOT_ALLOWED`다.
+- Category는 root를 포함해 최대 3 depth이며 자기 자신·하위 Category를 parent로 지정할 수 없다.
+
 POST 성공은 생성 리소스 URI를 `Location` header로 제공한다. 목록 응답은 각각 `{ "categories": [] }`, `{ "products": [] }`, `{ "skus": [] }`이며 `null` collection을 사용하지 않는다. Category는 `displayOrder ASC, categoryId ASC`, Product는 `productId ASC`, SKU는 `displayOrder ASC, skuId ASC` 순서다.
 
 ## 요청·응답 필드

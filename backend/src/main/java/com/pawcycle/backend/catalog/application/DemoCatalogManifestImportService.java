@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 public class DemoCatalogManifestImportService {
 
 	public static final String DEFAULT_MANIFEST_LOCATION = "classpath:catalog/demo-catalog.json";
+	private static final String DEMO_BRAND_SLUG = "pawcycle-demo-catalog";
 	static final int DELIVERY_CYCLE_COUNT = 3;
 	static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
@@ -80,6 +81,7 @@ public class DemoCatalogManifestImportService {
 	}
 
 	private void process(CatalogManifest manifest, ImportContext context) {
+		long demoBrandId = ensureDemoBrand(context);
 		Map<String, Long> categoryIds = new HashMap<>();
 		for (CategoryFixture fixture : manifest.categories()) {
 			categoryIds.put(fixture.slug(), ensureCategory(fixture, context));
@@ -91,7 +93,7 @@ public class DemoCatalogManifestImportService {
 			if (categoryId == null) {
 				throw conflict("product category " + fixture.categorySlug());
 			}
-			long productId = ensureProduct(fixture, categoryId, context);
+			long productId = ensureProduct(fixture, categoryId, demoBrandId, context);
 			for (SkuFixture sku : fixture.skus()) {
 				long skuId = ensureSku(sku, productId, context);
 				ensureInventory(sku, skuId, context);
@@ -102,6 +104,15 @@ public class DemoCatalogManifestImportService {
 		for (PlanFixture fixture : manifest.plans()) {
 			ensurePlan(fixture, skuIds, context);
 		}
+	}
+
+	private long ensureDemoBrand(ImportContext context) {
+		List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT id FROM brands WHERE slug=? FOR UPDATE", DEMO_BRAND_SLUG);
+		if (rows.size() == 1) return number(rows.getFirst(), "id");
+		if (!rows.isEmpty()) throw conflict("demo brand");
+		if (!context.writes()) return context.virtualId();
+		jdbcTemplate.update("INSERT INTO brands(name,slug,logo_url,active,display_order) VALUES (?,?,NULL,true,0)", "PawCycle Demo Catalog", DEMO_BRAND_SLUG);
+		return lastInsertedId();
 	}
 
 	private long ensureCategory(CategoryFixture fixture, ImportContext context) {
@@ -131,10 +142,10 @@ public class DemoCatalogManifestImportService {
 		return number(rows.getFirst(), "id");
 	}
 
-	private long ensureProduct(ProductFixture fixture, long categoryId, ImportContext context) {
+	private long ensureProduct(ProductFixture fixture, long categoryId, long brandId, ImportContext context) {
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 				"""
-				SELECT id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status
+				SELECT id,catalog_key,category_id,brand_id,name,short_description,description,pet_type,thumbnail_url,display_status
 				FROM products
 				WHERE catalog_key=?
 				FOR UPDATE
@@ -142,14 +153,14 @@ public class DemoCatalogManifestImportService {
 				fixture.catalogKey());
 		if (rows.isEmpty()) {
 			List<Map<String, Object>> nameRows = jdbcTemplate.queryForList(
-					"SELECT id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status FROM products WHERE name=? FOR UPDATE",
+					"SELECT id,catalog_key,category_id,brand_id,name,short_description,description,pet_type,thumbnail_url,display_status FROM products WHERE name=? FOR UPDATE",
 					fixture.name());
 			if (nameRows.size() == 1
 					&& String.valueOf(nameRows.getFirst().get("catalog_key")).startsWith("legacy-product-")
-					&& matchesProductFields(nameRows.getFirst(), fixture, categoryId, true, false)) {
+					&& matchesProductFields(nameRows.getFirst(), fixture, categoryId, brandId, true, false)) {
 				if (context.writes()) {
-					jdbcTemplate.update("UPDATE products SET catalog_key=?,thumbnail_url=? WHERE id=?",
-							fixture.catalogKey(), fixture.thumbnailUrl(), number(nameRows.getFirst(), "id"));
+					jdbcTemplate.update("UPDATE products SET catalog_key=?,thumbnail_url=?,brand_id=? WHERE id=?",
+							fixture.catalogKey(), fixture.thumbnailUrl(), brandId, number(nameRows.getFirst(), "id"));
 				}
 				return number(nameRows.getFirst(), "id");
 			}
@@ -158,18 +169,18 @@ public class DemoCatalogManifestImportService {
 			if (!context.writes()) return context.virtualId();
 			jdbcTemplate.update(
 					"""
-					INSERT INTO products(catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status)
-					VALUES (?,?,?,?,?,?,?,'PUBLIC')
+					INSERT INTO products(catalog_key,category_id,brand_id,name,short_description,description,pet_type,thumbnail_url,display_status)
+					VALUES (?,?,?,?,?,?,?,?,'PUBLIC')
 					""",
-					fixture.catalogKey(), categoryId, fixture.name(), fixture.shortDescription(), fixture.description(), fixture.petType(), fixture.thumbnailUrl());
+				fixture.catalogKey(), categoryId, brandId, fixture.name(), fixture.shortDescription(), fixture.description(), fixture.petType(), fixture.thumbnailUrl());
 			return lastInsertedId();
 		}
 		if (rows.size() != 1) {
 			throw conflict("product " + fixture.name());
 		}
-		if (!matchesProduct(rows.getFirst(), fixture, categoryId)) {
+		if (!matchesProduct(rows.getFirst(), fixture, categoryId, brandId)) {
 			if (fixture.catalogKey().equals(rows.getFirst().get("catalog_key"))
-					&& matchesProductFields(rows.getFirst(), fixture, categoryId, false, true)) {
+					&& matchesProductFields(rows.getFirst(), fixture, categoryId, brandId, false, true)) {
 				if (context.writes()) {
 					jdbcTemplate.update("UPDATE products SET name=? WHERE id=?", fixture.name(), number(rows.getFirst(), "id"));
 				}
@@ -371,12 +382,13 @@ public class DemoCatalogManifestImportService {
 				&& trueValue(row.get("active"));
 	}
 
-	private boolean matchesProduct(Map<String, Object> row, ProductFixture fixture, long categoryId) {
-		return fixture.catalogKey().equals(row.get("catalog_key")) && matchesProductFields(row, fixture, categoryId, false, false);
+	private boolean matchesProduct(Map<String, Object> row, ProductFixture fixture, long categoryId, long brandId) {
+		return fixture.catalogKey().equals(row.get("catalog_key")) && matchesProductFields(row, fixture, categoryId, brandId, false, false);
 	}
 
-	private boolean matchesProductFields(Map<String, Object> row, ProductFixture fixture, long categoryId, boolean allowLegacyImage, boolean allowNameChange) {
+	private boolean matchesProductFields(Map<String, Object> row, ProductFixture fixture, long categoryId, long brandId, boolean allowLegacyImage, boolean allowNameChange) {
 		return number(row, "category_id") == categoryId
+				&& number(row, "brand_id") == brandId
 				&& (allowNameChange || fixture.name().equals(row.get("name")))
 				&& fixture.shortDescription().equals(row.get("short_description"))
 				&& fixture.description().equals(row.get("description"))

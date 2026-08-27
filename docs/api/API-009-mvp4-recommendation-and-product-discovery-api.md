@@ -52,7 +52,11 @@ Secret과 실제 모델 선택은 저장소에 고정하지 않는다. API key �
 | `category` | Category `slug` 필터(대소문자 비구분) |
 | `page` | 0부터 시작하는 페이지 번호(기본 0) |
 | `size` | 페이지 크기(기본 20, 최대 100) |
-| `sort` | `NEWEST`, `PRICE_ASC`, `PRICE_DESC` (기본 `NEWEST`) |
+| `subcategory` | 2·3 depth Category의 leaf `slug` 필터 |
+| `brand` | Brand `slug` 필터 |
+| `facet` | `key:value` 형식 facet option 필터(여러 번 전달 가능) |
+| `minPrice`, `maxPrice` | ACTIVE SKU 가격 범위 필터 |
+| `sort` | `NEWEST`, `PRICE_ASC`, `PRICE_DESC`, `RATING`, `REVIEW_COUNT` (기본 `NEWEST`) |
 
 상품 목록의 `items[]`와 `GET /api/products/{productId}` 상세에 다음 `category` 필드를 추가한다.
 
@@ -67,3 +71,5 @@ Category는 V13 이후 Product의 필수 DB 관계다.
 응답은 DB-native filter/sort/pagination 결과다. `products` 전체를 JVM에 materialize하거나 요청별로 필터링하지 않는다. `purchasable`은 공개 Product의 ACTIVE SKU와 DB inventory를 기준으로 Backend가 계산하며 Frontend가 재구성하지 않는다. pageable 공개 목록은 기존 전체 목록 Redis cache를 사용하지 않는다. Redis key `pawcycle:catalog:product-list:v2`는 legacy/no-argument reader 호환성 검증용으로만 유지하며 filter별 key는 만들지 않는다.
 
 목록 응답은 `items`, `page`, `size`, `totalElements`, `totalPages`를 포함한다. 기존 no-argument legacy reader/cache caller에는 내부 `products()` 호환 accessor를 유지하지만 pageable HTTP 응답의 권위 필드는 `items`다.
+
+V24 이후 각 목록 item에는 `brand`, `representativePrice`, 선택적 `compareAtPrice`·`discountRate`, `averageRating`, `reviewCount`가 additive하게 포함된다. 상세에는 Brand, gallery images, option groups와 SKU별 `selectedOptions`가 추가된다. 공개 목록과 상세는 Brand가 active인 Product만 노출한다.
