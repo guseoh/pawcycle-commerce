@@ -1,5 +1,6 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -20,12 +21,14 @@ public class LocalQaBootstrapConfiguration {
 	ApplicationRunner localQaBootstrapRunner(
 			LocalQaBootstrapProperties properties,
 			LocalQaBootstrapService bootstrapService,
-			LocalQaMvp2FixtureService mvp2FixtureService) {
+			LocalQaMvp2FixtureService mvp2FixtureService,
+			@Value("${pawcycle.local-customer-catalog-v3.enabled:false}") boolean customerCatalogV3Enabled) {
 		return arguments -> {
 			bootstrapService.bootstrap(
 					properties.email(),
 					properties.password(),
-					properties.resetSubscriptions());
+					properties.resetSubscriptions(),
+					!customerCatalogV3Enabled);
 			mvp2FixtureService.bootstrap();
 		};
 	}

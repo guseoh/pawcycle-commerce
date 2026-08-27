@@ -51,6 +51,10 @@ docker compose --env-file .env.local ps
 
 ## 단일 origin과 smoke
 
+### FOUNDATION standard mode
+
+기본 Compose에서 Customer V3는 비활성(설정 없음 또는 `pawcycle.local-customer-catalog-v3.enabled=false`)이어야 한다. 실행 중 Backend의 해당 flag만 확인하며 전체 환경 변수나 credential은 출력하지 않는다. QA bootstrap이 켜진 standard mode에서는 FOUNDATION fixture category가 active로 맞춰져 공개 상품 목록·상세를 통한 smoke가 가능하다. 재실행 시 fixture를 중복 생성하지 않으며 reset=false이면 기존 QA 구독을 보존한다.
+
 - 기본 접속 주소: `http://localhost:8080/products`
 - API 주소 구조: `http://localhost:8080/api/**`
 - `PAWCYCLE_LOCAL_HTTP_PORT`를 바꿨으면 같은 포트를 smoke의 `BaseUri`에도 사용한다.
@@ -62,6 +66,10 @@ powershell -NoProfile -File .\smoke.ps1 -Scenario Full -BaseUri http://localhost
 ```
 
 스크립트는 Frontend, 공개 상품 목록·상세, CSRF 획득, 로그인, 현재 회원, 구독 생성·목록·상세와 로그아웃을 같은 origin에서 확인한다. cookie와 CSRF token은 프로세스 메모리에만 유지한다. 이 smoke는 QA의 독립 브라우저 검증을 대체하지 않는다.
+
+### Customer Catalog V3 QA
+
+Customer V3 검증은 [MVP4-QA-002 전용 overlay와 Runbook](MVP4-QA-002-customer-product-experience-local-qa.md)을 사용한다. Auth bootstrap을 켜도 FOUNDATION fixture category는 inactive로 맞춰지므로 DB fixture는 존재하되 Customer 공개 상품에는 섞이지 않는다. standard FOUNDATION smoke와 Customer V3 smoke를 혼용하지 않으며 일반 local-integration volume과 전용 Customer QA volume도 공유하지 않는다. 모드 전환은 예약된 QA category에만 적용되고 일반 category·공개 상품 visibility 규칙은 변경하지 않는다.
 
 ## 반복 시작과 fixture 멱등성
 

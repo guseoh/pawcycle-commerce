@@ -22,6 +22,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -102,6 +104,7 @@ class LocalQaBootstrapIntegrationTests {
 				""", LocalQaBootstrapService.PRODUCT_NAME, OTHER_PRODUCT_PREFIX + "%");
 		jdbcTemplate.update("DELETE FROM products WHERE name = ?", LocalQaBootstrapService.PRODUCT_NAME);
 		jdbcTemplate.update("DELETE FROM products WHERE name LIKE ?", OTHER_PRODUCT_PREFIX + "%");
+		jdbcTemplate.update("DELETE FROM categories WHERE slug = ?", LocalQaBootstrapService.QA_CATEGORY_SLUG);
 		jdbcTemplate.update("""
 				DELETE FROM members
 				WHERE email LIKE 'qa-foundation-004@%'
@@ -130,6 +133,34 @@ class LocalQaBootstrapIntegrationTests {
 		assertThat(subscriptionCount(member.getId())).isEqualTo(1);
 		assertThat(passwordEncoder.matches(password, member.getPasswordHash())).isTrue();
 		assertThat(member.getPasswordHash().equals(password)).isFalse();
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = {true, false})
+	void explicitVisibilityCreatesReusesAndTransitionsOnlyTheQaCategory(boolean exposeProductFixture) {
+		String email = runtimeQaEmail();
+		String password = UUID.randomUUID().toString();
+		Category otherActive = activeCategory();
+		String otherSlug = "qa-bootstrap-" + UUID.randomUUID();
+		Category otherInactive = categoryRepository.saveAndFlush(new Category(otherSlug, otherSlug, 0, false));
+
+		bootstrapService.bootstrap(email, password, false, exposeProductFixture);
+		Category category = categoryRepository.findBySlug(LocalQaBootstrapService.QA_CATEGORY_SLUG).orElseThrow();
+		assertThat(category.isActive()).isEqualTo(exposeProductFixture);
+		Long productId = productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME).getFirst().getId();
+
+		for (boolean visibility : new boolean[] {exposeProductFixture, !exposeProductFixture, exposeProductFixture}) {
+			bootstrapService.bootstrap(email, password, false, visibility);
+			Category reloaded = categoryRepository.findBySlug(LocalQaBootstrapService.QA_CATEGORY_SLUG).orElseThrow();
+			assertThat(reloaded.getId()).isEqualTo(category.getId());
+			assertThat(reloaded.isActive()).isEqualTo(visibility);
+			assertThat(productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME))
+					.extracting(Product::getId).containsExactly(productId);
+			assertThat(skuRepository.findAllByProductIdAndName(productId, LocalQaBootstrapService.SKU_NAME)).hasSize(1);
+			assertThat(categoryRepository.findById(otherActive.getId()).orElseThrow().isActive()).isTrue();
+			assertThat(categoryRepository.findById(otherInactive.getId()).orElseThrow().isActive()).isFalse();
+		}
+		categoryRepository.deleteAllById(List.of(otherActive.getId(), otherInactive.getId()));
 	}
 
 	@Test
