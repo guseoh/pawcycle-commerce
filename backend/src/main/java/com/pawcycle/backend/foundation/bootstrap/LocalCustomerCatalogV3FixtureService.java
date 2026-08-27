@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -126,25 +127,70 @@ public class LocalCustomerCatalogV3FixtureService {
             ensureLinks("sku_option_values", "sku_id", skuId, "option_value_id", selected,
                     () -> expansion.setSkuOptionValues(id, skuId, new AdminCatalogRequests.SkuOptionValues(selected)));
         }
-        for (AdminCatalogRequests.ImageCreate image : p.images()) {
-            ensureRow("product_images", fields("product_id", id, "display_order", image.displayOrder()),
-                    fields("image_url", image.imageUrl(), "alt_text", image.altText(), "image_type", image.imageType()),
-                    () -> expansion.createImage(id, image).imageId());
-        }
-        for (AdminCatalogRequests.DetailSectionCreate section : p.detailSections()) {
-            Map<String, Object> key = fields("product_id", id, "display_order", section.displayOrder());
-            Map<String, Object> content = fields("title", section.title(), "body", section.body(), "visible", section.visible());
-            ensureRow("product_detail_sections", key, content, () -> {
-                Map<String, Object> row = new LinkedHashMap<>(key);
-                row.putAll(content);
-                Timestamp now = Timestamp.from(Instant.now());
-                row.putAll(fields("created_at", now, "updated_at", now));
-                return insert("product_detail_sections", row);
-            });
-        }
+        ensureImages(id, p.images());
+        ensureDetailSections(id, p.detailSections());
         List<Long> selectedFacets = p.facets().entrySet().stream().map(e -> facets.get(e.getKey() + ":" + e.getValue())).toList();
         ensureLinks("product_facet_values", "product_id", id, "facet_option_id", selectedFacets,
                 () -> expansion.setProductFacetValues(id, new AdminCatalogRequests.ProductFacetValues(selectedFacets)));
+    }
+
+    private void ensureImages(long productId, List<AdminCatalogRequests.ImageCreate> expected) {
+        List<Map<String, Object>> actual = jdbc.queryForList("""
+                SELECT image_url,alt_text,display_order,image_type
+                FROM product_images
+                WHERE product_id=?
+                ORDER BY display_order,id
+                FOR UPDATE
+                """, productId);
+        if (actual.isEmpty()) {
+            expected.stream()
+                    .sorted(Comparator.comparingInt(AdminCatalogRequests.ImageCreate::displayOrder))
+                    .forEach(image -> expansion.createImage(productId, image));
+            return;
+        }
+        List<Map<String, Object>> expectedRows = expected.stream()
+                .sorted(Comparator.comparingInt(AdminCatalogRequests.ImageCreate::displayOrder))
+                .map(image -> fields("image_url", image.imageUrl(), "alt_text", image.altText(),
+                        "display_order", image.displayOrder(), "image_type", image.imageType()))
+                .toList();
+        if (!sameRows(expectedRows, actual)) throw conflict("product_images collection");
+    }
+
+    private void ensureDetailSections(long productId, List<AdminCatalogRequests.DetailSectionCreate> expected) {
+        List<Map<String, Object>> actual = jdbc.queryForList("""
+                SELECT title,body,display_order,visible
+                FROM product_detail_sections
+                WHERE product_id=?
+                ORDER BY display_order,id
+                FOR UPDATE
+                """, productId);
+        if (actual.isEmpty()) {
+            for (AdminCatalogRequests.DetailSectionCreate section : expected.stream()
+                    .sorted(Comparator.comparingInt(AdminCatalogRequests.DetailSectionCreate::displayOrder)).toList()) {
+                Map<String, Object> row = fields("product_id", productId, "title", section.title(), "body", section.body(),
+                        "display_order", section.displayOrder(), "visible", section.visible());
+                Timestamp now = Timestamp.from(Instant.now());
+                row.putAll(fields("created_at", now, "updated_at", now));
+                insert("product_detail_sections", row);
+            }
+            return;
+        }
+        List<Map<String, Object>> expectedRows = expected.stream()
+                .sorted(Comparator.comparingInt(AdminCatalogRequests.DetailSectionCreate::displayOrder))
+                .map(section -> fields("title", section.title(), "body", section.body(),
+                        "display_order", section.displayOrder(), "visible", section.visible()))
+                .toList();
+        if (!sameRows(expectedRows, actual)) throw conflict("product_detail_sections collection");
+    }
+
+    private boolean sameRows(List<Map<String, Object>> expected, List<Map<String, Object>> actual) {
+        if (expected.size() != actual.size()) return false;
+        for (int i = 0; i < expected.size(); i++) {
+            for (Map.Entry<String, Object> field : expected.get(i).entrySet()) {
+                if (!equal(field.getValue(), actual.get(i).get(field.getKey()))) return false;
+            }
+        }
+        return true;
     }
 
     private void ensureLinks(String table, String ownerColumn, long owner, String valueColumn, List<Long> expected, Runnable create) {
