@@ -51,7 +51,7 @@ V3 flag는 기본 false다. `test`, `production`, `prod`에서는 service와 run
 
 `LocalCustomerCatalogV3FixtureService`는 기존 `LocalCommerceDemoFixtureService`를 통해 V1 import와 detail fixture를 먼저 적용한다. 이어 V24의 option group/value, SKU option combination, MAIN image, category facet/product facet 관리 서비스를 재사용한다. SQL 값은 parameter binding을 사용한다.
 
-V1과 V3는 하나의 transaction에 참여한다. V3 적용 단계는 기존 demo brand row를 잠가 동시 V3 실행을 직렬화한다. `qa3-*` catalogKey, `QA3-*` skuCode, brand/category slug, facet key/value, Product의 group name·image/detail display order를 business key로 사용한다. 재실행은 같은 행을 확인하며 카탈로그 필드 충돌은 덮어쓰지 않고 실패한다. Inventory는 최초 생성 때만 채우며, 이후 available/reserved/version을 초기화하지 않는다. 실패 시 해당 transaction을 rollback한다.
+`LocalCustomerCatalogV3FixtureService.bootstrap()` 호출 안에서는 V1 bootstrap과 V3 적용이 동일 transaction에 참여한다. 다만 기본 local-integration의 V1 `ApplicationRunner`는 별도로 존재하므로 애플리케이션 startup 전체가 V1+V3 단일 transaction으로 묶이는 것은 아니다. V3 적용 단계는 기존 demo brand row를 잠가 동시 V3 실행을 직렬화한다. `qa3-*` catalogKey, `QA3-*` skuCode, brand/category slug, facet key/value와 Product 단위 image/detail collection을 fixture 식별·충돌 검증 경계로 사용한다. 재실행은 같은 데이터를 확인하며 카탈로그 필드 또는 fixture-owned image/detail collection의 drift는 덮어쓰거나 누락분을 보충하지 않고 실패한다. Inventory는 최초 생성 때만 채우며, 이후 available/reserved/version을 초기화하지 않는다. 해당 V3 transaction이 실패하면 그 transaction의 변경은 rollback한다.
 
 기존 local QA bootstrap이나 사용자가 생성한 데이터가 함께 있으면 DB 전체 수는 위 표보다 많을 수 있다. 개별 상품·SKU 식별에는 숫자 ID 대신 business key를 사용한다. V3 flag를 끄는 것은 재실행만 막으며 이미 생성된 데이터를 삭제하지 않는다. 사용 흔적이 있는 DB에서 주문/참조 행을 무시한 삭제는 하지 않는다. 초기 상태가 필요하면 별도 disposable local DB를 준비한다.
 
@@ -74,6 +74,6 @@ V1과 V3는 하나의 transaction에 참여한다. V3 적용 단계는 기존 de
 
 ## 검증 경계
 
-`LocalCustomerCatalogV3FixtureIntegrationTests`는 MySQL에서 V1 보존, V3 최종 수, DOG/CAT·Brand 분포, 2-depth, MAIN uniqueness, 가격, 옵션 조합, Category/Facet 호환성, 재고·구독 상태, 전체 fixture 멱등성, mutable inventory 보존, 충돌 rollback과 public list/detail을 검증한다. `LocalQaBootstrapConfigurationTests`는 명시적 flag, profile 차단, V2 혼용 차단을 검증한다.
+`LocalCustomerCatalogV3FixtureIntegrationTests`는 MySQL에서 V1 보존, V3 최종 수, DOG/CAT·Brand 분포, 2-depth, MAIN uniqueness, 가격, 옵션 조합, Category/Facet 호환성, 재고·구독 상태, 전체 fixture 멱등성, mutable inventory 보존, 충돌 rollback과 public list/detail을 검증한다. `LocalCustomerCatalogV3FixtureDriftIntegrationTests`는 Admin에서 image/detail section의 순서를 변경한 뒤 재실행할 때 중복을 생성하지 않고 명시적 conflict로 실패하는 것을 검증한다. `LocalQaBootstrapConfigurationTests`는 명시적 flag, profile 차단, V2 혼용 차단을 검증한다.
 
 공식 검증은 Java 25 / MySQL 8.4의 `./gradlew compileJava compileTestJava`, `./gradlew test`, `./gradlew build -x test`와 저장소 task-artifact·commit-message·PR metadata validator다. 데이터 문서에는 변동하는 PR/HEAD/CI 상태를 기록하지 않는다.
