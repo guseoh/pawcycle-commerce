@@ -33,8 +33,9 @@ try {
     $frontend = Invoke-WebRequest -Uri "$base/products" -UseBasicParsing -TimeoutSec 30
     Assert-Condition ($frontend.StatusCode -eq 200) "Frontend readiness check failed."
 
-    $products = Invoke-RestMethod -Uri "$base/api/products" -Method Get -WebSession $session -TimeoutSec 30
-    $fixtureProducts = @($products.products | Where-Object {
+    $fixtureQuery = [Uri]::EscapeDataString($fixtureProductPrefix)
+    $products = Invoke-RestMethod -Uri "$base/api/products?q=$fixtureQuery&subscribable=true&size=100" -Method Get -WebSession $session -TimeoutSec 30
+    $fixtureProducts = @($products.items | Where-Object {
         $_.hasSubscribableSku -and $_.name.StartsWith($fixtureProductPrefix)
     })
     Assert-Condition ($fixtureProducts.Count -eq 1) "Expected exactly one FOUNDATION-004 product fixture."

@@ -77,9 +77,14 @@ public class LocalQaBootstrapService {
 
 	@Transactional
 	public void bootstrap(String email, String password, boolean resetSubscriptions) {
+		bootstrap(email, password, resetSubscriptions, false);
+	}
+
+	@Transactional
+	public void bootstrap(String email, String password, boolean resetSubscriptions, boolean exposeProductFixture) {
 		String normalizedEmail = validateCredentials(email, password);
 		Member member = loadOrCreateMember(normalizedEmail, password);
-		Product product = loadOrCreateProduct();
+		Product product = loadOrCreateProduct(exposeProductFixture);
 		Sku sku = loadOrCreateSku(product);
 		ensureInventory(sku);
 		if (resetSubscriptions) {
@@ -140,13 +145,13 @@ public class LocalQaBootstrapService {
 		return member;
 	}
 
-	private Product loadOrCreateProduct() {
+	private Product loadOrCreateProduct(boolean exposeProductFixture) {
 		List<Product> candidates = productRepository.findAllByName(PRODUCT_NAME);
 		if (candidates.isEmpty()) {
 			Category category = categoryRepository == null ? null : categoryRepository.findBySlug(QA_CATEGORY_SLUG)
-					.map(this::deactivateFixtureCategory)
+					.map(existingCategory -> alignFixtureCategoryVisibility(existingCategory, exposeProductFixture))
 					.orElseGet(() -> categoryRepository.saveAndFlush(
-							new Category("QA Foundation", QA_CATEGORY_SLUG, 0, false)));
+							new Category("QA Foundation", QA_CATEGORY_SLUG, 0, exposeProductFixture)));
 			return productRepository.saveAndFlush(new Product(category,
 					PRODUCT_NAME,
 					PRODUCT_SHORT_DESCRIPTION,
@@ -160,13 +165,13 @@ public class LocalQaBootstrapService {
 		}
 		Product product = candidates.get(0);
 		if (product.getCategory() != null && QA_CATEGORY_SLUG.equals(product.getCategory().getSlug())) {
-			deactivateFixtureCategory(product.getCategory());
+			alignFixtureCategoryVisibility(product.getCategory(), exposeProductFixture);
 		}
 		return product;
 	}
 
-	private Category deactivateFixtureCategory(Category category) {
-		category.update(null, null, null, false);
+	private Category alignFixtureCategoryVisibility(Category category, boolean exposeProductFixture) {
+		category.update(null, null, null, exposeProductFixture);
 		return category;
 	}
 

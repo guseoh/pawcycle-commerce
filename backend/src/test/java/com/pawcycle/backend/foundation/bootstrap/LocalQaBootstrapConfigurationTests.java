@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -164,9 +166,27 @@ class LocalQaBootstrapConfigurationTests {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
 					runner.run(null);
 					context.getBean("localDemoCatalogBootstrapRunner", ApplicationRunner.class).run(null);
-					verify(bootstrapService).bootstrap(email, password, true);
+					verify(bootstrapService).bootstrap(email, password, true, true);
 					verify(mvp2FixtureService).bootstrap();
 					verify(commerceDemoFixtureService).bootstrap();
+				});
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = {false, true})
+	void customerCatalogModeControlsFoundationFixtureVisibility(boolean customerCatalogV3Enabled) {
+		String email = runtimeQaEmail();
+		String password = UUID.randomUUID().toString();
+		contextRunner.withPropertyValues(
+				"spring.profiles.active=local-integration",
+				"pawcycle.local-qa-bootstrap.enabled=true",
+				"pawcycle.local-qa-bootstrap.email=" + email,
+				"pawcycle.local-qa-bootstrap.password=" + password,
+				"pawcycle.local-customer-catalog-v3.enabled=" + customerCatalogV3Enabled)
+				.run(context -> {
+					context.getBean("localQaBootstrapRunner", ApplicationRunner.class).run(null);
+					verify(bootstrapService).bootstrap(email, password, false, !customerCatalogV3Enabled);
+					verify(mvp2FixtureService).bootstrap();
 				});
 	}
 
@@ -175,7 +195,7 @@ class LocalQaBootstrapConfigurationTests {
 		String email = runtimeQaEmail();
 		String password = UUID.randomUUID().toString();
 		doThrow(new LocalQaBootstrapException("로컬 QA bootstrap 설정 오류"))
-				.when(bootstrapService).bootstrap(email, password, false);
+				.when(bootstrapService).bootstrap(email, password, false, true);
 
 		contextRunner
 				.withPropertyValues(
@@ -208,7 +228,7 @@ class LocalQaBootstrapConfigurationTests {
 					ApplicationRunner runner = context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
 					assertThatThrownBy(() -> runner.run(null))
 							.isInstanceOf(LocalQaBootstrapException.class);
-					verify(bootstrapService).bootstrap(email, password, false);
+					verify(bootstrapService).bootstrap(email, password, false, true);
 				});
 	}
 
@@ -231,7 +251,7 @@ class LocalQaBootstrapConfigurationTests {
 					ApplicationRunner demoRunner = context.getBean("localDemoCatalogBootstrapRunner", ApplicationRunner.class);
 					assertThatThrownBy(() -> demoRunner.run(null))
 							.isInstanceOf(LocalQaBootstrapException.class);
-					verify(bootstrapService).bootstrap(email, password, false);
+					verify(bootstrapService).bootstrap(email, password, false, true);
 					verify(mvp2FixtureService).bootstrap();
 					verify(commerceDemoFixtureService).bootstrap();
 				});
