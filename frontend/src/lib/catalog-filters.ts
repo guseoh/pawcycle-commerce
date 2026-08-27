@@ -6,6 +6,11 @@ export const PRODUCT_SORTS: { value: ProductSort; label: string }[] = [
   { value: "RATING", label: "평점순" }, { value: "REVIEW_COUNT", label: "리뷰 많은 순" },
 ];
 
+export function catalogPriceRangeError({ minPrice, maxPrice }: Pick<ProductFilters, "minPrice" | "maxPrice">): string | null {
+  return minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice
+    ? "최소 가격은 최대 가격보다 클 수 없습니다." : null;
+}
+
 export function parseCatalogFilters(query: URLSearchParams): ProductFilters {
   const filters: ProductFilters = { page: 0, size: 12, sort: "RECOMMENDED" };
   for (const key of ["q", "petType", "category", "subcategory", "brand"] as const) {

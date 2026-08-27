@@ -7,6 +7,7 @@ import { CatalogPrice } from "./catalog-product-card";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchasePanel, ProductPurchaseSheet } from "./product-purchase-panel";
 import { productQuantityError, selectProductSku, type OptionSelection } from "@/lib/product-selection";
+import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "@/lib/product-wishlist";
 import { ProductTrustSections } from "./product-trust-sections";
 import { ApiError, type ProductDetail, type ProductSummary, productApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -25,9 +26,12 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [selection, setSelection] = useState<OptionSelection>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const authRequest = useRef(0);
+  const wishlistRequest = useRef(0);
+  const [wishlistRetry, setWishlistRetry] = useState(0);
   const [quantity, setQuantity] = useState("1");
-  const [wishlistState, setWishlistState] = useState<{ memberId: number | null; value: boolean }>({ memberId: null, value: false });
-  const wishlisted = auth.status === "authenticated" && wishlistState.memberId === auth.memberId && wishlistState.value;
+  const [wishlistState, setWishlistState] = useState<ProductWishlistState>({ memberId: null, productId, status: "loading", value: false });
+  const wishlist = currentProductWishlist(wishlistState, auth.status === "authenticated" ? auth.memberId : null, productId);
+  const wishlisted = wishlist.status === "ready" && wishlist.value;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
@@ -91,15 +95,23 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   }, [relatedCategorySlug, relatedPetType, relatedProductId, relatedRetry]);
 
   useEffect(() => {
-    const request = ++authRequest.current;
-    let active = true;
-    if (auth.status === "authenticated") {
-      void commerceFinalApi.wishlist().then((result) => {
-        if (active && request === authRequest.current) setWishlistState({ memberId: auth.memberId, value: result.items.some((item) => item.productId === Number(productId)) });
-      }).catch(() => undefined);
-    }
-    return () => { active = false; authRequest.current += 1; };
+    authRequest.current += 1;
+    return () => { authRequest.current += 1; };
   }, [auth.status, auth.memberId, productId]);
+
+  const { markAnonymous } = auth;
+  useEffect(() => {
+    if (auth.status !== "authenticated" || auth.memberId === null) return;
+    const memberId = auth.memberId;
+    let cancel = () => {};
+    const timer = window.setTimeout(() => {
+      cancel = loadProductWishlist(wishlistRequest, memberId, productId,
+        async () => (await commerceFinalApi.wishlist()).items.some((item) => item.productId === Number(productId)),
+        setWishlistState,
+        (error) => { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") markAnonymous(); });
+    }, 0);
+    return () => { window.clearTimeout(timer); cancel(); };
+  }, [auth.status, auth.memberId, productId, wishlistRetry, markAnonymous]);
 
   const selectedSku = product ? selectProductSku(product.optionGroups, product.skus, selection, cartSkuId) : null;
   const quantityError = productQuantityError(quantity, selectedSku);
@@ -122,12 +134,13 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
 
   async function toggleWishlist() {
     if (!product || busy || !canMutate()) return;
+    if (wishlist.status !== "ready") return;
     setBusy(true); setMessage(null);
     const request = ++authRequest.current;
     try {
       await auth.executeWithCsrf((csrf) => wishlisted ? commerceFinalApi.deleteWishlist(product.productId, csrf) : commerceFinalApi.addWishlist(product.productId, csrf));
       if (request !== authRequest.current) return;
-      setWishlistState({ memberId: auth.memberId, value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? "위시리스트에서 삭제했습니다." : "위시리스트에 담았습니다.");
+      setWishlistState({ memberId: auth.memberId, productId, status: "ready", value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? "위시리스트에서 삭제했습니다." : "위시리스트에 담았습니다.");
       notifyCommerceChanged();
     } catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했습니다."); }
     finally { setBusy(false); }
@@ -146,7 +159,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   }
 
   function purchasePanel(id: string) {
-    return <ProductPurchasePanel id={id} product={product!} selectedSku={selectedSku} selection={selection} onSelect={setSelection} onLegacySelect={setCartSkuId} quantity={quantity} onQuantityChange={setQuantity} quantityError={quantityError} busy={busy} wishlisted={wishlisted} onWishlist={() => void toggleWishlist()} onCart={() => void addCart()} subscriptionHref={subscriptionHref} message={message} messageKind={messageKind} />;
+    return <ProductPurchasePanel id={id} product={product!} selectedSku={selectedSku} selection={selection} onSelect={setSelection} onLegacySelect={setCartSkuId} quantity={quantity} onQuantityChange={setQuantity} quantityError={quantityError} busy={busy} wishlisted={wishlisted} wishlistStatus={auth.status === "authenticated" ? wishlist.status : null} onWishlistRetry={() => { setWishlistState({ memberId: auth.memberId, productId, status: "loading", value: false }); setWishlistRetry((value) => value + 1); }} onWishlist={() => void toggleWishlist()} onCart={() => void addCart()} subscriptionHref={subscriptionHref} message={message} messageKind={messageKind} />;
   }
 
   if (state.status === "loading") return <LoadingState>상품 정보를 불러오고 있습니다.</LoadingState>;

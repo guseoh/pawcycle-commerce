@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { catalogDiscoveryApi, productApi, type CatalogDiscovery, type ProductDetail, type ProductOptionGroup, type ProductSku, type ProductSummary } from "./api.ts";
-import { catalogHref, catalogMetadata, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "./catalog-filters.ts";
+import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "./catalog-filters.ts";
 import { productQuantityError, selectProductSku } from "./product-selection.ts";
 import { loadProductResults } from "./catalog-products.ts";
+import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "./product-wishlist.ts";
+import { commerceFinalApi } from "./commerce-final-api.ts";
 
 const discovery: CatalogDiscovery = {
   categories: [{ categoryId: 1, name: "사료", slug: "food", displayOrder: 0, children: [{ categoryId: 10, name: "건식", slug: "food-dry", displayOrder: 0 }] }, { categoryId: 2, name: "용품", slug: "supplies", displayOrder: 1, children: [] }],
@@ -164,4 +166,101 @@ test("Quantity validation follows the current SKU without resetting the user's i
   assert.equal(productQuantityError("7", skus[0]), null);
   assert.ok(productQuantityError("7", skus[1]));
   assert.equal(productQuantityError("3", skus[1]), null);
+});
+
+for (const { label, filters, valid } of [
+  { label: "min < max", filters: { minPrice: 10, maxPrice: 20 }, valid: true },
+  { label: "min == max", filters: { minPrice: 10, maxPrice: 10 }, valid: true },
+  { label: "min > max", filters: { minPrice: 20, maxPrice: 10 }, valid: false },
+  { label: "min only", filters: { minPrice: 10 }, valid: true },
+  { label: "max only", filters: { maxPrice: 10 }, valid: true },
+  { label: "zero range", filters: { minPrice: 0, maxPrice: 0 }, valid: true },
+  { label: "zero max", filters: { minPrice: 1, maxPrice: 0 }, valid: false },
+]) test(`Price range: ${label}`, () => {
+  assert.equal(catalogPriceRangeError(filters) === null, valid);
+});
+
+test("Invalid URL price range preserves input and never calls Product API", async () => {
+  const original = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => { requests += 1; return new Response("{}"); }) as typeof fetch;
+  try {
+    const filters = parseCatalogFilters(new URLSearchParams("minPrice=200&maxPrice=100&q=food"));
+    const errors: unknown[] = [];
+    loadProductResults(filters, () => assert.fail("Invalid range must not load products"), (error) => errors.push(error));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(requests, 0);
+    assert.equal((errors[0] as Error).message, catalogPriceRangeError(filters));
+    assert.equal(filters.minPrice, 200);
+    assert.equal(filters.maxPrice, 100);
+    assert.equal(filters.q, "food");
+  } finally { globalThis.fetch = original; }
+});
+
+test("Slow wishlist lookup survives a Cart mutation and blocks wishlist mutation until ready", async () => {
+  const original = globalThis.fetch;
+  let finishWishlist!: (response: Response) => void;
+  const wishlistResponse = new Promise<Response>((resolve) => { finishWishlist = resolve; });
+  const paths: string[] = [];
+  globalThis.fetch = (async (input) => {
+    paths.push(String(input));
+    return String(input) === "/api/wishlist" ? wishlistResponse : new Response(null, { status: 204 });
+  }) as typeof fetch;
+  const generation = { current: 0 };
+  const published: ProductWishlistState[] = [];
+  try {
+    loadProductWishlist(generation, 7, "4", async () => (await commerceFinalApi.wishlist()).items.some((item) => item.productId === 4), (state) => published.push(state), () => assert.fail("Lookup must succeed"));
+    assert.notEqual(currentProductWishlist(published.at(-1)!, 7, "4").status, "ready");
+    await commerceFinalApi.addCart(1, 1, "test-csrf");
+    finishWishlist(new Response(JSON.stringify({ items: [{ productId: 4 }] })));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(paths, ["/api/wishlist", "/api/cart/items"]);
+    assert.deepEqual(currentProductWishlist(published.at(-1)!, 7, "4"), { memberId: 7, productId: "4", status: "ready", value: true });
+  } finally { globalThis.fetch = original; }
+});
+
+test("Previous wishlist generations and cleanup cannot overwrite the current identity", async () => {
+  const generation = { current: 0 };
+  const published: ProductWishlistState[] = [];
+  const pending: { resolve: (value: boolean) => void; reject: (error: Error) => void }[] = [];
+  const load = () => new Promise<boolean>((resolve, reject) => pending.push({ resolve, reject }));
+  const publish = (state: ProductWishlistState) => published.push(state);
+  const cancelOld = loadProductWishlist(generation, 7, "4", load, publish, () => assert.fail("Stale errors must be ignored"));
+  const cancelCurrent = loadProductWishlist(generation, 8, "5", load, publish, () => assert.fail("Current lookup succeeds"));
+  cancelOld(); // A previous cleanup must not invalidate a newer read.
+  pending[1].resolve(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  pending[0].resolve(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(published.at(-1), { memberId: 8, productId: "5", status: "ready", value: true });
+  cancelCurrent();
+  const cancelNext = loadProductWishlist(generation, 8, "6", load, publish, () => assert.fail("Cancelled auth/product lookup must not report errors"));
+  cancelNext(); pending[2].reject(new Error("late failure"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(published.at(-1)!.status, "loading");
+});
+
+test("Wishlist values require the current authenticated member/product and ready state", () => {
+  const ready: ProductWishlistState = { memberId: 7, productId: "4", status: "ready", value: true };
+  for (const [memberId, productId] of [[null, "4"], [8, "4"], [7, "5"]] as const) {
+    const current = currentProductWishlist(ready, memberId, productId);
+    assert.equal(current.value, false);
+    assert.notEqual(current.status, "ready");
+  }
+  for (const status of ["loading", "error"] as const) {
+    const current = currentProductWishlist({ ...ready, status }, 7, "4");
+    assert.equal(current.value, false);
+    assert.notEqual(current.status, "ready");
+  }
+  assert.equal(currentProductWishlist(ready, 7, "4").value, true);
+});
+
+test("Wishlist read failure clears the value and exposes a local error state", async () => {
+  const published: ProductWishlistState[] = [];
+  const errors: unknown[] = [];
+  const failure = new Error("lookup failed");
+  loadProductWishlist({ current: 0 }, 7, "4", () => Promise.reject(failure), (state) => published.push(state), (error) => errors.push(error));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(published.at(-1), { memberId: 7, productId: "4", status: "error", value: false });
+  assert.deepEqual(errors, [failure]);
 });

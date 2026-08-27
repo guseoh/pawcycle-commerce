@@ -67,7 +67,13 @@ export function AppHeader() {
   }, [memberId, status]);
 
   return (
-    <header className="site-header shopping-header" onKeyDown={(event) => { if (event.key === "Escape") { closeNavigation(); if (menuOpen) menuButton.current?.focus(); else categoryNavigationRef.current?.querySelector("summary")?.focus(); } }}>
+    <header className="site-header shopping-header" onKeyDown={(event) => {
+      if (event.key !== "Escape") return;
+      if (!menuOpen && !categoryNavigationRef.current?.open) return;
+      closeNavigation();
+      if (menuOpen) menuButton.current?.focus();
+      else categoryNavigationRef.current?.querySelector("summary")?.focus();
+    }}>
       <div className="header-inner">
         <Link className="brand" href="/" aria-label="PawCycle 홈">
           <span className="brand-mark" aria-hidden="true">P</span>

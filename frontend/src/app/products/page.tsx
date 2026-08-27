@@ -6,7 +6,7 @@ import { ErrorState, LoadingState } from "@/components/async-state";
 import { CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { ApiError, type CatalogDiscovery, type ProductFilters, type ProductListResponse, type ProductSort } from "@/lib/api";
-import { catalogHref, catalogMetadata, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "@/lib/catalog-filters";
+import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "@/lib/catalog-filters";
 import { loadProductResults } from "@/lib/catalog-products";
 
 type LoadState = { key: string; status: "success"; response: ProductListResponse } | { key: string; status: "error"; message: string };
@@ -24,10 +24,12 @@ function ProductsContent() {
   const metadata = discovery.state.status === "success" ? discovery.state.data : null;
   const requestKey = `${query}|${retryKey}`;
 
-  useEffect(() => loadProductResults(parseCatalogFilters(new URLSearchParams(query)),
-    (response) => setState({ key: requestKey, status: "success", response }),
-    (error) => setState({ key: requestKey, status: "error", message: error instanceof ApiError ? error.message : "상품 목록을 불러오지 못했습니다." })),
-  [query, requestKey]);
+  useEffect(() => {
+    const requestFilters = parseCatalogFilters(new URLSearchParams(query));
+    return loadProductResults(requestFilters,
+      (response) => setState({ key: requestKey, status: "success", response }),
+      (error) => setState({ key: requestKey, status: "error", message: catalogPriceRangeError(requestFilters) ?? (error instanceof ApiError ? error.message : "상품 목록을 불러오지 못했습니다.") }));
+  }, [query, requestKey]);
 
   function change(patch: Partial<ProductFilters>) { router.push(catalogHref(changeCatalogFilters(filters, patch))); }
   const current = state?.key === requestKey ? state : null;
@@ -62,17 +64,18 @@ function ProductsContent() {
 
 function CatalogFilterForm({ filters, metadata, onApply, onReset }: { filters: ProductFilters; metadata: CatalogDiscovery | null; onApply: (filters: ProductFilters) => void; onReset: () => void }) {
   const [draft, setDraft] = useState(filters);
+  const priceError = catalogPriceRangeError(draft);
   const { children, facets } = catalogMetadata(metadata, draft);
   const change = (patch: Partial<ProductFilters>) => setDraft((current) => changeCatalogFilters(current, patch));
-  return <form className="catalog-filter-form" onSubmit={(event) => { event.preventDefault(); onApply(draft); }}>
+  return <form className="catalog-filter-form" onSubmit={(event) => { event.preventDefault(); if (priceError) return; onApply(draft); }}>
     <fieldset><legend>반려동물</legend><div className="catalog-toggle-row">{[{ value: "", label: "전체" }, { value: "DOG", label: "강아지" }, { value: "CAT", label: "고양이" }].map((item) => <button type="button" aria-pressed={(draft.petType ?? "") === item.value} key={item.value} onClick={() => change({ petType: item.value })}>{item.label}</button>)}</div></fieldset>
     <label className="form-field">카테고리<select className="input" value={draft.category ?? ""} disabled={!metadata} onChange={(event) => change({ category: event.target.value })}><option value="">전체 카테고리</option>{draft.category && !metadata?.categories.some((item) => item.slug === draft.category) ? <option value={draft.category}>현재 URL 카테고리</option> : null}{metadata?.categories.map((category) => <option key={category.categoryId} value={category.slug}>{category.name}</option>)}</select></label>
     {children.length > 0 ? <label className="form-field">세부 카테고리<select className="input" value={draft.subcategory ?? ""} onChange={(event) => change({ subcategory: event.target.value })}><option value="">전체</option>{draft.subcategory && !children.some((item) => item.slug === draft.subcategory) ? <option value={draft.subcategory}>현재 URL 세부 카테고리</option> : null}{children.map((child) => <option key={child.categoryId} value={child.slug}>{child.name}</option>)}</select></label> : null}
     <label className="form-field">브랜드<select className="input" value={draft.brand ?? ""} disabled={!metadata} onChange={(event) => change({ brand: event.target.value })}><option value="">전체 브랜드</option>{draft.brand && !metadata?.brands.some((brand) => brand.slug === draft.brand) ? <option value={draft.brand}>현재 URL 브랜드</option> : null}{metadata?.brands.map((brand) => <option key={brand.brandId} value={brand.slug}>{brand.name}</option>)}</select></label>
     {facets.map((facet) => <fieldset key={facet.key}><legend>{facet.name}</legend>{facet.options.map((option) => { const value = `${facet.key}:${option.value}`; return <label className="catalog-check" key={option.optionId}><input type="checkbox" checked={draft.facet?.includes(value) ?? false} onChange={(event) => change({ facet: event.target.checked ? [...(draft.facet ?? []), value] : draft.facet?.filter((item) => item !== value) })} />{option.value}</label>; })}</fieldset>)}
-    <fieldset><legend>가격 범위</legend><div className="catalog-price-inputs"><label className="form-field">최소 가격<input className="input" type="number" min="0" value={draft.minPrice ?? ""} onChange={(event) => change({ minPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label><label className="form-field">최대 가격<input className="input" type="number" min="0" value={draft.maxPrice ?? ""} onChange={(event) => change({ maxPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div></fieldset>
+    <fieldset><legend>가격 범위</legend><div className="catalog-price-inputs"><label className="form-field">최소 가격<input className="input" type="number" min="0" aria-invalid={Boolean(priceError)} aria-describedby={priceError ? "catalog-price-error" : undefined} value={draft.minPrice ?? ""} onChange={(event) => change({ minPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label><label className="form-field">최대 가격<input className="input" type="number" min="0" aria-invalid={Boolean(priceError)} aria-describedby={priceError ? "catalog-price-error" : undefined} value={draft.maxPrice ?? ""} onChange={(event) => change({ maxPrice: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div>{priceError ? <p id="catalog-price-error" className="field-error" role="alert">{priceError}</p> : null}</fieldset>
     <fieldset><legend>구매 조건</legend><label className="catalog-check"><input type="checkbox" checked={draft.subscribable === true} onChange={(event) => change({ subscribable: event.target.checked ? true : undefined })} />정기배송 가능</label><label className="catalog-check"><input type="checkbox" checked={draft.purchasable === true} onChange={(event) => change({ purchasable: event.target.checked ? true : undefined })} />구매 가능한 상품만</label></fieldset>
-    <div className="button-row"><button className="button button-primary" type="submit">필터 적용</button><button className="button button-secondary" type="button" onClick={() => { setDraft(parseCatalogFilters(new URLSearchParams())); onReset(); }}>초기화</button></div>
+    <div className="button-row"><button className="button button-primary" type="submit" disabled={Boolean(priceError)}>필터 적용</button><button className="button button-secondary" type="button" onClick={() => { setDraft(parseCatalogFilters(new URLSearchParams())); onReset(); }}>초기화</button></div>
   </form>;
 }
 

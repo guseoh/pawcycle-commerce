@@ -19,6 +19,8 @@ interface PurchasePanelProps {
   quantityError: string | null;
   busy: boolean;
   wishlisted: boolean;
+  wishlistStatus: "loading" | "ready" | "error" | null;
+  onWishlistRetry: () => void;
   onWishlist: () => void;
   onCart: () => void;
   subscriptionHref: string | null;
@@ -34,7 +36,8 @@ export function ProductPurchasePanel(props: PurchasePanelProps) {
     <div className="selection-summary" aria-live="polite" aria-atomic="true">{selectedSku ? <><p>{userFacingCatalogLabel(selectedSku.skuName, "선택한 옵션")}</p><CatalogPrice price={selectedSku.price} compareAtPrice={selectedSku.compareAtPrice} discountRate={selectedSku.discountRate} /><p>{selectedSku.purchasable ? `구매 가능 · 재고 ${selectedSku.availableQuantity}개` : "현재 품절 · 구매 불가"}</p></> : <p>{product.skus.length === 0 ? "현재 구매 가능한 옵션이 없습니다." : product.optionGroups.length > 0 && Object.keys(selection).length === product.optionGroups.length ? "선택한 옵션 조합은 준비되어 있지 않습니다. 다른 옵션을 선택해 주세요." : "옵션을 모두 선택하면 가격과 구매 가능 여부를 확인할 수 있어요."}</p>}</div>
     <label className="form-field" htmlFor={`${id}-quantity`}>수량<input id={`${id}-quantity`} className="input" type="number" min="1" step="1" max={selectedSku?.availableQuantity} disabled={busy || !selectedSku?.purchasable} aria-invalid={Boolean(quantityError)} aria-describedby={quantityError ? `${id}-quantity-error` : undefined} value={props.quantity} onChange={(event) => props.onQuantityChange(event.target.value)} /></label>
     {quantityError ? <p id={`${id}-quantity-error`} className="field-error" role="alert">{quantityError}</p> : null}
-    <div className="button-row purchase-actions"><button className="button button-secondary" type="button" aria-pressed={props.wishlisted} disabled={busy} onClick={props.onWishlist}>{props.wishlisted ? "찜 해제" : "위시리스트에 담기"}</button><button className="button button-primary" type="button" disabled={busy || !selectedSku?.purchasable || Boolean(quantityError)} onClick={props.onCart}>{busy ? "처리 중…" : "장바구니에 담기"}</button></div>
+    <div className="button-row purchase-actions"><button className="button button-secondary" type="button" aria-pressed={props.wishlistStatus === "ready" ? props.wishlisted : undefined} disabled={busy || props.wishlistStatus === "loading" || props.wishlistStatus === "error"} onClick={props.onWishlist}>{props.wishlistStatus === "loading" ? "찜 확인 중…" : props.wishlistStatus === "error" ? "찜 상태 확인 불가" : props.wishlisted ? "찜 해제" : "위시리스트에 담기"}</button><button className="button button-primary" type="button" disabled={busy || !selectedSku?.purchasable || Boolean(quantityError)} onClick={props.onCart}>{busy ? "처리 중…" : "장바구니에 담기"}</button></div>
+    {props.wishlistStatus === "error" ? <div role="alert"><p className="field-error">위시리스트 상태를 확인하지 못했습니다. 장바구니는 계속 사용할 수 있습니다.</p><button className="button button-secondary" type="button" disabled={busy} onClick={props.onWishlistRetry}>찜 상태 다시 확인</button></div> : null}
     {props.subscriptionHref && selectedSku?.subscribable ? <div className="purchase-subscription"><p>이 옵션은 정기배송이 가능해요.{selectedSku.availableDeliveryCycles.length ? ` 배송 주기: ${selectedSku.availableDeliveryCycles.join(" / ")}주` : ""}</p><Link className="button button-secondary" href={props.subscriptionHref}>이 옵션 정기배송 시작</Link></div> : <p className="field-help">{selectedSku ? "이 옵션은 정기배송을 지원하지 않습니다." : "옵션 선택 후 정기배송 가능 여부를 확인해 주세요."}</p>}
     {props.message ? <p className={props.messageKind === "success" ? "notice-success" : "error-summary"} role={props.messageKind === "success" ? "status" : "alert"}>{props.message}</p> : null}
   </section>;
