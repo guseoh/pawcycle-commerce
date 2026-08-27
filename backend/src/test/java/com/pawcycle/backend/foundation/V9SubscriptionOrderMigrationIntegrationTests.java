@@ -49,7 +49,7 @@ class V9SubscriptionOrderMigrationIntegrationTests {
 			assertOrderSchema(jdbc);
 			assertThat(jdbc.queryForObject(
 					"SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",
-				Integer.class)).isEqualTo(23);
+				Integer.class)).isEqualTo(24);
 		} catch (Throwable failure) {
 			primaryFailure = failure;
 			throw failure;

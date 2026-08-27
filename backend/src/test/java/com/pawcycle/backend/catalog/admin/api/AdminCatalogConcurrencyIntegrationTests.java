@@ -85,8 +85,8 @@ class AdminCatalogConcurrencyIntegrationTests {
 		long categoryId = categoryRepository.saveAndFlush(new Category("concurrent-product", "concurrent-product", 0, true)).getId();
 		long productId = objectMapper.readTree(postJson("/api/admin/products", """
 				{"name":"동시 상품","shortDescription":"동시 생성 테스트","description":null,
-				 "petType":"DOG","thumbnailUrl":null}
-				""".replace("null}", "null,\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
+				 "petType":"DOG","thumbnailUrl":null,"brandId":1}
+				""".replace("}", ",\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
 
 		assertConcurrentResults(
 				() -> postJson("/api/admin/products/" + productId + "/skus", """
@@ -101,8 +101,8 @@ class AdminCatalogConcurrencyIntegrationTests {
 		long categoryId = categoryRepository.saveAndFlush(new Category("concurrent-transition", "concurrent-transition", 0, true)).getId();
 		long productId = objectMapper.readTree(postJson("/api/admin/products", """
 				{"name":"전이 상품","shortDescription":"동시 전이 테스트","description":null,
-				 "petType":"DOG","thumbnailUrl":null}
-				""".replace("null}", "null,\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
+				 "petType":"DOG","thumbnailUrl":null,"brandId":1}
+				""".replace("}", ",\"categoryId\":" + categoryId + "}")).getResponse().getContentAsByteArray()).get("productId").asLong();
 
 		assertConcurrentResults(
 				() -> patchJson("/api/admin/products/" + productId, "{\"status\":\"PUBLIC\"}"),

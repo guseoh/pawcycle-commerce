@@ -39,6 +39,9 @@ public class Sku {
 	@Column(nullable = false, precision = 12, scale = 2)
 	private BigDecimal price;
 
+	@Column(name = "compare_at_price", precision = 12, scale = 2)
+	private BigDecimal compareAtPrice;
+
 	@Column(nullable = false)
 	private boolean subscribable;
 
@@ -54,16 +57,23 @@ public class Sku {
 			String skuCode,
 			String name,
 			BigDecimal price,
+			BigDecimal compareAtPrice,
 			boolean subscribable,
 			int displayOrder,
 			SkuStatus status) {
+		validatePriceRelation(price, compareAtPrice);
 		this.product = product;
 		this.skuCode = skuCode;
 		this.name = name;
 		this.price = price;
+		this.compareAtPrice = compareAtPrice;
 		this.subscribable = subscribable;
 		this.displayOrder = displayOrder;
 		this.status = status;
+	}
+
+	public Sku(Product product, String skuCode, String name, BigDecimal price, boolean subscribable, int displayOrder, SkuStatus status) {
+		this(product, skuCode, name, price, null, subscribable, displayOrder, status);
 	}
 
 	public boolean isSubscribable() {
@@ -71,10 +81,31 @@ public class Sku {
 	}
 
 	public void update(String name, BigDecimal price, Boolean subscribable, Integer displayOrder, SkuStatus status) {
+		update(name, price, null, false, subscribable, displayOrder, status);
+	}
+
+	public void update(
+			String name,
+			BigDecimal price,
+			BigDecimal compareAtPrice,
+			boolean compareAtPricePresent,
+			Boolean subscribable,
+			Integer displayOrder,
+			SkuStatus status) {
+		BigDecimal nextPrice = price == null ? this.price : price;
+		BigDecimal nextCompareAtPrice = compareAtPricePresent ? compareAtPrice : this.compareAtPrice;
+		validatePriceRelation(nextPrice, nextCompareAtPrice);
 		if (name != null) this.name = name;
 		if (price != null) this.price = price;
+		if (compareAtPricePresent) this.compareAtPrice = compareAtPrice;
 		if (subscribable != null) this.subscribable = subscribable;
 		if (displayOrder != null) this.displayOrder = displayOrder;
 		if (status != null) this.status = status;
+	}
+
+	private static void validatePriceRelation(BigDecimal price, BigDecimal compareAtPrice) {
+		if (price != null && compareAtPrice != null && compareAtPrice.compareTo(price) <= 0) {
+			throw new IllegalArgumentException("compareAtPrice는 price보다 커야 합니다.");
+		}
 	}
 }

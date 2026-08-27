@@ -52,7 +52,7 @@ class AdminCatalogCacheInvalidationTests {
 		when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
 		when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-		service.createProduct(new ProductCreate(1L, "상품", "설명", null, "DOG", null));
+		service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
 
 		Product product = mock(Product.class);
 		when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));

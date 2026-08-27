@@ -65,7 +65,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 			return null;
 		}).when(productListCache).invalidate();
 
-		service.createProduct(new ProductCreate(1L, "상품", "설명", null, "DOG", null));
+		service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
 
 		verify(productListCache).invalidate();
 		assertThat(transactionManager.commitCompleted()).isTrue();

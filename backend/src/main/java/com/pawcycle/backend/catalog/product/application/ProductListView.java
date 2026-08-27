@@ -32,7 +32,12 @@ public record ProductListView(List<ProductSummary> items, int page, int size, lo
 			SkuPriceSummary skuPriceSummary,
 			boolean hasSubscribableSku,
 			BigDecimal representativePrice,
-			boolean purchasable) {
+			boolean purchasable,
+			BrandSummary brand,
+			BigDecimal compareAtPrice,
+			Integer discountRate,
+			BigDecimal averageRating,
+			long reviewCount) {
 
 		public ProductSummary(
 				Long productId, String name, String petType, String shortDescription, String thumbnailUrl,
@@ -40,11 +45,20 @@ public record ProductListView(List<ProductSummary> items, int page, int size, lo
 			this(productId, name, petType, shortDescription, thumbnailUrl, category, skuPriceSummary,
 				hasSubscribableSku,
 				skuPriceSummary.skuPrices().isEmpty() ? null : skuPriceSummary.skuPrices().getFirst().price(),
-				true);
+				true, null, null, null, null, 0);
+		}
+
+		public ProductSummary(Long productId, String name, String petType, String shortDescription, String thumbnailUrl,
+				CategorySummary category, SkuPriceSummary skuPriceSummary, boolean hasSubscribableSku,
+				BigDecimal representativePrice, boolean purchasable) {
+			this(productId, name, petType, shortDescription, thumbnailUrl, category, skuPriceSummary, hasSubscribableSku,
+				representativePrice, purchasable, null, null, null, null, 0);
 		}
 	}
 
 	public record CategorySummary(Long categoryId, String name, String slug) {}
+
+	public record BrandSummary(Long brandId, String name, String slug, String logoUrl) {}
 
 	public record SkuPriceSummary(List<SkuPrice> skuPrices) {
 

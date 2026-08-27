@@ -269,7 +269,7 @@ public class SubscriptionBurstMeasurementService {
 	private CatalogFixture createCatalogAndPlan(int cohortSize) {
 		jdbc.update("INSERT INTO categories(name,slug,display_order,active) VALUES ('PERF-PH10-002 synthetic','perf-ph10-002-synthetic',0,true)");
 		long categoryId = lastInsertId();
-		jdbc.update("INSERT INTO products(category_id,name,short_description,description,pet_type,thumbnail_url,display_status) VALUES (?,?,'synthetic measurement fixture',NULL,'DOG',NULL,'PUBLIC')", categoryId, FIXTURE_PRODUCT_NAME);
+		jdbc.update("INSERT INTO products(brand_id,category_id,name,short_description,description,pet_type,thumbnail_url,display_status) VALUES (1,?,?,'synthetic measurement fixture',NULL,'DOG',NULL,'PUBLIC')", categoryId, FIXTURE_PRODUCT_NAME);
 		long productId = lastInsertId();
 		jdbc.update("INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (?,'PERF-PH10-002-SKU','synthetic SKU',1000.00,true,0,'ACTIVE')", productId);
 		long skuId = lastInsertId();

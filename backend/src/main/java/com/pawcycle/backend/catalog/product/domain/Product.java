@@ -12,12 +12,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicInsert;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Entity
 @Table(name = "products")
+@DynamicInsert
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class Product {
@@ -25,6 +27,9 @@ public class Product {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+
+	@Column(name = "brand_id", nullable = false)
+	private Long brandId;
 
 	@Column(name = "catalog_key", length = 150, unique = true)
 	private String catalogKey;
@@ -105,6 +110,7 @@ public class Product {
 			String thumbnailUrl,
 			ProductStatus status) {
 		this.category = category;
+		this.brandId = 1L;
 		this.catalogKey = catalogKey;
 		this.name = name;
 		this.shortDescription = shortDescription;
@@ -139,6 +145,8 @@ public class Product {
 		if (petType != null) this.petType = petType;
 		if (thumbnailUrlPresent) this.thumbnailUrl = thumbnailUrl;
 	}
+
+	public void updateBrandId(Long brandId) { this.brandId = brandId; }
 
 	public boolean canTransitionTo(ProductStatus target) {
 		return (status == ProductStatus.DRAFT && target == ProductStatus.PUBLIC)
