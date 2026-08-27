@@ -145,6 +145,7 @@ POST는 `skuCode`, `name`, 0 이상 `price`, `subscribable`, 0 이상 `displayOr
 | 409 | `OPTION_GROUP_LIMIT_EXCEEDED` | Product당 option group 2개 초과 |
 | 409 | `SKU_OPTION_COMBINATION_CONFLICT` | 동일 Product에서 다른 SKU와 option value 조합 중복 |
 | 409 | `CATEGORY_FACET_IN_USE` | 상품이 사용 중인 Category facet 배정 해제 |
+| 409 | `PRODUCT_FACET_NOT_ALLOWED` | Product Category에 배정되지 않은 facet definition의 option 설정 |
 | 409 | `PRODUCT_FACET_CATEGORY_CONFLICT` | 새 Category에서 기존 Product facet 값이 허용되지 않음 |
 | 409 | `PRODUCT_STATUS_TRANSITION_CONFLICT` | 허용되지 않은 Product 상태 전이 |
 | 500 | `ADMIN_CATALOG_UNAVAILABLE` | 예상하지 못한 Admin Catalog 오류 |
