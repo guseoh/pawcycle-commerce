@@ -25,13 +25,13 @@ function Get-ProductIdSet([object]$Response) {
     foreach ($item in @($Response.items)) {
         [void]$ids.Add([string]$item.productId)
     }
-    return $ids
+    return ,$ids
 }
 
 function Get-SetIntersection([System.Collections.Generic.HashSet[string]]$Left, [System.Collections.Generic.HashSet[string]]$Right) {
     $result = [System.Collections.Generic.HashSet[string]]::new($Left)
     $result.IntersectWith($Right)
-    return $result
+    return ,$result
 }
 
 function Assert-SameSet([System.Collections.Generic.HashSet[string]]$Actual, [System.Collections.Generic.HashSet[string]]$Expected, [string]$Message) {
