@@ -16,11 +16,29 @@ function Assert-Condition([bool]$Condition, [string]$Message) {
 
 function Get-PublicJson([string]$Path) {
     # Never print response bodies or credential-bearing request diagnostics.
-    try { Invoke-RestMethod -Uri "$base$Path" -Method Get -TimeoutSec 30 }
+    try { Invoke-RestMethod -Uri "$base$Path" -Method Get -TimeoutSec 30 -MaximumRedirection 0 }
     catch { throw "Public QA request failed: $Path" }
 }
 
-try { $frontend = Invoke-WebRequest -Uri "$base/" -UseBasicParsing -TimeoutSec 30 }
+function Get-ProductIdSet([object]$Response) {
+    $ids = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($item in @($Response.items)) {
+        [void]$ids.Add([string]$item.productId)
+    }
+    return $ids
+}
+
+function Get-SetIntersection([System.Collections.Generic.HashSet[string]]$Left, [System.Collections.Generic.HashSet[string]]$Right) {
+    $result = [System.Collections.Generic.HashSet[string]]::new($Left)
+    $result.IntersectWith($Right)
+    return $result
+}
+
+function Assert-SameSet([System.Collections.Generic.HashSet[string]]$Actual, [System.Collections.Generic.HashSet[string]]$Expected, [string]$Message) {
+    Assert-Condition ($Actual.Count -eq $Expected.Count -and $Actual.SetEquals($Expected)) $Message
+}
+
+try { $frontend = Invoke-WebRequest -Uri "$base/" -UseBasicParsing -TimeoutSec 30 -MaximumRedirection 0 }
 catch { throw "Frontend readiness request failed." }
 Assert-Condition ($frontend.StatusCode -eq 200) "Frontend must return 200."
 
@@ -45,7 +63,7 @@ $brandProducts = Get-PublicJson "/api/products?brand=grain-tail"
 Assert-Condition ($brandProducts.totalElements -gt 0) "Brand filter returned no products."
 Assert-Condition (@($brandProducts.items | Where-Object { $_.brand.slug -ne "grain-tail" }).Count -eq 0) "Brand filter returned a different brand."
 
-# Choose real options from public discovery; send facet twice, not comma-joined.
+# Choose real options from public discovery and verify repeated facet parameters as an exact intersection.
 $foodFacets = @($discovery.categoryFacets | Where-Object { $_.categorySlug -eq "food-dry" })
 Assert-Condition ($foodFacets.Count -eq 1) "Dry food facet assignment is missing."
 $facetParts = @()
@@ -56,8 +74,14 @@ foreach ($choice in @(@{ Key = "protein"; Value = "연어" }, @{ Key = "life-sta
     Assert-Condition ($option.Count -eq 1) "Expected V3 option is missing from discovery."
     $facetParts += "facet=" + [uri]::EscapeDataString("$($facet[0].key):$($option[0].value)")
 }
-$filtered = Get-PublicJson ("/api/products?category=food&subcategory=food-dry&" + ($facetParts -join "&"))
-Assert-Condition ($filtered.totalElements -gt 0) "Repeated facet query returned no products."
+$baseFilter = "/api/products?category=food&subcategory=food-dry&size=100&"
+$proteinOnly = Get-PublicJson ($baseFilter + $facetParts[0])
+$lifeStageOnly = Get-PublicJson ($baseFilter + $facetParts[1])
+$filtered = Get-PublicJson ($baseFilter + ($facetParts -join "&"))
+$expectedFacetIds = Get-SetIntersection (Get-ProductIdSet $proteinOnly) (Get-ProductIdSet $lifeStageOnly)
+$actualFacetIds = Get-ProductIdSet $filtered
+Assert-Condition ($actualFacetIds.Count -gt 0) "Repeated facet query returned no products."
+Assert-SameSet $actualFacetIds $expectedFacetIds "Repeated facet query did not match the exact intersection of both facet filters."
 
 $representativeName = "스몰테일 연어 작은 알갱이"
 $search = Get-PublicJson ("/api/products?q=" + [uri]::EscapeDataString($representativeName))
