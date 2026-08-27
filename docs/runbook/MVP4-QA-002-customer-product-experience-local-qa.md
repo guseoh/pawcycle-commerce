@@ -26,7 +26,7 @@ Clean visual은 V1 + V3 Product 100, DOG/CAT 각 50, Brand 10, 공개 Category 2
 
 ## Clean 실행과 항상 수행되는 cleanup
 
-다음 예시는 환경 변수 원복과 전용 Compose project cleanup을 `finally`에서 보장한다. Volume 삭제는 여기서 수행하지 않는다. cleanup 실패는 원래 QA 실패보다 먼저 판단하지 말고 별도 오류로 기록한다.
+다음 예시는 환경 변수 원복과 전용 Compose project cleanup을 `finally`에서 보장한다. API preflight가 끝나면 terminal을 열린 상태로 두고 Browser QA를 수행한 다음 Enter를 눌러 종료한다. Volume 삭제는 여기서 수행하지 않는다. cleanup 실패는 원래 QA 실패보다 먼저 판단하지 말고 별도 오류로 기록한다.
 
 ```powershell
 $previousPort = $env:PAWCYCLE_LOCAL_HTTP_PORT
@@ -66,7 +66,8 @@ try {
     pwsh -NoProfile -File infra/local-integration/customer-product-qa-smoke.ps1 -BaseUri http://localhost:8082
     if ($LASTEXITCODE) { throw 'API preflight failed; do not start Browser QA' }
 
-    # Browser QA는 아래 체크리스트를 따른다.
+    Write-Output 'Clean API preflight passed. Keep this terminal open and complete the Browser QA checklist.'
+    Read-Host 'Clean Browser QA를 완료한 뒤 Enter를 누르면 전용 stack을 정리합니다' | Out-Null
 }
 catch {
     $qaError = $_
@@ -99,7 +100,7 @@ Product ID는 공개 API에서 얻고 DB ID를 하드코딩하지 않는다. 실
 
 ## Browser QA 체크리스트
 
-API preflight Green 뒤에 실제 브라우저에서 실행한다. 새 browser framework는 추가하지 않는다. Desktop과 320~380px mobile을 포함한다.
+API preflight Green 뒤 Clean 실행 terminal이 `Read-Host`에서 대기하는 동안 실제 브라우저에서 실행한다. 새 browser framework는 추가하지 않는다. Desktop과 320~380px mobile을 포함한다.
 
 | 영역 | 확인 |
 | --- | --- |
@@ -115,9 +116,52 @@ Customer Catalog Data V3에는 Review/Q&A seed가 없으므로 `averageRating=nu
 
 ## Auth mode
 
-Clean QA가 끝난 뒤에만 별도 Auth flow를 실행한다. `PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED=true`로 재생성하고 runtime assertion에서도 `PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED=true`를 확인한다. 기존 `.env.local` credential은 shell/runtime에서만 사용하고 출력하지 않는다.
+Clean QA가 끝난 뒤 같은 전용 volume을 보존한 상태에서 Auth flow를 별도로 실행한다. 아래 예시는 `PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED=true`로 전용 stack을 재생성하고, Auth Browser QA가 끝날 때까지 유지한 뒤 `finally`에서 내린다. 기존 `.env.local` credential은 shell/runtime에서만 사용하고 출력하지 않는다.
 
-확인 범위:
+```powershell
+$previousPort = $env:PAWCYCLE_LOCAL_HTTP_PORT
+$previousAuth = $env:PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED
+$env:PAWCYCLE_LOCAL_HTTP_PORT = '8082'
+$env:PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED = 'true'
+$qaCompose = @('-p', 'pawcycle-mvp4-customer-qa',
+    '--env-file', 'infra/local-integration/.env.local',
+    '-f', 'infra/local-integration/compose.yaml',
+    '-f', 'infra/local-integration/compose.customer-product-qa.yaml')
+$qaError = $null
+
+try {
+    docker compose @qaCompose config --quiet
+    if ($LASTEXITCODE) { throw 'Auth Compose config failed' }
+    docker compose @qaCompose up --detach --wait --wait-timeout 180
+    if ($LASTEXITCODE) { throw 'Auth QA stack readiness failed' }
+
+    $backendContainer = docker compose @qaCompose ps -q backend
+    if ($LASTEXITCODE -or [string]::IsNullOrWhiteSpace($backendContainer)) { throw 'Auth backend container lookup failed' }
+    $projectLabel = docker inspect $backendContainer --format '{{ index .Config.Labels "com.docker.compose.project" }}'
+    $v3 = docker inspect $backendContainer --format '{{ range .Config.Env }}{{ println . }}{{ end }}' | Where-Object { $_ -eq 'PAWCYCLE_LOCAL_CUSTOMER_CATALOG_V3_ENABLED=true' }
+    $auth = docker inspect $backendContainer --format '{{ range .Config.Env }}{{ println . }}{{ end }}' | Where-Object { $_ -eq 'PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED=true' }
+    $reset = docker inspect $backendContainer --format '{{ range .Config.Env }}{{ println . }}{{ end }}' | Where-Object { $_ -eq 'PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS=false' }
+    if ($projectLabel -ne 'pawcycle-mvp4-customer-qa' -or -not $v3 -or -not $auth -or -not $reset) {
+        throw 'Auth Customer QA isolation/environment assertion failed'
+    }
+
+    Write-Output 'Auth QA stack is ready. Keep this terminal open and complete the Auth Browser QA checklist.'
+    Read-Host 'Auth Browser QA를 완료한 뒤 Enter를 누르면 전용 stack을 정리합니다' | Out-Null
+}
+catch {
+    $qaError = $_
+    throw
+}
+finally {
+    docker compose @qaCompose down
+    $cleanupExit = $LASTEXITCODE
+    $env:PAWCYCLE_LOCAL_HTTP_PORT = $previousPort
+    $env:PAWCYCLE_CUSTOMER_QA_AUTH_BOOTSTRAP_ENABLED = $previousAuth
+    if ($cleanupExit -and $null -eq $qaError) { throw 'Auth Customer QA stack cleanup failed' }
+}
+```
+
+Auth Browser QA 확인 범위:
 
 - 비인증 CTA의 login redirect와 원래 상품 경로 복귀
 - Wishlist ready 이후 add/remove와 Header badge
@@ -127,7 +171,7 @@ Clean QA가 끝난 뒤에만 별도 Auth flow를 실행한다. `PAWCYCLE_CUSTOME
 
 실제 구독 생성·결제는 수행하지 않는다. 느린 Wishlist GET 중 Cart race처럼 안전한 request-delay 도구가 없으면 미실행으로 기록한다.
 
-기존 FOUNDATION-004 `smoke.ps1`의 실패가 재현되면 한 번의 최초 실패를 기록하고 이 task에서 기존 smoke/bootstrap/category 정책을 수정하지 않는다.
+기존 FOUNDATION-004 `smoke.ps1`의 실패가 재현되면 한 번의 최초 실패를 기록하고 이 task에서 기존 smoke/bootstrap/category 정책을 수정하지 않는다. 이 기존 smoke는 Customer QA gate의 성공 조건으로 사용하지 않는다.
 
 ## Finding 분류와 중단 경계
 
@@ -141,7 +185,7 @@ Clean QA가 끝난 뒤에만 별도 Auth flow를 실행한다. `PAWCYCLE_CUSTOME
 
 ## Volume cleanup과 복구
 
-전용 stack은 성공/실패 모두 위 `finally`에서 `down`한다. 전용 MySQL volume은 자동 삭제하지 않는다. 이번 실행 전에 존재하지 않았고 이번 QA가 만든 disposable volume임을 별도 확인한 경우에만 다음 조건을 확인하고 삭제한다.
+전용 stack은 성공/실패 모두 각 실행 블록의 `finally`에서 `down`한다. 전용 MySQL volume은 자동 삭제하지 않는다. 이번 실행 전에 존재하지 않았고 이번 QA가 만든 disposable volume임을 별도 확인한 경우에만 다음 조건을 확인하고 삭제한다.
 
 ```powershell
 $qaVolume = 'pawcycle-mvp4-customer-qa-mysql-data'
