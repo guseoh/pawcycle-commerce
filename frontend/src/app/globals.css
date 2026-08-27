@@ -567,6 +567,12 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 .cart-availability.is-unavailable { color:var(--danger); font-weight:700; }
 .cart-price { display:block; margin-top:.45rem; font-variant-numeric:tabular-nums; }
 .order-detail-stack { display:grid; gap:1rem; }
+.after-sales-list { display:grid; gap:.75rem; margin:0; }
+.after-sales-list > div { display:grid; grid-template-columns:minmax(110px,.35fr) minmax(0,1fr); gap:.75rem; align-items:start; padding:.75rem 0; border-bottom:1px solid var(--line); }
+.after-sales-list > div:last-child { border-bottom:0; }
+.after-sales-list dt { color:var(--muted); font-size:.86rem; }
+.after-sales-list dd { display:flex; flex-wrap:wrap; gap:.45rem .75rem; margin:0; align-items:center; }
+.after-sales-list dd .field-help { flex-basis:100%; margin:0; }
 .order-detail-stack .page-heading { margin-bottom:0; }
 .order-detail-grid dt { color:var(--muted); font-size:.86rem; }
 .order-detail-grid dd { margin:0; font-weight:700; overflow-wrap:anywhere; }

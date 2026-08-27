@@ -104,6 +104,22 @@ test("서버 재주문과 요청 dialog는 부분 성공과 키보드 경계를 
   assert.match(orderSource, /requestOpener\.current\?\.focus\(\)/);
 });
 
+test("주문 상세는 서버 after-sales projection을 새로고침 후에도 표시하고 누락 projection을 허용한다", () => {
+  const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
+  const apiSource = readFileSync(new URL("../lib/commerce-final-api.ts", import.meta.url), "utf8");
+  assert.match(apiSource, /cancellation\?:/);
+  assert.match(apiSource, /rejectionReason\?:string\|null/);
+  assert.match(apiSource, /refunds\?:/);
+  assert.match(orderSource, /const refunds = order\?\.refunds \?\? \[\]/);
+  assert.match(orderSource, /const availableActions = order\?\.availableActions \?\? \[\]/);
+  assert.match(orderSource, /취소·반품·환불/);
+  assert.match(orderSource, /order\.cancellation\.status/);
+  assert.match(orderSource, /order\.return\.status/);
+  assert.match(orderSource, /order\.return\.rejectionReason/);
+  assert.match(orderSource, /refundLabel\(refund\.status\)/);
+  assert.match(orderSource, /availableActions\.includes/);
+});
+
 test("관련 상품은 상세 조회와 독립된 loading·retry 상태를 사용한다", () => {
   const productSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
   assert.match(productSource, /const \[relatedRetry, setRelatedRetry\]/);
