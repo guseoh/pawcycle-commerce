@@ -73,3 +73,45 @@ Category는 V13 이후 Product의 필수 DB 관계다.
 목록 응답은 `items`, `page`, `size`, `totalElements`, `totalPages`를 포함한다. 기존 no-argument legacy reader/cache caller에는 내부 `products()` 호환 accessor를 유지하지만 pageable HTTP 응답의 권위 필드는 `items`다.
 
 V24 이후 각 목록 item에는 `brand`, `representativePrice`, 선택적 `compareAtPrice`·`discountRate`, `averageRating`, `reviewCount`가 additive하게 포함된다. 상세에는 Brand, gallery images, option groups와 SKU별 `selectedOptions`가 추가된다. 공개 목록과 상세는 Brand가 active인 Product만 노출한다.
+
+## `GET /api/catalog/discovery`
+
+Customer Frontend가 상품 탐색 조건을 구성할 수 있도록 인증 없이 공개하는 read-only 메타데이터 API다. 기존 `GET /api/categories`, `GET /api/products`, `GET /api/products/{productId}` 계약은 변경하지 않는다.
+
+응답은 다음 구조를 사용한다.
+
+```json
+{
+  "categories": [
+    {
+      "categoryId": 1,
+      "name": "사료",
+      "slug": "food",
+      "displayOrder": 0,
+      "children": [
+        { "categoryId": 10, "name": "건식 사료", "slug": "food-dry", "displayOrder": 0 }
+      ]
+    }
+  ],
+  "brands": [
+    { "brandId": 1, "name": "브랜드", "slug": "brand-slug", "logoUrl": null, "displayOrder": 0 }
+  ],
+  "categoryFacets": [
+    {
+      "categorySlug": "food-dry",
+      "facets": [
+        {
+          "key": "protein",
+          "name": "주원료",
+          "displayOrder": 0,
+          "options": [ { "optionId": 1, "value": "연어", "displayOrder": 0 } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+`categories`에는 active Category 중 active top-level과 그 active direct child만 포함한다. top-level과 children은 각각 `displayOrder ASC, categoryId ASC`로 정렬하며, 기존 V13 시스템 Category `__pawcycle_uncategorized__`와 inactive Category는 공개하지 않는다. Category hierarchy는 기존 최대 2-depth 계약을 따르며 child에는 더 깊은 children을 포함하지 않는다.
+
+`brands`에는 active Brand만 `displayOrder ASC, brandId ASC`로 반환한다. `categoryFacets`는 active Category에 실제로 배정된 `category_facets`만 포함하고, Facet은 해당 Category의 배정 순서, options는 `displayOrder ASC, optionId ASC`로 정렬한다. Product별 facet 값이나 free-form facet type은 반환하지 않는다.
