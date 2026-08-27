@@ -1,4 +1,4 @@
-import type { Category, OptionGroup, ProductStatus } from "./admin-catalog-api.ts";
+import type { Brand, Category, OptionGroup, ProductStatus } from "./admin-catalog-api.ts";
 
 export function dirtyPayload<T extends object>(before: T, after: Partial<T>, nullable: readonly (keyof T)[] = []): Partial<T> {
   const result: Partial<T> = {};
@@ -27,6 +27,26 @@ export function categoryHierarchy(categories: Category[]): { category: Category;
 export function categoryParents(categories: Category[], editingId?: number): Category[] {
   if (categories.some((c) => c.parentId === editingId)) return [];
   return categories.filter((c) => c.parentId === null && c.categoryId !== editingId);
+}
+
+export function productCategoryChoices(categories: Category[]): Choice[] {
+  return categoryHierarchy(categories).map(({ category, label }) => {
+    const system = category.slug === "__pawcycle_uncategorized__";
+    const disabled = system || !category.active;
+    return {
+      value: String(category.categoryId),
+      label: disabled ? `${label} (${system ? "시스템" : "비활성"} · 선택 불가)` : label,
+      ...(disabled ? { disabled: true } : {}),
+    };
+  });
+}
+
+export function productBrandChoices(brands: Brand[]): Choice[] {
+  return brands.map((brand) => ({
+    value: String(brand.brandId),
+    label: brand.active ? brand.name : `${brand.name} (비활성 · 선택 불가)`,
+    ...(brand.active ? {} : { disabled: true }),
+  }));
 }
 
 export function normalizeMoney(value: string, nullable = false): number | null {

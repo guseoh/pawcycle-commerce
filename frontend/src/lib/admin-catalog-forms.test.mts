@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { categoryHierarchy, categoryParents, dirtyPayload, dirtyFormPayload, formValues, normalizeMoney, optionAssignment, parseForm, productStatusAction, type CatalogField } from "./admin-catalog-forms.ts";
+import { categoryHierarchy, categoryParents, dirtyPayload, dirtyFormPayload, formValues, normalizeMoney, optionAssignment, parseForm, productBrandChoices, productCategoryChoices, productStatusAction, type CatalogField } from "./admin-catalog-forms.ts";
 import type { Category, OptionGroup, SkuInput } from "./admin-catalog-api.ts";
 
 test("PATCH sends changed fields only, including false and zero", () => {
@@ -43,6 +43,24 @@ test("Category parent choices exclude self, children and nesting a parent", () =
   assert.deepEqual(categoryParents(categories, 1), []);
   assert.deepEqual(categoryParents(categories, 3).map((c) => c.categoryId), [2, 1]);
   assert.deepEqual(categoryParents(categories, 2).map((c) => c.categoryId), [1]);
+});
+
+test("Product category and brand choices disable server-rejected assignments", () => {
+  const systemCategory: Category = { categoryId: 99, parentId: null, name: "시스템", slug: "__pawcycle_uncategorized__", displayOrder: 99, active: true };
+  const categoryChoices = productCategoryChoices([...categories, systemCategory]);
+  assert.equal(categoryChoices.find((choice) => choice.value === "1")?.disabled, undefined);
+  assert.equal(categoryChoices.find((choice) => choice.value === "2")?.disabled, true);
+  assert.match(categoryChoices.find((choice) => choice.value === "2")?.label ?? "", /비활성/);
+  assert.equal(categoryChoices.find((choice) => choice.value === "99")?.disabled, true);
+  assert.match(categoryChoices.find((choice) => choice.value === "99")?.label ?? "", /시스템/);
+
+  const brandChoices = productBrandChoices([
+    { brandId: 1, name: "활성 브랜드", slug: "active-brand", logoUrl: null, active: true, displayOrder: 0 },
+    { brandId: 2, name: "비활성 브랜드", slug: "inactive-brand", logoUrl: null, active: false, displayOrder: 1 },
+  ]);
+  assert.equal(brandChoices.find((choice) => choice.value === "1")?.disabled, undefined);
+  assert.equal(brandChoices.find((choice) => choice.value === "2")?.disabled, true);
+  assert.match(brandChoices.find((choice) => choice.value === "2")?.label ?? "", /비활성/);
 });
 
 test("SKU compareAtPrice normalization preserves zero, clears blank and rejects invalid decimals", () => {

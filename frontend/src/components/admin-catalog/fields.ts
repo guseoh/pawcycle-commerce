@@ -1,5 +1,5 @@
 import type { BrandInput, CategoryInput, Category, ProductInput, Brand, SkuInput, ImageInput, OptionGroupInput, OptionValueInput, FacetInput, DetailInput } from "@/lib/admin-catalog-api";
-import { categoryHierarchy, categoryParents, type CatalogField } from "@/lib/admin-catalog-forms";
+import { categoryHierarchy, categoryParents, productBrandChoices, productCategoryChoices, type CatalogField } from "@/lib/admin-catalog-forms";
 
 export const brandInitial: BrandInput = { name: "", slug: "", logoUrl: null, active: true, displayOrder: 0 };
 export const brandFields: CatalogField<BrandInput>[] = [
@@ -22,8 +22,8 @@ export function categoryFields(row: Category | null, rows: Category[]): CatalogF
 export function productFields(categories: Category[], brands: Brand[]): CatalogField<ProductInput>[] {
   return [
     { key: "name", label: "상품 이름", required: true, maxLength: 200 },
-    { key: "categoryId", label: "카테고리", kind: "select", numeric: true, required: true, choices: [{ value: "", label: "선택해 주세요" }, ...categoryHierarchy(categories).map(({ category, label }) => ({ value: String(category.categoryId), label: `${label}${category.active ? "" : " (비활성)"}` }))] },
-    { key: "brandId", label: "브랜드", kind: "select", numeric: true, required: true, choices: [{ value: "", label: "선택해 주세요" }, ...brands.map((b) => ({ value: String(b.brandId), label: `${b.name}${b.active ? "" : " (비활성)"}` }))] },
+    { key: "categoryId", label: "카테고리", kind: "select", numeric: true, required: true, choices: [{ value: "", label: "선택해 주세요" }, ...productCategoryChoices(categories)] },
+    { key: "brandId", label: "브랜드", kind: "select", numeric: true, required: true, choices: [{ value: "", label: "선택해 주세요" }, ...productBrandChoices(brands)] },
     { key: "petType", label: "반려동물 유형", required: true, maxLength: 20, help: "예: DOG, CAT" },
     { key: "shortDescription", label: "짧은 설명", required: true, maxLength: 500 },
     { key: "thumbnailUrl", label: "대표 이미지 URL", nullable: true, maxLength: 2048 },
