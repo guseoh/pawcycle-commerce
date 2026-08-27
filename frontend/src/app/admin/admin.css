@@ -1,0 +1,44 @@
+.admin-navigation, .admin-sections { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 0; }
+.admin-navigation { border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; }
+.admin-navigation a, .admin-sections button { padding: .65rem .9rem; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); text-decoration: none; font-weight: 700; cursor: pointer; }
+.admin-navigation a[aria-current], .admin-sections button[aria-pressed="true"] { background: var(--brand-dark); color: white; border-color: var(--brand-dark); }
+.admin-catalog { min-width: 0; }
+.admin-heading { margin: 1rem 0; }
+.admin-heading h1 { font-size: clamp(1.6rem, 3vw, 2.2rem); margin: .35rem 0; }
+.admin-heading p { margin: .35rem 0; color: var(--muted); }
+.admin-resource { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem; margin-top: 1rem; background: var(--surface); min-width: 0; }
+.admin-resource h2 { font-size: 1.25rem; margin: 0 0 .8rem; }
+.admin-resource h3 { font-size: 1.05rem; margin: 0 0 .75rem; }
+.admin-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.admin-section-heading span { color: var(--muted); font-size: .9rem; }
+.admin-resource-grid { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(0, 1.6fr); gap: 1.25rem; }
+.admin-resource-list { min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
+.admin-resource-list ul { list-style: none; padding: 0; margin: 0; max-height: 520px; overflow-y: auto; border-top: 1px solid var(--line); }
+.admin-resource-list li { border-bottom: 1px solid var(--line); }
+.admin-resource-list li button, .admin-resource-list li a { display: block; width: 100%; padding: .7rem .5rem; text-align: left; border: 0; background: transparent; min-height: 44px; text-decoration: none; color: var(--ink); overflow-wrap: anywhere; cursor: pointer; }
+.admin-resource-list li button[aria-pressed="true"] { background: var(--surface-soft); box-shadow: inset 3px 0 var(--brand); font-weight: 700; }
+.admin-resource-list li a:hover, .admin-resource-list li button:hover { background: var(--surface-soft); }
+.admin-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+.admin-fields legend { margin-bottom: .75rem; font-weight: 700; }
+.admin-fields .input, .admin-resource-list .input { width: 100%; min-width: 0; }
+.admin-fields textarea { font: inherit; resize: vertical; min-height: 110px; }
+.admin-fields .field-help, .admin-fields .field-error { margin: 0; }
+.admin-fields .field-help:empty, .admin-fields .field-error:empty { display: none; }
+.admin-fields input[readonly] { background: var(--surface-soft); color: var(--muted); }
+.admin-wide { grid-column: 1 / -1; }
+.admin-checkbox { width: 24px; height: 24px; accent-color: var(--brand); }
+.admin-form { min-width: 0; margin-bottom: 1rem; }
+.admin-form > .input { max-width: 100%; }
+.admin-feedback, .admin-gap { padding: .8rem; border: 1px solid var(--line); border-left: 3px solid var(--brand); background: var(--surface-soft); margin: .8rem 0; border-radius: 6px; }
+.admin-feedback p { margin: 0 0 .5rem; }
+.admin-status-action { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem; }
+.admin-status-action .button { margin: 0 .5rem .5rem 0; }
+.admin-nested { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .5rem; }
+.admin-facet-options { display: grid; gap: 1rem; border: 0; padding: 0; margin-bottom: 1rem; min-width: 0; }
+.admin-facet-options fieldset { border: 1px solid var(--line); min-width: 0; }
+.admin-facet-options label { display: inline-flex; align-items: center; gap: .5rem; margin-right: 1rem; min-height: 44px; }
+.admin-facet-options input { width: 20px; height: 20px; accent-color: var(--brand); }
+.admin-catalog :focus-visible, .admin-navigation :focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.admin-catalog button:disabled { cursor: not-allowed; opacity: .6; }
+@media (max-width: 800px) { .admin-resource-grid { grid-template-columns: minmax(0, 1fr); } .admin-resource-list ul { max-height: 240px; } }
+@media (max-width: 480px) { .admin-fields { grid-template-columns: minmax(0, 1fr); } .admin-resource { padding: .8rem; } .admin-sections button { flex: 1 1 28%; } .admin-status-action .button { width: 100%; } }

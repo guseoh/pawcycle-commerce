@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/lib/catalog-experience.test.mts src/lib/frontend-utils.test.mts src/lib/csrf-lifecycle.test.mts src/lib/logout-feedback.test.mts src/lib/v2-api.test.mts src/lib/commerce-final-contract.test.mts src/lib/commerce-final-api.test.mts src/lib/catalog-engagement-api.test.mts src/lib/toss-payment.test.mts src/components/product-detail-screen.contract.test.mts src/components/mvp4-ux-regression.test.mts"
+    "test": "node --experimental-strip-types --test src/lib/catalog-experience.test.mts src/lib/frontend-utils.test.mts src/lib/csrf-lifecycle.test.mts src/lib/logout-feedback.test.mts src/lib/v2-api.test.mts src/lib/commerce-final-contract.test.mts src/lib/commerce-final-api.test.mts src/lib/catalog-engagement-api.test.mts src/lib/toss-payment.test.mts src/lib/admin-catalog-forms.test.mts src/lib/admin-catalog-api.test.mts src/components/product-detail-screen.contract.test.mts src/components/mvp4-ux-regression.test.mts"
   },
   "dependencies": {
     "@tosspayments/tosspayments-sdk": "^2.8.1",
