@@ -121,8 +121,12 @@ public class ProductDiscoveryReader {
         if (category != null && !category.isBlank()) { where.append(" AND (LOWER(c.slug)=? OR LOWER(parent.slug)=?)"); String value=category.trim().toLowerCase(java.util.Locale.ROOT); p.add(value);p.add(value); }
         if (subcategory != null && !subcategory.isBlank()) { where.append(" AND c.parent_id IS NOT NULL AND LOWER(c.slug)=?"); p.add(subcategory.trim().toLowerCase(java.util.Locale.ROOT)); }
         if (brand != null && !brand.isBlank()) { where.append(" AND LOWER(b.slug)=?"); p.add(brand.trim().toLowerCase(java.util.Locale.ROOT)); }
-        if (minPrice != null) { where.append(" AND EXISTS (SELECT 1 FROM skus sp WHERE sp.product_id=p.id AND sp.status='ACTIVE' AND sp.price>=?)"); p.add(minPrice); }
-        if (maxPrice != null) { where.append(" AND EXISTS (SELECT 1 FROM skus sp WHERE sp.product_id=p.id AND sp.status='ACTIVE' AND sp.price<=?)"); p.add(maxPrice); }
+        if (minPrice != null || maxPrice != null) {
+            where.append(" AND EXISTS (SELECT 1 FROM skus sp WHERE sp.product_id=p.id AND sp.status='ACTIVE'");
+            if (minPrice != null) { where.append(" AND sp.price>=?"); p.add(minPrice); }
+            if (maxPrice != null) { where.append(" AND sp.price<=?"); p.add(maxPrice); }
+            where.append(")");
+        }
         if (subscribable != null) { where.append(subscribable ? " AND EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND ss.status='ACTIVE' AND ss.subscribable=true)" : " AND NOT EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND ss.status='ACTIVE' AND ss.subscribable=true)"); }
         if (purchasable != null) { where.append(purchasable ? " AND EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id WHERE si.product_id=p.id AND si.status='ACTIVE' AND ii.available_quantity>0)" : " AND NOT EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id WHERE si.product_id=p.id AND si.status='ACTIVE' AND ii.available_quantity>0)"); }
         for (String facet : facets == null ? List.<String>of() : facets) {

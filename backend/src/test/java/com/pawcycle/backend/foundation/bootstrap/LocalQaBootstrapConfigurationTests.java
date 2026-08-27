@@ -34,6 +34,43 @@ class LocalQaBootstrapConfigurationTests {
 			.withUserConfiguration(DetailFixtureConfiguration.class);
 
 	@Test
+	void customerCatalogV3RequiresExplicitLocalEnablementAndBlocksMixedProfiles() {
+		var fixture = mock(LocalCustomerCatalogV3FixtureService.class);
+		var runner = new ApplicationContextRunner()
+				.withUserConfiguration(LocalCustomerCatalogV3Configuration.class)
+				.withBean(LocalCustomerCatalogV3FixtureService.class, () -> fixture);
+		for (String profile : java.util.List.of("default", "test", "production", "prod", "local-integration,test", "local-integration,production", "local-integration,prod")) {
+			runner.withPropertyValues("spring.profiles.active=" + profile, "pawcycle.local-customer-catalog-v3.enabled=true")
+					.run(context -> assertThat(context).doesNotHaveBean("localCustomerCatalogV3Runner"));
+			new ApplicationContextRunner().withUserConfiguration(CustomerV3FixtureConfiguration.class)
+					.withPropertyValues("spring.profiles.active=" + profile)
+					.run(context -> assertThat(context).doesNotHaveBean(LocalCustomerCatalogV3FixtureService.class));
+		}
+		runner.withPropertyValues("spring.profiles.active=local-integration")
+				.run(context -> assertThat(context).doesNotHaveBean("localCustomerCatalogV3Runner"));
+		runner.withPropertyValues("spring.profiles.active=local-integration", "pawcycle.local-customer-catalog-v3.enabled=true")
+				.run(context -> {
+					context.getBean("localCustomerCatalogV3Runner", ApplicationRunner.class).run(null);
+					verify(fixture).bootstrap();
+				});
+	}
+
+	@Test
+	void customerCatalogV3RejectsSyntheticOverrideOrDisabledBaseline() {
+		var fixture = mock(LocalCustomerCatalogV3FixtureService.class);
+		var runner = new ApplicationContextRunner().withUserConfiguration(LocalCustomerCatalogV3Configuration.class)
+				.withBean(LocalCustomerCatalogV3FixtureService.class, () -> fixture)
+				.withPropertyValues("spring.profiles.active=local-integration", "pawcycle.local-customer-catalog-v3.enabled=true");
+		for (String property : java.util.List.of("pawcycle.local-demo-catalog.manifest=file:/tmp/synthetic.json", "pawcycle.local-demo-catalog.enabled=false")) {
+			runner.withPropertyValues(property).run(context -> {
+				assertThatThrownBy(() -> context.getBean("localCustomerCatalogV3Runner", ApplicationRunner.class).run(null))
+						.isInstanceOf(LocalQaBootstrapException.class);
+				verifyNoInteractions(fixture);
+			});
+		}
+	}
+
+	@Test
 	void defaultAndNonLocalProfilesDoNotCreateBootstrapRunner() {
 		contextRunner.run(context -> assertThat(context).doesNotHaveBean("localQaBootstrapRunner"));
 
@@ -211,4 +248,8 @@ class LocalQaBootstrapConfigurationTests {
 	@Configuration(proxyBeanMethods = false)
 	@Import(DemoProductDetailSectionFixtureService.class)
 	static class DetailFixtureConfiguration {}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import(LocalCustomerCatalogV3FixtureService.class)
+	static class CustomerV3FixtureConfiguration {}
 }
