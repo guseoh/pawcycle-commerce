@@ -1,0 +1,5319 @@
+{
+  "version": 3,
+  "brands": [
+    {
+      "slug": "grain-tail",
+      "name": "그레인테일",
+      "displayOrder": 1
+    },
+    {
+      "slug": "mellow-bite",
+      "name": "멜로바이트",
+      "displayOrder": 2
+    },
+    {
+      "slug": "cloud-groom",
+      "name": "클라우드그룸",
+      "displayOrder": 3
+    },
+    {
+      "slug": "tidy-paw",
+      "name": "타이디포",
+      "displayOrder": 4
+    },
+    {
+      "slug": "bowl-note",
+      "name": "보울노트",
+      "displayOrder": 5
+    },
+    {
+      "slug": "play-orbit",
+      "name": "플레이오빗",
+      "displayOrder": 6
+    },
+    {
+      "slug": "trail-mate",
+      "name": "트레일메이트",
+      "displayOrder": 7
+    },
+    {
+      "slug": "nest-loop",
+      "name": "네스트루프",
+      "displayOrder": 8
+    },
+    {
+      "slug": "wear-petal",
+      "name": "웨어페탈",
+      "displayOrder": 9
+    }
+  ],
+  "categories": [
+    {
+      "slug": "food-dry",
+      "name": "건식 사료",
+      "parentSlug": "food",
+      "displayOrder": 1,
+      "facets": [
+        "life-stage",
+        "food-form",
+        "protein"
+      ]
+    },
+    {
+      "slug": "food-wet",
+      "name": "습식 사료",
+      "parentSlug": "food",
+      "displayOrder": 2,
+      "facets": [
+        "life-stage",
+        "food-form",
+        "protein"
+      ]
+    },
+    {
+      "slug": "treats-bites",
+      "name": "바이트 간식",
+      "parentSlug": "treats",
+      "displayOrder": 1,
+      "facets": [
+        "protein",
+        "texture"
+      ]
+    },
+    {
+      "slug": "treats-lickable",
+      "name": "스틱 간식",
+      "parentSlug": "treats",
+      "displayOrder": 2,
+      "facets": [
+        "protein",
+        "texture"
+      ]
+    },
+    {
+      "slug": "hygiene-grooming",
+      "name": "그루밍",
+      "parentSlug": "hygiene",
+      "displayOrder": 1,
+      "facets": [
+        "usage",
+        "material"
+      ]
+    },
+    {
+      "slug": "hygiene-bath",
+      "name": "목욕",
+      "parentSlug": "hygiene",
+      "displayOrder": 2,
+      "facets": [
+        "scent",
+        "pack-size"
+      ]
+    },
+    {
+      "slug": "toilet-pads",
+      "name": "배변 패드",
+      "parentSlug": "toilet",
+      "displayOrder": 1,
+      "facets": [
+        "scent",
+        "pack-size"
+      ]
+    },
+    {
+      "slug": "toilet-litter",
+      "name": "고양이 모래",
+      "parentSlug": "toilet",
+      "displayOrder": 2,
+      "facets": [
+        "scent",
+        "pack-size"
+      ]
+    },
+    {
+      "slug": "feeding",
+      "name": "급식용품",
+      "parentSlug": null,
+      "displayOrder": 5,
+      "facets": []
+    },
+    {
+      "slug": "feeding-bowls",
+      "name": "식기",
+      "parentSlug": "feeding",
+      "displayOrder": 1,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "feeding-water",
+      "name": "급수용품",
+      "parentSlug": "feeding",
+      "displayOrder": 2,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "play",
+      "name": "놀이",
+      "parentSlug": null,
+      "displayOrder": 6,
+      "facets": []
+    },
+    {
+      "slug": "play-chew",
+      "name": "씹기 놀이",
+      "parentSlug": "play",
+      "displayOrder": 1,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "play-teasers",
+      "name": "낚싯대·공",
+      "parentSlug": "play",
+      "displayOrder": 2,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "outdoor",
+      "name": "외출",
+      "parentSlug": null,
+      "displayOrder": 7,
+      "facets": []
+    },
+    {
+      "slug": "outdoor-walk",
+      "name": "산책용품",
+      "parentSlug": "outdoor",
+      "displayOrder": 1,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "outdoor-carriers",
+      "name": "이동가방",
+      "parentSlug": "outdoor",
+      "displayOrder": 2,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "living",
+      "name": "생활",
+      "parentSlug": null,
+      "displayOrder": 8,
+      "facets": []
+    },
+    {
+      "slug": "living-beds",
+      "name": "방석·침대",
+      "parentSlug": "living",
+      "displayOrder": 1,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "living-scratchers",
+      "name": "스크래처",
+      "parentSlug": "living",
+      "displayOrder": 2,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "fashion",
+      "name": "의류·액세서리",
+      "parentSlug": null,
+      "displayOrder": 9,
+      "facets": []
+    },
+    {
+      "slug": "fashion-wear",
+      "name": "의류",
+      "parentSlug": "fashion",
+      "displayOrder": 1,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    },
+    {
+      "slug": "fashion-accessories",
+      "name": "액세서리",
+      "parentSlug": "fashion",
+      "displayOrder": 2,
+      "facets": [
+        "material",
+        "usage"
+      ]
+    }
+  ],
+  "facets": [
+    {
+      "key": "life-stage",
+      "name": "생애 단계",
+      "values": [
+        "성견",
+        "성묘",
+        "성장기",
+        "전연령"
+      ]
+    },
+    {
+      "key": "food-form",
+      "name": "사료 형태",
+      "values": [
+        "건식",
+        "파테",
+        "수프"
+      ]
+    },
+    {
+      "key": "protein",
+      "name": "주원료",
+      "values": [
+        "연어",
+        "닭",
+        "오리",
+        "참치",
+        "흰살생선",
+        "양"
+      ]
+    },
+    {
+      "key": "texture",
+      "name": "식감",
+      "values": [
+        "바삭",
+        "쫄깃",
+        "부드러움"
+      ]
+    },
+    {
+      "key": "pack-size",
+      "name": "포장 구성",
+      "values": [
+        "단품",
+        "묶음"
+      ]
+    },
+    {
+      "key": "material",
+      "name": "소재",
+      "values": [
+        "실리콘",
+        "도자기",
+        "면",
+        "폴리에스터",
+        "종이",
+        "고무",
+        "스테인리스"
+      ]
+    },
+    {
+      "key": "usage",
+      "name": "사용 장소",
+      "values": [
+        "실내",
+        "산책",
+        "이동"
+      ]
+    },
+    {
+      "key": "scent",
+      "name": "향",
+      "values": [
+        "무향",
+        "은은한 향"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "catalogKey": "qa3-dog-salmon-small",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "스몰테일 연어 작은 알갱이",
+      "shortDescription": "작은 알갱이로 구성한 성견용 연어 건식 사료",
+      "description": "작은 알갱이로 구성한 성견용 연어 건식 사료. 기존 사료와 나누어 섞으며 급여량을 조절하세요. 연어와 곡물 원료 표시를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SALMON-SMALL-1",
+          "name": "1kg / 1팩",
+          "price": 8900,
+          "compareAtPrice": 12900,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SALMON-SMALL-2",
+          "name": "1kg / 2팩",
+          "price": 17800,
+          "compareAtPrice": 21800,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SALMON-SMALL-3",
+          "name": "2kg / 1팩",
+          "price": 26700,
+          "compareAtPrice": 30700,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SALMON-SMALL-4",
+          "name": "2kg / 2팩",
+          "price": 35600,
+          "compareAtPrice": 39600,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+          "altText": "스몰테일 연어 작은 알갱이 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "스몰테일 연어 작은 알갱이 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "스몰테일 연어 작은 알갱이 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+          "altText": "스몰테일 연어 작은 알갱이 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "life-stage": "성견",
+        "food-form": "건식",
+        "protein": "연어"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "작은 알갱이로 구성한 성견용 연어 건식 사료.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "기존 사료와 나누어 섞으며 급여량을 조절하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "연어와 곡물 원료 표시를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-duck-adult",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "오리 한 끼 어덜트",
+      "shortDescription": "오리를 주원료로 담은 성견의 일상 식사",
+      "description": "오리를 주원료로 담은 성견의 일상 식사. 체중별 포장 급여표를 기준으로 나누어 주세요. 알갱이 크기와 오리 원료 적합성을 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-DUCK-ADULT-1",
+          "name": "1kg / 1팩",
+          "price": 9800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DUCK-ADULT-2",
+          "name": "1kg / 2팩",
+          "price": 19600,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DUCK-ADULT-3",
+          "name": "2kg / 1팩",
+          "price": 29400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DUCK-ADULT-4",
+          "name": "2kg / 2팩",
+          "price": 39200,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "오리 한 끼 어덜트 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성견",
+        "food-form": "건식",
+        "protein": "오리"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "오리를 주원료로 담은 성견의 일상 식사.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "체중별 포장 급여표를 기준으로 나누어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "알갱이 크기와 오리 원료 적합성을 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-lamb-puppy",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "퍼피 양고기 작은 식탁",
+      "shortDescription": "성장기 강아지 식사용 양고기 레시피",
+      "description": "성장기 강아지 식사용 양고기 레시피. 성장 단계에 맞는 포장 안내량을 확인하세요. 성견용과 구분하여 성장기 표시를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-LAMB-PUPPY-1",
+          "name": "1kg / 1팩",
+          "price": 10700,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-LAMB-PUPPY-2",
+          "name": "1kg / 2팩",
+          "price": 21400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-LAMB-PUPPY-3",
+          "name": "2kg / 1팩",
+          "price": 32100,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-LAMB-PUPPY-4",
+          "name": "2kg / 2팩",
+          "price": 42800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "퍼피 양고기 작은 식탁 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성장기",
+        "food-form": "건식",
+        "protein": "양"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "성장기 강아지 식사용 양고기 레시피.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "성장 단계에 맞는 포장 안내량을 확인하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "성견용과 구분하여 성장기 표시를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-chicken-large",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "라지테일 치킨 크런치",
+      "shortDescription": "큰 알갱이를 선호하는 성견용 닭고기 식사",
+      "description": "큰 알갱이를 선호하는 성견용 닭고기 식사. 깨끗한 물을 함께 준비해 주세요. 삼키는 습관에 맞는 알갱이 크기인지 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-CHICKEN-LARGE-1",
+          "name": "1kg / 1팩",
+          "price": 11600,
+          "compareAtPrice": 15600,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-CHICKEN-LARGE-2",
+          "name": "1kg / 2팩",
+          "price": 23200,
+          "compareAtPrice": 27200,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-CHICKEN-LARGE-3",
+          "name": "2kg / 1팩",
+          "price": 34800,
+          "compareAtPrice": 38800,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-CHICKEN-LARGE-4",
+          "name": "2kg / 2팩",
+          "price": 46400,
+          "compareAtPrice": 50400,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+          "altText": "라지테일 치킨 크런치 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성견",
+        "food-form": "건식",
+        "protein": "닭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "큰 알갱이를 선호하는 성견용 닭고기 식사.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "깨끗한 물을 함께 준비해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "삼키는 습관에 맞는 알갱이 크기인지 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-duck-pate",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-wet",
+      "name": "오리 파테 작은 캔",
+      "shortDescription": "부드럽게 으깬 오리 파테 타입 습식 식사",
+      "description": "부드럽게 으깬 오리 파테 타입 습식 식사. 개봉 후 필요한 양을 덜어 급여하세요. 남은 내용물은 밀폐 보관하고 포장 기한을 따르세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-DUCK-PATE-1",
+          "name": "1개",
+          "price": 12500,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DUCK-PATE-2",
+          "name": "3개",
+          "price": 25000,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "오리 파테 작은 캔 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "오리 파테 작은 캔 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+          "altText": "오리 파테 작은 캔 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "오리 파테 작은 캔 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "life-stage": "성견",
+        "food-form": "파테",
+        "protein": "오리"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "부드럽게 으깬 오리 파테 타입 습식 식사.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "개봉 후 필요한 양을 덜어 급여하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "남은 내용물은 밀폐 보관하고 포장 기한을 따르세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-fish-soup",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-wet",
+      "name": "흰살생선 촉촉 수프",
+      "shortDescription": "흰살생선 조각을 담은 수프 타입 보조식",
+      "description": "흰살생선 조각을 담은 수프 타입 보조식. 주식에 소량 곁들여 사용할 수 있어요. 주식 대체 가능 여부는 포장 표시를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-FISH-SOUP-1",
+          "name": "1개",
+          "price": 13400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-FISH-SOUP-2",
+          "name": "3개",
+          "price": 26800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "흰살생선 촉촉 수프 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성견",
+        "food-form": "수프",
+        "protein": "흰살생선"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "흰살생선 조각을 담은 수프 타입 보조식.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "주식에 소량 곁들여 사용할 수 있어요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "주식 대체 가능 여부는 포장 표시를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-salmon-cube",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-bites",
+      "name": "연어 큐브 포켓",
+      "shortDescription": "작게 나눠 주기 좋은 바삭한 연어 큐브",
+      "description": "작게 나눠 주기 좋은 바삭한 연어 큐브. 산책 보상용으로 한 조각씩 나누어 주세요. 간식량은 하루 식사량에 함께 반영하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SALMON-CUBE-1",
+          "name": "1개",
+          "price": 14300,
+          "compareAtPrice": 18300,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SALMON-CUBE-2",
+          "name": "3개",
+          "price": 28600,
+          "compareAtPrice": 32600,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+          "altText": "연어 큐브 포켓 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "연어",
+        "texture": "바삭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "작게 나눠 주기 좋은 바삭한 연어 큐브.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "산책 보상용으로 한 조각씩 나누어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "간식량은 하루 식사량에 함께 반영하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-chicken-strip",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-bites",
+      "name": "치킨 쫄깃 스트립",
+      "shortDescription": "손으로 나누기 쉬운 닭고기 스트립",
+      "description": "손으로 나누기 쉬운 닭고기 스트립. 반려견 크기에 맞춰 잘라 주세요. 급하게 삼키지 않도록 곁에서 지켜봐 주세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-CHICKEN-STRIP-1",
+          "name": "1개",
+          "price": 15200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-CHICKEN-STRIP-2",
+          "name": "3개",
+          "price": 30400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "치킨 쫄깃 스트립 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "닭",
+        "texture": "쫄깃"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "손으로 나누기 쉬운 닭고기 스트립.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "반려견 크기에 맞춰 잘라 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "급하게 삼키지 않도록 곁에서 지켜봐 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-duck-stick",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-lickable",
+      "name": "오리 소프트 스틱",
+      "shortDescription": "부드러운 오리 간식을 개별 스틱에 담았어요",
+      "description": "부드러운 오리 간식을 개별 스틱에 담았어요. 그릇에 덜거나 스틱 끝에서 조금씩 주세요. 포장 모서리를 씹지 않도록 주의하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-DUCK-STICK-1",
+          "name": "1개",
+          "price": 16100,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DUCK-STICK-2",
+          "name": "3개",
+          "price": 32200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+          "altText": "오리 소프트 스틱 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "오리",
+        "texture": "부드러움"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "부드러운 오리 간식을 개별 스틱에 담았어요.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "그릇에 덜거나 스틱 끝에서 조금씩 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "포장 모서리를 씹지 않도록 주의하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-salmon-stick",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-lickable",
+      "name": "연어 한 입 크림",
+      "shortDescription": "매끄러운 질감의 연어 스틱 간식",
+      "description": "매끄러운 질감의 연어 스틱 간식. 외출 후 소량씩 나누어 급여하세요. 개봉한 스틱은 보관 시간 안내를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SALMON-STICK-1",
+          "name": "1개",
+          "price": 17000,
+          "compareAtPrice": 21000,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SALMON-STICK-2",
+          "name": "3개",
+          "price": 34000,
+          "compareAtPrice": 38000,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "연어 한 입 크림 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "연어",
+        "texture": "부드러움"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "매끄러운 질감의 연어 스틱 간식.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "외출 후 소량씩 나누어 급여하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "개봉한 스틱은 보관 시간 안내를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-pin-brush",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-grooming",
+      "name": "라운드 핀 브러시",
+      "shortDescription": "끝이 둥근 핀으로 털을 정리하는 브러시",
+      "description": "끝이 둥근 핀으로 털을 정리하는 브러시. 털이 난 방향을 따라 가볍게 빗어 주세요. 엉킨 털을 강하게 당기지 마세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-PIN-BRUSH-1",
+          "name": "크림",
+          "price": 17900,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-PIN-BRUSH-2",
+          "name": "그레이",
+          "price": 35800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "라운드 핀 브러시 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "usage": "실내",
+        "material": "폴리에스터"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "끝이 둥근 핀으로 털을 정리하는 브러시.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "털이 난 방향을 따라 가볍게 빗어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "엉킨 털을 강하게 당기지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-grooming-glove",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-grooming",
+      "name": "터치 그루밍 장갑",
+      "shortDescription": "손바닥 실리콘 돌기로 털을 모으는 장갑",
+      "description": "손바닥 실리콘 돌기로 털을 모으는 장갑. 마른 털 위를 부드럽게 쓸어 주세요. 손 크기와 장갑 둘레를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-GROOMING-GLOVE-1",
+          "name": "크림",
+          "price": 18800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-GROOMING-GLOVE-2",
+          "name": "그레이",
+          "price": 37600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "터치 그루밍 장갑 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "usage": "실내",
+        "material": "실리콘"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "손바닥 실리콘 돌기로 털을 모으는 장갑.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "마른 털 위를 부드럽게 쓸어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "손 크기와 장갑 둘레를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-plain-shampoo",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-bath",
+      "name": "무향 워시 데이",
+      "shortDescription": "향을 넣지 않은 반려견 목욕용 샴푸",
+      "description": "향을 넣지 않은 반려견 목욕용 샴푸. 충분히 적신 털에 소량 사용하고 헹구세요. 눈과 입에 들어가지 않도록 주의하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-PLAIN-SHAMPOO-1",
+          "name": "1개",
+          "price": 19700,
+          "compareAtPrice": 23700,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-PLAIN-SHAMPOO-2",
+          "name": "3개",
+          "price": 39400,
+          "compareAtPrice": 43400,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=800&q=80",
+          "altText": "무향 워시 데이 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "향을 넣지 않은 반려견 목욕용 샴푸.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "충분히 적신 털에 소량 사용하고 헹구세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "눈과 입에 들어가지 않도록 주의하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-paw-towel",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-bath",
+      "name": "산책 뒤 드라이 타월",
+      "shortDescription": "발과 몸의 물기를 누르듯 닦는 타월",
+      "description": "발과 몸의 물기를 누르듯 닦는 타월. 세탁 후 완전히 말려 다시 사용하세요. 첫 사용 전 단독 세탁을 권장해요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1552053831-71594a27632d?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-PAW-TOWEL-1",
+          "name": "1개",
+          "price": 20600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-PAW-TOWEL-2",
+          "name": "3개",
+          "price": 41200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1552053831-71594a27632d?w=800&q=80",
+          "altText": "산책 뒤 드라이 타월 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "발과 몸의 물기를 누르듯 닦는 타월.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "세탁 후 완전히 말려 다시 사용하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "첫 사용 전 단독 세탁을 권장해요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-daily-pad",
+      "brandSlug": "tidy-paw",
+      "categorySlug": "toilet-pads",
+      "name": "데일리 흡수 패드",
+      "shortDescription": "실내 배변 공간을 정돈하는 일회용 패드",
+      "description": "실내 배변 공간을 정돈하는 일회용 패드. 방수면을 아래로 향하게 펼쳐 주세요. 배변판 내경과 패드 규격을 비교하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-DAILY-PAD-1",
+          "name": "1개",
+          "price": 21500,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 3,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-DAILY-PAD-2",
+          "name": "3개",
+          "price": 43000,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 3,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+          "altText": "데일리 흡수 패드 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "실내 배변 공간을 정돈하는 일회용 패드.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "방수면을 아래로 향하게 펼쳐 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "배변판 내경과 패드 규격을 비교하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-wide-pad",
+      "brandSlug": "tidy-paw",
+      "categorySlug": "toilet-pads",
+      "name": "와이드 스테이 패드",
+      "shortDescription": "넓은 배변 공간에 맞춘 대형 패드",
+      "description": "넓은 배변 공간에 맞춘 대형 패드. 오염된 패드는 접어서 교체하세요. 변기에 버리지 말고 지역 배출 기준을 따르세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1582798358481-d199fb7347bb?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-WIDE-PAD-1",
+          "name": "1개",
+          "price": 22400,
+          "compareAtPrice": 26400,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-WIDE-PAD-2",
+          "name": "3개",
+          "price": 44800,
+          "compareAtPrice": 48800,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1582798358481-d199fb7347bb?w=800&q=80",
+          "altText": "와이드 스테이 패드 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "넓은 배변 공간에 맞춘 대형 패드.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "오염된 패드는 접어서 교체하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "변기에 버리지 말고 지역 배출 기준을 따르세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-ceramic-bowl",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-bowls",
+      "name": "라운드 세라믹 보울",
+      "shortDescription": "묵직한 도자기 소재의 둥근 식기",
+      "description": "묵직한 도자기 소재의 둥근 식기. 부드러운 스펀지로 세척해 주세요. 깨짐이나 금이 생기면 사용을 멈추세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-CERAMIC-BOWL-1",
+          "name": "크림",
+          "price": 23300,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-CERAMIC-BOWL-2",
+          "name": "그레이",
+          "price": 46600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "라운드 세라믹 보울 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+          "altText": "라운드 세라믹 보울 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "라운드 세라믹 보울 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "라운드 세라믹 보울 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "도자기",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "묵직한 도자기 소재의 둥근 식기.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "부드러운 스펀지로 세척해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "깨짐이나 금이 생기면 사용을 멈추세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-slow-mat",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-bowls",
+      "name": "구불구불 피딩 매트",
+      "shortDescription": "사료를 나누어 담는 실리콘 굴곡 매트",
+      "description": "사료를 나누어 담는 실리콘 굴곡 매트. 평평한 바닥에 놓고 소량씩 담으세요. 씹는 장난감으로 사용하지 마세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SLOW-MAT-1",
+          "name": "크림",
+          "price": 24200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-SLOW-MAT-2",
+          "name": "그레이",
+          "price": 48400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+          "altText": "구불구불 피딩 매트 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "실리콘",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "사료를 나누어 담는 실리콘 굴곡 매트.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "평평한 바닥에 놓고 소량씩 담으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "씹는 장난감으로 사용하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-travel-water",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-water",
+      "name": "산책 물병 보울",
+      "shortDescription": "물통과 작은 급수 트레이를 함께 구성했어요",
+      "description": "물통과 작은 급수 트레이를 함께 구성했어요. 외출 전 잠금부를 확인해 주세요. 뜨거운 물은 넣지 마세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-TRAVEL-WATER-1",
+          "name": "크림",
+          "price": 25100,
+          "compareAtPrice": 29100,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-TRAVEL-WATER-2",
+          "name": "그레이",
+          "price": 50200,
+          "compareAtPrice": 54200,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "산책 물병 보울 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "물통과 작은 급수 트레이를 함께 구성했어요.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "외출 전 잠금부를 확인해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "뜨거운 물은 넣지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-steel-water",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-water",
+      "name": "스틸 워터 컵",
+      "shortDescription": "입구가 넓은 스테인리스 급수 그릇",
+      "description": "입구가 넓은 스테인리스 급수 그릇. 매일 새 물로 교체해 주세요. 물때가 남지 않도록 바닥까지 닦아 주세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-STEEL-WATER-1",
+          "name": "크림",
+          "price": 26000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-DOG-STEEL-WATER-2",
+          "name": "그레이",
+          "price": 52000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "스틸 워터 컵 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "스테인리스",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "입구가 넓은 스테인리스 급수 그릇.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "매일 새 물로 교체해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "물때가 남지 않도록 바닥까지 닦아 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-rubber-ring",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-chew",
+      "name": "오빗 고무 링",
+      "shortDescription": "함께 당기거나 굴리며 노는 고무 링",
+      "description": "함께 당기거나 굴리며 노는 고무 링. 짧은 놀이 시간 동안 보호자와 사용하세요. 뜯긴 조각은 삼키기 전에 치워 주세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-RUBBER-RING-1",
+          "name": "기본 구성",
+          "price": 26900,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "오빗 고무 링 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "고무",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "함께 당기거나 굴리며 노는 고무 링.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "짧은 놀이 시간 동안 보호자와 사용하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "뜯긴 조각은 삼키기 전에 치워 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-cotton-rope",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-chew",
+      "name": "코튼 매듭 로프",
+      "shortDescription": "면 로프를 매듭지은 손잡이 장난감",
+      "description": "면 로프를 매듭지은 손잡이 장난감. 강도를 조절하며 당기기 놀이를 해 주세요. 풀린 실이 길어지면 교체하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-COTTON-ROPE-1",
+          "name": "기본 구성",
+          "price": 27800,
+          "compareAtPrice": 31800,
+          "subscribable": false,
+          "initialInventory": 0,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "코튼 매듭 로프 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "면 로프를 매듭지은 손잡이 장난감.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "강도를 조절하며 당기기 놀이를 해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "풀린 실이 길어지면 교체하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-rolling-ball",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-teasers",
+      "name": "데굴 포켓 볼",
+      "shortDescription": "실내에서 굴리기 좋은 가벼운 공",
+      "description": "실내에서 굴리기 좋은 가벼운 공. 장애물이 적은 바닥에서 놀아 주세요. 입보다 작은 공을 선택하지 마세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-ROLLING-BALL-1",
+          "name": "기본 구성",
+          "price": 28700,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&q=80",
+          "altText": "데굴 포켓 볼 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "실내에서 굴리기 좋은 가벼운 공.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "장애물이 적은 바닥에서 놀아 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "입보다 작은 공을 선택하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-sniff-book",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-teasers",
+      "name": "숨바꼭질 스니프 북",
+      "shortDescription": "천 페이지 사이에 간식을 숨기는 놀이책",
+      "description": "천 페이지 사이에 간식을 숨기는 놀이책. 소량의 간식을 주머니에 나누어 넣으세요. 놀이가 끝나면 남은 간식을 꺼내 주세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SNIFF-BOOK-1",
+          "name": "기본 구성",
+          "price": 29600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=800&q=80",
+          "altText": "숨바꼭질 스니프 북 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "천 페이지 사이에 간식을 숨기는 놀이책.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "소량의 간식을 주머니에 나누어 넣으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "놀이가 끝나면 남은 간식을 꺼내 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-mesh-harness",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-walk",
+      "name": "에어 메쉬 하네스",
+      "shortDescription": "가슴을 감싸는 메쉬 산책 하네스",
+      "description": "가슴을 감싸는 메쉬 산책 하네스. 가슴둘레를 재고 버클을 조절하세요. 손가락 두 개가 들어갈 여유를 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-MESH-HARNESS-1",
+          "name": "기본 구성",
+          "price": 30500,
+          "compareAtPrice": 34500,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+          "altText": "에어 메쉬 하네스 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "에어 메쉬 하네스 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+          "altText": "에어 메쉬 하네스 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "에어 메쉬 하네스 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "산책"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "가슴을 감싸는 메쉬 산책 하네스.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "가슴둘레를 재고 버클을 조절하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "손가락 두 개가 들어갈 여유를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-city-lead",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-walk",
+      "name": "시티 워크 리드줄",
+      "shortDescription": "손목 고리가 있는 일상 산책 리드줄",
+      "description": "손목 고리가 있는 일상 산책 리드줄. 목줄 또는 하네스 고리에 연결하세요. 연결 고리의 잠김을 외출 전에 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-CITY-LEAD-1",
+          "name": "기본 구성",
+          "price": 31400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "시티 워크 리드줄 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "산책"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "손목 고리가 있는 일상 산책 리드줄.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "목줄 또는 하네스 고리에 연결하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "연결 고리의 잠김을 외출 전에 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-soft-carrier",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-carriers",
+      "name": "소프트 창문 캐리어",
+      "shortDescription": "메쉬 창으로 안을 살필 수 있는 이동가방",
+      "description": "메쉬 창으로 안을 살필 수 있는 이동가방. 바닥판을 펼치고 짧은 적응부터 시작하세요. 반려견 실측 길이와 허용 하중을 비교하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-SOFT-CARRIER-1",
+          "name": "기본 구성",
+          "price": 32300,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+          "altText": "소프트 창문 캐리어 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "이동"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "메쉬 창으로 안을 살필 수 있는 이동가방.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "바닥판을 펼치고 짧은 적응부터 시작하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "반려견 실측 길이와 허용 하중을 비교하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-car-mat",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-carriers",
+      "name": "드라이브 시트 매트",
+      "shortDescription": "차량 좌석 오염을 줄이는 덮개 매트",
+      "description": "차량 좌석 오염을 줄이는 덮개 매트. 좌석 형태에 맞춰 고정 끈을 연결하세요. 충돌 보호 장치를 대신하지 않아요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-CAR-MAT-1",
+          "name": "기본 구성",
+          "price": 33200,
+          "compareAtPrice": 37200,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "드라이브 시트 매트 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "이동"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "차량 좌석 오염을 줄이는 덮개 매트.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "좌석 형태에 맞춰 고정 끈을 연결하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "충돌 보호 장치를 대신하지 않아요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-flat-bed",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-beds",
+      "name": "낮은 포근 방석",
+      "shortDescription": "오르내리기 편한 낮은 높이의 방석",
+      "description": "오르내리기 편한 낮은 높이의 방석. 평평하고 건조한 곳에 놓아 주세요. 커버와 충전재의 세탁 방법을 구분하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-FLAT-BED-1",
+          "name": "기본 구성",
+          "price": 34100,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "낮은 포근 방석 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "낮은 포근 방석 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "낮은 포근 방석 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "낮은 포근 방석 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "오르내리기 편한 낮은 높이의 방석.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "평평하고 건조한 곳에 놓아 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "커버와 충전재의 세탁 방법을 구분하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-cool-mat",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-beds",
+      "name": "서머 플랫 매트",
+      "shortDescription": "가볍게 펴서 쓰는 여름용 평면 매트",
+      "description": "가볍게 펴서 쓰는 여름용 평면 매트. 그늘진 실내에 펼쳐 주세요. 직사광선과 날카로운 물건을 피하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-COOL-MAT-1",
+          "name": "기본 구성",
+          "price": 35000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "서머 플랫 매트 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "가볍게 펴서 쓰는 여름용 평면 매트.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "그늘진 실내에 펼쳐 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "직사광선과 날카로운 물건을 피하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-rain-coat",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-wear",
+      "name": "빗방울 산책 우비",
+      "shortDescription": "등과 몸통을 덮는 가벼운 산책 우비",
+      "description": "등과 몸통을 덮는 가벼운 산책 우비. 목둘레와 등길이에 맞게 여밈을 조절하세요. 후드가 시야를 가리지 않는지 확인하세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-RAIN-COAT-1",
+          "name": "기본 구성",
+          "price": 35900,
+          "compareAtPrice": 39900,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "빗방울 산책 우비 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "등과 몸통을 덮는 가벼운 산책 우비.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "목둘레와 등길이에 맞게 여밈을 조절하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "후드가 시야를 가리지 않는지 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-cotton-vest",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-wear",
+      "name": "코튼 데이 조끼",
+      "shortDescription": "면 소재의 단정한 실내 조끼",
+      "description": "면 소재의 단정한 실내 조끼. 앞다리를 하나씩 넣어 입혀 주세요. 겨드랑이가 조이거나 쓸리지 않는지 살펴보세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-COTTON-VEST-1",
+          "name": "기본 구성",
+          "price": 36800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "코튼 데이 조끼 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "면 소재의 단정한 실내 조끼.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "앞다리를 하나씩 넣어 입혀 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "겨드랑이가 조이거나 쓸리지 않는지 살펴보세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-walk-scarf",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-accessories",
+      "name": "워크 체크 스카프",
+      "shortDescription": "목에 가볍게 두르는 체크 스카프",
+      "description": "목에 가볍게 두르는 체크 스카프. 매듭이 쉽게 풀리도록 묶어 주세요. 산책줄 연결 용도로 쓰지 마세요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-WALK-SCARF-1",
+          "name": "기본 구성",
+          "price": 37700,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+          "altText": "워크 체크 스카프 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "목에 가볍게 두르는 체크 스카프.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "매듭이 쉽게 풀리도록 묶어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "산책줄 연결 용도로 쓰지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-dog-tag-pouch",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-accessories",
+      "name": "미니 태그 파우치",
+      "shortDescription": "작은 이름표를 넣는 목줄 파우치",
+      "description": "작은 이름표를 넣는 목줄 파우치. 목줄 폭에 맞춰 고정해 주세요. 전자 추적기와 이름표는 포함되지 않아요.",
+      "petType": "DOG",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-DOG-TAG-POUCH-1",
+          "name": "기본 구성",
+          "price": 38600,
+          "compareAtPrice": 42600,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "미니 태그 파우치 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "작은 이름표를 넣는 목줄 파우치.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "목줄 폭에 맞춰 고정해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "전자 추적기와 이름표는 포함되지 않아요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-indoor-salmon",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "인도어 연어 크런치",
+      "shortDescription": "실내 성묘의 일상 식사용 연어 건식 사료",
+      "description": "실내 성묘의 일상 식사용 연어 건식 사료. 하루 급여량을 여러 번 나누어 주세요. 기존 식사와 교체할 때 천천히 섞어 주세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-INDOOR-SALMON-1",
+          "name": "1kg / 1팩",
+          "price": 9900,
+          "compareAtPrice": 13900,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-INDOOR-SALMON-2",
+          "name": "1kg / 2팩",
+          "price": 19800,
+          "compareAtPrice": 23800,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-INDOOR-SALMON-3",
+          "name": "2kg / 1팩",
+          "price": 29700,
+          "compareAtPrice": 33700,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-INDOOR-SALMON-4",
+          "name": "2kg / 2팩",
+          "price": 39600,
+          "compareAtPrice": 43600,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+          "altText": "인도어 연어 크런치 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "인도어 연어 크런치 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "인도어 연어 크런치 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+          "altText": "인도어 연어 크런치 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "life-stage": "성묘",
+        "food-form": "건식",
+        "protein": "연어"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "실내 성묘의 일상 식사용 연어 건식 사료.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "하루 급여량을 여러 번 나누어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "기존 식사와 교체할 때 천천히 섞어 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-kitten-chicken",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "키튼 치킨 작은 알갱이",
+      "shortDescription": "성장기 고양이용 작은 닭고기 알갱이",
+      "description": "성장기 고양이용 작은 닭고기 알갱이. 포장에 표시된 월령별 급여량을 따르세요. 성장 단계에 맞는 제품인지 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-KITTEN-CHICKEN-1",
+          "name": "1kg / 1팩",
+          "price": 10800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-KITTEN-CHICKEN-2",
+          "name": "1kg / 2팩",
+          "price": 21600,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-KITTEN-CHICKEN-3",
+          "name": "2kg / 1팩",
+          "price": 32400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-KITTEN-CHICKEN-4",
+          "name": "2kg / 2팩",
+          "price": 43200,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "키튼 치킨 작은 알갱이 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성장기",
+        "food-form": "건식",
+        "protein": "닭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "성장기 고양이용 작은 닭고기 알갱이.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "포장에 표시된 월령별 급여량을 따르세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "성장 단계에 맞는 제품인지 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-adult-duck",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "어덜트 오리 한 그릇",
+      "shortDescription": "오리를 중심으로 구성한 성묘용 건식 식사",
+      "description": "오리를 중심으로 구성한 성묘용 건식 식사. 밀폐 용기에 담아 건조하게 보관하세요. 원료 목록과 포장 중량을 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-ADULT-DUCK-1",
+          "name": "1kg / 1팩",
+          "price": 11700,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-ADULT-DUCK-2",
+          "name": "1kg / 2팩",
+          "price": 23400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-ADULT-DUCK-3",
+          "name": "2kg / 1팩",
+          "price": 35100,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-ADULT-DUCK-4",
+          "name": "2kg / 2팩",
+          "price": 46800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "어덜트 오리 한 그릇 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성묘",
+        "food-form": "건식",
+        "protein": "오리"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "오리를 중심으로 구성한 성묘용 건식 식사.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "밀폐 용기에 담아 건조하게 보관하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "원료 목록과 포장 중량을 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-whitefish-crunch",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-dry",
+      "name": "흰살생선 크런치 캣",
+      "shortDescription": "흰살생선 원료의 바삭한 성묘용 사료",
+      "description": "흰살생선 원료의 바삭한 성묘용 사료. 깨끗한 물과 함께 준비해 주세요. 사료 크기는 상세 표기를 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "용량",
+          "values": [
+            "1kg",
+            "2kg"
+          ]
+        },
+        {
+          "name": "팩 수",
+          "values": [
+            "1팩",
+            "2팩"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-WHITEFISH-CRUNCH-1",
+          "name": "1kg / 1팩",
+          "price": 12600,
+          "compareAtPrice": 16600,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-WHITEFISH-CRUNCH-2",
+          "name": "1kg / 2팩",
+          "price": 25200,
+          "compareAtPrice": 29200,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "1kg",
+            "2팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-WHITEFISH-CRUNCH-3",
+          "name": "2kg / 1팩",
+          "price": 37800,
+          "compareAtPrice": 41800,
+          "subscribable": true,
+          "initialInventory": 44,
+          "selectedOptions": [
+            "2kg",
+            "1팩"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-WHITEFISH-CRUNCH-4",
+          "name": "2kg / 2팩",
+          "price": 50400,
+          "compareAtPrice": 54400,
+          "subscribable": true,
+          "initialInventory": 51,
+          "selectedOptions": [
+            "2kg",
+            "2팩"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+          "altText": "흰살생선 크런치 캣 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성묘",
+        "food-form": "건식",
+        "protein": "흰살생선"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "흰살생선 원료의 바삭한 성묘용 사료.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "깨끗한 물과 함께 준비해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "사료 크기는 상세 표기를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-tuna-pate",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-wet",
+      "name": "참치 포근 파테",
+      "shortDescription": "숟가락으로 덜기 쉬운 참치 파테",
+      "description": "숟가락으로 덜기 쉬운 참치 파테. 한 끼에 필요한 양만 덜어 주세요. 개봉 후에는 포장 보관 안내를 따르세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-TUNA-PATE-1",
+          "name": "1개",
+          "price": 13500,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-TUNA-PATE-2",
+          "name": "3개",
+          "price": 27000,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "참치 포근 파테 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "참치 포근 파테 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+          "altText": "참치 포근 파테 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "참치 포근 파테 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "life-stage": "성묘",
+        "food-form": "파테",
+        "protein": "참치"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "숟가락으로 덜기 쉬운 참치 파테.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "한 끼에 필요한 양만 덜어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "개봉 후에는 포장 보관 안내를 따르세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-chicken-soup",
+      "brandSlug": "grain-tail",
+      "categorySlug": "food-wet",
+      "name": "치킨 클리어 수프",
+      "shortDescription": "닭고기 조각을 담은 촉촉한 수프",
+      "description": "닭고기 조각을 담은 촉촉한 수프. 평소 식사에 조금씩 곁들여 주세요. 보조식 여부를 확인하고 주식량을 조절하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-CHICKEN-SOUP-1",
+          "name": "1개",
+          "price": 14400,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-CHICKEN-SOUP-2",
+          "name": "3개",
+          "price": 28800,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 0,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "치킨 클리어 수프 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "life-stage": "성묘",
+        "food-form": "수프",
+        "protein": "닭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "닭고기 조각을 담은 촉촉한 수프.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "평소 식사에 조금씩 곁들여 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "보조식 여부를 확인하고 주식량을 조절하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-salmon-flake",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-bites",
+      "name": "연어 플레이크 포켓",
+      "shortDescription": "손으로 부수기 쉬운 연어 플레이크",
+      "description": "손으로 부수기 쉬운 연어 플레이크. 놀이 보상으로 작은 조각을 주세요. 부스러기는 밀봉해 습기를 피하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-SALMON-FLAKE-1",
+          "name": "1개",
+          "price": 15300,
+          "compareAtPrice": 19300,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-SALMON-FLAKE-2",
+          "name": "3개",
+          "price": 30600,
+          "compareAtPrice": 34600,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&q=80",
+          "altText": "연어 플레이크 포켓 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "연어",
+        "texture": "바삭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "손으로 부수기 쉬운 연어 플레이크.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "놀이 보상으로 작은 조각을 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "부스러기는 밀봉해 습기를 피하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-tuna-cube",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-bites",
+      "name": "참치 바삭 큐브",
+      "shortDescription": "작은 큐브 형태의 참치 간식",
+      "description": "작은 큐브 형태의 참치 간식. 먹는 속도에 맞춰 한 조각씩 주세요. 처음 먹는 원료라면 소량부터 시작하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-TUNA-CUBE-1",
+          "name": "1개",
+          "price": 16200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-TUNA-CUBE-2",
+          "name": "3개",
+          "price": 32400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "참치 바삭 큐브 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "참치",
+        "texture": "바삭"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "작은 큐브 형태의 참치 간식.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "먹는 속도에 맞춰 한 조각씩 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "처음 먹는 원료라면 소량부터 시작하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-chicken-cream",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-lickable",
+      "name": "치킨 크림 한 스틱",
+      "shortDescription": "부드러운 닭고기 크림을 개별 포장했어요",
+      "description": "부드러운 닭고기 크림을 개별 포장했어요. 접시에 짜서 천천히 먹게 해 주세요. 스틱 포장지를 물어뜯지 않게 지켜보세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-CHICKEN-CREAM-1",
+          "name": "1개",
+          "price": 17100,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-CHICKEN-CREAM-2",
+          "name": "3개",
+          "price": 34200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+          "altText": "치킨 크림 한 스틱 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "닭",
+        "texture": "부드러움"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "부드러운 닭고기 크림을 개별 포장했어요.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "접시에 짜서 천천히 먹게 해 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "스틱 포장지를 물어뜯지 않게 지켜보세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-tuna-cream",
+      "brandSlug": "mellow-bite",
+      "categorySlug": "treats-lickable",
+      "name": "참치 촉촉 스틱",
+      "shortDescription": "한 번씩 나누기 편한 참치 크림 간식",
+      "description": "한 번씩 나누기 편한 참치 크림 간식. 필요한 만큼 짜서 급여하세요. 간식은 주식을 대신하지 않아요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-TUNA-CREAM-1",
+          "name": "1개",
+          "price": 18000,
+          "compareAtPrice": 22000,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-TUNA-CREAM-2",
+          "name": "3개",
+          "price": 36000,
+          "compareAtPrice": 40000,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "참치 촉촉 스틱 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "protein": "참치",
+        "texture": "부드러움"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "한 번씩 나누기 편한 참치 크림 간식.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "필요한 만큼 짜서 급여하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "간식은 주식을 대신하지 않아요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-soft-comb",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-grooming",
+      "name": "소프트 핀 캣 콤",
+      "shortDescription": "둥근 끝의 빗살로 털을 정리하는 빗",
+      "description": "둥근 끝의 빗살로 털을 정리하는 빗. 털 방향을 따라 짧게 나누어 빗으세요. 민감해하는 부위는 강제로 빗지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-SOFT-COMB-1",
+          "name": "크림",
+          "price": 18900,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-SOFT-COMB-2",
+          "name": "그레이",
+          "price": 37800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "소프트 핀 캣 콤 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "usage": "실내",
+        "material": "폴리에스터"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "둥근 끝의 빗살로 털을 정리하는 빗.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "털 방향을 따라 짧게 나누어 빗으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "민감해하는 부위는 강제로 빗지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-silicone-brush",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-grooming",
+      "name": "실리콘 터치 브러시",
+      "shortDescription": "유연한 실리콘 돌기의 손잡이 브러시",
+      "description": "유연한 실리콘 돌기의 손잡이 브러시. 마른 털 위를 가볍게 쓸어 주세요. 사용 후 묻은 털을 제거해 주세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-SILICONE-BRUSH-1",
+          "name": "크림",
+          "price": 19800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-SILICONE-BRUSH-2",
+          "name": "그레이",
+          "price": 39600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "실리콘 터치 브러시 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "usage": "실내",
+        "material": "실리콘"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "유연한 실리콘 돌기의 손잡이 브러시.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "마른 털 위를 가볍게 쓸어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "사용 후 묻은 털을 제거해 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-plain-wipes",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-bath",
+      "name": "무향 캣 클린 티슈",
+      "shortDescription": "필요한 부위를 가볍게 닦는 무향 티슈",
+      "description": "필요한 부위를 가볍게 닦는 무향 티슈. 한 장씩 꺼내 닦은 뒤 뚜껑을 닫으세요. 눈과 입 주변에는 사용하지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-PLAIN-WIPES-1",
+          "name": "1개",
+          "price": 20700,
+          "compareAtPrice": 24700,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-PLAIN-WIPES-2",
+          "name": "3개",
+          "price": 41400,
+          "compareAtPrice": 45400,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=800&q=80",
+          "altText": "무향 캣 클린 티슈 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "필요한 부위를 가볍게 닦는 무향 티슈.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "한 장씩 꺼내 닦은 뒤 뚜껑을 닫으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "눈과 입 주변에는 사용하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-dry-towel",
+      "brandSlug": "cloud-groom",
+      "categorySlug": "hygiene-bath",
+      "name": "캣 랩 드라이 타월",
+      "shortDescription": "몸을 감싸 물기를 닦기 좋은 타월",
+      "description": "몸을 감싸 물기를 닦기 좋은 타월. 문지르지 말고 눌러서 물기를 흡수하세요. 사용 전후 세탁 표시를 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1552053831-71594a27632d?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-DRY-TOWEL-1",
+          "name": "1개",
+          "price": 21600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-DRY-TOWEL-2",
+          "name": "3개",
+          "price": 43200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1552053831-71594a27632d?w=800&q=80",
+          "altText": "캣 랩 드라이 타월 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "몸을 감싸 물기를 닦기 좋은 타월.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "문지르지 말고 눌러서 물기를 흡수하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "사용 전후 세탁 표시를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-tofu-litter",
+      "brandSlug": "tidy-paw",
+      "categorySlug": "toilet-litter",
+      "name": "플레인 두부 모래",
+      "shortDescription": "향을 더하지 않은 두부 타입 모래",
+      "description": "향을 더하지 않은 두부 타입 모래. 화장실에 일정한 높이로 채워 주세요. 모래는 변기에 버리지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-TOFU-LITTER-1",
+          "name": "1개",
+          "price": 22500,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 3,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-TOFU-LITTER-2",
+          "name": "3개",
+          "price": 45000,
+          "compareAtPrice": null,
+          "subscribable": true,
+          "initialInventory": 3,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+          "altText": "플레인 두부 모래 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "향을 더하지 않은 두부 타입 모래.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "화장실에 일정한 높이로 채워 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "모래는 변기에 버리지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-mineral-litter",
+      "brandSlug": "tidy-paw",
+      "categorySlug": "toilet-litter",
+      "name": "미네랄 벤토 모래",
+      "shortDescription": "잘게 구성한 무향 벤토나이트 모래",
+      "description": "잘게 구성한 무향 벤토나이트 모래. 사용한 덩어리를 매일 걷어 주세요. 먼지에 민감하면 천천히 부어 주세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1582798358481-d199fb7347bb?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "팩 수",
+          "values": [
+            "1개",
+            "3개"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-MINERAL-LITTER-1",
+          "name": "1개",
+          "price": 23400,
+          "compareAtPrice": 27400,
+          "subscribable": true,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "1개"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-MINERAL-LITTER-2",
+          "name": "3개",
+          "price": 46800,
+          "compareAtPrice": 50800,
+          "subscribable": true,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "3개"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1582798358481-d199fb7347bb?w=800&q=80",
+          "altText": "미네랄 벤토 모래 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "scent": "무향",
+        "pack-size": "묶음"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "잘게 구성한 무향 벤토나이트 모래.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "사용한 덩어리를 매일 걷어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "먼지에 민감하면 천천히 부어 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-wide-bowl",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-bowls",
+      "name": "와이드 세라믹 접시",
+      "shortDescription": "입구가 넓고 가장자리가 낮은 도자기 식기",
+      "description": "입구가 넓고 가장자리가 낮은 도자기 식기. 사료가 한쪽에 몰리지 않게 담으세요. 파손된 도자기는 사용하지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-WIDE-BOWL-1",
+          "name": "크림",
+          "price": 24300,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-WIDE-BOWL-2",
+          "name": "그레이",
+          "price": 48600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800&q=80",
+          "altText": "와이드 세라믹 접시 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+          "altText": "와이드 세라믹 접시 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "와이드 세라믹 접시 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "와이드 세라믹 접시 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "도자기",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "입구가 넓고 가장자리가 낮은 도자기 식기.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "사료가 한쪽에 몰리지 않게 담으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "파손된 도자기는 사용하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-silicone-tray",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-bowls",
+      "name": "미끄럼 식기 트레이",
+      "shortDescription": "식기 아래에 놓는 실리콘 받침",
+      "description": "식기 아래에 놓는 실리콘 받침. 건조한 평면에 펼쳐 사용하세요. 식기와 급수기는 별도 구성이에요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-SILICONE-TRAY-1",
+          "name": "크림",
+          "price": 25200,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-SILICONE-TRAY-2",
+          "name": "그레이",
+          "price": 50400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?w=800&q=80",
+          "altText": "미끄럼 식기 트레이 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "실리콘",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "식기 아래에 놓는 실리콘 받침.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "건조한 평면에 펼쳐 사용하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "식기와 급수기는 별도 구성이에요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-steel-fountain-bowl",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-water",
+      "name": "라운드 워터 보울",
+      "shortDescription": "세척이 쉬운 스테인리스 물그릇",
+      "description": "세척이 쉬운 스테인리스 물그릇. 매일 물을 갈고 가장자리를 닦으세요. 전동 급수 기능은 없는 식기예요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-STEEL-FOUNTAIN-BOWL-1",
+          "name": "크림",
+          "price": 26100,
+          "compareAtPrice": 30100,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-STEEL-FOUNTAIN-BOWL-2",
+          "name": "그레이",
+          "price": 52200,
+          "compareAtPrice": 56200,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+          "altText": "라운드 워터 보울 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "스테인리스",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "세척이 쉬운 스테인리스 물그릇.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "매일 물을 갈고 가장자리를 닦으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "전동 급수 기능은 없는 식기예요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-ceramic-water",
+      "brandSlug": "bowl-note",
+      "categorySlug": "feeding-water",
+      "name": "높은 세라믹 워터 컵",
+      "shortDescription": "받침이 있는 도자기 급수 컵",
+      "description": "받침이 있는 도자기 급수 컵. 넘어지지 않는 평평한 곳에 놓으세요. 받침 높이와 고양이 체형을 비교하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [
+        {
+          "name": "색상",
+          "values": [
+            "크림",
+            "그레이"
+          ]
+        }
+      ],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-CERAMIC-WATER-1",
+          "name": "크림",
+          "price": 27000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": [
+            "크림"
+          ]
+        },
+        {
+          "skuCode": "QA3-CAT-CERAMIC-WATER-2",
+          "name": "그레이",
+          "price": 54000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 37,
+          "selectedOptions": [
+            "그레이"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "높은 세라믹 워터 컵 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "도자기",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "받침이 있는 도자기 급수 컵.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "넘어지지 않는 평평한 곳에 놓으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "받침 높이와 고양이 체형을 비교하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-cotton-kicker",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-chew",
+      "name": "코튼 롱 키커",
+      "shortDescription": "앞발로 안고 뒷발로 차며 노는 면 쿠션",
+      "description": "앞발로 안고 뒷발로 차며 노는 면 쿠션. 보호자가 흔들어 관심을 끌어 주세요. 봉제선이 벌어지면 사용을 멈추세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-COTTON-KICKER-1",
+          "name": "기본 구성",
+          "price": 27900,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "코튼 롱 키커 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "앞발로 안고 뒷발로 차며 노는 면 쿠션.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "보호자가 흔들어 관심을 끌어 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "봉제선이 벌어지면 사용을 멈추세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-soft-fish",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-chew",
+      "name": "소프트 피시 토이",
+      "shortDescription": "가볍게 물고 옮기는 물고기 인형",
+      "description": "가볍게 물고 옮기는 물고기 인형. 짧은 놀이 뒤 손 닿지 않는 곳에 보관하세요. 삼킬 수 있는 작은 장식은 없지만 손상을 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-SOFT-FISH-1",
+          "name": "기본 구성",
+          "price": 28800,
+          "compareAtPrice": 32800,
+          "subscribable": false,
+          "initialInventory": 0,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",
+          "altText": "소프트 피시 토이 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "가볍게 물고 옮기는 물고기 인형.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "짧은 놀이 뒤 손 닿지 않는 곳에 보관하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "삼킬 수 있는 작은 장식은 없지만 손상을 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-ribbon-wand",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-teasers",
+      "name": "리본 궤도 낚싯대",
+      "shortDescription": "리본이 흔들리는 실내 놀이 낚싯대",
+      "description": "리본이 흔들리는 실내 놀이 낚싯대. 바닥 가까이 천천히 움직여 주세요. 끈은 혼자 놀도록 두지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-RIBBON-WAND-1",
+          "name": "기본 구성",
+          "price": 29700,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&q=80",
+          "altText": "리본 궤도 낚싯대 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "리본이 흔들리는 실내 놀이 낚싯대.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "바닥 가까이 천천히 움직여 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "끈은 혼자 놀도록 두지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-paper-ball",
+      "brandSlug": "play-orbit",
+      "categorySlug": "play-teasers",
+      "name": "바스락 페이퍼 볼",
+      "shortDescription": "가볍게 굴리는 종이 소재 놀이 공",
+      "description": "가볍게 굴리는 종이 소재 놀이 공. 작은 공간에서 굴려 주며 놀아 주세요. 젖거나 찢어지면 새것으로 바꿔 주세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-PAPER-BALL-1",
+          "name": "기본 구성",
+          "price": 30600,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=800&q=80",
+          "altText": "바스락 페이퍼 볼 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "종이",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "가볍게 굴리는 종이 소재 놀이 공.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "작은 공간에서 굴려 주며 놀아 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "젖거나 찢어지면 새것으로 바꿔 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-indoor-harness",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-walk",
+      "name": "캣 어댑트 하네스",
+      "shortDescription": "짧은 이동 적응용 가슴 하네스",
+      "description": "짧은 이동 적응용 가슴 하네스. 실내에서 착용감부터 익혀 주세요. 탈출 가능성을 확인하고 혼자 두지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-INDOOR-HARNESS-1",
+          "name": "기본 구성",
+          "price": 31500,
+          "compareAtPrice": 35500,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&q=80",
+          "altText": "캣 어댑트 하네스 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "캣 어댑트 하네스 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+          "altText": "캣 어댑트 하네스 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "캣 어댑트 하네스 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "산책"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "짧은 이동 적응용 가슴 하네스.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "실내에서 착용감부터 익혀 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "탈출 가능성을 확인하고 혼자 두지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-light-lead",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-walk",
+      "name": "캣 라이트 리드줄",
+      "shortDescription": "이동 시 하네스에 연결하는 가벼운 줄",
+      "description": "이동 시 하네스에 연결하는 가벼운 줄. 하네스 고리에 단단히 연결하세요. 목걸이에 직접 연결하지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-LIGHT-LEAD-1",
+          "name": "기본 구성",
+          "price": 32400,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1568152950566-c1bf43f4ab28?w=800&q=80",
+          "altText": "캣 라이트 리드줄 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "산책"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "이동 시 하네스에 연결하는 가벼운 줄.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "하네스 고리에 단단히 연결하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "목걸이에 직접 연결하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-window-carrier",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-carriers",
+      "name": "메쉬 윈도 캐리어",
+      "shortDescription": "안쪽을 살필 수 있는 메쉬 이동가방",
+      "description": "안쪽을 살필 수 있는 메쉬 이동가방. 익숙한 천을 깔고 적응 시간을 주세요. 가방 크기와 최대 허용 하중을 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-WINDOW-CARRIER-1",
+          "name": "기본 구성",
+          "price": 33300,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&q=80",
+          "altText": "메쉬 윈도 캐리어 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "이동"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "안쪽을 살필 수 있는 메쉬 이동가방.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "익숙한 천을 깔고 적응 시간을 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "가방 크기와 최대 허용 하중을 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-fold-carrier",
+      "brandSlug": "trail-mate",
+      "categorySlug": "outdoor-carriers",
+      "name": "폴드 쉼터 캐리어",
+      "shortDescription": "접어 보관할 수 있는 천 이동가방",
+      "description": "접어 보관할 수 있는 천 이동가방. 사용 전 바닥판과 잠금부를 펼치세요. 차량 안전 고정 기능은 별도 확인이 필요해요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-FOLD-CARRIER-1",
+          "name": "기본 구성",
+          "price": 34200,
+          "compareAtPrice": 38200,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "폴드 쉼터 캐리어 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "이동"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "접어 보관할 수 있는 천 이동가방.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "사용 전 바닥판과 잠금부를 펼치세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "차량 안전 고정 기능은 별도 확인이 필요해요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-round-bed",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-beds",
+      "name": "도넛 네스트 방석",
+      "shortDescription": "가장자리가 둥글게 올라온 실내 방석",
+      "description": "가장자리가 둥글게 올라온 실내 방석. 조용하고 건조한 자리에 놓으세요. 몸을 펼쳤을 때의 크기를 기준으로 고르세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-ROUND-BED-1",
+          "name": "기본 구성",
+          "price": 35100,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&q=80",
+          "altText": "도넛 네스트 방석 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "도넛 네스트 방석 데모 참고 이미지 1",
+          "displayOrder": 1,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "도넛 네스트 방석 데모 참고 이미지 2",
+          "displayOrder": 2,
+          "imageType": "DETAIL"
+        },
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "도넛 네스트 방석 데모 참고 이미지 3",
+          "displayOrder": 3,
+          "imageType": "DETAIL"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "가장자리가 둥글게 올라온 실내 방석.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "조용하고 건조한 자리에 놓으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "몸을 펼쳤을 때의 크기를 기준으로 고르세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-window-mat",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-beds",
+      "name": "윈도 선샤인 매트",
+      "shortDescription": "창가 바닥에 펼쳐 쓰는 얇은 매트",
+      "description": "창가 바닥에 펼쳐 쓰는 얇은 매트. 열이 과하지 않은 곳에 놓아 주세요. 창문에 부착하는 제품이 아니에요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-WINDOW-MAT-1",
+          "name": "기본 구성",
+          "price": 36000,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&q=80",
+          "altText": "윈도 선샤인 매트 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "폴리에스터",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "창가 바닥에 펼쳐 쓰는 얇은 매트.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "열이 과하지 않은 곳에 놓아 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "창문에 부착하는 제품이 아니에요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-flat-scratcher",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-scratchers",
+      "name": "플랫 페이퍼 스크래처",
+      "shortDescription": "넓은 종이 면에서 발톱 긁기 놀이를 해요",
+      "description": "넓은 종이 면에서 발톱 긁기 놀이를 해요. 흔들리지 않는 바닥에 놓으세요. 마모된 종이 조각을 자주 치워 주세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-FLAT-SCRATCHER-1",
+          "name": "기본 구성",
+          "price": 36900,
+          "compareAtPrice": 40900,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "플랫 페이퍼 스크래처 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "종이",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "넓은 종이 면에서 발톱 긁기 놀이를 해요.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "흔들리지 않는 바닥에 놓으세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "마모된 종이 조각을 자주 치워 주세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-curve-scratcher",
+      "brandSlug": "nest-loop",
+      "categorySlug": "living-scratchers",
+      "name": "커브 라운지 스크래처",
+      "shortDescription": "굽은 종이 표면에 기대어 쉬는 스크래처",
+      "description": "굽은 종이 표면에 기대어 쉬는 스크래처. 고양이가 드나들 공간을 남겨 주세요. 물에 젖으면 건조 후 상태를 확인하세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-CURVE-SCRATCHER-1",
+          "name": "기본 구성",
+          "price": 37800,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+          "altText": "커브 라운지 스크래처 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "종이",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "굽은 종이 표면에 기대어 쉬는 스크래처.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "고양이가 드나들 공간을 남겨 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "물에 젖으면 건조 후 상태를 확인하세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-breakaway-collar",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-accessories",
+      "name": "세이프 버클 캣 칼라",
+      "shortDescription": "힘이 가해지면 열리는 버클 목걸이",
+      "description": "힘이 가해지면 열리는 버클 목걸이. 목둘레를 재고 여유 있게 조절하세요. 리드줄 연결용으로 사용하지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-BREAKAWAY-COLLAR-1",
+          "name": "기본 구성",
+          "price": 38700,
+          "compareAtPrice": null,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+          "altText": "세이프 버클 캣 칼라 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "힘이 가해지면 열리는 버클 목걸이.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "목둘레를 재고 여유 있게 조절하세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "리드줄 연결용으로 사용하지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "catalogKey": "qa3-cat-photo-scarf",
+      "brandSlug": "wear-petal",
+      "categorySlug": "fashion-accessories",
+      "name": "포토 데이 스카프",
+      "shortDescription": "짧은 촬영 시간에 두르는 면 스카프",
+      "description": "짧은 촬영 시간에 두르는 면 스카프. 불편해하면 바로 벗겨 주세요. 장시간 착용하거나 혼자 두지 마세요.",
+      "petType": "CAT",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+      "optionGroups": [],
+      "skus": [
+        {
+          "skuCode": "QA3-CAT-PHOTO-SCARF-1",
+          "name": "기본 구성",
+          "price": 39600,
+          "compareAtPrice": 43600,
+          "subscribable": false,
+          "initialInventory": 30,
+          "selectedOptions": []
+        }
+      ],
+      "images": [
+        {
+          "imageUrl": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+          "altText": "포토 데이 스카프 데모 대표 이미지",
+          "displayOrder": 0,
+          "imageType": "MAIN"
+        }
+      ],
+      "facets": {
+        "material": "면",
+        "usage": "실내"
+      },
+      "detailSections": [
+        {
+          "title": "상품 특징",
+          "body": "짧은 촬영 시간에 두르는 면 스카프.",
+          "displayOrder": 0,
+          "visible": true
+        },
+        {
+          "title": "사용·구성 안내",
+          "body": "불편해하면 바로 벗겨 주세요.",
+          "displayOrder": 1,
+          "visible": true
+        },
+        {
+          "title": "구매 전 확인",
+          "body": "장시간 착용하거나 혼자 두지 마세요.",
+          "displayOrder": 2,
+          "visible": true
+        }
+      ]
+    }
+  ]
+}
