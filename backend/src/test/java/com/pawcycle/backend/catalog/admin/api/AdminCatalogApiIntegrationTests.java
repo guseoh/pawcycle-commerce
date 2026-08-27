@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.admin.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -13,6 +14,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
+import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.CategoryFacetAssign;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.FacetDefinitionCreate;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.FacetOptionCreate;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductCreate;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductFacetValues;
+import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
 import com.pawcycle.backend.catalog.product.infra.ProductRepository;
 import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
@@ -53,6 +63,8 @@ class AdminCatalogApiIntegrationTests {
 	private final JdbcTemplate jdbc;
 	private final EntityManager entityManager;
 	private final Statistics statistics;
+	private final AdminCatalogService adminCatalogService;
+	private final CatalogExpansionAdminService catalogExpansionAdminService;
 	private MockMvc mockMvc;
 
 	@Autowired
@@ -64,7 +76,9 @@ class AdminCatalogApiIntegrationTests {
 			SkuRepository skuRepository,
 			JdbcTemplate jdbc,
 			EntityManager entityManager,
-			EntityManagerFactory entityManagerFactory) {
+			EntityManagerFactory entityManagerFactory,
+			AdminCatalogService adminCatalogService,
+			CatalogExpansionAdminService catalogExpansionAdminService) {
 		this.applicationContext = applicationContext;
 		this.objectMapper = objectMapper;
 		this.categoryRepository = categoryRepository;
@@ -73,6 +87,8 @@ class AdminCatalogApiIntegrationTests {
 		this.jdbc = jdbc;
 		this.entityManager = entityManager;
 		this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+		this.adminCatalogService = adminCatalogService;
+		this.catalogExpansionAdminService = catalogExpansionAdminService;
 	}
 
 	@BeforeEach
@@ -138,6 +154,34 @@ class AdminCatalogApiIntegrationTests {
 	}
 
 	@Test
+	void categoryHierarchyRejectsThirdDepthOnCreateAndUpdate() throws Exception {
+		long topId = json(createCategory("hierarchy-top", true).andReturn()).get("categoryId").asLong();
+		long secondId = json(mockMvc.perform(post("/api/admin/categories")
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"둘째\",\"slug\":\"hierarchy-second\",\"displayOrder\":1,\"active\":true,\"parentId\":%d}".formatted(topId)))
+			.andExpect(status().isCreated()).andReturn()).get("categoryId").asLong();
+
+		mockMvc.perform(post("/api/admin/categories")
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"셋째\",\"slug\":\"hierarchy-third\",\"displayOrder\":1,\"active\":true,\"parentId\":%d}".formatted(secondId)))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("CATEGORY_DEPTH_EXCEEDED"));
+
+		long candidateId = json(createCategory("hierarchy-candidate", true).andReturn()).get("categoryId").asLong();
+		mockMvc.perform(patch("/api/admin/categories/{categoryId}", candidateId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"parentId\":%d}".formatted(secondId)))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("CATEGORY_DEPTH_EXCEEDED"));
+
+		mockMvc.perform(patch("/api/admin/categories/{categoryId}", topId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"parentId\":%d}".formatted(secondId)))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("CATEGORY_PARENT_CONFLICT"));
+	}
+
+	@Test
 	void productCrudRequiresActiveCategoryAndEnforcesTransitions() throws Exception {
 		long categoryId = json(createCategory("care", true).andReturn()).get("categoryId").asLong();
 		MvcResult created = mockMvc.perform(post("/api/admin/products")
@@ -146,6 +190,7 @@ class AdminCatalogApiIntegrationTests {
 					.content("""
 							{
 							  "categoryId": %d,
+							  "brandId": 1,
 							  "name": "샴푸",
 							  "shortDescription": "민감성 샴푸",
 							  "description": "상세",
@@ -171,6 +216,66 @@ class AdminCatalogApiIntegrationTests {
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		assertThat(productRepository.findById(productId).orElseThrow().getStatus()).isEqualTo(ProductStatus.INACTIVE);
+	}
+
+	@Test
+	void productCreateRequiresExplicitBrandId() throws Exception {
+		long categoryId = json(createCategory("brand-required", true).andReturn()).get("categoryId").asLong();
+		mockMvc.perform(post("/api/admin/products")
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"categoryId":%d,"name":"브랜드 필수","shortDescription":"설명","description":null,"petType":"DOG","thumbnailUrl":null}
+						""".formatted(categoryId)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.fieldErrors[0].field").value("brandId"));
+
+		mockMvc.perform(post("/api/admin/products")
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"categoryId":%d,"brandId":1,"name":"브랜드 명시","shortDescription":"설명","description":null,"petType":"DOG","thumbnailUrl":null}
+						""".formatted(categoryId)))
+				.andExpect(status().isCreated());
+	}
+
+	@Test
+	void productOptionGroupsRejectThirdGroup() throws Exception {
+		long productId = createProductWithoutCategory();
+		for (int i = 1; i <= 2; i++) {
+			mockMvc.perform(post("/api/admin/products/{productId}/option-groups", productId)
+					.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"옵션 그룹 %d\",\"displayOrder\":%d}".formatted(i, i)))
+				.andExpect(status().isCreated());
+		}
+		mockMvc.perform(post("/api/admin/products/{productId}/option-groups", productId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"옵션 그룹 3\",\"displayOrder\":3}"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("OPTION_GROUP_LIMIT_EXCEEDED"));
+	}
+
+	@Test
+	void productFacetValuesBlockCategoryChangeAndCategoryFacetRemoval() {
+		Category first = categoryRepository.saveAndFlush(new Category("facet-first", "facet-first", 1, true));
+		Category second = categoryRepository.saveAndFlush(new Category("facet-second", "facet-second", 2, true));
+		long productId = adminCatalogService.createProduct(new ProductCreate(first.getId(), 1L, "Facet 상품", "설명", null, "DOG", null)).productId();
+		var definition = catalogExpansionAdminService.createFacetDefinition(new FacetDefinitionCreate("material", "Material"));
+		var option = catalogExpansionAdminService.createFacetOption(definition.facetDefinitionId(), new FacetOptionCreate("cotton", 0));
+		catalogExpansionAdminService.assignCategoryFacet(first.getId(), definition.facetDefinitionId(), new CategoryFacetAssign(0));
+		catalogExpansionAdminService.setProductFacetValues(productId, new ProductFacetValues(List.of(option.facetOptionId())));
+
+		ProductPatch categoryPatch = new ProductPatch();
+		categoryPatch.readCategoryId(second.getId());
+		assertThatThrownBy(() -> adminCatalogService.updateProduct(productId, categoryPatch))
+				.isInstanceOfSatisfying(AdminCatalogConflictException.class,
+						exception -> assertThat(exception.getCode()).isEqualTo("PRODUCT_FACET_CATEGORY_CONFLICT"));
+		assertThat(productRepository.findById(productId).orElseThrow().getCategory().getId()).isEqualTo(first.getId());
+
+		assertThatThrownBy(() -> catalogExpansionAdminService.removeCategoryFacet(first.getId(), definition.facetDefinitionId()))
+				.isInstanceOfSatisfying(AdminCatalogConflictException.class,
+						exception -> assertThat(exception.getCode()).isEqualTo("CATEGORY_FACET_IN_USE"));
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM category_facets WHERE category_id=? AND facet_definition_id=?", Long.class, first.getId(), definition.facetDefinitionId())).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_facet_values WHERE product_id=? AND facet_option_id=?", Long.class, productId, option.facetOptionId())).isEqualTo(1L);
 	}
 
 	@Test
@@ -268,9 +373,9 @@ class AdminCatalogApiIntegrationTests {
 					.with(role(MemberRole.ADMIN)).with(csrf())
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
-							{"name":"사료","shortDescription":"기본 사료","description":null,
+							{"categoryId":%d,"brandId":1,"name":"사료","shortDescription":"기본 사료","description":null,
 							 "petType":"DOG","thumbnailUrl":null}
-							""".replace("null}", "null,\"categoryId\":" + categoryId + "}")))
+							""".formatted(categoryId)))
 				.andExpect(status().isCreated())
 				.andReturn();
 		return json(result).get("productId").asLong();

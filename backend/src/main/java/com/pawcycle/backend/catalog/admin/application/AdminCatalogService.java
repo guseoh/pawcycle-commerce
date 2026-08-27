@@ -123,7 +123,8 @@ public class AdminCatalogService {
 	@Transactional
 	public AdminCatalogViews.Product createProduct(ProductCreate request) {
 		Category category = requireAssignableCategory(request.categoryId());
-		long brandId = request.brandId() == null ? 1L : request.brandId();
+		if (request.brandId() == null) throw new AdminCatalogValidationException(List.of(error("brandId", "필수 입력입니다.")));
+		long brandId = request.brandId();
 		requireActiveBrand(brandId);
 		Product product = productRepository.saveAndFlush(new Product(
 				category,
@@ -144,6 +145,10 @@ public class AdminCatalogService {
 		Category category = request.isCategoryIdPresent() && request.getCategoryId() != null
 				? requireAssignableCategory(request.getCategoryId())
 				: null;
+		if (request.isCategoryIdPresent() && category != null
+				&& (product.getCategory() == null || !category.getId().equals(product.getCategory().getId()))) {
+			requireFacetValuesCompatibleWithCategory(productId, category.getId());
+		}
 		if (request.isBrandIdPresent()) { if (request.getBrandId() == null) throw new AdminCatalogValidationException(List.of(error("brandId", "Brand cannot be cleared."))); requireActiveBrand(request.getBrandId()); product.updateBrandId(request.getBrandId()); }
 		product.update(
 				category,
@@ -245,13 +250,13 @@ public class AdminCatalogService {
 	private Category requireParentCategory(Long parentId, Long childId) {
 		Category parent = requireCategory(parentId);
 		if (childId != null && parent.getId().equals(childId)) throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "자기 자신을 상위 카테고리로 지정할 수 없습니다.");
-		if (parent.getParent() != null && parent.getParent().getParent() != null) {
-			throw new AdminCatalogConflictException("CATEGORY_DEPTH_EXCEEDED", "카테고리는 최대 3 depth까지만 지원합니다.");
-		}
 		for (Category ancestor = parent; ancestor != null; ancestor = ancestor.getParent()) {
 			if (childId != null && ancestor.getId().equals(childId)) {
 				throw new AdminCatalogConflictException("CATEGORY_PARENT_CONFLICT", "하위 카테고리를 상위 카테고리로 지정할 수 없습니다.");
 			}
+		}
+		if (parent.getParent() != null) {
+			throw new AdminCatalogConflictException("CATEGORY_DEPTH_EXCEEDED", "카테고리는 최대 2 depth까지만 지원합니다.");
 		}
 		return parent;
 	}
@@ -273,6 +278,22 @@ public class AdminCatalogService {
 		return productRepository.findByIdForUpdate(productId)
 				.orElseThrow(() -> new AdminCatalogNotFoundException(
 						"PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+	}
+
+	private void requireFacetValuesCompatibleWithCategory(Long productId, Long categoryId) {
+		Long invalid = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM product_facet_values pfv
+				JOIN facet_options fo ON fo.id=pfv.facet_option_id
+				WHERE pfv.product_id=?
+				  AND NOT EXISTS (
+					SELECT 1 FROM category_facets cf
+					WHERE cf.category_id=? AND cf.facet_definition_id=fo.facet_definition_id
+				  )
+				""", Long.class, productId, categoryId);
+		if (invalid != null && invalid > 0) {
+			throw new AdminCatalogConflictException("PRODUCT_FACET_CATEGORY_CONFLICT", "현재 상품 facet 값이 새 카테고리에서 허용되지 않습니다.");
+		}
 	}
 
 	private AdminCatalogConflictException slugConflict() {

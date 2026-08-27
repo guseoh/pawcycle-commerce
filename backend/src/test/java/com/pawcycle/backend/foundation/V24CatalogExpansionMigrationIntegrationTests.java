@@ -22,8 +22,9 @@ class V24CatalogExpansionMigrationIntegrationTests {
 		{
 			jdbc.update("INSERT INTO categories(name,slug,display_order,active) VALUES ('V24','v24',0,true)");
 			long categoryId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-			jdbc.update("INSERT INTO products(catalog_key,category_id,name,short_description,pet_type,display_status) VALUES ('v24-product',?,'V24','V24','DOG','PUBLIC')", categoryId);
+			jdbc.update("INSERT INTO products(brand_id,catalog_key,category_id,name,short_description,pet_type,display_status) VALUES (1,'v24-product',?,'V24','V24','DOG','PUBLIC')", categoryId);
 			long productId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+			assertThat(jdbc.queryForObject("SELECT column_default FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='products' AND column_name='brand_id'", String.class)).isNull();
 			jdbc.update("INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (?,'V24-SKU','V24',1000,true,0,'ACTIVE')", productId);
 
 			assertThat(jdbc.queryForObject("SELECT brand_id FROM products WHERE id=?", Long.class, productId)).isEqualTo(1L);

@@ -86,7 +86,9 @@ public class CatalogExpansionAdminService {
 
 	@Transactional
 	public AdminCatalogViews.OptionGroup createOptionGroup(long productId, AdminCatalogRequests.OptionGroupCreate request) {
-		requireProduct(productId);
+		lockProduct(productId);
+		Long groupCount = jdbc.queryForObject("SELECT COUNT(*) FROM product_option_groups WHERE product_id=?", Long.class, productId);
+		if (groupCount != null && groupCount >= 2) throw conflict("OPTION_GROUP_LIMIT_EXCEEDED", "상품당 옵션 그룹은 최대 2개까지 지정할 수 있습니다.");
 		try { jdbc.update("INSERT INTO product_option_groups(product_id,name,display_order) VALUES (?,?,?)", productId, request.name(), request.displayOrder()); }
 		catch (DataIntegrityViolationException e) { throw conflict("OPTION_GROUP_NAME_CONFLICT", "상품 내 옵션 그룹 이름은 중복될 수 없습니다."); }
 		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -212,6 +214,14 @@ public class CatalogExpansionAdminService {
 
 	@Transactional
 	public void removeCategoryFacet(long categoryId, long definitionId) {
+		Long inUse = jdbc.queryForObject("""
+				SELECT COUNT(*)
+				FROM product_facet_values pfv
+				JOIN facet_options fo ON fo.id=pfv.facet_option_id
+				JOIN products p ON p.id=pfv.product_id
+				WHERE p.category_id=? AND fo.facet_definition_id=?
+				""", Long.class, categoryId, definitionId);
+		if (inUse != null && inUse > 0) throw conflict("CATEGORY_FACET_IN_USE", "상품이 사용 중인 facet 배정은 제거할 수 없습니다.");
 		if (jdbc.update("DELETE FROM category_facets WHERE category_id=? AND facet_definition_id=?", categoryId, definitionId) == 0) throw missing("CATEGORY_FACET_NOT_FOUND", "카테고리 facet 배정을 확인할 수 없습니다.");
 	}
 
@@ -238,6 +248,7 @@ public class CatalogExpansionAdminService {
 	private AdminCatalogViews.OptionValue optionValueForProduct(long productId,long groupId,long valueId) { optionGroup(productId,groupId); return optionValue(groupId,valueId); }
 	private List<AdminCatalogViews.FacetOption> facetOptions(long definitionId) { return jdbc.query("SELECT id,facet_definition_id,value,display_order FROM facet_options WHERE facet_definition_id=? ORDER BY display_order,id",(rs,n)->new AdminCatalogViews.FacetOption(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4)),definitionId); }
 	private AdminCatalogViews.FacetOption facetOption(long definitionId,long optionId) { return jdbc.query("SELECT id,facet_definition_id,value,display_order FROM facet_options WHERE facet_definition_id=? AND id=?",(rs,n)->new AdminCatalogViews.FacetOption(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4)),definitionId,optionId).stream().findFirst().orElseThrow(()->missing("FACET_OPTION_NOT_FOUND","Facet 옵션을 확인할 수 없습니다.")); }
+	private void lockProduct(long productId) { if (jdbc.query("SELECT id FROM products WHERE id=? FOR UPDATE", (rs,n) -> rs.getLong(1), productId).isEmpty()) throw missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."); }
 	private long requireProduct(long productId) { return jdbc.query("SELECT category_id FROM products WHERE id=?",(rs,n)->rs.getLong(1),productId).stream().findFirst().orElseThrow(()->missing("PRODUCT_NOT_FOUND","상품을 확인할 수 없습니다.")); }
 	private void requireSku(long productId,long skuId) { if (jdbc.queryForObject("SELECT COUNT(*) FROM skus WHERE id=? AND product_id=?",Long.class,skuId,productId) == 0) throw missing("SKU_NOT_FOUND","SKU를 확인할 수 없습니다."); }
 	private void requireCategory(long categoryId) { if (jdbc.queryForObject("SELECT COUNT(*) FROM categories WHERE id=?",Long.class,categoryId) == 0) throw missing("CATEGORY_NOT_FOUND","카테고리를 확인할 수 없습니다."); }

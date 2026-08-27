@@ -35,7 +35,7 @@ public final class AdminCatalogRequests {
 	public record BrandPatch(String name, String slug, String logoUrl, Boolean active, Integer displayOrder) {}
 
 	public record ProductCreate(
-		@NotNull @Positive Long categoryId, @Positive Long brandId,
+			@NotNull @Positive Long categoryId, @NotNull @Positive Long brandId,
 			@NotBlank @Size(max = 200) String name,
 			@NotBlank @Size(max = 500) String shortDescription,
 			@Size(max = 2000) String description,

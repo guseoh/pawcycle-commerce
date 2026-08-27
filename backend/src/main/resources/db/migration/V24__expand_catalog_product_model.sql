@@ -21,7 +21,7 @@ ALTER TABLE products
 UPDATE products SET brand_id = 1 WHERE brand_id IS NULL;
 
 ALTER TABLE products
-    MODIFY COLUMN brand_id BIGINT NOT NULL DEFAULT 1;
+    MODIFY COLUMN brand_id BIGINT NOT NULL;
 
 CREATE INDEX idx_products_brand ON products (brand_id, id);
 

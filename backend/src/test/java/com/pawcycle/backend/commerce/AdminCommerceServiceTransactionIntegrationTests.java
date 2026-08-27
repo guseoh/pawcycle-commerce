@@ -32,7 +32,7 @@ class AdminCommerceServiceTransactionIntegrationTests {
 		jdbc.update("INSERT INTO categories(name,slug,display_order,active) VALUES (?,'txn-rollback-admin',0,false)",
 				"rollback-test-category");
 		categoryId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		jdbc.update("INSERT INTO products(category_id,name,short_description,pet_type,display_status) VALUES (?,?,'rollback test','DOG','PUBLIC')",
+		jdbc.update("INSERT INTO products(brand_id,category_id,name,short_description,pet_type,display_status) VALUES (1,?,?,'rollback test','DOG','PUBLIC')",
 				categoryId, "rollback-test-product");
 		productId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (?,?,'rollback test',100,true,1,'ACTIVE')",
