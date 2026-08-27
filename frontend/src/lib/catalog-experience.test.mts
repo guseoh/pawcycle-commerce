@@ -3,6 +3,7 @@ import test from "node:test";
 import { catalogDiscoveryApi, productApi, type CatalogDiscovery, type ProductDetail, type ProductOptionGroup, type ProductSku, type ProductSummary } from "./api.ts";
 import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "./catalog-filters.ts";
 import { productQuantityError, selectProductSku } from "./product-selection.ts";
+import { reviewCollectionCopy } from "./review-collection-copy.ts";
 import { loadProductResults } from "./catalog-products.ts";
 import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "./product-wishlist.ts";
 import { commerceFinalApi } from "./commerce-final-api.ts";
@@ -162,10 +163,34 @@ test("Selected SKU is the authoritative source for price, stock, discount and su
 });
 
 test("Quantity validation follows the current SKU without resetting the user's input", () => {
+  const limitedSku = { ...skus[0], availableQuantity: 3 };
   for (const value of ["", "0", "-1", "1.5", "NaN"]) assert.ok(productQuantityError(value, skus[0]));
   assert.equal(productQuantityError("7", skus[0]), null);
-  assert.ok(productQuantityError("7", skus[1]));
-  assert.equal(productQuantityError("3", skus[1]), null);
+  assert.equal(productQuantityError("7", limitedSku), "현재 재고 3개 이하로 선택해 주세요.");
+  assert.equal(productQuantityError("3", limitedSku), null);
+});
+
+test("Quantity errors do not replace option selection or sold-out guidance", () => {
+  const soldOut = { ...skus[1], availableQuantity: 0 };
+  for (const selected of [null, soldOut, skus[1]]) {
+    for (const value of ["1", "0", "1.5", "7"]) assert.equal(productQuantityError(value, selected), null);
+  }
+});
+
+test("Review collection copy leaves the empty product state unchanged", () => {
+  assert.equal(reviewCollectionCopy([]), null);
+});
+
+test("Review collection copy is neutral when every product has zero reviews", () => {
+  assert.deepEqual(reviewCollectionCopy([{ reviewCount: 0 }, { reviewCount: 0 }]), {
+    title: "첫 리뷰를 기다리는 상품", description: "아직 리뷰가 쌓이지 않은 상품을 먼저 만나보세요.",
+  });
+});
+
+test("Review collection copy reflects some or all products with server reviews", () => {
+  for (const counts of [[0, 1], [1, 9]]) assert.deepEqual(reviewCollectionCopy(counts.map((reviewCount) => ({ reviewCount }))), {
+    title: "많이 이야기하는 상품", description: "다른 반려가족의 리뷰가 쌓인 상품을 만나보세요.",
+  });
 });
 
 for (const { label, filters, valid } of [

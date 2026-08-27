@@ -11,8 +11,9 @@ export function selectProductSku(groups: ProductOptionGroup[], skus: ProductSku[
 }
 
 export function productQuantityError(quantity: string, sku: ProductSku | null): string | null {
+  if (!sku?.purchasable) return null;
   const value = Number(quantity);
   if (!Number.isInteger(value) || value < 1) return "수량은 1 이상의 정수여야 합니다.";
-  if (sku && value > sku.availableQuantity) return `현재 재고 ${sku.availableQuantity}개 이하로 선택해 주세요.`;
+  if (value > sku.availableQuantity) return `현재 재고 ${sku.availableQuantity}개 이하로 선택해 주세요.`;
   return null;
 }

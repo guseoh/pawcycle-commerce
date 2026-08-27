@@ -4,6 +4,13 @@ import test from "node:test";
 
 const source = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
 const trustSource = readFileSync(new URL("./product-trust-sections.tsx", import.meta.url), "utf8");
+const purchaseSource = readFileSync(new URL("./product-purchase-panel.tsx", import.meta.url), "utf8");
+
+test("Sold-out SKU blocks Cart even without a quantity error and has text guidance", () => {
+  assert.match(source, /if \(!product \|\| !selectedSku\?\.purchasable \|\| busy\)/);
+  assert.match(purchaseSource, /disabled=\{busy \|\| !selectedSku\?\.purchasable \|\| Boolean\(quantityError\)\}/);
+  assert.match(purchaseSource, /현재 품절 · 구매 불가/);
+});
 
 test("canonical product detail does not invoke the legacy subscription endpoint", () => {
   assert.doesNotMatch(source, /subscriptionApi\.create/);
