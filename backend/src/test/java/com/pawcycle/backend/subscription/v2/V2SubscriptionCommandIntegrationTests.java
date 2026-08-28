@@ -303,7 +303,7 @@ class V2SubscriptionCommandIntegrationTests {
 		Map<String,Object> item = castMap(castList(nextDelivery.get("items")).getFirst());
 		assertThat(item).containsEntry("productName", "V2 command product").containsEntry("thumbnailUrl", "https://cdn.example.test/product.png");
 		assertThat(pendingChange).containsEntry("deliveryCycleWeeks", 8).containsKey("appliesOn");
-		assertThat(castList(detail.get("availableActions"))).containsExactly("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "CANCEL", "UPDATE_SHIPPING_ADDRESS");
+		assertThat(castList(detail.get("availableActions"))).containsExactly("CHANGE_PLAN", "CHANGE_DELIVERY_CYCLE", "RESCHEDULE_NEXT", "SKIP_NEXT", "PAUSE", "SET_NEXT_DELIVERY_ADDON", "CANCEL", "UPDATE_SHIPPING_ADDRESS");
 
 		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason='MISSING_BILLING_METHOD' WHERE subscription_id=? AND status='SCHEDULED'", subscriptionId);
 		Map<String,Object> heldDetail = service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
