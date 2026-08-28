@@ -29,6 +29,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
@@ -90,6 +91,7 @@ class InteractionIntegrationTests {
 
 		postEvents(body).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
 
+		TestTransaction.end();
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Integer.class, member.getId())).isZero();
 	}
 
@@ -98,7 +100,7 @@ class InteractionIntegrationTests {
 		String body = objectMapper.writeValueAsString(Map.of("events", List.of(Map.of(
 				"eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW", "productId", productId, "petId", Long.MAX_VALUE))));
 
-		mockMvc.perform(post("/api/interactions").contentType(MediaType.APPLICATION_JSON).content(body))
+		mockMvc.perform(post("/api/interactions").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(post("/api/interactions").with(authenticated()).contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isForbidden());

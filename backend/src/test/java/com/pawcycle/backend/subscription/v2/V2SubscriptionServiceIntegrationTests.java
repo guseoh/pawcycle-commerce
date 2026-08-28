@@ -182,7 +182,12 @@ class V2SubscriptionServiceIntegrationTests {
 		List<Map<String, Object>> subscriptions = (List<Map<String, Object>>) service.subscriptions(member.getId(), 0, 100).get("items");
 		assertThat(subscriptions).extracting(subscription -> ((Number) subscription.get("subscriptionId")).longValue()).containsExactly(secondSubscriptionId, firstSubscriptionId);
 		Map<String, Object> second = subscriptions.getFirst();
-		assertThat(second.get("pet")).isEqualTo(Map.of("petId", petId, "name", "보리", "petType", "DOG"));
+		Map<String, Object> secondPet = (Map<String, Object>) second.get("pet");
+		assertThat(secondPet).containsOnlyKeys("petId", "name", "petType", "breed", "weightKg", "profileComplete");
+		assertThat(secondPet).containsEntry("petId", petId).containsEntry("name", "보리").containsEntry("petType", "DOG");
+		assertThat(secondPet.get("breed")).isNull();
+		assertThat(secondPet.get("weightKg")).isNull();
+		assertThat(secondPet.get("profileComplete")).isEqualTo(false);
 		assertThat(((Map<String, Object>) second.get("currentSnapshot")).get("items")).isEqualTo(List.of(Map.of("skuId", sku.getId(), "quantity", 3), Map.of("skuId", secondSku.getId(), "quantity", 1)));
 		assertThat(second.get("nextScheduledDate")).isEqualTo(LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1));
 		assertThat(((Map<String, Object>) subscriptions.get(1).get("currentSnapshot")).get("items")).isEqualTo(List.of());
