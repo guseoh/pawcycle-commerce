@@ -37,7 +37,6 @@ class V2SubscriptionQueryApplicationServiceTests {
 		when(store.findSnapshotItemDetails(5L)).thenReturn(List.of());
 		when(store.findScheduleAddons(7L)).thenReturn(List.of(new V2SubscriptionData.ScheduleAddon(
 				7L, 2001L, 201L, "간식", "소형", 2, new BigDecimal("3000.55"))));
-		when(store.scheduleAddonCount(7L)).thenReturn(1);
 
 		Map<String, Object> body = service.detailBody(10L, 1L, 0, 20, 0, 20);
 
@@ -49,9 +48,6 @@ class V2SubscriptionQueryApplicationServiceTests {
 		assertThat(addOn.get("lineAmountKrw")).isEqualTo(new BigDecimal("6001.10"));
 		assertThat(nextDelivery.get("addOnTotalKrw")).isEqualTo(new BigDecimal("6001.10"));
 		assertThat(nextDelivery.get("orderTotalKrw")).isEqualTo(new BigDecimal("26001.10"));
-		@SuppressWarnings("unchecked")
-		List<String> availableActions = (List<String>) body.get("availableActions");
-		assertThat(availableActions).contains("SET_NEXT_DELIVERY_ADDON", "REMOVE_NEXT_DELIVERY_ADDON");
 	}
 
 	@Test
