@@ -1,12 +1,16 @@
 package com.pawcycle.backend.subscription.v2;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
 final class V2SubscriptionData {
 	private V2SubscriptionData() {}
 
-	record Pet(long id, String name, String petType) {}
+	record Pet(long id, String name, String petType, String breed, BigDecimal weightKg) {
+		Pet(long id, String name, String petType) { this(id, name, petType, null, null); }
+		boolean profileComplete() { return breed != null && weightKg != null; }
+	}
 
 	record PlanVersion(
 			long planId,
@@ -24,6 +28,10 @@ final class V2SubscriptionData {
 			int deliveryCycleWeeks, long currentSnapshotId) {}
 
 	record Schedule(long id, LocalDate scheduledDate) {}
+	record ScheduleAddon(long scheduleId, long skuId, long productId, String productName, String skuName, int quantity, BigDecimal unitPriceKrw) {
+		BigDecimal lineAmount() { return unitPriceKrw.multiply(BigDecimal.valueOf(quantity)); }
+	}
+	record AddonSku(long skuId, long productId, String productName, String skuName, BigDecimal price, boolean eligible) {}
 	record PendingChange(long snapshotId, long targetScheduleId, LocalDate targetScheduledDate) {}
 	record NextDeliverySchedule(
 			long id,

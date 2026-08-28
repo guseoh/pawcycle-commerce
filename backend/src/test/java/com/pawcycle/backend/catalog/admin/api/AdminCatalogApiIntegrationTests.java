@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -353,6 +354,64 @@ class AdminCatalogApiIntegrationTests {
 					.content("{}"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.fieldErrors[0].field").value("request"));
+	}
+
+	@Test
+	void adminReadbacksReturnEmptyAndThenDeterministicallyPersistedAssignments() throws Exception {
+		long categoryId = json(createCategory("readback-category-" + System.nanoTime(), true).andReturn()).get("categoryId").asLong();
+		long productId = json(mockMvc.perform(post("/api/admin/products")
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"categoryId\":%d,\"brandId\":1,\"name\":\"Readback 상품\",\"shortDescription\":\"설명\",\"petType\":\"DOG\"}".formatted(categoryId)))
+				.andExpect(status().isCreated()).andReturn()).get("productId").asLong();
+
+		long groupOne = json(mockMvc.perform(post("/api/admin/products/{productId}/option-groups", productId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"크기\",\"displayOrder\":2}"))
+				.andExpect(status().isCreated()).andReturn()).get("optionGroupId").asLong();
+		long groupTwo = json(mockMvc.perform(post("/api/admin/products/{productId}/option-groups", productId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"색상\",\"displayOrder\":1}"))
+				.andExpect(status().isCreated()).andReturn()).get("optionGroupId").asLong();
+		long valueOne = json(mockMvc.perform(post("/api/admin/products/{productId}/option-groups/{groupId}/values", productId, groupOne)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"value\":\"대형\",\"displayOrder\":1}"))
+				.andExpect(status().isCreated()).andReturn()).get("optionValueId").asLong();
+		long valueTwo = json(mockMvc.perform(post("/api/admin/products/{productId}/option-groups/{groupId}/values", productId, groupTwo)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"value\":\"검정\",\"displayOrder\":1}"))
+				.andExpect(status().isCreated()).andReturn()).get("optionValueId").asLong();
+		long skuId = json(createSku(productId, "READBACK-SKU-" + System.nanoTime()).andExpect(status().isCreated()).andReturn()).get("skuId").asLong();
+
+		mockMvc.perform(get("/api/admin/products/{productId}/skus/{skuId}/option-values", productId, skuId).with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.optionValueIds").isEmpty());
+		mockMvc.perform(put("/api/admin/products/{productId}/skus/{skuId}/option-values", productId, skuId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"optionValueIds\":[%d,%d]}".formatted(valueTwo, valueOne)))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/products/{productId}/skus/{skuId}/option-values", productId, skuId).with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.optionValueIds[0]").value(valueTwo)).andExpect(jsonPath("$.optionValueIds[1]").value(valueOne));
+
+		long definitionId = json(mockMvc.perform(post("/api/admin/facets").with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"key\":\"readback-facet\",\"name\":\"읽기\"}"))
+				.andExpect(status().isCreated()).andReturn()).get("facetDefinitionId").asLong();
+		long optionId = json(mockMvc.perform(post("/api/admin/facets/{definitionId}/options", definitionId).with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"value\":\"신선\",\"displayOrder\":1}"))
+				.andExpect(status().isCreated()).andReturn()).get("facetOptionId").asLong();
+		mockMvc.perform(get("/api/admin/products/{productId}/facet-values", productId).with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.facetOptionIds").isEmpty());
+		mockMvc.perform(put("/api/admin/categories/{categoryId}/facets/{definitionId}", categoryId, definitionId)
+				.with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"displayOrder\":3}"))
+				.andExpect(status().isOk());
+		mockMvc.perform(put("/api/admin/products/{productId}/facet-values", productId).with(role(MemberRole.ADMIN)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("{\"facetOptionIds\":[%d]}".formatted(optionId)))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/products/{productId}/facet-values", productId).with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.facetOptionIds[0]").value(optionId));
+		mockMvc.perform(get("/api/admin/categories/{categoryId}/facets", categoryId).with(role(MemberRole.ADMIN)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.facets[0].categoryId").value(categoryId))
+				.andExpect(jsonPath("$.facets[0].facetDefinitionId").value(definitionId)).andExpect(jsonPath("$.facets[0].displayOrder").value(3));
+		mockMvc.perform(get("/api/admin/products/{productId}/facet-values", productId))
+				.andExpect(status().isUnauthorized());
 	}
 
 	private org.springframework.test.web.servlet.ResultActions createCategory(String slug, boolean active) throws Exception {

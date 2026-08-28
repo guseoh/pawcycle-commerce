@@ -29,6 +29,7 @@ public class V2SubscriptionService {
 	}
 
 	public Map<String, Object> createPet(long memberId, Map<String, Object> body) { return petPlans.createPet(memberId, body); }
+	public Map<String, Object> updatePet(long memberId, long petId, Map<String, Object> body) { return petPlans.updatePet(memberId, petId, body); }
 	public Map<String, Object> pets(long memberId, int page, int size) { return petPlans.pets(memberId, page, size); }
 	public Map<String, Object> pet(long memberId, long petId) { return petPlans.pet(memberId, petId); }
 	public Map<String, Object> plans(long memberId, long petId, int page, int size) { return petPlans.plans(memberId, petId, page, size); }

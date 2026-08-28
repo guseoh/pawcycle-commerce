@@ -27,7 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SubscriptionOrderAutomationService {
 
 	static final String UPDATE_SCHEDULE_EFFECTIVE_SQL =
-			"UPDATE subscription_schedules SET effective_snapshot_id=? WHERE id=?";
+			"UPDATE subscription_schedules SET effective_snapshot_id=?,status='SCHEDULED',hold_reason=NULL WHERE id=?";
 
 	private static final Logger log = LoggerFactory.getLogger(SubscriptionOrderAutomationService.class);
 	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -38,7 +38,8 @@ public class SubscriptionOrderAutomationService {
 			LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id = schedule.id
 			WHERE subscription.mvp2_managed = true
 			  AND subscription.status = 'ACTIVE'
-			  AND schedule.status = 'SCHEDULED'
+			  AND (schedule.status = 'SCHEDULED'
+			       OR (schedule.status = 'HELD' AND schedule.hold_reason = 'ORDER_STOCK_UNAVAILABLE'))
 			  AND schedule.scheduled_date <= ?
 			  AND existing_order.id IS NULL
 			  AND NOT EXISTS (
@@ -56,7 +57,8 @@ public class SubscriptionOrderAutomationService {
 			      FROM subscription_schedules earlier
 			      LEFT JOIN subscription_orders earlier_order ON earlier_order.schedule_id = earlier.id
 			      WHERE earlier.subscription_id = schedule.subscription_id
-			        AND earlier.status = 'SCHEDULED'
+			        AND (earlier.status = 'SCHEDULED'
+			             OR (earlier.status = 'HELD' AND earlier.hold_reason = 'ORDER_STOCK_UNAVAILABLE'))
 			        AND earlier.scheduled_date <= ?
 			        AND earlier_order.id IS NULL
 			        AND (earlier.scheduled_date < schedule.scheduled_date
@@ -147,7 +149,7 @@ public class SubscriptionOrderAutomationService {
 		}
 
 		Optional<Map<String, Object>> maybeSchedule = one(
-				"SELECT id,subscription_id,scheduled_date,status,effective_snapshot_id "
+				"SELECT id,subscription_id,scheduled_date,status,hold_reason,effective_snapshot_id "
 						+ "FROM subscription_schedules WHERE id=? FOR UPDATE",
 				candidate.scheduleId());
 		if (maybeSchedule.isEmpty()) {
@@ -156,7 +158,7 @@ public class SubscriptionOrderAutomationService {
 		Map<String, Object> schedule = maybeSchedule.get();
 		LocalDate scheduledDate = dateValue(schedule, "scheduled_date");
 		if (longValue(schedule, "subscription_id") != candidate.subscriptionId()
-				|| !"SCHEDULED".equals(schedule.get("status"))
+				|| !isDueStatus(schedule)
 				|| scheduledDate.isAfter(today)) {
 			return ProcessingOutcome.NO_OP;
 		}
@@ -204,39 +206,46 @@ public class SubscriptionOrderAutomationService {
 		if (items.isEmpty()) {
 			throw new IllegalStateException("Effective snapshot has no order items");
 		}
-
-		createCommonOrder(subscription, schedule, effectiveSnapshot, shipping, items);
-		long orderId;
-		try {
-			jdbc.update(
-					"INSERT INTO subscription_orders("
-							+ "member_id,subscription_id,schedule_id,effective_snapshot_id,"
-							+ "source_plan_version_id,scheduled_date,processed_at,package_total_krw,status"
-							+ ") VALUES (?,?,?,?,?,?,?,?,'CREATED')",
-					longValue(subscription, "member_id"),
-					candidate.subscriptionId(),
-					candidate.scheduleId(),
-					effectiveSnapshotId,
-					longValue(effectiveSnapshot, "source_plan_version_id"),
-					scheduledDate,
-					LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC),
-					longValue(effectiveSnapshot, "package_total_krw"));
-			orderId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		} catch (DuplicateKeyException duplicate) {
-			if (orderExists(candidate.scheduleId())) {
-				return ProcessingOutcome.NO_OP;
-			}
-			throw duplicate;
+		List<Map<String, Object>> addOns = jdbc.queryForList("""
+				SELECT addon.sku_id,addon.quantity,addon.unit_price_krw,sku.sku_code,sku.name AS sku_name,
+				       sku.status AS sku_status,product.name AS product_name,product.display_status,
+				       category.active AS category_active,brand.active AS brand_active
+				FROM subscription_schedule_addons addon JOIN skus sku ON sku.id=addon.sku_id
+				JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id
+				JOIN brands brand ON brand.id=product.brand_id
+				WHERE addon.schedule_id=? ORDER BY addon.sku_id FOR UPDATE""", candidate.scheduleId());
+		if (hasUnavailableStock(items, addOns)) {
+			hold(candidate.scheduleId(), "ORDER_STOCK_UNAVAILABLE");
+			return ProcessingOutcome.NO_OP;
 		}
+		if (addOns.stream().anyMatch(addon -> !"ACTIVE".equals(addon.get("sku_status")) || !"PUBLIC".equals(addon.get("display_status"))
+				|| !Boolean.TRUE.equals(addon.get("category_active")) || !Boolean.TRUE.equals(addon.get("brand_active")))) {
+			hold(candidate.scheduleId(), "ORDER_STOCK_UNAVAILABLE");
+			return ProcessingOutcome.NO_OP;
+		}
+
+		long orderId = createCommonOrder(subscription, schedule, effectiveSnapshot, shipping, items, addOns);
+		jdbc.update(
+				"INSERT INTO subscription_orders(member_id,subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,scheduled_date,processed_at,package_total_krw,status) VALUES (?,?,?,?,?,?,?,?,'CREATED')",
+				longValue(subscription, "member_id"), candidate.subscriptionId(), candidate.scheduleId(), effectiveSnapshotId,
+				longValue(effectiveSnapshot, "source_plan_version_id"), scheduledDate,
+				LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC), decimalValue(effectiveSnapshot, "package_total_krw").add(addOnTotal(addOns)));
+		long subscriptionOrderId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		for (Map<String, Object> item : items) {
 			jdbc.update(
 					"INSERT INTO subscription_order_items(order_id,sku_id,quantity) VALUES (?,?,?)",
-					orderId,
+					subscriptionOrderId,
 					longValue(item, "sku_id"),
 					intValue(item, "quantity"));
 		}
+		for (Map<String, Object> addon : addOns) {
+			jdbc.update("INSERT INTO subscription_order_addon_items(subscription_order_id,sku_id,quantity,unit_price_krw) VALUES (?,?,?,?)",
+					subscriptionOrderId, longValue(addon, "sku_id"), intValue(addon, "quantity"), decimalValue(addon, "unit_price_krw"));
+		}
+		jdbc.update("DELETE FROM subscription_schedule_addons WHERE schedule_id=?", candidate.scheduleId());
 
 		jdbc.update(UPDATE_SCHEDULE_EFFECTIVE_SQL, effectiveSnapshotId, candidate.scheduleId());
+		jdbc.update("DELETE FROM notifications WHERE type='SUBSCRIPTION_DELIVERY_REMINDER' AND reference_type='SCHEDULE' AND reference_id=?", candidate.scheduleId());
 		if (appliesPending) {
 			int promoted = jdbc.update(
 					"UPDATE subscriptions SET current_snapshot_id=?,delivery_cycle_weeks=? "
@@ -312,8 +321,9 @@ public class SubscriptionOrderAutomationService {
 			Map<String, Object> schedule,
 			Map<String, Object> effectiveSnapshot,
 			Map<String, Object> shipping,
-			List<Map<String, Object>> snapshotItems) {
-		BigDecimal total = BigDecimal.valueOf(longValue(effectiveSnapshot, "package_total_krw"));
+			List<Map<String, Object>> snapshotItems,
+			List<Map<String, Object>> addOns) {
+		BigDecimal total = decimalValue(effectiveSnapshot, "package_total_krw").add(addOnTotal(addOns));
 		String orderNumber = "SUB-" + UUID.randomUUID();
 		LocalDateTime timestamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 		jdbc.update("""
@@ -350,7 +360,41 @@ public class SubscriptionOrderAutomationService {
 					VALUES (?,?,'FULL',?,?,?,?,?,?)""", orderId, longValue(item, "sku_id"), item.get("sku_code"),
 					item.get("product_name"), item.get("sku_name"), unitPrice, quantity, unitPrice.multiply(BigDecimal.valueOf(quantity)));
 		}
+		for (Map<String, Object> addon : addOns) {
+			int quantity = intValue(addon, "quantity");
+			BigDecimal unitPrice = decimalValue(addon, "unit_price_krw");
+			reserveInventory(longValue(addon, "sku_id"), quantity, paymentId, timestamp);
+			jdbc.update("""
+					INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount)
+					VALUES (?,?,'FULL',?,?,?,?,?,?)""", orderId, longValue(addon, "sku_id"), addon.get("sku_code"), addon.get("product_name"), addon.get("sku_name"), unitPrice, quantity, unitPrice.multiply(BigDecimal.valueOf(quantity)));
+		}
 		return orderId;
+	}
+
+	private boolean hasUnavailableStock(List<Map<String, Object>> baseItems, List<Map<String, Object>> addOns) {
+		Map<Long, Integer> quantities = new java.util.TreeMap<>();
+		for (Map<String, Object> item : baseItems) quantities.merge(longValue(item, "sku_id"), intValue(item, "quantity"), Integer::sum);
+		for (Map<String, Object> addon : addOns) {
+			long skuId = longValue(addon, "sku_id");
+			if (quantities.containsKey(skuId)) throw new IllegalStateException("Base plan SKU conflicts with Add-on SKU");
+			quantities.put(skuId, intValue(addon, "quantity"));
+		}
+		for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
+			Integer available = jdbc.query("SELECT available_quantity FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? rs.getInt(1) : null, entry.getKey());
+			if (available == null || available < entry.getValue()) return true;
+		}
+		return false;
+	}
+
+	private BigDecimal addOnTotal(List<Map<String, Object>> addOns) {
+		return addOns.stream()
+				.map(addon -> decimalValue(addon, "unit_price_krw").multiply(BigDecimal.valueOf(intValue(addon, "quantity"))))
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	private static boolean isDueStatus(Map<String, Object> schedule) {
+		return "SCHEDULED".equals(schedule.get("status"))
+				|| ("HELD".equals(schedule.get("status")) && "ORDER_STOCK_UNAVAILABLE".equals(schedule.get("hold_reason")));
 	}
 
 	private void reserveInventory(long skuId, int quantity, long paymentId, LocalDateTime timestamp) {
@@ -371,7 +415,7 @@ public class SubscriptionOrderAutomationService {
 	}
 
 	private void hold(long scheduleId, String reason) {
-		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason=? WHERE id=? AND status='SCHEDULED'", reason, scheduleId);
+		jdbc.update("UPDATE subscription_schedules SET status='HELD',hold_reason=? WHERE id=? AND (status='SCHEDULED' OR (status='HELD' AND hold_reason='ORDER_STOCK_UNAVAILABLE'))", reason, scheduleId);
 	}
 
 	static LocalDate firstFutureDate(LocalDate scheduledDate, int deliveryCycleWeeks, LocalDate today) {
@@ -412,6 +456,11 @@ public class SubscriptionOrderAutomationService {
 
 	private static long longValue(Map<String, Object> row, String key) {
 		return ((Number) row.get(key)).longValue();
+	}
+
+	private static BigDecimal decimalValue(Map<String, Object> row, String key) {
+		Object value = row.get(key);
+		return value instanceof BigDecimal decimal ? decimal : new BigDecimal(value.toString());
 	}
 
 	private static int intValue(Map<String, Object> row, String key) {

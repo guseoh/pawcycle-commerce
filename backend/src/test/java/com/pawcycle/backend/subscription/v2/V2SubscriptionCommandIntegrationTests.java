@@ -113,7 +113,9 @@ class V2SubscriptionCommandIntegrationTests {
 		jdbc.update("DELETE c FROM subscription_order_context c JOIN subscriptions s ON s.id=c.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE FROM orders WHERE member_id=? AND source='SUBSCRIPTION'", memberId);
 		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE item FROM subscription_order_addon_items item JOIN subscription_orders orders ON orders.id=item.subscription_order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id=?", memberId);
+		jdbc.update("DELETE addon FROM subscription_schedule_addons addon JOIN subscription_schedules schedule ON schedule.id=addon.schedule_id JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE sc FROM subscription_schedules sc JOIN subscriptions s ON s.id=sc.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE si FROM subscription_snapshot_items si JOIN subscription_snapshots ss ON ss.id=si.snapshot_id JOIN subscriptions s ON s.id=ss.subscription_id WHERE s.member_id=?", memberId);
 		jdbc.update("DELETE sh FROM subscription_shipping_snapshots sh JOIN subscriptions s ON s.id=sh.subscription_id WHERE s.member_id=?", memberId);

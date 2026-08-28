@@ -178,6 +178,8 @@ public class AdminCatalogController {
 	void deleteOptionValue(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long productId,@PathVariable long groupId,@PathVariable long valueId) {catalogExpansionAdminService.deleteOptionValue(productId,groupId,valueId);audits.append(principal.memberId(),"CATALOG_OPTION_VALUE_DELETE","PRODUCT_OPTION_VALUE",valueId);}
 	@PutMapping("/products/{productId}/skus/{skuId}/option-values") @Transactional
 	AdminCatalogViews.SkuOptionValues setSkuOptionValues(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long productId,@PathVariable long skuId,@Valid @RequestBody AdminCatalogRequests.SkuOptionValues request) {AdminCatalogViews.SkuOptionValues values=catalogExpansionAdminService.setSkuOptionValues(productId,skuId,request);audits.append(principal.memberId(),"CATALOG_SKU_OPTION_VALUES_SET","SKU",skuId);return values;}
+	@GetMapping("/products/{productId}/skus/{skuId}/option-values")
+	AdminCatalogViews.SkuOptionValues skuOptionValues(@PathVariable long productId,@PathVariable long skuId){return catalogExpansionAdminService.skuOptionValues(productId,skuId);}
 
 	@GetMapping("/facets")
 	AdminCatalogViews.FacetDefinitionList facetDefinitions() { return catalogExpansionAdminService.facetDefinitions(); }
@@ -201,6 +203,10 @@ public class AdminCatalogController {
 	void removeCategoryFacet(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long categoryId,@PathVariable long definitionId) {catalogExpansionAdminService.removeCategoryFacet(categoryId,definitionId);audits.append(principal.memberId(),"CATALOG_CATEGORY_FACET_DELETE","CATEGORY",categoryId);}
 	@PutMapping("/products/{productId}/facet-values") @Transactional
 	AdminCatalogViews.ProductFacetValues setProductFacetValues(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long productId,@Valid @RequestBody AdminCatalogRequests.ProductFacetValues request) {AdminCatalogViews.ProductFacetValues values=catalogExpansionAdminService.setProductFacetValues(productId,request);audits.append(principal.memberId(),"CATALOG_PRODUCT_FACET_VALUES_SET","PRODUCT",productId);return values;}
+	@GetMapping("/products/{productId}/facet-values")
+	AdminCatalogViews.ProductFacetValues productFacetValues(@PathVariable long productId){return catalogExpansionAdminService.productFacetValues(productId);}
+	@GetMapping("/categories/{categoryId}/facets")
+	AdminCatalogViews.CategoryFacetList categoryFacets(@PathVariable long categoryId){return catalogExpansionAdminService.categoryFacets(categoryId);}
 
 	@GetMapping("/products/{productId}/detail-sections")
 	AdminCatalogViews.DetailSectionList detailSections(@PathVariable Long productId) {

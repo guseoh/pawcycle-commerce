@@ -40,6 +40,10 @@ public class V2SubscriptionController {
 		return service.pet(principal.memberId(), petId);
 	}
 
+	@org.springframework.web.bind.annotation.PatchMapping("/pets/{petId}")
+	Map<String, Object> updatePet(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long petId,
+			@RequestBody Map<String, Object> body) { return service.updatePet(principal.memberId(), petId, body); }
+
 	@GetMapping("/subscription-plans")
 	Map<String, Object> plans(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @RequestParam long petId,
 			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {

@@ -27,6 +27,7 @@ public final class AdminCatalogViews {
 	public record FacetDefinition(Long facetDefinitionId, String key, String name, List<FacetOption> options) {}
 	public record FacetOption(Long facetOptionId, Long facetDefinitionId, String value, int displayOrder) {}
 	public record CategoryFacet(Long categoryId, Long facetDefinitionId, int displayOrder) {}
+	public record CategoryFacetList(Long categoryId, List<CategoryFacet> facets) {}
 	public record ProductFacetValues(Long productId, List<Long> facetOptionIds) {}
 
 	public record ProductList(List<Product> products) {
