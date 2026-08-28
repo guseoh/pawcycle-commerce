@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
 import { formatPetType, formatPrice, buildLoginHref } from "@/lib/frontend-utils";
 import { newIdempotencyKey, v2Api, type Pet, type PlanVersion } from "@/lib/v2-api";
+import { parseSubscriptionStartQuery, subscriptionStartQueryKey } from "@/lib/subscription-start-query";
 
 type LoadState = "idle" | "loading" | "error";
 
@@ -19,6 +20,7 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
   const searchParams = useSearchParams();
   const productContext = searchParams.get("productId");
   const skuContext = searchParams.get("skuId");
+  const startQuery = parseSubscriptionStartQuery(new URLSearchParams(searchParams.toString()));
   const contextHref = `${basePath}/new${productContext ? `?productId=${encodeURIComponent(productContext)}${skuContext ? `&skuId=${encodeURIComponent(skuContext)}` : ""}` : ""}`;
   const auth = useAuth();
   const [pets, setPets] = useState<Pet[] | null>(null);
@@ -33,10 +35,14 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
   const [petSubmitting, setPetSubmitting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [prefillMessage, setPrefillMessage] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [planRetryKey, setPlanRetryKey] = useState(0);
   const createKeyRef = useRef<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const prefillAttempt = useRef(false);
+  const prefillKeyRef = useRef<string | undefined>(undefined);
+  const prefillKey = subscriptionStartQueryKey(startQuery);
 
   const loadPets = useCallback(() => {
     setState("loading");
@@ -61,6 +67,26 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
   }, [auth.status, contextHref, loadPets, router, retryKey]);
 
   useEffect(() => {
+    if (prefillKeyRef.current === prefillKey) return;
+    prefillKeyRef.current = prefillKey;
+    prefillAttempt.current = false;
+    setSelectedPetId(null);
+    setSelectedPlan(null);
+    setCycle(null);
+    setPrefillMessage(null);
+  }, [prefillKey]);
+
+  useEffect(() => {
+    if (!pets || prefillAttempt.current || startQuery.petId === null) return;
+    prefillAttempt.current = true;
+    const timer = window.setTimeout(() => {
+      if (pets.some((pet) => pet.petId === startQuery.petId)) setSelectedPetId(startQuery.petId);
+      else setPrefillMessage("주문에서 이어온 반려동물을 확인할 수 없어 기존 선택 방식으로 진행합니다.");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pets, startQuery.petId]);
+
+  useEffect(() => {
     let active = true;
     queueMicrotask(() => {
       if (selectedPetId === null) { if (active) { setPlans(null); setSelectedPlan(null); setCycle(null); } return; }
@@ -71,6 +97,33 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
     });
     return () => { active = false; };
   }, [selectedPetId, planRetryKey]);
+
+  const selectPlan = useCallback(async (plan: PlanVersion, preferredCycle: number | null = null) => {
+    if (selectedPetId === null) return;
+    setMessage(null);
+    try {
+      const response = await v2Api.plans.detail(plan.planVersionId, selectedPetId);
+      setSelectedPlan(response.body);
+      setCycle(preferredCycle !== null && response.body.allowedDeliveryCycleWeeks.includes(preferredCycle) ? preferredCycle : response.body.allowedDeliveryCycleWeeks[0] ?? null);
+      resetCreateKey();
+    } catch (error) {
+      setMessage(error instanceof ApiError ? error.message : "플랜 상세를 불러오지 못했습니다.");
+      requestAnimationFrame(() => errorRef.current?.focus());
+    }
+  }, [selectedPetId]);
+
+  useEffect(() => {
+    if (!plans || selectedPetId !== startQuery.petId || startQuery.planVersionId === null || selectedPlan || prefillAttempt.current === false) return;
+    const plan = plans.find((candidate) => candidate.planVersionId === startQuery.planVersionId);
+    const timer = window.setTimeout(() => {
+      if (!plan || (startQuery.deliveryCycleWeeks !== null && !plan.allowedDeliveryCycleWeeks.includes(startQuery.deliveryCycleWeeks))) {
+        setPrefillMessage("주문에서 이어온 플랜 또는 배송 주기를 확인할 수 없어 직접 선택해 주세요.");
+        return;
+      }
+      void selectPlan(plan, startQuery.deliveryCycleWeeks);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [plans, selectPlan, selectedPetId, selectedPlan, startQuery.deliveryCycleWeeks, startQuery.petId, startQuery.planVersionId]);
 
   const selectedPet = useMemo(() => pets?.find((pet) => pet.petId === selectedPetId) ?? null, [pets, selectedPetId]);
 
@@ -93,20 +146,6 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
       setMessage(error instanceof ApiError ? error.message : "반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도할 수 있습니다.");
       focusError();
     } finally { setPetSubmitting(false); }
-  }
-
-  async function selectPlan(plan: PlanVersion) {
-    if (selectedPetId === null) return;
-    setMessage(null);
-    try {
-      const response = await v2Api.plans.detail(plan.planVersionId, selectedPetId);
-      setSelectedPlan(response.body);
-      setCycle(response.body.allowedDeliveryCycleWeeks[0] ?? null);
-      resetCreateKey();
-    } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : "플랜 상세를 불러오지 못했습니다.");
-      focusError();
-    }
   }
 
   async function createSubscription(event: FormEvent<HTMLFormElement>) {
@@ -136,7 +175,7 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
   if (state === "error") return <ErrorState title="반려동물 목록을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => setRetryKey((key) => key + 1)} />;
 
   return <div className="detail-stack">
-    <header className="page-heading"><h1>반려동물과 플랜 선택</h1><p>판매 중인 호환 플랜과 서버가 제공한 배송 주기만 선택할 수 있습니다.</p>{productContext ? <p className="field-help">상품 상세에서 선택한 {skuContext ? "옵션으로 " : "상품으로 "}이어서 선택 중입니다.</p> : null}</header>
+    <header className="page-heading"><h1>반려동물과 플랜 선택</h1><p>판매 중인 호환 플랜과 서버가 제공한 배송 주기만 선택할 수 있습니다.</p>{productContext ? <p className="field-help">상품 상세에서 선택한 {skuContext ? "옵션으로 " : "상품으로 "}이어서 선택 중입니다.</p> : null}{startQuery.fromOrderId ? <p className="field-help">주문 #{startQuery.fromOrderId}에서 이어진 추천 플랜입니다. 현재 판매 정보로 다시 확인합니다.</p> : null}{prefillMessage ? <p className="field-help" role="status">{prefillMessage}</p> : null}</header>
     {message ? <div className="error-summary" ref={errorRef} tabIndex={-1} role="alert"><h2>확인이 필요합니다.</h2><p>{message}</p></div> : null}
     <section className="section-card" aria-labelledby="pet-select-title">
       <h2 id="pet-select-title">1. 반려동물 선택</h2>

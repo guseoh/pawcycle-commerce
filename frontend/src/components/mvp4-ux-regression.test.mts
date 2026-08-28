@@ -122,11 +122,10 @@ test("주문 상세는 서버 after-sales projection을 새로고침 후에도 �
 
 test("관련 상품은 상세 조회와 독립된 loading·retry 상태를 사용한다", () => {
   const productSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
-  assert.match(productSource, /const \[relatedRetry, setRelatedRetry\]/);
-  assert.match(productSource, /const \[relatedLoading, setRelatedLoading\]/);
-  assert.match(productSource, /onRetry=\{\(\) => setRelatedRetry/);
-  assert.match(productSource, /relatedLoading \? <section/);
-  assert.match(productSource, /같은 카테고리의 다른 상품이 아직 없습니다/);
+  assert.match(productSource, /kind: "related"/);
+  assert.match(productSource, /kind: "complementary"/);
+  assert.match(productSource, /RecommendationSection/);
+  assert.match(productSource, /PRODUCT_VIEW/);
 });
 
 test("Root layout은 공통 Footer를 연결한다", () => {
@@ -151,15 +150,15 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(homeSource, /function HomeProductPreview/);
   assert.match(homeSource, /function SubscriptionValue/);
   assert.doesNotMatch(homeSource, /function QuickActions/);
-  assert.match(homeSource, /recommendationApi\.products/);
+  assert.match(homeSource, /kind: "personalized"/);
+  assert.match(homeSource, /RecommendationSection/);
   assert.match(homeSource, /v2Api\.pets\.list/);
   assert.match(homeSource, /auth\.status === "loading"/);
   assert.match(homeSource, /auth\.status === "anonymous"/);
   assert.match(homeSource, /auth\.status === "authenticated"/);
   assert.match(homeSource, /auth\.status === "error"/);
-  assert.match(homeSource, /recommendationLoading/);
   assert.match(homeSource, /aria-describedby="recommendation-help"/);
-  assert.match(homeSource, /alt=\{`\$\{item\.name\} 상품 이미지`\}/);
+  assert.match(readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8"), /alt=\{`\$\{name\} 상품 이미지`\}/);
   assert.match(globalStylesSource, /@media \(max-width: 767px\)/);
   assert.match(globalStylesSource, /@media \(max-width: 380px\)/);
   assert.match(globalStylesSource, /:focus-visible/);

@@ -6,22 +6,8 @@ import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { commerceFinalApi, type Notification } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref, formatDateTime } from "@/lib/frontend-utils";
-
-function notificationCopy(item: Notification): string {
-  return {
-    ORDER_PAID: "주문 결제가 완료됐어요.",
-    ORDER_SHIPPED: "주문 상품이 배송을 시작했어요.",
-    ORDER_DELIVERED: "주문 상품이 배송 완료됐어요.",
-    SUBSCRIPTION_HELD: "정기배송 처리가 잠시 보류됐어요.",
-  }[item.type] ?? "주문과 정기배송에 새로운 소식이 있어요.";
-}
-
-function notificationHref(item: Notification): string {
-  if (item.referenceType === "ORDER") return `/orders/${item.referenceId}`;
-  if (item.referenceType === "SUBSCRIPTION") return `/subscriptions/${item.referenceId}`;
-  return "/orders";
-}
+import { buildLoginHref, formatDateTime, formatIsoLocalDate } from "@/lib/frontend-utils";
+import { notificationCopy, notificationHref } from "@/lib/notification-routing";
 
 export function NotificationScreen() {
   const auth = useAuth();
@@ -87,5 +73,5 @@ export function NotificationScreen() {
   if (!items) return <ErrorState title="알림을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()} />;
 
   const unreadCount = items.filter((item) => !item.readAt).length;
-  return <section className="section-card notification-panel"><div className="section-title"><div><p className="eyebrow">Notifications</p><h1>알림</h1><p>주문과 정기배송 소식을 관련 화면에서 바로 확인하세요.</p></div><span className="count-badge">새 알림 {unreadCount}</span></div>{message ? <p className="error-summary" role="alert">{message}</p> : null}<button className="button button-secondary" disabled={pending !== null || unreadCount === 0} onClick={() => void readAll()}>모두 읽음</button>{items.length === 0 ? <div className="empty-callout"><strong>새 알림이 없습니다.</strong><span>주문과 정기배송 상태가 바뀌면 이곳에서 알려드릴게요.</span></div> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}><div><Link href={notificationHref(item)}><strong>{notificationCopy(item)}</strong></Link><span>{formatDateTime(item.createdAt)}</span></div><span className={item.readAt ? "status-badge" : "status-badge tag-positive"}>{item.readAt ? "읽음" : "새 알림"}</span>{!item.readAt ? <button className="button button-secondary" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : <Link className="button button-secondary" href={notificationHref(item)}>관련 화면</Link>}</li>)}</ul>}</section>;
+  return <section className="section-card notification-panel"><div className="section-title"><div><p className="eyebrow">Notifications</p><h1>알림</h1><p>주문과 정기배송 소식을 관련 화면에서 바로 확인하세요.</p></div><span className="count-badge">새 알림 {unreadCount}</span></div>{message ? <p className="error-summary" role="alert">{message}</p> : null}<button className="button button-secondary" disabled={pending !== null || unreadCount === 0} onClick={() => void readAll()}>모두 읽음</button>{items.length === 0 ? <div className="empty-callout"><strong>새 알림이 없습니다.</strong><span>주문과 정기배송 상태가 바뀌면 이곳에서 알려드릴게요.</span></div> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}><div><Link href={notificationHref(item)}><strong>{notificationCopy(item)}</strong></Link>{item.type === "SUBSCRIPTION_DELIVERY_REMINDER" && item.scheduledDate ? <span>예정일 {formatIsoLocalDate(item.scheduledDate)}</span> : null}<span>{formatDateTime(item.createdAt)}</span></div><span className={item.readAt ? "status-badge" : "status-badge tag-positive"}>{item.readAt ? "읽음" : "새 알림"}</span>{!item.readAt ? <button className="button button-secondary" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : <Link className="button button-secondary" href={notificationHref(item)}>관련 화면</Link>}</li>)}</ul>}</section>;
 }

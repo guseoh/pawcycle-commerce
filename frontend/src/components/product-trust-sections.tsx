@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { ApiError, productApi, type EngagementPage, type ProductQuestion, type ProductReview, type ProductTrust } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime } from "@/lib/frontend-utils";
+import { finalProductApi, type ReviewSummary } from "@/lib/final-product-api";
+import { isLatestRequest } from "@/lib/request-generation";
 
 interface ProductTrustSectionsProps {
   productId: string;
@@ -90,6 +92,11 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
   const [reviewMutation, setReviewMutation] = useState(false);
   const [reviewMutationError, setReviewMutationError] = useState<string | null>(null);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [reviewSummaryStatus, setReviewSummaryStatus] = useState<LoadStatus>("loading");
+  const [reviewSummaryError, setReviewSummaryError] = useState<string | null>(null);
+  const [reviewSummaryRetry, setReviewSummaryRetry] = useState(0);
+  const reviewSummaryRequestGeneration = useRef(0);
   const [questions, setQuestions] = useState<EngagementPage<ProductQuestion> | null>(null);
   const [questionPage, setQuestionPage] = useState(0);
   const [questionStatus, setQuestionStatus] = useState<LoadStatus>("loading");
@@ -175,6 +182,24 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     }
   }, [auth, productId]);
 
+  const loadReviewSummary = useCallback(async () => {
+    const generation = reviewSummaryRequestGeneration.current + 1;
+    reviewSummaryRequestGeneration.current = generation;
+    setReviewSummaryStatus("loading");
+    setReviewSummaryError(null);
+    try {
+      const summary = await finalProductApi.reviewSummary(productId);
+      if (!isLatestRequest(generation, reviewSummaryRequestGeneration.current)) return;
+      setReviewSummary(summary);
+      setReviewSummaryStatus("ready");
+    } catch (error) {
+      if (!isLatestRequest(generation, reviewSummaryRequestGeneration.current)) return;
+      setReviewSummary(null);
+      setReviewSummaryStatus("error");
+      setReviewSummaryError(error instanceof ApiError ? error.message : "리뷰 요약을 불러오지 못했습니다.");
+    }
+  }, [productId]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadReviews(reviewPage); }, 0);
     return () => window.clearTimeout(timer);
@@ -187,6 +212,10 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     const timer = window.setTimeout(() => { void loadMyReview(); }, 0);
     return () => window.clearTimeout(timer);
   }, [loadMyReview]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadReviewSummary(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadReviewSummary, reviewSummaryRetry]);
 
   async function refreshReviewData(): Promise<boolean> {
     const [reviewsFresh, myReviewFresh, trustFresh] = await Promise.all([
@@ -217,6 +246,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       setReviewContent(saved.content);
       setMyReviewStatus("ready");
       setReviewMessage(updating ? "리뷰를 수정했습니다." : "리뷰를 작성했습니다.");
+      void loadReviewSummary();
       if (!(await refreshReviewData())) {
         setReviewMutationError("리뷰 저장은 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
       }
@@ -240,6 +270,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       setReviewContent("");
       setMyReviewStatus("empty");
       setReviewMessage("리뷰를 삭제했습니다.");
+      void loadReviewSummary();
       if (!(await refreshReviewData())) {
         setReviewMutationError("리뷰 삭제는 완료됐지만 최신 정보를 모두 불러오지 못했습니다. 다시 불러와 확인해 주세요.");
       }
@@ -293,6 +324,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
 
     <section className="section-card product-engagement-section" aria-labelledby="product-reviews-title">
       <div className="section-title"><div><p className="eyebrow">Reviews</p><h2 id="product-reviews-title">리뷰</h2></div><span className="count-badge">{trust.reviewCount}</span></div>
+      <ReviewSummaryPanel summary={reviewSummary} status={reviewSummaryStatus} error={reviewSummaryError} onRetry={() => setReviewSummaryRetry((value) => value + 1)} />
       {reviewStatus === "loading" ? <p className="field-help" role="status">리뷰를 불러오고 있습니다.</p> : reviewStatus === "error" ? <div className="error-summary" role="alert"><p>{reviewError}</p><button className="button button-secondary" type="button" onClick={() => void loadReviews(reviewPage)}>다시 시도</button></div> : reviews?.items.length ? <ul className="engagement-list">{reviews.items.map((review) => <li key={review.reviewId}><div className="engagement-list-heading"><strong>{review.rating}점</strong><time dateTime={review.createdAt}>{formatDateTime(review.createdAt)}</time></div><p className="description">{review.content}</p></li>)}</ul> : <div className="empty-callout">아직 공개된 리뷰가 없습니다.</div>}
       <PageControls page={reviewPage} totalPages={reviewPages} onChange={setReviewPage} />
       {auth.status === "authenticated" ? <div className="product-engagement-form-wrap">
@@ -309,4 +341,12 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       {auth.status === "authenticated" ? <form className="product-engagement-form-wrap product-engagement-form" onSubmit={submitQuestion}><h3>상품 문의 작성</h3><label className="form-field" htmlFor="product-question-content"><span className="field-label">문의 내용</span><textarea id="product-question-content" className="input textarea" maxLength={10000} value={questionContent} onChange={(event) => { setQuestionContent(event.target.value); setQuestionMutationError(null); }} disabled={questionMutation} /></label>{questionMutationError ? <p className="field-error" role="alert">{questionMutationError}</p> : null}<div className="button-row"><button className="button button-primary" type="submit" disabled={questionMutation || !questionContent.trim()}>{questionMutation ? "등록 중" : "문의 등록"}</button></div>{questionMessage ? <p className="notice-success" role="status">{questionMessage}</p> : null}</form> : <p className="field-help">상품 문의를 작성하려면 <Link href={buildLoginHref(`/products/${productId}`)}>로그인</Link>해 주세요.</p>}
     </section>
   </div>;
+}
+
+function ReviewSummaryPanel({ summary, status, error, onRetry }: { summary: ReviewSummary | null; status: LoadStatus; error: string | null; onRetry: () => void }) {
+  if (status === "loading") return <p className="field-help" role="status">리뷰 요약을 준비하고 있습니다.</p>;
+  if (status === "error" || summary?.status === "UNAVAILABLE") return <div className="review-summary-neutral"><strong>리뷰 요약을 준비하지 못했어요.</strong><span>실제 리뷰를 확인해 주세요.</span>{error ? <button className="button button-secondary" type="button" onClick={onRetry}>요약 다시 시도</button> : null}</div>;
+  if (summary?.status === "INSUFFICIENT_REVIEWS") return <div className="review-summary-neutral">리뷰가 더 모이면 한눈에 요약해 드려요.</div>;
+  if (!summary?.summary) return null;
+  return <aside className="review-summary" aria-labelledby="review-summary-title"><p className="eyebrow">Review summary</p><h3 id="review-summary-title">리뷰 한눈에 보기</h3><p>{summary.summary}</p><div className="review-summary-facts"><span>평균 {summary.averageRating === null ? "-" : `${summary.averageRating} / 5`}</span><span>리뷰 {summary.reviewCount}개</span></div></aside>;
 }

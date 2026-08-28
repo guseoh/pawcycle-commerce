@@ -56,6 +56,20 @@ test("PUT option and Facet assignments use only backend contract fields", async 
   } finally { mock.restore(); }
 });
 
+test("Admin assignment editors can read current state before replacing it", async () => {
+  const mock = capture(Response.json({ categoryId: 5, facets: [] }));
+  try {
+    await api.skus(3).optionAssignment(4);
+    await api.categoryFacets(5);
+    await api.productFacetAssignment(3);
+    assert.deepEqual(mock.calls.map((call) => [call.path, call.method]), [
+      ["/api/admin/products/3/skus/4/option-values", "GET"],
+      ["/api/admin/categories/5/facets", "GET"],
+      ["/api/admin/products/3/facet-values", "GET"],
+    ]);
+  } finally { mock.restore(); }
+});
+
 test("Admin errors preserve 401, 403, CSRF and fieldErrors", async () => {
   for (const [status, code] of [[401, "AUTH_REQUIRED"], [403, "ACCESS_DENIED"], [403, "CSRF_INVALID"], [400, "VALIDATION_FAILED"]] as const) {
     const mock = capture(Response.json({ code, message: "요청 실패", fieldErrors: [{ field: "name", message: "필수 입력입니다." }] }, { status }));

@@ -11,6 +11,9 @@ export interface Pet {
   petId: number;
   name: string;
   petType: "DOG" | "CAT";
+  breed: string | null;
+  weightKg: number | null;
+  profileComplete: boolean;
 }
 
 export interface PlanItem { skuId: number; quantity: number }
@@ -55,17 +58,45 @@ export interface V2SubscriptionSummary {
 }
 
 export interface SubscriptionItemDetail { skuId?: number; skuName: string; productId?: number; productName: string; thumbnailUrl?: string | null; quantity: number }
+export interface SubscriptionAddon {
+  skuId: number;
+  productId: number;
+  productName: string;
+  skuName: string;
+  quantity: number;
+  unitPriceKrw: number;
+  lineAmountKrw: number;
+}
+export interface NextDelivery {
+  scheduleId: number;
+  scheduledDate: string;
+  status: string;
+  planVersionId: number;
+  packagePriceKrw: number;
+  deliveryCycleWeeks: number;
+  items: SubscriptionItemDetail[];
+  addOns: SubscriptionAddon[];
+  addOnTotalKrw: number;
+  orderTotalKrw: number;
+}
 export interface V2SubscriptionDetail extends V2SubscriptionSummary {
   pendingSnapshot: Snapshot | null;
   schedules: Page<Schedule>;
   commandHistory: Page<CommandHistory>;
-  nextDelivery?: { scheduledDate: string; status: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: SubscriptionItemDetail[] } | null;
+  nextDelivery?: NextDelivery | null;
   pendingChange?: { appliesOn: string; planVersionId: number; packagePriceKrw: number; deliveryCycleWeeks: number; items: SubscriptionItemDetail[] } | null;
   issue?: { code: "SHIPPING_ADDRESS_REQUIRED" | "BILLING_METHOD_REQUIRED" | "PAYMENT_SUPPORT_REQUIRED" | "STOCK_UNAVAILABLE"; message: string } | null;
   availableActions?: string[];
 }
 
 export interface V2Response<T> { body: T; etag: string | null; location: string | null; replayed: boolean }
+export interface CycleSuggestionResponse {
+  subscriptionId: number;
+  currentDeliveryCycleWeeks: number;
+  medianSuccessfulIntervalWeeks: number;
+  allowedDeliveryCycleWeeks: number[];
+  suggestion: null | { deliveryCycleWeeks: number };
+}
 
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
   if (!value || typeof value !== "object") return false;
@@ -117,6 +148,9 @@ export const v2Api = {
     create: (request: Pick<Pet, "name" | "petType">, csrfToken: string) => requestV2<Pet>("/api/v2/pets", {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken }, body: JSON.stringify(request),
     }),
+    patch: (petId: number, request: Partial<Pick<Pet, "name" | "breed" | "weightKg">>, csrfToken: string) => requestV2<Pet>(`/api/v2/pets/${encodeURIComponent(petId)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken }, body: JSON.stringify(request),
+    }),
   },
   plans: {
     list: (petId: number, page = 0, size = 20) => requestV2<Page<PlanVersion>>(`/api/v2/subscription-plans${query({ petId, page, size })}`),
@@ -128,7 +162,8 @@ export const v2Api = {
     create: (request: { petId: number; planVersionId: number; deliveryCycleWeeks: number }, csrfToken: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>("/api/v2/subscriptions", {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken, "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request),
     }),
-    command: (id: number, command: "change-plan" | "change-delivery-cycle" | "reschedule-next" | "skip-next" | "pause" | "resume" | "cancel", request: Record<string, unknown>, csrfToken: string, etag: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>(`/api/v2/subscriptions/${encodeURIComponent(id)}/commands/${command}`, {
+    cycleSuggestion: (id: number | string) => requestV2<CycleSuggestionResponse>(`/api/v2/subscriptions/${encodeURIComponent(id)}/cycle-suggestion`),
+    command: (id: number, command: "change-plan" | "change-delivery-cycle" | "reschedule-next" | "skip-next" | "pause" | "resume" | "cancel" | "set-next-delivery-addon" | "remove-next-delivery-addon", request: Record<string, unknown>, csrfToken: string, etag: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>(`/api/v2/subscriptions/${encodeURIComponent(id)}/commands/${command}`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken, "If-Match": etag, "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request),
     }),
   },

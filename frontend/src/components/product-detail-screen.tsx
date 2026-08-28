@@ -9,10 +9,13 @@ import { ProductPurchasePanel, ProductPurchaseSheet } from "./product-purchase-p
 import { productQuantityError, selectProductSku, type OptionSelection } from "@/lib/product-selection";
 import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "@/lib/product-wishlist";
 import { ProductTrustSections } from "./product-trust-sections";
-import { ApiError, type ProductDetail, type ProductSummary, productApi } from "@/lib/api";
+import { ApiError, type ProductDetail, productApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { buildLoginHref, formatPetType, formatPrice, notifyCommerceChanged, rememberRecentProduct, userFacingCatalogLabel, type RecentProduct } from "@/lib/frontend-utils";
+import { createInteractionEvent, finalProductApi } from "@/lib/final-product-api";
+import { productRouteMatches } from "@/lib/product-view";
+import { RecommendationSection } from "./recommendation-section";
 
 type ProductState = { status: "loading" } | { status: "success"; product: ProductDetail } | { status: "not-found" } | { status: "error"; message: string };
 export const CANONICAL_SUBSCRIPTION_START_HREF = "/subscriptions/new";
@@ -21,7 +24,6 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const auth = useAuth();
   const [state, setState] = useState<ProductState>({ status: "loading" });
   const [retry, setRetry] = useState(0);
-  const [relatedRetry, setRelatedRetry] = useState(0);
   const [cartSkuId, setCartSkuId] = useState<number | null>(null);
   const [selection, setSelection] = useState<OptionSelection>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -36,18 +38,13 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
   const [recentProducts, setRecentProducts] = useState<RecentProduct[]>([]);
-  const [relatedProducts, setRelatedProducts] = useState<ProductSummary[] | null>(null);
-  const [relatedError, setRelatedError] = useState<string | null>(null);
-  const [relatedLoading, setRelatedLoading] = useState(false);
+  const viewedProduct = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
       setState({ status: "loading" });
-      setRelatedProducts(null);
-      setRelatedError(null);
-      setRelatedLoading(false);
       void productApi.detail(productId).then((product) => {
         if (!active) return;
         setState({ status: "success", product });
@@ -63,36 +60,14 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   }, [productId, retry]);
 
   const product = state.status === "success" ? state.product : null;
-  const relatedProductId = product?.productId ?? null;
-  const relatedCategorySlug = product?.category.slug ?? null;
-  const relatedPetType = product?.petType ?? null;
-
+  useEffect(() => { viewedProduct.current = null; }, [productId]);
   useEffect(() => {
-    let active = true;
-    const timer = window.setTimeout(() => {
-      if (!active) return;
-      if (relatedProductId === null || relatedCategorySlug === null || relatedPetType === null) {
-        setRelatedProducts(null);
-        setRelatedError(null);
-        setRelatedLoading(false);
-        return;
-      }
-      setRelatedProducts(null);
-      setRelatedError(null);
-      setRelatedLoading(true);
-      void productApi.list({ category: relatedCategorySlug, petType: relatedPetType, size: 5, sort: "NEWEST" }).then((response) => {
-        if (!active) return;
-        setRelatedProducts((response.items ?? response.products ?? []).filter((item) => item.productId !== relatedProductId).slice(0, 4));
-        setRelatedError(null);
-      }).catch((error: unknown) => {
-        if (!active) return;
-        setRelatedError(error instanceof ApiError ? error.message : "관련 상품을 불러오지 못했습니다.");
-      }).finally(() => {
-        if (active) setRelatedLoading(false);
-      });
-    }, 0);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [relatedCategorySlug, relatedPetType, relatedProductId, relatedRetry]);
+    if (state.status !== "success" || !productRouteMatches(productId, state.product.productId) || auth.status !== "authenticated" || viewedProduct.current === state.product.productId) return;
+    viewedProduct.current = state.product.productId;
+    const event = createInteractionEvent({ type: "PRODUCT_VIEW", productId: state.product.productId, source: "product-detail" });
+    if (!event) return;
+    void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send([event], csrf)).catch(() => undefined);
+  }, [auth, productId, state]);
 
   useEffect(() => {
     authRequest.current += 1;
@@ -197,7 +172,8 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
       <ProductTrustSections productId={productId} trust={product!.trust} onTrustRefresh={refreshProductTrust} />
     </div>
     {recentProducts.length ? <section className="section-card product-context-section" aria-labelledby="recent-products-title"><div className="section-title"><h2 id="recent-products-title">최근 본 상품</h2><Link className="text-link" href="/products">상품 더 보기</Link></div><div className="mini-product-grid">{recentProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={userFacingCatalogLabel(item.name, "반려동물 상품")} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{userFacingCatalogLabel(item.name, "반려동물 상품")}</strong>{item.price !== null ? <span>{formatPrice(item.price)}</span> : null}</Link>)}</div></section> : null}
-    {relatedLoading ? <section className="section-card"><LoadingState>관련 상품을 불러오고 있습니다.</LoadingState></section> : relatedError ? <section className="section-card"><ErrorState title="관련 상품을 불러오지 못했습니다." message={relatedError} onRetry={() => setRelatedRetry((value) => value + 1)} /></section> : relatedProducts?.length ? <section className="section-card product-context-section" aria-labelledby="related-products-title"><div className="section-title"><h2 id="related-products-title">함께 살펴보기</h2><span className="field-help">같은 카테고리의 공개 상품</span></div><div className="mini-product-grid">{relatedProducts.map((item) => { const relatedName = userFacingCatalogLabel(item.name, "반려동물 상품"); return <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={relatedName} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{relatedName}</strong><span>{item.representativePrice === null ? "가격 준비 중" : formatPrice(item.representativePrice)}</span></Link>; })}</div></section> : relatedProducts ? <section className="section-card"><div className="empty-callout">같은 카테고리의 다른 상품이 아직 없습니다.</div></section> : null}
+    <RecommendationSection key={`related-${product!.productId}`} id="related-products-title" title="비슷한 상품" description="이 상품과 함께 비교해 보기 좋은 상품이에요." source="product-related" request={{ kind: "related", productId: product!.productId }} />
+    <RecommendationSection key={`complementary-${product!.productId}`} id="complementary-products-title" title="함께 보기 좋은 상품" description="함께 살펴보면 좋은 상품을 모았어요." source="product-complementary" request={{ kind: "complementary", productId: product!.productId }} />
     <div className="mobile-purchase-bar"><div><span className="field-help">선택한 옵션</span><strong>{displayPrice === null ? "옵션 선택 필요" : formatPrice(displayPrice)}</strong></div><button className="button button-primary" onClick={() => setSheetOpen(true)}>{selectedSku ? "구매 옵션 보기" : "옵션 선택"}</button></div>
     {sheetOpen ? <ProductPurchaseSheet onClose={() => setSheetOpen(false)}>{purchasePanel("mobile-purchase")}</ProductPurchaseSheet> : null}
   </div>;
