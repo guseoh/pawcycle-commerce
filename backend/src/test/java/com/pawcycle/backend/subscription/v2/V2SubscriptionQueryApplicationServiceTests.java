@@ -49,7 +49,9 @@ class V2SubscriptionQueryApplicationServiceTests {
 		assertThat(addOn.get("lineAmountKrw")).isEqualTo(new BigDecimal("6001.10"));
 		assertThat(nextDelivery.get("addOnTotalKrw")).isEqualTo(new BigDecimal("6001.10"));
 		assertThat(nextDelivery.get("orderTotalKrw")).isEqualTo(new BigDecimal("26001.10"));
-		assertThat((List<?>) body.get("availableActions")).contains("SET_NEXT_DELIVERY_ADDON", "REMOVE_NEXT_DELIVERY_ADDON");
+		@SuppressWarnings("unchecked")
+		List<String> availableActions = (List<String>) body.get("availableActions");
+		assertThat(availableActions).contains("SET_NEXT_DELIVERY_ADDON", "REMOVE_NEXT_DELIVERY_ADDON");
 	}
 
 	@Test
@@ -75,7 +77,9 @@ class V2SubscriptionQueryApplicationServiceTests {
 
 		Map<String, Object> body = service.detailBody(10L, 1L, 0, 20, 0, 20);
 
-		assertThat((List<?>) body.get("availableActions")).containsExactly("REMOVE_NEXT_DELIVERY_ADDON", "CANCEL");
+		@SuppressWarnings("unchecked")
+		List<String> availableActions = (List<String>) body.get("availableActions");
+		assertThat(availableActions).containsExactly("REMOVE_NEXT_DELIVERY_ADDON", "CANCEL");
 		@SuppressWarnings("unchecked")
 		Map<String, Object> issue = (Map<String, Object>) body.get("issue");
 		assertThat(issue.get("code")).isEqualTo("STOCK_UNAVAILABLE");
