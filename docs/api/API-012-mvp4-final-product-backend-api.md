@@ -63,11 +63,11 @@ Pet 응답에는 기존 필드에 `breed`, `weightKg`, `profileComplete`를 추�
 - `POST /api/v2/subscriptions/{id}/commands/set-next-delivery-addon`
 - `POST /api/v2/subscriptions/{id}/commands/remove-next-delivery-addon`
 
-두 API 모두 기존 `Idempotency-Key`, `If-Match`, ETag, ownership masking, replay-before-stale 규칙을 적용한다. SET body는 `{ "skuId": 2001, "quantity": 2 }`, REMOVE body는 `{ "skuId": 2001 }`다. 수량은 1~10, 한 Schedule의 distinct Add-on SKU는 최대 10개다. 다음 `SCHEDULED` 또는 recoverable `HELD + ORDER_STOCK_UNAVAILABLE` Schedule에 적용하고, Product PUBLIC·Category/Brand active·SKU ACTIVE·현재 재고를 command 시점에 확인하지만 stock을 선점하지 않는다. `subscribable`은 요구하지 않는다.
+두 API 모두 기존 `Idempotency-Key`, `If-Match`, ETag, ownership masking, replay-before-stale 규칙을 적용한다. SET body는 `{ "skuId": 2001, "quantity": 2 }`, REMOVE body는 `{ "skuId": 2001 }`다. 수량은 1~10, 한 Schedule의 distinct Add-on SKU는 최대 10개다. SET은 다음 `SCHEDULED` Schedule에만 적용한다. REMOVE는 다음 `SCHEDULED` Schedule과 `ORDER_STOCK_UNAVAILABLE` 사유의 recoverable `HELD` Schedule에서 허용된다. 그 외 HELD 상태에서는 기존 상태 복구 또는 CANCEL만 허용한다. Product PUBLIC·Category/Brand active·SKU ACTIVE·현재 재고를 SET 시점에 확인하지만 stock을 선점하지 않는다. `subscribable`은 요구하지 않는다.
 
 SET 성공 시 현재 SKU 가격을 `unitPriceKrw`로 snapshot하고 같은 SKU 재호출은 수량과 가격 snapshot을 갱신한다. 금액은 SKU와 동일한 소수 금액을 보존하는 `BigDecimal`/DECIMAL(18,2)이며 자동 반올림·long 변환을 하지 않는다. 기본 effective Plan에 이미 포함된 SKU면 `409 ADDON_SKU_ALREADY_INCLUDED`, 이후 CHANGE_PLAN 대상에 충돌하면 `409 ADDON_CONFLICTS_WITH_PLAN`, limit 초과는 `409 ADDON_LIMIT_EXCEEDED`다. 없는 Add-on은 `404 ADDON_NOT_FOUND`, 현재 catalog/stock 불가 Add-on은 `409 ADDON_NOT_AVAILABLE`다.
 
-Subscription detail의 `nextDelivery`에 `addOns[]`, `addOnTotalKrw`, `orderTotalKrw`를 추가한다. Add-on 항목은 `skuId`, `productId`, `productName`, `skuName`, `quantity`, `unitPriceKrw`, `lineAmountKrw`를 제공하며 current/pending Snapshot에는 넣지 않는다. RESCHEDULE·PAUSE·RESUME·CHANGE_DELIVERY_CYCLE은 같은 Add-on을 보존하고, SKIP은 새 next Schedule로 이동하며, CANCEL은 미소비 Add-on을 삭제한다.
+Subscription detail의 `nextDelivery`에 `addOns[]`, `addOnTotalKrw`, `orderTotalKrw`를 추가한다. Add-on 항목은 `skuId`, `productId`, `productName`, `skuName`, `quantity`, `unitPriceKrw`, `lineAmountKrw`를 제공하며 current/pending Snapshot에는 넣지 않는다. `SCHEDULED` 상태의 `availableActions`에는 `SET_NEXT_DELIVERY_ADDON`을 노출하고 실제 Add-on이 있으면 `REMOVE_NEXT_DELIVERY_ADDON`도 노출한다. `ORDER_STOCK_UNAVAILABLE` HELD에서는 실제 Add-on이 있을 때 `REMOVE_NEXT_DELIVERY_ADDON`과 `CANCEL`만 노출한다. RESCHEDULE·PAUSE·RESUME·CHANGE_DELIVERY_CYCLE은 같은 Add-on을 보존하고, SKIP은 새 next Schedule로 이동하며, CANCEL은 미소비 Add-on을 삭제한다.
 
 Due automation은 base와 Add-on을 하나의 common Order·Billing Payment·Inventory reservation으로 처리한다. 어느 하나라도 due-time stock/catalog 검증에 실패하면 부분 주문을 만들지 않고 Schedule을 internal `ORDER_STOCK_UNAVAILABLE`로 `HELD` 처리한다. 이 HELD 상태는 다음 due processor가 재평가하며, 회복되면 정상 처리와 함께 HELD 이유를 지운다. `REMOVE_NEXT_DELIVERY_ADDON`은 이 recoverable HELD Schedule에서도 허용된다. User-facing issue는 `STOCK_UNAVAILABLE`로 매핑한다. 소비된 Add-on은 `subscription_order_addon_items`에 보존한다.
 
@@ -96,4 +96,4 @@ AI text는 Korean plain text, 최대 500 characters, HTML 금지, 질병·치료
 
 ## 공통 오류 및 운영 경계
 
-유효성 오류는 기존 `VALIDATION_FAILED` 형식을 따르고, ownership masking은 `404`로 유지한다. 이번 변경은 Flyway forward migration과 application code만 준비하며 Production migration, secret 입력, deploy, merge는 수행하지 않는다.
+유효성 오류는 기존 `VALIDATION_FAILED` 형식을 따르고, ownership masking은 `404`로 유지한다. 이번 변경은 Flyway forward migration과 application code만 준비하며 Production migration, secret 입력, deploy는 수행하지 않는다.

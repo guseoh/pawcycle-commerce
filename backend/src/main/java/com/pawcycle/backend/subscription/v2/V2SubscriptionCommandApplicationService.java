@@ -9,6 +9,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class V2SubscriptionCommandApplicationService {
+	private static final List<String> HELD_SCHEDULE_MUTATIONS = List.of(
+			"CHANGE_PLAN",
+			"CHANGE_DELIVERY_CYCLE",
+			"RESCHEDULE_NEXT",
+			"SKIP_NEXT",
+			"PAUSE",
+			"SET_NEXT_DELIVERY_ADDON");
+
 	private final V2SubscriptionJdbcStore store;
 	private final V2SubscriptionApplicationSupport support;
 	private final V2SubscriptionQueryApplicationService queries;
@@ -26,6 +34,7 @@ class V2SubscriptionCommandApplicationService {
 
 		long expected = support.parseEtag(ifMatch);
 		if (subscription.version() != expected) throw new V2ApiException(412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
+		rejectHeldScheduleMutation(subscription, normalized);
 		switch (normalized) {
 			case "CHANGE_PLAN" -> changePlan(memberId, subscription, body);
 			case "CHANGE_DELIVERY_CYCLE" -> changeDeliveryCycle(subscription, body);
@@ -44,6 +53,14 @@ class V2SubscriptionCommandApplicationService {
 		V2SubscriptionOperationResult result = new V2SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
 		store.updateCommandResponse(memberId, subscriptionId, normalized, key, result, support.bodyJson(response));
 		return result;
+	}
+
+	private void rejectHeldScheduleMutation(V2SubscriptionData.Subscription subscription, String command) {
+		if (!HELD_SCHEDULE_MUTATIONS.contains(command)) return;
+		boolean held = store.findNextDeliverySchedule(subscription.id())
+				.map(schedule -> "HELD".equals(schedule.status()))
+				.orElse(false);
+		if (held) throw support.state();
 	}
 
 	private V2SubscriptionOperationResult replay(long memberId, long subscriptionId, String command, String key, V2SubscriptionData.StoredIdempotencyResult stored, String fingerprint) { if (!fingerprint.equals(stored.fingerprint())) throw new V2ApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다."); Map<String, Object> body = support.responseBody(stored.bodyJson()); if (support.removeInternalSnapshotIds(body)) store.updateStoredCommandBody(memberId, subscriptionId, command, key, support.bodyJson(body)); return new V2SubscriptionOperationResult(stored.status(), body, stored.location(), stored.etag(), true); }

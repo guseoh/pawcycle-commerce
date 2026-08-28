@@ -18,6 +18,7 @@ import com.pawcycle.backend.member.infra.MemberRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +47,7 @@ class InteractionIntegrationTests {
 	@Autowired private ProductRepository products;
 	private MockMvc mockMvc;
 	private Member member;
+	private long categoryId;
 	private long productId;
 	private long petId;
 
@@ -54,11 +56,22 @@ class InteractionIntegrationTests {
 		mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
 		member = members.saveAndFlush(new Member("interaction-" + UUID.randomUUID() + "@example.test", "fixture-password"));
 		Category category = categories.saveAndFlush(new Category("interaction-" + UUID.randomUUID(), "interaction-" + UUID.randomUUID(), 0, true));
+		categoryId = category.getId();
 		Product product = new Product(category, "Interaction product", "fixture", null, "DOG", null);
 		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
 		productId = products.saveAndFlush(product).getId();
 		jdbc.update("INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", member.getId(), "반려동물", "DOG");
 		petId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+	}
+
+	@AfterEach
+	void cleanCommittedFixtures() {
+		if (member == null || TestTransaction.isActive()) return;
+		jdbc.update("DELETE FROM interaction_events WHERE member_id=?", member.getId());
+		jdbc.update("DELETE FROM pets WHERE member_id=?", member.getId());
+		jdbc.update("DELETE FROM products WHERE id=?", productId);
+		jdbc.update("DELETE FROM categories WHERE id=?", categoryId);
+		jdbc.update("DELETE FROM members WHERE id=?", member.getId());
 	}
 
 	@Test
@@ -89,10 +102,11 @@ class InteractionIntegrationTests {
 			Map.of("eventId", firstEvent, "type", "PRODUCT_VIEW", "productId", productId),
 			Map.of("eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW", "productId", Long.MAX_VALUE))));
 
+		TestTransaction.flagForCommit();
+		TestTransaction.end();
 		postEvents(body).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
 
-		TestTransaction.end();
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Integer.class, member.getId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=? AND event_id=?", Integer.class, member.getId(), firstEvent)).isZero();
 	}
 
 	@Test
