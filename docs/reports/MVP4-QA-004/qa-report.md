@@ -10,7 +10,7 @@
 - 실행 브랜치: `test/qa/MVP4-QA-004`
 - 실행 환경: `pawcycle-mvp4-final-qa` Compose project, disposable volume `pawcycle-mvp4-final-qa-mysql-data`
 - 브라우저: 실제 authenticated In-app Browser session, desktop `1440x900`, mobile `375x812`
-- QA Gate: `GREEN`
+- QA Gate: `GREEN` for the approved Browser QA scope; PR CI is `RED` and merge remains blocked by the Backend test finding below
 - 시나리오 수: 14
 - PASS: 14 / FAIL: 0 / BLOCKED: 0 / NOT_RUN: 0
 
@@ -47,10 +47,11 @@
 - active subscription 2건 유지, normal SCHEDULED 일정의 add-on 제거, HELD 일정의 재고 부족 및 add-on 보존
 - order→subscription 화면에서 실제 subscription 생성 없음, historical QA order 6건 보존
 - reminder의 schedule 및 `+2일` local date 연결
+- PR CI `Repository Validation` run `33220181352`는 Harness, Frontend, contract, convention 검사를 통과했으나 `Backend and MySQL validation`의 `Backend test`에서 `RecommendationServiceTests > aiReceivesOnlyPersonalizedTopNineWhenExplorationIsNeeded()` 단일 실패가 발생했다. `Application validation`은 이 결과를 집계해 실패했다.
 
 ## 결함 및 handoff
 
-이번 실행에서 재현 가능한 제품 결함은 발견되지 않았다. bug report 또는 제품 역할 handoff는 생성하지 않았다.
+Browser QA 범위에서 재현 가능한 제품 결함은 발견되지 않았다. 다만 PR CI에서 재현 가능한 Backend 테스트 실패가 확인되어 [MVP4-QA-004 Backend handoff](../../handoffs/MVP4-QA-004/recommendation-ci-failure.md)를 생성했다. 현재 Browser recommendation 흐름은 PASS였고, CI 로그만으로 product defect와 test expectation 문제를 확정할 수 없어 Backend 확인 전까지 merge를 권고하지 않는다.
 
 ## 위험·제한
 
