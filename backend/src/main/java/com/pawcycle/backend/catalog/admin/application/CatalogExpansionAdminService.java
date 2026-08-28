@@ -223,6 +223,13 @@ public class CatalogExpansionAdminService {
 	}
 
 	@Transactional(readOnly = true)
+	public AdminCatalogViews.SkuOptionValues skuOptionValues(long productId, long skuId) {
+		requireSku(productId, skuId);
+		List<Long> ids = jdbc.query("SELECT sov.option_value_id FROM sku_option_values sov JOIN product_option_values v ON v.id=sov.option_value_id JOIN product_option_groups g ON g.id=v.option_group_id WHERE sov.sku_id=? ORDER BY g.display_order,g.id,v.display_order,v.id", (rs,n)->rs.getLong(1), skuId);
+		return new AdminCatalogViews.SkuOptionValues(skuId, ids);
+	}
+
+	@Transactional(readOnly = true)
 	public AdminCatalogViews.FacetDefinitionList facetDefinitions() {
 		List<AdminCatalogViews.FacetDefinition> definitions = jdbc.query(
 				"SELECT id,`key`,name FROM facet_definitions ORDER BY id",
@@ -370,6 +377,20 @@ public class CatalogExpansionAdminService {
 		for (Long id : ids) jdbc.update("INSERT INTO product_facet_values(product_id,facet_option_id) VALUES (?,?)", productId, id);
 		cacheInvalidator.invalidateAfterCommit();
 		return new AdminCatalogViews.ProductFacetValues(productId, ids);
+	}
+
+	@Transactional(readOnly = true)
+	public AdminCatalogViews.ProductFacetValues productFacetValues(long productId) {
+		requireProduct(productId);
+		List<Long> ids = jdbc.query("SELECT pfv.facet_option_id FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id JOIN products p ON p.id=pfv.product_id LEFT JOIN category_facets cf ON cf.category_id=p.category_id AND cf.facet_definition_id=fd.id WHERE pfv.product_id=? ORDER BY cf.display_order IS NULL,cf.display_order,fd.id,fo.display_order,fo.id", (rs,n)->rs.getLong(1), productId);
+		return new AdminCatalogViews.ProductFacetValues(productId, ids);
+	}
+
+	@Transactional(readOnly = true)
+	public AdminCatalogViews.CategoryFacetList categoryFacets(long categoryId) {
+		requireCategory(categoryId);
+		List<AdminCatalogViews.CategoryFacet> facets = jdbc.query("SELECT category_id,facet_definition_id,display_order FROM category_facets WHERE category_id=? ORDER BY display_order,facet_definition_id", (rs,n)->new AdminCatalogViews.CategoryFacet(rs.getLong(1),rs.getLong(2),rs.getInt(3)), categoryId);
+		return new AdminCatalogViews.CategoryFacetList(categoryId, facets);
 	}
 
 	private AdminCatalogViews.Brand brand(long id, String name, String slug, String logo, boolean active, int order) {

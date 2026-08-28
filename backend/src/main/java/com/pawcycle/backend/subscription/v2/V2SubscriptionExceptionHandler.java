@@ -9,7 +9,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = V2SubscriptionController.class)
+@RestControllerAdvice(assignableTypes = {V2SubscriptionController.class, RepeatCommerceController.class})
 public class V2SubscriptionExceptionHandler {
 	@ExceptionHandler(V2ApiException.class)
 	ResponseEntity<ApiErrorResponse> v2(V2ApiException error) {

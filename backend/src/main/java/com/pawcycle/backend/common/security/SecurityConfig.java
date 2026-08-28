@@ -47,6 +47,8 @@ public class SecurityConfig {
 						.authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/categories", "/api/catalog/discovery", "/api/auth/csrf")
 						.permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/recommendations/popular", "/api/recommendations/trending", "/api/products/*/related", "/api/products/*/complementary")
+						.permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login")
 						.permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/logout")

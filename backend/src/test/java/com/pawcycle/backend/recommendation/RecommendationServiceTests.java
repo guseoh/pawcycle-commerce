@@ -85,7 +85,7 @@ class RecommendationServiceTests {
 	}
 
 	@Test
-	void aiReceivesAtMostTenCandidates() {
+	void aiReceivesOnlyPersonalizedTopNineWhenExplorationIsNeeded() {
 		when(repository.findOwnedPetType(10L, 1L)).thenReturn("DOG");
 		when(repository.subscriptionCategorySlugs(10L, 1L)).thenReturn(List.of());
 		when(repository.purchaseCategorySlugs(10L)).thenReturn(List.of());
@@ -101,7 +101,7 @@ class RecommendationServiceTests {
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<RecommendationCandidate>> captor = ArgumentCaptor.forClass(List.class);
 		verify(ai).recommend(captor.capture(), anyList());
-		assertThat(captor.getValue()).hasSize(10);
+		assertThat(captor.getValue()).hasSize(9);
 	}
 
 	@Test

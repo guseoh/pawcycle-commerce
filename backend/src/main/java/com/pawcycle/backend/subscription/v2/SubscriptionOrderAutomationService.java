@@ -204,30 +204,31 @@ public class SubscriptionOrderAutomationService {
 		if (items.isEmpty()) {
 			throw new IllegalStateException("Effective snapshot has no order items");
 		}
-
-		createCommonOrder(subscription, schedule, effectiveSnapshot, shipping, items);
-		long orderId;
-		try {
-			jdbc.update(
-					"INSERT INTO subscription_orders("
-							+ "member_id,subscription_id,schedule_id,effective_snapshot_id,"
-							+ "source_plan_version_id,scheduled_date,processed_at,package_total_krw,status"
-							+ ") VALUES (?,?,?,?,?,?,?,?,'CREATED')",
-					longValue(subscription, "member_id"),
-					candidate.subscriptionId(),
-					candidate.scheduleId(),
-					effectiveSnapshotId,
-					longValue(effectiveSnapshot, "source_plan_version_id"),
-					scheduledDate,
-					LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC),
-					longValue(effectiveSnapshot, "package_total_krw"));
-			orderId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		} catch (DuplicateKeyException duplicate) {
-			if (orderExists(candidate.scheduleId())) {
-				return ProcessingOutcome.NO_OP;
-			}
-			throw duplicate;
+		List<Map<String, Object>> addOns = jdbc.queryForList("""
+				SELECT addon.sku_id,addon.quantity,addon.unit_price_krw,sku.sku_code,sku.name AS sku_name,
+				       sku.status AS sku_status,product.name AS product_name,product.display_status,
+				       category.active AS category_active,brand.active AS brand_active
+				FROM subscription_schedule_addons addon JOIN skus sku ON sku.id=addon.sku_id
+				JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id
+				JOIN brands brand ON brand.id=product.brand_id
+				WHERE addon.schedule_id=? ORDER BY addon.sku_id FOR UPDATE""", candidate.scheduleId());
+		if (hasUnavailableStock(items, addOns)) {
+			hold(candidate.scheduleId(), "ORDER_STOCK_UNAVAILABLE");
+			return ProcessingOutcome.NO_OP;
 		}
+		if (addOns.stream().anyMatch(addon -> !"ACTIVE".equals(addon.get("sku_status")) || !"PUBLIC".equals(addon.get("display_status"))
+				|| !Boolean.TRUE.equals(addon.get("category_active")) || !Boolean.TRUE.equals(addon.get("brand_active")))) {
+			hold(candidate.scheduleId(), "ORDER_STOCK_UNAVAILABLE");
+			return ProcessingOutcome.NO_OP;
+		}
+
+		long orderId = createCommonOrder(subscription, schedule, effectiveSnapshot, shipping, items, addOns);
+		jdbc.update(
+				"INSERT INTO subscription_orders(member_id,subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,scheduled_date,processed_at,package_total_krw,status) VALUES (?,?,?,?,?,?,?,?,'CREATED')",
+				longValue(subscription, "member_id"), candidate.subscriptionId(), candidate.scheduleId(), effectiveSnapshotId,
+				longValue(effectiveSnapshot, "source_plan_version_id"), scheduledDate,
+				LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC), longValue(effectiveSnapshot, "package_total_krw") + addOnTotal(addOns));
+		long subscriptionOrderId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		for (Map<String, Object> item : items) {
 			jdbc.update(
 					"INSERT INTO subscription_order_items(order_id,sku_id,quantity) VALUES (?,?,?)",
@@ -235,6 +236,11 @@ public class SubscriptionOrderAutomationService {
 					longValue(item, "sku_id"),
 					intValue(item, "quantity"));
 		}
+		for (Map<String, Object> addon : addOns) {
+			jdbc.update("INSERT INTO subscription_order_addon_items(subscription_order_id,sku_id,quantity,unit_price_krw) VALUES (?,?,?,?)",
+					subscriptionOrderId, longValue(addon, "sku_id"), intValue(addon, "quantity"), longValue(addon, "unit_price_krw"));
+		}
+		jdbc.update("DELETE FROM subscription_schedule_addons WHERE schedule_id=?", candidate.scheduleId());
 
 		jdbc.update(UPDATE_SCHEDULE_EFFECTIVE_SQL, effectiveSnapshotId, candidate.scheduleId());
 		if (appliesPending) {
@@ -312,8 +318,9 @@ public class SubscriptionOrderAutomationService {
 			Map<String, Object> schedule,
 			Map<String, Object> effectiveSnapshot,
 			Map<String, Object> shipping,
-			List<Map<String, Object>> snapshotItems) {
-		BigDecimal total = BigDecimal.valueOf(longValue(effectiveSnapshot, "package_total_krw"));
+			List<Map<String, Object>> snapshotItems,
+			List<Map<String, Object>> addOns) {
+		BigDecimal total = BigDecimal.valueOf(longValue(effectiveSnapshot, "package_total_krw") + addOnTotal(addOns));
 		String orderNumber = "SUB-" + UUID.randomUUID();
 		LocalDateTime timestamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 		jdbc.update("""
@@ -350,8 +357,33 @@ public class SubscriptionOrderAutomationService {
 					VALUES (?,?,'FULL',?,?,?,?,?,?)""", orderId, longValue(item, "sku_id"), item.get("sku_code"),
 					item.get("product_name"), item.get("sku_name"), unitPrice, quantity, unitPrice.multiply(BigDecimal.valueOf(quantity)));
 		}
+		for (Map<String, Object> addon : addOns) {
+			int quantity = intValue(addon, "quantity");
+			BigDecimal unitPrice = BigDecimal.valueOf(longValue(addon, "unit_price_krw"));
+			reserveInventory(longValue(addon, "sku_id"), quantity, paymentId, timestamp);
+			jdbc.update("""
+					INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount)
+					VALUES (?,?,'FULL',?,?,?,?,?,?)""", orderId, longValue(addon, "sku_id"), addon.get("sku_code"), addon.get("product_name"), addon.get("sku_name"), unitPrice, quantity, unitPrice.multiply(BigDecimal.valueOf(quantity)));
+		}
 		return orderId;
 	}
+
+	private boolean hasUnavailableStock(List<Map<String, Object>> baseItems, List<Map<String, Object>> addOns) {
+		Map<Long, Integer> quantities = new java.util.TreeMap<>();
+		for (Map<String, Object> item : baseItems) quantities.merge(longValue(item, "sku_id"), intValue(item, "quantity"), Integer::sum);
+		for (Map<String, Object> addon : addOns) {
+			long skuId = longValue(addon, "sku_id");
+			if (quantities.containsKey(skuId)) throw new IllegalStateException("Base plan SKU conflicts with Add-on SKU");
+			quantities.put(skuId, intValue(addon, "quantity"));
+		}
+		for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
+			Integer available = jdbc.query("SELECT available_quantity FROM inventories WHERE sku_id=? FOR UPDATE", rs -> rs.next() ? rs.getInt(1) : null, entry.getKey());
+			if (available == null || available < entry.getValue()) return true;
+		}
+		return false;
+	}
+
+	private long addOnTotal(List<Map<String, Object>> addOns) { return addOns.stream().mapToLong(addon -> longValue(addon, "unit_price_krw") * intValue(addon, "quantity")).sum(); }
 
 	private void reserveInventory(long skuId, int quantity, long paymentId, LocalDateTime timestamp) {
 		Map<String, Object> inventory = one("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?", skuId)
