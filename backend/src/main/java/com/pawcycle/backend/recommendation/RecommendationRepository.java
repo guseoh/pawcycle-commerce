@@ -82,7 +82,7 @@ class RecommendationRepository {
 	Map<Long, Long> popularScores(String petType) {
 		Map<Long,Long> result = new HashMap<>();
 		addPopular(result, "SELECT sku.product_id,COUNT(DISTINCT o.member_id)*5 FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED' JOIN order_items item ON item.order_id=o.id JOIN skus sku ON sku.id=item.sku_id WHERE o.status='PAID' AND o.paid_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY sku.product_id");
-		addPopular(result, "SELECT sku.product_id,COUNT(DISTINCT cart.member_id)*3 FROM carts cart JOIN cart_items item ON item.cart_id=cart.id JOIN skus sku ON sku.id=item.sku_id GROUP BY sku.product_id");
+		addPopular(result, "SELECT sku.product_id,COUNT(DISTINCT cart.member_id)*3 FROM carts cart JOIN cart_items item ON item.cart_id=cart.id JOIN skus sku ON sku.id=item.sku_id WHERE cart.updated_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY sku.product_id");
 		addPopular(result, "SELECT product_id,COUNT(DISTINCT member_id)*2 FROM wishlist_items WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY product_id");
 		addPopular(result, "SELECT product_id,COUNT(DISTINCT member_id)*2 FROM interaction_events WHERE event_type='RECOMMENDATION_CLICK' AND occurred_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY product_id");
 		addPopular(result, "SELECT product_id,COUNT(DISTINCT member_id) FROM interaction_events WHERE event_type='PRODUCT_VIEW' AND occurred_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY product_id");
@@ -92,6 +92,34 @@ class RecommendationRepository {
 		return result;
 	}
 	private void addPopular(Map<Long,Long> target,String sql){jdbc.query(sql,(org.springframework.jdbc.core.RowCallbackHandler)rs->{long id=rs.getLong(1);target.merge(id,rs.getLong(2),Long::sum);});}
+
+	Map<Long, TrendScore> trendScores(List<Long> productIds, LocalDate today) {
+		if (productIds.isEmpty()) return Map.of();
+		String ids = placeholders(productIds.size());
+		LocalDate recentStart = today.minusDays(7);
+		LocalDate previousStart = today.minusDays(14);
+		String sql = """
+				SELECT activity.product_id,
+				       COALESCE(SUM(CASE WHEN activity.activity_at>=? AND activity.activity_at<? THEN activity.weight ELSE 0 END),0),
+				       COALESCE(SUM(CASE WHEN activity.activity_at>=? AND activity.activity_at<? THEN activity.weight ELSE 0 END),0)
+				FROM (
+				 SELECT sku.product_id,o.paid_at activity_at,5 weight FROM orders o
+				 JOIN payments p ON p.order_id=o.id AND p.status='SUCCEEDED'
+				 JOIN order_items oi ON oi.order_id=o.id JOIN skus sku ON sku.id=oi.sku_id
+				 WHERE o.status='PAID'
+				 UNION ALL SELECT w.product_id,w.created_at,2 FROM wishlist_items w
+				 UNION ALL SELECT e.product_id,e.occurred_at,2 FROM interaction_events e WHERE e.event_type='RECOMMENDATION_CLICK'
+				 UNION ALL SELECT e.product_id,e.occurred_at,1 FROM interaction_events e WHERE e.event_type='PRODUCT_VIEW'
+				) activity
+				WHERE activity.product_id IN (""" + ids + ") GROUP BY activity.product_id";
+		Map<Long, TrendScore> result = new HashMap<>();
+		List<Object> arguments = new ArrayList<>(List.of(recentStart, today, previousStart, recentStart));
+		arguments.addAll(productIds);
+		jdbc.query(sql, rs -> {
+			while (rs.next()) result.put(rs.getLong(1), new TrendScore(rs.getLong(2), rs.getLong(3)));
+		}, arguments.toArray());
+		return result;
+	}
 
 	List<String> subscriptionCategorySlugs(long memberId, long petId) { return categories("SELECT category.slug FROM subscriptions subscription JOIN subscription_snapshots snapshot ON snapshot.id=subscription.current_snapshot_id JOIN subscription_snapshot_items item ON item.snapshot_id=snapshot.id JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id WHERE subscription.member_id=? AND subscription.pet_id=? AND subscription.mvp2_managed=true AND subscription.status='ACTIVE' GROUP BY category.id,category.slug ORDER BY COUNT(*) DESC,category.id", memberId, petId); }
 	List<String> purchaseCategorySlugs(long memberId) { return categories("SELECT category.slug FROM orders orders JOIN payments payment ON payment.order_id=orders.id AND payment.status='SUCCEEDED' JOIN order_items item ON item.order_id=orders.id JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id WHERE orders.member_id=? AND orders.status='PAID' GROUP BY category.id,category.slug ORDER BY COUNT(*) DESC,category.id", memberId); }
@@ -111,4 +139,6 @@ class RecommendationRepository {
 			Map<String,Integer> purchaseCategories, Map<String,Integer> purchaseBrands, Map<String,Integer> purchaseFacets,
 			Map<String,Integer> wishlistCategories, Map<String,Integer> wishlistBrands, Map<String,Integer> wishlistFacets,
 			Map<String,Integer> filterCategories, Map<String,Integer> filterBrands, Map<String,Integer> filterFacets) {}
+
+	record TrendScore(long recent, long previous) { long delta() { return recent - previous; } }
 }

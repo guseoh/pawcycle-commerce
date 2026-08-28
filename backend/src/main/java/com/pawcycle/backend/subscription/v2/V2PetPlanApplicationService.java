@@ -22,13 +22,13 @@ class V2PetPlanApplicationService {
 
 	@Transactional
 	Map<String, Object> updatePet(long memberId, long petId, Map<String, Object> body) {
-		V2SubscriptionData.Pet current = store.findOwnedPet(memberId, petId);
+		store.findOwnedPet(memberId, petId);
 		if (!body.containsKey("name") && !body.containsKey("breed") && !body.containsKey("weightKg")) throw support.validation("request");
-		String name = body.containsKey("name") ? support.requiredText(body, "name", 50) : current.name();
-		if (name.chars().anyMatch(Character::isISOControl)) throw support.validation("name");
-		String breed = body.containsKey("breed") ? nullableText(body.get("breed"), "breed", 80) : current.breed();
-		BigDecimal weight = body.containsKey("weightKg") ? nullableWeight(body.get("weightKg")) : current.weightKg();
-		store.updatePet(memberId, petId, name, breed, weight);
+		String name = body.containsKey("name") ? support.requiredText(body, "name", 50) : null;
+		if (body.containsKey("name") && name.chars().anyMatch(Character::isISOControl)) throw support.validation("name");
+		String breed = body.containsKey("breed") ? nullableText(body.get("breed"), "breed", 80) : null;
+		BigDecimal weight = body.containsKey("weightKg") ? nullableWeight(body.get("weightKg")) : null;
+		store.updatePet(memberId, petId, name, body.containsKey("name"), breed, body.containsKey("breed"), weight, body.containsKey("weightKg"));
 		return pet(store.findOwnedPet(memberId, petId));
 	}
 

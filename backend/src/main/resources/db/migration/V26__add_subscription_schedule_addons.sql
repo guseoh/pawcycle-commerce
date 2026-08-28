@@ -2,7 +2,7 @@ CREATE TABLE subscription_schedule_addons (
     schedule_id BIGINT NOT NULL,
     sku_id BIGINT NOT NULL,
     quantity INT NOT NULL,
-    unit_price_krw BIGINT NOT NULL,
+    unit_price_krw DECIMAL(18,2) NOT NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     CONSTRAINT pk_subscription_schedule_addons PRIMARY KEY (schedule_id, sku_id),
@@ -17,7 +17,7 @@ CREATE TABLE subscription_order_addon_items (
     subscription_order_id BIGINT NOT NULL,
     sku_id BIGINT NOT NULL,
     quantity INT NOT NULL,
-    unit_price_krw BIGINT NOT NULL,
+    unit_price_krw DECIMAL(18,2) NOT NULL,
     CONSTRAINT pk_subscription_order_addon_items PRIMARY KEY (subscription_order_id, sku_id),
     CONSTRAINT fk_subscription_order_addon_items_order FOREIGN KEY (subscription_order_id) REFERENCES subscription_orders (id),
     CONSTRAINT fk_subscription_order_addon_items_sku FOREIGN KEY (sku_id) REFERENCES skus (id),
@@ -36,3 +36,6 @@ ALTER TABLE subscription_schedules
             'ORDER_STOCK_UNAVAILABLE'
         )
     );
+
+ALTER TABLE subscription_orders
+    MODIFY package_total_krw DECIMAL(18,2) NOT NULL;

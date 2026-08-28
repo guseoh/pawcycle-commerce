@@ -96,12 +96,17 @@ class RecommendationServiceTests {
 		when(repository.findPurchasableCandidates("DOG")).thenReturn(candidates, candidates);
 		when(ai.recommend(anyList(), anyList())).thenReturn(List.of());
 
-		service.recommend(10L, 1L);
+		RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
 
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<RecommendationCandidate>> captor = ArgumentCaptor.forClass(List.class);
 		verify(ai).recommend(captor.capture(), anyList());
 		assertThat(captor.getValue()).hasSize(9);
+		assertThat(response.products()).hasSize(10);
+		assertThat(response.products()).extracting(RecommendationService.RecommendationItem::strategy)
+				.filteredOn(strategy -> strategy.equals("EXPLORATION")).hasSize(1);
+		assertThat(response.products()).extracting(RecommendationService.RecommendationItem::productId)
+				.containsExactlyInAnyOrderElementsOf(LongStream.rangeClosed(1, 10).boxed().toList());
 	}
 
 	@Test

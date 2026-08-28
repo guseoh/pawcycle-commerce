@@ -29,10 +29,9 @@ class ProductRecommendationService {
 	RecommendationService.RecommendationResponse trending(String petType, int limit) {
 		LocalDate today = LocalDate.now(SEOUL);
 		List<RecommendationCandidate> candidates = repository.findPurchasableCandidates(petType);
-		Map<Long, Trend> scores = new HashMap<>();
-		for (RecommendationCandidate candidate : candidates) scores.put(candidate.productId(), trend(candidate.productId(), today));
-		List<RecommendationCandidate> trending = candidates.stream().filter(candidate -> scores.get(candidate.productId()).delta() > 0)
-				.sorted(Comparator.comparingLong((RecommendationCandidate candidate) -> scores.get(candidate.productId()).delta()).reversed().thenComparing(Comparator.comparingLong((RecommendationCandidate candidate) -> scores.get(candidate.productId()).recent()).reversed()).thenComparingLong(RecommendationCandidate::productId)).limit(limit).toList();
+		Map<Long, RecommendationRepository.TrendScore> scores = repository.trendScores(candidates.stream().map(RecommendationCandidate::productId).toList(), today);
+		List<RecommendationCandidate> trending = candidates.stream().filter(candidate -> trendScore(scores, candidate).delta() > 0)
+				.sorted(Comparator.comparingLong((RecommendationCandidate candidate) -> trendScore(scores, candidate).delta()).reversed().thenComparing(Comparator.comparingLong((RecommendationCandidate candidate) -> trendScore(scores, candidate).recent()).reversed()).thenComparingLong(RecommendationCandidate::productId)).limit(limit).toList();
 		return response(trending.isEmpty() ? candidates.stream().sorted(Comparator.comparingLong(RecommendationCandidate::popularScore).reversed().thenComparingLong(RecommendationCandidate::productId)).limit(limit).toList() : trending, "TRENDING");
 	}
 
@@ -64,24 +63,11 @@ class ProductRecommendationService {
 		return response(candidates, "COMPLEMENTARY");
 	}
 
-	private Trend trend(long productId, LocalDate today) {
-		LocalDate recentStart = today.minusDays(7);
-		LocalDate previousStart = today.minusDays(14);
-		return jdbc.query("""
-				SELECT COALESCE(SUM(CASE WHEN activity_at>=? AND activity_at<? THEN weight ELSE 0 END),0),COALESCE(SUM(CASE WHEN activity_at>=? AND activity_at<? THEN weight ELSE 0 END),0)
-				FROM (
-				 SELECT o.paid_at activity_at,5 weight FROM orders o JOIN payments p ON p.order_id=o.id AND p.status='SUCCEEDED' JOIN order_items oi ON oi.order_id=o.id JOIN skus s ON s.id=oi.sku_id WHERE s.product_id=? AND o.status='PAID'
-				 UNION ALL SELECT w.created_at,2 FROM wishlist_items w WHERE w.product_id=?
-				 UNION ALL SELECT e.occurred_at,2 FROM interaction_events e WHERE e.product_id=? AND e.event_type='RECOMMENDATION_CLICK'
-				 UNION ALL SELECT e.occurred_at,1 FROM interaction_events e WHERE e.product_id=? AND e.event_type='PRODUCT_VIEW'
-				) activity""", rs -> { rs.next(); return new Trend(rs.getLong(1), rs.getLong(2)); }, recentStart, today, previousStart, recentStart, productId, productId, productId, productId);
-	}
-
 	private RecommendationCandidate source(long productId) { return repository.findPurchasableCandidates(null).stream().filter(candidate -> candidate.productId() == productId).findFirst().orElseThrow(() -> new RecommendationException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다.")); }
+	private RecommendationRepository.TrendScore trendScore(Map<Long, RecommendationRepository.TrendScore> scores, RecommendationCandidate candidate) { return scores.getOrDefault(candidate.productId(), new RecommendationRepository.TrendScore(0, 0)); }
 	private RecommendationService.RecommendationResponse response(List<RecommendationCandidate> candidates, String strategy) { return new RecommendationService.RecommendationResponse(java.util.UUID.randomUUID().toString(), candidates.stream().map(candidate -> item(candidate, strategy)).toList()); }
 	private RecommendationService.RecommendationItem item(RecommendationCandidate candidate, String strategy) { RecommendationService.RecommendationItem.Category category = candidate.category() == null ? null : new RecommendationService.RecommendationItem.Category(candidate.category().categoryId(), candidate.category().name(), candidate.category().slug()); return new RecommendationService.RecommendationItem(candidate.productId(), candidate.name(), candidate.shortDescription(), candidate.thumbnailUrl(), category, "현재 구매 가능한 상품입니다.", strategy); }
 	private boolean same(Object left, Object right) { return left != null && right != null && left.equals(right); }
 	private boolean differentCategory(RecommendationCandidate left, RecommendationCandidate right) { return left.category() != null && right.category() != null && left.category().categoryId() != right.category().categoryId(); }
 	private int overlap(List<String> left, List<String> right) { return (int) left.stream().filter(new HashSet<>(right)::contains).count(); }
-	private record Trend(long recent, long previous) { long delta() { return recent - previous; } }
 }

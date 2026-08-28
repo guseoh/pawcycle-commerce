@@ -28,6 +28,48 @@ class ProductComparisonServiceTests {
 	}
 
 	@Test
+	void duplicateNullAndFourProductIdsAreRejected() {
+		for (List<Long> ids : List.of(List.of(1L, 1L), java.util.Arrays.asList(1L, null), List.of(1L, 2L, 3L, 4L))) {
+			JdbcTemplate jdbc = mock(JdbcTemplate.class);
+			ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> new ProductComparisonService(jdbc, ai).compare(ids))
+					.isInstanceOf(ProductComparisonException.class)
+					.hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
+			verifyNoInteractions(jdbc, ai);
+		}
+	}
+
+	@Test
+	void threeProductComparisonKeepsCanonicalFactsWhenAiSummaryIsValid() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
+		for (long id : List.of(1L, 2L, 3L)) stubFacts(jdbc, id);
+		when(ai.compare(anyList())).thenReturn("세 상품은 가격과 구성에서 차이가 있습니다.");
+
+		ProductComparisonService.ComparisonResponse response = new ProductComparisonService(jdbc, ai).compare(List.of(1L, 2L, 3L));
+
+		assertThat(response.aiStatus()).isEqualTo("AVAILABLE");
+		assertThat(response.aiSummary()).isEqualTo("세 상품은 가격과 구성에서 차이가 있습니다.");
+		assertThat(response.products()).extracting(ProductComparisonFacts::productId).containsExactly(1L, 2L, 3L);
+		assertThat(response.products()).allSatisfy(facts -> assertThat(facts.representativePrice()).isEqualByComparingTo("1000.00"));
+	}
+
+	@Test
+	void unsafeAiSummaryIsNotExposedOrStored() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
+		stubFacts(jdbc, 1L);
+		stubFacts(jdbc, 2L);
+		when(ai.compare(anyList())).thenReturn("질병 치료를 보장합니다.");
+
+		ProductComparisonService.ComparisonResponse response = new ProductComparisonService(jdbc, ai).compare(List.of(1L, 2L));
+
+		assertThat(response.aiStatus()).isEqualTo("UNAVAILABLE");
+		assertThat(response.aiSummary()).isNull();
+		org.mockito.Mockito.verify(jdbc, org.mockito.Mockito.never()).update(anyString(), org.mockito.ArgumentMatchers.<Object[]>any());
+	}
+
+	@Test
 	void aiFailureLeavesCanonicalFactsAvailable() {
 		JdbcTemplate jdbc = mock(JdbcTemplate.class);
 		ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
@@ -51,5 +93,17 @@ class ProductComparisonServiceTests {
 		assertThat(response.aiSummary()).isNull();
 		assertThat(response.products()).hasSize(2);
 		assertThat(response.products().getFirst().representativePrice()).isEqualByComparingTo("1000.00");
+	}
+
+	private void stubFacts(JdbcTemplate jdbc, long id) {
+		Map<String, Object> row = Map.ofEntries(
+				Map.entry("id", id), Map.entry("name", "상품" + id), Map.entry("thumbnail_url", "thumb"),
+				Map.entry("brand_name", "브랜드"), Map.entry("category_name", "사료"),
+				Map.entry("price", new BigDecimal("1000.00")), Map.entry("compare_at_price", new BigDecimal("1200.00")),
+				Map.entry("average_rating", new BigDecimal("4.50")), Map.entry("review_count", 3L),
+				Map.entry("subscription_eligible", true), Map.entry("purchasable", true));
+		when(jdbc.queryForList(anyString(), eq(id))).thenReturn(List.of(row));
+		when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), eq(id)))
+				.thenReturn(List.of("size:small"));
 	}
 }

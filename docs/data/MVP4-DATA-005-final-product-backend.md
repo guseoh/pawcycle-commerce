@@ -1,6 +1,6 @@
 # MVP4-DATA-005 최종 상품 백엔드 데이터 delta
 
-- 작업 ID: `MVP4-FINAL-BE-001`
+- 작업 ID: `MVP4-FINAL-001`
 - 기준 main: `3e274bb1dc4c47e566b682d082262ea330a90122`
 - Migration: `V25`, `V26`, `V27` additive forward-only
 - 실행 구분: 저장소 변경
@@ -23,11 +23,11 @@ Recommendation query는 breed/weight를 읽지 않는다. 둘은 추후 호환�
 
 ## V26 Next-delivery Add-on
 
-`subscription_schedule_addons`는 `(schedule_id,sku_id)` PK, `quantity 1..10`, snapshot `unit_price_krw`, created/updated timestamp, Schedule/SKU FK와 SKU lookup index를 가진다. 한 Schedule의 최대 10개 distinct SKU는 command validation으로 제한한다.
+`subscription_schedule_addons`는 `(schedule_id,sku_id)` PK, `quantity 1..10`, snapshot `unit_price_krw DECIMAL(18,2)`, created/updated timestamp, Schedule/SKU FK와 SKU lookup index를 가진다. SKU의 canonical `DECIMAL(12,2)` 가격을 BigDecimal로 받아 round/truncate하지 않는다. 한 Schedule의 최대 10개 distinct SKU는 command validation으로 제한한다.
 
-`subscription_order_addon_items`는 소비 후 immutable history이며 `(subscription_order_id,sku_id)` PK, quantity, snapshot unit price와 order/SKU FK를 가진다. Schedule Add-on은 due transaction에서 lock한 뒤 common Order `order_items`에도 포함하고, 소비가 성공한 같은 transaction에서 history insert 후 current row를 삭제한다.
+`subscription_order_addon_items`는 소비 후 immutable history이며 `(subscription_order_id,sku_id)` PK, quantity, snapshot `unit_price_krw DECIMAL(18,2)`와 order/SKU FK를 가진다. `subscription_orders.package_total_krw`도 V26에서 DECIMAL(18,2)로 확장한다. Schedule Add-on은 due transaction에서 lock한 뒤 common Order `order_items`(DECIMAL(18,2))에도 포함하고, 소비가 성공한 같은 transaction에서 history insert 후 current row를 삭제한다. 기본 `subscription_order_items.order_id`는 common `orders.id`가 아니라 `subscription_orders.id`를 참조한다.
 
-Schedule hold reason check에 internal `ORDER_STOCK_UNAVAILABLE`을 additive하게 추가한다. API projection은 이를 기존 user-facing `STOCK_UNAVAILABLE` issue로 매핑한다.
+Schedule hold reason check에 internal `ORDER_STOCK_UNAVAILABLE`을 additive하게 추가한다. 이 상태만 자동 재평가 가능한 recoverable HELD로 취급하고, API projection은 이를 기존 user-facing `STOCK_UNAVAILABLE` issue로 매핑한다.
 
 ## V27 AI/Reminder
 
@@ -37,9 +37,9 @@ Schedule hold reason check에 internal `ORDER_STOCK_UNAVAILABLE`을 additive하�
 - `source_fingerprint CHAR(64)`, `summary VARCHAR(500)`, `generated_at`
 - summary length check
 
-Fingerprint는 visible review 전체 집합의 review ID, rating, content, updated time을 stable order로 포함한다. AI input은 latest 30개로 bounded되므로 오래된 visible review 변경도 cache를 stale하게 만들 수 있다. visible review가 3개 미만이면 AI/cache를 사용하지 않는다.
+Fingerprint는 visible review 전체 집합의 review ID, rating, content, updated time을 stable order로 포함한다. AI input은 latest 30개로 bounded되지만 30개 밖의 visible review 변경도 cache를 stale하게 만든다. visible review가 3개 미만이면 AI/cache를 사용하지 않는다.
 
-`notifications.type` check에 `SUBSCRIPTION_DELIVERY_REMINDER`를 추가한다. reminder identity는 기존 `(member_id,type,reference_type,reference_id)` unique key를 사용하며, `reference_type=SCHEDULE`과 Schedule ID로 만든다. Processor가 Seoul date 기준 eligible Schedule을 만들고, 현재 조건을 벗어난 unread reminder를 정리한다.
+`notifications.type` check에 `SUBSCRIPTION_DELIVERY_REMINDER`를 추가한다. reminder identity는 기존 `(member_id,type,reference_type,reference_id)` unique key를 사용하며, `reference_type=SCHEDULE`과 Schedule ID로 만든다. Processor가 Seoul date 기준 eligible Schedule을 만들고, 현재 조건을 벗어난 read/unread reminder를 정리해 Schedule 재진입을 허용한다.
 
 ## Transaction and lock invariants
 

@@ -136,7 +136,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		assertThat(((Number) order.get("SOURCE_PLAN_VERSION_ID")).longValue()).isEqualTo(basePlanVersionId);
 		assertThat(order.get("SCHEDULED_DATE")).isEqualTo(java.sql.Date.valueOf(TODAY));
 		assertThat(order.get("PROCESSED_AT")).isEqualTo(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
-		assertThat(((Number) order.get("PACKAGE_TOTAL_KRW")).longValue()).isEqualTo(24000);
+		assertThat(order.get("PACKAGE_TOTAL_KRW")).isEqualTo(new BigDecimal("24000.00"));
 		assertThat(order.get("STATUS")).isEqualTo("CREATED");
 		long orderId = jdbc.queryForObject(
 				"SELECT id FROM subscription_orders WHERE schedule_id=?", Long.class, scheduleId);
@@ -161,6 +161,50 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		assertThat(meterRegistry.get("pawcycle.subscription.automation.duration").timer().count())
 				.isEqualTo(durationBefore + 2);
 		assertThat(applicationContext.getBeansOfType(SubscriptionOrderAutomationTrigger.class)).isEmpty();
+	}
+
+	@Test
+	void addOnUsesSubscriptionOrderParentAndPreservesDecimalSnapshotAcrossCommonOrderAndHistory() {
+		jdbc.update("UPDATE skus SET price=? WHERE id=?", new BigDecimal("11000.55"), secondSku.getId());
+		long subscriptionId = createSubscription("decimal-addon", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), subscriptionId, "set-next-delivery-addon", "decimal-addon", "\"0\"", Map.of("skuId", secondSku.getId(), "quantity", 2));
+		long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+
+		SubscriptionOrderAutomationService.BatchResult result = automation.processDueSchedules(10);
+
+		assertThat(result.ordersCreated()).isEqualTo(1);
+		long subscriptionOrderId = jdbc.queryForObject("SELECT id FROM subscription_orders WHERE schedule_id=?", Long.class, scheduleId);
+		long commonOrderId = jdbc.queryForObject("SELECT order_id FROM subscription_order_context WHERE schedule_id=?", Long.class, scheduleId);
+		assertThat(commonOrderId).isNotEqualTo(subscriptionOrderId);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_order_items WHERE order_id=?", Integer.class, subscriptionOrderId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_order_items WHERE order_id=?", Integer.class, commonOrderId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_items WHERE order_id=?", Integer.class, commonOrderId)).isEqualTo(2);
+		assertThat(jdbc.queryForMap("SELECT quantity,unit_price_krw FROM subscription_order_addon_items WHERE subscription_order_id=? AND sku_id=?", subscriptionOrderId, secondSku.getId()))
+				.containsEntry("QUANTITY", 2)
+				.containsEntry("UNIT_PRICE_KRW", new BigDecimal("11000.55"));
+		assertThat(jdbc.queryForObject("SELECT package_total_krw FROM subscription_orders WHERE id=?", BigDecimal.class, subscriptionOrderId))
+				.isEqualByComparingTo("46001.10");
+		assertThat(jdbc.queryForObject("SELECT payment_amount FROM orders WHERE id=?", BigDecimal.class, commonOrderId))
+				.isEqualByComparingTo("46001.10");
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=?", Integer.class, scheduleId)).isZero();
+	}
+
+	@Test
+	void stockUnavailableAddOnIsRecoverableHeldAndCanBeRemovedBeforeRetry() {
+		long subscriptionId = createSubscription("held-addon", basePlanVersionId, 2);
+		subscriptions.command(member.getId(), subscriptionId, "set-next-delivery-addon", "held-addon", "\"0\"", Map.of("skuId", secondSku.getId(), "quantity", 1));
+		long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+		jdbc.update("UPDATE inventories SET available_quantity=0 WHERE sku_id=?", secondSku.getId());
+
+		assertThat(automation.processDueSchedules(10).ordersCreated()).isZero();
+		assertThat(jdbc.queryForMap("SELECT status,hold_reason FROM subscription_schedules WHERE id=?", scheduleId))
+				.containsEntry("STATUS", "HELD")
+				.containsEntry("HOLD_REASON", "ORDER_STOCK_UNAVAILABLE");
+
+		subscriptions.command(member.getId(), subscriptionId, "remove-next-delivery-addon", "held-addon-remove", "\"1\"", Map.of("skuId", secondSku.getId()));
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=?", Integer.class, scheduleId)).isZero();
+		assertThat(automation.processDueSchedules(10).ordersCreated()).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_order_addon_items history JOIN subscription_orders orders ON orders.id=history.subscription_order_id WHERE orders.schedule_id=?", Integer.class, scheduleId)).isZero();
 	}
 
 	@Test
@@ -260,7 +304,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		assertThat(order)
 				.containsEntry("EFFECTIVE_SNAPSHOT_ID", pendingSnapshotId)
 				.containsEntry("SOURCE_PLAN_VERSION_ID", alternatePlanVersionId)
-				.containsEntry("PACKAGE_TOTAL_KRW", 33000L);
+				.containsEntry("PACKAGE_TOTAL_KRW", new BigDecimal("33000.00"));
 		long orderId = jdbc.queryForObject(
 				"SELECT id FROM subscription_orders WHERE subscription_id=?",
 				Long.class,
@@ -606,7 +650,9 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 		jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE h FROM subscription_command_history h JOIN subscriptions s ON s.id=h.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE item FROM subscription_order_items item JOIN subscription_orders orders ON orders.id=item.order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE item FROM subscription_order_addon_items item JOIN subscription_orders orders ON orders.id=item.subscription_order_id JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE orders FROM subscription_orders orders JOIN subscriptions s ON s.id=orders.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
+		jdbc.update("DELETE addon FROM subscription_schedule_addons addon JOIN subscription_schedules schedule ON schedule.id=addon.schedule_id JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE snapshot FROM subscription_shipping_snapshots snapshot JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE schedule FROM subscription_schedules schedule JOIN subscriptions s ON s.id=schedule.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
 		jdbc.update("DELETE item FROM subscription_snapshot_items item JOIN subscription_snapshots snapshot ON snapshot.id=item.snapshot_id JOIN subscriptions s ON s.id=snapshot.subscription_id WHERE s.member_id IN (" + memberFilter + ")");
