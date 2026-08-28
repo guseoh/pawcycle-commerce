@@ -1,4 +1,5 @@
 import type { CatalogDiscovery, ProductFilters, ProductSort } from "./api.ts";
+import type { InteractionContext } from "./final-product-api.ts";
 
 export const PRODUCT_SORTS: { value: ProductSort; label: string }[] = [
   { value: "RECOMMENDED", label: "추천순" }, { value: "NEWEST", label: "최신순" },
@@ -57,6 +58,21 @@ export function changeCatalogFilters(filters: ProductFilters, patch: Partial<Pro
     next.facet = [];
   } else if ("subcategory" in patch && patch.subcategory !== filters.subcategory) next.facet = [];
   return next;
+}
+
+export function interactionContext(filters: ProductFilters): InteractionContext {
+  const context: InteractionContext = {
+    hasTextQuery: Boolean(filters.q?.trim()),
+    petType: filters.petType === "DOG" || filters.petType === "CAT" ? filters.petType : undefined,
+    category: filters.category,
+    subcategory: filters.subcategory,
+    brand: filters.brand,
+    facets: filters.facet?.slice(0, 20),
+    minPrice: filters.minPrice !== undefined && Number.isFinite(filters.minPrice) && filters.minPrice >= 0 ? filters.minPrice : undefined,
+    maxPrice: filters.maxPrice !== undefined && Number.isFinite(filters.maxPrice) && filters.maxPrice >= 0 ? filters.maxPrice : undefined,
+    sort: filters.sort,
+  };
+  return Object.fromEntries(Object.entries(context).filter(([, value]) => value !== undefined)) as InteractionContext;
 }
 
 export function catalogMetadata(discovery: CatalogDiscovery | null, filters: ProductFilters) {

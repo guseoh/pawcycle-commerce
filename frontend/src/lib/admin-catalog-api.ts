@@ -26,6 +26,7 @@ export interface DetailSection extends DetailInput { sectionId: number; productI
 export interface SkuOptionAssignment { skuId: number; optionValueIds: number[] }
 export interface ProductFacetAssignment { productId: number; facetOptionIds: number[] }
 export interface CategoryFacetAssignment { categoryId: number; facetDefinitionId: number; displayOrder: number }
+export interface CategoryFacetList { categoryId: number; facets: CategoryFacetAssignment[] }
 
 async function request<T>(path: string, method = "GET", body?: unknown, csrf?: string): Promise<T> {
   const response = await fetch(`/api/admin${path}`, {
@@ -76,6 +77,7 @@ export const adminCatalogApi = {
   skus: (productId: number) => ({
     ...editable<SkuInput, Sku, SkuPatch>(`/products/${productId}/skus`),
     list: () => request<{ skus: Sku[] }>(`/products/${productId}/skus`).then((r) => r.skus),
+    optionAssignment: (skuId: number) => request<SkuOptionAssignment>(`/products/${productId}/skus/${skuId}/option-values`),
     assignOptions: (skuId: number, optionValueIds: number[], csrf: string) => request<SkuOptionAssignment>(`/products/${productId}/skus/${skuId}/option-values`, "PUT", { optionValueIds }, csrf),
   }),
   images: (productId: number) => ({
@@ -95,6 +97,8 @@ export const adminCatalogApi = {
   facetOptions: (definitionId: number) => removable<OptionValueInput, FacetOption>(`/facets/${definitionId}/options`),
   assignCategoryFacet: (categoryId: number, definitionId: number, displayOrder: number, csrf: string) => request<CategoryFacetAssignment>(`/categories/${categoryId}/facets/${definitionId}`, "PUT", { displayOrder }, csrf),
   removeCategoryFacet: (categoryId: number, definitionId: number, csrf: string) => request<void>(`/categories/${categoryId}/facets/${definitionId}`, "DELETE", undefined, csrf),
+  categoryFacets: (categoryId: number) => request<CategoryFacetList>(`/categories/${categoryId}/facets`),
+  productFacetAssignment: (productId: number) => request<ProductFacetAssignment>(`/products/${productId}/facet-values`),
   assignProductFacets: (productId: number, facetOptionIds: number[], csrf: string) => request<ProductFacetAssignment>(`/products/${productId}/facet-values`, "PUT", { facetOptionIds }, csrf),
   details: (productId: number) => ({
     ...removable<DetailInput, DetailSection>(`/products/${productId}/detail-sections`),

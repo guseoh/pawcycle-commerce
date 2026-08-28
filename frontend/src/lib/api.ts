@@ -337,11 +337,6 @@ export const catalogDiscoveryApi = {
   get: () => requestJson<CatalogDiscovery>("/api/catalog/discovery"),
 };
 
-export interface RecommendationItem extends Pick<ProductSummary, "productId" | "name" | "shortDescription" | "thumbnailUrl" | "category"> { reason: string }
-export const recommendationApi = {
-  products: (petId: number) => requestJson<{ products: RecommendationItem[] }>(`/api/recommendations/products?petId=${encodeURIComponent(petId)}`),
-};
-
 export const authApi = {
   csrf: () => requestJson<CsrfResponse>("/api/auth/csrf"),
   me: () => requestJson<MemberResponse>("/api/auth/me"),

@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api";
 import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
+import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
 import { v2Api, type V2SubscriptionSummary } from "@/lib/v2-api";
 
 type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: V2SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
@@ -60,10 +61,31 @@ export default function MyPage() {
   if (auth.status === "loading") return <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "로그인 상태를 확인할 수 없습니다."} onRetry={() => void auth.refresh()} />;
   const shoppingLinks = [["/subscriptions", "정기배송", "다음 배송과 구독 변경을 관리해요"], ["/orders", "주문", "주문과 배송 상태를 확인해요"], ["/wishlist", "위시리스트", "나중에 볼 상품을 모아뒀어요"], ["/cart", "장바구니", "선택한 상품을 주문해요"]] as const;
-  const accountLinks = [["/addresses", "배송지", "배송지와 기본 주소를 관리해요"], ["/billing-methods", "결제수단", "등록 상태를 확인해요"], ["/notifications", "알림", "주문과 배송 소식을 확인해요"]] as const;
-  return <section className="my-dashboard"><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel snapshot={snapshot} error={snapshotError} onRetry={() => { setSnapshotError(null); setSnapshot(null); setRetry((value) => value + 1); }} /><ManagementSection id="my-shopping-title" title="내 쇼핑" links={shoppingLinks} /><ManagementSection id="my-account-title" title="계정 / 관리" links={accountLinks} /><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
+  const accountLinks = [["/addresses", "배송지", "배송지와 기본 주소를 관리해요"], ["/billing-methods", "결제수단", "등록 상태를 확인해요"], ["/pets", "반려동물 프로필", "반려동물 정보를 확인하고 수정해요"], ["/notifications", "알림", "주문과 배송 소식을 확인해요"]] as const;
+  return <section className="my-dashboard"><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel snapshot={snapshot} error={snapshotError} onRetry={() => { setSnapshotError(null); setSnapshot(null); setRetry((value) => value + 1); }} /><ReorderTimingSection /><ManagementSection id="my-shopping-title" title="내 쇼핑" links={shoppingLinks} /><ManagementSection id="my-account-title" title="계정 / 관리" links={accountLinks} /><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
 }
 
 function ManagementSection({ id, title, links }: { id: string; title: string; links: readonly (readonly [string, string, string])[] }) {
   return <section className="management-section" aria-labelledby={id}><div className="section-title"><div><p className="eyebrow">Management</p><h2 id={id}>{title}</h2></div></div><nav className="management-grid" aria-label={title}>{links.map(([href, linkTitle, description]) => <Link key={href} href={href}><strong>{linkTitle}</strong><span>{description}</span><span className="settings-arrow" aria-hidden="true">→</span></Link>)}</nav></section>;
+}
+
+function ReorderTimingSection() {
+  const auth = useAuth();
+  const [items, setItems] = useState<ReorderTimingItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (auth.status !== "authenticated") return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setItems(null); setError(null);
+      void finalProductApi.reorderTiming().then((result) => { if (active) setItems(reorderTimingItems(result)); }).catch((reason: unknown) => { if (active) setError(reason instanceof ApiError ? reason.message : "재구매 시점을 불러오지 못했습니다."); });
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [auth.status, retry]);
+  if (error) return <section className="section-card reorder-section" aria-labelledby="reorder-title"><div className="inline-alert" role="alert"><strong id="reorder-title">다시 필요할 수 있는 상품을 불러오지 못했습니다.</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={() => setRetry((value) => value + 1)}>다시 시도</button></div></section>;
+  if (auth.status !== "authenticated" || (items !== null && items.length === 0)) return null;
+  if (!items) return <section className="section-card reorder-section"><LoadingState>재구매 시점을 확인하고 있습니다.</LoadingState></section>;
+  return <section className="section-card reorder-section" aria-labelledby="reorder-title"><div className="section-title"><div><p className="eyebrow">Repeat commerce</p><h2 id="reorder-title">다시 필요할 수 있는 상품</h2><p>최근 구매 흐름을 바탕으로 다음 시점을 참고해 보세요.</p></div></div><ul className="reorder-list">{items.map((item) => <li key={item.productId}><div><strong>{item.productName}</strong><span>{item.state === "OVERDUE" ? "예상 구매 시점이 지났어요" : "곧 다시 필요할 수 있어요"}</span></div><dl><div><dt>최근 구매</dt><dd>{formatIsoLocalDate(item.lastPurchasedDate)}</dd></div><div><dt>예상 시점</dt><dd>{formatIsoLocalDate(item.expectedReorderDate)}</dd></div></dl><Link className="button button-secondary" href={`/products/${item.productId}`}>상품 보기</Link></li>)}</ul></section>;
 }

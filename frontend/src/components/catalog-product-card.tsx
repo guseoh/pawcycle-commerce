@@ -20,7 +20,7 @@ export function CatalogPrice({ price, compareAtPrice, discountRate }: { price: n
   </span>;
 }
 
-export function CatalogProductCard({ product }: { product: ProductSummary }) {
+export function CatalogProductCard({ product, compareSelected = false, onCompare }: { product: ProductSummary; compareSelected?: boolean; onCompare?: () => void }) {
   return <article className="catalog-product-card">
     <Link href={`/products/${product.productId}`} aria-label={`${product.name} 상품 상세 보기`}>
       <div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt={`${product.name} 상품 이미지`} className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">품절</span> : null}</div>
@@ -33,5 +33,6 @@ export function CatalogProductCard({ product }: { product: ProductSummary }) {
         <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}<span className={`product-availability ${product.purchasable ? "is-available" : "is-unavailable"}`}>{product.purchasable ? "구매 가능" : "현재 품절"}</span></div>
       </div>
     </Link>
+    {onCompare ? <button className={`compare-toggle${compareSelected ? " is-selected" : ""}`} type="button" aria-pressed={compareSelected} onClick={onCompare}>{compareSelected ? "비교에서 빼기" : "비교하기"}</button> : null}
   </article>;
 }
