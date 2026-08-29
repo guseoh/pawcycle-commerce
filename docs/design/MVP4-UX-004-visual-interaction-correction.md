@@ -127,9 +127,9 @@
 | User Action | 날짜 변경, 주기 변경, Plan 변경, skip/pause/resume/cancel, 다음 배송 add-on, shipping address |
 | CHANGE_PLAN | 현재 Pet 호환+판매 중+effective cycle 지원 Plan만 후보. planVersionId 중심 command; legacy pet 보완이 서버상 필요할 때만 petId. add-on conflict는 자동 제거 금지 |
 | Quantity | 기본 Plan item quantity 변경 금지. quantity는 다음 배송 add-on의 실제 지원 범위에서만 사용 |
-| Shipping | 저장 주소 선택→full AddressRequest draft copy→사용자 확인→shipping PUT. 저장 주소 선택만으로 mutation 금지 |
+| Shipping | 저장 주소 선택→full AddressRequest draft copy→사용자 확인→shipping PUT. 저장 주소 선택만으로 mutation 금지. PUT 성공 뒤에는 Detail의 issue/availableActions 변화만 server read-back 사실로 사용하며 현재 배송지 주소 문자열은 read-back 값처럼 표시하지 않음 |
 | Pending | action별 `변경 중`, ETag/Idempotency-Key 유지, 충돌 가능 action 잠금 |
-| Success | 최신 Detail/ETag 재조회, pendingChange는 상단 영구 banner |
+| Success | command는 최신 Detail/ETag 재조회. shipping은 mutation 성공 안내+Detail issue/action 재확인; current address summary 생성 금지 |
 | Error | validation/409/412/HELD issue 구분; 자동 재적용 금지 |
 | HELD | top-level status가 아니라 `ACTIVE + nextDelivery.status=HELD` 등 Schedule 상태로 설명 |
 | Mobile | issue→next delivery→Plan/cycle→items→shipping/history→actions→danger; 복잡 edit full-screen |
@@ -148,7 +148,7 @@
 | Order List | h1→OrderSummary rows | compact rows | filter/pagination/대표상품 없음; server order 유지 |
 | Order Detail | status→items/delivery/payment→timeline→cancel/return→reorder/subscription→support | 동일 의미 순서 | availableActions만; partial reorder 영구 panel |
 | Subscription List | ACTIVE→PAUSED→CANCELED summary rows | 상태→날짜→Pet/주기/가격→상세 | issue/actions/HELD group 없음 |
-| Subscription Detail | status/issue→next delivery→Plan/cycle→items/shipping/history→actions | 동일 의미 1열 | 날짜/주기/Plan/shipping 분리; pending/HELD detail-only |
+| Subscription Detail | status/issue→next delivery→Plan/cycle→items/shipping action/history→actions | 동일 의미 1열 | 날짜/주기/Plan/shipping 분리; current shipping read-back 없음; pending/HELD detail-only |
 | My | account→commerce counts→next subscription→recent order→timing→management | 동일 의미 1열 | Detail N+1 issue section 없음 |
 | Mobile header | 해당 없음 | 56px menu/logo/cart+48px search | initial 104→sticky56 |
 | Login | reading760 안 form480 | gutter16, fields/CTA52 | password reveal44, sanitized GET returnTo |
@@ -167,6 +167,7 @@
 - PLP/Home representative SKU quick add
 - Subscription List issue/availableActions/HELD group
 - 기본 Subscription Plan item quantity 변경
+- Subscription current shipping address read-back
 - Cart summary top 96px
 
 `NO FRONTEND IMPLEMENTATION PERFORMED`
