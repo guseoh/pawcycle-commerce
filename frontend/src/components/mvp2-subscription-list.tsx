@@ -28,7 +28,7 @@ export function Mvp2SubscriptionList({ basePath = "/mvp2/subscriptions" }: { bas
     void v2Api.subscriptions.list(page).then(({ body }) => { if (active) setResult(body); }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.replace(buildLoginHref(basePath)); return; }
-      setMessage(error instanceof ApiError ? error.message : "구독 목록을 불러오지 못했습니다.");
+      setMessage("구독 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => { active = false; };
   }, [auth, basePath, page, requestKey, router]);
@@ -38,7 +38,7 @@ export function Mvp2SubscriptionList({ basePath = "/mvp2/subscriptions" }: { bas
   if (message) return <ErrorState title="구독 목록을 불러오지 못했습니다." message={message} onRetry={load} />;
 
   return <>
-    <header className="page-heading"><p className="eyebrow">정기배송</p><h1>내 구독 관리</h1><p>다음 배송과 변경 예정 사항은 서버의 최신 결과입니다.</p></header>
+    <header className="page-heading"><p className="eyebrow">정기배송</p><h1>내 구독 관리</h1><p>다음 배송과 변경 예정 사항을 한눈에 확인하고 필요한 작업을 선택하세요.</p></header>
     {result?.items.length === 0 ? <section className="empty-state-panel subscription-empty"><p className="eyebrow">Regular delivery</p><h2>아직 시작한 정기배송이 없어요.</h2><p>사료·간식·모래처럼 자주 필요한 상품을 원하는 주기로 받아보세요.</p><Link className="button button-primary" href="/products">상품 둘러보기</Link></section> : <><div className="subscription-list">{result?.items.map((subscription) => <article className="subscription-row" key={subscription.subscriptionId}><div className="subscription-row-main"><div className="card-meta"><span className="status-badge">{formatSubscriptionStatus(subscription.status)}</span><span className="tag tag-positive">{subscription.currentSnapshot.deliveryCycleWeeks}주마다</span></div><h2>{subscription.pet?.name ?? "기존 구독"}</h2></div><div><span className="list-label">월 패키지</span><strong>{formatPrice(subscription.currentSnapshot.packagePriceKrw)}</strong></div><div><span className="list-label">다음 배송</span><strong>{subscription.nextScheduledDate ? formatIsoLocalDate(subscription.nextScheduledDate) : "예정 없음"}</strong></div><Link className="button button-secondary" href={`${basePath}/${subscription.subscriptionId}`}>상세 보기</Link></article>)}</div><nav className="button-row" aria-label="구독 목록 페이지"><button className="button button-secondary" type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>이전 페이지</button><span>{page + 1} / {Math.max(1, Math.ceil((result?.totalElements ?? 0) / (result?.size || 20)))}</span><button className="button button-secondary" type="button" disabled={!result || (page + 1) * result.size >= result.totalElements} onClick={() => setPage((current) => current + 1)}>다음 페이지</button></nav></>}
   </>;
 }

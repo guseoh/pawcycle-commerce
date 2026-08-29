@@ -56,7 +56,7 @@ export function SubscriptionDetailScreen({ subscriptionId, created }: Subscripti
           setNotFound(true);
           return;
         }
-        setErrorMessage(error instanceof ApiError ? error.message : "구독 상세를 불러오지 못했습니다.");
+        setErrorMessage("구독 상세를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       });
 
     return () => {
@@ -116,7 +116,7 @@ export function SubscriptionDetailScreen({ subscriptionId, created }: Subscripti
     <div className="detail-stack">
       {created ? (
         <div className="notice-success" role="status">
-          구독이 생성되었습니다. 서버가 확정한 다음 주문일을 확인해 주세요.
+          구독이 생성되었습니다. 다음 주문일을 확인해 주세요.
         </div>
       ) : null}
 

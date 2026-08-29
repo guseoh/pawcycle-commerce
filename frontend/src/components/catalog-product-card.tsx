@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ProductSummary } from "@/lib/api";
-import { formatPetType, formatPrice } from "@/lib/frontend-utils";
+import { formatPetType, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 
 export function CatalogImage({ src, alt, className = "", eager = false }: { src: string | null; alt: string; className?: string; eager?: boolean }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return src && failedSource !== src
     ? <img src={src} alt={alt} className={className} loading={eager ? "eager" : "lazy"} onError={() => setFailedSource(src)} />
-    : <span className={`image-placeholder ${className}`} role="img" aria-label={`${alt} — 이미지 준비 중`}>PawCycle</span>;
+    : <span className={`image-placeholder ${className}`} role={alt ? "img" : undefined} aria-label={alt ? `${alt} — 상품 이미지를 준비 중입니다` : undefined} aria-hidden={alt ? undefined : true}><span className="image-placeholder-mark" aria-hidden="true">P</span><span>상품 이미지 준비 중</span></span>;
 }
 
 export function CatalogPrice({ price, compareAtPrice, discountRate }: { price: number | null; compareAtPrice?: number | null; discountRate?: number | null }) {
@@ -21,13 +21,14 @@ export function CatalogPrice({ price, compareAtPrice, discountRate }: { price: n
 }
 
 export function CatalogProductCard({ product, compareSelected = false, onCompare }: { product: ProductSummary; compareSelected?: boolean; onCompare?: () => void }) {
+  const productName = userFacingCatalogLabel(product.name, "상품");
   return <article className="catalog-product-card">
-    <Link href={`/products/${product.productId}`} aria-label={`${product.name} 상품 상세 보기`}>
-      <div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt={`${product.name} 상품 이미지`} className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">품절</span> : null}</div>
+    <Link href={`/products/${product.productId}`} aria-label={`${productName} 상품 상세 보기`}>
+      <div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt={`${productName} 상품 이미지`} className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">품절</span> : null}</div>
       <div className="catalog-card-copy">
         {product.brand ? <p className="catalog-brand">{product.brand.name}</p> : null}
         <p className="product-card-meta">{formatPetType(product.petType)} · {product.category.name}</p>
-        <h3>{product.name}</h3>
+        <h3>{productName}</h3>
         <CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />
         <p className="catalog-rating">{product.averageRating != null ? <><span aria-hidden="true">★ </span>평점 {product.averageRating} · 리뷰 {product.reviewCount}</> : "리뷰 없음"}</p>
         <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}<span className={`product-availability ${product.purchasable ? "is-available" : "is-unavailable"}`}>{product.purchasable ? "구매 가능" : "현재 품절"}</span></div>

@@ -21,10 +21,8 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  font-family: Arial, "Noto Sans KR", sans-serif;
-  background:
-    radial-gradient(circle at 10% 5%, rgba(227, 166, 63, 0.13), transparent 28rem),
-    linear-gradient(180deg, #fffdf8 0, #f7f4ec 28rem);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+  background: #f7f4ec;
   color: var(--ink);
 }
 
@@ -421,7 +419,7 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 .product-card h2 a:hover { text-decoration: underline; text-underline-offset: 0.18em; }
 .product-card p, .subscription-card p { line-height: 1.45; }
 .product-card-copy { display: grid; min-width: 0; align-content: start; gap: 0.45rem; padding: 0.85rem; }
-.product-card-media { display: grid; aspect-ratio: 4 / 3; overflow: hidden; background: var(--surface-soft); }
+.product-card-media { display: grid; aspect-ratio: 1; overflow: hidden; background: var(--surface-soft); }
 .product-card-media .product-thumbnail, .product-card-media .image-placeholder { width: 100%; height: 100%; min-height: 0; object-fit: cover; }
 .product-card-meta, .product-availability, .product-description { margin: 0; }
 .product-card-meta { color: var(--muted); font-size: 0.78rem; }
@@ -475,7 +473,7 @@ h1, h2, h3, p, a, span, dt, dd { overflow-wrap: anywhere; }
 
 .product-purchase-zone { padding-bottom: 0.25rem; }
 .product-detail-layout { grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr); gap: clamp(1.25rem, 3vw, 2.25rem); }
-.product-gallery { width: min(100%, 600px); min-height: 0; aspect-ratio: 4 / 3; max-height: 600px; border-radius: 12px; align-self: start; }
+.product-gallery { width: min(100%, 600px); min-height: 0; aspect-ratio: 1; max-height: 600px; border-radius: 12px; align-self: start; }
 .product-hero-image { width: 100%; height: 100%; min-height: 0; object-fit: cover; }
 .product-summary, .purchase-panel { padding: 1.15rem; border-radius: 10px; box-shadow: none; }
 .product-summary h1 { margin: 0.6rem 0; font-size: clamp(2rem, 4vw, 2.7rem); line-height: 1.1; }

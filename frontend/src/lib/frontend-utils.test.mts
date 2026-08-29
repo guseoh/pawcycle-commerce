@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   buildLoginHref,
   formatIsoLocalDate,
+  formatScheduleStatus,
   formatSubscriptionStatus,
   isInternalDemoLabel,
   sanitizeReturnTo,
+  subscriptionIssueCopy,
   userFacingCatalogLabel,
   validateSubscriptionDraft,
 } from "./frontend-utils.ts";
@@ -63,7 +65,15 @@ test("구독 상태는 사용자 표현으로 표시한다", () => {
   assert.equal(formatSubscriptionStatus("ACTIVE"), "이용 중");
   assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지");
   assert.equal(formatSubscriptionStatus("CANCELED"), "해지됨");
-  assert.equal(formatSubscriptionStatus("UNKNOWN"), "UNKNOWN");
+  assert.equal(formatSubscriptionStatus("UNKNOWN"), "상태 확인 중");
+});
+
+test("배송 상태와 조치 안내는 사용자 표현으로 표시한다", () => {
+  assert.equal(formatScheduleStatus("SCHEDULED"), "배송 예정");
+  assert.equal(formatScheduleStatus("HELD"), "배송 보류 · 확인 필요");
+  assert.equal(formatScheduleStatus("UNKNOWN"), "배송 상태 확인 중");
+  assert.equal(subscriptionIssueCopy("SHIPPING_ADDRESS_REQUIRED"), "배송지를 확인해 주세요.");
+  assert.equal(subscriptionIssueCopy("UNKNOWN"), "정기배송을 계속하려면 확인이 필요한 항목이 있습니다.");
 });
 
 test("QA·Demo 상품명은 사용자 노출 문구로 대체한다", () => {

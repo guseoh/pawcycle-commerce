@@ -53,7 +53,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
       }).catch((error: unknown) => {
         if (!active) return;
         if (error instanceof ApiError && error.code === "PRODUCT_NOT_FOUND") setState({ status: "not-found" });
-        else setState({ status: "error", message: error instanceof ApiError ? error.message : "상품 정보를 불러오지 못했습니다." });
+        else setState({ status: "error", message: "상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." });
       });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
@@ -117,7 +117,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
       if (request !== authRequest.current) return;
       setWishlistState({ memberId: auth.memberId, productId, status: "ready", value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? "위시리스트에서 삭제했습니다." : "위시리스트에 담았습니다.");
       notifyCommerceChanged();
-    } catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했습니다."); }
+    } catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage("위시리스트를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요."); }
     finally { setBusy(false); }
   }
 
@@ -129,7 +129,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     setBusy(true); setMessage(null);
     const request = ++authRequest.current;
     try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSku.skuId, parsed, csrf)); if (request !== authRequest.current) return; notifyCommerceChanged(); setMessageKind("success"); setMessage("장바구니에 담았습니다."); }
-    catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했습니다."); }
+    catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage("장바구니에 담지 못했습니다. 잠시 후 다시 시도해 주세요."); }
     finally { setBusy(false); }
   }
 
@@ -150,7 +150,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
           <section className="product-summary">
             {product!.brand ? <Link className="catalog-brand" href={`/products?brand=${encodeURIComponent(product!.brand.slug)}`}>{product!.brand.name}</Link> : null}
             <div className="card-meta"><span className="tag">{formatPetType(product!.petType)}</span><span className="tag">{categoryName}</span></div>
-            <h1>{productName}</h1><p className="description product-summary-description">{product!.shortDescription ?? "상품 설명이 준비되지 않았습니다."}</p>
+            <h1>{productName}</h1><p className="description product-summary-description">{userFacingCatalogLabel(product!.shortDescription, "상품 설명이 준비되지 않았습니다.")}</p>
             <a className="catalog-rating" href="#product-reviews-title">{product!.trust.averageRating !== null ? `★ 평점 ${product!.trust.averageRating} · 리뷰 ${product!.trust.reviewCount}개` : "리뷰 없음 · 첫 리뷰 남기기"}</a>
             <p className="purchase-price">{selectedSku ? <CatalogPrice price={selectedSku.price} compareAtPrice={selectedSku.compareAtPrice} discountRate={selectedSku.discountRate} /> : "옵션 선택 필요"}</p>
             <p className={`product-availability ${(selectedSku?.purchasable ?? product!.purchasable) ? "is-available" : "is-unavailable"}`}>{selectedSku ? selectedSku.purchasable ? "선택한 옵션 구매 가능" : "선택한 옵션 품절" : product!.purchasable ? "옵션을 선택해 주세요" : "현재 품절"}</p>
@@ -174,7 +174,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     {recentProducts.length ? <section className="section-card product-context-section" aria-labelledby="recent-products-title"><div className="section-title"><h2 id="recent-products-title">최근 본 상품</h2><Link className="text-link" href="/products">상품 더 보기</Link></div><div className="mini-product-grid">{recentProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={userFacingCatalogLabel(item.name, "반려동물 상품")} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{userFacingCatalogLabel(item.name, "반려동물 상품")}</strong>{item.price !== null ? <span>{formatPrice(item.price)}</span> : null}</Link>)}</div></section> : null}
     <RecommendationSection key={`related-${product!.productId}`} id="related-products-title" title="비슷한 상품" description="이 상품과 함께 비교해 보기 좋은 상품이에요." source="product-related" request={{ kind: "related", productId: product!.productId }} />
     <RecommendationSection key={`complementary-${product!.productId}`} id="complementary-products-title" title="함께 보기 좋은 상품" description="함께 살펴보면 좋은 상품을 모았어요." source="product-complementary" request={{ kind: "complementary", productId: product!.productId }} />
-    <div className="mobile-purchase-bar"><div><span className="field-help">선택한 옵션</span><strong>{displayPrice === null ? "옵션 선택 필요" : formatPrice(displayPrice)}</strong></div><button className="button button-primary" onClick={() => setSheetOpen(true)}>{selectedSku ? "구매 옵션 보기" : "옵션 선택"}</button></div>
+    <div className="mobile-purchase-bar"><div><span className="field-help">선택한 옵션</span><strong>{displayPrice === null ? "옵션 선택 필요" : formatPrice(displayPrice)}</strong></div><button className="button button-primary" type="button" onClick={() => setSheetOpen(true)}>{selectedSku ? "구매 옵션 보기" : "옵션 선택"}</button></div>
     {sheetOpen ? <ProductPurchaseSheet onClose={() => setSheetOpen(false)}>{purchasePanel("mobile-purchase")}</ProductPurchaseSheet> : null}
   </div>;
 }

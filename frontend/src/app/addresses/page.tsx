@@ -42,7 +42,7 @@ function AddressesForMember() {
         return;
       }
       setAddresses(null);
-      setError(reason instanceof ApiError ? reason.message : "배송지를 불러오지 못했습니다.");
+      setError("배송지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
   }, [markAnonymous]);
 
@@ -65,8 +65,8 @@ function AddressesForMember() {
       setForm(EMPTY_ADDRESS);
       setEditId(null);
       load();
-    } catch (reason) {
-      if (activeRef.current) setError(reason instanceof ApiError ? reason.message : "배송지를 저장하지 못했습니다.");
+    } catch {
+      if (activeRef.current) setError("배송지를 저장하지 못했습니다. 입력 내용을 확인한 뒤 다시 시도해 주세요.");
     } finally {
       if (activeRef.current) setBusy(false);
     }

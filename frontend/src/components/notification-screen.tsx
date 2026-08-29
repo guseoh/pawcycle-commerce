@@ -24,7 +24,7 @@ export function NotificationScreen() {
     } catch (reason) {
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return false; }
       setItems(null);
-      setMessage(reason instanceof ApiError ? reason.message : "알림을 불러오지 못했습니다.");
+      setMessage("알림을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       return false;
     }
   }, [auth]);
@@ -47,8 +47,8 @@ export function NotificationScreen() {
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.readAll(csrf));
       await refresh();
-    } catch (reason) {
-      setMessage(reason instanceof ApiError ? reason.message : "알림을 읽음 처리하지 못했습니다.");
+    } catch {
+      setMessage("알림을 읽음 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setPending(null);
     }
@@ -60,8 +60,8 @@ export function NotificationScreen() {
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.readNotification(id, csrf));
       await refresh();
-    } catch (reason) {
-      setMessage(reason instanceof ApiError ? reason.message : "알림을 읽음 처리하지 못했습니다.");
+    } catch {
+      setMessage("알림을 읽음 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setPending(null);
     }
@@ -73,5 +73,5 @@ export function NotificationScreen() {
   if (!items) return <ErrorState title="알림을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()} />;
 
   const unreadCount = items.filter((item) => !item.readAt).length;
-  return <section className="section-card notification-panel"><div className="section-title"><div><p className="eyebrow">Notifications</p><h1>알림</h1><p>주문과 정기배송 소식을 관련 화면에서 바로 확인하세요.</p></div><span className="count-badge">새 알림 {unreadCount}</span></div>{message ? <p className="error-summary" role="alert">{message}</p> : null}<button className="button button-secondary" disabled={pending !== null || unreadCount === 0} onClick={() => void readAll()}>모두 읽음</button>{items.length === 0 ? <div className="empty-callout"><strong>새 알림이 없습니다.</strong><span>주문과 정기배송 상태가 바뀌면 이곳에서 알려드릴게요.</span></div> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}><div><Link href={notificationHref(item)}><strong>{notificationCopy(item)}</strong></Link>{item.type === "SUBSCRIPTION_DELIVERY_REMINDER" && item.scheduledDate ? <span>예정일 {formatIsoLocalDate(item.scheduledDate)}</span> : null}<span>{formatDateTime(item.createdAt)}</span></div><span className={item.readAt ? "status-badge" : "status-badge tag-positive"}>{item.readAt ? "읽음" : "새 알림"}</span>{!item.readAt ? <button className="button button-secondary" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : <Link className="button button-secondary" href={notificationHref(item)}>관련 화면</Link>}</li>)}</ul>}</section>;
+  return <section className="section-card notification-panel"><div className="section-title"><div><p className="eyebrow">Notifications</p><h1>알림</h1><p>주문과 정기배송 소식을 관련 화면에서 바로 확인하세요.</p></div><span className="count-badge">새 알림 {unreadCount}</span></div>{message ? <p className="error-summary" role="alert">{message}</p> : null}<button className="button button-secondary" type="button" disabled={pending !== null || unreadCount === 0} onClick={() => void readAll()}>모두 읽음</button>{items.length === 0 ? <div className="empty-callout"><strong>새 알림이 없습니다.</strong><span>주문과 정기배송 상태가 바뀌면 이곳에서 알려드릴게요.</span></div> : <ul className="history-list">{items.map((item) => <li key={item.notificationId}><div><Link href={notificationHref(item)}><strong>{notificationCopy(item)}</strong></Link>{item.type === "SUBSCRIPTION_DELIVERY_REMINDER" && item.scheduledDate ? <span>예정일 {formatIsoLocalDate(item.scheduledDate)}</span> : null}<span>{formatDateTime(item.createdAt)}</span></div><span className={item.readAt ? "status-badge" : "status-badge tag-positive"}>{item.readAt ? "읽음" : "새 알림"}</span>{!item.readAt ? <button className="button button-secondary" type="button" disabled={pending !== null} onClick={() => void readOne(item.notificationId)}>읽음</button> : <Link className="button button-secondary" href={notificationHref(item)}>관련 화면</Link>}</li>)}</ul>}</section>;
 }

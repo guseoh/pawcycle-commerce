@@ -28,8 +28,8 @@ export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+    ? "날짜 확인 중"
+    : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(date);
 }
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
@@ -105,14 +105,36 @@ export function rememberRecentProduct(product: RecentProduct): RecentProduct[] {
 export function formatPetType(value: string): string {
   if (value === "DOG") return "개";
   if (value === "CAT") return "고양이";
-  return value;
+  return "반려동물";
 }
 
 export function formatSubscriptionStatus(value: string): string {
   if (value === "ACTIVE") return "이용 중";
   if (value === "PAUSED") return "일시정지";
   if (value === "CANCELED") return "해지됨";
-  return value;
+  return "상태 확인 중";
+}
+
+const SCHEDULE_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: "배송 예정",
+  SKIPPED: "건너뜀",
+  HELD: "배송 보류 · 확인 필요",
+  CANCELED: "배송 취소",
+};
+
+export function formatScheduleStatus(value: string): string {
+  return SCHEDULE_STATUS_LABELS[value] ?? "배송 상태 확인 중";
+}
+
+const SUBSCRIPTION_ISSUE_LABELS: Record<string, string> = {
+  SHIPPING_ADDRESS_REQUIRED: "배송지를 확인해 주세요.",
+  BILLING_METHOD_REQUIRED: "결제수단을 등록해 주세요.",
+  PAYMENT_SUPPORT_REQUIRED: "결제 확인이 필요합니다. 고객센터에 문의해 주세요.",
+  STOCK_UNAVAILABLE: "추가 상품의 재고를 확인해 주세요.",
+};
+
+export function subscriptionIssueCopy(value: string): string {
+  return SUBSCRIPTION_ISSUE_LABELS[value] ?? "정기배송을 계속하려면 확인이 필요한 항목이 있습니다.";
 }
 
 export function cartQuantityError(value: string): string | null {

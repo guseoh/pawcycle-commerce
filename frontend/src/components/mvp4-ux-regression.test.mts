@@ -168,11 +168,11 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
 
 test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이지 상태를 제공한다", () => {
   assert.match(productCardSource, /className="product-card-media"/);
-  assert.match(productCardSource, /aria-label=\{`\$\{product\.name\} 상품 상세 보기`\}/);
+  assert.match(productCardSource, /aria-label=\{`\$\{productName\} 상품 상세 보기`\}/);
   assert.match(productCardSource, /className=\{`product-availability/);
   assert.match(productsSource, /className="pagination-row"/);
-  assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
-  assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 4 \/ 3/);
+  assert.match(productsSource, /userFacingCatalogLabel/);
+  assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 1/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
 });
 
@@ -184,7 +184,7 @@ test("상품 상세는 구매 결정 정보와 정보 section을 분리한다", 
     assert.match(productDetailSource, new RegExp(`id="${sectionId}"`));
   }
   assert.match(productDetailSource, /className="mini-product-grid"/);
-  assert.match(globalStylesSource, /\.product-gallery \{ width: min\(100%, 600px\); min-height: 0; aspect-ratio: 4 \/ 3/);
+  assert.match(globalStylesSource, /\.product-gallery \{ width: min\(100%, 600px\); min-height: 0; aspect-ratio: 1/);
   assert.match(globalStylesSource, /\.product-info-grid/);
 });
 

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError, productApi, type ProductSummary, type ProductSort } from "@/lib/api";
+import { productApi, type ProductSummary, type ProductSort } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref } from "@/lib/frontend-utils";
+import { buildLoginHref, formatPetType } from "@/lib/frontend-utils";
 import { CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { catalogHref } from "@/lib/catalog-filters";
@@ -41,19 +41,23 @@ export default function Home() {
         </aside>
       </section>
 
-      <CompactDiscovery />
-      <HomeProductPreview id="new" title="새로 들어온 상품" description="새로운 일상의 즐거움을 찾아보세요." sort="NEWEST" />
-      <HomeProductPreview id="routine" title="꾸준히 필요한 것들" description="자주 쓰는 상품은 정기배송으로 편안하게." sort="NEWEST" subscribable />
-      <RecommendationSection id="home-popular-title" title="많이 선택한 상품" description="많은 반려가족이 최근에 찾은 상품을 만나보세요." source="home-popular" request={{ kind: "popular", limit: 4 }} />
-      <RecommendationSection id="home-trending-title" title="지금 주목받는 상품" description="최근 반려생활에서 관심이 커지고 있는 상품이에요." source="home-trending" request={{ kind: "trending", limit: 4 }} />
-      <SubscriptionValue />
-
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
       {auth.status === "error" ? <ErrorState headingLevel={3} title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()}><Link className="button button-secondary" href={buildLoginHref("/")}>로그인</Link></ErrorState> : null}
+      {auth.status === "authenticated" ? <HomeRoutineEntry /> : null}
       {auth.status === "authenticated" && auth.memberId !== null ? <PersonalizedRecommendations key={auth.memberId} /> : null}
+      <CompactDiscovery />
+      <RecommendationSection id="home-popular-title" title="많이 선택한 상품" description="많은 반려가족이 최근에 찾은 상품을 만나보세요." source="home-popular" request={{ kind: "popular", limit: 4 }} />
+      <RecommendationSection id="home-trending-title" title="지금 주목받는 상품" description="최근 반려생활에서 관심이 커지고 있는 상품이에요." source="home-trending" request={{ kind: "trending", limit: 4 }} />
+      <HomeProductPreview id="new" title="새로 들어온 상품" description="새로운 일상의 즐거움을 찾아보세요." sort="NEWEST" />
+      <HomeProductPreview id="routine" title="꾸준히 필요한 것들" description="자주 쓰는 상품은 정기배송으로 편안하게." sort="NEWEST" subscribable />
+      <SubscriptionValue />
       <TrustLinks />
     </div>
   );
+}
+
+function HomeRoutineEntry() {
+  return <section className="home-routine-entry" aria-labelledby="home-routine-title"><div><p className="eyebrow">MY ROUTINE</p><h2 id="home-routine-title">오늘 필요한 흐름을 이어가세요</h2><p>다음 배송 일정은 정기배송에서, 지난 상품은 주문 내역에서 바로 확인할 수 있어요.</p></div><div className="button-row"><Link className="button button-primary" href="/subscriptions">다음 배송 확인</Link><Link className="button button-secondary" href="/orders">주문 내역에서 다시 담기</Link></div></section>;
 }
 
 function CompactDiscovery() {
@@ -61,7 +65,7 @@ function CompactDiscovery() {
   return <section className="home-discovery" aria-labelledby="home-discovery-title">
     <div className="section-title"><div><p className="eyebrow">Shop by category</p><h2 id="home-discovery-title">필요한 것부터, 가볍게</h2></div><Link className="text-link" href="/products">전체 상품 →</Link></div>
     {state.status === "loading" ? <p className="discovery-status" role="status">카테고리와 브랜드를 불러오는 중입니다.</p> : null}
-    {state.status === "error" ? <ErrorState headingLevel={3} title="탐색 정보를 불러오지 못했습니다." message={state.message} onRetry={retry}><Link href="/products">상품 검색으로 이동</Link></ErrorState> : null}
+    {state.status === "error" ? <ErrorState headingLevel={3} title="탐색 정보를 불러오지 못했습니다." message="잠시 후 다시 시도해 주세요." onRetry={retry}><Link href="/products">상품 검색으로 이동</Link></ErrorState> : null}
     {state.status === "success" ? <>
       {state.data.categories.length ? <nav className="home-category-grid" aria-label="상품 카테고리">{state.data.categories.map((category) => <Link key={category.categoryId} href={`/products?category=${encodeURIComponent(category.slug)}`}>{category.name}<span aria-hidden="true">→</span></Link>)}</nav> : <p className="empty-callout">카테고리를 준비하고 있어요. 전체 상품에서 먼저 만나보세요.</p>}
       <div className="home-brand-section"><p className="eyebrow">Our brands</p><h3>함께하는 브랜드</h3>{state.data.brands.length ? <nav className="home-brand-grid" aria-label="브랜드별 상품">{state.data.brands.map((brand) => <Link href={catalogHref({ brand: brand.slug })} key={brand.brandId}>{brand.logoUrl ? <img src={brand.logoUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}<span>{brand.name}</span></Link>)}</nav> : <p className="field-help">브랜드를 준비하고 있습니다.</p>}</div>
@@ -77,8 +81,8 @@ function HomeProductPreview({ id, title, description, sort, subscribable }: { id
     let active = true;
     void productApi.list({ page: 0, size: 4, sort, subscribable }).then((response) => {
       if (active) setState({ status: "success", products: (response.items ?? response.products ?? []).slice(0, 4) });
-    }).catch((error: unknown) => {
-      if (active) setState({ status: "error", message: error instanceof ApiError ? error.message : "상품을 불러오지 못했습니다." });
+    }).catch(() => {
+      if (active) setState({ status: "error", message: "상품을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." });
     });
     return () => { active = false; };
   }, [retry, sort, subscribable]);
@@ -140,7 +144,7 @@ function PersonalizedRecommendations() {
           <label className="form-field" htmlFor="recommendation-pet">반려동물 선택
             <select id="recommendation-pet" className="input" aria-describedby="recommendation-help" value={selectedPetId ?? ""} onChange={(event) => setSelected(event.target.value ? Number(event.target.value) : null)}>
               <option value="">선택하세요</option>
-              {pets.map((pet) => <option key={pet.petId} value={pet.petId}>{pet.name} · {pet.petType}</option>)}
+              {pets.map((pet) => <option key={pet.petId} value={pet.petId}>{pet.name} · {formatPetType(pet.petType)}</option>)}
             </select>
           </label>
           {!selectedPetId ? <span className="field-help">반려동물을 선택하면 맞춤 추천을 확인할 수 있어요.</span> : null}

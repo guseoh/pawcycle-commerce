@@ -68,7 +68,7 @@ function SuccessContent() {
         markAnonymous();
         return;
       }
-      setState({ status: "error", message: reason instanceof ApiError ? reason.message : "결제 확인을 완료하지 못했습니다." });
+      setState({ status: "error", message: "결제 확인을 완료하지 못했습니다. 주문 상세에서 현재 상태를 확인해 주세요." });
     });
     return () => { active = false; };
   }, [executeWithCsrf, markAnonymous, paymentKey, providerOrderId, status, urlAmount]);

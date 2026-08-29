@@ -21,8 +21,8 @@ function engagementError(error: unknown, fallback: string): string {
   if (error.code === "AUTH_REQUIRED") return "로그인 후 이용할 수 있습니다.";
   if (error.code === "REVIEW_PURCHASE_REQUIRED") return "배송 완료된 구매 상품만 리뷰를 작성할 수 있습니다.";
   if (error.code === "REVIEW_ALREADY_EXISTS") return "이 상품에는 이미 리뷰를 작성했습니다.";
-  if (error.code === "VALIDATION_FAILED") return error.fieldErrors[0]?.message ?? error.message;
-  return error.message || fallback;
+  if (error.code === "VALIDATION_FAILED") return error.fieldErrors[0]?.message ?? fallback;
+  return fallback;
 }
 
 function PageControls({
@@ -192,11 +192,11 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
       if (!isLatestRequest(generation, reviewSummaryRequestGeneration.current)) return;
       setReviewSummary(summary);
       setReviewSummaryStatus("ready");
-    } catch (error) {
+    } catch {
       if (!isLatestRequest(generation, reviewSummaryRequestGeneration.current)) return;
       setReviewSummary(null);
       setReviewSummaryStatus("error");
-      setReviewSummaryError(error instanceof ApiError ? error.message : "리뷰 요약을 불러오지 못했습니다.");
+      setReviewSummaryError("리뷰 요약을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
   }, [productId]);
 

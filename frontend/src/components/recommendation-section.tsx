@@ -33,8 +33,8 @@ export function RecommendationSection({ id, title, description, request, source 
     const timer = window.setTimeout(() => {
       if (!active) return;
       setState({ status: "loading" });
-      void loadRecommendation(requestRef.current).then((data) => { if (active) { setState({ status: "success", data }); trackBestEffort(authRef.current, data, source, recommendationRequestPetId(requestRef.current)); } }).catch((error: unknown) => {
-        if (active) setState({ status: "error", message: error instanceof Error ? error.message : "추천을 불러오지 못했습니다." });
+      void loadRecommendation(requestRef.current).then((data) => { if (active) { setState({ status: "success", data }); trackBestEffort(authRef.current, data, source, recommendationRequestPetId(requestRef.current)); } }).catch(() => {
+        if (active) setState({ status: "error", message: "추천 상품을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요." });
       });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };

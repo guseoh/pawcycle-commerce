@@ -5,12 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
-import { ApiError, type CatalogDiscovery, type ProductFilters, type ProductListResponse, type ProductSort } from "@/lib/api";
+import { type CatalogDiscovery, type ProductFilters, type ProductListResponse, type ProductSort } from "@/lib/api";
 import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, interactionContext, parseCatalogFilters, PRODUCT_SORTS } from "@/lib/catalog-filters";
 import { loadProductResults } from "@/lib/catalog-products";
 import { useAuth } from "@/lib/auth-context";
 import { comparisonHref, toggleComparisonId } from "@/lib/comparison-selection";
 import { createInteractionEvent, finalProductApi } from "@/lib/final-product-api";
+import { userFacingCatalogLabel } from "@/lib/frontend-utils";
 
 type LoadState = { key: string; status: "success"; response: ProductListResponse } | { key: string; status: "error"; message: string };
 
@@ -27,15 +28,36 @@ function ProductsContent() {
   const [compareNames, setCompareNames] = useState<Record<number, string>>({});
   const [compareMessage, setCompareMessage] = useState<string | null>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
+  const filterCloseButton = useRef<HTMLButtonElement>(null);
   const discovery = useCatalogDiscovery();
   const metadata = discovery.state.status === "success" ? discovery.state.data : null;
   const requestKey = `${query}|${retryKey}`;
 
   useEffect(() => {
+    if (!filterOpen || !window.matchMedia("(max-width: 767px)").matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.requestAnimationFrame(() => filterCloseButton.current?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFilterOpen(false);
+        window.requestAnimationFrame(() => filterButton.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [filterOpen]);
+
+  useEffect(() => {
     const requestFilters = parseCatalogFilters(new URLSearchParams(query));
     return loadProductResults(requestFilters,
       (response) => setState({ key: requestKey, status: "success", response }),
-      (error) => setState({ key: requestKey, status: "error", message: catalogPriceRangeError(requestFilters) ?? (error instanceof ApiError ? error.message : "상품 목록을 불러오지 못했습니다.") }));
+      () => setState({ key: requestKey, status: "error", message: catalogPriceRangeError(requestFilters) ?? "상품 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." }));
   }, [query, requestKey]);
 
   const current = state?.key === requestKey ? state : null;
@@ -64,7 +86,7 @@ function ProductsContent() {
     if (!result.accepted) { setCompareMessage("상품 비교는 최대 3개까지 선택할 수 있어요."); return; }
     setCompareMessage(null);
     setCompareIds(result.ids);
-    setCompareNames((names) => result.reason === "removed" ? Object.fromEntries(Object.entries(names).filter(([id]) => Number(id) !== productId)) : { ...names, [productId]: name });
+    setCompareNames((names) => result.reason === "removed" ? Object.fromEntries(Object.entries(names).filter(([id]) => Number(id) !== productId)) : { ...names, [productId]: userFacingCatalogLabel(name, "상품") });
   }
 
   return <div className="catalog-page">
@@ -72,22 +94,23 @@ function ProductsContent() {
       <form className="catalog-search" key={query} onSubmit={(event) => { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("q") ?? "").trim(); const next = changeCatalogFilters(filters, { q: value }); track([createInteractionEvent({ type: "SEARCH", source: "catalog-search", context: interactionContext(next) })]); router.push(catalogHref(next)); }} role="search">
       <label className="sr-only" htmlFor="catalog-search">상품 검색</label><input id="catalog-search" className="input" name="q" type="search" defaultValue={filters.q ?? ""} placeholder="상품명 또는 설명으로 검색" /><button className="button button-primary" type="submit">검색</button>
     </form>
-    <div className="catalog-toolbar"><p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p><div className="button-row"><button ref={filterButton} className="button button-secondary catalog-filter-toggle" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => setFilterOpen((open) => !open)}>필터</button><label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div></div>
+    <div className="catalog-toolbar"><p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p><div className="button-row"><button ref={filterButton} className="button button-secondary catalog-filter-toggle" type="button" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => setFilterOpen((open) => !open)}>필터</button><label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div></div>
     <FilterChips filters={filters} metadata={metadata} onChange={change} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push("/products"); }} />
     <div className="catalog-layout">
-      <aside id="catalog-filter-panel" className={`catalog-filter-panel${filterOpen ? " is-open" : ""}`} aria-label="상품 필터">
-        <h2>상세 필터</h2>
+      <aside id="catalog-filter-panel" className={`catalog-filter-panel${filterOpen ? " is-open" : ""}`} role="dialog" aria-modal="true" aria-labelledby="catalog-filter-title">
+        <div className="catalog-filter-heading"><h2 id="catalog-filter-title">상세 필터</h2><button ref={filterCloseButton} className="catalog-filter-close" type="button" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }}>닫기</button></div>
         {discovery.state.status === "loading" ? <p role="status">탐색 정보를 불러오는 중입니다.</p> : null}
-        {discovery.state.status === "error" ? <div className="inline-alert" role="alert"><p>{discovery.state.message} 검색과 기본 필터는 계속 사용할 수 있습니다.</p><button className="button button-secondary" onClick={discovery.retry}>탐색 정보 재시도</button></div> : null}
-        <CatalogFilterForm key={query} filters={filters} metadata={metadata} onApply={(next) => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(next) })]); router.push(catalogHref({ ...next, page: 0 })); setFilterOpen(false); filterButton.current?.focus(); }} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push("/products"); }} />
+        {discovery.state.status === "error" ? <div className="inline-alert" role="alert"><p>탐색 정보를 불러오지 못했습니다. 검색과 기본 필터는 계속 사용할 수 있습니다.</p><button className="button button-secondary" type="button" onClick={discovery.retry}>탐색 정보 재시도</button></div> : null}
+        <CatalogFilterForm key={query} filters={filters} metadata={metadata} onApply={(next) => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(next) })]); router.push(catalogHref({ ...next, page: 0 })); setFilterOpen(false); filterButton.current?.focus(); }} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push("/products"); setFilterOpen(false); filterButton.current?.focus(); }} />
       </aside>
+      {filterOpen ? <button className="catalog-filter-backdrop" type="button" aria-label="필터 닫기" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }} /> : null}
       <section className="catalog-results" aria-label="상품 검색 결과" aria-busy={!current}>
         <h2 className="sr-only">상품 목록</h2>
         {!current ? <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState> : null}
         {current?.status === "error" ? <ErrorState headingLevel={3} title="상품 목록을 불러오지 못했습니다." message={current.message} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
         {current?.status === "success" ? <>
-          {products.length ? <div className="catalog-products-grid">{products.map((product) => <CatalogProductCard key={product.productId} product={product} compareSelected={compareIds.includes(product.productId)} onCompare={() => toggleCompare(product.productId, product.name)} />)}</div> : <div className="state-panel"><h3>조건에 맞는 상품이 없어요.</h3><p>필터를 줄이거나 다른 검색어로 찾아보세요.</p><button className="button button-secondary" onClick={() => router.push("/products")}>전체 상품 보기</button></div>}
-          {current.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" disabled={current.response.page <= 0} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page - 1 }))}>이전</button><span>{current.response.page + 1} / {current.response.totalPages}</span><button className="button button-secondary" disabled={current.response.page + 1 >= current.response.totalPages} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page + 1 }))}>다음</button></nav> : null}
+          {products.length ? <div className="catalog-products-grid">{products.map((product) => <CatalogProductCard key={product.productId} product={product} compareSelected={compareIds.includes(product.productId)} onCompare={() => toggleCompare(product.productId, product.name)} />)}</div> : <div className="state-panel"><h3>조건에 맞는 상품이 없어요.</h3><p>필터를 줄이거나 다른 검색어로 찾아보세요.</p><button className="button button-secondary" type="button" onClick={() => router.push("/products")}>전체 상품 보기</button></div>}
+          {current.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" type="button" disabled={current.response.page <= 0} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page - 1 }))}>이전</button><span>{current.response.page + 1} / {current.response.totalPages}</span><button className="button button-secondary" type="button" disabled={current.response.page + 1 >= current.response.totalPages} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page + 1 }))}>다음</button></nav> : null}
         </> : null}
       </section>
     </div>
@@ -124,7 +147,7 @@ function FilterChips({ filters, metadata, onChange, onReset }: { filters: Produc
     chips.push({ key, label: `${labels[key]}: ${display}`, remove: () => onChange({ [key]: undefined }) });
   }
   filters.facet?.forEach((value, index) => chips.push({ key: `facet-${index}`, label: value, remove: () => onChange({ facet: filters.facet?.filter((_, itemIndex) => itemIndex !== index) }) }));
-  return chips.length ? <div className="catalog-filter-chips" aria-label="선택한 필터">{chips.map((chip) => <button key={chip.key} onClick={chip.remove} aria-label={`${chip.label} 필터 제거`}>{chip.label} <span aria-hidden="true">×</span></button>)}<button onClick={onReset}>전체 초기화</button></div> : null;
+  return chips.length ? <div className="catalog-filter-chips" aria-label="선택한 필터">{chips.map((chip) => <button key={chip.key} type="button" onClick={chip.remove} aria-label={`${chip.label} 필터 제거`}>{chip.label} <span aria-hidden="true">×</span></button>)}<button type="button" onClick={onReset}>전체 초기화</button></div> : null;
 }
 
 export default function ProductsPage() { return <Suspense fallback={<LoadingState>상품 목록을 준비하고 있습니다.</LoadingState>}><ProductsContent /></Suspense>; }

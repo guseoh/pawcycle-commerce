@@ -39,7 +39,7 @@ function BillingMethodForMember() {
         return;
       }
       setStatus(null);
-      setError(reason instanceof ApiError ? reason.message : "결제수단 정보를 불러오지 못했습니다.");
+      setError("결제수단 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
   }, [markAnonymous]);
 
@@ -56,8 +56,8 @@ function BillingMethodForMember() {
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.prepareBilling(csrf));
       if (activeRef.current && request === requestRef.current) setPrepared(true);
-    } catch (reason) {
-      if (activeRef.current && request === requestRef.current) setError(reason instanceof ApiError ? reason.message : "등록 준비를 시작하지 못했습니다.");
+    } catch {
+      if (activeRef.current && request === requestRef.current) setError("결제수단 등록 준비를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       if (activeRef.current && request === requestRef.current) setBusy(false);
     }
@@ -65,5 +65,5 @@ function BillingMethodForMember() {
 
   if (status === null && !error) return <LoadingState>결제수단 정보를 불러오고 있습니다.</LoadingState>;
   if (status === null) return <ErrorState title="결제수단 정보를 불러오지 못했습니다." message={error ?? "다시 시도해 주세요."} onRetry={load} />;
-  return <section><header className="page-heading"><p className="eyebrow">결제수단</p><h1>결제수단 상태</h1><p>등록 상태를 확인하고 필요한 경우 등록을 시작할 수 있어요.</p></header><section className="section-card"><div className="billing-status-card"><div className="status-tile"><strong>등록 상태</strong><span>{status.registered ? "등록된 결제수단이 있어요." : "등록된 결제수단이 없어요."}</span></div><div className="status-tile"><strong>서비스 상태</strong><span>{status.configured ? "등록을 시작할 수 있어요." : "현재 등록을 시작할 수 없어요."}</span></div></div>{error ? <p className="field-error" role="alert">{error}</p> : null}<button className="button button-primary" type="button" disabled={busy || prepared || !status.configured} onClick={() => void prepare()}>{busy ? "준비 중" : "결제수단 등록 준비"}</button>{prepared ? <div className="provider-block"><strong>등록 준비가 완료되었습니다.</strong><p>Toss Browser Provider Client가 연결되지 않아 authKey를 이용한 등록 완료 단계는 아직 지원하지 않습니다.</p></div> : null}</section></section>;
+  return <section><header className="page-heading"><p className="eyebrow">결제수단</p><h1>결제수단 상태</h1><p>등록 상태를 확인하고 필요한 경우 등록을 시작할 수 있어요.</p></header><section className="section-card"><div className="billing-status-card"><div className="status-tile"><strong>등록 상태</strong><span>{status.registered ? "등록된 결제수단이 있어요." : "등록된 결제수단이 없어요."}</span></div><div className="status-tile"><strong>서비스 상태</strong><span>{status.configured ? "등록을 시작할 수 있어요." : "현재 등록을 시작할 수 없어요."}</span></div></div>{error ? <p className="field-error" role="alert">{error}</p> : null}<button className="button button-primary" type="button" disabled={busy || prepared || !status.configured} onClick={() => void prepare()}>{busy ? "준비 중" : "결제수단 등록 준비"}</button>{prepared ? <div className="inline-alert"><strong>등록 준비가 완료되었습니다.</strong><p>결제수단 등록 화면은 준비가 끝난 뒤 안내드릴 예정입니다.</p></div> : null}</section></section>;
 }

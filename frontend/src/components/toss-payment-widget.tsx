@@ -65,11 +65,11 @@ export function TossPaymentWidget({ checkout }: { checkout: CheckoutResult }) {
   }
 
   if (phase === "unavailable") {
-    return <div className="provider-block" role="status"><strong>테스트 결제 준비 전</strong><p>{checkout.tossTestEnabled ? "로컬 Toss Test client key가 구성되지 않아 결제 화면을 열 수 없습니다." : "서버 Toss Test opt-in이 활성화되지 않아 실제 Test 결제 화면을 열지 않습니다."} 주문은 결제 대기 상태로 남습니다.</p></div>;
+    return <div className="inline-alert" role="status"><strong>온라인 결제 준비 전</strong><p>온라인 결제 수단을 아직 열 수 없어 주문은 결제 대기 상태로 남습니다. 주문 상세에서 현재 상태를 확인해 주세요.</p></div>;
   }
 
   return <section className="toss-payment-panel" aria-labelledby="toss-payment-title">
-    <div className="section-title"><div><p className="eyebrow">Toss Test</p><h2 id="toss-payment-title">결제 수단 선택</h2></div><strong>{formatPrice(checkout.amount)}</strong></div>
+    <div className="section-title"><div><p className="eyebrow">결제 단계</p><h2 id="toss-payment-title">결제 수단 선택</h2></div><strong>{formatPrice(checkout.amount)}</strong></div>
     {phase === "loading" ? <p className="field-help" role="status">결제 화면을 준비하고 있습니다.</p> : null}
     {phase === "error" ? <p className="error-summary" role="alert">{error}</p> : null}
     <div id="toss-payment-methods" aria-label="결제 수단" />

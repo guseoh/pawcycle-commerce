@@ -7,7 +7,7 @@ import { LogoutControl } from "@/components/logout-control";
 import { ApiError } from "@/lib/api";
 import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
+import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
 import { v2Api, type V2SubscriptionSummary } from "@/lib/v2-api";
 
@@ -49,7 +49,7 @@ export default function MyPage() {
       setSnapshotError(null);
     } catch (reason) {
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
-      setSnapshotError(reason instanceof ApiError ? reason.message : "내 Commerce 요약을 불러오지 못했습니다.");
+      setSnapshotError("내 쇼핑 요약을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
   }, [auth]);
   useEffect(() => {
@@ -80,12 +80,12 @@ function ReorderTimingSection() {
     const timer = window.setTimeout(() => {
       if (!active) return;
       setItems(null); setError(null);
-      void finalProductApi.reorderTiming().then((result) => { if (active) setItems(reorderTimingItems(result)); }).catch((reason: unknown) => { if (active) setError(reason instanceof ApiError ? reason.message : "재구매 시점을 불러오지 못했습니다."); });
+      void finalProductApi.reorderTiming().then((result) => { if (active) setItems(reorderTimingItems(result)); }).catch(() => { if (active) setError("재구매 시점을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
   }, [auth.status, retry]);
   if (error) return <section className="section-card reorder-section" aria-labelledby="reorder-title"><div className="inline-alert" role="alert"><strong id="reorder-title">다시 필요할 수 있는 상품을 불러오지 못했습니다.</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={() => setRetry((value) => value + 1)}>다시 시도</button></div></section>;
   if (auth.status !== "authenticated" || (items !== null && items.length === 0)) return null;
   if (!items) return <section className="section-card reorder-section"><LoadingState>재구매 시점을 확인하고 있습니다.</LoadingState></section>;
-  return <section className="section-card reorder-section" aria-labelledby="reorder-title"><div className="section-title"><div><p className="eyebrow">Repeat commerce</p><h2 id="reorder-title">다시 필요할 수 있는 상품</h2><p>최근 구매 흐름을 바탕으로 다음 시점을 참고해 보세요.</p></div></div><ul className="reorder-list">{items.map((item) => <li key={item.productId}><div><strong>{item.productName}</strong><span>{item.state === "OVERDUE" ? "예상 구매 시점이 지났어요" : "곧 다시 필요할 수 있어요"}</span></div><dl><div><dt>최근 구매</dt><dd>{formatIsoLocalDate(item.lastPurchasedDate)}</dd></div><div><dt>예상 시점</dt><dd>{formatIsoLocalDate(item.expectedReorderDate)}</dd></div></dl><Link className="button button-secondary" href={`/products/${item.productId}`}>상품 보기</Link></li>)}</ul></section>;
+  return <section className="section-card reorder-section" aria-labelledby="reorder-title"><div className="section-title"><div><p className="eyebrow">Repeat commerce</p><h2 id="reorder-title">다시 필요할 수 있는 상품</h2><p>최근 구매 흐름을 바탕으로 다음 시점을 참고해 보세요.</p></div></div><ul className="reorder-list">{items.map((item) => <li key={item.productId}><div><strong>{userFacingCatalogLabel(item.productName, "상품")}</strong><span>{item.state === "OVERDUE" ? "예상 구매 시점이 지났어요" : "곧 다시 필요할 수 있어요"}</span></div><dl><div><dt>최근 구매</dt><dd>{formatIsoLocalDate(item.lastPurchasedDate)}</dd></div><div><dt>예상 시점</dt><dd>{formatIsoLocalDate(item.expectedReorderDate)}</dd></div></dl><Link className="button button-secondary" href={`/products/${item.productId}`}>상품 보기</Link></li>)}</ul></section>;
 }

@@ -30,7 +30,7 @@ export function PetProfileScreen() {
       setPets((await v2Api.pets.list()).body.items);
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
-      setLoadingError(error instanceof ApiError ? error.message : "반려동물 목록을 불러오지 못했습니다.");
+      setLoadingError("반려동물 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
   }, [auth]);
 
@@ -52,7 +52,7 @@ export function PetProfileScreen() {
       setPets((current) => [...(current ?? []), pet]); setCreateName(""); setMessageKind("success"); setMessage("반려동물 프로필을 등록했습니다.");
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
-      else { setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요."); }
+      else { setMessageKind("error"); setMessage("반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요."); }
     } finally { setCreating(false); }
   }
 
@@ -70,7 +70,7 @@ export function PetProfileScreen() {
     } catch (error) {
       if (error instanceof ApiError && error.code === "PET_NOT_FOUND") { await load(); setMessage("반려동물을 찾을 수 없어 목록을 새로 확인했습니다."); }
       else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
-      else setMessage(error instanceof ApiError ? error.message : "반려동물 프로필을 저장하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요.");
+      else setMessage("반려동물 프로필을 저장하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요.");
       setMessageKind("error");
     } finally { setSavingId(null); }
   }
@@ -89,6 +89,11 @@ export function PetProfileScreen() {
 }
 
 function PetCard({ pet, editing, draft, weightError, busy, onEdit, onCancel, onDraft, onSave }: { pet: Pet; editing: boolean; draft: PetDraft | null; weightError: string | null; busy: boolean; onEdit: () => void; onCancel: () => void; onDraft: (patch: Partial<PetDraft>) => void; onSave: () => void }) {
-  if (!editing || !draft) return <article className="pet-profile-card"><div className="section-title"><h3>{pet.name}</h3><span className="status-badge">{pet.profileComplete ? "프로필 작성 완료" : "프로필 정보 보완 필요"}</span></div><dl className="detail-list"><dt>종</dt><dd>{formatPetType(pet.petType)}</dd><dt>품종</dt><dd>{pet.breed ?? "미입력"}</dd><dt>몸무게</dt><dd>{pet.weightKg === null ? "미입력" : `${pet.weightKg}kg`}</dd></dl><button className="button button-secondary" type="button" onClick={onEdit}>프로필 수정</button></article>;
-  return <article className="pet-profile-card" aria-labelledby={`pet-edit-${pet.petId}`}><h3 id={`pet-edit-${pet.petId}`}>{pet.name} 프로필 수정</h3><div className="pet-edit-form"><label className="form-field">이름<input className="input" value={draft.name} maxLength={50} onChange={(event) => onDraft({ name: event.target.value })} disabled={busy} /></label><label className="form-field">종<input className="input" value={formatPetType(pet.petType)} readOnly /></label><label className="form-field">품종<input className="input" value={draft.breed} maxLength={80} onChange={(event) => onDraft({ breed: event.target.value })} disabled={busy} /></label><label className="form-field">몸무게(kg)<input className="input" type="number" min="0.01" max="200" step="0.01" value={draft.weightKg} onChange={(event) => onDraft({ weightKg: event.target.value })} disabled={busy} /></label>{weightError ? <p className="field-error" role="alert">{weightError}</p> : null}</div><div className="button-row"><button className="button button-primary" type="button" onClick={onSave} disabled={busy}>{busy ? "저장 중" : "변경 저장"}</button><button className="button button-secondary" type="button" onClick={onCancel} disabled={busy}>취소</button></div></article>;
+  if (!editing || !draft) return <article className="pet-profile-card"><div className="pet-profile-heading"><PetAvatar petType={pet.petType} /><div className="section-title"><h3>{pet.name}</h3><span className="status-badge">{pet.profileComplete ? "프로필 작성 완료" : "프로필 정보 보완 필요"}</span></div></div><dl className="detail-list"><dt>종</dt><dd>{formatPetType(pet.petType)}</dd><dt>품종</dt><dd>{pet.breed ?? "미입력"}</dd><dt>몸무게</dt><dd>{pet.weightKg === null ? "미입력" : `${pet.weightKg}kg`}</dd></dl><button className="button button-secondary" type="button" onClick={onEdit}>프로필 수정</button></article>;
+  return <article className="pet-profile-card" aria-labelledby={`pet-edit-${pet.petId}`}><div className="pet-profile-heading"><PetAvatar petType={pet.petType} /><h3 id={`pet-edit-${pet.petId}`}>{pet.name} 프로필 수정</h3></div><div className="pet-edit-form"><label className="form-field">이름<input className="input" value={draft.name} maxLength={50} onChange={(event) => onDraft({ name: event.target.value })} disabled={busy} /></label><label className="form-field">종<input className="input" value={formatPetType(pet.petType)} readOnly /></label><label className="form-field">품종<input className="input" value={draft.breed} maxLength={80} onChange={(event) => onDraft({ breed: event.target.value })} disabled={busy} /></label><label className="form-field">몸무게(kg)<input className="input" type="number" min="0.01" max="200" step="0.01" value={draft.weightKg} onChange={(event) => onDraft({ weightKg: event.target.value })} disabled={busy} /></label>{weightError ? <p className="field-error" role="alert">{weightError}</p> : null}</div><div className="button-row"><button className="button button-primary" type="button" onClick={onSave} disabled={busy}>{busy ? "저장 중" : "변경 저장"}</button><button className="button button-secondary" type="button" onClick={onCancel} disabled={busy}>취소</button></div></article>;
+}
+
+function PetAvatar({ petType }: { petType: Pet["petType"] }) {
+  const label = formatPetType(petType);
+  return <div className={`pet-avatar pet-avatar-${petType.toLowerCase()}`} role="img" aria-label={`${label} 기본 아바타`}><span aria-hidden="true">{petType === "DOG" ? "DOG" : "CAT"}</span></div>;
 }
