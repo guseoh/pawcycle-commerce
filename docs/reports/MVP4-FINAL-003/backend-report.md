@@ -19,6 +19,7 @@
 - exploration product는 personalized 결과와 중복되지 않고 eligible 잔여 후보 `10` 또는 `11` 중 하나인지 검증한다. 최종 결과를 `1..10`으로 고정하지 않는다.
 - 집중 테스트 1회 및 `--rerun-tasks` 반복 3회 통과.
 - Backend `build -x test` 통과.
+- PR body UTF-8 및 task artifact validator 통과, Draft PR #249 생성.
 - 제품 로직, API, DB schema, Frontend, QA 산출물은 변경하지 않았다.
 
 ## 위험 또는 제한
