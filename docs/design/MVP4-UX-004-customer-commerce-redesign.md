@@ -6,11 +6,12 @@
 - 등급: 일반
 - 실행 구분: 저장소 문서 변경. Production·Cloud·운영 DB 실행이 아니다.
 - 역할: UX/UI Designer
+- 상태: `Proposed Design Contract / Draft / Pending Product Owner Approval`
 - 기준: `origin/main`의 `626e1d2`와 2026-08-29 현재 Draft `origin/feat/fe/MVP4-FE-004`
 - 포함: 고객용 탐색, 구매, 주문, 정기배송, 계정, 공통 반응형·접근성 설계 계약
 - 제외: 프론트엔드·백엔드 코드, API·DB·인프라 변경, 새 제품 기능 승인, 운영 실행, 병합
 
-이 문서는 MVP4 고객 경험의 정식 재설계 기준이다. 기존 `MVP4-UX-002`의 제품 방향과 `MVP4-UX-003`의 기능·접근성 발견사항은 보존하되, 화면 구성과 시각 규칙이 충돌하면 이 문서 및 연결된 A–D 번들이 우선한다. Draft FE-004와 그 안의 commerce layout correction은 현재 구현 의도를 이해하기 위한 감사 입력이며 승인된 디자인 권위가 아니다.
+이 문서는 MVP4 고객 경험의 승인 제안안이다. 기존 `MVP4-UX-002`의 제품 방향과 `MVP4-UX-003`의 기능·접근성 발견사항을 보존하고, 이번 correction은 [실제 벤치마크 증거](./MVP4-UX-004-benchmark-evidence.md)와 [Visual + Interaction Correction](./MVP4-UX-004-visual-interaction-correction.md)을 포함한다. Product Owner 승인 전에는 승인 완료 상태나 구현 권위로 취급하지 않는다. Draft FE-004와 그 안의 commerce layout correction도 현재 구현 의도를 이해하기 위한 감사 입력일 뿐 승인된 디자인 권위가 아니다.
 
 ## 승인 입력과 비승인 경계
 
@@ -89,7 +90,7 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 | UX-003의 큰 카드·과도한 여백 축소 | `ADOPT` | 상품/거래 화면의 평면적 정보 밀도로 반영 |
 | UX-003 visual spec의 1,200–1,280px 중심 셸 | `SUPERSEDE` | 탐색 1,440px, 상세 1,320px, 거래 1,180px로 목적별 분리 |
 | FE-004 correction의 1,480px 단일 셸 | `SUPERSEDE` | 넓은 PLP 의도만 유지하고 라우트별 폭을 사용 |
-| 데스크톱 4열 고정 상품 그리드 | `SUPERSEDE` | 가용 폭에 따라 5/4/3/2/1열로 전환 |
+| 데스크톱 4열 고정 상품 그리드 | `ADAPT` | 1440px 이상 4열, 1200–1439 3열, 1024–1199 3열, 768–1023 2열, 600–767 2열, 360–599 2열, 320–359 1열 |
 | 모바일 하단 내비게이션 | `PENDING PO` | 5개 항목 후보를 제시하되 승인 전 구현 금지 |
 | 모든 내용을 카드로 감싸는 구성 | `REJECT` | 경계선·여백·표면색을 우선하고 카드는 독립 객체에만 사용 |
 
@@ -100,16 +101,17 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 | 출처·화면 | 관찰한 구성·동작 | 채택 판정 | 증거 | PawCycle 적용 |
 | --- | --- | --- | --- | --- |
 | Kurly 홈 | 2단 헤더, 중앙 검색, 카테고리 메뉴, 프로모션과 상품 레일 | `ADAPT` | `CONFIRMED` | 헤더 검색 우선순위와 카테고리 탐색만 채택; 과도한 프로모션은 제외 |
-| Kurly Pet PLP `/categories/991` | 좌측 필터, 결과 수·정렬, 밀도 높은 4열 카드, URL 필터·정렬 | `ADAPT` | `CONFIRMED` | 데스크톱 필터 레일과 URL 상태, PawCycle 폭에 맞춘 5/4열 |
+| Kurly Pet PLP `/categories/991` | 좌측 필터, 결과 수·정렬, 1280px에서 249px 폭 3열의 정보 밀도 높은 카드 | `ADAPT` | `CONFIRMED` | 데스크톱 필터 레일과 URL 상태, PawCycle 1440px 4열 상한 |
 | Kurly PDP `/goods/1001181670` | 좌측 갤러리, 우측 구매 정보, 옵션·총액·CTA, 하단 앵커 | `ADAPT` | `CONFIRMED` | 연속 PDP와 sticky 구매 요약; 구독 선택은 지원 API가 없어 추가하지 않음 |
-| Kurly 빈 장바구니 `/cart` | 내용/요약 2열, 비어 있음 메시지, 로그인 CTA | `ADOPT` | `CONFIRMED` | 빈 상태에서도 주문 요약의 0원 구조와 다음 행동을 명확히 표시 |
-| Olive Young 홈 | 검색·밀집 GNB, 카테고리 레일, 제어 가능한 배너, 배지 중심 카드 | `ADAPT` | `CONFIRMED` | 배너 재생 제어와 배지 계층만 채택; 뷰티식 고밀도 GNB는 제외 |
-| Olive Young PLP | 기기 확인 화면으로 차단 | `UNSUPPORTED` | `UNVERIFIED` | 직접 확인한 근거로 사용하지 않음 |
+| Kurly 상품 장바구니 `/cart` | 전체·개별 선택, 수량, 배송 group, 선택 해제에 따른 0원 합계 동기화 | `ADOPT` | `CONFIRMED` | 선택 집합과 서버 합계를 동시에 표시 |
+| Musinsa Search/PLP | filter group 독립 개방, 선택 즉시 URL·결과 수 갱신, 1280px 6열 카드 | `ADAPT` | `CONFIRMED` | URL commit을 채택하고 20px target·6열 과밀은 제외 |
+| IKEA Search/Cart/Checkout | 비교 4/5 tray, 수량·삭제·위시, 로그인/guest dialog, 배송→상세→결제 단계 잠금 | `ADAPT` | `CONFIRMED` | 비교 한도는 승인된 3개로 축소; checkout progressive disclosure 채택 |
+| PetFriends Home/PDP | 펫 유형·소비 목적 category, 반려 적합성·가격·배송·후기, mobile 찜/담기 | `ADAPT` | `CONFIRMED` | pet commerce 정보 순서와 mobile sticky action 채택 |
 | PetSmart Autoship 공식 학습 문서 | PDP 선택, 주기 설정, 다음 주문 변경·건너뛰기·수량·취소, 사전 알림 | `ADAPT` | `INDIRECT` | MVP4가 지원하는 날짜·주기·건너뛰기·취소만 적용; 이메일/푸시·대체품은 제외 |
 | Chewy Autoship | 페이지 내용 확인 실패 | `UNSUPPORTED` | `UNVERIFIED` | 관행 추정에 사용하지 않음 |
 | Petco Repeat Delivery | 기기 확인 iframe으로 차단 | `UNSUPPORTED` | `UNVERIFIED` | 관행 추정에 사용하지 않음 |
 
-레퍼런스 URL과 관찰일은 각 번들의 관련 화면에 다시 연결한다. 브랜드를 복제하지 않고 검증된 정보 계층과 상호작용 원리만 사용한다.
+전체 URL, Primary/Secondary 화면 매핑, 접근 제한과 상호작용 기록은 [실제 Commerce 벤치마크 증거](./MVP4-UX-004-benchmark-evidence.md)를 단일 근거로 사용한다. 브랜드를 복제하지 않고 검증된 정보 계층과 상호작용 원리만 사용한다.
 
 ## 최종 시각 방향: Warm Routine Commerce
 
@@ -124,17 +126,22 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 | `surface-soft` | `#EFE9DA` | 구역 구분과 선택 전 보조 영역 |
 | `text-strong` | `#17231D` | 제목·가격·핵심 상태 |
 | `text` | `#33443B` | 본문 |
-| `text-muted` | `#66756D` | 보조 설명·메타데이터 |
+| `text-muted` | `#5F6F66` | 보조 설명·메타데이터 |
 | `brand` | `#1F6B4F` | 주 CTA·활성 링크·포커스 보조 |
 | `brand-hover` | `#18563F` | hover/pressed |
-| `accent` | `#D9822B` | 할인·주의를 끄는 한정 배지 |
+| `accent-text` | `#A14600` | 할인·주의 텍스트 |
+| `accent-soft` | `#FFF1E6` | 할인·주의 배경 |
 | `success` | `#257A4D` | 완료·정상 |
 | `warning` | `#9A5A13` | 보류·확인 필요 |
 | `danger` | `#B42318` | 실패·파괴 행동 |
-| `border` | `#D7D8D1` | 기본 경계 |
+| `border-soft` | `#D7D8D1` | 장식·section 경계 |
+| `border-control` | `#727E77` | 입력·버튼 외곽선 |
+| `selected-soft` | `#DCEFE6` | 선택·활성 배경 |
+| `disabled-surface` | `#ECEFEB` | 비활성 control 배경 |
+| `disabled-text` | `#6A746F` | 비활성 control 텍스트 |
 | `focus` | `#0B63CE` | 모든 키보드 포커스 2px 외곽선 |
 
-색만으로 상태를 구분하지 않는다. 상태는 아이콘, 짧은 제목, 설명을 함께 가진다. 대비는 구현 시 실제 조합으로 WCAG AA를 다시 계산하며, 본문 4.5:1·큰 텍스트와 아이콘 3:1을 하한으로 삼는다.
+색만으로 상태를 구분하지 않는다. 상태는 아이콘, 짧은 제목, 설명을 함께 가진다. 계산된 대비는 `text-strong/canvas 14.76:1`, `text/canvas 9.41:1`, `text-muted/canvas 4.83:1`, `brand/white 6.41:1`, `brand-hover/white 8.60:1`, `accent-text/white 6.19:1`, `success/white 5.29:1`, `warning/white 5.46:1`, `danger/white 6.57:1`, `focus/white 5.69:1`, `border-control/white 4.23:1`, `disabled-text/disabled-surface 4.17:1`이다. 정상 본문 4.5:1·큰 텍스트와 비텍스트 control 3:1을 하한으로 삼고, 실제 구현 조합도 동일 방식으로 재검증한다.
 
 ### 타이포그래피와 밀도
 
@@ -168,9 +175,7 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 | 거래·계정 | 1,180px | 12열, 24px gap | 장바구니, 결제, 주문, 정기배송 |
 | 읽기·폼 | 760px | 단일 열 | 로그인, 지원 콘텐츠, 단일 편집 폼 |
 
-- viewport ≥1440: 좌우 32px gutter. 1024–1439: 24px. 600–1023: 24px. 360–599: 16px. 320–359: 12px.
-- PLP는 ≥1440에서 228px 필터 + 24px 간격 + 5열, 1200–1439에서 216px + 4열, 900–1199에서 필터 drawer + 3열, 360–899에서 2열, 320–359 또는 200% 확대에서 1열로 안전하게 내려간다.
-- sticky 요소는 헤더 아래에 위치하고 포커스된 요소를 가리지 않는다. footer가 보이면 모바일 sticky CTA에 하단 여백을 보장한다.
+breakpoint, gutter, container, PLP 열 수, header와 sticky 충돌 규칙의 단일 SSOT는 [D8 반응형 기준](./MVP4-UX-004-d-shared-responsive-accessibility.md#d8-반응형-기준)이다. A–C는 숫자를 재정의하지 않는다.
 
 ## 공통 상호작용 계약
 
@@ -202,6 +207,8 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 - [B. 장바구니·결제·주문](./MVP4-UX-004-b-cart-checkout-orders.md)
 - [C. 정기배송·계정·지원](./MVP4-UX-004-c-subscription-account.md)
 - [D. 공통 컴포넌트·반응형·접근성](./MVP4-UX-004-d-shared-responsive-accessibility.md)
+- [실제 Commerce 벤치마크 증거](./MVP4-UX-004-benchmark-evidence.md)
+- [Visual + Interaction Correction](./MVP4-UX-004-visual-interaction-correction.md)
 
 각 화면 계약의 `필수 상태`는 loading, empty, error, success, retry와 필요 시 authenticated/anonymous, stale/conflict를 포함한다. 구현자는 일부 상태를 생략하거나 임의의 modal/card 패턴으로 바꾸지 않는다.
 
@@ -229,16 +236,18 @@ Draft는 자동 폐기하거나 소급 수정하지 않는다. 승인 전에는 
 
 이 항목은 UI를 숨기거나 “준비 중”으로 노출하지 않는다. 제품·API 승인이 생기기 전까지 설계 밖이다.
 
-## 미결 Product Owner 결정
+## 미결 Product Owner 결정과 Recommended Default
 
-1. 모바일 하단 내비게이션을 `홈/쇼핑/정기배송/주문/마이` 5개로 도입할지 여부.
-2. 홈의 대표 사회적 증거를 `인기 상품`과 `지금 많이 찾는 상품` 중 어느 하나로 고정할지 여부. 두 섹션을 동시에 반복하지 않는다.
-3. `/checkout`의 마지막 CTA가 실제 결제 승인 시작임을 반영해 `주문하기` 또는 `결제하기` 중 어느 용어를 전 서비스 표준으로 삼을지 여부.
-4. 비로그인 위시리스트 클릭 시 즉시 로그인 이동과 짧은 사전 안내 modal 중 어느 패턴을 표준으로 삼을지 여부.
-5. 구독 신규 진입을 주문 상세의 `정기배송으로 다시 받기`와 별도 `/subscriptions/new` 중 어느 곳을 주 진입점으로 삼을지 여부.
-6. 지원 진입을 footer의 `/support` 중심으로 유지할지, 주문·구독 상세에서 상황별 지원 링크를 항상 노출할지 여부.
+| # | PENDING PO | Recommended Default | 실제 근거 | Alternative | Trade-off | 영향 route |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 모바일 하단 내비게이션 | MVP4에서는 도입하지 않음 | IKEA·PetFriends mobile은 header/menu와 context CTA만으로 핵심 구매 흐름 제공 `CONFIRMED` | `홈/쇼핑/정기배송/주문/마이` 5개 | 미도입은 화면 공간·sticky 충돌을 줄이지만 재방문 route 접근이 한 단계 늘어남 | 모든 mobile route |
+| 2 | 홈 사회적 증거 | `인기 상품` 한 section | PetFriends의 재구매/인기 근거와 Kurly 상품 rail `CONFIRMED` | `지금 많이 찾는 상품` | 인기는 설명이 안정적이나 실시간성 인상이 약함; 트렌딩은 신선하지만 근거·갱신 설명 필요 | `/` |
+| 3 | checkout 최종 CTA 용어 | `결제하기` | IKEA의 실제 결제 진입 CTA와 guest dialog `CONFIRMED` | `주문하기` | 결제하기는 provider 진입을 정확히 알리지만 주문 생성과 결제의 결합을 설명해야 함 | `/cart`, `/checkout`, result |
+| 4 | anonymous wishlist | 짧은 inline 안내 후 `로그인하기` | Musinsa wishlist empty가 로그인 이유를 먼저 설명하고 CTA 제공 `CONFIRMED` | 즉시 로그인 redirect | 안내는 맥락을 보존하나 한 번 더 activation; 즉시 이동은 빠르지만 surprise redirect 위험 | Product Card, PDP, `/wishlist`, `/login` |
+| 5 | 신규 구독 주 진입 | 주문 상세의 `정기배송으로 다시 받기` | Petco/PetSmart 공식 설명은 상품/주문 context에서 반복배송 진입 `INDIRECT`; PawCycle order options 보유 | `/subscriptions/new` 독립 진입 | 주문 기반은 eligible context가 명확하나 신규 발견성이 낮음; 독립 진입은 발견성이 높지만 source 선택 단계 증가 | `/orders/[id]`, `/subscriptions/new` |
+| 6 | 지원 진입 | footer `/support` 유지+주문·구독 상세 context link 항상 노출 | IKEA 주문조회가 관리·FAQ·문의로 연결 `CONFIRMED` | footer only | context link는 해결 속도가 높지만 상세 화면 밀도 증가; footer only는 단순하나 긴 탐색 필요 | footer, order/subscription detail, `/support` |
 
-결정 전에도 정보 구조와 상태 계약은 구현 가능하지만 해당 항목은 임의로 확정하지 않는다.
+PO 결정 전에는 Recommended Default를 프로토타입·검토 기준으로만 사용하고 구현 승인으로 해석하지 않는다.
 
 ## 전역 인수 조건
 

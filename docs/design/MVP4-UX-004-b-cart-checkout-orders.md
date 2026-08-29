@@ -1,5 +1,7 @@
 # MVP4-UX-004 B. 장바구니·결제·주문
 
+상태: `Proposed Design Contract / Draft / Pending Product Owner Approval`
+
 ## 적용 범위
 
 대상은 `/cart`, `/checkout`, `/checkout/success`, `/checkout/fail`, `/orders`, `/orders/[orderId]`와 재주문·주문 후 정기배송 진입이다. 서버의 cart version, checkout idempotency, `409 cart changed`, 부분 재주문 결과를 시각 상태와 상호작용으로 연결한다.
@@ -23,7 +25,7 @@ H1 장바구니
 | --- | --- |
 | 현재 PawCycle | 인증된 cart API, 수량 helper, 선택·쿠폰·버전 상태를 사용한다. 서버 cart version이 동시 변경을 감지한다. |
 | 문제 | 선택 합계와 전체 합계, 수량 저장 중, 품절/가격 변경, 409 충돌이 일반 오류로 섞일 수 있다. 비어 있는 장바구니가 큰 빈 카드만 남길 위험이 있다. |
-| 레퍼런스 | Kurly 빈 cart의 내용/summary 2열, 0원 계산, 다음 행동은 `CONFIRMED/ADOPT`. 둥근 card 남용은 `REJECT`; PawCycle은 행과 divider를 우선한다. |
+| 레퍼런스 | Kurly 상품 cart의 전체/개별 선택→0원 합계 동기화와 IKEA의 수량 직접 입력·증감·삭제·wishlist·semantic summary는 `CONFIRMED/ADAPT`. 둥근 card 남용은 `REJECT`; PawCycle은 행과 divider를 우선한다. |
 | 최종 IA | heading→선택 control→구매 가능 item group→구매 불가/변경 item group→coupon summary→sticky order summary. Empty에서도 0원 summary와 계속 쇼핑 CTA를 유지한다. |
 | visual hierarchy | 상품명·수량·현재가가 1차, 선택·삭제가 2차, 재고/가격 변경은 warning alert. 주문 CTA는 선택 수와 총액을 포함한다. |
 | 컴포넌트 | `CartSelectionBar`, `CartItemRow`, `QuantityStepper`, `AvailabilityNotice`, `CouponSummary`, `OrderSummary`, `ConflictPanel`. |
@@ -33,7 +35,7 @@ H1 장바구니
 | empty | `장바구니가 비어 있어요` + 상품 보기. anonymous면 로그인 CTA도 제공하되 현재 정책에 따라 cart 존재를 추정하지 않는다. |
 | error/retry | 최초 실패 page section retry. item 실패는 원래 값 복구+inline retry. `409`는 `다른 화면에서 장바구니가 변경됐어요`와 서버 최신 항목/가격을 다시 불러온 후 사용자가 재확인하게 한다. |
 | success | 수량·삭제·coupon 적용 후 합계와 선택 count를 live region으로 알린다. toast만으로 금액 변경을 숨기지 않는다. |
-| responsive | ≥900 8/4열 summary sticky. <900 single column, summary 뒤 고정 CTA `N개 · 총액 주문하기`. 320px item은 이미지 80px+정보, 수량/가격을 다음 행으로 둔다. |
+| responsive | D8 SSOT: 1024px 이상 8/4 summary sticky, 1023px 이하 single column, 767px 이하 64px `N개 · 총액 주문하기` action이다. 320–359 item은 이미지 96px+정보, 수량/가격을 다음 행에 둔다. |
 | accessibility | 전체 선택은 mixed 상태, 수량 버튼 `상품명 수량 1개 줄이기`, 삭제 `상품명 삭제`, 합계는 definition list, 오류 `role=alert`. |
 | gap·impact | cart row DOM, item별 pending/error, conflict panel, mobile sticky CTA가 필요하다. API/DB 변경은 없다. |
 | acceptance | 일부 item 오류가 전체 cart를 지우지 않고, 409 이후 서버 합계를 확인하기 전 checkout이 다시 활성화되지 않으며, keyboard로 선택·수량·삭제·주문이 가능하다. |
@@ -48,7 +50,7 @@ H1 장바구니
 | --- | --- |
 | 현재 PawCycle | 인증, 주소·결제수단·coupon, idempotency key, Toss payment widget을 사용한다. checkout 진입 후 cart changed `409`가 가능하다. |
 | 문제 | 주소·결제수단의 선택/추가 상태, 외부 결제 위젯, 최종 주문 CTA가 동시에 경쟁한다. validation 오류와 서버 실패가 화면 상단 하나로만 나타나면 복구가 어렵다. |
-| 레퍼런스 | 직접 확인한 외부 checkout은 없어 `UNVERIFIED`; PawCycle의 실제 API와 Toss 흐름만 권위로 사용한다. |
+| 레퍼런스 | IKEA cart의 로그인/guest 선택 dialog와 배송 active→상세/결제 locked의 실제 checkout은 `CONFIRMED/ADAPT`. 주소 이후 결제 UI는 개인정보를 입력하지 않아 `UNVERIFIED`; PawCycle 인증·Toss·server confirmation 계약은 그대로 유지한다. |
 | 최종 IA | heading+진행 설명→배송 정보→coupon/할인→결제수단/Toss widget→약관·최종 확인→sticky 주문 요약. 주소/결제수단 추가는 현재 route로 이동하고 안전한 GET returnTo로 복귀한다. |
 | visual hierarchy | 최종 결제 금액과 CTA가 1차, 선택된 배송지/결제수단이 2차, 상세 상품은 접을 수 있으나 총 개수·금액은 항상 보인다. |
 | 컴포넌트 | `CheckoutSection`, `AddressSelector`, `CouponSelector`, `PaymentMethodRegion`, `TossWidgetBoundary`, `OrderItemsDisclosure`, `CheckoutSummary`, `ValidationSummary`. |
@@ -58,14 +60,14 @@ H1 장바구니
 | empty | 주소 없음: `배송지를 먼저 추가해 주세요` CTA. 결제수단 없음: 등록 CTA. cart 없음/선택 없음: cart 복귀. empty를 validation error처럼 표현하지 않는다. |
 | error/retry | field 오류는 해당 field, 요약은 상단 link list. widget load 실패는 section retry. `409 cart changed`는 checkout 중단→변경 전/후 핵심 요약→cart 확인 CTA. 결제 승인 실패는 fail route에서 다룬다. |
 | success | 결제 요청 시작 전 주문번호를 추정하지 않는다. Toss 완료 후 success route의 서버 확인이 끝나야 완료로 표시한다. |
-| responsive | ≥900 8/4열 summary sticky. <900 section 단일 열, 하단 금액+CTA fixed, 누르면 상세 summary sheet. soft keyboard가 field/error를 가리지 않는다. |
+| responsive | D8 SSOT: 1024px 이상 8/4 summary sticky, 1023px 이하 단일 열 progressive sections, 767px 이하 64px 금액+CTA와 읽기 전용 summary bottom sheet다. keyboard가 열리면 fixed CTA를 static으로 바꾼다. |
 | accessibility | section `h2`, fieldset/legend, error summary anchor, widget iframe title 확인, 금액 변경 polite live, submit pending `aria-disabled`와 실제 중복 방지. |
 | gap·impact | 한 페이지 section hierarchy, error summary, widget boundary, 409 diff panel, mobile CTA가 필요하다. API 변경 없음. |
 | acceptance | 필수 데이터 없음/validation/widget 실패/cart changed/제출 중/성공이 구분되고, 이중 클릭·back·refresh가 중복 결제를 유발하지 않는다. |
 
 ### 결제 CTA 용어
 
-PO 결정 전 문서 예시는 `결제하기`를 선호한다. 클릭이 Toss 결제 승인 단계로 진입하기 때문이다. 실제 표준 용어는 정식 재설계 문서의 미결 결정 3번이 확정될 때 전 화면에서 한 번에 맞춘다.
+Recommended Default는 `결제하기`다. IKEA 실제 흐름에서 이 라벨 뒤 로그인/guest 선택과 checkout이 이어졌고, PawCycle CTA도 Toss 승인 단계로 진입하기 때문이다. Product Owner 승인 전에는 검토 문구이며 전 서비스 표준으로 구현하지 않는다.
 
 ## B3. Checkout Result `/checkout/success`, `/checkout/fail`
 
@@ -78,7 +80,7 @@ PO 결정 전 문서 예시는 `결제하기`를 선호한다. 클릭이 Toss �
 | visual hierarchy | 상태 icon+명시적 제목, 주문/금액, 다음 CTA 순서. 화려한 animation보다 확정 여부를 우선한다. |
 | 컴포넌트 | `PaymentVerification`, `ConfirmedOrderSummary`, `PaymentFailurePanel`, `RecoveryActions`, `SupportLink`. |
 | interaction | success refresh는 같은 거래 확인을 재조회하며 새 결제를 시작하지 않는다. fail의 `다시 시도`는 기존 승인 요청 재전송이 아니라 checkout 상태를 재확인한 뒤 사용자가 다시 submit한다. |
-| navigation | 완료 CTA `/orders/[orderId]`, 보조 `/products`. fail은 `/checkout` 또는 `/cart`; 안전한 context가 없으면 주문 목록으로 안내한다. |
+| navigation | 완료 CTA `/orders/[orderId]`, 보조 `/products`. fail은 유효한 server checkout context가 있으면 `/checkout`, 없으면 `/cart`; 양쪽 context가 없으면 `/orders`로 안내한다. |
 | loading | `결제 결과를 확인하고 있어요`, progress indicator와 중복 닫기 경고 대신 설명. 긴 대기는 상태 조회 retry를 제공한다. |
 | empty | URL context 누락은 `결제 정보를 확인할 수 없어요`로 처리하고 주문 목록/지원 CTA. 성공으로 추정하지 않는다. |
 | error/retry | 네트워크 확인 실패는 `결제 성공 여부를 아직 확인하지 못했어요`; 새 결제 금지, `결과 다시 확인`. 명시적 결제 실패와 구분한다. |
@@ -130,12 +132,12 @@ PO 결정 전 문서 예시는 `결제하기`를 선호한다. 클릭이 Toss �
 | visual hierarchy | 상태 title과 다음 행동 1개가 1차. 취소/반품은 danger가 아닌 secondary destructive 스타일과 확인 dialog. 재주문은 상품 section 후. |
 | 컴포넌트 | `OrderStatusHeader`, `OrderTimeline`, `OrderItemList`, `PriceBreakdown`, `DeliveryInfo`, `PaymentInfo`, `OrderActions`, `ReorderResult`, `SubscriptionOpportunity`, `ContextualSupport`. |
 | interaction | 취소/반품은 범위·영향 설명 dialog→확인→pending. quick reorder는 1회 submit 후 부분 결과를 item별 표시. 구독 제안은 서버 options만 표시하고 임의 주기를 추천하지 않는다. |
-| navigation | 주문 목록 breadcrumb, 재주문 성공 시 `/cart`, 구독 옵션은 `/subscriptions/new` 또는 상세 계약 경로. 지원은 order ID context를 화면에서 보여주되 URL에 민감 정보를 넣지 않는다. |
+| navigation | 주문 목록 breadcrumb, 재주문 성공 시 `/cart`, 구독 옵션은 `/subscriptions/new`다. 지원은 order ID context를 화면에서 보여주되 URL에 민감 정보를 넣지 않는다. |
 | loading | status/summary skeleton 후 sections 독립. action 권한 확인 전 버튼 표시 금지. |
 | empty | 주문 상품 없음은 정상 empty가 아니라 데이터 오류 panel. cancellation/return history 없음은 section을 축소한다. 구독 option 없음은 section 숨김. |
 | error/retry | core order 실패 page retry/404. 각 action 실패는 dialog 닫지 않고 원인+retry. conflict는 최신 상태를 reload하고 이전 action이 더는 허용되지 않음을 설명한다. |
 | success | 취소/반품은 새 status/timeline과 영구 confirmation. quick reorder는 `N개 담음, M개 제외`와 제외 이유·cart CTA. |
-| responsive | ≥900 8열 content+4열 status summary 가능, <900 single. timeline은 vertical. mobile dialog는 bottom sheet가 아니라 위험 확인 modal 또는 full screen dialog. |
+| responsive | D8 SSOT: 1024px 이상 8열 content+4열 status summary, 1023px 이하 single, timeline은 전 범위 vertical이다. 위험 확인은 mobile 중앙 modal, 취소·반품의 복잡 form은 full-screen dialog다. |
 | accessibility | timeline ordered list, definition list, dialog focus trap, 파괴 확인 버튼에 대상·결과 포함, 부분 결과 summary heading. |
 | gap·impact | available action 기반 CTA, partial reorder, conflict refresh, status formatter가 필요하다. API 변경 없음. |
 | acceptance | 허용되지 않은 취소/반품을 실행할 수 없고, 부분 재주문이 전체 성공으로 오표현되지 않으며, action 후 최신 서버 상태가 페이지에 남는다. |
@@ -148,12 +150,12 @@ PO 결정 전 문서 예시는 `결제하기`를 선호한다. 클릭이 Toss �
 | 문제 | `다시 주문할 때`와 `정기배송으로 바꾸기`를 합치면 사용자가 즉시 구매와 반복 배송을 혼동한다. 제외 상품이 있는 재주문도 단일 성공 toast로 축소될 수 있다. |
 | 레퍼런스 | PetSmart의 반복 배송 설명은 `INDIRECT/ADAPT`; PawCycle에서 지원하는 액션만 사용한다. |
 | 최종 IA | 주문 상세의 `다시 담기`와 `정기배송으로 다시 받기`를 분리. 정기배송 CTA 아래에 주기·다음 배송은 다음 화면에서 최종 확인한다고 설명한다. |
-| visual hierarchy | 즉시 재주문 primary/정기배송 secondary 또는 PO가 정한 주 진입점에 따라 반대. 자동 할인·무료 배송을 보장하지 않는다. |
+| visual hierarchy | Recommended Default는 `다시 담기` primary, `정기배송으로 다시 받기` secondary다. PO가 신규 구독의 주 진입점을 확정하기 전까지 후자는 검토 기준이며 자동 할인·무료 배송을 보장하지 않는다. |
 | 컴포넌트 | `ReorderTimingHint`, `QuickReorderButton`, `PartialResultPanel`, `SubscriptionOptionList`. |
 | interaction | timing hint는 정보일 뿐 자동 action 없음. quick reorder idempotent. 구독 option 선택은 create flow로 이동하며 명령을 자동 실행하지 않는다. |
-| navigation | cart 또는 subscriptions/new. login 만료 시 GET detail로 복귀 후 다시 확인. |
+| navigation | `다시 담기` 성공은 `/cart`, `정기배송으로 다시 받기`는 `/subscriptions/new`로 이동한다. login 만료 시 현재 주문 GET detail로 복귀한 뒤 사용자가 다시 확인한다. |
 | loading | 각 option 영역 독립. action 중 target만 disable. |
-| empty | reorder 대상 없음은 이유와 product browse. subscription option 없음은 숨기거나 `현재 정기배송 가능 상품 없음`. |
+| empty | reorder 대상 없음은 이유+`상품 둘러보기`. subscription option 없음은 CTA를 숨기고 section에 `현재 정기배송 가능한 상품이 없어요`를 표시한다. |
 | error/retry | 일부 상품 실패 item별. timing 실패는 action 차단 없이 hint 숨김. option 실패는 section retry. |
 | success | 담긴/제외된 수와 이유, 다음 위치를 명확히 표시. 구독은 create 완료 전 성공 표현 금지. |
 | responsive | mobile CTA stack, 결과 item 행. sticky는 한 화면에 하나의 primary만. |
