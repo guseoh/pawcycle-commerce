@@ -23,6 +23,7 @@ test("option controls expose only server-backed combinations and auto-select one
   assert.equal(isProductOptionValueAvailable(groups, skus, { 1: 11 }, 2, 22), false);
   assert.equal(isProductOptionValueAvailable(groups, skus, {}, 1, 12), true);
   assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, null)?.skuId, 201);
+  assert.equal(selectProductSku([], [sku(202, [[0, 0]], false)], {}, null), null);
 });
 
 test("canonical product detail does not invoke the legacy subscription endpoint", () => {
@@ -31,10 +32,13 @@ test("canonical product detail does not invoke the legacy subscription endpoint"
 });
 
 test("canonical product detail keeps subscription entry in order detail", () => {
+  const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /CANONICAL_SUBSCRIPTION_START_HREF/);
   assert.match(source, /commerceFinalApi\.addCart/);
   assert.match(source, /commerceFinalApi\.addWishlist/);
   assert.doesNotMatch(source, /정기배송 시작|새 정기배송|\/subscriptions\/new/);
+  assert.match(orderSource, /정기배송으로 다시 받기/);
+  assert.match(orderSource, /OrderSubscriptionOptionsPanel/);
 });
 
 test("Product Detail consumes additive trust content without HTML interpretation", () => {

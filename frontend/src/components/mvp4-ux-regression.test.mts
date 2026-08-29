@@ -24,6 +24,42 @@ const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import
 const subscriptionListSource = readFileSync(new URL("./mvp2-subscription-list.tsx", import.meta.url), "utf8");
 const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
+test("MVP4 review correction은 실패한 작업과 안전한 복귀를 보존한다", () => {
+  assert.match(cartSource, /type CartMutationError = \{ operation: "update" \| "delete"/);
+  assert.match(cartSource, /itemErrors\[item\.skuId\]\.operation === "delete" \? remove\(item\) : applyQuantity\(item\)/);
+  assert.match(addressesSource, /useSearchParams/);
+  assert.match(addressesSource, /sanitizeReturnTo/);
+  assert.match(addressesSource, /candidateReturnTo === "\/checkout"/);
+  assert.match(addressesSource, /router\.push\(returnTo\)/);
+  assert.match(productsSource, /value !== undefined && value !== ""/);
+  assert.doesNotMatch(productsSource, /value !== false/);
+});
+
+test("헤더·위시리스트·상품 카드 상태는 URL/viewport/member 경계를 유지한다", () => {
+  assert.match(headerSource, /useSearchParams/);
+  assert.match(headerSource, /setSearchDraft\(pathname === "\/products" \? searchParams\.get\("q"\)/);
+  assert.match(headerSource, /setActiveCategory\(searchParams\.get\("category"\)/);
+  assert.match(headerSource, /window\.innerWidth <= 1023/);
+  assert.match(headerSource, /categoryExpanded/);
+  assert.match(headerSource, /header-navigation-utility/);
+  assert.doesNotMatch(shoppingStylesSource, /nth-last-child/);
+  assert.match(wishlistSource, /undoTimerRef/);
+  assert.match(wishlistSource, /if \(removed\) \{ setRemoveBlockedMessage/);
+  assert.match(productCardSource, /new Map<number, WishlistCacheEntry>/);
+  assert.match(productCardSource, /pawcycle-commerce-changed/);
+  assert.match(productCardSource, /auth\.markAnonymous\(\)/);
+});
+
+test("구독 변경·배송지·새 구독은 서버 허용 범위와 명시적 선택을 따른다", () => {
+  assert.match(subscriptionSource, /hasAction\("UPDATE_SHIPPING_ADDRESS"\)/);
+  assert.match(subscriptionSource, /SavedAddressState/);
+  assert.match(subscriptionSource, /PAYMENT_SUPPORT_REQUIRED/);
+  assert.match(subscriptionSource, /STOCK_UNAVAILABLE/);
+  assert.match(subscriptionSource, /이 플랜으로 변경 확정/);
+  assert.match(subscriptionStartSource, /preferredCycle !== null .* : null/);
+  assert.match(subscriptionStartSource, /startQuery\.fromOrderId !== null/);
+});
+
 test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   const typedDrafts = ["1", "12"];
   const pastedDrafts = ["12"];

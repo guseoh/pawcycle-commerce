@@ -3,7 +3,10 @@ import test from "node:test";
 import {
   buildLoginHref,
   formatIsoLocalDate,
+  formatPetType,
+  formatScheduleStatus,
   formatSubscriptionStatus,
+  subscriptionIssueCopy,
   isInternalDemoLabel,
   sanitizeReturnTo,
   userFacingCatalogLabel,
@@ -64,6 +67,21 @@ test("구독 상태는 사용자 표현으로 표시한다", () => {
   assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지됨");
   assert.equal(formatSubscriptionStatus("CANCELED"), "종료됨");
   assert.equal(formatSubscriptionStatus("UNKNOWN"), "상태 확인 필요");
+});
+
+test("정기배송 상태·반려동물·이슈 formatter는 알 수 없는 값도 안전하게 처리한다", () => {
+  assert.equal(formatPetType("DOG"), "개");
+  assert.equal(formatPetType("CAT"), "고양이");
+  assert.equal(formatPetType("BIRD"), "반려동물");
+  assert.equal(formatSubscriptionStatus("UNKNOWN"), "상태 확인 필요");
+  assert.equal(formatScheduleStatus("SCHEDULED"), "배송 예정");
+  assert.equal(formatScheduleStatus("SKIPPED"), "건너뜀");
+  assert.equal(formatScheduleStatus("HELD"), "다음 배송 확인 필요");
+  assert.equal(formatScheduleStatus("CANCELED"), "배송 취소");
+  assert.equal(formatScheduleStatus("UNKNOWN"), "배송 상태 확인 필요");
+  assert.equal(subscriptionIssueCopy("PAYMENT_SUPPORT_REQUIRED"), "결제 확인을 위해 고객지원이 필요해요.");
+  assert.equal(subscriptionIssueCopy("STOCK_UNAVAILABLE"), "이번 배송 추가 상품의 재고를 확인해 주세요.");
+  assert.equal(subscriptionIssueCopy("UNKNOWN"), "정기배송을 계속하려면 확인이 필요한 항목이 있어요.");
 });
 
 test("QA·Demo 상품명은 사용자 노출 문구로 대체한다", () => {

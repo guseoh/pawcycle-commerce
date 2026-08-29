@@ -163,7 +163,7 @@ function FilterChips({ filters, metadata, onChange, onReset }: { filters: Produc
 }
 
 function activeFilterCount(filters: ProductFilters): number {
-  return [filters.q, filters.petType, filters.category, filters.subcategory, filters.brand, filters.minPrice, filters.maxPrice, filters.subscribable, filters.purchasable].filter((value) => value !== undefined && value !== "" && value !== false).length + (filters.facet?.length ?? 0);
+  return [filters.q, filters.petType, filters.category, filters.subcategory, filters.brand, filters.minPrice, filters.maxPrice, filters.subscribable, filters.purchasable].filter((value) => value !== undefined && value !== "").length + (filters.facet?.length ?? 0);
 }
 
 export default function ProductsPage() { return <Suspense fallback={<LoadingState>상품 목록을 준비하고 있습니다.</LoadingState>}><ProductsContent /></Suspense>; }

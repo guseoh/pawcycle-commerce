@@ -8,12 +8,14 @@ import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi, type CartItem, type PricingBreakdown } from "@/lib/commerce-final-api";
 import { buildLoginHref, cartQuantityErrorForMaximum, cartQuantityForUpdate, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 
+type CartMutationError = { operation: "update" | "delete"; message: string };
+
 export default function CartPage() {
   const auth = useAuth();
   const [items, setItems] = useState<CartItem[] | null>(null);
   const [pricing, setPricing] = useState<PricingBreakdown | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
+  const [itemErrors, setItemErrors] = useState<Record<number, CartMutationError>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [draft, setDraft] = useState<Record<number, string>>({});
@@ -71,7 +73,7 @@ export default function CartPage() {
       if (reason instanceof ApiError && reason.code === "CART_CHANGED") {
         load();
         setStatusMessage("다른 화면에서 장바구니가 변경됐어요. 최신 상품과 금액을 다시 불러왔습니다. 다시 확인해 주세요.");
-      } else setItemErrors((current) => ({ ...current, [item.skuId]: reason instanceof ApiError ? reason.message : "수량을 바꾸지 못했어요. 기존 수량은 그대로예요." }));
+      } else setItemErrors((current) => ({ ...current, [item.skuId]: { operation: "update", message: reason instanceof ApiError ? reason.message : "수량을 바꾸지 못했어요. 기존 수량은 그대로예요." } }));
     } finally {
       setBusy(null);
     }
@@ -87,7 +89,7 @@ export default function CartPage() {
       load();
       setStatusMessage(`${item.productName}을 장바구니에서 삭제했어요. 금액을 다시 계산했습니다.`);
     } catch (reason) {
-      setItemErrors((current) => ({ ...current, [item.skuId]: reason instanceof ApiError ? reason.message : "상품을 삭제하지 못했어요. 기존 장바구니는 그대로예요." }));
+      setItemErrors((current) => ({ ...current, [item.skuId]: { operation: "delete", message: reason instanceof ApiError ? reason.message : "상품을 삭제하지 못했어요. 기존 장바구니는 그대로예요." } }));
     } finally {
       setBusy(null);
     }
@@ -115,7 +117,7 @@ export default function CartPage() {
             : `재고 ${item.availableQuantity.toLocaleString()}개 · 구매 가능`;
           return <li className="cart-item" key={item.skuId}>
             <div className="cart-item-main"><Link href={`/products/${item.productId}`}><strong>{item.productName}</strong></Link><span className="cart-sku">{item.skuName} · 옵션 단가 {formatPrice(item.unitPrice ?? item.price)}</span><span className={`cart-availability${item.purchasable ? " is-available" : " is-unavailable"}`}>{stockMessage}</span><strong className="cart-price">상품 금액 {formatPrice(item.lineAmount)}</strong></div>
-            <div className="cart-item-controls"><label htmlFor={`cart-quantity-${item.skuId}`}>수량<input id={`cart-quantity-${item.skuId}`} className="input" type="number" min="1" max={item.availableQuantity > 0 ? item.availableQuantity : undefined} inputMode="numeric" aria-describedby={quantityErrors[item.skuId] || itemErrors[item.skuId] ? `cart-quantity-error-${item.skuId}` : undefined} aria-invalid={quantityErrors[item.skuId] || itemErrors[item.skuId] ? "true" : undefined} value={draft[item.skuId] ?? String(item.quantity)} disabled={busy === item.skuId} onChange={(event) => updateDraft(item.skuId, event.target.value, item.availableQuantity)} /></label>{quantityErrors[item.skuId] || itemErrors[item.skuId] ? <p id={`cart-quantity-error-${item.skuId}`} className="field-error" role="alert">{quantityErrors[item.skuId] ?? itemErrors[item.skuId]} {itemErrors[item.skuId] ? <button type="button" onClick={() => void applyQuantity(item)}>다시 시도</button> : null}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy !== null || quantityErrors[item.skuId] !== undefined} onClick={() => void applyQuantity(item)}>{busy === item.skuId ? "계산 중" : "수량 적용"}</button><button className="button button-danger" type="button" disabled={busy !== null} aria-label={`${item.productName} 삭제`} onClick={() => void remove(item)}>삭제</button></div></div>
+            <div className="cart-item-controls"><label htmlFor={`cart-quantity-${item.skuId}`}>수량<input id={`cart-quantity-${item.skuId}`} className="input" type="number" min="1" max={item.availableQuantity > 0 ? item.availableQuantity : undefined} inputMode="numeric" aria-describedby={quantityErrors[item.skuId] || itemErrors[item.skuId] ? `cart-quantity-error-${item.skuId}` : undefined} aria-invalid={quantityErrors[item.skuId] || itemErrors[item.skuId] ? "true" : undefined} value={draft[item.skuId] ?? String(item.quantity)} disabled={busy === item.skuId} onChange={(event) => updateDraft(item.skuId, event.target.value, item.availableQuantity)} /></label>{quantityErrors[item.skuId] || itemErrors[item.skuId] ? <p id={`cart-quantity-error-${item.skuId}`} className="field-error" role="alert">{quantityErrors[item.skuId] ?? itemErrors[item.skuId]?.message} {itemErrors[item.skuId] ? <button type="button" onClick={() => void (itemErrors[item.skuId].operation === "delete" ? remove(item) : applyQuantity(item))}>다시 시도</button> : null}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy !== null || quantityErrors[item.skuId] !== undefined} onClick={() => void applyQuantity(item)}>{busy === item.skuId ? "계산 중" : "수량 적용"}</button><button className="button button-danger" type="button" disabled={busy !== null} aria-label={`${item.productName} 삭제`} onClick={() => void remove(item)}>삭제</button></div></div>
           </li>;
         })}</ul> : <div className="empty-callout"><strong>장바구니가 비어 있어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
       </section>

@@ -1,24 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, type ProductSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi } from "@/lib/commerce-final-api";
 import { buildLoginHref, formatPetType, formatPrice, notifyCommerceChanged, userFacingCatalogLabel } from "@/lib/frontend-utils";
 
-let wishlistMember: number | null = null;
-let wishlistCache: Set<number> | null = null;
-let wishlistRequest: Promise<Set<number>> | null = null;
+type WishlistCacheEntry = { ids: Set<number> | null; request: Promise<Set<number>> | null };
+const wishlistByMember = new Map<number, WishlistCacheEntry>();
+
+function wishlistEntry(memberId: number): WishlistCacheEntry {
+  const existing = wishlistByMember.get(memberId);
+  if (existing) return existing;
+  const created: WishlistCacheEntry = { ids: null, request: null };
+  wishlistByMember.set(memberId, created);
+  return created;
+}
 
 function loadWishlist(memberId: number): Promise<Set<number>> {
-  if (wishlistMember !== memberId) { wishlistMember = memberId; wishlistCache = null; wishlistRequest = null; }
-  if (wishlistCache) return Promise.resolve(wishlistCache);
-  if (!wishlistRequest) wishlistRequest = commerceFinalApi.wishlist().then((result) => {
-    wishlistCache = new Set(result.items.map((item) => item.productId));
-    return wishlistCache;
-  }).finally(() => { wishlistRequest = null; });
-  return wishlistRequest;
+  const entry = wishlistEntry(memberId);
+  if (entry.ids) return Promise.resolve(entry.ids);
+  if (!entry.request) {
+    const request = commerceFinalApi.wishlist().then((result) => {
+      const current = wishlistByMember.get(memberId);
+      const ids = new Set(result.items.map((item) => item.productId));
+      if (current?.request === request) { current.ids = ids; current.request = null; }
+      return ids;
+    }).catch((error: unknown) => {
+      const current = wishlistByMember.get(memberId);
+      if (current?.request === request) current.request = null;
+      throw error;
+    });
+    entry.request = request;
+  }
+  return entry.request;
+}
+
+let changeListenerInstalled = false;
+function ensureWishlistInvalidationListener() {
+  if (changeListenerInstalled || typeof window === "undefined") return;
+  changeListenerInstalled = true;
+  window.addEventListener("pawcycle-commerce-changed", () => {
+    wishlistByMember.forEach((entry) => { entry.ids = null; entry.request = null; });
+  });
 }
 
 export function CatalogImage({ src, alt, className = "", eager = false }: { src: string | null; alt: string; className?: string; eager?: boolean }) {
@@ -42,26 +67,39 @@ function CatalogWishlistButton({ productId, productName }: { productId: number; 
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshVersion = useRef(0);
+
+  useEffect(() => {
+    ensureWishlistInvalidationListener();
+    const onCommerceChanged = () => { refreshVersion.current += 1; setLoadedFor(null); setRefreshKey((value) => value + 1); };
+    window.addEventListener("pawcycle-commerce-changed", onCommerceChanged);
+    return () => window.removeEventListener("pawcycle-commerce-changed", onCommerceChanged);
+  }, []);
 
   useEffect(() => {
     if (auth.status !== "authenticated" || auth.memberId === null) return;
     let active = true;
-    void loadWishlist(auth.memberId).then((ids) => { if (active) { setSaved(ids.has(productId)); setLoadedFor(auth.memberId); } }).catch(() => { if (active) { setMessage("위시 상태를 확인하지 못했어요."); setLoadedFor(auth.memberId); } });
+    const memberId = auth.memberId;
+    const observedVersion = refreshVersion.current;
+    void loadWishlist(memberId).then((ids) => { if (active && refreshVersion.current === observedVersion && auth.memberId === memberId) { setSaved(ids.has(productId)); setLoadedFor(memberId); } }).catch((error: unknown) => { if (!active || refreshVersion.current !== observedVersion || auth.memberId !== memberId) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; } setMessage("위시 상태를 확인하지 못했어요."); setLoadedFor(memberId); });
     return () => { active = false; };
-  }, [auth.memberId, auth.status, productId]);
+  }, [auth, auth.memberId, auth.status, productId, refreshKey]);
 
   if (auth.status === "anonymous") return <span className="catalog-wishlist-gate"><span>저장하려면 로그인이 필요해요.</span><Link href={buildLoginHref(`/products/${productId}`)}>로그인하기</Link></span>;
   return <>
     <button type="button" aria-pressed={loadedFor === auth.memberId ? saved : undefined} aria-label={`${productName} ${saved ? "위시리스트에서 제거" : "위시리스트에 저장"}`} disabled={loadedFor !== auth.memberId || busy || auth.status !== "authenticated"} onClick={() => {
       if (auth.status !== "authenticated") return;
       setBusy(true); setMessage(null);
+      const memberId = auth.memberId;
       void auth.executeWithCsrf((csrf) => saved ? commerceFinalApi.deleteWishlist(productId, csrf) : commerceFinalApi.addWishlist(productId, csrf)).then(() => {
         const next = !saved;
         setSaved(next);
-        if (wishlistCache) { if (next) wishlistCache.add(productId); else wishlistCache.delete(productId); }
+        const entry = memberId === null ? null : wishlistEntry(memberId);
+        if (entry?.ids) { if (next) entry.ids.add(productId); else entry.ids.delete(productId); }
         setMessage(next ? "위시리스트에 저장했어요." : "위시리스트에서 제거했어요.");
         notifyCommerceChanged();
-      }).catch((error: unknown) => setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했어요.")).finally(() => setBusy(false));
+      }).catch((error: unknown) => { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했어요."); }).finally(() => setBusy(false));
     }}>{loadedFor !== auth.memberId ? "확인 중" : busy ? "저장 중" : saved ? "저장됨" : "위시"}</button>
     {message ? <span className="catalog-card-message" role="status">{message}</span> : null}
   </>;

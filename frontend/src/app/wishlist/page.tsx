@@ -25,6 +25,8 @@ function WishlistForMember() {
   const [busy, setBusy] = useState<number | null>(null);
   const [removed, setRemoved] = useState<WishlistItem | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
+  const [removeBlockedMessage, setRemoveBlockedMessage] = useState<string | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
   const activeRef = useRef(false);
   const requestRef = useRef(0);
 
@@ -47,13 +49,16 @@ function WishlistForMember() {
   }, [load]);
 
   useEffect(() => {
-    if (!removed || undoError) return;
-    const timer = window.setTimeout(() => setRemoved(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [removed, undoError]);
+    if (!removed || undoError || busy === removed.productId) return;
+    const timer = window.setTimeout(() => { undoTimerRef.current = null; setRemoved(null); }, 6000);
+    undoTimerRef.current = timer;
+    return () => { window.clearTimeout(timer); if (undoTimerRef.current === timer) undoTimerRef.current = null; };
+  }, [busy, removed, undoError]);
 
   async function remove(item: WishlistItem) {
+    if (removed) { setRemoveBlockedMessage("먼저 현재 알림의 되돌리기를 완료하거나 닫아 주세요."); return; }
     if (busy !== null) return;
+    setRemoveBlockedMessage(null);
     setBusy(item.productId); setItemErrors((current) => { const next = { ...current }; delete next[item.productId]; return next; });
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.deleteWishlist(item.productId, csrf));
@@ -61,6 +66,7 @@ function WishlistForMember() {
       setRemoved(item); setUndoError(null); notifyCommerceChanged();
       requestAnimationFrame(() => document.querySelector<HTMLElement>(".wishlist-row .wishlist-remove, #wishlist-title")?.focus());
     } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { markAnonymous(); return; }
       setItemErrors((current) => ({ ...current, [item.productId]: reason instanceof ApiError ? reason.message : "상품을 제거하지 못했어요. 기존 목록은 그대로예요." }));
     } finally { setBusy(null); }
   }
@@ -68,12 +74,14 @@ function WishlistForMember() {
   async function undo() {
     if (!removed || busy !== null) return;
     const item = removed;
+    if (undoTimerRef.current !== null) { window.clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
     setBusy(item.productId); setUndoError(null);
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.addWishlist(item.productId, csrf));
       setItems((current) => current?.some((candidate) => candidate.productId === item.productId) ? current : [...(current ?? []), item]);
       setRemoved(null); notifyCommerceChanged();
     } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { markAnonymous(); }
       setUndoError(reason instanceof ApiError ? reason.message : "다시 저장하지 못했어요. 다시 시도해 주세요.");
     } finally { setBusy(null); }
   }
@@ -81,8 +89,9 @@ function WishlistForMember() {
   if (items === null && !listError) return <LoadingState>위시리스트를 불러오고 있습니다.</LoadingState>;
   if (listError) return <ErrorState title="위시리스트를 불러오지 못했습니다." message={listError} onRetry={load} />;
   return <section className="wishlist-page"><header className="page-heading"><p className="eyebrow">Wishlist</p><h1 id="wishlist-title" tabIndex={-1}>위시리스트</h1><p>저장한 상품 {items?.length ?? 0}개를 확인하고 상품 상세로 이동할 수 있어요.</p></header>
-    {items?.length ? <ul className="wishlist-list">{items.map((item) => <li className="wishlist-row" key={item.productId}><div><h2>{item.productName}</h2><p>저장한 시점 <time dateTime={item.createdAt}>{formatDateTime(item.createdAt)}</time></p>{itemErrors[item.productId] ? <p className="field-error" role="alert">{itemErrors[item.productId]} <button type="button" onClick={() => void remove(item)}>다시 시도</button></p> : null}</div><div className="button-row"><Link className="button button-secondary" href={`/products/${item.productId}`}>{item.productName} 상품 보기</Link><button className="button button-danger wishlist-remove" type="button" disabled={busy !== null} aria-label={`${item.productName} 위시리스트에서 제거`} onClick={() => void remove(item)}>{busy === item.productId ? "제거 중" : "위시에서 제거"}</button></div></li>)}</ul> : <div className="empty-callout"><strong>저장한 상품이 없어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
+    {removeBlockedMessage ? <p className="field-help" role="status">{removeBlockedMessage}</p> : null}
+    {items?.length ? <ul className="wishlist-list">{items.map((item) => <li className="wishlist-row" key={item.productId}><div><h2>{item.productName}</h2><p>저장한 시점 <time dateTime={item.createdAt}>{formatDateTime(item.createdAt)}</time></p>{itemErrors[item.productId] ? <p className="field-error" role="alert">{itemErrors[item.productId]} <button type="button" onClick={() => void remove(item)}>다시 시도</button></p> : null}</div><div className="button-row"><Link className="button button-secondary" href={`/products/${item.productId}`}>{item.productName} 상품 보기</Link><button className="button button-danger wishlist-remove" type="button" disabled={busy !== null || removed !== null} aria-label={`${item.productName} 위시리스트에서 제거`} onClick={() => void remove(item)}>{busy === item.productId ? "제거 중" : "위시에서 제거"}</button></div></li>)}</ul> : <div className="empty-callout"><strong>저장한 상품이 없어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
     <Link className="text-link" href="/products">계속 쇼핑하기</Link>
-    {removed ? <aside className="wishlist-undo-toast" role={undoError ? "alert" : "status"} aria-live="polite"><p>{undoError ?? `${removed.productName}을 위시리스트에서 제거했어요.`}</p><button className="button button-secondary" type="button" disabled={busy !== null} aria-label={`${removed.productName} 다시 저장`} onClick={() => void undo()}>{busy === removed.productId ? "저장 중" : undoError ? "다시 저장" : "되돌리기"}</button><button className="icon-button" type="button" aria-label="알림 닫기" onClick={() => setRemoved(null)}>닫기</button></aside> : null}
+    {removed ? <aside className="wishlist-undo-toast" role={undoError ? "alert" : "status"} aria-live="polite"><p>{undoError ?? `${removed.productName}을 위시리스트에서 제거했어요.`}</p><button className="button button-secondary" type="button" disabled={busy !== null} aria-label={`${removed.productName} 다시 저장`} onClick={() => void undo()}>{busy === removed.productId ? "저장 중" : undoError ? "다시 저장" : "되돌리기"}</button><button className="icon-button" type="button" aria-label="알림 닫기" onClick={() => { if (undoTimerRef.current !== null) { window.clearTimeout(undoTimerRef.current); undoTimerRef.current = null; } setRemoved(null); setUndoError(null); setRemoveBlockedMessage(null); }}>닫기</button></aside> : null}
   </section>;
 }
