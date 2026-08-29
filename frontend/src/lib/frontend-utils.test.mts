@@ -60,10 +60,10 @@ test("ISO local date는 timezone 변환 없이 표시한다", () => {
 });
 
 test("구독 상태는 사용자 표현으로 표시한다", () => {
-  assert.equal(formatSubscriptionStatus("ACTIVE"), "이용 중");
-  assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지");
-  assert.equal(formatSubscriptionStatus("CANCELED"), "해지됨");
-  assert.equal(formatSubscriptionStatus("UNKNOWN"), "UNKNOWN");
+  assert.equal(formatSubscriptionStatus("ACTIVE"), "진행 중");
+  assert.equal(formatSubscriptionStatus("PAUSED"), "일시정지됨");
+  assert.equal(formatSubscriptionStatus("CANCELED"), "종료됨");
+  assert.equal(formatSubscriptionStatus("UNKNOWN"), "상태 확인 필요");
 });
 
 test("QA·Demo 상품명은 사용자 노출 문구로 대체한다", () => {

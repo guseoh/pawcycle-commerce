@@ -24,10 +24,30 @@ function AddressesForMember() {
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [form, setForm] = useState<AddressRequest>(EMPTY_ADDRESS);
   const [editId, setEditId] = useState<number | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const activeRef = useRef(false);
   const requestRef = useRef(0);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const formOpener = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal(); document.body.style.overflow = "hidden";
+    dialog.querySelector<HTMLElement>("input")?.focus();
+    return () => { if (dialog.open) dialog.close(); document.body.style.overflow = previousOverflow; formOpener.current?.focus(); };
+  }, [formOpen]);
+
+  function openForm(address?: Address, opener?: HTMLElement) {
+    formOpener.current = opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setForm(address ?? EMPTY_ADDRESS); setEditId(address?.addressId ?? null); setFormOpen(true); setError(null);
+  }
+
+  function closeForm() { if (busy) return; setFormOpen(false); setEditId(null); setForm(EMPTY_ADDRESS); }
 
   const load = useCallback(() => {
     const request = ++requestRef.current;
@@ -64,6 +84,7 @@ function AddressesForMember() {
       if (!activeRef.current) return;
       setForm(EMPTY_ADDRESS);
       setEditId(null);
+      setFormOpen(false);
       load();
     } catch (reason) {
       if (activeRef.current) setError(reason instanceof ApiError ? reason.message : "배송지를 저장하지 못했습니다.");
@@ -74,5 +95,5 @@ function AddressesForMember() {
 
   if (addresses === null && !error) return <LoadingState>배송지를 불러오고 있습니다.</LoadingState>;
   if (error && addresses === null) return <ErrorState title="배송지를 불러오지 못했습니다." message={error} onRetry={load} />;
-  return <section><header className="page-heading"><p className="eyebrow">배송지</p><h1>배송지를 관리하세요.</h1><p>자주 사용하는 배송지를 저장하고 기본 주소를 선택할 수 있어요.</p></header><div className="address-layout"><section className="section-card saved-addresses"><h2>저장된 배송지</h2>{error ? <p className="field-error" role="alert">{error}</p> : null}<ul className="history-list">{addresses?.map((address) => <li className={address.isDefault ? "default-address" : ""} key={address.addressId}><strong>{address.name || address.recipientName}{address.isDefault ? <span className="status-badge">기본 배송지</span> : null}</strong><span>{address.recipientName} · {address.addressLine1}</span><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setForm(address); setEditId(address.addressId); }}>수정</button>{!address.isDefault ? <button className="button button-secondary" type="button" onClick={() => void auth.executeWithCsrf((csrf) => commerceFinalApi.defaultAddress(address.addressId, csrf)).then(load).catch((reason: unknown) => setError(reason instanceof ApiError ? reason.message : "기본 배송지를 변경하지 못했습니다."))}>기본 설정</button> : null}<button className="button button-danger" type="button" onClick={() => void auth.executeWithCsrf((csrf) => commerceFinalApi.deleteAddress(address.addressId, csrf)).then(load).catch((reason: unknown) => setError(reason instanceof ApiError ? reason.message : "배송지를 삭제하지 못했습니다."))}>삭제</button></div></li>)}</ul></section><section className="section-card address-form-card"><h2>{editId === null ? "배송지 추가" : "배송지 수정"}</h2><form className="form-section" onSubmit={submit}>{([["name", "배송지 이름", true], ["recipientName", "받는 분", true], ["recipientPhone", "연락처", true], ["postalCode", "우편번호", true], ["addressLine1", "주소", true], ["addressLine2", "상세 주소", false]] as const).map(([field, label, required]) => <label className="form-field" key={field}>{label}<input className="input" required={required} value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}<div className="button-row"><button className="button button-primary" type="submit" disabled={busy}>{busy ? "저장 중" : "저장"}</button>{editId !== null ? <button className="button button-secondary" type="button" onClick={() => { setEditId(null); setForm(EMPTY_ADDRESS); }}>취소</button> : null}</div></form></section></div></section>;
+  return <section><header className="page-heading"><p className="eyebrow">배송지</p><h1>배송지 관리</h1><p>자주 사용하는 배송지를 저장하고 기본 주소를 선택할 수 있어요. 거래 화면으로 돌아가면 다시 선택하고 확인합니다.</p><button className="button button-primary" type="button" onClick={(event) => openForm(undefined, event.currentTarget)}>배송지 추가</button></header><section className="saved-addresses"><h2>저장된 배송지</h2>{error ? <p className="field-error" role="alert">{error}</p> : null}{addresses?.length ? <ul className="address-list">{addresses.map((address) => <li className={`address-row${address.isDefault ? " default-address" : ""}`} key={address.addressId}><address><strong>{address.name || address.recipientName}{address.isDefault ? <span className="status-badge">기본 배송지</span> : null}</strong><span>{address.recipientName} · {address.recipientPhone}</span><span>({address.postalCode}) {address.addressLine1} {address.addressLine2}</span></address><div className="button-row"><button className="button button-secondary" type="button" onClick={(event) => openForm(address, event.currentTarget)}>수정</button>{!address.isDefault ? <button className="button button-secondary" type="button" onClick={() => void auth.executeWithCsrf((csrf) => commerceFinalApi.defaultAddress(address.addressId, csrf)).then(load).catch((reason: unknown) => setError(reason instanceof ApiError ? reason.message : "기본 배송지를 변경하지 못했습니다."))}>기본 설정</button> : null}<button className="button button-danger" type="button" onClick={() => { if (!window.confirm(`${address.name || address.recipientName} 배송지를 삭제할까요? 삭제 후 되돌릴 수 없습니다.`)) return; void auth.executeWithCsrf((csrf) => commerceFinalApi.deleteAddress(address.addressId, csrf)).then(load).catch((reason: unknown) => setError(reason instanceof ApiError ? reason.message : "배송지를 삭제하지 못했습니다.")); }}>삭제</button></div></li>)}</ul> : <div className="empty-callout"><strong>저장된 배송지가 없어요.</strong><button type="button" className="button button-primary" onClick={(event) => openForm(undefined, event.currentTarget)}>첫 배송지 추가</button></div>}</section>{formOpen ? <dialog ref={dialogRef} className="address-dialog" aria-labelledby="address-dialog-title" onCancel={(event) => { event.preventDefault(); closeForm(); }}><div className="navigation-overlay-heading"><h2 id="address-dialog-title">{editId === null ? "배송지 추가" : "배송지 수정"}</h2><button className="icon-button" type="button" disabled={busy} onClick={closeForm}>닫기</button></div><form className="form-section" onSubmit={submit}>{([["name", "배송지 이름", true], ["recipientName", "받는 분", true], ["recipientPhone", "연락처", true], ["postalCode", "우편번호", true], ["addressLine1", "주소", true], ["addressLine2", "상세 주소", false]] as const).map(([field, label, required]) => <label className="form-field" key={field}>{label}<input className="input" required={required} autoComplete={field === "recipientName" ? "name" : field === "recipientPhone" ? "tel" : field === "postalCode" ? "postal-code" : field === "addressLine1" ? "address-line1" : field === "addressLine2" ? "address-line2" : undefined} value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy} onClick={closeForm}>취소</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "저장 중" : "저장"}</button></div></form></dialog> : null}</section>;
 }

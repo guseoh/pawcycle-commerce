@@ -105,14 +105,29 @@ export function rememberRecentProduct(product: RecentProduct): RecentProduct[] {
 export function formatPetType(value: string): string {
   if (value === "DOG") return "개";
   if (value === "CAT") return "고양이";
-  return value;
+  return "반려동물";
 }
 
 export function formatSubscriptionStatus(value: string): string {
-  if (value === "ACTIVE") return "이용 중";
-  if (value === "PAUSED") return "일시정지";
-  if (value === "CANCELED") return "해지됨";
-  return value;
+  if (value === "ACTIVE") return "진행 중";
+  if (value === "PAUSED") return "일시정지됨";
+  if (value === "CANCELED") return "종료됨";
+  return "상태 확인 필요";
+}
+
+export function formatScheduleStatus(value: string): string {
+  const labels: Record<string, string> = { SCHEDULED: "배송 예정", SKIPPED: "건너뜀", HELD: "다음 배송 확인 필요", CANCELED: "배송 취소" };
+  return labels[value] ?? "배송 상태 확인 필요";
+}
+
+export function subscriptionIssueCopy(value: string): string {
+  const labels: Record<string, string> = {
+    SHIPPING_ADDRESS_REQUIRED: "배송지를 확인해 주세요.",
+    BILLING_METHOD_REQUIRED: "결제수단 등록 상태를 확인해 주세요.",
+    PAYMENT_SUPPORT_REQUIRED: "결제 확인을 위해 고객지원이 필요해요.",
+    STOCK_UNAVAILABLE: "이번 배송 추가 상품의 재고를 확인해 주세요.",
+  };
+  return labels[value] ?? "정기배송을 계속하려면 확인이 필요한 항목이 있어요.";
 }
 
 export function cartQuantityError(value: string): string | null {
