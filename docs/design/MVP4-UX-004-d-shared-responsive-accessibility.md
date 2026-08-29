@@ -4,24 +4,24 @@
 
 ## 목적
 
-이 문서는 A–C 화면을 일관되게 검토하기 위한 제안 계약이다. 색상·타입·형태는 [재설계 제안안](./MVP4-UX-004-customer-commerce-redesign.md), 실제 근거는 [벤치마크 증거](./MVP4-UX-004-benchmark-evidence.md), 화면 전이는 [Visual + Interaction Correction](./MVP4-UX-004-visual-interaction-correction.md)에 연결한다. breakpoint·container·header·sticky 수치는 이 문서 D8만이 SSOT다.
+이 문서는 A–C 화면을 일관되게 구현하기 위한 공통 제안 계약이다. 색상·타입·형태는 [재설계 제안안](./MVP4-UX-004-customer-commerce-redesign.md), 실제 외부 근거는 [벤치마크 증거](./MVP4-UX-004-benchmark-evidence.md)에 연결한다. 화면별 실제 상태·API 사용은 A–C가 권위이며, breakpoint·container·header·sticky 수치는 이 문서 D8만이 SSOT다.
 
 ## D1. App Shell과 Footer
 
 | 필수 항목 | 최종 계약 |
 | --- | --- |
 | 현재 PawCycle | layout이 `AppHeader`, `AppFooter`, `AuthProvider`를 모든 고객 route에 제공한다. |
-| 문제 | route마다 폭·상단 여백·footer 진입이 달라지면 sticky CTA와 skip link, focus 복원이 불안정하다. |
+| 문제 | route마다 폭·상단 여백·footer 진입이 달라지면 sticky CTA와 skip link, focus 복원이 불안정하다. 1024–1199를 120px로 일괄 처리하면 D8의 112px 계약과 충돌한다. |
 | 레퍼런스 | Kurly의 full→compact sticky header와 Musinsa의 검색·account·cart 유틸리티는 `CONFIRMED/ADAPT`; 지나치게 많은 GNB와 홍보 footer는 `REJECT`. |
-| 최종 IA | skip link→header→main→footer. 1024px 이상 initial header는 72px primary(logo 140px, search 440px/1200–1439 360px, account/cart 각 44px)+48px nav다. 768–1023은 56px primary+48px search, 320–767도 동일 높이에서 logo 96px와 menu/cart 44px을 쓴다. main은 route별 `discovery/product/transaction/reading` container를 명시한다. footer는 쇼핑, 계정, 정책·지원 3 group과 사업 필수 정보만 둔다. |
+| 최종 IA | skip link→header→main→footer. 1440+와 1200–1439는 72px primary+48px nav=120px, 1024–1199는 64px primary+48px nav=112px, 1023px 이하는 56px primary+48px search=104px다. main은 route별 `discovery/product/transaction/reading` container를 명시한다. footer는 쇼핑, 계정, 정책·지원 3 group과 사업 필수 정보만 둔다. |
 | visual hierarchy | header/main은 1px `border-soft`, footer는 `surface-soft`. initial header가 viewport 위로 벗어나면 1024px 이상 64px compact row, 1023px 이하 56px mobile row 한 개만 sticky다. 검색행과 nav행은 함께 고정하지 않는다. |
 | 컴포넌트 | `SkipLink`, `AppHeader`, `RouteContainer`, `Breadcrumb`, `AppFooter`, 선택적 `MobileBottomNav`. |
-| interaction/navigation | route 전환 후 기본은 main `h1`로 focus를 보내지 않고 문서 상단부터 자연 순서를 유지한다. 사용자가 명시적 CTA로 결과/오류에 도달한 경우만 해당 heading focus. skip link는 main으로 이동. |
+| interaction/navigation | route 전환 후 기본은 main `h1`로 focus를 강제하지 않고 문서 상단부터 자연 순서를 유지한다. 사용자가 명시적 CTA로 결과/오류에 도달한 경우만 해당 heading focus. skip link는 main으로 이동. |
 | loading/empty/error/success | shell은 데이터 상태와 무관하게 유지한다. page 오류가 header/footer까지 없애지 않는다. auth loading은 계정 slot만 skeleton. |
 | responsive | header·sticky offset은 D8. footer 768px 이상 3열, 767px 이하 순차 heading+link list. 모바일 bottom nav는 PO 승인 전 구현 금지. |
 | accessibility | landmarks 하나씩, `main` id 고정, 현재 nav `aria-current`, breadcrumb ordered list, footer heading 구조. |
 | gap·impact | route container variant와 sticky offset token을 통일해야 한다. |
-| acceptance | 모든 route에서 skip link가 작동하고 header/footer가 page error에 남으며, sticky 요소가 anchor/focus를 가리지 않는다. |
+| acceptance | 모든 route에서 skip link가 작동하고 header/footer가 page error에 남으며, 1024–1199 포함 모든 breakpoint에서 D8과 header 값이 일치하고 sticky 요소가 anchor/focus를 가리지 않는다. |
 
 ### 모바일 하단 내비게이션 후보
 
@@ -45,7 +45,7 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 - disabled는 서버 권한 대기나 필수 입력 미충족처럼 이유가 이해될 때 사용한다. 허용되지 않은 action을 영구 disabled CTA로 노출하지 않는다.
 - loading은 너비를 유지하고 동사형 라벨 `저장 중`, `확인 중`으로 바꾼다. spinner만 두지 않는다.
 - 링크와 버튼의 의미를 바꾸지 않는다. route 이동은 링크, mutation/modal은 버튼이다.
-- 같은 사용자 의도의 중복 submit은 첫 activation에서 막는다. 결제·구독·재주문은 idempotency 계약도 함께 적용한다.
+- 같은 사용자 의도의 중복 submit은 첫 activation에서 막는다. 결제·구독·재주문은 idempotency 계약도 함께 적용한다. `Idempotency-Key`를 지원하는 mutation은 key 검증·replay/conflict라는 서버 계약을 UI retry 의미와 일치시킨다.
 
 ## D3. Form, Field, Validation
 
@@ -75,11 +75,11 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 
 | 패턴 | 허용 사용 | 크기·행동 |
 | --- | --- | --- |
-| Modal dialog | 파괴 확인, 짧은 결과 확인 | 일반 480px, 상세 결과 560px; mobile 위험 확인 `min(328px, calc(100vw - 32px))` 중앙 dialog |
-| Full-screen dialog | mobile의 주소·결제·복잡한 구독 편집 | 100dvh, header close, footer CTA, safe area |
+| Modal dialog | 파괴 확인, 짧은 결과 확인 | 일반 480px, 상세 결과/주소 desktop 560px; mobile 위험 확인 `min(328px, calc(100vw - 32px))` 중앙 dialog |
+| Full-screen dialog | mobile의 주소·복잡한 구독 편집 | 100dvh, header close, footer CTA, safe area |
 | Drawer | 모바일 메뉴·PLP filter | 왼쪽에서 너비 `min(360px,100vw)`, 100dvh; filter만 reset/apply footer 고정 |
 | Popover | 카테고리·계정의 짧은 메뉴 | trigger 인접, viewport collision 대응 |
-| Toast | 비파괴 성공·되돌리기 | 6초, undo 진행 중이면 완료까지 유지; 오류 해결을 toast에만 두지 않음 |
+| Toast | 비파괴 성공·실제 복구 가능한 되돌리기 | 6초, undo 진행 중이면 완료까지 유지; 오류 해결을 toast에만 두지 않음 |
 
 ### 공통 focus 계약
 
@@ -104,14 +104,17 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 | Drawer | category/menu/filter | title/첫 control focus, Tab trap, Escape | left drawer만 사용, swipe만으로 닫기 금지 |
 | Bottom sheet | order summary의 읽기+닫기만 | dialog semantics, close button, Escape | checkout summary에만 사용; form·filter·위험 확인 금지 |
 | Tooltip | icon 의미의 짧은 보조 설명 | hover와 focus 모두 표시, Escape close | tap 의존 금지; 필수 정보는 항상 visible text |
-| Toast | 서버 확인된 비파괴 결과, undo | focus를 빼앗지 않고 status announce, undo 44px | bottom CTA 위 16px, 5–8초; 오류 해결 금지 |
-| Carousel | Home 상품 rail·hero 1개 | prev/next named button, slide status, drag 비필수 | 1.1–2.1 card peek; 자동재생 기본 금지 |
-| Pagination | PLP/order list의 서버 page | 실제 link, current `aria-current=page` | prev/current/next+전체 page 접근 link, 무한 scroll 금지 |
+| Toast | 서버 확인된 비파괴 결과 또는 실제 inverse API가 있는 undo | focus를 빼앗지 않고 status announce, undo 44px | bottom CTA 위 16px, 5–8초; 오류 해결 금지 |
+| Carousel | Home 상품 rail | prev/next named button, slide status, drag 비필수 | 1.1–2.1 card peek; 자동재생 금지 |
+| Pagination | PLP처럼 실제 server page contract가 있는 목록 | 실제 link, current `aria-current=page` | prev/current/next+전체 page 접근 link, 무한 scroll 금지 |
 | Sticky | compact header, PLP toolbar, PDP/transaction CTA | focus target을 가리지 않고 scroll-margin 사용 | 동시에 top 1개+bottom 1개, 합계 20dvh 이하 |
 | Expandable text | 긴 상품 설명 preview | button `더 보기/접기`, focus 유지 | 4 lines preview, 사용자 선택 전 자동 collapse 금지 |
-| Inline edit | 단일 값·낮은 복잡도 | `편집`→field→저장/취소, cancel은 원값 | 주소·결제·구독 변경에는 사용 금지 |
-| Destructive action | 삭제·취소·반품 | 대상/영향/복구 가능성→modal confirm; pending 차단 | bottom sheet 금지, danger primary는 최종 확인만 |
+| Inline edit | 단일 값·낮은 복잡도 | `편집`→field→저장/취소, cancel은 원값 | 주소·구독 변경에는 사용 금지 |
+| Destructive action | 주문 취소·반품·주소 삭제·리뷰 삭제처럼 영향이 크거나 실제 inverse가 없는 mutation | 대상/영향/복구 가능성→modal confirm; pending 차단 | bottom sheet 금지, danger primary는 최종 확인만 |
+| Reversible wishlist removal | Wishlist save-state 해제처럼 DELETE 성공 뒤 실제 add API로 복구 가능한 낮은 영향 mutation | DELETE 성공 후 row 제거→6초 Undo; DELETE 실패 시 row 유지; Undo 실패 시 retry | 별도 confirm modal 없이 status+Undo, 실제 복구 API가 사라지면 이 예외도 제거 |
 | Skeleton transition | 최초 core·독립 section loading | skeleton `aria-hidden`, status 한 개 | 500ms 미만에는 유지 content/progress; 완료 시 fade 80ms 이하 |
+
+Wishlist 예외는 `DELETE /api/wishlist/{productId}`의 반대 동작인 `POST /api/wishlist/{productId}`가 실제 존재하기 때문에만 허용한다. 이를 주소 삭제·주문 취소·반품·구독 해지 등 다른 destructive mutation으로 일반화하지 않는다.
 
 ## D5. Navigation, URL, Scroll, Focus
 
@@ -124,13 +127,14 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 ### 뒤로가기 복원
 
 - PLP→PDP: history state에 출발 product ID와 scroll anchor를 저장한다. back 후 URL 결과가 안정되면 scroll 복원, 해당 product title에 programmatic focus-visible을 준다.
-- 목록→상세 전반: filter/page/scroll을 복원하되 서버 결과가 달라 출발 item이 없으면 result heading으로 이동하고 설명한다.
+- URL filter/page를 실제 가진 목록→상세: 해당 URL 상태와 scroll/focus를 복원한다.
+- Order List처럼 filter/page가 없는 목록→상세: scroll과 출발 row focus만 복원하고 존재하지 않는 query 상태를 만들지 않는다.
 - modal open/close는 공유 가능한 별도 화면이 아니면 history entry를 만들지 않는다. browser back으로 닫기를 지원하려면 모든 overlay에 일관되게 적용해야 하므로 MVP4 기본은 제외한다.
 - checkout/payment에서 back/refresh는 mutation을 자동 재실행하지 않는다.
 
 ### 페이지 이동
 
-- pagination/새 search/filter apply는 결과 heading 위로 scroll한다.
+- PLP pagination/새 search/filter apply는 결과 heading 위로 scroll한다.
 - in-page anchor는 sticky offset을 고려하고 target heading에 `scroll-margin-top`을 준다.
 - route 전환마다 무조건 body focus를 강제하지 않는다. screen reader announcement는 route title과 main heading으로 충분히 제공한다.
 
@@ -177,8 +181,8 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 | description | 13px/1.45 `text-muted`, 1 line; 없으면 공간 예약 금지 |
 | price | 현재가 18px/1.25 700; 할인 14px 700 `accent-text`; 원가 13px `text-muted` 취소선 |
 | meta | 리뷰 13px, 구매/배송 상태 13px; badge보다 server 구매 불가 문장이 우선 |
-| actions | quick add 44px full width; compare/wish 각 44px. 4열은 add 아래 compare, 3열 이하는 compare를 card footer 보조행에 둔다 |
-| states | loading은 media/title/price 비율 예약; unavailable은 image overlay+문장, add disabled+이유; error는 card 제거 대신 inline retry |
+| actions | Wishlist와 Compare 각 44px. 이미지/상품명 또는 명시적 상품/옵션 보기 링크로 PDP 진입. PLP/Home에서 representative SKU를 임의 Cart에 넣는 quick add 금지 |
+| states | loading은 media/title/price 비율 예약; unavailable은 image overlay+문장; error는 card 제거 대신 inline retry |
 
 ## D8. 반응형 기준
 
@@ -199,7 +203,7 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 ### container와 sticky 충돌
 
 - `discovery`: `min(1440px, viewport-gutter×2)`, `product`: 1320px, `transaction`: 1180px, `reading/form`: 760px다.
-- top sticky offset은 1024px 이상 64px, 1023px 이하 56px다. PLP toolbar와 PDP anchor는 compact header 바로 아래 한 개만 sticky다.
+- top sticky offset은 1024px 이상 64px, 1023px 이하 56px다. PLP toolbar와 PDP anchor는 compact header 바로 아래 한 개만 sticky다. Cart/Checkout desktop summary도 top offset 64px을 사용한다.
 - bottom transaction action은 64px+safe-area다. mobile bottom nav는 동시에 존재하지 않고, footer sentinel이 보이면 action을 document flow의 static 위치로 바꾼다.
 - focus target에는 top offset+16px의 `scroll-margin-top`, fixed bottom action이 있는 form에는 96px+safe-area의 scroll padding을 둔다.
 
@@ -240,7 +244,7 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 
 - Home hero는 정적 1개로 고정하고 자동 재생하지 않는다. 상품 rail은 previous/next와 현재 위치를 제공하며 drag 없이 모든 항목에 도달한다.
 - overlay는 opacity+translate 8–16px, 최대 220ms. list reorder나 price update에 과한 spring을 쓰지 않는다.
-- reduced motion에서는 carousel 자동 전환, parallax, zoom, smooth scroll을 끈다. focus 이동은 즉시 이루어진다.
+- reduced motion에서는 parallax, zoom, smooth scroll을 끈다. focus 이동은 즉시 이루어진다.
 - loading shimmer가 vestibular/인지 부담을 만들지 않도록 넓은 고대비 band를 사용하지 않는다.
 
 ## D11. 콘텐츠와 신뢰 규칙
@@ -264,6 +268,11 @@ Recommended Default는 MVP4 미도입이다. PO가 도입을 승인한 경우에
 - support chat launcher
 - PDP autoship frequency selector
 - subscription cycle auto-apply control
+- Cart item selection/선택 상품 checkout
+- Cart coupon apply/remove
+- 저장 Billing Method list/default/delete selector
+- Order List client-only filter/pagination
+- PLP/Home representative SKU quick add
 
 빈 자리나 disabled `준비 중` control로도 노출하지 않는다.
 
