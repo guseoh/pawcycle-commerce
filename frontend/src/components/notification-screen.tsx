@@ -47,7 +47,8 @@ export function NotificationScreen() {
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.readAll(csrf));
       await refresh();
-    } catch {
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
       setMessage("알림을 읽음 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setPending(null);
@@ -60,7 +61,8 @@ export function NotificationScreen() {
     try {
       await auth.executeWithCsrf((csrf) => commerceFinalApi.readNotification(id, csrf));
       await refresh();
-    } catch {
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
       setMessage("알림을 읽음 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setPending(null);
