@@ -15,6 +15,16 @@
 
 백엔드 정책, API 계약(API Contract), 제품 범위는 이 디렉터리에서 변경하지 않는다.
 
+## 현재 MVP4 Customer Commerce 설계 기준
+
+- [`MVP4-UX-004-customer-commerce-redesign.md`](./MVP4-UX-004-customer-commerce-redesign.md): 정식 권위, 감사 인벤토리, 벤치마크, 시각 시스템, 공통 상호작용과 미결 결정
+- [`MVP4-UX-004-a-discovery-purchase-entry.md`](./MVP4-UX-004-a-discovery-purchase-entry.md): Header/Search, Home, PLP, Product Card, PDP, Compare, Wishlist
+- [`MVP4-UX-004-b-cart-checkout-orders.md`](./MVP4-UX-004-b-cart-checkout-orders.md): Cart, Checkout, 결제 결과, 주문, 재주문
+- [`MVP4-UX-004-c-subscription-account.md`](./MVP4-UX-004-c-subscription-account.md): Subscription, My, Pets, Notifications, Addresses, Billing, Login, Trust/Support
+- [`MVP4-UX-004-d-shared-responsive-accessibility.md`](./MVP4-UX-004-d-shared-responsive-accessibility.md): 공통 컴포넌트, responsive, accessibility, 상태·focus·motion 계약
+
+`MVP4-UX-002`의 제품 방향과 `MVP4-UX-003`의 감사 발견사항은 위 문서에서 명시적으로 보존·조정·대체한다. 화면 구성과 시각 규칙이 충돌하면 `MVP4-UX-004`를 우선하되, Product Owner 미결 항목은 승인 전 구현하지 않는다.
+
 ## 최소 디자인 문서 구조
 
 ```markdown
