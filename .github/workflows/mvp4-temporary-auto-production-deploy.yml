@@ -1,0 +1,80 @@
+name: MVP4 Temporary Auto Production Deploy
+run-name: MVP4 Auto Deploy · ${{ github.event.workflow_run.head_sha }}
+
+# Temporary MVP4 convenience workflow.
+# Remove this workflow after MVP4 Product Complete to restore manual Production deploy as the default.
+on:
+  workflow_run:
+    workflows:
+      - Publish production images
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: pawcycle-mvp4-auto-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  dispatch-production-deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate successful main image release
+        env:
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$SOURCE_CONCLUSION" != "success" ]; then
+            echo "image publish workflow must succeed before automatic Production deploy" >&2
+            exit 1
+          fi
+
+          if [ "$SOURCE_EVENT" != "push" ] || [ "$SOURCE_BRANCH" != "main" ]; then
+            echo "automatic Production deploy is limited to main push image releases" >&2
+            exit 1
+          fi
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "workflow_run head_sha must be exactly 40 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+
+      - name: Dispatch existing Production Deploy workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh workflow run production-deploy.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f operation=deploy \
+            -f target_sha="$TARGET_SHA"
+
+          {
+            echo "## MVP4 temporary automatic Production deploy"
+            echo
+            echo "- Source workflow: Publish production images"
+            echo "- Source event: main push"
+            echo "- Target SHA: \`$TARGET_SHA\`"
+            echo "- Production Deploy workflow: dispatched"
+            echo
+            echo "This dispatch is not itself a Production verification result."
+          } >> "$GITHUB_STEP_SUMMARY"
