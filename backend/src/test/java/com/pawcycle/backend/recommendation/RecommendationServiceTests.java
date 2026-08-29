@@ -101,12 +101,23 @@ class RecommendationServiceTests {
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<RecommendationCandidate>> captor = ArgumentCaptor.forClass(List.class);
 		verify(ai).recommend(captor.capture(), anyList());
-		assertThat(captor.getValue()).hasSize(9);
+		assertThat(captor.getValue()).extracting(RecommendationCandidate::productId)
+				.containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
 		assertThat(response.products()).hasSize(10);
 		assertThat(response.products()).extracting(RecommendationService.RecommendationItem::strategy)
-				.filteredOn(strategy -> strategy.equals("EXPLORATION")).hasSize(1);
-		assertThat(response.products()).extracting(RecommendationService.RecommendationItem::productId)
-				.containsExactlyInAnyOrderElementsOf(LongStream.rangeClosed(1, 10).boxed().toList());
+				.containsExactly("PERSONALIZED", "PERSONALIZED", "PERSONALIZED", "PERSONALIZED", "PERSONALIZED",
+						"PERSONALIZED", "PERSONALIZED", "PERSONALIZED", "PERSONALIZED", "EXPLORATION");
+		List<Long> personalizedIds = response.products().stream()
+				.filter(item -> item.strategy().equals("PERSONALIZED"))
+				.map(RecommendationService.RecommendationItem::productId)
+				.toList();
+		assertThat(personalizedIds).containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
+		List<Long> explorationIds = response.products().stream()
+				.filter(item -> item.strategy().equals("EXPLORATION"))
+				.map(RecommendationService.RecommendationItem::productId)
+				.toList();
+		assertThat(explorationIds).singleElement().isIn(10L, 11L);
+		assertThat(personalizedIds).doesNotContainAnyElementsOf(explorationIds);
 	}
 
 	@Test
