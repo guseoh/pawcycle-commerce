@@ -8,6 +8,7 @@
 - 감사 방식: 현재 구현 소스 확인 + disposable 로컬 환경의 실제 Browser 감사 + 공식 서비스 벤치마크
 - Browser viewport: Desktop `1440×900`, Mobile `375×812`, minimum width `320×700`
 - 제외: Frontend/Backend 구현, API/DB/schema 변경, 새 기능·의존성, Production/AWS/RDS/Toss/AI Provider 실행
+- 구현용 companion specification: [`MVP4-UX-003 Final Visual/UI Design Specification`](./MVP4-UX-003-visual-design-spec.md)
 
 ## 1. Executive Summary
 
@@ -208,6 +209,8 @@ Hero의 3개 CTA는 Desktop에서 허용되지만 Mobile에서는 primary 1개 +
 | UX-P2-08 / Editorial details | P2 | 날짜·상태·영문 casing·punctuation 편차 | 세부 완성도 저하 | shared formatter/content lint | date/status/casing copy standard | FE utilities/tests | timezone Asia/Seoul 기준 |
 
 ## 14. MVP4-FE-004 Recommended Scope
+
+색·타입·간격·이미지·모션과 화면별 최종 구성은 companion 문서인 [`MVP4-UX-003 Final Visual/UI Design Specification`](./MVP4-UX-003-visual-design-spec.md)을 구현 기준으로 사용한다. 본 감사의 30개 finding, 우선순위와 보존 계약은 변경하지 않는다.
 
 ### 작업
 
