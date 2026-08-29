@@ -523,3 +523,149 @@ body:has(.shopping-home, .catalog-page, .shopping-detail) {
     transition-duration: .01ms !important;
   }
 }
+
+/* MVP4-FE-004 correction: keep only the primary commerce header sticky. */
+.shopping-header {
+  position: static;
+  top: auto;
+  z-index: auto;
+  border-bottom: 0;
+  display: contents;
+}
+.shopping-header-primary {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.shopping-header-primary .header-inner {
+  width: min(1240px, calc(100% - 4rem));
+  min-height: 68px;
+  grid-template-columns: auto minmax(180px, 480px);
+  grid-template-rows: 68px;
+  padding: 0;
+}
+.shopping-header-secondary {
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.shopping-header-secondary .header-inner {
+  width: min(1240px, calc(100% - 4rem));
+  min-height: 44px;
+  display: block;
+  padding: 0;
+}
+.shopping-header-secondary .main-nav {
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  border-top: 0;
+  justify-content: space-between;
+}
+.shopping-header-secondary .nav-primary { margin-left: 0; }
+.shopping-header-secondary .nav-utility-group { margin-left: auto; }
+.shopping-detail .product-purchase-stack { top: 96px; }
+
+.home-routine-entry {
+  display: grid;
+  align-items: initial;
+  gap: 1rem;
+}
+.home-routine-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.home-routine-heading h2 { margin: .25rem 0 .4rem; }
+.home-routine-heading p:not(.eyebrow) { margin: 0; }
+.home-routine-card {
+  display: grid;
+  gap: .35rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+.home-routine-card h3 { margin: 0; font-size: 1.05rem; }
+.home-routine-card p { margin: 0; }
+.home-routine-reorders {
+  display: grid;
+  gap: .75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.home-routine-subheading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.home-routine-subheading h3 { margin: 0; font-size: 1.05rem; }
+.home-routine-reorders ul { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.home-routine-reorders li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--line);
+}
+.home-routine-reorders li > div { display: grid; min-width: 0; gap: .2rem; }
+.home-routine-reorders li span { color: var(--muted); overflow-wrap: anywhere; }
+.home-routine-status { margin: 0; color: var(--muted); }
+.home-routine-fallback { display: grid; gap: .75rem; }
+.home-routine-fallback p { margin: 0; color: var(--muted); }
+
+@media (max-width: 767px) {
+  .shopping-header-primary .header-inner {
+    width: calc(100% - 2rem);
+    min-height: 104px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 56px 48px;
+    column-gap: .65rem;
+    row-gap: 0;
+  }
+  .shopping-header-primary .header-search { grid-column: 1 / -1; }
+  .shopping-header-secondary {
+    min-height: 0;
+    border-bottom: 0;
+  }
+  .shopping-header-secondary .header-inner {
+    width: 100%;
+    min-height: 0;
+  }
+  .shopping-header-secondary .main-nav {
+    position: fixed;
+    top: 104px;
+    right: .5rem;
+    left: .5rem;
+    z-index: 70;
+    display: none;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    max-height: 70dvh;
+    overflow-y: auto;
+    padding: .75rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-raised);
+  }
+  .shopping-header-secondary .main-nav.is-open { display: grid; gap: 1rem; }
+  .shopping-header-secondary .nav-primary,
+  .shopping-header-secondary .nav-utility-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0;
+  }
+  .shopping-header-secondary .category-navigation { grid-column: 1 / -1; }
+  .shopping-header-secondary .category-navigation-menu { position: static; width: auto; max-width: none; box-shadow: none; }
+  .home-routine-heading { flex-direction: column; align-items: stretch; }
+  .home-routine-heading .button { align-self: flex-start; }
+  .home-routine-reorders li { align-items: stretch; flex-direction: column; }
+  .home-routine-reorders li .button { align-self: flex-start; }
+  .shopping-detail .product-purchase-stack { position: static; top: auto; }
+}

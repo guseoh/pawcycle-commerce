@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { CatalogProductCard } from "@/components/catalog-product-card";
@@ -29,29 +29,53 @@ function ProductsContent() {
   const [compareMessage, setCompareMessage] = useState<string | null>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
   const filterCloseButton = useRef<HTMLButtonElement>(null);
+  const filterPanel = useRef<HTMLElement>(null);
+  const [isMobileFilter, setIsMobileFilter] = useState(false);
   const discovery = useCatalogDiscovery();
   const metadata = discovery.state.status === "success" ? discovery.state.data : null;
   const requestKey = `${query}|${retryKey}`;
 
   useEffect(() => {
-    if (!filterOpen || !window.matchMedia("(max-width: 767px)").matches) return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileFilter(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!filterOpen || !isMobileFilter) return;
+    filterCloseButton.current?.focus();
+  }, [filterOpen, isMobileFilter]);
+
+  useEffect(() => {
+    if (!filterOpen || !isMobileFilter) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const focusTimer = window.requestAnimationFrame(() => filterCloseButton.current?.focus());
+    const focusTimer = window.setTimeout(() => filterCloseButton.current?.focus(), 50);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         setFilterOpen(false);
         window.requestAnimationFrame(() => filterButton.current?.focus());
+        return;
       }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(filterPanel.current?.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])") ?? []);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!filterPanel.current?.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.cancelAnimationFrame(focusTimer);
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [filterOpen]);
+  }, [filterOpen, isMobileFilter]);
 
   useEffect(() => {
     const requestFilters = parseCatalogFilters(new URLSearchParams(query));
@@ -97,13 +121,13 @@ function ProductsContent() {
     <div className="catalog-toolbar"><p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p><div className="button-row"><button ref={filterButton} className="button button-secondary catalog-filter-toggle" type="button" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => setFilterOpen((open) => !open)}>필터</button><label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div></div>
     <FilterChips filters={filters} metadata={metadata} onChange={change} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push("/products"); }} />
     <div className="catalog-layout">
-      <aside id="catalog-filter-panel" className={`catalog-filter-panel${filterOpen ? " is-open" : ""}`} role="dialog" aria-modal="true" aria-labelledby="catalog-filter-title">
-        <div className="catalog-filter-heading"><h2 id="catalog-filter-title">상세 필터</h2><button ref={filterCloseButton} className="catalog-filter-close" type="button" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }}>닫기</button></div>
+      <aside ref={filterPanel} id="catalog-filter-panel" className={`catalog-filter-panel${filterOpen ? " is-open" : ""}`} role={filterOpen && isMobileFilter ? "dialog" : undefined} aria-modal={filterOpen && isMobileFilter ? "true" : undefined} aria-labelledby="catalog-filter-title">
+        <div className="catalog-filter-heading"><h2 id="catalog-filter-title">상세 필터</h2>{filterOpen && isMobileFilter ? <button ref={filterCloseButton} autoFocus className="catalog-filter-close" type="button" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }}>닫기</button> : null}</div>
         {discovery.state.status === "loading" ? <p role="status">탐색 정보를 불러오는 중입니다.</p> : null}
         {discovery.state.status === "error" ? <div className="inline-alert" role="alert"><p>탐색 정보를 불러오지 못했습니다. 검색과 기본 필터는 계속 사용할 수 있습니다.</p><button className="button button-secondary" type="button" onClick={discovery.retry}>탐색 정보 재시도</button></div> : null}
         <CatalogFilterForm key={query} filters={filters} metadata={metadata} onApply={(next) => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(next) })]); router.push(catalogHref({ ...next, page: 0 })); setFilterOpen(false); filterButton.current?.focus(); }} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push("/products"); setFilterOpen(false); filterButton.current?.focus(); }} />
       </aside>
-      {filterOpen ? <button className="catalog-filter-backdrop" type="button" aria-label="필터 닫기" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }} /> : null}
+      {filterOpen ? <button className="catalog-filter-backdrop" type="button" tabIndex={-1} aria-label="필터 닫기" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }} /> : null}
       <section className="catalog-results" aria-label="상품 검색 결과" aria-busy={!current}>
         <h2 className="sr-only">상품 목록</h2>
         {!current ? <LoadingState>상품 목록을 불러오고 있습니다.</LoadingState> : null}

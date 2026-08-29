@@ -9,21 +9,9 @@ import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
-import { v2Api, type V2SubscriptionSummary } from "@/lib/v2-api";
+import { loadAllSubscriptions, type V2SubscriptionSummary } from "@/lib/v2-api";
 
 type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: V2SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
-
-async function loadAllSubscriptions(): Promise<V2SubscriptionSummary[]> {
-  const pageSize = 100;
-  const first = await v2Api.subscriptions.list(0, pageSize);
-  const subscriptions = [...first.body.items];
-  for (let page = 1; subscriptions.length < first.body.totalElements; page += 1) {
-    const next = await v2Api.subscriptions.list(page, pageSize);
-    if (!next.body.items.length) break;
-    subscriptions.push(...next.body.items);
-  }
-  return subscriptions;
-}
 
 function CommerceSnapshotPanel({ snapshot, error, onRetry }: { snapshot: CommerceSnapshot | null; error: string | null; onRetry: () => void }) {
   if (error) return <section className="my-snapshot-section" aria-labelledby="commerce-snapshot-title"><div className="inline-alert" role="alert"><strong>일부 쇼핑 정보를 불러오지 못했습니다.</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={onRetry}>다시 시도</button></div></section>;

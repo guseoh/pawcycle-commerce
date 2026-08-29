@@ -5,13 +5,14 @@ import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { productApi, type ProductSummary, type ProductSort } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { buildLoginHref, formatPetType } from "@/lib/frontend-utils";
+import { buildLoginHref, formatIsoLocalDate, formatPetType, formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 import { CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { catalogHref } from "@/lib/catalog-filters";
 import { RecommendationSection } from "@/components/recommendation-section";
 import { selectedPersonalizedPetId } from "@/lib/recommendation";
-import { v2Api, type Pet } from "@/lib/v2-api";
+import { loadAllSubscriptions, v2Api, type Pet, type V2SubscriptionSummary } from "@/lib/v2-api";
+import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
 
 type ProductPreviewState = { status: "loading" } | { status: "success"; products: ProductSummary[] } | { status: "error"; message: string };
 
@@ -43,7 +44,7 @@ export default function Home() {
 
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
       {auth.status === "error" ? <ErrorState headingLevel={3} title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()}><Link className="button button-secondary" href={buildLoginHref("/")}>로그인</Link></ErrorState> : null}
-      {auth.status === "authenticated" ? <HomeRoutineEntry /> : null}
+      {auth.status === "authenticated" && auth.memberId !== null ? <HomeRoutineEntry /> : null}
       {auth.status === "authenticated" && auth.memberId !== null ? <PersonalizedRecommendations key={auth.memberId} /> : null}
       <CompactDiscovery />
       <RecommendationSection id="home-popular-title" title="많이 선택한 상품" description="많은 반려가족이 최근에 찾은 상품을 만나보세요." source="home-popular" request={{ kind: "popular", limit: 4 }} />
@@ -56,8 +57,46 @@ export default function Home() {
   );
 }
 
+type RoutineLoad<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error" };
+
 function HomeRoutineEntry() {
-  return <section className="home-routine-entry" aria-labelledby="home-routine-title"><div><p className="eyebrow">MY ROUTINE</p><h2 id="home-routine-title">오늘 필요한 흐름을 이어가세요</h2><p>다음 배송 일정은 정기배송에서, 지난 상품은 주문 내역에서 바로 확인할 수 있어요.</p></div><div className="button-row"><Link className="button button-primary" href="/subscriptions">다음 배송 확인</Link><Link className="button button-secondary" href="/orders">주문 내역에서 다시 담기</Link></div></section>;
+  const [reorders, setReorders] = useState<RoutineLoad<ReorderTimingItem[]>>({ status: "loading" });
+  const [nextSubscription, setNextSubscription] = useState<RoutineLoad<V2SubscriptionSummary | null>>({ status: "loading" });
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void finalProductApi.reorderTiming().then((response) => {
+      if (active) setReorders({ status: "ready", value: reorderTimingItems(response).slice(0, 3) });
+    }).catch(() => {
+      if (active) setReorders({ status: "error" });
+    });
+    void loadAllSubscriptions().then((subscriptions) => {
+      const next = subscriptions
+        .filter((subscription) => subscription.status === "ACTIVE" && subscription.nextScheduledDate)
+        .sort((left, right) => left.nextScheduledDate!.localeCompare(right.nextScheduledDate!))[0] ?? null;
+      if (active) setNextSubscription({ status: "ready", value: next });
+    }).catch(() => {
+      if (active) setNextSubscription({ status: "error" });
+    });
+    return () => { active = false; };
+  }, [retry]);
+
+  const reorderItems = reorders.status === "ready" ? reorders.value : [];
+  const next = nextSubscription.status === "ready" ? nextSubscription.value : null;
+  const hasContent = reorderItems.length > 0 || next !== null;
+  const loading = reorders.status === "loading" || nextSubscription.status === "loading";
+  const failed = reorders.status === "error" || nextSubscription.status === "error";
+  if (!loading && !hasContent && !failed) return null;
+
+  return <section className="home-routine-entry" aria-labelledby="home-routine-title">
+    <header className="home-routine-heading"><div><p className="eyebrow">MY ROUTINE</p><h2 id="home-routine-title">오늘 필요한 흐름을 이어가세요</h2><p>재구매 시점과 가장 가까운 다음 배송을 한곳에서 확인해 보세요.</p></div>{failed ? <button className="button button-secondary" type="button" onClick={() => setRetry((value) => value + 1)}>다시 확인</button> : null}</header>
+    {loading && !hasContent ? <p className="home-routine-status" role="status">재구매와 다음 배송 정보를 확인하고 있습니다.</p> : null}
+    {failed && !hasContent ? <div className="home-routine-fallback" role="alert"><p>루틴 정보를 지금 불러오지 못했습니다. 정기배송과 주문 내역에서 직접 확인할 수 있어요.</p><div className="button-row"><Link className="button button-secondary" href="/subscriptions">정기배송 보기</Link><Link className="button button-secondary" href="/orders">주문 내역 보기</Link></div></div> : null}
+    {next ? <article className="home-routine-card home-routine-next"><p className="eyebrow">다음 배송</p><h3>{next.pet?.name ?? "내 정기배송"}</h3><p>{formatIsoLocalDate(next.nextScheduledDate!)} · {formatPrice(next.currentSnapshot.packagePriceKrw)}</p><Link className="text-link" href={`/subscriptions/${next.subscriptionId}`}>정기배송 상세 보기 →</Link></article> : null}
+    {reorderItems.length ? <div className="home-routine-reorders"><div className="home-routine-subheading"><h3>다시 필요할 수 있는 상품</h3><Link className="text-link" href="/orders">주문 내역 보기 →</Link></div><ul>{reorderItems.map((item) => <li key={item.productId}><div><strong>{userFacingCatalogLabel(item.productName, "상품")}</strong><span>{item.state === "OVERDUE" ? "예상 구매 시점이 지났어요" : "곧 다시 필요할 수 있어요"} · {formatIsoLocalDate(item.expectedReorderDate)}</span></div><Link className="button button-secondary" href={`/products/${item.productId}`}>상품 보기</Link></li>)}</ul></div> : null}
+    {failed && hasContent ? <p className="home-routine-status">일부 루틴 정보를 불러오지 못했습니다. 표시된 정보는 현재 확인 가능한 내용입니다.</p> : null}
+  </section>;
 }
 
 function CompactDiscovery() {

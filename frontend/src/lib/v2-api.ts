@@ -168,3 +168,14 @@ export const v2Api = {
     }),
   },
 };
+
+export async function loadAllSubscriptions(pageSize = 100): Promise<V2SubscriptionSummary[]> {
+  const first = await v2Api.subscriptions.list(0, pageSize);
+  const subscriptions = [...first.body.items];
+  for (let page = 1; subscriptions.length < first.body.totalElements; page += 1) {
+    const next = await v2Api.subscriptions.list(page, pageSize);
+    if (!next.body.items.length) break;
+    subscriptions.push(...next.body.items);
+  }
+  return subscriptions;
+}

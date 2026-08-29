@@ -75,6 +75,7 @@ export function AppHeader() {
       if (menuOpen) menuButton.current?.focus();
       else categoryNavigationRef.current?.querySelector("summary")?.focus();
     }}>
+      <div className="shopping-header-primary">
       <div className="header-inner">
         <Link className="brand" href="/" aria-label="PawCycle 홈">
           <span className="brand-mark" aria-hidden="true">P</span>
@@ -97,6 +98,10 @@ export function AppHeader() {
         <form className="header-search" role="search" onSubmit={(event) => { event.preventDefault(); const query = String(new FormData(event.currentTarget).get("q") ?? "").trim(); closeNavigation(); router.push(query ? `/products?q=${encodeURIComponent(query)}` : "/products"); }}>
           <label className="sr-only" htmlFor="header-search">전체 상품 검색</label><input id="header-search" name="q" type="search" placeholder="우리 아이에게 필요한 상품 찾기" /><button type="submit">검색</button>
         </form>
+      </div>
+      </div>
+      <div className="shopping-header-secondary">
+      <div className="header-inner">
         <nav id="main-navigation" className={`main-nav${menuOpen ? " is-open" : ""}`} aria-label="주요 메뉴">
           <div className="nav-primary">
             <Link onClick={closeNavigation} className={pathname.startsWith("/products") ? "nav-active" : undefined} href="/products">상품</Link>
@@ -117,7 +122,8 @@ export function AppHeader() {
             {status === "authenticated" ? <><Link onClick={closeNavigation} className={`nav-utility${pathname === "/wishlist" ? " nav-active" : ""}`} href="/wishlist">찜 <span className="nav-badge" aria-label={`찜 ${wishlistCount}개`}>{wishlistCount > 99 ? "99+" : wishlistCount}</span></Link><Link onClick={closeNavigation} className={`nav-utility${pathname === "/cart" ? " nav-active" : ""}`} href="/cart">장바구니 <span className="nav-badge" aria-label={`장바구니 ${cartCount}개`}>{cartCount > 99 ? "99+" : cartCount}</span></Link><Link onClick={closeNavigation} className={`nav-utility${pathname.startsWith("/notifications") ? " nav-active" : ""}`} href="/notifications">알림</Link><Link onClick={closeNavigation} className={pathname.startsWith("/my") ? "nav-active" : undefined} href="/my">내 정보</Link></> : null}
             {status === "loading" ? <span className="nav-status" role="status">회원 정보 확인 중</span> : status === "anonymous" || status === "error" ? <Link onClick={closeNavigation} href={buildLoginHref(pathname)}>로그인</Link> : null}
           </div>
-        </nav>
+      </nav>
+      </div>
       </div>
       </header>
       <MobileBottomNavigation pathname={pathname} />
