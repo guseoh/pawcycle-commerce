@@ -1,0 +1,15 @@
+services:
+  backend:
+    environment:
+      PAWCYCLE_LOCAL_CUSTOMER_CATALOG_V3_ENABLED: "true"
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: "true"
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS: "false"
+      PAWCYCLE_SUBSCRIPTION_DELIVERY_REMINDER_ENABLED: "true"
+
+  proxy:
+    ports: !override
+      - "8083:80"
+
+volumes:
+  mysql-data:
+    name: pawcycle-mvp4-final-qa-mysql-data
