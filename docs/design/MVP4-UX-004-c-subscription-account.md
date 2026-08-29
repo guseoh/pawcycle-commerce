@@ -38,7 +38,7 @@ Breadcrumb / top-level 상태 / 핵심 다음 행동
 Detail issue 또는 pending change summary
 다음 배송: 날짜 · Schedule 상태 · 이번 배송 add-on
 반복 설정: Plan · 2/4/8주 주기 · 기본 상품/수량(read-only)
-배송지 관리
+배송지 문제 해결/변경 진입
 활동/변경 기록
 건너뛰기 · 일시정지/재개 · 취소 등 server availableActions
 지원
@@ -46,28 +46,28 @@ Detail issue 또는 pending change summary
 
 | 필수 항목 | 최종 계약 |
 | --- | --- |
-| 현재 PawCycle | Detail은 `nextDelivery`, `pendingChange`, `issue`, `availableActions`, ETag와 v2 command를 제공한다. Subscription shipping은 별도 `PUT /api/subscriptions/{id}/shipping-address`에 전체 `AddressRequest`를 보낸다. |
-| 문제 | 날짜·주기·Plan 변경, pending/current, top-level Subscription status와 Schedule HELD, 배송지 저장 주소와 subscription shipping mutation을 한 form/상태로 섞으면 서버 계약을 잘못 해석한다. |
+| 현재 PawCycle | Detail은 `nextDelivery`, `pendingChange`, `issue`, `availableActions`, ETag와 v2 command를 제공한다. Subscription shipping은 별도 `PUT /api/subscriptions/{id}/shipping-address`에 전체 `AddressRequest`를 보내며 응답 body는 없고, `V2SubscriptionDetail`에도 현재 배송지 read-back 필드는 없다. |
+| 문제 | 날짜·주기·Plan 변경, pending/current, top-level Subscription status와 Schedule HELD, 배송지 저장 주소와 subscription shipping mutation을 한 form/상태로 섞으면 서버 계약을 잘못 해석한다. 특히 shipping PUT 성공 후 현재 배송지 값을 서버에서 다시 읽었다고 가장하면 실제 API를 넘어선다. |
 | 레퍼런스 | PetSmart 공식 설명의 날짜·skip·quantity·cancel 관리는 `INDIRECT/ADAPT`; 실제 PawCycle command/state contract가 우선한다. 이메일/푸시·자동 대체·결제 재시도는 `UNSUPPORTED`. |
-| 최종 IA | status header→issue/pending→다음 배송→반복 설정(Plan/주기)→기본 상품(read-only)→배송지→history→danger actions. 날짜, 주기, Plan, 배송지는 서로 다른 편집 surface/command다. |
+| 최종 IA | status header→issue/pending→다음 배송→반복 설정(Plan/주기)→기본 상품(read-only)→배송지 문제 해결/변경 action→history→danger actions. 날짜, 주기, Plan, 배송지는 서로 다른 편집 surface/command다. 현재 배송지 summary는 read-back API가 생기기 전 만들지 않는다. |
 | visual hierarchy | Detail `issue` 또는 pendingChange가 있으면 상단 persistent banner. 정상은 다음 배송 예정일이 가장 크고 `N주마다`, Plan/가격은 분리된 label. destructive action은 맨 아래. |
-| 컴포넌트 | `SubscriptionStatusHeader`, `IssueResolution`, `PendingChangeSummary`, `NextDeliveryPanel`, `RescheduleDialog`, `CycleDialog`, `ChangePlanDialog`, `NextDeliveryAddOns`, `SubscriptionItems`, `ShippingAddressDialog`, `ActivityList`, `DangerActions`. |
+| 컴포넌트 | `SubscriptionStatusHeader`, `IssueResolution`, `PendingChangeSummary`, `NextDeliveryPanel`, `RescheduleDialog`, `CycleDialog`, `ChangePlanDialog`, `NextDeliveryAddOns`, `SubscriptionItems`, `ShippingAddressDialog`, `ActivityList`, `DangerActions`. `CurrentShippingAddressSummary`처럼 서버 read-back을 전제한 component는 만들지 않는다. |
 | 날짜 변경 | `RESCHEDULE_NEXT`가 `availableActions`에 있을 때만 노출한다. 현재 날짜·서버 제약→새 날짜 확인→command 한 개 제출. 다른 주기/Plan을 함께 바꾸지 않는다. |
 | 주기 변경 | `CHANGE_DELIVERY_CYCLE`이 있을 때만 2/4/8주 중 현재 effective Plan이 허용하는 값만 표시한다. 추천 주기는 정보/선택 보조일 뿐 자동 command가 아니다. 사용자 확인→`deliveryCycleWeeks` body로 한 command를 제출한다. |
 | Plan 변경 | `CHANGE_PLAN`이 있을 때만 현재 Pet과 호환되는 판매 중 PlanVersion을 조회한다. effective current/pending 배송 주기를 지원하는 후보만 선택 가능하다. 변경 전/후 `planName`, package price, items, delivery cycle, 적용 예정 시점을 비교한다. command body의 핵심은 `planVersionId`; legacy subscription에 pet이 없고 서버가 요구하는 경우에만 해당 소유 Pet의 `petId`를 보완한다. 기본 Plan item quantity는 사용자가 임의 편집하지 않는다. |
 | Plan conflict | `ADDON_CONFLICTS_WITH_PLAN`이면 다음 배송 add-on을 먼저 제거해야 함을 설명하고 자동 제거하지 않는다. 다음 Schedule이 HELD이면 서버가 Plan/주기/날짜 등 schedule mutation을 거절할 수 있으므로 disabled command를 추정 노출하지 않고 최신 `availableActions`/issue를 다시 따른다. |
 | add-on | add-on은 **다음 배송 1회**에만 적용되는 별도 command다. 수량 변경 의미는 add-on의 실제 `quantity`에만 사용하며 기본 Plan item quantity 변경으로 읽히지 않게 한다. |
-| 배송지 변경 | Subscription에 `addressId`를 연결한다고 표현하지 않는다. 저장 주소를 활용하면 저장 주소 선택→필드를 local `AddressRequest` draft로 복사→사용자 확인→full `AddressRequest` submit 순서다. 저장 주소 선택만으로 자동 mutation하지 않는다. 직접 입력 역시 동일 `AddressRequest` form을 사용한다. |
+| 배송지 변경 | Subscription에 `addressId`를 연결한다고 표현하지 않는다. 저장 주소를 활용하면 저장 주소 선택→필드를 local `AddressRequest` draft로 복사→사용자 확인→full `AddressRequest` submit 순서다. 저장 주소 선택만으로 자동 mutation하지 않는다. 직접 입력 역시 동일 `AddressRequest` form을 사용한다. 성공한 PUT 뒤에는 제출 성공 사실과 재조회된 Detail의 `issue/availableActions` 변화만 서버 확인 사실로 표시한다. 제출한 주소 문자열을 현재 서버 배송지 read-back 결과처럼 영구 summary에 사용하지 않는다. |
 | conflict/duplicate | command dialog를 열 때 받은 ETag/최신 state를 기준으로 `If-Match`와 Idempotency-Key를 사용한다. 412/409이면 draft를 자동 재전송하지 않고 최신 current/pending/issue를 보여준 뒤 사용자가 다시 선택한다. 동일 body의 명시적 재시도에서만 동일 intention key를 유지한다. |
 | navigation | list breadcrumb. 저장 주소 관리를 위해 `/addresses`로 이동할 수 있으나 복귀만으로 Subscription shipping을 자동 변경하지 않는다. `/billing-methods`는 issue 해결을 위한 provider 상태 확인 route일 수 있으나 결제 재시도를 자동 실행하지 않는다. |
 | loading | header/핵심 날짜 skeleton, actions는 Detail의 `availableActions` 로드 전 숨김. Plan 후보, add-on, history는 독립 상태로 처리한다. |
-| empty | add-on 없음 `이번 배송에 추가한 상품 없음`; history 없음 축소; Plan 후보 없음은 별도 empty. 핵심 subscription 없음은 404/list CTA. |
+| empty | add-on 없음 `이번 배송에 추가한 상품 없음`; history 없음 축소; Plan 후보 없음은 별도 empty. 현재 배송지 read-back 데이터가 없다는 사실을 `배송지 없음`으로 오해해 empty state를 만들지 않는다. 핵심 subscription 없음은 404/list CTA. |
 | error/retry | core 실패 page retry. action 실패 dialog 내 retry. `ACTIVE + nextDelivery.status=HELD`는 top-level status를 `HELD`로 바꾸지 않고 issue/배송 회차 보류를 고객 문장으로 설명한다. |
-| success | command 성공 뒤 최신 Detail/ETag를 권위로 갱신한다. pendingChange가 있으면 `현재`/`적용 예정`과 적용일을 함께 표시한다. shipping 성공도 재조회 결과를 확인한 뒤 영구 summary를 갱신한다. |
+| success | command 성공 뒤 최신 Detail/ETag를 권위로 갱신한다. pendingChange가 있으면 `현재`/`적용 예정`과 적용일을 함께 표시한다. shipping 성공은 `배송지 변경 요청이 반영되었습니다`처럼 mutation 성공을 알리고 Detail을 재조회해 issue/availableActions가 바뀌었는지 확인하되, 현재 배송지 값을 서버가 반환했다고 표현하지 않는다. |
 | responsive | D8 SSOT: 1024px 이상 main 8+summary 4, 1023px 이하 single. 날짜·주기·Plan의 짧은 선택은 desktop 480–560px dialog, mobile에서는 내용 복잡도에 따라 full-screen. 배송지처럼 field가 많은 편집은 767px 이하 full-screen dialog. |
 | accessibility | dialog title/description, radio/fieldset, 날짜 input label/constraint/error, Plan 비교 heading, pending `status`, issue `alert`, destructive confirm focus trap. |
 | gap·impact | 날짜/주기/Plan/shipping을 실제 command/API 단위로 분리하고 ETag conflict·pending·issue 표현을 고정한다. API 변경 없음. |
-| acceptance | 날짜 변경이 주기/Plan을 바꾸지 않고, Plan 변경이 기본 item quantity 편집으로 변질되지 않으며, 저장 주소 선택만으로 subscription shipping이 자동 mutation되지 않고, stale submit이 자동 재실행되지 않는다. |
+| acceptance | 날짜 변경이 주기/Plan을 바꾸지 않고, Plan 변경이 기본 item quantity 편집으로 변질되지 않으며, 저장 주소 선택만으로 subscription shipping이 자동 mutation되지 않고, shipping 성공 후 서버에 없는 current address를 read-back 값처럼 표시하지 않으며, stale submit이 자동 재실행되지 않는다. |
 
 ## C3. New Subscription `/subscriptions/new`
 
@@ -264,7 +264,7 @@ Detail issue 또는 pending change summary
 - Detail `ACTIVE + nextDelivery HELD`, pendingChange, action 없음, ETag conflict, double submit.
 - `CHANGE_PLAN` 후보/주기 호환/add-on conflict, 날짜 변경과 주기 변경을 연속 수행, 다음 배송 add-on의 1회성 문구.
 - 신규 생성 Pet/Plan/cycle 세 입력, prefill 재검증, create 후 서버 next delivery 확인.
-- Subscription shipping 저장 주소 draft 복사→full AddressRequest 확인→submit.
+- Subscription shipping 저장 주소 draft 복사→full AddressRequest 확인→submit→issue/availableActions 재확인; current address read-back은 하지 않음.
 - Pet 0/1/N, immutable petType, delete UI 없음, invalid weight, 저장 실패.
 - Notification unread/개별 read/readAll 실패, Address 기본 변경/삭제 실패, Billing configured/registered/prepare 상태.
 - Login unsafe returnTo, session expiry, trust route hash/keyboard/200% zoom.
