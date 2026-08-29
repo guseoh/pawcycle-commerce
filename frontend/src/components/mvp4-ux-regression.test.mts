@@ -39,7 +39,9 @@ test("헤더·위시리스트·상품 카드 상태는 URL/viewport/member 경�
   assert.match(headerSource, /useSearchParams/);
   assert.match(headerSource, /setSearchDraft\(pathname === "\/products" \? searchParams\.get\("q"\)/);
   assert.match(headerSource, /setActiveCategory\(searchParams\.get\("category"\)/);
-  assert.match(headerSource, /window\.innerWidth <= 1023/);
+  assert.match(headerSource, /const nextCompact = window\.scrollY > 48;/);
+  assert.doesNotMatch(headerSource, /const nextCompact = [^\n]*window\.innerWidth <= 1023/);
+  assert.match(headerSource, /if \(window\.innerWidth <= 1023 \|\| nextCompact\) setCategoryOpen\(false\)/);
   assert.match(headerSource, /categoryExpanded/);
   assert.match(headerSource, /header-navigation-utility/);
   assert.doesNotMatch(shoppingStylesSource, /nth-last-child/);

@@ -79,6 +79,8 @@ test("정기배송 상태·반려동물·이슈 formatter는 알 수 없는 값�
   assert.equal(formatScheduleStatus("HELD"), "다음 배송 확인 필요");
   assert.equal(formatScheduleStatus("CANCELED"), "배송 취소");
   assert.equal(formatScheduleStatus("UNKNOWN"), "배송 상태 확인 필요");
+  assert.equal(subscriptionIssueCopy("SHIPPING_ADDRESS_REQUIRED"), "배송지를 확인해 주세요.");
+  assert.equal(subscriptionIssueCopy("BILLING_METHOD_REQUIRED"), "결제수단 등록 상태를 확인해 주세요.");
   assert.equal(subscriptionIssueCopy("PAYMENT_SUPPORT_REQUIRED"), "결제 확인을 위해 고객지원이 필요해요.");
   assert.equal(subscriptionIssueCopy("STOCK_UNAVAILABLE"), "이번 배송 추가 상품의 재고를 확인해 주세요.");
   assert.equal(subscriptionIssueCopy("UNKNOWN"), "정기배송을 계속하려면 확인이 필요한 항목이 있어요.");

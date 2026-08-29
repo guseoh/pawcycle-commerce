@@ -40,7 +40,7 @@ export function AppHeader() {
 
   useEffect(() => {
     const onViewportChange = () => {
-      const nextCompact = window.scrollY > 48 || window.innerWidth <= 1023;
+      const nextCompact = window.scrollY > 48;
       setCompact(nextCompact);
       if (window.innerWidth <= 1023 || nextCompact) setCategoryOpen(false);
     };
