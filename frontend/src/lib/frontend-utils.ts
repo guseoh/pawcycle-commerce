@@ -123,7 +123,9 @@ const SCHEDULE_STATUS_LABELS: Record<string, string> = {
 };
 
 export function formatScheduleStatus(value: string): string {
-  return SCHEDULE_STATUS_LABELS[value] ?? "배송 상태 확인 중";
+  return Object.prototype.hasOwnProperty.call(SCHEDULE_STATUS_LABELS, value)
+    ? SCHEDULE_STATUS_LABELS[value]
+    : "배송 상태 확인 중";
 }
 
 const SUBSCRIPTION_ISSUE_LABELS: Record<string, string> = {
@@ -134,7 +136,9 @@ const SUBSCRIPTION_ISSUE_LABELS: Record<string, string> = {
 };
 
 export function subscriptionIssueCopy(value: string): string {
-  return SUBSCRIPTION_ISSUE_LABELS[value] ?? "정기배송을 계속하려면 확인이 필요한 항목이 있습니다.";
+  return Object.prototype.hasOwnProperty.call(SUBSCRIPTION_ISSUE_LABELS, value)
+    ? SUBSCRIPTION_ISSUE_LABELS[value]
+    : "정기배송을 계속하려면 확인이 필요한 항목이 있습니다.";
 }
 
 export function cartQuantityError(value: string): string | null {
