@@ -69,6 +69,8 @@ test("header와 My의 계정 action 경계를 유지한다", () => {
   assert.match(mySource, /loadAllSubscriptions/);
   assert.match(v2ApiSource, /export async function loadAllSubscriptions/);
   assert.match(v2ApiSource, /subscriptions\.length < first\.body\.totalElements/);
+  assert.match(v2ApiSource, /controller\.abort\(\)/);
+  assert.match(v2ApiSource, /controller\.signal/);
   assert.match(mySource, /sort\(\(left, right\) => left\.nextScheduledDate!/);
   assert.match(mySource, /LogoutControl/);
   assert.match(headerSource, /aria-label=\{menuOpen \? "메뉴 닫기" : "메뉴 열기"\}/);
@@ -187,6 +189,7 @@ test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
   assert.match(productsSource, /isMobileFilter \? "dialog" : undefined/);
   assert.match(productsSource, /isMobileFilter \? "true" : undefined/);
+  assert.match(productsSource, /if \(!media\.matches\) setFilterOpen\(false\)/);
   assert.match(productsSource, /filterPanel\.current\?\.querySelectorAll/);
   assert.match(productsSource, /event\.key !== "Tab"/);
   assert.match(productsSource, /document\.activeElement === first/);

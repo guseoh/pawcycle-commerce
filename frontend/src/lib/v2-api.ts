@@ -157,7 +157,7 @@ export const v2Api = {
     detail: (planVersionId: number, petId: number) => requestV2<PlanVersion>(`/api/v2/subscription-plan-versions/${encodeURIComponent(planVersionId)}${query({ petId })}`),
   },
   subscriptions: {
-    list: (page = 0, size = 20) => requestV2<Page<V2SubscriptionSummary>>(`/api/v2/subscriptions${query({ page, size })}`),
+    list: (page = 0, size = 20, signal?: AbortSignal) => requestV2<Page<V2SubscriptionSummary>>(`/api/v2/subscriptions${query({ page, size })}`, { signal }),
     detail: (id: string, pages: { schedulePage?: number; scheduleSize?: number; commandPage?: number; commandSize?: number } = {}) => requestV2<V2SubscriptionDetail>(`/api/v2/subscriptions/${encodeURIComponent(id)}${query(pages)}`),
     create: (request: { petId: number; planVersionId: number; deliveryCycleWeeks: number }, csrfToken: string, idempotencyKey: string) => requestV2<V2SubscriptionDetail>("/api/v2/subscriptions", {
       method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrfToken, "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request),
@@ -170,12 +170,18 @@ export const v2Api = {
 };
 
 export async function loadAllSubscriptions(pageSize = 100): Promise<V2SubscriptionSummary[]> {
-  const first = await v2Api.subscriptions.list(0, pageSize);
-  const subscriptions = [...first.body.items];
-  for (let page = 1; subscriptions.length < first.body.totalElements; page += 1) {
-    const next = await v2Api.subscriptions.list(page, pageSize);
-    if (!next.body.items.length) break;
-    subscriptions.push(...next.body.items);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const first = await v2Api.subscriptions.list(0, pageSize, controller.signal);
+    const subscriptions = [...first.body.items];
+    for (let page = 1; subscriptions.length < first.body.totalElements; page += 1) {
+      const next = await v2Api.subscriptions.list(page, pageSize, controller.signal);
+      if (!next.body.items.length) break;
+      subscriptions.push(...next.body.items);
+    }
+    return subscriptions;
+  } finally {
+    clearTimeout(timeout);
   }
-  return subscriptions;
 }

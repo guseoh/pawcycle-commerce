@@ -37,7 +37,10 @@ function ProductsContent() {
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsMobileFilter(media.matches);
+    const update = () => {
+      setIsMobileFilter(media.matches);
+      if (!media.matches) setFilterOpen(false);
+    };
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
