@@ -81,7 +81,8 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
         try {
           const pets = await v2Api.pets.list();
           if (active) { setSubscriptionOptionPets(pets.body.items); setSubscriptionOptions(result.options); setSubscriptionOptionsStatus("ready"); }
-        } catch {
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
           if (active) { setSubscriptionOptions(result.options); setSubscriptionOptionsStatus("ready"); setSubscriptionOptionPetError("반려동물 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."); }
         }
       }).catch((error: unknown) => {
@@ -91,7 +92,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
       });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [order?.orderId, subscriptionOptionsRetry]);
+  }, [auth, order?.orderId, subscriptionOptionsRetry]);
 
   useEffect(() => {
     if (auth.status !== "authenticated") return;
