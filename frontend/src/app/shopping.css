@@ -526,17 +526,13 @@ body:has(.shopping-home, .catalog-page, .shopping-detail) {
 
 /* MVP4-FE-004 correction: keep only the primary commerce header sticky. */
 .shopping-header {
-  position: static;
-  top: auto;
-  z-index: auto;
-  border-bottom: 0;
-  display: contents;
-}
-.shopping-header-primary {
   position: sticky;
   top: 0;
   z-index: 50;
   border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.shopping-header-primary {
   background: var(--surface-raised);
 }
 .shopping-header-primary .header-inner {

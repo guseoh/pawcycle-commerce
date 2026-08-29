@@ -67,14 +67,14 @@ export function AppHeader() {
   }, [memberId, status]);
 
   return (
-    <div className="app-header-shell">
-      <header className="site-header shopping-header" onKeyDown={(event) => {
+    <div className="app-header-shell" onKeyDown={(event) => {
       if (event.key !== "Escape") return;
       if (!menuOpen && !categoryNavigationRef.current?.open) return;
       closeNavigation();
       if (menuOpen) menuButton.current?.focus();
       else categoryNavigationRef.current?.querySelector("summary")?.focus();
     }}>
+      <header className="site-header shopping-header">
       <div className="shopping-header-primary">
       <div className="header-inner">
         <Link className="brand" href="/" aria-label="PawCycle 홈">
@@ -100,6 +100,7 @@ export function AppHeader() {
         </form>
       </div>
       </div>
+      </header>
       <div className="shopping-header-secondary">
       <div className="header-inner">
         <nav id="main-navigation" className={`main-nav${menuOpen ? " is-open" : ""}`} aria-label="주요 메뉴">
@@ -125,7 +126,6 @@ export function AppHeader() {
       </nav>
       </div>
       </div>
-      </header>
       <MobileBottomNavigation pathname={pathname} />
     </div>
   );

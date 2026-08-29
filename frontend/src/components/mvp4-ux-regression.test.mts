@@ -202,7 +202,8 @@ test("최종 visual foundation은 flat canvas, touch target, reduced motion을 �
   assert.match(shoppingStylesSource, /--canvas: #f7f4ec/);
   assert.match(headerSource, /className="shopping-header-primary"/);
   assert.match(headerSource, /className="shopping-header-secondary"/);
-  assert.match(shoppingStylesSource, /\.shopping-header-primary \{\s*position: sticky/);
+  assert.match(shoppingStylesSource, /\.shopping-header \{\s*position: sticky/);
+  assert.doesNotMatch(shoppingStylesSource, /\.shopping-header-secondary \{[^}]*position: sticky/);
   assert.match(shoppingStylesSource, /\.shopping-header-secondary \{\s*min-height: 44px/);
   assert.match(shoppingStylesSource, /\.shopping-detail \.product-purchase-stack \{ top: 96px; \}/);
   assert.match(shoppingStylesSource, /min-height: 44px/);
