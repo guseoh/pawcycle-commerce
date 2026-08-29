@@ -17,6 +17,7 @@ const productCardSource = readFileSync(new URL("./catalog-product-card.tsx", imp
 const discoverySource = readFileSync(new URL("./catalog-discovery.ts", import.meta.url), "utf8");
 const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+const shoppingStylesSource = readFileSync(new URL("../app/shopping.css", import.meta.url), "utf8");
 const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
 const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
 const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import.meta.url), "utf8");
@@ -68,6 +69,8 @@ test("header와 My의 계정 action 경계를 유지한다", () => {
   assert.match(mySource, /subscriptions\.length < first\.body\.totalElements/);
   assert.match(mySource, /sort\(\(left, right\) => left\.nextScheduledDate!/);
   assert.match(mySource, /LogoutControl/);
+  assert.match(headerSource, /aria-label=\{menuOpen \? "메뉴 닫기" : "메뉴 열기"\}/);
+  assert.match(headerSource, /aria-label="빠른 이동"/);
 });
 
 test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사용한다", () => {
@@ -174,6 +177,18 @@ test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이
   assert.match(productsSource, /userFacingCatalogLabel/);
   assert.match(globalStylesSource, /\.product-card-media \{ display: grid; aspect-ratio: 1/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
+  assert.match(productsSource, /role="dialog" aria-modal="true" aria-labelledby="catalog-filter-title"/);
+  assert.match(productsSource, /aria-label="필터 닫기"/);
+  assert.match(shoppingStylesSource, /\.catalog-filter-backdrop/);
+});
+
+test("최종 visual foundation은 flat canvas, touch target, reduced motion을 보장한다", () => {
+  assert.match(globalStylesSource, /font-family: system-ui/);
+  assert.doesNotMatch(globalStylesSource, /body\s*\{[^}]*linear-gradient/);
+  assert.match(shoppingStylesSource, /--canvas: #f7f4ec/);
+  assert.match(shoppingStylesSource, /min-height: 44px/);
+  assert.match(shoppingStylesSource, /prefers-reduced-motion: reduce/);
+  assert.match(shoppingStylesSource, /aspect-ratio: 1/);
 });
 
 test("상품 상세는 구매 결정 정보와 정보 section을 분리한다", () => {
