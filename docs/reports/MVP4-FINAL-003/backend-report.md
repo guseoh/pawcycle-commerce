@@ -20,10 +20,11 @@
 - 집중 테스트 1회 및 `--rerun-tasks` 반복 3회 통과.
 - Backend `build -x test` 통과.
 - PR body UTF-8 및 task artifact validator 통과, Draft PR #249 생성.
+- PR #249 Repository Validation run `33223112701`에서 conventions, classifier, harness, Backend+MySQL 전체 test/build, aggregate application validation이 모두 PASS했다. Frontend와 Production lane은 변경 분류상 skip이다.
 - 제품 로직, API, DB schema, Frontend, QA 산출물은 변경하지 않았다.
 
 ## 위험 또는 제한
 
 - task 전용 MySQL 8.4에서 재실행한 로컬 Backend 전체 test는 365건 중 7건 실패했다. 모두 `ProductionAuthSmokeMemberBootstrapProcessTests`가 Windows child-process command-line 길이 제한(`CreateProcess error=206`)으로 시작되지 않은 환경 제한이며, 변경 테스트·제품 로직·DB 연결 실패는 아니다.
-- MySQL 8.4 기준 전체 test의 최종 통과 여부와 Repository Validation은 Draft PR의 Linux CI에서 확인해야 한다.
+- 로컬 Windows child-process 제한으로 전체 test 7건이 통과하지 못했지만, MySQL 8.4 기준 Backend 전체 test/build는 Draft PR의 Linux CI에서 PASS했다.
 - 로컬 test/build 실행에는 task 전용 disposable MySQL만 사용했으며 Production/AWS/RDS/Provider는 실행하지 않았다.
