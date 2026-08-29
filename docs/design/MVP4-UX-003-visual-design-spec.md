@@ -28,7 +28,7 @@
 
 | Reference | 확인한 visual pattern | PawCycle 적합성 | PawCycle 적용 |
 | --- | --- | --- | --- |
-| [PetFriends](https://m.pet-friends.co.kr/main/tab/2) | 강한 pet identity, 검색 우선 진입, 친근한 색면과 반려동물 중심 이미지 | 정체성에는 적합하나 앱 설치 중심 shell과 높은 채도는 부적합 | pet portrait와 종별 진입은 강화하되 구매 정보 영역은 차분한 cream/green으로 유지 |
+| [PetFriends](https://m.pet-friends.co.kr/main/tab/2) | 강한 pet identity, 검색 우선 진입, 친근한 색면과 반려동물 중심 이미지 | 정체성에는 적합하나 앱 설치 중심 shell과 높은 채도는 부적합 | DOG/CAT 정적 identity와 종별 진입은 강화하되 구매 정보 영역은 차분한 cream/green으로 유지 |
 | [Chewy](https://www.chewy.com/) / [Autoship](https://www.chewy.com/b/autoship-save-15682) | 상품 탐색과 Autoship을 별도 기능이 아닌 일상 구매 흐름으로 노출 | PawCycle의 반복 구매 정체성과 직접 일치 | 홈, PDP, My, Subscription에서 다음 구매/배송 시점을 동일한 언어로 연결 |
 | [Petco Autoship](https://www.petco.com/shop/en/petcostore/autoship) | 반복 주문의 절약, 다음 주문, 변경 가능성을 먼저 설명 | 계약을 고객 결과로 번역하는 데 적합 | 주기·다음 날짜·예상 금액·가능 행동을 technical status보다 먼저 표시 |
 | [PetSmart](https://www.petsmart.com/) / [AutoShip](https://www.petsmart.com/featured-shops/auto-ship) | 반려동물 사진 hero, category discovery, PDP의 gallery/buy box 분리, 반복 구매 benefit band | pet commerce의 기본 위계로 적합 | 홈 hero와 PDP 7:5 구성, Subscription benefit/next delivery card에 적용 |
@@ -88,14 +88,18 @@ PawCycle의 최종 톤은 **Warm Utility Commerce**다. 따뜻한 ivory canvas�
 
 색만으로 상태를 구분하지 않는다. 성공·경고·오류에는 아이콘, 제목, 짧은 다음 행동을 함께 제공한다. `repeat`는 구독의 식별색이지 모든 CTA의 대체 primary가 아니다.
 
+현재 `body`에 남아 있는 radial/linear gradient는 `MVP4-FE-004` Foundation에서 제거하고 `--color-canvas`의 단색 warm canvas를 기본으로 한다. 구획 차이는 surface, border, whitespace로 만들며 새 decorative gradient를 추가하지 않는다.
+
 ### 4.2 Typography
 
-새 webfont 의존성을 추가하지 않는다. 현재 system stack을 유지하고 한글 우선 fallback을 명시한다.
+새 webfont 의존성을 추가하지 않는다. 실제로 로드가 보장되는 system stack을 사용하고 한글 fallback을 명시한다.
 
 ```css
-font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", Inter,
-  system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+  "Apple SD Gothic Neo", "Noto Sans KR", Arial, sans-serif;
 ```
+
+`Pretendard`는 현재 저장소에서 로드하거나 self-host하지 않으므로 존재한다고 가정하지 않는다. 향후 별도 승인으로 실제 font asset/`next/font` 적용이 결정되기 전까지 `MVP4-FE-004`는 새 webfont dependency를 추가하지 않는다.
 
 | Role | Desktop | Mobile | Weight / line-height | Rule |
 | --- | --- | --- | --- | --- |
@@ -144,11 +148,19 @@ font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", Inter,
 - Product list/card media: `1:1`, `object-fit: contain`, `8%` 내부 safe area, `#F3EFE3` 배경
 - PDP primary gallery: `1:1`, desktop 최소 `560px`, mobile viewport 폭; thumbnail `72×72px`
 - Home editorial hero: desktop `4:3` 또는 `3:2`, mobile `4:3`, `object-fit: cover`
-- Pet profile image: `1:1`, face가 중앙 상단 60%에 오도록 crop
+- Pet profile identity: `1:1` DOG/CAT repository-owned static avatar/illustration을 사용한다. 현재 Pet 계약에는 photo field/upload가 없으므로 사용자 portrait를 가정하지 않는다.
 - Subscription benefit/editorial: `3:2`; product packshot과 lifestyle photo를 한 카드에서 섞지 않음
 - 이미지가 없거나 의미가 맞지 않으면 임의 반려동물 stock photo 대신 neutral product silhouette + `이미지 준비 중`을 사용
 - `next/image`의 실제 표시 크기에 맞는 `sizes`를 제공하고 LCP hero만 우선 로드
 - alt는 상품명 반복이 아니라 이미지가 구매 판단에 주는 정보만 기록하며, 장식 이미지는 빈 alt
+
+Visual asset source 우선순위는 다음과 같이 잠근다.
+
+1. 기존 repository-owned asset
+2. 저장소에 추가되는 PawCycle original/static asset
+3. 라이선스와 출처를 명확히 확인한 curated asset을 저장소에 보관해 사용하는 방식
+
+외부 쇼핑몰 이미지 복사, 외부 서비스 image hotlink, 권리·출처가 불명확한 stock asset, 실제 상품과 무관한 pet photo를 product image 대체물로 사용하는 방식은 금지한다. 현재 canonical catalog가 제공하는 image URL은 기존 계약에 따라 사용할 수 있지만 상품 의미와 일치해야 한다. Home hero/lifestyle visual도 동일한 source 원칙을 따른다. Admin image upload 기능은 이번 MVP4 범위에 추가하지 않는다.
 
 현재 4:3 상품 override와 1:1 catalog rule의 충돌은 1:1로 통합한다. 이 변경은 이미지 의미 불일치(P1)를 숨기지 않으며, fixture/product asset 정합성은 별도로 수정해야 한다.
 
@@ -190,13 +202,13 @@ font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", Inter,
 
 ### 6.1 Header, navigation, footer
 
-**Desktop header**는 2단으로 구성한다. 상단 `68px`에는 logo, 최대 `560px` 검색, wishlist/cart/notification/My를 두고, 하단 `44px`에는 상품, DOG, CAT, 카테고리, 정기배송, 주문을 둔다. 스크롤 시 상단만 sticky로 남고 하단은 사라져 콘텐츠 높이를 확보한다. 검색 field는 category selector 없이 단일 명확한 input으로 유지하고 `검색어를 입력하세요`보다 상품·카테고리를 예시로 든다.
+**Desktop header**는 2단으로 구성한다. 상단 `68px`에는 logo, 최대 `560px` 검색, wishlist/cart/notification/My를 두며 **이 상단 68px만 sticky**다. 하단 `44px`에는 상품, DOG, CAT, 카테고리, 정기배송, 주문을 두되 initial page flow에서만 보이는 **non-sticky secondary row**로 두고 스크롤 시 자연스럽게 사라진다. 따라서 스크롤 중 지속적으로 차지하는 header 높이는 `68px`로 유지한다. 검색 field는 category selector 없이 단일 명확한 input으로 유지하고 `검색어를 입력하세요`보다 상품·카테고리를 예시로 든다.
 
-**Mobile header**는 `56px`에 menu, logo, search, cart를 배치한다. 알림과 My는 bottom navigation에 포함한다. menu button의 accessible name은 `메뉴 열기/닫기` 하나만 제공해 현재 중복된 `메뉴메뉴`를 제거한다. 검색 activation 시 header 아래 full-width search layer를 열고 최근 검색/추천 category만 표시한다. raw query는 저장하거나 분석 문구로 노출하지 않는다.
+**Mobile header**는 `56px`에 menu, logo, search, cart를 배치한다. 알림과 My는 bottom navigation에 포함한다. menu button의 accessible name은 `메뉴 열기/닫기` 하나만 제공해 현재 중복된 `메뉴메뉴`를 제거한다. 검색 activation 시 header 아래 full-width search layer를 열고 추천 category와 현재 구현이 이미 보유한 recent-product context만 사용할 수 있다. **최근 검색어 저장/표시 기능은 새로 추가하지 않으며 raw query를 persistence하지 않는다.**
 
 **Mobile bottom navigation**은 `<=640px`에서 Home, Shop, Subscription, Orders, My 5개를 제공한다. active route는 icon+label+top indicator로 표시하고 최소 `48px` 높이, safe-area inset을 포함한다. cart count와 알림 unread는 기존 서버 값이 있을 때만 badge로 표시한다.
 
-Footer는 고객지원, 배송/반품, 개인정보/약관, 사업자 정보와 PawCycle 설명을 4열/accordion으로 구성한다. 고객지원 문구에서 내부 구현·provider 표현을 제거한다.
+Footer는 고객지원, 배송/반품, 개인정보/약관과 PawCycle 설명을 기본 구조로 구성한다. 사업자명·사업자번호·주소 등 사업자 정보는 승인된 authoritative source가 있을 때만 표시하고, 값이 없으면 해당 영역을 생략한다. 포트폴리오 화면을 채우기 위해 가상의 사업자 정보를 만들지 않는다. 고객지원 문구에서는 내부 구현·provider 표현을 제거한다.
 
 ### 6.2 Buttons and controls
 
@@ -281,18 +293,18 @@ Quick add는 필수 옵션이 없고 기존 cart mutation 계약이 확인된 �
 1. Header 아래 `24px` 후 `min-height 460px` hero, 7:5 split
 2. 좌측: eyebrow `반려동물의 다음 필요한 순간`, 48px heading, 2줄 설명, primary `상품 둘러보기`, secondary `내 반려동물 등록`
 3. 우측: 자연광 pet+lifestyle image. 상품 packshot 1~2개만 작게 겹치고 장식 badge는 최대 2개
-4. 로그인 사용자: hero 바로 아래 `OO의 다음 루틴` 8:4 band — 추천/재구매 3개 + 다음 배송 요약
+4. 로그인 사용자: hero 바로 아래 `OO의 다음 루틴` 8:4 band — **재구매 후보 2~3개 + 다음 배송 요약**. Personalized 상품은 이 band에 중복 배치하지 않는다.
 5. 비로그인 사용자: DOG/CAT/생활 단계 category discovery 4개
 6. `지금 많이 찾는 상품` 4열 grid
-7. `내 반려동물에게 맞는 추천` 또는 로그인 benefit card
+7. 로그인 사용자는 `내 반려동물에게 맞는 추천`을 **단일 dedicated personalized section**으로 제공하고, 비로그인 사용자는 로그인 benefit card로 대체한다.
 8. `정기배송으로 덜 잊는 일상` 3:2 visual + 세 가지 benefit
 9. 신뢰 정보: 배송, 변경 가능성, 고객지원; 내부 provider 명칭 금지
 
 **Mobile composition**
 
 - hero는 image 위 text overlay가 아니라 text→image 순서의 독립 card, heading 34px, primary CTA 1개 full-width
-- pet selector/등록은 hero 아래 horizontal chips; carousel 자동 회전 금지
-- 로그인 사용자는 추천 2열 grid보다 `다음 배송` compact card를 먼저 노출
+- pet selector/등록은 hero 아래 DOG/CAT static avatar 또는 text chip 기반 horizontal controls로 구성하며 사용자 pet photo를 가정하지 않는다. carousel 자동 회전 금지
+- 로그인 사용자는 personalized grid보다 `다음 배송` compact card와 재구매 context를 먼저 노출
 - 상품은 2열, section당 4개 + `전체 보기`; 횡스크롤은 pet/category chips에만 사용
 - Subscription benefit는 icon 3열이 아닌 vertical checklist + visual 하나
 - bottom navigation 공간을 확보해 마지막 콘텐츠에 `96px` padding-bottom
@@ -311,26 +323,26 @@ Buy box 정보 순서:
 
 1. brand, 상품명, rating/review link
 2. discount/price/compare-at
-3. 배송·재고·구독 가능 상태
+3. 배송·재고·정기배송 가능 상태
 4. pet fit 또는 category metadata
-5. one-time/subscription 선택. 구독이 없으면 control 자체를 숨기고 이유가 있으면 설명
-6. 주기/수량 등 서버가 제공한 선택지
-7. primary action, wishlist/compare secondary
+5. 일반 구매용 SKU option 선택과 quantity. 현재 Product Detail/cart 계약이 제공하는 값만 사용한다.
+6. primary `장바구니에 담기`, wishlist/compare secondary
+7. 선택한 SKU가 subscribable이면 별도 secondary entry `정기배송으로 받아보기`를 제공하고 기존 `/subscriptions/new?productId=...&skuId=...` 흐름으로 이동한다. **PDP 안에서 delivery cycle을 선택하거나 subscription command를 실행하지 않는다.**
 8. 배송·변경·취소 신뢰 정보
 
-아래 content는 상품 정보→Related→Complementary→Review Summary fallback→review 순서로 두되 fallback은 빈 카드가 아니라 일반 상품/리뷰 안내로 자연스럽게 대체한다. Mobile은 gallery→핵심 정보→purchase controls 순서이며 bottom sticky bar에 가격과 단일 primary action을 둔다. Sticky bar는 화면 내 primary CTA가 보일 때 숨긴다.
+아래 content는 상품 정보→Related→Complementary→Review Summary fallback→review 순서로 두되 fallback은 빈 카드가 아니라 일반 상품/리뷰 안내로 자연스럽게 대체한다. Mobile은 gallery→핵심 정보→purchase controls 순서이며 bottom sticky bar에 가격과 일반 구매 primary action을 둔다. Sticky bar는 화면 내 primary CTA가 보일 때 숨긴다. 정기배송 entry는 동일한 secondary navigation 성격을 유지한다.
 
 ### 7.4 Product compare
 
-선택 상품 2~4개를 상단 고정 card로 표시하고 제거/교체 action을 제공한다. Desktop table의 행 순서는 가격, 구매 가능, 구독 가능, 평점, 반려동물/카테고리, 핵심 속성이다. 구매 가능 상태는 detail/card와 같은 source를 사용하고 불일치는 P0 결함으로 취급한다.
+선택 상품 **2~3개**를 상단 고정 card로 표시하고 제거/교체 action을 제공한다. Desktop table의 행 순서는 가격, 구매 가능, 구독 가능, 평점, 반려동물/카테고리, 핵심 속성이다. 구매 가능 상태는 detail/card와 같은 source를 사용하고 불일치는 P0 결함으로 취급한다.
 
 Mobile은 상품 이름 tab 또는 horizontal product header와 sticky attribute label을 사용한다. 비교 대상이 2개 미만이면 빈 table 대신 비교 방법과 `상품 찾기`를 보여준다.
 
 ### 7.5 Cart
 
-Desktop은 items 8 columns + summary 4 columns sticky, mobile은 items→summary 순서다. Item은 image, name, one-time/subscription 여부, quantity, unit price, subtotal, remove를 명확히 분리한다. 가격 변경/재고 문제는 item 바로 아래 warning으로 표시하고 전체 결제 CTA의 disabled 이유를 summary에도 제공한다.
+Desktop은 items 8 columns + summary 4 columns sticky, mobile은 items→summary 순서다. Item은 image, product name/option, quantity, unit price, subtotal, current stock/purchasable state, remove를 명확히 분리한다. **현재 Cart API에 없는 subscription 여부나 정기배송 가능 상태를 Cart가 임의 추론해 표시하지 않는다.** 가격 변경/재고 문제는 item 바로 아래 warning으로 표시하고 전체 결제 CTA의 disabled 이유를 summary에도 제공한다.
 
-Cart의 primary는 `주문서로 이동`, secondary는 `쇼핑 계속하기`다. 정기배송 전환은 기존 지원 계약이 있을 때만 제안하고, 선택하지 않은 상품을 자동 변환하지 않는다.
+Cart의 primary는 `주문서로 이동`, secondary는 `쇼핑 계속하기`다. 정기배송 전환은 별도의 승인된 지원 계약이 생기기 전까지 Cart 시각 정보나 action으로 추가하지 않는다.
 
 ### 7.6 Checkout
 
@@ -383,7 +395,9 @@ Mobile은 다음 배송→다시 구매→pet profile→관리 list 순서다. �
 
 ### 7.12 Pets
 
-목록은 pet portrait, name, species/breed, birth/weight summary와 edit를 표시한다. Create/edit form은 name→species/breed→birth→weight 순서이며 null clear는 명확한 `값 지우기` 또는 빈 field 저장으로 표현한다. Invalid weight는 입력값을 보존하고 허용 형식을 field 바로 아래 안내한다. 성공 후 변경된 profile summary와 추천 연결을 보여준다.
+목록은 DOG/CAT repository-owned static avatar, name, petType, breed, weight summary와 edit를 표시한다. 현재 계약에는 pet photo와 birth가 없으므로 둘을 UI 필드나 표시 데이터로 가정하지 않는다.
+
+Create form은 `name → petType → breed → weight` 순서로 구성한다. Edit form은 `name → petType(read-only) → breed → weight` 순서로 구성해 immutable petType 계약을 명확히 드러낸다. `breed`와 `weightKg`의 null clear는 명확한 `값 지우기` 또는 빈 field 저장으로 표현한다. Invalid weight는 입력값을 보존하고 허용 형식을 field 바로 아래 안내한다. 성공 후 변경된 profile summary와 추천 연결을 보여준다.
 
 ### 7.13 Notifications
 
@@ -439,7 +453,7 @@ AFTER MOBILE
 [Hero copy]
 [Primary CTA]
 [4:3 pet image]
-[Pet chips →]
+[DOG/CAT identity chips →]
 [Next delivery / register pet]
 [2-up products]
 [Home Shop Subscription Orders My]
@@ -470,9 +484,10 @@ BEFORE                              AFTER DESKTOP
                [purchase controls]                         brand / title / rating
 [related/fallback sections]                                price
                                                             delivery / stock
-                                                            one-time | subscription
-                                                            cycle / quantity
-                                                            [primary CTA]
+                                                            option / quantity
+                                                            [장바구니에 담기]
+                                                            [정기배송으로 받아보기]
+                                                              only when eligible
                                      [Product info]
                                      [Related] [Complementary] [Review fallback]
 ```
@@ -564,11 +579,11 @@ Breakpoint만으로 판단하지 않고 content/container 폭으로 card와 form
 
 ### Phase 1 — Foundation
 
-- 중복 color/radius/elevation token을 semantic alias로 통합
-- typography, spacing, focus, motion/reduced-motion 확정
+- 중복 color/radius/elevation token을 semantic alias로 통합하고 기존 body gradient를 flat warm canvas로 교체
+- 실제 로드 가능한 system typography stack, spacing, focus, motion/reduced-motion 확정
 - button/input/status/skeleton/empty/error primitive 정리
-- header accessible name과 mobile navigation shell 수정
-- 제품 이미지 ratio/fallback 규칙 통합
+- header accessible name과 68px sticky + 44px non-sticky desktop navigation, mobile navigation shell 수정
+- 제품 이미지 ratio/fallback과 visual asset source/provenance 규칙 통합
 
 ### Phase 2 — Core Commerce
 
@@ -604,14 +619,14 @@ Breakpoint만으로 판단하지 않고 content/container 폭으로 card와 form
 
 | Area | Current implementation clue | Intended delta |
 | --- | --- | --- |
-| Foundation | `frontend/src/app/globals.css`, `frontend/src/styles/shopping.css` | 중복 token/ratio/radius 해소, reduced-motion 추가 |
-| Header | `frontend/src/components/app-header.tsx` | 2단 desktop, 독립 mobile header/bottom nav, accessible name 수정 |
-| Home | `frontend/src/app/page.tsx` | 7:5 hero, auth-aware routine priority, section rhythm |
+| Foundation | `frontend/src/app/globals.css`, `frontend/src/styles/shopping.css` | semantic token 통합, body gradient 제거, system font stack, ratio/radius, reduced-motion, asset source 규칙 적용 |
+| Header | `frontend/src/components/app-header.tsx` | 68px sticky primary + 44px non-sticky secondary desktop, 독립 mobile header/bottom nav, accessible name 수정 |
+| Home | `frontend/src/app/page.tsx` | 7:5 hero, auth-aware routine/reorder 우선, personalized 단일 section, section rhythm |
 | Product card | `frontend/src/components/catalog-product-card.tsx` | 1:1 media, 고정 hierarchy, state/action 정리 |
-| Product routes | product list/detail/compare route components | sidebar/sheet filter, sticky buy box, consistent availability |
+| Product routes | product list/detail/compare route components | sidebar/sheet filter, sticky buy box, current subscription entry 보존, consistent availability |
 | Checkout | checkout page component | semantic 3-step labels, exact final CTA, sticky summary |
 | Subscription detail | `frontend/src/components/mvp2-subscription-detail.tsx` | issue-first conditional zone, next-delivery hierarchy, management accordions |
-| My/support | My/pet/order/notification/address/billing/admin routes | frequency-based hierarchy, customer-language states |
+| My/support | My/pet/order/notification/address/billing/admin routes | frequency-based hierarchy, DOG/CAT static pet identity, customer-language states |
 
 새 icon/font/animation/design-system dependency는 추가하지 않는다. 기존 CSS와 inline SVG 또는 현재 icon primitive를 재사용한다. `availableActions`, interaction attribution, raw query 비저장, next-delivery totals, prefill, role authorization은 표시 계층이 재계산하거나 대체하지 않는다.
 
@@ -620,21 +635,27 @@ Breakpoint만으로 판단하지 않고 content/container 폭으로 card와 form
 ### Foundation
 
 - [ ] 최종 computed style에서 동일 semantic token의 값이 하나다.
+- [ ] 기존 body radial/linear gradient가 제거되고 flat warm canvas와 명시적 surface만 사용된다.
+- [ ] 실제 로드되지 않는 Pretendard 등 font를 전제로 하지 않고 system stack으로 일관되게 표시된다.
 - [ ] 모든 본문·CTA·상태 조합이 AA 대비를 만족한다.
 - [ ] reduced-motion에서 transform/continuous shimmer가 제거된다.
 - [ ] product image는 의미가 맞고 fallback이 fixture/debug처럼 보이지 않는다.
+- [ ] 새 visual asset은 repository-owned/original 또는 명확한 라이선스·출처를 가진 자산이며 외부 commerce image hotlink/copy가 없다.
 
 ### Core commerce
 
 - [ ] 상품 card에서 이미지→상품명→가격→상태→행동을 3초 안에 스캔할 수 있다.
 - [ ] PDP desktop buy box와 mobile sticky CTA가 중복 노출되지 않는다.
-- [ ] Compare/Card/PDP의 availability가 일치한다.
+- [ ] PDP의 정기배송 진입은 기존 `/subscriptions/new` flow를 사용하고 PDP 안에서 cycle/subscription command를 만들지 않는다.
+- [ ] Compare는 서로 다른 2~3개 상품만 다루며 Compare/Card/PDP의 availability가 일치한다.
+- [ ] Cart는 API에 없는 subscription 상태를 추론하지 않는다.
 - [ ] Checkout final CTA가 금액과 실제 행위를 설명한다.
 - [ ] 고객 화면에서 server/provider/raw enum/fixture 문구가 보이지 않는다.
 
 ### PawCycle signature
 
-- [ ] 로그인 홈의 첫 두 section 안에 pet context와 다음 배송/재구매가 있다.
+- [ ] 로그인 홈의 첫 두 section 안에 pet context와 다음 배송/재구매가 있고 personalized 상품 section은 중복되지 않는다.
+- [ ] Pet UI는 현재 계약의 name/petType/breed/weight만 사용하고 pet photo/birth를 가정하지 않는다.
 - [ ] Subscription detail에서 issue와 next delivery를 첫 viewport에서 이해할 수 있다.
 - [ ] Cycle Suggestion은 사용자 선택 전 command를 보내지 않는다.
 - [ ] SCHEDULED add-on SET/REMOVE 결과와 one-time 성격이 명확하다.
@@ -650,15 +671,19 @@ Breakpoint만으로 판단하지 않고 content/container 폭으로 card와 form
 ## 14. Decisions preserved and not authorized
 
 - Personalized Recommendation과 interaction attribution 계약 유지
-- Search/Filter interaction context와 raw query 비저장 유지
+- Search/Filter interaction context와 raw query 비저장 유지; 최근 검색어 persistence 기능 추가 없음
 - Related/Complementary/Review Summary fallback 유지
-- Pet create/edit/null clear/invalid weight 처리 유지
+- Pet create/edit/null clear/invalid weight 처리와 immutable petType 계약 유지; birth/photo 기능 추가 없음
 - Reorder Timing과 Order→Subscription prefill 유지
+- PDP의 기존 일반 구매 + `/subscriptions/new` 정기배송 entry 흐름 유지
+- Cart 계약에 없는 subscription 상태 추론 금지
 - Cycle Suggestion의 no-auto-command 유지
 - SCHEDULED add-on SET/REMOVE와 one-time 적용 유지
 - recoverable HELD의 server-authoritative availableActions 유지
 - Delivery Reminder의 subscriptionId routing 유지
 - USER admin 거부와 ADMIN readback 유지
+- Admin image upload 기능 추가 없음
+- 사업자 정보는 authoritative 값이 있을 때만 표시하며 임의 데이터 생성 금지
 
 본 문서는 추천 알고리즘, 가격 계산, 배송 약속, 상태 전이, role 정책, API/DB schema를 변경하거나 Product Complete를 선언하지 않는다. 구현 후 독립 Browser QA와 CI를 통과한 뒤 Tech Lead가 병합 준비도를 판단한다.
 
