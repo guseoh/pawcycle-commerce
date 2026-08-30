@@ -1,16 +1,14 @@
 package com.pawcycle.backend.catalog.maintenance;
 
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService.ImportResult;
-
 public final class ProductionDemoCatalogImportResultHolder {
 
-	private ImportResult result;
+	private String summary;
 
-	public void set(ImportResult result) {
-		this.result = result;
+	public void set(String summary) {
+		this.summary = summary;
 	}
 
-	public ImportResult result() {
-		return result;
+	public String summary() {
+		return summary;
 	}
 }
