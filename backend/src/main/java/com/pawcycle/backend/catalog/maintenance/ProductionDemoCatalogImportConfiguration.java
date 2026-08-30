@@ -1,8 +1,9 @@
 package com.pawcycle.backend.catalog.maintenance;
 
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
+import com.pawcycle.backend.catalog.application.CustomerCatalogImportService;
 import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService.ImportResult;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,23 +23,37 @@ public class ProductionDemoCatalogImportConfiguration {
 
 	@Bean
 	ApplicationRunner productionDemoCatalogImportRunner(
-			DemoCatalogManifestImportService importService,
+			DemoCatalogManifestImportService demoImportService,
+			CustomerCatalogImportService customerImportService,
 			ProductionDemoCatalogImportResultHolder resultHolder,
+			@Value("${pawcycle.catalog.manifest-import.target:demo}") String target,
 			@Value("${pawcycle.catalog.manifest-import.mode:}") String mode,
 			@Value("${pawcycle.catalog.manifest-import.confirm-apply:false}") boolean confirmApply,
 			@Value("${pawcycle.catalog.manifest-import.manifest:classpath:catalog/demo-catalog.json}") String manifestLocation) {
 		return arguments -> {
-			ImportResult result = switch (mode.toLowerCase(java.util.Locale.ROOT)) {
-				case "validate" -> importService.validate(manifestLocation);
-				case "apply" -> {
-					if (!confirmApply) {
-						throw new CatalogManifestImportException("production catalog import apply confirmation is required");
-					}
-					yield importService.apply(manifestLocation);
-				}
-				default -> throw new CatalogManifestImportException("production catalog import mode is invalid");
+			String normalizedTarget = target.toLowerCase(Locale.ROOT);
+			String normalizedMode = mode.toLowerCase(Locale.ROOT);
+			if (!normalizedTarget.equals("demo") && !normalizedTarget.equals("customer")) {
+				throw new CatalogManifestImportException("production catalog import target is invalid");
+			}
+			if (normalizedMode.equals("apply") && !confirmApply) {
+				throw new CatalogManifestImportException("production catalog import apply confirmation is required");
+			}
+
+			String summary = switch (normalizedTarget) {
+				case "demo" -> switch (normalizedMode) {
+					case "validate" -> demoImportService.validate(manifestLocation).summary();
+					case "apply" -> demoImportService.apply(manifestLocation).summary();
+					default -> throw new CatalogManifestImportException("production catalog import mode is invalid");
+				};
+				case "customer" -> switch (normalizedMode) {
+					case "validate" -> customerImportService.validate().summary();
+					case "apply" -> customerImportService.apply().summary();
+					default -> throw new CatalogManifestImportException("production catalog import mode is invalid");
+				};
+				default -> throw new CatalogManifestImportException("production catalog import target is invalid");
 			};
-			resultHolder.set(result);
+			resultHolder.set(summary);
 		};
 	}
 }
