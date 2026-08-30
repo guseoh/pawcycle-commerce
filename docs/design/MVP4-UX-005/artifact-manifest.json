@@ -1,0 +1,637 @@
+{
+  "observedDateKst": "2026-08-30",
+  "revision": "R1",
+  "note": "Pixel dimensions, not browser CSS viewport. Original evidence retained; R1 imagery is fictional and not a production catalog.",
+  "artifacts": [
+    {
+      "path": "evidence/benchmark-coupang.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 922,
+      "height": 816,
+      "bytes": 88976,
+      "sha256": "0e9f5195716b1c467f3b63222dee3e0c11190fc81cbe755e7018dfa71aa0e44a"
+    },
+    {
+      "path": "evidence/benchmark-kurly-937.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 920,
+      "height": 814,
+      "bytes": 76762,
+      "sha256": "576c72727d6f4ea1986dc4da5b9a2ed0a99777196d7d0c5b0522c832a7da27b8"
+    },
+    {
+      "path": "evidence/benchmark-kurly-best.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 920,
+      "height": 814,
+      "bytes": 66613,
+      "sha256": "724997e913f721ccef88716c1e23b728d01203134493cd6f3a924eff1cf80a92"
+    },
+    {
+      "path": "evidence/benchmark-kurly-filter.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 920,
+      "height": 814,
+      "bytes": 88594,
+      "sha256": "0f9ca4d159e1d1bd75e07a25c0de4f852fc93bb8bd48100b1473961a3d87fb48"
+    },
+    {
+      "path": "evidence/benchmark-kurly-pdp.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 920,
+      "height": 814,
+      "bytes": 103019,
+      "sha256": "583c712cc716de031e64ee6f213b6f81ea5cb6eaa08355c02c6e8792dce5a2e5"
+    },
+    {
+      "path": "evidence/benchmark-musinsa.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 922,
+      "height": 816,
+      "bytes": 105350,
+      "sha256": "82ca19e6f8aa814cc8b6e9a0286496d9aff51cd0c17ca050635c73397244734e"
+    },
+    {
+      "path": "evidence/benchmark-ohou-937.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 922,
+      "height": 816,
+      "bytes": 64455,
+      "sha256": "3c7c79b8dc12340f2fcab46b7b5014f9595f4f119f04dd7b4ba8b8534ecefb30"
+    },
+    {
+      "path": "evidence/benchmark-ohou-wide.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 990,
+      "bytes": 107373,
+      "sha256": "16817152aca4463eddf236b254362423da9bb915565a3360329299bea192259a"
+    },
+    {
+      "path": "evidence/benchmark-oliveyoung-937.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 920,
+      "height": 814,
+      "bytes": 104291,
+      "sha256": "41fef5465b761041b70c8321086aec80612f70034f1681e554604a5825e70f94"
+    },
+    {
+      "path": "evidence/benchmark-petfriends-blocked-navigation.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 360,
+      "height": 780,
+      "bytes": 23107,
+      "sha256": "6bd3b9b0625cf1d57c4c896da45f854ce25b86a8313e53bc75f59465356694ea"
+    },
+    {
+      "path": "evidence/benchmark-petfriends-categories.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 360,
+      "height": 780,
+      "bytes": 50538,
+      "sha256": "85a4fabf9ad84783a987551f83ea48af322731dcee65a859f2dca1b7d5d204e7"
+    },
+    {
+      "path": "evidence/benchmark-petfriends.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 937,
+      "height": 829,
+      "bytes": 43270,
+      "sha256": "7c4336a29db379e9a1c9d9078f35ed79f097673cc4c3a759faaae8460f981a0d"
+    },
+    {
+      "path": "evidence/production-cart-anonymous-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 43516,
+      "sha256": "0410d0f3a6be22fd410104cb03de4ad28a38f379a3950f33a7b988310532d560"
+    },
+    {
+      "path": "evidence/production-category-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 990,
+      "bytes": 88244,
+      "sha256": "bda96cc24738b8e8bc1cc99b085381bef5643ec6d3fb916502ea951c6ae88797"
+    },
+    {
+      "path": "evidence/production-checkout-anonymous-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 42766,
+      "sha256": "bab177e7f8ca652270f17ad0bdd5055c38165cdc7d62d863073f0a79d1907349"
+    },
+    {
+      "path": "evidence/production-filter-375.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 375,
+      "height": 812,
+      "bytes": 26503,
+      "sha256": "5f02ecc9fb59d530fc7c07c7a96c49ed1e7c56785f8d725a0d5d7d75258bb2d2"
+    },
+    {
+      "path": "evidence/production-filter-applied-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 1556,
+      "bytes": 95845,
+      "sha256": "cb3c073693c06f5331ad54f3f5a71db247fa2daa589cebd37eb7a455a84ac777"
+    },
+    {
+      "path": "evidence/production-header-focus.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1440,
+      "height": 150,
+      "bytes": 15709,
+      "sha256": "8c5da675856460700e879fc75710cf779b0543fa76305c462c07360cf2667e04"
+    },
+    {
+      "path": "evidence/production-header-hover.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1440,
+      "height": 150,
+      "bytes": 14961,
+      "sha256": "5f89e0de818c9b1180b3678313338905c5a4dff651bc0b2396e52c0ff4b94eaa"
+    },
+    {
+      "path": "evidence/production-home-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 2208,
+      "bytes": 159077,
+      "sha256": "4a99ae30a98f98049da1e896576b0e9dd928a519548964635b7f2dce94a27ee1"
+    },
+    {
+      "path": "evidence/production-home-375.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 360,
+      "height": 3004,
+      "bytes": 118479,
+      "sha256": "0d0017008939ed71eaf833fcbd30deeefb3b11c055453a7b9b1f7d3b246afab8"
+    },
+    {
+      "path": "evidence/production-login-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 51162,
+      "sha256": "a97ee7ee1254097fde5df3d4f5f9622d42d4410817f96d27dab4e6c135c512ff"
+    },
+    {
+      "path": "evidence/production-login-375.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 360,
+      "height": 1259,
+      "bytes": 33933,
+      "sha256": "99e50bf80fe52520422422c6b7ee6567de79d5f566214416d2ab013d3fd03f22"
+    },
+    {
+      "path": "evidence/production-menu-375.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 375,
+      "height": 812,
+      "bytes": 37002,
+      "sha256": "7ff0ccd692403349db2757ca74d6247217ddf7b3df94d5f9f235306d6a323ef4"
+    },
+    {
+      "path": "evidence/production-plp-1024.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1009,
+      "height": 1043,
+      "bytes": 59381,
+      "sha256": "1d265cecfee6a65bf91cdf35e7fbcf219748d8fa0931469b556bf1f497be7760"
+    },
+    {
+      "path": "evidence/production-plp-1440.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 1512,
+      "bytes": 92123,
+      "sha256": "1f7b08951aef6c7124d12c51a05f509f83ee2cd8df8e0c080ffb5b0d2dcae13a"
+    },
+    {
+      "path": "evidence/production-plp-320.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 305,
+      "height": 1460,
+      "bytes": 44397,
+      "sha256": "7b49b3136f599c2f35a9e460a26a6925a3772b1787c55233f34e77a652822da6"
+    },
+    {
+      "path": "evidence/production-plp-375.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 360,
+      "height": 1460,
+      "bytes": 46566,
+      "sha256": "a9ba414127ae7a40f3b77a154aabda2a539d4e24f622aadac114f120593fc7c6"
+    },
+    {
+      "path": "evidence/production-plp-768.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 753,
+      "height": 1024,
+      "bytes": 50083,
+      "sha256": "dfee1cb215cdb1ec7d37f25d87e7f6bda104070bd36b763dfaf7339c69d4bb14"
+    },
+    {
+      "path": "evidence/production-plp-scrolled.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1425,
+      "height": 990,
+      "bytes": 48972,
+      "sha256": "e32a3444cb5725f28fef098f8e7efc2293efe50e8576f60ed62a0c02fd266336"
+    },
+    {
+      "path": "evidence/r1-kurly-cart-empty.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 42506,
+      "sha256": "4345e61d4795c59f33753d559d28b1f7afea47647be755c652edea20b48f71ca"
+    },
+    {
+      "path": "evidence/r1-kurly-login.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 36602,
+      "sha256": "94f08f367b251f8b1d2c6b3349ec59433852a83a871346ba45365818183bce96"
+    },
+    {
+      "path": "evidence/r1-zeedog-cart.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1280,
+      "height": 720,
+      "bytes": 35474,
+      "sha256": "d471e0d3329756370db3f42e34c62aaaeaf7f8c4a14624b0b8943d65dd83e515"
+    },
+    {
+      "path": "evidence/r1-zeedog-checkout-full.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 1862,
+      "bytes": 110387,
+      "sha256": "448f23078d73c5c5f531d0bce0a1db59df632a7f3e3c321f5e5a897b48dd7e3c"
+    },
+    {
+      "path": "evidence/r1-zeedog-checkout.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 47803,
+      "sha256": "15b76ef00066f71ca4b0d95cc27334b0110958f101515b9db14cf9138a8c0be8"
+    },
+    {
+      "path": "visuals/cart-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1080,
+      "bytes": 63190,
+      "sha256": "212272eb479e2e80d7284cabb12d4fbb14882a1876c7c2b9f24065457d4fe615"
+    },
+    {
+      "path": "visuals/cart-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1490,
+      "bytes": 43610,
+      "sha256": "c41f7a72ef83e372eaadb4cc85a35ef5a1ec10ec6ea1d66c2c77784bd739cec9"
+    },
+    {
+      "path": "visuals/directions.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1800,
+      "height": 1180,
+      "bytes": 223601,
+      "sha256": "f558c93e250c3f8c531af6cbfd484a02240f60c8f887453fb36071ff2579cf68"
+    },
+    {
+      "path": "visuals/home-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1560,
+      "bytes": 84008,
+      "sha256": "73abace758ba7c47b932ff039d5aee377b70af44d82013b32c4d6b6f5628bba7"
+    },
+    {
+      "path": "visuals/home-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1730,
+      "bytes": 52734,
+      "sha256": "d8b48de6b0c2a727f6b897bf9932ab4e29945b80b0854a8d47c02dfa47672c25"
+    },
+    {
+      "path": "visuals/login-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 32886,
+      "sha256": "d077a0bc99a548ea53e7856ff19b935c163867ce71729ffe111eaf78ea13024d"
+    },
+    {
+      "path": "visuals/login-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 920,
+      "bytes": 15203,
+      "sha256": "dba7e060b968e78b1ade8f96c5e7583390992820289ae358df6457e82f33cf9e"
+    },
+    {
+      "path": "visuals/overlays.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1100,
+      "bytes": 68398,
+      "sha256": "31a30732c264f3dec5db3b4c512aeffd678829250f6897227bf212abed57a6dd"
+    },
+    {
+      "path": "visuals/pdp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1570,
+      "bytes": 75693,
+      "sha256": "b305a133a3334b5a12965b957b6000071532a87da71cbbcec88279917c98fc8d"
+    },
+    {
+      "path": "visuals/pdp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1920,
+      "bytes": 45960,
+      "sha256": "c0169b8e73b4e33c54a3348972c15a4fc2ce3022e0be70e4528dc7f598febe92"
+    },
+    {
+      "path": "visuals/plp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1780,
+      "bytes": 82010,
+      "sha256": "61d387a5df91ed0c071dae1c7c4f676a47f59a90c59bd14e01821a956f9b26e5"
+    },
+    {
+      "path": "visuals/plp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 2290,
+      "bytes": 63703,
+      "sha256": "d888b698fb54e9902e7861802e131740a251325c4be68fcdcbb36846ba7cba70"
+    },
+    {
+      "path": "visuals/r1-cart-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1020,
+      "bytes": 56043,
+      "sha256": "de9c74fee76d898a997eaad88428d40f4eedb8baee21c9be810a212d6170bf43"
+    },
+    {
+      "path": "visuals/r1-cart-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1260,
+      "bytes": 42688,
+      "sha256": "65526ce8d35f23651f87795cee9fd043e96d2348ec6e05d4956454fce0b192c1"
+    },
+    {
+      "path": "visuals/r1-checkout-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1290,
+      "bytes": 67926,
+      "sha256": "5c41b3b4abaf3eed06efe16ff1e9a06d55159c0f6db6ffa2a7cfee40340adcc8"
+    },
+    {
+      "path": "visuals/r1-checkout-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1660,
+      "bytes": 54085,
+      "sha256": "a1a2c8bed03eb1359f9ac4a6cff444c73206596ac61a66d8d8f5539ff141bf11"
+    },
+    {
+      "path": "visuals/r1-critical-states.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1160,
+      "bytes": 72819,
+      "sha256": "d7b99cb0c48749f8667cb5b37bc18af2770d92f4a453f5c1bbd914d8abb01658"
+    },
+    {
+      "path": "visuals/r1-home-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1500,
+      "bytes": 450088,
+      "sha256": "379092f9b400e3479678b5f281e555a1eda0db444b509fca4a7ab11420b64695"
+    },
+    {
+      "path": "visuals/r1-home-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1780,
+      "bytes": 165770,
+      "sha256": "11094d216af111282afa7fe259cd6c60f3b49a11dd8d3571a80a5947d154a594"
+    },
+    {
+      "path": "visuals/r1-identity.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1050,
+      "bytes": 223633,
+      "sha256": "16020174d26a251c1f41ae3b62bdbe2602ca9253eb7c6a17d05af7a648653644"
+    },
+    {
+      "path": "visuals/r1-login-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 40374,
+      "sha256": "8f29b9650015bbe4da305c3a9fdad05cdea3c114d3652ab28fefa42b9fd5cc95"
+    },
+    {
+      "path": "visuals/r1-login-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 940,
+      "bytes": 22658,
+      "sha256": "82ba84ad5f4efc753c2f21f0e228faba3d7d143897b209dafd9d71b24edbae45"
+    },
+    {
+      "path": "visuals/r1-order-detail-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 67888,
+      "sha256": "86431b5106ce937ebac881b82a35952d33d40311cc2631276f7d28225cd61a63"
+    },
+    {
+      "path": "visuals/r1-order-detail-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 54552,
+      "sha256": "73c4d685b7c549ca5e63890c9aac4c1860b18a690d362441559b3bf996bfa7fa"
+    },
+    {
+      "path": "visuals/r1-pdp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1510,
+      "bytes": 521530,
+      "sha256": "bc14b04864f1eea8e6a216a90a8c36a75a8e4713e649a497aecbb5a365daf174"
+    },
+    {
+      "path": "visuals/r1-pdp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 2040,
+      "bytes": 189220,
+      "sha256": "29fcb3d8e7685d67aa1447f9933aabed1f2b5b20637a8a19d93226f164bc4b0d"
+    },
+    {
+      "path": "visuals/r1-plp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1720,
+      "bytes": 840482,
+      "sha256": "99bce0888e5300c3f2a5ab8bb0d77c4e978b63d5f56b65eeb75f26241d1dd2b5"
+    },
+    {
+      "path": "visuals/r1-plp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 2140,
+      "bytes": 281816,
+      "sha256": "8dc0c7881b5068be1a664a18f85fedc6cc4027c1cc0190f27bb1eebbc965d29d"
+    },
+    {
+      "path": "visuals/r1-states.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1160,
+      "bytes": 67785,
+      "sha256": "3dcd6ea7879217ce0f55889fa0977b04ea609273850372f65355ba4e22c36791"
+    },
+    {
+      "path": "visuals/r1-subscription-detail-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 74887,
+      "sha256": "d490d76f65ef1a1a026af8097511c3214cf390ed536e82267687f826112f9bd1"
+    },
+    {
+      "path": "visuals/r1-subscription-detail-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 61249,
+      "sha256": "7ec01e9c52f9cf61b17c403c7e1cd585882fbf583a7845e3a10caa6bddd4ffef"
+    },
+    {
+      "path": "visuals/r1-subscription-new-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 64405,
+      "sha256": "ca324972790b56768e152bb59b1809e5dd3026508f1a09158dd45ccc90ad33c7"
+    },
+    {
+      "path": "visuals/r1-subscription-new-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 51206,
+      "sha256": "96423a07b66bdd6e9b28155191946d0bae9219371898347a13443720be8e2b82"
+    },
+    {
+      "path": "visuals/states.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1320,
+      "bytes": 72723,
+      "sha256": "812a437d74cf2a67f9ad291515614ae01a9983e09aa056ac55e9c80eb293abe7"
+    },
+    {
+      "path": "assets/packaging-concept-r1.png",
+      "kind": "generated-fictional-design-asset",
+      "format": "PNG",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1599171,
+      "sha256": "22729331759a5d64a3c4b4bb170dcd22d002975afbe8ffc18298b1bd2e895a8f"
+    }
+  ]
+}

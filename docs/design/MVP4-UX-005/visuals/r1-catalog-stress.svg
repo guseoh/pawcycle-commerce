@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180" role="img" aria-labelledby="title desc">
+  <title id="title">PawCycle R1 heterogeneous catalog stress board</title>
+  <desc id="desc">서로 다른 색, 비율, 브랜드 길이, 상품명 길이, 이미지 없음과 구매 불가 상태를 섞어 R1 상품 위계를 검토하는 정적 보드</desc>
+  <rect width="1600" height="1180" fill="#FFFFFF"/>
+  <style>
+    text { font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; fill:#241C2E; }
+    .muted { fill:#68616F; }
+    .brand { fill:#4B286D; }
+    .sale { fill:#955000; }
+    .small { font-size:14px; }
+    .caption { font-size:12px; }
+    .name { font-size:18px; font-weight:600; }
+    .price { font-size:22px; font-weight:700; }
+    .section { font-size:28px; font-weight:700; }
+    .title { font-size:36px; font-weight:750; }
+  </style>
+
+  <g transform="translate(80 62)">
+    <g transform="translate(0 0)">
+      <ellipse cx="14" cy="16" rx="10" ry="15" fill="none" stroke="#4B286D" stroke-width="2"/>
+      <ellipse cx="25" cy="16" rx="10" ry="15" fill="none" stroke="#4B286D" stroke-width="2"/>
+      <text x="48" y="25" font-size="28" font-weight="750" class="brand">PawCycle</text>
+    </g>
+    <text x="0" y="92" class="title">R1 / Multi-brand Catalog Stress</text>
+    <text x="0" y="124" font-size="16" class="muted">통일된 PB 이미지 없이도 상품명·가격·상태가 먼저 읽히는지 확인합니다. 모든 상품/브랜드는 가상 데이터입니다.</text>
+
+    <text x="0" y="190" class="section">HOME SHELF — 서로 다른 상품 4개</text>
+
+    <g transform="translate(0 228)">
+      <rect x="0" y="0" width="322" height="292" rx="8" fill="#F3F0F7"/>
+      <path d="M88 44 H234 L222 244 H100 Z" fill="#D94343"/>
+      <rect x="116" y="88" width="90" height="70" rx="4" fill="#FFF7EA"/>
+      <text x="129" y="116" font-size="13" font-weight="700">REDTAIL</text>
+      <text x="129" y="138" font-size="11">DOG FOOD</text>
+      <circle cx="292" cy="30" r="20" fill="#FFFFFF"/>
+      <path d="M284 29 C284 22 294 21 292 29 C290 21 300 22 300 29 C300 37 292 41 292 41 C292 41 284 37 284 29 Z" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <text x="0" y="322" class="caption muted">REDTAIL</text>
+      <text x="0" y="350" class="name">강아지 오븐베이크 닭고기 사료 2kg</text>
+      <text x="0" y="382" class="price">24,900원</text>
+      <text x="0" y="407" class="caption muted">리뷰 128 · 정기배송 대상</text>
+    </g>
+
+    <g transform="translate(346 228)">
+      <rect x="0" y="0" width="322" height="292" rx="8" fill="#EEF3F7"/>
+      <ellipse cx="161" cy="82" rx="73" ry="20" fill="#2D6FB7"/>
+      <rect x="88" y="82" width="146" height="125" fill="#3F82C8"/>
+      <ellipse cx="161" cy="207" rx="73" ry="20" fill="#2B659F"/>
+      <rect x="116" y="112" width="90" height="50" rx="2" fill="#E9F4FF"/>
+      <text x="132" y="140" font-size="13" font-weight="700">SEA &amp; CO.</text>
+      <circle cx="292" cy="30" r="20" fill="#FFFFFF"/>
+      <path d="M284 29 C284 22 294 21 292 29 C290 21 300 22 300 29 C300 37 292 41 292 41 C292 41 284 37 284 29 Z" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <text x="0" y="322" class="caption muted">SEA &amp; CO.</text>
+      <text x="0" y="350" class="name">참치와 흰살생선 고양이 습식캔</text>
+      <text x="0" y="382" class="price">3,600원</text>
+      <text x="0" y="407" class="caption muted">리뷰 없음</text>
+    </g>
+
+    <g transform="translate(692 228)">
+      <rect x="0" y="0" width="322" height="292" rx="8" fill="#F0F4EE"/>
+      <rect x="132" y="44" width="58" height="26" rx="6" fill="#305D48"/>
+      <rect x="110" y="66" width="102" height="174" rx="34" fill="#91B59E"/>
+      <rect x="127" y="112" width="68" height="70" rx="6" fill="#F9FBF8"/>
+      <text x="137" y="138" font-size="12" font-weight="700">MORI</text>
+      <text x="137" y="157" font-size="10">PAW WASH</text>
+      <circle cx="292" cy="30" r="20" fill="#FFFFFF"/>
+      <path d="M284 29 C284 22 294 21 292 29 C290 21 300 22 300 29 C300 37 292 41 292 41 C292 41 284 37 284 29 Z" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <text x="0" y="322" class="caption muted">MORI LAB</text>
+      <text x="0" y="350" class="name">산책 후 발 세정 워시 무향 300ml</text>
+      <text x="0" y="382" class="price">12,800원</text>
+      <text x="0" y="407" class="caption muted">현재 구매 가능</text>
+    </g>
+
+    <g transform="translate(1038 228)">
+      <rect x="0" y="0" width="322" height="292" rx="8" fill="#F7F3E8"/>
+      <rect x="80" y="58" width="162" height="164" rx="6" fill="#F2C94C"/>
+      <rect x="103" y="92" width="116" height="72" rx="4" fill="#FFFDF4"/>
+      <text x="116" y="118" font-size="12" font-weight="700">THE VERY LONG</text>
+      <text x="116" y="138" font-size="11">CARE COMPANY</text>
+      <circle cx="292" cy="30" r="20" fill="#FFFFFF"/>
+      <path d="M284 29 C284 22 294 21 292 29 C290 21 300 22 300 29 C300 37 292 41 292 41 C292 41 284 37 284 29 Z" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <text x="0" y="322" class="caption muted">THE VERY LONG CARE COMPANY</text>
+      <text x="0" y="350" class="name">고양이 두부모래 먼지날림을 줄인 무향 대용량</text>
+      <text x="0" y="376" class="name">7L × 3팩 묶음</text>
+      <text x="0" y="408" class="price">31,500원</text>
+    </g>
+
+    <text x="0" y="704" class="section">PLP GRID — 비율·색·결측·품절 혼합</text>
+
+    <g transform="translate(0 742)">
+      <rect x="0" y="0" width="248" height="210" rx="8" fill="#F6EEEE"/>
+      <path d="M75 38 H173 L163 178 H85 Z" fill="#8E2D34"/>
+      <text x="0" y="238" class="caption muted">BARK TABLE</text>
+      <text x="0" y="264" font-size="16" font-weight="600">연어 고구마 사료</text>
+      <text x="0" y="292" font-size="20" font-weight="700">18,500원</text>
+    </g>
+    <g transform="translate(280 742)">
+      <rect x="0" y="0" width="248" height="210" rx="8" fill="#EFF3FA"/>
+      <rect x="90" y="34" width="68" height="142" rx="24" fill="#395FA8"/>
+      <rect x="104" y="77" width="40" height="52" rx="4" fill="#FFFFFF"/>
+      <text x="0" y="238" class="caption muted">BLUE PAW</text>
+      <text x="0" y="264" font-size="16" font-weight="600">저자극 샴푸 500ml</text>
+      <text x="0" y="292" font-size="20" font-weight="700">16,000원</text>
+    </g>
+    <g transform="translate(560 742)">
+      <rect x="0" y="0" width="248" height="210" rx="8" fill="#F5F5F3"/>
+      <rect x="52" y="52" width="144" height="106" rx="8" fill="#1F1F1F"/>
+      <rect x="76" y="75" width="96" height="42" rx="3" fill="#EAEAEA"/>
+      <text x="0" y="238" class="caption muted">NOIR PET</text>
+      <text x="0" y="264" font-size="16" font-weight="600">휴대용 배변봉투 리필</text>
+      <text x="0" y="292" font-size="20" font-weight="700">7,900원</text>
+    </g>
+    <g transform="translate(840 742)">
+      <rect x="0" y="0" width="248" height="210" rx="8" fill="#F3F0F7" stroke="#DED8E4"/>
+      <text x="124" y="94" text-anchor="middle" font-size="16" font-weight="600" class="muted">이미지 준비 중</text>
+      <text x="124" y="122" text-anchor="middle" class="caption muted">image=null</text>
+      <text x="0" y="238" class="caption muted">LONG BRAND NAME STUDIO</text>
+      <text x="0" y="264" font-size="16" font-weight="600">반려동물 외출용 접이식 실리콘 물그릇</text>
+      <text x="0" y="288" font-size="16" font-weight="600">카라비너 포함</text>
+      <text x="0" y="316" font-size="20" font-weight="700">9,800원</text>
+    </g>
+    <g transform="translate(1120 742)">
+      <rect x="0" y="0" width="248" height="210" rx="8" fill="#F4F0EA"/>
+      <rect x="56" y="38" width="136" height="136" rx="14" fill="#E8A948"/>
+      <rect x="56" y="148" width="136" height="26" fill="#B42336"/>
+      <text x="124" y="166" text-anchor="middle" font-size="12" fill="#FFFFFF" style="fill:#FFFFFF;font-family:system-ui">현재 구매 불가</text>
+      <text x="0" y="238" class="caption muted">SUNNY BITE</text>
+      <text x="0" y="264" font-size="16" font-weight="600">동결건조 오리 트릿 80g</text>
+      <text x="0" y="292" font-size="20" font-weight="700">14,200원</text>
+      <text x="0" y="316" class="caption muted">품절도 상세 페이지는 열림</text>
+    </g>
+
+    <rect x="0" y="1088" width="1360" height="1" fill="#DED8E4"/>
+    <text x="0" y="1120" class="small brand" font-weight="700">판정 기준</text>
+    <text x="96" y="1120" class="small">이미지가 브랜드 palette와 맞지 않아도 R1의 white/surface stage, 이름 2줄, 판매가 우선, 상태 text가 위계를 유지해야 합니다.</text>
+    <text x="0" y="1148" class="caption muted">이 보드는 실제 카탈로그나 외부 브랜드를 재현하지 않으며, 구조 스트레스 검토를 위한 가상 시각 데이터입니다.</text>
+  </g>
+</svg>
