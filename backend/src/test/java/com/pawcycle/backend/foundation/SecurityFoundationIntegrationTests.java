@@ -14,11 +14,13 @@ import com.pawcycle.backend.common.security.ApiAccessDeniedHandler;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.access.AccessDeniedException;
@@ -26,6 +28,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
@@ -34,14 +37,17 @@ class SecurityFoundationIntegrationTests {
 
 	private final WebApplicationContext applicationContext;
 	private final ApiAccessDeniedHandler accessDeniedHandler;
+	private final JdbcTemplate jdbc;
 	private MockMvc mockMvc;
 
 	@Autowired
 	SecurityFoundationIntegrationTests(
 			WebApplicationContext applicationContext,
-			ApiAccessDeniedHandler accessDeniedHandler) {
+			ApiAccessDeniedHandler accessDeniedHandler,
+			JdbcTemplate jdbc) {
 		this.applicationContext = applicationContext;
 		this.accessDeniedHandler = accessDeniedHandler;
+		this.jdbc = jdbc;
 	}
 
 	@BeforeEach
@@ -63,6 +69,47 @@ class SecurityFoundationIntegrationTests {
 		mockMvc.perform(get("/api/auth/csrf"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.token").isNotEmpty());
+	}
+
+	@Test
+	@Transactional
+	void anonymousProductRecommendationsArePublicAndKeepResponseContract() throws Exception {
+		String suffix = UUID.randomUUID().toString();
+		String categorySlug = "security-recommendation-" + suffix;
+		jdbc.update("INSERT INTO categories(name,slug,display_order,active) VALUES (?,?,0,true)", "추천 테스트 카테고리", categorySlug);
+		Long categoryId = jdbc.queryForObject("SELECT id FROM categories WHERE slug=?", Long.class, categorySlug);
+		long sourceId = insertProduct(categoryId, suffix + "-source", "추천 원본");
+		long relatedId = insertProduct(categoryId, suffix + "-related", "추천 후보");
+		insertAvailableSku(sourceId, suffix + "-source-sku");
+		insertAvailableSku(relatedId, suffix + "-related-sku");
+
+		mockMvc.perform(get("/api/products/{productId}/related", sourceId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.requestId").isString())
+				.andExpect(jsonPath("$.products[0].productId").value(relatedId))
+				.andExpect(jsonPath("$.products[0].strategy").value("RELATED"));
+
+			mockMvc.perform(get("/api/products/{productId}/complementary", sourceId))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.requestId").isString())
+					.andExpect(jsonPath("$.products").isArray());
+
+		mockMvc.perform(get("/api/products/{productId}/related", Long.MAX_VALUE))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+	}
+
+	private long insertProduct(Long categoryId, String catalogKey, String name) {
+		jdbc.update("INSERT INTO products(brand_id,catalog_key,category_id,name,short_description,pet_type,display_status) VALUES (1,?,?,?,?,?,'PUBLIC')",
+			catalogKey, categoryId, name, name + " 짧은 설명", "DOG");
+		return jdbc.queryForObject("SELECT id FROM products WHERE catalog_key=?", Long.class, catalogKey);
+	}
+
+	private void insertAvailableSku(long productId, String skuCode) {
+		jdbc.update("INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (?,?,?,1000,false,1,'ACTIVE')",
+			productId, skuCode, skuCode + " 옵션");
+		Long skuId = jdbc.queryForObject("SELECT id FROM skus WHERE sku_code=?", Long.class, skuCode);
+		jdbc.update("INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,10,0,0)", skuId);
 	}
 
 	@Test

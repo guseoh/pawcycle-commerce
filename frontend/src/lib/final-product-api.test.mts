@@ -35,6 +35,20 @@ test("최종 추천 API는 전략별 canonical endpoint와 응답을 보존한�
   } finally { mock.restore(); }
 });
 
+test("익명 PDP 추천은 인증 전용 mutation 없이 public GET 응답을 매핑한다", async () => {
+  const mock = capture([Response.json({ ...recommendation, products: [{ ...recommendation.products[0], strategy: "RELATED" as const }] }), Response.json({ ...recommendation, products: [{ ...recommendation.products[0], strategy: "COMPLEMENTARY" as const }] })]);
+  try {
+    const related = await finalProductApi.recommendations.related(301);
+    const complementary = await finalProductApi.recommendations.complementary(301);
+    assert.equal(related.products[0]?.strategy, "RELATED");
+    assert.equal(complementary.products[0]?.strategy, "COMPLEMENTARY");
+    assert.deepEqual(mock.calls.map((call) => ({ path: call.path, method: call.method, csrf: call.headers.get("X-CSRF-TOKEN") })), [
+      { path: "/api/products/301/related", method: "GET", csrf: null },
+      { path: "/api/products/301/complementary", method: "GET", csrf: null },
+    ]);
+  } finally { mock.restore(); }
+});
+
 test("상품 상호작용은 CSRF와 event envelope를 사용하고 raw 검색어를 보내지 않는다", async () => {
   const mock = capture([new Response(null, { status: 204 })]);
   try {
