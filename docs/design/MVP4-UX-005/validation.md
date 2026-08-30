@@ -41,14 +41,15 @@ R0 PNG13개와 원래 JPG30개는 보존했다. R1 PNG21개를 추가했다: Hom
 - R1 외부 benchmark는 실제 Login/Cart/Checkout 화면까지 확인했으나 로그인 성공/최종 결제/배송비 확정/각 mobile 폭/keyboard 전수검증은 미실행. 외부 비회원 조사 Cart1개 담기 외 개인정보 입력·결제 제출 없음.
 - orbit mark는 20px 최소 사용을 제안했지만 실제 브라우저 rasterization·고DPI·favicon rendering은 FE 구현 후 확인해야 한다. 16px orbit favicon은 현재 승인하지 않는다.
 - heterogeneous stress board는 가상 데이터 기반 정적 검토다. 실제 multi-brand catalog fixture, 투명 PNG, 긴 혼합문자 상품명, 200% zoom에서의 최종 PASS는 구현 후 검증한다.
-- 현재 main push는 Production image build와 자동 배포로 연결되는 workflow가 있다. **이 문서 PR도 향후 main에 병합하면 배포 workflow를 유발할 수 있다.** 이번 작업은 task branch 수정만 수행했고 Ready/merge/workflow dispatch/실제 운영 변경은 하지 않는다.
-- Design Approval 미승인. 문서 검증 통과는 시각 승인·FE 착수·병합 승인이 아니다.
+- 현재 main push는 Production image build와 자동 배포로 연결되는 workflow가 있다. **이 문서 PR도 향후 main에 병합하면 배포 workflow를 유발할 수 있다.** merge/workflow dispatch/실제 운영 변경은 수행하지 않았다.
+- **Design Approval은 완료됐다.** 현재 GitHub PR은 Ready 상태(`draft=false`)지만 merge와 Frontend 구현, Production 실행은 별도 Gate로 남는다.
+- CI 메타데이터 보정: PR 본문 필수 `검증`/`위험과 복구` 계약을 복구했다. 이전 Repository Validation 실패 job 재실행은 최초 pull_request 이벤트의 옛 PR 본문을 재사용해 같은 실패가 반복됐으므로, 이 문서 정합성 수정 커밋으로 새 HEAD의 Repository Validation을 트리거한다.
 
 ## 기계 검증 결과
 
 R1 기존 로컬 검증 PASS: UTF-8 Markdown9개, 상대 링크/anchor136개, raster 이미지70개(관찰35/시안34/생성원본1) decode·확장자 일치·SHA-256 manifest 확인. renderer Python syntax, PR body UTF-8/task artifact validator PASS. 새 제품 코드 없음.
 
-최종 승인 전 보정은 repository-side 실행 없이 문서/SVG만 변경했다. 따라서 기존 PASS를 새 변경 전체의 재실행 결과로 확대하지 않는다. 보정 후 검증은 GitHub 파일 조회, 변경 경로 확인, Draft/merge 상태 확인, SVG XML well-formedness 확인으로 제한한다.
+최종 승인 전 보정은 repository-side 실행 없이 문서/SVG만 변경했다. 따라서 기존 PASS를 새 변경 전체의 재실행 결과로 확대하지 않는다. 보정 후 검증은 GitHub 파일 조회, 변경 경로 확인, PR/merge 상태 확인, SVG XML well-formedness 확인으로 제한한다.
 
 | 조합 | 계산 대비 | 기준 |
 | --- | ---: | ---: |
