@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { AppHeaderShell } from "@/components/app-header";
-import { AppFooter } from "@/components/app-footer";
+import { CustomerShell } from "@/components/customer-shell";
 import { AuthProvider } from "@/lib/auth-context";
+import "./admin/legacy-shell.css";
 import "./globals.css";
 import "./shopping.css";
 
@@ -19,14 +19,7 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         <AuthProvider>
-          <a className="skip-link" href="#main-content">
-            본문으로 건너뛰기
-          </a>
-          <AppHeaderShell />
-          <main id="main-content" className="page-shell">
-            {children}
-          </main>
-          <AppFooter />
+          <CustomerShell>{children}</CustomerShell>
         </AuthProvider>
       </body>
     </html>

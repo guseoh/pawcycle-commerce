@@ -13,7 +13,7 @@ test("Sold-out SKU blocks Cart even without a quantity error and has text guidan
   assert.match(purchaseSource, /현재 품절 · 구매 불가/);
 });
 
-test("option controls expose only server-backed combinations and auto-select one purchasable SKU", () => {
+test("option controls expose only server-backed combinations and require explicit selection for a single purchasable SKU", () => {
   const groups = [
     { optionGroupId: 1, name: "색상", displayOrder: 1, values: [{ optionValueId: 11, value: "초록", displayOrder: 1 }, { optionValueId: 12, value: "노랑", displayOrder: 2 }] },
     { optionGroupId: 2, name: "용량", displayOrder: 2, values: [{ optionValueId: 21, value: "소", displayOrder: 1 }, { optionValueId: 22, value: "대", displayOrder: 2 }] },
@@ -22,7 +22,8 @@ test("option controls expose only server-backed combinations and auto-select one
   const skus = [sku(101, [[1, 11], [2, 21]]), sku(102, [[1, 12], [2, 22]])];
   assert.equal(isProductOptionValueAvailable(groups, skus, { 1: 11 }, 2, 22), false);
   assert.equal(isProductOptionValueAvailable(groups, skus, {}, 1, 12), true);
-  assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, null)?.skuId, 201);
+  assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, null), null);
+  assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, 201)?.skuId, 201);
   assert.equal(selectProductSku([], [sku(202, [[0, 0]], false)], {}, null), null);
 });
 

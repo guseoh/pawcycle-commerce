@@ -127,9 +127,9 @@ test("Superseded product requests cannot overwrite the latest result or surface 
   } finally { globalThis.fetch = original; }
 });
 
-test("Zero option groups use legacy single-SKU auto-selection or explicit multi-SKU choice", () => {
+test("Zero option groups require explicit SKU choice, including a single SKU", () => {
   assert.equal(selectProductSku([], [], {}), null);
-  assert.equal(selectProductSku([], [skus[0]], {}), skus[0]);
+  assert.equal(selectProductSku([], [skus[0]], {}), null);
   assert.equal(selectProductSku([], skus, {}), null);
   assert.equal(selectProductSku([], skus, {}, 2), skus[1]);
   assert.equal(selectProductSku([], skus, {}, 999), null);

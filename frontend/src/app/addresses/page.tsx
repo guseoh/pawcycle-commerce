@@ -7,7 +7,7 @@ import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi, type Address, type AddressRequest } from "@/lib/commerce-final-api";
-import { buildLoginHref, sanitizeReturnTo } from "@/lib/frontend-utils";
+import { buildAddressLoginHref, sanitizeReturnTo } from "@/lib/frontend-utils";
 
 const EMPTY_ADDRESS: AddressRequest = { name: "", recipientName: "", recipientPhone: "", postalCode: "", addressLine1: "", addressLine2: "" };
 
@@ -21,7 +21,7 @@ function AddressesContent() {
   const candidateReturnTo = searchParams.get("returnTo");
   const sanitizedReturnTo = sanitizeReturnTo(candidateReturnTo);
   const returnTo = candidateReturnTo === "/checkout" && sanitizedReturnTo === candidateReturnTo ? "/checkout" : null;
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="배송지를 관리하려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/addresses")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="배송지를 관리하려면 로그인해 주세요."><Link className="button button-primary" href={buildAddressLoginHref(returnTo)}>로그인</Link></ErrorState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (auth.status !== "authenticated" || auth.memberId === null) return <LoadingState>배송지를 불러오고 있습니다.</LoadingState>;
   return <AddressesForMember key={auth.memberId} returnTo={returnTo} />;

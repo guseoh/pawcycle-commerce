@@ -1,14 +1,19 @@
 export const PRODUCTS_PATH = "/products";
 
 const SAFE_RETURN_PATH = /^(?:\/|\/products(?:\/[1-9]\d*)?|\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/mvp2\/subscriptions(?:\/(?:new|[1-9]\d*))?|\/orders(?:\/[1-9]\d*)?|\/notifications|\/wishlist|\/cart|\/checkout(?:\/success)?|\/addresses|\/billing-methods|\/pets|\/my)$/;
+const CHECKOUT_ADDRESS_RETURN_PATH = /^\/addresses\?returnTo=(?:%2Fcheckout|\/checkout)$/i;
 const ISO_LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function sanitizeReturnTo(value: string | null | undefined): string {
-  return value && SAFE_RETURN_PATH.test(value) ? value : PRODUCTS_PATH;
+  return value && (SAFE_RETURN_PATH.test(value) || CHECKOUT_ADDRESS_RETURN_PATH.test(value)) ? value : PRODUCTS_PATH;
 }
 
 export function buildLoginHref(returnTo: string): string {
   return `/login?returnTo=${encodeURIComponent(sanitizeReturnTo(returnTo))}`;
+}
+
+export function buildAddressLoginHref(returnTo: string | null): string {
+  return buildLoginHref(returnTo === "/checkout" ? "/addresses?returnTo=%2Fcheckout" : "/addresses");
 }
 
 export function formatIsoLocalDate(value: string): string {
@@ -115,9 +120,13 @@ export function formatSubscriptionStatus(value: string): string {
   return "상태 확인 필요";
 }
 
+function ownLabel(labels: Record<string, string>, value: string, fallback: string): string {
+  return Object.prototype.hasOwnProperty.call(labels, value) ? labels[value] : fallback;
+}
+
 export function formatScheduleStatus(value: string): string {
   const labels: Record<string, string> = { SCHEDULED: "배송 예정", SKIPPED: "건너뜀", HELD: "다음 배송 확인 필요", CANCELED: "배송 취소" };
-  return labels[value] ?? "배송 상태 확인 필요";
+  return ownLabel(labels, value, "배송 상태 확인 필요");
 }
 
 export function subscriptionIssueCopy(value: string): string {
@@ -127,7 +136,7 @@ export function subscriptionIssueCopy(value: string): string {
     PAYMENT_SUPPORT_REQUIRED: "결제 확인을 위해 고객지원이 필요해요.",
     STOCK_UNAVAILABLE: "이번 배송 추가 상품의 재고를 확인해 주세요.",
   };
-  return labels[value] ?? "정기배송을 계속하려면 확인이 필요한 항목이 있어요.";
+  return ownLabel(labels, value, "정기배송을 계속하려면 확인이 필요한 항목이 있어요.");
 }
 
 export function cartQuantityError(value: string): string | null {

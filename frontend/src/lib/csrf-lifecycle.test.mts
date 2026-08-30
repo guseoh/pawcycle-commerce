@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   clearAuthentication,
   CsrfRefreshError,
+  runAuthenticatedCsrfRequest,
   runCsrfRequest,
 } from "./csrf-lifecycle.ts";
 
@@ -65,6 +66,33 @@ test("CSRF 오류는 POST를 재실행하지 않고 token 갱신 성공을 보�
 
   assert.equal(requestCount, 1);
   assert.equal(token, "renewed-token");
+});
+
+test("AUTH_REQUIRED는 mutation을 재실행하지 않고 익명 전환 뒤 원래 오류를 유지한다", async () => {
+  const expired = new Error("AUTH_REQUIRED");
+  let token: string | null = "request-token";
+  let requestCount = 0;
+  let anonymousCount = 0;
+
+  await assert.rejects(
+    runAuthenticatedCsrfRequest({
+      currentToken: token,
+      acquireToken: async () => "unused-token",
+      setToken: (value) => { token = value; },
+      request: async () => {
+        requestCount += 1;
+        throw expired;
+      },
+      isCsrfInvalid: () => false,
+      isAuthRequired: (error) => error === expired,
+      onAuthRequired: () => { anonymousCount += 1; token = null; },
+    }),
+    expired,
+  );
+
+  assert.equal(requestCount, 1);
+  assert.equal(anonymousCount, 1);
+  assert.equal(token, null);
 });
 
 test("CSRF token 갱신 실패는 token을 비우고 별도 오류로 구분한다", async () => {

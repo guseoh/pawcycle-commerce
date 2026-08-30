@@ -1,5 +1,9 @@
 import { useId } from "react";
 
+export function CatalogSkeleton() {
+  return <div role="status" aria-live="polite"><span className="sr-only">상품을 불러오고 있습니다.</span><div className="catalog-products-grid" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <div className="catalog-skeleton" key={index}><span /><i /><i /><i /></div>)}</div></div>;
+}
+
 export function LoadingState({ children }: { children: React.ReactNode }) {
   return (
     <div className="state-panel" role="status" aria-live="polite">

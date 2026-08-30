@@ -70,7 +70,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
 
   if (auth.status === "authenticated") {
     return (
-      <section className="section-card login-card">
+      <section className="login-card">
         <p className="eyebrow">Signed in</p>
         <h1>이미 로그인되어 있습니다.</h1>
         <p>요청한 화면으로 계속 이동할 수 있습니다.</p>
@@ -90,10 +90,10 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
   }
 
   return (
-    <section className="section-card login-card" aria-labelledby="login-title">
+    <section className="login-card" aria-labelledby="login-title">
       <p className="eyebrow">Member access</p>
       <h1 id="login-title">로그인</h1>
-      <p>구독을 만들거나 내 구독을 확인하려면 로그인이 필요합니다.</p>
+      <p>{returnTo.startsWith("/checkout") ? "주문을 준비하려면 로그인해 주세요." : returnTo.startsWith("/cart") ? "담은 상품을 확인하려면 로그인해 주세요." : returnTo.startsWith("/subscriptions") ? "정기배송을 관리하려면 로그인해 주세요." : "내 주문과 반려생활을 이어가세요."}</p><p className="field-help">로그인 후 요청한 화면으로 돌아갑니다. 구매나 변경은 직접 확인한 뒤 진행해 주세요.</p>
 
       {(message || Object.values(errors).some(Boolean)) ? (
         <div className="error-summary" ref={errorRef} tabIndex={-1} role="alert">
@@ -141,7 +141,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
           />
           {errors.password ? <p className="field-error" id="password-error">{errors.password}</p> : null}
         </div>
-        <button className="button button-primary" type="submit" disabled={submitting}>
+        <button className="button button-primary" type="submit" aria-busy={submitting} disabled={submitting}>
           {submitting ? "로그인 중" : "로그인"}
         </button>
       </form>
