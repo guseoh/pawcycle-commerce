@@ -1,6 +1,6 @@
-# MVP4-UX-005 · R1 최종 승인 전 보정
+# MVP4-UX-005 · R1 최종 승인 및 보정 기록
 
-2026-08-30 / UX/UI Designer / 일반 / 저장소 변경. **A/R1의 정보 구조와 브랜드 방향은 유지한다.** 이번 보정은 새 방향 탐색이 아니라 최종 Design Approval 전에 남은 시각 리스크와 오래된 계약 충돌을 닫기 위한 것이다. Frontend 구현, Ready for review, merge, Production 실행은 승인하지 않는다.
+2026-08-30 / UX/UI Designer / 일반 / 저장소 변경. **A/R1의 정보 구조와 브랜드 방향을 최종 Visual Direction으로 선택한다.** 이번 보정은 새 방향 탐색이 아니라 최종 Design Approval 전에 남은 시각 리스크와 오래된 계약 충돌을 닫기 위한 것이다. Frontend 구현, Ready for review, merge, Production 실행은 이 기록만으로 승인하지 않는다.
 
 ## 1. Multi-brand catalog stress
 
@@ -14,7 +14,7 @@ R1의 가상 PawCycle 패키지 4종은 브랜드 방향을 이해하는 데 유
 
 - **PASS — R1의 핵심 위계는 PB imagery에 의존하지 않는다.** 상품 사진의 고유 색을 억지로 aubergine/apricot으로 맞추지 않고 white/surface image stage가 배경을 맡는다.
 - Product Card의 권위는 `image → brand → product name → selling price → trust/status` 순서다. 상품 고유 색이 강해도 primary action·focus·selected state만 PawCycle brand color를 사용한다.
-- 긴 브랜드는 1줄 고정 높이로 잘라 핵심 상품명을 밀어내지 않는다. 실제 구현에서는 brand는 자연 줄바꿈 대신 1줄 ellipsis를 기본으로 하고 전체 값은 accessible name/title 대체가 아니라 실제 DOM text로 접근 가능해야 한다.
+- 긴 브랜드는 1줄 고정 높이로 잘라 핵심 상품명을 밀어내지 않는다. 실제 구현에서는 brand는 1줄 ellipsis를 기본으로 하되 원문 문자열 자체는 DOM에서 접근 가능하게 유지한다.
 - 상품명은 2줄까지 시각 clamp하되 접근 가능한 이름은 전체 문자열을 유지한다. 가격·구매 가능 여부·오류 메시지는 clamp하지 않는다.
 - `image=null`은 generic package/동물 사진을 생성하지 않고 같은 image stage 안에서 `이미지 준비 중` text로 복구한다.
 - purchasable=false 상품은 상세 탐색을 막지 않으며, 이미지 색상만 흐려 구분하지 않고 `현재 구매 불가` text/status를 함께 표시한다.
@@ -48,14 +48,50 @@ R0 `screen-redesign.md`는 구조 탐색 기록만 남기고 **구현 치수의 
 5. `interaction-responsive.md`의 R1 interaction/breakpoint
 6. `screen-redesign.md`는 **ARCHIVED R0 STRUCTURE ONLY — DO NOT IMPLEMENT DIMENSIONS**
 
-문서끼리 수치가 충돌하면 R0를 선택하지 않는다. R1에서도 충돌이 새로 발견되면 구현자가 임의 선택하지 않고 Design Approval 전에 정정한다.
+문서끼리 수치가 충돌하면 R0를 선택하지 않는다. R1에서도 충돌이 새로 발견되면 구현자가 임의 선택하지 않고 승인 계약 기준으로 정정한다.
 
-## 4. 최종 Design Approval 전에 남는 항목
+## 4. Design Approval
 
-- A/B/C 중 실제 구현 방향 선택. 현재 권고는 A/R1이나 사용자 승인 기록은 아직 없다.
-- R1 핵심6개 Desktop/Mobile과 Order Detail/Subscription New/Subscription Detail의 실제 시각 승인.
-- heterogeneous catalog stress 결과와 orbit 20px 최소 크기/16px 금지 규칙 승인.
-- 실제 상품 이미지 정책은 카탈로그 권위 데이터를 따르며 가상 PB imagery는 Production asset이 아니다.
-- Production populated PDP·인증 Cart/Checkout은 여전히 UNVERIFIED다. 이는 디자인 문서의 직접 구현 승인을 자동 차단하지는 않지만, 구현 후 Production/fixture QA에서 별도 검증한다.
+### 선택안
 
-**이 보정 완료 자체는 Design Approval, FE 착수 승인, Ready 전환, merge, Production 배포 승인이 아니다.**
+**A/R1 · Daily Orbit — DESIGN APPROVED**
+
+- 기준 설계 snapshot: `11854358e1e950e37e919e053441779287958e92`
+- 사용자 승인 입력: 2026-08-30 현재 대화에서 최종 검토 이후 `진행하자`로 A/R1 Design Approval 진행 승인
+- ChatGPT 검토 확인: Production 감사, 외부 Commerce benchmark, 핵심6개 Desktop/Mobile, Order Detail/Subscription New/Detail, Customer page family, multi-brand stress, orbit small-size 보정까지 검토 후 승인
+
+### 승인한 범위
+
+- A의 검색·상품 우선 Information Architecture
+- Home Hero 제거와 상품/탐색 우선 구성
+- aubergine `#4B286D` + apricot `#F3B88F` 중심 R1 visual system
+- Daily Orbit wordmark/brand expression. 단, orbit mark는 UI 최소20px, 16px 사용 금지
+- Home / populated PLP / PDP / Cart / Checkout / Login의 R1 Desktop/Mobile 설계
+- Order Detail / Subscription New / Subscription Detail의 상세 visual contract
+- Wishlist/Compare/Orders/My/Pet/Address/Billing/Notification/Support 계열의 Customer page-family contract
+- button/form/filter/chip/badge/product card/empty/loading/error/drawer/dialog 등 R1 component/state contract
+- 320/375/768/1024/1440 responsive contract와 keyboard/focus/reduced-motion 요구
+- heterogeneous multi-brand catalog에서도 PawCycle palette를 상품 사진에 강제하지 않는 원칙
+- 기존 R0 visual 치수는 구현 권위에서 제외
+
+### 승인하지 않은 것 / 구현 후 검증으로 넘긴 것
+
+- 가상 PawCycle PB 패키지를 실제 Production 상품/브랜드 asset으로 채택하는 결정
+- 새 16px orbit favicon. 별도 simplified favicon 승인 전 기존 favicon 유지
+- 실제 상품 이미지 촬영/편집 정책 변경
+- B editorial 또는 C bottom-dock 방향 혼합
+- Backend/API/DB/결제/정기배송 도메인 계약 변경
+- Cart thumbnail 보강 같은 별도 FE 데이터 보강 Proposal
+- Production populated PDP·인증 Cart/Checkout가 이미 새 UI에서 검증됐다는 주장
+- 실제 브라우저 keyboard, drawer focus trap, 200% zoom, screen reader, Toss SDK 상태 전환 검증 완료 주장
+
+### 후속 Gate
+
+이 Design Approval로 **Frontend 구현 설계 입력은 확정**된다. 하지만 다음은 별도 사용자 승인 없이 수행하지 않는다.
+
+- PR #256 Ready 전환 또는 merge
+- main 변경
+- Frontend 구현 PR 생성/병합
+- Production 배포 또는 운영 데이터 변경
+
+Production populated PDP·인증 Cart/Checkout 미검증은 디자인 승인을 막지 않으며, 구현 후 실제 fixture/Production QA에서 별도 검증한다.
