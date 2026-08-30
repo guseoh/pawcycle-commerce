@@ -14,6 +14,11 @@ interface CsrfRequestOptions<T> {
   refreshAfterSuccess?: boolean;
 }
 
+interface AuthenticatedCsrfRequestOptions<T> extends CsrfRequestOptions<T> {
+  isAuthRequired: (error: unknown) => boolean;
+  onAuthRequired: () => void;
+}
+
 async function acquireFreshToken(
   acquireToken: () => Promise<string>,
   setToken: (token: string | null) => void,
@@ -54,6 +59,15 @@ export async function runCsrfRequest<T>({
     if (isCsrfInvalid(error)) {
       await acquireFreshToken(acquireToken, setToken);
     }
+    throw error;
+  }
+}
+
+export async function runAuthenticatedCsrfRequest<T>(options: AuthenticatedCsrfRequestOptions<T>): Promise<T> {
+  try {
+    return await runCsrfRequest(options);
+  } catch (error) {
+    if (options.isAuthRequired(error)) options.onAuthRequired();
     throw error;
   }
 }

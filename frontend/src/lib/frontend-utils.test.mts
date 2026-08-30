@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAddressLoginHref,
   buildLoginHref,
   formatIsoLocalDate,
   formatPetType,
@@ -42,6 +43,12 @@ test("로그인 복귀는 승인된 내부 GET 화면만 허용한다", () => {
   assert.equal(sanitizeReturnTo("/subscriptions/7"), "/subscriptions/7");
   assert.equal(sanitizeReturnTo("/mvp2/subscriptions/new"), "/mvp2/subscriptions/new");
   assert.equal(sanitizeReturnTo("/mvp2/subscriptions/7"), "/mvp2/subscriptions/7");
+  assert.equal(sanitizeReturnTo("/addresses?returnTo=%2Fcheckout"), "/addresses?returnTo=%2Fcheckout");
+  assert.equal(sanitizeReturnTo("/addresses?returnTo=/checkout"), "/addresses?returnTo=/checkout");
+  assert.equal(buildAddressLoginHref("/checkout"), "/login?returnTo=%2Faddresses%3FreturnTo%3D%252Fcheckout");
+  assert.equal(buildAddressLoginHref(null), "/login?returnTo=%2Faddresses");
+  assert.equal(sanitizeReturnTo("/addresses?returnTo=/admin"), "/products");
+  assert.equal(sanitizeReturnTo("/addresses?returnTo=https://evil.example"), "/products");
   assert.equal(sanitizeReturnTo("https://evil.example"), "/products");
   assert.equal(sanitizeReturnTo("//evil.example"), "/products");
   assert.equal(sanitizeReturnTo("/login"), "/products");
@@ -79,11 +86,13 @@ test("정기배송 상태·반려동물·이슈 formatter는 알 수 없는 값�
   assert.equal(formatScheduleStatus("HELD"), "다음 배송 확인 필요");
   assert.equal(formatScheduleStatus("CANCELED"), "배송 취소");
   assert.equal(formatScheduleStatus("UNKNOWN"), "배송 상태 확인 필요");
+  assert.equal(formatScheduleStatus("__proto__"), "배송 상태 확인 필요");
   assert.equal(subscriptionIssueCopy("SHIPPING_ADDRESS_REQUIRED"), "배송지를 확인해 주세요.");
   assert.equal(subscriptionIssueCopy("BILLING_METHOD_REQUIRED"), "결제수단 등록 상태를 확인해 주세요.");
   assert.equal(subscriptionIssueCopy("PAYMENT_SUPPORT_REQUIRED"), "결제 확인을 위해 고객지원이 필요해요.");
   assert.equal(subscriptionIssueCopy("STOCK_UNAVAILABLE"), "이번 배송 추가 상품의 재고를 확인해 주세요.");
   assert.equal(subscriptionIssueCopy("UNKNOWN"), "정기배송을 계속하려면 확인이 필요한 항목이 있어요.");
+  assert.equal(subscriptionIssueCopy("__proto__"), "정기배송을 계속하려면 확인이 필요한 항목이 있어요.");
 });
 
 test("QA·Demo 상품명은 사용자 노출 문구로 대체한다", () => {

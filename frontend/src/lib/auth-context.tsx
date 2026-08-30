@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { ApiError, authApi } from "./api";
-import { clearAuthentication, runCsrfRequest } from "./csrf-lifecycle";
+import { clearAuthentication, runAuthenticatedCsrfRequest, runCsrfRequest } from "./csrf-lifecycle";
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous" | "error";
 
@@ -46,14 +46,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const executeWithCsrf = useCallback(
-    <T,>(request: (token: string) => Promise<T>) => runCsrfRequest({
+    <T,>(request: (token: string) => Promise<T>) => runAuthenticatedCsrfRequest({
       currentToken: csrfTokenRef.current,
       acquireToken: acquireCsrfToken,
       setToken: setCsrfToken,
       request,
       isCsrfInvalid: (error) => error instanceof ApiError && error.code === "CSRF_INVALID",
+      isAuthRequired: (error) => error instanceof ApiError && error.code === "AUTH_REQUIRED",
+      onAuthRequired: () => {
+        nextAuthGeneration();
+        clearAuthentication(setMemberId, setCsrfToken, () => setStatus("anonymous"));
+        setErrorMessage(null);
+      },
     }),
-    [acquireCsrfToken, setCsrfToken],
+    [acquireCsrfToken, nextAuthGeneration, setCsrfToken],
   );
 
   const refresh = useCallback(async () => {
