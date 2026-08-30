@@ -18,15 +18,17 @@ public final class ProductionDemoCatalogImportCommand {
 
 	public static final int NOT_REQUESTED = -1;
 	public static final int FAILURE = 2;
-	public static final String ERROR_MESSAGE = "ERROR: production demo catalog import failed";
+	public static final String ERROR_MESSAGE = "ERROR: production catalog import failed";
 
 	private static final String WEB_APPLICATION_TYPE = "spring.main.web-application-type";
 	private static final String ENABLED = "pawcycle.catalog.manifest-import.enabled";
+	private static final String TARGET = "pawcycle.catalog.manifest-import.target";
 	private static final String MODE = "pawcycle.catalog.manifest-import.mode";
 	private static final String CONFIRM_APPLY = "pawcycle.catalog.manifest-import.confirm-apply";
 	private static final Map<String, String> ENVIRONMENT_KEYS = Map.of(
 			WEB_APPLICATION_TYPE, "SPRING_MAIN_WEB_APPLICATION_TYPE",
 			ENABLED, "PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED",
+			TARGET, "PAWCYCLE_CATALOG_MANIFEST_IMPORT_TARGET",
 			MODE, "PAWCYCLE_CATALOG_MANIFEST_IMPORT_MODE");
 	private static final List<String> ENFORCED_ARGUMENTS = List.of(
 			option(WEB_APPLICATION_TYPE, "none"),
@@ -80,6 +82,13 @@ public final class ProductionDemoCatalogImportCommand {
 			error.println(ERROR_MESSAGE);
 			return FAILURE;
 		}
+		ResolvedProperty target = resolve(args, systemProperties, environment, TARGET);
+		if (!target.present()) target = new ResolvedProperty(true, "demo", false);
+		if (target.ambiguous()
+				|| (!"demo".equalsIgnoreCase(target.value()) && !"customer".equalsIgnoreCase(target.value()))) {
+			error.println(ERROR_MESSAGE);
+			return FAILURE;
+		}
 		ResolvedProperty mode = resolve(args, systemProperties, environment, MODE);
 		if (!mode.present() || mode.ambiguous()
 				|| (!"validate".equalsIgnoreCase(mode.value()) && !"apply".equalsIgnoreCase(mode.value()))) {
@@ -96,7 +105,7 @@ public final class ProductionDemoCatalogImportCommand {
 		}
 
 		try {
-			return application.run(enforceArguments(args));
+			return application.run(enforceArguments(args, target.value().toLowerCase(java.util.Locale.ROOT)));
 		} catch (RuntimeException exception) {
 			error.println(ERROR_MESSAGE);
 			return FAILURE;
@@ -117,8 +126,8 @@ public final class ProductionDemoCatalogImportCommand {
 			System.setErr(suppressedError);
 			try (ConfigurableApplicationContext context = application.run(args)) {
 				ProductionDemoCatalogImportResultHolder resultHolder = context.getBean(ProductionDemoCatalogImportResultHolder.class);
-				if (resultHolder.result() == null) throw new IllegalStateException("command result is missing");
-				output.println(resultHolder.result().summary());
+				if (resultHolder.summary() == null) throw new IllegalStateException("command result is missing");
+				output.println(resultHolder.summary());
 			} finally {
 				System.setOut(output);
 				System.setErr(error);
@@ -127,7 +136,7 @@ public final class ProductionDemoCatalogImportCommand {
 		} catch (Throwable ignored) {
 			System.setOut(output);
 			System.setErr(error);
-			throw new IllegalStateException("production demo catalog import failed");
+			throw new IllegalStateException("production catalog import failed");
 		}
 	}
 
@@ -140,17 +149,19 @@ public final class ProductionDemoCatalogImportCommand {
 		return values;
 	}
 
-	private static String[] enforceArguments(String[] args) {
+	private static String[] enforceArguments(String[] args, String target) {
 		List<String> enforced = new ArrayList<>();
 		for (String argument : args) {
 			if (!isEnforcedArgument(argument)) enforced.add(argument);
 		}
 		enforced.addAll(ENFORCED_ARGUMENTS);
+		enforced.add(option(TARGET, target));
 		return enforced.toArray(String[]::new);
 	}
 
 	private static boolean isEnforcedArgument(String argument) {
 		if ("--debug".equals(argument) || "--trace".equals(argument)) return true;
+		if (argument.equals("--" + TARGET) || argument.startsWith("--" + TARGET + "=")) return true;
 		for (String key : ENFORCED_KEYS) {
 			if (argument.equals("--" + key) || argument.startsWith("--" + key + "=")) return true;
 		}
