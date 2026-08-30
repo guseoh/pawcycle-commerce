@@ -51,10 +51,10 @@ class ProductRecommendationService {
 	RecommendationService.RecommendationResponse complementary(long productId, int limit) {
 		RecommendationCandidate source = source(productId);
 		Map<Long, Long> coPurchase = jdbc.query("""
-				SELECT other_product.product_id,COUNT(DISTINCT o.id) FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED'
+				SELECT other_product.id,COUNT(DISTINCT o.id) FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED'
 				JOIN order_items source_item ON source_item.order_id=o.id JOIN skus source_sku ON source_sku.id=source_item.sku_id
 				JOIN order_items other_item ON other_item.order_id=o.id AND other_item.sku_id<>source_item.sku_id JOIN skus other_sku ON other_sku.id=other_item.sku_id
-				JOIN products other_product ON other_product.id=other_sku.product_id WHERE o.source='ONE_TIME' AND o.status='PAID' AND source_sku.product_id=? AND other_product.product_id<>? GROUP BY other_product.product_id""", rs -> { Map<Long,Long> values = new HashMap<>(); while (rs.next()) values.put(rs.getLong(1), rs.getLong(2)); return values; }, productId, productId);
+				JOIN products other_product ON other_product.id=other_sku.product_id WHERE o.source='ONE_TIME' AND o.status='PAID' AND source_sku.product_id=? AND other_product.id<>? GROUP BY other_product.id""", rs -> { Map<Long,Long> values = new HashMap<>(); while (rs.next()) values.put(rs.getLong(1), rs.getLong(2)); return values; }, productId, productId);
 		Comparator<RecommendationCandidate> complementaryOrder = Comparator.comparingLong((RecommendationCandidate candidate) -> coPurchase.getOrDefault(candidate.productId(), 0L)).reversed()
 				.thenComparing(Comparator.comparingInt((RecommendationCandidate candidate) -> differentCategory(candidate, source) ? 1 : 0).reversed())
 				.thenComparing(Comparator.comparingLong(RecommendationCandidate::popularScore).reversed())
