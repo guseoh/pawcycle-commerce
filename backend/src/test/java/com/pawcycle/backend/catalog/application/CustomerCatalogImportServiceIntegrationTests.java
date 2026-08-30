@@ -60,12 +60,11 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThumbnailMatchesMain("qa3-dog-daily-pad");
         assertThumbnailMatchesMain("qa3-cat-flat-scratcher");
         assertThumbnailMatchesMain("qa3-cat-curve-scratcher");
-        assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM product_images a JOIN product_images b ON a.product_id=b.product_id "
-                        + "WHERE a.image_type='MAIN' AND b.image_type='MAIN' AND a.id<>b.id "
-                        + "AND a.image_url=b.image_url AND a.product_id IN "
-                        + "(SELECT id FROM products WHERE catalog_key IN ('qa3-cat-flat-scratcher','qa3-cat-curve-scratcher'))",
-                Integer.class)).isZero();
+        assertThat(jdbc.queryForList(
+                "SELECT i.image_url FROM product_images i JOIN products p ON p.id=i.product_id "
+                        + "WHERE i.image_type='MAIN' AND p.catalog_key IN ('qa3-cat-flat-scratcher','qa3-cat-curve-scratcher') "
+                        + "GROUP BY i.image_url HAVING COUNT(DISTINCT p.id) > 1",
+                String.class)).isEmpty();
     }
 
     @Test
