@@ -40,6 +40,7 @@ export function RecommendationSection({ id, title, description, request, source 
     return () => { active = false; window.clearTimeout(timer); };
   }, [requestKey, retry, source]);
 
+  if (state.status === "success" && state.data.products.length === 0) return null;
   return <section className="recommendation-section" aria-labelledby={id}>
     <div className="section-title"><div><p className="eyebrow">PawCycle picks</p><h2 id={id}>{title}</h2><p>{description}</p></div></div>
     {state.status === "loading" ? <LoadingState>추천 상품을 불러오고 있습니다.</LoadingState> : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CommerceOverlay } from "./commerce-overlay";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
@@ -112,21 +113,6 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     window.requestAnimationFrame(() => requestOpener.current?.focus());
   }
 
-  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape" && !pending) {
-      event.preventDefault();
-      closeRequest();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("textarea, button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"));
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  }
-
   async function submitRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = reason.trim();
@@ -203,15 +189,18 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
   if (!order) return <ErrorState title="주문을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()}><Link className="button button-secondary" href="/orders">주문 내역으로</Link></ErrorState>;
 
   return <section className="order-detail-stack"><Link className="breadcrumb" href="/orders">← 주문 내역</Link><header className="page-heading"><p className="eyebrow">Order</p><h1>주문 상세</h1><p>주문 번호 {order.orderNumber} · {formatDateTime(order.createdAt)}</p></header>{message ? <p className={messageKind === "error" ? "error-summary" : "notice-success"} role={messageKind === "error" ? "alert" : "status"}>{message}</p> : null}
+    <div className="order-main">
     <section className="section-card order-overview" aria-labelledby="order-summary-title"><div className="section-title"><h2 id="order-summary-title">주문 상태</h2><span className="status-badge">{formatOrderStatus(order.status)}</span></div><dl className="order-detail-grid"><div><dt>주문 일시</dt><dd>{formatDateTime(order.createdAt)}</dd></div><div><dt>결제 상태</dt><dd>{formatPaymentStatus(order.payment?.status)}</dd></div><div><dt>결제 수단</dt><dd>{methodLabel(order.payment)}</dd></div><div><dt>배송 상태</dt><dd>{formatDeliveryStatus(order.delivery?.status)}</dd></div>{order.delivery?.trackingNumber ? <div><dt>운송장 번호</dt><dd>{order.delivery.trackingNumber}</dd></div> : null}</dl></section>
     <section className="section-card" aria-labelledby="order-items-title"><div className="section-title"><h2 id="order-items-title">주문 상품</h2><span className="count-badge">{order.items.length}개</span></div><ul className="order-item-list">{order.items.map((item) => <li key={item.skuId}><div><strong>{item.productNameSnapshot}</strong><span>{item.skuNameSnapshot} · {item.quantity}개</span></div><span>{formatPrice(item.unitPrice)} × {item.quantity}</span><strong>{formatPrice(item.lineAmount)}</strong></li>)}</ul></section>
-    <section className="section-card" aria-labelledby="order-price-title"><h2 id="order-price-title">결제 금액</h2><dl className="price-summary"><div><dt>상품 금액</dt><dd>{formatPrice(order.originalAmount)}</dd></div><div><dt>할인</dt><dd>{order.discountAmount ? `-${formatPrice(order.discountAmount)}` : formatPrice(0)}</dd></div><div><dt>배송비</dt><dd>{order.shippingFee ? formatPrice(order.shippingFee) : "무료"}</dd></div><div className="price-summary-total"><dt>최종 결제 금액</dt><dd>{formatPrice(order.paymentAmount)}</dd></div></dl></section>
     <section className="section-card after-sales-panel" aria-labelledby="after-sales-title"><div className="section-title"><h2 id="after-sales-title">취소·반품·환불</h2><span className="field-help">주문을 다시 열어도 최신 상태를 표시합니다.</span></div>{order.cancellation || order.return || refunds.length ? <dl className="after-sales-list">{order.cancellation ? <div><dt>취소 상태</dt><dd><span className="status-badge">{cancellationLabel(order.cancellation.status)}</span></dd></div> : null}{order.return ? <div><dt>반품 상태</dt><dd><span className="status-badge">{returnLabel(order.return.status)}</span>{order.return.rejectionReason ? <span className="field-help">거절 사유: {order.return.rejectionReason}</span> : null}</dd></div> : null}{refunds.map((refund) => <div key={refund.refundId}><dt>환불 #{refund.refundId}</dt><dd><span className="status-badge">{refundLabel(refund.status)}</span><span>{formatPrice(refund.amount)}</span></dd></div>)}</dl> : <p className="field-help">현재 취소·반품·환불 내역이 없습니다.</p>}</section>
     <section className="section-card" aria-labelledby="order-address-title"><h2 id="order-address-title">배송지</h2><address className="order-address"><strong>{order.recipientName ?? "배송지 정보 없음"}</strong><span>{order.recipientPhone ?? ""}</span><span>{order.postalCode ? `(${order.postalCode}) ` : ""}{order.addressLine1 ?? ""} {order.addressLine2 ?? ""}</span></address></section>
     <section className="section-card order-actions"><h2>주문 관리</h2><div className="button-row"><button className="button button-primary" type="button" disabled={reordering || pending} onClick={() => void quickReorder()}>{reordering ? "장바구니에 담는 중" : "다시 담기"}</button>{availableActions.includes("REQUEST_CANCELLATION") ? <button className="button button-danger" disabled={pending || reordering} onClick={() => openRequest("cancel")}>주문 취소</button> : null}{availableActions.includes("REQUEST_RETURN") ? <button className="button button-secondary" disabled={pending || reordering} onClick={() => openRequest("return")}>반품 요청</button> : null}</div>{quickReorderSkipped > 0 ? <p className="field-help">판매 중지·품절 상품 {quickReorderSkipped}개는 서버 결과에 따라 건너뛰었습니다.</p> : null}{refunds.some((refund) => refund.status === "UNKNOWN") ? <p className="provider-block">환불 상태를 확인 중입니다. 중복 환불 요청은 할 수 없습니다.</p> : null}</section>
+    </div><aside className="order-rail">
+    <section className="section-card" aria-labelledby="order-price-title"><h2 id="order-price-title">결제 금액</h2><dl className="price-summary"><div><dt>상품 금액</dt><dd>{formatPrice(order.originalAmount)}</dd></div><div><dt>할인</dt><dd>{order.discountAmount ? `-${formatPrice(order.discountAmount)}` : formatPrice(0)}</dd></div><div><dt>배송비</dt><dd>{order.shippingFee ? formatPrice(order.shippingFee) : "무료"}</dd></div><div className="price-summary-total"><dt>최종 결제 금액</dt><dd>{formatPrice(order.paymentAmount)}</dd></div></dl></section>
     <OrderSubscriptionOptionsPanel orderId={order.orderId} status={subscriptionOptionsStatus} options={subscriptionOptions} pets={subscriptionOptionPets} error={subscriptionOptionsError} petError={subscriptionOptionPetError} onRetry={() => setSubscriptionOptionsRetry((value) => value + 1)} />
+    </aside>
     <section className="contextual-support"><h2>이 주문에 도움이 필요하신가요?</h2><p>주문 번호 {order.orderNumber}를 확인한 뒤 고객지원에서 해결 방법을 살펴보세요.</p><Link className="button button-secondary" href="/support">주문 고객지원</Link></section>
-    {requestAction ? <div className="dialog-backdrop" role="presentation"><div className="request-dialog" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title" onKeyDown={handleDialogKeyDown}><h2 id="request-dialog-title">{ACTION_LABEL[requestAction]}</h2><p>처리를 위해 사유를 남겨 주세요.</p><form onSubmit={submitRequest}><label className="form-field" htmlFor="request-reason">사유<textarea id="request-reason" className="input textarea" maxLength={500} value={reason} onChange={(event) => { setReason(event.target.value); setReasonError(null); }} autoFocus aria-describedby={reasonError ? "request-reason-error" : undefined} /></label>{reasonError ? <p id="request-reason-error" className="field-error" role="alert">{reasonError}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={pending} onClick={closeRequest}>닫기</button><button className="button button-primary" type="submit" disabled={pending}>{pending ? "접수 중" : "접수하기"}</button></div></form></div></div> : null}
+    {requestAction ? <CommerceOverlay label={ACTION_LABEL[requestAction]} className="request-dialog" onClose={closeRequest}><h2 id="request-dialog-title">{ACTION_LABEL[requestAction]}</h2><p>처리를 위해 사유를 남겨 주세요.</p><form onSubmit={submitRequest}><label className="form-field" htmlFor="request-reason">사유<textarea id="request-reason" className="input textarea" maxLength={500} value={reason} onChange={(event) => { setReason(event.target.value); setReasonError(null); }} aria-describedby={reasonError ? "request-reason-error" : undefined} /></label>{reasonError ? <p id="request-reason-error" className="field-error" role="alert">{reasonError}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={pending} autoFocus onClick={closeRequest}>닫기</button><button className="button button-primary" type="submit" disabled={pending}>{pending ? "접수 중" : "접수하기"}</button></div></form></CommerceOverlay> : null}
   </section>;
 }
 

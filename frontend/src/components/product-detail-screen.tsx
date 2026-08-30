@@ -25,6 +25,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
   const [retry, setRetry] = useState(0);
   const [cartSkuId, setCartSkuId] = useState<number | null>(null);
   const [selection, setSelection] = useState<OptionSelection>({});
+  const [purchaseVisible, setPurchaseVisible] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const authRequest = useRef(0);
   const wishlistRequest = useRef(0);
@@ -150,6 +151,14 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     setQuantity(String(adjusted)); setMessageKind("success"); setMessage(`선택한 옵션의 재고에 맞춰 수량을 ${adjusted}개로 조정했어요.`);
   }
 
+  useEffect(() => {
+    if (state.status !== "success") return;
+    const target = document.querySelector(".desktop-purchase-panel .purchase-panel");
+    if (!target) return;
+    const observer = new IntersectionObserver(([entry]) => setPurchaseVisible(entry.isIntersecting), { threshold: 0 });
+    observer.observe(target); return () => observer.disconnect();
+  }, [state.status, productId]);
+
   function purchasePanel(id: string) {
     return <ProductPurchasePanel id={id} product={product!} selectedSku={selectedSku} selection={selection} onSelect={selectOptions} onLegacySelect={selectLegacySku} quantity={quantity} onQuantityChange={setQuantity} quantityError={quantityError} busy={busy} wishlisted={wishlisted} wishlistStatus={auth.status === "authenticated" ? wishlist.status : null} onWishlistRetry={() => { setWishlistState({ memberId: auth.memberId, productId, status: "loading", value: false }); setWishlistRetry((value) => value + 1); }} onWishlist={() => void toggleWishlist()} onCart={() => void addCart()} wishlistLoginHref={auth.status === "anonymous" ? buildLoginHref(`/products/${product!.productId}`) : null} message={message} messageKind={messageKind} />;
   }
@@ -162,8 +171,6 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     <Link className="breadcrumb" href="/products">← 상품 목록</Link>
     <section className="product-purchase-zone" aria-label="상품 구매 영역">
       <div className="product-detail-layout">
-        <ProductGallery product={product!} />
-        <div className="product-purchase-stack">
           <section className="product-summary">
             {product!.brand ? <Link className="catalog-brand" href={`/products?brand=${encodeURIComponent(product!.brand.slug)}`}>{product!.brand.name}</Link> : null}
             <div className="card-meta"><span className="tag">{formatPetType(product!.petType)}</span><span className="tag">{categoryName}</span></div>
@@ -173,6 +180,8 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
             <p className={`product-availability ${(selectedSku?.purchasable ?? product!.purchasable) ? "is-available" : "is-unavailable"}`}>{selectedSku ? selectedSku.purchasable ? "선택한 옵션 구매 가능" : "선택한 옵션 품절" : product!.purchasable ? "옵션을 선택해 주세요" : "현재 품절"}</p>
             {selectedSku ? <p className="field-help">{selectedSku.subscribable ? "정기배송 가능 옵션" : "일반 구매 옵션"}</p> : null}
           </section>
+        <ProductGallery product={product!} />
+        <div className="product-purchase-stack">
           <div className="desktop-purchase-panel">{purchasePanel("desktop-purchase")}</div>
           <div className="product-purchase-trust" aria-label="구매 전 안내"><Link href="#product-shipping"><strong>배송 안내</strong><span>주문 확인 후 배송이 시작됩니다.</span></Link><Link href="#product-returns"><strong>교환·반품</strong><span>상품 상태와 주문 조건을 확인해 주세요.</span></Link></div>
         </div>
@@ -190,7 +199,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     {recentProducts.length ? <section className="section-card product-context-section" aria-labelledby="recent-products-title"><div className="section-title"><h2 id="recent-products-title">최근 본 상품</h2><Link className="text-link" href="/products">상품 더 보기</Link></div><div className="mini-product-grid">{recentProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={userFacingCatalogLabel(item.name, "반려동물 상품")} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{userFacingCatalogLabel(item.name, "반려동물 상품")}</strong>{item.price !== null ? <span>{formatPrice(item.price)}</span> : null}</Link>)}</div></section> : null}
     <RecommendationSection key={`related-${product!.productId}`} id="related-products-title" title="비슷한 상품" description="이 상품과 함께 비교해 보기 좋은 상품이에요." source="product-related" request={{ kind: "related", productId: product!.productId }} />
     <RecommendationSection key={`complementary-${product!.productId}`} id="complementary-products-title" title="함께 보기 좋은 상품" description="함께 살펴보면 좋은 상품을 모았어요." source="product-complementary" request={{ kind: "complementary", productId: product!.productId }} />
-    <div className="mobile-purchase-bar"><div><span className="field-help">선택한 옵션</span><strong>{displayPrice === null ? "옵션 선택 필요" : formatPrice(displayPrice)}</strong></div><button className="button button-primary" onClick={() => setSheetOpen(true)}>{selectedSku ? "구매 옵션 보기" : "옵션 선택"}</button></div>
+    {!purchaseVisible ? <div className="mobile-purchase-bar"><div><span className="field-help">선택한 옵션</span><strong>{displayPrice === null ? "옵션 선택 필요" : formatPrice(displayPrice)}</strong></div><button className="button button-primary" onClick={() => setSheetOpen(true)}>{selectedSku ? "구매 옵션 보기" : "옵션 선택"}</button></div> : null}
     {sheetOpen ? <ProductPurchaseSheet onClose={() => setSheetOpen(false)}>{purchasePanel("mobile-purchase")}</ProductPurchaseSheet> : null}
   </div>;
 }

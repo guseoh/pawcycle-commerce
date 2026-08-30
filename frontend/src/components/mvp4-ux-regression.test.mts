@@ -22,7 +22,7 @@ const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", 
 const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
 const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import.meta.url), "utf8");
 const subscriptionListSource = readFileSync(new URL("./mvp2-subscription-list.tsx", import.meta.url), "utf8");
-const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8") + readFileSync(new URL("./customer-shell.tsx", import.meta.url), "utf8");
 
 test("MVP4 review correction은 실패한 작업과 안전한 복귀를 보존한다", () => {
   assert.match(cartSource, /type CartMutationError = \{ operation: "update" \| "delete"/);
@@ -39,11 +39,11 @@ test("헤더·위시리스트·상품 카드 상태는 URL/viewport/member 경�
   assert.match(headerSource, /useSearchParams/);
   assert.match(headerSource, /setSearchDraft\(pathname === "\/products" \? searchParams\.get\("q"\)/);
   assert.match(headerSource, /setActiveCategory\(searchParams\.get\("category"\)/);
-  assert.match(headerSource, /const nextCompact = window\.scrollY > 48;/);
+  assert.doesNotMatch(headerSource, /window\.scrollY/);
   assert.doesNotMatch(headerSource, /const nextCompact = [^\n]*window\.innerWidth <= 1023/);
-  assert.match(headerSource, /if \(window\.innerWidth <= 1023 \|\| nextCompact\) setCategoryOpen\(false\)/);
+  assert.match(headerSource, /window\.innerWidth <= 1023/);
   assert.match(headerSource, /categoryExpanded/);
-  assert.match(headerSource, /header-navigation-utility/);
+  assert.match(headerSource, /header-actions/);
   assert.doesNotMatch(shoppingStylesSource, /nth-last-child/);
   assert.match(wishlistSource, /undoTimerRef/);
   assert.match(wishlistSource, /if \(removed\) \{ setRemoveBlockedMessage/);
@@ -100,13 +100,23 @@ test("알림 재조회 실패는 기존 목록을 무효화한다", () => {
 test("header와 My의 계정 action 경계를 유지한다", () => {
   const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(headerSource, /로그아웃/);
-  assert.match(headerSource, /const \{ status, memberId \} = useAuth\(\)/);
+  assert.match(headerSource, /const auth = useAuth\(\)/);
+  assert.match(headerSource, /const \{ status, memberId \} = auth/);
   assert.match(headerSource, /request !== requestRef\.current/);
-  assert.match(headerSource, /setCartCount\(0\);\s*setWishlistCount\(0\)/);
+  assert.match(headerSource, /setCartCount\(null\);\s*setWishlistCount\(0\)/);
   assert.match(mySource, /async function loadAllSubscriptions/);
   assert.match(mySource, /subscriptions\.length < first\.body\.totalElements/);
   assert.match(mySource, /sort\(\(left, right\) => left\.nextScheduledDate!/);
   assert.match(mySource, /LogoutControl/);
+});
+
+test("모바일 메뉴는 닫힌 category의 링크를 focus trap 경계에 넣지 않는다", () => {
+  assert.match(headerSource, /function drawerFocusable/);
+  assert.match(headerSource, /node\.closest\("details:not\(\[open\]\)"\)/);
+  assert.match(headerSource, /!closedDetails \|\| node\.tagName === "SUMMARY"/);
+  assert.match(headerSource, /document\.removeEventListener\("keydown", onKeyDown\)/);
+  assert.match(headerSource, /restoreMenuFocus\.current/);
+  assert.match(headerSource, /requestAnimationFrame\(\(\) => trigger\.focus\(\)\)/);
 });
 
 test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사용한다", () => {
@@ -117,10 +127,10 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
   assert.match(homeSource, /products\?petType=DOG/);
   assert.match(homeSource, /products\?petType=CAT/);
   assert.match(homeSource, /products\?category=\$\{encodeURIComponent\(category\.slug\)\}/);
-  assert.match(homeSource, /title="인기 상품"/);
+  assert.match(homeSource, /title="지금 많이 찾는 상품"/);
   assert.doesNotMatch(homeSource, /Trending|트렌딩|추천 상품 미리보기/);
   assert.match(homeSource, /buildLoginHref\("\/"\)/);
-  assert.match(headerSource, /className="category-trigger"/);
+  assert.match(headerSource, /className="header-catalog"/);
   assert.match(headerSource, /className="category-navigation-overlay"/);
   assert.match(headerSource, /useCatalogDiscovery/);
   assert.match(discoverySource, /catalogDiscoveryApi\.get\(\)/);
@@ -138,8 +148,10 @@ test("서버 재주문과 요청 dialog는 부분 성공과 키보드 경계를 
   assert.match(orderSource, /response\.addedItems\.length > 0/);
   assert.match(orderSource, /response\.skippedItems\.length/);
   assert.match(orderSource, /newIdempotencyKey\(\)/);
-  assert.match(orderSource, /event\.key === "Escape"/);
-  assert.match(orderSource, /event\.key !== "Tab"/);
+  assert.match(orderSource, /CommerceOverlay/);
+  const overlaySource = readFileSync(new URL("./commerce-overlay.tsx", import.meta.url), "utf8");
+  assert.match(overlaySource, /dialog\.showModal\(\)/);
+  assert.match(overlaySource, /event\.key === "Escape"/);
   assert.match(orderSource, /requestOpener\.current\?\.focus\(\)/);
 });
 
@@ -168,7 +180,7 @@ test("관련 상품은 상세 조회와 독립된 loading·retry 상태를 사�
 });
 
 test("Root layout은 공통 Footer를 연결한다", () => {
-  const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8") + readFileSync(new URL("./customer-shell.tsx", import.meta.url), "utf8");
   const footerSource = readFileSync(new URL("./app-footer.tsx", import.meta.url), "utf8");
   assert.match(layoutSource, /AppFooter/);
   assert.match(footerSource, /\/shipping/);
@@ -177,17 +189,17 @@ test("Root layout은 공통 Footer를 연결한다", () => {
   assert.match(footerSource, /\/notice/);
   assert.match(footerSource, /\/support/);
   assert.match(footerSource, /쇼핑/);
-  assert.match(footerSource, /주문 \/ 계정/);
+  assert.match(footerSource, /내 일상/);
   assert.match(footerSource, /고객지원/);
 });
 
 test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => {
   assert.match(homeSource, /aria-labelledby="home-title"/);
   assert.match(homeSource, /href="\/products"/);
-  assert.match(homeSource, /href="\/subscriptions"/);
+  assert.match(layoutSource, /\/subscriptions/);
   assert.match(homeSource, /function CompactDiscovery/);
   assert.match(homeSource, /function CompactDiscovery/);
-  assert.match(homeSource, /function RoutineValue/);
+  assert.doesNotMatch(homeSource, /function RoutineValue|className="home-hero"/);
   assert.doesNotMatch(homeSource, /function QuickActions/);
   assert.match(homeSource, /kind: "personalized"/);
   assert.match(homeSource, /RecommendationSection/);
@@ -201,7 +213,7 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(globalStylesSource, /@media \(max-width: 767px\)/);
   assert.match(globalStylesSource, /@media \(max-width: 380px\)/);
   assert.match(globalStylesSource, /:focus-visible/);
-  assert.match(globalStylesSource, /aspect-ratio: 4 \/ 3/);
+  assert.match(shoppingStylesSource, /aspect-ratio:1/);
   assert.match(globalStylesSource, /@media \(max-width: 480px\)/);
 });
 
@@ -223,7 +235,7 @@ test("상품 상세는 구매 결정 정보와 정보 section을 분리한다", 
     assert.match(productDetailSource, new RegExp(`id="${sectionId}"`));
   }
   assert.match(productDetailSource, /className="mini-product-grid"/);
-  assert.match(shoppingStylesSource, /\.catalog-gallery \.product-gallery \{ width: 100%; aspect-ratio: 4 \/ 5/);
+  assert.match(shoppingStylesSource, /\.catalog-gallery \.product-gallery \{ width:100%; aspect-ratio:1/);
   assert.match(globalStylesSource, /\.product-info-grid/);
 });
 
@@ -248,10 +260,10 @@ test("주문과 정기배송 empty state는 다음 행동과 사용자 가치를
 
 test("짧은 화면에서도 app shell이 footer를 viewport 아래에 붙인다", () => {
   assert.match(layoutSource, /<main id="main-content"/);
-  assert.match(layoutSource, /<AppFooter \/>/);
-  assert.match(globalStylesSource, /min-height: 100dvh/);
+  assert.match(layoutSource, /<AppFooter compact=\{login\}/);
+  assert.match(globalStylesSource, /min-height: ?100dvh/);
   assert.match(globalStylesSource, /\.page-shell \{ flex: 1 0 auto; display: flex; flex-direction: column;/);
-  assert.match(globalStylesSource, /\.site-footer \{ flex: 0 0 auto;/);
+  assert.match(shoppingStylesSource, /\.site-footer \{ flex: 0 0 auto;/);
 });
 
 test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계를 유지한다", () => {

@@ -4,7 +4,7 @@ export type OptionSelection = Record<number, number>;
 
 // Match server combinations only; never infer availability from stock or price.
 export function selectProductSku(groups: ProductOptionGroup[], skus: ProductSku[], selection: OptionSelection, legacySkuId: number | null = null): ProductSku | null {
-  if (groups.length === 0) return skus.find((sku) => sku.skuId === legacySkuId) ?? (legacySkuId === null && skus.length === 1 && skus[0].purchasable ? skus[0] : null);
+  if (groups.length === 0) return skus.find((sku) => sku.skuId === legacySkuId) ?? null;
   if (Object.keys(selection).length !== groups.length || groups.some((group) => !group.values.some((value) => value.optionValueId === selection[group.optionGroupId]))) return null;
   return skus.find((sku) => sku.selectedOptions.length === groups.length &&
     groups.every((group) => sku.selectedOptions.some((option) => option.optionGroupId === group.optionGroupId && option.optionValueId === selection[group.optionGroupId]))) ?? null;
