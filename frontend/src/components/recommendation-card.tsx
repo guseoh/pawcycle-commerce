@@ -10,14 +10,15 @@ export function RecommendationCard({ item, onClick }: { item: RecommendationItem
   const name = userFacingCatalogLabel(item.name, "반려동물 상품");
   const category = item.category ? userFacingCatalogLabel(item.category.name, "상품") : null;
   const badge = recommendationStrategyLabel(item.strategy);
+  const reason = item.reason?.trim();
+  const showReason = Boolean(reason && reason !== "현재 구매 가능한 상품입니다.");
   return <Link className="recommendation-card" href={`/products/${item.productId}`} onClick={onClick}>
     <div className="recommendation-image"><CatalogImage src={item.thumbnailUrl} alt={`${name} 상품 이미지`} /></div>
     <div>
       <div className="card-meta">{category ? <span className="tag">{category}</span> : null}{badge ? <span className="tag tag-positive">{badge}</span> : null}</div>
       <h3>{name}</h3>
       {item.shortDescription ? <p>{item.shortDescription}</p> : null}
-      <p className="recommendation-reason">{item.reason}</p>
-      <span className="card-link">상품 보기 →</span>
+      {showReason ? <p className="recommendation-reason">{reason}</p> : null}
     </div>
   </Link>;
 }

@@ -117,8 +117,8 @@ export function CatalogProductCard({ product, compareSelected = false, onCompare
       {product.brand ? <p className="catalog-brand" title={product.brand.name}>{product.brand.name}</p> : null}
       <h3><Link className="catalog-title-link" href={href}>{productName}</Link></h3>
       <CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />
-      <p className="catalog-rating">{product.reviewCount > 0 && product.averageRating != null ? `5점 만점에 ${product.averageRating}점, 리뷰 ${product.reviewCount}개` : "아직 리뷰가 없어요"}</p>
-      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}<span className={`product-availability ${product.purchasable ? "is-available" : "is-unavailable"}`}>{product.purchasable ? "구매 가능" : "현재 구매할 수 없음"}</span></div>
+      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">평점 {product.averageRating} · 리뷰 {product.reviewCount}개</p> : <p className="catalog-rating catalog-rating-empty">리뷰 없음</p>}
+      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}{!product.purchasable ? <span className="product-availability is-unavailable">현재 구매 불가</span> : null}</div>
     </div>
     <div className="catalog-card-actions">{onCompare ? <label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} />비교 담기</label> : null}</div>
   </article>;

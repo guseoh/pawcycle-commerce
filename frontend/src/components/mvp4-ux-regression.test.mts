@@ -19,6 +19,8 @@ const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), 
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const shoppingStylesSource = readFileSync(new URL("../app/shopping.css", import.meta.url), "utf8");
 const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
+const purchasePanelSource = readFileSync(new URL("./product-purchase-panel.tsx", import.meta.url), "utf8");
+const recommendationSource = readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8");
 const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
 const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import.meta.url), "utf8");
 const subscriptionListSource = readFileSync(new URL("./mvp2-subscription-list.tsx", import.meta.url), "utf8");
@@ -204,6 +206,8 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.doesNotMatch(homeSource, /function QuickActions/);
   assert.match(homeSource, /kind: "personalized"/);
   assert.match(homeSource, /RecommendationSection/);
+  assert.match(homeSource, /className="home-repeat-band"/);
+  assert.match(homeSource, /products\?subscribable=true/);
   assert.match(homeSource, /v2Api\.pets\.list/);
   assert.match(homeSource, /auth\.status === "loading"/);
   assert.match(homeSource, /auth\.status === "anonymous"/);
@@ -221,11 +225,25 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
 test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이지 상태를 제공한다", () => {
   assert.match(productCardSource, /className="product-card-media"/);
   assert.match(productCardSource, /aria-label=\{`\$\{productName\} 상품 상세 보기`\}/);
-  assert.match(productCardSource, /className=\{`product-availability/);
+  assert.match(productCardSource, /product-availability/);
+  assert.match(productCardSource, /product\.reviewCount > 0/);
+  assert.doesNotMatch(productCardSource, /product\.purchasable \? "구매 가능"/);
   assert.match(productsSource, /className="pagination-row"/);
   assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
   assert.match(shoppingStylesSource, /\.catalog-product-card \.product-card-media \{ position: relative; display: grid; aspect-ratio: 1/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
+});
+
+test("카탈로그·추천·PDP는 반복 상태 소음을 줄이고 서버 사실을 우선 표시한다", () => {
+  assert.match(productCardSource, /catalog-rating-empty/);
+  assert.match(productCardSource, /정기배송 가능/);
+  assert.match(recommendationSource, /현재 구매 가능한 상품입니다\./);
+  assert.match(recommendationSource, /showReason/);
+  assert.doesNotMatch(purchasePanelSource, /Your everyday essentials/);
+  assert.match(purchasePanelSource, /selection-availability/);
+  assert.match(purchasePanelSource, /subscription-callout/);
+  assert.match(productDetailSource, /product-subscription-note/);
+  assert.doesNotMatch(productDetailSource, /Product guide|At a glance|Product detail|Delivery|Returns/);
 });
 
 test("상품 상세는 구매 결정 정보와 정보 section을 분리한다", () => {
