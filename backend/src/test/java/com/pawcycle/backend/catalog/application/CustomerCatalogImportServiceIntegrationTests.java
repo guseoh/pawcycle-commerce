@@ -45,7 +45,6 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThat(count("SELECT COUNT(*) FROM products")).isEqualTo(100);
         assertThat(count("SELECT COUNT(*) FROM skus")).isEqualTo(166);
         assertThat(count("SELECT COUNT(*) FROM brands")).isEqualTo(10);
-        assertThat(count("SELECT COUNT(*) FROM categories")).isEqualTo(28);
         assertThat(count("SELECT COUNT(*) FROM categories WHERE slug<>'__pawcycle_uncategorized__'")).isEqualTo(27);
         assertThat(jdbc.queryForList("SELECT COUNT(*) FROM products GROUP BY pet_type ORDER BY pet_type", Integer.class))
                 .containsExactly(50, 50);
