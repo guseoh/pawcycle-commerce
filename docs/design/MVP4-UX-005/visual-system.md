@@ -60,6 +60,7 @@ white canvas, 짙은 ink, 구매 action의 aubergine, 설명용 apricot 한 구�
 - shadow: card none; popover `0 8px 24px rgba(36,28,46,.12)`; dialog `0 16px 48px rgba(36,28,46,.18)`; sticky는 1px separator만.
 - category asset이 없으면 text-only 링크가 기본이다. 임시 generic glyph/emoji로 채우지 않는다. 브랜드 궤도는 category icon이 아니다.
 - icons: 기존 사용 가능한 SVG/inline path 재사용, stroke 1.75, 기본20, 보조16, empty32. 새 icon library 설치 안 함. emoji를 UI icon으로 사용하지 않음.
+- **R1 orbit mark-only는 최소20px. 16px에서 사용하지 않는다.** desktop wordmark32, compact24, mobile mark+text는 mark20 이상. 별도 simplified favicon 승인 전 기존 favicon asset 유지. [small-size board](visuals/r1-small-mark.svg).
 - layers: content0, sticky header20, sticky purchase25, popover40, scrim60, drawer/dialog70, toast80. modal 중 background action bar와 toast는 focus를 받지 않음.
 - motion: hover/pressed color120ms ease-out; popover opacity120ms; drawer translate/opacity180ms cubic-bezier(.2,.8,.2,1); focus ring 즉시; reduced-motion이면 transform 제거·0ms 상태 변경. 의미 없는 bounce/확대 없음.
 
@@ -105,7 +106,7 @@ grid 너비에서 자연 확장하며 image→brand→name→price→trust/statu
 | --- | --- |
 | image | 실제 thumbnail만 사용. 실패하면 같은 크기 surface+`이미지 준비 중` text; 상품 제목 accessible name은 유지. generic 패키지나 동물 사진으로 대체 금지 |
 | wishlist | 오른쪽 위8, button44 square, heart20, white fill. unchecked outline; checked primary fill-heart+`찜 해제`. image/link와 별도 button, 중첩 link 금지 |
-| brand | image 아래12, 12/18 secondary, null이면 슬롯 제거(가짜 brand 없음) |
+| brand | image 아래12, 12/18 secondary, null이면 슬롯 제거(가짜 brand 없음). 긴 brand는 시각1줄 ellipsis가 기본이나 실제 DOM text/accessibility에서 전체 값을 잃지 않음 |
 | name | brand 아래4, desktop16/24·mobile14/20 500, 2줄 slot; 상품명 전체 link 이름 |
 | price | name 아래8, 24/30 desktop·20/26 mobile 700. 대표가격 `…원부터`는 여러 SKU의 대표가일 때만. null은 `가격 확인 필요` |
 | original / discount | compareAtPrice가 판매가보다 클 때만 12/18 strike, discountRate가 서버에 있을 때 commerce.sale색14/20. 클라이언트 할인율 생성 금지 |
@@ -116,6 +117,8 @@ grid 너비에서 자연 확장하며 image→brand→name→price→trust/statu
 | compare | 별도 44h checkbox row `비교 담기`, 실제 비교 기능 2~3개 제약 보존. 데스크톱 hover 때만 등장시키지 않음 |
 
 Card hover: 제목 underline + image boundary를 control-border로, transform/zoom 없음. focus: 링크 영역 3px ring; wishlist/비교 각각 분리 tab stop. card 전체 onclick 중첩 없음. disabled card 자체는 없음(품절도 상세 열림). skeleton은 image square+brand1줄+name2줄+price1줄·동일 높이, shimmer 대신 정적 surface. metadata/찜 실패가 상세 link를 막지 않음.
+
+PB처럼 통일된 이미지가 없어도 위계가 유지되어야 한다. [multi-brand catalog stress board](visuals/r1-catalog-stress.svg)는 서로 다른 색·비율·긴 이름·이미지 없음·구매 불가를 섞은 정적 스트레스 자료다. 실제 구현은 상품 이미지를 brand palette로 재색칠하지 않으며, Product Card의 배경과 정보 위계가 다양성을 흡수한다.
 
 ### Category와 추천
 
