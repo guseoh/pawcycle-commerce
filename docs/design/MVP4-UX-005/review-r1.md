@@ -2,6 +2,8 @@
 
 2026-08-30 / UX/UI Designer / 일반 / 저장소 변경. **A는 구조상 우선 후보이며 최종 선택·승인 아님.** Frontend 구현, Ready, merge, Production 실행 금지. 기존 A/B/C 탐색과 Production Audit의 관찰 결과는 유지한다.
 
+> 최종 Design Approval 전 추가 보정은 [R1 Final Check](review-r1-final-check.md)가 권위다. multi-brand catalog stress, orbit 20px 최소/16px 금지, R0 stale contract 제거를 이 문서에 덧붙여 해석한다.
+
 ## 이번 검토의 기준
 
 R0의 파란 CTA·system sans·중립 상자만으로는 일반 utility shop과 구별하기 어렵다. 단순 색 교체를 넘어 상품 사진, 브랜드 서명, 반복 구매의 표현을 함께 구체화한다. R1의 이름은 **Daily Orbit**: 사람과 반려동물이 함께 사는 일상, 그리고 이번 회차와 다음 회차를 두 궤도로 표현한다. A의 검색·상품 우선 순서, Hero 제거, 열린 4열 grid, 상단 filter, 독립 Login 구조는 유지한다. B의 비대칭 편집형 Home이나 C의 mobile dock를 섞지 않는다.
@@ -16,12 +18,14 @@ R1 화면은 실제 사진 질감의 가상 제품 imagery, 한국어 카피, �
 | --- | --- | --- |
 | Color | aubergine `#4B286D`, white, lavender-gray `#F3F0F7`, apricot `#F3B88F`, ink `#241C2E` | cream/green 회귀 없음. 살구색은 브랜드 구획·변경 예정 설명에만, 입력 오류나 할인율의 의미를 겸하지 않음 |
 | Typography | 단단한 한국어 sans 36/46 제목, 16/26 본문, 24/32 가격; 영문 wordmark 32/40 bold + 두 궤도 | 화면은 Malgun Gothic으로 정확히 렌더. 시스템 stack 유지. 영문 대문자 12/18은 서명에만; 본문을 작고 자간 넓은 글자로 바꾸지 않음 |
-| Wordmark | 두 타원 궤도 + PawCycle. 축소형 24, 데스크톱 32, 주변 최소 mark 폭의 1/2 여백 | 승인 전 기존 상표의 확정 교체 아님. 제품 평가, 품질 인증, 재활용 인증처럼 사용하지 않음 |
+| Wordmark | 두 타원 궤도 + PawCycle. 데스크톱 32, compact 24, UI mark 최소20 | 승인 전 기존 상표의 확정 교체 아님. **16px orbit mark는 사용하지 않으며 별도 simplified favicon 승인 전 기존 favicon 유지.** 제품 평가, 품질 인증, 재활용 인증처럼 사용하지 않음 |
 | Imagery | 중립 무채색 배경, 실물 질감과 부드러운 그림자, 포장 전체가 보이는 1:1 사진 | 외부 판매 이미지 복제 없음. 실제 카탈로그 사진을 purple로 재색칠하지 않음. 브랜드는 UI에도 있어야 하며 PB 상품에 의존하지 않음 |
 | Iconography | 20px/1.75px 일정한 선, chevron·search·close·check 등 기능 icon; 두 궤도는 브랜드 서명 | 카테고리 asset 없으면 **text-only 링크가 기본**. 강아지·고양이 emoji, 의미 없는 원/상자/generic glyph로 빈자리를 채우지 않음 |
 | Repetition | 재구매 band, 구독 next/pending의 작은 반복, Footer 서명 | 전역 배경 패턴·자동 animation 없음. 상품 탐색 전의 큰 브랜드 Hero 복원 없음 |
 
 가상 포장 4종은 [원본 contact sheet](assets/packaging-concept-r1.png)를 imagegen으로 새로 생성했다. 원본을 보존하고 정적 보드의 image slot에서 사분면을 배치했다. 패키지 안의 문구·브랜드·수량·성분은 생성 시안이며 실제 판매, 효능, 상품 출시 또는 PB 결정이 아니다. 카탈로그/운영 업로드 없음. Cart/Order의 현재 응답에는 thumbnail이 없으므로 해당 시안은 **사진 없는 타이포 행**을 사용한다. Subscription New도 현재 PlanVersion이 제공하는 플랜명·가격·구성 개수와 선택 상태만 표시한다. 없는 photo/상품명을 보강 조회가 승인된 것처럼 사용하지 않는다.
+
+PB imagery에 의존하지 않는지 확인하기 위해 [multi-brand catalog stress board](visuals/r1-catalog-stress.svg)를 별도 검토한다. 서로 다른 색·비율·긴 brand/name·이미지 없음·구매 불가 상태에서도 Product Card의 정보 위계가 유지되어야 한다. orbit의 작은 크기는 [small-mark board](visuals/r1-small-mark.svg)에서 별도 판정한다.
 
 ## 핵심 6개 화면 — Desktop + Mobile
 
@@ -81,7 +85,7 @@ R1 화면은 실제 사진 질감의 가상 제품 imagery, 한국어 카피, �
 - A 구조상 우선 후보 유지. A/R1 brand expression과 9개 화면은 **제안**, 사용자 선택/승인 기록 아님.
 - C의 Home/상품/내 정보 mobile bottom dock는 사용자가 이번 리뷰에서 지적한 **기존 MVP4 PO 결정과 충돌**한다. C 선택에는 별도 PO 결정 변경이 선행되어야 하며 Visual Approval만으로 묵시 변경할 수 없다. 보드/탐색안은 비교 기록으로 유지한다. 현재 checkout에 C dock를 도입하지 않는다. 저장소 product 디렉터리에서 해당 MVP4 결정의 독립 문서/ID는 확인되지 않았으므로 새 ID나 승인 내용을 창작하지 않으며 이번 사용자 지시를 권위로 명시한다.
 - 사용자 Screenshot은 미첨부 사실만 남긴다. **직접 Production 재캡처로 핵심 대조가 충족되었으므로 Screenshot 미첨부를 Design Approval blocker에서 제거**한다. populated PDP·인증된 Production Cart/Checkout 미검증과 새 디자인 interaction 미구현은 별개의 증거 한계이며 미첨부 문제와 혼동하지 않는다.
-- [Customer page families와 핵심 계약](customer-page-families.md), [새 benchmark](commerce-benchmark.md#r1-cartcheckoutlogin-추가-조사)를 함께 검토한다. 이 자료의 완성이 구현 착수나 Ready/merge/배포 승인은 아니다.
+- [Customer page families와 핵심 계약](customer-page-families.md), [새 benchmark](commerce-benchmark.md#r1-cartcheckoutlogin-추가-조사), [R1 Final Check](review-r1-final-check.md)를 함께 검토한다. 이 자료의 완성이 구현 착수나 Ready/merge/배포 승인은 아니다.
 
 ## R1 변경 요청 대응
 
@@ -96,3 +100,4 @@ R1 화면은 실제 사진 질감의 가상 제품 imagery, 한국어 카피, �
 | 9 category asset fallback | text-only 기본, generic glyph 금지 |
 | 10 C dock PO 충돌 | 별도 결정 변경 필요 표시 |
 | 11 Screenshot blocker 제거 | 직접 Production 대조 충족, gate 수정 |
+| Final check | multi-brand stress, orbit small-size, R0 stale 치수 제거 |
