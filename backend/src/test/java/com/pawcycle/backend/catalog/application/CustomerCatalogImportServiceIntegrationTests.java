@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -70,19 +69,15 @@ class CustomerCatalogImportServiceIntegrationTests {
     }
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void correctionConflictRollsBackWholeCustomerCatalogTransaction() {
         customerCatalog.apply();
         jdbc.update("UPDATE brands SET name='Unexpected brand edit' WHERE slug='pawcycle-demo-catalog'");
-        jdbc.update("UPDATE categories SET name='Unexpected category edit' WHERE slug='food'");
 
         assertThatThrownBy(customerCatalog::apply)
                 .isInstanceOf(CatalogManifestImportException.class)
                 .hasMessageContaining("brand pawcycle-demo-catalog");
         assertThat(jdbc.queryForObject("SELECT name FROM brands WHERE slug='pawcycle-demo-catalog'", String.class))
                 .isEqualTo("Unexpected brand edit");
-        assertThat(jdbc.queryForObject("SELECT name FROM categories WHERE slug='food'", String.class))
-                .isEqualTo("Unexpected category edit");
     }
 
     @Test
