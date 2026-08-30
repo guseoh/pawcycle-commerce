@@ -314,7 +314,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
 
   return <div className="product-trust-stack">
     <section className="section-card product-trust-summary" aria-labelledby="product-trust-title">
-      <div className="section-title"><div><p className="eyebrow">Trust</p><h2 id="product-trust-title">구매자 신뢰 정보</h2></div></div>
+      <div className="section-title"><div><h2 id="product-trust-title">구매자 신뢰 정보</h2></div></div>
       <div className="snapshot-grid">
         <div className="snapshot-tile"><strong>{trust.averageRating === null ? "-" : `${trust.averageRating.toFixed(1)} / 5`}</strong><span>{trust.averageRating === null ? "아직 리뷰 없음" : "평균 평점"}</span></div>
         <div className="snapshot-tile"><strong>{trust.reviewCount}</strong><span>리뷰</span></div>
@@ -323,7 +323,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     </section>
 
     <section className="section-card product-engagement-section" aria-labelledby="product-reviews-title">
-      <div className="section-title"><div><p className="eyebrow">Reviews</p><h2 id="product-reviews-title">리뷰</h2></div><span className="count-badge">{trust.reviewCount}</span></div>
+      <div className="section-title"><div><h2 id="product-reviews-title">리뷰</h2></div><span className="count-badge">{trust.reviewCount}</span></div>
       <ReviewSummaryPanel summary={reviewSummary} status={reviewSummaryStatus} error={reviewSummaryError} onRetry={() => setReviewSummaryRetry((value) => value + 1)} />
       {reviewStatus === "loading" ? <p className="field-help" role="status">리뷰를 불러오고 있습니다.</p> : reviewStatus === "error" ? <div className="error-summary" role="alert"><p>{reviewError}</p><button className="button button-secondary" type="button" onClick={() => void loadReviews(reviewPage)}>다시 시도</button></div> : reviews?.items.length ? <ul className="engagement-list">{reviews.items.map((review) => <li key={review.reviewId}><div className="engagement-list-heading"><strong>{review.rating}점</strong><time dateTime={review.createdAt}>{formatDateTime(review.createdAt)}</time></div><p className="description">{review.content}</p></li>)}</ul> : <div className="empty-callout">아직 공개된 리뷰가 없습니다.</div>}
       <PageControls page={reviewPage} totalPages={reviewPages} onChange={setReviewPage} />
@@ -335,7 +335,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     </section>
 
     <section className="section-card product-engagement-section" aria-labelledby="product-questions-title">
-      <div className="section-title"><div><p className="eyebrow">Questions</p><h2 id="product-questions-title">상품 문의</h2></div><span className="count-badge">{trust.questionCount}</span></div>
+      <div className="section-title"><div><h2 id="product-questions-title">상품 문의</h2></div><span className="count-badge">{trust.questionCount}</span></div>
       {questionStatus === "loading" ? <p className="field-help" role="status">상품 문의를 불러오고 있습니다.</p> : questionStatus === "error" ? <div className="error-summary" role="alert"><p>{questionError}</p><button className="button button-secondary" type="button" onClick={() => void loadQuestions(questionPage)}>다시 시도</button></div> : questions?.items.length ? <ul className="engagement-list">{questions.items.map((question) => <li key={question.questionId}><div className="engagement-list-heading"><strong>{question.answered ? "답변 완료" : "답변 대기"}</strong><time dateTime={question.createdAt}>{formatDateTime(question.createdAt)}</time></div><p className="description">{question.content}</p>{question.answered ? <div className="engagement-answer"><strong>답변</strong><p className="description">{question.answer ?? "답변 내용을 확인할 수 없습니다."}</p></div> : null}</li>)}</ul> : <div className="empty-callout">아직 공개된 상품 문의가 없습니다.</div>}
       <PageControls page={questionPage} totalPages={questionPages} onChange={setQuestionPage} />
       {auth.status === "authenticated" ? <form className="product-engagement-form-wrap product-engagement-form" onSubmit={submitQuestion}><h3>상품 문의 작성</h3><label className="form-field" htmlFor="product-question-content"><span className="field-label">문의 내용</span><textarea id="product-question-content" className="input textarea" maxLength={10000} value={questionContent} onChange={(event) => { setQuestionContent(event.target.value); setQuestionMutationError(null); }} disabled={questionMutation} /></label>{questionMutationError ? <p className="field-error" role="alert">{questionMutationError}</p> : null}<div className="button-row"><button className="button button-primary" type="submit" disabled={questionMutation || !questionContent.trim()}>{questionMutation ? "등록 중" : "문의 등록"}</button></div>{questionMessage ? <p className="notice-success" role="status">{questionMessage}</p> : null}</form> : <p className="field-help">상품 문의를 작성하려면 <Link href={buildLoginHref(`/products/${productId}`)}>로그인</Link>해 주세요.</p>}
@@ -348,5 +348,5 @@ function ReviewSummaryPanel({ summary, status, error, onRetry }: { summary: Revi
   if (status === "error" || summary?.status === "UNAVAILABLE") return <div className="review-summary-neutral"><strong>리뷰 요약을 준비하지 못했어요.</strong><span>실제 리뷰를 확인해 주세요.</span>{error ? <button className="button button-secondary" type="button" onClick={onRetry}>요약 다시 시도</button> : null}</div>;
   if (summary?.status === "INSUFFICIENT_REVIEWS") return <div className="review-summary-neutral">리뷰가 더 모이면 한눈에 요약해 드려요.</div>;
   if (!summary?.summary) return null;
-  return <aside className="review-summary" aria-labelledby="review-summary-title"><p className="eyebrow">Review summary</p><h3 id="review-summary-title">리뷰 한눈에 보기</h3><p>{summary.summary}</p><div className="review-summary-facts"><span>평균 {summary.averageRating === null ? "-" : `${summary.averageRating} / 5`}</span><span>리뷰 {summary.reviewCount}개</span></div></aside>;
+  return <aside className="review-summary" aria-labelledby="review-summary-title"><h3 id="review-summary-title">리뷰 한눈에 보기</h3><p>{summary.summary}</p><div className="review-summary-facts"><span>평균 {summary.averageRating === null ? "-" : `${summary.averageRating} / 5`}</span><span>리뷰 {summary.reviewCount}개</span></div></aside>;
 }
