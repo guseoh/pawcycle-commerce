@@ -18,7 +18,6 @@ import { productRouteMatches } from "@/lib/product-view";
 import { RecommendationSection } from "./recommendation-section";
 
 type ProductState = { status: "loading" } | { status: "success"; product: ProductDetail } | { status: "not-found" } | { status: "error"; message: string };
-export const CANONICAL_SUBSCRIPTION_START_HREF = "/subscriptions/new";
 
 export function ProductDetailScreen({ productId }: { productId: string }) {
   const auth = useAuth();
@@ -90,7 +89,6 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
 
   const selectedSku = product ? selectProductSku(product.optionGroups, product.skus, selection, cartSkuId) : null;
   const quantityError = productQuantityError(quantity, selectedSku);
-  const subscriptionHref = product && selectedSku?.subscribable ? `${CANONICAL_SUBSCRIPTION_START_HREF}?productId=${product.productId}&skuId=${selectedSku.skuId}` : null;
   const productName = product ? userFacingCatalogLabel(product.name, "반려동물 상품") : "";
   const categoryName = product ? userFacingCatalogLabel(product.category.name, "상품") : "";
   const description = product ? userFacingCatalogLabel(product.description, "상세 설명이 준비되지 않았습니다.") : "";
@@ -115,7 +113,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     try {
       await auth.executeWithCsrf((csrf) => wishlisted ? commerceFinalApi.deleteWishlist(product.productId, csrf) : commerceFinalApi.addWishlist(product.productId, csrf));
       if (request !== authRequest.current) return;
-      setWishlistState({ memberId: auth.memberId, productId, status: "ready", value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? "위시리스트에서 삭제했습니다." : "위시리스트에 담았습니다.");
+      setWishlistState({ memberId: auth.memberId, productId, status: "ready", value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? `${productName}을 위시리스트에서 제거했어요.` : `${productName}을 위시리스트에 저장했어요.`);
       notifyCommerceChanged();
     } catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했습니다."); }
     finally { setBusy(false); }
@@ -128,13 +126,32 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     if (quantityError !== null) { setMessageKind("error"); setMessage(quantityError ?? "수량을 확인해 주세요."); return; }
     setBusy(true); setMessage(null);
     const request = ++authRequest.current;
-    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSku.skuId, parsed, csrf)); if (request !== authRequest.current) return; notifyCommerceChanged(); setMessageKind("success"); setMessage("장바구니에 담았습니다."); }
+    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSku.skuId, parsed, csrf)); if (request !== authRequest.current) return; notifyCommerceChanged(); setMessageKind("success"); setMessage(`${productName} ${parsed}개를 장바구니에 담았어요.`); }
     catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했습니다."); }
     finally { setBusy(false); }
   }
 
+  function selectOptions(nextSelection: OptionSelection) {
+    setSelection(nextSelection);
+    if (!product) return;
+    const nextSku = selectProductSku(product.optionGroups, product.skus, nextSelection, cartSkuId);
+    const currentQuantity = Number(quantity);
+    if (!nextSku?.purchasable || !Number.isInteger(currentQuantity) || currentQuantity <= nextSku.availableQuantity) return;
+    const adjusted = Math.max(1, nextSku.availableQuantity);
+    setQuantity(String(adjusted)); setMessageKind("success"); setMessage(`선택한 옵션의 재고에 맞춰 수량을 ${adjusted}개로 조정했어요.`);
+  }
+
+  function selectLegacySku(skuId: number | null) {
+    setCartSkuId(skuId);
+    const nextSku = product?.skus.find((sku) => sku.skuId === skuId) ?? null;
+    const currentQuantity = Number(quantity);
+    if (!nextSku?.purchasable || !Number.isInteger(currentQuantity) || currentQuantity <= nextSku.availableQuantity) return;
+    const adjusted = Math.max(1, nextSku.availableQuantity);
+    setQuantity(String(adjusted)); setMessageKind("success"); setMessage(`선택한 옵션의 재고에 맞춰 수량을 ${adjusted}개로 조정했어요.`);
+  }
+
   function purchasePanel(id: string) {
-    return <ProductPurchasePanel id={id} product={product!} selectedSku={selectedSku} selection={selection} onSelect={setSelection} onLegacySelect={setCartSkuId} quantity={quantity} onQuantityChange={setQuantity} quantityError={quantityError} busy={busy} wishlisted={wishlisted} wishlistStatus={auth.status === "authenticated" ? wishlist.status : null} onWishlistRetry={() => { setWishlistState({ memberId: auth.memberId, productId, status: "loading", value: false }); setWishlistRetry((value) => value + 1); }} onWishlist={() => void toggleWishlist()} onCart={() => void addCart()} subscriptionHref={subscriptionHref} message={message} messageKind={messageKind} />;
+    return <ProductPurchasePanel id={id} product={product!} selectedSku={selectedSku} selection={selection} onSelect={selectOptions} onLegacySelect={selectLegacySku} quantity={quantity} onQuantityChange={setQuantity} quantityError={quantityError} busy={busy} wishlisted={wishlisted} wishlistStatus={auth.status === "authenticated" ? wishlist.status : null} onWishlistRetry={() => { setWishlistState({ memberId: auth.memberId, productId, status: "loading", value: false }); setWishlistRetry((value) => value + 1); }} onWishlist={() => void toggleWishlist()} onCart={() => void addCart()} wishlistLoginHref={auth.status === "anonymous" ? buildLoginHref(`/products/${product!.productId}`) : null} message={message} messageKind={messageKind} />;
   }
 
   if (state.status === "loading") return <LoadingState>상품 정보를 불러오고 있습니다.</LoadingState>;
@@ -168,7 +185,6 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
       <section id="product-detail-sections" className="product-info-section" aria-labelledby="product-detail-sections-title"><p className="eyebrow">Product detail</p><h2 id="product-detail-sections-title">상세 내용</h2>{product!.detailSections.length ? <div className="product-detail-sections">{product!.detailSections.map((section) => <article className="product-detail-section" key={section.sectionId}><h3>{section.title}</h3><p className="description">{section.body}</p></article>)}</div> : <div className="empty-callout">추가 상세 내용이 아직 없습니다.</div>}</section>
       <section id="product-shipping" className="product-info-section policy-section" aria-labelledby="product-shipping-title"><div><p className="eyebrow">Delivery</p><h2 id="product-shipping-title">배송 안내</h2><p>주문 및 결제 확인 후 배송이 시작됩니다.</p></div><Link className="button button-secondary" href="/shipping">배송 정책 자세히 보기</Link></section>
       <section id="product-returns" className="product-info-section policy-section" aria-labelledby="product-returns-title"><div><p className="eyebrow">Returns</p><h2 id="product-returns-title">교환·반품</h2><p>상품 상태와 주문 조건에 따라 교환·반품 가능 여부가 달라질 수 있습니다.</p></div><Link className="button button-secondary" href="/returns">교환·반품 정책 자세히 보기</Link></section>
-      <section id="product-subscription" className="product-subscription-band" aria-labelledby="product-subscription-title"><div><p className="eyebrow">Regular delivery</p><h2 id="product-subscription-title">정기배송</h2><p>{subscriptionHref ? "매번 다시 주문하지 않고 원하는 주기로 받아보세요." : selectedSku ? "선택한 옵션은 정기배송을 지원하지 않습니다." : "구매 옵션을 선택하면 정기배송 가능 여부를 확인할 수 있습니다."}</p></div>{subscriptionHref ? <Link className="button button-primary" href={subscriptionHref}>이 옵션 정기배송 시작</Link> : null}</section>
       <ProductTrustSections productId={productId} trust={product!.trust} onTrustRefresh={refreshProductTrust} />
     </div>
     {recentProducts.length ? <section className="section-card product-context-section" aria-labelledby="recent-products-title"><div className="section-title"><h2 id="recent-products-title">최근 본 상품</h2><Link className="text-link" href="/products">상품 더 보기</Link></div><div className="mini-product-grid">{recentProducts.map((item) => <Link className="mini-product-card" href={`/products/${item.productId}`} key={item.productId}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={userFacingCatalogLabel(item.name, "반려동물 상품")} loading="lazy" /> : <span className="image-placeholder" aria-hidden="true">PawCycle</span>}<strong>{userFacingCatalogLabel(item.name, "반려동물 상품")}</strong>{item.price !== null ? <span>{formatPrice(item.price)}</span> : null}</Link>)}</div></section> : null}

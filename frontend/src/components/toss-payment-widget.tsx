@@ -14,6 +14,7 @@ export function TossPaymentWidget({ checkout }: { checkout: CheckoutResult }) {
   const [phase, setPhase] = useState<"unavailable" | "loading" | "ready" | "error">(() => testPaymentAvailable ? "loading" : "unavailable");
   const [error, setError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     saveTossCheckoutContext({ providerOrderId: checkout.providerOrderId, orderName: checkout.orderName, amount: checkout.amount });
@@ -44,7 +45,7 @@ export function TossPaymentWidget({ checkout }: { checkout: CheckoutResult }) {
       paymentMethodWidget?.destroy();
       agreementWidget?.destroy();
     };
-  }, [checkout.amount, checkout.orderName, checkout.providerOrderId, testPaymentAvailable]);
+  }, [attempt, checkout.amount, checkout.orderName, checkout.providerOrderId, testPaymentAvailable]);
 
   async function requestPayment() {
     const widgets = widgetsRef.current;
@@ -71,10 +72,10 @@ export function TossPaymentWidget({ checkout }: { checkout: CheckoutResult }) {
   return <section className="toss-payment-panel" aria-labelledby="toss-payment-title">
     <div className="section-title"><div><p className="eyebrow">Toss Test</p><h2 id="toss-payment-title">결제 수단 선택</h2></div><strong>{formatPrice(checkout.amount)}</strong></div>
     {phase === "loading" ? <p className="field-help" role="status">결제 화면을 준비하고 있습니다.</p> : null}
-    {phase === "error" ? <p className="error-summary" role="alert">{error}</p> : null}
+    {phase === "error" ? <div className="error-summary" role="alert"><p>{error}</p><button className="button button-secondary" type="button" onClick={() => { setError(null); setPhase("loading"); setAttempt((value) => value + 1); }}>결제 화면 다시 준비</button></div> : null}
     <div id="toss-payment-methods" aria-label="결제 수단" />
     <div id="toss-payment-agreement" aria-label="결제 이용약관" />
     {error && phase === "ready" ? <p className="field-error" role="alert">{error}</p> : null}
-    <button className="button button-primary" type="button" disabled={phase !== "ready" || requesting} onClick={() => void requestPayment()}>{requesting ? "결제 창을 여는 중" : "결제하기"}</button>
+    <button className="button button-primary" type="button" disabled={phase !== "ready" || requesting} onClick={() => void requestPayment()}>{requesting ? "결제 요청 중" : "결제하기"}</button>
   </section>;
 }

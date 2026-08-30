@@ -104,7 +104,7 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
     try {
       const response = await v2Api.plans.detail(plan.planVersionId, selectedPetId);
       setSelectedPlan(response.body);
-      setCycle(preferredCycle !== null && response.body.allowedDeliveryCycleWeeks.includes(preferredCycle) ? preferredCycle : response.body.allowedDeliveryCycleWeeks[0] ?? null);
+      setCycle(preferredCycle !== null && response.body.allowedDeliveryCycleWeeks.includes(preferredCycle) ? preferredCycle : null);
       resetCreateKey();
     } catch (error) {
       setMessage(error instanceof ApiError ? error.message : "플랜 상세를 불러오지 못했습니다.");
@@ -120,10 +120,10 @@ export function Mvp2SubscriptionStart({ basePath = "/mvp2/subscriptions" }: { ba
         setPrefillMessage("주문에서 이어온 플랜 또는 배송 주기를 확인할 수 없어 직접 선택해 주세요.");
         return;
       }
-      void selectPlan(plan, startQuery.deliveryCycleWeeks);
+      void selectPlan(plan, startQuery.fromOrderId !== null ? startQuery.deliveryCycleWeeks : null);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [plans, selectPlan, selectedPetId, selectedPlan, startQuery.deliveryCycleWeeks, startQuery.petId, startQuery.planVersionId]);
+  }, [plans, selectPlan, selectedPetId, selectedPlan, startQuery.deliveryCycleWeeks, startQuery.fromOrderId, startQuery.petId, startQuery.planVersionId]);
 
   const selectedPet = useMemo(() => pets?.find((pet) => pet.petId === selectedPetId) ?? null, [pets, selectedPetId]);
 
