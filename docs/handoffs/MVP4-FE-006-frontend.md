@@ -28,12 +28,12 @@ ChatGPT correction에서 Customer mutation의 `AUTH_REQUIRED`가 실패한 mutat
 
 | 검증 | 결과 |
 | --- | --- |
-| `npm test` | **PASS, 123/123** — 최신 HEAD `66da0b2b3c61545bba5d7ce094c00acceda91e61`에서 사용자 재실행. `AUTH_REQUIRED는 mutation을 재실행하지 않고 익명 전환 뒤 원래 오류를 유지한다` 회귀 테스트 포함 |
-| `npm run typecheck` | **PASS** — 최신 HEAD에서 `tsc --noEmit`, 종료 코드 0 |
+| `npm test` | **PASS, 123/123** — correction 반영 HEAD `66da0b2b3c61545bba5d7ce094c00acceda91e61`에서 사용자 재실행. `AUTH_REQUIRED는 mutation을 재실행하지 않고 익명 전환 뒤 원래 오류를 유지한다` 회귀 테스트 포함 |
+| `npm run typecheck` | **PASS** — 같은 correction 반영 HEAD에서 `tsc --noEmit`, 종료 코드 0 |
 | `npm run lint` | PASS, 0 errors / 기존 warning 5개 |
 | `npm run build` | PASS |
 | `git diff --check` | PASS |
-| Repository Validation #1468 | PASS — Commit/PR conventions, Harness, Frontend lint/build, Application validation success |
+| Repository Validation #1468 | PASS — correction 반영 HEAD에서 Commit/PR conventions, Harness, Frontend lint/build, Application validation success |
 | 320/375/768/1024/1440 렌더링 | 아래 25개 화면·상태, 125회 측정에서 `scrollWidth <= clientWidth`, 화면 오른쪽 넘침 없음 |
 | Desktop 필터 취소 | draft 폐기, URL 유지, Escape 후 가격 버튼 focus 복귀 PASS |
 | Mobile 필터 | 적용 후 URL `petType=DOG`, Escape focus 복귀, 역방향 Tab 마지막 control 이동 PASS |
