@@ -117,6 +117,7 @@ test("모바일 메뉴는 닫힌 category의 링크를 focus trap 경계에 넣�
   assert.match(headerSource, /document\.removeEventListener\("keydown", onKeyDown\)/);
   assert.match(headerSource, /restoreMenuFocus\.current/);
   assert.match(headerSource, /requestAnimationFrame\(\(\) => trigger\.focus\(\)\)/);
+  assert.match(headerSource, /if \(event\.key === "Escape"\) \{[\s\S]*?if \(menuOpen\) restoreMenuFocus\.current = true;/);
 });
 
 test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사용한다", () => {
