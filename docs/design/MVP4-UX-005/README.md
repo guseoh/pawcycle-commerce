@@ -9,7 +9,7 @@
 
 ## R1 현재 검토본
 
-**[1차 리뷰 보정과 6개 high-fidelity 화면](review-r1.md)** → **[Customer 전체 family와 주문·구독 핵심 계약](customer-page-families.md)** → [R1 상태 보드](visuals/r1-states.png). A는 구조상 우선 후보이며 아직 최종 선택/승인하지 않았다. 아래 A/B/C 표·비교 보드는 R0 탐색 기록을 유지하며 A의 현재 색·타이포·imagery는 R1 제안으로 보강했다.
+**[1차 리뷰 보정과 6개 high-fidelity 화면](review-r1.md)** → **[R1 최종 승인 전 보정](review-r1-final-check.md)** → **[Customer 전체 family와 주문·구독 핵심 계약](customer-page-families.md)** → [R1 상태 보드](visuals/r1-states.png). A는 구조상 우선 후보이며 아직 최종 선택/승인하지 않았다. 아래 A/B/C 표·비교 보드는 R0 탐색 기록을 유지하며 A의 현재 색·타이포·imagery는 R1 제안으로 보강했다.
 
 ## 읽는 순서와 근거
 
@@ -17,9 +17,11 @@
 2. [External Commerce Benchmark](commerce-benchmark.md): 실제 rendered page, 채택·변형·거부 판정.
 3. 이 문서의 **세 가지 Visual Direction**과 [비교 보드](visuals/directions.png).
 4. [Visual Design System](visual-system.md): 상세 검토용 A안의 토큰·컴포넌트. A안 선택을 기정사실화하지 않는다.
-5. [R1 Screen Review](review-r1.md): Home / populated PLP / PDP / Cart / Checkout / Login 6개 Desktop/Mobile. [R0 구조 기록](screen-redesign.md)도 보존.
-6. [Customer families](customer-page-families.md): 전체 관리·지원 범위와 Order Detail/Subscription New/Detail 상세.
-7. [Interaction / Responsive Contract](interaction-responsive.md): 입력·URL·상태·포커스·5개 너비의 구성.
+5. [R1 Screen Review](review-r1.md): Home / populated PLP / PDP / Cart / Checkout / Login 6개 Desktop/Mobile.
+6. [R1 Final Check](review-r1-final-check.md): multi-brand catalog stress, orbit small-size, R0 stale contract 정리.
+7. [Customer families](customer-page-families.md): 전체 관리·지원 범위와 Order Detail/Subscription New/Detail 상세.
+8. [Interaction / Responsive Contract](interaction-responsive.md): 입력·URL·상태·포커스·5개 너비의 구성.
+9. [R0 구조 기록](screen-redesign.md): 역사적 구조 탐색만 보존. **구현 치수 권위 없음.**
 
 시안은 **정적 디자인 문서**이며 상품·가격·개수·개인정보는 가상 예시다. R0 도형 보드는 구조 탐색 기록, R1은 가상 패키지 사진·브랜드 표현을 포함하는 high-fidelity 검토본이다. 생성 imagery는 실제 판매 상품이나 PB 출시 결정이 아니다. Frontend/HTML 앱을 만들지 않았다. 실제 캡처는 `evidence/`, 시안은 `visuals/`, 생성 원본은 `assets/`로 구분한다.
 
@@ -64,7 +66,7 @@ R0 비교 기록이다. **C mobile bottom dock는 기존 MVP4 PO 결정과 충�
 
 **A를 상세 검토 후보로 권고**한다. 좁은 카탈로그에서도 검색과 구매 판단을 우선할 수 있고 신규 콘텐츠 운영 기능 없이 성립한다. 이는 사용자 승인 또는 최종 선택이 아니다. B/C를 선택하면 해당 방향의 화면별 상세 설계를 다시 승인받으며 A의 토큰을 섞어 자동 구현하지 않는다. 장점만 합쳐 기존 구조로 돌아가는 절충도 하지 않는다.
 
-세 안의 차이는 색상 교체로 환원되지 않는다. A는 Hero 제거와 4열, B는 비대칭 큰 사진과 3열, C는 종별 입구와 목적별 모듈이다. 비교 보드는 Home 중심이므로 B/C의 PDP·Cart·Login이 완성됐다고 주장하지 않는다. A의 현재 검토본은 R1의 핵심6개와 주문·구독3개 화면이다.
+세 안의 차이는 색상 교체로 환원되지 않는다. A는 Hero 제거와 4열, B는 비대칭 큰 사진과 3열, C는 종별 입구와 목적별 모듈이다. 비교 보드는 Home 중심이므로 B/C의 PDP·Cart·Login이 완성됐다고 주장하지 않는다. A의 현재 검토본은 R1의 핵심6개와 주문·구독3개 화면, heterogeneous catalog/orbit small-size 최종 검토 보드다.
 
 ## 기능 보존과 문서 권위
 
@@ -74,6 +76,7 @@ R0 비교 기록이다. **C mobile bottom dock는 기존 MVP4 PO 결정과 충�
 - 사용자 명칭 `UX-004`와 별개로 최신 main의 실제 디자인 파일명은 `MVP4-UX-003-*`다. 찾지 못한 `UX-004` 파일을 존재한다고 기록하지 않는다. PR #255 및 실제 코드의 기능을 참고한다.
 - 이후 승인 시 화면·시각 조항에 한해 대체 범위를 명시한다. 인증, CSRF, 서버 금액, 품절, 옵션 조합, 로그인 후 mutation 자동 실행 금지 등의 기존 계약은 대체하지 않는다.
 - `ui-ux-pro-max`는 시각 방향의 권위가 아니다. 최초 로컬 추천의 Claymorphism·스크롤 storytelling은 거부했다. 로컬 검색은 외부 조사 근거에 포함하지 않는다. 이후에는 focus, contrast, responsive, 상태 누락 점검에만 사용한다.
+- R0 `screen-redesign.md`는 구조 탐색 기록이며 구현 치수 권위가 없다. R1과 충돌하면 R0 값을 사용하지 않는다.
 
 ## Visual Approval Gate
 
@@ -83,6 +86,8 @@ R0 비교 기록이다. **C mobile bottom dock는 기존 MVP4 PO 결정과 충�
 | Header·Hero 삭제·탐색 순서·Footer 통합 | Home, PLP, Login 데스크톱/모바일 시안 | PENDING |
 | 색·폰트·숫자·버튼·필터·선택 상태 | Visual System + state board | PENDING |
 | 상품 있음/없음의 균형 | R1 핵심6개 + 주문·구독3개 + 상태 보드 | PENDING |
+| multi-brand catalog 내구성 | [heterogeneous catalog stress](visuals/r1-catalog-stress.svg) | PENDING |
+| orbit mark 소형 식별성 | [32/24/20/16px board](visuals/r1-small-mark.svg); 제안은 20px 최소·16px 금지 | PENDING |
 | 320/375/768/1024/1440 구성 | Responsive Contract·치수 표 | PENDING |
 | 상품 사진 / 폰트 asset 정책 | 시스템 폰트·가상 imagery 제안, 실제 사진은 카탈로그 권위 source | PENDING |
 | 조사 제한 수용 또는 추가 증거 | populated Production PDP·인증 Cart/Checkout 미검증 (Screenshot 미첨부는 blocker 아님) | PENDING |
