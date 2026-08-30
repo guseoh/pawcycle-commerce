@@ -15,6 +15,8 @@ grep -Fq -- '--pawcycle.catalog.manifest-import.mode=' "$SCRIPT"
 grep -Fq -- '--pawcycle.catalog.manifest-import.confirm-apply=true' "$SCRIPT"
 grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT\ status=PASS' "$SCRIPT"
 grep -Fq -- 'IMPORT_ARGUMENTS+=(--pawcycle.catalog.manifest-import.manifest=classpath:catalog/demo-catalog.json)' "$SCRIPT"
+grep -Fq -- '--format '\''{{ index .Config.Labels "org.opencontainers.image.revision" }}'\''' "$SCRIPT"
+! grep -Fq -- 'org.opencontainers.image.revision\"' "$SCRIPT"
 ! grep -Fq -- 'timeout --signal=' "$SCRIPT"
 grep -Fq -- 'postflight' backend/src/main/java/com/pawcycle/backend/catalog/application/DemoCatalogManifestImportService.java
 grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' backend/src/main/java/com/pawcycle/backend/catalog/application/CustomerCatalogImportService.java
