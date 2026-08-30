@@ -101,6 +101,26 @@ class ProductionDemoCatalogImportCommandTests {
 	}
 
 	@Test
+	void duplicateTargetArgumentsFailBeforeStartingTheApplication() {
+		AtomicBoolean called = new AtomicBoolean();
+		int result = ProductionDemoCatalogImportCommand.runIfRequested(
+				new String[] {
+						"--spring.main.web-application-type=none",
+						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.target=demo",
+						"--pawcycle.catalog.manifest-import.target=customer",
+						"--pawcycle.catalog.manifest-import.mode=validate"
+				},
+				Map.of(), Map.of(), args -> {
+					called.set(true);
+					return 0;
+				}, errorStream());
+
+		assertThat(result).isEqualTo(ProductionDemoCatalogImportCommand.FAILURE);
+		assertThat(called).isFalse();
+	}
+
+	@Test
 	void applyCommandFailsWithoutExplicitCommandLineConfirmation() {
 		AtomicBoolean called = new AtomicBoolean();
 		int result = ProductionDemoCatalogImportCommand.runIfRequested(
