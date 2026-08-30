@@ -41,7 +41,7 @@ class ProductionDemoCatalogImportCommandTests {
 	}
 
 	@Test
-	void validateCommandPreservesModeAndEnforcesOneShotSafetyArguments() {
+	void validateCommandDefaultsToDemoAndEnforcesOneShotSafetyArguments() {
 		AtomicReference<String[]> captured = new AtomicReference<>();
 		int result = ProductionDemoCatalogImportCommand.runIfRequested(
 				new String[] {
@@ -56,8 +56,48 @@ class ProductionDemoCatalogImportCommandTests {
 
 		assertThat(result).isZero();
 		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.mode=validate");
+		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.target=demo");
 		assertThat(captured.get()).contains("--spring.flyway.enabled=false");
 		assertThat(captured.get()).contains("--spring.main.web-application-type=none");
+	}
+
+	@Test
+	void customerTargetIsExplicitlyPreservedAsTheEnforcedTarget() {
+		AtomicReference<String[]> captured = new AtomicReference<>();
+		int result = ProductionDemoCatalogImportCommand.runIfRequested(
+				new String[] {
+						"--spring.main.web-application-type=none",
+						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.target=CUSTOMER",
+						"--pawcycle.catalog.manifest-import.mode=validate"
+				},
+				Map.of(), Map.of(), args -> {
+					captured.set(args);
+					return 0;
+				}, errorStream());
+
+		assertThat(result).isZero();
+		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.target=customer");
+		assertThat(captured.get()).doesNotContain("--pawcycle.catalog.manifest-import.target=CUSTOMER");
+	}
+
+	@Test
+	void invalidTargetFailsBeforeStartingTheApplication() {
+		AtomicBoolean called = new AtomicBoolean();
+		int result = ProductionDemoCatalogImportCommand.runIfRequested(
+				new String[] {
+						"--spring.main.web-application-type=none",
+						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.target=unknown",
+						"--pawcycle.catalog.manifest-import.mode=validate"
+				},
+				Map.of(), Map.of(), args -> {
+					called.set(true);
+					return 0;
+				}, errorStream());
+
+		assertThat(result).isEqualTo(ProductionDemoCatalogImportCommand.FAILURE);
+		assertThat(called).isFalse();
 	}
 
 	@Test
@@ -67,6 +107,7 @@ class ProductionDemoCatalogImportCommandTests {
 				new String[] {
 						"--spring.main.web-application-type=none",
 						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.target=customer",
 						"--pawcycle.catalog.manifest-import.mode=apply"
 				},
 				Map.of("pawcycle.catalog.manifest-import.confirm-apply", "true"),
@@ -86,6 +127,7 @@ class ProductionDemoCatalogImportCommandTests {
 				new String[] {
 						"--spring.main.web-application-type=none",
 						"--pawcycle.catalog.manifest-import.enabled=true",
+						"--pawcycle.catalog.manifest-import.target=customer",
 						"--pawcycle.catalog.manifest-import.mode=apply",
 						"--pawcycle.catalog.manifest-import.confirm-apply=true"
 				},
@@ -96,6 +138,7 @@ class ProductionDemoCatalogImportCommandTests {
 
 		assertThat(result).isZero();
 		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.mode=apply");
+		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.target=customer");
 		assertThat(captured.get()).contains("--pawcycle.catalog.manifest-import.confirm-apply=true");
 	}
 
