@@ -39,6 +39,7 @@ public class CustomerCatalogV3ImportService {
     private final CatalogExpansionAdminService expansion;
     private final ProductListCacheInvalidator cache;
     private final Validator validator;
+    private final CustomerCatalogRealismCorrectionService correction;
     private final ObjectMapper objectMapper;
     private final String manifestLocation;
 
@@ -48,11 +49,13 @@ public class CustomerCatalogV3ImportService {
             CatalogExpansionAdminService expansion,
             ProductListCacheInvalidator cache,
             Validator validator,
+            CustomerCatalogRealismCorrectionService correction,
             @Value("${pawcycle.catalog.customer.manifest:" + DEFAULT_MANIFEST_LOCATION + "}") String manifestLocation) {
         this.jdbc = jdbc;
         this.expansion = expansion;
         this.cache = cache;
         this.validator = validator;
+        this.correction = correction;
         this.objectMapper = new ObjectMapper();
         this.manifestLocation = manifestLocation;
     }
@@ -62,7 +65,16 @@ public class CustomerCatalogV3ImportService {
             CatalogExpansionAdminService expansion,
             ProductListCacheInvalidator cache,
             Validator validator) {
-        this(jdbc, expansion, cache, validator, DEFAULT_MANIFEST_LOCATION);
+        this(jdbc, expansion, cache, validator, new CustomerCatalogRealismCorrectionService(jdbc), DEFAULT_MANIFEST_LOCATION);
+    }
+
+    public CustomerCatalogV3ImportService(
+            JdbcTemplate jdbc,
+            CatalogExpansionAdminService expansion,
+            ProductListCacheInvalidator cache,
+            Validator validator,
+            String manifestLocation) {
+        this(jdbc, expansion, cache, validator, new CustomerCatalogRealismCorrectionService(jdbc), manifestLocation);
     }
 
     @Transactional
@@ -208,7 +220,7 @@ public class CustomerCatalogV3ImportService {
                     () -> expansion.setSkuOptionValues(productId, skuId, new AdminCatalogRequests.SkuOptionValues(selected)));
         }
 
-        ensureImages(context, productId, product.images());
+        ensureImages(context, product.catalogKey(), productId, product.images());
         ensureDetailSections(context, productId, product.detailSections());
         List<Long> selectedFacets = product.facets().entrySet().stream()
                 .map(entry -> facets.get(entry.getKey() + ":" + entry.getValue()))
@@ -218,7 +230,7 @@ public class CustomerCatalogV3ImportService {
                 () -> expansion.setProductFacetValues(productId, new AdminCatalogRequests.ProductFacetValues(selectedFacets)));
     }
 
-    private void ensureImages(ImportContext context, long productId, List<AdminCatalogRequests.ImageCreate> expected) {
+    private void ensureImages(ImportContext context, String catalogKey, long productId, List<AdminCatalogRequests.ImageCreate> expected) {
         List<Map<String, Object>> actual = jdbc.queryForList("""
                 SELECT image_url,alt_text,display_order,image_type
                 FROM product_images
@@ -240,7 +252,28 @@ public class CustomerCatalogV3ImportService {
                 .map(image -> fields("image_url", image.imageUrl(), "alt_text", image.altText(),
                         "display_order", image.displayOrder(), "image_type", image.imageType()))
                 .toList();
-        if (!sameRows(expectedRows, actual)) throw conflict("product_images collection");
+        if (!sameRows(expectedRows, actual) && !sameRowsWithCorrection(catalogKey, expectedRows, actual)) {
+            throw conflict("product_images collection");
+        }
+    }
+
+    private boolean sameRowsWithCorrection(String catalogKey, List<Map<String, Object>> expected, List<Map<String, Object>> actual) {
+        if (expected.size() != actual.size()) return false;
+        for (int i = 0; i < expected.size(); i++) {
+            Map<String, Object> expectedRow = expected.get(i);
+            Map<String, Object> actualRow = actual.get(i);
+            if (equal(expectedRow.get("image_url"), actualRow.get("image_url"))
+                    && equal(expectedRow.get("alt_text"), actualRow.get("alt_text"))
+                    && equal(expectedRow.get("display_order"), actualRow.get("display_order"))
+                    && equal(expectedRow.get("image_type"), actualRow.get("image_type"))) continue;
+            if (!correction.acceptsImage(catalogKey, String.valueOf(actualRow.get("image_type")),
+                    ((Number) actualRow.get("display_order")).intValue(), actualRow.get("image_url"), actualRow.get("alt_text"))) {
+                return false;
+            }
+            if (!equal(expectedRow.get("display_order"), actualRow.get("display_order"))
+                    || !equal(expectedRow.get("image_type"), actualRow.get("image_type"))) return false;
+        }
+        return true;
     }
 
     private void ensureDetailSections(
@@ -330,7 +363,12 @@ public class CustomerCatalogV3ImportService {
         if (existing.size() != 1) throw conflict(table + " business key");
         Map<String, Object> row = existing.getFirst();
         for (Map.Entry<String, Object> field : content.entrySet()) {
-            if (!equal(field.getValue(), row.get(field.getKey()))) throw conflict(table + " " + field.getKey());
+            if (!equal(field.getValue(), row.get(field.getKey()))) {
+                if (!(table.equals("products") && field.getKey().equals("thumbnail_url")
+                        && correction.acceptsProductThumbnail(String.valueOf(key.get("catalog_key")), row.get(field.getKey())))) {
+                    throw conflict(table + " " + field.getKey());
+                }
+            }
         }
         return row.get("id") instanceof Number number ? number.longValue() : 0;
     }
