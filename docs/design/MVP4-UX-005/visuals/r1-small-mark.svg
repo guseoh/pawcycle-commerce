@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">PawCycle R1 orbit mark small-size review</title>
+  <desc id="desc">두 궤도 마크를 32, 24, 20, 16 픽셀로 비교하고 최소 사용 크기 결론을 보여주는 정적 보드</desc>
+  <rect width="1280" height="720" fill="#FFFFFF"/>
+  <style>
+    text { font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; fill:#241C2E; }
+    .muted { fill:#68616F; }
+    .brand { fill:#4B286D; }
+    .ok { fill:#146B45; }
+    .warn { fill:#955000; }
+  </style>
+  <g transform="translate(80 64)">
+    <text x="0" y="0" font-size="36" font-weight="750">R1 / Orbit mark optical-size check</text>
+    <text x="0" y="38" font-size="16" class="muted">마크 단독이 ‘00/안경’처럼 읽히는 위험을 작은 크기에서 별도로 확인합니다.</text>
+
+    <rect x="0" y="90" width="1120" height="240" rx="16" fill="#F3F0F7"/>
+    <text x="32" y="130" font-size="14" font-weight="700" class="brand">LIGHT SURFACE</text>
+
+    <g transform="translate(72 174)">
+      <ellipse cx="16" cy="18" rx="11" ry="16" fill="none" stroke="#4B286D" stroke-width="2.2"/>
+      <ellipse cx="29" cy="18" rx="11" ry="16" fill="none" stroke="#4B286D" stroke-width="2.2"/>
+      <text x="56" y="26" font-size="28" font-weight="750" class="brand">PawCycle</text>
+      <text x="0" y="78" font-size="14" class="muted">32px mark</text>
+      <text x="0" y="104" font-size="14" font-weight="700" class="ok">PASS — desktop wordmark</text>
+    </g>
+
+    <g transform="translate(338 180)">
+      <ellipse cx="12" cy="14" rx="8.5" ry="12" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <ellipse cx="22" cy="14" rx="8.5" ry="12" fill="none" stroke="#4B286D" stroke-width="1.8"/>
+      <text x="46" y="21" font-size="22" font-weight="750" class="brand">PawCycle</text>
+      <text x="0" y="72" font-size="14" class="muted">24px mark</text>
+      <text x="0" y="98" font-size="14" font-weight="700" class="ok">PASS — compact wordmark</text>
+    </g>
+
+    <g transform="translate(615 184)">
+      <ellipse cx="10" cy="12" rx="7" ry="10" fill="none" stroke="#4B286D" stroke-width="1.7"/>
+      <ellipse cx="18" cy="12" rx="7" ry="10" fill="none" stroke="#4B286D" stroke-width="1.7"/>
+      <text x="39" y="18" font-size="19" font-weight="750" class="brand">PawCycle</text>
+      <text x="0" y="68" font-size="14" class="muted">20px mark</text>
+      <text x="0" y="94" font-size="14" font-weight="700" class="ok">PASS — minimum UI mark</text>
+    </g>
+
+    <g transform="translate(885 188)">
+      <ellipse cx="8" cy="9.5" rx="5.6" ry="8" fill="none" stroke="#4B286D" stroke-width="1.5"/>
+      <ellipse cx="14.4" cy="9.5" rx="5.6" ry="8" fill="none" stroke="#4B286D" stroke-width="1.5"/>
+      <text x="0" y="58" font-size="14" class="muted">16px mark only</text>
+      <text x="0" y="84" font-size="14" font-weight="700" class="warn">REJECT — 형태 식별 여유 부족</text>
+    </g>
+
+    <text x="0" y="392" font-size="24" font-weight="750">결론</text>
+    <g transform="translate(0 430)">
+      <rect x="0" y="0" width="1120" height="158" rx="12" fill="#FFFFFF" stroke="#DED8E4"/>
+      <circle cx="28" cy="34" r="8" fill="#4B286D"/>
+      <text x="52" y="40" font-size="17">두 궤도 mark-only의 최소 승인 크기는 <tspan font-weight="750">20 CSS px</tspan>로 둡니다.</text>
+      <circle cx="28" cy="78" r="8" fill="#F3B88F"/>
+      <text x="52" y="84" font-size="17">16px favicon에는 R1 orbit mark를 억지로 축소하지 않습니다. 별도 simplified favicon 승인 전에는 기존 favicon asset을 유지합니다.</text>
+      <circle cx="28" cy="122" r="8" fill="#241C2E"/>
+      <text x="52" y="128" font-size="17">모바일 Header는 20px 이상 mark + PawCycle text 조합을 사용하며, 작은 mark를 category/icon 대용으로 재사용하지 않습니다.</text>
+    </g>
+    <text x="0" y="636" font-size="13" class="muted">정적 optical-size 검토 보드. 실제 브라우저 rasterization/고DPI/favicons 검증은 FE 구현 후 별도 확인합니다.</text>
+  </g>
+</svg>
