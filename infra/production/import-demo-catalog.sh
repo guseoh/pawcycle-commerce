@@ -9,6 +9,7 @@ RUNTIME_DIR="/opt/pawcycle/runtime"
 STATE_DIR="/opt/pawcycle/state"
 RELEASE_SHA=""
 BACKEND_IMAGE=""
+TARGET="demo"
 OPERATION=""
 CONFIRM_APPLY=0
 
@@ -18,11 +19,12 @@ Usage: import-demo-catalog.sh \
   --operation <validate|apply> \
   --sha <current-40-char-sha> \
   --backend-image <lowercase-ghcr-repository> \
+  [--target <demo|customer>] \
   [--confirm-apply] \
   [--runtime-dir /opt/pawcycle/runtime] \
   [--state-dir /opt/pawcycle/state]
 
-validate is a dry-run. apply requires --confirm-apply and is never automatic.
+The default target is demo. validate is a dry-run. apply requires --confirm-apply and is never automatic.
 EOF
 }
 
@@ -95,6 +97,7 @@ while (( $# > 0 )); do
     --operation) OPERATION="${2:-}"; shift 2 ;;
     --sha) RELEASE_SHA="${2:-}"; shift 2 ;;
     --backend-image) BACKEND_IMAGE="${2:-}"; shift 2 ;;
+    --target) TARGET="${2:-}"; shift 2 ;;
     --confirm-apply) CONFIRM_APPLY=1; shift ;;
     --runtime-dir) RUNTIME_DIR="${2:-}"; shift 2 ;;
     --state-dir) STATE_DIR="${2:-}"; shift 2 ;;
@@ -104,6 +107,7 @@ while (( $# > 0 )); do
 done
 
 [[ "$EUID" == "0" ]] || die "root execution is required"
+[[ "$TARGET" == "demo" || "$TARGET" == "customer" ]] || die "target must be demo or customer"
 [[ "$OPERATION" == "validate" || "$OPERATION" == "apply" ]] || die "operation must be validate or apply"
 [[ "$OPERATION" != "apply" || "$CONFIRM_APPLY" == "1" ]] || die "apply requires --confirm-apply"
 [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || die "approved release SHA is invalid"
@@ -156,9 +160,12 @@ APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIG
 IMPORT_ARGUMENTS=(
   --spring.main.web-application-type=none
   --pawcycle.catalog.manifest-import.enabled=true
+  --pawcycle.catalog.manifest-import.target="$TARGET"
   --pawcycle.catalog.manifest-import.mode="$OPERATION"
-  --pawcycle.catalog.manifest-import.manifest=classpath:catalog/demo-catalog.json
 )
+if [[ "$TARGET" == "demo" ]]; then
+  IMPORT_ARGUMENTS+=(--pawcycle.catalog.manifest-import.manifest=classpath:catalog/demo-catalog.json)
+fi
 if [[ "$OPERATION" == "apply" ]]; then
   IMPORT_ARGUMENTS+=(--pawcycle.catalog.manifest-import.confirm-apply=true)
 fi
@@ -167,5 +174,13 @@ set +e
 COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATA_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
 COMMAND_STATUS=$?
 set -e
-[[ "$COMMAND_STATUS" == "0" && "$COMMAND_OUTPUT" == CATALOG_IMPORT_RESULT\ operation=* ]] || die "catalog import command failed"
+[[ "$COMMAND_STATUS" == "0" ]] || die "catalog import command failed"
+case "$TARGET" in
+  demo)
+    [[ "$COMMAND_OUTPUT" == CATALOG_IMPORT_RESULT\ operation=* ]] || die "catalog import command failed"
+    ;;
+  customer)
+    [[ "$COMMAND_OUTPUT" == CUSTOMER_CATALOG_IMPORT_RESULT\ status=PASS\ baseline=\{CATALOG_IMPORT_RESULT\ operation=* ]] || die "catalog import command failed"
+    ;;
+esac
 printf '%s\n' "$COMMAND_OUTPUT"
