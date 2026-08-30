@@ -39,8 +39,8 @@
 
 ### Sort / Pagination / Compare
 
-- sort UI custom single-select, 추천순(RECOMMENDED), 최신순(NEWEST), 낮은 가격순(PRICE_ASC), 높은 가격순(PRICE_DESC), 평점순(RATING), 리뷰 많은 순(REVIEW_COUNT). 선택 즉시 적용·page0, 다른 조건 보존. 일반 커머스의 판매량순을 임의 추가하지 않음.
-- select: trigger Enter/Space/ArrowDown open, selected option focus, Up/Down 이동, Home/End 처음/끝, Enter 확정, Escape 취소+return. Tab은 close 후 자연 다음 focus. option check와 `aria-selected`, disabled option skip. pointer outside cancel. native semantic 기반이라도 동일 외형·키보드 의미 충족.
+- sort UI styled native single-select (custom 구현 강제 없음), 추천순(RECOMMENDED), 최신순(NEWEST), 낮은 가격순(PRICE_ASC), 높은 가격순(PRICE_DESC), 평점순(RATING), 리뷰 많은 순(REVIEW_COUNT). 선택 즉시 적용·page0, 다른 조건 보존. 일반 커머스의 판매량순을 임의 추가하지 않음.
+- native select: label·value·disabled·focus ring을 보존하며 OS 기본 keyboard/option popup을 따른다. custom select를 실제 채택하는 경우에만 trigger Enter/Space/ArrowDown open, Up/Down 이동, Home/End, Enter 확정, Escape 취소+return, Tab close, aria-selected와 disabled skip을 구현한다. native 동작을 custom keyboard로 덮어쓰지 않는다.
 - size12 고정, numbered pagination44 targets. 320에서는 이전/현재/다음만, 현재 `2 / 5` 설명. page 전환 시 grid 제목 focus, Back은 URL·scroll 복원. infinite scroll 자동 추가 없음.
 - 기존 2~3개 상품 비교 기능 보존. 비교 checkbox 선택으로 client selection만 변경, 2개부터 `상품 비교`, 3개 초과는 안내하고 기존 선택 유지. fixed tray는 bottom bar 공간을 차지하며 mobile에서는 toolbar 아래 `비교 2/3` 요약으로, PDP 구매 bar와 중복하지 않음. 비교 API canonical facts 우선, AI unavailable은 정상 fallback.
 
@@ -66,7 +66,7 @@ Cart에 선택주문·판매자별 배송비·프로모션 코드·직접 구독
 - modal open: trigger 저장→dialog title 또는 첫 안전 focus→배경 inert→Tab/ShiftTab 순환. close→trigger 반환(사라졌다면 다음 논리적 heading). filter 적용·category link 이동 후에는 새 문맥의 focus 사용. `aria-modal=true`와 dialog label 필요.
 - Escape 최상단 overlay 하나만 닫음. 오류가 있어도 탈출 가능. 확인 dialog outside click은 취소, 구매 요청 진행 중에는 중복 요청 차단하되 진행 상태를 영구 가두지 않음.
 - 모든 keyboard tab 순서는 시각 순서와 일치. grid arrow key를 기본 링크 navigation에 강요하지 않음. skip link, heading h1→h2→h3, form label, 상태 live 1개, focus가 sticky/bar 아래 숨지 않도록 scroll-margin-top 사용.
-- A Header: desktop80h, mobile104h(56 masthead+48 search), 스크롤에 따라 크기/위치 변경 없음. 로그인 전용56h, 구매 화면 mobile는56h compact header. 읽는 도중 header 자동 숨김 없음.
+- A Header: R1 desktop88h, mobile136h(64 masthead+검색48 및 여백24), 스크롤에 따라 크기/위치 변경 없음. 로그인·구매 전용 desktop88h/mobile64h, 구매 화면 mobile는64h compact header. 읽는 도중 header 자동 숨김 없음.
 - PDP mobile action bar: 원래 담기 action이 viewport 밖일 때만, 선택 미완료면 `옵션 선택` scroll/focus action. 조건 충족이면 `장바구니에 담기`. 원래 action이 보이면 fixed bar 숨김, DOM에서 숨긴 duplicate focus 제거. 품절/실패/loading은 동일 label/disabled/안내 반영.
 - Cart mobile bar: body summary 아래가 아닌 화면 하단에 고정 합계/전체 주문. 본문에 bar실측높이+safe-area+16 padding. 다른 bottom nav 없음. 화면 높이480 미만 또는 키보드로 form 편집 중에는 fixed bar를 해제하고 본문 flow로 배치해 입력과 focus를 가리지 않음.
 - browser zoom 200%, 320 width reflow, reduced-motion, 고대비/forced-colors를 검증 대상으로 둔다. overlay 내 focus trap/확대는 이번 정적 시안만으로 통과했다고 주장하지 않는다.
@@ -78,7 +78,7 @@ Cart에 선택주문·판매자별 배송비·프로모션 코드·직접 구독
 | 요소 | 320 | 375 | 768 | 1024 | 1440 |
 | --- | --- | --- | --- | --- | --- |
 | 본문 usable width | 288 | 343 | 720 | 960 | 1280 |
-| Header | 56+48, 메뉴/wordmark/cart, search 다음 줄 | 동일 | 64+48 compact, 계정 추가 | 한 줄80, search min240 | 한 줄80, search max640 |
+| Header | 64+72, 메뉴/wordmark/cart, search 다음 줄 | 동일 | 64+48 compact, 계정 추가 | 한 줄88, search min240 | 한 줄88, search max640 |
 | Home 위계 | h1→종 links→category2열→product2열, 큰 Hero 없음 | 동일 | category6열→상품3열 | category strip→상품3열 | category strip→상품4열 |
 | PLP cards/gap | 2열138 / gap12 | 2열165.5 / gap12 | 3열229.3 / gap16 | 3열302.7 / gap26 | 4열302 / gap24 |
 | filter/sort | 2 controls 44h(필터 flex1+정렬140), chips wrap | 정렬152 | 필터+종+정렬 toolbar, 상세 drawer | full toolbar popovers | full toolbar popovers |
@@ -104,3 +104,8 @@ PDP 1440의 column 합계 `64+48+672+48+448=1280`; 1024 `56+24+440+24+416=960`. 
 5. wishlist/auth/cart/checkout 오류가 입력을 잃거나 성공으로 오인시키지 않음; 서버 금액·재고·version·멱등키 보존.
 6. keyboard·screen reader·reduced-motion·forced-colors, form 자동완성/붙여넣기, sticky focus 가림 없음.
 7. 실제 상품 사진/긴 상품명/옵션 조합/할인 없음/재고0/리뷰0/null price로 populated 검증. 이번 Production empty catalog로 대체할 수 없음.
+
+
+## R1 전체 Customer 범위
+
+[Customer page families](customer-page-families.md)의 주문·구독 상세, 계정·지원 상태를 추가 적용한다. C dock는 기존 MVP4 PO 결정과 충돌하므로 별도 결정 변경 전 적용 금지. A에는 C dock 없음. 사용자 Screenshot 미첨부는 직접 Production 재캡처로 핵심 대조가 충족되어 Design Approval blocker가 아니다.

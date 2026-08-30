@@ -14,33 +14,35 @@
 
 ## 시각 확인
 
-13개 PNG 보드: 세 방향 비교1, 5개 화면 Desktop/Mobile10, 상태1, overlay1. 실제 제품 사진 대신 명시적 시안 슬롯 도식. 캡처 JPG 30개는 외부/Production 증거이고 보드와 분리했다. 각 파일 해상도·해시는 [artifact manifest](artifact-manifest.json)에 기록한다.
+R0 PNG13개와 원래 JPG30개는 보존했다. R1 PNG21개를 추가했다: Home/PLP/PDP/Cart/Checkout/Login Desktop·Mobile12개, Order Detail/Subscription New/Detail6개, Identity1개, 상태2개. 현재 시각 검토본은 R1이며 기존 box 보드만으로 승인 요청하지 않는다. R1 실제 Commerce JPG5개를 추가해 캡처 총35개다. 가상 패키지 생성 원본1개를 별도 assets에 보존했다. 총70개 이미지의 해상도·SHA-256은 [artifact manifest](artifact-manifest.json)에 기록한다.
 
-자체 시각 검토에서 unsupported glyph를 발견해 검색 label·선택 표시·minus를 읽을 수 있는 표기로 보정했다. PLP 비교 진입을 보드에 보강하고 mobile Cart Footer가 action bar에 가려지지 않도록 보드 공간을 확보했다. 이 보정은 디자인 산출물에만 적용했다.
+시각 검토에서 chevron/minus 미지원 glyph, mobile Footer 영역 부족을 발견해 vector chevron·읽히는 minus·페이지 높이로 보정했다. Login compact shell, mobile Cart 진입을 유지했다. 구독 nextDelivery의 effective 주기를 pending과 일치시키고, PlanVersion에 없는 사진/상품명과 Schedule에 없는 order link는 제거했다. 원본 R0 이미지는 다시 렌더하거나 덮어쓰지 않았다. 이 보정은 디자인 산출물에만 적용했다.
+
+재현: `render-high-fidelity.py`는 Python/Pillow로 정적 PNG만 생성한다. 새 Frontend/HTML/runtime 서버가 아니다. 이미 제공된 bundled Python/Pillow와 Windows Malgun Gothic을 사용했으며 설치·의존성 변경 없음. imagegen 원본은 별도 저장했고 실제 카탈로그에 넣지 않았다.
 
 ## 미실행과 남은 위험
 
-- 사용자 Screenshot: NOT PROVIDED, 대조 미실행.
+- 사용자 Screenshot: NOT PROVIDED. 직접 Production 재캡처로 핵심 대조가 충족되었으므로 R1에서 Design Approval blocker에서 제거. 재첨부를 요구하지 않음.
 - Production populated PDP·인증 Cart/Checkout·mutation feedback: UNVERIFIED. 상품 데이터/인증 없이 재현했다고 주장하지 않음.
 - 실제 브라우저에서 새 디자인의 keyboard, drawer trap, zoom, screen reader, state transitions: NOT IMPLEMENTED / NOT TESTED. 정적 시각·명세 검토만 수행.
 - frontend build·backend test·dependency install: 코드/환경 변경이 없어 미실행.
-- 실제 상품 이미지·새 폰트·B editorial 콘텐츠·Cart thumbnail 보강·추가 정책/회원 기능: 별도 승인 대상.
+- 실제 상품 이미지·브랜드 서명·새 폰트·B editorial 콘텐츠·Cart thumbnail 보강·추가 정책/회원 기능: 별도 승인 대상. R1의 생성 imagery는 가상 예시, PB 출시 결정 아님. C bottom dock는 기존 MVP4 PO 결정과 충돌하여 C 선택 시 별도 결정 변경 필요.
+- R1 외부 benchmark는 실제 Login/Cart/Checkout 화면까지 확인했으나 로그인 성공/최종 결제/배송비 확정/각 mobile 폭/keyboard 전수검증은 미실행. 외부 비회원 조사 Cart1개 담기 외 개인정보 입력·결제 제출 없음.
 - 현재 main push는 Production image build와 자동 배포로 연결되는 workflow가 있다. **이 문서 PR도 향후 main에 병합하면 배포 workflow를 유발할 수 있다.** 이번 작업은 task branch push와 Draft PR까지만, Ready/merge/workflow dispatch/실제 운영 변경은 하지 않는다.
 - Design Approval 미승인. 문서 검증 통과는 시각 승인·FE 착수·병합 승인이 아니다.
 
 ## 기계 검증 결과
 
-로컬 검증 PASS: UTF-8 Markdown 7개, 상대 링크/anchor 83개, JPG 캡처 30개와 PNG 시안 13개 decode·SHA-256 manifest 확인. PR body UTF-8/task artifact validator PASS.
+R1 로컬 검증 PASS: UTF-8 Markdown9개, 상대 링크/anchor136개, 이미지70개(관찰35/시안34/생성원본1) decode·확장자 일치·SHA-256 manifest 확인. renderer Python syntax, PR body UTF-8/task artifact validator PASS. 새 제품 코드 없음.
 
 | 조합 | 계산 대비 | 기준 |
 | --- | ---: | ---: |
-| primary / white | 6.95:1 | 4.5:1 |
-| ink / canvas | 16.27:1 | 4.5:1 |
-| secondary text / surface | 5.45:1 | 4.5:1 |
-| ink / accent | 13.47:1 | 4.5:1 |
-| success / soft | 5.88:1 | 4.5:1 |
-| warning / soft | 6.21:1 | 4.5:1 |
+| brand / white | 11.52:1 | 4.5:1 |
+| ink / white | 16.40:1 | 4.5:1 |
+| muted / surface | 5.28:1 | 4.5:1 |
+| brand / apricot | 6.62:1 | 4.5:1 |
 | error / soft | 5.87:1 | 4.5:1 |
-| control border / white | 3.63:1 | 3:1 |
+| sale / soft | 5.53:1 | 4.5:1 |
+| control border / white | 3.89:1 | 3:1 |
 
 위 계산은 지정 sRGB 두 색의 상대 휘도 검사다. 실제 font rasterization·사진 배경·focus clipping·모든 조합·WCAG 전체 준수를 보증하지 않는다.

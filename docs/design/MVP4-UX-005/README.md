@@ -7,16 +7,21 @@
 - 상태: **PROPOSED — DESIGN APPROVAL REQUIRED. 구현 승인 아님.**
 - 작성일: 2026-08-30, Asia/Seoul. Production은 공개 페이지 조회와 탐색만 수행했다. 운영 데이터 변경·로그인 제출·주문·결제·배포 없음.
 
+## R1 현재 검토본
+
+**[1차 리뷰 보정과 6개 high-fidelity 화면](review-r1.md)** → **[Customer 전체 family와 주문·구독 핵심 계약](customer-page-families.md)** → [R1 상태 보드](visuals/r1-states.png). A는 구조상 우선 후보이며 아직 최종 선택/승인하지 않았다. 아래 A/B/C 표·비교 보드는 R0 탐색 기록을 유지하며 A의 현재 색·타이포·imagery는 R1 제안으로 보강했다.
+
 ## 읽는 순서와 근거
 
 1. [Production Visual Audit](production-audit.md): 직접 확인한 문제와 확인하지 못한 범위.
 2. [External Commerce Benchmark](commerce-benchmark.md): 실제 rendered page, 채택·변형·거부 판정.
 3. 이 문서의 **세 가지 Visual Direction**과 [비교 보드](visuals/directions.png).
 4. [Visual Design System](visual-system.md): 상세 검토용 A안의 토큰·컴포넌트. A안 선택을 기정사실화하지 않는다.
-5. [Screen Redesign](screen-redesign.md): Home / PLP / PDP / Cart / Login, Checkout·공통 영역.
-6. [Interaction / Responsive Contract](interaction-responsive.md): 입력·URL·상태·포커스·5개 너비의 구성.
+5. [R1 Screen Review](review-r1.md): Home / populated PLP / PDP / Cart / Checkout / Login 6개 Desktop/Mobile. [R0 구조 기록](screen-redesign.md)도 보존.
+6. [Customer families](customer-page-families.md): 전체 관리·지원 범위와 Order Detail/Subscription New/Detail 상세.
+7. [Interaction / Responsive Contract](interaction-responsive.md): 입력·URL·상태·포커스·5개 너비의 구성.
 
-시안 이미지는 **정적 디자인 문서**다. 상품·브랜드·가격·개수는 `시안 데이터`이며 Production 재현 또는 판매 제안이 아니다. 단순 포장 도형은 상품 이미지 슬롯의 크기와 위계를 보여주는 도식으로, 실제 상품 사진이나 승인된 브랜드 에셋이 아니다. React/HTML 앱·프로토타입·제품 코드는 만들지 않았다. 캡처된 기존 Production과 시안은 디렉터리도 `evidence/`와 `visuals/`로 분리한다.
+시안은 **정적 디자인 문서**이며 상품·가격·개수·개인정보는 가상 예시다. R0 도형 보드는 구조 탐색 기록, R1은 가상 패키지 사진·브랜드 표현을 포함하는 high-fidelity 검토본이다. 생성 imagery는 실제 판매 상품이나 PB 출시 결정이 아니다. Frontend/HTML 앱을 만들지 않았다. 실제 캡처는 `evidence/`, 시안은 `visuals/`, 생성 원본은 `assets/`로 구분한다.
 
 ## 왜 기존 설계의 연장이 아닌가
 
@@ -29,11 +34,13 @@
 | 반복되는 대형 둥근 section card | 삭제 | A는 열린 grid와 구분선, B는 비대칭 편집면, C는 목적별 작은 모듈 |
 | 검색·브랜드·계정 + 별도 일반 메뉴 2단 Header | 재구성 | A는 단일 masthead와 결과 맥락, B는 축약 탐색 + 검색 panel, C는 종별 dock |
 | PLP 고정 왼쪽 form sidebar | 삭제 | A 상단 filter popover, B 우측 filter sheet, C 종별 선택 + 하단 drawer |
-| 브라우저 기본 select/fieldset 외형 | 삭제 | 명시적 치수·선택 표시를 가진 radio list / filter chip / custom select |
+| 브라우저 기본 select/fieldset 외형 | 삭제 | 명시적 치수·선택 표시를 가진 styled native select / radio·checkbox / filter chip. native semantics는 보존 |
 | Login 가운데 테두리 카드 + 전체 Commerce shell | 삭제 | 전용 인증 shell, 복귀 맥락과 form 중심 |
 | Home Help 구획과 Footer 링크 중복 | 통합 | Footer 지원 입구 1개 + 정책/쇼핑/계정 위계 |
 
 ## 세 가지 Visual Direction — 아직 미선택
+
+R0 비교 기록이다. **C mobile bottom dock는 기존 MVP4 PO 결정과 충돌하므로 C 선택에는 별도 PO 결정 변경이 필요하다.** A/B/C 탐색 유지와 C 실행 승인은 다르다. A R1의 현재 refinement는 위 링크 참조.
 
 ![세 방향의 Home 구조와 시각 언어 비교](visuals/directions.png)
 
@@ -57,7 +64,7 @@
 
 **A를 상세 검토 후보로 권고**한다. 좁은 카탈로그에서도 검색과 구매 판단을 우선할 수 있고 신규 콘텐츠 운영 기능 없이 성립한다. 이는 사용자 승인 또는 최종 선택이 아니다. B/C를 선택하면 해당 방향의 화면별 상세 설계를 다시 승인받으며 A의 토큰을 섞어 자동 구현하지 않는다. 장점만 합쳐 기존 구조로 돌아가는 절충도 하지 않는다.
 
-세 안의 차이는 색상 교체로 환원되지 않는다. A는 Hero 제거와 4열, B는 비대칭 큰 사진과 3열, C는 종별 입구와 목적별 모듈이다. 비교 보드는 Home 중심이므로 B/C의 PDP·Cart·Login이 완성됐다고 주장하지 않는다. A의 5개 상세 시안은 다음 문서에서 확인한다.
+세 안의 차이는 색상 교체로 환원되지 않는다. A는 Hero 제거와 4열, B는 비대칭 큰 사진과 3열, C는 종별 입구와 목적별 모듈이다. 비교 보드는 Home 중심이므로 B/C의 PDP·Cart·Login이 완성됐다고 주장하지 않는다. A의 현재 검토본은 R1의 핵심6개와 주문·구독3개 화면이다.
 
 ## 기능 보존과 문서 권위
 
@@ -75,12 +82,12 @@
 | A/B/C 방향 선택과 버릴 안 | 위 비교 보드·표 | PENDING |
 | Header·Hero 삭제·탐색 순서·Footer 통합 | Home, PLP, Login 데스크톱/모바일 시안 | PENDING |
 | 색·폰트·숫자·버튼·필터·선택 상태 | Visual System + state board | PENDING |
-| 상품 있음/없음의 균형 | populated 5개 시안 + empty/state board | PENDING |
+| 상품 있음/없음의 균형 | R1 핵심6개 + 주문·구독3개 + 상태 보드 | PENDING |
 | 320/375/768/1024/1440 구성 | Responsive Contract·치수 표 | PENDING |
-| 상품 사진 / 폰트 asset 정책 | 시스템 폰트·중립 슬롯 기본, 실제 상품 사진은 카탈로그 권위 source | PENDING |
-| 조사 제한 수용 또는 추가 증거 | 사용자 Screenshot 미제공, populated PDP·인증 Cart/Checkout 미검증 | PENDING |
+| 상품 사진 / 폰트 asset 정책 | 시스템 폰트·가상 imagery 제안, 실제 사진은 카탈로그 권위 source | PENDING |
+| 조사 제한 수용 또는 추가 증거 | populated Production PDP·인증 Cart/Checkout 미검증 (Screenshot 미첨부는 blocker 아님) | PENDING |
 | 최종 Design Approval | 사용자와 ChatGPT가 선택 방향·문서 revision·화면·미해결 항목을 명시 | **미승인** |
 
-사용자 Screenshot 원본은 이번 첨부에 없었다. 원본이 오면 독립 증거로 비교해야 하며 직접 캡처한 화면을 사용자 제공물로 바꿔 부르지 않는다. 이는 남은 증거 항목이지 FE 구현을 시작할 근거가 아니다.
+사용자 Screenshot 원본은 미첨부였다. **직접 Production 재캡처로 핵심 대조가 충족되었으므로 미첨부를 Design Approval blocker에서 제거한다.** 미첨부 사실은 증거 출처 기록일 뿐 재제출 요구가 아니다. 직접 캡처를 사용자 제공물로 바꿔 부르지 않는다.
 
 승인 기록에는 `선택안`, `문서 commit`, `승인한 화면/상태`, `보류 Proposal`, `사용자 승인`, `ChatGPT 검토 확인`이 필요하다. **문서 완성·Draft PR 생성·병합은 Design Approval이나 FE 착수 승인을 자동 대체하지 않는다.** Ready for review·merge·배포는 수행하지 않는다.

@@ -1,4 +1,6 @@
-# Customer Commerce Screen Redesign
+# Customer Commerce Screen Redesign · R0 구조 탐색 기록
+
+**현재 상세 visual 검토본은 [R1 6개 화면](review-r1.md)과 [Customer family](customer-page-families.md)다.** 아래 치수·도형 보드는 R0 구조 탐색 기록으로 보존한다. R1의 imagery/색/치수/native semantics/text-only fallback이 우선한다. R0 box만으로 Design Approval을 요구하지 않는다.
 
 **A안 상세 제안, 미승인.** [세 방향 비교](README.md), [공통 토큰](visual-system.md), [상태·반응형 계약](interaction-responsive.md). 시안 상품/가격은 Production에 없는 디자인 예시다. 정적 보드의 간략한 labels보다 이 명세의 필드 조건·null·서버 권위 계약이 우선한다. 모든 이미지 하단에 시안 표시를 둔다.
 
@@ -114,7 +116,7 @@ Current: 비회원 진입 P11 직접 확인, populated UI는 코드 기반. Refe
 
 ### 1440 composition
 
-Header80 → `장바구니` h1/전체 수량 y124 → y208 본문864 + gap48 + summary368. 왼쪽 heading `담은 상품`과 row separator. row min128: 왼쪽 중립 glyph64(실상품 사진이라는 주장 없음), product name·skuName·unitPrice, 가운데 quantity144+적용, 오른쪽 lineAmount24/30와 삭제44. unavailable은 상품명 아래 warning, 행을 숨기지 않음.
+Header80 → `장바구니` h1/전체 수량 y124 → y208 본문864 + gap48 + summary368. 왼쪽 heading `담은 상품`과 row separator. row min128: R1에서는 glyph 없이 상품명·SKU 중심 text-only 행, product name·skuName·unitPrice, 가운데 quantity144+적용, 오른쪽 lineAmount24/30와 삭제44. unavailable은 상품명 아래 warning, 행을 숨기지 않음.
 
 오른쪽 `주문 금액`은 카드 shadow 없이 top ink2 line, pad24 top. originalAmount→discountAmount→shippingFee→paymentAmount 순, 아래 CTA52 `장바구니 전체 주문하기`. 가격/재고는 서버 응답, client sum으로 공식 금액 재계산 금지. CTA는 전체 주문만. 판매자/배송그룹·일부 선택 checkbox 없음.
 
@@ -155,7 +157,7 @@ returnTo별 copy: `/cart`=`장바구니를 확인하려면 로그인해 주세�
 
 ## 7. Checkout과 공통 영역
 
-Checkout은 5개 대표 이미지 밖이지만 구현자가 배치를 추측하지 않도록 정의한다. desktop max1280, h1 아래 main864/summary368. main: 배송지 선택(기존 saved address radio list, 등록 경로)→주문 상품 읽기 전용 행→쿠폰 custom select. summary: 예상금액·할인 확정 시점·배송비·전체 금액→`주문 및 결제 준비`52. 좁은 오른쪽 rail에 배송지/쿠폰까지 넣지 않는다.
+R0에서는 Checkout이 대표 이미지 밖이었다. R1에서는 [독립 Desktop](visuals/r1-checkout-desktop.png)·[Mobile](visuals/r1-checkout-mobile.png)과 상태 계약을 추가했다. 아래는 구조 탐색 당시 기록이다. desktop max1280, h1 아래 main864/summary368. main: 배송지 선택(기존 saved address radio list, 등록 경로)→주문 상품 읽기 전용 행→쿠폰 styled native select. summary: 예상금액·할인 확정 시점·배송비·전체 금액→`주문 및 결제 준비`52. 좁은 오른쪽 rail에 배송지/쿠폰까지 넣지 않는다.
 
 준비 성공 후 화면 제목은 `결제수단을 선택해 주세요`, 확정 가격+Toss widget+결제대기 주문 확인. `결제 완료` 아님. Toss 성공/실패/UNKNOWN은 기존 계약 유지, 사용자가 명시적으로 실행해야 한다. 375 순서는 배송지→상품→쿠폰→명세→action, 고정 action 조건은 Cart와 동일. 품절/version변경이면 해당 상품 및 재조회 action, 쿠폰 오류가 할인된 금액으로 진행하지 않게 한다. 인증/empty/loading/error는 Cart와 같은 의미 체계를 쓰되 주문 맥락 문구로 분리한다.
 
@@ -166,7 +168,7 @@ Header·Category·Footer는 [Visual System](visual-system.md#5-filternavigationf
 | 항목 | 기본안 / 분리 이유 |
 | --- | --- |
 | 실상품 사진과 촬영 기준 | 기존 catalog image만. 시안의 도형은 실제 사진 승인 대체 불가. 외부 쇼핑몰 이미지 재사용 금지 |
-| Cart thumbnail 보강 | 기본 중립 glyph. 공개 detail GET으로 thumbnail을 보강하는 안은 별도 FE 비용/에러 검토 필요 |
+| Cart thumbnail 보강 | R1 기본 text-only 상품 행. 공개 detail GET으로 thumbnail을 보강하는 안은 별도 FE 비용/에러 검토 필요 |
 | 새 웹폰트 | 기본 system stack. 별도 asset/font loading 승인 전 추가 안 함 |
 | B editorial 캠페인 | 실제 merchandising API/운영 콘텐츠 없음. 선택 시 운영/범위 별도 결정 |
 | 정책/회원가입/비밀번호 복구 | 실제 route·제품정책 미확인. 필요해도 가짜 action으로 채우지 않음 |

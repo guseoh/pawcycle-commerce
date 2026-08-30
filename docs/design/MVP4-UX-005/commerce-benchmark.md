@@ -48,4 +48,37 @@
 
 외부 사이트들은 상품/이미지/가격을 핵심 콘텐츠로 다루지만 현재 PawCycle은 서비스 설명과 빈 card가 주인공이다. 따라서 A는 Hero를 제거하고 상품 grid를 첫 콘텐츠로 올린다. B/C는 외부 사례의 editorial·종별 접근을 각각 독립 방향으로 비교한다. 사이트마다 보기 좋은 요소를 수집해 기존 cream/green card 구조에 얹지 않는다.
 
-외부 wishlist mutation, empty/no-result, login 성공, cart, checkout, modal focus trap 전수검사는 하지 않았다. 새 상태 계약은 해당 사이트 검증 결과가 아니라 PawCycle 기능 제약과 명시적인 디자인 제안이다. 외부의 특정 기능이 존재한다는 이유로 PawCycle에 있다고 가정하지 않는다.
+R0에서는 외부 wishlist mutation, empty/no-result, login 성공, cart, checkout, modal focus trap 전수검사를 하지 않았다. R1에서 아래 Cart/Checkout/Login 화면 관찰을 추가했다. 새 상태 계약은 해당 사이트의 전체 기능 검증 결과가 아니라 PawCycle 기능 제약과 명시적인 디자인 제안이다.
+
+## R1 Cart/Checkout/Login 추가 조사
+
+2026-08-30 약11:10–11:25 KST, Codex in-app browser의 실제 rendered UI를 관찰했다. 기존 R0 Chrome 관찰과 별도 세션이다. 텍스트 검색이나 로컬 UI 데이터 검색으로 대체하지 않았다. 아래는 직접 접속·탐색 후 저장한 screenshot이다. 캡처 이미지의 pixel 크기는 browser CSS viewport와 구분해 manifest에 기록한다.
+
+| ID / 목적 | 실제 접근과 관찰 | 증거 |
+| --- | --- | --- |
+| R1-B01 Login | [컬리 로그인](https://www.kurly.com/member/login): Home 로그인 진입→아이디/비밀번호, primary 로그인, secondary 회원가입, 별도 간편 로그인. 로그인 제출 없음 | [Login 캡처](evidence/r1-kurly-login.jpg) |
+| R1-B02 Cart | [컬리 Cart](https://www.kurly.com/cart): Header cart 진입. 0/0 선택 disabled, 중앙 empty, 오른쪽 금액 rail·로그인 CTA. 쿠폰 금액은 ‘로그인 후 확인’ | [Empty Cart 캡처](evidence/r1-kurly-cart-empty.jpg) |
+| R1-B03 populated Cart | [Zee.Dog Jupiter PDP](https://www.zeedog.com/products/jupiter-wand-cat-toy)→비회원 조사 세션에 상품1개 담기→Cart drawer. 작은 썸네일/제목/금액/수량/삭제, 하단 합계·Check out | [Cart drawer 캡처](evidence/r1-zeedog-cart.jpg) |
+| R1-B04 Checkout | R1-B03에서 Check out 진입, Zee.Dog의 실제 hosted Checkout. Contact→Delivery→Shipping method→Payment, 오른쪽 상품·금액 summary, brand logo와 Cart만 남긴 shell | [전체 Checkout 캡처](evidence/r1-zeedog-checkout-full.jpg), [Payment 구획](evidence/r1-zeedog-checkout.jpg) |
+
+Checkout 주소는 세션별 경로·queue 값이 포함되어 원문 URL을 저장하지 않는다. 위 공개 PDP와 ‘담기→Cart→Check out’ 경로로 재현한다. 개인정보·주소·카드·쿠폰·로그인 입력 없음. **Pay now/express pay/등록·구매·결제 제출 없음**. 외부 비회원 조사 cart에1개를 담은 행위는 수행했다. 기존 사용자 cart는 먼저 빈 상태임을 확인했으며 기존 계정·상품을 수정하지 않았다. 로그인/구매 결과 검증은 아니다. PawCycle Production mutation은 전혀 수행하지 않았다.
+
+초기 Cart 링크 click은 추가 후 accessible name이 ‘Cart 1’로 변해 매칭되지 않았다. 새 DOM 확인 후 해당 링크로 열었다. 초기 Checkout capture가 Payment 위치에 있어 Email field focus 후 full-page screenshot으로 Contact부터 전체 위계를 확인했다. 이 실패를 성공 관찰처럼 생략하지 않는다.
+
+![실제 Zee.Dog Cart](evidence/r1-zeedog-cart.jpg)
+
+### 관찰에서 PawCycle 설계로
+
+| 실제 pattern | 판정 | PawCycle 반영/제외 |
+| --- | --- | --- |
+| 컬리 Login의 채워진 primary와 외곽 secondary | ADAPT | 주목적 로그인1개, 상품 탐색은 작은 link. 없는 회원가입/소셜 auth/계정찾기는 복제 안 함 |
+| 컬리 Login의 placeholder 의존 label·큰 전역 navigation | REJECT | 항상 보이는 field label과 복귀 맥락, 독립 인증 shell로 집중 |
+| 컬리 empty Cart에서도 유지되는 금액 rail·disabled 선택 | ADAPT / REJECT | 금액 row 위계는 참고. PawCycle empty에서는 허구 0원 계산과 주문 rail을 제거하고 탐색 회복만 제공; 선택주문 기능도 없음 |
+| Zee.Dog Cart drawer의 짧은 상품 행과 하단 total/action | ADAPT | Cart 행·summary의 역할 분리. PawCycle에는 독립 Cart page를 유지, 근거 없는 thumbnail은 text-only 행으로 해결 |
+| Zee.Dog Checkout의 구매 전용 shell·좌 form/우 summary | ADOPT / ADAPT | 독립 Checkout 보드: 배송지/상품/쿠폰 main, 금액/CTA rail. 회원 배송지 선택과 기존 Toss 연동 계약에 맞춤 |
+| Checkout 배송지 미입력 시 배송비 확인 안내 | ADAPT | 불확실한 금액/배송을 확정값처럼 표시하지 않음. PawCycle은 자체 서버 pricing만 권위 |
+| Country/Region의 디자인된 select, radio 결제 선택, input | ADOPT 원칙 | native semantics와 외형을 분리. 단순 선택에 불필요 custom select 강제하지 않음. OS popup 외형 허용 |
+| 기본 checked 뉴스/혜택, express wallet, 세금 추정/코드 입력 | REJECT | PawCycle에 없는 마케팅 동의·지갑·할인코드·해외 세금 UI를 만들지 않음. 쿠폰은 기존 member coupon만 |
+| Pay now로 끝나는 즉시 결제 절차 | ADAPT | PawCycle ‘주문 및 결제 준비’와 ‘결제수단 선택’ 구분. 준비 성공을 결제 완료로 부르지 않음 |
+
+이번 추가로 **실제 Login, empty Cart, populated Cart, Checkout 화면** 근거를 확보했다. 해외 Checkout 최종 결제/오류/입력 validation, 국내 인증 Checkout, mobile 각 폭 및 keyboard focus trap은 미검증이다. 어느 사이트의 동작도 PawCycle의 서버 계약이나 PO 결정에 우선하지 않는다.

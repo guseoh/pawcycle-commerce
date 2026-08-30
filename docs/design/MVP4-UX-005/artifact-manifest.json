@@ -1,6 +1,7 @@
 {
   "observedDateKst": "2026-08-30",
-  "note": "Image dimensions are pixels, not a claim of browser CSS viewport. Captures are originals; design boards use illustrative data.",
+  "revision": "R1",
+  "note": "Pixel dimensions, not browser CSS viewport. Original evidence retained; R1 imagery is fictional and not a production catalog.",
   "artifacts": [
     {
       "path": "evidence/benchmark-coupang.jpg",
@@ -273,6 +274,51 @@
       "sha256": "e32a3444cb5725f28fef098f8e7efc2293efe50e8576f60ed62a0c02fd266336"
     },
     {
+      "path": "evidence/r1-kurly-cart-empty.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 42506,
+      "sha256": "4345e61d4795c59f33753d559d28b1f7afea47647be755c652edea20b48f71ca"
+    },
+    {
+      "path": "evidence/r1-kurly-login.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 36602,
+      "sha256": "94f08f367b251f8b1d2c6b3349ec59433852a83a871346ba45365818183bce96"
+    },
+    {
+      "path": "evidence/r1-zeedog-cart.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1280,
+      "height": 720,
+      "bytes": 35474,
+      "sha256": "d471e0d3329756370db3f42e34c62aaaeaf7f8c4a14624b0b8943d65dd83e515"
+    },
+    {
+      "path": "evidence/r1-zeedog-checkout-full.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 1862,
+      "bytes": 110387,
+      "sha256": "448f23078d73c5c5f531d0bce0a1db59df632a7f3e3c321f5e5a897b48dd7e3c"
+    },
+    {
+      "path": "evidence/r1-zeedog-checkout.jpg",
+      "kind": "observed-browser-capture",
+      "format": "JPEG",
+      "width": 1265,
+      "height": 712,
+      "bytes": 47803,
+      "sha256": "15b76ef00066f71ca4b0d95cc27334b0110958f101515b9db14cf9138a8c0be8"
+    },
+    {
       "path": "visuals/cart-desktop.png",
       "kind": "proposed-static-design",
       "format": "PNG",
@@ -381,6 +427,195 @@
       "sha256": "d888b698fb54e9902e7861802e131740a251325c4be68fcdcbb36846ba7cba70"
     },
     {
+      "path": "visuals/r1-cart-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1020,
+      "bytes": 56043,
+      "sha256": "de9c74fee76d898a997eaad88428d40f4eedb8baee21c9be810a212d6170bf43"
+    },
+    {
+      "path": "visuals/r1-cart-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1260,
+      "bytes": 42688,
+      "sha256": "65526ce8d35f23651f87795cee9fd043e96d2348ec6e05d4956454fce0b192c1"
+    },
+    {
+      "path": "visuals/r1-checkout-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1290,
+      "bytes": 67926,
+      "sha256": "5c41b3b4abaf3eed06efe16ff1e9a06d55159c0f6db6ffa2a7cfee40340adcc8"
+    },
+    {
+      "path": "visuals/r1-checkout-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1660,
+      "bytes": 54085,
+      "sha256": "a1a2c8bed03eb1359f9ac4a6cff444c73206596ac61a66d8d8f5539ff141bf11"
+    },
+    {
+      "path": "visuals/r1-critical-states.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1160,
+      "bytes": 72819,
+      "sha256": "d7b99cb0c48749f8667cb5b37bc18af2770d92f4a453f5c1bbd914d8abb01658"
+    },
+    {
+      "path": "visuals/r1-home-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1500,
+      "bytes": 450088,
+      "sha256": "379092f9b400e3479678b5f281e555a1eda0db444b509fca4a7ab11420b64695"
+    },
+    {
+      "path": "visuals/r1-home-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1780,
+      "bytes": 165770,
+      "sha256": "11094d216af111282afa7fe259cd6c60f3b49a11dd8d3571a80a5947d154a594"
+    },
+    {
+      "path": "visuals/r1-identity.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1050,
+      "bytes": 223633,
+      "sha256": "16020174d26a251c1f41ae3b62bdbe2602ca9253eb7c6a17d05af7a648653644"
+    },
+    {
+      "path": "visuals/r1-login-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 40374,
+      "sha256": "8f29b9650015bbe4da305c3a9fdad05cdea3c114d3652ab28fefa42b9fd5cc95"
+    },
+    {
+      "path": "visuals/r1-login-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 940,
+      "bytes": 22658,
+      "sha256": "82ba84ad5f4efc753c2f21f0e228faba3d7d143897b209dafd9d71b24edbae45"
+    },
+    {
+      "path": "visuals/r1-order-detail-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 67888,
+      "sha256": "86431b5106ce937ebac881b82a35952d33d40311cc2631276f7d28225cd61a63"
+    },
+    {
+      "path": "visuals/r1-order-detail-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 54552,
+      "sha256": "73c4d685b7c549ca5e63890c9aac4c1860b18a690d362441559b3bf996bfa7fa"
+    },
+    {
+      "path": "visuals/r1-pdp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1510,
+      "bytes": 521530,
+      "sha256": "bc14b04864f1eea8e6a216a90a8c36a75a8e4713e649a497aecbb5a365daf174"
+    },
+    {
+      "path": "visuals/r1-pdp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 2040,
+      "bytes": 189220,
+      "sha256": "29fcb3d8e7685d67aa1447f9933aabed1f2b5b20637a8a19d93226f164bc4b0d"
+    },
+    {
+      "path": "visuals/r1-plp-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1720,
+      "bytes": 840482,
+      "sha256": "99bce0888e5300c3f2a5ab8bb0d77c4e978b63d5f56b65eeb75f26241d1dd2b5"
+    },
+    {
+      "path": "visuals/r1-plp-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 2140,
+      "bytes": 281816,
+      "sha256": "8dc0c7881b5068be1a664a18f85fedc6cc4027c1cc0190f27bb1eebbc965d29d"
+    },
+    {
+      "path": "visuals/r1-states.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1160,
+      "bytes": 67785,
+      "sha256": "3dcd6ea7879217ce0f55889fa0977b04ea609273850372f65355ba4e22c36791"
+    },
+    {
+      "path": "visuals/r1-subscription-detail-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 74887,
+      "sha256": "d490d76f65ef1a1a026af8097511c3214cf390ed536e82267687f826112f9bd1"
+    },
+    {
+      "path": "visuals/r1-subscription-detail-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 61249,
+      "sha256": "7ec01e9c52f9cf61b17c403c7e1cd585882fbf583a7845e3a10caa6bddd4ffef"
+    },
+    {
+      "path": "visuals/r1-subscription-new-desktop.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 1440,
+      "height": 1400,
+      "bytes": 64405,
+      "sha256": "ca324972790b56768e152bb59b1809e5dd3026508f1a09158dd45ccc90ad33c7"
+    },
+    {
+      "path": "visuals/r1-subscription-new-mobile.png",
+      "kind": "proposed-static-design",
+      "format": "PNG",
+      "width": 375,
+      "height": 1870,
+      "bytes": 51206,
+      "sha256": "96423a07b66bdd6e9b28155191946d0bae9219371898347a13443720be8e2b82"
+    },
+    {
       "path": "visuals/states.png",
       "kind": "proposed-static-design",
       "format": "PNG",
@@ -388,6 +623,15 @@
       "height": 1320,
       "bytes": 72723,
       "sha256": "812a437d74cf2a67f9ad291515614ae01a9983e09aa056ac55e9c80eb293abe7"
+    },
+    {
+      "path": "assets/packaging-concept-r1.png",
+      "kind": "generated-fictional-design-asset",
+      "format": "PNG",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1599171,
+      "sha256": "22729331759a5d64a3c4b4bb170dcd22d002975afbe8ffc18298b1bd2e895a8f"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Production Visual Audit
 
-상태: **PARTIAL VERIFIED**. 공개 Home·PLP·Login·공통 shell 및 anonymous Cart/Checkout를 직접 렌더링했다. populated PDP·인증 이후 Cart/Checkout 전체 감사와 사용자 Screenshot 대조는 완료하지 못했다. [승인 관문](README.md#visual-approval-gate).
+상태: **PARTIAL VERIFIED**. 공개 Home·PLP·Login·공통 shell 및 anonymous Cart/Checkout를 직접 렌더링했다. populated PDP·인증 이후 Cart/Checkout 전체 감사는 완료하지 못했다. 사용자 Screenshot은 미첨부였으나 직접 Production 재캡처로 핵심 대조를 충족했으며 R1에서 승인 blocker에서 제거했다. [승인 관문](README.md#visual-approval-gate).
 
 ## 관찰 방법과 증거 한계
 
@@ -8,7 +8,7 @@
 - 요청 URL: [Home](https://pawcycle.duckdns.org/), [PLP](https://pawcycle.duckdns.org/products). 둘 다 성공. HTTP source만으로 화면을 봤다고 판단하지 않았다.
 - 비로그인 상태. 개인정보 입력, 회원 로그인, 장바구니 mutation, 주문/결제, Production catalog import 없음. 조회가 발생시키는 일반 사이트 telemetry 외 운영 작업 없음.
 - main `bec817d`에 PR #255가 포함됨을 확인했다. 운영 배포 SHA를 별도 시스템에서 대조하지는 않았다. 배포되었다는 전제는 사용자 입력이다.
-- 사용자가 제공한 첨부 디렉터리에는 `pasted-text.txt`만 존재했다. 사용자 Screenshot은 **UNVERIFIED / NOT PROVIDED**. 아래 이미지는 모두 이번 작업에서 직접 캡처한 것이다.
+- 사용자가 제공한 첨부 디렉터리에는 `pasted-text.txt`만 존재했다. 사용자 Screenshot은 **UNVERIFIED / NOT PROVIDED**. 아래 이미지는 모두 이번 작업에서 직접 캡처한 것이다. R1 지시에 따라 이 재캡처로 핵심 대조가 충족되었으며 Screenshot 미첨부는 승인 blocker가 아니다.
 - 상품 0개는 해당 시점 공개 화면의 관찰이다. 운영 DB가 비었거나 앞으로도 비어 있다는 단정은 하지 않는다. 정렬·필터 API의 실제 데이터 정확성도 0개 화면만으로 증명하지 않는다.
 - 브라우저 viewport capability가 당시 선택된 탭에 적용되어 초기 mobile Login 캡처 1회는 여전히 1440이었다. 잘못 이름 붙인 파일을 제거하고 별도 Production 탭에서 실제 `innerWidth`를 확인한 375 캡처로 교체했다. Reference는 초기 기본 937 CSS px, 일부 후속 페이지는 1440/375이며 파일별로 구분한다. 스크롤바로 이미지 폭은 CSS viewport보다 작을 수 있다.
 
@@ -70,4 +70,4 @@
 - 브랜드 선택 목록에서 demo 명칭이 보였다. 이는 공개 metadata 관찰일 뿐 실제 상품 판매 근거가 아니다. 새 디자인이 DB 값을 바꾸거나 숨겨 정제하는 작업은 하지 않으며 catalog owner 확인 항목으로 둔다.
 - 현재 1024는 sidebar 대신 filter trigger다. 새 설계는 1024에서도 sidebar를 되살리지 않는다.
 - 320/375/768/1024 PLP에서 `scrollWidth <= innerWidth`를 확인했다. 이 결과는 populated 긴 상품명·다국어·200% zoom·실기기 키보드까지 검증했다는 의미가 아니다.
-- 사용자 Screenshot 대조, 실제 populated PDP, 인증 Cart·Checkout, 긴 목록/오류/재시도, 실기기 Safari·스크린리더는 후속 검증 필요. **Production Visual Audit 전체 완료라고 선언하지 않는다.**
+- 실제 populated PDP, 인증 Cart·Checkout, 긴 목록/오류/재시도, 실기기 Safari·스크린리더는 후속 검증 필요. **Production Visual Audit 전체 완료라고 선언하지 않는다.**
