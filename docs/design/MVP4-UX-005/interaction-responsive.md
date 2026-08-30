@@ -85,7 +85,7 @@ Cart에 선택주문·판매자별 배송비·프로모션 코드·직접 구독
 | category nav | full-height drawer, parent accordion | 동일 | 360w drawer | 640w anchored panel | 640w anchored panel |
 | PDP | name/price→image288→options→details, sticky | image343 | image328 + 구매368, details 전폭; 담기는 flow | thumb56+gallery440+buy416/gaps24 | thumb64+gallery672+buy448/gaps48 |
 | Cart | row text/quantity2줄, summary 본문, fixed action | 동일 | rows+본문 summary; fixed 없음 | main608+gap32+summary320 | main864+gap48+summary368 |
-| Login | 전용56h header, form288, 목적문구1줄+form | form343 | centered form400, 큰 branding 없음 | 안내384+gap80+form400 | 안내496+gap96+form400, max992 |
+| Login | 전용64h header, form288, 목적문구1줄+form | 전용64h header, form343 | 전용64h header, centered form400, 큰 branding 없음 | 전용88h header, 안내384+gap80+form400 | 전용88h header, 안내496+gap96+form400, max992 |
 | Footer | support + 3 accordion | 동일 | 3열, account link 유지 | 3열+brand | 3열+brand |
 | section gap | 32 | 32 | 40 | 48 | 56 |
 
@@ -95,7 +95,7 @@ PDP 1440의 column 합계 `64+48+672+48+448=1280`; 1024 `56+24+440+24+416=960`. 
 
 ## 5. 구현 전/후 확인 체크리스트
 
-시각 승인 전에는 5개 대표 화면의 Desktop/Mobile 구성·빈 상태·각 button/form/selected 상태를 확인한다. 코드 구현 후에만 다음을 실제 환경에서 pass/fail 판정한다.
+시각 승인 전에는 **R1 핵심6개 화면(Home/PLP/PDP/Cart/Checkout/Login)의 Desktop/Mobile, Order Detail/Subscription New/Subscription Detail, 상태 보드와 R1 최종 검토 보드**를 확인한다. 코드 구현 후에만 다음을 실제 환경에서 pass/fail 판정한다.
 
 1. 320/375/768/1024/1440에서 제목·금액·긴 label·drawer footer 가림 없음, 200% zoom에서도 reflow.
 2. Category와 filter의 click/outside/Escape/Tab/focus return, drawer background inert, scroll lock 복원.
@@ -105,7 +105,6 @@ PDP 1440의 column 합계 `64+48+672+48+448=1280`; 1024 `56+24+440+24+416=960`. 
 6. keyboard·screen reader·reduced-motion·forced-colors, form 자동완성/붙여넣기, sticky focus 가림 없음.
 7. 실제 상품 사진/긴 상품명/옵션 조합/할인 없음/재고0/리뷰0/null price로 populated 검증. 이번 Production empty catalog로 대체할 수 없음.
 
-
 ## R1 전체 Customer 범위
 
-[Customer page families](customer-page-families.md)의 주문·구독 상세, 계정·지원 상태를 추가 적용한다. C dock는 기존 MVP4 PO 결정과 충돌하므로 별도 결정 변경 전 적용 금지. A에는 C dock 없음. 사용자 Screenshot 미첨부는 직접 Production 재캡처로 핵심 대조가 충족되어 Design Approval blocker가 아니다.
+[Customer page families](customer-page-families.md)의 주문·구독 상세, 계정·지원 상태를 추가 적용한다. [R1 최종 승인 전 보정](review-r1-final-check.md)의 multi-brand stress와 orbit 최소 크기 규칙도 구현 전 승인 대상이다. C dock는 기존 MVP4 PO 결정과 충돌하므로 별도 결정 변경 전 적용 금지. A에는 C dock 없음. 사용자 Screenshot 미첨부는 직접 Production 재캡처로 핵심 대조가 충족되어 Design Approval blocker가 아니다.
