@@ -169,7 +169,7 @@ export function AppHeader() {
     <div className="header-primary">
       <button ref={menuButton} className="header-menu-toggle icon-button" type="button" aria-expanded={menuOpen} aria-controls="mobile-navigation" onClick={() => { setCategoryOpen(false); setMenuOpen((open) => !open); }}>메뉴</button>
       <Link className="brand" href="/" aria-label="PawCycle 홈"><OrbitMark /><strong>PawCycle</strong></Link>
-      <nav className="header-catalog" aria-label="상품 탐색"><Link href="/products" aria-current={pathname === "/products" ? "page" : undefined}>상품</Link><button ref={categoryButton} type="button" aria-expanded={categoryOpen} aria-controls="category-navigation" onClick={() => { setMenuOpen(false); setCategoryOpen(open => !open); }}>카테고리</button></nav>
+      <nav className="header-catalog" aria-label="상품 탐색"><Link href="/products" aria-current={pathname === "/products" ? "page" : undefined}>상품</Link><button ref={categoryButton} type="button" aria-expanded={categoryOpen} aria-controls="category-navigation" onClick={() => { setMenuOpen(false); setCategoryOpen(open => !open); }}>카테고리</button><Link href="/subscriptions" aria-current={pathname.startsWith("/subscriptions") ? "page" : undefined}>정기배송</Link></nav>
       <form className="header-search" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
         <label className="sr-only" htmlFor="header-search">상품 검색</label>
         <input id="header-search" name="q" type="search" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="상품명이나 필요한 물품을 검색하세요" />
