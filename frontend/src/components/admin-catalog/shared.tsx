@@ -160,25 +160,30 @@ export function ResourcePanel<Input extends object, Row extends Input>({ title, 
   remove?: (id: number, csrf: string) => Promise<unknown>; renderSelected?: (row: Row) => ReactNode; linkTo?: (row: Row) => string;
 }) {
   const resource = useAdminResource(load); const mutation = useAdminMutation();
-  const [selectedId, setSelectedId] = useState<number | null>(null); const [revision, setRevision] = useState(0); const [filter, setFilter] = useState(""); const filterId = useId();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [revision, setRevision] = useState(0); const [filter, setFilter] = useState(""); const filterId = useId();
   const selected = resource.data?.find((row) => idOf(row) === selectedId) ?? null;
   const reload = async () => { await resource.reload(); setRevision((r) => r + 1); };
+  const reloadAndCloseEditor = async () => { await reload(); setEditorMode(null); };
   const retry = () => void reload().then(mutation.reset).catch(() => undefined);
   const rows = resource.data?.filter((row) => labelOf(row).toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
+  const editing = editorMode === "edit" && Boolean(selected);
+  const editorBaseline = editing && selected ? selected : initial;
   return <section className="admin-resource" aria-label={title}>
-    <div className="admin-section-heading"><h2>{title}</h2><span>{resource.data?.length ?? "—"}개</span></div>
+    <div className="admin-section-heading"><div><h2>{title}</h2><span>{resource.data?.length ?? "—"}개</span></div><button type="button" className="button button-secondary admin-create-toggle" disabled={mutation.pending} aria-expanded={editorMode === "create"} onClick={() => { setSelectedId(null); setEditorMode((mode) => mode === "create" ? null : "create"); setRevision((r) => r + 1); mutation.reset(); }}>{editorMode === "create" ? "생성 닫기" : `+ ${title} 생성`}</button></div>
     <ResourceState loading={resource.loading} error={resource.error} onRetry={retry} />
     <MutationFeedback mutation={mutation} retry={retry} />
     {resource.data && !resource.error ? <>
       <div className="admin-resource-grid">
         <div className="admin-resource-list">
           <label htmlFor={filterId}>{title} 찾기</label><input className="input" id={filterId} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="이름 또는 ID" />
-          <button type="button" className="button button-secondary" disabled={mutation.pending} onClick={() => { setSelectedId(null); setRevision((r) => r + 1); mutation.reset(); }}>새 {title} 만들기</button>
-          {!rows.length ? <p>표시할 {title}이 없습니다.</p> : <ul>{rows.map((row) => <li key={idOf(row)}>{linkTo ? <Link href={linkTo(row)}>{labelOf(row)}</Link> : <button type="button" aria-pressed={selectedId === idOf(row)} disabled={mutation.pending} onClick={() => { setSelectedId(idOf(row)); mutation.reset(); }}>{labelOf(row)}</button>}</li>)}</ul>}
+          {!rows.length ? <p>표시할 {title}이 없습니다.</p> : <ul>{rows.map((row) => <li key={idOf(row)}>{linkTo ? <Link href={linkTo(row)}>{labelOf(row)}</Link> : <button type="button" aria-pressed={selectedId === idOf(row)} disabled={mutation.pending} onClick={() => { setSelectedId(idOf(row)); setEditorMode(null); mutation.reset(); }}>{labelOf(row)}</button>}</li>)}</ul>}
         </div>
         <div>
-          <CatalogForm<Input> key={`${selectedId}-${revision}`} title={selected ? `${title} 수정` : `${title} 생성`} baseline={selected ?? initial} fields={typeof fields === "function" ? fields(selected, resource.data) : fields} editing={Boolean(selected)} pending={mutation.pending || mutation.refreshFailed || resource.loading} error={mutation.error} onSubmit={(value, changes) => void mutation.run((csrf) => selected && patch ? patch(idOf(selected), changes, csrf) : create(value, csrf), reload)} />
-          {selected && remove ? <button type="button" className="button button-danger" disabled={mutation.pending || mutation.refreshFailed || resource.loading} onClick={() => { if (window.confirm(`${labelOf(selected)} 항목을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) void mutation.run((csrf) => remove(idOf(selected), csrf), async () => { await reload(); setSelectedId(null); }); }}>선택한 {title} 삭제</button> : null}
+          {editorMode ? <div className="admin-editor-card"><div className="admin-section-heading"><strong>{editing ? `${title} 수정` : `${title} 생성`}</strong><button type="button" className="button button-ghost" disabled={mutation.pending} onClick={() => setEditorMode(null)}>닫기</button></div><CatalogForm<Input> key={`${selectedId}-${editorMode}-${revision}`} title={editing ? `${title} 수정` : `${title} 생성`} baseline={editorBaseline} fields={typeof fields === "function" ? fields(editing ? selected : null, resource.data) : fields} editing={editing} pending={mutation.pending || mutation.refreshFailed || resource.loading} error={mutation.error} onSubmit={(value, changes) => void mutation.run((csrf) => editing && selected && patch ? patch(idOf(selected), changes, csrf) : create(value, csrf), reloadAndCloseEditor)} /></div>
+            : selected ? <div className="admin-selection-card"><strong>{labelOf(selected)}</strong><span>선택한 {title}의 작업을 실행할 때만 편집 화면을 엽니다.</span><div className="button-row">{patch ? <button className="button button-primary" type="button" disabled={mutation.pending} onClick={() => { setEditorMode("edit"); setRevision((r) => r + 1); mutation.reset(); }}>수정</button> : null}{remove ? <button type="button" className="button button-danger" disabled={mutation.pending || mutation.refreshFailed || resource.loading} onClick={() => { if (window.confirm(`${labelOf(selected)} 항목을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) void mutation.run((csrf) => remove(idOf(selected), csrf), async () => { await reload(); setSelectedId(null); setEditorMode(null); }); }}>삭제</button> : null}</div></div>
+              : <div className="admin-selection-placeholder">왼쪽 목록에서 {title}을 선택하거나 새 항목을 생성하세요.</div>}
         </div>
       </div>
       {selected && renderSelected ? <div key={selectedId} className="admin-nested">{renderSelected(selected)}</div> : null}
