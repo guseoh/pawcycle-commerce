@@ -1,0 +1,116 @@
+/* MVP4 Visual Closure 3: final customer usability correction.
+ * Keeps approved API/domain contracts intact and tightens discovery, PLP density,
+ * touch targets and customer-facing hierarchy after Browser Evidence review.
+ */
+
+@scope (.customer-theme) {
+  /* Search discovery must remain readable even when category/brand labels are long. */
+  .search-discovery-links a {
+    flex:0 0 auto;
+    max-width:100%;
+    white-space:normal;
+    word-break:keep-all;
+    overflow-wrap:anywhere;
+  }
+
+  /* Product comparison is an explicit mode, not a permanent action on every card. */
+  .catalog-compare-mode-toggle[aria-pressed="true"] {
+    border-color:var(--brand);
+    background:var(--selected-soft);
+    color:var(--brand);
+  }
+  .catalog-compare-guidance {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin:16px 0 20px;
+    padding:12px 0;
+    border-block:1px solid var(--line);
+  }
+  .catalog-compare-guidance strong { font-size:14px; }
+  .catalog-compare-guidance span { color:var(--muted); font-size:13px; }
+  .catalog-card-actions {
+    margin-top:12px;
+    padding-top:10px;
+    border-top:1px solid var(--line);
+  }
+  .catalog-card-actions .compare-toggle {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-height:44px;
+    width:100%;
+    color:var(--ink);
+    font-size:13px;
+  }
+
+  /* Keep the purchase action easy to hit; an empty action area should not reserve space. */
+  .catalog-quick-purchase:empty { display:none; }
+  .catalog-quick-purchase .button { min-height:44px; }
+
+  /* Protected-page login gates should read as a compact next step, not a decorative card. */
+  .state-panel-error:has(a[href^="/login"]) {
+    width:min(100%,560px);
+    margin-inline:auto;
+    padding:32px 24px;
+    text-align:center;
+  }
+  .state-panel-error:has(a[href^="/login"]) .button-row { justify-content:center; }
+
+  /* Personalized recommendations may have a distinct section surface without nesting cards. */
+  .shopping-home .recommendation-section[data-source="home-personalized"] .recommendation-card {
+    border:0;
+    border-bottom:1px solid var(--line);
+    border-radius:0;
+    background:transparent;
+  }
+}
+
+@media (max-width:560px) {
+  @scope (.customer-theme) {
+    /* Recent terms may remain chips. Discovery resources become readable navigation rows. */
+    .search-discovery-panel .search-recent-list {
+      flex-wrap:wrap;
+      overflow:visible;
+      padding-bottom:0;
+    }
+    .search-discovery-panel .search-discovery-links {
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:0 14px;
+      overflow:visible;
+      padding-bottom:0;
+    }
+    .search-discovery-panel .search-discovery-brand-links {
+      grid-template-columns:1fr;
+    }
+    .search-discovery-panel .search-discovery-links a {
+      display:flex;
+      align-items:center;
+      min-width:0;
+      width:100%;
+      min-height:44px;
+      padding:10px 2px;
+      border:0;
+      border-bottom:1px solid var(--line);
+      border-radius:0;
+      background:transparent;
+      color:var(--ink);
+      line-height:20px;
+    }
+    .search-discovery-panel .search-discovery-links a:hover {
+      border-color:var(--line);
+      background:transparent;
+      color:var(--brand);
+    }
+
+    .catalog-compare-guidance {
+      align-items:flex-start;
+      flex-direction:column;
+      gap:3px;
+      margin-top:12px;
+    }
+    .catalog-quick-purchase .button { min-height:44px; }
+  }
+}

@@ -26,6 +26,7 @@ function ProductsContent() {
   const [state, setState] = useState<LoadState | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterGroup, setFilterGroup] = useState("all");
+  const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [compareNames, setCompareNames] = useState<Record<number, string>>({});
   const [compareMessage, setCompareMessage] = useState<string | null>(null);
@@ -45,6 +46,7 @@ function ProductsContent() {
   const current = state?.key === requestKey ? state : null;
   const products = current?.status === "success" ? (current.response.items ?? current.response.products ?? []) : [];
   const renderedProductIds = products.map((product) => product.productId).join(",");
+
   useEffect(() => {
     if (current?.status !== "success") return;
     const raw = sessionStorage.getItem("pawcycle.catalog-return");
@@ -59,6 +61,7 @@ function ProductsContent() {
       });
     } catch { sessionStorage.removeItem("pawcycle.catalog-return"); }
   }, [current?.status, query]);
+
   type InteractionEvent = Parameters<typeof finalProductApi.interactions.send>[0][number];
   const track = (events: Array<InteractionEvent | null>) => {
     if (auth.status !== "authenticated") return;
@@ -66,17 +69,20 @@ function ProductsContent() {
     if (!validEvents.length) return;
     void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send(validEvents, csrf)).catch(() => undefined);
   };
+
   useEffect(() => {
     if (current?.status !== "success" || !products.length || auth.status !== "authenticated") return;
     track(products.map((product) => createInteractionEvent({ type: "PRODUCT_IMPRESSION", productId: product.productId, source: "catalog", context: interactionContext(filters) })));
     // Product impressions are emitted once for each rendered catalog response.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.key, renderedProductIds, auth.status, auth.memberId]);
+
   function change(patch: Partial<ProductFilters>) {
     const next = changeCatalogFilters(filters, patch);
     track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(next) })]);
     router.push(catalogHref(next));
   }
+
   function toggleCompare(productId: number, name: string) {
     const result = toggleComparisonId(compareIds, productId);
     if (!result.accepted) { setCompareMessage("상품 비교는 최대 3개까지 선택할 수 있어요."); return; }
@@ -85,11 +91,26 @@ function ProductsContent() {
     setCompareNames((names) => result.reason === "removed" ? Object.fromEntries(Object.entries(names).filter(([id]) => Number(id) !== productId)) : { ...names, [productId]: name });
   }
 
+  function closeCompareMode() {
+    setCompareMode(false);
+    setCompareIds([]);
+    setCompareNames({});
+    setCompareMessage(null);
+  }
+
   return <div className="catalog-page">
     <header className="page-heading"><h1 tabIndex={-1} id="catalog-results-title">{filters.q ? `‘${filters.q}’ 검색 결과` : "전체 상품"}</h1><p>필요한 물품을 편하게 찾아보세요.</p></header>
-    <div className="catalog-toolbar"><p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p><div className="button-row"><button ref={filterButton} type="button" className="button button-secondary catalog-filter-toggle" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => { setFilterGroup("all"); setFilterOpen(open => !open); }}>필터 {activeFilterCount(filters) ? `${activeFilterCount(filters)}개` : ""}</button><label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div></div>
-    <div className="catalog-filter-triggers" aria-label="상품 필터">{[["pet","반려동물"],["category","카테고리"],["brand","브랜드"],["price","가격"],["condition","구매 조건"]].map(([group,label]) => <button key={group} type="button" aria-expanded={filterOpen && filterGroup === group} aria-controls="catalog-filter-panel" onClick={event => { filterButton.current = event.currentTarget; setFilterGroup(group); setFilterOpen(!(filterOpen && filterGroup === group)); }}>{label} <span aria-hidden="true">⌄</span></button>)}</div>
+    <div className="catalog-toolbar">
+      <p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p>
+      <div className="button-row">
+        <button ref={filterButton} type="button" className="button button-secondary catalog-filter-toggle" aria-expanded={filterOpen} aria-controls="catalog-filter-panel" onClick={() => { setFilterGroup("all"); setFilterOpen(open => !open); }}>필터 {activeFilterCount(filters) ? `${activeFilterCount(filters)}개` : ""}</button>
+        <label className="form-field catalog-sort"><span className="sr-only">상품 정렬</span><select className="input" value={filters.sort} onChange={(event) => change({ sort: event.target.value as ProductSort })}>{PRODUCT_SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <button type="button" className="button button-secondary catalog-compare-mode-toggle" aria-pressed={compareMode} onClick={() => { if (compareMode) closeCompareMode(); else setCompareMode(true); }}>{compareMode ? "비교 종료" : "상품 비교"}</button>
+      </div>
+    </div>
+    <div className="catalog-filter-triggers" aria-label="상품 필터">{[["pet", "반려동물"], ["category", "카테고리"], ["brand", "브랜드"], ["price", "가격"], ["condition", "구매 조건"]].map(([group, label]) => <button key={group} type="button" aria-expanded={filterOpen && filterGroup === group} aria-controls="catalog-filter-panel" onClick={event => { filterButton.current = event.currentTarget; setFilterGroup(group); setFilterOpen(!(filterOpen && filterGroup === group)); }}>{label} <span aria-hidden="true">⌄</span></button>)}</div>
     <FilterChips filters={filters} metadata={metadata} onChange={change} onReset={() => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(parseCatalogFilters(new URLSearchParams())) })]); router.push(catalogHref({ q: filters.q, sort: filters.sort, size: filters.size, page: 0 })); }} />
+    {compareMode ? <div className="catalog-compare-guidance"><strong>비교할 상품을 선택하세요.</strong><span>2~3개를 선택하면 차이를 한 화면에서 확인할 수 있어요.</span></div> : null}
     <div className="catalog-layout">
       {filterOpen ? <CommerceOverlay key={filterGroup} id="catalog-filter-panel" responsive label="상품 필터" className="catalog-filter-panel" onClose={() => setFilterOpen(false)}>
         <div className="catalog-filter-heading"><h2>상세 필터</h2><button type="button" className="catalog-filter-close icon-button" onClick={() => { setFilterOpen(false); filterButton.current?.focus(); }}>닫기</button></div>
@@ -102,13 +123,13 @@ function ProductsContent() {
         {!current ? <CatalogSkeleton /> : null}
         {current?.status === "error" ? <ErrorState headingLevel={3} title="상품 목록을 불러오지 못했습니다." message={current.message} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
         {current?.status === "success" ? <>
-          {products.length ? <div className="catalog-products-grid">{products.map((product) => <CatalogProductCard key={product.productId} product={product} compareSelected={compareIds.includes(product.productId)} onCompare={() => toggleCompare(product.productId, product.name)} />)}</div> : <div className="state-panel"><h3>{activeFilterCount(filters) ? "찾는 상품이 없어요." : "상품을 준비하고 있어요."}</h3><p>필터를 줄이거나 다른 검색어로 찾아보세요.</p><button className="button button-secondary" onClick={() => router.push("/products")}>전체 상품 보기</button></div>}
+          {products.length ? <div className="catalog-products-grid">{products.map((product) => <CatalogProductCard key={product.productId} product={product} compareSelected={compareIds.includes(product.productId)} onCompare={compareMode ? () => toggleCompare(product.productId, product.name) : undefined} />)}</div> : <div className="state-panel"><h3>{activeFilterCount(filters) ? "찾는 상품이 없어요." : "상품을 준비하고 있어요."}</h3><p>필터를 줄이거나 다른 검색어로 찾아보세요.</p><button className="button button-secondary" onClick={() => router.push("/products")}>전체 상품 보기</button></div>}
           {current.response.totalPages > 1 ? <nav className="pagination-row" aria-label="상품 목록 페이지"><button className="button button-secondary" disabled={current.response.page <= 0} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page - 1 }))}>이전</button><span>{current.response.page + 1} / {current.response.totalPages}</span><button className="button button-secondary" disabled={current.response.page + 1 >= current.response.totalPages} onClick={() => router.push(catalogHref({ ...filters, page: current.response.page + 1 }))}>다음</button></nav> : null}
         </> : null}
       </section>
     </div>
-    {compareMessage ? <p className="compare-selection-message" role="status">{compareMessage}</p> : null}
-    {compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><div><strong>상품 비교 {compareIds.length}/3</strong><span>{compareIds.map((id) => compareNames[id] ?? `상품 #${id}`).join(" · ")}</span></div><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareMessage(null); }}>전체 해제</button>{compareIds.map((id) => <button className="compare-remove" key={id} type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button>)}<button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
+    {compareMode && compareMessage ? <p className="compare-selection-message" role="status">{compareMessage}</p> : null}
+    {compareMode && compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><div><strong>상품 비교 {compareIds.length}/3</strong><span>{compareIds.map((id) => compareNames[id] ?? `상품 #${id}`).join(" · ")}</span></div><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareMessage(null); }}>전체 해제</button>{compareIds.map((id) => <button className="compare-remove" key={id} type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button>)}<button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
   </div>;
 }
 

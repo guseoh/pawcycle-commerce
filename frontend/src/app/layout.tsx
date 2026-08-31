@@ -8,6 +8,7 @@ import "./visual-closure.css";
 import "./visual-closure-v2.css";
 import "./admin-operational-v2.css";
 import "./account-visual-v2.css";
+import "./visual-closure-v3.css";
 
 export const metadata: Metadata = {
   title: "PawCycle Commerce",

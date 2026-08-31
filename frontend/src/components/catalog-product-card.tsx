@@ -82,7 +82,17 @@ function CatalogWishlistButton({ productId, productName }: { productId: number; 
     let active = true;
     const memberId = auth.memberId;
     const observedVersion = refreshVersion.current;
-    void loadWishlist(memberId).then((ids) => { if (active && refreshVersion.current === observedVersion && auth.memberId === memberId) { setSaved(ids.has(productId)); setLoadedFor(memberId); } }).catch((error: unknown) => { if (!active || refreshVersion.current !== observedVersion || auth.memberId !== memberId) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; } setMessage("위시 상태를 확인하지 못했어요."); setLoadedFor(memberId); });
+    void loadWishlist(memberId).then((ids) => {
+      if (active && refreshVersion.current === observedVersion && auth.memberId === memberId) {
+        setSaved(ids.has(productId));
+        setLoadedFor(memberId);
+      }
+    }).catch((error: unknown) => {
+      if (!active || refreshVersion.current !== observedVersion || auth.memberId !== memberId) return;
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
+      setMessage("위시 상태를 확인하지 못했어요.");
+      setLoadedFor(memberId);
+    });
     return () => { active = false; };
   }, [auth, auth.memberId, auth.status, productId, refreshKey]);
 
@@ -99,7 +109,10 @@ function CatalogWishlistButton({ productId, productName }: { productId: number; 
         if (entry?.ids) { if (next) entry.ids.add(productId); else entry.ids.delete(productId); }
         setMessage(next ? "위시리스트에 저장했어요." : "위시리스트에서 제거했어요.");
         notifyCommerceChanged();
-      }).catch((error: unknown) => { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했어요."); }).finally(() => setBusy(false));
+      }).catch((error: unknown) => {
+        if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+        setMessage(error instanceof ApiError ? error.message : "위시리스트를 변경하지 못했어요.");
+      }).finally(() => setBusy(false));
     }}>{loadedFor !== auth.memberId || busy ? <span aria-hidden="true">…</span> : <HeartIcon saved={saved} />}</button>
     {message ? <span className="catalog-card-message" role="status">{message}</span> : null}
   </>;
@@ -111,9 +124,9 @@ function CatalogQuickPurchase({ product, productName, href }: { product: Product
   const [message, setMessage] = useState<string | null>(null);
   const singleSku = product.skuPriceSummary.skuPrices.length === 1 ? product.skuPriceSummary.skuPrices[0] : null;
 
-  if (!product.purchasable) return <span className="catalog-card-message" role="status">현재 구매할 수 없는 상품입니다.</span>;
+  if (!product.purchasable) return null;
   if (!singleSku) return <Link className="button button-secondary" href={href}>옵션 선택</Link>;
-  if (auth.status !== "authenticated") return <Link className="button button-secondary" href={href}>구매 옵션 보기</Link>;
+  if (auth.status !== "authenticated") return null;
 
   return <>
     <button className="button button-secondary" type="button" disabled={busy} onClick={() => {
@@ -131,20 +144,22 @@ function CatalogQuickPurchase({ product, productName, href }: { product: Product
   </>;
 }
 
-function HeartIcon({ saved }: { saved: boolean }) { return <svg viewBox="0 0 24 24" aria-hidden="true" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.75"><path d="M12 20s-8-4.8-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 9c0 6.2-8 11-8 11Z" /></svg>; }
+function HeartIcon({ saved }: { saved: boolean }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.75"><path d="M12 20s-8-4.8-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 9c0 6.2-8 11-8 11Z" /></svg>;
+}
 
 export function CatalogProductCard({ product, compareSelected = false, onCompare }: { product: ProductSummary; compareSelected?: boolean; onCompare?: () => void }) {
   const productName = userFacingCatalogLabel(product.name, "상품");
   const href = `/products/${product.productId}`;
   return <article className="catalog-product-card" data-product-id={product.productId}>
-    <Link className="catalog-image-link" href={href} aria-label={`${productName} 상품 상세 보기`}><div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt="" className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">현재 구매 불가</span> : null}</div></Link>
+    <Link className="catalog-image-link" href={href} aria-label={`${productName} 상품 상세 보기`}><div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt="" className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">구매 불가</span> : null}</div></Link>
     <div className="catalog-wishlist-control"><CatalogWishlistButton productId={product.productId} productName={productName} /></div>
     <div className="catalog-card-copy">
       {product.brand ? <p className="catalog-brand" title={product.brand.name}>{product.brand.name}</p> : null}
       <h3><Link className="catalog-title-link" href={href}>{productName}</Link></h3>
       <CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />
-      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">★ {product.averageRating} <span aria-hidden="true">·</span> 리뷰 {product.reviewCount.toLocaleString()}개</p> : <p className="catalog-rating catalog-rating-empty">아직 리뷰가 없어요</p>}
-      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}{!product.purchasable ? <span className="product-availability is-unavailable">현재 구매 불가</span> : null}</div>
+      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">★ {product.averageRating} <span aria-hidden="true">·</span> 리뷰 {product.reviewCount.toLocaleString()}개</p> : null}
+      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}</div>
     </div>
     <div className="catalog-quick-purchase"><CatalogQuickPurchase product={product} productName={productName} href={href} /></div>
     {onCompare ? <div className="catalog-card-actions"><label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} />비교에 담기</label></div> : null}
