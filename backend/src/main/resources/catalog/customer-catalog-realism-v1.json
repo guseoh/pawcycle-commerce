@@ -49,6 +49,20 @@
         "expectedBefore": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
         "desiredAfter": "https://images.unsplash.com/photo-1643786260462-8acc5e4fb89c?w=800&q=80"
       }
+    },
+    {
+      "catalogKey": "qa3-cat-breakaway-collar",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1714658990886-7fbb2deac266?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-photo-scarf",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1654849158272-e2bda62c16aa?w=800&q=80"
+      }
     }
   ],
   "images": [
@@ -89,6 +103,32 @@
       "altText": {
         "expectedBefore": "커브 라운지 스크래처 데모 대표 이미지",
         "desiredAfter": "커브 라운지 스크래처 대표 이미지"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-breakaway-collar",
+      "imageType": "MAIN",
+      "displayOrder": 0,
+      "imageUrl": {
+        "expectedBefore": "https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1714658990886-7fbb2deac266?w=800&q=80"
+      },
+      "altText": {
+        "expectedBefore": "세이프 버클 캣 칼라 데모 대표 이미지",
+        "desiredAfter": "세이프 버클 캣 칼라 대표 이미지"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-photo-scarf",
+      "imageType": "MAIN",
+      "displayOrder": 0,
+      "imageUrl": {
+        "expectedBefore": "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1654849158272-e2bda62c16aa?w=800&q=80"
+      },
+      "altText": {
+        "expectedBefore": "포토 데이 스카프 데모 대표 이미지",
+        "desiredAfter": "포토 데이 스카프 대표 이미지"
       }
     }
   ]

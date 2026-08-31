@@ -109,7 +109,7 @@ export default function CartPage() {
     <header className="page-heading"><p className="eyebrow">Cart</p><h1>장바구니</h1><p>상품 옵션, 수량, 현재 가격과 구매 가능 상태를 확인하세요.</p></header>
     {unavailableItems.length > 0 ? <p className="error-summary" role="alert">구매할 수 없는 상품이 있어요. 수량을 줄이거나 상품을 삭제한 뒤 주문을 진행해 주세요.</p> : null}
     {statusMessage ? <p className="notice-success" role="status">{statusMessage}</p> : null}
-    {hasUnappliedQuantity ? <p className="provider-block" role="status">변경한 수량을 적용해 주세요. 표시 금액은 마지막 서버 확인 값입니다.</p> : null}
+    {hasUnappliedQuantity ? <p className="provider-block" role="status">변경한 수량을 적용해 주세요. 표시 금액은 마지막으로 확인한 값입니다.</p> : null}
     <div className="cart-layout">
       <section className="section-card cart-items-panel" aria-labelledby="cart-items-title">
         <div className="section-title"><h2 id="cart-items-title">담은 상품 <span className="count-badge">{items?.length ?? 0}</span></h2></div>
@@ -128,7 +128,7 @@ export default function CartPage() {
       {items?.length ? <aside className="section-card cart-summary" aria-labelledby="cart-summary-title">
         <p className="eyebrow">주문 준비</p><h2 id="cart-summary-title">현재 주문 금액</h2>
         {pricing ? <dl className="price-summary"><div><dt>상품 금액</dt><dd>{formatPrice(pricing.originalAmount)}</dd></div><div><dt>할인</dt><dd>{pricing.discountAmount ? `-${formatPrice(pricing.discountAmount)}` : formatPrice(0)}</dd></div><div><dt>배송비</dt><dd>{pricing.shippingFee ? formatPrice(pricing.shippingFee) : "무료"}</dd></div><div className="price-summary-total"><dt>예상 결제 금액</dt><dd>{formatPrice(pricing.paymentAmount)}</dd></div></dl> : null}
-        <p className="field-help">쿠폰·주소·재고와 최종 결제 금액은 주문 직전에 서버가 다시 확인합니다.</p>
+        <p className="field-help">쿠폰·주소·재고와 최종 결제 금액은 주문 직전에 다시 확인합니다.</p>
         {items?.length && unavailableItems.length === 0 && !hasUnappliedQuantity ? <Link className="button button-primary" href="/checkout">장바구니 전체 주문하기</Link> : <Link className="button button-secondary" href="/products">상품 둘러보기</Link>}
       </aside> : null}
     </div>

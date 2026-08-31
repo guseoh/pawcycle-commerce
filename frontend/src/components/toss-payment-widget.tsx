@@ -66,11 +66,11 @@ export function TossPaymentWidget({ checkout }: { checkout: CheckoutResult }) {
   }
 
   if (phase === "unavailable") {
-    return <div className="provider-block" role="status"><strong>테스트 결제 준비 전</strong><p>{checkout.tossTestEnabled ? "로컬 Toss Test client key가 구성되지 않아 결제 화면을 열 수 없습니다." : "서버 Toss Test opt-in이 활성화되지 않아 실제 Test 결제 화면을 열지 않습니다."} 주문은 결제 대기 상태로 남습니다.</p></div>;
+    return <div className="provider-block" role="status"><strong>결제 준비 전</strong><p>현재 결제를 진행할 수 없습니다. 결제 서비스가 제공되기 전까지는 이 화면에서 결제를 진행할 수 없어요. 주문은 결제 대기 상태로 남습니다.</p></div>;
   }
 
   return <section className="toss-payment-panel" aria-labelledby="toss-payment-title">
-    <div className="section-title"><div><p className="eyebrow">Toss Test</p><h2 id="toss-payment-title">결제 수단 선택</h2></div><strong>{formatPrice(checkout.amount)}</strong></div>
+    <div className="section-title"><div><p className="eyebrow">결제</p><h2 id="toss-payment-title">결제 수단 선택</h2></div><strong>{formatPrice(checkout.amount)}</strong></div>
     {phase === "loading" ? <p className="field-help" role="status">결제 화면을 준비하고 있습니다.</p> : null}
     {phase === "error" ? <div className="error-summary" role="alert"><p>{error}</p><button className="button button-secondary" type="button" onClick={() => { setError(null); setPhase("loading"); setAttempt((value) => value + 1); }}>결제 화면 다시 준비</button></div> : null}
     <div id="toss-payment-methods" aria-label="결제 수단" />

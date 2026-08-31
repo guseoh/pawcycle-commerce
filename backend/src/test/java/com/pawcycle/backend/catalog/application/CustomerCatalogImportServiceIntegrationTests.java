@@ -41,6 +41,7 @@ class CustomerCatalogImportServiceIntegrationTests {
     void applyCreatesOneHundredProductCanonicalCatalogAndIsIdempotent() {
         CustomerCatalogImportService.ImportResult first = customerCatalog.apply();
         Map<String, Integer> afterFirst = counts();
+        Map<String, Object> protectedState = protectedCatalogState();
         CustomerCatalogImportService.ImportResult second = customerCatalog.apply();
 
         assertThat(counts()).isEqualTo(afterFirst);
@@ -51,8 +52,15 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThat(jdbc.queryForList("SELECT COUNT(*) FROM products GROUP BY pet_type ORDER BY pet_type", Integer.class))
                 .containsExactly(50, 50);
         assertThat(first.supplement().operation()).isEqualTo(CustomerCatalogV3ImportService.Operation.APPLY);
+        assertThat(first.correction().brandsUpdated()).isEqualTo(1);
+        assertThat(first.correction().productsUpdated()).isEqualTo(8);
+        assertThat(first.correction().imagesUpdated()).isEqualTo(5);
         assertThat(second.supplement().productsMissing()).isZero();
         assertThat(second.supplement().skusMissing()).isZero();
+        assertThat(second.correction().brandsUpdated()).isZero();
+        assertThat(second.correction().productsUpdated()).isZero();
+        assertThat(second.correction().imagesUpdated()).isZero();
+        assertThat(protectedCatalogState()).isEqualTo(protectedState);
         assertThat(jdbc.queryForObject("SELECT name FROM brands WHERE slug='pawcycle-demo-catalog'", String.class))
                 .isEqualTo("PawCycle");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM brands WHERE name='PawCycle Demo Catalog'", Integer.class))
@@ -60,11 +68,31 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThumbnailMatchesMain("qa3-dog-daily-pad");
         assertThumbnailMatchesMain("qa3-cat-flat-scratcher");
         assertThumbnailMatchesMain("qa3-cat-curve-scratcher");
+        assertCorrectedImage(
+                "qa3-cat-breakaway-collar",
+                "https://images.unsplash.com/photo-1714658990886-7fbb2deac266?w=800&q=80",
+                "세이프 버클 캣 칼라 대표 이미지");
+        assertCorrectedImage(
+                "qa3-cat-photo-scarf",
+                "https://images.unsplash.com/photo-1654849158272-e2bda62c16aa?w=800&q=80",
+                "포토 데이 스카프 대표 이미지");
         assertThat(jdbc.queryForList(
                 "SELECT i.image_url FROM product_images i JOIN products p ON p.id=i.product_id "
                         + "WHERE i.image_type='MAIN' AND p.catalog_key IN ('qa3-cat-flat-scratcher','qa3-cat-curve-scratcher') "
-                        + "GROUP BY i.image_url HAVING COUNT(DISTINCT p.id) > 1",
+                + "GROUP BY i.image_url HAVING COUNT(DISTINCT p.id) > 1",
                 String.class)).isEmpty();
+    }
+
+    @Test
+    void newImageCorrectionRejectsUnexpectedCurrentValue() {
+        customerCatalog.apply();
+        jdbc.update("UPDATE product_images i JOIN products p ON p.id=i.product_id "
+                + "SET i.image_url=? WHERE p.catalog_key=? AND i.image_type='MAIN' AND i.display_order=0",
+                "https://images.unsplash.com/photo-0000000000000-unexpected?w=800&q=80", "qa3-cat-breakaway-collar");
+
+        assertThatThrownBy(customerCatalog::apply)
+                .isInstanceOf(CatalogManifestImportException.class)
+                .hasMessageContaining("image qa3-cat-breakaway-collar");
     }
 
     @Test
@@ -96,6 +124,33 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM products p JOIN product_images i ON i.product_id=p.id "
                 + "WHERE p.catalog_key=? AND i.image_type='MAIN' AND p.thumbnail_url=i.image_url", Integer.class, catalogKey))
                 .isEqualTo(1);
+    }
+
+    private void assertCorrectedImage(String catalogKey, String imageUrl, String altText) {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM products p JOIN product_images i ON i.product_id=p.id "
+                + "WHERE p.catalog_key=? AND i.image_type='MAIN' AND i.display_order=0", Integer.class, catalogKey))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT p.thumbnail_url FROM products p WHERE p.catalog_key=?", String.class, catalogKey))
+                .isEqualTo(imageUrl);
+        assertThat(jdbc.queryForObject("SELECT i.image_url FROM product_images i JOIN products p ON p.id=i.product_id "
+                + "WHERE p.catalog_key=? AND i.image_type='MAIN' AND i.display_order=0", String.class, catalogKey))
+                .isEqualTo(imageUrl);
+        assertThat(jdbc.queryForObject("SELECT i.alt_text FROM product_images i JOIN products p ON p.id=i.product_id "
+                + "WHERE p.catalog_key=? AND i.image_type='MAIN' AND i.display_order=0", String.class, catalogKey))
+                .isEqualTo(altText);
+    }
+
+    private Map<String, Object> protectedCatalogState() {
+        String keys = "'qa3-cat-breakaway-collar','qa3-cat-photo-scarf'";
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("skus", jdbc.queryForList("SELECT s.* FROM skus s JOIN products p ON p.id=s.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY s.id"));
+        state.put("inventories", jdbc.queryForList("SELECT i.* FROM inventories i JOIN skus s ON s.id=i.sku_id JOIN products p ON p.id=s.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY i.sku_id"));
+        state.put("optionGroups", jdbc.queryForList("SELECT g.* FROM product_option_groups g JOIN products p ON p.id=g.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY g.id"));
+        state.put("optionValues", jdbc.queryForList("SELECT v.* FROM product_option_values v JOIN product_option_groups g ON g.id=v.option_group_id JOIN products p ON p.id=g.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY v.id"));
+        state.put("skuOptionValues", jdbc.queryForList("SELECT sov.* FROM sku_option_values sov JOIN skus s ON s.id=sov.sku_id JOIN products p ON p.id=s.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY sov.sku_id,sov.option_value_id"));
+        state.put("facets", jdbc.queryForList("SELECT pfv.* FROM product_facet_values pfv JOIN products p ON p.id=pfv.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY pfv.product_id,pfv.facet_option_id"));
+        state.put("mainImageStructure", jdbc.queryForList("SELECT i.id,i.product_id,i.display_order,i.image_type FROM product_images i JOIN products p ON p.id=i.product_id WHERE p.catalog_key IN (" + keys + ") ORDER BY i.id"));
+        return state;
     }
 
     private Map<String, Integer> counts() {

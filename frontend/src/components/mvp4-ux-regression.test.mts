@@ -8,6 +8,8 @@ const subscriptionSource = readFileSync(new URL("./mvp2-subscription-detail.tsx"
 const addressesSource = readFileSync(new URL("../app/addresses/page.tsx", import.meta.url), "utf8");
 const wishlistSource = readFileSync(new URL("../app/wishlist/page.tsx", import.meta.url), "utf8");
 const billingSource = readFileSync(new URL("../app/billing-methods/page.tsx", import.meta.url), "utf8");
+const checkoutSource = readFileSync(new URL("../app/checkout/page.tsx", import.meta.url), "utf8");
+const tossPaymentWidgetSource = readFileSync(new URL("./toss-payment-widget.tsx", import.meta.url), "utf8");
 const notificationSource = readFileSync(new URL("./notification-screen.tsx", import.meta.url), "utf8");
 const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.tsx", import.meta.url), "utf8");
 const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
@@ -320,4 +322,14 @@ test("사용자 화면은 내부 식별자를 노출하지 않는다", () => {
   assert.doesNotMatch(subscriptionStartSource, /상품 #\$\{productContext\}|옵션 #/);
   assert.doesNotMatch(legacySubscriptionDetailSource, /Subscription #|\( #/);
   assert.doesNotMatch(successSource, /결제 확인 번호/);
+});
+
+test("고객 결제 화면은 내부 provider·test 구현 용어 대신 결과와 다음 행동을 안내한다", () => {
+  assert.doesNotMatch(billingSource, /Toss Browser Provider Client|authKey를 이용한 등록 완료/);
+  assert.doesNotMatch(checkoutSource, /서버 확인 전 금액|서버가 확정한 금액|서버 확인 뒤 Toss 결제 화면/);
+  assert.doesNotMatch(cartSource, /마지막 서버 확인 값|서버가 다시 확인합니다/);
+  assert.doesNotMatch(tossPaymentWidgetSource, /Toss Test client key|서버 Toss Test opt-in|<p className="eyebrow">Toss Test/);
+  assert.match(billingSource, /현재 결제수단 등록을 완료할 수 없습니다/);
+  assert.match(checkoutSource, /예상 결제 금액/);
+  assert.match(tossPaymentWidgetSource, /현재 결제를 진행할 수 없습니다/);
 });
