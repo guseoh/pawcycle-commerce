@@ -141,12 +141,12 @@ export default function CheckoutPage() {
 
   if (result) {
     const confirmedPricing = result.pricing ?? { ...pricing, paymentAmount: result.amount, finalAmount: result.amount };
-    return <section className="checkout-success section-card"><p className="eyebrow">Phase B · Toss 결제</p><h1>결제 준비가 완료됐어요.</h1><p>아직 결제가 완료된 것은 아닙니다. {result.orderName} · 주문 번호 {result.orderNumber}의 결제수단과 약관을 확인해 주세요.</p><PriceSummary pricing={confirmedPricing} couponSelected={Boolean(couponId)} /><TossPaymentWidget checkout={result} /><Link className="button button-secondary" href={`/orders/${result.orderId}`}>결제 대기 주문 확인</Link></section>;
+    return <section className="checkout-success section-card"><p className="eyebrow">결제 단계</p><h1>결제 준비가 완료됐어요.</h1><p>아직 결제가 완료된 것은 아닙니다. {result.orderName} · 주문 번호 {result.orderNumber}의 결제수단과 약관을 확인해 주세요.</p><PriceSummary pricing={confirmedPricing} couponSelected={Boolean(couponId)} /><TossPaymentWidget checkout={result} /><Link className="button button-secondary" href={`/orders/${result.orderId}`}>결제 대기 주문 확인</Link></section>;
   }
 
   const unavailable = cart.filter((item) => !item.purchasable);
   return <section>
-    <header className="page-heading"><p className="eyebrow">Phase A · 주문/결제 준비</p><h1>주문 및 결제 준비</h1><p>상품, 배송지, 선택한 쿠폰과 장바구니 버전을 서버가 다시 확인한 뒤 Toss 결제 단계로 이동합니다.</p></header>
+    <header className="page-heading"><p className="eyebrow">주문/결제</p><h1>주문 및 결제 준비</h1><p>상품, 배송지, 선택한 쿠폰과 장바구니 상태를 다시 확인한 뒤 결제 단계로 이동합니다.</p></header>
     {error ? <p className="error-summary" role="alert">{error}</p> : null}
     <div className="checkout-layout">
       <div className="checkout-main">
