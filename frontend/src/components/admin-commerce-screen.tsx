@@ -69,7 +69,6 @@ function CouponCreateForm({ pending, onCreate }: { pending: boolean; onCreate: (
 
 function CouponEditForm({ coupon, pending, onUpdate, onCancel }: { coupon: AdminCoupon; pending: boolean; onUpdate: (input: AdminCouponRequest) => void; onCancel: () => void }) {
   const [form, setForm] = useState(() => toAdminCouponInput(coupon));
-  useEffect(() => { setForm(toAdminCouponInput(coupon)); }, [coupon]);
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!form.name.trim() || !form.discountValue || !form.validFrom || !form.validUntil) return; onUpdate(toAdminCouponRequest(form)); };
   const change = (key: keyof AdminCouponInput, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   return <form className="admin-form" onSubmit={submit}><h4>쿠폰 수정</h4><CouponFields form={form} pending={pending} onChange={change} /><div className="button-row"><button className="button button-primary" type="submit" disabled={pending}>변경 저장</button><button className="button button-secondary" type="button" disabled={pending} onClick={onCancel}>수정 취소</button></div></form>;
