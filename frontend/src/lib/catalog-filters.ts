@@ -60,6 +60,14 @@ export function changeCatalogFilters(filters: ProductFilters, patch: Partial<Pro
   return next;
 }
 
+export function toggleCatalogFacet(filters: ProductFilters, value: string, checked: boolean): ProductFilters {
+  const facets = filters.facet ?? [];
+  const nextFacets = checked
+    ? facets.includes(value) ? facets : [...facets, value]
+    : facets.filter((item) => item !== value);
+  return changeCatalogFilters(filters, { facet: nextFacets });
+}
+
 export function interactionContext(filters: ProductFilters): InteractionContext {
   const context: InteractionContext = {
     hasTextQuery: Boolean(filters.q?.trim()),

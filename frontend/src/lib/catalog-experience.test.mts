@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { catalogDiscoveryApi, productApi, type CatalogDiscovery, type ProductDetail, type ProductOptionGroup, type ProductSku, type ProductSummary } from "./api.ts";
-import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS } from "./catalog-filters.ts";
+import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS, toggleCatalogFacet } from "./catalog-filters.ts";
 import { productQuantityError, selectProductSku } from "./product-selection.ts";
 import { reviewCollectionCopy } from "./review-collection-copy.ts";
 import { loadProductResults } from "./catalog-products.ts";
@@ -69,6 +69,17 @@ test("Changing category clears dependent child and facets, changing child only c
   assert.deepEqual(changeCatalogFilters(filters, { category: "supplies" }), { category: "supplies", subcategory: undefined, facet: [], brand: "brand", page: 0 });
   assert.deepEqual(changeCatalogFilters(filters, { subcategory: undefined }).facet, []);
   assert.equal(changeCatalogFilters(filters, { q: "new" }).page, 0);
+});
+
+test("Facet draft toggles are duplicate-safe, latest-state based, and reset pagination", () => {
+  const filters = { category: "food", subcategory: "food-dry", facet: [] as string[], brand: "brand", page: 4 };
+  const withSalmon = toggleCatalogFacet(filters, "protein:연어", true);
+  const withTwo = toggleCatalogFacet(withSalmon, "life-stage:성견", true);
+  assert.deepEqual(withTwo.facet, ["protein:연어", "life-stage:성견"]);
+  assert.deepEqual(toggleCatalogFacet(withTwo, "protein:연어", true).facet, withTwo.facet);
+  assert.deepEqual(toggleCatalogFacet(withTwo, "protein:연어", false).facet, ["life-stage:성견"]);
+  assert.equal(withTwo.page, 0);
+  assert.equal(new URL(catalogHref(withTwo), "http://localhost").searchParams.getAll("facet").length, 2);
 });
 
 test("Metadata shows only direct children and the selected category's facets", () => {
