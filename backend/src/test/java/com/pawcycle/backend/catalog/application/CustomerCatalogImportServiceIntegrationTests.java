@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThat(result.supplement().expectedCategories()).isEqualTo(23);
         assertThat(result.supplement().expectedProducts()).isEqualTo(68);
         assertThat(result.supplement().expectedSkus()).isEqualTo(124);
+        assertThat(result.correction().operation()).isEqualTo(CustomerCatalogRealismCorrectionService.Operation.VALIDATE);
         assertThat(result.summary()).contains("CUSTOMER_CATALOG_IMPORT_RESULT status=PASS");
     }
 
@@ -51,6 +53,49 @@ class CustomerCatalogImportServiceIntegrationTests {
         assertThat(first.supplement().operation()).isEqualTo(CustomerCatalogV3ImportService.Operation.APPLY);
         assertThat(second.supplement().productsMissing()).isZero();
         assertThat(second.supplement().skusMissing()).isZero();
+        assertThat(jdbc.queryForObject("SELECT name FROM brands WHERE slug='pawcycle-demo-catalog'", String.class))
+                .isEqualTo("PawCycle");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM brands WHERE name='PawCycle Demo Catalog'", Integer.class))
+                .isZero();
+        assertThumbnailMatchesMain("qa3-dog-daily-pad");
+        assertThumbnailMatchesMain("qa3-cat-flat-scratcher");
+        assertThumbnailMatchesMain("qa3-cat-curve-scratcher");
+        assertThat(jdbc.queryForList(
+                "SELECT i.image_url FROM product_images i JOIN products p ON p.id=i.product_id "
+                        + "WHERE i.image_type='MAIN' AND p.catalog_key IN ('qa3-cat-flat-scratcher','qa3-cat-curve-scratcher') "
+                        + "GROUP BY i.image_url HAVING COUNT(DISTINCT p.id) > 1",
+                String.class)).isEmpty();
+    }
+
+    @Test
+    void correctionConflictRollsBackWholeCustomerCatalogTransaction() {
+        customerCatalog.apply();
+        jdbc.update("UPDATE brands SET name='Unexpected brand edit' WHERE slug='pawcycle-demo-catalog'");
+
+        assertThatThrownBy(customerCatalog::apply)
+                .isInstanceOf(CatalogManifestImportException.class)
+                .hasMessageContaining("brand pawcycle-demo-catalog");
+        assertThat(jdbc.queryForObject("SELECT name FROM brands WHERE slug='pawcycle-demo-catalog'", String.class))
+                .isEqualTo("Unexpected brand edit");
+    }
+
+    @Test
+    void correctionApplyPreservesMutableInventoryState() {
+        customerCatalog.apply();
+        jdbc.update("UPDATE inventories i JOIN skus s ON s.id=i.sku_id SET i.available_quantity=7,i.reserved_quantity=3,i.version=4 WHERE s.sku_code='DEMO-DOG-FOOD-SALMON-2KG'");
+
+        customerCatalog.apply();
+
+        Map<String, Object> inventory = jdbc.queryForMap("SELECT available_quantity,reserved_quantity,version FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code='DEMO-DOG-FOOD-SALMON-2KG'");
+        assertThat(((Number) inventory.get("available_quantity")).intValue()).isEqualTo(7);
+        assertThat(((Number) inventory.get("reserved_quantity")).intValue()).isEqualTo(3);
+        assertThat(((Number) inventory.get("version")).intValue()).isEqualTo(4);
+    }
+
+    private void assertThumbnailMatchesMain(String catalogKey) {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM products p JOIN product_images i ON i.product_id=p.id "
+                + "WHERE p.catalog_key=? AND i.image_type='MAIN' AND p.thumbnail_url=i.image_url", Integer.class, catalogKey))
+                .isEqualTo(1);
     }
 
     private Map<String, Integer> counts() {

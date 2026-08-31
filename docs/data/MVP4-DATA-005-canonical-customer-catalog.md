@@ -24,10 +24,11 @@ DOG/CAT Product는 각각 50개다. V3의 브랜드, 2-depth Category, Facet, �
 ```text
 Customer Catalog
   ├─ Data V1: Category / Product / SKU / Inventory / Subscription Plan
-  └─ V3: Brand / 2-depth Category / Facet / Product / Option / SKU / Image / Detail
+  ├─ V3: Brand / 2-depth Category / Facet / Product / Option / SKU / Image / Detail
+  └─ guarded realism correction: customer-facing Brand / thumbnail / MAIN image
 ```
 
-`validate`는 manifest와 기존 DB business key·관계의 호환성을 확인하되 row를 생성하지 않는다. 존재하지 않는 V3 row는 virtual id로 추적해 실제 INSERT 없이 후속 관계까지 검증한다. `apply`는 같은 검증 경계를 사용해 누락 row만 생성하고 기존 mutable Inventory의 수량·예약·version은 초기화하지 않는다. 기존 row가 manifest와 충돌하면 덮어쓰지 않고 실패한다.
+`validate`는 manifest와 기존 DB business key·관계의 호환성을 확인하되 row를 생성하지 않는다. 존재하지 않는 V3 row는 virtual id로 추적해 실제 INSERT 없이 후속 관계까지 검증한다. `apply`는 같은 검증 경계를 사용해 누락 row만 생성하고 기존 mutable Inventory의 수량·예약·version은 초기화하지 않는다. 기존 row가 manifest와 충돌하면 덮어쓰지 않고 실패한다. V1과 V3 적재가 끝난 뒤 별도 realism correction overlay가 stable business key와 `expectedBefore → desiredAfter` guard로 고객 노출 브랜드명·thumbnail·MAIN image만 보정한다. 따라서 effective Customer Catalog는 V1 + V3 + guarded customer-facing realism correction으로 완성된다.
 
 기존 local `pawcycle.local-customer-catalog-v3.enabled=true` 경로는 호환 wrapper로 유지하되 V3 적재 로직 자체는 공통 importer를 사용한다. 따라서 local/QA와 향후 승인된 one-shot 적용이 서로 다른 V3 구현을 갖지 않는다.
 

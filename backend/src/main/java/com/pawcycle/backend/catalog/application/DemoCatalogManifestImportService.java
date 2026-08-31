@@ -29,6 +29,7 @@ public class DemoCatalogManifestImportService {
 
 	private final JdbcTemplate jdbcTemplate;
 	private final ProductListCacheInvalidator productListCacheInvalidator;
+	private final CustomerCatalogRealismCorrectionService correction;
 	private final ObjectMapper objectMapper;
 	private final String configuredManifestLocation;
 
@@ -36,9 +37,11 @@ public class DemoCatalogManifestImportService {
 	public DemoCatalogManifestImportService(
 			JdbcTemplate jdbcTemplate,
 			ProductListCacheInvalidator productListCacheInvalidator,
+			CustomerCatalogRealismCorrectionService correction,
 			@Value("${pawcycle.catalog.demo.manifest:" + DEFAULT_MANIFEST_LOCATION + "}") String configuredManifestLocation) {
 		this.jdbcTemplate = jdbcTemplate;
 		this.productListCacheInvalidator = productListCacheInvalidator;
+		this.correction = correction;
 		this.objectMapper = new ObjectMapper();
 		this.configuredManifestLocation = configuredManifestLocation;
 	}
@@ -46,7 +49,14 @@ public class DemoCatalogManifestImportService {
 	public DemoCatalogManifestImportService(
 			JdbcTemplate jdbcTemplate,
 			ProductListCacheInvalidator productListCacheInvalidator) {
-		this(jdbcTemplate, productListCacheInvalidator, DEFAULT_MANIFEST_LOCATION);
+		this(jdbcTemplate, productListCacheInvalidator, new CustomerCatalogRealismCorrectionService(jdbcTemplate), DEFAULT_MANIFEST_LOCATION);
+	}
+
+	public DemoCatalogManifestImportService(
+			JdbcTemplate jdbcTemplate,
+			ProductListCacheInvalidator productListCacheInvalidator,
+			String configuredManifestLocation) {
+		this(jdbcTemplate, productListCacheInvalidator, new CustomerCatalogRealismCorrectionService(jdbcTemplate), configuredManifestLocation);
 	}
 
 	@Transactional
@@ -394,6 +404,7 @@ public class DemoCatalogManifestImportService {
 				&& fixture.description().equals(row.get("description"))
 				&& fixture.petType().equals(row.get("pet_type"))
 				&& (java.util.Objects.equals(fixture.thumbnailUrl(), row.get("thumbnail_url"))
+						|| correction.acceptsProductThumbnail(fixture.catalogKey(), row.get("thumbnail_url"))
 						|| (allowLegacyImage && row.get("thumbnail_url") == null))
 				&& "PUBLIC".equals(row.get("display_status"));
 	}

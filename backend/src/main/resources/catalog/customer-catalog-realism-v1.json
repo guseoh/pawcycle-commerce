@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "brand": {
+    "slug": "pawcycle-demo-catalog",
+    "name": {
+      "expectedBefore": "PawCycle Demo Catalog",
+      "desiredAfter": "PawCycle"
+    }
+  },
+  "products": [
+    {
+      "catalogKey": "demo-dog-hygiene-dental",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1741230081551-bc93d6094c43?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "demo-dog-hygiene-foot-cleaner",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1682809368512-4ba549ff2c68?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "demo-dog-food-puppy",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1552053831-71594a27632d?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1676193866128-03a926df76ef?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "qa3-dog-daily-pad",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1694287081190-36a744037d81?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-flat-scratcher",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1717749890999-47d8a144d211?w=800&q=80"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-curve-scratcher",
+      "thumbnail": {
+        "expectedBefore": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1643786260462-8acc5e4fb89c?w=800&q=80"
+      }
+    }
+  ],
+  "images": [
+    {
+      "catalogKey": "qa3-dog-daily-pad",
+      "imageType": "MAIN",
+      "displayOrder": 0,
+      "imageUrl": {
+        "expectedBefore": "https://images.unsplash.com/photo-1586671267731-da2cf3ceeb80?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1694287081190-36a744037d81?w=800&q=80"
+      },
+      "altText": {
+        "expectedBefore": "데일리 흡수 패드 데모 대표 이미지",
+        "desiredAfter": "데일리 흡수 패드 대표 이미지"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-flat-scratcher",
+      "imageType": "MAIN",
+      "displayOrder": 0,
+      "imageUrl": {
+        "expectedBefore": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1717749890999-47d8a144d211?w=800&q=80"
+      },
+      "altText": {
+        "expectedBefore": "플랫 페이퍼 스크래처 데모 대표 이미지",
+        "desiredAfter": "플랫 페이퍼 스크래처 대표 이미지"
+      }
+    },
+    {
+      "catalogKey": "qa3-cat-curve-scratcher",
+      "imageType": "MAIN",
+      "displayOrder": 0,
+      "imageUrl": {
+        "expectedBefore": "https://images.unsplash.com/photo-1513245543132-31f507417b26?w=800&q=80",
+        "desiredAfter": "https://images.unsplash.com/photo-1643786260462-8acc5e4fb89c?w=800&q=80"
+      },
+      "altText": {
+        "expectedBefore": "커브 라운지 스크래처 데모 대표 이미지",
+        "desiredAfter": "커브 라운지 스크래처 대표 이미지"
+      }
+    }
+  ]
+}
