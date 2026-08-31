@@ -13,6 +13,8 @@ export function AdminNavigation() {
   const path = usePathname();
   return <nav className="admin-navigation" aria-label="관리자 메뉴">
     <Link href="/admin/catalog" aria-current={path.startsWith("/admin/catalog") ? "page" : undefined}>Catalog 관리</Link>
+    <Link href="/admin/commerce" aria-current={path.startsWith("/admin/commerce") ? "page" : undefined}>Commerce 관리</Link>
+    <Link href="/admin/engagement" aria-current={path.startsWith("/admin/engagement") ? "page" : undefined}>리뷰·문의</Link>
     <Link href="/admin/operations" aria-current={path.startsWith("/admin/operations") ? "page" : undefined}>운영 작업</Link>
   </nav>;
 }

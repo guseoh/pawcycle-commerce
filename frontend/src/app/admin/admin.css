@@ -40,5 +40,25 @@
 .admin-facet-options input { width: 20px; height: 20px; accent-color: var(--brand); }
 .admin-catalog :focus-visible, .admin-navigation :focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 .admin-catalog button:disabled { cursor: not-allowed; opacity: .6; }
+.admin-engagement-filter { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; }
+.admin-engagement-filter .form-field { min-width: min(100%, 20rem); margin: 0; }
+.admin-engagement-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.admin-engagement-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, .8fr); align-items: start; gap: .75rem; padding: .9rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.admin-engagement-row > div { display: grid; gap: .3rem; }
+.admin-engagement-row > div p { margin: .35rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-answer-form { display: grid; gap: .6rem; min-width: 0; }
+.admin-answer-form .form-field { margin: 0; }
+.admin-answer-form .textarea { min-height: 7rem; resize: vertical; }
+.admin-commerce-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.admin-commerce-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.admin-commerce-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: .75rem; padding: .9rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.admin-commerce-row > div { display: grid; gap: .25rem; min-width: 0; }
+.admin-commerce-row p { margin: .25rem 0 0; overflow-wrap: anywhere; }
+.admin-inline-form { display: flex; align-items: end; flex-wrap: wrap; gap: .5rem; }
+.admin-inline-form .form-field { margin: 0; min-width: 7rem; }
+.admin-json-preview { max-height: 20rem; margin: .5rem 0 0; padding: .75rem; overflow: auto; border: 1px solid var(--line); background: var(--surface); font: .8rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 800px) { .admin-resource-grid { grid-template-columns: minmax(0, 1fr); } .admin-resource-list ul { max-height: 240px; } }
+@media (max-width: 900px) { .admin-commerce-columns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .admin-engagement-row { grid-template-columns: minmax(0, 1fr); } .admin-engagement-filter .form-field, .admin-engagement-filter .button-row { width: 100%; } }
+@media (max-width: 600px) { .admin-commerce-row { grid-template-columns: minmax(0, 1fr); } .admin-inline-form { align-items: stretch; } .admin-inline-form .button { width: 100%; } }
 @media (max-width: 480px) { .admin-fields { grid-template-columns: minmax(0, 1fr); } .admin-resource { padding: .8rem; } .admin-sections button { flex: 1 1 28%; } .admin-status-action .button { width: 100%; } }
