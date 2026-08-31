@@ -16,6 +16,7 @@ export function PetProfileScreen() {
   const [retry, setRetry] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<PetDraft | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [createName, setCreateName] = useState("");
@@ -39,7 +40,20 @@ export function PetProfileScreen() {
     return () => window.clearTimeout(timer);
   }, [load, retry]);
 
-  function beginEdit(pet: Pet) { setEditingId(pet.petId); setDraft(petDraft(pet)); setMessage(null); }
+  function beginCreate() {
+    setCreateOpen(true);
+    setEditingId(null);
+    setDraft(null);
+    setMessage(null);
+  }
+
+  function beginEdit(pet: Pet) {
+    setCreateOpen(false);
+    setEditingId(pet.petId);
+    setDraft(petDraft(pet));
+    setMessage(null);
+  }
+
   function updateDraft(patch: Partial<PetDraft>) { setDraft((current) => current ? { ...current, ...patch } : current); }
 
   async function createPet(event: React.FormEvent<HTMLFormElement>) {
@@ -49,7 +63,11 @@ export function PetProfileScreen() {
     setCreating(true); setMessage(null);
     try {
       const pet = (await auth.executeWithCsrf((csrf) => v2Api.pets.create({ name, petType: createType }, csrf))).body;
-      setPets((current) => [...(current ?? []), pet]); setCreateName(""); setMessageKind("success"); setMessage("반려동물 프로필을 등록했습니다.");
+      setPets((current) => [...(current ?? []), pet]);
+      setCreateName("");
+      setCreateOpen(false);
+      setMessageKind("success");
+      setMessage("반려동물 프로필을 등록했습니다.");
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
       else { setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요."); }
@@ -83,8 +101,8 @@ export function PetProfileScreen() {
   if (!pets) return <LoadingState>반려동물 프로필을 불러오고 있습니다.</LoadingState>;
 
   return <section className="pet-profile-screen"><header className="page-heading"><p className="eyebrow">Pet profile</p><h1>반려동물 프로필</h1><p>등록한 반려동물의 기본 정보를 확인하고 필요한 부분만 수정할 수 있어요.</p></header>{message ? <p className={messageKind === "error" ? "error-summary" : "notice-success"} role={messageKind === "error" ? "alert" : "status"}>{message}</p> : null}
-    <section className="section-card" aria-labelledby="pet-list-title"><div className="section-title"><h2 id="pet-list-title">등록된 반려동물</h2><span className="count-badge">{pets.length}마리</span></div>{pets.length ? <div className="pet-profile-grid">{pets.map((pet) => <PetCard key={pet.petId} pet={pet} editing={editingId === pet.petId} draft={editingId === pet.petId ? draft : null} weightError={editingId === pet.petId && draft ? petWeightError(draft.weightKg) : null} busy={savingId === pet.petId} onEdit={() => beginEdit(pet)} onCancel={() => { setEditingId(null); setDraft(null); }} onDraft={updateDraft} onSave={() => void savePet(pet)} />)}</div> : <div className="empty-callout"><strong>등록된 반려동물이 없습니다.</strong><span>아래에서 첫 프로필을 등록해 보세요.</span></div>}</section>
-    <section className="section-card" aria-labelledby="pet-create-title"><h2 id="pet-create-title">반려동물 등록</h2><form className="pet-create-form" onSubmit={createPet}><label className="form-field" htmlFor="new-pet-name">이름<input id="new-pet-name" className="input" value={createName} maxLength={50} onChange={(event) => setCreateName(event.target.value)} disabled={creating} /></label><fieldset className="form-section"><legend>종</legend><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "DOG"} onChange={() => setCreateType("DOG")} disabled={creating} />개</label><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "CAT"} onChange={() => setCreateType("CAT")} disabled={creating} />고양이</label></fieldset><button className="button button-primary" type="submit" disabled={creating}>{creating ? "등록 중" : "반려동물 등록"}</button></form></section>
+    <section className="section-card" aria-labelledby="pet-list-title"><div className="section-title pet-list-heading"><div><h2 id="pet-list-title">등록된 반려동물</h2><span className="count-badge">{pets.length}마리</span></div><button className="button button-primary" type="button" aria-expanded={createOpen} aria-controls="pet-create-panel" onClick={() => createOpen ? setCreateOpen(false) : beginCreate()}>{createOpen ? "등록 닫기" : "+ 반려동물 등록"}</button></div>{pets.length ? <div className="pet-profile-grid">{pets.map((pet) => <PetCard key={pet.petId} pet={pet} editing={editingId === pet.petId} draft={editingId === pet.petId ? draft : null} weightError={editingId === pet.petId && draft ? petWeightError(draft.weightKg) : null} busy={savingId === pet.petId} onEdit={() => beginEdit(pet)} onCancel={() => { setEditingId(null); setDraft(null); }} onDraft={updateDraft} onSave={() => void savePet(pet)} />)}</div> : <div className="empty-callout"><strong>등록된 반려동물이 없습니다.</strong><span>첫 프로필을 등록하면 반려동물별 정보를 관리할 수 있어요.</span><button type="button" className="button button-primary" onClick={beginCreate}>첫 반려동물 등록</button></div>}</section>
+    {createOpen ? <section id="pet-create-panel" className="section-card pet-create-panel" aria-labelledby="pet-create-title"><div className="section-title"><div><p className="eyebrow">New pet</p><h2 id="pet-create-title">반려동물 등록</h2></div></div><form className="pet-create-form" onSubmit={createPet}><label className="form-field" htmlFor="new-pet-name">이름<input id="new-pet-name" className="input" value={createName} maxLength={50} onChange={(event) => setCreateName(event.target.value)} disabled={creating} /></label><fieldset className="form-section"><legend>종</legend><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "DOG"} onChange={() => setCreateType("DOG")} disabled={creating} />개</label><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "CAT"} onChange={() => setCreateType("CAT")} disabled={creating} />고양이</label></fieldset><div className="button-row"><button className="button button-secondary" type="button" disabled={creating} onClick={() => setCreateOpen(false)}>취소</button><button className="button button-primary" type="submit" disabled={creating}>{creating ? "등록 중" : "반려동물 등록"}</button></div></form></section> : null}
   </section>;
 }
 

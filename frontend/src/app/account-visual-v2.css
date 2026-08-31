@@ -1,0 +1,312 @@
+/* Visual Closure 2: account and post-purchase hierarchy.
+ * Presentation only. Existing Commerce, auth and API contracts remain authoritative.
+ */
+@scope (.customer-theme) {
+  .my-dashboard,
+  .pet-profile-screen {
+    display:grid;
+    gap:28px;
+  }
+
+  .my-dashboard > .page-heading,
+  .pet-profile-screen > .page-heading {
+    max-width:760px;
+    margin-bottom:0;
+  }
+
+  /* My: make current commerce state the primary dashboard surface. */
+  .my-snapshot-section { margin:0; }
+  .my-commerce-snapshot {
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:transparent;
+  }
+  .my-commerce-snapshot > .section-title {
+    align-items:end;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+  }
+  .snapshot-grid {
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:0;
+    margin-top:0;
+    border-bottom:1px solid var(--line);
+  }
+  .snapshot-tile {
+    display:grid;
+    gap:3px;
+    min-width:0;
+    padding:20px 18px;
+    border-right:1px solid var(--line);
+    color:var(--ink);
+    text-decoration:none;
+    background:var(--elevated);
+  }
+  .snapshot-tile:last-child { border-right:0; }
+  .snapshot-tile:hover { background:var(--surface); text-decoration:none; }
+  .snapshot-tile strong {
+    color:var(--brand);
+    font-size:24px;
+    line-height:32px;
+    font-variant-numeric:tabular-nums;
+  }
+  .snapshot-tile span { color:var(--muted); font-size:13px; }
+  .snapshot-detail {
+    display:grid;
+    grid-template-columns:120px minmax(0,1fr);
+    gap:18px;
+    align-items:center;
+    min-height:64px;
+    padding:14px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .snapshot-detail > span { color:var(--muted); font-size:12px; font-weight:700; }
+  .snapshot-detail > a { display:flex; align-items:center; justify-content:space-between; gap:16px; min-width:0; text-decoration:none; }
+  .snapshot-detail > a strong { min-width:0; }
+  .snapshot-detail > a span { color:var(--muted); font-size:13px; text-align:right; }
+
+  .management-section {
+    padding-top:4px;
+    border-top:1px solid var(--line);
+  }
+  .management-section > .section-title { margin-bottom:0; padding:18px 0 8px; }
+  .management-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    column-gap:32px;
+    border-bottom:1px solid var(--line);
+  }
+  .management-grid > a {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"title arrow" "copy arrow";
+    gap:3px 18px;
+    align-items:center;
+    min-height:82px;
+    padding:15px 0;
+    border-top:1px solid var(--line);
+    color:var(--ink);
+    text-decoration:none;
+  }
+  .management-grid > a strong { grid-area:title; font-size:15px; }
+  .management-grid > a > span:not(.settings-arrow) { grid-area:copy; color:var(--muted); font-size:13px; }
+  .management-grid .settings-arrow { grid-area:arrow; color:var(--brand); font-size:18px; }
+  .management-grid > a:hover strong { color:var(--brand); }
+  .account-section {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:24px;
+    padding:20px 0;
+    border-top:1px solid var(--line);
+  }
+  .account-section h2 { margin:2px 0 4px; font-size:18px; }
+  .account-section p:last-child { margin:0; color:var(--muted); font-size:13px; }
+  .reorder-section { margin:0; }
+
+  /* Order history: scan date/status/amount/action in one row. */
+  .order-panel > .section-title {
+    padding-bottom:16px;
+    margin-bottom:0;
+    border-bottom:1px solid var(--line);
+  }
+  .order-history-list {
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .order-row {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto minmax(110px,auto) auto;
+    gap:18px;
+    align-items:center;
+    min-height:84px;
+    padding:16px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .order-row > div { display:grid; gap:3px; min-width:0; }
+  .order-row > div > strong { font-size:15px; }
+  .order-row > div > span { color:var(--muted); font-size:12px; }
+  .order-row > strong { text-align:right; font-size:16px; font-variant-numeric:tabular-nums; }
+  .order-row .button { min-height:40px; }
+
+  /* Wishlist: saved-product management, not a second PLP. */
+  .wishlist-page > .page-heading {
+    max-width:760px;
+    margin-bottom:20px;
+  }
+  .wishlist-list {
+    margin:0 0 20px;
+    padding:0;
+    border-top:1px solid var(--line);
+    list-style:none;
+  }
+  .wishlist-row {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:24px;
+    align-items:center;
+    min-height:96px;
+    padding:18px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .wishlist-row h2 { margin:0 0 4px; font-size:16px; line-height:24px; }
+  .wishlist-row p { margin:0; color:var(--muted); font-size:12px; }
+  .wishlist-row .button-row { justify-content:flex-end; }
+  .wishlist-row .button { min-height:40px; padding:7px 12px; font-size:13px; }
+
+  /* Address: emphasize the default destination and keep editing in the dialog. */
+  .saved-addresses { margin-top:4px; }
+  .saved-addresses > h2 {
+    margin:0;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+    font-size:18px;
+  }
+  .address-list {
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .address-row {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:24px;
+    align-items:center;
+    padding:18px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .address-row address { display:grid; gap:4px; min-width:0; font-style:normal; }
+  .address-row address > strong { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:15px; }
+  .address-row address > span { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+  .address-row.default-address { padding-left:14px; border-left:3px solid var(--brand); }
+  .address-row .button-row { justify-content:flex-end; }
+  .address-row .button { min-height:38px; padding:6px 11px; font-size:12px; }
+  .address-dialog {
+    width:min(620px,calc(100% - 32px));
+    max-height:min(760px,calc(100dvh - 48px));
+    padding:24px;
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .address-dialog::backdrop { background:rgb(36 28 46 / 42%); }
+
+  /* Notifications: unread state and follow-up action should be obvious. */
+  .notification-panel {
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:transparent;
+  }
+  .notification-panel > .section-title {
+    align-items:end;
+    padding-bottom:14px;
+    margin-bottom:12px;
+    border-bottom:1px solid var(--line);
+  }
+  .notification-panel > .button-secondary { margin-bottom:8px; }
+  .notification-panel .history-list {
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .notification-panel .history-list > li {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto;
+    gap:16px;
+    align-items:center;
+    min-height:82px;
+    padding:15px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .notification-panel .history-list > li > div { display:grid; gap:3px; min-width:0; }
+  .notification-panel .history-list > li > div a { color:var(--ink); text-decoration:none; }
+  .notification-panel .history-list > li > div a:hover { color:var(--brand); }
+  .notification-panel .history-list > li > div span { color:var(--muted); font-size:12px; }
+  .notification-panel .history-list .button { min-height:38px; padding:6px 11px; font-size:12px; }
+
+  /* Pet: profiles are the default view; create/edit controls disclose on demand. */
+  .pet-profile-screen > .section-card {
+    margin:0;
+  }
+  .pet-list-heading { align-items:center; }
+  .pet-list-heading > div { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+  .pet-list-heading h2 { margin:0; }
+  .pet-profile-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:16px;
+    margin-top:18px;
+  }
+  .pet-profile-card {
+    display:grid;
+    align-content:start;
+    gap:16px;
+    min-width:0;
+    padding:20px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--elevated);
+  }
+  .pet-profile-card > .section-title { margin:0; }
+  .pet-profile-card h3 { margin:0; font-size:17px; }
+  .pet-profile-card .detail-list {
+    display:grid;
+    grid-template-columns:72px minmax(0,1fr);
+    gap:8px 14px;
+    margin:0;
+  }
+  .pet-profile-card .detail-list dt { color:var(--muted); font-size:12px; }
+  .pet-profile-card .detail-list dd { margin:0; font-size:13px; }
+  .pet-profile-card > .button { justify-self:start; }
+  .pet-create-panel { max-width:720px; }
+  .pet-create-panel > .section-title { padding-bottom:12px; border-bottom:1px solid var(--line); }
+  .pet-create-form { display:grid; gap:16px; margin-top:18px; }
+  .pet-create-form > .button-row { justify-content:flex-end; }
+
+  @media (max-width:800px) {
+    .snapshot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .snapshot-tile:nth-child(2) { border-right:0; }
+    .snapshot-tile:nth-child(-n+2) { border-bottom:1px solid var(--line); }
+    .management-grid { grid-template-columns:1fr; }
+    .snapshot-detail { grid-template-columns:1fr; gap:4px; }
+    .snapshot-detail > a { align-items:flex-start; flex-direction:column; gap:3px; }
+    .snapshot-detail > a span { text-align:left; }
+    .order-row { grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; }
+    .order-row > strong { text-align:left; }
+    .order-row .button { justify-self:end; grid-column:2; grid-row:2; }
+    .wishlist-row,
+    .address-row { grid-template-columns:1fr; gap:12px; }
+    .wishlist-row .button-row,
+    .address-row .button-row { justify-content:flex-start; }
+    .notification-panel .history-list > li { grid-template-columns:minmax(0,1fr) auto; }
+    .notification-panel .history-list > li > .button { grid-column:2; }
+    .pet-profile-grid { grid-template-columns:1fr; }
+  }
+
+  @media (max-width:560px) {
+    .my-dashboard,
+    .pet-profile-screen { gap:22px; }
+    .snapshot-tile { padding:16px 12px; }
+    .snapshot-tile strong { font-size:21px; line-height:28px; }
+    .account-section { align-items:flex-start; flex-direction:column; }
+    .order-row { grid-template-columns:1fr; gap:6px; padding:16px 0; }
+    .order-row > strong { order:3; }
+    .order-row .status-badge { justify-self:start; }
+    .order-row .button { grid-column:auto; grid-row:auto; justify-self:start; order:4; }
+    .wishlist-row .button-row,
+    .address-row .button-row { display:grid; grid-template-columns:1fr; width:100%; }
+    .wishlist-row .button,
+    .address-row .button { width:100%; }
+    .notification-panel > .section-title { align-items:flex-start; }
+    .notification-panel .history-list > li { grid-template-columns:1fr; gap:8px; }
+    .notification-panel .history-list > li > .status-badge,
+    .notification-panel .history-list > li > .button { grid-column:auto; justify-self:start; }
+    .pet-list-heading { align-items:flex-start; flex-direction:column; }
+    .pet-list-heading > .button { width:100%; }
+    .pet-profile-card { padding:16px; }
+    .pet-create-panel { padding:18px; }
+  }
+}
