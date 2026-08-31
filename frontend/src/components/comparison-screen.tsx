@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
+import { formatComparisonFacets } from "@/lib/comparison-presentation";
 import { finalProductApi, type ProductComparisonFact, type ProductComparisonResponse } from "@/lib/final-product-api";
 import { comparisonIdsFromKey, comparisonIdsKey, parseComparisonIds } from "@/lib/comparison-selection";
 import { formatPrice } from "@/lib/frontend-utils";
@@ -19,7 +20,7 @@ function factValue(fact: ProductComparisonFact, row: string): React.ReactNode {
     case "reviewCount": return `${fact.reviewCount}개`;
     case "subscriptionEligible": return fact.subscriptionEligible ? "가능" : "불가";
     case "purchasable": return fact.purchasable ? "구매 가능" : "현재 구매 불가";
-    case "facets": return fact.facets.length ? fact.facets.join(", ") : "-";
+    case "facets": return formatComparisonFacets(fact.facets);
     default: return "-";
   }
 }
@@ -27,7 +28,7 @@ function factValue(fact: ProductComparisonFact, row: string): React.ReactNode {
 const ROWS = [
   ["brand", "브랜드"], ["category", "카테고리"], ["representativePrice", "대표 가격"], ["compareAtPrice", "정가"],
   ["discountRate", "할인"], ["averageRating", "평점"], ["reviewCount", "리뷰 수"], ["subscriptionEligible", "정기배송"],
-  ["purchasable", "구매 가능 여부"], ["facets", "Facet"],
+  ["purchasable", "구매 가능 여부"], ["facets", "주요 특징"],
 ] as const;
 
 export function ComparisonScreen({ productIdValues }: { productIdValues: readonly string[] }) {
