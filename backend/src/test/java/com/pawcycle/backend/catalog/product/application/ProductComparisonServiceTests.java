@@ -51,7 +51,11 @@ class ProductComparisonServiceTests {
 		assertThat(response.aiStatus()).isEqualTo("AVAILABLE");
 		assertThat(response.aiSummary()).isEqualTo("세 상품은 가격과 구성에서 차이가 있습니다.");
 		assertThat(response.products()).extracting(ProductComparisonFacts::productId).containsExactly(1L, 2L, 3L);
-		assertThat(response.products()).allSatisfy(facts -> assertThat(facts.representativePrice()).isEqualByComparingTo("1000.00"));
+		assertThat(response.products()).allSatisfy(facts -> {
+			assertThat(facts.representativePrice()).isEqualByComparingTo("1000.00");
+			assertThat(facts.subscriptionEligible()).isTrue();
+			assertThat(facts.purchasable()).isTrue();
+		});
 	}
 
 	@Test
@@ -93,6 +97,7 @@ class ProductComparisonServiceTests {
 		assertThat(response.aiSummary()).isNull();
 		assertThat(response.products()).hasSize(2);
 		assertThat(response.products().getFirst().representativePrice()).isEqualByComparingTo("1000.00");
+		assertThat(response.products().getFirst().purchasable()).isTrue();
 	}
 
 	private void stubFacts(JdbcTemplate jdbc, long id) {
@@ -101,7 +106,7 @@ class ProductComparisonServiceTests {
 				Map.entry("brand_name", "브랜드"), Map.entry("category_name", "사료"),
 				Map.entry("price", new BigDecimal("1000.00")), Map.entry("compare_at_price", new BigDecimal("1200.00")),
 				Map.entry("average_rating", new BigDecimal("4.50")), Map.entry("review_count", 3L),
-				Map.entry("subscription_eligible", true), Map.entry("purchasable", true));
+				Map.entry("subscription_eligible", 1), Map.entry("purchasable", 1));
 		when(jdbc.queryForList(anyString(), eq(id))).thenReturn(List.of(row));
 		when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), eq(id)))
 				.thenReturn(List.of("size:small"));
