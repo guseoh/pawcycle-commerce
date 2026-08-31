@@ -192,7 +192,9 @@ test("Root layout은 공통 Footer를 연결한다", () => {
   assert.match(footerSource, /\/notice/);
   assert.match(footerSource, /\/support/);
   assert.match(footerSource, /쇼핑/);
-  assert.match(footerSource, /내 일상/);
+  assert.match(footerSource, /내 쇼핑/);
+  assert.match(footerSource, /products\?subscribable=true/);
+  assert.match(footerSource, /내 정기배송/);
   assert.match(footerSource, /고객지원/);
 });
 
@@ -225,17 +227,19 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
 test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이지 상태를 제공한다", () => {
   assert.match(productCardSource, /className="product-card-media"/);
   assert.match(productCardSource, /aria-label=\{`\$\{productName\} 상품 상세 보기`\}/);
-  assert.match(productCardSource, /product-availability/);
+  assert.match(productCardSource, /catalog-sold-out/);
+  assert.doesNotMatch(productCardSource, /product-availability is-unavailable/);
   assert.match(productCardSource, /product\.reviewCount > 0/);
   assert.doesNotMatch(productCardSource, /product\.purchasable \? "구매 가능"/);
   assert.match(productsSource, /className="pagination-row"/);
+  assert.match(productsSource, /const \[compareMode, setCompareMode\]/);
   assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
   assert.match(shoppingStylesSource, /\.catalog-product-card \.product-card-media \{ position: relative; display: grid; aspect-ratio: 1/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
 });
 
 test("카탈로그·추천·PDP는 반복 상태 소음을 줄이고 서버 사실을 우선 표시한다", () => {
-  assert.match(productCardSource, /catalog-rating-empty/);
+  assert.doesNotMatch(productCardSource, /catalog-rating-empty|아직 리뷰가 없어요/);
   assert.match(productCardSource, /정기배송 가능/);
   assert.match(recommendationSource, /현재 구매 가능한 상품입니다\./);
   assert.match(recommendationSource, /showReason/);
