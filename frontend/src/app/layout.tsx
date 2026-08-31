@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import "./admin/legacy-shell.css";
 import "./globals.css";
 import "./shopping.css";
+import "./visual-closure.css";
 
 export const metadata: Metadata = {
   title: "PawCycle Commerce",
