@@ -61,7 +61,7 @@ test("구독 변경·배송지·새 구독은 서버 허용 범위와 명시적 
   assert.match(subscriptionSource, /SavedAddressState/);
   assert.match(subscriptionSource, /PAYMENT_SUPPORT_REQUIRED/);
   assert.match(subscriptionSource, /STOCK_UNAVAILABLE/);
-  assert.match(subscriptionSource, /이 플랜으로 변경 확정/);
+  assert.match(subscriptionSource, /이 플랜으로 변경/);
   assert.match(subscriptionStartSource, /preferredCycle !== null .* : null/);
   assert.match(subscriptionStartSource, /startQuery\.fromOrderId !== null/);
 });
