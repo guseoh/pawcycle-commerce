@@ -92,7 +92,7 @@ class CustomerCatalogImportServiceIntegrationTests {
 
         assertThatThrownBy(customerCatalog::apply)
                 .isInstanceOf(CatalogManifestImportException.class)
-                .hasMessageContaining("image qa3-cat-breakaway-collar");
+                .hasMessageContaining("product_images collection");
     }
 
     @Test
