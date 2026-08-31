@@ -105,6 +105,32 @@ function CatalogWishlistButton({ productId, productName }: { productId: number; 
   </>;
 }
 
+function CatalogQuickPurchase({ product, productName, href }: { product: ProductSummary; productName: string; href: string }) {
+  const auth = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const singleSku = product.skuPriceSummary.skuPrices.length === 1 ? product.skuPriceSummary.skuPrices[0] : null;
+
+  if (!product.purchasable) return <span className="catalog-card-message" role="status">현재 구매할 수 없는 상품입니다.</span>;
+  if (!singleSku) return <Link className="button button-secondary" href={href}>옵션 선택</Link>;
+  if (auth.status !== "authenticated") return <Link className="button button-secondary" href={href}>구매 옵션 보기</Link>;
+
+  return <>
+    <button className="button button-secondary" type="button" disabled={busy} onClick={() => {
+      if (busy) return;
+      setBusy(true); setMessage(null);
+      void auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(singleSku.skuId, 1, csrf)).then(() => {
+        setMessage(`${productName} 1개를 장바구니에 담았어요.`);
+        notifyCommerceChanged();
+      }).catch((error: unknown) => {
+        if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+        setMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했어요.");
+      }).finally(() => setBusy(false));
+    }}>{busy ? "담는 중…" : "바로 담기"}</button>
+    {message ? <span className="catalog-card-message" role="status">{message}</span> : null}
+  </>;
+}
+
 function HeartIcon({ saved }: { saved: boolean }) { return <svg viewBox="0 0 24 24" aria-hidden="true" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.75"><path d="M12 20s-8-4.8-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 9c0 6.2-8 11-8 11Z" /></svg>; }
 
 export function CatalogProductCard({ product, compareSelected = false, onCompare }: { product: ProductSummary; compareSelected?: boolean; onCompare?: () => void }) {
@@ -117,9 +143,10 @@ export function CatalogProductCard({ product, compareSelected = false, onCompare
       {product.brand ? <p className="catalog-brand" title={product.brand.name}>{product.brand.name}</p> : null}
       <h3><Link className="catalog-title-link" href={href}>{productName}</Link></h3>
       <CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />
-      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">평점 {product.averageRating} · 리뷰 {product.reviewCount}개</p> : <p className="catalog-rating catalog-rating-empty">리뷰 없음</p>}
+      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">★ {product.averageRating} <span aria-hidden="true">·</span> 리뷰 {product.reviewCount.toLocaleString()}개</p> : <p className="catalog-rating catalog-rating-empty">아직 리뷰가 없어요</p>}
       <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}{!product.purchasable ? <span className="product-availability is-unavailable">현재 구매 불가</span> : null}</div>
     </div>
-    <div className="catalog-card-actions">{onCompare ? <label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} />비교 담기</label> : null}</div>
+    <div className="catalog-quick-purchase"><CatalogQuickPurchase product={product} productName={productName} href={href} /></div>
+    {onCompare ? <div className="catalog-card-actions"><label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} />비교에 담기</label></div> : null}
   </article>;
 }

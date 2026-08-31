@@ -5,6 +5,7 @@ import "./admin/legacy-shell.css";
 import "./globals.css";
 import "./shopping.css";
 import "./visual-closure.css";
+import "./visual-closure-v2.css";
 
 export const metadata: Metadata = {
   title: "PawCycle Commerce",

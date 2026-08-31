@@ -41,8 +41,8 @@ export function RecommendationSection({ id, title, description, request, source 
   }, [requestKey, retry, source]);
 
   if (state.status === "success" && state.data.products.length === 0) return null;
-  return <section className="recommendation-section" aria-labelledby={id}>
-    <div className="section-title"><div><p className="eyebrow">PawCycle picks</p><h2 id={id}>{title}</h2><p>{description}</p></div></div>
+  return <section className="recommendation-section" data-source={source} aria-labelledby={id}>
+    <div className="section-title"><div><h2 id={id}>{title}</h2><p>{description}</p></div></div>
     {state.status === "loading" ? <LoadingState>추천 상품을 불러오고 있습니다.</LoadingState> : null}
     {state.status === "error" ? <ErrorState headingLevel={3} title="추천을 불러오지 못했습니다." message={state.message} onRetry={() => setRetry((value) => value + 1)} /> : null}
     {state.status === "success" && state.data.products.length === 0 ? <div className="empty-callout">현재 추천 가능한 상품이 없습니다.</div> : null}
