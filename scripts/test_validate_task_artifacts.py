@@ -230,6 +230,15 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="고위험"))
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_high_risk_repository_preparation_alias_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=pr_body(grade="고위험", execution="저장소 준비"),
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_production_execution_without_report_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(

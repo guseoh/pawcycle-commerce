@@ -14,7 +14,7 @@
 
 ## 2. 역할 브랜치
 
-HARNESS-LEAN-002 병합 뒤 시작하는 새 작업은 역할 prefix와 작업 ID를 결합한 task branch를 사용한다.
+새 작업은 역할 prefix와 작업 ID를 결합한 task branch를 사용한다.
 
 | 브랜치 | 담당 역할 |
 | --- | --- |
@@ -458,7 +458,7 @@ sh scripts/validate-commit-message.sh --message "ci(harness): 역할별 산출�
 작업 산출물 검증:
 
 ```bash
-python scripts/validate-task-artifacts.py --task-id HARNESS-LEAN-002 --task-grade 고위험 --execution-type "저장소 변경"
+python scripts/validate-task-artifacts.py --task-id HARNESS-CODE-001 --task-grade 일반 --execution-type "저장소 변경"
 python -m unittest scripts.test_validate_task_artifacts scripts.test_validate_conventions_workflow
 python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
 ```
