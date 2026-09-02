@@ -37,6 +37,7 @@ GRADE_ALIASES = {
     "고위험": HIGH_RISK, "high-risk": HIGH_RISK, "high risk": HIGH_RISK,
 }
 EXECUTION_ALIASES = {
+    "저장소 준비": REPOSITORY_CHANGE,
     "저장소 변경": REPOSITORY_CHANGE,
     "repository change": REPOSITORY_CHANGE,
     "repository preparation": REPOSITORY_CHANGE,
@@ -361,7 +362,7 @@ def main() -> int:
         pattern=FIELD_PATTERNS["execution"],
         normalizer=normalize_execution,
         label="실행 구분",
-        allowed="저장소 변경 또는 실제 운영 실행",
+        allowed="저장소 준비, 저장소 변경 또는 실제 운영 실행",
         required=not legacy,
     )
 

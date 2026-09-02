@@ -114,7 +114,7 @@ gh pr create --base main --head <role-prefix>/<TASK-ID> --body-file <UTF-8-PR-bo
 
 순서는 상태 확인 → 작업 등급에 맞는 필수 검증 → 산출물 validator → diff 확인 → 선택한 변경만 add → commit → 일반 push → PR이다.
 
-PR이 `main`에 병합되면 열린 PR·고유 commit·사용 중인 worktree가 모두 없는지 확인한 뒤에만 task branch를 삭제한다. 하나라도 있으면 삭제하지 않는다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
+PR이 `main`에 병합되면 열린 PR·고유 commit·사용 중인 worktree가 모두 없고 사용자가 명시 승인한 경우에만 task branch를 삭제한다. 하나라도 충족하지 않으면 삭제하지 않는다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
 
 ## 검증 명령
 

@@ -11,9 +11,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 class RepeatCommerceController {
-	private final RepeatCommerceService service;
-	RepeatCommerceController(RepeatCommerceService service){this.service=service;}
-	@GetMapping("/recommendations/reorder-timing") Map<String,Object> reorder(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal){return service.reorderTiming(principal.memberId());}
-	@GetMapping("/v2/subscriptions/{subscriptionId}/cycle-suggestion") Map<String,Object> cycle(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long subscriptionId){return service.cycleSuggestion(principal.memberId(),subscriptionId);}
-	@GetMapping("/orders/{orderId}/subscription-options") Map<String,Object> options(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,@PathVariable long orderId){return service.subscriptionOptions(principal.memberId(),orderId);}
+  private final RepeatCommerceService service;
+
+  RepeatCommerceController(RepeatCommerceService service) {
+    this.service = service;
+  }
+
+  @GetMapping("/recommendations/reorder-timing")
+  Map<String, Object> reorder(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+    return service.reorderTiming(principal.memberId());
+  }
+
+  @GetMapping("/v2/subscriptions/{subscriptionId}/cycle-suggestion")
+  Map<String, Object> cycle(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @PathVariable long subscriptionId) {
+    return service.cycleSuggestion(principal.memberId(), subscriptionId);
+  }
+
+  @GetMapping("/orders/{orderId}/subscription-options")
+  Map<String, Object> options(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long orderId) {
+    return service.subscriptionOptions(principal.memberId(), orderId);
+  }
 }

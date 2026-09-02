@@ -1,4 +1,3 @@
 package com.pawcycle.backend.member.api;
 
-public record MemberIdResponse(Long memberId) {
-}
+public record MemberIdResponse(Long memberId) {}

@@ -20,34 +20,41 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class V2SubscriptionCommandStateTests {
-	@Test
-	void recoverableStockHeldRejectsUnapprovedScheduleMutationsBeforeTheyReachTheScheduleLock() {
-		for (String command : List.of(
-				"change-plan",
-				"change-delivery-cycle",
-				"reschedule-next",
-				"skip-next",
-				"pause",
-				"set-next-delivery-addon")) {
-			V2SubscriptionJdbcStore store = mock(V2SubscriptionJdbcStore.class);
-			V2SubscriptionQueryApplicationService queries = mock(V2SubscriptionQueryApplicationService.class);
-			V2SubscriptionData.Subscription subscription = new V2SubscriptionData.Subscription(1L, 10L, "ACTIVE", 0L, null, 2, 5L);
-			V2SubscriptionData.NextDeliverySchedule held = new V2SubscriptionData.NextDeliverySchedule(
-					7L, LocalDate.of(2026, 8, 28), "HELD", "ORDER_STOCK_UNAVAILABLE", null);
-			when(store.lockOwnedSubscription(10L, 1L)).thenReturn(subscription);
-			when(store.reserveCommand(eq(10L), eq(1L), anyString(), anyString(), anyString())).thenReturn(true);
-			when(store.findNextDeliverySchedule(1L)).thenReturn(Optional.of(held));
-			V2SubscriptionCommandApplicationService service = new V2SubscriptionCommandApplicationService(
-					store,
-					queries,
-					new ObjectMapper(),
-					Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC));
+  @Test
+  void recoverableStockHeldRejectsUnapprovedScheduleMutationsBeforeTheyReachTheScheduleLock() {
+    for (String command :
+        List.of(
+            "change-plan",
+            "change-delivery-cycle",
+            "reschedule-next",
+            "skip-next",
+            "pause",
+            "set-next-delivery-addon")) {
+      V2SubscriptionJdbcStore store = mock(V2SubscriptionJdbcStore.class);
+      V2SubscriptionQueryApplicationService queries =
+          mock(V2SubscriptionQueryApplicationService.class);
+      V2SubscriptionData.Subscription subscription =
+          new V2SubscriptionData.Subscription(1L, 10L, "ACTIVE", 0L, null, 2, 5L);
+      V2SubscriptionData.NextDeliverySchedule held =
+          new V2SubscriptionData.NextDeliverySchedule(
+              7L, LocalDate.of(2026, 8, 28), "HELD", "ORDER_STOCK_UNAVAILABLE", null);
+      when(store.lockOwnedSubscription(10L, 1L)).thenReturn(subscription);
+      when(store.reserveCommand(eq(10L), eq(1L), anyString(), anyString(), anyString()))
+          .thenReturn(true);
+      when(store.findNextDeliverySchedule(1L)).thenReturn(Optional.of(held));
+      V2SubscriptionCommandApplicationService service =
+          new V2SubscriptionCommandApplicationService(
+              store,
+              queries,
+              new ObjectMapper(),
+              Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC));
 
-			assertThatThrownBy(() -> service.command(10L, 1L, command, "held-" + command, "\"0\"", Map.of()))
-					.isInstanceOf(V2ApiException.class)
-					.hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_COMMAND_NOT_ALLOWED");
-			verify(store, never()).lockNextScheduled(1L);
-			verify(store, never()).incrementVersion(anyLong(), anyLong());
-		}
-	}
+      assertThatThrownBy(
+              () -> service.command(10L, 1L, command, "held-" + command, "\"0\"", Map.of()))
+          .isInstanceOf(V2ApiException.class)
+          .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_COMMAND_NOT_ALLOWED");
+      verify(store, never()).lockNextScheduled(1L);
+      verify(store, never()).incrementVersion(anyLong(), anyLong());
+    }
+  }
 }

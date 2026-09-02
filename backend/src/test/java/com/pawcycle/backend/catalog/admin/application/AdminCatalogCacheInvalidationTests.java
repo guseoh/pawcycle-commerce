@@ -30,59 +30,63 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class AdminCatalogCacheInvalidationTests {
-	@Mock private CategoryRepository categoryRepository;
-	@Mock private ProductRepository productRepository;
-	@Mock private SkuRepository skuRepository;
-	@Mock private JdbcTemplate jdbcTemplate;
-	@Mock private ProductListCacheInvalidator invalidator;
+  @Mock private CategoryRepository categoryRepository;
+  @Mock private ProductRepository productRepository;
+  @Mock private SkuRepository skuRepository;
+  @Mock private JdbcTemplate jdbcTemplate;
+  @Mock private ProductListCacheInvalidator invalidator;
 
-	private AdminCatalogService service;
+  private AdminCatalogService service;
 
-	@BeforeEach
-	void setUp() {
-		service = new AdminCatalogService(
-				categoryRepository, productRepository, skuRepository, jdbcTemplate, invalidator);
-	}
+  @BeforeEach
+  void setUp() {
+    service =
+        new AdminCatalogService(
+            categoryRepository, productRepository, skuRepository, jdbcTemplate, invalidator);
+  }
 
-	@Test
-	void productCreateAndUpdateRequestAfterCommitInvalidation() {
-		Category category = mock(Category.class);
-		when(category.isActive()).thenReturn(true);
-		when(category.getSlug()).thenReturn("food");
-		when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
-		when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+  @Test
+  void productCreateAndUpdateRequestAfterCommitInvalidation() {
+    Category category = mock(Category.class);
+    when(category.isActive()).thenReturn(true);
+    when(category.getSlug()).thenReturn("food");
+    when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+    when(productRepository.saveAndFlush(any(Product.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
 
-		service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
+    service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
 
-		Product product = mock(Product.class);
-		when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));
-		when(productRepository.saveAndFlush(product)).thenReturn(product);
-		ProductPatch patch = new ProductPatch();
-		patch.readName("수정 상품");
-		service.updateProduct(10L, patch);
+    Product product = mock(Product.class);
+    when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));
+    when(productRepository.saveAndFlush(product)).thenReturn(product);
+    ProductPatch patch = new ProductPatch();
+    patch.readName("수정 상품");
+    service.updateProduct(10L, patch);
 
-		verify(invalidator, times(2)).invalidateAfterCommit();
-	}
+    verify(invalidator, times(2)).invalidateAfterCommit();
+  }
 
-	@Test
-	void skuCreateAndUpdateRequestAfterCommitInvalidation() {
-		Product product = mock(Product.class);
-		when(product.getId()).thenReturn(10L);
-		when(productRepository.findById(10L)).thenReturn(Optional.of(product));
-		when(skuRepository.saveAndFlush(any(Sku.class))).thenAnswer(invocation -> invocation.getArgument(0));
+  @Test
+  void skuCreateAndUpdateRequestAfterCommitInvalidation() {
+    Product product = mock(Product.class);
+    when(product.getId()).thenReturn(10L);
+    when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+    when(skuRepository.saveAndFlush(any(Sku.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
 
-		service.createSku(10L, new SkuCreate(
-				"DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
+    service.createSku(
+        10L,
+        new SkuCreate("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
 
-		clearInvocations(productRepository);
-		Sku sku = mock(Sku.class);
-		when(sku.getProduct()).thenReturn(product);
-		when(skuRepository.findByIdAndProductId(20L, 10L)).thenReturn(Optional.of(sku));
-		when(skuRepository.saveAndFlush(sku)).thenReturn(sku);
-		SkuPatch patch = new SkuPatch();
-		patch.readPrice(new BigDecimal("20900.00"));
-		service.updateSku(10L, 20L, patch);
+    clearInvocations(productRepository);
+    Sku sku = mock(Sku.class);
+    when(sku.getProduct()).thenReturn(product);
+    when(skuRepository.findByIdAndProductId(20L, 10L)).thenReturn(Optional.of(sku));
+    when(skuRepository.saveAndFlush(sku)).thenReturn(sku);
+    SkuPatch patch = new SkuPatch();
+    patch.readPrice(new BigDecimal("20900.00"));
+    service.updateSku(10L, 20L, patch);
 
-		verify(invalidator, times(2)).invalidateAfterCommit();
-	}
+    verify(invalidator, times(2)).invalidateAfterCommit();
+  }
 }

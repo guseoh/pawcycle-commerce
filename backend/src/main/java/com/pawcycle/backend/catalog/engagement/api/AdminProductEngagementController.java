@@ -18,35 +18,45 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 public class AdminProductEngagementController {
-    private final ProductEngagementService service;
+  private final ProductEngagementService service;
 
-    @GetMapping("/product-reviews")
-    ReviewViews.AdminPage reviews(@RequestParam(required = false) Long productId,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return service.adminReviews(productId, page, size);
-    }
+  @GetMapping("/product-reviews")
+  ReviewViews.AdminPage reviews(
+      @RequestParam(required = false) Long productId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
+    return service.adminReviews(productId, page, size);
+  }
 
-    @PatchMapping("/product-reviews/{reviewId}/visibility")
-    void reviewVisibility(@PathVariable long reviewId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-            @Valid @RequestBody EngagementRequests.VisibilityPatch request) {
-        service.setReviewVisibility(reviewId, request.visible(), principal.memberId());
-    }
+  @PatchMapping("/product-reviews/{reviewId}/visibility")
+  void reviewVisibility(
+      @PathVariable long reviewId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @Valid @RequestBody ReviewVisibilityRequest request) {
+    service.setReviewVisibility(reviewId, request.visible(), principal.memberId());
+  }
 
-    @GetMapping("/product-questions")
-    QuestionViews.AdminPage questions(@RequestParam(required = false) Long productId,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return service.adminQuestions(productId, page, size);
-    }
+  @GetMapping("/product-questions")
+  QuestionViews.AdminPage questions(
+      @RequestParam(required = false) Long productId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
+    return service.adminQuestions(productId, page, size);
+  }
 
-    @PutMapping("/product-questions/{questionId}/answer")
-    QuestionViews.AdminQuestion answer(@PathVariable long questionId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-            @Valid @RequestBody EngagementRequests.AnswerRequest request) {
-        return service.answerQuestion(questionId, request.answer(), principal.memberId());
-    }
+  @PutMapping("/product-questions/{questionId}/answer")
+  QuestionViews.AdminQuestion answer(
+      @PathVariable long questionId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @Valid @RequestBody QuestionAnswerRequest request) {
+    return service.answerQuestion(questionId, request.answer(), principal.memberId());
+  }
 
-    @PatchMapping("/product-questions/{questionId}/visibility")
-    void questionVisibility(@PathVariable long questionId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-            @Valid @RequestBody EngagementRequests.VisibilityPatch request) {
-        service.setQuestionVisibility(questionId, request.visible(), principal.memberId());
-    }
+  @PatchMapping("/product-questions/{questionId}/visibility")
+  void questionVisibility(
+      @PathVariable long questionId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @Valid @RequestBody ReviewVisibilityRequest request) {
+    service.setQuestionVisibility(questionId, request.visible(), principal.memberId());
+  }
 }

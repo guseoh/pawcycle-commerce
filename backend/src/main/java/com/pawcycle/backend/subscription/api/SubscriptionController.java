@@ -21,35 +21,40 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/subscriptions")
 public class SubscriptionController {
 
-	private final SubscriptionApplicationService subscriptionApplicationService;
+  private final SubscriptionApplicationService subscriptionApplicationService;
 
-	public SubscriptionController(SubscriptionApplicationService subscriptionApplicationService) {
-		this.subscriptionApplicationService = subscriptionApplicationService;
-	}
+  public SubscriptionController(SubscriptionApplicationService subscriptionApplicationService) {
+    this.subscriptionApplicationService = subscriptionApplicationService;
+  }
 
-	@PostMapping
-	ResponseEntity<SubscriptionCreateResult> create(
-			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-			@Valid @RequestBody SubscriptionCreateRequest request) {
-		SubscriptionCreateResult result = subscriptionApplicationService.create(
-				principal.memberId(), request.skuId(), request.quantity(), request.deliveryCycleWeeks());
-		return ResponseEntity.status(HttpStatus.CREATED).body(result);
-	}
+  @PostMapping
+  ResponseEntity<SubscriptionCreateResult> create(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @Valid @RequestBody SubscriptionCreateRequest request) {
+    SubscriptionCreateResult result =
+        subscriptionApplicationService.create(
+            principal.memberId(),
+            request.skuId(),
+            request.quantity(),
+            request.deliveryCycleWeeks());
+    return ResponseEntity.status(HttpStatus.CREATED).body(result);
+  }
 
-	@GetMapping
-	SubscriptionListView subscriptions(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-		return subscriptionApplicationService.findOwnedSubscriptions(principal.memberId());
-	}
+  @GetMapping
+  SubscriptionListView subscriptions(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+    return subscriptionApplicationService.findOwnedSubscriptions(principal.memberId());
+  }
 
-	@GetMapping("/{subscriptionId}")
-	SubscriptionDetailView subscription(
-			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-			@PathVariable String subscriptionId) {
-		try {
-			return subscriptionApplicationService.findOwnedSubscription(
-					principal.memberId(), Long.valueOf(subscriptionId));
-		} catch (NumberFormatException exception) {
-			throw new SubscriptionNotFoundException();
-		}
-	}
+  @GetMapping("/{subscriptionId}")
+  SubscriptionDetailView subscription(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @PathVariable String subscriptionId) {
+    try {
+      return subscriptionApplicationService.findOwnedSubscription(
+          principal.memberId(), Long.valueOf(subscriptionId));
+    } catch (NumberFormatException exception) {
+      throw new SubscriptionNotFoundException();
+    }
+  }
 }

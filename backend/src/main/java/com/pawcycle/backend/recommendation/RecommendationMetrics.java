@@ -8,17 +8,25 @@ import org.springframework.stereotype.Component;
 
 @Component
 class RecommendationMetrics {
-	private final Counter success;
-	private final Counter fallback;
-	private final Timer aiCall;
+  private final Counter success;
+  private final Counter fallback;
+  private final Timer aiCall;
 
-	RecommendationMetrics(MeterRegistry registry) {
-		success = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "success");
-		fallback = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "fallback");
-		aiCall = registry.timer("pawcycle.recommendation.ai.call");
-	}
+  RecommendationMetrics(MeterRegistry registry) {
+    success = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "success");
+    fallback = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "fallback");
+    aiCall = registry.timer("pawcycle.recommendation.ai.call");
+  }
 
-	void success() { success.increment(); }
-	void fallback() { fallback.increment(); }
-	<T> T recordAiCall(Supplier<T> call) { return aiCall.record(call); }
+  void success() {
+    success.increment();
+  }
+
+  void fallback() {
+    fallback.increment();
+  }
+
+  <T> T recordAiCall(Supplier<T> call) {
+    return aiCall.record(call);
+  }
 }

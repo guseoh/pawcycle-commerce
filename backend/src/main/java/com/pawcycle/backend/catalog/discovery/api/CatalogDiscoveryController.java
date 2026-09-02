@@ -11,10 +11,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/catalog")
 @RequiredArgsConstructor
 public class CatalogDiscoveryController {
-	private final CatalogDiscoveryQueryService catalogDiscoveryQueryService;
+  private final CatalogDiscoveryQueryService catalogDiscoveryQueryService;
 
-	@GetMapping("/discovery")
-	CatalogDiscoveryView discovery() {
-		return catalogDiscoveryQueryService.findPublicDiscovery();
-	}
+  @GetMapping("/discovery")
+  CatalogDiscoveryView discovery() {
+    return catalogDiscoveryQueryService.findPublicDiscovery();
+  }
 }

@@ -11,7 +11,7 @@
 - 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
 - 백엔드 task branch는 최신 `main`에서 `feat/be/<TASK-ID>`로 만든다.
 - 하나의 task branch에는 하나의 활성 작업만 둔다.
-- 병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없을 때만 branch를 삭제하며, 하나라도 있으면 삭제하지 않는다.
+- 병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없고 사용자가 명시 승인했을 때만 branch를 삭제한다.
 
 ## 도메인과 비즈니스 규칙
 
@@ -28,6 +28,20 @@
 - 리포지토리(Repository): 영속성 접근
 
 JPA 엔티티(Entity)를 API 응답으로 직접 노출하지 않는다. 승인된 API 계약에 맞는 요청 모델(Request Model)과 응답 모델(Response Model)을 사용한다.
+
+반복적으로 적용할 코드 구조 기준은 다음과 같다.
+
+- package는 기능·도메인 책임을 먼저 드러내고, 실제 복잡도가 필요할 때만 `api`·`application`·`domain`·`persistence` 경계를 추가한다.
+- Controller는 HTTP mapping·validation·인증 context 전달에 집중한다. 정적 API 계약을 `Map<String, Object>`로 반환하지 않는다.
+- HTTP request/response는 의미 있는 top-level 타입으로 두고 application command/result, domain value, persistence projection과 구분한다.
+- schema가 실제로 동적인 adapter·document parsing을 제외하면 raw `Map`·`Object`를 web/application/domain 경계로 전달하지 않는다.
+- Application Service는 use case 조율과 transaction 경계를 맡고 SQL·JSON parsing·HTTP payload 변환을 함께 소유하지 않는다.
+- Domain은 승인된 invariant와 상태 전이를 보호하고, persistence 구현은 repository·query adapter 안에 격리한다.
+- JDBC는 복잡한 조회·집계·projection에 더 명확할 때 사용할 수 있다. Controller 또는 application orchestration이 SQL 세부사항을 알게 해서는 안 된다.
+- Java annotation·field·constructor·method를 의미 없이 한 줄에 압축하지 않고 import·spacing·이름을 일관되게 유지한다.
+- SLF4J parameterized logging을 사용한다. `DEBUG`는 진단 정보, `INFO`는 의미 있는 상태 변경 완료, `WARN`은 복구 가능한 이상, `ERROR`는 최종 실패 경계에 사용하며 같은 exception을 중복 기록하지 않는다.
+- secret, credential, token, auth/payment/billing key, session·CSRF 값, raw body와 불필요한 개인정보를 어떤 level에도 기록하지 않는다.
+- 새 dependency나 모든 기능에 동일 계층을 강제하는 architecture ceremony는 사용자 승인 없이 추가하지 않는다.
 
 ## 트랜잭션, 스냅숏, 멱등성
 

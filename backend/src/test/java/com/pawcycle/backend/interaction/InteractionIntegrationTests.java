@@ -28,9 +28,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
@@ -39,96 +39,173 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("test")
 @Transactional
 class InteractionIntegrationTests {
-	@Autowired private WebApplicationContext applicationContext;
-	@Autowired private ObjectMapper objectMapper;
-	@Autowired private JdbcTemplate jdbc;
-	@Autowired private MemberRepository members;
-	@Autowired private CategoryRepository categories;
-	@Autowired private ProductRepository products;
-	private MockMvc mockMvc;
-	private Member member;
-	private long categoryId;
-	private long productId;
-	private long petId;
+  @Autowired private WebApplicationContext applicationContext;
+  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JdbcTemplate jdbc;
+  @Autowired private MemberRepository members;
+  @Autowired private CategoryRepository categories;
+  @Autowired private ProductRepository products;
+  private MockMvc mockMvc;
+  private Member member;
+  private long categoryId;
+  private long productId;
+  private long petId;
 
-	@BeforeEach
-	void setUp() {
-		mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
-		member = members.saveAndFlush(new Member("interaction-" + UUID.randomUUID() + "@example.test", "fixture-password"));
-		Category category = categories.saveAndFlush(new Category("interaction-" + UUID.randomUUID(), "interaction-" + UUID.randomUUID(), 0, true));
-		categoryId = category.getId();
-		Product product = new Product(category, "Interaction product", "fixture", null, "DOG", null);
-		product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
-		productId = products.saveAndFlush(product).getId();
-		jdbc.update("INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", member.getId(), "반려동물", "DOG");
-		petId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-	}
+  @BeforeEach
+  void setUp() {
+    mockMvc =
+        MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
+    member =
+        members.saveAndFlush(
+            new Member("interaction-" + UUID.randomUUID() + "@example.test", "fixture-password"));
+    Category category =
+        categories.saveAndFlush(
+            new Category(
+                "interaction-" + UUID.randomUUID(), "interaction-" + UUID.randomUUID(), 0, true));
+    categoryId = category.getId();
+    Product product = new Product(category, "Interaction product", "fixture", null, "DOG", null);
+    product.transitionTo(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC);
+    productId = products.saveAndFlush(product).getId();
+    jdbc.update(
+        "INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", member.getId(), "반려동물", "DOG");
+    petId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+  }
 
-	@AfterEach
-	void cleanCommittedFixtures() {
-		if (member == null || TestTransaction.isActive()) return;
-		jdbc.update("DELETE FROM interaction_events WHERE member_id=?", member.getId());
-		jdbc.update("DELETE FROM pets WHERE member_id=?", member.getId());
-		jdbc.update("DELETE FROM products WHERE id=?", productId);
-		jdbc.update("DELETE FROM categories WHERE id=?", categoryId);
-		jdbc.update("DELETE FROM members WHERE id=?", member.getId());
-	}
+  @AfterEach
+  void cleanCommittedFixtures() {
+    if (member == null || TestTransaction.isActive()) return;
+    jdbc.update("DELETE FROM interaction_events WHERE member_id=?", member.getId());
+    jdbc.update("DELETE FROM pets WHERE member_id=?", member.getId());
+    jdbc.update("DELETE FROM products WHERE id=?", productId);
+    jdbc.update("DELETE FROM categories WHERE id=?", categoryId);
+    jdbc.update("DELETE FROM members WHERE id=?", member.getId());
+  }
 
-	@Test
-	void authenticatedBatchPersistsServerOwnedEventAndDuplicateRetryIsIdempotent() throws Exception {
-		String eventId = UUID.randomUUID().toString();
-		String body = objectMapper.writeValueAsString(Map.of("events", List.of(Map.of(
-				"eventId", eventId,
-				"type", "PRODUCT_VIEW",
-				"productId", productId,
-				"petId", petId,
-				"memberId", 999999L,
-				"context", Map.of("hasTextQuery", true, "petType", "DOG", "category", "interaction")))));
+  @Test
+  void authenticatedBatchPersistsServerOwnedEventAndDuplicateRetryIsIdempotent() throws Exception {
+    String eventId = UUID.randomUUID().toString();
+    String body =
+        objectMapper.writeValueAsString(
+            Map.of(
+                "events",
+                List.of(
+                    Map.of(
+                        "eventId",
+                        eventId,
+                        "type",
+                        "PRODUCT_VIEW",
+                        "productId",
+                        productId,
+                        "petId",
+                        petId,
+                        "memberId",
+                        999999L,
+                        "context",
+                        Map.of(
+                            "hasTextQuery", true, "petType", "DOG", "category", "interaction")))));
 
-		postEvents(body).andExpect(status().isNoContent());
-		postEvents(body).andExpect(status().isNoContent());
+    postEvents(body).andExpect(status().isNoContent());
+    postEvents(body).andExpect(status().isNoContent());
 
-		Map<String, Object> event = jdbc.queryForMap("SELECT member_id,occurred_at,context FROM interaction_events WHERE event_id=?", eventId);
-		assertThat(event.get("MEMBER_ID")).isEqualTo(member.getId());
-		assertThat(event.get("OCCURRED_AT")).isNotNull();
-		assertThat(event.get("CONTEXT").toString()).contains("hasTextQuery", "interaction");
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=? AND event_id=?", Integer.class, member.getId(), eventId)).isEqualTo(1);
-	}
+    Map<String, Object> event =
+        jdbc.queryForMap(
+            "SELECT member_id,occurred_at,context FROM interaction_events WHERE event_id=?",
+            eventId);
+    assertThat(event.get("MEMBER_ID")).isEqualTo(member.getId());
+    assertThat(event.get("OCCURRED_AT")).isNotNull();
+    assertThat(event.get("CONTEXT").toString()).contains("hasTextQuery", "interaction");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM interaction_events WHERE member_id=? AND event_id=?",
+                Integer.class,
+                member.getId(),
+                eventId))
+        .isEqualTo(1);
+  }
 
-	@Test
-	void invalidLaterEventRollsBackEarlierEventFromSameBatch() throws Exception {
-		String firstEvent = UUID.randomUUID().toString();
-		String body = objectMapper.writeValueAsString(Map.of("events", List.of(
-			Map.of("eventId", firstEvent, "type", "PRODUCT_VIEW", "productId", productId),
-			Map.of("eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW", "productId", Long.MAX_VALUE))));
+  @Test
+  void invalidLaterEventRollsBackEarlierEventFromSameBatch() throws Exception {
+    String firstEvent = UUID.randomUUID().toString();
+    String body =
+        objectMapper.writeValueAsString(
+            Map.of(
+                "events",
+                List.of(
+                    Map.of("eventId", firstEvent, "type", "PRODUCT_VIEW", "productId", productId),
+                    Map.of(
+                        "eventId",
+                        UUID.randomUUID().toString(),
+                        "type",
+                        "PRODUCT_VIEW",
+                        "productId",
+                        Long.MAX_VALUE))));
 
-		TestTransaction.flagForCommit();
-		TestTransaction.end();
-		postEvents(body).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+    TestTransaction.flagForCommit();
+    TestTransaction.end();
+    postEvents(body)
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
 
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=? AND event_id=?", Integer.class, member.getId(), firstEvent)).isZero();
-	}
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM interaction_events WHERE member_id=? AND event_id=?",
+                Integer.class,
+                member.getId(),
+                firstEvent))
+        .isZero();
+  }
 
-	@Test
-	void authenticationCsrfAndPetOwnershipAreEnforced() throws Exception {
-		String body = objectMapper.writeValueAsString(Map.of("events", List.of(Map.of(
-				"eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW", "productId", productId, "petId", Long.MAX_VALUE))));
+  @Test
+  void authenticationCsrfAndPetOwnershipAreEnforced() throws Exception {
+    String body =
+        objectMapper.writeValueAsString(
+            Map.of(
+                "events",
+                List.of(
+                    Map.of(
+                        "eventId",
+                        UUID.randomUUID().toString(),
+                        "type",
+                        "PRODUCT_VIEW",
+                        "productId",
+                        productId,
+                        "petId",
+                        Long.MAX_VALUE))));
 
-		mockMvc.perform(post("/api/interactions").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isUnauthorized());
-		mockMvc.perform(post("/api/interactions").with(authenticated()).contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isForbidden());
-		postEvents(body).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PET_NOT_FOUND"));
-	}
+    mockMvc
+        .perform(
+            post("/api/interactions")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(
+            post("/api/interactions")
+                .with(authenticated())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isForbidden());
+    postEvents(body)
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PET_NOT_FOUND"));
+  }
 
-	private org.springframework.test.web.servlet.ResultActions postEvents(String body) throws Exception {
-		return mockMvc.perform(post("/api/interactions").with(authenticated()).with(csrf())
-				.contentType(MediaType.APPLICATION_JSON).content(body));
-	}
+  private org.springframework.test.web.servlet.ResultActions postEvents(String body)
+      throws Exception {
+    return mockMvc.perform(
+        post("/api/interactions")
+            .with(authenticated())
+            .with(csrf())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
 
-	private org.springframework.test.web.servlet.request.RequestPostProcessor authenticated() {
-		return authentication(new UsernamePasswordAuthenticationToken(
-				new AuthenticatedMemberPrincipal(member.getId()), null,
-				List.of(new SimpleGrantedAuthority("ROLE_USER"))));
-	}
+  private org.springframework.test.web.servlet.request.RequestPostProcessor authenticated() {
+    return authentication(
+        new UsernamePasswordAuthenticationToken(
+            new AuthenticatedMemberPrincipal(member.getId()),
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+  }
 }

@@ -9,15 +9,15 @@ import org.springframework.stereotype.Component;
 /** Adapts login credentials to Spring Security's AuthenticationManager boundary. */
 @Component
 public class MemberCredentialAuthenticator {
-	private final AuthenticationManager authenticationManager;
+  private final AuthenticationManager authenticationManager;
 
-	public MemberCredentialAuthenticator(AuthenticationManager authenticationManager) {
-		this.authenticationManager = authenticationManager;
-	}
+  public MemberCredentialAuthenticator(AuthenticationManager authenticationManager) {
+    this.authenticationManager = authenticationManager;
+  }
 
-	public Authentication authenticate(String email, String password) {
-		return authenticationManager.authenticate(
-				UsernamePasswordAuthenticationToken.unauthenticated(
-						Objects.requireNonNull(email), Objects.requireNonNull(password)));
-	}
+  public Authentication authenticate(String email, String password) {
+    return authenticationManager.authenticate(
+        UsernamePasswordAuthenticationToken.unauthenticated(
+            Objects.requireNonNull(email), Objects.requireNonNull(password)));
+  }
 }

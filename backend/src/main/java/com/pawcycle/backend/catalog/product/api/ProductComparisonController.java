@@ -8,7 +8,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class ProductComparisonController {
-	private final ProductComparisonService service;
-	public ProductComparisonController(ProductComparisonService service){this.service=service;}
-	@GetMapping("/api/products/compare") ProductComparisonService.ComparisonResponse compare(@RequestParam("productId") List<Long> productIds){return service.compare(productIds);}
+  private final ProductComparisonService service;
+
+  public ProductComparisonController(ProductComparisonService service) {
+    this.service = service;
+  }
+
+  @GetMapping("/api/products/compare")
+  ProductComparisonService.ComparisonResponse compare(
+      @RequestParam("productId") List<Long> productIds) {
+    return service.compare(productIds);
+  }
 }

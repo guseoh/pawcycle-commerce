@@ -22,92 +22,90 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 class ProductionAuthSmokeMemberServiceTests {
 
-	private static final String TEST_PASSWORD_HASH = "TEST_ONLY_PASSWORD_HASH";
+  private static final String TEST_PASSWORD_HASH = "TEST_ONLY_PASSWORD_HASH";
 
-	private final EmailNormalizer emailNormalizer = new EmailNormalizer();
-	private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
-	private final MemberRepository memberRepository = mock(MemberRepository.class);
-	private ProductionAuthSmokeMemberService memberService;
+  private final EmailNormalizer emailNormalizer = new EmailNormalizer();
+  private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+  private final MemberRepository memberRepository = mock(MemberRepository.class);
+  private ProductionAuthSmokeMemberService memberService;
 
-	@BeforeEach
-	void setUp() {
-		memberService = new ProductionAuthSmokeMemberService(
-				emailNormalizer,
-				passwordEncoder,
-				memberRepository);
-	}
+  @BeforeEach
+  void setUp() {
+    memberService =
+        new ProductionAuthSmokeMemberService(emailNormalizer, passwordEncoder, memberRepository);
+  }
 
-	@Test
-	void normalizesEmailEncodesPasswordAndCreatesExactlyOneMember() {
-		String email = "Ops-019-" + UUID.randomUUID() + "@EXAMPLE.TEST";
-		String normalizedEmail = email.substring(0, email.indexOf('@')) + "@example.test";
-		String password = runtimePassword();
-		when(memberRepository.findByEmailForUpdate(normalizedEmail)).thenReturn(Optional.empty());
-		when(passwordEncoder.encode(password)).thenReturn(TEST_PASSWORD_HASH);
+  @Test
+  void normalizesEmailEncodesPasswordAndCreatesExactlyOneMember() {
+    String email = "Ops-019-" + UUID.randomUUID() + "@EXAMPLE.TEST";
+    String normalizedEmail = email.substring(0, email.indexOf('@')) + "@example.test";
+    String password = runtimePassword();
+    when(memberRepository.findByEmailForUpdate(normalizedEmail)).thenReturn(Optional.empty());
+    when(passwordEncoder.encode(password)).thenReturn(TEST_PASSWORD_HASH);
 
-		memberService.create(email, password);
+    memberService.create(email, password);
 
-		ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
-		verify(memberRepository).saveAndFlush(memberCaptor.capture());
-		assertThat(memberCaptor.getValue().getEmail()).isEqualTo(normalizedEmail);
-		assertThat(memberCaptor.getValue().getPasswordHash()).isEqualTo(TEST_PASSWORD_HASH);
-		verify(passwordEncoder).encode(password);
-	}
+    ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
+    verify(memberRepository).saveAndFlush(memberCaptor.capture());
+    assertThat(memberCaptor.getValue().getEmail()).isEqualTo(normalizedEmail);
+    assertThat(memberCaptor.getValue().getPasswordHash()).isEqualTo(TEST_PASSWORD_HASH);
+    verify(passwordEncoder).encode(password);
+  }
 
-	@Test
-	void invalidEmailAndBlankPasswordFailBeforeRepositoryAccess() {
-		assertThatThrownBy(() -> memberService.create("invalid-email", runtimePassword()))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
-				.hasMessage("Production auth smoke member creation failed.")
-				.hasNoCause();
+  @Test
+  void invalidEmailAndBlankPasswordFailBeforeRepositoryAccess() {
+    assertThatThrownBy(() -> memberService.create("invalid-email", runtimePassword()))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
+        .hasMessage("Production auth smoke member creation failed.")
+        .hasNoCause();
 
-		assertThatThrownBy(() -> memberService.create(runtimeEmail(), " \t"))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
-				.hasNoCause();
+    assertThatThrownBy(() -> memberService.create(runtimeEmail(), " \t"))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
+        .hasNoCause();
 
-		verifyNoInteractions(passwordEncoder, memberRepository);
-	}
+    verifyNoInteractions(passwordEncoder, memberRepository);
+  }
 
-	@Test
-	void duplicateEmailDoesNotEncodeSaveOrChangeExistingHash() {
-		String email = runtimeEmail();
-		String existingHash = "EXISTING_TEST_ONLY_HASH";
-		Member existingMember = new Member(email, existingHash);
-		when(memberRepository.findByEmailForUpdate(email)).thenReturn(Optional.of(existingMember));
+  @Test
+  void duplicateEmailDoesNotEncodeSaveOrChangeExistingHash() {
+    String email = runtimeEmail();
+    String existingHash = "EXISTING_TEST_ONLY_HASH";
+    Member existingMember = new Member(email, existingHash);
+    when(memberRepository.findByEmailForUpdate(email)).thenReturn(Optional.of(existingMember));
 
-		assertThatThrownBy(() -> memberService.create(email, runtimePassword()))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
-				.hasNoCause();
+    assertThatThrownBy(() -> memberService.create(email, runtimePassword()))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
+        .hasNoCause();
 
-		assertThat(existingMember.getPasswordHash()).isEqualTo(existingHash);
-		verifyNoInteractions(passwordEncoder);
-		verify(memberRepository, never()).saveAndFlush(any());
-	}
+    assertThat(existingMember.getPasswordHash()).isEqualTo(existingHash);
+    verifyNoInteractions(passwordEncoder);
+    verify(memberRepository, never()).saveAndFlush(any());
+  }
 
-	@Test
-	void saveFailureHidesCredentialAndPersistenceDetails() {
-		String email = runtimeEmail();
-		String password = runtimePassword();
-		when(memberRepository.findByEmailForUpdate(email)).thenReturn(Optional.empty());
-		when(passwordEncoder.encode(password)).thenReturn(TEST_PASSWORD_HASH);
-		when(memberRepository.saveAndFlush(any(Member.class)))
-				.thenThrow(new DataAccessResourceFailureException("SENSITIVE_DATABASE_DETAIL"));
+  @Test
+  void saveFailureHidesCredentialAndPersistenceDetails() {
+    String email = runtimeEmail();
+    String password = runtimePassword();
+    when(memberRepository.findByEmailForUpdate(email)).thenReturn(Optional.empty());
+    when(passwordEncoder.encode(password)).thenReturn(TEST_PASSWORD_HASH);
+    when(memberRepository.saveAndFlush(any(Member.class)))
+        .thenThrow(new DataAccessResourceFailureException("SENSITIVE_DATABASE_DETAIL"));
 
-		assertThatThrownBy(() -> memberService.create(email, password))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
-				.hasMessage("Production auth smoke member creation failed.")
-				.hasMessageNotContaining(email)
-				.hasMessageNotContaining(password)
-				.hasMessageNotContaining(TEST_PASSWORD_HASH)
-				.hasMessageNotContaining("SENSITIVE_DATABASE_DETAIL")
-				.hasNoCause();
-	}
+    assertThatThrownBy(() -> memberService.create(email, password))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
+        .hasMessage("Production auth smoke member creation failed.")
+        .hasMessageNotContaining(email)
+        .hasMessageNotContaining(password)
+        .hasMessageNotContaining(TEST_PASSWORD_HASH)
+        .hasMessageNotContaining("SENSITIVE_DATABASE_DETAIL")
+        .hasNoCause();
+  }
 
-	private String runtimeEmail() {
-		return "ops-019-" + UUID.randomUUID() + "@example.test";
-	}
+  private String runtimeEmail() {
+    return "ops-019-" + UUID.randomUUID() + "@example.test";
+  }
 
-	private String runtimePassword() {
-		return UUID.randomUUID().toString();
-	}
+  private String runtimePassword() {
+    return UUID.randomUUID().toString();
+  }
 }

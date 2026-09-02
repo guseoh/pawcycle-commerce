@@ -4,8 +4,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("pawcycle.local-qa-bootstrap")
 public record LocalQaBootstrapProperties(
-		boolean enabled,
-		boolean resetSubscriptions,
-		String email,
-		String password) {
-}
+    boolean enabled, boolean resetSubscriptions, String email, String password) {}

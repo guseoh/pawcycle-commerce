@@ -14,9 +14,9 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface AllowedDeliveryCycle {
 
-	String message() default "배송 주기는 2주, 4주 또는 8주로 선택해 주세요.";
+  String message() default "배송 주기는 2주, 4주 또는 8주로 선택해 주세요.";
 
-	Class<?>[] groups() default {};
+  Class<?>[] groups() default {};
 
-	Class<? extends Payload>[] payload() default {};
+  Class<? extends Payload>[] payload() default {};
 }

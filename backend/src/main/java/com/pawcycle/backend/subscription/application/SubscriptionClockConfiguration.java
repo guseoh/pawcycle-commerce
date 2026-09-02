@@ -8,8 +8,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 public class SubscriptionClockConfiguration {
 
-	@Bean
-	Clock subscriptionClock() {
-		return Clock.system(ZoneId.of("Asia/Seoul"));
-	}
+  @Bean
+  Clock subscriptionClock() {
+    return Clock.system(ZoneId.of("Asia/Seoul"));
+  }
 }

@@ -13,39 +13,43 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 class ProductionAuthSmokeMemberMaintenanceConfigurationTests {
 
-	private final ApplicationContextRunner nonWebContextRunner = new ApplicationContextRunner()
-			.withUserConfiguration(ProductionAuthSmokeMemberMaintenanceConfiguration.class)
-			.withBean(EmailNormalizer.class, EmailNormalizer::new)
-			.withBean(PasswordEncoder.class, () -> mock(PasswordEncoder.class))
-			.withBean(MemberRepository.class, () -> mock(MemberRepository.class));
+  private final ApplicationContextRunner nonWebContextRunner =
+      new ApplicationContextRunner()
+          .withUserConfiguration(ProductionAuthSmokeMemberMaintenanceConfiguration.class)
+          .withBean(EmailNormalizer.class, EmailNormalizer::new)
+          .withBean(PasswordEncoder.class, () -> mock(PasswordEncoder.class))
+          .withBean(MemberRepository.class, () -> mock(MemberRepository.class));
 
-	@Test
-	void maintenanceBeansAreAbsentWithoutExplicitEnablement() {
-		nonWebContextRunner.run(context -> {
-			assertThat(context).doesNotHaveBean(ProductionAuthSmokeMemberService.class);
-			assertThat(context).doesNotHaveBean("productionAuthSmokeMemberRunner");
-		});
-	}
+  @Test
+  void maintenanceBeansAreAbsentWithoutExplicitEnablement() {
+    nonWebContextRunner.run(
+        context -> {
+          assertThat(context).doesNotHaveBean(ProductionAuthSmokeMemberService.class);
+          assertThat(context).doesNotHaveBean("productionAuthSmokeMemberRunner");
+        });
+  }
 
-	@Test
-	void enabledNonWebMaintenanceModeCreatesOneShotRunner() {
-		nonWebContextRunner
-				.withPropertyValues("pawcycle.maintenance.create-auth-smoke-member.enabled=true")
-				.run(context -> {
-					assertThat(context).hasSingleBean(ProductionAuthSmokeMemberService.class);
-					assertThat(context.getBean("productionAuthSmokeMemberRunner"))
-							.isInstanceOf(ApplicationRunner.class);
-				});
-	}
+  @Test
+  void enabledNonWebMaintenanceModeCreatesOneShotRunner() {
+    nonWebContextRunner
+        .withPropertyValues("pawcycle.maintenance.create-auth-smoke-member.enabled=true")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(ProductionAuthSmokeMemberService.class);
+              assertThat(context.getBean("productionAuthSmokeMemberRunner"))
+                  .isInstanceOf(ApplicationRunner.class);
+            });
+  }
 
-	@Test
-	void webApplicationBlocksRunnerEvenWhenFlagIsEnabled() {
-		new WebApplicationContextRunner()
-				.withUserConfiguration(ProductionAuthSmokeMemberMaintenanceConfiguration.class)
-				.withPropertyValues("pawcycle.maintenance.create-auth-smoke-member.enabled=true")
-				.run(context -> {
-					assertThat(context).doesNotHaveBean(ProductionAuthSmokeMemberService.class);
-					assertThat(context).doesNotHaveBean("productionAuthSmokeMemberRunner");
-				});
-	}
+  @Test
+  void webApplicationBlocksRunnerEvenWhenFlagIsEnabled() {
+    new WebApplicationContextRunner()
+        .withUserConfiguration(ProductionAuthSmokeMemberMaintenanceConfiguration.class)
+        .withPropertyValues("pawcycle.maintenance.create-auth-smoke-member.enabled=true")
+        .run(
+            context -> {
+              assertThat(context).doesNotHaveBean(ProductionAuthSmokeMemberService.class);
+              assertThat(context).doesNotHaveBean("productionAuthSmokeMemberRunner");
+            });
+  }
 }

@@ -19,31 +19,38 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class MemberAddress {
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	@Column(name = "member_id", nullable = false)
-	private Long memberId;
+  @Column(name = "member_id", nullable = false)
+  private Long memberId;
 
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "member_id", insertable = false, updatable = false)
-	private Member member;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "member_id", insertable = false, updatable = false)
+  private Member member;
 
-	@Column(nullable = false, length = 100)
-	private String name;
-	@Column(name = "recipient_name", nullable = false, length = 100)
-	private String recipientName;
-	@Column(name = "recipient_phone", nullable = false, length = 30)
-	private String recipientPhone;
-	@Column(name = "postal_code", nullable = false, length = 20)
-	private String postalCode;
-	@Column(name = "address_line1", nullable = false, length = 255)
-	private String addressLine1;
-	@Column(name = "address_line2", length = 255)
-	private String addressLine2;
-	@Column(name = "created_at", nullable = false)
-	private LocalDateTime createdAt;
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
+  @Column(nullable = false, length = 100)
+  private String name;
+
+  @Column(name = "recipient_name", nullable = false, length = 100)
+  private String recipientName;
+
+  @Column(name = "recipient_phone", nullable = false, length = 30)
+  private String recipientPhone;
+
+  @Column(name = "postal_code", nullable = false, length = 20)
+  private String postalCode;
+
+  @Column(name = "address_line1", nullable = false, length = 255)
+  private String addressLine1;
+
+  @Column(name = "address_line2", length = 255)
+  private String addressLine2;
+
+  @Column(name = "created_at", nullable = false)
+  private LocalDateTime createdAt;
+
+  @Column(name = "updated_at", nullable = false)
+  private LocalDateTime updatedAt;
 }

@@ -5,7 +5,9 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface BrandRepository extends JpaRepository<Brand, Long> {
-    boolean existsBySlug(String slug);
-    boolean existsBySlugAndIdNot(String slug, Long id);
-    List<Brand> findAllByOrderByDisplayOrderAscIdAsc();
+  boolean existsBySlug(String slug);
+
+  boolean existsBySlugAndIdNot(String slug, Long id);
+
+  List<Brand> findAllByOrderByDisplayOrderAscIdAsc();
 }

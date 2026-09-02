@@ -11,16 +11,18 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ApiErrorWriter {
 
-	private final ObjectMapper objectMapper;
+  private final ObjectMapper objectMapper;
 
-	public ApiErrorWriter(ObjectMapper objectMapper) {
-		this.objectMapper = objectMapper;
-	}
+  public ApiErrorWriter(ObjectMapper objectMapper) {
+    this.objectMapper = objectMapper;
+  }
 
-	public void write(HttpServletResponse response, int status, String code, String message) throws IOException {
-		response.setStatus(status);
-		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		objectMapper.writeValue(response.getOutputStream(), ApiErrorResponse.withoutFieldErrors(code, message));
-	}
+  public void write(HttpServletResponse response, int status, String code, String message)
+      throws IOException {
+    response.setStatus(status);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    objectMapper.writeValue(
+        response.getOutputStream(), ApiErrorResponse.withoutFieldErrors(code, message));
+  }
 }

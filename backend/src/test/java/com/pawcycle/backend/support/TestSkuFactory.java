@@ -7,32 +7,20 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public final class TestSkuFactory {
-	private TestSkuFactory() {
-	}
+  private TestSkuFactory() {}
 
-	public static Sku sku(
-			Product product,
-			String name,
-			BigDecimal price,
-			boolean subscribable,
-			int displayOrder) {
-		return sku(product, "TEST-" + UUID.randomUUID(), name, price, subscribable, displayOrder);
-	}
+  public static Sku sku(
+      Product product, String name, BigDecimal price, boolean subscribable, int displayOrder) {
+    return sku(product, "TEST-" + UUID.randomUUID(), name, price, subscribable, displayOrder);
+  }
 
-	public static Sku sku(
-			Product product,
-			String skuCode,
-			String name,
-			BigDecimal price,
-			boolean subscribable,
-			int displayOrder) {
-		return new Sku(
-				product,
-				skuCode,
-				name,
-				price,
-				subscribable,
-				displayOrder,
-				SkuStatus.ACTIVE);
-	}
+  public static Sku sku(
+      Product product,
+      String skuCode,
+      String name,
+      BigDecimal price,
+      boolean subscribable,
+      int displayOrder) {
+    return new Sku(product, skuCode, name, price, subscribable, displayOrder, SkuStatus.ACTIVE);
+  }
 }

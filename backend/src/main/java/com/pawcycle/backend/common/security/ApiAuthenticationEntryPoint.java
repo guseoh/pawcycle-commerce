@@ -12,17 +12,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-	private final ApiErrorWriter errorWriter;
+  private final ApiErrorWriter errorWriter;
 
-	public ApiAuthenticationEntryPoint(ApiErrorWriter errorWriter) {
-		this.errorWriter = errorWriter;
-	}
+  public ApiAuthenticationEntryPoint(ApiErrorWriter errorWriter) {
+    this.errorWriter = errorWriter;
+  }
 
-	@Override
-	public void commence(
-			HttpServletRequest request,
-			HttpServletResponse response,
-			AuthenticationException authenticationException) throws IOException, ServletException {
-		errorWriter.write(response, HttpStatus.UNAUTHORIZED.value(), "AUTH_REQUIRED", "인증이 필요합니다.");
-	}
+  @Override
+  public void commence(
+      HttpServletRequest request,
+      HttpServletResponse response,
+      AuthenticationException authenticationException)
+      throws IOException, ServletException {
+    errorWriter.write(response, HttpStatus.UNAUTHORIZED.value(), "AUTH_REQUIRED", "인증이 필요합니다.");
+  }
 }

@@ -13,30 +13,32 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = AuthController.class)
 public class AuthExceptionHandler {
-	private static final Logger log = LoggerFactory.getLogger(AuthExceptionHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(AuthExceptionHandler.class);
 
-	@ExceptionHandler(AuthValidationException.class)
-	ResponseEntity<ApiErrorResponse> handleValidation(AuthValidationException exception) {
-		return ResponseEntity.badRequest().body(new ApiErrorResponse(
-				"VALIDATION_FAILED", exception.getMessage(), exception.getFieldErrors()));
-	}
+  @ExceptionHandler(AuthValidationException.class)
+  ResponseEntity<ApiErrorResponse> handleValidation(AuthValidationException exception) {
+    return ResponseEntity.badRequest()
+        .body(
+            new ApiErrorResponse(
+                "VALIDATION_FAILED", exception.getMessage(), exception.getFieldErrors()));
+  }
 
-	@ExceptionHandler(HttpMessageNotReadableException.class)
-	ResponseEntity<ApiErrorResponse> handleMalformedJson() {
-		return ResponseEntity.badRequest().body(ApiErrorResponse.withoutFieldErrors(
-				"VALIDATION_FAILED", "요청 본문이 유효하지 않습니다."));
-	}
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  ResponseEntity<ApiErrorResponse> handleMalformedJson() {
+    return ResponseEntity.badRequest()
+        .body(ApiErrorResponse.withoutFieldErrors("VALIDATION_FAILED", "요청 본문이 유효하지 않습니다."));
+  }
 
-	@ExceptionHandler(InvalidCredentialsException.class)
-	ResponseEntity<ApiErrorResponse> handleInvalidCredentials(InvalidCredentialsException exception) {
-		return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiErrorResponse.withoutFieldErrors(
-				"INVALID_CREDENTIALS", exception.getMessage()));
-	}
+  @ExceptionHandler(InvalidCredentialsException.class)
+  ResponseEntity<ApiErrorResponse> handleInvalidCredentials(InvalidCredentialsException exception) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(ApiErrorResponse.withoutFieldErrors("INVALID_CREDENTIALS", exception.getMessage()));
+  }
 
-	@ExceptionHandler(Exception.class)
-	ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception) {
-		log.error("Unexpected exception while handling authentication request", exception);
-		return ResponseEntity.internalServerError().body(ApiErrorResponse.withoutFieldErrors(
-				"INTERNAL_ERROR", "요청을 처리할 수 없습니다."));
-	}
+  @ExceptionHandler(Exception.class)
+  ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception) {
+    log.error("Unexpected exception while handling authentication request", exception);
+    return ResponseEntity.internalServerError()
+        .body(ApiErrorResponse.withoutFieldErrors("INTERNAL_ERROR", "요청을 처리할 수 없습니다."));
+  }
 }

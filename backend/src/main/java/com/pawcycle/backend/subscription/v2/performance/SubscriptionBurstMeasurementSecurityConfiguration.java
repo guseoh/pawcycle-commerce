@@ -12,13 +12,13 @@ import org.springframework.security.web.SecurityFilterChain;
 @Profile("subscription-burst-measurement & !production & !prod")
 class SubscriptionBurstMeasurementSecurityConfiguration {
 
-	@Bean
-	@Order(1)
-	SecurityFilterChain subscriptionBurstMeasurementSecurityFilterChain(HttpSecurity http) throws Exception {
-		http
-				.securityMatcher("/internal/performance/subscription-burst/**")
-				.csrf(AbstractHttpConfigurer::disable)
-				.authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
-		return http.build();
-	}
+  @Bean
+  @Order(1)
+  SecurityFilterChain subscriptionBurstMeasurementSecurityFilterChain(HttpSecurity http)
+      throws Exception {
+    http.securityMatcher("/internal/performance/subscription-burst/**")
+        .csrf(AbstractHttpConfigurer::disable)
+        .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
+    return http.build();
+  }
 }
