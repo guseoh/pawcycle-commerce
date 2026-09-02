@@ -15,27 +15,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile("local-integration & !test & !production & !prod")
 public class LocalCustomerCatalogV3FixtureService {
 
-    private final LocalCommerceDemoFixtureService baseline;
-    private final CustomerCatalogV3ImportService supplement;
+  private final LocalCommerceDemoFixtureService baseline;
+  private final CustomerCatalogV3ImportService supplement;
 
-    public LocalCustomerCatalogV3FixtureService(
-            JdbcTemplate jdbc,
-            LocalCommerceDemoFixtureService baseline,
-            CatalogExpansionAdminService expansion,
-            ProductListCacheInvalidator cache,
-            Validator validator) {
-        this.baseline = baseline;
-        this.supplement = new CustomerCatalogV3ImportService(jdbc, expansion, cache, validator);
-    }
+  public LocalCustomerCatalogV3FixtureService(
+      JdbcTemplate jdbc,
+      LocalCommerceDemoFixtureService baseline,
+      CatalogExpansionAdminService expansion,
+      ProductListCacheInvalidator cache,
+      Validator validator) {
+    this.baseline = baseline;
+    this.supplement = new CustomerCatalogV3ImportService(jdbc, expansion, cache, validator);
+  }
 
-    @Transactional
-    public void bootstrap() {
-        baseline.bootstrap();
-        try {
-            supplement.apply();
-        } catch (CatalogManifestImportException exception) {
-            throw new LocalQaBootstrapException("Customer Catalog V3 적용이 기존 데이터 또는 manifest와 충돌합니다: "
-                    + exception.getMessage(), exception);
-        }
+  @Transactional
+  public void bootstrap() {
+    baseline.bootstrap();
+    try {
+      supplement.apply();
+    } catch (CatalogManifestImportException exception) {
+      throw new LocalQaBootstrapException(
+          "Customer Catalog V3 적용이 기존 데이터 또는 manifest와 충돌합니다: " + exception.getMessage(),
+          exception);
     }
+  }
 }

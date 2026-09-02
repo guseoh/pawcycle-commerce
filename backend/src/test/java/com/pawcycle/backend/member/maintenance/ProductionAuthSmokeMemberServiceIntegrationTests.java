@@ -22,98 +22,100 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Import(ProductionAuthSmokeMemberService.class)
 class ProductionAuthSmokeMemberServiceIntegrationTests {
 
-	private final ProductionAuthSmokeMemberService memberService;
-	private final EmailNormalizer emailNormalizer;
-	private final PasswordEncoder passwordEncoder;
-	private final MemberRepository memberRepository;
-	private final TransactionTemplate transactionTemplate;
-	private String createdEmail;
+  private final ProductionAuthSmokeMemberService memberService;
+  private final EmailNormalizer emailNormalizer;
+  private final PasswordEncoder passwordEncoder;
+  private final MemberRepository memberRepository;
+  private final TransactionTemplate transactionTemplate;
+  private String createdEmail;
 
-	@Autowired
-	ProductionAuthSmokeMemberServiceIntegrationTests(
-			ProductionAuthSmokeMemberService memberService,
-			EmailNormalizer emailNormalizer,
-			PasswordEncoder passwordEncoder,
-			MemberRepository memberRepository,
-			PlatformTransactionManager transactionManager) {
-		this.memberService = memberService;
-		this.emailNormalizer = emailNormalizer;
-		this.passwordEncoder = passwordEncoder;
-		this.memberRepository = memberRepository;
-		this.transactionTemplate = new TransactionTemplate(transactionManager);
-	}
+  @Autowired
+  ProductionAuthSmokeMemberServiceIntegrationTests(
+      ProductionAuthSmokeMemberService memberService,
+      EmailNormalizer emailNormalizer,
+      PasswordEncoder passwordEncoder,
+      MemberRepository memberRepository,
+      PlatformTransactionManager transactionManager) {
+    this.memberService = memberService;
+    this.emailNormalizer = emailNormalizer;
+    this.passwordEncoder = passwordEncoder;
+    this.memberRepository = memberRepository;
+    this.transactionTemplate = new TransactionTemplate(transactionManager);
+  }
 
-	@AfterEach
-	void cleanFixture() {
-		if (createdEmail != null) {
-			memberRepository.findByEmail(createdEmail).ifPresent(memberRepository::delete);
-		}
-	}
+  @AfterEach
+  void cleanFixture() {
+    if (createdEmail != null) {
+      memberRepository.findByEmail(createdEmail).ifPresent(memberRepository::delete);
+    }
+  }
 
-	@Test
-	void createsOneMemberWithExistingEmailAndPasswordRules() {
-		createdEmail = runtimeEmail();
-		String password = runtimePassword();
-		long before = memberRepository.count();
+  @Test
+  void createsOneMemberWithExistingEmailAndPasswordRules() {
+    createdEmail = runtimeEmail();
+    String password = runtimePassword();
+    long before = memberRepository.count();
 
-		memberService.create(createdEmail, password);
+    memberService.create(createdEmail, password);
 
-		Member member = memberRepository.findByEmail(createdEmail).orElseThrow();
-		assertThat(memberRepository.count()).isEqualTo(before + 1);
-		assertThat(passwordEncoder.matches(password, member.getPasswordHash())).isTrue();
-		assertThat(member.getPasswordHash()).isNotEqualTo(password);
-	}
+    Member member = memberRepository.findByEmail(createdEmail).orElseThrow();
+    assertThat(memberRepository.count()).isEqualTo(before + 1);
+    assertThat(passwordEncoder.matches(password, member.getPasswordHash())).isTrue();
+    assertThat(member.getPasswordHash()).isNotEqualTo(password);
+  }
 
-	@Test
-	void duplicateDoesNotChangeExistingMemberOrPasswordHash() {
-		createdEmail = runtimeEmail();
-		String firstPassword = runtimePassword();
-		memberService.create(createdEmail, firstPassword);
-		Member before = memberRepository.findByEmail(createdEmail).orElseThrow();
-		String originalHash = before.getPasswordHash();
-		long originalCount = memberRepository.count();
+  @Test
+  void duplicateDoesNotChangeExistingMemberOrPasswordHash() {
+    createdEmail = runtimeEmail();
+    String firstPassword = runtimePassword();
+    memberService.create(createdEmail, firstPassword);
+    Member before = memberRepository.findByEmail(createdEmail).orElseThrow();
+    String originalHash = before.getPasswordHash();
+    long originalCount = memberRepository.count();
 
-		assertThatThrownBy(() -> memberService.create(createdEmail, runtimePassword()))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class);
+    assertThatThrownBy(() -> memberService.create(createdEmail, runtimePassword()))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class);
 
-		Member after = memberRepository.findByEmail(createdEmail).orElseThrow();
-		assertThat(after.getId()).isEqualTo(before.getId());
-		assertThat(after.getPasswordHash()).isEqualTo(originalHash);
-		assertThat(memberRepository.count()).isEqualTo(originalCount);
-	}
+    Member after = memberRepository.findByEmail(createdEmail).orElseThrow();
+    assertThat(after.getId()).isEqualTo(before.getId());
+    assertThat(after.getPasswordHash()).isEqualTo(originalHash);
+    assertThat(memberRepository.count()).isEqualTo(originalCount);
+  }
 
-	@Test
-	void persistenceFailureRollsBackWithoutPartialMember() {
-		createdEmail = runtimeEmail();
-		PasswordEncoder oversizedHashEncoder = new PasswordEncoder() {
-			@Override
-			public String encode(CharSequence rawPassword) {
-				return "X".repeat(101);
-			}
+  @Test
+  void persistenceFailureRollsBackWithoutPartialMember() {
+    createdEmail = runtimeEmail();
+    PasswordEncoder oversizedHashEncoder =
+        new PasswordEncoder() {
+          @Override
+          public String encode(CharSequence rawPassword) {
+            return "X".repeat(101);
+          }
 
-			@Override
-			public boolean matches(CharSequence rawPassword, String encodedPassword) {
-				return false;
-			}
-		};
-		ProductionAuthSmokeMemberService failingService = new ProductionAuthSmokeMemberService(
-				emailNormalizer,
-				oversizedHashEncoder,
-				memberRepository);
+          @Override
+          public boolean matches(CharSequence rawPassword, String encodedPassword) {
+            return false;
+          }
+        };
+    ProductionAuthSmokeMemberService failingService =
+        new ProductionAuthSmokeMemberService(
+            emailNormalizer, oversizedHashEncoder, memberRepository);
 
-		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(
-				status -> failingService.create(createdEmail, runtimePassword())))
-				.isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
-				.hasNoCause();
+    assertThatThrownBy(
+            () ->
+                transactionTemplate.executeWithoutResult(
+                    status -> failingService.create(createdEmail, runtimePassword())))
+        .isInstanceOf(ProductionAuthSmokeMemberCreationException.class)
+        .hasNoCause();
 
-		assertThat(memberRepository.findByEmail(createdEmail)).isEmpty();
-	}
+    assertThat(memberRepository.findByEmail(createdEmail)).isEmpty();
+  }
 
-	private String runtimeEmail() {
-		return "ops-019-" + UUID.randomUUID() + "@example.test";
-	}
+  private String runtimeEmail() {
+    return "ops-019-" + UUID.randomUUID() + "@example.test";
+  }
 
-	private String runtimePassword() {
-		return UUID.randomUUID().toString();
-	}
+  private String runtimePassword() {
+    return UUID.randomUUID().toString();
+  }
 }

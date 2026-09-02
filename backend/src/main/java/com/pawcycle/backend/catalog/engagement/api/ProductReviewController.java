@@ -1,6 +1,8 @@
 package com.pawcycle.backend.catalog.engagement.api;
 
 import com.pawcycle.backend.catalog.engagement.application.ProductEngagementService;
+import com.pawcycle.backend.catalog.engagement.application.ReviewCreateCommand;
+import com.pawcycle.backend.catalog.engagement.application.ReviewPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,31 +21,53 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping
 @RequiredArgsConstructor
 public class ProductReviewController {
-    private final ProductEngagementService service;
+  private final ProductEngagementService service;
 
-    @GetMapping("/api/products/{productId}/reviews")
-    ReviewViews.Page reviews(@PathVariable long productId, @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) { return service.reviews(productId, page, size); }
+  @GetMapping("/api/products/{productId}/reviews")
+  ReviewViews.Page reviews(
+      @PathVariable long productId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
+    return service.reviews(productId, page, size);
+  }
 
-    @GetMapping("/api/products/{productId}/reviews/me")
-    ReviewViews.Review myReview(@PathVariable long productId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-        return service.myReview(productId, principal.memberId());
-    }
+  @GetMapping("/api/products/{productId}/reviews/me")
+  ReviewViews.Review myReview(
+      @PathVariable long productId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+    return service.myReview(productId, principal.memberId());
+  }
 
-    @PostMapping("/api/products/{productId}/reviews")
-    ReviewViews.Review create(@PathVariable long productId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-            @Valid @RequestBody EngagementRequests.ReviewCreate request) {
-        return service.createReview(productId, principal.memberId(), request);
-    }
+  @PostMapping("/api/products/{productId}/reviews")
+  ReviewViews.Review create(
+      @PathVariable long productId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @Valid @RequestBody ReviewCreateRequest request) {
+    return service.createReview(
+        productId,
+        principal.memberId(),
+        new ReviewCreateCommand(request.rating(), request.content()));
+  }
 
-    @PatchMapping("/api/reviews/{reviewId}")
-    ReviewViews.Review update(@PathVariable long reviewId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-            @RequestBody EngagementRequests.ReviewPatch request) {
-        return service.updateReview(reviewId, principal.memberId(), request);
-    }
+  @PatchMapping("/api/reviews/{reviewId}")
+  ReviewViews.Review update(
+      @PathVariable long reviewId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
+      @RequestBody ReviewPatchRequest request) {
+    return service.updateReview(
+        reviewId,
+        principal.memberId(),
+        new ReviewPatchCommand(
+            request.getRating(),
+            request.isRatingPresent(),
+            request.getContent(),
+            request.isContentPresent()));
+  }
 
-    @DeleteMapping("/api/reviews/{reviewId}")
-    void delete(@PathVariable long reviewId, @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-        service.deleteReview(reviewId, principal.memberId());
-    }
+  @DeleteMapping("/api/reviews/{reviewId}")
+  void delete(
+      @PathVariable long reviewId,
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+    service.deleteReview(reviewId, principal.memberId());
+  }
 }

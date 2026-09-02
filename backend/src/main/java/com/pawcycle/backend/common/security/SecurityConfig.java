@@ -7,9 +7,9 @@ import org.springframework.boot.security.autoconfigure.actuate.web.servlet.Endpo
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -29,82 +29,100 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 @Configuration
 public class SecurityConfig {
 
-	@Bean
-	@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-	SecurityFilterChain securityFilterChain(
-			HttpSecurity http,
-			ApiAuthenticationEntryPoint authenticationEntryPoint,
-			ApiAccessDeniedHandler accessDeniedHandler,
-			HttpSessionCsrfTokenRepository csrfTokenRepository,
-			SecurityContextRepository securityContextRepository) throws Exception {
-		http
-				.csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
-				.securityContext(context -> context.securityContextRepository(securityContextRepository))
-				.authorizeHttpRequests(authorize -> authorize
-						.requestMatchers(EndpointRequest.to("health", "prometheus"))
-						.permitAll()
-						.requestMatchers(HttpMethod.GET, "/api/products/*/reviews/me")
-						.authenticated()
-						.requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/categories", "/api/catalog/discovery", "/api/auth/csrf")
-						.permitAll()
-						.requestMatchers(HttpMethod.GET, "/api/recommendations/popular", "/api/recommendations/trending", "/api/products/*/related", "/api/products/*/complementary")
-						.permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/auth/login")
-						.permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/auth/logout")
-						.authenticated()
-						.requestMatchers(HttpMethod.GET, "/api/auth/me")
-						.authenticated()
-						.requestMatchers("/api/admin/**")
-						.hasRole("ADMIN")
-						.requestMatchers("/api/**")
-						.authenticated()
-						.anyRequest()
-						.denyAll())
-				.exceptionHandling(exceptions -> exceptions
-						.authenticationEntryPoint(authenticationEntryPoint)
-						.accessDeniedHandler(accessDeniedHandler))
-				.logout(logout -> logout.disable())
-				.sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()));
-		return http.build();
-	}
+  @Bean
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  SecurityFilterChain securityFilterChain(
+      HttpSecurity http,
+      ApiAuthenticationEntryPoint authenticationEntryPoint,
+      ApiAccessDeniedHandler accessDeniedHandler,
+      HttpSessionCsrfTokenRepository csrfTokenRepository,
+      SecurityContextRepository securityContextRepository)
+      throws Exception {
+    http.csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
+        .securityContext(context -> context.securityContextRepository(securityContextRepository))
+        .authorizeHttpRequests(
+            authorize ->
+                authorize
+                    .requestMatchers(EndpointRequest.to("health", "prometheus"))
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/products/*/reviews/me")
+                    .authenticated()
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/api/products",
+                        "/api/products/**",
+                        "/api/categories",
+                        "/api/catalog/discovery",
+                        "/api/auth/csrf")
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/api/recommendations/popular",
+                        "/api/recommendations/trending",
+                        "/api/products/*/related",
+                        "/api/products/*/complementary")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/login")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/logout")
+                    .authenticated()
+                    .requestMatchers(HttpMethod.GET, "/api/auth/me")
+                    .authenticated()
+                    .requestMatchers("/api/admin/**")
+                    .hasRole("ADMIN")
+                    .requestMatchers("/api/**")
+                    .authenticated()
+                    .anyRequest()
+                    .denyAll())
+        .exceptionHandling(
+            exceptions ->
+                exceptions
+                    .authenticationEntryPoint(authenticationEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
+        .logout(logout -> logout.disable())
+        .sessionManagement(
+            session -> session.sessionFixation(fixation -> fixation.changeSessionId()));
+    return http.build();
+  }
 
-	@Bean
-	HttpSessionCsrfTokenRepository csrfTokenRepository() {
-		HttpSessionCsrfTokenRepository repository = new HttpSessionCsrfTokenRepository();
-		repository.setHeaderName("X-CSRF-TOKEN");
-		repository.setParameterName("_csrf");
-		return repository;
-	}
+  @Bean
+  HttpSessionCsrfTokenRepository csrfTokenRepository() {
+    HttpSessionCsrfTokenRepository repository = new HttpSessionCsrfTokenRepository();
+    repository.setHeaderName("X-CSRF-TOKEN");
+    repository.setParameterName("_csrf");
+    return repository;
+  }
 
-	@Bean
-	PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder();
-	}
+  @Bean
+  PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+  }
 
-	@Bean
-	AuthenticationManager authenticationManager(MemberAuthenticationProvider memberAuthenticationProvider) {
-		return new ProviderManager(memberAuthenticationProvider);
-	}
+  @Bean
+  AuthenticationManager authenticationManager(
+      MemberAuthenticationProvider memberAuthenticationProvider) {
+    return new ProviderManager(memberAuthenticationProvider);
+  }
 
-	@Bean
-	SessionAuthenticationStrategy sessionAuthenticationStrategy(
-			HttpSessionCsrfTokenRepository csrfTokenRepository) {
-		return new CompositeSessionAuthenticationStrategy(List.of(
-				new ChangeSessionIdAuthenticationStrategy(),
-				new CsrfAuthenticationStrategy(csrfTokenRepository)));
-	}
+  @Bean
+  SessionAuthenticationStrategy sessionAuthenticationStrategy(
+      HttpSessionCsrfTokenRepository csrfTokenRepository) {
+    return new CompositeSessionAuthenticationStrategy(
+        List.of(
+            new ChangeSessionIdAuthenticationStrategy(),
+            new CsrfAuthenticationStrategy(csrfTokenRepository)));
+  }
 
-	@Bean
-	SecurityContextRepository securityContextRepository() {
-		return new HttpSessionSecurityContextRepository();
-	}
+  @Bean
+  SecurityContextRepository securityContextRepository() {
+    return new HttpSessionSecurityContextRepository();
+  }
 
-	@Bean
-	LogoutHandler logoutHandler(HttpSessionCsrfTokenRepository csrfTokenRepository) {
-		return new CompositeLogoutHandler(
-				new CsrfLogoutHandler(csrfTokenRepository),
-				new SecurityContextLogoutHandler(),
-				new CookieClearingLogoutHandler("JSESSIONID"));
-	}
+  @Bean
+  LogoutHandler logoutHandler(HttpSessionCsrfTokenRepository csrfTokenRepository) {
+    return new CompositeLogoutHandler(
+        new CsrfLogoutHandler(csrfTokenRepository),
+        new SecurityContextLogoutHandler(),
+        new CookieClearingLogoutHandler("JSESSIONID"));
+  }
 }

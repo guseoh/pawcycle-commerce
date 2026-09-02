@@ -40,266 +40,296 @@ import org.springframework.web.context.WebApplicationContext;
 @Transactional
 class ProductApiIntegrationTests {
 
-	private final WebApplicationContext applicationContext;
-	private final ProductRepository productRepository;
-	private final CategoryRepository categoryRepository;
-	private final SkuRepository skuRepository;
-	private final EntityManager entityManager;
-	private final Statistics statistics;
-	private MockMvc mockMvc;
+  private final WebApplicationContext applicationContext;
+  private final ProductRepository productRepository;
+  private final CategoryRepository categoryRepository;
+  private final SkuRepository skuRepository;
+  private final EntityManager entityManager;
+  private final Statistics statistics;
+  private MockMvc mockMvc;
 
-	@Autowired
-	ProductApiIntegrationTests(
-			WebApplicationContext applicationContext,
-			ProductRepository productRepository,
-			CategoryRepository categoryRepository,
-			SkuRepository skuRepository,
-			EntityManager entityManager,
-			EntityManagerFactory entityManagerFactory) {
-		this.applicationContext = applicationContext;
-		this.productRepository = productRepository;
-		this.categoryRepository = categoryRepository;
-		this.skuRepository = skuRepository;
-		this.entityManager = entityManager;
-		this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
-	}
+  @Autowired
+  ProductApiIntegrationTests(
+      WebApplicationContext applicationContext,
+      ProductRepository productRepository,
+      CategoryRepository categoryRepository,
+      SkuRepository skuRepository,
+      EntityManager entityManager,
+      EntityManagerFactory entityManagerFactory) {
+    this.applicationContext = applicationContext;
+    this.productRepository = productRepository;
+    this.categoryRepository = categoryRepository;
+    this.skuRepository = skuRepository;
+    this.entityManager = entityManager;
+    this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+  }
 
-	@BeforeEach
-	void setUp() {
-		mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext)
-				.apply(springSecurity())
-				.build();
-	}
+  @BeforeEach
+  void setUp() {
+    mockMvc =
+        MockMvcBuilders.webAppContextSetup(applicationContext).apply(springSecurity()).build();
+  }
 
-	@Test
-	void anonymousListMatchesPaginatedShapeAndNewestOrder() throws Exception {
-		Product first = saveProduct("첫 상품", "DOG", null, null, "PUBLIC");
-		Product second = saveProduct("둘째 상품", "CAT", "상세", "https://example.test/cat.png", "PUBLIC");
-		saveSku(first, "동률 뒤 SKU", "39000.00", false, 2);
-		saveSku(first, "첫 SKU", "19000.00", true, 1);
-		saveSku(first, "동률 앞 SKU", "29000.00", false, 2);
-		flushAndResetStatistics();
+  @Test
+  void anonymousListMatchesPaginatedShapeAndNewestOrder() throws Exception {
+    Product first = saveProduct("첫 상품", "DOG", null, null, "PUBLIC");
+    Product second = saveProduct("둘째 상품", "CAT", "상세", "https://example.test/cat.png", "PUBLIC");
+    saveSku(first, "동률 뒤 SKU", "39000.00", false, 2);
+    saveSku(first, "첫 SKU", "19000.00", true, 1);
+    saveSku(first, "동률 앞 SKU", "29000.00", false, 2);
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items.length()").value(2))
-				.andExpect(jsonPath("$.page").value(0))
-				.andExpect(jsonPath("$.size").value(20))
-				.andExpect(jsonPath("$.totalElements").value(2))
-				.andExpect(jsonPath("$.totalPages").value(1))
-				.andExpect(jsonPath("$.items[0].productId").value(second.getId()))
-				.andExpect(jsonPath("$.items[0].petType").value("CAT"))
-				.andExpect(jsonPath("$.items[0].thumbnailUrl").value("https://example.test/cat.png"))
-				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
-				.andExpect(jsonPath("$.items[0].representativePrice").value(nullValue()))
-				.andExpect(jsonPath("$.items[0].purchasable").value(false))
-				.andExpect(jsonPath("$.items[1].productId").value(first.getId()))
-				.andExpect(jsonPath("$.items[1].category.categoryId").isNumber())
-				.andExpect(jsonPath("$.items[1].category.name").isString())
-				.andExpect(jsonPath("$.items[1].category.slug").isString())
-				.andExpect(jsonPath("$.items[1].thumbnailUrl").value(nullValue()))
-				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices.length()").value(1))
-				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].skuName").value("첫 SKU"))
-				.andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].price").value(19000.00))
-				.andExpect(jsonPath("$.items[1].representativePrice").value(19000.00))
-				.andExpect(jsonPath("$.items[1].hasSubscribableSku").value(true))
-				.andExpect(jsonPath("$.items[1].purchasable").value(false))
-				.andExpect(jsonPath("$.items[0].displayStatus").doesNotExist());
-	}
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.page").value(0))
+        .andExpect(jsonPath("$.size").value(20))
+        .andExpect(jsonPath("$.totalElements").value(2))
+        .andExpect(jsonPath("$.totalPages").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(second.getId()))
+        .andExpect(jsonPath("$.items[0].petType").value("CAT"))
+        .andExpect(jsonPath("$.items[0].thumbnailUrl").value("https://example.test/cat.png"))
+        .andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
+        .andExpect(jsonPath("$.items[0].representativePrice").value(nullValue()))
+        .andExpect(jsonPath("$.items[0].purchasable").value(false))
+        .andExpect(jsonPath("$.items[1].productId").value(first.getId()))
+        .andExpect(jsonPath("$.items[1].category.categoryId").isNumber())
+        .andExpect(jsonPath("$.items[1].category.name").isString())
+        .andExpect(jsonPath("$.items[1].category.slug").isString())
+        .andExpect(jsonPath("$.items[1].thumbnailUrl").value(nullValue()))
+        .andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices.length()").value(1))
+        .andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].skuName").value("첫 SKU"))
+        .andExpect(jsonPath("$.items[1].skuPriceSummary.skuPrices[0].price").value(19000.00))
+        .andExpect(jsonPath("$.items[1].representativePrice").value(19000.00))
+        .andExpect(jsonPath("$.items[1].hasSubscribableSku").value(true))
+        .andExpect(jsonPath("$.items[1].purchasable").value(false))
+        .andExpect(jsonPath("$.items[0].displayStatus").doesNotExist());
+  }
 
-	@Test
-	void anonymousEmptyListReturnsEmptyPage() throws Exception {
-		flushAndResetStatistics();
+  @Test
+  void anonymousEmptyListReturnsEmptyPage() throws Exception {
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items").isArray())
-				.andExpect(jsonPath("$.items.length()").value(0))
-				.andExpect(jsonPath("$.totalElements").value(0))
-				.andExpect(jsonPath("$.totalPages").value(0));
-	}
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items").isArray())
+        .andExpect(jsonPath("$.items.length()").value(0))
+        .andExpect(jsonPath("$.totalElements").value(0))
+        .andExpect(jsonPath("$.totalPages").value(0));
+  }
 
-	@Test
-	void authenticatedDetailNeedsNoCsrfAndReturnsInventoryProjection() throws Exception {
-		Product product = saveProduct("상세 상품", "DOG", null, null, "PUBLIC");
-		saveSku(product, "구독 SKU", "19900.00", true, 1);
-		saveSku(product, "일반 SKU", "29900.00", false, 2);
-		flushAndResetStatistics();
+  @Test
+  void authenticatedDetailNeedsNoCsrfAndReturnsInventoryProjection() throws Exception {
+    Product product = saveProduct("상세 상품", "DOG", null, null, "PUBLIC");
+    saveSku(product, "구독 SKU", "19900.00", true, 1);
+    saveSku(product, "일반 SKU", "29900.00", false, 2);
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products/{productId}", product.getId())
-					.with(authentication(new UsernamePasswordAuthenticationToken(
-							new AuthenticatedMemberPrincipal(1L), null, List.of()))))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.productId").value(product.getId()))
-				.andExpect(jsonPath("$.description").value(nullValue()))
-				.andExpect(jsonPath("$.thumbnailUrl").value(nullValue()))
-				.andExpect(jsonPath("$.category.categoryId").isNumber())
-				.andExpect(jsonPath("$.skus[0].subscribable").value(true))
-				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles.length()").value(3))
-				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[0]").value(2))
-				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[1]").value(4))
-				.andExpect(jsonPath("$.skus[0].availableDeliveryCycles[2]").value(8))
-				.andExpect(jsonPath("$.skus[0].availableQuantity").value(0))
-				.andExpect(jsonPath("$.skus[0].purchasable").value(false))
-				.andExpect(jsonPath("$.skus[1].subscribable").value(false))
-				.andExpect(jsonPath("$.skus[1].availableDeliveryCycles").isEmpty())
-				.andExpect(jsonPath("$.skus[1].availableQuantity").value(0))
-				.andExpect(jsonPath("$.skus[1].purchasable").value(false))
-				.andExpect(jsonPath("$.purchasable").value(false))
-				.andExpect(jsonPath("$.displayStatus").doesNotExist());
-	}
+    mockMvc
+        .perform(
+            get("/api/products/{productId}", product.getId())
+                .with(
+                    authentication(
+                        new UsernamePasswordAuthenticationToken(
+                            new AuthenticatedMemberPrincipal(1L), null, List.of()))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.productId").value(product.getId()))
+        .andExpect(jsonPath("$.description").value(nullValue()))
+        .andExpect(jsonPath("$.thumbnailUrl").value(nullValue()))
+        .andExpect(jsonPath("$.category.categoryId").isNumber())
+        .andExpect(jsonPath("$.skus[0].subscribable").value(true))
+        .andExpect(jsonPath("$.skus[0].availableDeliveryCycles.length()").value(3))
+        .andExpect(jsonPath("$.skus[0].availableDeliveryCycles[0]").value(2))
+        .andExpect(jsonPath("$.skus[0].availableDeliveryCycles[1]").value(4))
+        .andExpect(jsonPath("$.skus[0].availableDeliveryCycles[2]").value(8))
+        .andExpect(jsonPath("$.skus[0].availableQuantity").value(0))
+        .andExpect(jsonPath("$.skus[0].purchasable").value(false))
+        .andExpect(jsonPath("$.skus[1].subscribable").value(false))
+        .andExpect(jsonPath("$.skus[1].availableDeliveryCycles").isEmpty())
+        .andExpect(jsonPath("$.skus[1].availableQuantity").value(0))
+        .andExpect(jsonPath("$.skus[1].purchasable").value(false))
+        .andExpect(jsonPath("$.purchasable").value(false))
+        .andExpect(jsonPath("$.displayStatus").doesNotExist());
+  }
 
-	@Test
-	void anonymousDetailAndAuthenticatedListArePublicWithoutCsrf() throws Exception {
-		Product product = saveProduct("공개 접근 상품", "CAT", "상세", null, "PUBLIC");
-		flushAndResetStatistics();
+  @Test
+  void anonymousDetailAndAuthenticatedListArePublicWithoutCsrf() throws Exception {
+    Product product = saveProduct("공개 접근 상품", "CAT", "상세", null, "PUBLIC");
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products/{productId}", product.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.skus").isEmpty());
+    mockMvc
+        .perform(get("/api/products/{productId}", product.getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.skus").isEmpty());
 
-		mockMvc.perform(get("/api/products")
-					.with(authentication(new UsernamePasswordAuthenticationToken(
-							new AuthenticatedMemberPrincipal(1L), null, List.of()))))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items[0].productId").value(product.getId()));
-	}
+    mockMvc
+        .perform(
+            get("/api/products")
+                .with(
+                    authentication(
+                        new UsernamePasswordAuthenticationToken(
+                            new AuthenticatedMemberPrincipal(1L), null, List.of()))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].productId").value(product.getId()));
+  }
 
-	@Test
-	void onlyPublicProductsAreExposed() throws Exception {
-		Product visible = saveProduct("공개", "DOG", null, null, "PUBLIC");
-		Product draft = saveProduct("초안", "DOG", null, null, "DRAFT");
-		Product inactive = saveProduct("비활성", "DOG", null, null, "INACTIVE");
-		String suffix = UUID.randomUUID().toString();
-		Category inactiveCategory = categoryRepository.saveAndFlush(
-				new Category("숨김 " + suffix, "hidden-" + suffix, 0, false));
-		Product publicProductInInactiveCategory = productRepository.save(new Product(inactiveCategory,
-				"숨김 카테고리 공개 상품", "공개이지만 카테고리가 비활성입니다.", null, "DOG", null, "PUBLIC"));
-		flushAndResetStatistics();
+  @Test
+  void onlyPublicProductsAreExposed() throws Exception {
+    Product visible = saveProduct("공개", "DOG", null, null, "PUBLIC");
+    Product draft = saveProduct("초안", "DOG", null, null, "DRAFT");
+    Product inactive = saveProduct("비활성", "DOG", null, null, "INACTIVE");
+    String suffix = UUID.randomUUID().toString();
+    Category inactiveCategory =
+        categoryRepository.saveAndFlush(new Category("숨김 " + suffix, "hidden-" + suffix, 0, false));
+    Product publicProductInInactiveCategory =
+        productRepository.save(
+            new Product(
+                inactiveCategory,
+                "숨김 카테고리 공개 상품",
+                "공개이지만 카테고리가 비활성입니다.",
+                null,
+                "DOG",
+                null,
+                "PUBLIC"));
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items.length()").value(1))
-				.andExpect(jsonPath("$.items[0].productId").value(visible.getId()));
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(visible.getId()));
 
-		for (Long hiddenId : List.of(draft.getId(), inactive.getId(), publicProductInInactiveCategory.getId())) {
-			mockMvc.perform(get("/api/products/{productId}", hiddenId))
-					.andExpect(status().isNotFound())
-					.andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
-					.andExpect(jsonPath("$.message").value("상품을 확인할 수 없습니다."))
-					.andExpect(jsonPath("$.fieldErrors").isEmpty());
-		}
-	}
+    for (Long hiddenId :
+        List.of(draft.getId(), inactive.getId(), publicProductInInactiveCategory.getId())) {
+      mockMvc
+          .perform(get("/api/products/{productId}", hiddenId))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
+          .andExpect(jsonPath("$.message").value("상품을 확인할 수 없습니다."))
+          .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+  }
 
-	@Test
-	void missingAndNonPublicDetailsReturnIdenticalErrors() throws Exception {
-		Product hidden = saveProduct("비공개", "CAT", null, null, "INACTIVE");
-		flushAndResetStatistics();
+  @Test
+  void missingAndNonPublicDetailsReturnIdenticalErrors() throws Exception {
+    Product hidden = saveProduct("비공개", "CAT", null, null, "INACTIVE");
+    flushAndResetStatistics();
 
-		MvcResult hiddenResult = mockMvc.perform(get("/api/products/{productId}", hidden.getId()))
-				.andExpect(status().isNotFound())
-				.andReturn();
-		MvcResult missingResult = mockMvc.perform(get("/api/products/{productId}", Long.MAX_VALUE))
-				.andExpect(status().isNotFound())
-				.andReturn();
+    MvcResult hiddenResult =
+        mockMvc
+            .perform(get("/api/products/{productId}", hidden.getId()))
+            .andExpect(status().isNotFound())
+            .andReturn();
+    MvcResult missingResult =
+        mockMvc
+            .perform(get("/api/products/{productId}", Long.MAX_VALUE))
+            .andExpect(status().isNotFound())
+            .andReturn();
 
-		assertThat(hiddenResult.getResponse().getContentAsString())
-				.isEqualTo(missingResult.getResponse().getContentAsString());
-	}
+    assertThat(hiddenResult.getResponse().getContentAsString())
+        .isEqualTo(missingResult.getResponse().getContentAsString());
+  }
 
-	@Test
-	void publicApisExposeOnlyActiveSkusAndKeepProductWhenNoActiveSkuExists() throws Exception {
-		Product product = saveProduct("SKU 상태 상품", "DOG", null, null, "PUBLIC");
-		skuRepository.save(new Sku(
-				product,
-				"ACTIVE-" + product.getId(),
-				"활성 SKU",
-				new BigDecimal("1000.00"),
-				true,
-				1,
-				SkuStatus.ACTIVE));
-		skuRepository.save(new Sku(
-				product,
-				"INACTIVE-" + product.getId(),
-				"비활성 SKU",
-				new BigDecimal("2000.00"),
-				true,
-				2,
-				SkuStatus.INACTIVE));
-		flushAndResetStatistics();
+  @Test
+  void publicApisExposeOnlyActiveSkusAndKeepProductWhenNoActiveSkuExists() throws Exception {
+    Product product = saveProduct("SKU 상태 상품", "DOG", null, null, "PUBLIC");
+    skuRepository.save(
+        new Sku(
+            product,
+            "ACTIVE-" + product.getId(),
+            "활성 SKU",
+            new BigDecimal("1000.00"),
+            true,
+            1,
+            SkuStatus.ACTIVE));
+    skuRepository.save(
+        new Sku(
+            product,
+            "INACTIVE-" + product.getId(),
+            "비활성 SKU",
+            new BigDecimal("2000.00"),
+            true,
+            2,
+            SkuStatus.INACTIVE));
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices.length()").value(1))
-				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices[0].skuName").value("활성 SKU"));
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices.length()").value(1))
+        .andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices[0].skuName").value("활성 SKU"));
 
-		mockMvc.perform(get("/api/products/{productId}", product.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.skus.length()").value(1))
-				.andExpect(jsonPath("$.skus[0].skuName").value("활성 SKU"));
+    mockMvc
+        .perform(get("/api/products/{productId}", product.getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.skus.length()").value(1))
+        .andExpect(jsonPath("$.skus[0].skuName").value("활성 SKU"));
 
-		skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(product.getId()).stream()
-				.filter(sku -> sku.getStatus() == SkuStatus.ACTIVE)
-				.forEach(sku -> sku.update(null, null, null, null, SkuStatus.INACTIVE));
-		entityManager.flush();
-		entityManager.clear();
+    skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(product.getId()).stream()
+        .filter(sku -> sku.getStatus() == SkuStatus.ACTIVE)
+        .forEach(sku -> sku.update(null, null, null, null, SkuStatus.INACTIVE));
+    entityManager.flush();
+    entityManager.clear();
 
-		mockMvc.perform(get("/api/products/{productId}", product.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.skus").isEmpty());
+    mockMvc
+        .perform(get("/api/products/{productId}", product.getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.skus").isEmpty());
 
-		mockMvc.perform(get("/api/products"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items[0].productId").value(product.getId()))
-				.andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
-				.andExpect(jsonPath("$.items[0].hasSubscribableSku").value(false));
-	}
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].productId").value(product.getId()))
+        .andExpect(jsonPath("$.items[0].skuPriceSummary.skuPrices").isEmpty())
+        .andExpect(jsonPath("$.items[0].hasSubscribableSku").value(false));
+  }
 
-	@Test
-	void listFiltersByQueryPetTypeAndCategorySlug() throws Exception {
-		Product dogFood = saveProduct("강아지 사료", "DOG", null, null, "PUBLIC");
-		saveProduct("고양이 모래", "CAT", null, null, "PUBLIC");
-		flushAndResetStatistics();
+  @Test
+  void listFiltersByQueryPetTypeAndCategorySlug() throws Exception {
+    Product dogFood = saveProduct("강아지 사료", "DOG", null, null, "PUBLIC");
+    saveProduct("고양이 모래", "CAT", null, null, "PUBLIC");
+    flushAndResetStatistics();
 
-		mockMvc.perform(get("/api/products")
-					.param("q", "사료")
-					.param("petType", "dog")
-					.param("category", dogFood.getCategory().getSlug()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items.length()").value(1))
-				.andExpect(jsonPath("$.items[0].productId").value(dogFood.getId()));
+    mockMvc
+        .perform(
+            get("/api/products")
+                .param("q", "사료")
+                .param("petType", "dog")
+                .param("category", dogFood.getCategory().getSlug()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(dogFood.getId()));
 
-		mockMvc.perform(get("/api/products").param("q", "모래").param("petType", "DOG"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.items").isEmpty());
-	}
+    mockMvc
+        .perform(get("/api/products").param("q", "모래").param("petType", "DOG"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items").isEmpty());
+  }
 
-	private Product saveProduct(
-			String name,
-			String petType,
-			String description,
-			String thumbnailUrl,
-			String displayStatus) {
-		String suffix = UUID.randomUUID().toString();
-		Category category = categoryRepository.saveAndFlush(new Category("product-api-" + suffix, "product-api-" + suffix, 0, true));
-		Product product = new Product(category,
-				name,
-				name + " 짧은 설명",
-				description,
-				petType,
-				thumbnailUrl,
-				displayStatus);
-		return productRepository.save(product);
-	}
+  private Product saveProduct(
+      String name, String petType, String description, String thumbnailUrl, String displayStatus) {
+    String suffix = UUID.randomUUID().toString();
+    Category category =
+        categoryRepository.saveAndFlush(
+            new Category("product-api-" + suffix, "product-api-" + suffix, 0, true));
+    Product product =
+        new Product(
+            category, name, name + " 짧은 설명", description, petType, thumbnailUrl, displayStatus);
+    return productRepository.save(product);
+  }
 
-	private void saveSku(Product product, String name, String price, boolean subscribable, int displayOrder) {
-		skuRepository.save(com.pawcycle.backend.support.TestSkuFactory.sku(
-				product, name, new BigDecimal(price), subscribable, displayOrder));
-	}
+  private void saveSku(
+      Product product, String name, String price, boolean subscribable, int displayOrder) {
+    skuRepository.save(
+        com.pawcycle.backend.support.TestSkuFactory.sku(
+            product, name, new BigDecimal(price), subscribable, displayOrder));
+  }
 
-	private void flushAndResetStatistics() {
-		entityManager.flush();
-		entityManager.clear();
-		statistics.clear();
-	}
+  private void flushAndResetStatistics() {
+    entityManager.flush();
+    entityManager.clear();
+    statistics.clear();
+  }
 }

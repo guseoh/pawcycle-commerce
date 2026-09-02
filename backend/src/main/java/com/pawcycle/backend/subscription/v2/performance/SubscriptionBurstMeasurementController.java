@@ -11,19 +11,19 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("subscription-burst-measurement & !production & !prod")
 class SubscriptionBurstMeasurementController {
 
-	private final SubscriptionBurstMeasurementService measurementService;
+  private final SubscriptionBurstMeasurementService measurementService;
 
-	SubscriptionBurstMeasurementController(SubscriptionBurstMeasurementService measurementService) {
-		this.measurementService = measurementService;
-	}
+  SubscriptionBurstMeasurementController(SubscriptionBurstMeasurementService measurementService) {
+    this.measurementService = measurementService;
+  }
 
-	@PostMapping("/setup")
-	SubscriptionBurstMeasurementService.FixtureSummary setup(@RequestParam int cohortSize) {
-		return measurementService.setup(cohortSize);
-	}
+  @PostMapping("/setup")
+  SubscriptionBurstMeasurementService.FixtureSummary setup(@RequestParam int cohortSize) {
+    return measurementService.setup(cohortSize);
+  }
 
-	@PostMapping("/drain")
-	SubscriptionBurstMeasurementService.DrainSummary drain() {
-		return measurementService.drain();
-	}
+  @PostMapping("/drain")
+  SubscriptionBurstMeasurementService.DrainSummary drain() {
+    return measurementService.drain();
+  }
 }

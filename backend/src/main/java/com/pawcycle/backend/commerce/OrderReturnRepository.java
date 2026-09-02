@@ -2,5 +2,4 @@ package com.pawcycle.backend.commerce;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface OrderReturnRepository extends JpaRepository<OrderReturnEntity, Long> {
-}
+public interface OrderReturnRepository extends JpaRepository<OrderReturnEntity, Long> {}

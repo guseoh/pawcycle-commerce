@@ -11,32 +11,34 @@ import org.springframework.data.repository.query.Param;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-	List<Product> findAllByName(String name);
+  List<Product> findAllByName(String name);
 
-	@Query("SELECT p FROM Product p LEFT JOIN FETCH p.category ORDER BY p.id ASC")
-	List<Product> findAllWithCategoryOrderByIdAsc();
+  @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category ORDER BY p.id ASC")
+  List<Product> findAllWithCategoryOrderByIdAsc();
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query("SELECT p FROM Product p WHERE p.id = :productId")
-	Optional<Product> findByIdForUpdate(@Param("productId") Long productId);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT p FROM Product p WHERE p.id = :productId")
+  Optional<Product> findByIdForUpdate(@Param("productId") Long productId);
 
-	@Query("""
-			SELECT p
-			FROM Product p
-			JOIN FETCH p.category c
-			WHERE p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
-			  AND c.active = true
-			ORDER BY p.id ASC
-			""")
-	List<Product> findAllPublicOrderById();
+  @Query(
+      """
+      SELECT p
+      FROM Product p
+      JOIN FETCH p.category c
+      WHERE p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
+        AND c.active = true
+      ORDER BY p.id ASC
+      """)
+  List<Product> findAllPublicOrderById();
 
-	@Query("""
-			SELECT p
-			FROM Product p
-			JOIN FETCH p.category c
-			WHERE p.id = :productId
-			  AND p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
-			  AND c.active = true
-			""")
-	Optional<Product> findPublicById(@Param("productId") Long productId);
+  @Query(
+      """
+      SELECT p
+      FROM Product p
+      JOIN FETCH p.category c
+      WHERE p.id = :productId
+        AND p.status = com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC
+        AND c.active = true
+      """)
+  Optional<Product> findPublicById(@Param("productId") Long productId);
 }

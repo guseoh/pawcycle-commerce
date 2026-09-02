@@ -10,31 +10,32 @@ import org.springframework.data.repository.query.Param;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
 
-	@Modifying(flushAutomatically = true, clearAutomatically = true)
-	@Query("DELETE FROM Subscription subscription WHERE subscription.member.id = :memberId")
-	int deleteAllByMemberId(@Param("memberId") Long memberId);
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("DELETE FROM Subscription subscription WHERE subscription.member.id = :memberId")
+  int deleteAllByMemberId(@Param("memberId") Long memberId);
 
-	@Query("""
-			SELECT subscription
-			FROM Subscription subscription
-			JOIN FETCH subscription.sku sku
-			JOIN FETCH sku.product product
-			WHERE subscription.member.id = :memberId
-			  AND subscription.legacyApiVisible = true
-			ORDER BY subscription.id DESC
-			""")
-	List<Subscription> findAllOwnedWithCatalogOrderByIdDesc(@Param("memberId") Long memberId);
+  @Query(
+      """
+      SELECT subscription
+      FROM Subscription subscription
+      JOIN FETCH subscription.sku sku
+      JOIN FETCH sku.product product
+      WHERE subscription.member.id = :memberId
+        AND subscription.legacyApiVisible = true
+      ORDER BY subscription.id DESC
+      """)
+  List<Subscription> findAllOwnedWithCatalogOrderByIdDesc(@Param("memberId") Long memberId);
 
-	@Query("""
-			SELECT subscription
-			FROM Subscription subscription
-			JOIN FETCH subscription.sku sku
-			JOIN FETCH sku.product product
-			WHERE subscription.id = :subscriptionId
-			  AND subscription.member.id = :memberId
-			  AND subscription.legacyApiVisible = true
-			""")
-	Optional<Subscription> findOwnedWithCatalog(
-			@Param("subscriptionId") Long subscriptionId,
-			@Param("memberId") Long memberId);
+  @Query(
+      """
+      SELECT subscription
+      FROM Subscription subscription
+      JOIN FETCH subscription.sku sku
+      JOIN FETCH sku.product product
+      WHERE subscription.id = :subscriptionId
+        AND subscription.member.id = :memberId
+        AND subscription.legacyApiVisible = true
+      """)
+  Optional<Subscription> findOwnedWithCatalog(
+      @Param("subscriptionId") Long subscriptionId, @Param("memberId") Long memberId);
 }

@@ -12,22 +12,22 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnNotWebApplication
 @ConditionalOnProperty(
-		prefix = "pawcycle.maintenance.create-auth-smoke-member",
-		name = "enabled",
-		havingValue = "true")
+    prefix = "pawcycle.maintenance.create-auth-smoke-member",
+    name = "enabled",
+    havingValue = "true")
 public class ProductionAuthSmokeMemberMaintenanceConfiguration {
 
-	@Bean
-	ProductionAuthSmokeMemberService productionAuthSmokeMemberService(
-			EmailNormalizer emailNormalizer,
-			PasswordEncoder passwordEncoder,
-			MemberRepository memberRepository) {
-		return new ProductionAuthSmokeMemberService(emailNormalizer, passwordEncoder, memberRepository);
-	}
+  @Bean
+  ProductionAuthSmokeMemberService productionAuthSmokeMemberService(
+      EmailNormalizer emailNormalizer,
+      PasswordEncoder passwordEncoder,
+      MemberRepository memberRepository) {
+    return new ProductionAuthSmokeMemberService(emailNormalizer, passwordEncoder, memberRepository);
+  }
 
-	@Bean
-	ApplicationRunner productionAuthSmokeMemberRunner(
-			ProductionAuthSmokeMemberService memberService) {
-		return new ProductionAuthSmokeMemberCommand(memberService, System.in, System.out);
-	}
+  @Bean
+  ApplicationRunner productionAuthSmokeMemberRunner(
+      ProductionAuthSmokeMemberService memberService) {
+    return new ProductionAuthSmokeMemberCommand(memberService, System.in, System.out);
+  }
 }

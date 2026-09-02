@@ -10,13 +10,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/recommendations/products")
 class RecommendationController {
-	private final RecommendationService service;
+  private final RecommendationService service;
 
-	RecommendationController(RecommendationService service) { this.service = service; }
+  RecommendationController(RecommendationService service) {
+    this.service = service;
+  }
 
-	@GetMapping
-	RecommendationService.RecommendationResponse products(
-			@AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @RequestParam long petId) {
-		return service.recommend(principal.memberId(), petId);
-	}
+  @GetMapping
+  RecommendationService.RecommendationResponse products(
+      @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @RequestParam long petId) {
+    return service.recommend(principal.memberId(), petId);
+  }
 }

@@ -18,37 +18,38 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-	private final AuthApplicationService authApplicationService;
+  private final AuthApplicationService authApplicationService;
 
-	public AuthController(AuthApplicationService authApplicationService) {
-		this.authApplicationService = authApplicationService;
-	}
+  public AuthController(AuthApplicationService authApplicationService) {
+    this.authApplicationService = authApplicationService;
+  }
 
-	@GetMapping("/csrf")
-	ResponseEntity<CsrfTokenResponse> csrf(CsrfToken csrfToken) {
-		return ResponseEntity.ok()
-				.cacheControl(CacheControl.noStore())
-				.body(new CsrfTokenResponse(csrfToken.getToken()));
-	}
+  @GetMapping("/csrf")
+  ResponseEntity<CsrfTokenResponse> csrf(CsrfToken csrfToken) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(new CsrfTokenResponse(csrfToken.getToken()));
+  }
 
-	@PostMapping("/login")
-	MemberIdResponse login(
-			@RequestBody LoginRequest loginRequest,
-			HttpServletRequest request,
-			HttpServletResponse response) {
-		AuthenticatedMemberPrincipal principal = authApplicationService.login(
-				loginRequest.email(), loginRequest.password(), request, response);
-		return new MemberIdResponse(principal.memberId());
-	}
+  @PostMapping("/login")
+  MemberIdResponse login(
+      @RequestBody LoginRequest loginRequest,
+      HttpServletRequest request,
+      HttpServletResponse response) {
+    AuthenticatedMemberPrincipal principal =
+        authApplicationService.login(
+            loginRequest.email(), loginRequest.password(), request, response);
+    return new MemberIdResponse(principal.memberId());
+  }
 
-	@PostMapping("/logout")
-	ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-		authApplicationService.logout(request, response);
-		return ResponseEntity.noContent().build();
-	}
+  @PostMapping("/logout")
+  ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+    authApplicationService.logout(request, response);
+    return ResponseEntity.noContent().build();
+  }
 
-	@GetMapping("/me")
-	CurrentMemberResponse me(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-		return new CurrentMemberResponse(principal.memberId(), principal.role());
-	}
+  @GetMapping("/me")
+  CurrentMemberResponse me(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+    return new CurrentMemberResponse(principal.memberId(), principal.role());
+  }
 }

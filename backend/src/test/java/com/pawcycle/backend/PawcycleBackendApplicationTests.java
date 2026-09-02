@@ -8,8 +8,6 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class PawcycleBackendApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
-
+  @Test
+  void contextLoads() {}
 }

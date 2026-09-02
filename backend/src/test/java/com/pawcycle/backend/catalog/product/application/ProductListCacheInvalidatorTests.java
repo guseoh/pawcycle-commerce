@@ -12,47 +12,48 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class ProductListCacheInvalidatorTests {
-	@AfterEach
-	void clearTransactionState() {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.clearSynchronization();
-		}
-		TransactionSynchronizationManager.setActualTransactionActive(false);
-	}
+  @AfterEach
+  void clearTransactionState() {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
+    TransactionSynchronizationManager.setActualTransactionActive(false);
+  }
 
-	@Test
-	void committedTransactionInvalidatesCacheAfterCommit() {
-		ProductListCache cache = mock(ProductListCache.class);
-		ProductListCacheInvalidator invalidator = new ProductListCacheInvalidator(cache);
-		beginTransactionSynchronization();
+  @Test
+  void committedTransactionInvalidatesCacheAfterCommit() {
+    ProductListCache cache = mock(ProductListCache.class);
+    ProductListCacheInvalidator invalidator = new ProductListCacheInvalidator(cache);
+    beginTransactionSynchronization();
 
-		invalidator.invalidateAfterCommit();
-		verifyNoInteractions(cache);
+    invalidator.invalidateAfterCommit();
+    verifyNoInteractions(cache);
 
-		List<TransactionSynchronization> synchronizations =
-				TransactionSynchronizationManager.getSynchronizations();
-		assertThat(synchronizations).hasSize(1);
-		synchronizations.getFirst().afterCommit();
+    List<TransactionSynchronization> synchronizations =
+        TransactionSynchronizationManager.getSynchronizations();
+    assertThat(synchronizations).hasSize(1);
+    synchronizations.getFirst().afterCommit();
 
-		verify(cache).invalidate();
-	}
+    verify(cache).invalidate();
+  }
 
-	@Test
-	void rolledBackTransactionDoesNotInvalidateCache() {
-		ProductListCache cache = mock(ProductListCache.class);
-		ProductListCacheInvalidator invalidator = new ProductListCacheInvalidator(cache);
-		beginTransactionSynchronization();
+  @Test
+  void rolledBackTransactionDoesNotInvalidateCache() {
+    ProductListCache cache = mock(ProductListCache.class);
+    ProductListCacheInvalidator invalidator = new ProductListCacheInvalidator(cache);
+    beginTransactionSynchronization();
 
-		invalidator.invalidateAfterCommit();
-		for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
-			synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
-		}
+    invalidator.invalidateAfterCommit();
+    for (TransactionSynchronization synchronization :
+        TransactionSynchronizationManager.getSynchronizations()) {
+      synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+    }
 
-		verifyNoInteractions(cache);
-	}
+    verifyNoInteractions(cache);
+  }
 
-	private void beginTransactionSynchronization() {
-		TransactionSynchronizationManager.setActualTransactionActive(true);
-		TransactionSynchronizationManager.initSynchronization();
-	}
+  private void beginTransactionSynchronization() {
+    TransactionSynchronizationManager.setActualTransactionActive(true);
+    TransactionSynchronizationManager.initSynchronization();
+  }
 }

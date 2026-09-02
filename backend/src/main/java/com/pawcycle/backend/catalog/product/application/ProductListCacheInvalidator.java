@@ -8,21 +8,22 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Component
 @RequiredArgsConstructor
 public class ProductListCacheInvalidator {
-	private final ProductListCache productListCache;
+  private final ProductListCache productListCache;
 
-	public void invalidateAfterCommit() {
-		if (TransactionSynchronizationManager.isActualTransactionActive()) {
-			if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-				throw new IllegalStateException("active transaction has no synchronization");
-			}
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					productListCache.invalidate();
-				}
-			});
-			return;
-		}
-		productListCache.invalidate();
-	}
+  public void invalidateAfterCommit() {
+    if (TransactionSynchronizationManager.isActualTransactionActive()) {
+      if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+        throw new IllegalStateException("active transaction has no synchronization");
+      }
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              productListCache.invalidate();
+            }
+          });
+      return;
+    }
+    productListCache.invalidate();
+  }
 }

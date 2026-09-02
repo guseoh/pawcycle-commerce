@@ -16,39 +16,63 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 
 class SubscriptionBillingProcessorTests {
-	@Test
-	void successfulSubscriptionBillingReevaluatesMembership() {
-		JdbcTemplate jdbc = mock(JdbcTemplate.class);
-		PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
-		org.springframework.transaction.TransactionStatus status = mock(org.springframework.transaction.TransactionStatus.class);
-		MembershipEvaluationService membership = mock(MembershipEvaluationService.class);
-		when(manager.getTransaction(any(org.springframework.transaction.TransactionDefinition.class))).thenReturn(status);
-		org.mockito.Mockito.doNothing().when(manager).commit(status);
-		when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(
-				List.of(Map.of("id", 8L, "order_id", 9L, "member_id", 10L, "schedule_id", 11L)), List.of());
-		when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
-		SubscriptionBillingProcessor processor = new SubscriptionBillingProcessor(jdbc, manager, mock(TossBillingAdapter.class), mock(SubscriptionBillingService.class), mock(PaymentReconciliationService.class), mock(DeliveryService.class), mock(NotificationService.class), membership, mock(InventoryService.class));
+  @Test
+  void successfulSubscriptionBillingReevaluatesMembership() {
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+    org.springframework.transaction.TransactionStatus status =
+        mock(org.springframework.transaction.TransactionStatus.class);
+    MembershipEvaluationService membership = mock(MembershipEvaluationService.class);
+    when(manager.getTransaction(any(org.springframework.transaction.TransactionDefinition.class)))
+        .thenReturn(status);
+    org.mockito.Mockito.doNothing().when(manager).commit(status);
+    when(jdbc.queryForList(anyString(), any(Object[].class)))
+        .thenReturn(
+            List.of(Map.of("id", 8L, "order_id", 9L, "member_id", 10L, "schedule_id", 11L)),
+            List.of());
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    SubscriptionBillingProcessor processor =
+        new SubscriptionBillingProcessor(
+            jdbc,
+            manager,
+            mock(TossBillingAdapter.class),
+            mock(SubscriptionBillingService.class),
+            mock(PaymentReconciliationService.class),
+            mock(DeliveryService.class),
+            mock(NotificationService.class),
+            membership,
+            mock(InventoryService.class));
 
-		processor.completeSuccess(8L, "DONE");
+    processor.completeSuccess(8L, "DONE");
 
-		verify(membership).evaluate(10L);
-	}
+    verify(membership).evaluate(10L);
+  }
 
-	@Test
-	void processingBillingIsReconciledWithoutChargingAgain() {
-		JdbcTemplate jdbc = mock(JdbcTemplate.class);
-		TossBillingAdapter provider = mock(TossBillingAdapter.class);
-		SubscriptionBillingService retries = mock(SubscriptionBillingService.class);
-		PaymentReconciliationService reconciliation = mock(PaymentReconciliationService.class);
-		when(provider.isConfigured()).thenReturn(true);
-		when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Map<String,Object>>>any()))
-				.thenReturn(List.of(Map.of("id", 42L, "status", "PROCESSING")));
+  @Test
+  void processingBillingIsReconciledWithoutChargingAgain() {
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    TossBillingAdapter provider = mock(TossBillingAdapter.class);
+    SubscriptionBillingService retries = mock(SubscriptionBillingService.class);
+    PaymentReconciliationService reconciliation = mock(PaymentReconciliationService.class);
+    when(provider.isConfigured()).thenReturn(true);
+    when(jdbc.query(
+            anyString(), org.mockito.ArgumentMatchers.<RowMapper<Map<String, Object>>>any()))
+        .thenReturn(List.of(Map.of("id", 42L, "status", "PROCESSING")));
 
-		SubscriptionBillingProcessor processor = new SubscriptionBillingProcessor(
-				jdbc, mock(PlatformTransactionManager.class), provider, retries, reconciliation, mock(DeliveryService.class), mock(NotificationService.class), mock(MembershipEvaluationService.class), mock(InventoryService.class));
+    SubscriptionBillingProcessor processor =
+        new SubscriptionBillingProcessor(
+            jdbc,
+            mock(PlatformTransactionManager.class),
+            provider,
+            retries,
+            reconciliation,
+            mock(DeliveryService.class),
+            mock(NotificationService.class),
+            mock(MembershipEvaluationService.class),
+            mock(InventoryService.class));
 
-		assertThat(processor.processReadyPayments()).isEqualTo(1);
-		verify(reconciliation).reconcile(42L);
-		verify(provider, never()).charge(anyString(), anyString(), any());
-	}
+    assertThat(processor.processReadyPayments()).isEqualTo(1);
+    verify(reconciliation).reconcile(42L);
+    verify(provider, never()).charge(anyString(), anyString(), any());
+  }
 }

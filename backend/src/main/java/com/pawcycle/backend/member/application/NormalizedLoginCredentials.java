@@ -1,4 +1,3 @@
 package com.pawcycle.backend.member.application;
 
-record NormalizedLoginCredentials(String email, String password) {
-}
+record NormalizedLoginCredentials(String email, String password) {}

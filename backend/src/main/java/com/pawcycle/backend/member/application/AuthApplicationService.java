@@ -14,43 +14,41 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthApplicationService {
 
-	private final EmailNormalizer emailNormalizer;
-	private final MemberCredentialAuthenticator credentialAuthenticator;
-	private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
-	private final SecurityContextRepository securityContextRepository;
-	private final LogoutHandler logoutHandler;
+  private final EmailNormalizer emailNormalizer;
+  private final MemberCredentialAuthenticator credentialAuthenticator;
+  private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
+  private final SecurityContextRepository securityContextRepository;
+  private final LogoutHandler logoutHandler;
 
-	public AuthApplicationService(
-			EmailNormalizer emailNormalizer,
-			MemberCredentialAuthenticator credentialAuthenticator,
-			SessionAuthenticationStrategy sessionAuthenticationStrategy,
-			SecurityContextRepository securityContextRepository,
-			LogoutHandler logoutHandler) {
-		this.emailNormalizer = emailNormalizer;
-		this.credentialAuthenticator = credentialAuthenticator;
-		this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
-		this.securityContextRepository = securityContextRepository;
-		this.logoutHandler = logoutHandler;
-	}
+  public AuthApplicationService(
+      EmailNormalizer emailNormalizer,
+      MemberCredentialAuthenticator credentialAuthenticator,
+      SessionAuthenticationStrategy sessionAuthenticationStrategy,
+      SecurityContextRepository securityContextRepository,
+      LogoutHandler logoutHandler) {
+    this.emailNormalizer = emailNormalizer;
+    this.credentialAuthenticator = credentialAuthenticator;
+    this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
+    this.securityContextRepository = securityContextRepository;
+    this.logoutHandler = logoutHandler;
+  }
 
-	@Transactional(readOnly = true)
-	public AuthenticatedMemberPrincipal login(
-			String email,
-			String password,
-			HttpServletRequest request,
-			HttpServletResponse response) {
-		NormalizedLoginCredentials credentials = emailNormalizer.normalize(email, password);
-		Authentication authentication = credentialAuthenticator.authenticate(credentials.email(), credentials.password());
-		sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
+  @Transactional(readOnly = true)
+  public AuthenticatedMemberPrincipal login(
+      String email, String password, HttpServletRequest request, HttpServletResponse response) {
+    NormalizedLoginCredentials credentials = emailNormalizer.normalize(email, password);
+    Authentication authentication =
+        credentialAuthenticator.authenticate(credentials.email(), credentials.password());
+    sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
 
-		SecurityContext context = SecurityContextHolder.createEmptyContext();
-		context.setAuthentication(authentication);
-		SecurityContextHolder.setContext(context);
-		securityContextRepository.saveContext(context, request, response);
-		return (AuthenticatedMemberPrincipal) authentication.getPrincipal();
-	}
+    SecurityContext context = SecurityContextHolder.createEmptyContext();
+    context.setAuthentication(authentication);
+    SecurityContextHolder.setContext(context);
+    securityContextRepository.saveContext(context, request, response);
+    return (AuthenticatedMemberPrincipal) authentication.getPrincipal();
+  }
 
-	public void logout(HttpServletRequest request, HttpServletResponse response) {
-		logoutHandler.logout(request, response, SecurityContextHolder.getContext().getAuthentication());
-	}
+  public void logout(HttpServletRequest request, HttpServletResponse response) {
+    logoutHandler.logout(request, response, SecurityContextHolder.getContext().getAuthentication());
+  }
 }

@@ -23,62 +23,78 @@ import org.springframework.transaction.annotation.Transactional;
 @Import(LocalCustomerCatalogV3FixtureDriftIntegrationTests.FixtureConfiguration.class)
 @Transactional
 class LocalCustomerCatalogV3FixtureDriftIntegrationTests {
-    @Autowired JdbcTemplate jdbc;
-    @Autowired LocalCustomerCatalogV3FixtureService fixture;
+  @Autowired JdbcTemplate jdbc;
+  @Autowired LocalCustomerCatalogV3FixtureService fixture;
 
-    @Test
-    void changedImageDisplayOrderIsConflictAndDoesNotCreateDuplicate() {
-        fixture.bootstrap();
-        long productId = productId("qa3-dog-salmon-small");
-        long imageId = jdbc.queryForObject("""
-                SELECT id FROM product_images
-                WHERE product_id=? AND image_type='DETAIL'
-                ORDER BY display_order,id LIMIT 1
-                """, Long.class, productId);
-        int imageCount = count("SELECT COUNT(*) FROM product_images WHERE product_id=" + productId);
-        jdbc.update("UPDATE product_images SET display_order=99 WHERE id=?", imageId);
+  @Test
+  void changedImageDisplayOrderIsConflictAndDoesNotCreateDuplicate() {
+    fixture.bootstrap();
+    long productId = productId("qa3-dog-salmon-small");
+    long imageId =
+        jdbc.queryForObject(
+            """
+            SELECT id FROM product_images
+            WHERE product_id=? AND image_type='DETAIL'
+            ORDER BY display_order,id LIMIT 1
+            """,
+            Long.class,
+            productId);
+    int imageCount = count("SELECT COUNT(*) FROM product_images WHERE product_id=" + productId);
+    jdbc.update("UPDATE product_images SET display_order=99 WHERE id=?", imageId);
 
-        assertThatThrownBy(fixture::bootstrap)
-                .isInstanceOf(LocalQaBootstrapException.class)
-                .hasMessageContaining("product_images collection");
-        assertThat(count("SELECT COUNT(*) FROM product_images WHERE product_id=" + productId)).isEqualTo(imageCount);
+    assertThatThrownBy(fixture::bootstrap)
+        .isInstanceOf(LocalQaBootstrapException.class)
+        .hasMessageContaining("product_images collection");
+    assertThat(count("SELECT COUNT(*) FROM product_images WHERE product_id=" + productId))
+        .isEqualTo(imageCount);
+  }
+
+  @Test
+  void changedDetailSectionDisplayOrderIsConflictAndDoesNotCreateDuplicate() {
+    fixture.bootstrap();
+    long productId = productId("qa3-dog-salmon-small");
+    long sectionId =
+        jdbc.queryForObject(
+            """
+            SELECT id FROM product_detail_sections
+            WHERE product_id=?
+            ORDER BY display_order,id LIMIT 1
+            """,
+            Long.class,
+            productId);
+    int sectionCount =
+        count("SELECT COUNT(*) FROM product_detail_sections WHERE product_id=" + productId);
+    jdbc.update("UPDATE product_detail_sections SET display_order=99 WHERE id=?", sectionId);
+
+    assertThatThrownBy(fixture::bootstrap)
+        .isInstanceOf(LocalQaBootstrapException.class)
+        .hasMessageContaining("product_detail_sections collection");
+    assertThat(count("SELECT COUNT(*) FROM product_detail_sections WHERE product_id=" + productId))
+        .isEqualTo(sectionCount);
+  }
+
+  private long productId(String key) {
+    return jdbc.queryForObject("SELECT id FROM products WHERE catalog_key=?", Long.class, key);
+  }
+
+  private int count(String sql) {
+    return jdbc.queryForObject(sql, Integer.class);
+  }
+
+  @TestConfiguration(proxyBeanMethods = false)
+  static class FixtureConfiguration {
+    @Bean
+    LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(
+        JdbcTemplate jdbc,
+        DemoCatalogManifestImportService importer,
+        CatalogExpansionAdminService expansion,
+        ProductListCacheInvalidator cache,
+        Validator validator) {
+      var detail =
+          new DemoProductDetailSectionFixtureService(
+              jdbc, "classpath:catalog/demo-product-detail-sections.json");
+      return new LocalCustomerCatalogV3FixtureService(
+          jdbc, new LocalCommerceDemoFixtureService(importer, detail), expansion, cache, validator);
     }
-
-    @Test
-    void changedDetailSectionDisplayOrderIsConflictAndDoesNotCreateDuplicate() {
-        fixture.bootstrap();
-        long productId = productId("qa3-dog-salmon-small");
-        long sectionId = jdbc.queryForObject("""
-                SELECT id FROM product_detail_sections
-                WHERE product_id=?
-                ORDER BY display_order,id LIMIT 1
-                """, Long.class, productId);
-        int sectionCount = count("SELECT COUNT(*) FROM product_detail_sections WHERE product_id=" + productId);
-        jdbc.update("UPDATE product_detail_sections SET display_order=99 WHERE id=?", sectionId);
-
-        assertThatThrownBy(fixture::bootstrap)
-                .isInstanceOf(LocalQaBootstrapException.class)
-                .hasMessageContaining("product_detail_sections collection");
-        assertThat(count("SELECT COUNT(*) FROM product_detail_sections WHERE product_id=" + productId)).isEqualTo(sectionCount);
-    }
-
-    private long productId(String key) {
-        return jdbc.queryForObject("SELECT id FROM products WHERE catalog_key=?", Long.class, key);
-    }
-
-    private int count(String sql) {
-        return jdbc.queryForObject(sql, Integer.class);
-    }
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixtureConfiguration {
-        @Bean
-        LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(JdbcTemplate jdbc,
-                DemoCatalogManifestImportService importer, CatalogExpansionAdminService expansion,
-                ProductListCacheInvalidator cache, Validator validator) {
-            var detail = new DemoProductDetailSectionFixtureService(jdbc, "classpath:catalog/demo-product-detail-sections.json");
-            return new LocalCustomerCatalogV3FixtureService(
-                    jdbc, new LocalCommerceDemoFixtureService(importer, detail), expansion, cache, validator);
-        }
-    }
+  }
 }

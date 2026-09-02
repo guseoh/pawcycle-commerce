@@ -10,9 +10,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
 
-	Optional<Member> findByEmail(String email);
+  Optional<Member> findByEmail(String email);
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query("SELECT member FROM Member member WHERE member.email = :email")
-	Optional<Member> findByEmailForUpdate(@Param("email") String email);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT member FROM Member member WHERE member.email = :email")
+  Optional<Member> findByEmailForUpdate(@Param("email") String email);
 }
