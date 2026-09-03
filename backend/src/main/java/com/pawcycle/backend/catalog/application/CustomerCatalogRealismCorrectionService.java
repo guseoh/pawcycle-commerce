@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -23,18 +23,18 @@ public class CustomerCatalogRealismCorrectionService {
 
   public static final String DEFAULT_MANIFEST_LOCATION =
       "classpath:catalog/customer-catalog-realism-v1.json";
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final String manifestLocation;
   private volatile Manifest loadedManifest;
 
-  public CustomerCatalogRealismCorrectionService(JdbcTemplate jdbc) {
+  public CustomerCatalogRealismCorrectionService(NativeQueryExecutor jdbc) {
     this(jdbc, DEFAULT_MANIFEST_LOCATION);
   }
 
   @Autowired
   public CustomerCatalogRealismCorrectionService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       @Value("${pawcycle.catalog.customer.realism.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
           String manifestLocation) {
     this.jdbc = jdbc;
@@ -42,15 +42,15 @@ public class CustomerCatalogRealismCorrectionService {
   }
 
   @Transactional
-  public ImportResult validate() {
+  public CustomerCatalogRealismImportResult validate() {
     Manifest manifest = load();
     validateManifest(manifest);
     validateExistingState(manifest);
-    return new ImportResult(Operation.VALIDATE, 0, 0, 0);
+    return new CustomerCatalogRealismImportResult(CustomerCatalogRealismOperation.VALIDATE, 0, 0, 0);
   }
 
   @Transactional
-  public ImportResult apply() {
+  public CustomerCatalogRealismImportResult apply() {
     Manifest manifest = load();
     validateManifest(manifest);
     int brands = applyBrand(manifest.brand());
@@ -58,7 +58,8 @@ public class CustomerCatalogRealismCorrectionService {
     for (ProductCorrection correction : manifest.products()) products += applyProduct(correction);
     int images = 0;
     for (ImageCorrection correction : manifest.images()) images += applyImage(correction);
-    return new ImportResult(Operation.APPLY, brands, products, images);
+    return new CustomerCatalogRealismImportResult(
+        CustomerCatalogRealismOperation.APPLY, brands, products, images);
   }
 
   boolean acceptsProductThumbnail(String catalogKey, Object actual) {
@@ -308,25 +309,6 @@ public class CustomerCatalogRealismCorrectionService {
 
   private static long number(Map<String, Object> row, String key) {
     return ((Number) row.get(key)).longValue();
-  }
-
-  public enum Operation {
-    VALIDATE,
-    APPLY
-  }
-
-  public record ImportResult(
-      Operation operation, int brandsUpdated, int productsUpdated, int imagesUpdated) {
-    public String summary() {
-      return "operation="
-          + operation
-          + ",brandsUpdated="
-          + brandsUpdated
-          + ",productsUpdated="
-          + productsUpdated
-          + ",imagesUpdated="
-          + imagesUpdated;
-    }
   }
 
   private record Manifest(

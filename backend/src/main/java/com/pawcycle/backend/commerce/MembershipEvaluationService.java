@@ -6,17 +6,17 @@ import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Owns membership reevaluation and its grade-history/coupon side effects. */
 @Service
 public class MembershipEvaluationService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final Clock clock;
 
-  public MembershipEvaluationService(JdbcTemplate jdbc, Clock clock) {
+  public MembershipEvaluationService(NativeQueryExecutor jdbc, Clock clock) {
     this.jdbc = jdbc;
     this.clock = clock;
   }

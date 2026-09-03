@@ -21,7 +21,7 @@ public class AdminProductEngagementController {
   private final ProductEngagementService service;
 
   @GetMapping("/product-reviews")
-  ReviewViews.AdminPage reviews(
+  AdminReviewListResponse reviews(
       @RequestParam(required = false) Long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
@@ -37,7 +37,7 @@ public class AdminProductEngagementController {
   }
 
   @GetMapping("/product-questions")
-  QuestionViews.AdminPage questions(
+  AdminQuestionListResponse questions(
       @RequestParam(required = false) Long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
@@ -45,7 +45,7 @@ public class AdminProductEngagementController {
   }
 
   @PutMapping("/product-questions/{questionId}/answer")
-  QuestionViews.AdminQuestion answer(
+  AdminQuestionResponse answer(
       @PathVariable long questionId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody QuestionAnswerRequest request) {

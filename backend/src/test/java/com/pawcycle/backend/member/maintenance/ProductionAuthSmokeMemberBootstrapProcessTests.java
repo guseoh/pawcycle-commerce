@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pawcycle.backend.PawcycleBackendApplication;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;

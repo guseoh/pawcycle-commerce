@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -27,7 +27,7 @@ public class DemoCatalogManifestImportService {
   static final int DELIVERY_CYCLE_COUNT = 3;
   static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
-  private final JdbcTemplate jdbcTemplate;
+  private final NativeQueryExecutor jdbcTemplate;
   private final ProductListCacheInvalidator productListCacheInvalidator;
   private final CustomerCatalogRealismCorrectionService correction;
   private final ObjectMapper objectMapper;
@@ -35,7 +35,7 @@ public class DemoCatalogManifestImportService {
 
   @Autowired
   public DemoCatalogManifestImportService(
-      JdbcTemplate jdbcTemplate,
+      NativeQueryExecutor jdbcTemplate,
       ProductListCacheInvalidator productListCacheInvalidator,
       CustomerCatalogRealismCorrectionService correction,
       @Value("${pawcycle.catalog.demo.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
@@ -48,7 +48,7 @@ public class DemoCatalogManifestImportService {
   }
 
   public DemoCatalogManifestImportService(
-      JdbcTemplate jdbcTemplate, ProductListCacheInvalidator productListCacheInvalidator) {
+      NativeQueryExecutor jdbcTemplate, ProductListCacheInvalidator productListCacheInvalidator) {
     this(
         jdbcTemplate,
         productListCacheInvalidator,
@@ -57,7 +57,7 @@ public class DemoCatalogManifestImportService {
   }
 
   public DemoCatalogManifestImportService(
-      JdbcTemplate jdbcTemplate,
+      NativeQueryExecutor jdbcTemplate,
       ProductListCacheInvalidator productListCacheInvalidator,
       String configuredManifestLocation) {
     this(
@@ -68,29 +68,29 @@ public class DemoCatalogManifestImportService {
   }
 
   @Transactional
-  public ImportResult validate() {
+  public DemoCatalogImportResult validate() {
     return validate(configuredManifestLocation);
   }
 
   @Transactional
-  public ImportResult validate(String manifestLocation) {
+  public DemoCatalogImportResult validate(String manifestLocation) {
     CatalogManifest manifest = loadManifest(manifestLocation);
-    ImportContext context = new ImportContext(Operation.VALIDATE);
+    ImportContext context = new ImportContext(DemoCatalogImportOperation.VALIDATE);
     process(manifest, context);
     return context.result(null);
   }
 
   @Transactional
-  public ImportResult apply() {
+  public DemoCatalogImportResult apply() {
     return apply(configuredManifestLocation);
   }
 
   @Transactional
-  public ImportResult apply(String manifestLocation) {
+  public DemoCatalogImportResult apply(String manifestLocation) {
     CatalogManifest manifest = loadManifest(manifestLocation);
-    ImportContext context = new ImportContext(Operation.APPLY);
+    ImportContext context = new ImportContext(DemoCatalogImportOperation.APPLY);
     process(manifest, context);
-    Postflight postflight = postflight(manifest);
+    DemoCatalogImportPostflight postflight = postflight(manifest);
     if (!postflight.complete()) {
       throw conflict("manifest postflight");
     }
@@ -451,7 +451,7 @@ public class DemoCatalogManifestImportService {
     }
   }
 
-  private Postflight postflight(CatalogManifest manifest) {
+  private DemoCatalogImportPostflight postflight(CatalogManifest manifest) {
     List<String> categorySlugs = manifest.categories().stream().map(CategoryFixture::slug).toList();
     List<String> catalogKeys =
         manifest.products().stream().map(ProductFixture::catalogKey).toList();
@@ -492,7 +492,7 @@ public class DemoCatalogManifestImportService {
                 + " version.id=cycle.plan_version_id JOIN subscription_plans plan ON"
                 + " plan.id=version.plan_id WHERE plan.plan_key IN (%s)",
             planKeys);
-    return new Postflight(
+    return new DemoCatalogImportPostflight(
         categorySlugs.size(),
         actualCategories,
         catalogKeys.size(),
@@ -659,93 +659,8 @@ public class DemoCatalogManifestImportService {
     }
   }
 
-  public enum Operation {
-    VALIDATE,
-    APPLY
-  }
-
-  public record ImportResult(
-      Operation operation,
-      int categoriesCreated,
-      int productsCreated,
-      int skusCreated,
-      int inventoriesCreated,
-      int plansCreated,
-      Postflight postflight) {
-
-    public String summary() {
-      String postflightSummary =
-          postflight == null ? "postflight=NOT_APPLIED" : postflight.summary();
-      return "CATALOG_IMPORT_RESULT operation="
-          + operation.name()
-          + " status=PASS categories_created="
-          + categoriesCreated
-          + " products_created="
-          + productsCreated
-          + " skus_created="
-          + skusCreated
-          + " inventories_created="
-          + inventoriesCreated
-          + " plans_created="
-          + plansCreated
-          + " "
-          + postflightSummary;
-    }
-  }
-
-  public record Postflight(
-      long expectedCategories,
-      long actualCategories,
-      long expectedProducts,
-      long actualProducts,
-      long expectedSkus,
-      long actualSkus,
-      long expectedInventories,
-      long actualInventories,
-      long expectedPlans,
-      long actualPlans,
-      long expectedPlanVersions,
-      long actualPlanVersions,
-      long expectedPlanItems,
-      long actualPlanItems,
-      long expectedDeliveryCycles,
-      long actualDeliveryCycles) {
-
-    public boolean complete() {
-      return expectedCategories == actualCategories
-          && expectedProducts == actualProducts
-          && expectedSkus == actualSkus
-          && expectedInventories == actualInventories
-          && expectedPlans == actualPlans
-          && expectedPlanVersions == actualPlanVersions
-          && expectedPlanItems == actualPlanItems
-          && expectedDeliveryCycles == actualDeliveryCycles;
-    }
-
-    public String summary() {
-      return "postflight="
-          + (complete() ? "PASS" : "FAIL")
-          + " catalog_counts="
-          + actualCategories
-          + "/"
-          + actualProducts
-          + "/"
-          + actualSkus
-          + " inventory_count="
-          + actualInventories
-          + " plan_counts="
-          + actualPlans
-          + "/"
-          + actualPlanVersions
-          + "/"
-          + actualPlanItems
-          + "/"
-          + actualDeliveryCycles;
-    }
-  }
-
   private final class ImportContext {
-    private final Operation operation;
+    private final DemoCatalogImportOperation operation;
     private long nextVirtualId = -1;
     private int createdCategories;
     private int createdProducts;
@@ -753,20 +668,20 @@ public class DemoCatalogManifestImportService {
     private int createdInventories;
     private int createdPlans;
 
-    private ImportContext(Operation operation) {
+    private ImportContext(DemoCatalogImportOperation operation) {
       this.operation = operation;
     }
 
     private boolean writes() {
-      return operation == Operation.APPLY;
+      return operation == DemoCatalogImportOperation.APPLY;
     }
 
     private long virtualId() {
       return nextVirtualId--;
     }
 
-    private ImportResult result(Postflight postflight) {
-      return new ImportResult(
+    private DemoCatalogImportResult result(DemoCatalogImportPostflight postflight) {
+      return new DemoCatalogImportResult(
           operation,
           createdCategories,
           createdProducts,

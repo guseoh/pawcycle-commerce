@@ -12,13 +12,13 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor.RowMapper;
 
 class ProductComparisonServiceTests {
   @Test
   void invalidProductCountIsRejectedBeforeCanonicalQueries() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
 
     org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -32,7 +32,7 @@ class ProductComparisonServiceTests {
   void duplicateNullAndFourProductIdsAreRejected() {
     for (List<Long> ids :
         List.of(List.of(1L, 1L), java.util.Arrays.asList(1L, null), List.of(1L, 2L, 3L, 4L))) {
-      JdbcTemplate jdbc = mock(JdbcTemplate.class);
+      NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
       ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
       org.assertj.core.api.Assertions.assertThatThrownBy(
               () -> new ProductComparisonService(jdbc, ai).compare(ids))
@@ -44,12 +44,12 @@ class ProductComparisonServiceTests {
 
   @Test
   void threeProductComparisonKeepsCanonicalFactsWhenAiSummaryIsValid() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
     for (long id : List.of(1L, 2L, 3L)) stubFacts(jdbc, id);
     when(ai.compare(anyList())).thenReturn("세 상품은 가격과 구성에서 차이가 있습니다.");
 
-    ProductComparisonService.ComparisonResponse response =
+    ProductComparisonResponse response =
         new ProductComparisonService(jdbc, ai).compare(List.of(1L, 2L, 3L));
 
     assertThat(response.aiStatus()).isEqualTo("AVAILABLE");
@@ -68,13 +68,13 @@ class ProductComparisonServiceTests {
 
   @Test
   void unsafeAiSummaryIsNotExposedOrStored() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
     stubFacts(jdbc, 1L);
     stubFacts(jdbc, 2L);
     when(ai.compare(anyList())).thenReturn("질병 치료를 보장합니다.");
 
-    ProductComparisonService.ComparisonResponse response =
+    ProductComparisonResponse response =
         new ProductComparisonService(jdbc, ai).compare(List.of(1L, 2L));
 
     assertThat(response.aiStatus()).isEqualTo("UNAVAILABLE");
@@ -85,7 +85,7 @@ class ProductComparisonServiceTests {
 
   @Test
   void aiFailureLeavesCanonicalFactsAvailable() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
     Map<String, Object> row =
         Map.ofEntries(
@@ -108,7 +108,7 @@ class ProductComparisonServiceTests {
         .thenReturn(List.of("size:small"));
     when(ai.compare(anyList())).thenThrow(new IllegalStateException("provider unavailable"));
 
-    ProductComparisonService.ComparisonResponse response =
+    ProductComparisonResponse response =
         new ProductComparisonService(jdbc, ai).compare(List.of(1L, 2L));
 
     assertThat(response.aiStatus()).isEqualTo("UNAVAILABLE");
@@ -119,7 +119,7 @@ class ProductComparisonServiceTests {
     assertThat(response.products().getFirst().purchasable()).isTrue();
   }
 
-  private void stubFacts(JdbcTemplate jdbc, long id) {
+  private void stubFacts(NativeQueryExecutor jdbc, long id) {
     Map<String, Object> row =
         Map.ofEntries(
             Map.entry("id", id),

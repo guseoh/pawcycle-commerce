@@ -25,26 +25,26 @@ class CustomerCatalogImportServiceIntegrationTests {
   void validateChecksCanonicalCatalogWithoutMutatingDatabase() {
     Map<String, Integer> before = counts();
 
-    CustomerCatalogImportService.ImportResult result = customerCatalog.validate();
+    CustomerCatalogImportResult result = customerCatalog.validate();
 
     assertThat(counts()).isEqualTo(before);
     assertThat(result.supplement().operation())
-        .isEqualTo(CustomerCatalogV3ImportService.Operation.VALIDATE);
+        .isEqualTo(CustomerCatalogImportOperation.VALIDATE);
     assertThat(result.supplement().expectedBrands()).isEqualTo(9);
     assertThat(result.supplement().expectedCategories()).isEqualTo(23);
     assertThat(result.supplement().expectedProducts()).isEqualTo(68);
     assertThat(result.supplement().expectedSkus()).isEqualTo(124);
     assertThat(result.correction().operation())
-        .isEqualTo(CustomerCatalogRealismCorrectionService.Operation.VALIDATE);
+        .isEqualTo(CustomerCatalogRealismOperation.VALIDATE);
     assertThat(result.summary()).contains("CUSTOMER_CATALOG_IMPORT_RESULT status=PASS");
   }
 
   @Test
   void applyCreatesOneHundredProductCanonicalCatalogAndIsIdempotent() {
-    CustomerCatalogImportService.ImportResult first = customerCatalog.apply();
+    CustomerCatalogImportResult first = customerCatalog.apply();
     Map<String, Integer> afterFirst = counts();
     Map<String, Object> protectedState = protectedCatalogState();
-    CustomerCatalogImportService.ImportResult second = customerCatalog.apply();
+    CustomerCatalogImportResult second = customerCatalog.apply();
 
     assertThat(counts()).isEqualTo(afterFirst);
     assertThat(count("SELECT COUNT(*) FROM products")).isEqualTo(100);
@@ -57,7 +57,7 @@ class CustomerCatalogImportServiceIntegrationTests {
                 "SELECT COUNT(*) FROM products GROUP BY pet_type ORDER BY pet_type", Integer.class))
         .containsExactly(50, 50);
     assertThat(first.supplement().operation())
-        .isEqualTo(CustomerCatalogV3ImportService.Operation.APPLY);
+        .isEqualTo(CustomerCatalogImportOperation.APPLY);
     assertThat(first.correction().brandsUpdated()).isEqualTo(1);
     assertThat(first.correction().productsUpdated()).isEqualTo(8);
     assertThat(first.correction().imagesUpdated()).isEqualTo(5);

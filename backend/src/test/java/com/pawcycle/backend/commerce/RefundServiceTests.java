@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -23,7 +23,7 @@ import org.springframework.transaction.TransactionStatus;
 class RefundServiceTests {
   @Test
   void zeroAmountRefundCompletesLocallyWithoutProviderWrite() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus transactionStatus = mock(TransactionStatus.class);
     TossRefundAdapter provider = mock(TossRefundAdapter.class);
@@ -56,7 +56,8 @@ class RefundServiceTests {
             mock(NotificationService.class),
             mock(MembershipEvaluationService.class),
             mock(AdminAuditService.class),
-            mock(CommerceMetrics.class));
+            mock(CommerceMetrics.class),
+            java.time.Clock.systemUTC());
 
     assertThat(service.process(7L)).containsEntry("status", "SUCCEEDED");
     verify(provider, never()).refund(anyString(), any());
@@ -64,7 +65,7 @@ class RefundServiceTests {
 
   @Test
   void processingReconcileQueriesProviderWithoutIssuingAnotherRefund() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus transactionStatus = mock(TransactionStatus.class);
     TossRefundAdapter provider = mock(TossRefundAdapter.class);
@@ -98,7 +99,8 @@ class RefundServiceTests {
             mock(NotificationService.class),
             mock(MembershipEvaluationService.class),
             mock(AdminAuditService.class),
-            metrics);
+            metrics,
+            java.time.Clock.systemUTC());
 
     Map<String, Object> result = service.reconcile(91L);
 

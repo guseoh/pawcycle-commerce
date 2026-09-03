@@ -1,39 +1,48 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
-import com.pawcycle.backend.catalog.engagement.api.QuestionViews;
-import com.pawcycle.backend.catalog.engagement.api.ReviewViews;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.engagement.api.AdminQuestionListResponse;
+import com.pawcycle.backend.catalog.engagement.api.AdminQuestionResponse;
+import com.pawcycle.backend.catalog.engagement.api.AdminReviewListResponse;
+import com.pawcycle.backend.catalog.engagement.api.AdminReviewResponse;
+import com.pawcycle.backend.catalog.engagement.api.QuestionListResponse;
+import com.pawcycle.backend.catalog.engagement.api.QuestionResponse;
+import com.pawcycle.backend.catalog.engagement.api.ReviewListResponse;
+import com.pawcycle.backend.catalog.engagement.api.ReviewResponse;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.commerce.AdminAuditService;
 import com.pawcycle.backend.commerce.NotificationService;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.foundation.persistence.PersistenceExceptionClassifier;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductEngagementService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ProductRepository products;
   private final NotificationService notifications;
   private final AdminAuditService audits;
+  private final Clock clock;
 
   public ProductEngagementService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       ProductRepository products,
       NotificationService notifications,
-      AdminAuditService audits) {
+      AdminAuditService audits,
+      Clock clock) {
     this.jdbc = jdbc;
     this.products = products;
     this.notifications = notifications;
     this.audits = audits;
+    this.clock = clock;
   }
 
   @Transactional(readOnly = true)
-  public ReviewViews.Page reviews(long productId, int page, int size) {
+  public ReviewListResponse reviews(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
     long total =
@@ -41,14 +50,14 @@ public class ProductEngagementService {
             "SELECT COUNT(*) FROM reviews WHERE product_id=? AND visible=true",
             Long.class,
             productId);
-    List<ReviewViews.Review> items =
+    List<ReviewResponse> items =
         jdbc.query(
             """
             SELECT id,rating,content,created_at,updated_at FROM reviews
             WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?
             """,
             (rs, rowNum) ->
-                new ReviewViews.Review(
+                new ReviewResponse(
                     rs.getLong("id"),
                     rs.getInt("rating"),
                     rs.getString("content"),
@@ -57,19 +66,19 @@ public class ProductEngagementService {
             productId,
             input.size(),
             input.offset());
-    return new ReviewViews.Page(
+    return new ReviewListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional(readOnly = true)
-  public ReviewViews.Review myReview(long productId, long memberId) {
+  public ReviewResponse myReview(long productId, long memberId) {
     requirePublicProduct(productId);
     return jdbc
         .query(
             "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
                 + " member_id=?",
             (rs, rowNum) ->
-                new ReviewViews.Review(
+                new ReviewResponse(
                     rs.getLong("id"),
                     rs.getInt("rating"),
                     rs.getString("content"),
@@ -83,7 +92,7 @@ public class ProductEngagementService {
   }
 
   @Transactional
-  public ReviewViews.Review createReview(
+  public ReviewResponse createReview(
       long productId, long memberId, ReviewCreateCommand request) {
     requirePublicProduct(productId);
     Integer purchased =
@@ -100,7 +109,7 @@ public class ProductEngagementService {
             productId);
     if (purchased == null || purchased == 0)
       throw error(403, "REVIEW_PURCHASE_REQUIRED", "배송 완료 상품만 리뷰를 작성할 수 있습니다.");
-    Timestamp now = Timestamp.from(Instant.now());
+    Timestamp now = Timestamp.from(Instant.now(clock));
     try {
       jdbc.update(
           "INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)"
@@ -111,53 +120,44 @@ public class ProductEngagementService {
           request.content(),
           now,
           now);
-    } catch (DataIntegrityViolationException exception) {
-      throw error(409, "REVIEW_ALREADY_EXISTS", "상품당 리뷰는 하나만 작성할 수 있습니다.");
+    } catch (RuntimeException failure) {
+      if (PersistenceExceptionClassifier.isDuplicateKey(failure)) {
+        throw error(409, "REVIEW_ALREADY_EXISTS", "상품당 리뷰는 하나만 작성할 수 있습니다.");
+      }
+      throw failure;
     }
     long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     return review(id, productId, memberId);
   }
 
   @Transactional
-  public ReviewViews.Review updateReview(long reviewId, long memberId, ReviewPatchCommand request) {
+  public ReviewResponse updateReview(long reviewId, long memberId, ReviewPatchCommand request) {
     if (!request.ratingPresent() && !request.contentPresent())
       throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
-    Map<String, Object> current =
-        jdbc.queryForList("SELECT * FROM reviews WHERE id=? FOR UPDATE", reviewId).stream()
-            .findFirst()
-            .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
-    if (((Number) current.get("member_id")).longValue() != memberId)
+    ReviewMutationState current = lockReview(reviewId);
+    if (current.memberId() != memberId)
       throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 수정할 수 있습니다.");
-    int rating =
-        request.ratingPresent()
-            ? validRating(request.rating())
-            : ((Number) current.get("rating")).intValue();
-    String content =
-        request.contentPresent()
-            ? validContent(request.content())
-            : (String) current.get("content");
+    int rating = request.ratingPresent() ? validRating(request.rating()) : current.rating();
+    String content = request.contentPresent() ? validContent(request.content()) : current.content();
     jdbc.update(
         "UPDATE reviews SET rating=?,content=?,updated_at=? WHERE id=?",
         rating,
         content,
-        Timestamp.from(Instant.now()),
+        Timestamp.from(Instant.now(clock)),
         reviewId);
-    return review(reviewId, ((Number) current.get("product_id")).longValue(), memberId);
+    return review(reviewId, current.productId(), memberId);
   }
 
   @Transactional
   public void deleteReview(long reviewId, long memberId) {
-    Map<String, Object> current =
-        jdbc.queryForList("SELECT member_id FROM reviews WHERE id=? FOR UPDATE", reviewId).stream()
-            .findFirst()
-            .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
-    if (((Number) current.get("member_id")).longValue() != memberId)
+    ReviewMutationState current = lockReview(reviewId);
+    if (current.memberId() != memberId)
       throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 삭제할 수 있습니다.");
     jdbc.update("DELETE FROM reviews WHERE id=?", reviewId);
   }
 
   @Transactional(readOnly = true)
-  public ReviewViews.AdminPage adminReviews(Long productId, int page, int size) {
+  public AdminReviewListResponse adminReviews(Long productId, int page, int size) {
     PageInput input = page(page, size);
     String filter = productId == null ? "" : " WHERE product_id=?";
     long total =
@@ -165,14 +165,14 @@ public class ProductEngagementService {
             ? jdbc.queryForObject("SELECT COUNT(*) FROM reviews", Long.class)
             : jdbc.queryForObject(
                 "SELECT COUNT(*) FROM reviews WHERE product_id=?", Long.class, productId);
-    List<ReviewViews.AdminReview> items =
+    List<AdminReviewResponse> items =
         jdbc.query(
             "SELECT id,product_id,member_id,rating,content,visible,created_at,updated_at FROM"
                 + " reviews"
                 + filter
                 + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
             (rs, rowNum) ->
-                new ReviewViews.AdminReview(
+                new AdminReviewResponse(
                     rs.getLong("id"),
                     rs.getLong("product_id"),
                     rs.getLong("member_id"),
@@ -184,7 +184,7 @@ public class ProductEngagementService {
             productId == null
                 ? new Object[] {input.size(), input.offset()}
                 : new Object[] {productId, input.size(), input.offset()});
-    return new ReviewViews.AdminPage(
+    return new AdminReviewListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
@@ -193,7 +193,7 @@ public class ProductEngagementService {
     if (jdbc.update(
             "UPDATE reviews SET visible=?,updated_at=? WHERE id=?",
             visible,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(Instant.now(clock)),
             reviewId)
         != 1) {
       throw error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다.");
@@ -202,7 +202,7 @@ public class ProductEngagementService {
   }
 
   @Transactional(readOnly = true)
-  public QuestionViews.Page questions(long productId, int page, int size) {
+  public QuestionListResponse questions(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
     long total =
@@ -210,13 +210,13 @@ public class ProductEngagementService {
             "SELECT COUNT(*) FROM product_questions WHERE product_id=? AND visible=true",
             Long.class,
             productId);
-    List<QuestionViews.Question> items =
+    List<QuestionResponse> items =
         jdbc.query(
             "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
                 + " WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ?"
                 + " OFFSET ?",
             (rs, rowNum) ->
-                new QuestionViews.Question(
+                new QuestionResponse(
                     rs.getLong("id"),
                     rs.getString("content"),
                     rs.getString("answer"),
@@ -226,15 +226,15 @@ public class ProductEngagementService {
             productId,
             input.size(),
             input.offset());
-    return new QuestionViews.Page(
+    return new QuestionListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional
-  public QuestionViews.Question createQuestion(
+  public QuestionResponse createQuestion(
       long productId, long memberId, QuestionCreateCommand request) {
     requirePublicProduct(productId);
-    Timestamp now = Timestamp.from(Instant.now());
+    Timestamp now = Timestamp.from(Instant.now(clock));
     jdbc.update(
         "INSERT INTO"
             + " product_questions(product_id,member_id,content,answer,answered_at,visible,created_at,updated_at)"
@@ -248,44 +248,34 @@ public class ProductEngagementService {
   }
 
   @Transactional
-  public QuestionViews.Question updateQuestion(
+  public QuestionResponse updateQuestion(
       long questionId, long memberId, QuestionPatchCommand request) {
     if (!request.contentPresent()) throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
-    Map<String, Object> current =
-        jdbc
-            .queryForList("SELECT * FROM product_questions WHERE id=? FOR UPDATE", questionId)
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
-    if (((Number) current.get("member_id")).longValue() != memberId)
+    QuestionMutationState current = lockQuestion(questionId);
+    if (current.memberId() != memberId)
       throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 수정할 수 있습니다.");
-    if (current.get("answered_at") != null)
+    if (current.answered())
       throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 수정할 수 없습니다.");
     jdbc.update(
         "UPDATE product_questions SET content=?,updated_at=? WHERE id=?",
         validContent(request.content()),
-        Timestamp.from(Instant.now()),
+        Timestamp.from(Instant.now(clock)),
         questionId);
-    return question(questionId, ((Number) current.get("product_id")).longValue());
+    return question(questionId, current.productId());
   }
 
   @Transactional
   public void deleteQuestion(long questionId, long memberId) {
-    Map<String, Object> current =
-        jdbc
-            .queryForList("SELECT * FROM product_questions WHERE id=? FOR UPDATE", questionId)
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
-    if (((Number) current.get("member_id")).longValue() != memberId)
+    QuestionMutationState current = lockQuestion(questionId);
+    if (current.memberId() != memberId)
       throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 삭제할 수 있습니다.");
-    if (current.get("answered_at") != null)
+    if (current.answered())
       throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 삭제할 수 없습니다.");
     jdbc.update("DELETE FROM product_questions WHERE id=?", questionId);
   }
 
   @Transactional(readOnly = true)
-  public QuestionViews.AdminPage adminQuestions(Long productId, int page, int size) {
+  public AdminQuestionListResponse adminQuestions(Long productId, int page, int size) {
     PageInput input = page(page, size);
     String filter = productId == null ? "" : " WHERE product_id=?";
     long total =
@@ -293,7 +283,7 @@ public class ProductEngagementService {
             ? jdbc.queryForObject("SELECT COUNT(*) FROM product_questions", Long.class)
             : jdbc.queryForObject(
                 "SELECT COUNT(*) FROM product_questions WHERE product_id=?", Long.class, productId);
-    List<QuestionViews.AdminQuestion> items =
+    List<AdminQuestionResponse> items =
         jdbc.query(
             "SELECT"
                 + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
@@ -301,7 +291,7 @@ public class ProductEngagementService {
                 + filter
                 + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
             (rs, rowNum) ->
-                new QuestionViews.AdminQuestion(
+                new AdminQuestionResponse(
                     rs.getLong("id"),
                     rs.getLong("product_id"),
                     rs.getLong("member_id"),
@@ -314,20 +304,14 @@ public class ProductEngagementService {
             productId == null
                 ? new Object[] {input.size(), input.offset()}
                 : new Object[] {productId, input.size(), input.offset()});
-    return new QuestionViews.AdminPage(
+    return new AdminQuestionListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional
-  public QuestionViews.AdminQuestion answerQuestion(long questionId, String answer, long adminId) {
-    Map<String, Object> current =
-        jdbc
-            .queryForList("SELECT * FROM product_questions WHERE id=? FOR UPDATE", questionId)
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
-    boolean firstAnswer = current.get("answered_at") == null;
-    Timestamp now = Timestamp.from(Instant.now());
+  public AdminQuestionResponse answerQuestion(long questionId, String answer, long adminId) {
+    QuestionMutationState current = lockQuestion(questionId);
+    Timestamp now = Timestamp.from(Instant.now(clock));
     jdbc.update(
         "UPDATE product_questions SET answer=?,answered_at=COALESCE(answered_at,?),updated_at=?"
             + " WHERE id=?",
@@ -335,12 +319,9 @@ public class ProductEngagementService {
         now,
         now,
         questionId);
-    if (firstAnswer)
+    if (!current.answered())
       notifications.create(
-          ((Number) current.get("member_id")).longValue(),
-          "PRODUCT_QUESTION_ANSWERED",
-          "PRODUCT_QUESTION",
-          questionId);
+          current.memberId(), "PRODUCT_QUESTION_ANSWERED", "PRODUCT_QUESTION", questionId);
     audits.append(adminId, "PRODUCT_QUESTION_ANSWER_UPDATE", "PRODUCT_QUESTION", questionId);
     return adminQuestion(questionId);
   }
@@ -350,7 +331,7 @@ public class ProductEngagementService {
     if (jdbc.update(
             "UPDATE product_questions SET visible=?,updated_at=? WHERE id=?",
             visible,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(Instant.now(clock)),
             questionId)
         != 1) {
       throw error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다.");
@@ -358,13 +339,44 @@ public class ProductEngagementService {
     audits.append(adminId, "PRODUCT_QUESTION_VISIBILITY_UPDATE", "PRODUCT_QUESTION", questionId);
   }
 
-  private ReviewViews.Review review(long id, long productId, long memberId) {
+  private ReviewMutationState lockReview(long reviewId) {
+    return jdbc
+        .query(
+            "SELECT member_id,product_id,rating,content FROM reviews WHERE id=? FOR UPDATE",
+            (rs, rowNum) ->
+                new ReviewMutationState(
+                    rs.getLong("member_id"),
+                    rs.getLong("product_id"),
+                    rs.getInt("rating"),
+                    rs.getString("content")),
+            reviewId)
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
+  }
+
+  private QuestionMutationState lockQuestion(long questionId) {
+    return jdbc
+        .query(
+            "SELECT member_id,product_id,answered_at FROM product_questions WHERE id=? FOR UPDATE",
+            (rs, rowNum) ->
+                new QuestionMutationState(
+                    rs.getLong("member_id"),
+                    rs.getLong("product_id"),
+                    rs.getTimestamp("answered_at") != null),
+            questionId)
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
+  }
+
+  private ReviewResponse review(long id, long productId, long memberId) {
     return jdbc
         .query(
             "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE id=? AND"
                 + " product_id=? AND member_id=?",
             (rs, rowNum) ->
-                new ReviewViews.Review(
+                new ReviewResponse(
                     rs.getLong("id"),
                     rs.getInt("rating"),
                     rs.getString("content"),
@@ -378,13 +390,13 @@ public class ProductEngagementService {
         .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
   }
 
-  private QuestionViews.Question question(long id, long productId) {
+  private QuestionResponse question(long id, long productId) {
     return jdbc
         .query(
             "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
                 + " WHERE id=? AND product_id=?",
             (rs, rowNum) ->
-                new QuestionViews.Question(
+                new QuestionResponse(
                     rs.getLong("id"),
                     rs.getString("content"),
                     rs.getString("answer"),
@@ -398,14 +410,14 @@ public class ProductEngagementService {
         .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
   }
 
-  private QuestionViews.AdminQuestion adminQuestion(long id) {
+  private AdminQuestionResponse adminQuestion(long id) {
     return jdbc
         .query(
             "SELECT"
                 + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
                 + " FROM product_questions WHERE id=?",
             (rs, rowNum) ->
-                new QuestionViews.AdminQuestion(
+                new AdminQuestionResponse(
                     rs.getLong("id"),
                     rs.getLong("product_id"),
                     rs.getLong("member_id"),
@@ -457,4 +469,8 @@ public class ProductEngagementService {
   }
 
   private record PageInput(int page, int size, int offset) {}
+
+  private record ReviewMutationState(long memberId, long productId, int rating, String content) {}
+
+  private record QuestionMutationState(long memberId, long productId, boolean answered) {}
 }

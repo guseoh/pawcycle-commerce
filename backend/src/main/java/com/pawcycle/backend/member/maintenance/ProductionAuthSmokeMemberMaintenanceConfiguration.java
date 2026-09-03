@@ -1,7 +1,7 @@
 package com.pawcycle.backend.member.maintenance;
 
 import com.pawcycle.backend.member.application.EmailNormalizer;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnNotWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

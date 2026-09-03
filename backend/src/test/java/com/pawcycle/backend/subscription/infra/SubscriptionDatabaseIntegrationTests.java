@@ -4,13 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -108,7 +108,7 @@ class SubscriptionDatabaseIntegrationTests {
             "version",
             "current_snapshot_id",
             "legacy_api_visible",
-            "mvp2_managed");
+            "runtime_managed");
     assertThat(
             columns.stream()
                 .filter(
@@ -174,7 +174,7 @@ class SubscriptionDatabaseIntegrationTests {
   }
 
   @Test
-  void mvp2StatusAndCurrentPlanVersionMustSatisfyMySqlConstraints() {
+  void subscriptionStatusAndCurrentPlanVersionMustSatisfyMySqlConstraints() {
     long firstPlan = insertPlan("DOG");
     long firstVersion = insertPlanVersion(firstPlan);
     jdbcTemplate.update(

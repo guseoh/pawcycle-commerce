@@ -14,20 +14,20 @@ class RecommendationControllerTests {
   @Test
   void principalAndPetIdAreBoundToServiceAndResponseSerializesAsContracted() throws Exception {
     RecommendationService service = mock(RecommendationService.class);
-    RecommendationService.RecommendationResponse response =
-        new RecommendationService.RecommendationResponse(
+    RecommendationResponse response =
+        new RecommendationResponse(
             List.of(
-                new RecommendationService.RecommendationItem(
+                new RecommendationItem(
                     301L,
                     "성견 사료",
                     "매일 먹는 기본 사료",
                     null,
-                    new RecommendationService.RecommendationItem.Category(10L, "사료", "food"),
+                    new RecommendationItemCategory(10L, "사료", "food"),
                     "반려동물 유형에 잘 맞는 상품입니다.")));
     when(service.recommend(7L, 42L)).thenReturn(response);
     RecommendationController controller = new RecommendationController(service);
 
-    RecommendationService.RecommendationResponse actual =
+    RecommendationResponse actual =
         controller.products(new AuthenticatedMemberPrincipal(7L), 42L);
 
     verify(service).recommend(7L, 42L);

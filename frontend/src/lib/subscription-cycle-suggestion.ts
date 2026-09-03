@@ -1,4 +1,4 @@
-import type { CycleSuggestionResponse } from "./v2-api.ts";
+import type { CycleSuggestionResponse } from "./subscription-api.ts";
 
 export function cycleSuggestionCopy(response: CycleSuggestionResponse): string | null {
   if (!response.suggestion) return null;

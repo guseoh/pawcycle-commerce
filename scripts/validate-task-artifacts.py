@@ -12,6 +12,7 @@ from pathlib import Path
 TASK_ID_PREFIXES = (
     "BOOTSTRAP", "PS", "ARCH", "FOUNDATION", "FRONTEND", "PRODUCT",
     "BUG", "PERF", "OPS", "OBS-BASE", "SUB-AUTO", "SEC", "AUTH", "DOMAIN", "API", "UX", "DATA",
+    "BACKEND-REFACTOR",
 )
 INC_BASE_TASK_ID_PATTERN = (
     r"(?<![A-Za-z0-9_\x80-\U0010FFFF-])"

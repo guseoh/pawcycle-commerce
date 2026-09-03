@@ -9,12 +9,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.catalog.category.application;
 
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +16,7 @@ public class CategoryQueryService {
         categoryRepository.findAllByActiveTrueOrderByDisplayOrderAscIdAsc().stream()
             .map(
                 category ->
-                    new CategoryListView.CategorySummary(
+                    new CategorySummary(
                         category.getId(), category.getName(), category.getSlug()))
             .toList());
   }

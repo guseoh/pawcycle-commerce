@@ -23,15 +23,15 @@ import org.springframework.context.annotation.Import;
 class LocalQaBootstrapConfigurationTests {
 
   private final LocalQaBootstrapService bootstrapService = mock(LocalQaBootstrapService.class);
-  private final LocalQaMvp2FixtureService mvp2FixtureService =
-      mock(LocalQaMvp2FixtureService.class);
+  private final LocalQaSubscriptionFixtureService subscriptionFixtureService =
+      mock(LocalQaSubscriptionFixtureService.class);
   private final LocalCommerceDemoFixtureService commerceDemoFixtureService =
       mock(LocalCommerceDemoFixtureService.class);
   private final ApplicationContextRunner contextRunner =
       new ApplicationContextRunner()
           .withUserConfiguration(LocalQaBootstrapConfiguration.class)
           .withBean(LocalQaBootstrapService.class, () -> bootstrapService)
-          .withBean(LocalQaMvp2FixtureService.class, () -> mvp2FixtureService)
+          .withBean(LocalQaSubscriptionFixtureService.class, () -> subscriptionFixtureService)
           .withBean(LocalCommerceDemoFixtureService.class, () -> commerceDemoFixtureService);
   private final ApplicationContextRunner demoFixtureContextRunner =
       new ApplicationContextRunner().withUserConfiguration(DemoFixtureConfiguration.class);
@@ -191,7 +191,7 @@ class LocalQaBootstrapConfigurationTests {
   }
 
   @Test
-  void enabledLocalRunnerPassesPropertiesAndBootstrapsMvp2Fixture() {
+  void enabledLocalRunnerPassesPropertiesAndBootstrapsSubscriptionFixture() {
     String email = runtimeQaEmail();
     String password = UUID.randomUUID().toString();
 
@@ -209,7 +209,7 @@ class LocalQaBootstrapConfigurationTests {
               runner.run(null);
               context.getBean("localDemoCatalogBootstrapRunner", ApplicationRunner.class).run(null);
               verify(bootstrapService).bootstrap(email, password, true, true);
-              verify(mvp2FixtureService).bootstrap();
+              verify(subscriptionFixtureService).bootstrap();
               verify(commerceDemoFixtureService).bootstrap();
             });
   }
@@ -230,12 +230,12 @@ class LocalQaBootstrapConfigurationTests {
             context -> {
               context.getBean("localQaBootstrapRunner", ApplicationRunner.class).run(null);
               verify(bootstrapService).bootstrap(email, password, false, !customerCatalogV3Enabled);
-              verify(mvp2FixtureService).bootstrap();
+              verify(subscriptionFixtureService).bootstrap();
             });
   }
 
   @Test
-  void runnerPropagatesBootstrapFailureAndDoesNotCreateMvp2Fixture() {
+  void runnerPropagatesBootstrapFailureAndDoesNotCreateSubscriptionFixture() {
     String email = runtimeQaEmail();
     String password = UUID.randomUUID().toString();
     doThrow(new LocalQaBootstrapException("로컬 QA bootstrap 설정 오류"))
@@ -254,16 +254,16 @@ class LocalQaBootstrapConfigurationTests {
                   context.getBean("localQaBootstrapRunner", ApplicationRunner.class);
               assertThatThrownBy(() -> runner.run(null))
                   .isInstanceOf(LocalQaBootstrapException.class);
-              verifyNoInteractions(mvp2FixtureService);
+              verifyNoInteractions(subscriptionFixtureService);
             });
   }
 
   @Test
-  void runnerPropagatesMvp2FixtureFailureAndStopsStartup() {
+  void runnerPropagatesSubscriptionFixtureFailureAndStopsStartup() {
     String email = runtimeQaEmail();
     String password = UUID.randomUUID().toString();
-    doThrow(new LocalQaBootstrapException("MVP2 fixture 설정 오류"))
-        .when(mvp2FixtureService)
+    doThrow(new LocalQaBootstrapException("SUBSCRIPTION fixture 설정 오류"))
+        .when(subscriptionFixtureService)
         .bootstrap();
 
     contextRunner
@@ -306,7 +306,7 @@ class LocalQaBootstrapConfigurationTests {
               assertThatThrownBy(() -> demoRunner.run(null))
                   .isInstanceOf(LocalQaBootstrapException.class);
               verify(bootstrapService).bootstrap(email, password, false, true);
-              verify(mvp2FixtureService).bootstrap();
+              verify(subscriptionFixtureService).bootstrap();
               verify(commerceDemoFixtureService).bootstrap();
             });
   }

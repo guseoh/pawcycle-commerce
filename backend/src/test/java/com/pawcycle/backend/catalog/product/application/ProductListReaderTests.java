@@ -9,10 +9,10 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -51,11 +51,11 @@ class ProductListReaderTests {
             List.of(1L), SkuStatus.ACTIVE))
         .thenReturn(List.of(sku));
 
-    ProductListReader.ProductListSnapshot snapshot =
+    ProductListSnapshot snapshot =
         new ProductListReader(productRepository, skuRepository).read();
 
     assertThat(snapshot.products())
-        .extracting(ProductListReader.ProductSnapshot::productId)
+        .extracting(ProductSnapshot::productId)
         .containsExactly(1L);
     assertThat(snapshot.products().getFirst().category())
         .satisfies(
@@ -65,7 +65,7 @@ class ProductListReaderTests {
               assertThat(mapped.slug()).isEqualTo("food");
             });
     assertThat(snapshot.skus())
-        .extracting(ProductListReader.SkuSnapshot::skuId)
+        .extracting(SkuSnapshot::skuId)
         .containsExactly(10L);
     assertThat(snapshot.skus().getFirst().price()).isEqualByComparingTo("19900.00");
     assertThatThrownBy(() -> snapshot.products().add(null))
@@ -79,7 +79,7 @@ class ProductListReaderTests {
   @Test
   void emptyProductsAvoidSecondQuery() {
     when(productRepository.findAllPublicOrderById()).thenReturn(List.of());
-    ProductListReader.ProductListSnapshot snapshot =
+    ProductListSnapshot snapshot =
         new ProductListReader(productRepository, skuRepository).read();
     assertThat(snapshot.products()).isEmpty();
     assertThat(snapshot.skus()).isEmpty();

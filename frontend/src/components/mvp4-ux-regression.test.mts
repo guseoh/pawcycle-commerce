@@ -4,15 +4,14 @@ import test from "node:test";
 import { cartQuantityError, cartQuantityForUpdate } from "../lib/frontend-utils.ts";
 
 const cartSource = readFileSync(new URL("../app/cart/page.tsx", import.meta.url), "utf8");
-const subscriptionSource = readFileSync(new URL("./mvp2-subscription-detail.tsx", import.meta.url), "utf8");
+const subscriptionSource = readFileSync(new URL("./subscription-detail.tsx", import.meta.url), "utf8");
 const addressesSource = readFileSync(new URL("../app/addresses/page.tsx", import.meta.url), "utf8");
 const wishlistSource = readFileSync(new URL("../app/wishlist/page.tsx", import.meta.url), "utf8");
 const billingSource = readFileSync(new URL("../app/billing-methods/page.tsx", import.meta.url), "utf8");
 const checkoutSource = readFileSync(new URL("../app/checkout/page.tsx", import.meta.url), "utf8");
 const tossPaymentWidgetSource = readFileSync(new URL("./toss-payment-widget.tsx", import.meta.url), "utf8");
 const notificationSource = readFileSync(new URL("./notification-screen.tsx", import.meta.url), "utf8");
-const subscriptionStartSource = readFileSync(new URL("./mvp2-subscription-start.tsx", import.meta.url), "utf8");
-const legacySubscriptionDetailSource = readFileSync(new URL("./subscription-detail-screen.tsx", import.meta.url), "utf8");
+const subscriptionStartSource = readFileSync(new URL("./subscription-start.tsx", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const productsSource = readFileSync(new URL("../app/products/page.tsx", import.meta.url), "utf8");
 const productCardSource = readFileSync(new URL("./catalog-product-card.tsx", import.meta.url), "utf8");
@@ -25,7 +24,7 @@ const purchasePanelSource = readFileSync(new URL("./product-purchase-panel.tsx",
 const recommendationSource = readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8");
 const mySource = readFileSync(new URL("../app/my/page.tsx", import.meta.url), "utf8");
 const orderListSource = readFileSync(new URL("./commerce-order-list.tsx", import.meta.url), "utf8");
-const subscriptionListSource = readFileSync(new URL("./mvp2-subscription-list.tsx", import.meta.url), "utf8");
+const subscriptionListSource = readFileSync(new URL("./subscription-list.tsx", import.meta.url), "utf8");
 const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8") + readFileSync(new URL("./customer-shell.tsx", import.meta.url), "utf8");
 
 test("MVP4 review correction은 실패한 작업과 안전한 복귀를 보존한다", () => {
@@ -212,7 +211,7 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(homeSource, /RecommendationSection/);
   assert.match(homeSource, /className="home-repeat-band"/);
   assert.match(homeSource, /products\?subscribable=true/);
-  assert.match(homeSource, /v2Api\.pets\.list/);
+  assert.match(homeSource, /subscriptionApi\.pets\.list/);
   assert.match(homeSource, /auth\.status === "loading"/);
   assert.match(homeSource, /auth\.status === "anonymous"/);
   assert.match(homeSource, /auth\.status === "authenticated"/);
@@ -320,7 +319,7 @@ test("Checkout cart version and idempotency conflict recovery keep the user in c
 test("사용자 화면은 내부 식별자를 노출하지 않는다", () => {
   const successSource = readFileSync(new URL("../app/checkout/success/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(subscriptionStartSource, /상품 #\$\{productContext\}|옵션 #/);
-  assert.doesNotMatch(legacySubscriptionDetailSource, /Subscription #|\( #/);
+  assert.doesNotMatch(subscriptionSource, /Subscription #|\( #/);
   assert.doesNotMatch(successSource, /결제 확인 번호/);
 });
 

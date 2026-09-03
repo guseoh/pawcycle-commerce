@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -130,7 +130,7 @@ class DatabaseFoundationIntegrationTests {
     flyway.migrate();
     Integer after = appliedMigrationCount();
 
-    assertThat(before).isEqualTo(27);
+    assertThat(before).isEqualTo(28);
     assertThat(after).isEqualTo(before);
   }
 

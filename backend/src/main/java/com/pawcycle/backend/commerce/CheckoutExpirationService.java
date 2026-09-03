@@ -3,7 +3,7 @@ package com.pawcycle.backend.commerce;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -11,12 +11,12 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class CheckoutExpirationService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final CheckoutExpirationProcessor processor;
   private final Clock clock;
 
   public CheckoutExpirationService(
-      JdbcTemplate jdbc, CheckoutExpirationProcessor processor, Clock clock) {
+      NativeQueryExecutor jdbc, CheckoutExpirationProcessor processor, Clock clock) {
     this.jdbc = jdbc;
     this.processor = processor;
     this.clock = clock;

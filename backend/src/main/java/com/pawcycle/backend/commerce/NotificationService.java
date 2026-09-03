@@ -1,21 +1,25 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.sql.Timestamp;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Persists only in-app notifications; the event key makes transaction replay harmless. */
 @Service
 public class NotificationService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
+  private final Clock clock;
 
-  public NotificationService(JdbcTemplate jdbc) {
+  public NotificationService(NativeQueryExecutor jdbc, Clock clock) {
     this.jdbc = jdbc;
+    this.clock = clock;
   }
 
+  @Transactional
   public void create(long memberId, String type, String referenceType, long referenceId) {
     jdbc.update(
         "INSERT INTO notifications(member_id,type,reference_type,reference_id,created_at) VALUES"
@@ -24,10 +28,11 @@ public class NotificationService {
         type,
         referenceType,
         referenceId,
-        Timestamp.from(Instant.now()));
+        Timestamp.from(clock.instant()));
   }
 
-  public List<Map<String, Object>> list(long memberId) {
+  @Transactional(readOnly = true)
+  public List<CommerceRowResponse> list(long memberId) {
     List<Map<String, Object>> result =
         jdbc.queryForList(
             "SELECT notification.id AS notificationId,notification.type,notification.reference_type"
@@ -47,22 +52,24 @@ public class NotificationService {
             item.remove("scheduledDate");
           }
         });
-    return result;
+    return CommerceRowResponse.from(result);
   }
 
+  @Transactional
   public void read(long memberId, long id) {
     if (jdbc.update(
             "UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND member_id=?",
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
             id,
             memberId)
         != 1) throw new CommerceException(404, "NOTIFICATION_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
   }
 
+  @Transactional
   public void readAll(long memberId) {
     jdbc.update(
         "UPDATE notifications SET read_at=? WHERE member_id=? AND read_at IS NULL",
-        Timestamp.from(Instant.now()),
+        Timestamp.from(clock.instant()),
         memberId);
   }
 }

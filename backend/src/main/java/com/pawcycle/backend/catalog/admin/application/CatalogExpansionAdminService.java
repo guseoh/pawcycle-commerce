@@ -1,7 +1,33 @@
 package com.pawcycle.backend.catalog.admin.application;
+import com.pawcycle.backend.catalog.admin.api.BrandPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.ImageCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ImagePatchRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionGroupCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionGroupPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionValueCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionValuePatchRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetOptionPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryFacetListResponse;
+import com.pawcycle.backend.catalog.admin.api.CategoryFacetResponse;
+import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryResponse;
+import com.pawcycle.backend.catalog.admin.api.BrandResponse;
+import com.pawcycle.backend.catalog.admin.api.ImageListResponse;
+import com.pawcycle.backend.catalog.admin.api.ImageResponse;
+import com.pawcycle.backend.catalog.admin.api.OptionGroupListResponse;
+import com.pawcycle.backend.catalog.admin.api.OptionGroupResponse;
+import com.pawcycle.backend.catalog.admin.api.OptionValueResponse;
+import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesResponse;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionListResponse;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionResponse;
+import com.pawcycle.backend.catalog.admin.api.FacetOptionResponse;
+import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesResponse;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.util.ArrayList;
@@ -9,7 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,17 +44,17 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class CatalogExpansionAdminService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ProductListCacheInvalidator cacheInvalidator;
 
   public CatalogExpansionAdminService(
-      JdbcTemplate jdbc, ProductListCacheInvalidator cacheInvalidator) {
+      NativeQueryExecutor jdbc, ProductListCacheInvalidator cacheInvalidator) {
     this.jdbc = jdbc;
     this.cacheInvalidator = cacheInvalidator;
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.Brand brand(long brandId) {
+  public BrandResponse brand(long brandId) {
     return jdbc
         .query(
             "SELECT id,name,slug,logo_url,active,display_order FROM brands WHERE id=?",
@@ -47,15 +73,15 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.Brand updateBrand(
-      long brandId, AdminCatalogRequests.BrandPatch request) {
+  public BrandResponse updateBrand(
+      long brandId, BrandPatchRequest request) {
     requirePatch(
         request.isNamePresent()
             || request.isSlugPresent()
             || request.isLogoUrlPresent()
             || request.isActivePresent()
             || request.isDisplayOrderPresent());
-    AdminCatalogViews.Brand current = brand(brandId);
+    BrandResponse current = brand(brandId);
     String name =
         request.isNamePresent() ? requiredText(request.getName(), "name", 150) : current.name();
     String slug = request.isSlugPresent() ? slug(request.getSlug(), "slug") : current.slug();
@@ -88,9 +114,9 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.ImageList images(long productId) {
+  public ImageListResponse images(long productId) {
     requireProduct(productId);
-    return new AdminCatalogViews.ImageList(
+    return new ImageListResponse(
         jdbc.query(
             "SELECT id,product_id,image_url,alt_text,display_order,image_type FROM product_images"
                 + " WHERE product_id=? ORDER BY display_order,id",
@@ -99,8 +125,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.Image createImage(
-      long productId, AdminCatalogRequests.ImageCreate request) {
+  public ImageResponse createImage(
+      long productId, ImageCreateRequest request) {
     requireProduct(productId);
     try {
       jdbc.update(
@@ -120,14 +146,14 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.Image updateImage(
-      long productId, long imageId, AdminCatalogRequests.ImagePatch request) {
+  public ImageResponse updateImage(
+      long productId, long imageId, ImagePatchRequest request) {
     requirePatch(
         request.isImageUrlPresent()
             || request.isAltTextPresent()
             || request.isDisplayOrderPresent()
             || request.isImageTypePresent());
-    AdminCatalogViews.Image current = image(productId, imageId);
+    ImageResponse current = image(productId, imageId);
     String imageUrl =
         request.isImageUrlPresent()
             ? requiredText(request.getImageUrl(), "imageUrl", 2048)
@@ -169,21 +195,21 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.OptionGroupList optionGroups(long productId) {
+  public OptionGroupListResponse optionGroups(long productId) {
     requireProduct(productId);
-    List<AdminCatalogViews.OptionGroup> groups =
+    List<OptionGroupResponse> groups =
         jdbc.query(
             "SELECT id,product_id,name,display_order FROM product_option_groups WHERE product_id=?"
                 + " ORDER BY display_order,id",
             (rs, n) ->
-                new AdminCatalogViews.OptionGroup(
+                new OptionGroupResponse(
                     rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4), List.of()),
             productId);
-    return new AdminCatalogViews.OptionGroupList(
+    return new OptionGroupListResponse(
         groups.stream()
             .map(
                 group ->
-                    new AdminCatalogViews.OptionGroup(
+                    new OptionGroupResponse(
                         group.optionGroupId(),
                         group.productId(),
                         group.name(),
@@ -193,8 +219,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.OptionGroup createOptionGroup(
-      long productId, AdminCatalogRequests.OptionGroupCreate request) {
+  public OptionGroupResponse createOptionGroup(
+      long productId, OptionGroupCreateRequest request) {
     lockProduct(productId);
     Long groupCount =
         jdbc.queryForObject(
@@ -216,10 +242,10 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.OptionGroup updateOptionGroup(
-      long productId, long groupId, AdminCatalogRequests.OptionGroupPatch request) {
+  public OptionGroupResponse updateOptionGroup(
+      long productId, long groupId, OptionGroupPatchRequest request) {
     requirePatch(request.isNamePresent() || request.isDisplayOrderPresent());
-    AdminCatalogViews.OptionGroup current = optionGroup(productId, groupId);
+    OptionGroupResponse current = optionGroup(productId, groupId);
     String name =
         request.isNamePresent() ? requiredText(request.getName(), "name", 100) : current.name();
     int displayOrder =
@@ -253,8 +279,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.OptionValue createOptionValue(
-      long productId, long groupId, AdminCatalogRequests.OptionValueCreate request) {
+  public OptionValueResponse createOptionValue(
+      long productId, long groupId, OptionValueCreateRequest request) {
     optionGroup(productId, groupId);
     try {
       jdbc.update(
@@ -270,10 +296,10 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.OptionValue updateOptionValue(
-      long productId, long groupId, long valueId, AdminCatalogRequests.OptionValuePatch request) {
+  public OptionValueResponse updateOptionValue(
+      long productId, long groupId, long valueId, OptionValuePatchRequest request) {
     requirePatch(request.isValuePresent() || request.isDisplayOrderPresent());
-    AdminCatalogViews.OptionValue current = optionValueForProduct(productId, groupId, valueId);
+    OptionValueResponse current = optionValueForProduct(productId, groupId, valueId);
     String value =
         request.isValuePresent() ? requiredText(request.getValue(), "value", 100) : current.value();
     int displayOrder =
@@ -306,8 +332,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.SkuOptionValues setSkuOptionValues(
-      long productId, long skuId, AdminCatalogRequests.SkuOptionValues request) {
+  public SkuOptionValuesResponse setSkuOptionValues(
+      long productId, long skuId, SkuOptionValuesRequest request) {
     lockProduct(productId);
     requireSku(productId, skuId);
     List<Long> ids = distinct(request.optionValueIds(), "optionValueIds");
@@ -331,11 +357,11 @@ public class CatalogExpansionAdminService {
     jdbc.update("DELETE FROM sku_option_values WHERE sku_id=?", skuId);
     for (Long id : ids)
       jdbc.update("INSERT INTO sku_option_values(sku_id,option_value_id) VALUES (?,?)", skuId, id);
-    return new AdminCatalogViews.SkuOptionValues(skuId, ids);
+    return new SkuOptionValuesResponse(skuId, ids);
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.SkuOptionValues skuOptionValues(long productId, long skuId) {
+  public SkuOptionValuesResponse skuOptionValues(long productId, long skuId) {
     requireSku(productId, skuId);
     List<Long> ids =
         jdbc.query(
@@ -344,22 +370,22 @@ public class CatalogExpansionAdminService {
                 + " WHERE sov.sku_id=? ORDER BY g.display_order,g.id,v.display_order,v.id",
             (rs, n) -> rs.getLong(1),
             skuId);
-    return new AdminCatalogViews.SkuOptionValues(skuId, ids);
+    return new SkuOptionValuesResponse(skuId, ids);
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.FacetDefinitionList facetDefinitions() {
-    List<AdminCatalogViews.FacetDefinition> definitions =
+  public FacetDefinitionListResponse facetDefinitions() {
+    List<FacetDefinitionResponse> definitions =
         jdbc.query(
             "SELECT id,`key`,name FROM facet_definitions ORDER BY id",
             (rs, n) ->
-                new AdminCatalogViews.FacetDefinition(
+                new FacetDefinitionResponse(
                     rs.getLong(1), rs.getString(2), rs.getString(3), List.of()));
-    return new AdminCatalogViews.FacetDefinitionList(
+    return new FacetDefinitionListResponse(
         definitions.stream()
             .map(
                 definition ->
-                    new AdminCatalogViews.FacetDefinition(
+                    new FacetDefinitionResponse(
                         definition.facetDefinitionId(),
                         definition.key(),
                         definition.name(),
@@ -368,19 +394,19 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.FacetDefinition facetDefinition(long definitionId) {
-    AdminCatalogViews.FacetDefinition definition =
+  public FacetDefinitionResponse facetDefinition(long definitionId) {
+    FacetDefinitionResponse definition =
         jdbc
             .query(
                 "SELECT id,`key`,name FROM facet_definitions WHERE id=?",
                 (rs, n) ->
-                    new AdminCatalogViews.FacetDefinition(
+                    new FacetDefinitionResponse(
                         rs.getLong(1), rs.getString(2), rs.getString(3), List.of()),
                 definitionId)
             .stream()
             .findFirst()
             .orElseThrow(() -> missing("FACET_DEFINITION_NOT_FOUND", "Facet 정의를 확인할 수 없습니다."));
-    return new AdminCatalogViews.FacetDefinition(
+    return new FacetDefinitionResponse(
         definition.facetDefinitionId(),
         definition.key(),
         definition.name(),
@@ -388,8 +414,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.FacetDefinition createFacetDefinition(
-      AdminCatalogRequests.FacetDefinitionCreate request) {
+  public FacetDefinitionResponse createFacetDefinition(
+      FacetDefinitionCreateRequest request) {
     try {
       jdbc.update(
           "INSERT INTO facet_definitions(`key`,name) VALUES (?,?)",
@@ -402,10 +428,10 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.FacetDefinition updateFacetDefinition(
-      long definitionId, AdminCatalogRequests.FacetDefinitionPatch request) {
+  public FacetDefinitionResponse updateFacetDefinition(
+      long definitionId, FacetDefinitionPatchRequest request) {
     requirePatch(request.isKeyPresent() || request.isNamePresent());
-    AdminCatalogViews.FacetDefinition current = facetDefinition(definitionId);
+    FacetDefinitionResponse current = facetDefinition(definitionId);
     String key = request.isKeyPresent() ? slug(request.getKey(), "key") : current.key();
     String name =
         request.isNamePresent() ? requiredText(request.getName(), "name", 100) : current.name();
@@ -430,8 +456,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.FacetOption createFacetOption(
-      long definitionId, AdminCatalogRequests.FacetOptionCreate request) {
+  public FacetOptionResponse createFacetOption(
+      long definitionId, FacetOptionCreateRequest request) {
     facetDefinition(definitionId);
     try {
       jdbc.update(
@@ -446,10 +472,10 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.FacetOption updateFacetOption(
-      long definitionId, long optionId, AdminCatalogRequests.FacetOptionPatch request) {
+  public FacetOptionResponse updateFacetOption(
+      long definitionId, long optionId, FacetOptionPatchRequest request) {
     requirePatch(request.isValuePresent() || request.isDisplayOrderPresent());
-    AdminCatalogViews.FacetOption current = facetOption(definitionId, optionId);
+    FacetOptionResponse current = facetOption(definitionId, optionId);
     String value =
         request.isValuePresent() ? requiredText(request.getValue(), "value", 100) : current.value();
     int displayOrder =
@@ -481,8 +507,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.CategoryFacet assignCategoryFacet(
-      long categoryId, long definitionId, AdminCatalogRequests.CategoryFacetAssign request) {
+  public CategoryFacetResponse assignCategoryFacet(
+      long categoryId, long definitionId, CategoryFacetAssignRequest request) {
     requireCategory(categoryId);
     facetDefinition(definitionId);
     try {
@@ -495,7 +521,7 @@ public class CatalogExpansionAdminService {
     } catch (DataIntegrityViolationException exception) {
       throw validation("displayOrder", "0 이상이어야 합니다.");
     }
-    return new AdminCatalogViews.CategoryFacet(categoryId, definitionId, request.displayOrder());
+    return new CategoryFacetResponse(categoryId, definitionId, request.displayOrder());
   }
 
   @Transactional
@@ -536,8 +562,8 @@ public class CatalogExpansionAdminService {
   }
 
   @Transactional
-  public AdminCatalogViews.ProductFacetValues setProductFacetValues(
-      long productId, AdminCatalogRequests.ProductFacetValues request) {
+  public ProductFacetValuesResponse setProductFacetValues(
+      long productId, ProductFacetValuesRequest request) {
     long categoryId = lockProductAndGetCategory(productId);
     lockCategoryFacetScope(categoryId);
     List<Long> ids = distinct(request.facetOptionIds(), "facetOptionIds");
@@ -562,11 +588,11 @@ public class CatalogExpansionAdminService {
           productId,
           id);
     cacheInvalidator.invalidateAfterCommit();
-    return new AdminCatalogViews.ProductFacetValues(productId, ids);
+    return new ProductFacetValuesResponse(productId, ids);
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.ProductFacetValues productFacetValues(long productId) {
+  public ProductFacetValuesResponse productFacetValues(long productId) {
     requireProduct(productId);
     List<Long> ids =
         jdbc.query(
@@ -578,43 +604,40 @@ public class CatalogExpansionAdminService {
                 + " IS NULL,cf.display_order,fd.id,fo.display_order,fo.id",
             (rs, n) -> rs.getLong(1),
             productId);
-    return new AdminCatalogViews.ProductFacetValues(productId, ids);
+    return new ProductFacetValuesResponse(productId, ids);
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.CategoryFacetList categoryFacets(long categoryId) {
+  public CategoryFacetListResponse categoryFacets(long categoryId) {
     requireCategory(categoryId);
-    List<AdminCatalogViews.CategoryFacet> facets =
+    List<CategoryFacetResponse> facets =
         jdbc.query(
             "SELECT category_id,facet_definition_id,display_order FROM category_facets WHERE"
                 + " category_id=? ORDER BY display_order,facet_definition_id",
             (rs, n) ->
-                new AdminCatalogViews.CategoryFacet(rs.getLong(1), rs.getLong(2), rs.getInt(3)),
+                new CategoryFacetResponse(rs.getLong(1), rs.getLong(2), rs.getInt(3)),
             categoryId);
-    return new AdminCatalogViews.CategoryFacetList(categoryId, facets);
+    return new CategoryFacetListResponse(categoryId, facets);
   }
 
-  private AdminCatalogViews.Brand brand(
+  private BrandResponse brand(
       long id, String name, String slug, String logo, boolean active, int order) {
-    return new AdminCatalogViews.Brand(id, name, slug, logo, active, order);
+    return new BrandResponse(id, name, slug, logo, active, order);
   }
 
-  private AdminCatalogViews.Image image(java.sql.ResultSet rs) throws java.sql.SQLException {
-    return new AdminCatalogViews.Image(
-        rs.getLong(1),
-        rs.getLong(2),
-        rs.getString(3),
-        rs.getString(4),
-        rs.getInt(5),
-        rs.getString(6));
-  }
-
-  private AdminCatalogViews.Image image(long productId, long imageId) {
+  private ImageResponse image(long productId, long imageId) {
     return jdbc
         .query(
             "SELECT id,product_id,image_url,alt_text,display_order,image_type FROM product_images"
                 + " WHERE product_id=? AND id=?",
-            (rs, n) -> image(rs),
+            (rs, n) ->
+                new ImageResponse(
+                    rs.getLong(1),
+                    rs.getLong(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getInt(5),
+                    rs.getString(6)),
             productId,
             imageId)
         .stream()
@@ -622,13 +645,23 @@ public class CatalogExpansionAdminService {
         .orElseThrow(() -> missing("PRODUCT_IMAGE_NOT_FOUND", "상품 이미지를 확인할 수 없습니다."));
   }
 
-  private AdminCatalogViews.OptionGroup optionGroup(long productId, long groupId) {
+  private ImageResponse image(java.sql.ResultSet resultSet) throws java.sql.SQLException {
+    return new ImageResponse(
+        resultSet.getLong(1),
+        resultSet.getLong(2),
+        resultSet.getString(3),
+        resultSet.getString(4),
+        resultSet.getInt(5),
+        resultSet.getString(6));
+  }
+
+  private OptionGroupResponse optionGroup(long productId, long groupId) {
     return jdbc
         .query(
             "SELECT id,product_id,name,display_order FROM product_option_groups WHERE product_id=?"
                 + " AND id=?",
             (rs, n) ->
-                new AdminCatalogViews.OptionGroup(
+                new OptionGroupResponse(
                     rs.getLong(1),
                     rs.getLong(2),
                     rs.getString(3),
@@ -641,23 +674,23 @@ public class CatalogExpansionAdminService {
         .orElseThrow(() -> missing("OPTION_GROUP_NOT_FOUND", "옵션 그룹을 확인할 수 없습니다."));
   }
 
-  private List<AdminCatalogViews.OptionValue> optionValues(long groupId) {
+  private List<OptionValueResponse> optionValues(long groupId) {
     return jdbc.query(
         "SELECT id,option_group_id,value,display_order FROM product_option_values WHERE"
             + " option_group_id=? ORDER BY display_order,id",
         (rs, n) ->
-            new AdminCatalogViews.OptionValue(
+            new OptionValueResponse(
                 rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4)),
         groupId);
   }
 
-  private AdminCatalogViews.OptionValue optionValue(long groupId, long valueId) {
+  private OptionValueResponse optionValue(long groupId, long valueId) {
     return jdbc
         .query(
             "SELECT id,option_group_id,value,display_order FROM product_option_values WHERE"
                 + " option_group_id=? AND id=?",
             (rs, n) ->
-                new AdminCatalogViews.OptionValue(
+                new OptionValueResponse(
                     rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4)),
             groupId,
             valueId)
@@ -666,29 +699,29 @@ public class CatalogExpansionAdminService {
         .orElseThrow(() -> missing("OPTION_VALUE_NOT_FOUND", "옵션 값을 확인할 수 없습니다."));
   }
 
-  private AdminCatalogViews.OptionValue optionValueForProduct(
+  private OptionValueResponse optionValueForProduct(
       long productId, long groupId, long valueId) {
     optionGroup(productId, groupId);
     return optionValue(groupId, valueId);
   }
 
-  private List<AdminCatalogViews.FacetOption> facetOptions(long definitionId) {
+  private List<FacetOptionResponse> facetOptions(long definitionId) {
     return jdbc.query(
         "SELECT id,facet_definition_id,value,display_order FROM facet_options WHERE"
             + " facet_definition_id=? ORDER BY display_order,id",
         (rs, n) ->
-            new AdminCatalogViews.FacetOption(
+            new FacetOptionResponse(
                 rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4)),
         definitionId);
   }
 
-  private AdminCatalogViews.FacetOption facetOption(long definitionId, long optionId) {
+  private FacetOptionResponse facetOption(long definitionId, long optionId) {
     return jdbc
         .query(
             "SELECT id,facet_definition_id,value,display_order FROM facet_options WHERE"
                 + " facet_definition_id=? AND id=?",
             (rs, n) ->
-                new AdminCatalogViews.FacetOption(
+                new FacetOptionResponse(
                     rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4)),
             definitionId,
             optionId)

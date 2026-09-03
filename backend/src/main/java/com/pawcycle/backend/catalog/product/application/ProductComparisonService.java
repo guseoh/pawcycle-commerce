@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,16 +22,16 @@ public class ProductComparisonService {
           "treatment",
           "medicine",
           "prescription");
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ProductComparisonAiClient ai;
 
-  public ProductComparisonService(JdbcTemplate jdbc, ProductComparisonAiClient ai) {
+  public ProductComparisonService(NativeQueryExecutor jdbc, ProductComparisonAiClient ai) {
     this.jdbc = jdbc;
     this.ai = ai;
   }
 
   @Transactional(readOnly = true)
-  public ComparisonResponse compare(List<Long> productIds) {
+  public ProductComparisonResponse compare(List<Long> productIds) {
     if (productIds == null
         || productIds.size() < 2
         || productIds.size() > 3
@@ -49,7 +49,7 @@ public class ProductComparisonService {
       }
     } catch (RuntimeException ignored) {
     }
-    return new ComparisonResponse(facts, status, summary);
+    return new ProductComparisonResponse(facts, status, summary);
   }
 
   private ProductComparisonFacts facts(long productId) {
@@ -128,10 +128,4 @@ public class ProductComparisonService {
     return UNSAFE_TERMS.stream().noneMatch(lower::contains);
   }
 
-  public record ComparisonResponse(
-      List<ProductComparisonFacts> products, String aiStatus, String aiSummary) {
-    public ComparisonResponse {
-      products = List.copyOf(products);
-    }
-  }
 }

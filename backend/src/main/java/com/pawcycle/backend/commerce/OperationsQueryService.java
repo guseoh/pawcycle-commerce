@@ -2,19 +2,19 @@ package com.pawcycle.backend.commerce;
 
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 
 /** Read projection only; it does not introduce an operations table. */
 @Service
 public class OperationsQueryService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
 
-  public OperationsQueryService(JdbcTemplate jdbc) {
+  public OperationsQueryService(NativeQueryExecutor jdbc) {
     this.jdbc = jdbc;
   }
 
-  public List<Map<String, Object>> pending() {
+  public List<CommerceRowResponse> pending() {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
             """
@@ -71,6 +71,6 @@ public class OperationsQueryService {
             default -> List.of();
           });
     }
-    return rows;
+    return CommerceRowResponse.from(rows);
   }
 }

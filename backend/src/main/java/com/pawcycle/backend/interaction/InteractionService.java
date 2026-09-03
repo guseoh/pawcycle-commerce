@@ -32,30 +32,29 @@ public class InteractionService {
       java.util.regex.Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
   private static final java.util.regex.Pattern FACET_VALUE =
       java.util.regex.Pattern.compile("[\\p{L}\\p{N}][\\p{L}\\p{N} _-]*");
-  private final InteractionRepository repository;
+  private final InteractionEventPersistenceAdapter repository;
   private final ObjectMapper json;
   private final Clock clock;
 
-  public InteractionService(InteractionRepository repository, ObjectMapper json, Clock clock) {
+  public InteractionService(InteractionEventPersistenceAdapter repository, ObjectMapper json, Clock clock) {
     this.repository = repository;
     this.json = json;
     this.clock = clock;
   }
 
   @Transactional
-  public void record(long memberId, List<Map<String, Object>> events) {
+  public void record(long memberId, List<InteractionEventRequest> events) {
     if (events == null || events.isEmpty() || events.size() > 50) throw invalid("events");
     Instant now = clock.instant();
-    for (Map<String, Object> event : events) {
+    for (InteractionEventRequest event : events) {
       if (event == null) throw invalid("event");
-      String eventId = uuid(event.get("eventId"), "eventId");
-      InteractionEventType type = eventType(event.get("type"));
-      Long productId = optionalLong(event.get("productId"), "productId");
-      Long petId = optionalLong(event.get("petId"), "petId");
-      String source = optionalText(event.get("source"), "source", 100);
-      String requestId =
-          optionalUuid(event.get("recommendationRequestId"), "recommendationRequestId");
-      Map<String, Object> context = context(event.get("context"));
+      String eventId = uuid(event.eventId(), "eventId");
+      InteractionEventType type = eventType(event.type());
+      Long productId = optionalLong(event.productId(), "productId");
+      Long petId = optionalLong(event.petId(), "petId");
+      String source = optionalText(event.source(), "source", 100);
+      String requestId = optionalUuid(event.recommendationRequestId(), "recommendationRequestId");
+      Map<String, Object> context = context(event.context());
       if ((type == InteractionEventType.PRODUCT_IMPRESSION
               || type == InteractionEventType.PRODUCT_VIEW)
           && productId == null) {
@@ -73,7 +72,7 @@ public class InteractionService {
       }
       String contextJson = context == null ? null : writeJson(context);
       repository.insert(
-          new InteractionRepository.InteractionRecord(
+          new InteractionEventPersistenceAdapter.InteractionRecord(
               memberId,
               eventId,
               type.name(),

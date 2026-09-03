@@ -40,12 +40,12 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/api/orders')return json([order]);
   if(path==='/api/orders/1')return json(order);
   if(path.endsWith('/subscription-options'))return json({orderId:1,options:plans.map(p=>({...p,matchingProductIds:[1],compatibleOwnedPetIds:[1]}))});
-  if(path==='/api/v2/pets')return json(page(pets));
-  if(path==='/api/v2/subscription-plans')return json(page(plans));
-  if(path.startsWith('/api/v2/subscription-plan-versions/'))return json(plans.find(p=>p.planVersionId===Number(path.split('/').at(-1)))??plans[0]);
-  if(path==='/api/v2/subscriptions')return json(page([subscription()]));
+  if(path==='/api/pets')return json(page(pets));
+  if(path==='/api/subscription-plans')return json(page(plans));
+  if(path.startsWith('/api/subscription-plan-versions/'))return json(plans.find(p=>p.planVersionId===Number(path.split('/').at(-1)))??plans[0]);
+  if(path==='/api/subscriptions')return json(page([subscription()]));
   if(path.endsWith('/cycle-suggestion'))return json({subscriptionId:1,currentDeliveryCycleWeeks:4,medianSuccessfulIntervalWeeks:4,allowedDeliveryCycleWeeks:[2,4,8],suggestion:null});
-  if(path==='/api/v2/subscriptions/1')return json(subscription());
+  if(path==='/api/subscriptions/1')return json(subscription());
   if(path==='/api/payment-methods/toss/billing')return json({provider:'TOSS',configured:false,registered:false});
   if(path==='/api/notifications')return json([]);
   return json({code:'QA_ENDPOINT_NOT_CONFIGURED',message:'이 fixture에 없는 조회입니다.',fieldErrors:[]},404);

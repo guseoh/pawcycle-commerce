@@ -6,16 +6,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductDiscoveryReader {
-  private final JdbcTemplate jdbcTemplate;
+  private final NativeQueryExecutor jdbcTemplate;
 
-  public ProductDiscoveryReader(JdbcTemplate jdbcTemplate) {
+  public ProductDiscoveryReader(NativeQueryExecutor jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
   }
 
@@ -99,35 +99,35 @@ public class ProductDiscoveryReader {
             + " LIMIT ? OFFSET ?";
     parameters.add(size);
     parameters.add(offset);
-    List<ProductListView.ProductSummary> items =
+    List<ProductSummary> items =
         jdbcTemplate.query(
             sql,
             (rs, rowNum) -> {
               BigDecimal price = rs.getBigDecimal("representative_price");
               BigDecimal compareAt = rs.getBigDecimal("compare_at_price");
-              List<ProductListView.SkuPrice> prices =
+              List<SkuPrice> prices =
                   price == null
                       ? List.of()
                       : List.of(
-                          new ProductListView.SkuPrice(
+                          new SkuPrice(
                               rs.getLong("representative_sku_id"),
                               rs.getString("representative_sku_name"),
                               price));
-              return new ProductListView.ProductSummary(
+              return new ProductSummary(
                   rs.getLong("product_id"),
                   rs.getString("name"),
                   rs.getString("pet_type"),
                   rs.getString("short_description"),
                   rs.getString("thumbnail_url"),
-                  new ProductListView.CategorySummary(
+                  new CategorySummary(
                       rs.getLong("category_id"),
                       rs.getString("category_name"),
                       rs.getString("category_slug")),
-                  new ProductListView.SkuPriceSummary(prices),
+                  new SkuPriceSummary(prices),
                   rs.getInt("has_subscribable") == 1,
                   price,
                   rs.getInt("purchasable") == 1,
-                  new ProductListView.BrandSummary(
+                  new BrandSummary(
                       rs.getLong("brand_id"),
                       rs.getString("brand_name"),
                       rs.getString("brand_slug"),
@@ -161,7 +161,7 @@ public class ProductDiscoveryReader {
                     List.of()),
             productId);
     if (rows.isEmpty()) return rows;
-    Map<Long, List<ProductDetailView.SelectedOption>> options = new LinkedHashMap<>();
+    Map<Long, List<ProductSelectedOption>> options = new LinkedHashMap<>();
     jdbcTemplate.query(
         """
         SELECT sov.sku_id,g.id group_id,g.name group_name,v.id value_id,v.value
@@ -174,7 +174,7 @@ public class ProductDiscoveryReader {
                 options
                     .computeIfAbsent(rs.getLong("sku_id"), ignored -> new ArrayList<>())
                     .add(
-                        new ProductDetailView.SelectedOption(
+                        new ProductSelectedOption(
                             rs.getLong("group_id"),
                             rs.getString("group_name"),
                             rs.getLong("value_id"),
@@ -196,33 +196,33 @@ public class ProductDiscoveryReader {
 
   @Transactional(readOnly = true)
   public ProductDetailSupplement readDetailSupplement(Long productId) {
-    List<ProductDetailView.BrandSummary> brands =
+    List<BrandSummary> brands =
         jdbcTemplate.query(
             """
             SELECT b.id,b.name,b.slug,b.logo_url FROM products p JOIN brands b ON b.id=p.brand_id
             WHERE p.id=? AND b.active=true
             """,
             (rs, n) ->
-                new ProductDetailView.BrandSummary(
+                new BrandSummary(
                     rs.getLong("id"),
                     rs.getString("name"),
                     rs.getString("slug"),
                     rs.getString("logo_url")),
             productId);
     if (brands.isEmpty()) return ProductDetailSupplement.empty();
-    List<ProductDetailView.Image> images =
+    List<ProductImage> images =
         jdbcTemplate.query(
             "SELECT id,image_url,alt_text,display_order,image_type FROM product_images WHERE"
                 + " product_id=? ORDER BY display_order,id",
             (rs, n) ->
-                new ProductDetailView.Image(
+                new ProductImage(
                     rs.getLong("id"),
                     rs.getString("image_url"),
                     rs.getString("alt_text"),
                     rs.getInt("display_order"),
                     rs.getString("image_type")),
             productId);
-    Map<Long, ProductDetailView.OptionGroup> groups = new LinkedHashMap<>();
+    Map<Long, ProductOptionGroup> groups = new LinkedHashMap<>();
     jdbcTemplate.query(
         """
         SELECT g.id group_id,g.name group_name,g.display_order group_display_order,v.id value_id,v.value,v.display_order value_display_order
@@ -232,17 +232,17 @@ public class ProductDiscoveryReader {
         (RowCallbackHandler)
             rs -> {
               long groupId = rs.getLong("group_id");
-              ProductDetailView.OptionGroup old = groups.get(groupId);
-              List<ProductDetailView.OptionValue> values =
+              ProductOptionGroup old = groups.get(groupId);
+              List<ProductOptionValue> values =
                   old == null ? new ArrayList<>() : new ArrayList<>(old.values());
               Long valueId = rs.getObject("value_id", Long.class);
               if (valueId != null)
                 values.add(
-                    new ProductDetailView.OptionValue(
+                    new ProductOptionValue(
                         valueId, rs.getString("value"), rs.getInt("value_display_order")));
               groups.put(
                   groupId,
-                  new ProductDetailView.OptionGroup(
+                  new ProductOptionGroup(
                       groupId,
                       rs.getString("group_name"),
                       rs.getInt("group_display_order"),
@@ -347,21 +347,4 @@ public class ProductDiscoveryReader {
         .intValue();
   }
 
-  public record ProductDetailSkuRow(
-      Long skuId,
-      String skuName,
-      BigDecimal price,
-      BigDecimal compareAtPrice,
-      boolean subscribable,
-      int availableQuantity,
-      List<ProductDetailView.SelectedOption> selectedOptions) {}
-
-  public record ProductDetailSupplement(
-      ProductDetailView.BrandSummary brand,
-      List<ProductDetailView.Image> images,
-      List<ProductDetailView.OptionGroup> optionGroups) {
-    static ProductDetailSupplement empty() {
-      return new ProductDetailSupplement(null, List.of(), List.of());
-    }
-  }
 }

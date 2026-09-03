@@ -6,9 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;

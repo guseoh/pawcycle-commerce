@@ -1,21 +1,29 @@
 package com.pawcycle.backend.catalog.admin.application;
+import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryListResponse;
+import com.pawcycle.backend.catalog.admin.api.CategoryResponse;
+import com.pawcycle.backend.catalog.admin.api.BrandListResponse;
+import com.pawcycle.backend.catalog.admin.api.BrandResponse;
+import com.pawcycle.backend.catalog.admin.api.ProductListResponse;
+import com.pawcycle.backend.catalog.admin.api.ProductResponse;
+import com.pawcycle.backend.catalog.admin.api.SkuListResponse;
+import com.pawcycle.backend.catalog.admin.api.SkuResponse;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.CategoryCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.CategoryPatch;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuPatch;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
+import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.brand.domain.Brand;
-import com.pawcycle.backend.catalog.brand.infra.BrandRepository;
+import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -24,7 +32,7 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +46,7 @@ public class AdminCatalogService {
   private final BrandRepository brandRepository;
   private final ProductRepository productRepository;
   private final SkuRepository skuRepository;
-  private final JdbcTemplate jdbcTemplate;
+  private final NativeQueryExecutor jdbcTemplate;
   private final ProductListCacheInvalidator productListCacheInvalidator;
 
   /**
@@ -48,7 +56,7 @@ public class AdminCatalogService {
       CategoryRepository categoryRepository,
       ProductRepository productRepository,
       SkuRepository skuRepository,
-      JdbcTemplate jdbcTemplate,
+      NativeQueryExecutor jdbcTemplate,
       ProductListCacheInvalidator productListCacheInvalidator) {
     this.categoryRepository = categoryRepository;
     this.brandRepository = null;
@@ -59,16 +67,16 @@ public class AdminCatalogService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.BrandList brands() {
-    return new AdminCatalogViews.BrandList(
+  public BrandListResponse brands() {
+    return new BrandListResponse(
         brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
             .map(this::brandView)
             .toList());
   }
 
   @Transactional
-  public AdminCatalogViews.Brand createBrand(
-      com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.BrandCreate request) {
+  public BrandResponse createBrand(
+      com.pawcycle.backend.catalog.admin.api.BrandCreateRequest request) {
     if (brandRepository.existsBySlug(request.slug())) {
       throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
     }
@@ -87,20 +95,20 @@ public class AdminCatalogService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.CategoryList categories() {
-    return new AdminCatalogViews.CategoryList(
+  public CategoryListResponse categories() {
+    return new CategoryListResponse(
         categoryRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
             .map(this::categoryView)
             .toList());
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.Category category(Long categoryId) {
+  public CategoryResponse category(Long categoryId) {
     return categoryView(requireCategory(categoryId));
   }
 
   @Transactional
-  public AdminCatalogViews.Category createCategory(CategoryCreate request) {
+  public CategoryResponse createCategory(CategoryCreateRequest request) {
     if (categoryRepository.existsBySlug(request.slug())) {
       throw slugConflict();
     }
@@ -119,7 +127,7 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public AdminCatalogViews.Category updateCategory(Long categoryId, CategoryPatch request) {
+  public CategoryResponse updateCategory(Long categoryId, CategoryPatchRequest request) {
     validate(request);
     Category category = requireCategory(categoryId);
     if (request.isParentIdPresent()) {
@@ -135,7 +143,7 @@ public class AdminCatalogService {
     category.update(
         request.getName(), request.getSlug(), request.getDisplayOrder(), request.getActive());
     try {
-      AdminCatalogViews.Category view = categoryView(categoryRepository.saveAndFlush(category));
+      CategoryResponse view = categoryView(categoryRepository.saveAndFlush(category));
       productListCacheInvalidator.invalidateAfterCommit();
       return view;
     } catch (DataIntegrityViolationException exception) {
@@ -144,20 +152,20 @@ public class AdminCatalogService {
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.ProductList products() {
-    return new AdminCatalogViews.ProductList(
+  public ProductListResponse products() {
+    return new ProductListResponse(
         productRepository.findAllWithCategoryOrderByIdAsc().stream()
             .map(this::productView)
             .toList());
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.Product product(Long productId) {
+  public ProductResponse product(Long productId) {
     return productView(requireProduct(productId));
   }
 
   @Transactional
-  public AdminCatalogViews.Product createProduct(ProductCreate request) {
+  public ProductResponse createProduct(ProductCreateRequest request) {
     Category category = requireAssignableCategory(request.categoryId());
     if (request.brandId() == null) {
       throw new AdminCatalogValidationException(List.of(error("brandId", "필수 입력입니다.")));
@@ -179,7 +187,7 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public AdminCatalogViews.Product updateProduct(Long productId, ProductPatch request) {
+  public ProductResponse updateProduct(Long productId, ProductPatchRequest request) {
     validate(request);
     Product product = requireProductForUpdate(productId);
     Category category =
@@ -217,22 +225,22 @@ public class AdminCatalogService {
       }
       product.transitionTo(request.getStatus());
     }
-    AdminCatalogViews.Product view = productView(productRepository.saveAndFlush(product));
+    ProductResponse view = productView(productRepository.saveAndFlush(product));
     productListCacheInvalidator.invalidateAfterCommit();
     return view;
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.SkuList skus(Long productId) {
+  public SkuListResponse skus(Long productId) {
     requireProduct(productId);
-    return new AdminCatalogViews.SkuList(
+    return new SkuListResponse(
         skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(productId).stream()
             .map(this::skuView)
             .toList());
   }
 
   @Transactional
-  public AdminCatalogViews.Sku createSku(Long productId, SkuCreate request) {
+  public SkuResponse createSku(Long productId, SkuCreateRequest request) {
     Product product = requireProduct(productId);
     if (request.compareAtPrice() != null
         && request.compareAtPrice().compareTo(request.price()) <= 0) {
@@ -265,7 +273,7 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public AdminCatalogViews.Sku updateSku(Long productId, Long skuId, SkuPatch request) {
+  public SkuResponse updateSku(Long productId, Long skuId, SkuPatchRequest request) {
     validate(request);
     requireProduct(productId);
     Sku sku =
@@ -287,7 +295,7 @@ public class AdminCatalogService {
         request.getSubscribable(),
         request.getDisplayOrder(),
         request.getStatus());
-    AdminCatalogViews.Sku view = skuView(skuRepository.saveAndFlush(sku));
+    SkuResponse view = skuView(skuRepository.saveAndFlush(sku));
     productListCacheInvalidator.invalidateAfterCommit();
     return view;
   }
@@ -384,8 +392,8 @@ public class AdminCatalogService {
     return new AdminCatalogConflictException("SKU_CODE_CONFLICT", "이미 사용 중인 SKU 코드입니다.");
   }
 
-  private AdminCatalogViews.Category categoryView(Category category) {
-    return new AdminCatalogViews.Category(
+  private CategoryResponse categoryView(Category category) {
+    return new CategoryResponse(
         category.getId(),
         category.getParent() == null ? null : category.getParent().getId(),
         category.getName(),
@@ -394,8 +402,8 @@ public class AdminCatalogService {
         category.isActive());
   }
 
-  private AdminCatalogViews.Brand brandView(Brand brand) {
-    return new AdminCatalogViews.Brand(
+  private BrandResponse brandView(Brand brand) {
+    return new BrandResponse(
         brand.getId(),
         brand.getName(),
         brand.getSlug(),
@@ -404,8 +412,8 @@ public class AdminCatalogService {
         brand.getDisplayOrder());
   }
 
-  private AdminCatalogViews.Product productView(Product product) {
-    return new AdminCatalogViews.Product(
+  private ProductResponse productView(Product product) {
+    return new ProductResponse(
         product.getId(),
         product.getCategory() == null ? null : product.getCategory().getId(),
         product.getBrandId(),
@@ -417,8 +425,8 @@ public class AdminCatalogService {
         product.getStatus());
   }
 
-  private AdminCatalogViews.Sku skuView(Sku sku) {
-    return new AdminCatalogViews.Sku(
+  private SkuResponse skuView(Sku sku) {
+    return new SkuResponse(
         sku.getId(),
         sku.getProduct().getId(),
         sku.getSkuCode(),
@@ -430,7 +438,7 @@ public class AdminCatalogService {
         sku.getStatus());
   }
 
-  private void validate(CategoryPatch request) {
+  private void validate(CategoryPatchRequest request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
     if (!request.isNamePresent()
         && !request.isSlugPresent()
@@ -452,7 +460,7 @@ public class AdminCatalogService {
     throwIfInvalid(errors);
   }
 
-  private void validate(ProductPatch request) {
+  private void validate(ProductPatchRequest request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
     if (!request.isCategoryIdPresent()
         && !request.isBrandIdPresent()
@@ -488,7 +496,7 @@ public class AdminCatalogService {
     throwIfInvalid(errors);
   }
 
-  private void validate(SkuPatch request) {
+  private void validate(SkuPatchRequest request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
     if (!request.isNamePresent()
         && !request.isPricePresent()

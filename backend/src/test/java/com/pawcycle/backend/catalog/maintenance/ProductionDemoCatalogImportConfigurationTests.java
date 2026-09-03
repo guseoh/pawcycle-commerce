@@ -11,8 +11,11 @@ import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportService;
 import com.pawcycle.backend.catalog.application.CustomerCatalogV3ImportService;
 import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService.ImportResult;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService.Operation;
+import com.pawcycle.backend.catalog.application.CustomerCatalogImportOperation;
+import com.pawcycle.backend.catalog.application.CustomerCatalogImportResult;
+import com.pawcycle.backend.catalog.application.CustomerCatalogSupplementImportResult;
+import com.pawcycle.backend.catalog.application.DemoCatalogImportOperation;
+import com.pawcycle.backend.catalog.application.DemoCatalogImportResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -39,7 +42,7 @@ class ProductionDemoCatalogImportConfigurationTests {
 
   @Test
   void validateModeDefaultsToDemoAndUsesTheManifestLocation() throws Exception {
-    ImportResult result = demoResult(Operation.VALIDATE);
+    DemoCatalogImportResult result = demoResult(DemoCatalogImportOperation.VALIDATE);
     when(demoImportService.validate("classpath:catalog/demo-catalog.json")).thenReturn(result);
 
     contextRunner
@@ -61,8 +64,8 @@ class ProductionDemoCatalogImportConfigurationTests {
 
   @Test
   void customerValidateUsesCanonicalCustomerCatalogService() throws Exception {
-    CustomerCatalogImportService.ImportResult result =
-        customerResult(CustomerCatalogV3ImportService.Operation.VALIDATE);
+    CustomerCatalogImportResult result =
+        customerResult(CustomerCatalogImportOperation.VALIDATE);
     when(customerImportService.validate()).thenReturn(result);
 
     contextRunner
@@ -104,8 +107,8 @@ class ProductionDemoCatalogImportConfigurationTests {
 
   @Test
   void confirmedCustomerApplyUsesCanonicalCustomerCatalogService() throws Exception {
-    CustomerCatalogImportService.ImportResult result =
-        customerResult(CustomerCatalogV3ImportService.Operation.APPLY);
+    CustomerCatalogImportResult result =
+        customerResult(CustomerCatalogImportOperation.APPLY);
     when(customerImportService.apply()).thenReturn(result);
 
     contextRunner
@@ -155,18 +158,18 @@ class ProductionDemoCatalogImportConfigurationTests {
         .run(context -> assertThat(context).doesNotHaveBean("productionDemoCatalogImportRunner"));
   }
 
-  private ImportResult demoResult(Operation operation) {
-    return new ImportResult(operation, 4, 32, 42, 42, 6, null);
+  private DemoCatalogImportResult demoResult(DemoCatalogImportOperation operation) {
+    return new DemoCatalogImportResult(operation, 4, 32, 42, 42, 6, null);
   }
 
-  private CustomerCatalogImportService.ImportResult customerResult(
-      CustomerCatalogV3ImportService.Operation operation) {
-    Operation baselineOperation =
-        operation == CustomerCatalogV3ImportService.Operation.APPLY
-            ? Operation.APPLY
-            : Operation.VALIDATE;
-    return new CustomerCatalogImportService.ImportResult(
+  private CustomerCatalogImportResult customerResult(
+      CustomerCatalogImportOperation operation) {
+    DemoCatalogImportOperation baselineOperation =
+        operation == CustomerCatalogImportOperation.APPLY
+            ? DemoCatalogImportOperation.APPLY
+            : DemoCatalogImportOperation.VALIDATE;
+    return new CustomerCatalogImportResult(
         demoResult(baselineOperation),
-        new CustomerCatalogV3ImportService.ImportResult(operation, 9, 23, 68, 124, 0, 0, 0, 0, 0));
+        new CustomerCatalogSupplementImportResult(operation, 9, 23, 68, 124, 0, 0, 0, 0, 0));
   }
 }

@@ -13,20 +13,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.CategoryFacetAssign;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.FacetDefinitionCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.FacetOptionCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductFacetValues;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
+import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.domain.MemberRole;
 import jakarta.persistence.EntityManager;
@@ -338,20 +338,20 @@ class AdminCatalogApiIntegrationTests {
     long productId =
         adminCatalogService
             .createProduct(
-                new ProductCreate(first.getId(), 1L, "Facet 상품", "설명", null, "DOG", null))
+                new ProductCreateRequest(first.getId(), 1L, "Facet 상품", "설명", null, "DOG", null))
             .productId();
     var definition =
         catalogExpansionAdminService.createFacetDefinition(
-            new FacetDefinitionCreate("material", "Material"));
+            new FacetDefinitionCreateRequest("material", "Material"));
     var option =
         catalogExpansionAdminService.createFacetOption(
-            definition.facetDefinitionId(), new FacetOptionCreate("cotton", 0));
+            definition.facetDefinitionId(), new FacetOptionCreateRequest("cotton", 0));
     catalogExpansionAdminService.assignCategoryFacet(
-        first.getId(), definition.facetDefinitionId(), new CategoryFacetAssign(0));
+        first.getId(), definition.facetDefinitionId(), new CategoryFacetAssignRequest(0));
     catalogExpansionAdminService.setProductFacetValues(
-        productId, new ProductFacetValues(List.of(option.facetOptionId())));
+        productId, new ProductFacetValuesRequest(List.of(option.facetOptionId())));
 
-    ProductPatch categoryPatch = new ProductPatch();
+    ProductPatchRequest categoryPatch = new ProductPatchRequest();
     categoryPatch.readCategoryId(second.getId());
     assertThatThrownBy(() -> adminCatalogService.updateProduct(productId, categoryPatch))
         .isInstanceOfSatisfying(

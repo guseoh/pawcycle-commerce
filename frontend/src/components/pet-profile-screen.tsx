@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPetType } from "@/lib/frontend-utils";
 import { petDraft, petPatch, petProfileLoadState, petWeightError, type PetDraft } from "@/lib/pet-profile";
-import { v2Api, type Pet } from "@/lib/v2-api";
+import { subscriptionApi, type Pet } from "@/lib/subscription-api";
 
 export function PetProfileScreen() {
   const auth = useAuth();
@@ -28,7 +28,7 @@ export function PetProfileScreen() {
     if (auth.status !== "authenticated") return;
     setLoadingError(null);
     try {
-      setPets((await v2Api.pets.list()).body.items);
+      setPets((await subscriptionApi.pets.list()).body.items);
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
       setLoadingError(error instanceof ApiError ? error.message : "반려동물 목록을 불러오지 못했습니다.");
@@ -62,7 +62,7 @@ export function PetProfileScreen() {
     if (!name) { setMessageKind("error"); setMessage("반려동물 이름을 입력해 주세요."); return; }
     setCreating(true); setMessage(null);
     try {
-      const pet = (await auth.executeWithCsrf((csrf) => v2Api.pets.create({ name, petType: createType }, csrf))).body;
+      const pet = (await auth.executeWithCsrf((csrf) => subscriptionApi.pets.create({ name, petType: createType }, csrf))).body;
       setPets((current) => [...(current ?? []), pet]);
       setCreateName("");
       setCreateOpen(false);
@@ -83,7 +83,7 @@ export function PetProfileScreen() {
     if (!draft.name.trim()) { setMessageKind("error"); setMessage("반려동물 이름을 입력해 주세요."); return; }
     setSavingId(pet.petId); setMessage(null);
     try {
-      const updated = (await auth.executeWithCsrf((csrf) => v2Api.pets.patch(pet.petId, changes, csrf))).body;
+      const updated = (await auth.executeWithCsrf((csrf) => subscriptionApi.pets.patch(pet.petId, changes, csrf))).body;
       setPets((current) => current?.map((item) => item.petId === updated.petId ? updated : item) ?? current); setEditingId(null); setDraft(null); setMessageKind("success"); setMessage("반려동물 프로필을 수정했습니다.");
     } catch (error) {
       if (error instanceof ApiError && error.code === "PET_NOT_FOUND") { await load(); setMessage("반려동물을 찾을 수 없어 목록을 새로 확인했습니다."); }

@@ -6,7 +6,7 @@ import com.pawcycle.backend.catalog.application.CustomerCatalogV3ImportService;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import jakarta.validation.Validator;
 import org.springframework.context.annotation.Profile;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +19,7 @@ public class LocalCustomerCatalogV3FixtureService {
   private final CustomerCatalogV3ImportService supplement;
 
   public LocalCustomerCatalogV3FixtureService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       LocalCommerceDemoFixtureService baseline,
       CatalogExpansionAdminService expansion,
       ProductListCacheInvalidator cache,

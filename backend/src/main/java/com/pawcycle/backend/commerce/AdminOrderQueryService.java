@@ -2,25 +2,26 @@ package com.pawcycle.backend.commerce;
 
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 
 @Service
-class AdminOrderQueryService {
-  private final JdbcTemplate jdbc;
+public class AdminOrderQueryService {
+  private final NativeQueryExecutor jdbc;
 
-  AdminOrderQueryService(JdbcTemplate jdbc) {
+  public AdminOrderQueryService(NativeQueryExecutor jdbc) {
     this.jdbc = jdbc;
   }
 
-  List<Map<String, Object>> list() {
-    return jdbc.queryForList(
-        "SELECT id AS orderId,order_number AS orderNumber,member_id AS"
-            + " memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders"
-            + " ORDER BY id DESC");
+  public List<CommerceRowResponse> list() {
+    return CommerceRowResponse.from(
+        jdbc.queryForList(
+            "SELECT id AS orderId,order_number AS orderNumber,member_id AS"
+                + " memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders"
+                + " ORDER BY id DESC"));
   }
 
-  Map<String, Object> get(long id) {
+  public CommercePayload get(long id) {
     var rows =
         jdbc.queryForList(
             "SELECT id AS orderId,order_number AS orderNumber,member_id AS"
@@ -28,6 +29,6 @@ class AdminOrderQueryService {
                 + " orders WHERE id=?",
             id);
     if (rows.isEmpty()) throw new CommerceException(404, "ORDER_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
-    return rows.getFirst();
+    return CommercePayload.from(rows.getFirst());
   }
 }

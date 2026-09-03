@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { ApiError, productApi, type ProductDetail, type ProductSummary } from "@/lib/api";
-import type { V2SubscriptionDetail } from "@/lib/v2-api";
+import type { SubscriptionDetail } from "@/lib/subscription-api";
 import { formatPrice, userFacingCatalogLabel } from "@/lib/frontend-utils";
 import { LoadingState } from "./async-state";
 
-export function SubscriptionAddonPicker({ subscription, pending, onSet }: { subscription: V2SubscriptionDetail; pending: boolean; onSet: (body: Record<string, unknown>) => void }) {
+export function SubscriptionAddonPicker({ subscription, pending, onSet }: { subscription: SubscriptionDetail; pending: boolean; onSet: (body: Record<string, unknown>) => void }) {
   const [query, setQuery] = useState("");
   const [products, setProducts] = useState<ProductSummary[] | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(null);

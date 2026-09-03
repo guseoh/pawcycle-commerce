@@ -10,17 +10,18 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuCreate;
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCache;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +29,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
@@ -42,14 +42,14 @@ class AdminCatalogCacheInvalidationIntegrationTests {
   @Autowired private CategoryRepository categoryRepository;
   @Autowired private ProductRepository productRepository;
   @Autowired private SkuRepository skuRepository;
-  @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private NativeQueryExecutor jdbcExecutor;
   @Autowired private ProductListCache productListCache;
   @Autowired private RecordingTransactionManager transactionManager;
   @Autowired private RollbackProbe rollbackProbe;
 
   @BeforeEach
   void resetState() {
-    reset(categoryRepository, productRepository, skuRepository, jdbcTemplate, productListCache);
+    reset(categoryRepository, productRepository, skuRepository, jdbcExecutor, productListCache);
     transactionManager.resetState();
   }
 
@@ -69,7 +69,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
         .when(productListCache)
         .invalidate();
 
-    service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
+    service.createProduct(new ProductCreateRequest(1L, 1L, "상품", "설명", null, "DOG", null));
 
     verify(productListCache).invalidate();
     assertThat(transactionManager.commitCompleted()).isTrue();
@@ -92,7 +92,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 
     service.createSku(
         10L,
-        new SkuCreate("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
+        new SkuCreateRequest("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
 
     verify(productListCache).invalidate();
     assertThat(transactionManager.commitCompleted()).isTrue();
@@ -132,8 +132,8 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     }
 
     @Bean
-    JdbcTemplate jdbcTemplate() {
-      return mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbcExecutor() {
+      return mock(NativeQueryExecutor.class);
     }
 
     @Bean
@@ -151,13 +151,13 @@ class AdminCatalogCacheInvalidationIntegrationTests {
         CategoryRepository categoryRepository,
         ProductRepository productRepository,
         SkuRepository skuRepository,
-        JdbcTemplate jdbcTemplate,
+        NativeQueryExecutor jdbcExecutor,
         ProductListCacheInvalidator productListCacheInvalidator) {
       return new AdminCatalogService(
           categoryRepository,
           productRepository,
           skuRepository,
-          jdbcTemplate,
+          jdbcExecutor,
           productListCacheInvalidator);
     }
 

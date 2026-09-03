@@ -2,9 +2,10 @@ package com.pawcycle.backend.commerce;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -14,20 +15,23 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @Service
 public class SubscriptionBillingService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate transaction;
   private final AdminAuditService audits;
   private final InventoryService inventory;
+  private final Clock clock;
 
   public SubscriptionBillingService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
       AdminAuditService audits,
-      InventoryService inventory) {
+      InventoryService inventory,
+      Clock clock) {
     this.jdbc = jdbc;
     this.transaction = new TransactionTemplate(manager);
     this.audits = audits;
     this.inventory = inventory;
+    this.clock = clock;
   }
 
   public void recordExplicitFailure(long paymentId, String failureCode) {
@@ -220,8 +224,8 @@ public class SubscriptionBillingService {
             }));
   }
 
-  private static Timestamp now() {
-    return Timestamp.from(Instant.now());
+  private Timestamp now() {
+    return Timestamp.from(clock.instant());
   }
 
   private void releaseReservation(long orderId, long paymentId) {

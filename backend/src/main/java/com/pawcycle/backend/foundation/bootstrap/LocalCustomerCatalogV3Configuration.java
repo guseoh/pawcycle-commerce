@@ -22,7 +22,7 @@ public class LocalCustomerCatalogV3Configuration {
       if (!baselineEnabled
           || !DemoCatalogManifestImportService.DEFAULT_MANIFEST_LOCATION.equals(manifest)) {
         throw new LocalQaBootstrapException(
-            "Customer Catalog V3는 기본 Data V1과 함께 실행해야 합니다. V2/custom manifest와 혼용할 수 없습니다.");
+            "Customer Catalog V3는 기본 Data V1과 함께 실행해야 합니다. legacy custom manifest와 혼용할 수 없습니다.");
       }
       fixture.bootstrap();
     };

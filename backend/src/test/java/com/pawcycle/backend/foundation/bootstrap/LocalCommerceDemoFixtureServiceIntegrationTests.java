@@ -3,6 +3,8 @@ package com.pawcycle.backend.foundation.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pawcycle.backend.catalog.application.DemoCatalogImportOperation;
+import com.pawcycle.backend.catalog.application.DemoCatalogImportResult;
 import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -49,9 +51,9 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
         jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM plan_version_delivery_cycles", Integer.class);
 
-    DemoCatalogManifestImportService.ImportResult result = importService.validate();
+    DemoCatalogImportResult result = importService.validate();
 
-    assertThat(result.operation()).isEqualTo(DemoCatalogManifestImportService.Operation.VALIDATE);
+    assertThat(result.operation()).isEqualTo(DemoCatalogImportOperation.VALIDATE);
     assertThat(result.categoriesCreated()).isEqualTo(4);
     assertThat(result.productsCreated())
         .isEqualTo(LocalCommerceDemoFixtureService.DEMO_PRODUCT_COUNT);

@@ -1,24 +1,20 @@
 package com.pawcycle.backend.commerce;
 
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-class BillingMethodQueryService {
-  private final JdbcTemplate jdbc;
+public class BillingMethodQueryService {
+  private final BillingPaymentMethodRepository billingPaymentMethods;
   private final TossPaymentAdapter provider;
 
-  BillingMethodQueryService(JdbcTemplate jdbc, TossPaymentAdapter provider) {
-    this.jdbc = jdbc;
+  public BillingMethodQueryService(
+      BillingPaymentMethodRepository billingPaymentMethods, TossPaymentAdapter provider) {
+    this.billingPaymentMethods = billingPaymentMethods;
     this.provider = provider;
   }
 
-  BillingMethodResponse active(long memberId) {
-    Integer count =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM billing_payment_methods WHERE member_id=? AND status='ACTIVE'",
-            Integer.class,
-            memberId);
-    return new BillingMethodResponse("TOSS", provider.isConfigured(), count != null && count > 0);
+  public BillingMethodResponse active(long memberId) {
+    long count = billingPaymentMethods.countByMemberIdAndStatus(memberId, "ACTIVE");
+    return new BillingMethodResponse("TOSS", provider.isConfigured(), count > 0);
   }
 }

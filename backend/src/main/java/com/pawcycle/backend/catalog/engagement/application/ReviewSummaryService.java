@@ -1,7 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -9,7 +9,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,13 +27,13 @@ public class ReviewSummaryService {
           "treatment",
           "medicine",
           "prescription");
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ProductRepository products;
   private final ReviewSummaryAiClient ai;
   private final Clock clock;
 
   public ReviewSummaryService(
-      JdbcTemplate jdbc, ProductRepository products, ReviewSummaryAiClient ai, Clock clock) {
+      NativeQueryExecutor jdbc, ProductRepository products, ReviewSummaryAiClient ai, Clock clock) {
     this.jdbc = jdbc;
     this.products = products;
     this.ai = ai;
@@ -159,6 +159,4 @@ public class ReviewSummaryService {
     }
   }
 
-  public record ReviewSummaryResponse(
-      String status, String summary, long reviewCount, BigDecimal averageRating) {}
 }

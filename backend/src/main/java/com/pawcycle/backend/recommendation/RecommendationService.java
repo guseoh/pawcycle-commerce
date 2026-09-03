@@ -9,10 +9,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.stereotype.Service;
 
 @Service
 class RecommendationService {
+  private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
   private static final int RESULT_LIMIT = 10;
   private static final List<String> MEDICAL_TERMS =
       List.of(
@@ -28,17 +32,20 @@ class RecommendationService {
           "medicine",
           "drug",
           "prescription");
-  private final RecommendationRepository repository;
+  private final RecommendationQueryAdapter repository;
   private final RecommendationAiClient aiClient;
   private final RecommendationMetrics metrics;
+  private final Clock clock;
 
   RecommendationService(
-      RecommendationRepository repository,
+      RecommendationQueryAdapter repository,
       RecommendationAiClient aiClient,
-      RecommendationMetrics metrics) {
+      RecommendationMetrics metrics,
+      Clock clock) {
     this.repository = repository;
     this.aiClient = aiClient;
     this.metrics = metrics;
+    this.clock = clock;
   }
 
   RecommendationResponse recommend(long memberId, long petId) {
@@ -252,7 +259,7 @@ class RecommendationService {
                     + ":"
                     + petId
                     + ":"
-                    + java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
+                    + LocalDate.now(clock.withZone(SEOUL)))
                 .hashCode(),
             pool.size());
     return pool.get(index);
@@ -316,10 +323,10 @@ class RecommendationService {
 
   private RecommendationItem toItem(
       RecommendationCandidate candidate, String reason, String strategy) {
-    RecommendationItem.Category category =
+    RecommendationItemCategory category =
         candidate.category() == null
             ? null
-            : new RecommendationItem.Category(
+            : new RecommendationItemCategory(
                 candidate.category().categoryId(),
                 candidate.category().name(),
                 candidate.category().slug());
@@ -337,52 +344,19 @@ class RecommendationService {
     return values == null ? Set.of() : values;
   }
 
-  private record ReasonSelection(String text, boolean fallback) {}
-
-  record RecommendationResponse(String requestId, List<RecommendationItem> products) {
-    RecommendationResponse(List<RecommendationItem> products) {
-      this(UUID.randomUUID().toString(), products);
-    }
-
-    RecommendationResponse {
-      products = List.copyOf(products);
-    }
-  }
-
-  record RecommendationItem(
-      long productId,
-      String name,
-      String shortDescription,
-      String thumbnailUrl,
-      Category category,
-      String reason,
-      String strategy) {
-    RecommendationItem(
-        long productId,
-        String name,
-        String shortDescription,
-        String thumbnailUrl,
-        Category category,
-        String reason) {
-      this(productId, name, shortDescription, thumbnailUrl, category, reason, "PERSONALIZED");
-    }
-
-    record Category(long categoryId, String name, String slug) {}
-  }
-
   private static final class MemberSignalsView {
-    private final RecommendationRepository.MemberSignals value;
+    private final RecommendationMemberSignals value;
 
-    MemberSignalsView(RecommendationRepository.MemberSignals value) {
+    MemberSignalsView(RecommendationMemberSignals value) {
       this.value = value == null ? empty() : value;
     }
 
-    RecommendationRepository.MemberSignals value() {
+    RecommendationMemberSignals value() {
       return value;
     }
 
-    private static RecommendationRepository.MemberSignals empty() {
-      return new RecommendationRepository.MemberSignals(
+    private static RecommendationMemberSignals empty() {
+      return new RecommendationMemberSignals(
           Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
           Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
     }

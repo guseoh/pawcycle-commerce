@@ -52,9 +52,9 @@ class DemoProductDataV2ImportIntegrationTests {
       String output = new String(generator.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
       assertThat(generator.waitFor()).as(output).isZero();
 
-      DemoCatalogManifestImportService.ImportResult first =
+      DemoCatalogImportResult first =
           importService.apply(generatedManifest.toUri().toString());
-      DemoCatalogManifestImportService.ImportResult second =
+      DemoCatalogImportResult second =
           importService.apply(generatedManifest.toUri().toString());
 
       assertThat(first.productsCreated()).isEqualTo(35);

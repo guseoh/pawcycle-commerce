@@ -1,6 +1,18 @@
 package com.pawcycle.backend.catalog.application;
+import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ImageCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionGroupCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.OptionValueCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests;
 import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
@@ -23,7 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -40,7 +52,7 @@ public class CustomerCatalogV3ImportService {
   private static final Set<String> BASELINE_ROOT_CATEGORIES =
       Set.of("food", "treats", "hygiene", "toilet");
 
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final CatalogExpansionAdminService expansion;
   private final ProductListCacheInvalidator cache;
   private final Validator validator;
@@ -50,7 +62,7 @@ public class CustomerCatalogV3ImportService {
 
   @Autowired
   public CustomerCatalogV3ImportService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       CatalogExpansionAdminService expansion,
       ProductListCacheInvalidator cache,
       Validator validator,
@@ -67,7 +79,7 @@ public class CustomerCatalogV3ImportService {
   }
 
   public CustomerCatalogV3ImportService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       CatalogExpansionAdminService expansion,
       ProductListCacheInvalidator cache,
       Validator validator) {
@@ -81,7 +93,7 @@ public class CustomerCatalogV3ImportService {
   }
 
   public CustomerCatalogV3ImportService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       CatalogExpansionAdminService expansion,
       ProductListCacheInvalidator cache,
       Validator validator,
@@ -96,16 +108,16 @@ public class CustomerCatalogV3ImportService {
   }
 
   @Transactional
-  public ImportResult validate() {
-    return process(Operation.VALIDATE);
+  public CustomerCatalogSupplementImportResult validate() {
+    return process(CustomerCatalogImportOperation.VALIDATE);
   }
 
   @Transactional
-  public ImportResult apply() {
-    return process(Operation.APPLY);
+  public CustomerCatalogSupplementImportResult apply() {
+    return process(CustomerCatalogImportOperation.APPLY);
   }
 
-  private ImportResult process(Operation operation) {
+  private CustomerCatalogSupplementImportResult process(CustomerCatalogImportOperation operation) {
     Manifest manifest = load();
     validateManifest(manifest);
     ImportContext context = new ImportContext(operation);
@@ -193,7 +205,7 @@ public class CustomerCatalogV3ImportService {
             fields("display_order", i),
             () -> {
               expansion.assignCategoryFacet(
-                  id, definitionId, new AdminCatalogRequests.CategoryFacetAssign(order));
+                  id, definitionId, new CategoryFacetAssignRequest(order));
               return 0;
             });
       }
@@ -270,7 +282,7 @@ public class CustomerCatalogV3ImportService {
                   expansion
                       .createOptionGroup(
                           productId,
-                          new AdminCatalogRequests.OptionGroupCreate(group.name(), order))
+                          new OptionGroupCreateRequest(group.name(), order))
                       .optionGroupId());
       for (int j = 0; j < group.values().size(); j++) {
         String value = group.values().get(j);
@@ -287,7 +299,7 @@ public class CustomerCatalogV3ImportService {
                         .createOptionValue(
                             productId,
                             groupId,
-                            new AdminCatalogRequests.OptionValueCreate(value, valueOrder))
+                            new OptionValueCreateRequest(value, valueOrder))
                         .optionValueId()));
       }
     }
@@ -352,7 +364,7 @@ public class CustomerCatalogV3ImportService {
           selected,
           () ->
               expansion.setSkuOptionValues(
-                  productId, skuId, new AdminCatalogRequests.SkuOptionValues(selected)));
+                  productId, skuId, new SkuOptionValuesRequest(selected)));
     }
 
     ensureImages(context, product.catalogKey(), productId, product.images());
@@ -372,14 +384,14 @@ public class CustomerCatalogV3ImportService {
         selectedFacets,
         () ->
             expansion.setProductFacetValues(
-                productId, new AdminCatalogRequests.ProductFacetValues(selectedFacets)));
+                productId, new ProductFacetValuesRequest(selectedFacets)));
   }
 
   private void ensureImages(
       ImportContext context,
       String catalogKey,
       long productId,
-      List<AdminCatalogRequests.ImageCreate> expected) {
+      List<ImageCreateRequest> expected) {
     List<Map<String, Object>> actual =
         jdbc.queryForList(
             """
@@ -394,14 +406,14 @@ public class CustomerCatalogV3ImportService {
       context.recordMissing("product_images", expected.size());
       if (context.writes()) {
         expected.stream()
-            .sorted(Comparator.comparingInt(AdminCatalogRequests.ImageCreate::displayOrder))
+            .sorted(Comparator.comparingInt(ImageCreateRequest::displayOrder))
             .forEach(image -> expansion.createImage(productId, image));
       }
       return;
     }
     List<Map<String, Object>> expectedRows =
         expected.stream()
-            .sorted(Comparator.comparingInt(AdminCatalogRequests.ImageCreate::displayOrder))
+            .sorted(Comparator.comparingInt(ImageCreateRequest::displayOrder))
             .map(
                 image ->
                     fields(
@@ -447,7 +459,7 @@ public class CustomerCatalogV3ImportService {
   private void ensureDetailSections(
       ImportContext context,
       long productId,
-      List<AdminCatalogRequests.DetailSectionCreate> expected) {
+      List<DetailSectionCreateRequest> expected) {
     List<Map<String, Object>> actual =
         jdbc.queryForList(
             """
@@ -461,10 +473,10 @@ public class CustomerCatalogV3ImportService {
     if (actual.isEmpty()) {
       context.recordMissing("product_detail_sections", expected.size());
       if (context.writes()) {
-        for (AdminCatalogRequests.DetailSectionCreate section :
+        for (DetailSectionCreateRequest section :
             expected.stream()
                 .sorted(
-                    Comparator.comparingInt(AdminCatalogRequests.DetailSectionCreate::displayOrder))
+                    Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
                 .toList()) {
           Map<String, Object> row =
               fields(
@@ -487,7 +499,7 @@ public class CustomerCatalogV3ImportService {
     }
     List<Map<String, Object>> expectedRows =
         expected.stream()
-            .sorted(Comparator.comparingInt(AdminCatalogRequests.DetailSectionCreate::displayOrder))
+            .sorted(Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
             .map(
                 section ->
                     fields(
@@ -630,14 +642,14 @@ public class CustomerCatalogV3ImportService {
     Set<String> brandKeys = new HashSet<>();
     for (Brand brand : manifest.brands()) {
       valid(
-          new AdminCatalogRequests.BrandCreate(
+          new BrandCreateRequest(
               brand.name(), brand.slug(), null, true, brand.displayOrder()));
       if (!brandKeys.add(brand.slug())) throw conflict("duplicate brand");
     }
 
     Map<String, Set<String>> facets = new HashMap<>();
     for (Facet facet : manifest.facets()) {
-      valid(new AdminCatalogRequests.FacetDefinitionCreate(facet.key(), facet.name()));
+      valid(new FacetDefinitionCreateRequest(facet.key(), facet.name()));
       if (facet.values() == null
           || facet.values().isEmpty()
           || new HashSet<>(facet.values()).size() != facet.values().size()
@@ -645,13 +657,13 @@ public class CustomerCatalogV3ImportService {
         throw conflict("duplicate facet");
       }
       for (String value : facet.values())
-        valid(new AdminCatalogRequests.FacetOptionCreate(value, 0));
+        valid(new FacetOptionCreateRequest(value, 0));
     }
 
     Map<String, Category> categories = new HashMap<>();
     for (Category category : manifest.categories()) {
       valid(
-          new AdminCatalogRequests.CategoryCreate(
+          new CategoryCreateRequest(
               category.name(), category.slug(), category.displayOrder(), true));
       if (BASELINE_ROOT_CATEGORIES.contains(category.slug())
           || categories.put(category.slug(), category) != null
@@ -671,7 +683,7 @@ public class CustomerCatalogV3ImportService {
     Set<String> codes = new HashSet<>();
     for (Product product : manifest.products()) {
       valid(
-          new AdminCatalogRequests.ProductCreate(
+          new ProductCreateRequest(
               1L,
               1L,
               product.name(),
@@ -697,7 +709,7 @@ public class CustomerCatalogV3ImportService {
 
       Set<String> groupNames = new HashSet<>();
       for (Group group : product.optionGroups()) {
-        valid(new AdminCatalogRequests.OptionGroupCreate(group.name(), 0));
+        valid(new OptionGroupCreateRequest(group.name(), 0));
         if (!groupNames.add(group.name())
             || group.values() == null
             || group.values().isEmpty()
@@ -705,13 +717,13 @@ public class CustomerCatalogV3ImportService {
           throw conflict("option group");
         }
         for (String value : group.values())
-          valid(new AdminCatalogRequests.OptionValueCreate(value, 0));
+          valid(new OptionValueCreateRequest(value, 0));
       }
 
       Set<List<String>> combinations = new HashSet<>();
       for (Sku sku : product.skus()) {
         valid(
-            new AdminCatalogRequests.SkuCreate(
+            new SkuCreateRequest(
                 sku.skuCode(),
                 sku.name(),
                 sku.price(),
@@ -737,7 +749,7 @@ public class CustomerCatalogV3ImportService {
       }
 
       Set<Integer> imageOrders = new HashSet<>();
-      for (AdminCatalogRequests.ImageCreate image : product.images()) {
+      for (ImageCreateRequest image : product.images()) {
         valid(image);
         if (!imageOrders.add(image.displayOrder())) throw conflict("image order");
       }
@@ -747,7 +759,7 @@ public class CustomerCatalogV3ImportService {
       }
 
       Set<Integer> sectionOrders = new HashSet<>();
-      for (AdminCatalogRequests.DetailSectionCreate section : product.detailSections()) {
+      for (DetailSectionCreateRequest section : product.detailSections()) {
         valid(section);
         if (!section.visible()
             || !sectionOrders.add(section.displayOrder())
@@ -802,49 +814,8 @@ public class CustomerCatalogV3ImportService {
     return new CatalogManifestImportException("Customer Catalog V3 conflict: " + key);
   }
 
-  public enum Operation {
-    VALIDATE,
-    APPLY
-  }
-
-  public record ImportResult(
-      Operation operation,
-      int expectedBrands,
-      int expectedCategories,
-      int expectedProducts,
-      int expectedSkus,
-      int brandsMissing,
-      int categoriesMissing,
-      int productsMissing,
-      int skusMissing,
-      int inventoriesMissing) {
-
-    public String summary() {
-      return "CUSTOMER_CATALOG_V3_IMPORT_RESULT operation="
-          + operation.name()
-          + " status=PASS expected="
-          + expectedBrands
-          + "/"
-          + expectedCategories
-          + "/"
-          + expectedProducts
-          + "/"
-          + expectedSkus
-          + " missing_or_created="
-          + brandsMissing
-          + "/"
-          + categoriesMissing
-          + "/"
-          + productsMissing
-          + "/"
-          + skusMissing
-          + " inventories_missing_or_created="
-          + inventoriesMissing;
-    }
-  }
-
   private final class ImportContext {
-    private final Operation operation;
+    private final CustomerCatalogImportOperation operation;
     private long nextVirtualId = -1;
     private int brandsMissing;
     private int categoriesMissing;
@@ -852,12 +823,12 @@ public class CustomerCatalogV3ImportService {
     private int skusMissing;
     private int inventoriesMissing;
 
-    private ImportContext(Operation operation) {
+    private ImportContext(CustomerCatalogImportOperation operation) {
       this.operation = operation;
     }
 
     private boolean writes() {
-      return operation == Operation.APPLY;
+      return operation == CustomerCatalogImportOperation.APPLY;
     }
 
     private long virtualId() {
@@ -882,10 +853,10 @@ public class CustomerCatalogV3ImportService {
       }
     }
 
-    private ImportResult result(Manifest manifest) {
+    private CustomerCatalogSupplementImportResult result(Manifest manifest) {
       int expectedSkus =
           manifest.products().stream().mapToInt(product -> product.skus().size()).sum();
-      return new ImportResult(
+      return new CustomerCatalogSupplementImportResult(
           operation,
           manifest.brands().size(),
           manifest.categories().size(),
@@ -935,7 +906,7 @@ public class CustomerCatalogV3ImportService {
       String thumbnailUrl,
       List<Group> optionGroups,
       List<Sku> skus,
-      List<AdminCatalogRequests.ImageCreate> images,
+      List<ImageCreateRequest> images,
       Map<String, String> facets,
-      List<AdminCatalogRequests.DetailSectionCreate> detailSections) {}
+      List<DetailSectionCreateRequest> detailSections) {}
 }

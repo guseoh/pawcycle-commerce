@@ -1,27 +1,28 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CheckoutIdempotencyService {
-  private final JdbcTemplate jdbc;
-  private final CommerceService commerce;
+  private final NativeQueryExecutor jdbc;
+  private final CheckoutApplicationService checkoutService;
 
-  public CheckoutIdempotencyService(JdbcTemplate jdbc, CommerceService commerce) {
+  public CheckoutIdempotencyService(NativeQueryExecutor jdbc, CheckoutApplicationService checkoutService) {
     this.jdbc = jdbc;
-    this.commerce = commerce;
+    this.checkoutService = checkoutService;
   }
 
   @Transactional
-  public Map<String, Object> checkout(
+  public CommercePayload checkout(
       long memberId,
       String idempotencyKey,
       long addressId,
@@ -52,14 +53,15 @@ public class CheckoutIdempotencyService {
             idempotencyKey);
     if (replay != null) {
       verifyReplayIdentity(replay, addressId, memberCouponId, requestedCartVersion);
-      return checkoutResponse(replay);
+      return CommercePayload.from(checkoutResponse(replay));
     }
 
     long currentCartVersion = lockCurrentCartVersion(memberId);
     long requestCartVersion =
         requestedCartVersion == null ? currentCartVersion : requestedCartVersion;
-    Map<String, Object> result =
-        commerce.checkout(memberId, idempotencyKey, addressId, memberCouponId, requestCartVersion);
+    CommercePayload result =
+        checkoutService.checkout(
+            memberId, idempotencyKey, addressId, memberCouponId, requestCartVersion);
     int updated =
         jdbc.update(
             """

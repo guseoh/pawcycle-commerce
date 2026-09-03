@@ -1,7 +1,7 @@
 package com.pawcycle.backend.catalog.discovery.api;
 
 import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryQueryService;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView;
+import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,7 +14,7 @@ public class CatalogDiscoveryController {
   private final CatalogDiscoveryQueryService catalogDiscoveryQueryService;
 
   @GetMapping("/discovery")
-  CatalogDiscoveryView discovery() {
+  CatalogDiscoveryResponse discovery() {
     return catalogDiscoveryQueryService.findPublicDiscovery();
   }
 }

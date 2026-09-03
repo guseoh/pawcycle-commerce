@@ -6,12 +6,12 @@ import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 class CommerceMetricsTests {
   @Test
   void pendingGaugeKeepsLongValuesAboveIntegerRange() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     when(jdbc.queryForObject(
             org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(Long.class)))
         .thenReturn((long) Integer.MAX_VALUE + 100L);

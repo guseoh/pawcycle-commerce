@@ -1,33 +1,37 @@
 package com.pawcycle.backend.catalog.admin.application;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.DetailSectionCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.DetailSectionPatch;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogViews;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionListResponse;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionResponse;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductDetailSectionService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final ProductRepository products;
+  private final Clock clock;
 
-  public ProductDetailSectionService(JdbcTemplate jdbc, ProductRepository products) {
+  public ProductDetailSectionService(
+      NativeQueryExecutor jdbc, ProductRepository products, Clock clock) {
     this.jdbc = jdbc;
     this.products = products;
+    this.clock = clock;
   }
 
   @Transactional(readOnly = true)
-  public AdminCatalogViews.DetailSectionList list(long productId) {
+  public DetailSectionListResponse list(long productId) {
     requireProduct(productId);
-    return new AdminCatalogViews.DetailSectionList(
+    return new DetailSectionListResponse(
         jdbc.query(
             """
             SELECT id,product_id,title,body,display_order,visible,created_at,updated_at
@@ -47,9 +51,9 @@ public class ProductDetailSectionService {
   }
 
   @Transactional
-  public AdminCatalogViews.DetailSection create(long productId, DetailSectionCreate request) {
+  public DetailSectionResponse create(long productId, DetailSectionCreateRequest request) {
     requireProduct(productId);
-    Timestamp now = Timestamp.from(Instant.now());
+    Timestamp now = Timestamp.from(Instant.now(clock));
     jdbc.update(
         """
         INSERT INTO product_detail_sections(product_id,title,body,display_order,visible,created_at,updated_at)
@@ -67,27 +71,16 @@ public class ProductDetailSectionService {
   }
 
   @Transactional
-  public AdminCatalogViews.DetailSection update(
-      long productId, long sectionId, DetailSectionPatch request) {
+  public DetailSectionResponse update(
+      long productId, long sectionId, DetailSectionPatchRequest request) {
     validate(request);
     requireProduct(productId);
-    Map<String, Object> current =
-        jdbc
-            .queryForList(
-                "SELECT * FROM product_detail_sections WHERE id=? AND product_id=? FOR UPDATE",
-                sectionId,
-                productId)
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> notFound(sectionId));
-    String title = request.isTitlePresent() ? request.getTitle() : (String) current.get("title");
-    String body = request.isBodyPresent() ? request.getBody() : (String) current.get("body");
-    Integer displayOrder =
-        request.isDisplayOrderPresent()
-            ? request.getDisplayOrder()
-            : ((Number) current.get("display_order")).intValue();
-    Boolean visible =
-        request.isVisiblePresent() ? request.getVisible() : (Boolean) current.get("visible");
+    DetailSectionMutationState current = lock(sectionId, productId);
+    String title = request.isTitlePresent() ? request.getTitle() : current.title();
+    String body = request.isBodyPresent() ? request.getBody() : current.body();
+    int displayOrder =
+        request.isDisplayOrderPresent() ? request.getDisplayOrder() : current.displayOrder();
+    boolean visible = request.isVisiblePresent() ? request.getVisible() : current.visible();
     jdbc.update(
         "UPDATE product_detail_sections SET title=?,body=?,display_order=?,visible=?,updated_at=?"
             + " WHERE id=? AND product_id=?",
@@ -95,7 +88,7 @@ public class ProductDetailSectionService {
         body,
         displayOrder,
         visible,
-        Timestamp.from(Instant.now()),
+        Timestamp.from(Instant.now(clock)),
         sectionId,
         productId);
     return find(sectionId, productId);
@@ -111,7 +104,25 @@ public class ProductDetailSectionService {
     }
   }
 
-  private AdminCatalogViews.DetailSection find(long sectionId, long productId) {
+  private DetailSectionMutationState lock(long sectionId, long productId) {
+    return jdbc
+        .query(
+            "SELECT title,body,display_order,visible FROM product_detail_sections"
+                + " WHERE id=? AND product_id=? FOR UPDATE",
+            (rs, rowNum) ->
+                new DetailSectionMutationState(
+                    rs.getString("title"),
+                    rs.getString("body"),
+                    rs.getInt("display_order"),
+                    rs.getBoolean("visible")),
+            sectionId,
+            productId)
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> notFound(sectionId));
+  }
+
+  private DetailSectionResponse find(long sectionId, long productId) {
     return jdbc
         .query(
             "SELECT id,product_id,title,body,display_order,visible,created_at,updated_at FROM"
@@ -142,7 +153,7 @@ public class ProductDetailSectionService {
     return new AdminCatalogNotFoundException("DETAIL_SECTION_NOT_FOUND", "상품 상세 섹션을 확인할 수 없습니다.");
   }
 
-  private void validate(DetailSectionPatch request) {
+  private void validate(DetailSectionPatchRequest request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
     if (!request.isTitlePresent()
         && !request.isBodyPresent()
@@ -172,7 +183,7 @@ public class ProductDetailSectionService {
     if (!errors.isEmpty()) throw new AdminCatalogValidationException(errors);
   }
 
-  private AdminCatalogViews.DetailSection view(
+  private DetailSectionResponse view(
       long id,
       long productId,
       String title,
@@ -181,7 +192,10 @@ public class ProductDetailSectionService {
       boolean visible,
       Instant createdAt,
       Instant updatedAt) {
-    return new AdminCatalogViews.DetailSection(
+    return new DetailSectionResponse(
         id, productId, title, body, displayOrder, visible, createdAt, updatedAt);
   }
+
+  private record DetailSectionMutationState(
+      String title, String body, int displayOrder, boolean visible) {}
 }

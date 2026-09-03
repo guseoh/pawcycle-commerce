@@ -1,16 +1,15 @@
 package com.pawcycle.backend.catalog.product.application;
 
-import java.math.BigDecimal;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductDetailContentReader {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
 
-  public ProductDetailContentReader(JdbcTemplate jdbc) {
+  public ProductDetailContentReader(NativeQueryExecutor jdbc) {
     this.jdbc = jdbc;
   }
 
@@ -36,7 +35,7 @@ public class ProductDetailContentReader {
   }
 
   @Transactional(readOnly = true)
-  public ProductTrustView trust(long productId) {
+  public ProductTrustProjection trust(long productId) {
     return jdbc.queryForObject(
         """
         SELECT AVG(CASE WHEN r.visible=true THEN r.rating END) AS average_rating,
@@ -46,7 +45,7 @@ public class ProductDetailContentReader {
         WHERE r.product_id=?
         """,
         (rs, rowNum) ->
-            new ProductTrustView(
+            new ProductTrustProjection(
                 rs.getBigDecimal("average_rating"),
                 rs.getLong("review_count"),
                 rs.getLong("question_count")),
@@ -54,5 +53,4 @@ public class ProductDetailContentReader {
         productId);
   }
 
-  public record ProductTrustView(BigDecimal averageRating, long reviewCount, long questionCount) {}
 }

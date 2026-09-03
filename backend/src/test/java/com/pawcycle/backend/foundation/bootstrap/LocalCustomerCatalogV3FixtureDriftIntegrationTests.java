@@ -7,6 +7,7 @@ import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminServi
 import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
 import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,16 +86,20 @@ class LocalCustomerCatalogV3FixtureDriftIntegrationTests {
   static class FixtureConfiguration {
     @Bean
     LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(
-        JdbcTemplate jdbc,
+        NativeQueryExecutor jdbcExecutor,
         DemoCatalogManifestImportService importer,
         CatalogExpansionAdminService expansion,
         ProductListCacheInvalidator cache,
         Validator validator) {
       var detail =
           new DemoProductDetailSectionFixtureService(
-              jdbc, "classpath:catalog/demo-product-detail-sections.json");
+              jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
       return new LocalCustomerCatalogV3FixtureService(
-          jdbc, new LocalCommerceDemoFixtureService(importer, detail), expansion, cache, validator);
+          jdbcExecutor,
+          new LocalCommerceDemoFixtureService(importer, detail),
+          expansion,
+          cache,
+          validator);
     }
   }
 }

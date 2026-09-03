@@ -24,7 +24,7 @@ public class ProductReviewController {
   private final ProductEngagementService service;
 
   @GetMapping("/api/products/{productId}/reviews")
-  ReviewViews.Page reviews(
+  ReviewListResponse reviews(
       @PathVariable long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
@@ -32,14 +32,14 @@ public class ProductReviewController {
   }
 
   @GetMapping("/api/products/{productId}/reviews/me")
-  ReviewViews.Review myReview(
+  ReviewResponse myReview(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return service.myReview(productId, principal.memberId());
   }
 
   @PostMapping("/api/products/{productId}/reviews")
-  ReviewViews.Review create(
+  ReviewResponse create(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody ReviewCreateRequest request) {
@@ -50,7 +50,7 @@ public class ProductReviewController {
   }
 
   @PatchMapping("/api/reviews/{reviewId}")
-  ReviewViews.Review update(
+  ReviewResponse update(
       @PathVariable long reviewId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestBody ReviewPatchRequest request) {

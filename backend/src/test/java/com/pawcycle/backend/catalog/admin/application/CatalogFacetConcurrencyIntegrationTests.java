@@ -2,8 +2,8 @@ package com.pawcycle.backend.catalog.admin.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductFacetValues;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
+import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -61,7 +61,7 @@ class CatalogFacetConcurrencyIntegrationTests {
         runTogether(
             () ->
                 expansionService.setProductFacetValues(
-                    productId, new ProductFacetValues(List.of(facetOptionId))),
+                    productId, new ProductFacetValuesRequest(List.of(facetOptionId))),
             () -> expansionService.removeCategoryFacet(sourceCategoryId, facetDefinitionId));
 
     assertThat(results.successCount()).isEqualTo(1);
@@ -78,12 +78,12 @@ class CatalogFacetConcurrencyIntegrationTests {
   void concurrentCategoryChangeAndTargetFacetRemovalPreserveInvariant() throws Exception {
     seedCatalog(true);
     expansionService.setProductFacetValues(
-        productId, new ProductFacetValues(List.of(facetOptionId)));
+        productId, new ProductFacetValuesRequest(List.of(facetOptionId)));
 
     ConcurrentResult results =
         runTogether(
             () -> {
-              ProductPatch patch = new ProductPatch();
+              ProductPatchRequest patch = new ProductPatchRequest();
               patch.readCategoryId(targetCategoryId);
               adminCatalogService.updateProduct(productId, patch);
             },

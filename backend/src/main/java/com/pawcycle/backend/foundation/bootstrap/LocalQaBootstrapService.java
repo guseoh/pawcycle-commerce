@@ -1,22 +1,21 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
-import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,8 +41,7 @@ public class LocalQaBootstrapService {
   private final ProductRepository productRepository;
   private final CategoryRepository categoryRepository;
   private final SkuRepository skuRepository;
-  private final SubscriptionRepository subscriptionRepository;
-  private final JdbcTemplate jdbcTemplate;
+  private final NativeQueryExecutor jdbcTemplate;
 
   LocalQaBootstrapService(
       EmailNormalizer emailNormalizer,
@@ -51,7 +49,7 @@ public class LocalQaBootstrapService {
       MemberRepository memberRepository,
       ProductRepository productRepository,
       SkuRepository skuRepository,
-      SubscriptionRepository subscriptionRepository) {
+      NativeQueryExecutor jdbcTemplate) {
     this(
         emailNormalizer,
         passwordEncoder,
@@ -59,8 +57,7 @@ public class LocalQaBootstrapService {
         productRepository,
         null,
         skuRepository,
-        subscriptionRepository,
-        null);
+        jdbcTemplate);
   }
 
   @Autowired
@@ -71,15 +68,13 @@ public class LocalQaBootstrapService {
       ProductRepository productRepository,
       CategoryRepository categoryRepository,
       SkuRepository skuRepository,
-      SubscriptionRepository subscriptionRepository,
-      JdbcTemplate jdbcTemplate) {
+      NativeQueryExecutor jdbcTemplate) {
     this.emailNormalizer = emailNormalizer;
     this.passwordEncoder = passwordEncoder;
     this.memberRepository = memberRepository;
     this.productRepository = productRepository;
     this.categoryRepository = categoryRepository;
     this.skuRepository = skuRepository;
-    this.subscriptionRepository = subscriptionRepository;
     this.jdbcTemplate = jdbcTemplate;
   }
 
@@ -97,8 +92,10 @@ public class LocalQaBootstrapService {
     Sku sku = loadOrCreateSku(product);
     ensureInventory(sku);
     if (resetSubscriptions) {
-      deleteV2SubscriptionChildren(member.getId());
-      subscriptionRepository.deleteAllByMemberId(member.getId());
+      deleteSubscriptionChildren(member.getId());
+      if (jdbcTemplate != null) {
+        jdbcTemplate.update("DELETE FROM subscriptions WHERE member_id=?", member.getId());
+      }
     }
   }
 
@@ -110,7 +107,7 @@ public class LocalQaBootstrapService {
         sku.getId());
   }
 
-  private void deleteV2SubscriptionChildren(Long memberId) {
+  private void deleteSubscriptionChildren(Long memberId) {
     if (jdbcTemplate == null) return;
     jdbcTemplate.update(
         "DELETE p FROM pending_plan_changes p JOIN subscriptions s ON s.id=p.subscription_id WHERE"
