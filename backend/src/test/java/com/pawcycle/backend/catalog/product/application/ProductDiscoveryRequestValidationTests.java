@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

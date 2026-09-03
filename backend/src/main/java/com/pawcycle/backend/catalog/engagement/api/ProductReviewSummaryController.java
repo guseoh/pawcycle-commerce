@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.api;
 
 import com.pawcycle.backend.catalog.engagement.application.ReviewSummaryService;
+import com.pawcycle.backend.catalog.engagement.application.ReviewSummaryResponse;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -20,7 +21,7 @@ public class ProductReviewSummaryController {
   }
 
   @GetMapping("/api/products/{productId}/reviews/summary")
-  ReviewSummaryService.ReviewSummaryResponse summary(@PathVariable long productId) {
+  ReviewSummaryResponse summary(@PathVariable long productId) {
     return service.summary(productId);
   }
 }

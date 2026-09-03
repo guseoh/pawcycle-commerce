@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -20,13 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor.RowMapper;
 
 class ReviewSummaryServiceTests {
   @Test
   void fewerThanThreeVisibleReviewsDoesNotCallAi() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductRepository products = mock(ProductRepository.class);
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     when(products.findPublicById(1L)).thenReturn(Optional.of(mock(Product.class)));
@@ -39,7 +39,7 @@ class ReviewSummaryServiceTests {
     when(jdbc.queryForObject(anyString(), eq(BigDecimal.class), eq(1L)))
         .thenReturn(new BigDecimal("4.50"));
 
-    ReviewSummaryService.ReviewSummaryResponse response =
+    ReviewSummaryResponse response =
         new ReviewSummaryService(
                 jdbc,
                 products,
@@ -55,7 +55,7 @@ class ReviewSummaryServiceTests {
 
   @Test
   void cacheHitSkipsAiAndValidAiResultIsPersisted() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductRepository products = mock(ProductRepository.class);
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     ReviewSummaryService service =
@@ -71,7 +71,7 @@ class ReviewSummaryServiceTests {
             Map.of(
                 "source_fingerprint", service.fingerprint(reviews), "summary", "좋은 품질의 상품입니다.")));
 
-    ReviewSummaryService.ReviewSummaryResponse response = service.summary(1L);
+    ReviewSummaryResponse response = service.summary(1L);
 
     assertThat(response.status()).isEqualTo("AVAILABLE");
     assertThat(response.summary()).isEqualTo("좋은 품질의 상품입니다.");
@@ -81,7 +81,7 @@ class ReviewSummaryServiceTests {
   @Test
   void validAiResultIsStoredAndInvalidOrExceptionIsUnavailable() {
     for (String aiOutput : List.of("상품의 만족도가 높습니다.", "<script>위험</script>")) {
-      JdbcTemplate jdbc = mock(JdbcTemplate.class);
+      NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
       ProductRepository products = mock(ProductRepository.class);
       ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
       ReviewSummaryService service =
@@ -94,7 +94,7 @@ class ReviewSummaryServiceTests {
       stubSummary(jdbc, products, reviews, reviews, List.of());
       when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn(aiOutput);
 
-      ReviewSummaryService.ReviewSummaryResponse response = service.summary(1L);
+      ReviewSummaryResponse response = service.summary(1L);
 
       if (aiOutput.startsWith("<")) {
         assertThat(response.status()).isEqualTo("UNAVAILABLE");
@@ -112,7 +112,7 @@ class ReviewSummaryServiceTests {
       }
     }
 
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductRepository products = mock(ProductRepository.class);
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     List<ReviewSummaryService.ReviewRow> reviews = reviews(3);
@@ -125,7 +125,7 @@ class ReviewSummaryServiceTests {
 
   @Test
   void visibleReviewOutsideLatestAiWindowInvalidatesSummaryFingerprint() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     ProductRepository products = mock(ProductRepository.class);
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     ReviewSummaryService service = new ReviewSummaryService(jdbc, products, ai, Clock.systemUTC());
@@ -141,14 +141,14 @@ class ReviewSummaryServiceTests {
         List.of(Map.of("source_fingerprint", service.fingerprint(latest), "summary", "오래된 요약")));
     when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn("전체 리뷰가 긍정적입니다.");
 
-    ReviewSummaryService.ReviewSummaryResponse response = service.summary(1L);
+    ReviewSummaryResponse response = service.summary(1L);
 
     assertThat(response.status()).isEqualTo("AVAILABLE");
     verify(ai).summarize(org.mockito.ArgumentMatchers.anyList());
   }
 
   private void stubSummary(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       ProductRepository products,
       List<ReviewSummaryService.ReviewRow> latest,
       List<ReviewSummaryService.ReviewRow> all,

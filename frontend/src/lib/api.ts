@@ -173,45 +173,6 @@ export interface CsrfResponse {
   token: string;
 }
 
-export interface SubscriptionCreateRequest {
-  skuId: number;
-  quantity: number;
-  deliveryCycleWeeks: number;
-}
-
-export interface SubscriptionCreateResponse {
-  subscriptionId: number;
-  nextOrderDate: string;
-}
-
-export interface SubscriptionProduct {
-  productId: number;
-  name: string;
-}
-
-export interface SubscriptionSku {
-  skuId: number;
-  skuName: string;
-}
-
-export interface SubscriptionSummary {
-  subscriptionId: number;
-  product: SubscriptionProduct;
-  sku: SubscriptionSku;
-  quantity: number;
-  deliveryCycleWeeks: number;
-  nextOrderDate: string;
-}
-
-export interface SubscriptionListResponse {
-  subscriptions: SubscriptionSummary[];
-}
-
-export interface SubscriptionDetail extends SubscriptionSummary {
-  sku: SubscriptionSku & { price: number };
-  createdDate: string;
-}
-
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
   if (!value || typeof value !== "object") {
     return false;
@@ -354,21 +315,4 @@ export const authApi = {
       method: "POST",
       headers: { "X-CSRF-TOKEN": csrfToken },
     }),
-};
-
-export const subscriptionApi = {
-  create: (request: SubscriptionCreateRequest, csrfToken: string) =>
-    requestJson<SubscriptionCreateResponse>("/api/subscriptions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": csrfToken,
-      },
-      body: JSON.stringify(request),
-    }),
-  list: () => requestJson<SubscriptionListResponse>("/api/subscriptions"),
-  detail: (subscriptionId: string) =>
-    requestJson<SubscriptionDetail>(
-      `/api/subscriptions/${encodeURIComponent(subscriptionId)}`,
-    ),
 };

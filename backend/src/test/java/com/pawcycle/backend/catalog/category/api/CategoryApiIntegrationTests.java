@@ -8,8 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.category.application.CategoryListView;
+import com.pawcycle.backend.catalog.category.application.CategorySummary;
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class CategoryApiIntegrationTests {
         objectMapper.readValue(result.getResponse().getContentAsString(), CategoryListView.class);
     List<Long> activeTestCategoryIds =
         response.items().stream()
-            .map(CategoryListView.CategorySummary::categoryId)
+            .map(CategorySummary::categoryId)
             .filter(
                 categoryId -> categoryId.equals(first.getId()) || categoryId.equals(second.getId()))
             .toList();

@@ -17,7 +17,7 @@ class RecommendationController {
   }
 
   @GetMapping
-  RecommendationService.RecommendationResponse products(
+  RecommendationResponse products(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @RequestParam long petId) {
     return service.recommend(principal.memberId(), petId);
   }

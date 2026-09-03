@@ -4,18 +4,18 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Per-payment transaction boundary for expiry traversal. */
 @Service
 class CheckoutExpirationProcessor {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final InventoryService inventory;
   private final Clock clock;
 
-  CheckoutExpirationProcessor(JdbcTemplate jdbc, InventoryService inventory, Clock clock) {
+  CheckoutExpirationProcessor(NativeQueryExecutor jdbc, InventoryService inventory, Clock clock) {
     this.jdbc = jdbc;
     this.inventory = inventory;
     this.clock = clock;

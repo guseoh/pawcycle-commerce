@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.product.api;
 
 import com.pawcycle.backend.catalog.product.application.ProductComparisonService;
+import com.pawcycle.backend.catalog.product.application.ProductComparisonResponse;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -15,7 +16,7 @@ public class ProductComparisonController {
   }
 
   @GetMapping("/api/products/compare")
-  ProductComparisonService.ComparisonResponse compare(
+  ProductComparisonResponse compare(
       @RequestParam("productId") List<Long> productIds) {
     return service.compare(productIds);
   }

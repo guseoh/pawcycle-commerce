@@ -4,13 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.support.TestSkuFactory;
 import java.math.BigDecimal;
 import java.util.Map;
@@ -27,7 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles({"test", "local-integration"})
 class CheckoutIdempotencyIntegrationTests {
   private final CheckoutIdempotencyService checkout;
-  private final CommerceService commerce;
+  private final CommerceFacade commerce;
   private final JdbcTemplate jdbc;
   private final MemberRepository members;
   private final CategoryRepository categories;
@@ -41,7 +41,7 @@ class CheckoutIdempotencyIntegrationTests {
   @Autowired
   CheckoutIdempotencyIntegrationTests(
       CheckoutIdempotencyService checkout,
-      CommerceService commerce,
+      CommerceFacade commerce,
       JdbcTemplate jdbc,
       MemberRepository members,
       CategoryRepository categories,

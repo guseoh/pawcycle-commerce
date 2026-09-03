@@ -12,10 +12,10 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -63,7 +63,7 @@ class ProductQueryServiceTests {
   @Test
   void emptyListSkipsSkuQuery() {
     when(productListReader.read())
-        .thenReturn(new ProductListReader.ProductListSnapshot(List.of(), List.of()));
+        .thenReturn(new ProductListSnapshot(List.of(), List.of()));
     ProductListView response = productQueryService.findProducts();
     assertThat(response.products()).isEmpty();
     verifyNoInteractions(productRepository, skuRepository);
@@ -75,13 +75,13 @@ class ProductQueryServiceTests {
     Product second = product(2L, "둘째 상품", "CAT", "둘째 설명", null, null);
     Sku firstSku = sku(10L, first, "2kg", "19900.00", true);
     Sku secondSku = sku(11L, first, "5kg", "39900.00", false);
-    ProductListReader.ProductSnapshot firstSnapshot = productSnapshot(first);
-    ProductListReader.ProductSnapshot secondSnapshot = productSnapshot(second);
-    ProductListReader.SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
-    ProductListReader.SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
+    ProductSnapshot firstSnapshot = productSnapshot(first);
+    ProductSnapshot secondSnapshot = productSnapshot(second);
+    SkuSnapshot firstSkuSnapshot = skuSnapshot(first, firstSku);
+    SkuSnapshot secondSkuSnapshot = skuSnapshot(first, secondSku);
     when(productListReader.read())
         .thenReturn(
-            new ProductListReader.ProductListSnapshot(
+            new ProductListSnapshot(
                 List.of(firstSnapshot, secondSnapshot),
                 List.of(firstSkuSnapshot, secondSkuSnapshot)));
 
@@ -96,7 +96,7 @@ class ProductQueryServiceTests {
               assertThat(category.slug()).isEqualTo("food");
             });
     assertThat(response.products().get(0).skuPriceSummary().skuPrices())
-        .extracting(ProductListView.SkuPrice::skuId)
+        .extracting(SkuPrice::skuId)
         .containsExactly(10L, 11L);
     assertThat(response.products().get(0).hasSubscribableSku()).isTrue();
     assertThat(response.products().get(1).skuPriceSummary().skuPrices()).isEmpty();
@@ -162,18 +162,18 @@ class ProductQueryServiceTests {
     assertThat(detailTransaction.readOnly()).isTrue();
   }
 
-  private ProductListReader.ProductSnapshot productSnapshot(Product product) {
-    return new ProductListReader.ProductSnapshot(
+  private ProductSnapshot productSnapshot(Product product) {
+    return new ProductSnapshot(
         product.getId(),
         product.getName(),
         product.getPetType(),
         product.getShortDescription(),
         product.getThumbnailUrl(),
-        new ProductListReader.CategorySnapshot(1L, "사료", "food"));
+        new CategorySnapshot(1L, "사료", "food"));
   }
 
-  private ProductListReader.SkuSnapshot skuSnapshot(Product product, Sku sku) {
-    return new ProductListReader.SkuSnapshot(
+  private SkuSnapshot skuSnapshot(Product product, Sku sku) {
+    return new SkuSnapshot(
         product.getId(), sku.getId(), sku.getName(), sku.getPrice(), sku.isSubscribable());
   }
 

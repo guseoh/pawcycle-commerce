@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -21,7 +21,7 @@ import org.springframework.transaction.TransactionStatus;
 class PaymentReconciliationServiceTests {
   @Test
   void failedProcessingBillingUsesExplicitFailureAndRetryWithoutChargingAgain() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus transactionStatus = mock(TransactionStatus.class);
     TossBillingAdapter billing = mock(TossBillingAdapter.class);
@@ -61,7 +61,8 @@ class PaymentReconciliationServiceTests {
             mock(MembershipEvaluationService.class),
             mock(InventoryService.class),
             mock(AdminAuditService.class),
-            failures);
+            failures,
+            java.time.Clock.systemUTC());
 
     assertThat(service.reconcile(44L)).containsEntry("status", "FAILED");
     verify(failures).recordExplicitFailure(44L, "RECONCILED_FAILED", "DECLINED");

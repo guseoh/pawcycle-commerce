@@ -4,20 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
-import com.pawcycle.backend.subscription.domain.Subscription;
-import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
-import com.pawcycle.backend.subscription.v2.V2SubscriptionService;
+import com.pawcycle.backend.member.persistence.MemberRepository;
+import com.pawcycle.backend.subscription.SubscriptionService;
+import com.pawcycle.backend.subscription.SubscriptionResult;
+import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,36 +35,33 @@ import org.springframework.test.context.ActiveProfiles;
 class LocalQaBootstrapIntegrationTests {
 
   private static final String OTHER_PRODUCT_PREFIX = "[TEST FOUNDATION-004] ";
-  private static final String V2_PLAN_PREFIX = "[TEST FOUNDATION-004 V2] ";
+  private static final String PLAN_PREFIX = "[TEST FOUNDATION-004 SUBSCRIPTION] ";
 
   private final LocalQaBootstrapService bootstrapService;
-  private final V2SubscriptionService v2SubscriptionService;
+  private final SubscriptionService subscriptionService;
   private final MemberRepository memberRepository;
   private final ProductRepository productRepository;
   private final CategoryRepository categoryRepository;
   private final SkuRepository skuRepository;
-  private final SubscriptionRepository subscriptionRepository;
   private final PasswordEncoder passwordEncoder;
   private final JdbcTemplate jdbcTemplate;
 
   @Autowired
   LocalQaBootstrapIntegrationTests(
       LocalQaBootstrapService bootstrapService,
-      V2SubscriptionService v2SubscriptionService,
+      SubscriptionService subscriptionService,
       MemberRepository memberRepository,
       ProductRepository productRepository,
       CategoryRepository categoryRepository,
       SkuRepository skuRepository,
-      SubscriptionRepository subscriptionRepository,
       PasswordEncoder passwordEncoder,
       JdbcTemplate jdbcTemplate) {
     this.bootstrapService = bootstrapService;
-    this.v2SubscriptionService = v2SubscriptionService;
+    this.subscriptionService = subscriptionService;
     this.memberRepository = memberRepository;
     this.productRepository = productRepository;
     this.categoryRepository = categoryRepository;
     this.skuRepository = skuRepository;
-    this.subscriptionRepository = subscriptionRepository;
     this.passwordEncoder = passwordEncoder;
     this.jdbcTemplate = jdbcTemplate;
   }
@@ -72,7 +69,7 @@ class LocalQaBootstrapIntegrationTests {
   @BeforeEach
   @AfterEach
   void cleanBootstrapFixtures() {
-    deleteV2ChildrenForFixtureMembers();
+    deleteSubscriptionChildrenForFixtureMembers();
     jdbcTemplate.update(
         """
         DELETE FROM subscriptions
@@ -92,7 +89,7 @@ class LocalQaBootstrapIntegrationTests {
     jdbcTemplate.update(
         "DELETE FROM pets WHERE member_id IN (SELECT id FROM members WHERE email LIKE"
             + " 'qa-foundation-004@%' OR email LIKE 'other-foundation-004@%')");
-    deleteV2FixturePlans();
+    deleteFixturePlans();
     jdbcTemplate.update(
         """
         DELETE inventory
@@ -137,7 +134,7 @@ class LocalQaBootstrapIntegrationTests {
         skuRepository
             .findAllByProductIdAndName(product.getId(), LocalQaBootstrapService.SKU_NAME)
             .get(0);
-    subscriptionRepository.saveAndFlush(Subscription.create(member, sku, 1, 4, LocalDate.now()));
+    insertSubscriptionFixture(member.getId(), sku.getId(), 1, 4);
 
     bootstrapService.bootstrap(email, password, false);
 
@@ -229,10 +226,8 @@ class LocalQaBootstrapIntegrationTests {
         skuRepository.saveAndFlush(
             com.pawcycle.backend.support.TestSkuFactory.sku(
                 otherProduct, "비대상 SKU", new BigDecimal("25000.00"), true, 1));
-    subscriptionRepository.saveAndFlush(
-        Subscription.create(qaMember, fixtureSku, 1, 2, LocalDate.now()));
-    subscriptionRepository.saveAndFlush(
-        Subscription.create(otherMember, otherSku, 2, 8, LocalDate.now()));
+    insertSubscriptionFixture(qaMember.getId(), fixtureSku.getId(), 1, 2);
+    insertSubscriptionFixture(otherMember.getId(), otherSku.getId(), 2, 8);
 
     bootstrapService.bootstrap(email, password, true);
 
@@ -244,7 +239,7 @@ class LocalQaBootstrapIntegrationTests {
   }
 
   @Test
-  void resetDeletesV2AggregateBeforeDeletingQaSubscription() {
+  void resetDeletesSubscriptionAggregateBeforeDeletingQaSubscription() {
     String email = runtimeQaEmail();
     String password = UUID.randomUUID().toString();
     bootstrapService.bootstrap(email, password, false);
@@ -255,26 +250,24 @@ class LocalQaBootstrapIntegrationTests {
         skuRepository
             .findAllByProductIdAndName(product.getId(), LocalQaBootstrapService.SKU_NAME)
             .getFirst();
-    long planVersionId = createV2Plan(sku);
+    long planVersionId = createPlan(sku);
     long petId =
-        ((Number)
-                v2SubscriptionService
-                    .createPet(member.getId(), Map.of("name", "QA 반려동물", "petType", "DOG"))
-                    .get("petId"))
-            .longValue();
-    V2SubscriptionService.V2Result created =
-        v2SubscriptionService.createSubscription(
+        subscriptionService
+            .createPet(member.getId(), new CreatePetRequest("QA 반려동물", "DOG"))
+            .petId();
+    SubscriptionResult created =
+        subscriptionService.createSubscription(
             member.getId(),
-            "qa-v2-reset",
-            Map.of("petId", petId, "planVersionId", planVersionId, "deliveryCycleWeeks", 4));
-    long subscriptionId = ((Number) created.body().get("subscriptionId")).longValue();
-    v2SubscriptionService.command(
+            "qa-subscription-reset",
+            new CreateSubscriptionRequest(petId, planVersionId, 4));
+    long subscriptionId = created.body().subscriptionId();
+    subscriptionService.command(
         member.getId(),
         subscriptionId,
         "change-plan",
-        "qa-v2-change",
+        "qa-subscription-change",
         "\"0\"",
-        Map.of("planVersionId", planVersionId));
+        new SubscriptionCommandRequest(null, planVersionId, null, null, null, null));
 
     bootstrapService.bootstrap(email, password, true);
 
@@ -324,10 +317,10 @@ class LocalQaBootstrapIntegrationTests {
     assertThat(productRepository.findAllByName(LocalQaBootstrapService.PRODUCT_NAME)).hasSize(2);
   }
 
-  private long createV2Plan(Sku sku) {
+  private long createPlan(Sku sku) {
     jdbcTemplate.update(
         "INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)",
-        V2_PLAN_PREFIX + UUID.randomUUID(),
+        PLAN_PREFIX + UUID.randomUUID(),
         "DOG");
     long planId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     jdbcTemplate.update(
@@ -350,7 +343,7 @@ class LocalQaBootstrapIntegrationTests {
     return planVersionId;
   }
 
-  private void deleteV2ChildrenForFixtureMembers() {
+  private void deleteSubscriptionChildrenForFixtureMembers() {
     String memberFilter =
         "SELECT id FROM members WHERE email LIKE 'qa-foundation-004@%' OR email LIKE"
             + " 'other-foundation-004@%'";
@@ -395,24 +388,35 @@ class LocalQaBootstrapIntegrationTests {
             + ")");
   }
 
-  private void deleteV2FixturePlans() {
+  private void deleteFixturePlans() {
     jdbcTemplate.update(
         "UPDATE subscription_plans SET current_plan_version_id=NULL WHERE name LIKE ?",
-        V2_PLAN_PREFIX + "%");
+        PLAN_PREFIX + "%");
     jdbcTemplate.update(
         "DELETE c FROM plan_version_delivery_cycles c JOIN plan_versions v ON"
             + " v.id=c.plan_version_id JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name"
             + " LIKE ?",
-        V2_PLAN_PREFIX + "%");
+        PLAN_PREFIX + "%");
     jdbcTemplate.update(
         "DELETE i FROM plan_items i JOIN plan_versions v ON v.id=i.plan_version_id JOIN"
             + " subscription_plans p ON p.id=v.plan_id WHERE p.name LIKE ?",
-        V2_PLAN_PREFIX + "%");
+        PLAN_PREFIX + "%");
     jdbcTemplate.update(
         "DELETE v FROM plan_versions v JOIN subscription_plans p ON p.id=v.plan_id WHERE p.name"
             + " LIKE ?",
-        V2_PLAN_PREFIX + "%");
-    jdbcTemplate.update("DELETE FROM subscription_plans WHERE name LIKE ?", V2_PLAN_PREFIX + "%");
+        PLAN_PREFIX + "%");
+    jdbcTemplate.update("DELETE FROM subscription_plans WHERE name LIKE ?", PLAN_PREFIX + "%");
+  }
+
+  private void insertSubscriptionFixture(Long memberId, Long skuId, int quantity, int cycleWeeks) {
+    jdbcTemplate.update(
+        "INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,"
+            + "next_order_date,status,runtime_managed) VALUES (?,?,?, ?,CURRENT_DATE,"
+            + "DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY),'ACTIVE',false)",
+        memberId,
+        skuId,
+        quantity,
+        cycleWeeks);
   }
 
   private Product exactFixtureProduct() {

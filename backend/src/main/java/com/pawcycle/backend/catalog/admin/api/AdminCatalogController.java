@@ -31,47 +31,47 @@ public class AdminCatalogController {
   private final AdminAuditService audits;
 
   @GetMapping("/brands")
-  AdminCatalogViews.BrandList brands() {
+  BrandListResponse brands() {
     return adminCatalogService.brands();
   }
 
   @PostMapping("/brands")
   @Transactional
-  ResponseEntity<AdminCatalogViews.Brand> createBrand(
+  ResponseEntity<BrandResponse> createBrand(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-      @Valid @RequestBody AdminCatalogRequests.BrandCreate request) {
-    AdminCatalogViews.Brand brand = adminCatalogService.createBrand(request);
+      @Valid @RequestBody BrandCreateRequest request) {
+    BrandResponse brand = adminCatalogService.createBrand(request);
     audits.append(principal.memberId(), "CATALOG_BRAND_CREATE", "BRAND", brand.brandId());
     return ResponseEntity.created(URI.create("/api/admin/brands/" + brand.brandId())).body(brand);
   }
 
   @GetMapping("/brands/{brandId}")
-  AdminCatalogViews.Brand brand(@PathVariable long brandId) {
+  BrandResponse brand(@PathVariable long brandId) {
     return catalogExpansionAdminService.brand(brandId);
   }
 
   @PatchMapping("/brands/{brandId}")
   @Transactional
-  AdminCatalogViews.Brand updateBrand(
+  BrandResponse updateBrand(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long brandId,
-      @RequestBody AdminCatalogRequests.BrandPatch request) {
-    AdminCatalogViews.Brand brand = catalogExpansionAdminService.updateBrand(brandId, request);
+      @RequestBody BrandPatchRequest request) {
+    BrandResponse brand = catalogExpansionAdminService.updateBrand(brandId, request);
     audits.append(principal.memberId(), "CATALOG_BRAND_UPDATE", "BRAND", brandId);
     return brand;
   }
 
   @GetMapping("/categories")
-  AdminCatalogViews.CategoryList categories() {
+  CategoryListResponse categories() {
     return adminCatalogService.categories();
   }
 
   @PostMapping("/categories")
   @Transactional
-  ResponseEntity<AdminCatalogViews.Category> createCategory(
+  ResponseEntity<CategoryResponse> createCategory(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-      @Valid @RequestBody AdminCatalogRequests.CategoryCreate request) {
-    AdminCatalogViews.Category category = adminCatalogService.createCategory(request);
+      @Valid @RequestBody CategoryCreateRequest request) {
+    CategoryResponse category = adminCatalogService.createCategory(request);
     audits.append(
         principal.memberId(), "CATALOG_CATEGORY_CREATE", "CATEGORY", category.categoryId());
     return ResponseEntity.created(URI.create("/api/admin/categories/" + category.categoryId()))
@@ -79,65 +79,65 @@ public class AdminCatalogController {
   }
 
   @GetMapping("/categories/{categoryId}")
-  AdminCatalogViews.Category category(@PathVariable Long categoryId) {
+  CategoryResponse category(@PathVariable Long categoryId) {
     return adminCatalogService.category(categoryId);
   }
 
   @PatchMapping("/categories/{categoryId}")
   @Transactional
-  AdminCatalogViews.Category updateCategory(
+  CategoryResponse updateCategory(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long categoryId,
-      @RequestBody AdminCatalogRequests.CategoryPatch request) {
-    AdminCatalogViews.Category category = adminCatalogService.updateCategory(categoryId, request);
+      @RequestBody CategoryPatchRequest request) {
+    CategoryResponse category = adminCatalogService.updateCategory(categoryId, request);
     audits.append(principal.memberId(), "CATALOG_CATEGORY_UPDATE", "CATEGORY", categoryId);
     return category;
   }
 
   @GetMapping("/products")
-  AdminCatalogViews.ProductList products() {
+  ProductListResponse products() {
     return adminCatalogService.products();
   }
 
   @PostMapping("/products")
   @Transactional
-  ResponseEntity<AdminCatalogViews.Product> createProduct(
+  ResponseEntity<ProductResponse> createProduct(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-      @Valid @RequestBody AdminCatalogRequests.ProductCreate request) {
-    AdminCatalogViews.Product product = adminCatalogService.createProduct(request);
+      @Valid @RequestBody ProductCreateRequest request) {
+    ProductResponse product = adminCatalogService.createProduct(request);
     audits.append(principal.memberId(), "CATALOG_PRODUCT_CREATE", "PRODUCT", product.productId());
     return ResponseEntity.created(URI.create("/api/admin/products/" + product.productId()))
         .body(product);
   }
 
   @GetMapping("/products/{productId}")
-  AdminCatalogViews.Product product(@PathVariable Long productId) {
+  ProductResponse product(@PathVariable Long productId) {
     return adminCatalogService.product(productId);
   }
 
   @PatchMapping("/products/{productId}")
   @Transactional
-  AdminCatalogViews.Product updateProduct(
+  ProductResponse updateProduct(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
-      @RequestBody AdminCatalogRequests.ProductPatch request) {
-    AdminCatalogViews.Product product = adminCatalogService.updateProduct(productId, request);
+      @RequestBody ProductPatchRequest request) {
+    ProductResponse product = adminCatalogService.updateProduct(productId, request);
     audits.append(principal.memberId(), "CATALOG_PRODUCT_UPDATE", "PRODUCT", productId);
     return product;
   }
 
   @GetMapping("/products/{productId}/skus")
-  AdminCatalogViews.SkuList skus(@PathVariable Long productId) {
+  SkuListResponse skus(@PathVariable Long productId) {
     return adminCatalogService.skus(productId);
   }
 
   @PostMapping("/products/{productId}/skus")
   @Transactional
-  ResponseEntity<AdminCatalogViews.Sku> createSku(
+  ResponseEntity<SkuResponse> createSku(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
-      @Valid @RequestBody AdminCatalogRequests.SkuCreate request) {
-    AdminCatalogViews.Sku sku = adminCatalogService.createSku(productId, request);
+      @Valid @RequestBody SkuCreateRequest request) {
+    SkuResponse sku = adminCatalogService.createSku(productId, request);
     audits.append(principal.memberId(), "CATALOG_SKU_CREATE", "SKU", sku.skuId());
     return ResponseEntity.created(
             URI.create("/api/admin/products/" + productId + "/skus/" + sku.skuId()))
@@ -146,28 +146,28 @@ public class AdminCatalogController {
 
   @PatchMapping("/products/{productId}/skus/{skuId}")
   @Transactional
-  AdminCatalogViews.Sku updateSku(
+  SkuResponse updateSku(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @PathVariable Long skuId,
-      @RequestBody AdminCatalogRequests.SkuPatch request) {
-    AdminCatalogViews.Sku sku = adminCatalogService.updateSku(productId, skuId, request);
+      @RequestBody SkuPatchRequest request) {
+    SkuResponse sku = adminCatalogService.updateSku(productId, skuId, request);
     audits.append(principal.memberId(), "CATALOG_SKU_UPDATE", "SKU", skuId);
     return sku;
   }
 
   @GetMapping("/products/{productId}/images")
-  AdminCatalogViews.ImageList images(@PathVariable long productId) {
+  ImageListResponse images(@PathVariable long productId) {
     return catalogExpansionAdminService.images(productId);
   }
 
   @PostMapping("/products/{productId}/images")
   @Transactional
-  ResponseEntity<AdminCatalogViews.Image> createImage(
+  ResponseEntity<ImageResponse> createImage(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
-      @Valid @RequestBody AdminCatalogRequests.ImageCreate request) {
-    AdminCatalogViews.Image image = catalogExpansionAdminService.createImage(productId, request);
+      @Valid @RequestBody ImageCreateRequest request) {
+    ImageResponse image = catalogExpansionAdminService.createImage(productId, request);
     audits.append(
         principal.memberId(), "CATALOG_PRODUCT_IMAGE_CREATE", "PRODUCT_IMAGE", image.imageId());
     return ResponseEntity.created(
@@ -177,12 +177,12 @@ public class AdminCatalogController {
 
   @PatchMapping("/products/{productId}/images/{imageId}")
   @Transactional
-  AdminCatalogViews.Image updateImage(
+  ImageResponse updateImage(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long imageId,
-      @RequestBody AdminCatalogRequests.ImagePatch request) {
-    AdminCatalogViews.Image image =
+      @RequestBody ImagePatchRequest request) {
+    ImageResponse image =
         catalogExpansionAdminService.updateImage(productId, imageId, request);
     audits.append(principal.memberId(), "CATALOG_PRODUCT_IMAGE_UPDATE", "PRODUCT_IMAGE", imageId);
     return image;
@@ -199,17 +199,17 @@ public class AdminCatalogController {
   }
 
   @GetMapping("/products/{productId}/option-groups")
-  AdminCatalogViews.OptionGroupList optionGroups(@PathVariable long productId) {
+  OptionGroupListResponse optionGroups(@PathVariable long productId) {
     return catalogExpansionAdminService.optionGroups(productId);
   }
 
   @PostMapping("/products/{productId}/option-groups")
   @Transactional
-  ResponseEntity<AdminCatalogViews.OptionGroup> createOptionGroup(
+  ResponseEntity<OptionGroupResponse> createOptionGroup(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
-      @Valid @RequestBody AdminCatalogRequests.OptionGroupCreate request) {
-    AdminCatalogViews.OptionGroup group =
+      @Valid @RequestBody OptionGroupCreateRequest request) {
+    OptionGroupResponse group =
         catalogExpansionAdminService.createOptionGroup(productId, request);
     audits.append(
         principal.memberId(),
@@ -224,12 +224,12 @@ public class AdminCatalogController {
 
   @PatchMapping("/products/{productId}/option-groups/{groupId}")
   @Transactional
-  AdminCatalogViews.OptionGroup updateOptionGroup(
+  OptionGroupResponse updateOptionGroup(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId,
-      @RequestBody AdminCatalogRequests.OptionGroupPatch request) {
-    AdminCatalogViews.OptionGroup group =
+      @RequestBody OptionGroupPatchRequest request) {
+    OptionGroupResponse group =
         catalogExpansionAdminService.updateOptionGroup(productId, groupId, request);
     audits.append(
         principal.memberId(), "CATALOG_OPTION_GROUP_UPDATE", "PRODUCT_OPTION_GROUP", groupId);
@@ -249,12 +249,12 @@ public class AdminCatalogController {
 
   @PostMapping("/products/{productId}/option-groups/{groupId}/values")
   @Transactional
-  ResponseEntity<AdminCatalogViews.OptionValue> createOptionValue(
+  ResponseEntity<OptionValueResponse> createOptionValue(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId,
-      @Valid @RequestBody AdminCatalogRequests.OptionValueCreate request) {
-    AdminCatalogViews.OptionValue value =
+      @Valid @RequestBody OptionValueCreateRequest request) {
+    OptionValueResponse value =
         catalogExpansionAdminService.createOptionValue(productId, groupId, request);
     audits.append(
         principal.memberId(),
@@ -274,13 +274,13 @@ public class AdminCatalogController {
 
   @PatchMapping("/products/{productId}/option-groups/{groupId}/values/{valueId}")
   @Transactional
-  AdminCatalogViews.OptionValue updateOptionValue(
+  OptionValueResponse updateOptionValue(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId,
       @PathVariable long valueId,
-      @RequestBody AdminCatalogRequests.OptionValuePatch request) {
-    AdminCatalogViews.OptionValue value =
+      @RequestBody OptionValuePatchRequest request) {
+    OptionValueResponse value =
         catalogExpansionAdminService.updateOptionValue(productId, groupId, valueId, request);
     audits.append(
         principal.memberId(), "CATALOG_OPTION_VALUE_UPDATE", "PRODUCT_OPTION_VALUE", valueId);
@@ -301,39 +301,39 @@ public class AdminCatalogController {
 
   @PutMapping("/products/{productId}/skus/{skuId}/option-values")
   @Transactional
-  AdminCatalogViews.SkuOptionValues setSkuOptionValues(
+  SkuOptionValuesResponse setSkuOptionValues(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long skuId,
-      @Valid @RequestBody AdminCatalogRequests.SkuOptionValues request) {
-    AdminCatalogViews.SkuOptionValues values =
+      @Valid @RequestBody SkuOptionValuesRequest request) {
+    SkuOptionValuesResponse values =
         catalogExpansionAdminService.setSkuOptionValues(productId, skuId, request);
     audits.append(principal.memberId(), "CATALOG_SKU_OPTION_VALUES_SET", "SKU", skuId);
     return values;
   }
 
   @GetMapping("/products/{productId}/skus/{skuId}/option-values")
-  AdminCatalogViews.SkuOptionValues skuOptionValues(
+  SkuOptionValuesResponse skuOptionValues(
       @PathVariable long productId, @PathVariable long skuId) {
     return catalogExpansionAdminService.skuOptionValues(productId, skuId);
   }
 
   @GetMapping("/facets")
-  AdminCatalogViews.FacetDefinitionList facetDefinitions() {
+  FacetDefinitionListResponse facetDefinitions() {
     return catalogExpansionAdminService.facetDefinitions();
   }
 
   @GetMapping("/facets/{definitionId}")
-  AdminCatalogViews.FacetDefinition facetDefinition(@PathVariable long definitionId) {
+  FacetDefinitionResponse facetDefinition(@PathVariable long definitionId) {
     return catalogExpansionAdminService.facetDefinition(definitionId);
   }
 
   @PostMapping("/facets")
   @Transactional
-  ResponseEntity<AdminCatalogViews.FacetDefinition> createFacetDefinition(
+  ResponseEntity<FacetDefinitionResponse> createFacetDefinition(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-      @Valid @RequestBody AdminCatalogRequests.FacetDefinitionCreate request) {
-    AdminCatalogViews.FacetDefinition definition =
+      @Valid @RequestBody FacetDefinitionCreateRequest request) {
+    FacetDefinitionResponse definition =
         catalogExpansionAdminService.createFacetDefinition(request);
     audits.append(
         principal.memberId(),
@@ -346,11 +346,11 @@ public class AdminCatalogController {
 
   @PatchMapping("/facets/{definitionId}")
   @Transactional
-  AdminCatalogViews.FacetDefinition updateFacetDefinition(
+  FacetDefinitionResponse updateFacetDefinition(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
-      @RequestBody AdminCatalogRequests.FacetDefinitionPatch request) {
-    AdminCatalogViews.FacetDefinition definition =
+      @RequestBody FacetDefinitionPatchRequest request) {
+    FacetDefinitionResponse definition =
         catalogExpansionAdminService.updateFacetDefinition(definitionId, request);
     audits.append(principal.memberId(), "CATALOG_FACET_UPDATE", "FACET_DEFINITION", definitionId);
     return definition;
@@ -367,11 +367,11 @@ public class AdminCatalogController {
 
   @PostMapping("/facets/{definitionId}/options")
   @Transactional
-  ResponseEntity<AdminCatalogViews.FacetOption> createFacetOption(
+  ResponseEntity<FacetOptionResponse> createFacetOption(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
-      @Valid @RequestBody AdminCatalogRequests.FacetOptionCreate request) {
-    AdminCatalogViews.FacetOption option =
+      @Valid @RequestBody FacetOptionCreateRequest request) {
+    FacetOptionResponse option =
         catalogExpansionAdminService.createFacetOption(definitionId, request);
     audits.append(
         principal.memberId(),
@@ -385,12 +385,12 @@ public class AdminCatalogController {
 
   @PatchMapping("/facets/{definitionId}/options/{optionId}")
   @Transactional
-  AdminCatalogViews.FacetOption updateFacetOption(
+  FacetOptionResponse updateFacetOption(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
       @PathVariable long optionId,
-      @RequestBody AdminCatalogRequests.FacetOptionPatch request) {
-    AdminCatalogViews.FacetOption option =
+      @RequestBody FacetOptionPatchRequest request) {
+    FacetOptionResponse option =
         catalogExpansionAdminService.updateFacetOption(definitionId, optionId, request);
     audits.append(principal.memberId(), "CATALOG_FACET_OPTION_UPDATE", "FACET_OPTION", optionId);
     return option;
@@ -408,12 +408,12 @@ public class AdminCatalogController {
 
   @PutMapping("/categories/{categoryId}/facets/{definitionId}")
   @Transactional
-  AdminCatalogViews.CategoryFacet assignCategoryFacet(
+  CategoryFacetResponse assignCategoryFacet(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long categoryId,
       @PathVariable long definitionId,
-      @Valid @RequestBody AdminCatalogRequests.CategoryFacetAssign request) {
-    AdminCatalogViews.CategoryFacet facet =
+      @Valid @RequestBody CategoryFacetAssignRequest request) {
+    CategoryFacetResponse facet =
         catalogExpansionAdminService.assignCategoryFacet(categoryId, definitionId, request);
     audits.append(principal.memberId(), "CATALOG_CATEGORY_FACET_SET", "CATEGORY", categoryId);
     return facet;
@@ -431,38 +431,38 @@ public class AdminCatalogController {
 
   @PutMapping("/products/{productId}/facet-values")
   @Transactional
-  AdminCatalogViews.ProductFacetValues setProductFacetValues(
+  ProductFacetValuesResponse setProductFacetValues(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
-      @Valid @RequestBody AdminCatalogRequests.ProductFacetValues request) {
-    AdminCatalogViews.ProductFacetValues values =
+      @Valid @RequestBody ProductFacetValuesRequest request) {
+    ProductFacetValuesResponse values =
         catalogExpansionAdminService.setProductFacetValues(productId, request);
     audits.append(principal.memberId(), "CATALOG_PRODUCT_FACET_VALUES_SET", "PRODUCT", productId);
     return values;
   }
 
   @GetMapping("/products/{productId}/facet-values")
-  AdminCatalogViews.ProductFacetValues productFacetValues(@PathVariable long productId) {
+  ProductFacetValuesResponse productFacetValues(@PathVariable long productId) {
     return catalogExpansionAdminService.productFacetValues(productId);
   }
 
   @GetMapping("/categories/{categoryId}/facets")
-  AdminCatalogViews.CategoryFacetList categoryFacets(@PathVariable long categoryId) {
+  CategoryFacetListResponse categoryFacets(@PathVariable long categoryId) {
     return catalogExpansionAdminService.categoryFacets(categoryId);
   }
 
   @GetMapping("/products/{productId}/detail-sections")
-  AdminCatalogViews.DetailSectionList detailSections(@PathVariable Long productId) {
+  DetailSectionListResponse detailSections(@PathVariable Long productId) {
     return productDetailSectionService.list(productId);
   }
 
   @PostMapping("/products/{productId}/detail-sections")
   @Transactional
-  ResponseEntity<AdminCatalogViews.DetailSection> createDetailSection(
+  ResponseEntity<DetailSectionResponse> createDetailSection(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
-      @Valid @RequestBody AdminCatalogRequests.DetailSectionCreate request) {
-    AdminCatalogViews.DetailSection section =
+      @Valid @RequestBody DetailSectionCreateRequest request) {
+    DetailSectionResponse section =
         productDetailSectionService.create(productId, request);
     audits.append(
         principal.memberId(),
@@ -477,12 +477,12 @@ public class AdminCatalogController {
 
   @PatchMapping("/products/{productId}/detail-sections/{sectionId}")
   @Transactional
-  AdminCatalogViews.DetailSection updateDetailSection(
+  DetailSectionResponse updateDetailSection(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @PathVariable Long sectionId,
-      @RequestBody AdminCatalogRequests.DetailSectionPatch request) {
-    AdminCatalogViews.DetailSection section =
+      @RequestBody DetailSectionPatchRequest request) {
+    DetailSectionResponse section =
         productDetailSectionService.update(productId, sectionId, request);
     audits.append(
         principal.memberId(), "CATALOG_DETAIL_SECTION_UPDATE", "PRODUCT_DETAIL_SECTION", sectionId);

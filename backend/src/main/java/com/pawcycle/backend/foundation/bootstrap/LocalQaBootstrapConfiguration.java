@@ -21,7 +21,7 @@ public class LocalQaBootstrapConfiguration {
   ApplicationRunner localQaBootstrapRunner(
       LocalQaBootstrapProperties properties,
       LocalQaBootstrapService bootstrapService,
-      LocalQaMvp2FixtureService mvp2FixtureService,
+      LocalQaSubscriptionFixtureService subscriptionFixtureService,
       @Value("${pawcycle.local-customer-catalog-v3.enabled:false}")
           boolean customerCatalogV3Enabled) {
     return arguments -> {
@@ -30,7 +30,7 @@ public class LocalQaBootstrapConfiguration {
           properties.password(),
           properties.resetSubscriptions(),
           !customerCatalogV3Enabled);
-      mvp2FixtureService.bootstrap();
+      subscriptionFixtureService.bootstrap();
     };
   }
 

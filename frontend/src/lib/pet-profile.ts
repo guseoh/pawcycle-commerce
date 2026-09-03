@@ -1,4 +1,4 @@
-import type { Pet } from "./v2-api.ts";
+import type { Pet } from "./subscription-api.ts";
 
 export interface PetDraft {
   name: string;

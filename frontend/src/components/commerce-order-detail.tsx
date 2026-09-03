@@ -9,8 +9,8 @@ import { useAuth } from "@/lib/auth-context";
 import { commerceFinalApi, type OrderDetail } from "@/lib/commerce-final-api";
 import { buildLoginHref, formatDateTime, formatDeliveryStatus, formatOrderStatus, formatPaymentStatus, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 import { finalProductApi, type OrderSubscriptionOption } from "@/lib/final-product-api";
-import { newIdempotencyKey } from "@/lib/v2-api";
-import { v2Api, type Pet } from "@/lib/v2-api";
+import { newIdempotencyKey } from "@/lib/subscription-api";
+import { subscriptionApi, type Pet } from "@/lib/subscription-api";
 
 type RequestAction = "cancel" | "return";
 const ACTION_LABEL: Record<RequestAction, string> = { cancel: "주문 취소", return: "반품 요청" };
@@ -80,7 +80,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
         if (!active) return;
         if (!result.options.length) { setSubscriptionOptions([]); setSubscriptionOptionsStatus("ready"); return; }
         try {
-          const pets = await v2Api.pets.list();
+          const pets = await subscriptionApi.pets.list();
           if (active) { setSubscriptionOptionPets(pets.body.items); setSubscriptionOptions(result.options); setSubscriptionOptionsStatus("ready"); }
         } catch (error) {
           if (active) { setSubscriptionOptions(result.options); setSubscriptionOptionsStatus("ready"); setSubscriptionOptionPetError(error instanceof ApiError ? error.message : "반려동물 정보를 불러오지 못했습니다."); }

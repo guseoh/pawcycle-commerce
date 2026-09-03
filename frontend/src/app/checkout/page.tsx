@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 import { commerceFinalApi, type Address, type CartItem, type CheckoutResult, type MemberCoupon, type PricingBreakdown } from "@/lib/commerce-final-api";
-import { newIdempotencyKey } from "@/lib/v2-api";
+import { newIdempotencyKey } from "@/lib/subscription-api";
 import { TossPaymentWidget } from "@/components/toss-payment-widget";
 
 function PriceSummary({ pricing, couponSelected }: { pricing: PricingBreakdown; couponSelected: boolean }) {

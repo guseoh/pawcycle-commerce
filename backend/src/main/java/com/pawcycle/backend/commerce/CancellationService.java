@@ -2,30 +2,34 @@ package com.pawcycle.backend.commerce;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class CancellationService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate tx;
   private final InventoryService inventory;
+  private final Clock clock;
 
   public CancellationService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
-      InventoryService inventory) {
+      InventoryService inventory,
+      Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(manager);
     this.inventory = inventory;
+    this.clock = clock;
   }
 
-  public Map<String, Object> request(long memberId, long orderId, String reason) {
-    return tx.execute(
+  public CommercePayload request(long memberId, long orderId, String reason) {
+    return CommercePayload.from(tx.execute(
         status -> {
           Map<String, Object> order =
               one(
@@ -59,7 +63,7 @@ public class CancellationService {
             throw new CommerceException(
                 409, "CANCELLATION_NOT_ALLOWED", "반품이 진행 중인 주문은 취소할 수 없습니다.");
           }
-          Timestamp now = Timestamp.from(Instant.now());
+          Timestamp now = Timestamp.from(clock.instant());
           jdbc.update(
               "INSERT INTO order_cancellations(order_id,status,reason,requested_at) VALUES"
                   + " (?,'REFUND_PENDING',?,?)",
@@ -86,7 +90,7 @@ public class CancellationService {
               "SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at"
                   + " AS completedAt FROM order_cancellations WHERE id=?",
               id);
-        });
+        }));
   }
 
   private void restore(long orderId, long sourceId) {

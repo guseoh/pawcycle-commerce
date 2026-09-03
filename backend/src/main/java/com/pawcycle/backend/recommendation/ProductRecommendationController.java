@@ -16,27 +16,27 @@ class ProductRecommendationController {
   }
 
   @GetMapping("/recommendations/popular")
-  RecommendationService.RecommendationResponse popular(
+  RecommendationResponse popular(
       @RequestParam(required = false) String petType,
       @RequestParam(defaultValue = "10") int limit) {
     return service.popular(petType, limit10(limit));
   }
 
   @GetMapping("/recommendations/trending")
-  RecommendationService.RecommendationResponse trending(
+  RecommendationResponse trending(
       @RequestParam(required = false) String petType,
       @RequestParam(defaultValue = "10") int limit) {
     return service.trending(petType, limit10(limit));
   }
 
   @GetMapping("/products/{productId}/related")
-  RecommendationService.RecommendationResponse related(
+  RecommendationResponse related(
       @PathVariable long productId, @RequestParam(defaultValue = "4") int limit) {
     return service.related(productId, limit6(limit));
   }
 
   @GetMapping("/products/{productId}/complementary")
-  RecommendationService.RecommendationResponse complementary(
+  RecommendationResponse complementary(
       @PathVariable long productId, @RequestParam(defaultValue = "4") int limit) {
     return service.complementary(productId, limit6(limit));
   }

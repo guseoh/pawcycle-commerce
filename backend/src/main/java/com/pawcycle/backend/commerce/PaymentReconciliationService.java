@@ -2,15 +2,16 @@ package com.pawcycle.backend.commerce;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PaymentReconciliationService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate tx;
   private final TossPaymentAdapter paymentProvider;
   private final TossBillingAdapter billingProvider;
@@ -19,9 +20,10 @@ public class PaymentReconciliationService {
   private final InventoryService inventory;
   private final AdminAuditService audits;
   private final SubscriptionBillingService billingFailures;
+  private final Clock clock;
 
   public PaymentReconciliationService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
       TossPaymentAdapter paymentProvider,
       TossBillingAdapter billingProvider,
@@ -29,7 +31,8 @@ public class PaymentReconciliationService {
       MembershipEvaluationService membershipEvaluation,
       InventoryService inventory,
       AdminAuditService audits,
-      SubscriptionBillingService billingFailures) {
+      SubscriptionBillingService billingFailures,
+      Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(manager);
     this.paymentProvider = paymentProvider;
@@ -39,13 +42,14 @@ public class PaymentReconciliationService {
     this.inventory = inventory;
     this.audits = audits;
     this.billingFailures = billingFailures;
+    this.clock = clock;
   }
 
-  public Map<String, Object> reconcile(long id) {
+  public CommercePayload reconcile(long id) {
     return reconcile(id, null);
   }
 
-  public Map<String, Object> reconcile(long id, Long adminId) {
+  public CommercePayload reconcile(long id, Long adminId) {
     Map<String, Object> work =
         tx.execute(
             status -> {
@@ -145,7 +149,7 @@ public class PaymentReconciliationService {
       billingFailures.recordExplicitFailure(id, "RECONCILED_FAILED", observation.providerStatus());
       billingFailures.prepareNextAttempt(id);
     }
-    return view(id);
+    return CommercePayload.from(view(id));
   }
 
   private void completeSuccess(long paymentId, Map<String, Object> payment, String providerStatus) {
@@ -240,8 +244,8 @@ public class PaymentReconciliationService {
         id);
   }
 
-  private static Timestamp now() {
-    return Timestamp.from(Instant.now());
+  private Timestamp now() {
+    return Timestamp.from(clock.instant());
   }
 
   private Map<String, Object> one(String sql, Object... args) {

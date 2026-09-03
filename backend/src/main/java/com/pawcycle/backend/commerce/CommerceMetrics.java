@@ -4,7 +4,7 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.concurrent.atomic.AtomicLong;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,10 +12,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class CommerceMetrics {
   private final MeterRegistry registry;
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final AtomicLong pending = new AtomicLong();
 
-  public CommerceMetrics(MeterRegistry registry, JdbcTemplate jdbc) {
+  public CommerceMetrics(MeterRegistry registry, NativeQueryExecutor jdbc) {
     this.registry = registry;
     this.jdbc = jdbc;
     Gauge.builder("pawcycle.commerce.operations.pending", pending, AtomicLong::get)

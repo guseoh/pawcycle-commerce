@@ -12,6 +12,7 @@ import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureS
 import com.pawcycle.backend.catalog.engagement.application.ProductEngagementService;
 import com.pawcycle.backend.catalog.engagement.application.ReviewCreateCommand;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -439,16 +440,20 @@ class LocalCustomerCatalogV3FixtureIntegrationTests {
   static class FixtureConfiguration {
     @Bean
     LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(
-        JdbcTemplate jdbc,
+        NativeQueryExecutor jdbcExecutor,
         DemoCatalogManifestImportService importer,
         CatalogExpansionAdminService expansion,
         ProductListCacheInvalidator cache,
         Validator validator) {
       var detail =
           new DemoProductDetailSectionFixtureService(
-              jdbc, "classpath:catalog/demo-product-detail-sections.json");
+              jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
       return new LocalCustomerCatalogV3FixtureService(
-          jdbc, new LocalCommerceDemoFixtureService(importer, detail), expansion, cache, validator);
+          jdbcExecutor,
+          new LocalCommerceDemoFixtureService(importer, detail),
+          expansion,
+          cache,
+          validator);
     }
   }
 }

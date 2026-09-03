@@ -4,32 +4,35 @@ import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Two-transaction refund executor: provider I/O is always outside the database transaction. */
 @Service
 public class RefundService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate tx;
   private final TossRefundAdapter provider;
   private final NotificationService notifications;
   private final MembershipEvaluationService membershipEvaluation;
   private final AdminAuditService audits;
   private final CommerceMetrics metrics;
+  private final Clock clock;
 
   public RefundService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
       TossRefundAdapter provider,
       NotificationService notifications,
       MembershipEvaluationService membershipEvaluation,
       AdminAuditService audits,
-      CommerceMetrics metrics) {
+      CommerceMetrics metrics,
+      Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(manager);
     this.provider = provider;
@@ -37,13 +40,14 @@ public class RefundService {
     this.membershipEvaluation = membershipEvaluation;
     this.audits = audits;
     this.metrics = metrics;
+    this.clock = clock;
   }
 
-  public Map<String, Object> process(long id) {
+  public CommercePayload process(long id) {
     return process(id, null);
   }
 
-  public Map<String, Object> process(long id, Long adminId) {
+  public CommercePayload process(long id, Long adminId) {
     Map<String, Object> work =
         tx.execute(
             status -> {
@@ -73,15 +77,15 @@ public class RefundService {
         metrics.stop(sample, "refund.provider");
       }
     }
-    return complete(id, result, adminId, "REFUND_PROCESS");
+    return CommercePayload.from(complete(id, result, adminId, "REFUND_PROCESS"));
   }
 
-  public Map<String, Object> retry(long id) {
+  public CommercePayload retry(long id) {
     return retry(id, null);
   }
 
-  public Map<String, Object> retry(long id, Long adminId) {
-    return tx.execute(
+  public CommercePayload retry(long id, Long adminId) {
+    return CommercePayload.from(tx.execute(
         status -> {
           Map<String, Object> row =
               one(
@@ -113,14 +117,14 @@ public class RefundService {
           if (adminId != null) audits.append(adminId, "REFUND_RETRY", "REFUND", next);
           return one(
               "SELECT id AS refundId,status,attempt_no AS attemptNo FROM refunds WHERE id=?", next);
-        });
+        }));
   }
 
-  public Map<String, Object> reconcile(long id) {
+  public CommercePayload reconcile(long id) {
     return reconcile(id, null);
   }
 
-  public Map<String, Object> reconcile(long id, Long adminId) {
+  public CommercePayload reconcile(long id, Long adminId) {
     if (!provider.isConfigured()) throw unavailable();
     Map<String, Object> work =
         tx.execute(
@@ -154,7 +158,7 @@ public class RefundService {
     } finally {
       metrics.stop(sample, "refund.provider");
     }
-    return complete(id, result, adminId, "REFUND_RECONCILE");
+    return CommercePayload.from(complete(id, result, adminId, "REFUND_RECONCILE"));
   }
 
   private Map<String, Object> complete(
@@ -226,8 +230,8 @@ public class RefundService {
         id);
   }
 
-  private static Timestamp now() {
-    return Timestamp.from(Instant.now());
+  private Timestamp now() {
+    return Timestamp.from(clock.instant());
   }
 
   private static CommerceException unavailable() {

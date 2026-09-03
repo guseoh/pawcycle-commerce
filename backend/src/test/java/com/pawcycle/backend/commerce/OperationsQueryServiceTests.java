@@ -11,13 +11,14 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.pawcycle.backend.commerce.CommerceRowResponse;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 class OperationsQueryServiceTests {
   @Test
   void exposesApprovedOperationsWithOnlyExecutableActions() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     Timestamp now = Timestamp.from(Instant.now());
     List<Map<String, Object>> rows =
         List.of(
@@ -32,10 +33,10 @@ class OperationsQueryServiceTests {
             row("REFUND_UNKNOWN", 9L, now, 1));
     when(jdbc.queryForList(anyString())).thenReturn(rows);
 
-    List<Map<String, Object>> result = new OperationsQueryService(jdbc).pending();
+    List<CommerceRowResponse> result = new OperationsQueryService(jdbc).pending();
 
     assertThat(result)
-        .extracting(row -> row.get("availableActions"))
+        .extracting(row -> row.jsonValues().get("availableActions"))
         .containsExactly(
             List.of("SHIP_DELIVERY"),
             List.of("COMPLETE_DELIVERY", "FAIL_DELIVERY"),

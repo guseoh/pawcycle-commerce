@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.util.List;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,17 +16,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class RecommendationServiceTests {
-  private RecommendationRepository repository;
+  private RecommendationQueryAdapter repository;
   private RecommendationAiClient ai;
   private RecommendationService service;
   private SimpleMeterRegistry meters;
 
   @BeforeEach
   void setUp() {
-    repository = mock(RecommendationRepository.class);
+    repository = mock(RecommendationQueryAdapter.class);
     ai = mock(RecommendationAiClient.class);
     meters = new SimpleMeterRegistry();
-    service = new RecommendationService(repository, ai, new RecommendationMetrics(meters));
+    service =
+        new RecommendationService(repository, ai, new RecommendationMetrics(meters), Clock.systemUTC());
   }
 
   @Test
@@ -56,10 +58,10 @@ class RecommendationServiceTests {
                 new RecommendationAiClient.AiRecommendation(1L, "중복입니다."),
                 new RecommendationAiClient.AiRecommendation(2L, "English reason")));
 
-    RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationResponse response = service.recommend(10L, 1L);
 
     assertThat(response.products())
-        .extracting(RecommendationService.RecommendationItem::productId)
+        .extracting(RecommendationItem::productId)
         .containsExactly(1L, 2L, 3L);
     assertThat(response.products()).noneMatch(item -> item.productId() == 4L);
     assertThat(response.products().get(0).reason()).isEqualTo("정기배송 카테고리와 잘 맞습니다.");
@@ -84,7 +86,7 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenThrow(new IllegalStateException("provider unavailable"));
 
-    RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationResponse response = service.recommend(10L, 1L);
 
     assertThat(response.products())
         .singleElement()
@@ -115,7 +117,7 @@ class RecommendationServiceTests {
     when(repository.findPurchasableCandidates("DOG")).thenReturn(candidates, candidates);
     when(ai.recommend(anyList(), anyList())).thenReturn(List.of());
 
-    RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationResponse response = service.recommend(10L, 1L);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<RecommendationCandidate>> captor = ArgumentCaptor.forClass(List.class);
@@ -125,7 +127,7 @@ class RecommendationServiceTests {
         .containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
     assertThat(response.products()).hasSize(10);
     assertThat(response.products())
-        .extracting(RecommendationService.RecommendationItem::strategy)
+        .extracting(RecommendationItem::strategy)
         .containsExactly(
             "PERSONALIZED",
             "PERSONALIZED",
@@ -140,14 +142,14 @@ class RecommendationServiceTests {
     List<Long> personalizedIds =
         response.products().stream()
             .filter(item -> item.strategy().equals("PERSONALIZED"))
-            .map(RecommendationService.RecommendationItem::productId)
+            .map(RecommendationItem::productId)
             .toList();
     assertThat(personalizedIds)
         .containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
     List<Long> explorationIds =
         response.products().stream()
             .filter(item -> item.strategy().equals("EXPLORATION"))
-            .map(RecommendationService.RecommendationItem::productId)
+            .map(RecommendationItem::productId)
             .toList();
     assertThat(explorationIds).singleElement().isIn(10L, 11L);
     assertThat(personalizedIds).doesNotContainAnyElementsOf(explorationIds);
@@ -166,10 +168,10 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenReturn(List.of(new RecommendationAiClient.AiRecommendation(1L, "이 상품을 추천합니다.")));
 
-    RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationResponse response = service.recommend(10L, 1L);
 
     assertThat(response.products())
-        .extracting(RecommendationService.RecommendationItem::productId)
+        .extracting(RecommendationItem::productId)
         .containsExactly(2L);
     assertThat(
             meters
@@ -191,11 +193,11 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenReturn(List.of(new RecommendationAiClient.AiRecommendation(1L, "English only")));
 
-    RecommendationService.RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationResponse response = service.recommend(10L, 1L);
 
     assertThat(response.products())
         .singleElement()
-        .extracting(RecommendationService.RecommendationItem::reason)
+        .extracting(RecommendationItem::reason)
         .isEqualTo("반려동물 유형에 맞는 구매 가능 상품입니다.");
     assertThat(
             meters
@@ -245,6 +247,6 @@ class RecommendationServiceTests {
         name + " 짧은 설명",
         null,
         "DOG",
-        new RecommendationCandidate.Category(id, slug, slug));
+        new RecommendationCategory(id, slug, slug));
   }
 }

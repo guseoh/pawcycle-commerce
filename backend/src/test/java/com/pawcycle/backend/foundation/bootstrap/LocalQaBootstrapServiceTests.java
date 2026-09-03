@@ -10,15 +10,15 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
-import com.pawcycle.backend.subscription.infra.SubscriptionRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +35,7 @@ class LocalQaBootstrapServiceTests {
   private MemberRepository memberRepository;
   private ProductRepository productRepository;
   private SkuRepository skuRepository;
-  private SubscriptionRepository subscriptionRepository;
+  private NativeQueryExecutor jdbcTemplate;
   private LocalQaBootstrapService bootstrapService;
 
   @BeforeEach
@@ -45,7 +45,7 @@ class LocalQaBootstrapServiceTests {
     memberRepository = mock(MemberRepository.class);
     productRepository = mock(ProductRepository.class);
     skuRepository = mock(SkuRepository.class);
-    subscriptionRepository = mock(SubscriptionRepository.class);
+    jdbcTemplate = mock(NativeQueryExecutor.class);
     bootstrapService =
         new LocalQaBootstrapService(
             emailNormalizer,
@@ -53,7 +53,7 @@ class LocalQaBootstrapServiceTests {
             memberRepository,
             productRepository,
             skuRepository,
-            subscriptionRepository);
+            jdbcTemplate);
   }
 
   @Test
@@ -72,7 +72,7 @@ class LocalQaBootstrapServiceTests {
         .isInstanceOf(LocalQaBootstrapException.class);
 
     verifyNoInteractions(
-        memberRepository, productRepository, skuRepository, subscriptionRepository);
+        memberRepository, productRepository, skuRepository, jdbcTemplate);
   }
 
   @Test
@@ -115,7 +115,6 @@ class LocalQaBootstrapServiceTests {
     verify(memberRepository).saveAndFlush(any(Member.class));
     verify(productRepository).saveAndFlush(any(Product.class));
     verify(skuRepository).saveAndFlush(any(Sku.class));
-    verify(subscriptionRepository, never()).deleteAllByMemberId(any());
   }
 
   @Test
@@ -152,7 +151,7 @@ class LocalQaBootstrapServiceTests {
         .isInstanceOf(LocalQaBootstrapException.class);
 
     verify(memberRepository, never()).saveAndFlush(any());
-    verifyNoInteractions(productRepository, skuRepository, subscriptionRepository);
+    verifyNoInteractions(productRepository, skuRepository, jdbcTemplate);
   }
 
   @Test
@@ -199,7 +198,7 @@ class LocalQaBootstrapServiceTests {
     assertThatThrownBy(() -> bootstrapService.bootstrap(email, password, false))
         .isInstanceOf(LocalQaBootstrapException.class);
 
-    verifyNoInteractions(skuRepository, subscriptionRepository);
+    verifyNoInteractions(skuRepository, jdbcTemplate);
   }
 
   @Test
@@ -261,7 +260,7 @@ class LocalQaBootstrapServiceTests {
 
     bootstrapService.bootstrap(email, password, true);
 
-    verify(subscriptionRepository).deleteAllByMemberId(42L);
+    verify(jdbcTemplate).update("DELETE FROM subscriptions WHERE member_id=?", 42L);
   }
 
   private String runtimeQaEmail() {
@@ -311,6 +310,6 @@ class LocalQaBootstrapServiceTests {
         .isInstanceOf(LocalQaBootstrapException.class);
 
     verify(skuRepository, never()).saveAndFlush(any());
-    verifyNoInteractions(subscriptionRepository);
+    verifyNoInteractions(jdbcTemplate);
   }
 }

@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -31,7 +31,7 @@ class ReturnServiceTests {
     assertThat(projection)
         .containsKeys("returnId", "status", "reason", "rejectionReason", "restock", "requestedAt");
 
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus status = mock(TransactionStatus.class);
     when(manager.getTransaction(any(TransactionDefinition.class))).thenReturn(status);
@@ -45,7 +45,8 @@ class ReturnServiceTests {
             mock(NotificationService.class),
             mock(AdminAuditService.class),
             mock(InventoryService.class),
-            7);
+            7,
+            java.time.Clock.systemUTC());
 
     assertThat(service.request(1L, 2L, "different")).containsExactlyInAnyOrderEntriesOf(projection);
   }

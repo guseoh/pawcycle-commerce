@@ -3,31 +3,35 @@ package com.pawcycle.backend.commerce;
 import io.micrometer.core.instrument.Timer;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class DeliveryService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate tx;
   private final NotificationService notifications;
   private final AdminAuditService audits;
   private final CommerceMetrics metrics;
+  private final Clock clock;
 
   public DeliveryService(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
       NotificationService notifications,
       AdminAuditService audits,
-      CommerceMetrics metrics) {
+      CommerceMetrics metrics,
+      Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(manager);
     this.notifications = notifications;
     this.audits = audits;
     this.metrics = metrics;
+    this.clock = clock;
   }
 
   /** Called from the successful-payment transaction; duplicate callbacks keep the one delivery. */
@@ -38,14 +42,14 @@ public class DeliveryService {
         orderId);
   }
 
-  public Map<String, Object> ship(long id, String carrier, String tracking) {
+  public CommercePayload ship(long id, String carrier, String tracking) {
     return ship(null, id, carrier, tracking);
   }
 
-  public Map<String, Object> ship(Long adminId, long id, String carrier, String tracking) {
+  public CommercePayload ship(Long adminId, long id, String carrier, String tracking) {
     Timer.Sample sample = metrics.timer();
     try {
-      return tx.execute(
+      return CommercePayload.from(tx.execute(
           status -> {
             Map<String, Object> row =
                 one("SELECT id,order_id,status FROM deliveries WHERE id=? FOR UPDATE", id);
@@ -59,7 +63,7 @@ public class DeliveryService {
                     + " WHERE id=?",
                 carrier,
                 tracking,
-                Timestamp.from(Instant.now()),
+                Timestamp.from(clock.instant()),
                 id);
             long member =
                 jdbc.queryForObject(
@@ -70,27 +74,28 @@ public class DeliveryService {
             metrics.count("delivery.transition", "SHIPPED");
             if (adminId != null) audits.append(adminId, "DELIVERY_SHIP", "DELIVERY", id);
             return view(id);
-          });
+          }));
     } finally {
       metrics.stop(sample, "delivery.transition");
     }
   }
 
-  public Map<String, Object> complete(long id) {
+  public CommercePayload complete(long id) {
     return complete(null, id);
   }
 
-  public Map<String, Object> complete(Long adminId, long id) {
-    return transition(
-        adminId, id, "SHIPPED", "DELIVERED", null, "ORDER_DELIVERED", "DELIVERY_COMPLETE");
+  public CommercePayload complete(Long adminId, long id) {
+    return CommercePayload.from(
+        transition(adminId, id, "SHIPPED", "DELIVERED", null, "ORDER_DELIVERED", "DELIVERY_COMPLETE"));
   }
 
-  public Map<String, Object> fail(long id, String reason) {
+  public CommercePayload fail(long id, String reason) {
     return fail(null, id, reason);
   }
 
-  public Map<String, Object> fail(Long adminId, long id, String reason) {
-    return transition(adminId, id, "SHIPPED", "FAILED", reason, null, "DELIVERY_FAIL");
+  public CommercePayload fail(Long adminId, long id, String reason) {
+    return CommercePayload.from(
+        transition(adminId, id, "SHIPPED", "FAILED", reason, null, "DELIVERY_FAIL"));
   }
 
   private Map<String, Object> transition(
@@ -111,7 +116,7 @@ public class DeliveryService {
               throw new CommerceException(404, "DELIVERY_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
             if (!from.equals(row.get("status")))
               throw new CommerceException(409, "DELIVERY_STATE_CONFLICT", "배송 상태를 전이할 수 없습니다.");
-            Timestamp now = Timestamp.from(Instant.now());
+            Timestamp now = Timestamp.from(clock.instant());
             String column = to.equals("DELIVERED") ? "delivered_at" : "failed_at";
             jdbc.update(
                 "UPDATE deliveries SET status=?,failure_reason=?," + column + "=? WHERE id=?",

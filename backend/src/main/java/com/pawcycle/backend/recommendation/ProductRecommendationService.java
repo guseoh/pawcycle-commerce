@@ -1,5 +1,6 @@
 package com.pawcycle.backend.recommendation;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
@@ -7,23 +8,26 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ProductRecommendationService {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-  private final RecommendationRepository repository;
-  private final JdbcTemplate jdbc;
+  private final RecommendationQueryAdapter repository;
+  private final NativeQueryExecutor jdbc;
+  private final Clock clock;
 
-  ProductRecommendationService(RecommendationRepository repository, JdbcTemplate jdbc) {
+  ProductRecommendationService(
+      RecommendationQueryAdapter repository, NativeQueryExecutor jdbc, Clock clock) {
     this.repository = repository;
     this.jdbc = jdbc;
+    this.clock = clock;
   }
 
   @Transactional(readOnly = true)
-  RecommendationService.RecommendationResponse popular(String petType, int limit) {
+  RecommendationResponse popular(String petType, int limit) {
     List<RecommendationCandidate> candidates =
         repository.findPurchasableCandidates(petType).stream()
             .sorted(
@@ -36,10 +40,10 @@ class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  RecommendationService.RecommendationResponse trending(String petType, int limit) {
-    LocalDate today = LocalDate.now(SEOUL);
+  RecommendationResponse trending(String petType, int limit) {
+    LocalDate today = LocalDate.now(clock.withZone(SEOUL));
     List<RecommendationCandidate> candidates = repository.findPurchasableCandidates(petType);
-    Map<Long, RecommendationRepository.TrendScore> scores =
+    Map<Long, RecommendationTrendScore> scores =
         repository.trendScores(
             candidates.stream().map(RecommendationCandidate::productId).toList(), today);
     List<RecommendationCandidate> trending =
@@ -72,7 +76,7 @@ class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  RecommendationService.RecommendationResponse related(long productId, int limit) {
+  RecommendationResponse related(long productId, int limit) {
     RecommendationCandidate source = source(productId);
     Comparator<RecommendationCandidate> relatedOrder =
         Comparator.comparingInt(
@@ -102,7 +106,7 @@ class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  RecommendationService.RecommendationResponse complementary(long productId, int limit) {
+  RecommendationResponse complementary(long productId, int limit) {
     RecommendationCandidate source = source(productId);
     Map<Long, Long> coPurchase =
         jdbc.query(
@@ -149,29 +153,29 @@ class ProductRecommendationService {
             () -> new RecommendationException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
   }
 
-  private RecommendationRepository.TrendScore trendScore(
-      Map<Long, RecommendationRepository.TrendScore> scores, RecommendationCandidate candidate) {
+  private RecommendationTrendScore trendScore(
+      Map<Long, RecommendationTrendScore> scores, RecommendationCandidate candidate) {
     return scores.getOrDefault(
-        candidate.productId(), new RecommendationRepository.TrendScore(0, 0));
+        candidate.productId(), new RecommendationTrendScore(0, 0));
   }
 
-  private RecommendationService.RecommendationResponse response(
+  private RecommendationResponse response(
       List<RecommendationCandidate> candidates, String strategy) {
-    return new RecommendationService.RecommendationResponse(
+    return new RecommendationResponse(
         java.util.UUID.randomUUID().toString(),
         candidates.stream().map(candidate -> item(candidate, strategy)).toList());
   }
 
-  private RecommendationService.RecommendationItem item(
+  private RecommendationItem item(
       RecommendationCandidate candidate, String strategy) {
-    RecommendationService.RecommendationItem.Category category =
+    RecommendationItemCategory category =
         candidate.category() == null
             ? null
-            : new RecommendationService.RecommendationItem.Category(
+            : new RecommendationItemCategory(
                 candidate.category().categoryId(),
                 candidate.category().name(),
                 candidate.category().slug());
-    return new RecommendationService.RecommendationItem(
+    return new RecommendationItem(
         candidate.productId(),
         candidate.name(),
         candidate.shortDescription(),

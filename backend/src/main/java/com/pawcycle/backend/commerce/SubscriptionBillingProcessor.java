@@ -2,17 +2,18 @@ package com.pawcycle.backend.commerce;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Executes at most the READY attempt selected at the start of a processor cycle. */
 @Service
 public class SubscriptionBillingProcessor {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
   private final TransactionTemplate tx;
   private final TossBillingAdapter provider;
   private final SubscriptionBillingService retries;
@@ -21,9 +22,10 @@ public class SubscriptionBillingProcessor {
   private final NotificationService notifications;
   private final MembershipEvaluationService membershipEvaluation;
   private final InventoryService inventory;
+  private final Clock clock;
 
   public SubscriptionBillingProcessor(
-      JdbcTemplate jdbc,
+      NativeQueryExecutor jdbc,
       org.springframework.transaction.PlatformTransactionManager manager,
       TossBillingAdapter provider,
       SubscriptionBillingService retries,
@@ -31,7 +33,8 @@ public class SubscriptionBillingProcessor {
       DeliveryService deliveries,
       NotificationService notifications,
       MembershipEvaluationService membershipEvaluation,
-      InventoryService inventory) {
+      InventoryService inventory,
+      Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(manager);
     this.provider = provider;
@@ -41,6 +44,7 @@ public class SubscriptionBillingProcessor {
     this.notifications = notifications;
     this.membershipEvaluation = membershipEvaluation;
     this.inventory = inventory;
+    this.clock = clock;
   }
 
   public int processReadyPayments() {
@@ -143,7 +147,7 @@ public class SubscriptionBillingProcessor {
                 ((Number) item.get("sku_id")).longValue(),
                 ((Number) item.get("quantity")).intValue(),
                 paymentId);
-          Timestamp now = Timestamp.from(Instant.now());
+          Timestamp now = Timestamp.from(clock.instant());
           jdbc.update(
               "UPDATE payments SET status='SUCCEEDED',provider_status=?,approved_at=? WHERE id=?",
               providerStatus,

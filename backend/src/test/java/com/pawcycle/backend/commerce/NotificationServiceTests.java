@@ -12,12 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 class NotificationServiceTests {
   @Test
   void mixedListLoadsReminderContextWithOneLeftJoinQuery() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
     Map<String, Object> reminder = new LinkedHashMap<>();
     reminder.put("notificationId", 1L);
     reminder.put("type", "SUBSCRIPTION_DELIVERY_REMINDER");
@@ -38,13 +38,14 @@ class NotificationServiceTests {
     ordinary.put("scheduledDate", null);
     when(jdbc.queryForList(anyString(), eq(7L))).thenReturn(List.of(ordinary, reminder));
 
-    List<Map<String, Object>> result = new NotificationService(jdbc).list(7L);
+    List<CommerceRowResponse> result =
+        new NotificationService(jdbc, java.time.Clock.systemUTC()).list(7L);
 
     assertThat(result).hasSize(2);
-    assertThat(result.get(1))
+    assertThat(result.get(1).jsonValues())
         .containsEntry("subscriptionId", 10L)
         .containsEntry("scheduledDate", Date.valueOf("2026-08-30"));
-    assertThat(result.get(0))
+    assertThat(result.get(0).jsonValues())
         .doesNotContainKey("subscriptionId")
         .doesNotContainKey("scheduledDate");
     verify(jdbc)

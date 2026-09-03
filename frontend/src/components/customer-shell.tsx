@@ -17,7 +17,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { const media = window.matchMedia("(max-width: 1023px)"); const update = () => setSmall(media.matches); update(); media.addEventListener("change", update); return () => media.removeEventListener("change", update); }, []);
   const admin = pathname.startsWith("/admin");
   const login = pathname === "/login";
-  const compact = login || pathname.startsWith("/checkout") || /^\/(?:mvp2\/)?subscriptions\/.+/.test(pathname) || /^\/orders\/.+/.test(pathname);
+  const compact = login || pathname.startsWith("/checkout") || /^\/(?:subscription\/)?subscriptions\/.+/.test(pathname) || /^\/orders\/.+/.test(pathname);
   const account = accountLinks.some(([href]) => href === pathname);
   return <div className={admin ? "admin-theme" : `customer-theme${login ? " auth-theme" : ""}`}>
     <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>

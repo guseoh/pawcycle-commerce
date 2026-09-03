@@ -7,18 +7,18 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.ProductPatch;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuCreate;
-import com.pawcycle.backend.catalog.admin.api.AdminCatalogRequests.SkuPatch;
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,14 +26,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 @ExtendWith(MockitoExtension.class)
 class AdminCatalogCacheInvalidationTests {
   @Mock private CategoryRepository categoryRepository;
   @Mock private ProductRepository productRepository;
   @Mock private SkuRepository skuRepository;
-  @Mock private JdbcTemplate jdbcTemplate;
+  @Mock private NativeQueryExecutor jdbcTemplate;
   @Mock private ProductListCacheInvalidator invalidator;
 
   private AdminCatalogService service;
@@ -54,12 +54,12 @@ class AdminCatalogCacheInvalidationTests {
     when(productRepository.saveAndFlush(any(Product.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    service.createProduct(new ProductCreate(1L, 1L, "상품", "설명", null, "DOG", null));
+    service.createProduct(new ProductCreateRequest(1L, 1L, "상품", "설명", null, "DOG", null));
 
     Product product = mock(Product.class);
     when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));
     when(productRepository.saveAndFlush(product)).thenReturn(product);
-    ProductPatch patch = new ProductPatch();
+    ProductPatchRequest patch = new ProductPatchRequest();
     patch.readName("수정 상품");
     service.updateProduct(10L, patch);
 
@@ -76,14 +76,14 @@ class AdminCatalogCacheInvalidationTests {
 
     service.createSku(
         10L,
-        new SkuCreate("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
+        new SkuCreateRequest("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
 
     clearInvocations(productRepository);
     Sku sku = mock(Sku.class);
     when(sku.getProduct()).thenReturn(product);
     when(skuRepository.findByIdAndProductId(20L, 10L)).thenReturn(Optional.of(sku));
     when(skuRepository.saveAndFlush(sku)).thenReturn(sku);
-    SkuPatch patch = new SkuPatch();
+    SkuPatchRequest patch = new SkuPatchRequest();
     patch.readPrice(new BigDecimal("20900.00"));
     service.updateSku(10L, 20L, patch);
 

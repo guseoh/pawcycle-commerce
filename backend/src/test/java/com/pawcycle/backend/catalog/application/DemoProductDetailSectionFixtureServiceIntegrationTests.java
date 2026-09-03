@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,11 +42,12 @@ class DemoProductDetailSectionFixtureServiceIntegrationTests {
   DemoProductDetailSectionFixtureServiceIntegrationTests(
       WebApplicationContext applicationContext,
       JdbcTemplate jdbc,
+      NativeQueryExecutor jdbcExecutor,
       DemoCatalogManifestImportService importService) {
     this.applicationContext = applicationContext;
     this.jdbc = jdbc;
     this.importService = importService;
-    this.detailFixtureService = new DemoProductDetailSectionFixtureService(jdbc);
+    this.detailFixtureService = new DemoProductDetailSectionFixtureService(jdbcExecutor);
   }
 
   @BeforeEach

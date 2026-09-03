@@ -19,5 +19,5 @@ grep -Fq -- '--format '\''{{ index .Config.Labels "org.opencontainers.image.revi
 ! grep -Fq -- 'org.opencontainers.image.revision\"' "$SCRIPT"
 ! grep -Fq -- 'timeout --signal=' "$SCRIPT"
 grep -Fq -- 'postflight' backend/src/main/java/com/pawcycle/backend/catalog/application/DemoCatalogManifestImportService.java
-grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' backend/src/main/java/com/pawcycle/backend/catalog/application/CustomerCatalogImportService.java
+grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' backend/src/main/java/com/pawcycle/backend/catalog/application/CustomerCatalogImportResult.java
 printf 'PASS: production catalog import target contract\n'

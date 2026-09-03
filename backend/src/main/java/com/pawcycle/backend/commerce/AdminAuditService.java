@@ -2,19 +2,22 @@ package com.pawcycle.backend.commerce;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Append-only audit writer. Callers pass only safe, non-secret JSON literals. */
 @Service
 public class AdminAuditService {
-  private final JdbcTemplate jdbc;
+  private final NativeQueryExecutor jdbc;
+  private final Clock clock;
 
-  public AdminAuditService(JdbcTemplate jdbc) {
+  public AdminAuditService(NativeQueryExecutor jdbc, Clock clock) {
     this.jdbc = jdbc;
+    this.clock = clock;
   }
 
   @Transactional
@@ -27,12 +30,13 @@ public class AdminAuditService {
         action,
         targetType,
         targetId,
-        Timestamp.from(Instant.now()));
+        Timestamp.from(clock.instant()));
   }
 
-  public List<Map<String, Object>> list() {
-    return jdbc.queryForList(
-        "SELECT id AS auditLogId,admin_id AS adminId,action,target_type AS targetType,target_id AS"
-            + " targetId,created_at AS createdAt FROM admin_audit_logs ORDER BY id DESC");
+  public List<CommerceRowResponse> list() {
+    return CommerceRowResponse.from(
+        jdbc.queryForList(
+            "SELECT id AS auditLogId,admin_id AS adminId,action,target_type AS targetType,target_id AS"
+                + " targetId,created_at AS createdAt FROM admin_audit_logs ORDER BY id DESC"));
   }
 }

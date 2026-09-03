@@ -1,6 +1,5 @@
 package com.pawcycle.backend.member.domain;
 
-import com.pawcycle.backend.commerce.MemberAddress;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

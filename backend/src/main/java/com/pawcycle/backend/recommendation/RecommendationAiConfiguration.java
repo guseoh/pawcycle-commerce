@@ -33,7 +33,7 @@ class RecommendationAiConfiguration {
     return (candidates, categories) ->
         metrics.recordAiCall(
             () -> {
-              AiRecommendationResponse response =
+              RecommendationAiResponse response =
                   chatClient
                       .prompt()
                       .system(
@@ -44,7 +44,7 @@ class RecommendationAiConfiguration {
                           """)
                       .user(userPrompt(candidates, categories))
                       .call()
-                      .entity(AiRecommendationResponse.class);
+                      .entity(RecommendationAiResponse.class);
               return response == null || response.recommendations() == null
                   ? List.of()
                   : response.recommendations();
@@ -79,6 +79,4 @@ class RecommendationAiConfiguration {
         + "\n반환 형식: recommendations 배열의 productId와 reason만 반환하세요.";
   }
 
-  private record AiRecommendationResponse(
-      List<RecommendationAiClient.AiRecommendation> recommendations) {}
 }

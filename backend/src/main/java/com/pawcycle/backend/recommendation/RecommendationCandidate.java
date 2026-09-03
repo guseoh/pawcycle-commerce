@@ -6,8 +6,8 @@ record RecommendationCandidate(
     String shortDescription,
     String thumbnailUrl,
     String petType,
-    Category category,
-    Brand brand,
+    RecommendationCategory category,
+    RecommendationBrand brand,
     java.util.List<String> facets,
     long popularScore) {
 
@@ -17,7 +17,7 @@ record RecommendationCandidate(
       String shortDescription,
       String thumbnailUrl,
       String petType,
-      Category category) {
+      RecommendationCategory category) {
     this(
         productId,
         name,
@@ -34,7 +34,4 @@ record RecommendationCandidate(
     facets = java.util.List.copyOf(facets == null ? java.util.List.of() : facets);
   }
 
-  record Category(long categoryId, String name, String slug) {}
-
-  record Brand(long brandId, String name, String slug) {}
 }

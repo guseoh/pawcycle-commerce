@@ -1,10 +1,9 @@
 package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
-import java.math.BigDecimal;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,23 +59,4 @@ public class ProductListReader {
     return new ProductListSnapshot(productSnapshots, skuSnapshots);
   }
 
-  public record ProductListSnapshot(List<ProductSnapshot> products, List<SkuSnapshot> skus) {
-    public ProductListSnapshot {
-      products = List.copyOf(products);
-      skus = List.copyOf(skus);
-    }
-  }
-
-  public record ProductSnapshot(
-      Long productId,
-      String name,
-      String petType,
-      String shortDescription,
-      String thumbnailUrl,
-      CategorySnapshot category) {}
-
-  public record CategorySnapshot(Long categoryId, String name, String slug) {}
-
-  public record SkuSnapshot(
-      Long productId, Long skuId, String skuName, BigDecimal price, boolean subscribable) {}
 }

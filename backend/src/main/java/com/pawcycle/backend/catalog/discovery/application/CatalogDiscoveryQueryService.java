@@ -1,16 +1,10 @@
 package com.pawcycle.backend.catalog.discovery.application;
 
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Brand;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Category;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.CategoryFacets;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Child;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Facet;
-import com.pawcycle.backend.catalog.discovery.application.CatalogDiscoveryView.Option;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,16 +12,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class CatalogDiscoveryQueryService {
   private static final String SYSTEM_UNCATEGORIZED_SLUG = "__pawcycle_uncategorized__";
 
-  private final JdbcTemplate jdbcTemplate;
+  private final NativeQueryExecutor jdbcTemplate;
 
-  public CatalogDiscoveryQueryService(JdbcTemplate jdbcTemplate) {
+  public CatalogDiscoveryQueryService(NativeQueryExecutor jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
   }
 
   @Transactional(readOnly = true)
-  public CatalogDiscoveryView findPublicDiscovery() {
+  public CatalogDiscoveryResponse findPublicDiscovery() {
     List<CategoryRow> categories = readCategories();
-    return new CatalogDiscoveryView(toHierarchy(categories), readBrands(), readCategoryFacets());
+    return new CatalogDiscoveryResponse(toHierarchy(categories), readBrands(), readCategoryFacets());
   }
 
   private List<CategoryRow> readCategories() {
@@ -52,7 +46,7 @@ public class CatalogDiscoveryQueryService {
         SYSTEM_UNCATEGORIZED_SLUG);
   }
 
-  private List<Category> toHierarchy(List<CategoryRow> rows) {
+  private List<CatalogCategoryResponse> toHierarchy(List<CategoryRow> rows) {
     Map<Long, List<CategoryRow>> childrenByParent = new LinkedHashMap<>();
     for (CategoryRow row : rows) {
       if (row.parentId() != null) {
@@ -63,7 +57,7 @@ public class CatalogDiscoveryQueryService {
         .filter(row -> row.parentId() == null)
         .map(
             row ->
-                new Category(
+                new CatalogCategoryResponse(
                     row.categoryId(),
                     row.name(),
                     row.slug(),
@@ -71,7 +65,7 @@ public class CatalogDiscoveryQueryService {
                     childrenByParent.getOrDefault(row.categoryId(), List.of()).stream()
                         .map(
                             child ->
-                                new Child(
+                                new CatalogChildCategoryResponse(
                                     child.categoryId(),
                                     child.name(),
                                     child.slug(),
@@ -80,7 +74,7 @@ public class CatalogDiscoveryQueryService {
         .toList();
   }
 
-  private List<Brand> readBrands() {
+  private List<CatalogBrandResponse> readBrands() {
     return jdbcTemplate.query(
         """
         SELECT id,name,slug,logo_url,display_order
@@ -89,7 +83,7 @@ public class CatalogDiscoveryQueryService {
         ORDER BY display_order ASC,id ASC
         """,
         (rs, rowNum) ->
-            new Brand(
+            new CatalogBrandResponse(
                 rs.getLong("id"),
                 rs.getString("name"),
                 rs.getString("slug"),
@@ -97,7 +91,7 @@ public class CatalogDiscoveryQueryService {
                 rs.getInt("display_order")));
   }
 
-  private List<CategoryFacets> readCategoryFacets() {
+  private List<CatalogCategoryFacetsResponse> readCategoryFacets() {
     Map<Long, CategoryFacetAccumulator> categories = new LinkedHashMap<>();
     jdbcTemplate.query(
         """
@@ -131,7 +125,8 @@ public class CatalogDiscoveryQueryService {
           Long optionId = rs.getObject("option_id", Long.class);
           if (optionId != null) {
             facet.options.add(
-                new Option(optionId, rs.getString("option_value"), rs.getInt("option_order")));
+                new CatalogFacetOptionResponse(
+                    optionId, rs.getString("option_value"), rs.getInt("option_order")));
           }
         },
         SYSTEM_UNCATEGORIZED_SLUG,
@@ -139,12 +134,13 @@ public class CatalogDiscoveryQueryService {
     return categories.values().stream()
         .map(
             category ->
-                new CategoryFacets(
+                new CatalogCategoryFacetsResponse(
                     category.categorySlug,
                     category.facets.values().stream()
                         .map(
                             facet ->
-                                new Facet(facet.key, facet.name, facet.displayOrder, facet.options))
+                                new CatalogFacetResponse(
+                                    facet.key, facet.name, facet.displayOrder, facet.options))
                         .toList()))
         .toList();
   }
@@ -165,7 +161,7 @@ public class CatalogDiscoveryQueryService {
     private final String key;
     private final String name;
     private final int displayOrder;
-    private final List<Option> options = new ArrayList<>();
+    private final List<CatalogFacetOptionResponse> options = new ArrayList<>();
 
     private FacetAccumulator(String key, String name, int displayOrder) {
       this.key = key;

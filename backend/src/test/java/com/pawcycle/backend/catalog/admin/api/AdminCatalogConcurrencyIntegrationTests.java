@@ -7,9 +7,9 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
-import com.pawcycle.backend.catalog.category.infra.CategoryRepository;
-import com.pawcycle.backend.catalog.product.infra.ProductRepository;
-import com.pawcycle.backend.catalog.sku.infra.SkuRepository;
+import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
+import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.domain.MemberRole;
 import java.util.ArrayList;

@@ -2,7 +2,7 @@ package com.pawcycle.backend.member.maintenance;
 
 import com.pawcycle.backend.member.application.EmailNormalizer;
 import com.pawcycle.backend.member.domain.Member;
-import com.pawcycle.backend.member.infra.MemberRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 

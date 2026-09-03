@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class InteractionServiceTests {
-  private final InteractionRepository repository = mock(InteractionRepository.class);
+  private final InteractionEventPersistenceAdapter repository = mock(InteractionEventPersistenceAdapter.class);
   private final InteractionService service =
       new InteractionService(
           repository,
@@ -27,9 +27,11 @@ class InteractionServiceTests {
 
   @Test
   void batchOverFiftyIsRejectedBeforePersistence() {
-    List<Map<String, Object>> events = new ArrayList<>();
+    List<InteractionEventRequest> events = new ArrayList<>();
     for (int index = 0; index < 51; index++) {
-      events.add(Map.of("eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW"));
+      events.add(
+          new InteractionEventRequest(
+              UUID.randomUUID().toString(), "PRODUCT_VIEW", null, null, null, null, null));
     }
 
     assertThatThrownBy(() -> service.record(10L, events))
@@ -40,11 +42,15 @@ class InteractionServiceTests {
 
   @Test
   void rawSearchTextIsRejected() {
-    Map<String, Object> event =
-        Map.of(
-            "eventId", UUID.randomUUID().toString(),
-            "type", "SEARCH",
-            "context", Map.of("q", "private search text"));
+    InteractionEventRequest event =
+        new InteractionEventRequest(
+            UUID.randomUUID().toString(),
+            "SEARCH",
+            null,
+            null,
+            null,
+            null,
+            Map.of("q", "private search text"));
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)
@@ -56,16 +62,9 @@ class InteractionServiceTests {
   void petOwnershipIsValidatedBeforeEventInsert() {
     when(repository.petBelongsToMember(99L, 10L)).thenReturn(false);
     when(repository.productExists(1L)).thenReturn(true);
-    Map<String, Object> event =
-        Map.of(
-            "eventId",
-            UUID.randomUUID().toString(),
-            "type",
-            "PRODUCT_VIEW",
-            "productId",
-            1L,
-            "petId",
-            99L);
+    InteractionEventRequest event =
+        new InteractionEventRequest(
+            UUID.randomUUID().toString(), "PRODUCT_VIEW", 1L, 99L, null, null, null);
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)
@@ -75,8 +74,9 @@ class InteractionServiceTests {
 
   @Test
   void productViewRequiresProductId() {
-    Map<String, Object> event =
-        Map.of("eventId", UUID.randomUUID().toString(), "type", "PRODUCT_VIEW");
+    InteractionEventRequest event =
+        new InteractionEventRequest(
+            UUID.randomUUID().toString(), "PRODUCT_VIEW", null, null, null, null, null);
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)
@@ -86,11 +86,15 @@ class InteractionServiceTests {
 
   @Test
   void rawSearchTextInHasTextQueryIsRejected() {
-    Map<String, Object> event =
-        Map.of(
-            "eventId", UUID.randomUUID().toString(),
-            "type", "FILTER",
-            "context", Map.of("hasTextQuery", "강아지 사료 서울 010-1234-5678"));
+    InteractionEventRequest event =
+        new InteractionEventRequest(
+            UUID.randomUUID().toString(),
+            "FILTER",
+            null,
+            null,
+            null,
+            null,
+            Map.of("hasTextQuery", "강아지 사료 서울 010-1234-5678"));
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)
@@ -100,11 +104,15 @@ class InteractionServiceTests {
 
   @Test
   void contextRejectsWrongScalarTypes() {
-    Map<String, Object> event =
-        Map.of(
-            "eventId", UUID.randomUUID().toString(),
-            "type", "FILTER",
-            "context", Map.of("hasTextQuery", "true", "minPrice", "1000"));
+    InteractionEventRequest event =
+        new InteractionEventRequest(
+            UUID.randomUUID().toString(),
+            "FILTER",
+            null,
+            null,
+            null,
+            null,
+            Map.of("hasTextQuery", "true", "minPrice", "1000"));
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)
@@ -114,14 +122,15 @@ class InteractionServiceTests {
 
   @Test
   void recommendationEventsRequireProductAndRequestId() {
-    Map<String, Object> event =
-        Map.of(
-            "eventId",
+    InteractionEventRequest event =
+        new InteractionEventRequest(
             UUID.randomUUID().toString(),
-            "type",
             "RECOMMENDATION_CLICK",
-            "productId",
-            1L);
+            1L,
+            null,
+            null,
+            null,
+            null);
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
         .isInstanceOf(InteractionException.class)

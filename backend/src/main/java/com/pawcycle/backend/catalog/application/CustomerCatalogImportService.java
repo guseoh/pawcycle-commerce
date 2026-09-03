@@ -24,38 +24,15 @@ public class CustomerCatalogImportService {
   }
 
   @Transactional
-  public ImportResult validate() {
-    return new ImportResult(baseline.validate(), supplement.validate(), correction.validate());
+  public CustomerCatalogImportResult validate() {
+    return new CustomerCatalogImportResult(
+        baseline.validate(), supplement.validate(), correction.validate());
   }
 
   @Transactional
-  public ImportResult apply() {
-    return new ImportResult(baseline.apply(), supplement.apply(), correction.apply());
+  public CustomerCatalogImportResult apply() {
+    return new CustomerCatalogImportResult(
+        baseline.apply(), supplement.apply(), correction.apply());
   }
 
-  public record ImportResult(
-      DemoCatalogManifestImportService.ImportResult baseline,
-      CustomerCatalogV3ImportService.ImportResult supplement,
-      CustomerCatalogRealismCorrectionService.ImportResult correction) {
-
-    public ImportResult(
-        DemoCatalogManifestImportService.ImportResult baseline,
-        CustomerCatalogV3ImportService.ImportResult supplement) {
-      this(
-          baseline,
-          supplement,
-          new CustomerCatalogRealismCorrectionService.ImportResult(
-              CustomerCatalogRealismCorrectionService.Operation.VALIDATE, 0, 0, 0));
-    }
-
-    public String summary() {
-      return "CUSTOMER_CATALOG_IMPORT_RESULT status=PASS baseline={"
-          + baseline.summary()
-          + "} supplement={"
-          + supplement.summary()
-          + "} correction={"
-          + correction.summary()
-          + "}";
-    }
-  }
 }

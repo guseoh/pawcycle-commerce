@@ -9,7 +9,7 @@ import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { RecommendationSection } from "@/components/recommendation-section";
 import { HomeCatalog } from "@/components/home-catalog";
 import { selectedPersonalizedPetId } from "@/lib/recommendation";
-import { v2Api, type Pet } from "@/lib/v2-api";
+import { subscriptionApi, type Pet } from "@/lib/subscription-api";
 
 export default function Home() {
   const auth = useAuth();
@@ -50,7 +50,7 @@ function PersonalizedRecommendations() {
 
   useEffect(() => {
     let active = true;
-    void v2Api.pets.list().then(({ body }) => {
+    void subscriptionApi.pets.list().then(({ body }) => {
        if (active) setPets(body.items);
     }).catch(() => {
       if (active) setPetError("반려동물 목록을 불러오지 못했습니다.");

@@ -9,16 +9,16 @@ import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
 import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
-import { v2Api, type V2SubscriptionSummary } from "@/lib/v2-api";
+import { subscriptionApi, type SubscriptionSummary } from "@/lib/subscription-api";
 
-type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: V2SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
+type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
 
-async function loadAllSubscriptions(): Promise<V2SubscriptionSummary[]> {
+async function loadAllSubscriptions(): Promise<SubscriptionSummary[]> {
   const pageSize = 100;
-  const first = await v2Api.subscriptions.list(0, pageSize);
+  const first = await subscriptionApi.subscriptions.list(0, pageSize);
   const subscriptions = [...first.body.items];
   for (let page = 1; subscriptions.length < first.body.totalElements; page += 1) {
-    const next = await v2Api.subscriptions.list(page, pageSize);
+    const next = await subscriptionApi.subscriptions.list(page, pageSize);
     if (!next.body.items.length) break;
     subscriptions.push(...next.body.items);
   }

@@ -24,7 +24,7 @@ public class ProductQuestionController {
   private final ProductEngagementService service;
 
   @GetMapping("/api/products/{productId}/questions")
-  QuestionViews.Page questions(
+  QuestionListResponse questions(
       @PathVariable long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
@@ -32,7 +32,7 @@ public class ProductQuestionController {
   }
 
   @PostMapping("/api/products/{productId}/questions")
-  QuestionViews.Question create(
+  QuestionResponse create(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody QuestionCreateRequest request) {
@@ -41,7 +41,7 @@ public class ProductQuestionController {
   }
 
   @PatchMapping("/api/product-questions/{questionId}")
-  QuestionViews.Question update(
+  QuestionResponse update(
       @PathVariable long questionId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestBody QuestionPatchRequest request) {
