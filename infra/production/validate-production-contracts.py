@@ -13,13 +13,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION = ROOT / "infra" / "production"
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-production-images.yml"
+READINESS_WORKFLOW = ROOT / ".github" / "workflows" / "production-release-readiness.yml"
 VALIDATION_WORKFLOW = ROOT / ".github" / "workflows" / "validate-conventions.yml"
 DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "production-deploy.yml"
 DEPLOY_SSM_DOCUMENT = PRODUCTION / "pawcycle-production-deploy-ssm-document.json"
 SHA = "0" * 40
 MYSQL_IMAGE = "mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
 PROXY_IMAGE = "nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
-CERTBOT_IMAGE = "certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTBOT_IMAGE = "certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
 
 
 def require(condition: bool, message: str) -> None:
@@ -223,17 +224,32 @@ def validate_compose() -> None:
 
 def validate_workflow() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    readiness_workflow = READINESS_WORKFLOW.read_text(encoding="utf-8")
     validation_workflow = VALIDATION_WORKFLOW.read_text(encoding="utf-8")
     require("permissions:\n  contents: read\n  packages: write" in workflow, "workflow permissions exceed or omit the approved minimum")
     require("if: github.ref == 'refs/heads/main'" in workflow, "non-main image publication must fail closed")
     require(workflow.count("tags: ghcr.io/${{ github.repository }}-") == 2, "both images need repository-derived tags")
     require(workflow.count(":${{ github.sha }}") == 2, "both images must use the same github.sha tag")
     require(workflow.count("org.opencontainers.image.revision=${{ github.sha }}") == 2, "both images need the SHA revision label")
-    require("platforms: linux/amd64" in workflow, "EC2 x86_64 image platform is required")
+    require(
+        workflow.count("platforms: linux/amd64,linux/arm64") == 2,
+        "both release images must publish amd64 and arm64 platforms",
+    )
     require(not re.search(r"(?:image|tags):[^\n]*:latest(?:\s|$)", workflow), "latest image tag is forbidden")
 
     for action_reference in re.findall(r"uses:\s+[^\s]+@([^\s]+)", workflow):
         require(bool(re.fullmatch(r"[0-9a-f]{40}", action_reference)), "workflow actions must be pinned to a 40-character commit")
+
+    require(
+        "docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130" in workflow,
+        "multi-platform release publishing must set up QEMU with an immutable action pin",
+    )
+    require(
+        "verify_image_platforms" in readiness_workflow
+        and "linux\", \"amd64" in readiness_workflow
+        and "linux\", \"arm64" in readiness_workflow,
+        "release readiness must fail closed when either required image platform is absent",
+    )
 
     require("infra/production/https.sh" in validation_workflow, "Repository Validation must syntax-check the HTTPS script")
     require("infra/production/diagnose-backend-state.sh" in validation_workflow and "infra/production/test-diagnose-backend-state.sh" in validation_workflow, "Repository Validation must validate the OPS-AUTO-009 read-only diagnostic")
@@ -253,6 +269,11 @@ def validate_workflow() -> None:
     require(
         "bash infra/production/test-production-nginx.sh" in validation_workflow,
         "Repository Validation must execute the Nginx configuration test",
+    )
+    require(
+        "bash infra/production/test-production-arm64-images.sh" in validation_workflow
+        and "docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130" in validation_workflow,
+        "Repository Validation must execute ARM64 production image builds with immutable QEMU setup",
     )
     require(
         "bash infra/production/test-production-compose.sh" in validation_workflow,
@@ -898,9 +919,14 @@ def validate_scripts() -> None:
     require('flock --nonblock 9' in materialize, "runtime materialization must reject concurrent writers")
     require("concurrent runtime materialization did not fail closed" in script_tests, "materialization concurrency regression evidence is missing")
 
-    require(CERTBOT_IMAGE in common, "Certbot must be pinned to the approved linux/amd64 digest")
+    require(CERTBOT_IMAGE in common, "Certbot must be pinned to the approved multi-platform digest")
     require(CERTBOT_IMAGE in nginx_tests, "Nginx tests must exercise the same pinned Certbot image")
-    require("--platform linux/amd64" in https, "Certbot execution platform must be explicit")
+    require(
+        "--platform linux/amd64" not in https
+        and "--platform linux/amd64" not in common
+        and "--platform linux/amd64" not in nginx_tests,
+        "Production HTTPS runtime and Nginx tests must use the execution host architecture",
+    )
     require("set +x" in https, "HTTPS operations must disable shell tracing")
     require("certonly --webroot" in https and "renew --cert-name" in https, "HTTP-01 issuance and renewal commands are required")
     require("--dry-run" in https and "nginx -s reload" in https, "renewal rehearsal and post-renew reload are required")

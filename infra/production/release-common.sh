@@ -10,7 +10,7 @@ HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
 MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
 DEFAULT_MYSQL_VOLUME="pawcycle-production-mysql-data"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
-CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
 CERTIFICATE_NAME="pawcycle-production"
 CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot"
 LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt"
@@ -720,7 +720,7 @@ validate_https_certificate() {
     load_https_domain
     expected_domain="$HTTPS_DOMAIN"
   fi
-  docker run --rm --platform linux/amd64 \
+  docker run --rm \
     --entrypoint python \
     --env EXPECTED_DOMAIN="$expected_domain" \
     --env MIN_VALIDITY_SECONDS="$HTTPS_MIN_CERT_VALIDITY_SECONDS" \
