@@ -202,7 +202,10 @@ if run_rollback "$MIGRATION_STATE" "$APP_PREVIOUS" "$TEST_ROOT/migration-output"
 fi
 [[ "$(state_snapshot "$MIGRATION_STATE")" == "$before_snapshot" ]]
 [[ ! -s "$FAKE_DOCKER_LOG" ]]
-! grep -Fq 'compose' "$FAKE_DOCKER_LOG"
+if grep -Fq 'compose' "$FAKE_DOCKER_LOG"; then
+  printf 'migration-boundary rollback executed compose commands\n' >&2
+  exit 1
+fi
 unset FAKE_MIGRATION_CHANGED
 
 FAILED_STATE="$TEST_ROOT/failed-state"

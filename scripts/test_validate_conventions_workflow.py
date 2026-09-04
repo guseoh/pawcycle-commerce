@@ -164,9 +164,11 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_release_readiness_python_payload_stays_inside_yaml_scalar(self) -> None:
         self.assertIn("              | python -c 'import json, sys\n", self.readiness_workflow)
-        self.assertIn("              index = json.load(sys.stdin)\n", self.readiness_workflow)
-        self.assertIn("              platforms = {\n", self.readiness_workflow)
-        self.assertIn("                  raise SystemExit", self.readiness_workflow)
+        payload = self.readiness_workflow.split("| python -c '", 1)[1].split("'\n", 1)[0]
+        payload_lines = payload.splitlines()
+        self.assertTrue(
+            all(line.startswith(" " * 14) for line in payload_lines[1:] if line.strip())
+        )
         self.assertNotIn("\nindex = json.load(sys.stdin)\n", self.readiness_workflow)
 
     def test_publish_initializes_qemu_before_buildx(self) -> None:

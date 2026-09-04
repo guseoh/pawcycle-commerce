@@ -151,7 +151,7 @@ backup() {
   docker run --rm --pull never --interactive --network "$DATABASE_EGRESS_NETWORK" --read-only --tmpfs /tmp:size=16m,mode=1777 \
     --security-opt no-new-privileges:true --cap-drop ALL --memory 512m --cpus 0.50 --pids-limit 128 --log-driver none \
     --volume "$MYSQL_OPTION_FILE:/run/pawcycle/mysql-client.cnf:ro" --entrypoint mysqldump "$MYSQL_TOOL_IMAGE" \
-    --defaults-extra-file=/run/pawcycle/mysql-client.cnf --database="$PAWCYCLE_DATASOURCE_DATABASE" --single-transaction --quick --no-tablespaces --hex-blob | gzip -c > "$dump"
+    --defaults-extra-file=/run/pawcycle/mysql-client.cnf --databases "$PAWCYCLE_DATASOURCE_DATABASE" --single-transaction --quick --no-tablespaces --hex-blob | gzip -c > "$dump"
   dump_sha="$(sha256sum "$dump" | awk '{print $1}')"; dump_bytes="$(stat -c '%s' "$dump")"
   schema_sha="$(run_mysql_query "SELECT GROUP_CONCAT(CONCAT(TABLE_NAME, ':', COLUMN_NAME, ':', COLUMN_TYPE, ':', IS_NULLABLE) ORDER BY TABLE_NAME, ORDINAL_POSITION SEPARATOR '|') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE();" | sha256sum | awk '{print $1}')"
   flyway_sha="$(run_mysql_query "SELECT CONCAT(COUNT(*), ':', COALESCE(MAX(installed_rank), 0), ':', COALESCE(SUM(checksum), 0)) FROM flyway_schema_history WHERE success = 1;" | sha256sum | awk '{print $1}')"
@@ -181,6 +181,7 @@ restore_verify() {
   : > "$MYSQL_OPTION_FILE"; chmod 600 "$MYSQL_OPTION_FILE"
   { printf '[client]\nuser=root\npassword='; cat "$MYSQL_ROOT_SECRET_FILE"; printf '\nssl-mode=REQUIRED\n'; } > "$MYSQL_OPTION_FILE"
   mysql_uid_gid="$(lookup_mysql_identity)"; mysql_uid="${mysql_uid_gid%%:*}"; mysql_gid="${mysql_uid_gid##*:}"
+  chown "$mysql_uid:$mysql_gid" "$MYSQL_ROOT_SECRET_FILE" "$MYSQL_OPTION_FILE"
   docker volume create "$MYSQL_VOLUME" >/dev/null
   docker run --detach --name "$MYSQL_CONTAINER" --user mysql:mysql --network none --mount "source=$MYSQL_VOLUME,target=/var/lib/mysql" \
     --mount "type=bind,src=$MYSQL_ROOT_SECRET_FILE,dst=/run/secrets/mysql-root,ro" --env MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root \
@@ -233,7 +234,7 @@ validate_path "$RUNTIME_DIR" runtime-dir; validate_path "$BACKUP_CREDENTIAL_FILE
 validate_bucket "$BUCKET"; validate_prefix "$PREFIX"; validate_region "$REGION"
 [[ "$OPERATION" == backup || -n "$BACKUP_ID" ]] || die "--backup-id is required"
 [[ -z "$BACKUP_ID" ]] || validate_backup_id "$BACKUP_ID"
-for command in date docker gzip mktemp od oci readlink sha256sum stat tr; do
+for command in chown date docker gzip mktemp od oci readlink sha256sum stat tr; do
   require_command "$command"
 done
 validate_backend_env; validate_credentials; TEMP_DIR="$(mktemp -d)"; chmod 700 "$TEMP_DIR"

@@ -81,7 +81,12 @@ case "$1" in
 esac
 exit 0
 EOF
-chmod +x "$FAKE_BIN/oci" "$FAKE_BIN/docker"
+cat > "$FAKE_BIN/chown" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'chown %s\n' "$*" >> "$FAKE_DOCKER_LOG"
+EOF
+chmod +x "$FAKE_BIN/oci" "$FAKE_BIN/docker" "$FAKE_BIN/chown"
 
 COMMON=(--runtime-dir "$RUNTIME_DIR" --backup-credential-file "$CREDENTIALS" --bucket pawcycle-backups --prefix production --region ap-tokyo-1)
 DOCKER_LOG="$TEST_ROOT/docker.log"
@@ -90,6 +95,8 @@ BACKUP_ID="${BACKUP_OUTPUT##*: }"; [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-
 mapfile -t PUTS < <(grep 'object put' "$LOG"); [[ "${#PUTS[@]}" == 3 ]]
 [[ "${PUTS[0]}" == *'dump.sql.gz'* && "${PUTS[1]}" == *'manifest.txt'* && "${PUTS[2]}" == *'complete'* ]]
 grep -Fq -- '--auth instance_principal' "$LOG"; grep -Fq -- '--no-overwrite' "$LOG"; grep -Fq -- '--verify-checksum' "$LOG"
+grep -Fq -- '--entrypoint mysqldump' "$DOCKER_LOG"
+grep -Fq -- '--databases pawcycle' "$DOCKER_LOG"
 if PATH="$FAKE_BIN:$PATH" FAKE_LOG="$LOG" FAKE_OBJECTS="$OBJECT_ROOT" FAKE_DOCKER_LOG="$DOCKER_LOG" FAKE_OBJECT_EXISTS=1 "$SCRIPT_DIR/oci-db-backup-restore.sh" backup "${COMMON[@]}" >/dev/null 2>&1; then
   printf 'object already exists was reported as success\n' >&2
   exit 1
@@ -127,7 +134,9 @@ fi
 PATH="$FAKE_BIN:$PATH" FAKE_LOG="$LOG" FAKE_OBJECTS="$OBJECT_ROOT" FAKE_DOCKER_LOG="$DOCKER_LOG" "$SCRIPT_DIR/oci-db-backup-restore.sh" restore-verify "${COMMON[@]}" --backup-id "$BACKUP_ID" >/dev/null
 grep -Fq -- '--network none' "$DOCKER_LOG"
 grep -Fq -- '--user mysql:mysql' "$DOCKER_LOG"
+grep -Fq -- '--pids-limit 128' "$DOCKER_LOG"
 grep -Eq -- '--tmpfs /var/run/mysqld:size=16m,uid=[0-9]+,gid=[0-9]+,mode=755' "$DOCKER_LOG"
+grep -Eq -- '^chown [0-9]+:[0-9]+ .*/mysql-root\.secret .*/restore-client\.cnf$' "$DOCKER_LOG"
 grep -Fq -- 'mysqladmin --defaults-extra-file=/run/secrets/mysql-client.cnf --protocol=TCP ping --silent' "$DOCKER_LOG"
 if grep -Eq -- '(--entrypoint mysql|docker exec .* mysql).*--force' "$DOCKER_LOG"; then
   printf 'restore mysql client still uses --force\n' >&2
@@ -186,6 +195,7 @@ if [[ -n "$REAL_DOCKER" ]] && "$REAL_DOCKER" info >/dev/null 2>&1; then
   [[ "$("$REAL_DOCKER" inspect --format '{{json .HostConfig.CapDrop}}' "$ACTUAL_CONTAINER")" == *'ALL'* ]]
   [[ "$("$REAL_DOCKER" inspect --format '{{.HostConfig.Memory}}' "$ACTUAL_CONTAINER")" == 536870912 ]]
   [[ "$("$REAL_DOCKER" inspect --format '{{.HostConfig.NanoCpus}}' "$ACTUAL_CONTAINER")" == 500000000 ]]
+  [[ "$("$REAL_DOCKER" inspect --format '{{.HostConfig.PidsLimit}}' "$ACTUAL_CONTAINER")" == 128 ]]
   "$REAL_DOCKER" rm --force "$ACTUAL_CONTAINER" >/dev/null
   ACTUAL_CONTAINER=""
   "$REAL_DOCKER" volume rm "$ACTUAL_VOLUME" >/dev/null

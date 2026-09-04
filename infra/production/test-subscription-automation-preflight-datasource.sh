@@ -157,8 +157,14 @@ if FAKE_MYSQL_MODE=failure run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/failu
   exit 1
 fi
 grep -Fq 'read-only external MySQL preflight failed; raw database output was suppressed' "$TEST_ROOT/failure-output"
-! grep -Fq 'SELECT ' "$TEST_ROOT/failure-output"
-! grep -Fq 'must-not-leak' "$TEST_ROOT/failure-output"
+if grep -Fq 'SELECT ' "$TEST_ROOT/failure-output"; then
+  printf 'raw SQL leaked from failed external MySQL preflight\n' >&2
+  exit 1
+fi
+if grep -Fq 'must-not-leak' "$TEST_ROOT/failure-output"; then
+  printf 'raw database failure output leaked from external MySQL preflight\n' >&2
+  exit 1
+fi
 
 rm -f "$MARKER_DIR/query-count"
 if FAKE_TIMEOUT_MODE=timeout run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/timeout-output"; then
@@ -166,7 +172,13 @@ if FAKE_TIMEOUT_MODE=timeout run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/tim
   exit 1
 fi
 grep -Fq 'read-only external MySQL preflight timed out after 60s; raw database output was suppressed' "$TEST_ROOT/timeout-output"
-! grep -Fq 'SELECT ' "$TEST_ROOT/timeout-output"
-! grep -Fq 'local-validation-only' "$TEST_ROOT/timeout-output"
+if grep -Fq 'SELECT ' "$TEST_ROOT/timeout-output"; then
+  printf 'raw SQL leaked from timed out external MySQL preflight\n' >&2
+  exit 1
+fi
+if grep -Fq 'local-validation-only' "$TEST_ROOT/timeout-output"; then
+  printf 'database credential leaked from timed out external MySQL preflight\n' >&2
+  exit 1
+fi
 
 printf 'External MySQL subscription preflight regression passed\n'
