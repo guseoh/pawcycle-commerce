@@ -3,7 +3,7 @@ set -Eeuo pipefail
 set +x
 
 PROJECT_NAME="pawcycle-production"
-DATA_NETWORK="pawcycle-production-data"
+DATA_NETWORK="pawcycle-production-database-egress"
 CONTAINER_NAME="pawcycle-mvp4-data-002-demo-catalog-import"
 RUNTIME_DIR="/opt/pawcycle/runtime"
 STATE_DIR="/opt/pawcycle/state"
@@ -62,7 +62,7 @@ validate_backend_env() {
   local line key
   local -A count=()
   local keys=(
-    PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE
+    PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_DATABASE PAWCYCLE_DATASOURCE_SSL_MODE
     SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
@@ -140,19 +140,14 @@ BACKEND_DIGEST="${BACKEND_DIGEST_LINE#BACKEND_DIGEST=}"
 [[ "$BACKEND_DIGEST" == "$BACKEND_IMAGE@sha256:"* ]] || die "Backend digest repository does not match"
 
 BACKEND_CONTAINERS="$(docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' --format '{{.ID}}' 2>/dev/null)"
-MYSQL_CONTAINERS="$(docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=mysql' --format '{{.ID}}' 2>/dev/null)"
 [[ "$(printf '%s\n' "$BACKEND_CONTAINERS" | grep -c .)" == "1" ]] || die "production Backend identity is invalid"
-[[ "$(printf '%s\n' "$MYSQL_CONTAINERS" | grep -c .)" == "1" ]] || die "production MySQL identity is invalid"
 BACKEND_CONTAINER="$BACKEND_CONTAINERS"
-MYSQL_CONTAINER="$MYSQL_CONTAINERS"
 [[ "$(docker_value inspect --format '{{.State.Status}}' "$BACKEND_CONTAINER")" == "running" ]] || die "production Backend is not running"
 [[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$BACKEND_CONTAINER")" == "healthy" ]] || die "production Backend is not healthy"
 [[ "$(docker_value inspect --format '{{.Config.Image}}' "$BACKEND_CONTAINER")" == "$BACKEND_IMAGE:$RELEASE_SHA" ]] || die "production Backend image reference is invalid"
 [[ "$(docker_value inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$BACKEND_CONTAINER")" == "$RELEASE_SHA" ]] || die "production Backend revision is invalid"
-[[ "$(docker_value inspect --format '{{.State.Status}}' "$MYSQL_CONTAINER")" == "running" ]] || die "production MySQL is not running"
-[[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$MYSQL_CONTAINER")" == "healthy" ]] || die "production MySQL is not healthy"
-[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$MYSQL_CONTAINER")" == "attached" ]] || die "production data network is invalid"
-[[ "$(docker_value network inspect --format '{{.Internal}}' "$DATA_NETWORK")" == "true" ]] || die "production data network is invalid"
+[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$BACKEND_CONTAINER")" == "attached" ]] || die "Backend database-egress network is invalid"
+docker_value network inspect "$DATA_NETWORK" >/dev/null
 docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1 && die "one-shot Container already exists" || true
 APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIGEST")"
 [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] || die "production Backend image identity is invalid"

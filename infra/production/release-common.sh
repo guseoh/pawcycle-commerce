@@ -7,8 +7,6 @@ CONTROL_WORKTREE_ROOT="$(cd -- "$PRODUCTION_DIR/../.." && pwd -P)"
 COMPOSE_FILE="$PRODUCTION_DIR/compose.yaml"
 PROJECT_NAME="pawcycle-production"
 HEALTH_TIMEOUT_SECONDS="${PAWCYCLE_HEALTH_TIMEOUT_SECONDS:-240}"
-MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
-DEFAULT_MYSQL_VOLUME="pawcycle-production-mysql-data"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
 CERTIFICATE_NAME="pawcycle-production"
@@ -37,16 +35,21 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/materialize-ssm-env.sh'
   ':(top)infra/production/rds-read-only-preflight.sh'
   ':(top)infra/production/rds-transition-gate.sh'
+  ':(top)infra/production/materialize-runtime-env.sh'
+  ':(top)infra/production/production-command-dispatch.sh'
 )
 CONTRACT_SHA=""
 PENDING_CONTRACT_SHA=""
-ACTIVE_MYSQL_VOLUME=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=""
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=""
 PAWCYCLE_DATASOURCE_HOST=""
 PAWCYCLE_DATASOURCE_PORT=""
 PAWCYCLE_DATASOURCE_SSL_MODE=""
+PAWCYCLE_DATASOURCE_DATABASE=""
+SPRING_DATASOURCE_URL=""
+SPRING_DATASOURCE_USERNAME=""
+SPRING_DATASOURCE_PASSWORD=""
 declare -A RUNTIME_LOCK_FDS=()
 
 die() {
@@ -112,28 +115,20 @@ validate_subscription_automation_settings() {
     || die "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS must be a positive explicit integer"
 }
 
-validate_datasource_settings() {
-  local database="$1"
-  local user="$2"
-  local password="$3"
-  local backend_password="$4"
-  local datasource_url="$5"
-  local expected_url
-
-  [[ "$database" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "MYSQL_DATABASE has an unsafe identifier shape"
-  [[ "$user" =~ ^[A-Za-z0-9_]{1,32}$ ]] || die "MYSQL_USER has an unsafe identifier shape"
-  [[ -n "$password" && "$password" != *$'\n'* && "$password" != *$'\r'* ]] || die "MYSQL_PASSWORD has an unsafe runtime shape"
-  [[ "$backend_password" == "$password" ]] || die "backend datasource password must match the MySQL user password"
-  [[ "$PAWCYCLE_DATASOURCE_PORT" == "3306" ]] || die "datasource port must be exactly 3306"
-  [[ "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" || "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]] || die "datasource ssl mode is invalid"
-  if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
-    expected_url="jdbc:mysql://mysql:3306/${database}?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-  elif [[ "$PAWCYCLE_DATASOURCE_HOST" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+ap-northeast-2\.rds\.amazonaws\.com$ && ${#PAWCYCLE_DATASOURCE_HOST} -le 253 && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
-    expected_url="jdbc:mysql://${PAWCYCLE_DATASOURCE_HOST}:3306/${database}?sslMode=REQUIRED&serverTimezone=UTC"
-  else
-    die "datasource runtime combination is not approved"
+validate_datasource_host() {
+  local host="$1"
+  local octet
+  local -a octets
+  if [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+    IFS=. read -r -a octets <<< "$host"
+    for octet in "${octets[@]}"; do (( octet <= 255 )) || die "datasource host is not a private IPv4 address"; done
+    if (( octets[0] == 10 )); then return 0; fi
+    if (( octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31 )); then return 0; fi
+    if (( octets[0] == 192 && octets[1] == 168 )); then return 0; fi
+    die "datasource host is not a private IPv4 address"
   fi
-  [[ "$datasource_url" == "$expected_url" ]] || die "datasource URL does not exactly match the validated runtime fields"
+  [[ ${#host} -le 253 && "$host" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] \
+    || die "datasource host is not an approved DNS name"
 }
 
 acquire_runtime_read_lock() {
@@ -190,30 +185,24 @@ validate_runtime_bundle() {
   [[ -d "$current" ]] || die "materialized runtime bundle is missing: $current"
   [[ -f "$current/.complete" ]] || die "runtime bundle completion marker is missing"
 
-  for file in "$current/mysql.env" "$current/backend.env" "$current/.complete"; do
+  [[ -L "$current" ]] || die "current runtime bundle must be a managed symlink"
+  for file in "$current/backend.env" "$current/.complete"; do
     [[ ! -L "$file" && -f "$file" ]] || die "runtime file must be a regular non-symlink file: $file"
     [[ "$(stat -c '%a' "$file")" == "600" ]] || die "runtime file mode must be 600: $file"
   done
+  validate_runtime_key_set "$current/backend.env" PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_DATABASE PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
 
-  validate_runtime_key_set "$current/mysql.env" MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
-  validate_runtime_key_set "$current/backend.env" PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
-
-  local MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD
-  local SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD
-  for key in MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
-    read_runtime_setting "$current/mysql.env" "$key" "$key"
-  done
-  for key in PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD; do
+  for key in PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_DATABASE PAWCYCLE_DATASOURCE_SSL_MODE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD; do
     read_runtime_setting "$current/backend.env" "$key" "$key"
   done
-  if grep -Eq '^MYSQL_ROOT_PASSWORD=' "$current/backend.env"; then
-    die "Backend runtime file must not contain the MySQL root password"
-  fi
-  if grep -Eq '^PAWCYCLE_DATASOURCE_' "$current/mysql.env"; then
-    die "MySQL runtime file must not contain Backend-only datasource fields"
-  fi
-  [[ "$SPRING_DATASOURCE_USERNAME" == "$MYSQL_USER" ]] || die "backend datasource username must match MYSQL_USER"
-  validate_datasource_settings "$MYSQL_DATABASE" "$MYSQL_USER" "$MYSQL_PASSWORD" "$SPRING_DATASOURCE_PASSWORD" "$SPRING_DATASOURCE_URL"
+  validate_datasource_host "$PAWCYCLE_DATASOURCE_HOST"
+  [[ "$PAWCYCLE_DATASOURCE_PORT" == 3306 ]] || die "datasource port must be exactly 3306"
+  [[ "$PAWCYCLE_DATASOURCE_SSL_MODE" == REQUIRED ]] || die "datasource SSL mode must be exactly REQUIRED"
+  [[ "$PAWCYCLE_DATASOURCE_DATABASE" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "datasource database identifier is invalid"
+  [[ -n "$SPRING_DATASOURCE_USERNAME" && "$SPRING_DATASOURCE_USERNAME" != *$'\n'* && "$SPRING_DATASOURCE_USERNAME" != *$'\r'* ]] || die "datasource username is invalid"
+  [[ -n "$SPRING_DATASOURCE_PASSWORD" && "$SPRING_DATASOURCE_PASSWORD" != *$'\n'* && "$SPRING_DATASOURCE_PASSWORD" != *$'\r'* ]] || die "datasource password is invalid"
+  [[ "$SPRING_DATASOURCE_URL" == "jdbc:mysql://${PAWCYCLE_DATASOURCE_HOST}:3306/${PAWCYCLE_DATASOURCE_DATABASE}?sslMode=REQUIRED&serverTimezone=UTC" ]] \
+    || die "datasource URL does not exactly match the validated runtime fields"
 
   read_runtime_setting "$current/backend.env" \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED
@@ -223,10 +212,10 @@ validate_runtime_bundle() {
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
   validate_subscription_automation_settings
 
-  PAWCYCLE_MYSQL_ENV_FILE="$current/mysql.env"
   PAWCYCLE_BACKEND_ENV_FILE="$current/backend.env"
-  export PAWCYCLE_MYSQL_ENV_FILE PAWCYCLE_BACKEND_ENV_FILE \
+  export PAWCYCLE_BACKEND_ENV_FILE \
     PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE \
+    PAWCYCLE_DATASOURCE_DATABASE \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE \
     PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS
@@ -248,21 +237,6 @@ read_state_sha() {
   value="$(<"$path")"
   validate_sha "$value"
   printf '%s\n' "$value"
-}
-
-validate_mysql_volume() {
-  [[ "$1" == "$DEFAULT_MYSQL_VOLUME" || "$1" =~ ^pawcycle-production-mysql-candidate-[0-9a-f]{16}$ ]] \
-    || die "active MySQL volume state is invalid"
-}
-
-load_active_mysql_volume() {
-  local path="$PAWCYCLE_STATE_DIR/active-mysql-volume"
-
-  [[ -e "$path" || -L "$path" ]] || die "active MySQL volume state is missing"
-  [[ ! -L "$path" && -f "$path" ]] || die "active MySQL volume state must be a regular non-symlink file"
-  [[ "$(stat -c '%a' "$path")" == "600" ]] || die "active MySQL volume state mode must be 600"
-  ACTIVE_MYSQL_VOLUME="$(<"$path")"
-  validate_mysql_volume "$ACTIVE_MYSQL_VOLUME"
 }
 
 current_control_sha() {
@@ -350,15 +324,12 @@ compose() {
   RELEASE_SHA="$ACTIVE_SHA" \
   BACKEND_IMAGE="$BACKEND_IMAGE" \
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
-  PAWCYCLE_MYSQL_ENV_FILE="$PAWCYCLE_MYSQL_ENV_FILE" \
   PAWCYCLE_BACKEND_ENV_FILE="$PAWCYCLE_BACKEND_ENV_FILE" \
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" \
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" \
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS="$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" \
-  PAWCYCLE_MYSQL_VOLUME="$ACTIVE_MYSQL_VOLUME" \
   PAWCYCLE_EDGE_NETWORK="pawcycle-production-edge" \
   PAWCYCLE_APP_NETWORK="pawcycle-production-app" \
-  PAWCYCLE_DATA_NETWORK="pawcycle-production-data" \
   PAWCYCLE_DATABASE_EGRESS_NETWORK="pawcycle-production-database-egress" \
   PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
   PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
@@ -407,7 +378,6 @@ preflight_release() {
   local record="$PAWCYCLE_STATE_DIR/${sha}.images"
   local backend_digest
   local frontend_digest
-  local mysql_digest
   local proxy_digest
   local candidate_record="${record}.tmp"
 
@@ -418,7 +388,6 @@ preflight_release() {
   export ACTIVE_SHA
 
   compose config --quiet
-  mysql_digest="$(base_image_digest "$MYSQL_IMAGE")"
   proxy_digest="$(base_image_digest "$PROXY_IMAGE")"
   backend_digest="$(image_digest "$BACKEND_IMAGE" "$sha")"
   frontend_digest="$(image_digest "$FRONTEND_IMAGE" "$sha")"
@@ -428,7 +397,6 @@ preflight_release() {
       printf 'RELEASE_SHA=%s\n' "$sha"
       printf 'BACKEND_DIGEST=%s\n' "$backend_digest"
       printf 'FRONTEND_DIGEST=%s\n' "$frontend_digest"
-      printf 'MYSQL_DIGEST=%s\n' "$mysql_digest"
       printf 'PROXY_DIGEST=%s\n' "$proxy_digest"
     } > "$candidate_record"
     chmod 600 "$candidate_record"
@@ -446,7 +414,6 @@ preflight_release() {
 
   printf 'Verified Backend digest: %s\n' "$backend_digest"
   printf 'Verified Frontend digest: %s\n' "$frontend_digest"
-  printf 'Verified MySQL digest: %s\n' "$mysql_digest"
   printf 'Verified Nginx digest: %s\n' "$proxy_digest"
 }
 
@@ -577,7 +544,7 @@ require_no_migration_boundary_rollback() {
   local target_sha="$2"
 
   if migration_bundle_changed "$current_sha" "$target_sha"; then
-    die "rollback crosses a database migration boundary; pre-migration release activation is blocked and MySQL was preserved"
+    die "rollback crosses a database migration boundary; pre-migration release activation is blocked and the managed database was not modified by the Application release lifecycle"
   fi
 }
 
@@ -590,7 +557,7 @@ validate_current_release_for_contract_adoption() {
   export ACTIVE_SHA
   printf 'Preflighting currently running release before control contract adoption: %s\n' "$current_release_sha"
   preflight_release "$current_release_sha"
-  for service in mysql backend frontend proxy; do
+  for service in backend frontend proxy; do
     wait_healthy "$service" || die "running $service is not healthy during control contract adoption"
   done
   verify_running_release || die "running release identity does not match current-sha during control contract adoption"
@@ -778,18 +745,22 @@ verify_running_release() {
   local container_id
   local configured_reference
   local revision
-  local mysql_volume
+  local backend_id
+  local -a container_ids
 
-  for service in mysql backend frontend proxy; do
+  for service in backend frontend proxy; do
     case "$service" in
-      mysql) expected_reference="$MYSQL_IMAGE" ;;
       backend) expected_reference="${BACKEND_IMAGE}:${ACTIVE_SHA}" ;;
       frontend) expected_reference="${FRONTEND_IMAGE}:${ACTIVE_SHA}" ;;
       proxy) expected_reference="$PROXY_IMAGE" ;;
     esac
 
-    container_id="$(compose ps --quiet "$service")"
-    [[ -n "$container_id" ]] || return 1
+    mapfile -t container_ids < <(compose ps --quiet "$service")
+    [[ "${#container_ids[@]}" == 1 && -n "${container_ids[0]}" ]] || {
+      printf '%s must have exactly one expected container\n' "$service" >&2
+      return 1
+    }
+    container_id="${container_ids[0]}"
     configured_reference="$(docker inspect --format '{{ .Config.Image }}' "$container_id")"
     [[ "$configured_reference" == "$expected_reference" ]] || {
       printf '%s is not running the requested immutable image\n' "$service" >&2
@@ -801,14 +772,12 @@ verify_running_release() {
         printf '%s revision label does not match the requested release\n' "$service" >&2
         return 1
       }
-    elif [[ "$service" == "mysql" ]]; then
-      mysql_volume="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container_id")"
-      [[ "$mysql_volume" == "$ACTIVE_MYSQL_VOLUME" ]] || {
-        printf 'mysql is not using the active MySQL volume state\n' >&2
-        return 1
-      }
     fi
   done
+
+  backend_id="$(compose ps --quiet backend)"
+  [[ "$(docker inspect --format '{{ if index .NetworkSettings.Networks "pawcycle-production-database-egress" }}attached{{ end }}' "$backend_id")" == attached ]] \
+    || { printf 'backend is not attached to the database-egress network\n' >&2; return 1; }
 }
 
 activate_release() {
@@ -817,8 +786,8 @@ activate_release() {
 
   ACTIVE_SHA="$sha"
   export ACTIVE_SHA
-  compose up --detach --pull never --remove-orphans mysql backend frontend || return 1
-  for service in mysql backend frontend; do
+  compose up --detach --pull never --remove-orphans backend frontend || return 1
+  for service in backend frontend; do
     wait_healthy "$service" || return 1
   done
   compose up --detach --pull never --no-deps --force-recreate proxy || return 1
@@ -837,7 +806,6 @@ activate_backend_runtime() {
   export ACTIVE_SHA
   compose up --detach --pull never --no-deps --force-recreate backend || return 1
   wait_healthy backend || return 1
-  wait_healthy mysql || return 1
   wait_healthy frontend || return 1
   compose up --detach --pull never --no-deps --force-recreate proxy || return 1
   wait_healthy proxy || return 1
@@ -919,11 +887,9 @@ initialize_release_context() {
   validate_sha "$TARGET_SHA"
   prepare_release_context
   acquire_release_lock
-  load_active_mysql_volume
 }
 
 initialize_read_only_release_context() {
   validate_sha "$TARGET_SHA"
   prepare_read_only_release_context
-  load_active_mysql_volume
 }

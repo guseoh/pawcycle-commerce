@@ -269,6 +269,10 @@ jobs:
         run: |
           bash -n \
             infra/production/release-common.sh \
+            infra/production/materialize-runtime-env.sh \
+            infra/production/production-command-dispatch.sh \
+            infra/production/invoke-oci-production-command.sh \
+            infra/production/oci-db-backup-restore.sh \
             infra/production/materialize-ssm-env.sh \
             infra/production/rds-read-only-preflight.sh \
             infra/production/rds-transition-gate.sh \
@@ -290,12 +294,17 @@ jobs:
             infra/production/import-demo-catalog.sh \
             infra/production/test-demo-catalog-import.sh \
             infra/production/test-production-scripts.sh \
+            infra/production/test-materialize-runtime-env.sh \
+            infra/production/test-production-command-dispatch.sh \
+            infra/production/test-invoke-oci-production-command.sh \
+            infra/production/test-oci-db-backup-restore.sh \
             infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
             infra/production/test-rds-readiness.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
+            infra/production/test-subscription-automation-preflight-datasource.sh \
             infra/production/test-db-backup-restore.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
@@ -303,8 +312,12 @@ jobs:
           python infra/production/validate-production-contracts.py
           python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
+          bash infra/production/test-materialize-runtime-env.sh
+          bash infra/production/test-production-command-dispatch.sh
+          bash infra/production/test-invoke-oci-production-command.sh
+          bash infra/production/test-oci-db-backup-restore.sh
+          bash infra/production/test-subscription-automation-preflight-datasource.sh
           bash infra/production/test-demo-catalog-import.sh
-          bash infra/production/test-rds-readiness.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-arm64-images.sh
@@ -322,7 +335,7 @@ jobs:
 
       - name: Validate production backup and restore lifecycle
         if: matrix.lane == 'recovery'
-        run: bash infra/production/test-db-backup-restore.sh
+        run: bash infra/production/test-oci-db-backup-restore.sh
 
       - name: Validate production auth smoke member lifecycle
         if: matrix.lane == 'auth-lifecycle'

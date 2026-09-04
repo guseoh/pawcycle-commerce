@@ -18,7 +18,7 @@ VALIDATION_WORKFLOW = ROOT / ".github" / "workflows" / "validate-conventions.yml
 DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "production-deploy.yml"
 DEPLOY_SSM_DOCUMENT = PRODUCTION / "pawcycle-production-deploy-ssm-document.json"
 SHA = "0" * 40
-MYSQL_IMAGE = "mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+MYSQL_IMAGE = "mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6"
 PROXY_IMAGE = "nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 CERTBOT_IMAGE = "certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
 
@@ -111,26 +111,24 @@ def validate_preflight_projection_contract(source: str) -> None:
 def load_compose_config() -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="ops011-compose-") as temporary:
         temporary_path = Path(temporary)
-        mysql_env = temporary_path / "mysql.env"
         backend_env = temporary_path / "backend.env"
-        mysql_env.write_text(
-            "MYSQL_DATABASE=ops010\n"
-            "MYSQL_USER=ops010\n"
-            "MYSQL_PASSWORD=not-sensitive\n"
-            "MYSQL_ROOT_PASSWORD=not-sensitive-root\n",
-            encoding="utf-8",
-        )
         backend_env.write_text(
-            "SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ops010\n"
-            "SPRING_DATASOURCE_USERNAME=ops010\n"
-            "SPRING_DATASOURCE_PASSWORD=not-sensitive\n",
+            "PAWCYCLE_DATASOURCE_HOST='db.example.com'\n"
+            "PAWCYCLE_DATASOURCE_PORT='3306'\n"
+            "PAWCYCLE_DATASOURCE_DATABASE='ops010'\n"
+            "PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'\n"
+            "SPRING_DATASOURCE_URL='jdbc:mysql://db.example.com:3306/ops010?sslMode=REQUIRED&serverTimezone=UTC'\n"
+            "SPRING_DATASOURCE_USERNAME='ops010'\n"
+            "SPRING_DATASOURCE_PASSWORD='not-sensitive'\n"
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'\n"
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='7'\n"
+            "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='12345'\n",
             encoding="utf-8",
         )
         environment = os.environ | {
             "RELEASE_SHA": SHA,
             "BACKEND_IMAGE": "ghcr.io/example/pawcycle-commerce-backend",
             "FRONTEND_IMAGE": "ghcr.io/example/pawcycle-commerce-frontend",
-            "PAWCYCLE_MYSQL_ENV_FILE": str(mysql_env),
             "PAWCYCLE_BACKEND_ENV_FILE": str(backend_env),
             "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED": "false",
             "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE": "7",
@@ -159,9 +157,9 @@ def load_compose_config() -> dict[str, object]:
 def validate_compose() -> None:
     config = load_compose_config()
     services = config["services"]
-    require(set(services) == {"mysql", "backend", "frontend", "proxy"}, "unexpected Compose services")
+    require(set(services) == {"backend", "frontend", "proxy"}, "unexpected Compose services")
 
-    for internal_service in ("mysql", "backend", "frontend"):
+    for internal_service in ("backend", "frontend"):
         require(not services[internal_service].get("ports"), f"{internal_service} must not publish host ports")
 
     proxy_ports = services["proxy"].get("ports", [])
@@ -173,7 +171,6 @@ def validate_compose() -> None:
 
     require(services["backend"]["image"].endswith(f":{SHA}"), "Backend image must use RELEASE_SHA")
     require(services["frontend"]["image"].endswith(f":{SHA}"), "Frontend image must use RELEASE_SHA")
-    require(services["mysql"]["image"] == MYSQL_IMAGE, "MySQL image must use the approved immutable digest")
     require(services["proxy"]["image"] == PROXY_IMAGE, "Nginx image must use the approved immutable digest")
     require(
         services["backend"].get("environment", {}).get("SESSION_COOKIE_SECURE") == "true",
@@ -205,7 +202,7 @@ def validate_compose() -> None:
     require(total_cpus <= 2.0, "combined CPU limits exceed t3.small capacity")
     require(total_memory <= 1664 * 1024 * 1024, "combined memory limits exceed the approved conservative budget")
 
-    require(config["volumes"]["mysql-data"]["name"] == "pawcycle-production-mysql-data", "stable MySQL volume name is required")
+    require("mysql-data" not in config.get("volumes", {}), "Production Compose must not define a MySQL volume")
     require(
         config["volumes"]["certbot-webroot"]["name"] == "pawcycle-production-certbot-webroot",
         "stable Certbot webroot volume name is required",
@@ -219,7 +216,11 @@ def validate_compose() -> None:
     require(proxy_mounts["/etc/letsencrypt"].get("read_only") is True, "Nginx certificate volume must be read-only")
     require(config["networks"]["edge"].get("internal") is not True, "proxy edge network must accept the published port")
     require(config["networks"]["app"].get("internal") is True, "app network must be internal")
-    require(config["networks"]["data"].get("internal") is True, "data network must be internal")
+    require("data" not in config.get("networks", {}), "Production Compose must not define the data network")
+    require("database-egress" in config["networks"] and config["networks"]["database-egress"].get("internal") is not True, "database-egress network must be an external bridge")
+    require(set(services["backend"].get("networks", {})) == {"app", "database-egress"}, "Backend network contract is invalid")
+    require(set(services["frontend"].get("networks", {})) == {"app"}, "Frontend network contract is invalid")
+    require(set(services["proxy"].get("networks", {})) == {"edge", "app"}, "Proxy network contract is invalid")
 
 
 def validate_workflow() -> None:
@@ -280,8 +281,25 @@ def validate_workflow() -> None:
         "Repository Validation must execute the production Compose lifecycle test",
     )
     require(
-        "bash infra/production/test-db-backup-restore.sh" in validation_workflow,
-        "Repository Validation must execute the isolated backup and restore lifecycle test",
+        all(
+            path in validation_workflow
+            for path in (
+                "infra/production/materialize-runtime-env.sh",
+                "infra/production/production-command-dispatch.sh",
+                "infra/production/invoke-oci-production-command.sh",
+                "infra/production/oci-db-backup-restore.sh",
+                "infra/production/test-materialize-runtime-env.sh",
+                "infra/production/test-production-command-dispatch.sh",
+                "infra/production/test-invoke-oci-production-command.sh",
+                "infra/production/test-oci-db-backup-restore.sh",
+                "infra/production/test-subscription-automation-preflight-datasource.sh",
+            )
+        ),
+        "Repository Validation must syntax-check and execute the Stage 2 OCI runtime fake tests",
+    )
+    require(
+        "infra/production/test-db-backup-restore.sh" in validation_workflow,
+        "Repository Validation must retain syntax coverage for the legacy backup and restore lifecycle test",
     )
     require(
         "infra/production/verify-production-auth-session-smoke.sh" in validation_workflow
@@ -1493,20 +1511,103 @@ def validate_ops_db_002() -> None:
     require("rds-read-only-preflight.sh" in workflow and "rds-transition-gate.sh" in workflow and "test-rds-readiness.sh" in workflow and "py_compile infra/production/validate-production-contracts.py" in workflow, "workflow must validate OPS-DB-002 fixture contracts")
 
 
+def validate_stage2_contracts() -> None:
+    compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    materialize = (PRODUCTION / "materialize-runtime-env.sh").read_text(encoding="utf-8")
+    materialize_test = (PRODUCTION / "test-materialize-runtime-env.sh").read_text(encoding="utf-8")
+    common = (PRODUCTION / "release-common.sh").read_text(encoding="utf-8")
+    deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
+    rollback = (PRODUCTION / "rollback.sh").read_text(encoding="utf-8")
+    helpers = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in (
+            PRODUCTION / "subscription-automation-control.sh",
+            PRODUCTION / "subscription-automation-preflight.sh",
+            PRODUCTION / "import-demo-catalog.sh",
+            PRODUCTION / "create-production-auth-smoke-member.sh",
+            PRODUCTION / "diagnose-backend-state.sh",
+        )
+    }
+    dispatcher = (PRODUCTION / "production-command-dispatch.sh").read_text(encoding="utf-8")
+    dispatcher_test = (PRODUCTION / "test-production-command-dispatch.sh").read_text(encoding="utf-8")
+    invoke = (PRODUCTION / "invoke-oci-production-command.sh").read_text(encoding="utf-8")
+    invoke_test = (PRODUCTION / "test-invoke-oci-production-command.sh").read_text(encoding="utf-8")
+    backup = (PRODUCTION / "oci-db-backup-restore.sh").read_text(encoding="utf-8")
+    backup_test = (PRODUCTION / "test-oci-db-backup-restore.sh").read_text(encoding="utf-8")
+    active_lifecycle = "\n".join((common, deploy, rollback, *helpers.values()))
+
+    require(set(re.findall(r"^  ([a-z][a-z0-9-]+):$", compose, re.MULTILINE)) >= {"backend", "frontend", "proxy"}, "Stage 2 Compose services are incomplete")
+    require("  mysql:" not in compose and "mysql-data" not in compose and "  data:" not in compose, "Stage 2 Compose must not own a local MySQL service, volume, or data network")
+    require("database-egress:" in compose and "PAWCYCLE_DATASOURCE_HOST" not in compose, "Compose must use the protected external database runtime bundle")
+    require(re.search(r"backend:.*?networks:\s*\n(?:\s+- .*\n){2}", compose, re.DOTALL) is not None, "Backend must have two runtime networks")
+
+    required_runtime_keys = {
+        "PAWCYCLE_DATASOURCE_HOST", "PAWCYCLE_DATASOURCE_PORT", "PAWCYCLE_DATASOURCE_DATABASE",
+        "PAWCYCLE_DATASOURCE_SSL_MODE", "SPRING_DATASOURCE_URL", "SPRING_DATASOURCE_USERNAME",
+        "SPRING_DATASOURCE_PASSWORD", "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED",
+        "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE", "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS",
+    }
+    require(all(key in materialize for key in required_runtime_keys), "runtime materializer key contract is incomplete")
+    require("--source-file" in materialize and "--output-dir" in materialize and "--ssm-prefix" not in materialize and "aws " not in materialize, "OCI runtime materializer must be provider neutral")
+    require("set +x" in materialize and "eval" not in materialize and "source \"$SOURCE_FILE\"" not in materialize, "runtime source must be parsed without shell evaluation")
+    require("flock --nonblock" in materialize and "mv -Tf" in materialize and "mysql.env" not in materialize and "MYSQL_ROOT_PASSWORD" not in materialize, "runtime bundle atomic and secret boundaries are incomplete")
+    require(all(token in materialize_test for token in ("db.example.com", "10.20.30.40", "mysql", "localhost", "127.0.0.1", "8.8.8.8", "concurrent materialization")), "runtime materializer regression coverage is incomplete")
+
+    forbidden_active = ("active-mysql-volume", "PAWCYCLE_MYSQL_ENV_FILE", "PAWCYCLE_MYSQL_VOLUME", "MYSQL_DIGEST")
+    require(not any(token in active_lifecycle for token in forbidden_active), "Application lifecycle retains local MySQL ownership")
+    require(all(token in common for token in ("RELEASE_SHA=", "BACKEND_DIGEST=", "FRONTEND_DIGEST=", "PROXY_DIGEST=")), "release image state must use the four-field contract")
+    require("managed database was not modified by the Application release lifecycle" in deploy and "managed database was not modified by the Application release lifecycle" in rollback, "application failure boundary must preserve the managed database")
+    require("for service in backend frontend proxy" in common and "database-egress" in common and "exactly one expected container" in common, "running release verification must cover the three application services and egress")
+    require("compose up --detach --pull never --remove-orphans backend frontend" in common and "compose stop proxy frontend backend" in common, "application activation and stop order must exclude the database")
+
+    require(helpers["subscription-automation-preflight.sh"].count("DATABASE_PREFLIGHT_TARGET=\"EXTERNAL_MYSQL\"") == 1, "subscription preflight must use one external MySQL path")
+    require("pawcycle-production-database-egress" in helpers["subscription-automation-preflight.sh"] and "--defaults-extra-file=/run/pawcycle/mysql-client.cnf" in helpers["subscription-automation-preflight.sh"], "subscription preflight must use the egress network and option file")
+    require("MYSQL_PWD" not in helpers["subscription-automation-preflight.sh"] and "--password" not in helpers["subscription-automation-preflight.sh"], "subscription preflight must not expose a password through env or argv")
+    require(all("DATA_NETWORK=\"pawcycle-production-database-egress\"" in helpers[name] for name in ("import-demo-catalog.sh", "create-production-auth-smoke-member.sh")), "catalog and auth helpers must use database-egress")
+    require("external_tls_required" in helpers["diagnose-backend-state.sh"] and "database_runtime" in helpers["diagnose-backend-state.sh"] and "active-mysql-volume" not in helpers["diagnose-backend-state.sh"], "diagnostic runtime field must be external and non-sensitive")
+
+    require("CONTROL_DIR=\"/opt/pawcycle/control\"" in dispatcher and "STATE_DIR=\"/opt/pawcycle/state\"" in dispatcher, "dispatcher paths must be fixed")
+    require("[[ \"$EUID\" == 0 ]]" in dispatcher and "fetch --prune origin main" in dispatcher and "merge-base --is-ancestor" in dispatcher, "dispatcher validation gates are incomplete")
+    require("exec /usr/bin/env bash" in dispatcher and "checkout" not in dispatcher and "reset" not in dispatcher and "rebase" not in dispatcher, "dispatcher must exec the bounded deploy path without history mutation")
+    require("Production command dispatcher" in dispatcher_test, "dispatcher fake test is missing")
+
+    require("command create" in invoke and "command-execution get" in invoke and "TEXT" in invoke and "textSha256" in invoke, "OCI Run Command payload contract is incomplete")
+    require("/opt/pawcycle/control/infra/production/production-command-dispatch.sh" in invoke and "sudo -n /usr/bin/env bash" in invoke, "OCI wrapper must invoke only the fixed dispatcher")
+    require(all(state in invoke for state in ("ACCEPTED", "IN_PROGRESS", "SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELED")), "OCI execution lifecycle is incomplete")
+    require("if [[ \"$OPERATION\" == deploy ]]; then run_command preflight; fi" in invoke and "malformed OCI command execution response" in invoke, "OCI deploy sequencing and fail-closed parsing are incomplete")
+    require("OCI Run Command wrapper fake lifecycle tests passed" in invoke_test, "OCI Run Command fake test is missing")
+
+    require(MYSQL_IMAGE in backup and "--auth instance_principal" in backup and "--no-overwrite" in backup and "--verify-checksum" in backup, "OCI backup must use the pinned multi-arch MySQL tool and immutable Object Storage uploads")
+    require(
+        backup.index('upload_object "$dump"') < backup.index('upload_object "$manifest"') < backup.index('upload_object "$complete"'),
+        "OCI backup completion marker must be uploaded last",
+    )
+    require("--network none" in backup and "restore-production" not in backup and "cutover" not in backup, "OCI restore verification must be isolated and non-cutover")
+    require(
+        all(
+            marker in backup_test
+            for marker in (
+                "OCI Object Storage backup, restore-verify, cleanup",
+                "object already exists was reported as success",
+                "hash mismatch was reported as success",
+                "missing completion was reported as success",
+                "cleanup failure was reported as success",
+            )
+        ),
+        "OCI backup fake lifecycle test is missing",
+    )
+
+    require((PRODUCTION / "materialize-ssm-env.sh").exists() and (PRODUCTION / "db-backup-restore.sh").exists() and (PRODUCTION / "production-db-restore.sh").exists() and DEPLOY_WORKFLOW.exists() and DEPLOY_SSM_DOCUMENT.exists(), "AWS legacy artifacts must remain for Stage 3 retirement")
+
+
 def main() -> None:
     validate_compose()
     validate_workflow()
     validate_oidc_deploy_contract()
-    validate_scripts()
+    validate_stage2_contracts()
     validate_nginx()
-    validate_backup_restore()
-    validate_actual_production_restore()
-    validate_ops_db_002()
-    print("OPS-013 production backup and restore contracts validated")
-    print("OPS-025 actual production DB restore contracts validated")
-    print("OPS-AUTO-003 OIDC and restricted SSM deploy contracts validated")
-    print("OPS-AUTO-005 Production Deploy boundary approval contracts validated")
-    print("OPS-DB-002 RDS readiness contracts validated")
+    print("OPS-OCI-002 Stage 2 OCI production runtime contracts validated")
+    print("OPS-AUTO-003 OIDC and restricted SSM deploy legacy contracts retained")
 
 
 if __name__ == "__main__":
