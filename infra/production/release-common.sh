@@ -31,10 +31,6 @@ CONTROL_WORKTREE_PATHS=(
   ':(top)infra/production/rollback.sh'
   ':(top)infra/production/subscription-automation-control.sh'
   ':(top)infra/production/subscription-automation-preflight.sh'
-  ':(top)infra/production/production-db-restore.sh'
-  ':(top)infra/production/materialize-ssm-env.sh'
-  ':(top)infra/production/rds-read-only-preflight.sh'
-  ':(top)infra/production/rds-transition-gate.sh'
   ':(top)infra/production/materialize-runtime-env.sh'
   ':(top)infra/production/production-command-dispatch.sh'
 )

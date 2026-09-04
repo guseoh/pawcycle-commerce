@@ -25,7 +25,7 @@ Email과 password는 저장소, 명령 인자, 환경 변수, shell history, com
 3. 현재 release가 OPS-019를 포함하며 실행 중인 Backend의 tag·OCI revision·image ID·health가 승인 SHA와 기록된 digest에 일치하는지 확인한다.
 4. `/opt/pawcycle/runtime`과 `/opt/pawcycle/state`가 non-symlink directory, mode `700`인지 확인한다.
 5. `current-sha`, `<sha>.images`, runtime `backend.env`와 `.complete`가 regular non-symlink file, mode `600`인지 확인한다.
-6. Production MySQL이 running·healthy이고 `pawcycle-production-data` internal network에 연결됐는지 확인한다.
+6. Production external MySQL이 running·healthy이고 `pawcycle-production-database-egress` network contract에 연결됐는지 확인한다.
 7. `pawcycle-ops020-auth-smoke-member` Container가 남아 있지 않은지 확인한다.
 8. 운영 email과 강한 password는 사용자가 그 자리에서 정하며 다른 화면·문서·clipboard에 복제하지 않는다.
 

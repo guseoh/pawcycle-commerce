@@ -7,7 +7,7 @@
 - 실행 구분: 저장소 변경
 - 역할: Platform/SRE
 
-이 Runbook은 SUB-AUTO-001의 V9~V11 Application을 Scheduler OFF로 배포한 뒤, 별도 승인 입력으로 Production Scheduler를 활성화·관찰·중단하는 절차다. 저장소 준비만 완료했으며 Production, AWS, 운영 DB, Secret, restore는 실행하지 않았다.
+이 Runbook은 SUB-AUTO-001의 V9~V11 Application을 Scheduler OFF로 배포한 뒤, 별도 승인 입력으로 OCI Production Scheduler를 활성화·관찰·중단하는 절차다. 저장소 준비만 완료했으며 Production, 운영 DB, Secret, restore는 실행하지 않았다. 상태는 **Accepted — Repository Readiness**이며 **Production Verified가 아니다**.
 
 실제 실행은 별도 고위험 사용자 승인이 필요하다. Secret과 운영 식별값은 저장소·채팅·PR·명령 출력에 기록하지 않는다. batch size와 fixed delay는 측정·승인 없이 권장값을 만들지 않고 사용자가 승인한 명시값만 사용한다.
 
@@ -18,7 +18,7 @@
 - Scheduler 활성화는 현재 Application Release를 바꾸지 않고 Backend runtime만 다시 생성하는 별도 command다.
 - 현재 Release와 target Release의 `backend/src/main/resources/db/migration/**`가 다르면 schema boundary다. target 활성화 실패 시 이전 Release 자동복귀를 하지 않고 Application을 정지하며, `rollback.sh`도 pre-migration Release를 거부한다.
 - `Production Deploy`에서 migration bundle이 달라지면 target SHA와 정확히 같은 `approved_migration_target_sha`가 필요하다. Release contract도 바뀐 경우 clean detached Control SHA 승인까지 포함한 절차는 [OPS-010 Release contract·Flyway boundary](OPS-010-production-single-release.md#release-contractflyway-boundary의-production-deploy-승인-경로)를 따른다.
-- 모든 deploy·rollback·activation은 protected `active-mysql-volume`을 유지한다. `down --volumes`, volume 삭제, down migration, Flyway history 수정·repair, DROP, 직접 데이터 수정과 자동 재시도를 하지 않는다.
+- 모든 deploy·rollback·activation은 승인된 외부 MySQL endpoint와 logical-backup 경계를 유지한다. DB instance·backup을 삭제하거나 down migration, Flyway history 수정·repair, DROP, 직접 데이터 수정과 자동 재시도를 하지 않는다.
 
 중단 중에는 주문 자동 생성이 지연될 수 있다. 잘못 활성화하면 duplicate Order, Schedule 무Order advance, snapshot/cardinality 불일치 또는 반복 failure로 이어질 수 있으므로 아래 aggregate gate를 모두 통과하기 전에는 활성화하지 않는다.
 
@@ -32,7 +32,7 @@
 
 ## 1. Scheduler OFF runtime 준비
 
-기존 승인 SSM 경로에 아래 세 leaf를 명시한다. 실제 prefix와 값은 제한된 운영 기록에서만 다룬다.
+승인된 OCI runtime source에 아래 세 leaf를 명시한다. 실제 source 식별값과 값은 제한된 운영 기록에서만 다룬다.
 
 ```text
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false
@@ -40,7 +40,7 @@ PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=<사용자 승인 양의 정수>
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=<사용자 승인 양의 정수>
 ```
 
-기존 `materialize-ssm-env.sh`로 runtime bundle을 다시 만든다. Script는 값 누락·중복·잘못된 boolean·0 이하 수를 거부하고 실제 값을 출력하지 않는다. 생성된 `backend.env`를 출력하지 않는다.
+기존 `materialize-runtime-env.sh`로 runtime bundle을 다시 만든다. Script는 값 누락·중복·잘못된 boolean·0 이하 수를 거부하고 실제 값을 출력하지 않는다. 생성된 `backend.env`를 출력하지 않는다.
 
 ## 2. V9~V11 Application 배포
 
@@ -55,7 +55,7 @@ sudo infra/production/deploy.sh \
   --state-dir /opt/pawcycle/state
 ```
 
-같은 migration bundle의 target 실패는 기존 healthy Release 자동복귀를 사용할 수 있다. migration bundle이 다르면 Backend 기동 중 Flyway가 일부 DDL을 적용했을 가능성을 배제할 수 없으므로 자동복귀를 차단하고 Backend·Frontend·Proxy를 정지한다. `current-sha`를 target으로 기록하지 않고 MySQL volume을 보존한다.
+같은 migration bundle의 target 실패는 기존 healthy Release 자동복귀를 사용할 수 있다. migration bundle이 다르면 Backend 기동 중 Flyway가 일부 DDL을 적용했을 가능성을 배제할 수 없으므로 자동복귀를 차단하고 Backend·Frontend·Proxy를 정지한다. `current-sha`를 target으로 기록하지 않고 외부 MySQL instance와 logical-backup 경계를 보존한다.
 
 ## 3. Read-only Production preflight
 
@@ -86,7 +86,7 @@ PASS에는 다음이 포함된다.
 
 OFF preflight의 candidate count와 oldest due date를 사용자가 검토한다. 예상 밖 규모·날짜면 원인을 확인할 때까지 중단한다. 승인한 최대 후보 수를 `MAX_DUE_CANDIDATES`로 고정한다. 이 값은 성능 최적값이나 alert threshold가 아니다.
 
-승인 SSM runtime을 `PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=true`로 다시 materialize한다. batch size와 fixed delay도 같은 승인 명시값을 유지한다. 아직 실행 Backend는 OFF이고 bundle만 ON이어야 한다.
+승인된 OCI runtime source를 `PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=true`로 다시 materialize한다. batch size와 fixed delay도 같은 승인 명시값을 유지한다. 아직 실행 Backend는 OFF이고 bundle만 ON이어야 한다.
 
 ```bash
 sudo infra/production/subscription-automation-control.sh activate \
@@ -126,7 +126,7 @@ candidate count, metric과 anomaly aggregate만 보존한다. 원시 row, 식별
 - Flyway V9~V11 실패·부분 적용·history 이상
 - Backend health, API smoke 또는 HTTPS 회귀
 
-승인 SSM runtime의 enabled 값을 `false`로 materialize한 뒤 실행한다.
+승인된 OCI runtime source의 enabled 값을 `false`로 materialize한 뒤 실행한다.
 
 ```bash
 sudo infra/production/subscription-automation-control.sh deactivate \
@@ -136,7 +136,7 @@ sudo infra/production/subscription-automation-control.sh deactivate \
   --state-dir /opt/pawcycle/state
 ```
 
-deactivate는 current Release·control·보호된 MySQL volume과 OFF runtime만 먼저 확인하고, Backend를 OFF runtime으로 재생성한 뒤 full postflight를 실행한다. postflight anomaly·schema·metric 실패는 deactivate를 막지 않으며 Scheduler는 OFF로 남는다. Backend 재생성의 health/smoke 실패는 Backend를 정지해 Scheduler가 계속 실행되지 않게 한다. state 파일 수동 편집이나 실행 중 env 덮어쓰기로 gate를 우회하지 않는다.
+deactivate는 current Release·control·승인된 외부 MySQL endpoint와 OFF runtime만 먼저 확인하고, Backend를 OFF runtime으로 재생성한 뒤 full postflight를 실행한다. postflight anomaly·schema·metric 실패는 deactivate를 막지 않으며 Scheduler는 OFF로 남는다. Backend 재생성의 health/smoke 실패는 Backend를 정지해 Scheduler가 계속 실행되지 않게 한다. state 파일 수동 편집이나 실행 중 env 덮어쓰기로 gate를 우회하지 않는다.
 
 ## migration 실패·부분 적용 경계
 
@@ -147,7 +147,7 @@ V9, V10 또는 V11 실패·부분 적용은 Scheduler OFF와 Application 정지 
 1. 원인과 non-transactional DDL 상태를 확인한 forward-fix Release 준비
 2. 기존 OPS-013 검증 backup을 사용하는 OPS-025 restore 절차
 
-검증된 복구 선택지는 forward-fix 또는 기존 OPS-025 restore뿐이다. 두 선택 모두 Scheduler OFF와 MySQL volume 보존을 유지하고, 서비스 재기동은 MySQL health 확인 뒤 Backend·Frontend health 확인, 마지막 Proxy traffic 허용 순서로만 진행한다. 실제 downtime/RTO는 현재 증거가 없어 미확정이며, 별도 승인된 실제 실행에서 측정 후 기록한다. Flyway repair는 자동 복구 절차가 아니며 별도 판단 전까지 금지 경계다. 데이터 손실 가능성 때문에 forward-fix 또는 restore 실행은 별도 사용자 승인이 필요하다.
+검증된 복구 선택지는 forward-fix 또는 기존 OPS-025 restore뿐이다. 두 선택 모두 Scheduler OFF와 외부 MySQL instance 보존을 유지하고, 서비스 재기동은 DB health 확인 뒤 Backend·Frontend health 확인, 마지막 Proxy traffic 허용 순서로만 진행한다. 실제 downtime/RTO는 현재 증거가 없어 미확정이며, 별도 승인된 실제 실행에서 측정 후 기록한다. Flyway repair는 자동 복구 절차가 아니며 별도 판단 전까지 금지 경계다. 데이터 손실 가능성 때문에 forward-fix 또는 restore 실행은 별도 사용자 승인이 필요하다.
 
 OPS-025는 별도 candidate named volume에 복원·검증하고 source volume을 보존하는 고위험 실제 운영 절차다. 이 Runbook이나 `rollback.sh`가 restore를 대신하지 않는다. backup/restore 식별값, volume 실제 이름과 row count는 저장소 증거에 남기지 않는다.
 

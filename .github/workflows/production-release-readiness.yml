@@ -101,5 +101,6 @@ if missing:
             echo "- Frontend image: ready"
             echo
             echo "Readiness verification is not a deployment success signal."
-            echo "The existing OPS-010 manual deployment procedure is the next step."
+            echo "The next step is an operator-approved OCI Run Command through invoke-oci-production-command.sh."
+            echo "GitHub main push does not automatically deploy Production."
           } >> "$GITHUB_STEP_SUMMARY"

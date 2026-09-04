@@ -1,5 +1,7 @@
 # OPS-013 운영 DB 논리 백업·격리 복원 Runbook
 
+> Superseded by `OPS-OCI-002-production-db-backup-restore.md` for the active OCI runtime. 본문은 historical evidence로 보존한다.
+
 ## 목적
 
 운영 MySQL application DB를 중지하거나 변경하지 않고 압축 논리 dump를 비공개 S3에 저장한다. dump를 production network와 분리된 임시 MySQL·named volume에 먼저 복원해 같은 snapshot에서 schema, Flyway history와 핵심 table count manifest를 만들고, 이후 독립 복원 검증에서도 일치하는지 확인한다.

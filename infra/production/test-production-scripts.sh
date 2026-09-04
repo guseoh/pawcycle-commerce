@@ -23,7 +23,7 @@ chmod 600 "$SOURCE_FILE"
 "$SCRIPT_DIR/materialize-runtime-env.sh" --source-file "$SOURCE_FILE" --output-dir "$RUNTIME_DIR" >/dev/null
 
 BUNDLE="$(readlink -f "$RUNTIME_DIR/current")"
-[[ "$(find "$BUNDLE" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" == '.complete backend.env ' ]]
+[[ "$(find "$BUNDLE" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" == '.complete backend.env ' ]]
 [[ "$(stat -c '%a' "$RUNTIME_DIR")" == 700 ]]
 [[ "$(stat -c '%a' "$BUNDLE")" == 700 ]]
 [[ "$(stat -c '%a' "$BUNDLE/backend.env")" == 600 ]]

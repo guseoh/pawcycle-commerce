@@ -41,7 +41,7 @@ BUNDLE="$(readlink -f "$OUTPUT_DIR/current")"
 [[ "$(stat -c '%a' "$BUNDLE/backend.env")" == 600 ]]
 [[ "$(stat -c '%a' "$BUNDLE/.complete")" == 600 ]]
 [[ "$(stat -c '%a' "$OUTPUT_DIR/.materialize.lock")" == 600 ]]
-[[ "$(find "$BUNDLE" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" == '.complete backend.env ' ]]
+[[ "$(find "$BUNDLE" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" == '.complete backend.env ' ]]
 grep -Fxq "PAWCYCLE_DATASOURCE_HOST='db.example.com'" "$BUNDLE/backend.env"
 grep -Fxq "PAWCYCLE_DATASOURCE_PORT='3306'" "$BUNDLE/backend.env"
 grep -Fxq "PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'" "$BUNDLE/backend.env"

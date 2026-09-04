@@ -1,5 +1,7 @@
 # OPS-025 Actual Production DB 논리 복원 Runbook
 
+> Superseded by `OPS-OCI-002-production-db-backup-restore.md`. Managed Production DB restore/cutover는 현재 자동화 경계 밖이며 본문은 historical evidence로 보존한다.
+
 ## 상태와 범위
 
 - 상태: 저장소 계약 준비 완료 후 별도 사용자 실행 승인 대기

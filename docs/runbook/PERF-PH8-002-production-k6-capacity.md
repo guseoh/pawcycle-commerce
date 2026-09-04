@@ -1,5 +1,7 @@
 # PERF-PH8-002 deployed Production k6 capacity
 
+> **Historical AWS procedure — superseded for the active runtime by `docs/adr/ARCH-016-oci-production-runtime-boundary.md`.** The EC2/RDS-specific observations below are retained as historical evidence and are not an OCI execution instruction. An OCI capacity procedure requires a separate approved update and measured target.
+
 이 Runbook은 외부 desktop load generator에서 Production public HTTPS의 `GET /api/products`만 단계적으로 측정하기 위한 저장소 준비 절차다. 실제 Production load 실행은 포함하지 않으며, 별도의 고위험 사용자 승인이 있어야만 실행한다. 기존 loopback-only local harness와 `run-capacity.sh`는 이 절차의 대상이 아니다.
 
 ## 실행 전 승인과 READY/NORMAL 확인
