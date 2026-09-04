@@ -14,6 +14,8 @@
 
 `backend.env`는 private IP/FQDN, port `3306`, database, JDBC URL, username/password, TLS `REQUIRED`를 제공한다. root/server credential을 Backend runtime에 섞지 않는다.
 
+`REQUIRED`는 Repository Readiness 단계의 encryption minimum이며 server certificate/hostname authentication을 Production Verified로 만들지 않는다. 실제 OCI managed DB credential connection 전에 endpoint와 certificate chain을 확인하고, 그 결과를 바탕으로 별도 승인된 `VERIFY_CA` 또는 `VERIFY_IDENTITY`와 trust material contract를 적용해야 한다. 이 Gate 전에는 Production execution을 시작하지 않는다.
+
 ## Backup
 
 ```bash
@@ -36,6 +38,8 @@ sudo bash /opt/pawcycle/control/infra/production/oci-db-backup-restore.sh restor
 ```
 
 completion → manifest → dump를 다운로드해 hash·size를 확인한다. 임시 MySQL은 named volume과 `network none`, host port 미공개, 제한된 read-only/tmpfs/security 경계로 시작한다. 복원 후 schema fingerprint, Flyway fingerprint와 `members/products/skus/subscriptions` core table query를 확인한다.
+
+Source core-table count는 별도 query connection이 `mysqldump --single-transaction`과 동일한 snapshot임을 보장하지 않으므로 manifest에 기록하지 않는다. 대신 restore 쪽 count 결과 형식과 schema/Flyway·dump hash/size를 strict하게 검증한다.
 
 ## Cleanup and failure handling
 

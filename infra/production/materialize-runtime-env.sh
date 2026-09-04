@@ -91,7 +91,20 @@ validate_datasource_host() {
 }
 
 escape_single_quotes() {
-  printf '%s' "${1//\\'/\\\\'}"
+  local value="$1"
+  local escaped=""
+  local character
+
+  while [[ -n "$value" ]]; do
+    character="${value:0:1}"
+    value="${value:1}"
+    if [[ "$character" == "'" ]]; then
+      escaped+="\\'"
+    else
+      escaped+="$character"
+    fi
+  done
+  printf '%s' "$escaped"
 }
 
 write_setting() {
@@ -158,6 +171,7 @@ validate_datasource_host "$PAWCYCLE_DATASOURCE_HOST"
 [[ "$PAWCYCLE_DATASOURCE_SSL_MODE" == REQUIRED ]] || die "datasource SSL mode must be exactly REQUIRED"
 [[ "$PAWCYCLE_DATASOURCE_DATABASE" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "datasource database identifier is invalid"
 [[ -n "$SPRING_DATASOURCE_USERNAME" && "$SPRING_DATASOURCE_USERNAME" != *$'\n'* && "$SPRING_DATASOURCE_USERNAME" != *$'\r'* ]] || die "datasource username is invalid"
+[[ -n "$SPRING_DATASOURCE_PASSWORD" && "$SPRING_DATASOURCE_PASSWORD" != *$'\n'* && "$SPRING_DATASOURCE_PASSWORD" != *$'\r'* ]] || die "datasource password is invalid"
 [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" == true || "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED" == false ]] || die "subscription automation enabled value is invalid"
 [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || die "subscription automation batch size is invalid"
 [[ "$PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS" =~ ^[1-9][0-9]*$ ]] || die "subscription automation delay is invalid"

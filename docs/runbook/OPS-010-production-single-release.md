@@ -8,8 +8,9 @@
 
 ```text
 materialize-runtime-env.sh
-  -> production-command-dispatch.sh
   -> invoke-oci-production-command.sh
+  -> OCI Run Command
+  -> production-command-dispatch.sh
   -> deploy.sh / rollback.sh
 ```
 
@@ -48,6 +49,8 @@ sudo bash /opt/pawcycle/control/infra/production/invoke-oci-production-command.s
 ```
 
 `deploy` operation은 wrapper가 먼저 같은 target으로 preflight를 실행한 뒤 deploy를 실행한다. GitHub workflow에서 이 경로를 자동 호출하지 않는다.
+
+Datasource `sslMode=REQUIRED`는 Repository Readiness의 encryption minimum이다. 실제 OCI managed DB endpoint와 certificate chain을 확인하기 전에는 server certificate/hostname authentication이 Production Verified가 아니며, 그 확인 후 별도 승인된 `VERIFY_CA` 또는 `VERIFY_IDENTITY`와 trust material contract 없이는 Production execution을 시작하지 않는다.
 
 ## Rollback and failure handling
 

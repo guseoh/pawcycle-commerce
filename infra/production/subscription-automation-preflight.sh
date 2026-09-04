@@ -59,6 +59,7 @@ if [[ -n "$MAX_DUE_CANDIDATES" ]]; then
 fi
 
 prepare_read_only_release_context
+require_command timeout
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
 require_subscription_automation_mode "$EXPECTED_BUNDLE_ENABLED"
@@ -103,6 +104,8 @@ printf 'RUNNING_AUTOMATION_FIXED_DELAY_MS=%s\n' "$RUNNING_FIXED_DELAY_MS"
 
 DATABASE_PREFLIGHT_TARGET="EXTERNAL_MYSQL"
 MYSQL_TOOL_IMAGE="mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6"
+MYSQL_PREFLIGHT_TIMEOUT_SECONDS=60
+MYSQL_PREFLIGHT_KILL_GRACE_SECONDS=5
 MYSQL_OPTION_FILE=""
 cleanup_mysql_option_file() {
   if [[ -n "$MYSQL_OPTION_FILE" ]]; then
@@ -128,18 +131,26 @@ run_mysql_read_only() {
       printf 'ssl-mode=REQUIRED\n'
     } > "$MYSQL_OPTION_FILE"
   fi
-  if ! result="$(printf '%s\n' "$sql" | docker run --rm --pull never --interactive \
-    --network pawcycle-production-database-egress \
-    --read-only --tmpfs /tmp:size=16m,mode=1777 \
-    --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 128 \
-    --log-driver none --volume "$MYSQL_OPTION_FILE:/run/pawcycle/mysql-client.cnf:ro" \
-    --entrypoint mysql "$MYSQL_TOOL_IMAGE" \
-    --defaults-extra-file=/run/pawcycle/mysql-client.cnf \
-    --database="$PAWCYCLE_DATASOURCE_DATABASE" \
-    --batch --skip-column-names --raw 2>/dev/null)"; then
+  if result="$(printf '%s\n' "$sql" | timeout --signal=TERM \
+    --kill-after="${MYSQL_PREFLIGHT_KILL_GRACE_SECONDS}s" \
+    "${MYSQL_PREFLIGHT_TIMEOUT_SECONDS}s" \
+    docker run --rm --pull never --interactive \
+      --network pawcycle-production-database-egress \
+      --read-only --tmpfs /tmp:size=16m,mode=1777 \
+      --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 128 \
+      --log-driver none --volume "$MYSQL_OPTION_FILE:/run/pawcycle/mysql-client.cnf:ro" \
+      --entrypoint mysql "$MYSQL_TOOL_IMAGE" \
+      --defaults-extra-file=/run/pawcycle/mysql-client.cnf \
+      --database="$PAWCYCLE_DATASOURCE_DATABASE" \
+      --batch --skip-column-names --raw 2>/dev/null)"; then
+    printf '%s\n' "$result"
+  else
+    local status=$?
+    if [[ "$status" == 124 ]]; then
+      die "read-only external MySQL preflight timed out after ${MYSQL_PREFLIGHT_TIMEOUT_SECONDS}s; raw database output was suppressed"
+    fi
     die "read-only external MySQL preflight failed; raw database output was suppressed"
   fi
-  printf '%s\n' "$result"
 }
 
 SCHEMA_SQL=$(cat <<'SQL'

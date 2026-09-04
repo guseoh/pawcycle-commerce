@@ -33,11 +33,20 @@ elif [[ "$*" == *'command-execution get'* ]]; then
     nonzero) printf '{"data":{"lifecycle-state":"SUCCEEDED","content":{"exit-code":2,"text":"nonzero"}}}' ;;
     malformed) printf '{invalid' ;;
     unknown) printf '{"data":{"lifecycle-state":"PAUSED","content":{"exit-code":0,"text":"unknown"}}}' ;;
+    long_in_progress) if (( poll <= ${FAKE_IN_PROGRESS_POLLS:-61} )); then printf '{"data":{"lifecycle-state":"IN_PROGRESS","content":{"exit-code":0,"text":""}}}'; else printf '{"data":{"lifecycle-state":"SUCCEEDED","content":{"exit-code":0,"text":"fake command succeeded\\n"}}}'; fi ;;
+    always_in_progress) printf '{"data":{"lifecycle-state":"IN_PROGRESS","content":{"exit-code":0,"text":""}}}' ;;
+    exact_limit) python3 -c 'import json; print(json.dumps({"data":{"lifecycle-state":"SUCCEEDED","content":{"exit-code":0,"text":"x" * 12288}}}, separators=(",", ":")))' ;;
+    over_limit) python3 -c 'import json; print(json.dumps({"data":{"lifecycle-state":"SUCCEEDED","content":{"exit-code":0,"text":"x" * 12289}}}, separators=(",", ":")))' ;;
     *) if (( poll == 1 )); then printf '{"data":{"lifecycle-state":"ACCEPTED","content":{"exit-code":0,"text":""}}}'; elif (( poll == 2 )); then printf '{"data":{"lifecycle-state":"IN_PROGRESS","content":{"exit-code":0,"text":""}}}'; else printf '{"data":{"lifecycle-state":"SUCCEEDED","content":{"exit-code":0,"text":"fake command succeeded\\n"}}}'; fi ;;
   esac
 else exit 1; fi
 EOF
 chmod +x "$FAKE_BIN/oci"
+cat > "$FAKE_BIN/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$FAKE_BIN/sleep"
 run_wrapper() {
   PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" "$SCRIPT_DIR/invoke-oci-production-command.sh" --operation "$1" --target-sha 0123456789abcdef0123456789abcdef01234567 --compartment-id ocid1.compartment.oc1.ap-tokyo-1.fake --instance-id ocid1.instance.oc1.ap-tokyo-1.fake --region ap-tokyo-1 >/dev/null
 }
@@ -48,4 +57,20 @@ for mode in failed timed_out canceled nonzero malformed unknown; do
   if PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" FAKE_MODE="$mode" "$SCRIPT_DIR/invoke-oci-production-command.sh" --operation deploy --target-sha 0123456789abcdef0123456789abcdef01234567 --compartment-id ocid1.compartment.oc1.ap-tokyo-1.fake --instance-id ocid1.instance.oc1.ap-tokyo-1.fake --region ap-tokyo-1 >/dev/null 2>&1; then exit 1; fi
   [[ "$(<"$STATE_FILE.create")" == 1 ]]; rm -f -- "$STATE_FILE.create" "$STATE_FILE.poll"
 done
+rm -f -- "$STATE_FILE.create" "$STATE_FILE.poll"
+PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" FAKE_MODE=long_in_progress FAKE_IN_PROGRESS_POLLS=61 run_wrapper preflight
+[[ "$(<"$STATE_FILE.poll")" == 62 ]]
+rm -f -- "$STATE_FILE.create" "$STATE_FILE.poll"
+if PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" FAKE_MODE=always_in_progress run_wrapper preflight; then
+  printf 'remote command timeout was reported as success\n' >&2
+  exit 1
+fi
+[[ "$(<"$STATE_FILE.poll")" == 301 ]]
+rm -f -- "$STATE_FILE.create" "$STATE_FILE.poll"
+PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" FAKE_MODE=exact_limit run_wrapper preflight
+rm -f -- "$STATE_FILE.create" "$STATE_FILE.poll"
+if PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE_FILE" FAKE_MODE=over_limit run_wrapper preflight; then
+  printf 'over-limit OCI command output was accepted\n' >&2
+  exit 1
+fi
 printf 'OCI Run Command wrapper fake lifecycle tests passed\n'

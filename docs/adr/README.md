@@ -20,4 +20,7 @@ ADR-0001-short-title.md
 
 - `ARCH-016-oci-production-runtime-boundary.md`: OCI Production repository readiness와 operator-approved runtime boundary
 - `ARCH-012-production-observability-boundary.md`: Trial failure-domain separation baseline
+
+## Historical / Superseded Decisions
+
 - `ARCH-013-rds-single-az.md`: Superseded historical provider decision

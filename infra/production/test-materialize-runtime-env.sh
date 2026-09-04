@@ -13,13 +13,15 @@ write_source() {
   local port="${2:-3306}"
   local ssl="${3:-REQUIRED}"
   local extra="${4:-}"
+  local username="${SOURCE_USERNAME-pawcycle_app}"
+  local password="${SOURCE_PASSWORD-application-password}"
   {
     printf "PAWCYCLE_DATASOURCE_HOST='%s'\n" "$host"
     printf "PAWCYCLE_DATASOURCE_PORT='%s'\n" "$port"
     printf "PAWCYCLE_DATASOURCE_DATABASE='pawcycle'\n"
     printf "PAWCYCLE_DATASOURCE_SSL_MODE='%s'\n" "$ssl"
-    printf "SPRING_DATASOURCE_USERNAME='pawcycle_app'\n"
-    printf "SPRING_DATASOURCE_PASSWORD='application-password'\n"
+    printf "SPRING_DATASOURCE_USERNAME='%s'\n" "$username"
+    printf "SPRING_DATASOURCE_PASSWORD='%s'\n" "$password"
     printf "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'\n"
     printf "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='25'\n"
     printf "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='60000'\n"
@@ -47,6 +49,27 @@ grep -Fxq "PAWCYCLE_DATASOURCE_PORT='3306'" "$BUNDLE/backend.env"
 grep -Fxq "PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'" "$BUNDLE/backend.env"
 grep -Fxq "SPRING_DATASOURCE_URL='jdbc:mysql://db.example.com:3306/pawcycle?sslMode=REQUIRED&serverTimezone=UTC'" "$BUNDLE/backend.env"
 ! grep -Eq 'MYSQL_ROOT_PASSWORD|mysql\.env|allowPublicKeyRetrieval|sslMode=DISABLED' "$BUNDLE/backend.env"
+
+SOURCE_USERNAME="synthetic\\'username" SOURCE_PASSWORD="synthetic\\'password" write_source 10.20.30.40
+run_materialize
+BUNDLE="$(readlink -f "$OUTPUT_DIR/current")"
+grep -Fxq "SPRING_DATASOURCE_USERNAME='synthetic\\'username'" "$BUNDLE/backend.env"
+grep -Fxq "SPRING_DATASOURCE_PASSWORD='synthetic\\'password'" "$BUNDLE/backend.env"
+(
+  # shellcheck source=infra/production/release-common.sh
+  source "$SCRIPT_DIR/release-common.sh"
+  validate_runtime_bundle "$OUTPUT_DIR"
+  [[ "$SPRING_DATASOURCE_USERNAME" == "synthetic'username" ]]
+  [[ "$SPRING_DATASOURCE_PASSWORD" == "synthetic'password" ]]
+)
+
+SOURCE_PASSWORD="" write_source 10.20.30.40
+if run_materialize; then printf 'empty datasource password was accepted\n' >&2; exit 1; fi
+SOURCE_PASSWORD=$'bad\npassword' write_source 10.20.30.40
+if run_materialize; then printf 'newline datasource password was accepted\n' >&2; exit 1; fi
+SOURCE_PASSWORD=$'bad\rpassword' write_source 10.20.30.40
+if run_materialize; then printf 'CR datasource password was accepted\n' >&2; exit 1; fi
+unset SOURCE_USERNAME SOURCE_PASSWORD
 
 PREVIOUS="$(readlink "$OUTPUT_DIR/current")"
 write_source 10.20.30.40
@@ -86,13 +109,20 @@ chmod 640 "$SOURCE_FILE"
 if run_materialize; then printf 'non-600 source was accepted\n' >&2; exit 1; fi
 chmod 600 "$SOURCE_FILE"
 
+READY_FILE="$TEST_ROOT/lock-holder.ready"
 (
   exec 9>"$OUTPUT_DIR/.materialize.lock"
   flock -n 9
+  : >"$READY_FILE.tmp"
+  mv -Tf "$READY_FILE.tmp" "$READY_FILE"
   sleep 2
 ) &
 LOCK_HOLDER=$!
-sleep 0.1
+for ((attempt=0; attempt<50; attempt++)); do
+  [[ -f "$READY_FILE" ]] && break
+  sleep 0.05
+done
+[[ -f "$READY_FILE" ]] || { printf 'lock holder did not become ready\n' >&2; exit 1; }
 if run_materialize; then printf 'concurrent materialization was accepted\n' >&2; exit 1; fi
 wait "$LOCK_HOLDER"
 

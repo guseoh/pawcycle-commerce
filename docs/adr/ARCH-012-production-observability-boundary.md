@@ -4,7 +4,7 @@
 
 Accepted — OPS-OBS-001D 저장소 변경. 실제 Production 적용·검증은 포함하지 않는다.
 
-Active provider implementation is superseded by `ARCH-016` for the OCI target. The failure-domain separation decision remains the Trial OCI baseline; long-term physical topology is measurement pending.
+The existing EC2/t4g.small/Security Group/SSM implementation details and measurements below are historical AWS evidence, not current provider instructions. Active provider guidance for the OCI target is `ARCH-016` with `OPS-OBS-001`; the failure-domain separation decision remains the Trial OCI baseline and long-term physical topology is measurement pending.
 
 ## 결정
 

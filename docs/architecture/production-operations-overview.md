@@ -55,7 +55,7 @@ Application release lifecycle and database lifecycle are deliberately separate. 
 - no initial load balancer
 - no NAT requirement unless a measured operational need is approved
 
-Nginx is the only published Application entry point. HTTPS state is validated by the existing certificate/domain contract before an enabled release is accepted. `VERIFY_CA` and `VERIFY_IDENTITY` remain deferred until the real endpoint certificate chain is observed and separately approved.
+Nginx is the only published Application entry point. HTTPS state is validated by the existing certificate/domain contract before an enabled release is accepted. Datasource `REQUIRED` is the Repository Readiness encryption minimum; server certificate and hostname authentication are not Production Verified. Before any actual OCI managed DB credential connection, the endpoint and certificate chain must be checked, then `VERIFY_CA` or `VERIFY_IDENTITY` and trust material must receive a separate approval.
 
 ## Delivery and operation
 

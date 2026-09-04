@@ -131,6 +131,8 @@ def validate_workflows() -> None:
     require(publish.count("platforms: linux/amd64,linux/arm64") == 2, "both application images must publish amd64 and arm64")
     require("setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130" in publish, "QEMU action pin changed")
     require("verify_image_platforms" in readiness and '("linux", "amd64")' in readiness and '("linux", "arm64")' in readiness, "readiness must check both image platforms")
+    require("              index = json.load(sys.stdin)" in readiness and "              raise SystemExit" in readiness, "readiness Python payload indentation is invalid")
+    require(publish.index("setup-qemu-action@") < publish.index("setup-buildx-action@"), "QEMU must be initialized before Buildx")
     require("on:\n  pull_request:" in external and "permissions:\n  contents: read" in external, "external datasource workflow must be PR-scoped and read-only")
     require("test-subscription-automation-preflight-datasource.sh" in external and "subscription-automation-preflight.sh" in external, "external datasource workflow coverage is incomplete")
     require("test-production-safety-contracts.sh" in validation, "release safety regression is not in Repository Validation")
@@ -173,6 +175,7 @@ def validate_runtime_and_release() -> None:
     require("require_subscription_automation_mode" in read(PRODUCTION / "subscription-automation-control.sh") and "Scheduler" in read(PRODUCTION / "subscription-automation-control.sh"), "Scheduler OFF gate is missing")
     require("https_enabled" in common and "verify_https_release" in common, "HTTPS-enabled release verification is missing")
     require("EXTERNAL_MYSQL" in helper and "defaults-extra-file" in helper and "MYSQL_PWD" not in helper, "external datasource preflight credential boundary is invalid")
+    require("MYSQL_PREFLIGHT_TIMEOUT_SECONDS=60" in helper and "MYSQL_PREFLIGHT_KILL_GRACE_SECONDS=5" in helper and "timeout --signal=TERM" in helper, "external datasource preflight timeout contract is incomplete")
 
 
 def validate_oci_artifacts() -> None:
@@ -184,10 +187,31 @@ def validate_oci_artifacts() -> None:
     require("https://github\\.com" in dispatcher and "merge-base --is-ancestor" in dispatcher, "dispatcher repository/history gate is incomplete")
     require("ghcr.io/${REPOSITORY}-backend" in dispatcher and "ghcr.io/${REPOSITORY}-frontend" in dispatcher, "dispatcher GHCR derivation is incomplete")
     require("sudo -n /usr/bin/env bash /opt/pawcycle/control/infra/production/production-command-dispatch.sh" in wrapper, "OCI wrapper command boundary is invalid")
-    require("textSha256" in wrapper and "chmod 600" in wrapper and "MAX_OUTPUT_BYTES=12288" in wrapper, "OCI wrapper payload/output protection is incomplete")
+    require("textSha256" in wrapper and "chmod 600" in wrapper and "MAX_OUTPUT_BYTES=12288" in wrapper and 'MAX_OUTPUT_BYTES="$MAX_OUTPUT_BYTES"' in wrapper, "OCI wrapper payload/output protection is incomplete")
+    require("POLL_INTERVAL_SECONDS=2" in wrapper and "MAX_POLL_ATTEMPTS" in wrapper and "attempt < MAX_POLL_ATTEMPTS" in wrapper, "OCI lifecycle polling budget is not derived from the command timeout")
     require("ACCEPTED|IN_PROGRESS" in wrapper and "SUCCEEDED" in wrapper and "TIMED_OUT|CANCELED" in wrapper, "OCI lifecycle polling is incomplete")
     require("--auth instance_principal" in backup and "--no-overwrite" in backup and "--verify-checksum" in backup, "Object Storage authentication/immutability contract is incomplete")
-    require(MYSQL_IMAGE in backup and "--network none" in backup and "SCHEMA_SHA256" in backup and "FLYWAY_SHA256" in backup, "isolated restore verification contract is incomplete")
+    require(
+        MYSQL_IMAGE in backup
+        and "--network none" in backup
+        and "lookup_mysql_identity" in backup
+        and "--entrypoint id" in backup
+        and "--user mysql:mysql" in backup
+        and re.search(r'--tmpfs "/var/run/mysqld:size=16m,uid=\$mysql_uid,gid=\$mysql_gid,mode=755"', backup)
+        and "mysqladmin" in backup
+        and "SCHEMA_SHA256" in backup
+        and "FLYWAY_SHA256" in backup,
+        "isolated restore verification contract is incomplete",
+    )
+    restore_mysql_lines = "\n".join(
+        line for line in backup.splitlines() if "--entrypoint mysql" in line or "docker exec" in line
+    )
+    require(
+        ".State.Health.Status" not in backup
+        and not re.search(r"(?:--entrypoint mysql|docker exec[^\n]*\bmysql\b)[^\n]*--force", restore_mysql_lines)
+        and "^[0-9]+:[0-9]+:[0-9]+:[0-9]+$" in backup,
+        "restore readiness or strict core-table verification is incomplete",
+    )
     require("cutover" not in backup.lower() and "production db" not in backup.lower(), "backup script must not imply managed database cutover")
 
 

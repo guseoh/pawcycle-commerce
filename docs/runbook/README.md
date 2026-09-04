@@ -8,6 +8,7 @@
 - `OPS-011-production-https.md`: Nginx/Certbot HTTPS bootstrap, issue, renew, enable과 recovery
 - `OPS-OCI-002-production-db-backup-restore.md`: Object Storage logical backup, isolated restore-verify와 cleanup
 - `OPS-OBS-001-production-observability.md`: Application/Observability 2-host Trial baseline과 metrics-proxy
+- `OPS-AUTO-010-backend-state-alert.md`: OCI Application backend state 다중 채널 알림 dispatcher
 - `MVP4-DATA-002-demo-catalog-import.md`: Application one-shot catalog import 경계
 - `SUB-AUTO-001-subscription-automation.md`, `SUB-AUTO-002-production-subscription-automation.md`: Scheduler preflight와 activation 경계
 

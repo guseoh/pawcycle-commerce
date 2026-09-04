@@ -66,6 +66,10 @@ if [[ "${1:-}" == run ]]; then
   [[ "$*" == *'--entrypoint mysql'* ]]
   [[ "$*" == *'--defaults-extra-file=/run/pawcycle/mysql-client.cnf'* ]]
   [[ "$*" != *'MYSQL_PWD'* && "$*" != *'--password'* ]]
+  if [[ "${FAKE_MYSQL_MODE:-success}" == failure ]]; then
+    printf 'synthetic query failure with password=must-not-leak\n' >&2
+    exit 17
+  fi
   count=0; [[ ! -f "$MARKER_DIR/query-count" ]] || count="$(<"$MARKER_DIR/query-count")"; printf '%s\n' "$((count + 1))" >"$MARKER_DIR/query-count"
   sql="$(cat)"
   if [[ "$sql" == *TABLE_SUBSCRIPTION_ORDERS* ]]; then
@@ -85,7 +89,18 @@ SCHEMA
 fi
 exit 0
 EOF
-chmod +x "$BIN_DIR/git" "$BIN_DIR/docker"
+cat >"$BIN_DIR/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "${1:-}" == --signal=TERM ]] && shift
+[[ "${1:-}" == --kill-after=* ]] && shift
+[[ -n "${1:-}" ]] && shift
+if [[ "${FAKE_TIMEOUT_MODE:-success}" == timeout ]]; then
+  exit 124
+fi
+exec "$@"
+EOF
+chmod +x "$BIN_DIR/git" "$BIN_DIR/docker" "$BIN_DIR/timeout"
 export PATH="$BIN_DIR:$PATH"
 
 make_runtime() {
@@ -135,5 +150,23 @@ if FAKE_DUE_COUNT=3 run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/limit-output
   exit 1
 fi
 grep -Fq 'due candidate count exceeds the explicitly approved activation maximum' "$TEST_ROOT/limit-output"
+
+rm -f "$MARKER_DIR/query-count"
+if FAKE_MYSQL_MODE=failure run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/failure-output"; then
+  printf 'mysql failure was reported as success\n' >&2
+  exit 1
+fi
+grep -Fq 'read-only external MySQL preflight failed; raw database output was suppressed' "$TEST_ROOT/failure-output"
+! grep -Fq 'SELECT ' "$TEST_ROOT/failure-output"
+! grep -Fq 'must-not-leak' "$TEST_ROOT/failure-output"
+
+rm -f "$MARKER_DIR/query-count"
+if FAKE_TIMEOUT_MODE=timeout run_preflight "$RUNTIME" "$STATE" 2 "$TEST_ROOT/timeout-output"; then
+  printf 'mysql timeout was reported as success\n' >&2
+  exit 1
+fi
+grep -Fq 'read-only external MySQL preflight timed out after 60s; raw database output was suppressed' "$TEST_ROOT/timeout-output"
+! grep -Fq 'SELECT ' "$TEST_ROOT/timeout-output"
+! grep -Fq 'local-validation-only' "$TEST_ROOT/timeout-output"
 
 printf 'External MySQL subscription preflight regression passed\n'

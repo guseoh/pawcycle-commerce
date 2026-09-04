@@ -118,6 +118,21 @@ run_restore_query() {
     --protocol=TCP --batch --skip-column-names --raw --execute="$sql"
 }
 
+lookup_mysql_identity() {
+  local mysql_uid mysql_gid
+  mysql_uid="$(docker run --rm --pull never --network none --read-only --tmpfs /tmp:size=16m,mode=1777 \
+    --security-opt no-new-privileges:true --cap-drop ALL --memory 512m --cpus 0.50 --pids-limit 128 --log-driver none \
+    --entrypoint id "$MYSQL_TOOL_IMAGE" -u mysql 2>/dev/null)" \
+    || die "pinned MySQL image mysql uid lookup failed"
+  mysql_gid="$(docker run --rm --pull never --network none --read-only --tmpfs /tmp:size=16m,mode=1777 \
+    --security-opt no-new-privileges:true --cap-drop ALL --memory 512m --cpus 0.50 --pids-limit 128 --log-driver none \
+    --entrypoint id "$MYSQL_TOOL_IMAGE" -g mysql 2>/dev/null)" \
+    || die "pinned MySQL image mysql gid lookup failed"
+  [[ "$mysql_uid" =~ ^[0-9]+$ && "$mysql_gid" =~ ^[0-9]+$ && "$mysql_uid" != 0 ]] \
+    || die "pinned MySQL image mysql identity is invalid"
+  printf '%s:%s' "$mysql_uid" "$mysql_gid"
+}
+
 upload_object() {
   oci os object put --auth instance_principal --bucket-name "$BUCKET" --name "$2" --file "$1" --no-overwrite --verify-checksum --region "$REGION" >/dev/null
 }
@@ -153,7 +168,7 @@ backup() {
 
 restore_verify() {
   local complete="$TEMP_DIR/complete" manifest="$TEMP_DIR/manifest.txt" dump="$TEMP_DIR/dump.sql.gz"
-  local expected actual bytes
+  local expected actual bytes restored_schema_sha restored_flyway_sha core_tables ready=0 mysql_uid_gid mysql_uid mysql_gid
   oci os object get --auth instance_principal --bucket-name "$BUCKET" --name "$PREFIX/$BACKUP_ID/complete" --file "$complete" --region "$REGION" >/dev/null
   grep -Fxq "BACKUP_ID=$BACKUP_ID" "$complete" || die "completion marker is invalid"
   oci os object get --auth instance_principal --bucket-name "$BUCKET" --name "$PREFIX/$BACKUP_ID/manifest.txt" --file "$manifest" --region "$REGION" >/dev/null
@@ -165,22 +180,29 @@ restore_verify() {
   printf '%s' "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')" > "$MYSQL_ROOT_SECRET_FILE"; chmod 600 "$MYSQL_ROOT_SECRET_FILE"
   : > "$MYSQL_OPTION_FILE"; chmod 600 "$MYSQL_OPTION_FILE"
   { printf '[client]\nuser=root\npassword='; cat "$MYSQL_ROOT_SECRET_FILE"; printf '\nssl-mode=REQUIRED\n'; } > "$MYSQL_OPTION_FILE"
+  mysql_uid_gid="$(lookup_mysql_identity)"; mysql_uid="${mysql_uid_gid%%:*}"; mysql_gid="${mysql_uid_gid##*:}"
   docker volume create "$MYSQL_VOLUME" >/dev/null
-  docker run --detach --name "$MYSQL_CONTAINER" --network none --mount "source=$MYSQL_VOLUME,target=/var/lib/mysql" \
+  docker run --detach --name "$MYSQL_CONTAINER" --user mysql:mysql --network none --mount "source=$MYSQL_VOLUME,target=/var/lib/mysql" \
     --mount "type=bind,src=$MYSQL_ROOT_SECRET_FILE,dst=/run/secrets/mysql-root,ro" --env MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql-root \
     --mount "type=bind,src=$MYSQL_OPTION_FILE,dst=/run/secrets/mysql-client.cnf,ro" \
-    --read-only --tmpfs /tmp:size=64m,mode=1777 --security-opt no-new-privileges:true --cap-drop ALL --memory 512m --cpus 0.50 --pids-limit 128 --log-driver none "$MYSQL_TOOL_IMAGE" >/dev/null
-  for ((attempt=0; attempt<30; attempt++)); do
-    [[ "$(docker inspect --format '{{.State.Health.Status}}' "$MYSQL_CONTAINER" 2>/dev/null || true)" == healthy ]] && break
+    --read-only --tmpfs /tmp:size=64m,mode=1777 --tmpfs "/var/run/mysqld:size=16m,uid=$mysql_uid,gid=$mysql_gid,mode=755" \
+    --security-opt no-new-privileges:true --cap-drop ALL --memory 512m --cpus 0.50 --pids-limit 128 --log-driver none "$MYSQL_TOOL_IMAGE" >/dev/null
+  for ((attempt=0; attempt<60; attempt++)); do
+    if docker exec "$MYSQL_CONTAINER" mysqladmin --defaults-extra-file=/run/secrets/mysql-client.cnf --protocol=TCP ping --silent >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
     sleep 1
   done
-  gzip -dc "$dump" | docker exec --interactive "$MYSQL_CONTAINER" mysql --defaults-extra-file=/run/secrets/mysql-client.cnf --protocol=TCP --batch --force >/dev/null
+  (( ready == 1 )) || die "temporary MySQL did not become ready before restore"
+  gzip -dc "$dump" | docker exec --interactive "$MYSQL_CONTAINER" mysql --defaults-extra-file=/run/secrets/mysql-client.cnf --protocol=TCP --batch >/dev/null
   restored_schema_sha="$(run_restore_query "SELECT GROUP_CONCAT(CONCAT(TABLE_NAME, ':', COLUMN_NAME, ':', COLUMN_TYPE, ':', IS_NULLABLE) ORDER BY TABLE_NAME, ORDINAL_POSITION SEPARATOR '|') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE();" | sha256sum | awk '{print $1}')"
   restored_flyway_sha="$(run_restore_query "SELECT CONCAT(COUNT(*), ':', COALESCE(MAX(installed_rank), 0), ':', COALESCE(SUM(checksum), 0)) FROM flyway_schema_history WHERE success = 1;" | sha256sum | awk '{print $1}')"
   [[ "$restored_schema_sha" == "$(grep -E '^SCHEMA_SHA256=[0-9a-f]{64}$' "$manifest" | cut -d= -f2)" ]] || die "restored schema fingerprint does not match manifest"
   [[ "$restored_flyway_sha" == "$(grep -E '^FLYWAY_SHA256=[0-9a-f]{64}$' "$manifest" | cut -d= -f2)" ]] || die "restored Flyway fingerprint does not match manifest"
   core_tables="$(run_restore_query "SELECT CONCAT((SELECT COUNT(*) FROM members), ':', (SELECT COUNT(*) FROM products), ':', (SELECT COUNT(*) FROM skus), ':', (SELECT COUNT(*) FROM subscriptions));")"
-  [[ "$core_tables" == *:*:*:* ]] || die "restored core table verification failed"
+  [[ "$core_tables" =~ ^[0-9]+:[0-9]+:[0-9]+:[0-9]+$ ]] \
+    || die "restored core table verification failed"
   printf 'OCI logical backup restore verification completed: %s\n' "$BACKUP_ID"
 }
 

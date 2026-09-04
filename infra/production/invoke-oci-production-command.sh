@@ -15,6 +15,8 @@ COMMAND_ID=""
 TEMP_DIR=""
 MAX_OUTPUT_BYTES=12288
 COMMAND_TIMEOUT_SECONDS=600
+POLL_INTERVAL_SECONDS=2
+MAX_POLL_ATTEMPTS=$(( (COMMAND_TIMEOUT_SECONDS + POLL_INTERVAL_SECONDS - 1) / POLL_INTERVAL_SECONDS + 1 ))
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 usage() { printf 'Usage: %s --operation <preflight|deploy|control-adopt> --target-sha <sha> --compartment-id <ocid> --instance-id <ocid> --region <region> [approval SHA options]\n' "${0##*/}" >&2; }
@@ -86,7 +88,7 @@ PY
 
 parse_execution() {
   local payload="$1"
-  EXECUTION_JSON="$payload" python3 -c 'import base64, json, os
+  MAX_OUTPUT_BYTES="$MAX_OUTPUT_BYTES" EXECUTION_JSON="$payload" python3 -c 'import base64, json, os
 try:
     data=json.loads(os.environ["EXECUTION_JSON"])
     content=data["data"]["content"]
@@ -94,7 +96,7 @@ try:
     code=content.get("exit-code")
     text=content.get("text", "")
     if not isinstance(state, str) or not isinstance(code, int) or not isinstance(text, str): raise ValueError
-    if len(text.encode()) > 12288: raise ValueError
+    if len(text.encode()) > int(os.environ["MAX_OUTPUT_BYTES"]): raise ValueError
     print(state + "\t" + str(code) + "\t" + base64.b64encode(text.encode()).decode())
 except Exception as error:
     raise SystemExit("malformed OCI command execution response") from error'
@@ -106,11 +108,15 @@ run_command() {
   create_payload "$operation"
   COMMAND_ID="$(oci instance-agent command create --compartment-id "$COMPARTMENT_ID" --content "file://$CONTENT_JSON" --target "file://$TARGET_JSON" --timeout-in-seconds "$COMMAND_TIMEOUT_SECONDS" --region "$REGION" --query data.id --raw-output)"
   [[ "$COMMAND_ID" =~ ^ocid1\.instance-agent-command\.oc1\.[a-z0-9.-]{2,128}$ ]] || die "OCI command id is invalid"
-  for ((attempt = 0; attempt < 60; attempt++)); do
+  for ((attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++)); do
     execution="$(oci instance-agent command-execution get --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region "$REGION" --output json)"
     IFS=$'\t' read -r state exit_code encoded < <(parse_execution "$execution") || die "OCI command execution response is malformed"
     case "$state" in
-      ACCEPTED|IN_PROGRESS) sleep 2 ;;
+      ACCEPTED|IN_PROGRESS)
+        if (( attempt + 1 < MAX_POLL_ATTEMPTS )); then
+          sleep "$POLL_INTERVAL_SECONDS"
+        fi
+        ;;
       SUCCEEDED)
         [[ "$exit_code" == 0 ]] || die "OCI command succeeded with a nonzero exit code"
         [[ -z "$encoded" ]] || printf '%s' "$encoded" | base64 -d

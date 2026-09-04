@@ -73,14 +73,14 @@ jobs:
 
             docker buildx imagetools inspect --raw "$image" \
               | python -c 'import json, sys
-index = json.load(sys.stdin)
-platforms = {
-    (manifest.get("platform", {}).get("os"), manifest.get("platform", {}).get("architecture"))
-    for manifest in index.get("manifests", [])
-}
-missing = {("linux", "amd64"), ("linux", "arm64")} - platforms
-if missing:
-    raise SystemExit(f"missing required image platforms: {sorted(missing)}")'
+              index = json.load(sys.stdin)
+              platforms = {
+                  (manifest.get("platform", {}).get("os"), manifest.get("platform", {}).get("architecture"))
+                  for manifest in index.get("manifests", [])
+              }
+              missing = {("linux", "amd64"), ("linux", "arm64")} - platforms
+              if missing:
+                  raise SystemExit(f"missing required image platforms: {sorted(missing)}")'
           }
 
           verify_image_platforms "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}"

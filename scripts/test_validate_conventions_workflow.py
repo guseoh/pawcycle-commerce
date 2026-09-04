@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CLASSIFIER_PATH = ROOT / "scripts" / "classify-validation-changes.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate-conventions.yml"
 METADATA_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate-pr-metadata.yml"
+READINESS_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "production-release-readiness.yml"
+PUBLISH_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-production-images.yml"
 SPEC = importlib.util.spec_from_file_location("validation_classifier", CLASSIFIER_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("validation classifier를 불러올 수 없음")
@@ -128,6 +130,8 @@ class WorkflowContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.metadata_workflow = METADATA_WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.readiness_workflow = READINESS_WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.publish_workflow = PUBLISH_WORKFLOW_PATH.read_text(encoding="utf-8")
 
     def test_code_and_metadata_events_and_concurrency_are_separate(self) -> None:
         self.assertNotIn("edited", self.workflow.split("concurrency:", 1)[0])
@@ -157,6 +161,18 @@ class WorkflowContractTest(unittest.TestCase):
     def test_required_check_names_are_preserved(self) -> None:
         self.assertIn("name: Commit and PR conventions", self.workflow)
         self.assertIn("name: Application validation", self.workflow)
+
+    def test_release_readiness_python_payload_stays_inside_yaml_scalar(self) -> None:
+        self.assertIn("              | python -c 'import json, sys\n", self.readiness_workflow)
+        self.assertIn("              index = json.load(sys.stdin)\n", self.readiness_workflow)
+        self.assertIn("              platforms = {\n", self.readiness_workflow)
+        self.assertIn("                  raise SystemExit", self.readiness_workflow)
+        self.assertNotIn("\nindex = json.load(sys.stdin)\n", self.readiness_workflow)
+
+    def test_publish_initializes_qemu_before_buildx(self) -> None:
+        qemu = self.publish_workflow.index("uses: docker/setup-qemu-action@")
+        buildx = self.publish_workflow.index("uses: docker/setup-buildx-action@")
+        self.assertLess(qemu, buildx)
 
     def test_component_jobs_are_parallel_and_backend_owns_mysql(self) -> None:
         for job in ("harness:", "backend:", "frontend:", "production:"):
