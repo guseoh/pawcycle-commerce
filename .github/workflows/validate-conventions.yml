@@ -2,7 +2,7 @@ name: Repository Validation
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: repository-validation-code-${{ github.event.pull_request.number }}
