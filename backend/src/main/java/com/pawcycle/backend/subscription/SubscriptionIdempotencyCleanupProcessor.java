@@ -1,7 +1,6 @@
 package com.pawcycle.backend.subscription;
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence;
-import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence.*;
 import io.micrometer.core.instrument.Timer;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -15,7 +14,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
-@org.springframework.stereotype.Component
 public class SubscriptionIdempotencyCleanupProcessor {
   private static final Duration RETENTION = Duration.ofDays(30);
   private final SubscriptionIdempotencyCleanupPersistence persistence;
