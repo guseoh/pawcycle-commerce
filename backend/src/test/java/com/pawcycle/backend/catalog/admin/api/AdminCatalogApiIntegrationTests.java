@@ -21,7 +21,7 @@ import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
 import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
@@ -65,7 +65,7 @@ class AdminCatalogApiIntegrationTests {
   private final EntityManager entityManager;
   private final Statistics statistics;
   private final AdminCatalogService adminCatalogService;
-  private final CatalogExpansionAdminService catalogExpansionAdminService;
+  private final CatalogAdminPersistence catalogExpansionAdminService;
   private MockMvc mockMvc;
 
   @Autowired
@@ -79,7 +79,7 @@ class AdminCatalogApiIntegrationTests {
       EntityManager entityManager,
       EntityManagerFactory entityManagerFactory,
       AdminCatalogService adminCatalogService,
-      CatalogExpansionAdminService catalogExpansionAdminService) {
+      CatalogAdminPersistence catalogExpansionAdminService) {
     this.applicationContext = applicationContext;
     this.objectMapper = objectMapper;
     this.categoryRepository = categoryRepository;

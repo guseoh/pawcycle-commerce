@@ -2,7 +2,7 @@ package com.pawcycle.backend.subscription.performance;
 
 import com.pawcycle.backend.subscription.SubscriptionAutomationBatchResult;
 import com.pawcycle.backend.subscription.SubscriptionOrderAutomationService;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +34,7 @@ public class SubscriptionBurstMeasurementService {
   private static final int MAX_COHORT_SIZE = 10_000;
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
   private final SubscriptionOrderAutomationService automation;
   private final Clock clock;
   private final Path workloadStartMarker;
@@ -47,7 +47,7 @@ public class SubscriptionBurstMeasurementService {
   private final AtomicBoolean drainRunning = new AtomicBoolean();
 
   public SubscriptionBurstMeasurementService(
-      NativeQueryExecutor jdbc,
+      JdbcTemplate jdbc,
       SubscriptionOrderAutomationService automation,
       Clock clock,
       @Value("${pawcycle.subscription-burst-measurement.workload-start-marker-path}")

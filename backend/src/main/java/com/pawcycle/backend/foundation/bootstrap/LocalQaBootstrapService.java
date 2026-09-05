@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +41,7 @@ public class LocalQaBootstrapService {
   private final ProductRepository productRepository;
   private final CategoryRepository categoryRepository;
   private final SkuRepository skuRepository;
-  private final NativeQueryExecutor jdbcTemplate;
+  private final JdbcTemplate jdbcTemplate;
 
   LocalQaBootstrapService(
       EmailNormalizer emailNormalizer,
@@ -49,7 +49,7 @@ public class LocalQaBootstrapService {
       MemberRepository memberRepository,
       ProductRepository productRepository,
       SkuRepository skuRepository,
-      NativeQueryExecutor jdbcTemplate) {
+      JdbcTemplate jdbcTemplate) {
     this(
         emailNormalizer,
         passwordEncoder,
@@ -68,7 +68,7 @@ public class LocalQaBootstrapService {
       ProductRepository productRepository,
       CategoryRepository categoryRepository,
       SkuRepository skuRepository,
-      NativeQueryExecutor jdbcTemplate) {
+      JdbcTemplate jdbcTemplate) {
     this.emailNormalizer = emailNormalizer;
     this.passwordEncoder = passwordEncoder;
     this.memberRepository = memberRepository;

@@ -6,13 +6,12 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
-import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import com.pawcycle.backend.catalog.engagement.application.ProductEngagementService;
 import com.pawcycle.backend.catalog.engagement.application.ReviewCreateCommand;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -46,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
 class LocalCustomerCatalogV3FixtureIntegrationTests {
   @Autowired JdbcTemplate jdbc;
   @Autowired LocalCustomerCatalogV3FixtureService fixture;
-  @Autowired DemoCatalogManifestImportService baseline;
+  @Autowired DemoCatalogImportPersistence baseline;
   @Autowired ProductEngagementService engagement;
   @Autowired WebApplicationContext context;
   @Autowired ObjectMapper mapper;
@@ -440,13 +439,13 @@ class LocalCustomerCatalogV3FixtureIntegrationTests {
   static class FixtureConfiguration {
     @Bean
     LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(
-        NativeQueryExecutor jdbcExecutor,
-        DemoCatalogManifestImportService importer,
-        CatalogExpansionAdminService expansion,
+        JdbcTemplate jdbcExecutor,
+        DemoCatalogImportPersistence importer,
+        CatalogAdminPersistence expansion,
         ProductListCacheInvalidator cache,
         Validator validator) {
       var detail =
-          new DemoProductDetailSectionFixtureService(
+          new ProductDetailSectionFixturePersistence(
               jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
       return new LocalCustomerCatalogV3FixtureService(
           jdbcExecutor,

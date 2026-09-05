@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
 import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -16,11 +16,11 @@ import tools.jackson.databind.ObjectMapper;
 
 @Repository
 public class OrderPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final ObjectMapper objectMapper;
   private final Clock clock;
 
-  public OrderPersistenceAdapter(NativeQueryExecutor queries, ObjectMapper objectMapper, Clock clock) {
+  public OrderPersistenceAdapter(JdbcTemplate queries, ObjectMapper objectMapper, Clock clock) {
     this.queries = queries;
     this.objectMapper = objectMapper;
     this.clock = clock;

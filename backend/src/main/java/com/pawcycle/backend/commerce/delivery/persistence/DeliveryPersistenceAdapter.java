@@ -1,16 +1,16 @@
 package com.pawcycle.backend.commerce.delivery.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.time.Clock;
 import java.sql.Timestamp;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class DeliveryPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public DeliveryPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public DeliveryPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

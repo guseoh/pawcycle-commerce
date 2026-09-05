@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence;
 import com.pawcycle.backend.subscription.persistence.SubscriptionSchedulePersistence;
@@ -20,14 +22,14 @@ class SubscriptionCommandApplicationService {
           "PAUSE",
           "SET_NEXT_DELIVERY_ADDON");
 
-  private final SubscriptionPersistenceAdapter store;
+  private final SubscriptionAggregatePersistence store;
   private final SubscriptionIdempotencyReservationPersistence reservations;
   private final SubscriptionSchedulePersistence schedules;
   private final SubscriptionApplicationSupport support;
   private final SubscriptionQueryApplicationService queries;
 
   SubscriptionCommandApplicationService(
-      SubscriptionPersistenceAdapter store,
+      SubscriptionAggregatePersistence store,
       SubscriptionIdempotencyReservationPersistence reservations,
       SubscriptionSchedulePersistence schedules,
       SubscriptionQueryApplicationService queries,
@@ -71,7 +73,7 @@ class SubscriptionCommandApplicationService {
           subscriptionId,
           normalized,
           key,
-          store.lockCommandResult(memberId, subscriptionId, normalized, key),
+          reservations.lockCommandResult(memberId, subscriptionId, normalized, key),
           fingerprint);
 
     long expected = support.parseEtag(ifMatch);
@@ -98,7 +100,7 @@ class SubscriptionCommandApplicationService {
     var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
-    store.updateCommandResponse(
+    reservations.updateCommandResponse(
         memberId, subscriptionId, normalized, key, result, support.bodyJson(response));
     return result;
   }
@@ -124,7 +126,7 @@ class SubscriptionCommandApplicationService {
     if (!fingerprint.equals(stored.fingerprint()))
       throw new SubscriptionApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
     var body = support.responseBody(stored.bodyJson());
-    store.updateStoredCommandBody(
+    reservations.updateStoredCommandBody(
         memberId, subscriptionId, command, key, support.bodyJson(body));
     return new SubscriptionOperationResult(
         stored.status(), body, stored.location(), stored.etag(), true);

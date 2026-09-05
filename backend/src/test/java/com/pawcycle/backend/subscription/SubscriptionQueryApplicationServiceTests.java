@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -22,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 class SubscriptionQueryApplicationServiceTests {
   @Test
   void nextDeliveryPreservesDecimalAddonAmounts() {
-    SubscriptionPersistenceAdapter store = mock(SubscriptionPersistenceAdapter.class);
+    SubscriptionAggregatePersistence store = mock(SubscriptionAggregatePersistence.class);
     SubscriptionQueryApplicationService service =
         new SubscriptionQueryApplicationService(
             store,
@@ -76,7 +78,7 @@ class SubscriptionQueryApplicationServiceTests {
 
   @Test
   void scheduledWithoutAddonExposesSetAddonButNotRemoveAddon() {
-    SubscriptionPersistenceAdapter store = mock(SubscriptionPersistenceAdapter.class);
+    SubscriptionAggregatePersistence store = mock(SubscriptionAggregatePersistence.class);
     SubscriptionQueryApplicationService service =
         new SubscriptionQueryApplicationService(
             store,
@@ -118,7 +120,7 @@ class SubscriptionQueryApplicationServiceTests {
 
   @Test
   void recoverableStockHeldOnlyExposesRemoveAddonAndCancelWhenAddonExists() {
-    SubscriptionPersistenceAdapter store = mock(SubscriptionPersistenceAdapter.class);
+    SubscriptionAggregatePersistence store = mock(SubscriptionAggregatePersistence.class);
     SubscriptionQueryApplicationService service =
         new SubscriptionQueryApplicationService(
             store,

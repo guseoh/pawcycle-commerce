@@ -24,7 +24,7 @@ import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -49,7 +49,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
   @Autowired private SkuRepository skuRepository;
   @Autowired private InventoryRepository inventoryRepository;
   @Autowired private CatalogFacetPersistenceAdapter catalogFacets;
-  @Autowired private NativeQueryExecutor jdbcExecutor;
+  @Autowired private JdbcTemplate jdbcExecutor;
   @Autowired private ProductListCache productListCache;
   @Autowired private RecordingTransactionManager transactionManager;
   @Autowired private RollbackProbe rollbackProbe;
@@ -155,13 +155,13 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     }
 
     @Bean
-    CatalogFacetPersistenceAdapter catalogFacetPersistenceAdapter(NativeQueryExecutor jdbcExecutor) {
+    CatalogFacetPersistenceAdapter catalogFacetPersistenceAdapter(JdbcTemplate jdbcExecutor) {
       return mock(CatalogFacetPersistenceAdapter.class);
     }
 
     @Bean
-    NativeQueryExecutor jdbcExecutor() {
-      return mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbcExecutor() {
+      return mock(JdbcTemplate.class);
     }
 
     @Bean

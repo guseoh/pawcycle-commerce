@@ -1,14 +1,14 @@
 package com.pawcycle.backend.commerce.wishlist.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class WishlistQueryRepository {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
 
-  public WishlistQueryRepository(NativeQueryExecutor queries) {
+  public WishlistQueryRepository(JdbcTemplate queries) {
     this.queries = queries;
   }
 

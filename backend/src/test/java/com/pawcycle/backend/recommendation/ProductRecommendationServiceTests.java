@@ -13,7 +13,6 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 class ProductRecommendationServiceTests {
   @Test
@@ -26,7 +25,7 @@ class ProductRecommendationServiceTests {
         .thenReturn(Map.of(1L, new RecommendationTrendScore(10, 0)));
 
     RecommendationResponse response =
-        new ProductRecommendationService(repository, mock(NativeQueryExecutor.class), Clock.systemUTC())
+        new ProductRecommendationService(repository, Clock.systemUTC())
             .trending("DOG", 10);
 
     assertThat(response.products())

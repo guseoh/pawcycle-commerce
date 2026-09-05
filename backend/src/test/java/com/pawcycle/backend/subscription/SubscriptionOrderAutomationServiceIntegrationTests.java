@@ -12,7 +12,7 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.api.CreatePetRequest;
@@ -75,7 +75,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
   @Autowired private MeterRegistry meterRegistry;
   @Autowired private ApplicationContext applicationContext;
   @Autowired private PlatformTransactionManager transactionManager;
-  @MockitoSpyBean private NativeQueryExecutor nativeJdbc;
+  @MockitoSpyBean private JdbcTemplate nativeJdbc;
 
   private TransactionalTestSql jdbc;
   private Member member;

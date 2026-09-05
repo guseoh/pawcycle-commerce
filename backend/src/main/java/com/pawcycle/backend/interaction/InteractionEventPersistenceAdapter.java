@@ -1,14 +1,14 @@
 package com.pawcycle.backend.interaction;
 
 import java.sql.Timestamp;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 class InteractionEventPersistenceAdapter {
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
 
-  InteractionEventPersistenceAdapter(NativeQueryExecutor jdbc) {
+  InteractionEventPersistenceAdapter(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 

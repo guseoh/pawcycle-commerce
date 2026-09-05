@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.notification.persistence;
 
 import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -9,10 +9,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class NotificationPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public NotificationPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public NotificationPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

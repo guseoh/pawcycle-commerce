@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import io.micrometer.core.instrument.Timer;
 import java.util.List;
 import org.slf4j.Logger;
@@ -13,13 +15,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 class SubscriptionReconciliationApplicationService {
   private static final Logger log =
       LoggerFactory.getLogger(SubscriptionReconciliationApplicationService.class);
-  private final SubscriptionPersistenceAdapter store;
+  private final SubscriptionAggregatePersistence store;
   private final SubscriptionMetrics metrics;
   private final TransactionTemplate transaction;
   private final java.time.Clock clock;
 
   SubscriptionReconciliationApplicationService(
-      SubscriptionPersistenceAdapter store,
+      SubscriptionAggregatePersistence store,
       SubscriptionMetrics metrics,
       PlatformTransactionManager transactionManager,
       java.time.Clock clock) {

@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
+import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -169,13 +169,13 @@ class LocalQaBootstrapConfigurationTests {
         .withPropertyValues("spring.profiles.active=test")
         .run(
             context ->
-                assertThat(context).doesNotHaveBean(DemoProductDetailSectionFixtureService.class));
+                assertThat(context).doesNotHaveBean(ProductDetailSectionFixturePersistence.class));
 
     detailFixtureContextRunner
         .withPropertyValues("spring.profiles.active=production")
         .run(
             context ->
-                assertThat(context).doesNotHaveBean(DemoProductDetailSectionFixtureService.class));
+                assertThat(context).doesNotHaveBean(ProductDetailSectionFixturePersistence.class));
   }
 
   @Test
@@ -320,7 +320,7 @@ class LocalQaBootstrapConfigurationTests {
   static class DemoFixtureConfiguration {}
 
   @Configuration(proxyBeanMethods = false)
-  @Import(DemoProductDetailSectionFixtureService.class)
+  @Import(ProductDetailSectionFixturePersistence.class)
   static class DetailFixtureConfiguration {}
 
   @Configuration(proxyBeanMethods = false)

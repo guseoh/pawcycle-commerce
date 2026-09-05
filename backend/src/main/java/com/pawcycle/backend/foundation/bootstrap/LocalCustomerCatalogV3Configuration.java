@@ -1,6 +1,6 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,7 +20,7 @@ public class LocalCustomerCatalogV3Configuration {
       @Value("${pawcycle.local-demo-catalog.enabled:true}") boolean baselineEnabled) {
     return args -> {
       if (!baselineEnabled
-          || !DemoCatalogManifestImportService.DEFAULT_MANIFEST_LOCATION.equals(manifest)) {
+          || !DemoCatalogImportPersistence.DEFAULT_MANIFEST_LOCATION.equals(manifest)) {
         throw new LocalQaBootstrapException(
             "Customer Catalog V3는 기본 Data V1과 함께 실행해야 합니다. legacy custom manifest와 혼용할 수 없습니다.");
       }

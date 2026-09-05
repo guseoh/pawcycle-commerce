@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.admin.application;
 
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
@@ -20,7 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 class CatalogFacetConcurrencyIntegrationTests {
-  @Autowired private CatalogExpansionAdminService expansionService;
+  @Autowired private CatalogAdminPersistence expansionService;
   @Autowired private AdminCatalogService adminCatalogService;
   @Autowired private JdbcTemplate jdbc;
 

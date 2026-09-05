@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
     havingValue = "true")
 public class SubscriptionDeliveryReminderProcessor {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
   private final NotificationService notifications;
   private final Clock clock;
   private final int windowDays;
 
   public SubscriptionDeliveryReminderProcessor(
-      NativeQueryExecutor jdbc,
+      JdbcTemplate jdbc,
       NotificationService notifications,
       Clock clock,
       @Value("${pawcycle.subscription.delivery-reminder.window-days:3}") int windowDays) {

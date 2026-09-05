@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
 import com.pawcycle.backend.commerce.MembershipGradeRequest;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -9,10 +9,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class MembershipPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public MembershipPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public MembershipPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

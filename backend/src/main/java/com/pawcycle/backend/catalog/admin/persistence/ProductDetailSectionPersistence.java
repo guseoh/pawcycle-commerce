@@ -1,4 +1,7 @@
-package com.pawcycle.backend.catalog.admin.application;
+package com.pawcycle.backend.catalog.admin.persistence;
+
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogNotFoundException;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogValidationException;
 
 import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.DetailSectionListResponse;
@@ -6,23 +9,23 @@ import com.pawcycle.backend.catalog.admin.api.DetailSectionPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.DetailSectionResponse;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service
-public class ProductDetailSectionService {
-  private final NativeQueryExecutor jdbc;
+@Repository
+public class ProductDetailSectionPersistence {
+  private final JdbcTemplate jdbc;
   private final ProductRepository products;
   private final Clock clock;
 
-  public ProductDetailSectionService(
-      NativeQueryExecutor jdbc, ProductRepository products, Clock clock) {
+  public ProductDetailSectionPersistence(
+      JdbcTemplate jdbc, ProductRepository products, Clock clock) {
     this.jdbc = jdbc;
     this.products = products;
     this.clock = clock;

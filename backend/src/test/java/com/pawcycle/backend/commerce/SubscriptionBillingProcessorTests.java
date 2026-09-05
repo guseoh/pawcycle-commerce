@@ -11,14 +11,14 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor.RowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 
 class SubscriptionBillingProcessorTests {
   @Test
   void successfulSubscriptionBillingReevaluatesMembership() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     org.springframework.transaction.TransactionStatus status =
         mock(org.springframework.transaction.TransactionStatus.class);
@@ -51,7 +51,7 @@ class SubscriptionBillingProcessorTests {
 
   @Test
   void processingBillingIsReconciledWithoutChargingAgain() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
     TossBillingAdapter provider = mock(TossBillingAdapter.class);
     SubscriptionBillingService retries = mock(SubscriptionBillingService.class);
     PaymentReconciliationService reconciliation = mock(PaymentReconciliationService.class);

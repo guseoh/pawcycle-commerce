@@ -1,11 +1,13 @@
-package com.pawcycle.backend.subscription;
+package com.pawcycle.backend.subscription.migration;
+
+import com.pawcycle.backend.subscription.LegacySubscriptionPreflight;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,11 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
  * source-write freeze boundary; this local service then keeps preflight and all DML in one call.
  */
 @Service
-public class LegacySubscriptionMigrationService {
+public class LegacySubscriptionMigrationProcessor {
   private static final long JSON_SAFE_MAX = 9_007_199_254_740_991L;
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
 
-  public LegacySubscriptionMigrationService(NativeQueryExecutor jdbc) {
+  public LegacySubscriptionMigrationProcessor(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 

@@ -1,4 +1,7 @@
-package com.pawcycle.backend.catalog.admin.application;
+package com.pawcycle.backend.catalog.admin.persistence;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogNotFoundException;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogValidationException;
 import com.pawcycle.backend.catalog.admin.api.BrandPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.ImageCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.ImagePatchRequest;
@@ -35,20 +38,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * V24-specific administrative catalog operations, implemented with small explicit SQL transactions.
+ * Feature-specific administrative catalog persistence for brands, options, images, and facets.
  */
-@Service
-public class CatalogExpansionAdminService {
-  private final NativeQueryExecutor jdbc;
+@Repository
+public class CatalogAdminPersistence {
+  private final JdbcTemplate jdbc;
   private final ProductListCacheInvalidator cacheInvalidator;
 
-  public CatalogExpansionAdminService(
-      NativeQueryExecutor jdbc, ProductListCacheInvalidator cacheInvalidator) {
+  public CatalogAdminPersistence(
+      JdbcTemplate jdbc, ProductListCacheInvalidator cacheInvalidator) {
     this.jdbc = jdbc;
     this.cacheInvalidator = cacheInvalidator;
   }

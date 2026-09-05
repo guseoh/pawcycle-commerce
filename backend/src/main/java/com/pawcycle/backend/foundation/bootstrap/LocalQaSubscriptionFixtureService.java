@@ -2,7 +2,7 @@ package com.pawcycle.backend.foundation.bootstrap;
 
 import java.util.List;
 import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,9 +13,9 @@ public class LocalQaSubscriptionFixtureService {
   static final long PACKAGE_PRICE_KRW = 19_900L;
   static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
-  private final NativeQueryExecutor jdbcTemplate;
+  private final JdbcTemplate jdbcTemplate;
 
-  public LocalQaSubscriptionFixtureService(NativeQueryExecutor jdbcTemplate) {
+  public LocalQaSubscriptionFixtureService(JdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
   }
 

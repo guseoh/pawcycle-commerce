@@ -1,14 +1,14 @@
 package com.pawcycle.backend.catalog.admin.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /** Owns the category/product facet compatibility query used by catalog mutations. */
 @Repository
 public class CatalogFacetPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
 
-  public CatalogFacetPersistenceAdapter(NativeQueryExecutor queries) {
+  public CatalogFacetPersistenceAdapter(JdbcTemplate queries) {
     this.queries = queries;
   }
 

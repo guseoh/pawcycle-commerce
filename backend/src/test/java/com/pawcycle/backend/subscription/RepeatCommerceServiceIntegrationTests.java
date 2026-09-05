@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 @Import(RepeatCommerceServiceIntegrationTests.FixedClockConfiguration.class)
 class RepeatCommerceServiceIntegrationTests {
-  @Autowired private RepeatCommerceService repeat;
+  @Autowired private com.pawcycle.backend.subscription.application.RepeatPurchaseApplicationService repeat;
   @Autowired private MemberRepository members;
   @Autowired private CategoryRepository categories;
   @Autowired private ProductRepository products;
@@ -86,17 +86,15 @@ class RepeatCommerceServiceIntegrationTests {
     oneTimeOrder(LocalDate.of(2026, 8, 10), List.of(firstSku));
     oneTimeOrder(LocalDate.of(2026, 8, 20), List.of(firstSku));
 
-    Map<String, Object> result = repeat.reorderTiming(member.getId());
+    var result = repeat.reorderTiming(member.getId());
 
-    @SuppressWarnings("unchecked")
-    List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
-    assertThat(items)
+    assertThat(result.items())
         .singleElement()
         .satisfies(
             item -> {
-              assertThat(item.get("purchaseCount")).isEqualTo(3);
-              assertThat(item.get("lastPurchasedDate")).isEqualTo(LocalDate.of(2026, 8, 20));
-              assertThat(item.get("expectedReorderDate")).isEqualTo(LocalDate.of(2026, 8, 30));
+              assertThat(item.purchaseCount()).isEqualTo(3);
+              assertThat(item.lastPurchasedDate()).isEqualTo(LocalDate.of(2026, 8, 20));
+              assertThat(item.expectedReorderDate()).isEqualTo(LocalDate.of(2026, 8, 30));
             });
   }
 

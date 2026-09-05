@@ -18,12 +18,12 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class SubscriptionDeliveryReminderProcessorTests {
   @Test
   void staleReadOrUnreadRemindersAreCleanedBeforeReentryIsCreated() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
     NotificationService notifications = mock(NotificationService.class);
     Clock clock = Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC);
     LocalDate today = LocalDate.of(2026, 8, 28);

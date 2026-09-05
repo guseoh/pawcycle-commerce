@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
@@ -42,7 +42,7 @@ class ProductDiscoveryApiIntegrationTests {
       CategoryRepository categoryRepository,
       ProductRepository productRepository,
       EntityManager entityManager,
-      DemoCatalogManifestImportService importService,
+      DemoCatalogImportPersistence importService,
       JdbcTemplate jdbcTemplate) {
     this.applicationContext = applicationContext;
     this.categoryRepository = categoryRepository;

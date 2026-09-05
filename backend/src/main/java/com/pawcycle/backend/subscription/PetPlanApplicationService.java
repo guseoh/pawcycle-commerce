@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import com.pawcycle.backend.subscription.api.CreatePetRequest;
 import com.pawcycle.backend.subscription.api.PageResponse;
 import com.pawcycle.backend.subscription.api.PetResponse;
@@ -18,11 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class PetPlanApplicationService {
-  private final SubscriptionPersistenceAdapter store;
+  private final SubscriptionAggregatePersistence store;
   private final SubscriptionApplicationSupport support;
 
   PetPlanApplicationService(
-      SubscriptionPersistenceAdapter store, tools.jackson.databind.ObjectMapper json, Clock clock) {
+      SubscriptionAggregatePersistence store, tools.jackson.databind.ObjectMapper json, Clock clock) {
     this.store = store;
     this.support = new SubscriptionApplicationSupport(json, clock);
   }

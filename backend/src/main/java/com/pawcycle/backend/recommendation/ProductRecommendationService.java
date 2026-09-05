@@ -4,11 +4,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,13 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 class ProductRecommendationService {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
   private final RecommendationQueryAdapter repository;
-  private final NativeQueryExecutor jdbc;
   private final Clock clock;
 
-  ProductRecommendationService(
-      RecommendationQueryAdapter repository, NativeQueryExecutor jdbc, Clock clock) {
+  ProductRecommendationService(RecommendationQueryAdapter repository, Clock clock) {
     this.repository = repository;
-    this.jdbc = jdbc;
     this.clock = clock;
   }
 
@@ -108,21 +103,7 @@ class ProductRecommendationService {
   @Transactional(readOnly = true)
   RecommendationResponse complementary(long productId, int limit) {
     RecommendationCandidate source = source(productId);
-    Map<Long, Long> coPurchase =
-        jdbc.query(
-            """
-            SELECT other_product.id,COUNT(DISTINCT o.id) FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED'
-            JOIN order_items source_item ON source_item.order_id=o.id JOIN skus source_sku ON source_sku.id=source_item.sku_id
-            JOIN order_items other_item ON other_item.order_id=o.id AND other_item.sku_id<>source_item.sku_id JOIN skus other_sku ON other_sku.id=other_item.sku_id
-            JOIN products other_product ON other_product.id=other_sku.product_id WHERE o.source='ONE_TIME' AND o.status='PAID' AND source_sku.product_id=? AND other_product.id<>? GROUP BY other_product.id\
-            """,
-            rs -> {
-              Map<Long, Long> values = new HashMap<>();
-              while (rs.next()) values.put(rs.getLong(1), rs.getLong(2));
-              return values;
-            },
-            productId,
-            productId);
+    Map<Long, Long> coPurchase = repository.coPurchaseCounts(productId);
     Comparator<RecommendationCandidate> complementaryOrder =
         Comparator.comparingLong(
                 (RecommendationCandidate candidate) ->

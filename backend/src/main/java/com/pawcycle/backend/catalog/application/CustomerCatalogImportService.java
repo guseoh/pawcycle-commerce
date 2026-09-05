@@ -1,5 +1,8 @@
 package com.pawcycle.backend.catalog.application;
 
+import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogRealismCorrectionPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,14 +13,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CustomerCatalogImportService {
 
-  private final DemoCatalogManifestImportService baseline;
-  private final CustomerCatalogV3ImportService supplement;
-  private final CustomerCatalogRealismCorrectionService correction;
+  private final DemoCatalogImportPersistence baseline;
+  private final CustomerCatalogImportPersistence supplement;
+  private final CustomerCatalogRealismCorrectionPersistence correction;
 
   public CustomerCatalogImportService(
-      DemoCatalogManifestImportService baseline,
-      CustomerCatalogV3ImportService supplement,
-      CustomerCatalogRealismCorrectionService correction) {
+      DemoCatalogImportPersistence baseline,
+      CustomerCatalogImportPersistence supplement,
+      CustomerCatalogRealismCorrectionPersistence correction) {
     this.baseline = baseline;
     this.supplement = supplement;
     this.correction = correction;

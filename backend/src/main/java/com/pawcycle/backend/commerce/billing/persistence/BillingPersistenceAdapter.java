@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.billing.persistence;
 
 import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -10,10 +10,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class BillingPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public BillingPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public BillingPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

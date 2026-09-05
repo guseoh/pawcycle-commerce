@@ -4,12 +4,12 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicReference;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +20,7 @@ public class SubscriptionMetrics {
   private static final String COMMAND_TABLE = "subscription_command_idempotency_results";
 
   private final MeterRegistry registry;
-  private final NativeQueryExecutor jdbc;
+  private final SubscriptionMetricsQueryRepository queries;
   private final Clock clock;
   private final Counter reconciliationExecutions;
   private final Counter reconciliationProcessed;
@@ -38,9 +38,10 @@ public class SubscriptionMetrics {
   private final AtomicReference<java.time.Instant> lastGaugeRefresh = new AtomicReference<>();
   private final Counter gaugeRefreshFailures;
 
-  public SubscriptionMetrics(MeterRegistry registry, NativeQueryExecutor jdbc, Clock clock) {
+  public SubscriptionMetrics(
+      MeterRegistry registry, SubscriptionMetricsQueryRepository queries, Clock clock) {
     this.registry = registry;
-    this.jdbc = jdbc;
+    this.queries = queries;
     this.clock = clock;
     this.reconciliationExecutions =
         registry.counter("pawcycle.subscription.reconciliation.executions");
@@ -89,10 +90,10 @@ public class SubscriptionMetrics {
     try {
       idempotencyGaugeSnapshot.set(
           new IdempotencyGaugeSnapshot(
-              countCompletedRows(CREATION_TABLE),
-              countCleanupCandidates(CREATION_TABLE),
-              countCompletedRows(COMMAND_TABLE),
-              countCleanupCandidates(COMMAND_TABLE)));
+              queries.countCompletedRows(true),
+              queries.countCleanupCandidates(true, cutoff()),
+              queries.countCompletedRows(false),
+              queries.countCleanupCandidates(false, cutoff())));
       lastGaugeRefresh.set(clock.instant());
     } catch (RuntimeException exception) {
       gaugeRefreshFailures.increment();
@@ -150,16 +151,8 @@ public class SubscriptionMetrics {
         .register(registry);
   }
 
-  private double countCompletedRows(String table) {
-    return jdbc.queryForObject(
-        "SELECT COUNT(*) FROM " + table + " WHERE completed_at IS NOT NULL", Long.class);
-  }
-
-  private double countCleanupCandidates(String table) {
-    LocalDateTime cutoff =
-        LocalDateTime.ofInstant(clock.instant().minus(RETENTION), ZoneOffset.UTC);
-    return jdbc.queryForObject(
-        "SELECT COUNT(*) FROM " + table + " WHERE completed_at < ?", Long.class, cutoff);
+  private LocalDateTime cutoff() {
+    return LocalDateTime.ofInstant(clock.instant().minus(RETENTION), ZoneOffset.UTC);
   }
 
   private static void increment(Counter counter, int amount) {

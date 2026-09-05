@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportService;
-import com.pawcycle.backend.catalog.application.CustomerCatalogV3ImportService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportOperation;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportResult;
 import com.pawcycle.backend.catalog.application.CustomerCatalogSupplementImportResult;
@@ -23,14 +23,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class ProductionDemoCatalogImportConfigurationTests {
 
-  private final DemoCatalogManifestImportService demoImportService =
-      mock(DemoCatalogManifestImportService.class);
+  private final DemoCatalogImportPersistence demoImportService =
+      mock(DemoCatalogImportPersistence.class);
   private final CustomerCatalogImportService customerImportService =
       mock(CustomerCatalogImportService.class);
   private final ApplicationContextRunner contextRunner =
       new ApplicationContextRunner()
           .withUserConfiguration(ProductionDemoCatalogImportConfiguration.class)
-          .withBean(DemoCatalogManifestImportService.class, () -> demoImportService)
+          .withBean(DemoCatalogImportPersistence.class, () -> demoImportService)
           .withBean(CustomerCatalogImportService.class, () -> customerImportService);
 
   @Test

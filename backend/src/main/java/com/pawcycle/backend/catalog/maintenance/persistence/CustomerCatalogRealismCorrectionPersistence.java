@@ -1,4 +1,6 @@
-package com.pawcycle.backend.catalog.application;
+package com.pawcycle.backend.catalog.maintenance.persistence;
+
+import com.pawcycle.backend.catalog.application.*;
 
 import java.io.IOException;
 import java.net.URI;
@@ -10,31 +12,31 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * Applies the small, guarded customer-facing content correction after the canonical catalog import.
  */
-@Service
-public class CustomerCatalogRealismCorrectionService {
+@Repository
+public class CustomerCatalogRealismCorrectionPersistence {
 
   public static final String DEFAULT_MANIFEST_LOCATION =
       "classpath:catalog/customer-catalog-realism-v1.json";
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final String manifestLocation;
   private volatile Manifest loadedManifest;
 
-  public CustomerCatalogRealismCorrectionService(NativeQueryExecutor jdbc) {
+  public CustomerCatalogRealismCorrectionPersistence(JdbcTemplate jdbc) {
     this(jdbc, DEFAULT_MANIFEST_LOCATION);
   }
 
   @Autowired
-  public CustomerCatalogRealismCorrectionService(
-      NativeQueryExecutor jdbc,
+  public CustomerCatalogRealismCorrectionPersistence(
+      JdbcTemplate jdbc,
       @Value("${pawcycle.catalog.customer.realism.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
           String manifestLocation) {
     this.jdbc = jdbc;

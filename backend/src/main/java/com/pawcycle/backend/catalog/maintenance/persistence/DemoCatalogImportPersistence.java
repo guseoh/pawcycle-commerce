@@ -1,4 +1,6 @@
-package com.pawcycle.backend.catalog.application;
+package com.pawcycle.backend.catalog.maintenance.persistence;
+
+import com.pawcycle.backend.catalog.application.*;
 
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import java.io.IOException;
@@ -14,30 +16,30 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-@Service
-public class DemoCatalogManifestImportService {
+@Repository
+public class DemoCatalogImportPersistence {
 
   public static final String DEFAULT_MANIFEST_LOCATION = "classpath:catalog/demo-catalog.json";
   private static final String DEMO_BRAND_SLUG = "pawcycle-demo-catalog";
   static final int DELIVERY_CYCLE_COUNT = 3;
   static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
-  private final NativeQueryExecutor jdbcTemplate;
+  private final JdbcTemplate jdbcTemplate;
   private final ProductListCacheInvalidator productListCacheInvalidator;
-  private final CustomerCatalogRealismCorrectionService correction;
+  private final CustomerCatalogRealismCorrectionPersistence correction;
   private final ObjectMapper objectMapper;
   private final String configuredManifestLocation;
 
   @Autowired
-  public DemoCatalogManifestImportService(
-      NativeQueryExecutor jdbcTemplate,
+  public DemoCatalogImportPersistence(
+      JdbcTemplate jdbcTemplate,
       ProductListCacheInvalidator productListCacheInvalidator,
-      CustomerCatalogRealismCorrectionService correction,
+      CustomerCatalogRealismCorrectionPersistence correction,
       @Value("${pawcycle.catalog.demo.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
           String configuredManifestLocation) {
     this.jdbcTemplate = jdbcTemplate;
@@ -47,23 +49,23 @@ public class DemoCatalogManifestImportService {
     this.configuredManifestLocation = configuredManifestLocation;
   }
 
-  public DemoCatalogManifestImportService(
-      NativeQueryExecutor jdbcTemplate, ProductListCacheInvalidator productListCacheInvalidator) {
+  public DemoCatalogImportPersistence(
+      JdbcTemplate jdbcTemplate, ProductListCacheInvalidator productListCacheInvalidator) {
     this(
         jdbcTemplate,
         productListCacheInvalidator,
-        new CustomerCatalogRealismCorrectionService(jdbcTemplate),
+        new CustomerCatalogRealismCorrectionPersistence(jdbcTemplate),
         DEFAULT_MANIFEST_LOCATION);
   }
 
-  public DemoCatalogManifestImportService(
-      NativeQueryExecutor jdbcTemplate,
+  public DemoCatalogImportPersistence(
+      JdbcTemplate jdbcTemplate,
       ProductListCacheInvalidator productListCacheInvalidator,
       String configuredManifestLocation) {
     this(
         jdbcTemplate,
         productListCacheInvalidator,
-        new CustomerCatalogRealismCorrectionService(jdbcTemplate),
+        new CustomerCatalogRealismCorrectionPersistence(jdbcTemplate),
         configuredManifestLocation);
   }
 

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.audit.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -8,10 +8,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class AdminAuditPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public AdminAuditPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public AdminAuditPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

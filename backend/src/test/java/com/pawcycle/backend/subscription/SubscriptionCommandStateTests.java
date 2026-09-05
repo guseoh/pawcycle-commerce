@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -32,7 +34,7 @@ class SubscriptionCommandStateTests {
             "skip-next",
             "pause",
             "set-next-delivery-addon")) {
-      SubscriptionPersistenceAdapter store = mock(SubscriptionPersistenceAdapter.class);
+      SubscriptionAggregatePersistence store = mock(SubscriptionAggregatePersistence.class);
       SubscriptionIdempotencyReservationPersistence reservations =
           mock(SubscriptionIdempotencyReservationPersistence.class);
       SubscriptionSchedulePersistence schedules = mock(SubscriptionSchedulePersistence.class);

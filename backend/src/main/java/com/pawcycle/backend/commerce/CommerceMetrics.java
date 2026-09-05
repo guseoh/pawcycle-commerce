@@ -1,10 +1,10 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.concurrent.atomic.AtomicLong;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,12 +12,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class CommerceMetrics {
   private final MeterRegistry registry;
-  private final NativeQueryExecutor jdbc;
+  private final CommerceMetricsQueryRepository queries;
   private final AtomicLong pending = new AtomicLong();
 
-  public CommerceMetrics(MeterRegistry registry, NativeQueryExecutor jdbc) {
+  public CommerceMetrics(MeterRegistry registry, CommerceMetricsQueryRepository queries) {
     this.registry = registry;
-    this.jdbc = jdbc;
+    this.queries = queries;
     Gauge.builder("pawcycle.commerce.operations.pending", pending, AtomicLong::get)
         .register(registry);
   }
@@ -36,12 +36,6 @@ public class CommerceMetrics {
 
   @Scheduled(fixedDelayString = "${pawcycle.commerce.operations.refresh-ms:60000}")
   public void refreshPending() {
-    Long value =
-        jdbc.queryForObject(
-            "SELECT (SELECT COUNT(*) FROM order_returns WHERE status='REQUESTED')+(SELECT COUNT(*)"
-                + " FROM refunds WHERE status IN ('READY','FAILED','UNKNOWN'))+(SELECT COUNT(*)"
-                + " FROM payments WHERE status IN ('UNKNOWN'))",
-            Long.class);
-    pending.set(value == null ? 0L : value);
+    pending.set(queries.countPendingOperations());
   }
 }

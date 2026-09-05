@@ -1,7 +1,7 @@
 package com.pawcycle.backend.subscription.persistence;
 
 import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import org.springframework.stereotype.Repository;
@@ -9,10 +9,10 @@ import org.springframework.stereotype.Repository;
 /** Owns the subscription tables touched by a member's shipping-address change. */
 @Repository
 public class SubscriptionShippingPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public SubscriptionShippingPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public SubscriptionShippingPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }

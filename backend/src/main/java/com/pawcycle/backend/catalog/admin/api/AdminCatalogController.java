@@ -2,8 +2,8 @@ package com.pawcycle.backend.catalog.admin.api;
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService;
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
-import com.pawcycle.backend.catalog.admin.application.ProductDetailSectionService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
+import com.pawcycle.backend.catalog.admin.persistence.ProductDetailSectionPersistence;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -26,8 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminCatalogController {
   private final AdminCatalogService adminCatalogService;
   private final AdminCatalogMutationService audits;
-  private final CatalogExpansionAdminService catalogExpansionAdminService;
-  private final ProductDetailSectionService productDetailSectionService;
+  private final CatalogAdminPersistence catalogExpansionAdminService;
+  private final ProductDetailSectionPersistence productDetailSectionService;
 
   @GetMapping("/brands")
   BrandListResponse brands() {

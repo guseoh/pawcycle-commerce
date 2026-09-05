@@ -1,4 +1,6 @@
-package com.pawcycle.backend.catalog.application;
+package com.pawcycle.backend.catalog.maintenance.persistence;
+
+import com.pawcycle.backend.catalog.application.*;
 
 import java.io.IOException;
 import java.sql.Timestamp;
@@ -14,25 +16,25 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-@Service
+@Repository
 @Profile("local-integration & !test & !production & !prod")
-public class DemoProductDetailSectionFixtureService {
+public class ProductDetailSectionFixturePersistence {
 
   static final String DEFAULT_FIXTURE_LOCATION =
       "classpath:catalog/demo-product-detail-sections.json";
 
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
   private final ObjectMapper objectMapper;
   private String fixtureLocation;
 
   @Autowired
-  public DemoProductDetailSectionFixtureService(
-      NativeQueryExecutor jdbc,
+  public ProductDetailSectionFixturePersistence(
+      JdbcTemplate jdbc,
       @Value("${pawcycle.local-demo-catalog.detail-sections:" + DEFAULT_FIXTURE_LOCATION + "}")
           String fixtureLocation) {
     this.jdbc = jdbc;
@@ -40,7 +42,7 @@ public class DemoProductDetailSectionFixtureService {
     this.fixtureLocation = fixtureLocation;
   }
 
-  public DemoProductDetailSectionFixtureService(NativeQueryExecutor jdbc) {
+  public ProductDetailSectionFixturePersistence(JdbcTemplate jdbc) {
     this(jdbc, DEFAULT_FIXTURE_LOCATION);
   }
 

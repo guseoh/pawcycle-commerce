@@ -1,4 +1,6 @@
-package com.pawcycle.backend.catalog.application;
+package com.pawcycle.backend.catalog.maintenance.persistence;
+
+import com.pawcycle.backend.catalog.application.*;
 import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
@@ -13,7 +15,7 @@ import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
 import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
 import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
 
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import jakarta.validation.Validator;
@@ -35,8 +37,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,29 +46,29 @@ import tools.jackson.databind.ObjectMapper;
  * Imports the shared Customer Catalog V3 supplement used by local QA and approved one-shot catalog
  * operations.
  */
-@Service
-public class CustomerCatalogV3ImportService {
+@Repository
+public class CustomerCatalogImportPersistence {
 
   public static final String DEFAULT_MANIFEST_LOCATION =
       "classpath:catalog/customer-catalog-v3.json";
   private static final Set<String> BASELINE_ROOT_CATEGORIES =
       Set.of("food", "treats", "hygiene", "toilet");
 
-  private final NativeQueryExecutor jdbc;
-  private final CatalogExpansionAdminService expansion;
+  private final JdbcTemplate jdbc;
+  private final CatalogAdminPersistence expansion;
   private final ProductListCacheInvalidator cache;
   private final Validator validator;
-  private final CustomerCatalogRealismCorrectionService correction;
+  private final CustomerCatalogRealismCorrectionPersistence correction;
   private final ObjectMapper objectMapper;
   private final String manifestLocation;
 
   @Autowired
-  public CustomerCatalogV3ImportService(
-      NativeQueryExecutor jdbc,
-      CatalogExpansionAdminService expansion,
+  public CustomerCatalogImportPersistence(
+      JdbcTemplate jdbc,
+      CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
       Validator validator,
-      CustomerCatalogRealismCorrectionService correction,
+      CustomerCatalogRealismCorrectionPersistence correction,
       @Value("${pawcycle.catalog.customer.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
           String manifestLocation) {
     this.jdbc = jdbc;
@@ -78,9 +80,9 @@ public class CustomerCatalogV3ImportService {
     this.manifestLocation = manifestLocation;
   }
 
-  public CustomerCatalogV3ImportService(
-      NativeQueryExecutor jdbc,
-      CatalogExpansionAdminService expansion,
+  public CustomerCatalogImportPersistence(
+      JdbcTemplate jdbc,
+      CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
       Validator validator) {
     this(
@@ -88,13 +90,13 @@ public class CustomerCatalogV3ImportService {
         expansion,
         cache,
         validator,
-        new CustomerCatalogRealismCorrectionService(jdbc),
+        new CustomerCatalogRealismCorrectionPersistence(jdbc),
         DEFAULT_MANIFEST_LOCATION);
   }
 
-  public CustomerCatalogV3ImportService(
-      NativeQueryExecutor jdbc,
-      CatalogExpansionAdminService expansion,
+  public CustomerCatalogImportPersistence(
+      JdbcTemplate jdbc,
+      CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
       Validator validator,
       String manifestLocation) {
@@ -103,7 +105,7 @@ public class CustomerCatalogV3ImportService {
         expansion,
         cache,
         validator,
-        new CustomerCatalogRealismCorrectionService(jdbc),
+        new CustomerCatalogRealismCorrectionPersistence(jdbc),
         manifestLocation);
   }
 

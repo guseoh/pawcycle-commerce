@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.migration.LegacySubscriptionMigrationProcessor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -14,7 +15,6 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
@@ -51,9 +51,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 class SubscriptionServiceIntegrationTests {
 
   @Autowired private SubscriptionService service;
-  @Autowired private LegacySubscriptionMigrationService legacyMigration;
+  @Autowired private LegacySubscriptionMigrationProcessor legacyMigration;
   @Autowired private JdbcTemplate jdbc;
-  @Autowired private NativeQueryExecutor jdbcExecutor;
+  @Autowired private JdbcTemplate jdbcExecutor;
   @Autowired private MemberRepository members;
   @Autowired private ProductRepository products;
   @Autowired private SkuRepository skus;
@@ -458,9 +458,14 @@ class SubscriptionServiceIntegrationTests {
 
     Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbcExecutor, cleanupClock);
-    SubscriptionIdempotencyCleanupService cleanup =
-        new SubscriptionIdempotencyCleanupService(jdbcExecutor, cleanupClock, metrics);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(
+            registry,
+            new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
+                jdbcExecutor),
+            cleanupClock);
+    SubscriptionIdempotencyCleanupProcessor cleanup =
+        new SubscriptionIdempotencyCleanupProcessor(jdbcExecutor, cleanupClock, metrics);
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     SubscriptionIdempotencyCleanupResult first =
         transaction.execute(status -> cleanup.deleteExpired(2));
@@ -550,9 +555,14 @@ class SubscriptionServiceIntegrationTests {
     LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
     Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbcExecutor, cleanupClock);
-    SubscriptionIdempotencyCleanupService cleanup =
-        new SubscriptionIdempotencyCleanupService(jdbcExecutor, cleanupClock, metrics);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(
+            registry,
+            new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
+                jdbcExecutor),
+            cleanupClock);
+    SubscriptionIdempotencyCleanupProcessor cleanup =
+        new SubscriptionIdempotencyCleanupProcessor(jdbcExecutor, cleanupClock, metrics);
 
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     SubscriptionIdempotencyCleanupResult first =

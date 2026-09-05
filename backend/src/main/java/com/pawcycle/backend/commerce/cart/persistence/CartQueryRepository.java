@@ -1,14 +1,14 @@
 package com.pawcycle.backend.commerce.cart.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class CartQueryRepository {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
 
-  public CartQueryRepository(NativeQueryExecutor queries) {
+  public CartQueryRepository(JdbcTemplate queries) {
     this.queries = queries;
   }
 

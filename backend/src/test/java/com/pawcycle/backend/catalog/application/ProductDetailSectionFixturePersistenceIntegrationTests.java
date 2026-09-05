@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.application;
 
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -8,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,24 +31,24 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
-class DemoProductDetailSectionFixtureServiceIntegrationTests {
+class ProductDetailSectionFixturePersistenceIntegrationTests {
 
   private final WebApplicationContext applicationContext;
   private final JdbcTemplate jdbc;
-  private final DemoCatalogManifestImportService importService;
-  private final DemoProductDetailSectionFixtureService detailFixtureService;
+  private final DemoCatalogImportPersistence importService;
+  private final ProductDetailSectionFixturePersistence detailFixtureService;
   private MockMvc mockMvc;
 
   @Autowired
-  DemoProductDetailSectionFixtureServiceIntegrationTests(
+  ProductDetailSectionFixturePersistenceIntegrationTests(
       WebApplicationContext applicationContext,
       JdbcTemplate jdbc,
-      NativeQueryExecutor jdbcExecutor,
-      DemoCatalogManifestImportService importService) {
+      JdbcTemplate jdbcExecutor,
+      DemoCatalogImportPersistence importService) {
     this.applicationContext = applicationContext;
     this.jdbc = jdbc;
     this.importService = importService;
-    this.detailFixtureService = new DemoProductDetailSectionFixtureService(jdbcExecutor);
+    this.detailFixtureService = new ProductDetailSectionFixturePersistence(jdbcExecutor);
   }
 
   @BeforeEach

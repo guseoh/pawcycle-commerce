@@ -1,8 +1,8 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
-import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -15,21 +15,21 @@ public class LocalCommerceDemoFixtureService {
 
   static final int DEMO_PRODUCT_COUNT = 32;
 
-  private final DemoCatalogManifestImportService importService;
-  private final DemoProductDetailSectionFixtureService detailSectionFixtureService;
+  private final DemoCatalogImportPersistence importService;
+  private final ProductDetailSectionFixturePersistence detailSectionFixtureService;
 
   @Value("${pawcycle.local-demo-catalog.manifest:classpath:catalog/demo-catalog.json}")
   private String manifestLocation;
 
   @Autowired
   public LocalCommerceDemoFixtureService(
-      DemoCatalogManifestImportService importService,
-      DemoProductDetailSectionFixtureService detailSectionFixtureService) {
+      DemoCatalogImportPersistence importService,
+      ProductDetailSectionFixturePersistence detailSectionFixtureService) {
     this.importService = importService;
     this.detailSectionFixtureService = detailSectionFixtureService;
   }
 
-  public LocalCommerceDemoFixtureService(DemoCatalogManifestImportService importService) {
+  public LocalCommerceDemoFixtureService(DemoCatalogImportPersistence importService) {
     this(importService, null);
   }
 

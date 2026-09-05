@@ -1,7 +1,6 @@
-package com.pawcycle.backend.subscription;
+package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import com.pawcycle.backend.foundation.persistence.PersistenceExceptionClassifier;
+import com.pawcycle.backend.subscription.*;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -10,21 +9,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.stereotype.Component;
+import org.springframework.jdbc.core.JdbcTemplate;
 
-/**
- * Subscription persistence currently keeps multi-table aggregate and compare-and-set writes explicit.
- */
-@Component
-class SubscriptionPersistenceAdapter {
+/** Read-side SQL and row mapping for the subscription aggregate boundary. */
+class SubscriptionAggregateQueryPersistence {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
 
-  SubscriptionPersistenceAdapter(NativeQueryExecutor jdbc) {
+  SubscriptionAggregateQueryPersistence(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 
-  PetProjection findOwnedPet(long memberId, long petId) {
+public PetProjection findOwnedPet(long memberId, long petId) {
     return one(
             "SELECT id,name,pet_type,breed,weight_kg FROM pets WHERE id=? AND member_id=?",
             petId,
@@ -33,7 +29,7 @@ class SubscriptionPersistenceAdapter {
         .orElseThrow(() -> new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다."));
   }
 
-  PlanVersionProjection findPlanVersion(long versionId) {
+public PlanVersionProjection findPlanVersion(long versionId) {
     return one(
             "SELECT p.id plan_id,p.name"
                 + " plan_name,p.current_plan_version_id,p.target_pet_type,p.on_sale,p.sale_starts_on,p.sale_ends_on,v.id"
@@ -45,7 +41,7 @@ class SubscriptionPersistenceAdapter {
             () -> new SubscriptionApiException(404, "PLAN_VERSION_NOT_FOUND", "PlanVersion을 찾을 수 없습니다."));
   }
 
-  boolean deliveryCycleAllowed(long versionId, int cycle) {
+public boolean deliveryCycleAllowed(long versionId, int cycle) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM plan_version_delivery_cycles WHERE plan_version_id=? AND"
                 + " delivery_cycle_weeks=?",
@@ -55,7 +51,7 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  boolean planContainsSku(long versionId, long skuId) {
+public boolean planContainsSku(long versionId, long skuId) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM plan_items WHERE plan_version_id=? AND sku_id=?",
             Integer.class,
@@ -64,7 +60,7 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  boolean scheduleAddonConflicts(long scheduleId, long versionId) {
+public boolean scheduleAddonConflicts(long scheduleId, long versionId) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM subscription_schedule_addons addon JOIN plan_items item ON"
                 + " item.sku_id=addon.sku_id WHERE addon.schedule_id=? AND item.plan_version_id=?",
@@ -74,7 +70,7 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  AddonSkuProjection findEligibleAddonSku(long skuId) {
+public AddonSkuProjection findEligibleAddonSku(long skuId) {
     return one(
             "SELECT sku.id sku_id,product.id product_id,product.name product_name,sku.name"
                 + " sku_name,sku.price,product.display_status,category.active"
@@ -101,96 +97,7 @@ class SubscriptionPersistenceAdapter {
         .orElseThrow(() -> new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다."));
   }
 
-  boolean reserveCreation(long memberId, String key, String fingerprint) {
-    try {
-      jdbc.update(
-          "INSERT INTO"
-              + " subscription_creation_idempotency_results(member_id,idempotency_key,payload_fingerprint)"
-              + " VALUES (?,?,?)",
-          memberId,
-          key,
-          fingerprint);
-      return true;
-    } catch (RuntimeException exception) {
-      if (PersistenceExceptionClassifier.isDuplicateKey(exception)) return false;
-      throw exception;
-    }
-  }
-
-  StoredIdempotencyResult lockCreationResult(long memberId, String key) {
-    return one(
-            "SELECT payload_fingerprint,response_status,response_body,location_header,etag_header"
-                + " FROM subscription_creation_idempotency_results WHERE member_id=? AND"
-                + " idempotency_key=? FOR UPDATE",
-            memberId,
-            key)
-        .map(this::storedIdempotency)
-        .orElseThrow();
-  }
-
-  void updateCreationResponse(
-      long memberId,
-      String key,
-      long subscriptionId,
-      SubscriptionOperationResult result,
-      String bodyJson) {
-    jdbc.update(
-        "UPDATE subscription_creation_idempotency_results SET"
-            + " subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6))"
-            + " WHERE member_id=? AND idempotency_key=?",
-        subscriptionId,
-        result.status(),
-        bodyJson,
-        result.location(),
-        result.etag(),
-        memberId,
-        key);
-  }
-
-  void updateStoredCreationBody(long memberId, String key, String bodyJson) {
-    jdbc.update(
-        "UPDATE subscription_creation_idempotency_results SET response_body=? WHERE member_id=? AND"
-            + " idempotency_key=?",
-        bodyJson,
-        memberId,
-        key);
-  }
-
-  long insertSubscription(
-      long memberId, long versionId, int cycle, long petId, LocalDate created, LocalDate next) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,pet_id,status,version,current_snapshot_id,legacy_api_visible,runtime_managed)"
-            + " VALUES (?,?,?,?,?,?,?,'ACTIVE',0,NULL,false,true)",
-        memberId,
-        firstSku(versionId),
-        1,
-        cycle,
-        created,
-        next,
-        petId);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-  }
-
-  void setCurrentSnapshot(long subscriptionId, long snapshotId) {
-    jdbc.update(
-        "UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshotId, subscriptionId);
-  }
-
-  void insertScheduled(long subscriptionId, LocalDate date) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id)"
-            + " VALUES (?,?,'SCHEDULED',NULL)",
-        subscriptionId,
-        date);
-  }
-
-  long createSnapshot(long subscriptionId, long versionId, int cycle, long price) {
-    return snapshot(subscriptionId, versionId, cycle, price);
-  }
-
-  SubscriptionProjection lockOwnedSubscription(long memberId, long subscriptionId) {
+public SubscriptionProjection lockOwnedSubscription(long memberId, long subscriptionId) {
     return one(
             "SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id"
                 + " FROM subscriptions WHERE id=? AND member_id=? AND runtime_managed=true FOR UPDATE",
@@ -201,7 +108,7 @@ class SubscriptionPersistenceAdapter {
             () -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
   }
 
-  SubscriptionProjection findOwnedSubscription(long memberId, long subscriptionId) {
+public SubscriptionProjection findOwnedSubscription(long memberId, long subscriptionId) {
     return one(
             "SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id"
                 + " FROM subscriptions WHERE id=? AND member_id=? AND runtime_managed=true",
@@ -212,44 +119,7 @@ class SubscriptionPersistenceAdapter {
             () -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
   }
 
-  long insertPet(long memberId, String name, String petType) {
-    jdbc.update(
-        "INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", memberId, name, petType);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-  }
-
-  void updatePet(
-      long memberId,
-      long petId,
-      String name,
-      boolean namePresent,
-      String breed,
-      boolean breedPresent,
-      java.math.BigDecimal weightKg,
-      boolean weightPresent) {
-    List<String> columns = new ArrayList<>();
-    List<Object> arguments = new ArrayList<>();
-    if (namePresent) {
-      columns.add("name=?");
-      arguments.add(name);
-    }
-    if (breedPresent) {
-      columns.add("breed=?");
-      arguments.add(breed);
-    }
-    if (weightPresent) {
-      columns.add("weight_kg=?");
-      arguments.add(weightKg);
-    }
-    arguments.add(petId);
-    arguments.add(memberId);
-    if (jdbc.update(
-            "UPDATE pets SET " + String.join(",", columns) + " WHERE id=? AND member_id=?",
-            arguments.toArray())
-        != 1) throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
-  }
-
-  PageProjection<PetProjection> findPets(long memberId, int page, int size) {
+public PageProjection<PetProjection> findPets(long memberId, int page, int size) {
     long total =
         jdbc.queryForObject("SELECT COUNT(*) FROM pets WHERE member_id=?", Long.class, memberId);
     List<PetProjection> items =
@@ -269,7 +139,7 @@ class SubscriptionPersistenceAdapter {
     return new PageProjection<>(page, size, total, items);
   }
 
-  PageProjection<PlanVersionProjection> findSalePlanVersions(
+public PageProjection<PlanVersionProjection> findSalePlanVersions(
       String petType, LocalDate today, int page, int size) {
     String where =
         " FROM subscription_plans p JOIN plan_versions v ON v.id=p.current_plan_version_id WHERE"
@@ -308,14 +178,14 @@ class SubscriptionPersistenceAdapter {
     return new PageProjection<>(page, size, total, items);
   }
 
-  List<SubscriptionItemProjection> findPlanItems(long versionId) {
+public List<SubscriptionItemProjection> findPlanItems(long versionId) {
     return jdbc.query(
         "SELECT sku_id,quantity FROM plan_items WHERE plan_version_id=? ORDER BY sku_id",
         (rs, n) -> new SubscriptionItemProjection(rs.getLong("sku_id"), rs.getInt("quantity")),
         versionId);
   }
 
-  List<Integer> findDeliveryCycles(long versionId) {
+public List<Integer> findDeliveryCycles(long versionId) {
     return jdbc.queryForList(
         "SELECT delivery_cycle_weeks FROM plan_version_delivery_cycles WHERE plan_version_id=?"
             + " ORDER BY delivery_cycle_weeks",
@@ -323,14 +193,14 @@ class SubscriptionPersistenceAdapter {
         versionId);
   }
 
-  Map<Long, List<SubscriptionItemProjection>> findPlanItems(List<Long> versionIds) {
+public Map<Long, List<SubscriptionItemProjection>> findPlanItems(List<Long> versionIds) {
     return groupedItems(
         "SELECT plan_version_id,sku_id,quantity FROM plan_items WHERE plan_version_id IN ",
         versionIds,
         "plan_version_id");
   }
 
-  Map<Long, List<Integer>> findDeliveryCycles(List<Long> versionIds) {
+public Map<Long, List<Integer>> findDeliveryCycles(List<Long> versionIds) {
     return groupedIntegers(
         "SELECT plan_version_id,delivery_cycle_weeks FROM plan_version_delivery_cycles WHERE"
             + " plan_version_id IN ",
@@ -339,7 +209,7 @@ class SubscriptionPersistenceAdapter {
         "delivery_cycle_weeks");
   }
 
-  SubscriptionSnapshot findSnapshot(long snapshotId) {
+public SubscriptionSnapshot findSnapshot(long snapshotId) {
     SubscriptionSnapshot base =
         one(
                 "SELECT id,source_plan_version_id,package_total_krw,delivery_cycle_weeks FROM"
@@ -362,7 +232,7 @@ class SubscriptionPersistenceAdapter {
         findPlanItemsForSnapshot(snapshotId));
   }
 
-  private List<SubscriptionItemProjection> findPlanItemsForSnapshot(long snapshotId) {
+private List<SubscriptionItemProjection> findPlanItemsForSnapshot(long snapshotId) {
     return jdbc.query(
         "SELECT sku_id,quantity FROM subscription_snapshot_items WHERE snapshot_id=? ORDER BY"
             + " sku_id",
@@ -370,73 +240,7 @@ class SubscriptionPersistenceAdapter {
         snapshotId);
   }
 
-  boolean reserveCommand(
-      long memberId, long subscriptionId, String command, String key, String fingerprint) {
-    try {
-      jdbc.update(
-          "INSERT INTO"
-              + " subscription_command_idempotency_results(member_id,subscription_id,command_type,idempotency_key,payload_fingerprint)"
-              + " VALUES (?,?,?,?,?)",
-          memberId,
-          subscriptionId,
-          command,
-          key,
-          fingerprint);
-      return true;
-    } catch (RuntimeException exception) {
-      if (PersistenceExceptionClassifier.isDuplicateKey(exception)) return false;
-      throw exception;
-    }
-  }
-
-  StoredIdempotencyResult lockCommandResult(
-      long memberId, long subscriptionId, String command, String key) {
-    return one(
-            "SELECT payload_fingerprint,response_status,response_body,location_header,etag_header"
-                + " FROM subscription_command_idempotency_results WHERE member_id=? AND"
-                + " subscription_id=? AND command_type=? AND idempotency_key=? FOR UPDATE",
-            memberId,
-            subscriptionId,
-            command,
-            key)
-        .map(this::storedIdempotency)
-        .orElseThrow();
-  }
-
-  void updateCommandResponse(
-      long memberId,
-      long subscriptionId,
-      String command,
-      String key,
-      SubscriptionOperationResult result,
-      String bodyJson) {
-    jdbc.update(
-        "UPDATE subscription_command_idempotency_results SET"
-            + " response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6))"
-            + " WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",
-        result.status(),
-        bodyJson,
-        result.location(),
-        result.etag(),
-        memberId,
-        subscriptionId,
-        command,
-        key);
-  }
-
-  void updateStoredCommandBody(
-      long memberId, long subscriptionId, String command, String key, String bodyJson) {
-    jdbc.update(
-        "UPDATE subscription_command_idempotency_results SET response_body=? WHERE member_id=? AND"
-            + " subscription_id=? AND command_type=? AND idempotency_key=?",
-        bodyJson,
-        memberId,
-        subscriptionId,
-        command,
-        key);
-  }
-
-  ScheduleProjection lockNextScheduled(long subscriptionId) {
+public ScheduleProjection lockNextScheduled(long subscriptionId) {
     return one(
             "SELECT schedule.id,schedule.scheduled_date FROM subscription_schedules schedule LEFT"
                 + " JOIN subscription_orders existing_order ON"
@@ -454,17 +258,7 @@ class SubscriptionPersistenceAdapter {
                 new SubscriptionApiException(409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
   }
 
-  void replacePendingPlanChange(long subscriptionId, long snapshotId, long scheduleId) {
-    jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId);
-    jdbc.update(
-        "INSERT INTO pending_plan_changes(subscription_id,snapshot_id,target_schedule_id) VALUES"
-            + " (?,?,?)",
-        subscriptionId,
-        snapshotId,
-        scheduleId);
-  }
-
-  Optional<PendingSubscriptionChange> findPendingChange(long subscriptionId) {
+public Optional<PendingSubscriptionChange> findPendingChange(long subscriptionId) {
     return one(
             "SELECT pending.snapshot_id,pending.target_schedule_id,schedule.scheduled_date FROM"
                 + " pending_plan_changes pending JOIN subscription_schedules schedule ON"
@@ -478,47 +272,14 @@ class SubscriptionPersistenceAdapter {
                     date(row.get("scheduled_date"))));
   }
 
-  void setSubscriptionPet(long subscriptionId, long petId) {
-    jdbc.update("UPDATE subscriptions SET pet_id=? WHERE id=?", petId, subscriptionId);
-  }
-
-  void markSkipped(long scheduleId) {
-    jdbc.update("UPDATE subscription_schedules SET status='SKIPPED' WHERE id=?", scheduleId);
-  }
-
-  long insertScheduledAndReturnId(long subscriptionId, LocalDate date) {
-    insertScheduled(subscriptionId, date);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-  }
-
-  void retargetPendingPlanChange(long subscriptionId, long scheduleId) {
-    jdbc.update(
-        "UPDATE pending_plan_changes SET target_schedule_id=? WHERE subscription_id=?",
-        scheduleId,
-        subscriptionId);
-  }
-
-  void setSubscriptionStatus(long subscriptionId, String status) {
-    jdbc.update("UPDATE subscriptions SET status=? WHERE id=?", status, subscriptionId);
-  }
-
-  void setScheduleStatus(long scheduleId, String status) {
-    jdbc.update(
-        "UPDATE subscription_schedules SET status=?,hold_reason=CASE WHEN ?='HELD' THEN hold_reason"
-            + " ELSE NULL END WHERE id=?",
-        status,
-        status,
-        scheduleId);
-  }
-
-  int scheduleAddonCount(long scheduleId) {
+public int scheduleAddonCount(long scheduleId) {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=?",
         Integer.class,
         scheduleId);
   }
 
-  boolean hasScheduleAddon(long scheduleId, long skuId) {
+public boolean hasScheduleAddon(long scheduleId, long skuId) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=? AND sku_id=?",
             Integer.class,
@@ -527,42 +288,7 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  void upsertScheduleAddon(long scheduleId, long skuId, int quantity, java.math.BigDecimal price) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_schedule_addons(schedule_id,sku_id,quantity,unit_price_krw,created_at,updated_at)"
-            + " VALUES (?,?,?, ?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE"
-            + " quantity=VALUES(quantity),unit_price_krw=VALUES(unit_price_krw),updated_at=UTC_TIMESTAMP(6)",
-        scheduleId,
-        skuId,
-        quantity,
-        price);
-  }
-
-  void deleteScheduleAddon(long scheduleId, long skuId) {
-    if (jdbc.update(
-            "DELETE FROM subscription_schedule_addons WHERE schedule_id=? AND sku_id=?",
-            scheduleId,
-            skuId)
-        != 1) throw new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다.");
-  }
-
-  void deleteScheduleAddons(long subscriptionId) {
-    jdbc.update(
-        "DELETE addon FROM subscription_schedule_addons addon JOIN subscription_schedules schedule"
-            + " ON schedule.id=addon.schedule_id WHERE schedule.subscription_id=? AND"
-            + " schedule.status IN ('SCHEDULED','HELD')",
-        subscriptionId);
-  }
-
-  void moveScheduleAddons(long fromScheduleId, long toScheduleId) {
-    jdbc.update(
-        "UPDATE subscription_schedule_addons SET schedule_id=? WHERE schedule_id=?",
-        toScheduleId,
-        fromScheduleId);
-  }
-
-  List<ScheduleAddonProjection> findScheduleAddons(long scheduleId) {
+public List<ScheduleAddonProjection> findScheduleAddons(long scheduleId) {
     return jdbc.query(
         "SELECT addon.schedule_id,addon.sku_id,sku.product_id,product.name product_name,sku.name"
             + " sku_name,addon.quantity,addon.unit_price_krw FROM subscription_schedule_addons"
@@ -580,14 +306,7 @@ class SubscriptionPersistenceAdapter {
         scheduleId);
   }
 
-  List<Long> heldScheduleIds(long subscriptionId) {
-    return jdbc.queryForList(
-        "SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='HELD' ORDER BY"
-            + " scheduled_date,id",
-        Long.class);
-  }
-
-  boolean scheduleDateTaken(long subscriptionId, LocalDate date, long excludedScheduleId) {
+public boolean scheduleDateTaken(long subscriptionId, LocalDate date, long excludedScheduleId) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND"
                 + " scheduled_date=? AND id<>?",
@@ -598,67 +317,7 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  void reschedule(long scheduleId, LocalDate date) {
-    jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE id=?", date, scheduleId);
-  }
-
-  void rescheduleHeld(long scheduleId, LocalDate date) {
-    jdbc.update(
-        "UPDATE subscription_schedules SET scheduled_date=?,status='SCHEDULED',hold_reason=NULL"
-            + " WHERE id=?",
-        date,
-        scheduleId);
-  }
-
-  void cancelUnorderedSchedules(long subscriptionId) {
-    jdbc.update(
-        "UPDATE subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON"
-            + " existing_order.schedule_id=schedule.id SET schedule.status='CANCELED' WHERE"
-            + " schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD') AND"
-            + " existing_order.id IS NULL",
-        subscriptionId);
-  }
-
-  void deletePendingPlanChange(long subscriptionId) {
-    jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId);
-  }
-
-  boolean incrementVersion(long subscriptionId, long expected) {
-    return jdbc.update(
-            "UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?",
-            subscriptionId,
-            expected)
-        == 1;
-  }
-
-  void insertCommandHistory(long subscriptionId, String command, long before, long after) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_command_history(subscription_id,command_type,occurred_at,version_before,version_after)"
-            + " VALUES (?,?,UTC_TIMESTAMP(6),?,?)",
-        subscriptionId,
-        command,
-        before,
-        after);
-  }
-
-  void deleteDeliveryReminder(long scheduleId) {
-    jdbc.update(
-        "DELETE FROM notifications WHERE type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
-            + " reference_type='SCHEDULE' AND reference_id=?",
-        scheduleId);
-  }
-
-  void deleteDeliveryReminders(long subscriptionId) {
-    jdbc.update(
-        "DELETE notification FROM notifications notification JOIN subscription_schedules schedule"
-            + " ON schedule.id=notification.reference_id AND notification.reference_type='SCHEDULE'"
-            + " WHERE notification.type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
-            + " schedule.subscription_id=?",
-        subscriptionId);
-  }
-
-  private PetProjection pet(Map<String, Object> row) {
+private PetProjection pet(Map<String, Object> row) {
     return new PetProjection(
         longValue(row, "id"),
         (String) row.get("name"),
@@ -667,7 +326,7 @@ class SubscriptionPersistenceAdapter {
         (java.math.BigDecimal) row.get("weight_kg"));
   }
 
-  private PlanVersionProjection planVersion(Map<String, Object> row) {
+private PlanVersionProjection planVersion(Map<String, Object> row) {
     return new PlanVersionProjection(
         longValue(row, "plan_id"),
         (String) row.get("plan_name"),
@@ -683,7 +342,7 @@ class SubscriptionPersistenceAdapter {
         Boolean.TRUE.equals(row.get("is_migration_only")));
   }
 
-  private SubscriptionProjection subscription(Map<String, Object> row) {
+private SubscriptionProjection subscription(Map<String, Object> row) {
     return new SubscriptionProjection(
         longValue(row, "id"),
         longValue(row, "member_id"),
@@ -694,16 +353,7 @@ class SubscriptionPersistenceAdapter {
         longValue(row, "current_snapshot_id"));
   }
 
-  private StoredIdempotencyResult storedIdempotency(Map<String, Object> row) {
-    return new StoredIdempotencyResult(
-        (String) row.get("payload_fingerprint"),
-        intValue(row, "response_status"),
-        (String) row.get("response_body"),
-        (String) row.get("location_header"),
-        (String) row.get("etag_header"));
-  }
-
-  private LocalDate date(Object value) {
+private LocalDate date(Object value) {
     if (value == null) return null;
     if (value instanceof LocalDate localDate) return localDate;
     if (value instanceof java.sql.Date sqlDate) return sqlDate.toLocalDate();
@@ -713,7 +363,7 @@ class SubscriptionPersistenceAdapter {
     throw new IllegalArgumentException("Unsupported date value type: " + value.getClass().getName());
   }
 
-  PageProjection<SubscriptionProjection> findSubscriptions(
+public PageProjection<SubscriptionProjection> findSubscriptions(
       long memberId, int page, int size) {
     long total =
         jdbc.queryForObject(
@@ -740,7 +390,7 @@ class SubscriptionPersistenceAdapter {
     return new PageProjection<>(page, size, total, items);
   }
 
-  Map<Long, PetProjection> findOwnedPets(long memberId, List<Long> ids) {
+public Map<Long, PetProjection> findOwnedPets(long memberId, List<Long> ids) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, PetProjection> result = new HashMap<>();
     jdbc.query(
@@ -760,7 +410,7 @@ class SubscriptionPersistenceAdapter {
     return result;
   }
 
-  Map<Long, SubscriptionSnapshotBase> findSnapshots(List<Long> ids) {
+public Map<Long, SubscriptionSnapshotBase> findSnapshots(List<Long> ids) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, SubscriptionSnapshotBase> result = new HashMap<>();
     jdbc.query(
@@ -780,14 +430,14 @@ class SubscriptionPersistenceAdapter {
     return result;
   }
 
-  Map<Long, List<SubscriptionItemProjection>> findSnapshotItems(List<Long> snapshotIds) {
+public Map<Long, List<SubscriptionItemProjection>> findSnapshotItems(List<Long> snapshotIds) {
     return groupedItems(
         "SELECT snapshot_id,sku_id,quantity FROM subscription_snapshot_items WHERE snapshot_id IN ",
         snapshotIds,
         "snapshot_id");
   }
 
-  Map<Long, LocalDate> findNextSchedules(List<Long> subscriptionIds, LocalDate today) {
+public Map<Long, LocalDate> findNextSchedules(List<Long> subscriptionIds, LocalDate today) {
     if (subscriptionIds.isEmpty()) return Map.of();
     Map<Long, LocalDate> result = new HashMap<>();
     jdbc.query(
@@ -798,7 +448,7 @@ class SubscriptionPersistenceAdapter {
             + " AND schedule.status='SCHEDULED' AND schedule.scheduled_date>=? AND"
             + " existing_order.id IS NULL ORDER BY"
             + " schedule.subscription_id,schedule.scheduled_date,schedule.id",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs ->
                 result.putIfAbsent(
                     rs.getLong("subscription_id"), rs.getDate("scheduled_date").toLocalDate()),
@@ -806,7 +456,7 @@ class SubscriptionPersistenceAdapter {
     return result;
   }
 
-  Optional<LocalDate> findNextSchedule(long subscriptionId, LocalDate today) {
+public Optional<LocalDate> findNextSchedule(long subscriptionId, LocalDate today) {
     return jdbc.query(
         "SELECT schedule.scheduled_date FROM subscription_schedules schedule LEFT JOIN"
             + " subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE"
@@ -818,13 +468,13 @@ class SubscriptionPersistenceAdapter {
         today);
   }
 
-  Optional<Long> findPendingSnapshotId(long subscriptionId) {
+public Optional<Long> findPendingSnapshotId(long subscriptionId) {
     return one(
             "SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?", subscriptionId)
         .map(row -> longValue(row, "snapshot_id"));
   }
 
-  Optional<NextDeliveryProjection> findNextDeliverySchedule(long subscriptionId) {
+public Optional<NextDeliveryProjection> findNextDeliverySchedule(long subscriptionId) {
     return one(
             "SELECT"
                 + " schedule.id,schedule.scheduled_date,schedule.status,schedule.hold_reason,schedule.effective_snapshot_id"
@@ -846,7 +496,7 @@ class SubscriptionPersistenceAdapter {
                         : longValue(row, "effective_snapshot_id")));
   }
 
-  List<SubscriptionItemDetailProjection> findSnapshotItemDetails(long snapshotId) {
+public List<SubscriptionItemDetailProjection> findSnapshotItemDetails(long snapshotId) {
     return jdbc.query(
         "SELECT item.sku_id,sku.name sku_name,product.id product_id,product.name"
             + " product_name,product.thumbnail_url,item.quantity FROM subscription_snapshot_items"
@@ -863,7 +513,7 @@ class SubscriptionPersistenceAdapter {
         snapshotId);
   }
 
-  PageProjection<ScheduleViewProjection> findScheduleViews(
+public PageProjection<ScheduleViewProjection> findScheduleViews(
       long subscriptionId, int page, int size) {
     long total =
         jdbc.queryForObject(
@@ -886,7 +536,7 @@ class SubscriptionPersistenceAdapter {
     return new PageProjection<>(page, size, total, items);
   }
 
-  PageProjection<CommandHistoryProjection> findCommandHistory(
+public PageProjection<CommandHistoryProjection> findCommandHistory(
       long subscriptionId, int page, int size) {
     long total =
         jdbc.queryForObject(
@@ -911,13 +561,13 @@ class SubscriptionPersistenceAdapter {
     return new PageProjection<>(page, size, total, items);
   }
 
-  List<Long> activeSubscriptionIds() {
+public List<Long> activeSubscriptionIds() {
     return jdbc.queryForList(
         "SELECT id FROM subscriptions WHERE runtime_managed=true AND status='ACTIVE' ORDER BY id",
         Long.class);
   }
 
-  Optional<SubscriptionProjection> lockActiveSubscription(long subscriptionId) {
+public Optional<SubscriptionProjection> lockActiveSubscription(long subscriptionId) {
     return one(
             "SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id"
                 + " FROM subscriptions WHERE id=? AND runtime_managed=true AND status='ACTIVE' FOR"
@@ -926,7 +576,7 @@ class SubscriptionPersistenceAdapter {
         .map(this::subscription);
   }
 
-  boolean hasUnprocessedDueSchedule(long subscriptionId, LocalDate today) {
+public boolean hasUnprocessedDueSchedule(long subscriptionId, LocalDate today) {
     return !jdbc.queryForList(
             "SELECT schedule.id FROM subscription_schedules schedule LEFT JOIN subscription_orders"
                 + " existing_order ON existing_order.schedule_id=schedule.id WHERE"
@@ -938,7 +588,7 @@ class SubscriptionPersistenceAdapter {
         .isEmpty();
   }
 
-  List<ScheduleProjection> futureSchedulesForUpdate(long subscriptionId, LocalDate today) {
+public List<ScheduleProjection> futureSchedulesForUpdate(long subscriptionId, LocalDate today) {
     return jdbc.query(
         "SELECT id,scheduled_date FROM subscription_schedules WHERE subscription_id=? AND"
             + " status='SCHEDULED' AND scheduled_date>? ORDER BY scheduled_date,id FOR UPDATE",
@@ -949,7 +599,7 @@ class SubscriptionPersistenceAdapter {
         today);
   }
 
-  Optional<ProcessedScheduleProjection> lastProcessedSchedule(long subscriptionId) {
+public Optional<ProcessedScheduleProjection> lastProcessedSchedule(long subscriptionId) {
     return one(
             "SELECT orders.scheduled_date,snapshot.delivery_cycle_weeks FROM subscription_orders"
                 + " orders JOIN subscription_snapshots snapshot ON"
@@ -962,7 +612,7 @@ class SubscriptionPersistenceAdapter {
                     date(row.get("scheduled_date")), intValue(row, "delivery_cycle_weeks")));
   }
 
-  boolean scheduleExists(long subscriptionId, LocalDate date) {
+public boolean scheduleExists(long subscriptionId, LocalDate date) {
     return jdbc.queryForObject(
             "SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND"
                 + " scheduled_date=?",
@@ -972,38 +622,13 @@ class SubscriptionPersistenceAdapter {
         > 0;
   }
 
-  private long snapshot(long subscriptionId, long versionId, int cycle, long price) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_snapshots(subscription_id,source_plan_version_id,package_total_krw,delivery_cycle_weeks)"
-            + " VALUES (?,?,?,?)",
-        subscriptionId,
-        versionId,
-        price,
-        cycle);
-    long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    jdbc.update(
-        "INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT"
-            + " ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?",
-        id,
-        versionId);
-    return id;
-  }
-
-  private long firstSku(long versionId) {
-    return jdbc.queryForObject(
-        "SELECT sku_id FROM plan_items WHERE plan_version_id=? ORDER BY sku_id LIMIT 1",
-        Long.class,
-        versionId);
-  }
-
-  private Map<Long, List<SubscriptionItemProjection>> groupedItems(
+private Map<Long, List<SubscriptionItemProjection>> groupedItems(
       String prefix, List<Long> ids, String key) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, List<SubscriptionItemProjection>> result = new HashMap<>();
     jdbc.query(
         prefix + placeholders(ids.size()) + " ORDER BY " + key + ",sku_id",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs ->
                 result
                     .computeIfAbsent(rs.getLong(key), ignored -> new ArrayList<>())
@@ -1012,13 +637,13 @@ class SubscriptionPersistenceAdapter {
     return result;
   }
 
-  private Map<Long, List<Integer>> groupedIntegers(
+private Map<Long, List<Integer>> groupedIntegers(
       String prefix, List<Long> ids, String key, String value) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, List<Integer>> result = new HashMap<>();
     jdbc.query(
         prefix + placeholders(ids.size()) + " ORDER BY " + key + "," + value,
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs ->
                 result
                     .computeIfAbsent(rs.getLong(key), ignored -> new ArrayList<>())
@@ -1027,30 +652,30 @@ class SubscriptionPersistenceAdapter {
     return result;
   }
 
-  private Object[] withLast(List<Long> ids, Object last) {
+private Object[] withLast(List<Long> ids, Object last) {
     List<Object> args = new ArrayList<>(ids);
     args.add(last);
     return args.toArray();
   }
 
-  private String placeholders(int count) {
+private String placeholders(int count) {
     return "(" + String.join(",", Collections.nCopies(count, "?")) + ")";
   }
 
-  private Optional<Map<String, Object>> one(String sql, Object... args) {
+private Optional<Map<String, Object>> one(String sql, Object... args) {
     List<Map<String, Object>> rows = jdbc.queryForList(sql, args);
     return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
   }
 
-  private long longValue(Map<String, Object> r, String k) {
+private long longValue(Map<String, Object> r, String k) {
     return ((Number) r.get(k)).longValue();
   }
 
-  private int intValue(Map<String, Object> r, String k) {
+private int intValue(Map<String, Object> r, String k) {
     return ((Number) r.get(k)).intValue();
   }
 
-  private Object[] withLeading(Object leading, List<Long> ids) {
+private Object[] withLeading(Object leading, List<Long> ids) {
     List<Object> args = new ArrayList<>();
     args.add(leading);
     args.addAll(ids);

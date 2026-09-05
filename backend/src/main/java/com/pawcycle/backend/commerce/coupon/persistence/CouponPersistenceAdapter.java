@@ -2,7 +2,7 @@ package com.pawcycle.backend.commerce.coupon.persistence;
 
 import com.pawcycle.backend.commerce.CommerceException;
 import com.pawcycle.backend.commerce.CouponRequest;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -10,10 +10,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class CouponPersistenceAdapter {
-  private final NativeQueryExecutor queries;
+  private final JdbcTemplate queries;
   private final Clock clock;
 
-  public CouponPersistenceAdapter(NativeQueryExecutor queries, Clock clock) {
+  public CouponPersistenceAdapter(JdbcTemplate queries, Clock clock) {
     this.queries = queries;
     this.clock = clock;
   }
