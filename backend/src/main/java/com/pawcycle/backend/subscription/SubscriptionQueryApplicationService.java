@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import com.pawcycle.backend.subscription.api.CommandHistoryResponse;
 import com.pawcycle.backend.subscription.api.NextDeliveryResponse;
 import com.pawcycle.backend.subscription.api.PageResponse;
@@ -24,11 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class SubscriptionQueryApplicationService {
-  private final SubscriptionPersistenceAdapter store;
+  private final SubscriptionAggregatePersistence store;
   private final SubscriptionApplicationSupport support;
 
   SubscriptionQueryApplicationService(
-      SubscriptionPersistenceAdapter store,
+      SubscriptionAggregatePersistence store,
       tools.jackson.databind.ObjectMapper json,
       java.time.Clock clock) {
     this.store = store;

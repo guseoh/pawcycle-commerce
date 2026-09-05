@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.operations.api;
 
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.OperationsQueryService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +16,7 @@ public class AdminOperationsController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> pending() {
+  public List<OperationsPendingResponse> pending() {
     return operations.pending();
   }
 }

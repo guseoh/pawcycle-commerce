@@ -1,7 +1,5 @@
 package com.pawcycle.backend.commerce.order.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.util.List;
@@ -23,19 +21,19 @@ public class OrderController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> list(
+  public List<OrderSummaryResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return orderService.orders(principal.memberId());
   }
 
   @GetMapping("/{orderId}")
-  public CommercePayload get(
+  public OrderResponse get(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long orderId) {
     return orderService.order(principal.memberId(), orderId);
   }
 
   @PostMapping("/{orderId}/reorder")
-  public CommercePayload reorder(
+  public OrderReorderResponse reorder(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @RequestHeader("Idempotency-Key") String idempotencyKey) {

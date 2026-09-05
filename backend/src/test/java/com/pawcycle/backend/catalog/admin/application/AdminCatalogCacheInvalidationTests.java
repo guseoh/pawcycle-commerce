@@ -13,6 +13,10 @@ import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
+import com.pawcycle.backend.catalog.brand.domain.Brand;
+import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogFacetPersistenceAdapter;
+import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
@@ -26,14 +30,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class AdminCatalogCacheInvalidationTests {
   @Mock private CategoryRepository categoryRepository;
+  @Mock private BrandRepository brandRepository;
   @Mock private ProductRepository productRepository;
   @Mock private SkuRepository skuRepository;
-  @Mock private NativeQueryExecutor jdbcTemplate;
+  @Mock private InventoryRepository inventoryRepository;
+  @Mock private CatalogFacetPersistenceAdapter catalogFacets;
   @Mock private ProductListCacheInvalidator invalidator;
 
   private AdminCatalogService service;
@@ -42,7 +48,13 @@ class AdminCatalogCacheInvalidationTests {
   void setUp() {
     service =
         new AdminCatalogService(
-            categoryRepository, productRepository, skuRepository, jdbcTemplate, invalidator);
+            categoryRepository,
+            brandRepository,
+            productRepository,
+            skuRepository,
+            inventoryRepository,
+            catalogFacets,
+            invalidator);
   }
 
   @Test
@@ -51,6 +63,9 @@ class AdminCatalogCacheInvalidationTests {
     when(category.isActive()).thenReturn(true);
     when(category.getSlug()).thenReturn("food");
     when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+    Brand brand = mock(Brand.class);
+    when(brand.isActive()).thenReturn(true);
+    when(brandRepository.findById(1L)).thenReturn(Optional.of(brand));
     when(productRepository.saveAndFlush(any(Product.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -71,8 +86,11 @@ class AdminCatalogCacheInvalidationTests {
     Product product = mock(Product.class);
     when(product.getId()).thenReturn(10L);
     when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+    Sku savedSku = mock(Sku.class);
+    when(savedSku.getId()).thenReturn(20L);
+    when(savedSku.getProduct()).thenReturn(product);
     when(skuRepository.saveAndFlush(any(Sku.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
+        .thenReturn(savedSku);
 
     service.createSku(
         10L,

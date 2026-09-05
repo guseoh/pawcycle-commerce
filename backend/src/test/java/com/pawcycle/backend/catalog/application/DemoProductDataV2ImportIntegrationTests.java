@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.application;
 
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
@@ -17,12 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class DemoProductDataV2ImportIntegrationTests {
 
-  private final DemoCatalogManifestImportService importService;
+  private final DemoCatalogImportPersistence importService;
   private final JdbcTemplate jdbc;
 
   @Autowired
   DemoProductDataV2ImportIntegrationTests(
-      DemoCatalogManifestImportService importService, JdbcTemplate jdbc) {
+      DemoCatalogImportPersistence importService, JdbcTemplate jdbc) {
     this.importService = importService;
     this.jdbc = jdbc;
   }

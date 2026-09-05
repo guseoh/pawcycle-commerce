@@ -1,8 +1,6 @@
 package com.pawcycle.backend.commerce.order.api;
 
 import com.pawcycle.backend.commerce.AdminOrderQueryService;
-import com.pawcycle.backend.commerce.CommercePayload;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,12 +17,12 @@ public class AdminOrderController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> list() {
+  public List<AdminOrderResponse> list() {
     return orders.list();
   }
 
   @GetMapping("/{id}")
-  public CommercePayload get(@PathVariable long id) {
+  public AdminOrderResponse get(@PathVariable long id) {
     return orders.get(id);
   }
 }

@@ -18,7 +18,7 @@ import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.EmailNormalizer;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +35,7 @@ class LocalQaBootstrapServiceTests {
   private MemberRepository memberRepository;
   private ProductRepository productRepository;
   private SkuRepository skuRepository;
-  private NativeQueryExecutor jdbcTemplate;
+  private JdbcTemplate jdbcTemplate;
   private LocalQaBootstrapService bootstrapService;
 
   @BeforeEach
@@ -45,7 +45,7 @@ class LocalQaBootstrapServiceTests {
     memberRepository = mock(MemberRepository.class);
     productRepository = mock(ProductRepository.class);
     skuRepository = mock(SkuRepository.class);
-    jdbcTemplate = mock(NativeQueryExecutor.class);
+    jdbcTemplate = mock(JdbcTemplate.class);
     bootstrapService =
         new LocalQaBootstrapService(
             emailNormalizer,

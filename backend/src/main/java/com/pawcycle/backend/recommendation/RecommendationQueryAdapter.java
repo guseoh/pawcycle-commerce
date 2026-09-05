@@ -3,18 +3,36 @@ package com.pawcycle.backend.recommendation;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 class RecommendationQueryAdapter {
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
 
-  RecommendationQueryAdapter(NativeQueryExecutor jdbc) {
+  RecommendationQueryAdapter(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  Map<Long, Long> coPurchaseCounts(long productId) {
+    return jdbc.query(
+        """
+        SELECT other_product.id,COUNT(DISTINCT o.id) FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED'
+        JOIN order_items source_item ON source_item.order_id=o.id JOIN skus source_sku ON source_sku.id=source_item.sku_id
+        JOIN order_items other_item ON other_item.order_id=o.id AND other_item.sku_id<>source_item.sku_id JOIN skus other_sku ON other_sku.id=other_item.sku_id
+        JOIN products other_product ON other_product.id=other_sku.product_id WHERE o.source='ONE_TIME' AND o.status='PAID' AND source_sku.product_id=? AND other_product.id<>? GROUP BY other_product.id
+        """,
+        rs -> {
+          Map<Long, Long> values = new HashMap<>();
+          while (rs.next()) values.put(rs.getLong(1), rs.getLong(2));
+          return values;
+        },
+        productId,
+        productId);
   }
 
   String findOwnedPetType(long memberId, long petId) {
@@ -66,7 +84,7 @@ class RecommendationQueryAdapter {
             + " fd.id=fo.facet_definition_id WHERE pfv.product_id IN ("
             + placeholders(base.size())
             + ") ORDER BY pfv.product_id,fd.id,fo.display_order,fo.id",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs ->
                 facets
                     .computeIfAbsent(rs.getLong(1), ignored -> new ArrayList<>())
@@ -264,7 +282,7 @@ class RecommendationQueryAdapter {
   private void addPopular(Map<Long, Long> target, String sql) {
     jdbc.query(
         sql,
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> {
               long id = rs.getLong(1);
               target.merge(id, rs.getLong(2), Long::sum);
@@ -349,7 +367,7 @@ class RecommendationQueryAdapter {
         "SELECT product_id,COUNT(*) FROM interaction_events WHERE member_id=? AND event_type=? AND"
             + " product_id IS NOT NULL AND occurred_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL ?"
             + " DAY) GROUP BY product_id",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getLong(1), rs.getInt(2)),
         memberId,
         type,
@@ -361,7 +379,7 @@ class RecommendationQueryAdapter {
     Map<Long, Integer> result = new HashMap<>();
     jdbc.query(
         sql,
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getLong(1), rs.getInt(2)),
         args);
     return result;
@@ -371,7 +389,7 @@ class RecommendationQueryAdapter {
     Map<String, Integer> result = new HashMap<>();
     jdbc.query(
         sql,
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getString(1), rs.getInt(2)),
         args);
     return result;
@@ -389,7 +407,7 @@ class RecommendationQueryAdapter {
             + "') IS NOT NULL GROUP BY JSON_UNQUOTE(JSON_EXTRACT(context, '$."
             + key
             + "'))",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getString(1), rs.getInt(2)),
         memberId);
     return result;
@@ -399,7 +417,7 @@ class RecommendationQueryAdapter {
     Map<String, Integer> result = new HashMap<>();
     jdbc.query(
         sql,
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getString(1), rs.getInt(2)),
         args);
     return result;
@@ -412,7 +430,7 @@ class RecommendationQueryAdapter {
             + " JSON_TABLE(event.context,'$.facets[*]' COLUMNS(facet VARCHAR(200) PATH '$')) facets"
             + " WHERE event.member_id=? AND event.event_type='FILTER' AND event.occurred_at >="
             + " DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 DAY) GROUP BY facets.facet",
-        (NativeQueryExecutor.RowCallbackHandler)
+        (org.springframework.jdbc.core.RowCallbackHandler)
             rs -> result.put(rs.getString(1), rs.getInt(2)),
         memberId);
     return result;

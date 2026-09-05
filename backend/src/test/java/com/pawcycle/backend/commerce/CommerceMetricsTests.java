@@ -5,18 +5,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class CommerceMetricsTests {
   @Test
   void pendingGaugeKeepsLongValuesAboveIntegerRange() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
     when(jdbc.queryForObject(
             org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(Long.class)))
         .thenReturn((long) Integer.MAX_VALUE + 100L);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    CommerceMetrics metrics = new CommerceMetrics(registry, jdbc);
+    CommerceMetrics metrics =
+        new CommerceMetrics(registry, new CommerceMetricsQueryRepository(jdbc));
 
     metrics.refreshPending();
 

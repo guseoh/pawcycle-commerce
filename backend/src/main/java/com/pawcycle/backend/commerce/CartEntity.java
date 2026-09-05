@@ -16,26 +16,43 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * JPA mapping for a commerce persistence record.
- */
-
 @Entity
 @Table(name = "carts")
-class CartEntity {
+public class CartEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  Long id;
+  private Long id;
 
   @Column(name = "member_id", nullable = false)
-  Long memberId;
+  private Long memberId;
 
   @Column(nullable = false)
-  long version;
+  private long version;
 
   @Column(name = "created_at", nullable = false)
-  LocalDateTime createdAt;
+  private LocalDateTime createdAt;
 
   @Column(name = "updated_at", nullable = false)
-  LocalDateTime updatedAt;
+  private LocalDateTime updatedAt;
+
+  protected CartEntity() {}
+
+  public CartEntity(long memberId, LocalDateTime now) {
+    this.memberId = memberId;
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
+
+  public Long getId() {
+    return id;
+  }
+
+  public long getVersion() {
+    return version;
+  }
+
+  public void incrementVersion(LocalDateTime now) {
+    version++;
+    updatedAt = now;
+  }
 }

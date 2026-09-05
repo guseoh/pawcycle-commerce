@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.application.DemoCatalogImportOperation;
 import com.pawcycle.backend.catalog.application.DemoCatalogImportResult;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,11 +23,11 @@ class LocalCommerceDemoFixtureServiceIntegrationTests {
 
   private final JdbcTemplate jdbcTemplate;
   private final LocalCommerceDemoFixtureService fixtureService;
-  private final DemoCatalogManifestImportService importService;
+  private final DemoCatalogImportPersistence importService;
 
   @Autowired
   LocalCommerceDemoFixtureServiceIntegrationTests(
-      JdbcTemplate jdbcTemplate, DemoCatalogManifestImportService importService) {
+      JdbcTemplate jdbcTemplate, DemoCatalogImportPersistence importService) {
     this.jdbcTemplate = jdbcTemplate;
     this.importService = importService;
     this.fixtureService = new LocalCommerceDemoFixtureService(importService);

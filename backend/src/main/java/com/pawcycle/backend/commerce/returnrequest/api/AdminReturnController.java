@@ -1,9 +1,9 @@
 package com.pawcycle.backend.commerce.returnrequest.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.ReasonRequest;
 import com.pawcycle.backend.commerce.ReturnReceiptRequest;
 import com.pawcycle.backend.commerce.ReturnService;
+import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,13 +23,13 @@ public class AdminReturnController {
   }
 
   @PostMapping("/{id}/approve")
-  public CommercePayload approve(
+  public ReturnResponse approve(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return returns.approve(principal.memberId(), id);
   }
 
   @PostMapping("/{id}/reject")
-  public CommercePayload reject(
+  public ReturnResponse reject(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReasonRequest request) {
@@ -37,7 +37,7 @@ public class AdminReturnController {
   }
 
   @PostMapping("/{id}/receive")
-  public CommercePayload receive(
+  public ReturnResponse receive(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReturnReceiptRequest request) {

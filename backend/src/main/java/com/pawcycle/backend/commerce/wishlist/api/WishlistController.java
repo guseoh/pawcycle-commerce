@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.wishlist.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.wishlist.application.WishlistApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.http.ResponseEntity;
@@ -22,7 +21,7 @@ public class WishlistController {
   }
 
   @GetMapping
-  public CommercePayload list(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+  public WishlistResponse list(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return wishlist.list(principal.memberId());
   }
 

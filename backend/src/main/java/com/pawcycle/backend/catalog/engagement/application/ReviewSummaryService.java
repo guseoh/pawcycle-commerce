@@ -2,14 +2,13 @@ package com.pawcycle.backend.catalog.engagement.application;
 
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
+import com.pawcycle.backend.catalog.engagement.persistence.ReviewSummaryQueryRepository;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
-import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,14 +26,17 @@ public class ReviewSummaryService {
           "treatment",
           "medicine",
           "prescription");
-  private final NativeQueryExecutor jdbc;
+  private final ReviewSummaryQueryRepository queries;
   private final ProductRepository products;
   private final ReviewSummaryAiClient ai;
   private final Clock clock;
 
   public ReviewSummaryService(
-      NativeQueryExecutor jdbc, ProductRepository products, ReviewSummaryAiClient ai, Clock clock) {
-    this.jdbc = jdbc;
+      ReviewSummaryQueryRepository queries,
+      ProductRepository products,
+      ReviewSummaryAiClient ai,
+      Clock clock) {
+    this.queries = queries;
     this.products = products;
     this.ai = ai;
     this.clock = clock;
@@ -42,45 +44,18 @@ public class ReviewSummaryService {
 
   @Transactional
   public ReviewSummaryResponse summary(long productId) {
-    if (products.findPublicById(productId).isEmpty() || !hasActiveBrand(productId))
+    if (products.findPublicById(productId).isEmpty() || !queries.hasActiveBrand(productId))
       throw new ProductNotFoundException();
-    List<ReviewRow> reviews =
-        jdbc.query(
-            "SELECT id,rating,content,updated_at FROM reviews WHERE product_id=? AND visible=true"
-                + " ORDER BY created_at DESC,id DESC LIMIT 30",
-            (rs, n) ->
-                new ReviewRow(rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getTimestamp(4)),
-            productId);
-    long count =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM reviews WHERE product_id=? AND visible=true",
-            Long.class,
-            productId);
-    BigDecimal average =
-        jdbc.queryForObject(
-            "SELECT AVG(rating) FROM reviews WHERE product_id=? AND visible=true",
-            BigDecimal.class,
-            productId);
+    List<ReviewRow> reviews = queries.latestReviews(productId).stream().map(this::toReviewRow).toList();
+    long count = queries.visibleReviewCount(productId);
+    BigDecimal average = queries.visibleAverageRating(productId);
     if (count < 3) return new ReviewSummaryResponse("INSUFFICIENT_REVIEWS", null, count, average);
     List<ReviewRow> sourceReviews =
-        jdbc.query(
-            "SELECT id,rating,content,updated_at FROM reviews WHERE product_id=? AND visible=true"
-                + " ORDER BY id",
-            (rs, n) ->
-                new ReviewRow(rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getTimestamp(4)),
-            productId);
+        queries.allReviews(productId).stream().map(this::toReviewRow).toList();
     String fingerprint = fingerprint(sourceReviews);
-    Map<String, Object> cached =
-        jdbc
-            .queryForList(
-                "SELECT source_fingerprint,summary FROM product_review_summaries WHERE"
-                    + " product_id=?",
-                productId)
-            .stream()
-            .findFirst()
-            .orElse(null);
-    if (cached != null && fingerprint.equals(cached.get("source_fingerprint")))
-      return new ReviewSummaryResponse("AVAILABLE", (String) cached.get("summary"), count, average);
+    var cached = queries.cachedSummary(productId).orElse(null);
+    if (cached != null && fingerprint.equals(cached.sourceFingerprint()))
+      return new ReviewSummaryResponse("AVAILABLE", cached.summary(), count, average);
     String generated;
     try {
       generated =
@@ -93,25 +68,12 @@ public class ReviewSummaryService {
     }
     if (!validAiText(generated))
       return new ReviewSummaryResponse("UNAVAILABLE", null, count, average);
-    jdbc.update(
-        "INSERT INTO product_review_summaries(product_id,source_fingerprint,summary,generated_at)"
-            + " VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE"
-            + " source_fingerprint=VALUES(source_fingerprint),summary=VALUES(summary),generated_at=VALUES(generated_at)",
-        productId,
-        fingerprint,
-        generated.trim(),
-        Timestamp.from(clock.instant()));
+    queries.saveSummary(productId, fingerprint, generated.trim(), Timestamp.from(clock.instant()));
     return new ReviewSummaryResponse("AVAILABLE", generated.trim(), count, average);
   }
 
-  private boolean hasActiveBrand(long productId) {
-    Integer count =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM products p JOIN brands b ON b.id=p.brand_id WHERE p.id=? AND"
-                + " b.active=true",
-            Integer.class,
-            productId);
-    return Integer.valueOf(1).equals(count);
+  private ReviewRow toReviewRow(ReviewSummaryQueryRepository.ReviewRow row) {
+    return new ReviewRow(row.id(), row.rating(), row.content(), row.updatedAt());
   }
 
   private boolean validAiText(String text) {

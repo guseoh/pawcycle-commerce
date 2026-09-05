@@ -3,9 +3,6 @@ package com.pawcycle.backend.subscription;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.domain.Product;
@@ -14,7 +11,9 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.migration.LegacySubscriptionMigrationProcessor;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
@@ -25,8 +24,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -51,9 +48,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 class SubscriptionServiceIntegrationTests {
 
   @Autowired private SubscriptionService service;
-  @Autowired private LegacySubscriptionMigrationService legacyMigration;
+  @Autowired private LegacySubscriptionMigrationProcessor legacyMigration;
   @Autowired private JdbcTemplate jdbc;
-  @Autowired private NativeQueryExecutor jdbcExecutor;
+  @Autowired private JdbcTemplate jdbcExecutor;
   @Autowired private MemberRepository members;
   @Autowired private ProductRepository products;
   @Autowired private SkuRepository skus;
@@ -199,9 +196,7 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @SuppressWarnings("unchecked")
   void listPagesKeepRelatedRowsOrderingAndMemberIsolationAfterBatchAssembly() {
-    long petId =
-        service
-                    .createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
     jdbc.update(
         "INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)",
         "DOG multi",
@@ -275,18 +270,20 @@ class SubscriptionServiceIntegrationTests {
 
     long firstSubscriptionId =
         service
-                    .createSubscription(
-                        member.getId(),
-                        "list-first",
-                        new CreateSubscriptionRequest(petId, planVersionId, 4))
-                    .body().subscriptionId();
+            .createSubscription(
+                member.getId(),
+                "list-first",
+                new CreateSubscriptionRequest(petId, planVersionId, 4))
+            .body()
+            .subscriptionId();
     long secondSubscriptionId =
         service
-                    .createSubscription(
-                        member.getId(),
-                        "list-second",
-                        new CreateSubscriptionRequest(petId, multiVersionId, 2))
-                    .body().subscriptionId();
+            .createSubscription(
+                member.getId(),
+                "list-second",
+                new CreateSubscriptionRequest(petId, multiVersionId, 2))
+            .body()
+            .subscriptionId();
     Sku secondSku =
         skus.saveAndFlush(
             com.pawcycle.backend.support.TestSkuFactory.sku(
@@ -322,12 +319,9 @@ class SubscriptionServiceIntegrationTests {
                 "v2-other-" + UUID.randomUUID() + "@example.test",
                 passwordEncoder.encode("test-password")));
     long otherPetId =
-        service
-                    .createPet(other.getId(), new CreatePetRequest("다른 회원", "DOG")).petId();
+        service.createPet(other.getId(), new CreatePetRequest("다른 회원", "DOG")).petId();
     service.createSubscription(
-        other.getId(),
-        "list-other",
-        new CreateSubscriptionRequest(otherPetId, planVersionId, 4));
+        other.getId(), "list-other", new CreateSubscriptionRequest(otherPetId, planVersionId, 4));
 
     var subscriptions = service.subscriptions(member.getId(), 0, 100).items();
     assertThat(subscriptions)
@@ -360,9 +354,7 @@ class SubscriptionServiceIntegrationTests {
 
   @Test
   void mysqlPersistsReplayAndRejectsMismatchedPayload() {
-    long petId =
-        service
-                    .createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
     CreateSubscriptionRequest request = new CreateSubscriptionRequest(petId, planVersionId, 4);
     SubscriptionResult created =
         service.createSubscription(member.getId(), "create-replay-key", request);
@@ -424,16 +416,15 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void cleanupDeletesOnlyExpiredRowsWithinEachTableBatch() {
-    long petId =
-        service
-                    .createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
     long subscriptionId =
         service
-                    .createSubscription(
-                        member.getId(),
-                        "cleanup-subscription",
-                        new CreateSubscriptionRequest(petId, planVersionId, 4))
-                    .body().subscriptionId();
+            .createSubscription(
+                member.getId(),
+                "cleanup-subscription",
+                new CreateSubscriptionRequest(petId, planVersionId, 4))
+            .body()
+            .subscriptionId();
     jdbc.update(
         "DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND"
             + " idempotency_key=?",
@@ -458,9 +449,18 @@ class SubscriptionServiceIntegrationTests {
 
     Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbcExecutor, cleanupClock);
-    SubscriptionIdempotencyCleanupService cleanup =
-        new SubscriptionIdempotencyCleanupService(jdbcExecutor, cleanupClock, metrics);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(
+            registry,
+            new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
+                jdbcExecutor),
+            cleanupClock);
+    SubscriptionIdempotencyCleanupProcessor cleanup =
+        new SubscriptionIdempotencyCleanupProcessor(
+            new com.pawcycle.backend.subscription.persistence
+                .SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+            cleanupClock,
+            metrics);
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     SubscriptionIdempotencyCleanupResult first =
         transaction.execute(status -> cleanup.deleteExpired(2));
@@ -522,16 +522,15 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting() {
-    long petId =
-        service
-                    .createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
     long subscriptionId =
         service
-                    .createSubscription(
-                        member.getId(),
-                        "repair-subscription",
-                        new CreateSubscriptionRequest(petId, planVersionId, 4))
-                    .body().subscriptionId();
+            .createSubscription(
+                member.getId(),
+                "repair-subscription",
+                new CreateSubscriptionRequest(petId, planVersionId, 4))
+            .body()
+            .subscriptionId();
     jdbc.update(
         "DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND"
             + " idempotency_key=?",
@@ -550,9 +549,18 @@ class SubscriptionServiceIntegrationTests {
     LocalDateTime expectedCompletedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
     Clock cleanupClock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbcExecutor, cleanupClock);
-    SubscriptionIdempotencyCleanupService cleanup =
-        new SubscriptionIdempotencyCleanupService(jdbcExecutor, cleanupClock, metrics);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(
+            registry,
+            new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
+                jdbcExecutor),
+            cleanupClock);
+    SubscriptionIdempotencyCleanupProcessor cleanup =
+        new SubscriptionIdempotencyCleanupProcessor(
+            new com.pawcycle.backend.subscription.persistence
+                .SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+            cleanupClock,
+            metrics);
 
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     SubscriptionIdempotencyCleanupResult first =

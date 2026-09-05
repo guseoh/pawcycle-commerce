@@ -1,14 +1,14 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SubscriptionSchedulePersistence {
-  private final NativeQueryExecutor jdbc;
+  private final JdbcTemplate jdbc;
 
-  public SubscriptionSchedulePersistence(NativeQueryExecutor jdbc) {
+  public SubscriptionSchedulePersistence(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 

@@ -3,11 +3,10 @@ package com.pawcycle.backend.foundation.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
-import com.pawcycle.backend.catalog.application.DemoProductDetailSectionFixtureService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
+import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,13 +85,13 @@ class LocalCustomerCatalogV3FixtureDriftIntegrationTests {
   static class FixtureConfiguration {
     @Bean
     LocalCustomerCatalogV3FixtureService customerCatalogV3UnderTest(
-        NativeQueryExecutor jdbcExecutor,
-        DemoCatalogManifestImportService importer,
-        CatalogExpansionAdminService expansion,
+        JdbcTemplate jdbcExecutor,
+        DemoCatalogImportPersistence importer,
+        CatalogAdminPersistence expansion,
         ProductListCacheInvalidator cache,
         Validator validator) {
       var detail =
-          new DemoProductDetailSectionFixtureService(
+          new ProductDetailSectionFixturePersistence(
               jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
       return new LocalCustomerCatalogV3FixtureService(
           jdbcExecutor,

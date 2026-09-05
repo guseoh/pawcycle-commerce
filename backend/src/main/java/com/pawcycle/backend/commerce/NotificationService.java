@@ -1,75 +1,52 @@
 package com.pawcycle.backend.commerce;
 
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import java.sql.Timestamp;
-import java.time.Clock;
+import com.pawcycle.backend.commerce.notification.api.NotificationResponse;
+import com.pawcycle.backend.commerce.notification.persistence.NotificationPersistenceAdapter;
+import com.pawcycle.backend.commerce.notification.persistence.NotificationView;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Persists only in-app notifications; the event key makes transaction replay harmless. */
+/** Application boundary for notification use cases; SQL ownership stays in the notification adapter. */
 @Service
 public class NotificationService {
-  private final NativeQueryExecutor jdbc;
-  private final Clock clock;
+  private final NotificationPersistenceAdapter notifications;
 
-  public NotificationService(NativeQueryExecutor jdbc, Clock clock) {
-    this.jdbc = jdbc;
-    this.clock = clock;
+  public NotificationService(NotificationPersistenceAdapter notifications) {
+    this.notifications = notifications;
   }
 
   @Transactional
   public void create(long memberId, String type, String referenceType, long referenceId) {
-    jdbc.update(
-        "INSERT INTO notifications(member_id,type,reference_type,reference_id,created_at) VALUES"
-            + " (?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id",
-        memberId,
-        type,
-        referenceType,
-        referenceId,
-        Timestamp.from(clock.instant()));
+    notifications.create(memberId, type, referenceType, referenceId);
   }
 
   @Transactional(readOnly = true)
-  public List<CommerceRowResponse> list(long memberId) {
-    List<Map<String, Object>> result =
-        jdbc.queryForList(
-            "SELECT notification.id AS notificationId,notification.type,notification.reference_type"
-                + " AS referenceType,notification.reference_id AS referenceId,notification.read_at"
-                + " AS readAt,notification.created_at AS createdAt,schedule.subscription_id AS"
-                + " subscriptionId,schedule.scheduled_date AS scheduledDate FROM notifications"
-                + " notification LEFT JOIN subscription_schedules schedule ON"
-                + " notification.type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
-                + " notification.reference_type='SCHEDULE' AND"
-                + " schedule.id=notification.reference_id WHERE notification.member_id=? ORDER BY"
-                + " notification.id DESC",
-            memberId);
-    result.forEach(
-        item -> {
-          if (item.get("subscriptionId") == null) {
-            item.remove("subscriptionId");
-            item.remove("scheduledDate");
-          }
-        });
-    return CommerceRowResponse.from(result);
+  public List<NotificationResponse> list(long memberId) {
+    return notifications.findByMemberId(memberId).stream()
+        .map(NotificationService::response)
+        .toList();
   }
 
   @Transactional
   public void read(long memberId, long id) {
-    if (jdbc.update(
-            "UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND member_id=?",
-            Timestamp.from(clock.instant()),
-            id,
-            memberId)
-        != 1) throw new CommerceException(404, "NOTIFICATION_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
+    notifications.markRead(memberId, id);
   }
 
   @Transactional
   public void readAll(long memberId) {
-    jdbc.update(
-        "UPDATE notifications SET read_at=? WHERE member_id=? AND read_at IS NULL",
-        Timestamp.from(clock.instant()),
-        memberId);
+    notifications.markAllRead(memberId);
+  }
+
+  private static NotificationResponse response(NotificationView view) {
+    return new NotificationResponse(
+        view.notificationId(),
+        view.type(),
+        view.referenceType(),
+        view.referenceId(),
+        view.readAt(),
+        view.createdAt(),
+        view.subscriptionId(),
+        view.scheduledDate());
   }
 }

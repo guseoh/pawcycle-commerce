@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.notification.api;
 
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.NotificationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.util.List;
@@ -22,7 +21,7 @@ public class NotificationController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> list(
+  public List<NotificationResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return notifications.list(principal.memberId());
   }

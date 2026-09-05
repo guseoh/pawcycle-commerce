@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence;
 import java.time.LocalDate;
@@ -8,13 +10,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class SubscriptionCreationApplicationService {
-  private final SubscriptionPersistenceAdapter store;
+  private final SubscriptionAggregatePersistence store;
   private final SubscriptionIdempotencyReservationPersistence reservations;
   private final SubscriptionApplicationSupport support;
   private final SubscriptionQueryApplicationService queries;
 
   SubscriptionCreationApplicationService(
-      SubscriptionPersistenceAdapter store,
+      SubscriptionAggregatePersistence store,
       SubscriptionIdempotencyReservationPersistence reservations,
       SubscriptionQueryApplicationService queries,
       tools.jackson.databind.ObjectMapper json,
@@ -31,7 +33,7 @@ class SubscriptionCreationApplicationService {
     support.validateKey(key);
     String fingerprint = support.fingerprint(request);
     if (!reservations.reserveCreation(memberId, key, fingerprint)) {
-      StoredIdempotencyResult stored = store.lockCreationResult(memberId, key);
+      StoredIdempotencyResult stored = reservations.lockCreationResult(memberId, key);
       return replay(memberId, key, stored, fingerprint);
     }
 
@@ -54,7 +56,7 @@ class SubscriptionCreationApplicationService {
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(
             201, response, "/api/subscriptions/" + subscriptionId, "\"0\"", false);
-    store.updateCreationResponse(memberId, key, subscriptionId, result, support.bodyJson(response));
+    reservations.updateCreationResponse(memberId, key, subscriptionId, result, support.bodyJson(response));
     return result;
   }
 
@@ -66,7 +68,7 @@ class SubscriptionCreationApplicationService {
     if (!fingerprint.equals(stored.fingerprint()))
       throw new SubscriptionApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
     var body = support.responseBody(stored.bodyJson());
-    store.updateStoredCreationBody(memberId, key, support.bodyJson(body));
+    reservations.updateStoredCreationBody(memberId, key, support.bodyJson(body));
     return new SubscriptionOperationResult(
         stored.status(), body, stored.location(), stored.etag(), true);
   }

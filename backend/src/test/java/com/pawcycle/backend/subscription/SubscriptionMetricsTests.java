@@ -8,21 +8,23 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class SubscriptionMetricsTests {
 
   @Test
   void gaugeReadUsesCachedSnapshotWithoutJdbcQuery() {
-    NativeQueryExecutor jdbc = org.mockito.Mockito.mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    new SubscriptionMetrics(registry, jdbc, Clock.systemUTC());
+    new SubscriptionMetrics(
+        registry, new SubscriptionMetricsQueryRepository(jdbc), Clock.systemUTC());
 
     assertThat(
             registry
@@ -56,11 +58,12 @@ class SubscriptionMetricsTests {
 
   @Test
   void gaugeRefreshUpdatesSnapshotAndPreservesLastSuccessOnFailure() {
-    NativeQueryExecutor jdbc = org.mockito.Mockito.mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
     Instant now = Instant.parse("2026-08-09T00:00:00Z");
     Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbc, clock);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(registry, new SubscriptionMetricsQueryRepository(jdbc), clock);
     when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(11L, 22L);
     when(jdbc.queryForObject(anyString(), eq(Long.class), any(LocalDateTime.class)))
         .thenReturn(3L, 4L);
@@ -169,11 +172,17 @@ class SubscriptionMetricsTests {
 
   @Test
   void cleanupFailureRecordsFailureAndDurationWithoutSuccess() {
-    NativeQueryExecutor jdbc = org.mockito.Mockito.mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
     Clock clock = Clock.fixed(Instant.parse("2026-08-09T00:00:00Z"), ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    SubscriptionMetrics metrics = new SubscriptionMetrics(registry, jdbc, clock);
-    SubscriptionIdempotencyCleanupService cleanup = new SubscriptionIdempotencyCleanupService(jdbc, clock, metrics);
+    SubscriptionMetrics metrics =
+        new SubscriptionMetrics(registry, new SubscriptionMetricsQueryRepository(jdbc), clock);
+    SubscriptionIdempotencyCleanupProcessor cleanup =
+        new SubscriptionIdempotencyCleanupProcessor(
+            new com.pawcycle.backend.subscription.persistence
+                .SubscriptionIdempotencyCleanupPersistence(jdbc),
+            clock,
+            metrics);
     when(jdbc.update(anyString(), any(Object[].class)))
         .thenThrow(new IllegalStateException("test cleanup failure"));
 

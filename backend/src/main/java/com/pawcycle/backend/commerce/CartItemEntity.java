@@ -16,19 +16,34 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * JPA mapping for a commerce persistence record.
- */
-
 @Entity
 @Table(name = "cart_items")
-class CartItemEntity {
-  @EmbeddedId CartItemId id;
+public class CartItemEntity {
+  @EmbeddedId private CartItemId id;
 
   @Column(nullable = false)
-  int quantity;
+  private int quantity;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "cart_id", insertable = false, updatable = false)
-  CartEntity cart;
+  private CartEntity cart;
+
+  protected CartItemEntity() {}
+
+  public CartItemEntity(CartItemId id, int quantity) {
+    this.id = id;
+    this.quantity = quantity;
+  }
+
+  public int getQuantity() {
+    return quantity;
+  }
+
+  public void increase(int quantity) {
+    this.quantity += quantity;
+  }
+
+  public void updateQuantity(int quantity) {
+    this.quantity = quantity;
+  }
 }

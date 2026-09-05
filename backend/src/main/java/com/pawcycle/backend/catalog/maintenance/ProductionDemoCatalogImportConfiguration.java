@@ -2,7 +2,7 @@ package com.pawcycle.backend.catalog.maintenance;
 
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportService;
-import com.pawcycle.backend.catalog.application.DemoCatalogManifestImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
@@ -26,7 +26,7 @@ public class ProductionDemoCatalogImportConfiguration {
 
   @Bean
   ApplicationRunner productionDemoCatalogImportRunner(
-      DemoCatalogManifestImportService demoImportService,
+      DemoCatalogImportPersistence demoImportService,
       CustomerCatalogImportService customerImportService,
       ProductionDemoCatalogImportResultHolder resultHolder,
       @Value("${pawcycle.catalog.manifest-import.target:demo}") String target,

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 class PetPlanApplicationServiceTests {
   @Test
   void nameOnlyPatchDoesNotRewriteOmittedFieldsFromStaleRead() {
-    SubscriptionPersistenceAdapter store = mock(SubscriptionPersistenceAdapter.class);
+    SubscriptionAggregatePersistence store = mock(SubscriptionAggregatePersistence.class);
     PetProjection current =
         new PetProjection(7L, "기존 이름", "DOG", "기존 품종", new BigDecimal("12.00"));
     when(store.findOwnedPet(10L, 7L)).thenReturn(current);

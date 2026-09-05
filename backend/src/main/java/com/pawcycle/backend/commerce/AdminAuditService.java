@@ -1,42 +1,38 @@
 package com.pawcycle.backend.commerce;
 
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.Clock;
+import com.pawcycle.backend.commerce.audit.api.AdminAuditResponse;
+import com.pawcycle.backend.commerce.audit.persistence.AdminAuditPersistenceAdapter;
+import com.pawcycle.backend.commerce.audit.persistence.AdminAuditView;
 import java.util.List;
-import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Append-only audit writer. Callers pass only safe, non-secret JSON literals. */
+/** Application boundary for the append-only admin audit feature. */
 @Service
 public class AdminAuditService {
-  private final NativeQueryExecutor jdbc;
-  private final Clock clock;
+  private final AdminAuditPersistenceAdapter audits;
 
-  public AdminAuditService(NativeQueryExecutor jdbc, Clock clock) {
-    this.jdbc = jdbc;
-    this.clock = clock;
+  public AdminAuditService(AdminAuditPersistenceAdapter audits) {
+    this.audits = audits;
   }
 
   @Transactional
   public void append(long adminId, String action, String targetType, long targetId) {
-    jdbc.update(
-        "INSERT INTO"
-            + " admin_audit_logs(admin_id,action,target_type,target_id,safe_detail_json,created_at)"
-            + " VALUES (?,?,?,?,JSON_OBJECT(),?)",
-        adminId,
-        action,
-        targetType,
-        targetId,
-        Timestamp.from(clock.instant()));
+    audits.append(adminId, action, targetType, targetId);
   }
 
-  public List<CommerceRowResponse> list() {
-    return CommerceRowResponse.from(
-        jdbc.queryForList(
-            "SELECT id AS auditLogId,admin_id AS adminId,action,target_type AS targetType,target_id AS"
-                + " targetId,created_at AS createdAt FROM admin_audit_logs ORDER BY id DESC"));
+  @Transactional(readOnly = true)
+  public List<AdminAuditResponse> list() {
+    return audits.findAll().stream().map(AdminAuditService::response).toList();
+  }
+
+  private static AdminAuditResponse response(AdminAuditView view) {
+    return new AdminAuditResponse(
+        view.auditLogId(),
+        view.adminId(),
+        view.action(),
+        view.targetType(),
+        view.targetId(),
+        view.createdAt());
   }
 }

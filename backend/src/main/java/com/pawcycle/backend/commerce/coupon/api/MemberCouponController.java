@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.coupon.api;
 
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.membership.application.MemberBenefitApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.util.List;
@@ -19,7 +18,7 @@ public class MemberCouponController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> list(
+  public List<MemberCouponResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return memberBenefits.coupons(principal.memberId());
   }

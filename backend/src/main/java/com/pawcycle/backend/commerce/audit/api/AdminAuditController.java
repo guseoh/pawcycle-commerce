@@ -1,7 +1,6 @@
 package com.pawcycle.backend.commerce.audit.api;
 
 import com.pawcycle.backend.commerce.AdminAuditService;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,7 +16,7 @@ public class AdminAuditController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> list() {
+  public List<AdminAuditResponse> list() {
     return audits.list();
   }
 }

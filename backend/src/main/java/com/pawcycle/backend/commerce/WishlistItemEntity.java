@@ -16,15 +16,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * JPA mapping for a commerce persistence record.
- */
-
 @Entity
 @Table(name = "wishlist_items")
-class WishlistItemEntity {
-  @EmbeddedId WishlistItemId id;
+public class WishlistItemEntity {
+  @EmbeddedId private WishlistItemId id;
 
   @Column(name = "created_at", nullable = false)
-  LocalDateTime createdAt;
+  private LocalDateTime createdAt;
+
+  protected WishlistItemEntity() {}
+
+  public WishlistItemEntity(WishlistItemId id, LocalDateTime createdAt) {
+    this.id = id;
+    this.createdAt = createdAt;
+  }
 }

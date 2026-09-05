@@ -1,18 +1,16 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.payment.api.PaymentReconciliationResponse;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter;
 import java.sql.Timestamp;
-import java.time.Instant;
 import java.time.Clock;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PaymentReconciliationService {
-  private final NativeQueryExecutor jdbc;
-  private final TransactionTemplate tx;
+  private final PaymentReconciliationPersistenceAdapter payments;
+  private final TransactionTemplate transaction;
   private final TossPaymentAdapter paymentProvider;
   private final TossBillingAdapter billingProvider;
   private final NotificationService notifications;
@@ -20,11 +18,12 @@ public class PaymentReconciliationService {
   private final InventoryService inventory;
   private final AdminAuditService audits;
   private final SubscriptionBillingService billingFailures;
+  private final DeliveryService deliveries;
   private final Clock clock;
 
   public PaymentReconciliationService(
-      NativeQueryExecutor jdbc,
-      org.springframework.transaction.PlatformTransactionManager manager,
+      PaymentReconciliationPersistenceAdapter payments,
+      org.springframework.transaction.PlatformTransactionManager transactionManager,
       TossPaymentAdapter paymentProvider,
       TossBillingAdapter billingProvider,
       NotificationService notifications,
@@ -32,9 +31,10 @@ public class PaymentReconciliationService {
       InventoryService inventory,
       AdminAuditService audits,
       SubscriptionBillingService billingFailures,
+      DeliveryService deliveries,
       Clock clock) {
-    this.jdbc = jdbc;
-    this.tx = new TransactionTemplate(manager);
+    this.payments = payments;
+    this.transaction = new TransactionTemplate(transactionManager);
     this.paymentProvider = paymentProvider;
     this.billingProvider = billingProvider;
     this.notifications = notifications;
@@ -42,216 +42,98 @@ public class PaymentReconciliationService {
     this.inventory = inventory;
     this.audits = audits;
     this.billingFailures = billingFailures;
+    this.deliveries = deliveries;
     this.clock = clock;
   }
 
-  public CommercePayload reconcile(long id) {
+  public PaymentReconciliationResponse reconcile(long id) {
     return reconcile(id, null);
   }
 
-  public CommercePayload reconcile(long id, Long adminId) {
-    Map<String, Object> work =
-        tx.execute(
+  public PaymentReconciliationResponse reconcile(long id, Long adminId) {
+    PaymentReconciliationPersistenceAdapter.ReconciliationWork work =
+        transaction.execute(
             status -> {
-              Map<String, Object> row =
-                  one(
-                      "SELECT id,type,status,provider_order_id,reconciliation_attempts FROM"
-                          + " payments WHERE id=? FOR UPDATE",
-                      id);
-              if (row == null)
-                throw new CommerceException(404, "PAYMENT_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
-              boolean billingProcessing =
-                  "BILLING".equals(row.get("type")) && "PROCESSING".equals(row.get("status"));
-              if (!billingProcessing && !"UNKNOWN".equals(row.get("status")))
-                throw new CommerceException(
-                    409,
-                    "PAYMENT_RECONCILIATION_NOT_ALLOWED",
-                    "UNKNOWN 결제 또는 처리 중 Billing만 대사할 수 있습니다.");
-              boolean configured =
-                  "BILLING".equals(row.get("type"))
-                      ? billingProvider.isConfigured()
-                      : paymentProvider.isConfigured();
-              if (!configured)
-                throw new CommerceException(
-                    503, "PAYMENT_PROVIDER_UNAVAILABLE", "Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
-              int attempts = ((Number) row.get("reconciliation_attempts")).intValue();
-              if (attempts >= 10)
-                throw new CommerceException(
-                    409, "PAYMENT_RECONCILIATION_EXHAUSTED", "결제 대사 횟수를 초과했습니다.");
-              jdbc.update(
-                  "UPDATE payments SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",
-                  attempts + 1,
-                  now(),
-                  id);
-              row.put("reconciliation_attempts", attempts + 1);
+              PaymentReconciliationPersistenceAdapter.ReconciliationWork row = payments.findForStart(id);
+              if (row == null) throw notFound();
+              boolean billingProcessing = "BILLING".equals(row.type()) && "PROCESSING".equals(row.status());
+              if (!billingProcessing && !"UNKNOWN".equals(row.status())) {
+                throw new CommerceException(409, "PAYMENT_RECONCILIATION_NOT_ALLOWED", "UNKNOWN 결제 또는 처리 중 Billing만 대사할 수 있습니다.");
+              }
+              boolean configured = "BILLING".equals(row.type()) ? billingProvider.isConfigured() : paymentProvider.isConfigured();
+              if (!configured) throw new CommerceException(503, "PAYMENT_PROVIDER_UNAVAILABLE", "Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
+              if (row.attempts() >= 10) throw new CommerceException(409, "PAYMENT_RECONCILIATION_EXHAUSTED", "결제 대사 횟수를 초과했습니다.");
+              payments.incrementAttempts(id, row.attempts() + 1);
               return row;
             });
 
-    ProviderResult result;
+    ProviderResult observed;
     try {
-      if ("BILLING".equals(work.get("type"))) {
-        TossBillingAdapter.ChargeResult observed =
-            billingProvider.queryCharge((String) work.get("provider_order_id"));
-        result = new ProviderResult(observed.status(), observed.providerStatus());
+      if ("BILLING".equals(work.type())) {
+        TossBillingAdapter.ChargeResult result = billingProvider.queryCharge(work.providerOrderId());
+        observed = new ProviderResult(result.status(), result.providerStatus());
       } else {
-        TossPaymentAdapter.ConfirmResult observed =
-            paymentProvider.queryPayment((String) work.get("provider_order_id"));
-        result = new ProviderResult(observed.status(), observed.providerStatus());
+        TossPaymentAdapter.ConfirmResult result = paymentProvider.queryPayment(work.providerOrderId());
+        observed = new ProviderResult(result.status(), result.providerStatus());
       }
     } catch (RuntimeException exception) {
-      result = new ProviderResult("UNKNOWN", "NO_RESPONSE");
+      observed = new ProviderResult("UNKNOWN", "NO_RESPONSE");
     }
 
-    ProviderResult observation = result;
-    boolean billingFailure =
-        Boolean.TRUE.equals(
-            tx.execute(
-                status -> {
-                  Map<String, Object> row =
-                      one(
-                          """
-                          SELECT payment.id,payment.order_id,payment.type,payment.status,payment.reconciliation_attempts,
-                                 orders.member_id,orders.source
-                          FROM payments payment JOIN orders ON orders.id=payment.order_id
-                          WHERE payment.id=? FOR UPDATE\
-                          """,
-                          id);
-                  if (row == null)
-                    throw new CommerceException(404, "PAYMENT_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
-                  boolean billingProcessing =
-                      "BILLING".equals(row.get("type")) && "PROCESSING".equals(row.get("status"));
-                  if (!billingProcessing && !"UNKNOWN".equals(row.get("status"))) return view(id);
-
-                  String resultStatus = observation.status();
-                  if ("SUCCEEDED".equals(resultStatus)) {
-                    completeSuccess(id, row, observation.providerStatus());
-                  } else if ("FAILED".equals(resultStatus)) {
-                    if ("BILLING".equals(row.get("type"))) {
-                      if (adminId != null)
-                        audits.append(adminId, "PAYMENT_RECONCILE", "PAYMENT", id);
-                      return true;
-                    }
-                    completeFailure(id, row, observation.providerStatus());
-                  } else if (((Number) row.get("reconciliation_attempts")).intValue() >= 10) {
-                    jdbc.update(
-                        "UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=?",
-                        row.get("order_id"));
-                    notifications.create(
-                        ((Number) row.get("member_id")).longValue(),
-                        "PAYMENT_ACTION_REQUIRED",
-                        "PAYMENT",
-                        id);
-                  }
-                  if (adminId != null) audits.append(adminId, "PAYMENT_RECONCILE", "PAYMENT", id);
-                  return false;
-                }));
+    ProviderResult observation = observed;
+    boolean billingFailure = transaction.execute(status -> complete(id, adminId, observation));
     if (billingFailure) {
       billingFailures.recordExplicitFailure(id, "RECONCILED_FAILED", observation.providerStatus());
       billingFailures.prepareNextAttempt(id);
     }
-    return CommercePayload.from(view(id));
+    return response(payments.find(id));
   }
 
-  private void completeSuccess(long paymentId, Map<String, Object> payment, String providerStatus) {
-    long orderId = ((Number) payment.get("order_id")).longValue();
-    for (Map<String, Object> item :
-        jdbc.queryForList(
-            "SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
-      long skuId = ((Number) item.get("sku_id")).longValue();
-      int quantity = ((Number) item.get("quantity")).intValue();
-      inventory.deduct(skuId, quantity, paymentId);
+  private boolean complete(long paymentId, Long adminId, ProviderResult observed) {
+    PaymentReconciliationPersistenceAdapter.ReconciliationTarget payment = payments.findForCompletion(paymentId);
+    if (payment == null) throw notFound();
+    boolean billingProcessing = "BILLING".equals(payment.type()) && "PROCESSING".equals(payment.status());
+    if (!billingProcessing && !"UNKNOWN".equals(payment.status())) return false;
+    if ("SUCCEEDED".equals(observed.status())) {
+      Timestamp paidAt = Timestamp.from(clock.instant());
+      for (PaymentReconciliationPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
+        inventory.deduct(item.skuId(), item.quantity(), paymentId);
+      }
+      payments.markSucceeded(paymentId, observed.providerStatus(), paidAt);
+      payments.markOrderPaid(payment.orderId(), paidAt);
+      deliveries.createPreparing(payment.orderId());
+      payments.useReservedCoupon(payment.orderId(), paidAt);
+      if ("ONE_TIME".equals(payment.source())) payments.consumeCart(payment.memberId(), payment.orderId());
+      membershipEvaluation.evaluate(payment.memberId());
+      notifications.create(payment.memberId(), "ORDER_PAID", "ORDER", payment.orderId());
+    } else if ("FAILED".equals(observed.status())) {
+      if ("BILLING".equals(payment.type())) {
+        if (adminId != null) audits.append(adminId, "PAYMENT_RECONCILE", "PAYMENT", paymentId);
+        return true;
+      }
+      for (PaymentReconciliationPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
+        inventory.release(item.skuId(), item.quantity(), paymentId);
+      }
+      payments.markFailed(paymentId, observed.providerStatus());
+      payments.markOrderPaymentFailed(payment.orderId());
+      payments.releaseReservedCoupon(payment.orderId());
+    } else if (payment.attempts() >= 10) {
+      payments.markOrderActionRequired(payment.orderId());
+      notifications.create(payment.memberId(), "PAYMENT_ACTION_REQUIRED", "PAYMENT", paymentId);
     }
-    Timestamp paidAt = now();
-    jdbc.update(
-        "UPDATE payments SET status='SUCCEEDED',provider_status=?,approved_at=? WHERE id=?",
-        providerStatus,
-        paidAt,
-        paymentId);
-    jdbc.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?", paidAt, orderId);
-    jdbc.update(
-        "INSERT INTO deliveries(order_id,status) VALUES (?,'PREPARING') ON DUPLICATE KEY UPDATE"
-            + " id=id",
-        orderId);
-    jdbc.update(
-        "UPDATE member_coupons SET status='USED',used_at=? WHERE reserved_order_id=? AND"
-            + " status='RESERVED'",
-        paidAt,
-        orderId);
-    long memberId = ((Number) payment.get("member_id")).longValue();
-    if ("ONE_TIME".equals(payment.get("source"))) consumeCartForOrder(memberId, orderId);
-    membershipEvaluation.evaluate(memberId);
-    notifications.create(memberId, "ORDER_PAID", "ORDER", orderId);
+    if (adminId != null) audits.append(adminId, "PAYMENT_RECONCILE", "PAYMENT", paymentId);
+    return false;
   }
 
-  private void completeFailure(long paymentId, Map<String, Object> payment, String providerStatus) {
-    long orderId = ((Number) payment.get("order_id")).longValue();
-    for (Map<String, Object> item :
-        jdbc.queryForList(
-            "SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id", orderId)) {
-      long skuId = ((Number) item.get("sku_id")).longValue();
-      int quantity = ((Number) item.get("quantity")).intValue();
-      inventory.release(skuId, quantity, paymentId);
-    }
-    jdbc.update(
-        "UPDATE payments SET"
-            + " status='FAILED',provider_status=?,failure_code='RECONCILED_FAILED',failed_at=?"
-            + " WHERE id=?",
-        providerStatus,
-        now(),
-        paymentId);
-    jdbc.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);
-    jdbc.update(
-        "UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL WHERE"
-            + " reserved_order_id=? AND status='RESERVED'",
-        orderId);
+  private static PaymentReconciliationResponse response(PaymentReconciliationPersistenceAdapter.PaymentReconciliationView view) {
+    if (view == null) throw notFound();
+    return new PaymentReconciliationResponse(view.paymentId(), view.orderId(), view.status(), view.attempts(), view.lastReconciledAt());
   }
 
-  private void consumeCartForOrder(long memberId, long orderId) {
-    Long cartId =
-        jdbc.query(
-            "SELECT id FROM carts WHERE member_id=? FOR UPDATE",
-            rs -> rs.next() ? rs.getLong(1) : null,
-            memberId);
-    if (cartId == null) return;
-    for (Map<String, Object> item :
-        jdbc.queryForList("SELECT sku_id,quantity FROM order_items WHERE order_id=?", orderId)) {
-      long skuId = ((Number) item.get("sku_id")).longValue();
-      int purchased = ((Number) item.get("quantity")).intValue();
-      Integer current =
-          jdbc.query(
-              "SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
-              rs -> rs.next() ? rs.getInt(1) : null,
-              cartId,
-              skuId);
-      if (current == null) continue;
-      if (current <= purchased)
-        jdbc.update("DELETE FROM cart_items WHERE cart_id=? AND sku_id=?", cartId, skuId);
-      else
-        jdbc.update(
-            "UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?",
-            current - purchased,
-            cartId,
-            skuId);
-    }
-    jdbc.update("UPDATE carts SET updated_at=? WHERE id=?", now(), cartId);
-  }
-
-  private Map<String, Object> view(long id) {
-    return one(
-        "SELECT id AS paymentId,order_id AS orderId,status,reconciliation_attempts AS"
-            + " reconciliationAttempts,last_reconciled_at AS lastReconciledAt FROM payments WHERE"
-            + " id=?",
-        id);
-  }
-
-  private Timestamp now() {
-    return Timestamp.from(clock.instant());
-  }
-
-  private Map<String, Object> one(String sql, Object... args) {
-    var rows = jdbc.queryForList(sql, args);
-    return rows.isEmpty() ? null : new LinkedHashMap<>(rows.getFirst());
+  private static CommerceException notFound() {
+    return new CommerceException(404, "PAYMENT_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
   }
 
   private record ProviderResult(String status, String providerStatus) {}
+
 }

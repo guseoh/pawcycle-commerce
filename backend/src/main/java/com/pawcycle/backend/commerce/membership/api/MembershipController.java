@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.membership.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.membership.application.MemberBenefitApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,7 +17,7 @@ public class MembershipController {
   }
 
   @GetMapping
-  public CommercePayload get(
+  public MembershipResponse get(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return memberBenefits.membership(principal.memberId());
   }

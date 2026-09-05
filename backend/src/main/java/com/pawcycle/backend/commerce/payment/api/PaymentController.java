@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.payment.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.PaymentConfirmRequest;
 import com.pawcycle.backend.commerce.payment.application.PaymentApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -21,7 +20,7 @@ public class PaymentController {
   }
 
   @PostMapping("/confirm")
-  public CommercePayload confirm(
+  public PaymentResponse confirm(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody PaymentConfirmRequest request) {
     return payment.confirm(

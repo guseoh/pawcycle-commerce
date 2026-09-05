@@ -1,12 +1,12 @@
 package com.pawcycle.backend.foundation.bootstrap;
 
-import com.pawcycle.backend.catalog.admin.application.CatalogExpansionAdminService;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
-import com.pawcycle.backend.catalog.application.CustomerCatalogV3ImportService;
+import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import jakarta.validation.Validator;
 import org.springframework.context.annotation.Profile;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,16 +16,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class LocalCustomerCatalogV3FixtureService {
 
   private final LocalCommerceDemoFixtureService baseline;
-  private final CustomerCatalogV3ImportService supplement;
+  private final CustomerCatalogImportPersistence supplement;
 
   public LocalCustomerCatalogV3FixtureService(
-      NativeQueryExecutor jdbc,
+      JdbcTemplate jdbc,
       LocalCommerceDemoFixtureService baseline,
-      CatalogExpansionAdminService expansion,
+      CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
       Validator validator) {
     this.baseline = baseline;
-    this.supplement = new CustomerCatalogV3ImportService(jdbc, expansion, cache, validator);
+    this.supplement = new CustomerCatalogImportPersistence(jdbc, expansion, cache, validator);
   }
 
   @Transactional

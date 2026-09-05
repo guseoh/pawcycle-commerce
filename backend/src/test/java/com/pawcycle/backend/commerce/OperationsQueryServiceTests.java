@@ -11,14 +11,15 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
+import com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse;
+import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class OperationsQueryServiceTests {
   @Test
   void exposesApprovedOperationsWithOnlyExecutableActions() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
     Timestamp now = Timestamp.from(Instant.now());
     List<Map<String, Object>> rows =
         List.of(
@@ -33,10 +34,11 @@ class OperationsQueryServiceTests {
             row("REFUND_UNKNOWN", 9L, now, 1));
     when(jdbc.queryForList(anyString())).thenReturn(rows);
 
-    List<CommerceRowResponse> result = new OperationsQueryService(jdbc).pending();
+    OperationsQueryRepository queries = new OperationsQueryRepository(jdbc);
+    List<OperationsPendingResponse> result = new OperationsQueryService(queries).pending();
 
     assertThat(result)
-        .extracting(row -> row.jsonValues().get("availableActions"))
+        .extracting(OperationsPendingResponse::availableActions)
         .containsExactly(
             List.of("SHIP_DELIVERY"),
             List.of("COMPLETE_DELIVERY", "FAIL_DELIVERY"),

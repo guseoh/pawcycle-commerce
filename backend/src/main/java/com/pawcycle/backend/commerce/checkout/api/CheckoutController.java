@@ -2,7 +2,6 @@ package com.pawcycle.backend.commerce.checkout.api;
 
 import com.pawcycle.backend.commerce.CheckoutIdempotencyService;
 import com.pawcycle.backend.commerce.CheckoutRequest;
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.TossPaymentAdapter;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
@@ -25,18 +24,17 @@ public class CheckoutController {
   }
 
   @PostMapping
-  public CommercePayload checkout(
+  public CheckoutResponse checkout(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody CheckoutRequest request) {
-    CommercePayload result =
+    CheckoutResponse result =
         checkout.checkout(
             principal.memberId(),
             idempotencyKey,
             request.addressId(),
             request.memberCouponId(),
             request.cartVersion());
-    result.put("tossTestEnabled", payment.browserTestEnabled());
-    return result;
+    return result.withTossTestEnabled(payment.browserTestEnabled());
   }
 }

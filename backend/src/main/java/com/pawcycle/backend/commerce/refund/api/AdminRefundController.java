@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.refund.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.RefundService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,19 +18,19 @@ public class AdminRefundController {
   }
 
   @PostMapping("/{id}/process")
-  public CommercePayload process(
+  public RefundResponse process(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return refunds.process(id, principal.memberId());
   }
 
   @PostMapping("/{id}/retry")
-  public CommercePayload retry(
+  public RefundResponse retry(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return refunds.retry(id, principal.memberId());
   }
 
   @PostMapping("/{id}/reconcile")
-  public CommercePayload reconcile(
+  public RefundResponse reconcile(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return refunds.reconcile(id, principal.memberId());
   }

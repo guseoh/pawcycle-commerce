@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.returnrequest.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.ReasonRequest;
 import com.pawcycle.backend.commerce.ReturnService;
+import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,7 +22,7 @@ public class ReturnRequestController {
   }
 
   @PostMapping
-  public CommercePayload request(
+  public ReturnResponse request(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {

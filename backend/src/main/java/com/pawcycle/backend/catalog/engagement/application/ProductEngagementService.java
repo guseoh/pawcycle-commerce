@@ -8,10 +8,10 @@ import com.pawcycle.backend.catalog.engagement.api.QuestionListResponse;
 import com.pawcycle.backend.catalog.engagement.api.QuestionResponse;
 import com.pawcycle.backend.catalog.engagement.api.ReviewListResponse;
 import com.pawcycle.backend.catalog.engagement.api.ReviewResponse;
+import com.pawcycle.backend.catalog.engagement.persistence.ProductEngagementPersistence;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.commerce.AdminAuditService;
 import com.pawcycle.backend.commerce.NotificationService;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import com.pawcycle.backend.foundation.persistence.PersistenceExceptionClassifier;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -22,19 +22,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductEngagementService {
-  private final NativeQueryExecutor jdbc;
+  private final ProductEngagementPersistence persistence;
   private final ProductRepository products;
   private final NotificationService notifications;
   private final AdminAuditService audits;
   private final Clock clock;
 
   public ProductEngagementService(
-      NativeQueryExecutor jdbc,
+      ProductEngagementPersistence persistence,
       ProductRepository products,
       NotificationService notifications,
       AdminAuditService audits,
       Clock clock) {
-    this.jdbc = jdbc;
+    this.persistence = persistence;
     this.products = products;
     this.notifications = notifications;
     this.audits = audits;
@@ -45,27 +45,11 @@ public class ProductEngagementService {
   public ReviewListResponse reviews(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
-    long total =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM reviews WHERE product_id=? AND visible=true",
-            Long.class,
-            productId);
+    long total = persistence.countVisibleReviews(productId);
     List<ReviewResponse> items =
-        jdbc.query(
-            """
-            SELECT id,rating,content,created_at,updated_at FROM reviews
-            WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?
-            """,
-            (rs, rowNum) ->
-                new ReviewResponse(
-                    rs.getLong("id"),
-                    rs.getInt("rating"),
-                    rs.getString("content"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            productId,
-            input.size(),
-            input.offset());
+        persistence.findVisibleReviews(productId, input.size(), input.offset()).stream()
+            .map(ProductEngagementService::response)
+            .toList();
     return new ReviewListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
@@ -73,61 +57,28 @@ public class ProductEngagementService {
   @Transactional(readOnly = true)
   public ReviewResponse myReview(long productId, long memberId) {
     requirePublicProduct(productId);
-    return jdbc
-        .query(
-            "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
-                + " member_id=?",
-            (rs, rowNum) ->
-                new ReviewResponse(
-                    rs.getLong("id"),
-                    rs.getInt("rating"),
-                    rs.getString("content"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            productId,
-            memberId)
-        .stream()
+    return persistence.findMemberReview(productId, memberId).stream()
+        .map(ProductEngagementService::response)
         .findFirst()
         .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "작성한 리뷰를 확인할 수 없습니다."));
   }
 
   @Transactional
-  public ReviewResponse createReview(
-      long productId, long memberId, ReviewCreateCommand request) {
+  public ReviewResponse createReview(long productId, long memberId, ReviewCreateCommand request) {
     requirePublicProduct(productId);
-    Integer purchased =
-        jdbc.queryForObject(
-            """
-            SELECT COUNT(*) FROM orders o
-            JOIN order_items oi ON oi.order_id=o.id
-            JOIN skus s ON s.id=oi.sku_id
-            JOIN deliveries d ON d.order_id=o.id AND d.status='DELIVERED'
-            WHERE o.member_id=? AND s.product_id=?
-            """,
-            Integer.class,
-            memberId,
-            productId);
-    if (purchased == null || purchased == 0)
+    if (!persistence.hasDeliveredPurchase(memberId, productId))
       throw error(403, "REVIEW_PURCHASE_REQUIRED", "배송 완료 상품만 리뷰를 작성할 수 있습니다.");
     Timestamp now = Timestamp.from(Instant.now(clock));
     try {
-      jdbc.update(
-          "INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)"
-              + " VALUES (?,?,?,?,true,?,?)",
-          productId,
-          memberId,
-          request.rating(),
-          request.content(),
-          now,
-          now);
+      long id =
+          persistence.insertReview(productId, memberId, request.rating(), request.content(), now);
+      return review(id, productId, memberId);
     } catch (RuntimeException failure) {
       if (PersistenceExceptionClassifier.isDuplicateKey(failure)) {
         throw error(409, "REVIEW_ALREADY_EXISTS", "상품당 리뷰는 하나만 작성할 수 있습니다.");
       }
       throw failure;
     }
-    long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    return review(id, productId, memberId);
   }
 
   @Transactional
@@ -139,12 +90,7 @@ public class ProductEngagementService {
       throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 수정할 수 있습니다.");
     int rating = request.ratingPresent() ? validRating(request.rating()) : current.rating();
     String content = request.contentPresent() ? validContent(request.content()) : current.content();
-    jdbc.update(
-        "UPDATE reviews SET rating=?,content=?,updated_at=? WHERE id=?",
-        rating,
-        content,
-        Timestamp.from(Instant.now(clock)),
-        reviewId);
+    persistence.updateReview(reviewId, rating, content, Timestamp.from(Instant.now(clock)));
     return review(reviewId, current.productId(), memberId);
   }
 
@@ -153,48 +99,24 @@ public class ProductEngagementService {
     ReviewMutationState current = lockReview(reviewId);
     if (current.memberId() != memberId)
       throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 삭제할 수 있습니다.");
-    jdbc.update("DELETE FROM reviews WHERE id=?", reviewId);
+    persistence.deleteReview(reviewId);
   }
 
   @Transactional(readOnly = true)
   public AdminReviewListResponse adminReviews(Long productId, int page, int size) {
     PageInput input = page(page, size);
-    String filter = productId == null ? "" : " WHERE product_id=?";
-    long total =
-        productId == null
-            ? jdbc.queryForObject("SELECT COUNT(*) FROM reviews", Long.class)
-            : jdbc.queryForObject(
-                "SELECT COUNT(*) FROM reviews WHERE product_id=?", Long.class, productId);
+    long total = persistence.countReviews(productId);
     List<AdminReviewResponse> items =
-        jdbc.query(
-            "SELECT id,product_id,member_id,rating,content,visible,created_at,updated_at FROM"
-                + " reviews"
-                + filter
-                + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-            (rs, rowNum) ->
-                new AdminReviewResponse(
-                    rs.getLong("id"),
-                    rs.getLong("product_id"),
-                    rs.getLong("member_id"),
-                    rs.getInt("rating"),
-                    rs.getString("content"),
-                    rs.getBoolean("visible"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            productId == null
-                ? new Object[] {input.size(), input.offset()}
-                : new Object[] {productId, input.size(), input.offset()});
+        persistence.findAdminReviews(productId, input.size(), input.offset()).stream()
+            .map(ProductEngagementService::response)
+            .toList();
     return new AdminReviewListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional
   public void setReviewVisibility(long reviewId, boolean visible, long adminId) {
-    if (jdbc.update(
-            "UPDATE reviews SET visible=?,updated_at=? WHERE id=?",
-            visible,
-            Timestamp.from(Instant.now(clock)),
-            reviewId)
+    if (persistence.updateReviewVisibility(reviewId, visible, Timestamp.from(Instant.now(clock)))
         != 1) {
       throw error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다.");
     }
@@ -205,27 +127,11 @@ public class ProductEngagementService {
   public QuestionListResponse questions(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
-    long total =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM product_questions WHERE product_id=? AND visible=true",
-            Long.class,
-            productId);
+    long total = persistence.countVisibleQuestions(productId);
     List<QuestionResponse> items =
-        jdbc.query(
-            "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
-                + " WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ?"
-                + " OFFSET ?",
-            (rs, rowNum) ->
-                new QuestionResponse(
-                    rs.getLong("id"),
-                    rs.getString("content"),
-                    rs.getString("answer"),
-                    rs.getTimestamp("answered_at") != null,
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            productId,
-            input.size(),
-            input.offset());
+        persistence.findVisibleQuestions(productId, input.size(), input.offset()).stream()
+            .map(ProductEngagementService::response)
+            .toList();
     return new QuestionListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
@@ -235,16 +141,8 @@ public class ProductEngagementService {
       long productId, long memberId, QuestionCreateCommand request) {
     requirePublicProduct(productId);
     Timestamp now = Timestamp.from(Instant.now(clock));
-    jdbc.update(
-        "INSERT INTO"
-            + " product_questions(product_id,member_id,content,answer,answered_at,visible,created_at,updated_at)"
-            + " VALUES (?,?,?,NULL,NULL,true,?,?)",
-        productId,
-        memberId,
-        request.content(),
-        now,
-        now);
-    return question(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class), productId);
+    return question(
+        persistence.insertQuestion(productId, memberId, request.content(), now), productId);
   }
 
   @Transactional
@@ -254,13 +152,9 @@ public class ProductEngagementService {
     QuestionMutationState current = lockQuestion(questionId);
     if (current.memberId() != memberId)
       throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 수정할 수 있습니다.");
-    if (current.answered())
-      throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 수정할 수 없습니다.");
-    jdbc.update(
-        "UPDATE product_questions SET content=?,updated_at=? WHERE id=?",
-        validContent(request.content()),
-        Timestamp.from(Instant.now(clock)),
-        questionId);
+    if (current.answered()) throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 수정할 수 없습니다.");
+    persistence.updateQuestion(
+        questionId, validContent(request.content()), Timestamp.from(Instant.now(clock)));
     return question(questionId, current.productId());
   }
 
@@ -269,41 +163,18 @@ public class ProductEngagementService {
     QuestionMutationState current = lockQuestion(questionId);
     if (current.memberId() != memberId)
       throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 삭제할 수 있습니다.");
-    if (current.answered())
-      throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 삭제할 수 없습니다.");
-    jdbc.update("DELETE FROM product_questions WHERE id=?", questionId);
+    if (current.answered()) throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 삭제할 수 없습니다.");
+    persistence.deleteQuestion(questionId);
   }
 
   @Transactional(readOnly = true)
   public AdminQuestionListResponse adminQuestions(Long productId, int page, int size) {
     PageInput input = page(page, size);
-    String filter = productId == null ? "" : " WHERE product_id=?";
-    long total =
-        productId == null
-            ? jdbc.queryForObject("SELECT COUNT(*) FROM product_questions", Long.class)
-            : jdbc.queryForObject(
-                "SELECT COUNT(*) FROM product_questions WHERE product_id=?", Long.class, productId);
+    long total = persistence.countQuestions(productId);
     List<AdminQuestionResponse> items =
-        jdbc.query(
-            "SELECT"
-                + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
-                + " FROM product_questions"
-                + filter
-                + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-            (rs, rowNum) ->
-                new AdminQuestionResponse(
-                    rs.getLong("id"),
-                    rs.getLong("product_id"),
-                    rs.getLong("member_id"),
-                    rs.getString("content"),
-                    rs.getString("answer"),
-                    rs.getTimestamp("answered_at") != null,
-                    rs.getBoolean("visible"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            productId == null
-                ? new Object[] {input.size(), input.offset()}
-                : new Object[] {productId, input.size(), input.offset()});
+        persistence.findAdminQuestions(productId, input.size(), input.offset()).stream()
+            .map(ProductEngagementService::response)
+            .toList();
     return new AdminQuestionListResponse(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
@@ -312,13 +183,7 @@ public class ProductEngagementService {
   public AdminQuestionResponse answerQuestion(long questionId, String answer, long adminId) {
     QuestionMutationState current = lockQuestion(questionId);
     Timestamp now = Timestamp.from(Instant.now(clock));
-    jdbc.update(
-        "UPDATE product_questions SET answer=?,answered_at=COALESCE(answered_at,?),updated_at=?"
-            + " WHERE id=?",
-        answer,
-        now,
-        now,
-        questionId);
+    persistence.answerQuestion(questionId, answer, now);
     if (!current.answered())
       notifications.create(
           current.memberId(), "PRODUCT_QUESTION_ANSWERED", "PRODUCT_QUESTION", questionId);
@@ -328,11 +193,8 @@ public class ProductEngagementService {
 
   @Transactional
   public void setQuestionVisibility(long questionId, boolean visible, long adminId) {
-    if (jdbc.update(
-            "UPDATE product_questions SET visible=?,updated_at=? WHERE id=?",
-            visible,
-            Timestamp.from(Instant.now(clock)),
-            questionId)
+    if (persistence.updateQuestionVisibility(
+            questionId, visible, Timestamp.from(Instant.now(clock)))
         != 1) {
       throw error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다.");
     }
@@ -340,96 +202,33 @@ public class ProductEngagementService {
   }
 
   private ReviewMutationState lockReview(long reviewId) {
-    return jdbc
-        .query(
-            "SELECT member_id,product_id,rating,content FROM reviews WHERE id=? FOR UPDATE",
-            (rs, rowNum) ->
-                new ReviewMutationState(
-                    rs.getLong("member_id"),
-                    rs.getLong("product_id"),
-                    rs.getInt("rating"),
-                    rs.getString("content")),
-            reviewId)
-        .stream()
-        .findFirst()
-        .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
+    ProductEngagementPersistence.ReviewMutationState state = persistence.lockReview(reviewId);
+    if (state == null) throw error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다.");
+    return new ReviewMutationState(
+        state.memberId(), state.productId(), state.rating(), state.content());
   }
 
   private QuestionMutationState lockQuestion(long questionId) {
-    return jdbc
-        .query(
-            "SELECT member_id,product_id,answered_at FROM product_questions WHERE id=? FOR UPDATE",
-            (rs, rowNum) ->
-                new QuestionMutationState(
-                    rs.getLong("member_id"),
-                    rs.getLong("product_id"),
-                    rs.getTimestamp("answered_at") != null),
-            questionId)
-        .stream()
-        .findFirst()
-        .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
+    ProductEngagementPersistence.QuestionMutationState state = persistence.lockQuestion(questionId);
+    if (state == null) throw error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다.");
+    return new QuestionMutationState(state.memberId(), state.productId(), state.answered());
   }
 
   private ReviewResponse review(long id, long productId, long memberId) {
-    return jdbc
-        .query(
-            "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE id=? AND"
-                + " product_id=? AND member_id=?",
-            (rs, rowNum) ->
-                new ReviewResponse(
-                    rs.getLong("id"),
-                    rs.getInt("rating"),
-                    rs.getString("content"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            id,
-            productId,
-            memberId)
-        .stream()
-        .findFirst()
+    return java.util.Optional.ofNullable(persistence.findReview(id, productId, memberId))
+        .map(ProductEngagementService::response)
         .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
   }
 
   private QuestionResponse question(long id, long productId) {
-    return jdbc
-        .query(
-            "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
-                + " WHERE id=? AND product_id=?",
-            (rs, rowNum) ->
-                new QuestionResponse(
-                    rs.getLong("id"),
-                    rs.getString("content"),
-                    rs.getString("answer"),
-                    rs.getTimestamp("answered_at") != null,
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            id,
-            productId)
-        .stream()
-        .findFirst()
+    return java.util.Optional.ofNullable(persistence.findQuestion(id, productId))
+        .map(ProductEngagementService::response)
         .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
   }
 
   private AdminQuestionResponse adminQuestion(long id) {
-    return jdbc
-        .query(
-            "SELECT"
-                + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
-                + " FROM product_questions WHERE id=?",
-            (rs, rowNum) ->
-                new AdminQuestionResponse(
-                    rs.getLong("id"),
-                    rs.getLong("product_id"),
-                    rs.getLong("member_id"),
-                    rs.getString("content"),
-                    rs.getString("answer"),
-                    rs.getTimestamp("answered_at") != null,
-                    rs.getBoolean("visible"),
-                    rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()),
-            id)
-        .stream()
-        .findFirst()
+    return java.util.Optional.ofNullable(persistence.findAdminQuestion(id))
+        .map(ProductEngagementService::response)
         .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
   }
 
@@ -473,4 +272,49 @@ public class ProductEngagementService {
   private record ReviewMutationState(long memberId, long productId, int rating, String content) {}
 
   private record QuestionMutationState(long memberId, long productId, boolean answered) {}
+
+  private static ReviewResponse response(ProductEngagementPersistence.ReviewView view) {
+    if (view == null) return null;
+    return new ReviewResponse(
+        view.reviewId(), view.rating(), view.content(), view.createdAt(), view.updatedAt());
+  }
+
+  private static AdminReviewResponse response(ProductEngagementPersistence.AdminReviewView view) {
+    if (view == null) return null;
+    return new AdminReviewResponse(
+        view.reviewId(),
+        view.productId(),
+        view.memberId(),
+        view.rating(),
+        view.content(),
+        view.visible(),
+        view.createdAt(),
+        view.updatedAt());
+  }
+
+  private static QuestionResponse response(ProductEngagementPersistence.QuestionView view) {
+    if (view == null) return null;
+    return new QuestionResponse(
+        view.questionId(),
+        view.content(),
+        view.answer(),
+        view.answered(),
+        view.createdAt(),
+        view.updatedAt());
+  }
+
+  private static AdminQuestionResponse response(
+      ProductEngagementPersistence.AdminQuestionView view) {
+    if (view == null) return null;
+    return new AdminQuestionResponse(
+        view.questionId(),
+        view.productId(),
+        view.memberId(),
+        view.content(),
+        view.answer(),
+        view.answered(),
+        view.visible(),
+        view.createdAt(),
+        view.updatedAt());
+  }
 }
