@@ -35,4 +35,4 @@
 - `interaction/**`, `recommendation/**`: event/recommendation projection은 commerce aggregate persistence와 독립된 read/write 모델이다.
 - billing registration의 `subscription_schedules` JOIN UPDATE: subscription schedule entity mapping 승인 전까지 EntityManager native query로 atomicity를 보존한다.
 
-검증 전제: local datasource 환경변수와 실행 중인 MySQL 컨테이너가 없어 DB 통합 테스트는 실행하지 않았다. schema 변경이나 infra 기동으로 우회하지 않는다.
+검증 전제: disposable local MySQL 8.4와 테스트 전용 placeholder credential로 schema validation 및 전체 backend test를 실행했다. 테스트 종료 후 컨테이너는 제거했으며 schema 변경이나 Production/Cloud/운영 DB 실행은 하지 않았다.
