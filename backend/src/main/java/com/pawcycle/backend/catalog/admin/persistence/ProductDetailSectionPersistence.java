@@ -2,19 +2,18 @@ package com.pawcycle.backend.catalog.admin.persistence;
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogNotFoundException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogValidationException;
-
-import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionListResponse;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionResponse;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionCreateCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionListView;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionPatchCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionView;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
-import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,9 +31,9 @@ public class ProductDetailSectionPersistence {
   }
 
   @Transactional(readOnly = true)
-  public DetailSectionListResponse list(long productId) {
+  public DetailSectionListView list(long productId) {
     requireProduct(productId);
-    return new DetailSectionListResponse(
+    return new DetailSectionListView(
         jdbc.query(
             """
             SELECT id,product_id,title,body,display_order,visible,created_at,updated_at
@@ -54,7 +53,7 @@ public class ProductDetailSectionPersistence {
   }
 
   @Transactional
-  public DetailSectionResponse create(long productId, DetailSectionCreateRequest request) {
+  public DetailSectionView create(long productId, DetailSectionCreateCommand request) {
     requireProduct(productId);
     Timestamp now = Timestamp.from(Instant.now(clock));
     jdbc.update(
@@ -74,16 +73,16 @@ public class ProductDetailSectionPersistence {
   }
 
   @Transactional
-  public DetailSectionResponse update(
-      long productId, long sectionId, DetailSectionPatchRequest request) {
+  public DetailSectionView update(
+      long productId, long sectionId, DetailSectionPatchCommand request) {
     validate(request);
     requireProduct(productId);
     DetailSectionMutationState current = lock(sectionId, productId);
-    String title = request.isTitlePresent() ? request.getTitle() : current.title();
-    String body = request.isBodyPresent() ? request.getBody() : current.body();
+    String title = request.titlePresent() ? request.title() : current.title();
+    String body = request.bodyPresent() ? request.body() : current.body();
     int displayOrder =
-        request.isDisplayOrderPresent() ? request.getDisplayOrder() : current.displayOrder();
-    boolean visible = request.isVisiblePresent() ? request.getVisible() : current.visible();
+        request.displayOrderPresent() ? request.displayOrder() : current.displayOrder();
+    boolean visible = request.visiblePresent() ? request.visible() : current.visible();
     jdbc.update(
         "UPDATE product_detail_sections SET title=?,body=?,display_order=?,visible=?,updated_at=?"
             + " WHERE id=? AND product_id=?",
@@ -125,7 +124,7 @@ public class ProductDetailSectionPersistence {
         .orElseThrow(() -> notFound(sectionId));
   }
 
-  private DetailSectionResponse find(long sectionId, long productId) {
+  private DetailSectionView find(long sectionId, long productId) {
     return jdbc
         .query(
             "SELECT id,product_id,title,body,display_order,visible,created_at,updated_at FROM"
@@ -156,37 +155,37 @@ public class ProductDetailSectionPersistence {
     return new AdminCatalogNotFoundException("DETAIL_SECTION_NOT_FOUND", "상품 상세 섹션을 확인할 수 없습니다.");
   }
 
-  private void validate(DetailSectionPatchRequest request) {
+  private void validate(DetailSectionPatchCommand request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
-    if (!request.isTitlePresent()
-        && !request.isBodyPresent()
-        && !request.isDisplayOrderPresent()
-        && !request.isVisiblePresent()) {
+    if (!request.titlePresent()
+        && !request.bodyPresent()
+        && !request.displayOrderPresent()
+        && !request.visiblePresent()) {
       errors.add(new FieldErrorResponse("request", "수정할 필드를 하나 이상 입력해 주세요."));
     }
-    if (request.isTitlePresent()
-        && (request.getTitle() == null
-            || request.getTitle().isBlank()
-            || request.getTitle().length() > 200)) {
+    if (request.titlePresent()
+        && (request.title() == null
+            || request.title().isBlank()
+            || request.title().length() > 200)) {
       errors.add(new FieldErrorResponse("title", "필수 입력이며 200자 이하여야 합니다."));
     }
-    if (request.isBodyPresent()
-        && (request.getBody() == null
-            || request.getBody().isBlank()
-            || request.getBody().length() > 10000)) {
+    if (request.bodyPresent()
+        && (request.body() == null
+            || request.body().isBlank()
+            || request.body().length() > 10000)) {
       errors.add(new FieldErrorResponse("body", "필수 입력이며 10000자 이하여야 합니다."));
     }
-    if (request.isDisplayOrderPresent()
-        && (request.getDisplayOrder() == null || request.getDisplayOrder() < 0)) {
+    if (request.displayOrderPresent()
+        && (request.displayOrder() == null || request.displayOrder() < 0)) {
       errors.add(new FieldErrorResponse("displayOrder", "0 이상이어야 합니다."));
     }
-    if (request.isVisiblePresent() && request.getVisible() == null) {
+    if (request.visiblePresent() && request.visible() == null) {
       errors.add(new FieldErrorResponse("visible", "필수 입력입니다."));
     }
     if (!errors.isEmpty()) throw new AdminCatalogValidationException(errors);
   }
 
-  private DetailSectionResponse view(
+  private DetailSectionView view(
       long id,
       long productId,
       String title,
@@ -195,7 +194,7 @@ public class ProductDetailSectionPersistence {
       boolean visible,
       Instant createdAt,
       Instant updatedAt) {
-    return new DetailSectionResponse(
+    return new DetailSectionView(
         id, productId, title, body, displayOrder, visible, createdAt, updatedAt);
   }
 

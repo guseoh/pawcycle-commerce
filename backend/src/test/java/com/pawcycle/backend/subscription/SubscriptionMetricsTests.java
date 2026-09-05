@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
@@ -15,7 +16,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
 
 class SubscriptionMetricsTests {
 
@@ -23,7 +23,8 @@ class SubscriptionMetricsTests {
   void gaugeReadUsesCachedSnapshotWithoutJdbcQuery() {
     JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    new SubscriptionMetrics(registry, new SubscriptionMetricsQueryRepository(jdbc), Clock.systemUTC());
+    new SubscriptionMetrics(
+        registry, new SubscriptionMetricsQueryRepository(jdbc), Clock.systemUTC());
 
     assertThat(
             registry
@@ -177,7 +178,11 @@ class SubscriptionMetricsTests {
     SubscriptionMetrics metrics =
         new SubscriptionMetrics(registry, new SubscriptionMetricsQueryRepository(jdbc), clock);
     SubscriptionIdempotencyCleanupProcessor cleanup =
-        new SubscriptionIdempotencyCleanupProcessor(jdbc, clock, metrics);
+        new SubscriptionIdempotencyCleanupProcessor(
+            new com.pawcycle.backend.subscription.persistence
+                .SubscriptionIdempotencyCleanupPersistence(jdbc),
+            clock,
+            metrics);
     when(jdbc.update(anyString(), any(Object[].class)))
         .thenThrow(new IllegalStateException("test cleanup failure"));
 

@@ -1,9 +1,7 @@
 package com.pawcycle.backend.catalog.admin.api;
 
-import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
-import com.pawcycle.backend.catalog.admin.persistence.ProductDetailSectionPersistence;
+import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -25,9 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AdminCatalogController {
   private final AdminCatalogService adminCatalogService;
-  private final AdminCatalogMutationService audits;
-  private final CatalogAdminPersistence catalogExpansionAdminService;
-  private final ProductDetailSectionPersistence productDetailSectionService;
+  private final AdminCatalogMutationService mutations;
 
   @GetMapping("/brands")
   BrandListResponse brands() {
@@ -38,13 +34,13 @@ public class AdminCatalogController {
   ResponseEntity<BrandResponse> createBrand(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody BrandCreateRequest request) {
-    BrandResponse brand = audits.execute(principal.memberId(), "CATALOG_BRAND_CREATE", "BRAND", () -> adminCatalogService.createBrand(request), BrandResponse::brandId);
+    BrandResponse brand = mutations.createBrand(principal.memberId(), request);
     return ResponseEntity.created(URI.create("/api/admin/brands/" + brand.brandId())).body(brand);
   }
 
   @GetMapping("/brands/{brandId}")
   BrandResponse brand(@PathVariable long brandId) {
-    return catalogExpansionAdminService.brand(brandId);
+    return mutations.brand(brandId);
   }
 
   @PatchMapping("/brands/{brandId}")
@@ -52,7 +48,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long brandId,
       @RequestBody BrandPatchRequest request) {
-    BrandResponse brand = audits.execute(principal.memberId(), "CATALOG_BRAND_UPDATE", "BRAND", () -> catalogExpansionAdminService.updateBrand(brandId, request), ignored -> brandId);
+    BrandResponse brand = mutations.updateBrand(principal.memberId(), brandId, request);
     return brand;
   }
 
@@ -65,7 +61,7 @@ public class AdminCatalogController {
   ResponseEntity<CategoryResponse> createCategory(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody CategoryCreateRequest request) {
-    CategoryResponse category = audits.execute(principal.memberId(), "CATALOG_CATEGORY_CREATE", "CATEGORY", () -> adminCatalogService.createCategory(request), CategoryResponse::categoryId);
+    CategoryResponse category = mutations.createCategory(principal.memberId(), request);
     return ResponseEntity.created(URI.create("/api/admin/categories/" + category.categoryId()))
         .body(category);
   }
@@ -80,7 +76,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long categoryId,
       @RequestBody CategoryPatchRequest request) {
-    CategoryResponse category = audits.execute(principal.memberId(), "CATALOG_CATEGORY_UPDATE", "CATEGORY", () -> adminCatalogService.updateCategory(categoryId, request), ignored -> categoryId);
+    CategoryResponse category = mutations.updateCategory(principal.memberId(), categoryId, request);
     return category;
   }
 
@@ -93,7 +89,7 @@ public class AdminCatalogController {
   ResponseEntity<ProductResponse> createProduct(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody ProductCreateRequest request) {
-    ProductResponse product = audits.execute(principal.memberId(), "CATALOG_PRODUCT_CREATE", "PRODUCT", () -> adminCatalogService.createProduct(request), ProductResponse::productId);
+    ProductResponse product = mutations.createProduct(principal.memberId(), request);
     return ResponseEntity.created(URI.create("/api/admin/products/" + product.productId()))
         .body(product);
   }
@@ -108,7 +104,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @RequestBody ProductPatchRequest request) {
-    ProductResponse product = audits.execute(principal.memberId(), "CATALOG_PRODUCT_UPDATE", "PRODUCT", () -> adminCatalogService.updateProduct(productId, request), ignored -> productId);
+    ProductResponse product = mutations.updateProduct(principal.memberId(), productId, request);
     return product;
   }
 
@@ -122,7 +118,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @Valid @RequestBody SkuCreateRequest request) {
-    SkuResponse sku = audits.execute(principal.memberId(), "CATALOG_SKU_CREATE", "SKU", () -> adminCatalogService.createSku(productId, request), SkuResponse::skuId);
+    SkuResponse sku = mutations.createSku(principal.memberId(), productId, request);
     return ResponseEntity.created(
             URI.create("/api/admin/products/" + productId + "/skus/" + sku.skuId()))
         .body(sku);
@@ -134,13 +130,13 @@ public class AdminCatalogController {
       @PathVariable Long productId,
       @PathVariable Long skuId,
       @RequestBody SkuPatchRequest request) {
-    SkuResponse sku = audits.execute(principal.memberId(), "CATALOG_SKU_UPDATE", "SKU", () -> adminCatalogService.updateSku(productId, skuId, request), ignored -> skuId);
+    SkuResponse sku = mutations.updateSku(principal.memberId(), productId, skuId, request);
     return sku;
   }
 
   @GetMapping("/products/{productId}/images")
   ImageListResponse images(@PathVariable long productId) {
-    return catalogExpansionAdminService.images(productId);
+    return mutations.images(productId);
   }
 
   @PostMapping("/products/{productId}/images")
@@ -148,7 +144,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @Valid @RequestBody ImageCreateRequest request) {
-    ImageResponse image = audits.execute(principal.memberId(), "CATALOG_PRODUCT_IMAGE_CREATE", "PRODUCT_IMAGE", () -> catalogExpansionAdminService.createImage(productId, request), ImageResponse::imageId);
+    ImageResponse image = mutations.createImage(principal.memberId(), productId, request);
     return ResponseEntity.created(
             URI.create("/api/admin/products/" + productId + "/images/" + image.imageId()))
         .body(image);
@@ -160,7 +156,7 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long imageId,
       @RequestBody ImagePatchRequest request) {
-    ImageResponse image = audits.execute(principal.memberId(), "CATALOG_PRODUCT_IMAGE_UPDATE", "PRODUCT_IMAGE", () -> catalogExpansionAdminService.updateImage(productId, imageId, request), ignored -> imageId);
+    ImageResponse image = mutations.updateImage(principal.memberId(), productId, imageId, request);
     return image;
   }
 
@@ -169,12 +165,12 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long imageId) {
-    audits.execute(principal.memberId(), "CATALOG_PRODUCT_IMAGE_DELETE", "PRODUCT_IMAGE", imageId, () -> catalogExpansionAdminService.deleteImage(productId, imageId));
+    mutations.deleteImage(principal.memberId(), productId, imageId);
   }
 
   @GetMapping("/products/{productId}/option-groups")
   OptionGroupListResponse optionGroups(@PathVariable long productId) {
-    return catalogExpansionAdminService.optionGroups(productId);
+    return mutations.optionGroups(productId);
   }
 
   @PostMapping("/products/{productId}/option-groups")
@@ -182,7 +178,8 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @Valid @RequestBody OptionGroupCreateRequest request) {
-    OptionGroupResponse group = audits.execute(principal.memberId(), "CATALOG_OPTION_GROUP_CREATE", "PRODUCT_OPTION_GROUP", () -> catalogExpansionAdminService.createOptionGroup(productId, request), OptionGroupResponse::optionGroupId);
+    OptionGroupResponse group =
+        mutations.createOptionGroup(principal.memberId(), productId, request);
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/" + productId + "/option-groups/" + group.optionGroupId()))
@@ -195,7 +192,8 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long groupId,
       @RequestBody OptionGroupPatchRequest request) {
-    OptionGroupResponse group = audits.execute(principal.memberId(), "CATALOG_OPTION_GROUP_UPDATE", "PRODUCT_OPTION_GROUP", () -> catalogExpansionAdminService.updateOptionGroup(productId, groupId, request), ignored -> groupId);
+    OptionGroupResponse group =
+        mutations.updateOptionGroup(principal.memberId(), productId, groupId, request);
     return group;
   }
 
@@ -204,7 +202,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId) {
-    audits.execute(principal.memberId(), "CATALOG_OPTION_GROUP_DELETE", "PRODUCT_OPTION_GROUP", groupId, () -> catalogExpansionAdminService.deleteOptionGroup(productId, groupId));
+    mutations.deleteOptionGroup(principal.memberId(), productId, groupId);
   }
 
   @PostMapping("/products/{productId}/option-groups/{groupId}/values")
@@ -213,7 +211,8 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long groupId,
       @Valid @RequestBody OptionValueCreateRequest request) {
-    OptionValueResponse value = audits.execute(principal.memberId(), "CATALOG_OPTION_VALUE_CREATE", "PRODUCT_OPTION_VALUE", () -> catalogExpansionAdminService.createOptionValue(productId, groupId, request), OptionValueResponse::optionValueId);
+    OptionValueResponse value =
+        mutations.createOptionValue(principal.memberId(), productId, groupId, request);
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/"
@@ -232,7 +231,8 @@ public class AdminCatalogController {
       @PathVariable long groupId,
       @PathVariable long valueId,
       @RequestBody OptionValuePatchRequest request) {
-    OptionValueResponse value = audits.execute(principal.memberId(), "CATALOG_OPTION_VALUE_UPDATE", "PRODUCT_OPTION_VALUE", () -> catalogExpansionAdminService.updateOptionValue(productId, groupId, valueId, request), ignored -> valueId);
+    OptionValueResponse value =
+        mutations.updateOptionValue(principal.memberId(), productId, groupId, valueId, request);
     return value;
   }
 
@@ -242,7 +242,7 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long groupId,
       @PathVariable long valueId) {
-    audits.execute(principal.memberId(), "CATALOG_OPTION_VALUE_DELETE", "PRODUCT_OPTION_VALUE", valueId, () -> catalogExpansionAdminService.deleteOptionValue(productId, groupId, valueId));
+    mutations.deleteOptionValue(principal.memberId(), productId, groupId, valueId);
   }
 
   @PutMapping("/products/{productId}/skus/{skuId}/option-values")
@@ -251,31 +251,32 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long skuId,
       @Valid @RequestBody SkuOptionValuesRequest request) {
-    SkuOptionValuesResponse values = audits.execute(principal.memberId(), "CATALOG_SKU_OPTION_VALUES_SET", "SKU", () -> catalogExpansionAdminService.setSkuOptionValues(productId, skuId, request), ignored -> skuId);
+    SkuOptionValuesResponse values =
+        mutations.setSkuOptionValues(principal.memberId(), productId, skuId, request);
     return values;
   }
 
   @GetMapping("/products/{productId}/skus/{skuId}/option-values")
-  SkuOptionValuesResponse skuOptionValues(
-      @PathVariable long productId, @PathVariable long skuId) {
-    return catalogExpansionAdminService.skuOptionValues(productId, skuId);
+  SkuOptionValuesResponse skuOptionValues(@PathVariable long productId, @PathVariable long skuId) {
+    return mutations.skuOptionValues(productId, skuId);
   }
 
   @GetMapping("/facets")
   FacetDefinitionListResponse facetDefinitions() {
-    return catalogExpansionAdminService.facetDefinitions();
+    return mutations.facetDefinitions();
   }
 
   @GetMapping("/facets/{definitionId}")
   FacetDefinitionResponse facetDefinition(@PathVariable long definitionId) {
-    return catalogExpansionAdminService.facetDefinition(definitionId);
+    return mutations.facetDefinition(definitionId);
   }
 
   @PostMapping("/facets")
   ResponseEntity<FacetDefinitionResponse> createFacetDefinition(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody FacetDefinitionCreateRequest request) {
-    FacetDefinitionResponse definition = audits.execute(principal.memberId(), "CATALOG_FACET_CREATE", "FACET_DEFINITION", () -> catalogExpansionAdminService.createFacetDefinition(request), FacetDefinitionResponse::facetDefinitionId);
+    FacetDefinitionResponse definition =
+        mutations.createFacetDefinition(principal.memberId(), request);
     return ResponseEntity.created(URI.create("/api/admin/facets/" + definition.facetDefinitionId()))
         .body(definition);
   }
@@ -285,7 +286,8 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
       @RequestBody FacetDefinitionPatchRequest request) {
-    FacetDefinitionResponse definition = audits.execute(principal.memberId(), "CATALOG_FACET_UPDATE", "FACET_DEFINITION", () -> catalogExpansionAdminService.updateFacetDefinition(definitionId, request), ignored -> definitionId);
+    FacetDefinitionResponse definition =
+        mutations.updateFacetDefinition(principal.memberId(), definitionId, request);
     return definition;
   }
 
@@ -293,7 +295,7 @@ public class AdminCatalogController {
   void deleteFacetDefinition(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId) {
-    audits.execute(principal.memberId(), "CATALOG_FACET_DELETE", "FACET_DEFINITION", definitionId, () -> catalogExpansionAdminService.deleteFacetDefinition(definitionId));
+    mutations.deleteFacetDefinition(principal.memberId(), definitionId);
   }
 
   @PostMapping("/facets/{definitionId}/options")
@@ -301,7 +303,8 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
       @Valid @RequestBody FacetOptionCreateRequest request) {
-    FacetOptionResponse option = audits.execute(principal.memberId(), "CATALOG_FACET_OPTION_CREATE", "FACET_OPTION", () -> catalogExpansionAdminService.createFacetOption(definitionId, request), FacetOptionResponse::facetOptionId);
+    FacetOptionResponse option =
+        mutations.createFacetOption(principal.memberId(), definitionId, request);
     return ResponseEntity.created(
             URI.create("/api/admin/facets/" + definitionId + "/options/" + option.facetOptionId()))
         .body(option);
@@ -313,7 +316,8 @@ public class AdminCatalogController {
       @PathVariable long definitionId,
       @PathVariable long optionId,
       @RequestBody FacetOptionPatchRequest request) {
-    FacetOptionResponse option = audits.execute(principal.memberId(), "CATALOG_FACET_OPTION_UPDATE", "FACET_OPTION", () -> catalogExpansionAdminService.updateFacetOption(definitionId, optionId, request), ignored -> optionId);
+    FacetOptionResponse option =
+        mutations.updateFacetOption(principal.memberId(), definitionId, optionId, request);
     return option;
   }
 
@@ -322,7 +326,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
       @PathVariable long optionId) {
-    audits.execute(principal.memberId(), "CATALOG_FACET_OPTION_DELETE", "FACET_OPTION", optionId, () -> catalogExpansionAdminService.deleteFacetOption(definitionId, optionId));
+    mutations.deleteFacetOption(principal.memberId(), definitionId, optionId);
   }
 
   @PutMapping("/categories/{categoryId}/facets/{definitionId}")
@@ -331,7 +335,8 @@ public class AdminCatalogController {
       @PathVariable long categoryId,
       @PathVariable long definitionId,
       @Valid @RequestBody CategoryFacetAssignRequest request) {
-    CategoryFacetResponse facet = audits.execute(principal.memberId(), "CATALOG_CATEGORY_FACET_SET", "CATEGORY", () -> catalogExpansionAdminService.assignCategoryFacet(categoryId, definitionId, request), ignored -> categoryId);
+    CategoryFacetResponse facet =
+        mutations.assignCategoryFacet(principal.memberId(), categoryId, definitionId, request);
     return facet;
   }
 
@@ -340,7 +345,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long categoryId,
       @PathVariable long definitionId) {
-    audits.execute(principal.memberId(), "CATALOG_CATEGORY_FACET_DELETE", "CATEGORY", categoryId, () -> catalogExpansionAdminService.removeCategoryFacet(categoryId, definitionId));
+    mutations.removeCategoryFacet(principal.memberId(), categoryId, definitionId);
   }
 
   @PutMapping("/products/{productId}/facet-values")
@@ -348,23 +353,24 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @Valid @RequestBody ProductFacetValuesRequest request) {
-    ProductFacetValuesResponse values = audits.execute(principal.memberId(), "CATALOG_PRODUCT_FACET_VALUES_SET", "PRODUCT", () -> catalogExpansionAdminService.setProductFacetValues(productId, request), ignored -> productId);
+    ProductFacetValuesResponse values =
+        mutations.setProductFacetValues(principal.memberId(), productId, request);
     return values;
   }
 
   @GetMapping("/products/{productId}/facet-values")
   ProductFacetValuesResponse productFacetValues(@PathVariable long productId) {
-    return catalogExpansionAdminService.productFacetValues(productId);
+    return mutations.productFacetValues(productId);
   }
 
   @GetMapping("/categories/{categoryId}/facets")
   CategoryFacetListResponse categoryFacets(@PathVariable long categoryId) {
-    return catalogExpansionAdminService.categoryFacets(categoryId);
+    return mutations.categoryFacets(categoryId);
   }
 
   @GetMapping("/products/{productId}/detail-sections")
   DetailSectionListResponse detailSections(@PathVariable Long productId) {
-    return productDetailSectionService.list(productId);
+    return mutations.detailSections(productId);
   }
 
   @PostMapping("/products/{productId}/detail-sections")
@@ -372,7 +378,8 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @Valid @RequestBody DetailSectionCreateRequest request) {
-    DetailSectionResponse section = audits.execute(principal.memberId(), "CATALOG_DETAIL_SECTION_CREATE", "PRODUCT_DETAIL_SECTION", () -> productDetailSectionService.create(productId, request), DetailSectionResponse::sectionId);
+    DetailSectionResponse section =
+        mutations.createDetailSection(principal.memberId(), productId, request);
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/" + productId + "/detail-sections/" + section.sectionId()))
@@ -385,7 +392,8 @@ public class AdminCatalogController {
       @PathVariable Long productId,
       @PathVariable Long sectionId,
       @RequestBody DetailSectionPatchRequest request) {
-    DetailSectionResponse section = audits.execute(principal.memberId(), "CATALOG_DETAIL_SECTION_UPDATE", "PRODUCT_DETAIL_SECTION", () -> productDetailSectionService.update(productId, sectionId, request), ignored -> sectionId);
+    DetailSectionResponse section =
+        mutations.updateDetailSection(principal.memberId(), productId, sectionId, request);
     return section;
   }
 
@@ -394,6 +402,6 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @PathVariable Long sectionId) {
-    audits.execute(principal.memberId(), "CATALOG_DETAIL_SECTION_DELETE", "PRODUCT_DETAIL_SECTION", sectionId, () -> productDetailSectionService.delete(productId, sectionId));
+    mutations.deleteDetailSection(principal.memberId(), productId, sectionId);
   }
 }

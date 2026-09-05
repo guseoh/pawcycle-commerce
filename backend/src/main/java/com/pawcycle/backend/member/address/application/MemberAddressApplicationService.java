@@ -35,8 +35,7 @@ public class MemberAddressApplicationService {
   @Transactional(readOnly = true)
   public List<AddressResponse> list(long memberId) {
     Member member = requireMember(memberId);
-    Long defaultId =
-        member.getDefaultAddress() == null ? null : member.getDefaultAddress().getId();
+    Long defaultId = member.getDefaultAddress() == null ? null : member.getDefaultAddress().getId();
     return addresses.findByMemberIdOrderById(memberId).stream()
         .map(address -> response(address, defaultId))
         .toList();
@@ -50,7 +49,7 @@ public class MemberAddressApplicationService {
     addresses.saveAndFlush(address);
     if (member.getDefaultAddress() == null) {
       member.assignDefaultAddress(address);
-      members.save(member);
+      members.saveAndFlush(member);
     }
     subscriptionShipping.releaseAddressHolds(memberId);
     return address.getId();
@@ -98,7 +97,7 @@ public class MemberAddressApplicationService {
             .findByIdAndMemberId(addressId, memberId)
             .orElseThrow(() -> notFound("ADDRESS_NOT_FOUND"));
     member.assignDefaultAddress(address);
-    members.save(member);
+    members.saveAndFlush(member);
     subscriptionShipping.releaseAddressHolds(memberId);
   }
 

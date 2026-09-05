@@ -13,12 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
-import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
@@ -342,14 +336,22 @@ class AdminCatalogApiIntegrationTests {
             .productId();
     var definition =
         catalogExpansionAdminService.createFacetDefinition(
-            new FacetDefinitionCreateRequest("material", "Material"));
+            new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+                .FacetDefinitionCreateCommand("material", "Material"));
     var option =
         catalogExpansionAdminService.createFacetOption(
-            definition.facetDefinitionId(), new FacetOptionCreateRequest("cotton", 0));
+            definition.facetDefinitionId(),
+            new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+                .FacetOptionCreateCommand("cotton", 0));
     catalogExpansionAdminService.assignCategoryFacet(
-        first.getId(), definition.facetDefinitionId(), new CategoryFacetAssignRequest(0));
+        first.getId(),
+        definition.facetDefinitionId(),
+        new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+            .CategoryFacetAssignCommand(0));
     catalogExpansionAdminService.setProductFacetValues(
-        productId, new ProductFacetValuesRequest(List.of(option.facetOptionId())));
+        productId,
+        new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+            .ProductFacetValuesCommand(List.of(option.facetOptionId())));
 
     ProductPatchRequest categoryPatch = new ProductPatchRequest();
     categoryPatch.readCategoryId(second.getId());

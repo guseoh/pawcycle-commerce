@@ -5,8 +5,6 @@ import org.springframework.stereotype.Service;
 /** Batch orchestration facade; SQL and candidate processing live in the feature processor. */
 @Service
 public class SubscriptionOrderAutomationService {
-  public static final String UPDATE_SCHEDULE_EFFECTIVE_SQL =
-      SubscriptionOrderProcessor.UPDATE_SCHEDULE_EFFECTIVE_SQL;
   private final SubscriptionOrderProcessor processor;
 
   public SubscriptionOrderAutomationService(SubscriptionOrderProcessor processor) {

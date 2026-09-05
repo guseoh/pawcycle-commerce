@@ -1,21 +1,20 @@
 package com.pawcycle.backend.catalog.maintenance.persistence;
 
-import com.pawcycle.backend.catalog.application.*;
-import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ImageCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.OptionGroupCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.OptionValueCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesRequest;
+import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
-
+import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetAssignCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageCreateCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionGroupCreateCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionValueCreateCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ProductFacetValuesCommand;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.SkuOptionValuesCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
+import com.pawcycle.backend.catalog.application.*;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import jakarta.validation.Validator;
@@ -207,7 +206,7 @@ public class CustomerCatalogImportPersistence {
             fields("display_order", i),
             () -> {
               expansion.assignCategoryFacet(
-                  id, definitionId, new CategoryFacetAssignRequest(order));
+                  id, definitionId, new CategoryFacetAssignCommand(order));
               return 0;
             });
       }
@@ -283,8 +282,7 @@ public class CustomerCatalogImportPersistence {
               () ->
                   expansion
                       .createOptionGroup(
-                          productId,
-                          new OptionGroupCreateRequest(group.name(), order))
+                          productId, new OptionGroupCreateCommand(group.name(), order))
                       .optionGroupId());
       for (int j = 0; j < group.values().size(); j++) {
         String value = group.values().get(j);
@@ -299,9 +297,7 @@ public class CustomerCatalogImportPersistence {
                 () ->
                     expansion
                         .createOptionValue(
-                            productId,
-                            groupId,
-                            new OptionValueCreateRequest(value, valueOrder))
+                            productId, groupId, new OptionValueCreateCommand(value, valueOrder))
                         .optionValueId()));
       }
     }
@@ -365,8 +361,7 @@ public class CustomerCatalogImportPersistence {
           "option_value_id",
           selected,
           () ->
-              expansion.setSkuOptionValues(
-                  productId, skuId, new SkuOptionValuesRequest(selected)));
+              expansion.setSkuOptionValues(productId, skuId, new SkuOptionValuesCommand(selected)));
     }
 
     ensureImages(context, product.catalogKey(), productId, product.images());
@@ -386,14 +381,11 @@ public class CustomerCatalogImportPersistence {
         selectedFacets,
         () ->
             expansion.setProductFacetValues(
-                productId, new ProductFacetValuesRequest(selectedFacets)));
+                productId, new ProductFacetValuesCommand(selectedFacets)));
   }
 
   private void ensureImages(
-      ImportContext context,
-      String catalogKey,
-      long productId,
-      List<ImageCreateRequest> expected) {
+      ImportContext context, String catalogKey, long productId, List<ImageCreateCommand> expected) {
     List<Map<String, Object>> actual =
         jdbc.queryForList(
             """
@@ -408,14 +400,14 @@ public class CustomerCatalogImportPersistence {
       context.recordMissing("product_images", expected.size());
       if (context.writes()) {
         expected.stream()
-            .sorted(Comparator.comparingInt(ImageCreateRequest::displayOrder))
+            .sorted(Comparator.comparingInt(ImageCreateCommand::displayOrder))
             .forEach(image -> expansion.createImage(productId, image));
       }
       return;
     }
     List<Map<String, Object>> expectedRows =
         expected.stream()
-            .sorted(Comparator.comparingInt(ImageCreateRequest::displayOrder))
+            .sorted(Comparator.comparingInt(ImageCreateCommand::displayOrder))
             .map(
                 image ->
                     fields(
@@ -459,9 +451,7 @@ public class CustomerCatalogImportPersistence {
   }
 
   private void ensureDetailSections(
-      ImportContext context,
-      long productId,
-      List<DetailSectionCreateRequest> expected) {
+      ImportContext context, long productId, List<DetailSectionCreateRequest> expected) {
     List<Map<String, Object>> actual =
         jdbc.queryForList(
             """
@@ -477,8 +467,7 @@ public class CustomerCatalogImportPersistence {
       if (context.writes()) {
         for (DetailSectionCreateRequest section :
             expected.stream()
-                .sorted(
-                    Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
+                .sorted(Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
                 .toList()) {
           Map<String, Object> row =
               fields(
@@ -643,9 +632,7 @@ public class CustomerCatalogImportPersistence {
 
     Set<String> brandKeys = new HashSet<>();
     for (Brand brand : manifest.brands()) {
-      valid(
-          new BrandCreateRequest(
-              brand.name(), brand.slug(), null, true, brand.displayOrder()));
+      valid(new BrandCreateRequest(brand.name(), brand.slug(), null, true, brand.displayOrder()));
       if (!brandKeys.add(brand.slug())) throw conflict("duplicate brand");
     }
 
@@ -658,8 +645,7 @@ public class CustomerCatalogImportPersistence {
           || facets.put(facet.key(), new HashSet<>(facet.values())) != null) {
         throw conflict("duplicate facet");
       }
-      for (String value : facet.values())
-        valid(new FacetOptionCreateRequest(value, 0));
+      for (String value : facet.values()) valid(new FacetOptionCreateRequest(value, 0));
     }
 
     Map<String, Category> categories = new HashMap<>();
@@ -711,15 +697,14 @@ public class CustomerCatalogImportPersistence {
 
       Set<String> groupNames = new HashSet<>();
       for (Group group : product.optionGroups()) {
-        valid(new OptionGroupCreateRequest(group.name(), 0));
+        valid(new OptionGroupCreateCommand(group.name(), 0));
         if (!groupNames.add(group.name())
             || group.values() == null
             || group.values().isEmpty()
             || new HashSet<>(group.values()).size() != group.values().size()) {
           throw conflict("option group");
         }
-        for (String value : group.values())
-          valid(new OptionValueCreateRequest(value, 0));
+        for (String value : group.values()) valid(new OptionValueCreateCommand(value, 0));
       }
 
       Set<List<String>> combinations = new HashSet<>();
@@ -751,7 +736,7 @@ public class CustomerCatalogImportPersistence {
       }
 
       Set<Integer> imageOrders = new HashSet<>();
-      for (ImageCreateRequest image : product.images()) {
+      for (ImageCreateCommand image : product.images()) {
         valid(image);
         if (!imageOrders.add(image.displayOrder())) throw conflict("image order");
       }
@@ -908,7 +893,7 @@ public class CustomerCatalogImportPersistence {
       String thumbnailUrl,
       List<Group> optionGroups,
       List<Sku> skus,
-      List<ImageCreateRequest> images,
+      List<ImageCreateCommand> images,
       Map<String, String> facets,
       List<DetailSectionCreateRequest> detailSections) {}
 }

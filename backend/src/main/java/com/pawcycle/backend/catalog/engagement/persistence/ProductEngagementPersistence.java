@@ -1,10 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.persistence;
 
-import com.pawcycle.backend.catalog.engagement.api.AdminQuestionResponse;
-import com.pawcycle.backend.catalog.engagement.api.AdminReviewResponse;
-import com.pawcycle.backend.catalog.engagement.api.QuestionResponse;
-import com.pawcycle.backend.catalog.engagement.api.ReviewResponse;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,12 +18,12 @@ public class ProductEngagementPersistence {
     return count("SELECT COUNT(*) FROM reviews WHERE product_id=? AND visible=true", productId);
   }
 
-  public List<ReviewResponse> findVisibleReviews(long productId, int size, int offset) {
+  public List<ReviewView> findVisibleReviews(long productId, int size, int offset) {
     return jdbc.query(
-        "SELECT id,rating,content,created_at,updated_at FROM reviews"
-            + " WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+        "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
+            + " visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
         (rs, rowNum) ->
-            new ReviewResponse(
+            new ReviewView(
                 rs.getLong("id"),
                 rs.getInt("rating"),
                 rs.getString("content"),
@@ -37,7 +34,7 @@ public class ProductEngagementPersistence {
         offset);
   }
 
-  public List<ReviewResponse> findMemberReview(long productId, long memberId) {
+  public List<ReviewView> findMemberReview(long productId, long memberId) {
     return jdbc.query(
         "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
             + " member_id=?",
@@ -56,7 +53,8 @@ public class ProductEngagementPersistence {
         > 0;
   }
 
-  public long insertReview(long productId, long memberId, int rating, String content, Timestamp now) {
+  public long insertReview(
+      long productId, long memberId, int rating, String content, Timestamp now) {
     jdbc.update(
         "INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)"
             + " VALUES (?,?,?,?,true,?,?)",
@@ -88,7 +86,7 @@ public class ProductEngagementPersistence {
         : count("SELECT COUNT(*) FROM reviews WHERE product_id=?", productId);
   }
 
-  public List<AdminReviewResponse> findAdminReviews(Long productId, int size, int offset) {
+  public List<AdminReviewView> findAdminReviews(Long productId, int size, int offset) {
     String filter = productId == null ? "" : " WHERE product_id=?";
     Object[] args =
         productId == null ? new Object[] {size, offset} : new Object[] {productId, size, offset};
@@ -97,7 +95,7 @@ public class ProductEngagementPersistence {
             + filter
             + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
         (rs, rowNum) ->
-            new AdminReviewResponse(
+            new AdminReviewView(
                 rs.getLong("id"),
                 rs.getLong("product_id"),
                 rs.getLong("member_id"),
@@ -110,17 +108,19 @@ public class ProductEngagementPersistence {
   }
 
   public int updateReviewVisibility(long reviewId, boolean visible, Timestamp now) {
-    return jdbc.update("UPDATE reviews SET visible=?,updated_at=? WHERE id=?", visible, now, reviewId);
+    return jdbc.update(
+        "UPDATE reviews SET visible=?,updated_at=? WHERE id=?", visible, now, reviewId);
   }
 
   public long countVisibleQuestions(long productId) {
-    return count("SELECT COUNT(*) FROM product_questions WHERE product_id=? AND visible=true", productId);
+    return count(
+        "SELECT COUNT(*) FROM product_questions WHERE product_id=? AND visible=true", productId);
   }
 
-  public List<QuestionResponse> findVisibleQuestions(long productId, int size, int offset) {
+  public List<QuestionView> findVisibleQuestions(long productId, int size, int offset) {
     return jdbc.query(
-        "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
-            + " WHERE product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+        "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions WHERE"
+            + " product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
         (rs, rowNum) -> question(rs),
         productId,
         size,
@@ -129,7 +129,8 @@ public class ProductEngagementPersistence {
 
   public long insertQuestion(long productId, long memberId, String content, Timestamp now) {
     jdbc.update(
-        "INSERT INTO product_questions(product_id,member_id,content,answer,answered_at,visible,created_at,updated_at)"
+        "INSERT INTO"
+            + " product_questions(product_id,member_id,content,answer,answered_at,visible,created_at,updated_at)"
             + " VALUES (?,?,?,NULL,NULL,true,?,?)",
         productId,
         memberId,
@@ -154,7 +155,7 @@ public class ProductEngagementPersistence {
         : count("SELECT COUNT(*) FROM product_questions WHERE product_id=?", productId);
   }
 
-  public List<AdminQuestionResponse> findAdminQuestions(Long productId, int size, int offset) {
+  public List<AdminQuestionView> findAdminQuestions(Long productId, int size, int offset) {
     String filter = productId == null ? "" : " WHERE product_id=?";
     Object[] args =
         productId == null ? new Object[] {size, offset} : new Object[] {productId, size, offset};
@@ -179,14 +180,12 @@ public class ProductEngagementPersistence {
 
   public int updateQuestionVisibility(long questionId, boolean visible, Timestamp now) {
     return jdbc.update(
-        "UPDATE product_questions SET visible=?,updated_at=? WHERE id=?",
-        visible,
-        now,
-        questionId);
+        "UPDATE product_questions SET visible=?,updated_at=? WHERE id=?", visible, now, questionId);
   }
 
   public ReviewMutationState lockReview(long reviewId) {
-    return jdbc.query(
+    return jdbc
+        .query(
             "SELECT member_id,product_id,rating,content FROM reviews WHERE id=? FOR UPDATE",
             (rs, rowNum) ->
                 new ReviewMutationState(
@@ -201,7 +200,8 @@ public class ProductEngagementPersistence {
   }
 
   public QuestionMutationState lockQuestion(long questionId) {
-    return jdbc.query(
+    return jdbc
+        .query(
             "SELECT member_id,product_id,answered_at FROM product_questions WHERE id=? FOR UPDATE",
             (rs, rowNum) ->
                 new QuestionMutationState(
@@ -214,8 +214,9 @@ public class ProductEngagementPersistence {
         .orElse(null);
   }
 
-  public ReviewResponse findReview(long id, long productId, long memberId) {
-    return jdbc.query(
+  public ReviewView findReview(long id, long productId, long memberId) {
+    return jdbc
+        .query(
             "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE id=? AND"
                 + " product_id=? AND member_id=?",
             (rs, rowNum) -> review(rs),
@@ -227,8 +228,9 @@ public class ProductEngagementPersistence {
         .orElse(null);
   }
 
-  public QuestionResponse findQuestion(long id, long productId) {
-    return jdbc.query(
+  public QuestionView findQuestion(long id, long productId) {
+    return jdbc
+        .query(
             "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
                 + " WHERE id=? AND product_id=?",
             (rs, rowNum) -> question(rs),
@@ -239,9 +241,11 @@ public class ProductEngagementPersistence {
         .orElse(null);
   }
 
-  public AdminQuestionResponse findAdminQuestion(long id) {
-    return jdbc.query(
-            "SELECT id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
+  public AdminQuestionView findAdminQuestion(long id) {
+    return jdbc
+        .query(
+            "SELECT"
+                + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
                 + " FROM product_questions WHERE id=?",
             (rs, rowNum) -> adminQuestion(rs),
             id)
@@ -259,8 +263,8 @@ public class ProductEngagementPersistence {
     return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
   }
 
-  private ReviewResponse review(java.sql.ResultSet rs) throws java.sql.SQLException {
-    return new ReviewResponse(
+  private ReviewView review(java.sql.ResultSet rs) throws java.sql.SQLException {
+    return new ReviewView(
         rs.getLong("id"),
         rs.getInt("rating"),
         rs.getString("content"),
@@ -268,8 +272,8 @@ public class ProductEngagementPersistence {
         rs.getTimestamp("updated_at").toInstant());
   }
 
-  private QuestionResponse question(java.sql.ResultSet rs) throws java.sql.SQLException {
-    return new QuestionResponse(
+  private QuestionView question(java.sql.ResultSet rs) throws java.sql.SQLException {
+    return new QuestionView(
         rs.getLong("id"),
         rs.getString("content"),
         rs.getString("answer"),
@@ -278,8 +282,8 @@ public class ProductEngagementPersistence {
         rs.getTimestamp("updated_at").toInstant());
   }
 
-  private AdminQuestionResponse adminQuestion(java.sql.ResultSet rs) throws java.sql.SQLException {
-    return new AdminQuestionResponse(
+  private AdminQuestionView adminQuestion(java.sql.ResultSet rs) throws java.sql.SQLException {
+    return new AdminQuestionView(
         rs.getLong("id"),
         rs.getLong("product_id"),
         rs.getLong("member_id"),
@@ -294,4 +298,36 @@ public class ProductEngagementPersistence {
   public record ReviewMutationState(long memberId, long productId, int rating, String content) {}
 
   public record QuestionMutationState(long memberId, long productId, boolean answered) {}
+
+  public record ReviewView(
+      Long reviewId, int rating, String content, Instant createdAt, Instant updatedAt) {}
+
+  public record AdminReviewView(
+      Long reviewId,
+      Long productId,
+      Long memberId,
+      int rating,
+      String content,
+      boolean visible,
+      Instant createdAt,
+      Instant updatedAt) {}
+
+  public record QuestionView(
+      Long questionId,
+      String content,
+      String answer,
+      boolean answered,
+      Instant createdAt,
+      Instant updatedAt) {}
+
+  public record AdminQuestionView(
+      Long questionId,
+      Long productId,
+      Long memberId,
+      String content,
+      String answer,
+      boolean answered,
+      boolean visible,
+      Instant createdAt,
+      Instant updatedAt) {}
 }
