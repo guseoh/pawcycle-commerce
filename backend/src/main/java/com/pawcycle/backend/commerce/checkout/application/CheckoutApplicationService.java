@@ -53,19 +53,23 @@ public class CheckoutApplicationService {
     return transaction.execute(
         status -> {
           CartPersistenceAdapter.CartLock cartLock = cart.lockForAdd(memberId);
-          if (requestedCartVersion != null && requestedCartVersion != cartLock.version()) {
-            throw new CommerceException(409, "CART_CHANGED", "장바구니가 변경되었습니다.");
-          }
-          String fingerprint = checkoutFingerprint(addressId, memberCouponId, cartLock.version());
           CheckoutReplay replay = checkout.findReplay(memberId, idempotencyKey);
           if (replay != null) {
-            if (replay.requestFingerprint() == null
-                || !fingerprint.equals(replay.requestFingerprint())) {
+            if (replay.requestCartVersion() == null
+                || (requestedCartVersion != null
+                    && requestedCartVersion.longValue() != replay.requestCartVersion())
+                || !checkoutFingerprint(addressId, memberCouponId, replay.requestCartVersion())
+                    .equals(replay.requestFingerprint())) {
               throw new CommerceException(
                   409, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key가 다른 요청에 사용되었습니다.");
             }
             return response(replay);
           }
+
+          if (requestedCartVersion != null && requestedCartVersion != cartLock.version()) {
+            throw new CommerceException(409, "CART_CHANGED", "장바구니가 변경되었습니다.");
+          }
+          String fingerprint = checkoutFingerprint(addressId, memberCouponId, cartLock.version());
 
           CheckoutAddress address = checkout.findAddress(memberId, addressId);
           if (address == null) notFound("ADDRESS_NOT_FOUND");
