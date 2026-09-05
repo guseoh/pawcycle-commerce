@@ -1,49 +1,46 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.commerce.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.CommerceOrderRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class AdminOrderPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final CommerceOrderRepository orders;
 
-  public AdminOrderPersistenceAdapter(JdbcTemplate queries) {
-    this.queries = queries;
+  public AdminOrderPersistenceAdapter(CommerceOrderRepository orders) {
+    this.orders = orders;
   }
 
+  @Transactional(readOnly = true)
   public List<AdminOrderView> findAll() {
-    return queries.query(
-        "SELECT id AS orderId,order_number AS orderNumber,member_id AS memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders ORDER BY id DESC",
-        (rs, rowNumber) ->
-            new AdminOrderView(
-                rs.getLong("orderId"),
-                rs.getString("orderNumber"),
-                rs.getLong("memberId"),
-                rs.getString("status"),
-                rs.getBigDecimal("paymentAmount"),
-                rs.getTimestamp("createdAt")));
+    return orders.findAllByOrderByIdDesc().stream().map(this::view).toList();
   }
 
+  @Transactional(readOnly = true)
   public AdminOrderView find(long orderId) {
-    return queries
-        .query(
-            "SELECT id AS orderId,order_number AS orderNumber,member_id AS memberId,status,payment_amount AS paymentAmount,created_at AS createdAt FROM orders WHERE id=?",
-            (rs, rowNumber) ->
-                new AdminOrderView(
-                    rs.getLong("orderId"),
-                    rs.getString("orderNumber"),
-                    rs.getLong("memberId"),
-                    rs.getString("status"),
-                    rs.getBigDecimal("paymentAmount"),
-                    rs.getTimestamp("createdAt")),
-            orderId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return orders.findById(orderId).map(this::view).orElse(null);
   }
 
-  public record AdminOrderView(long orderId, String orderNumber, long memberId, String status, BigDecimal paymentAmount, Timestamp createdAt) {}
+  private AdminOrderView view(CommerceOrderEntity order) {
+    return new AdminOrderView(
+        order.getId(),
+        order.getOrderNumber(),
+        order.getMemberId(),
+        order.getStatus(),
+        order.getPaymentAmount(),
+        Timestamp.valueOf(order.getCreatedAt()));
+  }
+
+  public record AdminOrderView(
+      long orderId,
+      String orderNumber,
+      long memberId,
+      String status,
+      BigDecimal paymentAmount,
+      Timestamp createdAt) {}
 }

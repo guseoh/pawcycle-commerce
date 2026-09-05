@@ -1,41 +1,48 @@
 package com.pawcycle.backend.commerce.audit.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.commerce.AdminAuditLogEntity;
+import com.pawcycle.backend.commerce.AdminAuditLogRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class AdminAuditPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final AdminAuditLogRepository audits;
   private final Clock clock;
 
-  public AdminAuditPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public AdminAuditPersistenceAdapter(AdminAuditLogRepository audits, Clock clock) {
+    this.audits = audits;
     this.clock = clock;
   }
 
+  @Transactional
   public void append(long adminId, String action, String targetType, long targetId) {
-    queries.update(
-        "INSERT INTO admin_audit_logs(admin_id,action,target_type,target_id,safe_detail_json,created_at) VALUES (?,?,?,?,JSON_OBJECT(),?)",
-        adminId,
-        action,
-        targetType,
-        targetId,
-        Timestamp.from(clock.instant()));
+    audits.saveAndFlush(
+        new AdminAuditLogEntity(
+            adminId,
+            action,
+            targetType,
+            targetId,
+            LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault())));
   }
 
+  @Transactional(readOnly = true)
   public List<AdminAuditView> findAll() {
-    return queries.query(
-        "SELECT id AS auditLogId,admin_id AS adminId,action,target_type AS targetType,target_id AS targetId,created_at AS createdAt FROM admin_audit_logs ORDER BY id DESC",
-        (rs, rowNumber) ->
-            new AdminAuditView(
-                rs.getLong("auditLogId"),
-                rs.getLong("adminId"),
-                rs.getString("action"),
-                rs.getString("targetType"),
-                rs.getLong("targetId"),
-                rs.getTimestamp("createdAt")));
+    return audits.findAllByOrderByIdDesc().stream()
+        .map(
+            audit ->
+                new AdminAuditView(
+                    audit.getId(),
+                    audit.getAdminId(),
+                    audit.getAction(),
+                    audit.getTargetType(),
+                    audit.getTargetId(),
+                    Timestamp.valueOf(audit.getCreatedAt())))
+        .toList();
   }
 }

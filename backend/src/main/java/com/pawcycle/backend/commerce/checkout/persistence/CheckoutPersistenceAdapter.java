@@ -1,9 +1,27 @@
 package com.pawcycle.backend.commerce.checkout.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.catalog.product.domain.ProductStatus;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.commerce.CartItemRepository;
+import com.pawcycle.backend.commerce.CheckoutIdempotencyEntity;
+import com.pawcycle.backend.commerce.CheckoutIdempotencyId;
+import com.pawcycle.backend.commerce.CheckoutIdempotencyRepository;
+import com.pawcycle.backend.commerce.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.CommerceOrderItemEntity;
+import com.pawcycle.backend.commerce.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.CouponEntity;
+import com.pawcycle.backend.commerce.CouponRepository;
+import com.pawcycle.backend.commerce.MemberCouponEntity;
+import com.pawcycle.backend.commerce.MemberCouponRepository;
+import com.pawcycle.backend.commerce.PaymentEntity;
+import com.pawcycle.backend.commerce.PaymentRepository;
+import com.pawcycle.backend.member.domain.MemberAddress;
+import com.pawcycle.backend.member.persistence.MemberAddressRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -11,163 +29,173 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class CheckoutPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final EntityManager entityManager;
+  private final CheckoutIdempotencyRepository idempotencies;
+  private final MemberAddressRepository addresses;
+  private final CartItemRepository cartItems;
+  private final CommerceOrderRepository orders;
+  private final PaymentRepository payments;
+  private final MemberCouponRepository memberCoupons;
+  private final CouponRepository coupons;
   private final Clock clock;
 
-  public CheckoutPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public CheckoutPersistenceAdapter(
+      EntityManager entityManager,
+      CheckoutIdempotencyRepository idempotencies,
+      MemberAddressRepository addresses,
+      CartItemRepository cartItems,
+      CommerceOrderRepository orders,
+      PaymentRepository payments,
+      MemberCouponRepository memberCoupons,
+      CouponRepository coupons,
+      Clock clock) {
+    this.entityManager = entityManager;
+    this.idempotencies = idempotencies;
+    this.addresses = addresses;
+    this.cartItems = cartItems;
+    this.orders = orders;
+    this.payments = payments;
+    this.memberCoupons = memberCoupons;
+    this.coupons = coupons;
     this.clock = clock;
   }
 
   public CheckoutReplay findReplay(long memberId, String idempotencyKey) {
-    return queries
-        .query(
-            """
-            SELECT result.request_fingerprint AS requestFingerprint,
-                   result.request_cart_version AS requestCartVersion,
-                   orders.id AS orderId,orders.order_number AS orderNumber,
-                   payment.id AS paymentId,payment.provider_order_id AS providerOrderId,
-                   orders.payment_amount AS amount
-            FROM checkout_idempotency_results result
-            JOIN orders ON orders.id=result.order_id
-            JOIN payments payment ON payment.id=result.payment_id
-            WHERE result.member_id=? AND result.idempotency_key=? FOR UPDATE
-            """,
-            (rs, rowNumber) -> {
-              long requestCartVersion = rs.getLong("requestCartVersion");
-              return new CheckoutReplay(
-                  rs.getString("requestFingerprint"),
-                  rs.wasNull() ? null : requestCartVersion,
-                  rs.getLong("orderId"),
-                  rs.getString("orderNumber"),
-                  rs.getLong("paymentId"),
-                  rs.getString("providerOrderId"),
-                  rs.getBigDecimal("amount"));
-            },
-            memberId,
-            idempotencyKey)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    CheckoutIdempotencyEntity result =
+        idempotencies.findForUpdate(memberId, idempotencyKey).orElse(null);
+    if (result == null) return null;
+    CommerceOrderEntity order = orders.findById(result.getOrderId()).orElseThrow();
+    PaymentEntity payment = payments.findById(result.getPaymentId()).orElseThrow();
+    return new CheckoutReplay(
+        result.getRequestFingerprint(),
+        result.getRequestCartVersion(),
+        order.getId(),
+        order.getOrderNumber(),
+        payment.getId(),
+        payment.getProviderOrderId(),
+        order.getPaymentAmount());
   }
 
   public CheckoutAddress findAddress(long memberId, long addressId) {
-    return queries
-        .query(
-            "SELECT recipient_name,recipient_phone,postal_code,address_line1,address_line2 FROM member_addresses WHERE id=? AND member_id=?",
-            (rs, rowNumber) ->
-                new CheckoutAddress(
-                    rs.getString("recipient_name"),
-                    rs.getString("recipient_phone"),
-                    rs.getString("postal_code"),
-                    rs.getString("address_line1"),
-                    rs.getString("address_line2")),
-            addressId,
-            memberId)
-        .stream()
-        .findFirst()
+    return addresses
+        .findByIdAndMemberId(addressId, memberId)
+        .map(CheckoutPersistenceAdapter::address)
         .orElse(null);
   }
 
   public List<CheckoutCartItem> findCartItems(long cartId) {
-    return queries.query(
-        "SELECT item.sku_id,item.quantity,sku.sku_code,sku.name AS sku_name,sku.price,product.name AS product_name FROM carts cart JOIN cart_items item ON item.cart_id=cart.id JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id WHERE cart.id=? FOR UPDATE",
-        (rs, rowNumber) ->
-            new CheckoutCartItem(
-                rs.getLong("sku_id"),
-                rs.getInt("quantity"),
-                rs.getString("sku_code"),
-                rs.getString("sku_name"),
-                rs.getBigDecimal("price"),
-                rs.getString("product_name")),
-        cartId);
+    // Lock the cart rows first; the projection read intentionally follows separately so the
+    // lock scope does not depend on provider-specific DTO-query locking behavior.
+    cartItems.findAllByCartIdForUpdate(cartId);
+    TypedQuery<CheckoutCartItemRow> query =
+        entityManager.createQuery(
+            """
+            select new com.pawcycle.backend.commerce.checkout.persistence.CheckoutCartItemRow(
+                item.id.skuId, item.quantity, sku.skuCode, sku.name, sku.price, product.name)
+            from CartItemEntity item
+            join Sku sku on sku.id = item.id.skuId
+            join sku.product product
+            where item.id.cartId = :cartId
+            """,
+            CheckoutCartItemRow.class);
+    return query.setParameter("cartId", cartId).getResultList().stream()
+        .map(CheckoutCartItemRow::toView)
+        .toList();
   }
 
   public boolean isPurchasable(long skuId) {
-    List<Integer> matches =
-        queries.queryForList(
-            "SELECT COUNT(*) FROM skus sku JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id WHERE sku.id=? AND sku.status='ACTIVE' AND product.display_status='PUBLIC' AND category.active=true",
-            Integer.class,
-            skuId);
-    return !matches.isEmpty() && matches.getFirst() == 1;
+    Long count =
+        entityManager
+            .createQuery(
+                """
+                select count(sku)
+                from Sku sku
+                join sku.product product
+                join product.category category
+                where sku.id = :skuId
+                  and sku.status = :skuStatus
+                  and product.status = :productStatus
+                  and category.active = true
+                """,
+                Long.class)
+            .setParameter("skuId", skuId)
+            .setParameter("skuStatus", SkuStatus.ACTIVE)
+            .setParameter("productStatus", ProductStatus.PUBLIC)
+            .getSingleResult();
+    return count == 1L;
   }
 
   public CouponRule findCouponRule(long memberId, long memberCouponId) {
-    return queries
-        .query(
-            "SELECT coupon.discount_type,coupon.discount_value,coupon.minimum_order_amount,coupon.maximum_discount_amount FROM member_coupons member_coupon JOIN coupons coupon ON coupon.id=member_coupon.coupon_id WHERE member_coupon.id=? AND member_coupon.member_id=? AND member_coupon.status='AVAILABLE' AND coupon.active=true AND coupon.valid_from<=? AND coupon.valid_until>? FOR UPDATE",
-            (rs, rowNumber) ->
-                new CouponRule(
-                    rs.getBigDecimal("minimum_order_amount"),
-                    rs.getBigDecimal("discount_value"),
-                    rs.getBigDecimal("maximum_discount_amount"),
-                    rs.getString("discount_type")),
-            memberCouponId,
-            memberId,
-            now(),
-            now())
-        .stream()
-        .findFirst()
-        .orElse(null);
+    MemberCouponEntity memberCoupon =
+        memberCoupons.findByIdForUpdate(memberCouponId).orElse(null);
+    if (memberCoupon == null
+        || memberCoupon.getMemberId() != memberId
+        || !"AVAILABLE".equals(memberCoupon.getStatus())) return null;
+    CouponEntity coupon = coupons.findByIdForUpdate(memberCoupon.getCouponId()).orElse(null);
+    if (coupon == null || !coupon.isActive() || !isValidNow(coupon)) return null;
+    return new CouponRule(
+        coupon.getMinimumOrderAmount(),
+        coupon.getDiscountValue(),
+        coupon.getMaximumDiscountAmount(),
+        coupon.getDiscountType());
   }
 
-  public long createOrder(long memberId, String orderNumber, BigDecimal original, BigDecimal discount,
-      BigDecimal amount, CheckoutAddress address) {
-    queries.update(
-        "INSERT INTO orders(order_number,member_id,source,status,original_amount,discount_amount,shipping_fee,payment_amount,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at) VALUES (?,?,'ONE_TIME','PAYMENT_PENDING',?,?,?,?,?,?,?,?,?,?)",
-        orderNumber,
-        memberId,
-        original,
-        discount,
-        BigDecimal.ZERO,
-        amount,
-        address.recipientName(),
-        address.recipientPhone(),
-        address.postalCode(),
-        address.addressLine1(),
-        address.addressLine2(),
-        now());
-    return queries.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+  public long createOrder(
+      long memberId,
+      String orderNumber,
+      BigDecimal original,
+      BigDecimal discount,
+      BigDecimal amount,
+      CheckoutAddress address) {
+    CommerceOrderEntity order =
+        orders.saveAndFlush(
+            new CommerceOrderEntity(
+                orderNumber,
+                memberId,
+                original,
+                discount,
+                BigDecimal.ZERO,
+                amount,
+                address.recipientName(),
+                address.recipientPhone(),
+                address.postalCode(),
+                address.addressLine1(),
+                address.addressLine2(),
+                now()));
+    return order.getId();
   }
 
   public long createPayment(long orderId, BigDecimal amount) {
-    queries.update(
-        "INSERT INTO payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,expires_at,created_at) VALUES (?,'NORMAL','TOSS','READY',?,?,?,?,?,?,?)",
-        orderId,
-        amount,
-        "TOSS-" + UUID.randomUUID(),
-        "pay-" + UUID.randomUUID(),
-        1,
-        now(),
-        Timestamp.from(clock.instant().plus(30, ChronoUnit.MINUTES)),
-        now());
-    return queries.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    PaymentEntity payment =
+        payments.saveAndFlush(
+            new PaymentEntity(
+                orderId,
+                amount,
+                "TOSS-" + UUID.randomUUID(),
+                "pay-" + UUID.randomUUID(),
+                now(),
+                now().plus(30, ChronoUnit.MINUTES)));
+    return payment.getId();
   }
 
   public String providerOrderId(long paymentId) {
-    return queries.queryForObject(
-        "SELECT provider_order_id FROM payments WHERE id=?", String.class, paymentId);
+    return payments.findById(paymentId).map(PaymentEntity::getProviderOrderId).orElseThrow();
   }
 
   public void createOrderItem(long orderId, CheckoutCartItem item) {
-    queries.update(
-        "INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount) VALUES (?,?,'FULL',?,?,?,?,?,?)",
-        orderId,
-        item.skuId(),
-        item.skuCode(),
-        item.productName(),
-        item.skuName(),
-        item.price(),
-        item.quantity(),
-        item.price().multiply(BigDecimal.valueOf(item.quantity())));
+    entityManager.persist(
+        new CommerceOrderItemEntity(
+            orderId,
+            item.skuId(),
+            item.skuCode(),
+            item.productName(),
+            item.skuName(),
+            item.price(),
+            item.quantity()));
   }
 
   public void reserveCoupon(long orderId, long memberCouponId, long memberId) {
-    queries.update(
-        "UPDATE member_coupons SET status='RESERVED',reserved_order_id=? WHERE id=? AND member_id=? AND status='AVAILABLE'",
-        orderId,
-        memberCouponId,
-        memberId);
+    memberCoupons.reserveIfAvailable(orderId, memberCouponId, memberId);
   }
 
   public void saveIdempotency(
@@ -176,51 +204,54 @@ public class CheckoutPersistenceAdapter {
       long orderId,
       long paymentId,
       String fingerprint) {
-    queries.update(
-        "INSERT INTO checkout_idempotency_results(member_id,idempotency_key,order_id,payment_id,request_fingerprint,request_cart_version,created_at) VALUES (?,?,?,?,?,?,?)",
-        memberId,
-        idempotencyKey,
-        orderId,
-        paymentId,
-        fingerprint,
-        null,
-        now());
+    idempotencies.save(
+        new CheckoutIdempotencyEntity(
+            new CheckoutIdempotencyId(memberId, idempotencyKey),
+            orderId,
+            paymentId,
+            fingerprint,
+            now()));
   }
 
   public void saveCartVersion(long memberId, String idempotencyKey, long cartVersion) {
-    int updated =
-        queries.update(
-            "UPDATE checkout_idempotency_results SET request_cart_version=? WHERE member_id=? AND idempotency_key=? AND request_cart_version IS NULL",
-            cartVersion,
-            memberId,
-            idempotencyKey);
+    int updated = idempotencies.saveCartVersionIfAbsent(memberId, idempotencyKey, cartVersion);
     if (updated != 1) throw new IllegalStateException("Checkout 요청 버전을 저장할 수 없습니다.");
   }
 
   public CheckoutOrderPricing findOrderPricing(long orderId) {
-    return queries
-        .query(
-            "SELECT original_amount,discount_amount,shipping_fee,payment_amount FROM orders WHERE id=?",
-            (rs, rowNumber) ->
-                new CheckoutOrderPricing(
-                    rs.getBigDecimal("original_amount"),
-                    rs.getBigDecimal("discount_amount"),
-                    rs.getBigDecimal("shipping_fee"),
-                    rs.getBigDecimal("payment_amount")),
-            orderId)
-        .stream()
-        .findFirst()
-        .orElseThrow();
+    CommerceOrderEntity order = orders.findById(orderId).orElseThrow();
+    return new CheckoutOrderPricing(
+        order.getOriginalAmount(),
+        order.getDiscountAmount(),
+        order.getShippingFee(),
+        order.getPaymentAmount());
   }
 
   public List<String> findProductNames(long orderId) {
-    return queries.queryForList(
-        "SELECT product_name_snapshot FROM order_items WHERE order_id=? ORDER BY id",
-        String.class,
-        orderId);
+    return entityManager
+        .createQuery(
+            "select item.productNameSnapshot from CommerceOrderItemEntity item"
+                + " where item.orderId = :orderId order by item.id",
+            String.class)
+        .setParameter("orderId", orderId)
+        .getResultList();
   }
 
-  private Timestamp now() {
-    return Timestamp.from(clock.instant());
+  private boolean isValidNow(CouponEntity coupon) {
+    LocalDateTime now = now();
+    return !coupon.getValidFrom().isAfter(now) && coupon.getValidUntil().isAfter(now);
+  }
+
+  private static CheckoutAddress address(MemberAddress address) {
+    return new CheckoutAddress(
+        address.getRecipientName(),
+        address.getRecipientPhone(),
+        address.getPostalCode(),
+        address.getAddressLine1(),
+        address.getAddressLine2());
+  }
+
+  private LocalDateTime now() {
+    return LocalDateTime.now(clock);
   }
 }

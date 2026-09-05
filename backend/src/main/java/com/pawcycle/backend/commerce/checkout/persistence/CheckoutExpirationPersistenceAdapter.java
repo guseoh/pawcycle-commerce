@@ -1,66 +1,79 @@
 package com.pawcycle.backend.commerce.checkout.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import java.sql.Timestamp;
+import com.pawcycle.backend.commerce.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.MemberCouponRepository;
+import com.pawcycle.backend.commerce.PaymentEntity;
+import com.pawcycle.backend.commerce.PaymentRepository;
+import com.pawcycle.backend.commerce.OrderItemRepository;
 import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class CheckoutExpirationPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final PaymentRepository payments;
+  private final CommerceOrderRepository orders;
+  private final OrderItemRepository orderItems;
+  private final MemberCouponRepository memberCoupons;
   private final Clock clock;
 
-  public CheckoutExpirationPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public CheckoutExpirationPersistenceAdapter(
+      PaymentRepository payments,
+      CommerceOrderRepository orders,
+      OrderItemRepository orderItems,
+      MemberCouponRepository memberCoupons,
+      Clock clock) {
+    this.payments = payments;
+    this.orders = orders;
+    this.orderItems = orderItems;
+    this.memberCoupons = memberCoupons;
     this.clock = clock;
   }
 
+  @Transactional(readOnly = true)
   public List<Long> findDuePaymentIds(int batchSize) {
-    return queries.queryForList(
-        "SELECT id FROM payments WHERE type='NORMAL' AND status='READY' AND expires_at IS NOT NULL AND expires_at<=? ORDER BY expires_at,id LIMIT ?",
-        Long.class,
-        Timestamp.from(clock.instant()),
-        batchSize);
+    return payments.findDuePaymentIds(now(), PageRequest.of(0, batchSize));
   }
 
+  @Transactional
   public ExpirationTarget findForUpdate(long paymentId) {
-    return queries
-        .query(
-            "SELECT payment.id AS paymentId,payment.order_id AS orderId,payment.status,orders.status AS orderStatus FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=? FOR UPDATE",
-            (rs, rowNumber) ->
-                new ExpirationTarget(
-                    rs.getLong("paymentId"),
-                    rs.getLong("orderId"),
-                    rs.getString("status"),
-                    rs.getString("orderStatus")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    PaymentEntity payment = payments.findByIdForUpdate(paymentId).orElse(null);
+    if (payment == null) return null;
+    CommerceOrderEntity order = orders.findByIdForUpdate(payment.getOrderId()).orElse(null);
+    if (order == null) return null;
+    return new ExpirationTarget(payment.getId(), order.getId(), payment.getStatus(), order.getStatus());
   }
 
+  @Transactional(readOnly = true)
   public List<CheckoutCartItem> findOrderItems(long orderId) {
-    return queries.query(
-        "SELECT sku_id AS skuId,quantity FROM order_items WHERE order_id=?",
-        (rs, rowNumber) -> new CheckoutCartItem(rs.getLong("skuId"), rs.getInt("quantity")),
-        orderId);
+    return orderItems.findAllByOrderId(orderId).stream()
+        .map(item -> new CheckoutCartItem(item.getSkuId(), item.getQuantity()))
+        .toList();
   }
 
+  @Transactional
   public void releaseCoupon(long orderId) {
-    queries.update(
-        "UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL WHERE reserved_order_id=? AND status='RESERVED'",
-        orderId);
+    memberCoupons.releaseReserved(orderId);
   }
 
+  @Transactional
   public void markExpired(long paymentId, long orderId) {
-    queries.update(
-        "UPDATE payments SET status='FAILED',provider_status='EXPIRED',failure_code='CHECKOUT_EXPIRED',failed_at=? WHERE id=?",
-        Timestamp.from(clock.instant()),
-        paymentId);
-    queries.update("UPDATE orders SET status='EXPIRED' WHERE id=?", orderId);
+    PaymentEntity payment = payments.findByIdForUpdate(paymentId).orElse(null);
+    CommerceOrderEntity order = orders.findByIdForUpdate(orderId).orElse(null);
+    if (payment != null) payment.markExpired(now());
+    if (order != null) order.markExpired();
+  }
+
+  private LocalDateTime now() {
+    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
   }
 
   public record ExpirationTarget(long paymentId, long orderId, String paymentStatus, String orderStatus) {}
+
   public record CheckoutCartItem(long skuId, int quantity) {}
 }

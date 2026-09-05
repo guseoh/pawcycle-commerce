@@ -1,298 +1,304 @@
 package com.pawcycle.backend.catalog.engagement.persistence;
 
+import com.pawcycle.backend.catalog.engagement.domain.ProductQuestionEntity;
+import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
+import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
-import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class ProductEngagementPersistence {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entityManager;
+  private final ReviewRepository reviews;
+  private final ProductQuestionRepository questions;
 
-  public ProductEngagementPersistence(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public ProductEngagementPersistence(
+      EntityManager entityManager, ReviewRepository reviews, ProductQuestionRepository questions) {
+    this.entityManager = entityManager;
+    this.reviews = reviews;
+    this.questions = questions;
   }
 
+  @Transactional(readOnly = true)
   public long countVisibleReviews(long productId) {
-    return count("SELECT COUNT(*) FROM reviews WHERE product_id=? AND visible=true", productId);
+    return reviews.countByProductIdAndVisibleTrue(productId);
   }
 
+  @Transactional(readOnly = true)
   public List<ReviewView> findVisibleReviews(long productId, int size, int offset) {
-    return jdbc.query(
-        "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
-            + " visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-        (rs, rowNum) ->
-            new ReviewView(
-                rs.getLong("id"),
-                rs.getInt("rating"),
-                rs.getString("content"),
-                rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant()),
-        productId,
-        size,
-        offset);
+    return entityManager
+        .createQuery(
+            "select r from ReviewEntity r where r.productId = :productId and r.visible = true "
+                + "order by r.createdAt desc, r.id desc",
+            ReviewEntity.class)
+        .setParameter("productId", productId)
+        .setFirstResult(offset)
+        .setMaxResults(size)
+        .getResultList()
+        .stream()
+        .map(this::review)
+        .toList();
   }
 
+  @Transactional(readOnly = true)
   public List<ReviewView> findMemberReview(long productId, long memberId) {
-    return jdbc.query(
-        "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE product_id=? AND"
-            + " member_id=?",
-        (rs, rowNum) -> review(rs),
-        productId,
-        memberId);
+    return reviews.findByProductIdAndMemberId(productId, memberId).stream()
+        .map(this::review)
+        .toList();
   }
 
+  @Transactional(readOnly = true)
   public boolean hasDeliveredPurchase(long memberId, long productId) {
-    return count(
-            "SELECT COUNT(*) FROM orders o JOIN order_items oi ON oi.order_id=o.id"
-                + " JOIN skus s ON s.id=oi.sku_id JOIN deliveries d ON d.order_id=o.id"
-                + " AND d.status='DELIVERED' WHERE o.member_id=? AND s.product_id=?",
-            memberId,
-            productId)
-        > 0;
+    Number count =
+        (Number)
+            entityManager
+                .createNativeQuery(
+                    "SELECT COUNT(*) FROM orders o JOIN order_items oi ON oi.order_id=o.id "
+                        + "JOIN skus s ON s.id=oi.sku_id JOIN deliveries d ON d.order_id=o.id "
+                        + "AND d.status='DELIVERED' WHERE o.member_id=:memberId AND s.product_id=:productId")
+                .setParameter("memberId", memberId)
+                .setParameter("productId", productId)
+                .getSingleResult();
+    return count.longValue() > 0;
   }
 
+  @Transactional
   public long insertReview(
       long productId, long memberId, int rating, String content, Timestamp now) {
-    jdbc.update(
-        "INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)"
-            + " VALUES (?,?,?,?,true,?,?)",
-        productId,
-        memberId,
-        rating,
-        content,
-        now,
-        now);
-    return lastInsertId();
+    ReviewEntity review =
+        reviews.saveAndFlush(
+            new ReviewEntity(
+                productId,
+                memberId,
+                rating,
+                content,
+                true,
+                localDateTime(now),
+                localDateTime(now)));
+    return review.getId();
   }
 
+  @Transactional
   public int updateReview(long reviewId, int rating, String content, Timestamp now) {
-    return jdbc.update(
-        "UPDATE reviews SET rating=?,content=?,updated_at=? WHERE id=?",
-        rating,
-        content,
-        now,
-        reviewId);
+    return reviews
+        .findById(reviewId)
+        .map(
+            review -> {
+              review.update(rating, content, localDateTime(now));
+              reviews.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional
   public int deleteReview(long reviewId) {
-    return jdbc.update("DELETE FROM reviews WHERE id=?", reviewId);
+    return reviews
+        .findById(reviewId)
+        .map(
+            review -> {
+              reviews.delete(review);
+              reviews.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional(readOnly = true)
   public long countReviews(Long productId) {
-    return productId == null
-        ? count("SELECT COUNT(*) FROM reviews")
-        : count("SELECT COUNT(*) FROM reviews WHERE product_id=?", productId);
+    return productId == null ? reviews.count() : reviews.countByProductId(productId);
   }
 
+  @Transactional(readOnly = true)
   public List<AdminReviewView> findAdminReviews(Long productId, int size, int offset) {
-    String filter = productId == null ? "" : " WHERE product_id=?";
-    Object[] args =
-        productId == null ? new Object[] {size, offset} : new Object[] {productId, size, offset};
-    return jdbc.query(
-        "SELECT id,product_id,member_id,rating,content,visible,created_at,updated_at FROM reviews"
-            + filter
-            + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-        (rs, rowNum) ->
-            new AdminReviewView(
-                rs.getLong("id"),
-                rs.getLong("product_id"),
-                rs.getLong("member_id"),
-                rs.getInt("rating"),
-                rs.getString("content"),
-                rs.getBoolean("visible"),
-                rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant()),
-        args);
+    String jpql =
+        productId == null
+            ? "select r from ReviewEntity r order by r.createdAt desc, r.id desc"
+            : "select r from ReviewEntity r where r.productId = :productId order by r.createdAt desc, r.id desc";
+    var query = entityManager.createQuery(jpql, ReviewEntity.class);
+    if (productId != null) query.setParameter("productId", productId);
+    return query.setFirstResult(offset).setMaxResults(size).getResultList().stream()
+        .map(this::adminReview)
+        .toList();
   }
 
+  @Transactional
   public int updateReviewVisibility(long reviewId, boolean visible, Timestamp now) {
-    return jdbc.update(
-        "UPDATE reviews SET visible=?,updated_at=? WHERE id=?", visible, now, reviewId);
+    return reviews
+        .findById(reviewId)
+        .map(
+            review -> {
+              review.updateVisibility(visible, localDateTime(now));
+              reviews.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional(readOnly = true)
   public long countVisibleQuestions(long productId) {
-    return count(
-        "SELECT COUNT(*) FROM product_questions WHERE product_id=? AND visible=true", productId);
+    return questions.countByProductIdAndVisibleTrue(productId);
   }
 
+  @Transactional(readOnly = true)
   public List<QuestionView> findVisibleQuestions(long productId, int size, int offset) {
-    return jdbc.query(
-        "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions WHERE"
-            + " product_id=? AND visible=true ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-        (rs, rowNum) -> question(rs),
-        productId,
-        size,
-        offset);
+    return entityManager
+        .createQuery(
+            "select q from ProductQuestionEntity q where q.productId = :productId and q.visible = true "
+                + "order by q.createdAt desc, q.id desc",
+            ProductQuestionEntity.class)
+        .setParameter("productId", productId)
+        .setFirstResult(offset)
+        .setMaxResults(size)
+        .getResultList()
+        .stream()
+        .map(this::question)
+        .toList();
   }
 
+  @Transactional
   public long insertQuestion(long productId, long memberId, String content, Timestamp now) {
-    jdbc.update(
-        "INSERT INTO"
-            + " product_questions(product_id,member_id,content,answer,answered_at,visible,created_at,updated_at)"
-            + " VALUES (?,?,?,NULL,NULL,true,?,?)",
-        productId,
-        memberId,
-        content,
-        now,
-        now);
-    return lastInsertId();
+    ProductQuestionEntity question =
+        questions.saveAndFlush(
+            new ProductQuestionEntity(
+                productId, memberId, content, true, localDateTime(now), localDateTime(now)));
+    return question.getId();
   }
 
+  @Transactional
   public int updateQuestion(long questionId, String content, Timestamp now) {
-    return jdbc.update(
-        "UPDATE product_questions SET content=?,updated_at=? WHERE id=?", content, now, questionId);
+    return questions
+        .findById(questionId)
+        .map(
+            question -> {
+              question.update(content, localDateTime(now));
+              questions.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional
   public int deleteQuestion(long questionId) {
-    return jdbc.update("DELETE FROM product_questions WHERE id=?", questionId);
+    return questions
+        .findById(questionId)
+        .map(
+            question -> {
+              questions.delete(question);
+              questions.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional(readOnly = true)
   public long countQuestions(Long productId) {
-    return productId == null
-        ? count("SELECT COUNT(*) FROM product_questions")
-        : count("SELECT COUNT(*) FROM product_questions WHERE product_id=?", productId);
+    return productId == null ? questions.count() : questions.countByProductId(productId);
   }
 
+  @Transactional(readOnly = true)
   public List<AdminQuestionView> findAdminQuestions(Long productId, int size, int offset) {
-    String filter = productId == null ? "" : " WHERE product_id=?";
-    Object[] args =
-        productId == null ? new Object[] {size, offset} : new Object[] {productId, size, offset};
-    return jdbc.query(
-        "SELECT id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
-            + " FROM product_questions"
-            + filter
-            + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-        (rs, rowNum) -> adminQuestion(rs),
-        args);
+    String jpql =
+        productId == null
+            ? "select q from ProductQuestionEntity q order by q.createdAt desc, q.id desc"
+            : "select q from ProductQuestionEntity q where q.productId = :productId order by q.createdAt desc, q.id desc";
+    var query = entityManager.createQuery(jpql, ProductQuestionEntity.class);
+    if (productId != null) query.setParameter("productId", productId);
+    return query.setFirstResult(offset).setMaxResults(size).getResultList().stream()
+        .map(this::adminQuestion)
+        .toList();
   }
 
+  @Transactional
   public int answerQuestion(long questionId, String answer, Timestamp now) {
-    return jdbc.update(
-        "UPDATE product_questions SET answer=?,answered_at=COALESCE(answered_at,?),updated_at=?"
-            + " WHERE id=?",
-        answer,
-        now,
-        now,
-        questionId);
+    return questions
+        .findById(questionId)
+        .map(
+            question -> {
+              question.answer(answer, localDateTime(now), localDateTime(now));
+              questions.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional
   public int updateQuestionVisibility(long questionId, boolean visible, Timestamp now) {
-    return jdbc.update(
-        "UPDATE product_questions SET visible=?,updated_at=? WHERE id=?", visible, now, questionId);
+    return questions
+        .findById(questionId)
+        .map(
+            question -> {
+              question.updateVisibility(visible, localDateTime(now));
+              questions.flush();
+              return 1;
+            })
+        .orElse(0);
   }
 
+  @Transactional(readOnly = true)
   public ReviewMutationState lockReview(long reviewId) {
-    return jdbc
-        .query(
-            "SELECT member_id,product_id,rating,content FROM reviews WHERE id=? FOR UPDATE",
-            (rs, rowNum) ->
-                new ReviewMutationState(
-                    rs.getLong("member_id"),
-                    rs.getLong("product_id"),
-                    rs.getInt("rating"),
-                    rs.getString("content")),
-            reviewId)
-        .stream()
-        .findFirst()
+    return reviews
+        .findByIdForUpdate(reviewId)
+        .map(review -> new ReviewMutationState(review.getMemberId(), review.getProductId(), review.getRating(), review.getContent()))
         .orElse(null);
   }
 
+  @Transactional(readOnly = true)
   public QuestionMutationState lockQuestion(long questionId) {
-    return jdbc
-        .query(
-            "SELECT member_id,product_id,answered_at FROM product_questions WHERE id=? FOR UPDATE",
-            (rs, rowNum) ->
-                new QuestionMutationState(
-                    rs.getLong("member_id"),
-                    rs.getLong("product_id"),
-                    rs.getTimestamp("answered_at") != null),
-            questionId)
-        .stream()
-        .findFirst()
+    return questions
+        .findByIdForUpdate(questionId)
+        .map(question -> new QuestionMutationState(question.getMemberId(), question.getProductId(), question.getAnsweredAt() != null))
         .orElse(null);
   }
 
+  @Transactional(readOnly = true)
   public ReviewView findReview(long id, long productId, long memberId) {
-    return jdbc
-        .query(
-            "SELECT id,rating,content,created_at,updated_at FROM reviews WHERE id=? AND"
-                + " product_id=? AND member_id=?",
-            (rs, rowNum) -> review(rs),
-            id,
-            productId,
-            memberId)
-        .stream()
+    return reviews.findByProductIdAndMemberId(productId, memberId).stream()
+        .filter(review -> review.getId().equals(id))
         .findFirst()
+        .map(this::review)
         .orElse(null);
   }
 
+  @Transactional(readOnly = true)
   public QuestionView findQuestion(long id, long productId) {
-    return jdbc
-        .query(
-            "SELECT id,content,answer,answered_at,created_at,updated_at FROM product_questions"
-                + " WHERE id=? AND product_id=?",
-            (rs, rowNum) -> question(rs),
-            id,
-            productId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return questions.findByIdAndProductId(id, productId).map(this::question).orElse(null);
   }
 
+  @Transactional(readOnly = true)
   public AdminQuestionView findAdminQuestion(long id) {
-    return jdbc
-        .query(
-            "SELECT"
-                + " id,product_id,member_id,content,answer,answered_at,visible,created_at,updated_at"
-                + " FROM product_questions WHERE id=?",
-            (rs, rowNum) -> adminQuestion(rs),
-            id)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return questions.findById(id).map(this::adminQuestion).orElse(null);
   }
 
-  private long count(String sql, Object... args) {
-    Long value = jdbc.queryForObject(sql, Long.class, args);
-    return value == null ? 0 : value;
-  }
-
-  private long lastInsertId() {
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-  }
-
-  private ReviewView review(java.sql.ResultSet rs) throws java.sql.SQLException {
+  private ReviewView review(ReviewEntity review) {
     return new ReviewView(
-        rs.getLong("id"),
-        rs.getInt("rating"),
-        rs.getString("content"),
-        rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        review.getId(), review.getRating(), review.getContent(), instant(review.getCreatedAt()), instant(review.getUpdatedAt()));
   }
 
-  private QuestionView question(java.sql.ResultSet rs) throws java.sql.SQLException {
+  private AdminReviewView adminReview(ReviewEntity review) {
+    return new AdminReviewView(
+        review.getId(), review.getProductId(), review.getMemberId(), review.getRating(), review.getContent(), review.isVisible(), instant(review.getCreatedAt()), instant(review.getUpdatedAt()));
+  }
+
+  private QuestionView question(ProductQuestionEntity question) {
     return new QuestionView(
-        rs.getLong("id"),
-        rs.getString("content"),
-        rs.getString("answer"),
-        rs.getTimestamp("answered_at") != null,
-        rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        question.getId(), question.getContent(), question.getAnswer(), question.getAnsweredAt() != null, instant(question.getCreatedAt()), instant(question.getUpdatedAt()));
   }
 
-  private AdminQuestionView adminQuestion(java.sql.ResultSet rs) throws java.sql.SQLException {
+  private AdminQuestionView adminQuestion(ProductQuestionEntity question) {
     return new AdminQuestionView(
-        rs.getLong("id"),
-        rs.getLong("product_id"),
-        rs.getLong("member_id"),
-        rs.getString("content"),
-        rs.getString("answer"),
-        rs.getTimestamp("answered_at") != null,
-        rs.getBoolean("visible"),
-        rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        question.getId(), question.getProductId(), question.getMemberId(), question.getContent(), question.getAnswer(), question.getAnsweredAt() != null, question.isVisible(), instant(question.getCreatedAt()), instant(question.getUpdatedAt()));
+  }
+
+  private static java.time.LocalDateTime localDateTime(Timestamp timestamp) {
+    return timestamp.toLocalDateTime();
+  }
+
+  private static java.time.Instant instant(java.time.LocalDateTime value) {
+    return value.atZone(ZoneId.systemDefault()).toInstant();
   }
 
   public record ReviewMutationState(long memberId, long productId, int rating, String content) {}
@@ -300,7 +306,7 @@ public class ProductEngagementPersistence {
   public record QuestionMutationState(long memberId, long productId, boolean answered) {}
 
   public record ReviewView(
-      Long reviewId, int rating, String content, Instant createdAt, Instant updatedAt) {}
+      Long reviewId, int rating, String content, java.time.Instant createdAt, java.time.Instant updatedAt) {}
 
   public record AdminReviewView(
       Long reviewId,
@@ -309,16 +315,16 @@ public class ProductEngagementPersistence {
       int rating,
       String content,
       boolean visible,
-      Instant createdAt,
-      Instant updatedAt) {}
+      java.time.Instant createdAt,
+      java.time.Instant updatedAt) {}
 
   public record QuestionView(
       Long questionId,
       String content,
       String answer,
       boolean answered,
-      Instant createdAt,
-      Instant updatedAt) {}
+      java.time.Instant createdAt,
+      java.time.Instant updatedAt) {}
 
   public record AdminQuestionView(
       Long questionId,
@@ -328,6 +334,6 @@ public class ProductEngagementPersistence {
       String answer,
       boolean answered,
       boolean visible,
-      Instant createdAt,
-      Instant updatedAt) {}
+      java.time.Instant createdAt,
+      java.time.Instant updatedAt) {}
 }

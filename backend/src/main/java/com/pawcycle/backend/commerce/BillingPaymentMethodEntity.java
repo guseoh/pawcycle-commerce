@@ -1,20 +1,12 @@
 package com.pawcycle.backend.commerce;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 /**
  * JPA mapping for a commerce persistence record.
@@ -22,7 +14,7 @@ import java.util.Objects;
 
 @Entity
 @Table(name = "billing_payment_methods")
-class BillingPaymentMethodEntity {
+public class BillingPaymentMethodEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   Long id;
@@ -44,4 +36,22 @@ class BillingPaymentMethodEntity {
 
   @Column(name = "active_member_id", insertable = false, updatable = false)
   Long activeMemberId;
+
+  @Column(name = "created_at", nullable = false)
+  LocalDateTime createdAt;
+
+  @Column(name = "revoked_at")
+  LocalDateTime revokedAt;
+
+  protected BillingPaymentMethodEntity() {}
+
+  public BillingPaymentMethodEntity(
+      long memberId, String customerKey, String billingKey, LocalDateTime createdAt) {
+    this.memberId = memberId;
+    this.provider = "TOSS";
+    this.customerKey = customerKey;
+    this.billingKey = billingKey;
+    this.status = "ACTIVE";
+    this.createdAt = createdAt;
+  }
 }
