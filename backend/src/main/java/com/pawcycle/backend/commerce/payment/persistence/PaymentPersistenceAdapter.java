@@ -114,7 +114,7 @@ public class PaymentPersistenceAdapter {
       Integer current =
           queries.query(
               "SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
-              (rs, rowNumber) -> rs.next() ? rs.getInt(1) : null,
+              (rs, rowNumber) -> rs.getInt(1),
               cart.id(),
               item.skuId()).stream().findFirst().orElse(null);
       if (current == null) continue;
