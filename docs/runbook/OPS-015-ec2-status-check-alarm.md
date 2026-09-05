@@ -1,5 +1,7 @@
 # OPS-015 EC2 StatusCheckFailed SNS 이메일 알림 Runbook
 
+> Superseded by `ARCH-016` for active OCI operations. 본문은 historical evidence로 보존하며 현재 알림 절차로 사용하지 않는다.
+
 ## 범위
 
 이 Runbook은 `ap-northeast-2`의 단일 EC2 instance에서 `AWS/EC2` `StatusCheckFailed >= 1`이 60초 period로 2회 연속 평가될 때, 전용 SNS topic으로 ALARM과 OK 전이를 모두 전송하도록 준비한다. 저장소 스크립트는 AWS CLI 명령을 구성할 뿐이며, 이 문서와 CI는 AWS 리소스를 생성·변경·삭제하거나 이메일 구독을 승인하지 않는다.

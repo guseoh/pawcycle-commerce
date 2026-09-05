@@ -1,12 +1,14 @@
 # PERF-PH8-002 deployed Production k6 capacity
 
+> **Historical AWS procedure — superseded for the active runtime by `docs/adr/ARCH-016-oci-production-runtime-boundary.md`.** The EC2/RDS-specific observations below are retained as historical evidence and are not an OCI execution instruction. An OCI capacity procedure requires a separate approved update and measured target.
+
 이 Runbook은 외부 desktop load generator에서 Production public HTTPS의 `GET /api/products`만 단계적으로 측정하기 위한 저장소 준비 절차다. 실제 Production load 실행은 포함하지 않으며, 별도의 고위험 사용자 승인이 있어야만 실행한다. 기존 loopback-only local harness와 `run-capacity.sh`는 이 절차의 대상이 아니다.
 
 ## 실행 전 승인과 READY/NORMAL 확인
 
 실행 직전에 사용자/Tech Lead가 다음 범위를 명시적으로 승인한다: 외부 desktop에서 public HTTPS endpoint에 read-only load를 발생시키며 250 RPS를 넘지 않고, Scheduler·Production runtime·RDS·Secret·DNS·TLS 설정을 변경하지 않는다. 승인이 없거나 target HTTPS origin, 정확히 일치하는 target host 확인, `YES` acknowledgement 중 하나라도 없으면 runner와 k6 scenario 모두 시작 전에 실패한다.
 
-Production 상태 진단은 기존 `docs/runbook/OPS-OBS-001-production-observability.md`의 승인된 두 단계 흐름을 그대로 따른다. Production EC2의 `diagnose-backend-state.sh --scope production` snapshot은 exit code 0과 `production_assessment=READY`여야 하며, 그 snapshot을 Observability EC2의 `--scope observability --production-result ...`로 결합한 최종 진단은 exit code 0과 `status=NORMAL`이어야 한다. Production snapshot이 `READY`가 아니거나 최종 상태가 `NORMAL`이 아니거나 release가 진행 중이거나 상태가 불확실하면 실행하지 않는다. 이 확인에는 credential, cookie, session, response body, product ID, raw DB data를 local artifact나 repository에 기록하지 않는다.
+보존된 AWS 절차의 근거는 이 문서에 남은 EC2/RDS historical evidence와 `docs/runbook/OPS-009-aws-operations-foundation.md`, 관련 Git history/reports다. 현재 OCI 실행에서는 이 historical 절차를 사용하지 않으며, 별도 승인된 OCI 관측 기준으로 `docs/runbook/OPS-OBS-001-production-observability.md`를 사용한다. 과거 AWS 상태 진단은 당시 `diagnose-backend-state.sh` snapshot과 Observability 결합 결과를 기준으로 보존한다. Production snapshot이 `READY`가 아니거나 최종 상태가 `NORMAL`이 아니거나 release가 진행 중이거나 상태가 불확실하면 실행하지 않는다. 이 확인에는 credential, cookie, session, response body, product ID, raw DB data를 local artifact나 repository에 기록하지 않는다.
 
 ## 실행과 중단
 

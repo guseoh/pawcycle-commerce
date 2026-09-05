@@ -91,7 +91,6 @@ case "${1:-}" in
   ps)
     case " $* " in
       *com.docker.compose.service=backend*) printf '%s\\n' 'backend-fixture-id' ;;
-      *com.docker.compose.service=mysql*) printf '%s\\n' 'mysql-fixture-id' ;;
       *) exit 8 ;;
     esac
     ;;
@@ -107,7 +106,7 @@ case "${1:-}" in
       *) exit 8 ;;
     esac
     ;;
-  network) printf '%s\\n' 'true' ;;
+  network) printf '%s\\n' 'false' ;;
   container) exit 1 ;;
   run)
     env_file=''
@@ -120,11 +119,15 @@ case "${1:-}" in
     done
     [[ -n "$env_file" && -r "$env_file" ]]
     mapfile -t runtime_env_lines < "$env_file"
-    (( ${#runtime_env_lines[@]} == 4 ))
-    [[ "${runtime_env_lines[0]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' ]]
-    [[ "${runtime_env_lines[1]}" == 'SPRING_DATASOURCE_USERNAME=fixture_user' ]]
-    [[ "${runtime_env_lines[2]}" == "SPRING_DATASOURCE_PASSWORD=fixture_db'password" ]]
-    [[ "${runtime_env_lines[3]}" == 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' ]]
+    (( ${#runtime_env_lines[@]} == 8 ))
+    [[ "${runtime_env_lines[0]}" == 'PAWCYCLE_DATASOURCE_HOST=db.example.com' ]]
+    [[ "${runtime_env_lines[1]}" == 'PAWCYCLE_DATASOURCE_PORT=3306' ]]
+    [[ "${runtime_env_lines[2]}" == 'PAWCYCLE_DATASOURCE_DATABASE=fixture' ]]
+    [[ "${runtime_env_lines[3]}" == 'PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED' ]]
+    [[ "${runtime_env_lines[4]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://db.example.com:3306/fixture?sslMode=REQUIRED&serverTimezone=UTC' ]]
+    [[ "${runtime_env_lines[5]}" == 'SPRING_DATASOURCE_USERNAME=fixture_user' ]]
+    [[ "${runtime_env_lines[6]}" == "SPRING_DATASOURCE_PASSWORD=fixture_db'password" ]]
+    [[ "${runtime_env_lines[7]}" == 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' ]]
     printf '%s\\n' 'runtime-env-contract-ok' >> "$FAKE_DOCKER_MARKER"
     IFS= read -r email
     IFS= read -r password
@@ -156,7 +159,11 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
     (runtime / "current").symlink_to(bundle, target_is_directory=True)
     backend_env = bundle / "backend.env"
     backend_env.write_text(
-        "SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/fixture'\n"
+        "PAWCYCLE_DATASOURCE_HOST='db.example.com'\n"
+        "PAWCYCLE_DATASOURCE_PORT='3306'\n"
+        "PAWCYCLE_DATASOURCE_DATABASE='fixture'\n"
+        "PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'\n"
+        "SPRING_DATASOURCE_URL='jdbc:mysql://db.example.com:3306/fixture?sslMode=REQUIRED&serverTimezone=UTC'\n"
         "SPRING_DATASOURCE_USERNAME='fixture_user'\n"
         "SPRING_DATASOURCE_PASSWORD='fixture_db\\'password'\n"
         "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='true'\n"
@@ -283,7 +290,7 @@ def assert_run_contract(arguments: str) -> None:
     for option, value in (
         ("--name", "pawcycle-ops020-auth-smoke-member"),
         ("--label", "com.pawcycle.ops020.scope=auth-smoke-member"),
-        ("--network", "pawcycle-production-data"),
+        ("--network", "pawcycle-production-database-egress"),
         ("--tmpfs", "/tmp:size=64m,mode=1777"),
         ("--user", "pawcycle"),
         ("--security-opt", "no-new-privileges:true"),

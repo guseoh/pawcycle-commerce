@@ -11,7 +11,7 @@ usage() {
 Usage: rollback.sh [--sha <previous-40-char-sha>] --backend-image <ghcr-repository> --frontend-image <ghcr-repository> [options]
 
 If --sha is omitted, the state directory's previous-sha value is used.
-This command never deletes the MySQL volume and never restores database schema or data.
+This command changes Application images only; it never modifies a managed database.
 EOF
 }
 
@@ -42,7 +42,6 @@ initialize_rollback_context() {
   if [[ -z "$TARGET_SHA" ]]; then
     TARGET_SHA="$(read_state_sha previous-sha)"
   fi
-  load_active_mysql_volume
 }
 
 validate_recorded_previous_release_contract() {
@@ -94,7 +93,7 @@ if ! activate_release "$TARGET_SHA"; then
   if activate_release "$CURRENT_SHA"; then
     die "rollback target failed; current release was restored"
   fi
-  die "rollback target and current release restoration both failed; MySQL volume was not removed"
+  die "rollback target and current release restoration both failed; the managed database was not modified by the Application release lifecycle"
 fi
 
 write_state previous-sha "$CURRENT_SHA"

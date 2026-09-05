@@ -1,5 +1,7 @@
 # OPS-AUTO-007 Production SSM Document rollback
 
+> Superseded by the operator-approved OCI Run Command boundary in `ARCH-016`. 본문은 historical evidence로 보존하며 현재 실행 경로로 사용하지 않는다.
+
 ## 목적과 경계
 
 이 Runbook은 `PawCycle-Production-Deploy` SSM Document의 새 immutable version을 Production Deploy workflow에 반영한 뒤 문제가 발생했을 때 dispatcher 계약을 이전 version으로 되돌리는 절차를 정의한다.

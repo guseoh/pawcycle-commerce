@@ -1,5 +1,7 @@
 # OPS-DB-002 RDS migration and cutover readiness
 
+> Superseded by `ARCH-016` for the active OCI Production runtime. 본문은 historical evidence로 보존하며 current cutover procedure가 아니다.
+
 - 작업 ID: OPS-DB-002 / 등급: 고위험 / 실행 구분: 저장소 변경
 - 실제 AWS, RDS 생성, import, cutover, rollback은 별도 명시적 고위험 사용자 승인이 필요하다. 이 Runbook은 Repository readiness이며 Production Verified가 아니다.
 

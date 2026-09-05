@@ -2,264 +2,223 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TEST_ROOT="$(mktemp -d)"
-trap 'rm -rf -- "$TEST_ROOT"' EXIT
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+COMMON="$SCRIPT_DIR/release-common.sh"
+ROLLBACK="$SCRIPT_DIR/rollback.sh"
+DEPLOY="$SCRIPT_DIR/deploy.sh"
 
+bash -n "$COMMON" "$ROLLBACK" "$DEPLOY"
+if grep -Eq 'active-mysql-volume|PAWCYCLE_MYSQL_ENV_FILE|PAWCYCLE_MYSQL_VOLUME|MYSQL_DIGEST|compose (start|stop|rm).*mysql' "$COMMON" "$ROLLBACK" "$DEPLOY"; then
+  printf 'obsolete local MySQL rollback contract remains\n' >&2
+  exit 1
+fi
+grep -Fq 'acquire_release_lock' "$ROLLBACK"
+grep -Fq 'TARGET_SHA="$(read_state_sha previous-sha)"' "$ROLLBACK"
+grep -Fq 'require_no_migration_boundary_rollback' "$ROLLBACK"
+grep -Fq 'managed database was not modified by the Application release lifecycle' "$ROLLBACK"
+grep -Fq 'previous-contract-sha' "$ROLLBACK"
+grep -Fq 'compose stop proxy frontend backend' "$DEPLOY"
+
+TEST_ROOT="$(mktemp -d)"
 BIN_DIR="$TEST_ROOT/bin"
 RUNTIME_DIR="$TEST_ROOT/runtime"
 DOCKER_STATE="$TEST_ROOT/docker-state"
-REAL_FLOCK="$(command -v flock)"
-mkdir -p "$BIN_DIR" "$RUNTIME_DIR/current" "$DOCKER_STATE"
+FAKE_DOCKER_LOG="$TEST_ROOT/docker.log"
+mkdir -p "$BIN_DIR" "$RUNTIME_DIR/.bundle.fixture" "$DOCKER_STATE"
+chmod 700 "$RUNTIME_DIR" "$RUNTIME_DIR/.bundle.fixture"
+trap 'rm -rf -- "$TEST_ROOT"' EXIT
 
-cat >"$RUNTIME_DIR/current/mysql.env" <<'EOF'
-MYSQL_DATABASE='pawcycle'
-MYSQL_USER='pawcycle'
-MYSQL_PASSWORD='test-password'
-MYSQL_ROOT_PASSWORD='test-root-password'
-EOF
-cat >"$RUNTIME_DIR/current/backend.env" <<'EOF'
-PAWCYCLE_DATASOURCE_HOST='mysql'
+APP_PREVIOUS="1111111111111111111111111111111111111111"
+APP_CURRENT="2222222222222222222222222222222222222222"
+CONTROL_CURRENT="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+BACKEND_IMAGE="ghcr.io/example/pawcycle-commerce-backend"
+FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"
+export BACKEND_IMAGE FRONTEND_IMAGE FAKE_DOCKER_LOG
+
+ln -s .bundle.fixture "$RUNTIME_DIR/current"
+: >"$RUNTIME_DIR/.materialize.lock"
+chmod 600 "$RUNTIME_DIR/.materialize.lock"
+cat >"$RUNTIME_DIR/.bundle.fixture/backend.env" <<'EOF'
+PAWCYCLE_DATASOURCE_HOST='db.example.com'
 PAWCYCLE_DATASOURCE_PORT='3306'
-PAWCYCLE_DATASOURCE_SSL_MODE='DISABLED'
-SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/pawcycle?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC'
-SPRING_DATASOURCE_USERNAME='pawcycle'
-SPRING_DATASOURCE_PASSWORD='test-password'
+PAWCYCLE_DATASOURCE_DATABASE='pawcycle'
+PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'
+SPRING_DATASOURCE_URL='jdbc:mysql://db.example.com:3306/pawcycle?sslMode=REQUIRED&serverTimezone=UTC'
+SPRING_DATASOURCE_USERNAME='rollback_fixture_user'
+SPRING_DATASOURCE_PASSWORD='rollback_fixture_password'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='7'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='12345'
 EOF
-: >"$RUNTIME_DIR/current/.complete"
-printf '%s\n' 'lock' >"$RUNTIME_DIR/.materialize.lock"
-chmod 600 \
-  "$RUNTIME_DIR/.materialize.lock" \
-  "$RUNTIME_DIR/current/mysql.env" \
-  "$RUNTIME_DIR/current/backend.env" \
-  "$RUNTIME_DIR/current/.complete"
-
-cat >"$BIN_DIR/flock" <<EOF
-#!/usr/bin/env bash
-exec "$REAL_FLOCK" "\$@"
-EOF
+printf 'RUNTIME_ENV_FORMAT=1\n' >"$RUNTIME_DIR/.bundle.fixture/.complete"
+chmod 600 "$RUNTIME_DIR/.bundle.fixture/backend.env" "$RUNTIME_DIR/.bundle.fixture/.complete"
 
 cat >"$BIN_DIR/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-printf '%s\n' "$*" >>"$FAKE_GIT_LOG"
+if [[ "${1:-}" == -C ]]; then shift 2; fi
 case "${1:-}" in
   status) exit 0 ;;
   rev-parse) printf '%s\n' "$FAKE_CONTROL_SHA" ;;
   cat-file) exit 0 ;;
   diff)
-    [[ "${FAKE_CONTRACT_MISMATCH:-0}" != "1" ]]
+    if [[ "${FAKE_MIGRATION_CHANGED:-0}" == 1 && "$*" == *'backend/src/main/resources/db/migration'* ]]; then
+      exit 1
+    fi
+    exit 0
     ;;
+  *) exit 0 ;;
 esac
 EOF
 
 cat >"$BIN_DIR/docker" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
-count=0
-[[ ! -f "$FAKE_DOCKER_STATE/calls" ]] || count="$(<"$FAKE_DOCKER_STATE/calls")"
-printf '%s\n' "$((count + 1))" >"$FAKE_DOCKER_STATE/calls"
-
-if [[ "$1" == "compose" ]]; then
-  command=""
-  service=""
-  for argument in "$@"; do
-    case "$argument" in
-      config|up|ps|stop) command="$argument" ;;
-      mysql|backend|frontend|proxy) service="$argument" ;;
-    esac
-  done
-  case "$command" in
-    config) exit 0 ;;
-    up)
-      printf '%s\n' "$RELEASE_SHA" >"$FAKE_DOCKER_STATE/active-sha"
-      printf '%s\n' "$BACKEND_IMAGE" >"$FAKE_DOCKER_STATE/backend-repository"
-      printf '%s\n' "$FRONTEND_IMAGE" >"$FAKE_DOCKER_STATE/frontend-repository"
-      printf '%s\n' "$PAWCYCLE_MYSQL_VOLUME" >"$FAKE_DOCKER_STATE/mysql-volume"
-      exit 0
-      ;;
-    ps)
-      if [[ "$*" == *"--quiet"* ]]; then
-        printf 'container-%s\n' "$service"
-      else
-        printf 'fake services healthy\n'
-      fi
-      exit 0
-      ;;
-    stop) exit 0 ;;
-  esac
-fi
-
-if [[ "$1" == "pull" ]]; then
+printf '%s\n' "$*" >>"$FAKE_DOCKER_LOG"
+if [[ "${1:-}" == compose ]]; then
+  if [[ "$*" == *' config --quiet'* ]]; then exit 0; fi
+  if [[ "$*" == *' up '* ]]; then
+    if [[ -n "${FAKE_ACTIVATION_FAIL_SHA:-}" && "${RELEASE_SHA:-}" == "$FAKE_ACTIVATION_FAIL_SHA" ]]; then exit 1; fi
+    exit 0
+  fi
+  if [[ "$*" == *' stop '* ]]; then exit 0; fi
+  if [[ "$*" == *' ps '* ]]; then
+    service=""
+    for argument in "$@"; do
+      case "$argument" in backend|frontend|proxy) service="$argument" ;; esac
+    done
+    if [[ "$*" == *'--status running'* && "$service" == backend && "${FAKE_BACKEND_STOPPED:-0}" == 1 ]]; then exit 0; fi
+    if [[ "$*" == *'--quiet'* ]]; then printf 'container-%s\n' "$service"; else printf 'fake services healthy\n'; fi
+    exit 0
+  fi
   exit 0
 fi
-
-if [[ "$1" == "image" && "$2" == "inspect" ]]; then
+if [[ "${1:-}" == pull ]]; then exit 0; fi
+if [[ "${1:-}" == image && "${2:-}" == inspect ]]; then
   reference="${*: -1}"
-  if [[ "$*" == *"RepoDigests"* ]]; then
+  if [[ "$*" == *RepoDigests* ]]; then
     if [[ "$reference" == *@sha256:* ]]; then
-      repository="${reference%%:*}"
-      digest="${reference##*@}"
-      printf '%s@%s\n' "$repository" "$digest"
+      printf '%s@%s\n' "${reference%%:*}" "${reference##*@}"
     else
-      repository="${reference%:*}"
-      printf '%s@sha256:%064d\n' "$repository" 1
+      printf '%s@sha256:%064d\n' "${reference%:*}" 1
     fi
+  elif [[ "$*" == *'org.opencontainers.image.revision'* ]]; then
+    printf '%s\n' "${reference##*:}"
   else
     printf '%s\n' "${reference##*:}"
   fi
   exit 0
 fi
-
-if [[ "$1" == "inspect" ]]; then
+if [[ "${1:-}" == inspect ]]; then
   container="${*: -1}"
-  active_sha="$(<"$FAKE_DOCKER_STATE/active-sha")"
   case "$*" in
     *'.State.Health'*) printf 'healthy\n' ;;
-    *'.Mounts'*) printf '%s\n' "$(<"$FAKE_DOCKER_STATE/mysql-volume")" ;;
     *'.Config.Image'*)
       case "$container" in
-        container-mysql) printf '%s\n' 'mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d' ;;
+        container-backend) printf '%s:%s\n' "$BACKEND_IMAGE" "$ACTIVE_SHA" ;;
+        container-frontend) printf '%s:%s\n' "$FRONTEND_IMAGE" "$ACTIVE_SHA" ;;
         container-proxy) printf '%s\n' 'nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1' ;;
-        container-backend) printf '%s:%s\n' "$(<"$FAKE_DOCKER_STATE/backend-repository")" "$active_sha" ;;
-        container-frontend) printf '%s:%s\n' "$(<"$FAKE_DOCKER_STATE/frontend-repository")" "$active_sha" ;;
       esac
       ;;
-    *) printf '%s\n' "$active_sha" ;;
+    *'NetworkSettings.Networks'*) printf 'attached\n' ;;
+    *) printf '%s\n' "$ACTIVE_SHA" ;;
   esac
   exit 0
 fi
-
-if [[ "$1" == "exec" ]]; then
-  exit 0
-fi
-
+if [[ "${1:-}" == exec ]]; then exit 0; fi
 exit 0
 EOF
-
-chmod +x "$BIN_DIR/docker" "$BIN_DIR/flock" "$BIN_DIR/git"
+chmod +x "$BIN_DIR/git" "$BIN_DIR/docker"
 export PATH="$BIN_DIR:$PATH"
-export FAKE_DOCKER_STATE="$DOCKER_STATE"
-export FAKE_GIT_LOG="$TEST_ROOT/git.log"
-
-BACKEND_IMAGE="ghcr.io/example/pawcycle-commerce-backend"
-FRONTEND_IMAGE="ghcr.io/example/pawcycle-commerce-frontend"
-APP_PREVIOUS="1111111111111111111111111111111111111111"
-APP_CURRENT="2222222222222222222222222222222222222222"
-APP_OTHER="3333333333333333333333333333333333333333"
-CONTROL_PREVIOUS="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-CONTROL_CURRENT="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-CONTROL_INCOMPATIBLE="cccccccccccccccccccccccccccccccccccccccc"
-VOLUME="pawcycle-production-mysql-data"
+export FAKE_CONTROL_SHA="$CONTROL_CURRENT"
 
 write_state() {
-  local state_dir="$1"
-  local name="$2"
-  local value="$3"
+  local state_dir="$1" name="$2" value="$3"
   printf '%s\n' "$value" >"$state_dir/$name"
   chmod 600 "$state_dir/$name"
 }
 
 prepare_case() {
-  local state_dir="$1"
-  local current_sha="$2"
-  local previous_sha="$3"
-  local previous_contract_sha="$4"
-  local contract_sha="$5"
-
+  local state_dir="$1" current_sha="$2" previous_sha="$3" previous_contract_sha="$4" contract_sha="$5"
   rm -rf -- "$state_dir"
   mkdir -p "$state_dir"
+  chmod 700 "$state_dir"
   write_state "$state_dir" current-sha "$current_sha"
   write_state "$state_dir" previous-sha "$previous_sha"
   write_state "$state_dir" previous-contract-sha "$previous_contract_sha"
   write_state "$state_dir" contract-sha "$contract_sha"
-  write_state "$state_dir" active-mysql-volume "$VOLUME"
-  printf '%s\n' "$current_sha" >"$DOCKER_STATE/active-sha"
-  printf '%s\n' "$BACKEND_IMAGE" >"$DOCKER_STATE/backend-repository"
-  printf '%s\n' "$FRONTEND_IMAGE" >"$DOCKER_STATE/frontend-repository"
-  printf '%s\n' "$VOLUME" >"$DOCKER_STATE/mysql-volume"
-  : >"$DOCKER_STATE/calls"
-  : >"$FAKE_GIT_LOG"
+  : >"$state_dir/deploy.lock"
+  chmod 600 "$state_dir/deploy.lock"
+  : >"$FAKE_DOCKER_LOG"
 }
 
-rollback() {
-  local state_dir="$1"
-  local target_sha="$2"
-  "$SCRIPT_DIR/rollback.sh" \
-    --sha "$target_sha" \
-    --backend-image "$BACKEND_IMAGE" \
-    --frontend-image "$FRONTEND_IMAGE" \
-    --runtime-dir "$RUNTIME_DIR" \
-    --state-dir "$state_dir" >/dev/null
+run_rollback() {
+  local state_dir="$1" target_sha="$2" output="$3"
+  if ! "$ROLLBACK" --sha "$target_sha" --backend-image "$BACKEND_IMAGE" --frontend-image "$FRONTEND_IMAGE" \
+    --runtime-dir "$RUNTIME_DIR" --state-dir "$state_dir" >"$output" 2>&1; then
+    return 1
+  fi
 }
 
-compatible_state="$TEST_ROOT/compatible-state"
-prepare_case \
-  "$compatible_state" \
-  "$APP_CURRENT" \
-  "$APP_PREVIOUS" \
-  "$CONTROL_PREVIOUS" \
-  "$CONTROL_CURRENT"
-export FAKE_CONTROL_SHA="$CONTROL_CURRENT"
-unset FAKE_CONTRACT_MISMATCH
-rollback "$compatible_state" "$APP_PREVIOUS"
-grep -Fq "diff --quiet $CONTROL_PREVIOUS $CONTROL_CURRENT" "$FAKE_GIT_LOG"
-[[ "$(<"$compatible_state/current-sha")" == "$APP_PREVIOUS" ]]
-[[ "$(<"$compatible_state/previous-sha")" == "$APP_CURRENT" ]]
-[[ "$(<"$compatible_state/previous-contract-sha")" == "$CONTROL_CURRENT" ]]
-[[ "$(<"$compatible_state/active-mysql-volume")" == "$VOLUME" ]]
-[[ "$(<"$DOCKER_STATE/mysql-volume")" == "$VOLUME" ]]
+state_snapshot() {
+  local state_dir="$1" name
+  for name in current-sha previous-sha previous-contract-sha contract-sha; do
+    sha256sum "$state_dir/$name"
+  done
+  if [[ -e "$state_dir/release-state-transition" || -L "$state_dir/release-state-transition" ]]; then
+    printf 'transition-present\n'
+  else
+    printf 'transition-absent\n'
+  fi
+}
 
-incompatible_state="$TEST_ROOT/incompatible-state"
-prepare_case \
-  "$incompatible_state" \
-  "$APP_CURRENT" \
-  "$APP_PREVIOUS" \
-  "$CONTROL_PREVIOUS" \
-  "$CONTROL_INCOMPATIBLE"
-export FAKE_CONTROL_SHA="$CONTROL_INCOMPATIBLE"
-export FAKE_CONTRACT_MISMATCH=1
-docker_calls_before="$(<"$DOCKER_STATE/calls")"
-if rollback "$incompatible_state" "$APP_PREVIOUS" 2>"$TEST_ROOT/incompatible-error"; then
-  printf 'incompatible recorded previous Control was accepted\n' >&2
+COMPATIBLE_STATE="$TEST_ROOT/compatible-state"
+prepare_case "$COMPATIBLE_STATE" "$APP_CURRENT" "$APP_PREVIOUS" "$CONTROL_CURRENT" "$CONTROL_CURRENT"
+unset FAKE_MIGRATION_CHANGED FAKE_ACTIVATION_FAIL_SHA
+run_rollback "$COMPATIBLE_STATE" "$APP_PREVIOUS" "$TEST_ROOT/compatible-output"
+[[ "$(<"$COMPATIBLE_STATE/current-sha")" == "$APP_PREVIOUS" ]]
+[[ "$(<"$COMPATIBLE_STATE/previous-sha")" == "$APP_CURRENT" ]]
+[[ "$(<"$COMPATIBLE_STATE/previous-contract-sha")" == "$CONTROL_CURRENT" ]]
+[[ "$(<"$COMPATIBLE_STATE/contract-sha")" == "$CONTROL_CURRENT" ]]
+[[ ! -e "$COMPATIBLE_STATE/release-state-transition" ]]
+grep -Fq 'up --detach --pull never --remove-orphans backend frontend' "$FAKE_DOCKER_LOG"
+grep -Fq 'up --detach --pull never --no-deps --force-recreate proxy' "$FAKE_DOCKER_LOG"
+if grep -Eq '(^|[[:space:]])mysql([[:space:]]|$)' "$FAKE_DOCKER_LOG"; then
+  printf 'rollback activated an obsolete local MySQL service\n' >&2
   exit 1
 fi
-grep -Fq 'production release contract differs from the approved contract SHA' \
-  "$TEST_ROOT/incompatible-error"
-grep -Fq "diff --quiet $CONTROL_PREVIOUS $CONTROL_INCOMPATIBLE" "$FAKE_GIT_LOG"
-[[ "$(<"$DOCKER_STATE/calls")" == "$docker_calls_before" ]]
-[[ "$(<"$incompatible_state/current-sha")" == "$APP_CURRENT" ]]
-[[ "$(<"$incompatible_state/previous-sha")" == "$APP_PREVIOUS" ]]
-[[ "$(<"$incompatible_state/previous-contract-sha")" == "$CONTROL_PREVIOUS" ]]
-[[ "$(<"$incompatible_state/active-mysql-volume")" == "$VOLUME" ]]
+(
+  exec 9>"$COMPATIBLE_STATE/deploy.lock"
+  flock -n 9
+)
 
-partial_state="$TEST_ROOT/partial-state"
-prepare_case \
-  "$partial_state" \
-  "$APP_CURRENT" \
-  "$APP_CURRENT" \
-  "$CONTROL_PREVIOUS" \
-  "$CONTROL_INCOMPATIBLE"
-export FAKE_CONTROL_SHA="$CONTROL_INCOMPATIBLE"
-export FAKE_CONTRACT_MISMATCH=1
-docker_calls_before="$(<"$DOCKER_STATE/calls")"
-if rollback "$partial_state" "$APP_OTHER" 2>"$TEST_ROOT/partial-error"; then
-  printf 'partial state write used recorded previous Control fast-path\n' >&2
+MIGRATION_STATE="$TEST_ROOT/migration-state"
+prepare_case "$MIGRATION_STATE" "$APP_CURRENT" "$APP_PREVIOUS" "$CONTROL_CURRENT" "$CONTROL_CURRENT"
+before_snapshot="$(state_snapshot "$MIGRATION_STATE")"
+export FAKE_MIGRATION_CHANGED=1
+if run_rollback "$MIGRATION_STATE" "$APP_PREVIOUS" "$TEST_ROOT/migration-output"; then
+  printf 'migration-boundary rollback was accepted\n' >&2
   exit 1
 fi
-grep -Fq "diff --quiet $CONTROL_INCOMPATIBLE $APP_OTHER" "$FAKE_GIT_LOG"
-if grep -Fq "diff --quiet $CONTROL_PREVIOUS $CONTROL_INCOMPATIBLE" "$FAKE_GIT_LOG"; then
-  printf 'partial state write compared the stale previous Control\n' >&2
+[[ "$(state_snapshot "$MIGRATION_STATE")" == "$before_snapshot" ]]
+[[ ! -s "$FAKE_DOCKER_LOG" ]]
+if grep -Fq 'compose' "$FAKE_DOCKER_LOG"; then
+  printf 'migration-boundary rollback executed compose commands\n' >&2
   exit 1
 fi
-[[ "$(<"$DOCKER_STATE/calls")" == "$docker_calls_before" ]]
-[[ "$(<"$partial_state/current-sha")" == "$APP_CURRENT" ]]
-[[ "$(<"$partial_state/previous-sha")" == "$APP_CURRENT" ]]
-[[ "$(<"$partial_state/previous-contract-sha")" == "$CONTROL_PREVIOUS" ]]
-[[ "$(<"$partial_state/active-mysql-volume")" == "$VOLUME" ]]
+unset FAKE_MIGRATION_CHANGED
 
-printf 'OPS-027 rollback Control compatibility regression tests passed\n'
+FAILED_STATE="$TEST_ROOT/failed-state"
+prepare_case "$FAILED_STATE" "$APP_CURRENT" "$APP_PREVIOUS" "$CONTROL_CURRENT" "$CONTROL_CURRENT"
+before_snapshot="$(state_snapshot "$FAILED_STATE")"
+export FAKE_ACTIVATION_FAIL_SHA="$APP_PREVIOUS"
+if run_rollback "$FAILED_STATE" "$APP_PREVIOUS" "$TEST_ROOT/failed-output"; then
+  printf 'failed activation was reported as rollback success\n' >&2
+  exit 1
+fi
+grep -Fq 'rollback target failed; current release was restored' "$TEST_ROOT/failed-output"
+[[ "$(state_snapshot "$FAILED_STATE")" == "$before_snapshot" ]]
+[[ ! -e "$FAILED_STATE/release-state-transition" ]]
+unset FAKE_ACTIVATION_FAIL_SHA
+
+printf 'OPS-OCI-002 rollback behavior, migration boundary, lock, and managed-DB contract tests passed\n'

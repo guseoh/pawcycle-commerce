@@ -68,8 +68,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}" >/dev/null
-          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}" >/dev/null
+          verify_image_platforms() {
+            local image="$1"
+
+            docker buildx imagetools inspect --raw "$image" \
+              | python -c 'import json, sys
+              index = json.load(sys.stdin)
+              platforms = {
+                  (manifest.get("platform", {}).get("os"), manifest.get("platform", {}).get("architecture"))
+                  for manifest in index.get("manifests", [])
+              }
+              missing = {("linux", "amd64"), ("linux", "arm64")} - platforms
+              if missing:
+                  raise SystemExit(f"missing required image platforms: {sorted(missing)}")'
+          }
+
+          verify_image_platforms "ghcr.io/${GITHUB_REPOSITORY}-backend:${TARGET_SHA}"
+          verify_image_platforms "ghcr.io/${GITHUB_REPOSITORY}-frontend:${TARGET_SHA}"
 
       - name: Write readiness summary
         env:
@@ -86,5 +101,6 @@ jobs:
             echo "- Frontend image: ready"
             echo
             echo "Readiness verification is not a deployment success signal."
-            echo "The existing OPS-010 manual deployment procedure is the next step."
+            echo "The next step is an operator-approved OCI Run Command through invoke-oci-production-command.sh."
+            echo "GitHub main push does not automatically deploy Production."
           } >> "$GITHUB_STEP_SUMMARY"

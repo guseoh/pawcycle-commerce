@@ -29,7 +29,7 @@ git diff --check
 
 ## 운영 artifact 준비
 
-병합 후 실제 운영 승인이 있을 때만 Observability EC2에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**여야 한다. 기존 control checkout의 HEAD나 working tree를 변경하지 않고, 이번 실행만을 위한 private 임시 Git 저장소에서 승인 commit을 검증한 뒤 그 commit object에서 artifact를 직접 materialize한다.
+병합 후 실제 운영 승인이 있을 때만 OCI Observability host에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**여야 한다. 기존 control checkout의 HEAD나 working tree를 변경하지 않고, 이번 실행만을 위한 private 임시 Git 저장소에서 승인 commit을 검증한 뒤 그 commit object에서 artifact를 직접 materialize한다.
 
 Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 준비하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 꺼낸다.
 

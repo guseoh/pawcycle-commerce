@@ -1,5 +1,7 @@
 # MVP4-CD-001 Temporary Auto Production Deploy
 
+> Superseded: GitHub main push automatic Production deployment is retired. 본문은 historical evidence로 보존한다.
+
 ## 상태와 목적
 
 - 작업 ID: `MVP4-CD-001`

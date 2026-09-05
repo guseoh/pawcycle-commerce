@@ -59,19 +59,17 @@ if [[ -n "$MAX_DUE_CANDIDATES" ]]; then
 fi
 
 prepare_read_only_release_context
-load_active_mysql_volume
+require_command timeout
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
 require_subscription_automation_mode "$EXPECTED_BUNDLE_ENABLED"
 
 ACTIVE_SHA="$CURRENT_SHA"
 export ACTIVE_SHA
-verify_running_release || die "running Production release identity, health, or MySQL volume does not match protected state"
+verify_running_release || die "running Production release identity, health, or database-egress network does not match protected state"
 
-MYSQL_CONTAINER="$(compose ps --quiet mysql)"
 BACKEND_CONTAINER="$(compose ps --quiet backend)"
-[[ -n "$MYSQL_CONTAINER" && -n "$BACKEND_CONTAINER" ]] \
-  || die "running Production MySQL and Backend containers are required"
+[[ -n "$BACKEND_CONTAINER" ]] || die "running Production Backend container is required"
 
 running_setting() {
   local key="$1"
@@ -104,43 +102,55 @@ printf 'RUNNING_AUTOMATION_ENABLED=%s\n' "$RUNNING_ENABLED"
 printf 'RUNNING_AUTOMATION_BATCH_SIZE=%s\n' "$RUNNING_BATCH_SIZE"
 printf 'RUNNING_AUTOMATION_FIXED_DELAY_MS=%s\n' "$RUNNING_FIXED_DELAY_MS"
 
-if [[ "$PAWCYCLE_DATASOURCE_HOST" == "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "DISABLED" ]]; then
-  DATABASE_PREFLIGHT_TARGET="DOCKER_MYSQL"
-elif [[ "$PAWCYCLE_DATASOURCE_HOST" != "mysql" && "$PAWCYCLE_DATASOURCE_SSL_MODE" == "REQUIRED" ]]; then
-  DATABASE_PREFLIGHT_TARGET="RDS"
-else
-  die "active datasource runtime is not approved for subscription automation preflight"
-fi
+DATABASE_PREFLIGHT_TARGET="EXTERNAL_MYSQL"
+MYSQL_TOOL_IMAGE="mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6"
+MYSQL_PREFLIGHT_TIMEOUT_SECONDS=60
+MYSQL_PREFLIGHT_KILL_GRACE_SECONDS=5
+MYSQL_OPTION_FILE=""
+cleanup_mysql_option_file() {
+  if [[ -n "$MYSQL_OPTION_FILE" ]]; then
+    rm -f -- "$MYSQL_OPTION_FILE"
+  fi
+}
+trap cleanup_mysql_option_file EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 run_mysql_read_only() {
   local sql="$1"
   local result
-  local mysql_database=""
-  local mysql_user=""
-  local mysql_password=""
-
-  if [[ "$DATABASE_PREFLIGHT_TARGET" == "DOCKER_MYSQL" ]]; then
-    if ! result="$(printf '%s\n' "$sql" | docker exec --interactive "$MYSQL_CONTAINER" sh -c \
-      'export MYSQL_PWD="$MYSQL_PASSWORD"; exec mysql --protocol=TCP --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --skip-column-names --raw' \
-      2>/dev/null)"; then
-      die "read-only Production Docker MySQL preflight failed; raw database output was suppressed"
-    fi
-  else
-    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_DATABASE mysql_database
-    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_USER mysql_user
-    read_runtime_setting "$PAWCYCLE_RUNTIME_DIR/current/mysql.env" MYSQL_PASSWORD mysql_password
-    if ! result="$(printf '%s\n' "$sql" | MYSQL_PWD="$mysql_password" docker run --rm --pull never --interactive \
-      --network "container:$BACKEND_CONTAINER" \
-      --read-only --tmpfs /tmp:size=16m,mode=1777 \
-      --security-opt no-new-privileges:true --cap-drop ALL \
-      --env MYSQL_PWD --entrypoint mysql "$MYSQL_IMAGE" \
-      --protocol=TCP --host="$PAWCYCLE_DATASOURCE_HOST" --port="$PAWCYCLE_DATASOURCE_PORT" \
-      --user="$mysql_user" --database="$mysql_database" --ssl-mode=REQUIRED \
-      --batch --skip-column-names --raw 2>/dev/null)"; then
-      die "read-only Production RDS preflight failed; raw database output was suppressed"
-    fi
+  if [[ -z "$MYSQL_OPTION_FILE" ]]; then
+    MYSQL_OPTION_FILE="$(mktemp)"
+    chmod 600 "$MYSQL_OPTION_FILE"
+    {
+      printf '[client]\n'
+      printf 'host=%s\n' "$PAWCYCLE_DATASOURCE_HOST"
+      printf 'port=%s\n' "$PAWCYCLE_DATASOURCE_PORT"
+      printf 'user=%s\n' "$SPRING_DATASOURCE_USERNAME"
+      printf 'password=%s\n' "$SPRING_DATASOURCE_PASSWORD"
+      printf 'ssl-mode=REQUIRED\n'
+    } > "$MYSQL_OPTION_FILE"
   fi
-  printf '%s\n' "$result"
+  if result="$(printf '%s\n' "$sql" | timeout --signal=TERM \
+    --kill-after="${MYSQL_PREFLIGHT_KILL_GRACE_SECONDS}s" \
+    "${MYSQL_PREFLIGHT_TIMEOUT_SECONDS}s" \
+    docker run --rm --pull never --interactive \
+      --network pawcycle-production-database-egress \
+      --read-only --tmpfs /tmp:size=16m,mode=1777 \
+      --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 128 \
+      --log-driver none --volume "$MYSQL_OPTION_FILE:/run/pawcycle/mysql-client.cnf:ro" \
+      --entrypoint mysql "$MYSQL_TOOL_IMAGE" \
+      --defaults-extra-file=/run/pawcycle/mysql-client.cnf \
+      --database="$PAWCYCLE_DATASOURCE_DATABASE" \
+      --batch --skip-column-names --raw 2>/dev/null)"; then
+    printf '%s\n' "$result"
+  else
+    local status=$?
+    if [[ "$status" == 124 ]]; then
+      die "read-only external MySQL preflight timed out after ${MYSQL_PREFLIGHT_TIMEOUT_SECONDS}s; raw database output was suppressed"
+    fi
+    die "read-only external MySQL preflight failed; raw database output was suppressed"
+  fi
 }
 
 SCHEMA_SQL=$(cat <<'SQL'

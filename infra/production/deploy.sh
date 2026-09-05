@@ -40,16 +40,16 @@ stop_failed_release_applications() {
   local running_backend_ids
 
   compose stop proxy frontend backend \
-    || die "Application stop command failed after release failure; manual intervention is required and MySQL was preserved"
+    || die "Application stop command failed after release failure; manual intervention is required and the managed database was not modified by the Application release lifecycle"
   running_backend_ids="$(compose ps --status running --quiet backend)" \
-    || die "Application stop verification failed after release failure; manual intervention is required and MySQL was preserved"
+    || die "Application stop verification failed after release failure; manual intervention is required and the managed database was not modified by the Application release lifecycle"
   [[ -z "$running_backend_ids" ]] \
-    || die "Backend remains running after release failure; manual intervention is required and MySQL was preserved"
+    || die "Backend remains running after release failure; manual intervention is required and the managed database was not modified by the Application release lifecycle"
 }
 
 abort_state_publication() {
   stop_failed_release_applications
-  die "release state publication failed after target activation; the transition marker was preserved, Application services were stopped, and MySQL was preserved"
+  die "release state publication failed after target activation; the transition marker was preserved, Application services were stopped, and the managed database was not modified by the Application release lifecycle"
 }
 
 publish_state_or_abort() {
@@ -220,23 +220,23 @@ if ! activate_release "$TARGET_SHA"; then
   printf 'Target release failed health or smoke validation: %s\n' "$TARGET_SHA" >&2
   if [[ "$CONTRACT_BOUNDARY" == "1" || "$SCHEMA_BOUNDARY" == "1" ]]; then
     stop_failed_release_applications
-    die "target release failed across an approved contract or database migration boundary; automatic pre-migration release restoration is blocked, and automatic contract-boundary restoration is blocked, Scheduler remains OFF, and MySQL was preserved"
+    die "target release failed across an approved contract or database migration boundary; automatic pre-migration release restoration is blocked, and automatic contract-boundary restoration is blocked, Scheduler remains OFF, and the managed database was not modified by the Application release lifecycle"
   fi
   if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
     printf 'Restoring previous healthy release: %s\n' "$CURRENT_SHA" >&2
     if activate_release "$CURRENT_SHA"; then
       die "target release failed; previous release was restored"
     fi
-    die "target release and automatic restoration both failed; MySQL volume was not removed"
+    die "target release and automatic restoration both failed; the managed database was not modified by the Application release lifecycle"
   fi
   stop_failed_release_applications
-  die "initial release failed; application services were stopped and MySQL was preserved"
+  die "initial release failed; application services were stopped and the managed database was not modified by the Application release lifecycle"
 fi
 
 PREVIOUS_CONTRACT_SHA="$CONTRACT_SHA"
 if ! write_state "$STATE_TRANSITION_NAME" "$TARGET_SHA"; then
   stop_failed_release_applications
-  die "unable to start release state publication after target activation; Application services were stopped and MySQL was preserved"
+  die "unable to start release state publication after target activation; Application services were stopped and the managed database was not modified by the Application release lifecycle"
 fi
 
 if [[ -n "$CURRENT_SHA" && "$CURRENT_SHA" != "$TARGET_SHA" ]]; then
@@ -255,7 +255,7 @@ fi
 
 if ! rm -f -- "$PAWCYCLE_STATE_DIR/$STATE_TRANSITION_NAME"; then
   stop_failed_release_applications
-  die "release state transition marker cleanup failed; Application services were stopped and MySQL was preserved"
+  die "release state transition marker cleanup failed; Application services were stopped and the managed database was not modified by the Application release lifecycle"
 fi
 
 ACTIVE_SHA="$TARGET_SHA"
