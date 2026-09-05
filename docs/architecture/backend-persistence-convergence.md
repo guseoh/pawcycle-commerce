@@ -1,5 +1,7 @@
 # Backend persistence convergence
 
+작업 ID: `BACKEND-REFACTOR-003` · 등급: 고위험 · 실행 구분: 저장소 변경 · 역할: Backend Engineer
+
 작업 기준: `refactor/backend-internal-convergence`, 기준점 `origin/main`.
 
 이번 변경은 HTTP 계약, 상품 동작, schema migration, frontend, infra, production 실행을 변경하지 않고 customer catalog·cart·checkout·payment callback·billing preparation·delivery·review/문의의 persistence 경계를 JPA 중심으로 정리한다.
