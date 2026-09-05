@@ -2,18 +2,7 @@ package com.pawcycle.backend.commerce;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
-import jakarta.persistence.EmbeddedId;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
 import java.io.Serializable;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
@@ -21,12 +10,27 @@ import java.util.Objects;
  */
 
 @Embeddable
-class CheckoutIdempotencyId implements Serializable {
+public class CheckoutIdempotencyId implements Serializable {
   @Column(name = "member_id")
   Long memberId;
 
   @Column(name = "idempotency_key", length = 128)
   String idempotencyKey;
+
+  protected CheckoutIdempotencyId() {}
+
+  public CheckoutIdempotencyId(long memberId, String idempotencyKey) {
+    this.memberId = memberId;
+    this.idempotencyKey = idempotencyKey;
+  }
+
+  public long getMemberId() {
+    return memberId;
+  }
+
+  public String getIdempotencyKey() {
+    return idempotencyKey;
+  }
 
   @Override
   public boolean equals(Object other) {

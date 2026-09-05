@@ -1,85 +1,83 @@
 package com.pawcycle.backend.commerce.delivery.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import java.time.Clock;
+import com.pawcycle.backend.commerce.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.DeliveryEntity;
+import com.pawcycle.backend.commerce.DeliveryRepository;
 import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class DeliveryPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final DeliveryRepository deliveries;
+  private final CommerceOrderRepository orders;
   private final Clock clock;
 
-  public DeliveryPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public DeliveryPersistenceAdapter(
+      DeliveryRepository deliveries, CommerceOrderRepository orders, Clock clock) {
+    this.deliveries = deliveries;
+    this.orders = orders;
     this.clock = clock;
   }
 
+  @Transactional
   public void createPreparing(long orderId) {
-    queries.update(
-        "INSERT INTO deliveries(order_id,status) VALUES (?,'PREPARING') ON DUPLICATE KEY UPDATE id=id",
-        orderId);
+    deliveries.insertPreparing(orderId);
   }
 
+  @Transactional
   public DeliveryLock findForUpdate(long deliveryId) {
-    return queries
-        .query(
-            "SELECT id,order_id AS orderId,status FROM deliveries WHERE id=? FOR UPDATE",
-            (rs, rowNumber) ->
-                new DeliveryLock(rs.getLong("id"), rs.getLong("orderId"), rs.getString("status")),
-            deliveryId)
-        .stream()
-        .findFirst()
+    return deliveries
+        .findByIdForUpdate(deliveryId)
+        .map(delivery -> new DeliveryLock(delivery.getId(), delivery.getOrderId(), delivery.getStatus()))
         .orElse(null);
   }
 
+  @Transactional(readOnly = true)
   public long memberId(long orderId) {
-    return queries.queryForObject("SELECT member_id FROM orders WHERE id=?", Long.class, orderId);
+    return orders.findById(orderId).map(order -> order.getMemberId()).orElseThrow();
   }
 
+  @Transactional
   public void ship(long deliveryId, String carrier, String tracking) {
-    queries.update(
-        "UPDATE deliveries SET status='SHIPPED',carrier_code=?,tracking_number=?,failure_reason=NULL,failed_at=NULL,shipped_at=? WHERE id=?",
-        carrier,
-        tracking,
-        now(),
-        deliveryId);
+    deliveries.findById(deliveryId).ifPresent(delivery -> delivery.ship(carrier, tracking, now()));
   }
 
+  @Transactional
   public void transition(long deliveryId, String from, String to, String failureReason) {
-    String timestampColumn = to.equals("DELIVERED") ? "delivered_at" : "failed_at";
-    queries.update(
-        "UPDATE deliveries SET status=?,failure_reason=?," + timestampColumn + "=? WHERE id=?",
-        to,
-        failureReason,
-        now(),
-        deliveryId);
+    deliveries
+        .findById(deliveryId)
+        .ifPresent(delivery -> delivery.transition(to, failureReason, now()));
   }
 
+  @Transactional(readOnly = true)
   public DeliveryView find(long deliveryId) {
-    return queries
-        .query(
-            "SELECT id AS deliveryId,order_id AS orderId,status,carrier_code AS carrierCode,tracking_number AS trackingNumber,failure_reason AS failureReason,shipped_at AS shippedAt,delivered_at AS deliveredAt,failed_at AS failedAt,cancelled_at AS cancelledAt FROM deliveries WHERE id=?",
-            (rs, rowNumber) ->
-                new DeliveryView(
-                    rs.getLong("deliveryId"),
-                    rs.getLong("orderId"),
-                    rs.getString("status"),
-                    rs.getString("carrierCode"),
-                    rs.getString("trackingNumber"),
-                    rs.getString("failureReason"),
-                    rs.getTimestamp("shippedAt"),
-                    rs.getTimestamp("deliveredAt"),
-                    rs.getTimestamp("failedAt"),
-                    rs.getTimestamp("cancelledAt")),
-            deliveryId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return deliveries.findById(deliveryId).map(this::view).orElse(null);
   }
 
-  private Timestamp now() {
-    return Timestamp.from(clock.instant());
+  private DeliveryView view(DeliveryEntity delivery) {
+    return new DeliveryView(
+        delivery.getId(),
+        delivery.getOrderId(),
+        delivery.getStatus(),
+        delivery.getCarrierCode(),
+        delivery.getTrackingNumber(),
+        delivery.getFailureReason(),
+        timestamp(delivery.getShippedAt()),
+        timestamp(delivery.getDeliveredAt()),
+        timestamp(delivery.getFailedAt()),
+        timestamp(delivery.getCancelledAt()));
+  }
+
+  private LocalDateTime now() {
+    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+  }
+
+  private Timestamp timestamp(LocalDateTime value) {
+    return value == null ? null : Timestamp.valueOf(value);
   }
 
   public record DeliveryLock(long deliveryId, long orderId, String status) {}

@@ -1,20 +1,13 @@
 package com.pawcycle.backend.commerce;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Objects;
+import lombok.Getter;
 
 /**
  * JPA mapping for a commerce persistence record.
@@ -22,7 +15,8 @@ import java.util.Objects;
 
 @Entity
 @Table(name = "deliveries")
-class DeliveryEntity {
+@Getter
+public class DeliveryEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   Long id;
@@ -38,4 +32,42 @@ class DeliveryEntity {
 
   @Column(name = "tracking_number", length = 100)
   String trackingNumber;
+
+  @Column(name = "failure_reason", length = 500)
+  String failureReason;
+
+  @Column(name = "shipped_at")
+  LocalDateTime shippedAt;
+
+  @Column(name = "delivered_at")
+  LocalDateTime deliveredAt;
+
+  @Column(name = "failed_at")
+  LocalDateTime failedAt;
+
+  @Column(name = "cancelled_at")
+  LocalDateTime cancelledAt;
+
+  protected DeliveryEntity() {}
+
+  public DeliveryEntity(long orderId, LocalDateTime now) {
+    this.orderId = orderId;
+    this.status = "PREPARING";
+  }
+
+  public void ship(String carrier, String tracking, LocalDateTime now) {
+    status = "SHIPPED";
+    carrierCode = carrier;
+    trackingNumber = tracking;
+    failureReason = null;
+    failedAt = null;
+    shippedAt = now;
+  }
+
+  public void transition(String to, String failureReason, LocalDateTime now) {
+    status = to;
+    this.failureReason = failureReason;
+    if ("DELIVERED".equals(to)) deliveredAt = now;
+    if ("FAILED".equals(to)) failedAt = now;
+  }
 }
