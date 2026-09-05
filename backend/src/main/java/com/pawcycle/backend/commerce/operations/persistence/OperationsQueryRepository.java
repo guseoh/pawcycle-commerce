@@ -1,6 +1,7 @@
 package com.pawcycle.backend.commerce.operations.persistence;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -52,11 +53,18 @@ public class OperationsQueryRepository {
                 new PendingRow(
                     (String) row.get("type"),
                     ((Number) row.get("referenceId")).longValue(),
-                    (Timestamp) row.get("createdAt"),
+                    toTimestamp(row.get("createdAt")),
                     row.get("attemptNo") == null
                         ? null
                         : ((Number) row.get("attemptNo")).intValue()))
         .toList();
+  }
+
+  private static Timestamp toTimestamp(Object value) {
+    if (value == null) return null;
+    if (value instanceof Timestamp timestamp) return timestamp;
+    if (value instanceof LocalDateTime dateTime) return Timestamp.valueOf(dateTime);
+    throw new IllegalArgumentException("지원하지 않는 operations timestamp 타입입니다: " + value.getClass());
   }
 
   public record PendingRow(String type, long referenceId, Timestamp createdAt, Integer attemptNo) {}
