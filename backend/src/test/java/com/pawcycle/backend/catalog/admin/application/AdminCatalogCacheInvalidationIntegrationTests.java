@@ -12,6 +12,9 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
 import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogFacetPersistenceAdapter;
+import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
+import com.pawcycle.backend.catalog.brand.domain.Brand;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductListCache;
@@ -22,6 +25,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,8 +44,11 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 class AdminCatalogCacheInvalidationIntegrationTests {
   @Autowired private AdminCatalogService service;
   @Autowired private CategoryRepository categoryRepository;
+  @Autowired private BrandRepository brandRepository;
   @Autowired private ProductRepository productRepository;
   @Autowired private SkuRepository skuRepository;
+  @Autowired private InventoryRepository inventoryRepository;
+  @Autowired private CatalogFacetPersistenceAdapter catalogFacets;
   @Autowired private NativeQueryExecutor jdbcExecutor;
   @Autowired private ProductListCache productListCache;
   @Autowired private RecordingTransactionManager transactionManager;
@@ -49,7 +56,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 
   @BeforeEach
   void resetState() {
-    reset(categoryRepository, productRepository, skuRepository, jdbcExecutor, productListCache);
+    reset(categoryRepository, brandRepository, productRepository, skuRepository, inventoryRepository, catalogFacets, jdbcExecutor, productListCache);
     transactionManager.resetState();
   }
 
@@ -59,6 +66,9 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     when(category.isActive()).thenReturn(true);
     when(category.getSlug()).thenReturn("food");
     when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+    Brand brand = mock(Brand.class);
+    when(brand.isActive()).thenReturn(true);
+    when(brandRepository.findById(1L)).thenReturn(Optional.of(brand));
     when(productRepository.saveAndFlush(any(Product.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     doAnswer(
@@ -80,8 +90,11 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     Product product = mock(Product.class);
     when(product.getId()).thenReturn(10L);
     when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+    Sku savedSku = mock(Sku.class);
+    when(savedSku.getId()).thenReturn(20L);
+    when(savedSku.getProduct()).thenReturn(product);
     when(skuRepository.saveAndFlush(any(Sku.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
+        .thenReturn(savedSku);
     doAnswer(
             invocation -> {
               assertThat(transactionManager.commitCompleted()).isTrue();
@@ -122,6 +135,11 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     }
 
     @Bean
+    BrandRepository brandRepository() {
+      return mock(BrandRepository.class);
+    }
+
+    @Bean
     ProductRepository productRepository() {
       return mock(ProductRepository.class);
     }
@@ -129,6 +147,16 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     @Bean
     SkuRepository skuRepository() {
       return mock(SkuRepository.class);
+    }
+
+    @Bean
+    InventoryRepository inventoryRepository() {
+      return mock(InventoryRepository.class);
+    }
+
+    @Bean
+    CatalogFacetPersistenceAdapter catalogFacetPersistenceAdapter(NativeQueryExecutor jdbcExecutor) {
+      return mock(CatalogFacetPersistenceAdapter.class);
     }
 
     @Bean
@@ -149,15 +177,19 @@ class AdminCatalogCacheInvalidationIntegrationTests {
     @Bean
     AdminCatalogService adminCatalogService(
         CategoryRepository categoryRepository,
+        BrandRepository brandRepository,
         ProductRepository productRepository,
         SkuRepository skuRepository,
-        NativeQueryExecutor jdbcExecutor,
+        InventoryRepository inventoryRepository,
+        CatalogFacetPersistenceAdapter catalogFacets,
         ProductListCacheInvalidator productListCacheInvalidator) {
       return new AdminCatalogService(
           categoryRepository,
+          brandRepository,
           productRepository,
           skuRepository,
-          jdbcExecutor,
+          inventoryRepository,
+          catalogFacets,
           productListCacheInvalidator);
     }
 

@@ -1,7 +1,6 @@
 package com.pawcycle.backend.commerce.payment.api;
 
 import com.pawcycle.backend.commerce.BillingRetryResponse;
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.PaymentReconciliationService;
 import com.pawcycle.backend.commerce.SubscriptionBillingService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -24,7 +23,7 @@ public class AdminPaymentController {
   }
 
   @PostMapping("/{id}/reconcile")
-  public CommercePayload reconcile(
+  public PaymentReconciliationResponse reconcile(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return payments.reconcile(id, principal.memberId());
   }

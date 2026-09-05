@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.membership.api;
 
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.MembershipGradeCreatedResponse;
 import com.pawcycle.backend.commerce.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService;
@@ -27,7 +26,7 @@ public class AdminMembershipController {
   }
 
   @GetMapping("/membership-grades")
-  public List<CommerceRowResponse> grades() {
+  public List<MembershipGradeResponse> grades() {
     return membership.listGrades();
   }
 

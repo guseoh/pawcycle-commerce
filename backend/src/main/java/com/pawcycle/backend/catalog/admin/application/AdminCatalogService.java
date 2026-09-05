@@ -25,19 +25,20 @@ import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
+import com.pawcycle.backend.catalog.admin.persistence.CatalogFacetPersistenceAdapter;
+import com.pawcycle.backend.commerce.inventory.persistence.InventoryEntity;
+import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor(onConstructor_ = @Autowired)
+@RequiredArgsConstructor
 public class AdminCatalogService {
   private static final Pattern SLUG_PATTERN = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
   private static final String SYSTEM_UNCATEGORIZED_SLUG = "__pawcycle_uncategorized__";
@@ -46,25 +47,9 @@ public class AdminCatalogService {
   private final BrandRepository brandRepository;
   private final ProductRepository productRepository;
   private final SkuRepository skuRepository;
-  private final NativeQueryExecutor jdbcTemplate;
+  private final InventoryRepository inventoryRepository;
+  private final CatalogFacetPersistenceAdapter catalogFacets;
   private final ProductListCacheInvalidator productListCacheInvalidator;
-
-  /**
-   * Preserves isolated legacy service tests; the Spring-managed constructor always supplies brands.
-   */
-  public AdminCatalogService(
-      CategoryRepository categoryRepository,
-      ProductRepository productRepository,
-      SkuRepository skuRepository,
-      NativeQueryExecutor jdbcTemplate,
-      ProductListCacheInvalidator productListCacheInvalidator) {
-    this.categoryRepository = categoryRepository;
-    this.brandRepository = null;
-    this.productRepository = productRepository;
-    this.skuRepository = skuRepository;
-    this.jdbcTemplate = jdbcTemplate;
-    this.productListCacheInvalidator = productListCacheInvalidator;
-  }
 
   @Transactional(readOnly = true)
   public BrandListResponse brands() {
@@ -261,10 +246,7 @@ public class AdminCatalogService {
                   request.subscribable(),
                   request.displayOrder(),
                   request.status()));
-      jdbcTemplate.update(
-          "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES"
-              + " (?,0,0,0)",
-          sku.getId());
+      inventoryRepository.save(new InventoryEntity(sku.getId()));
       productListCacheInvalidator.invalidateAfterCommit();
       return skuView(sku);
     } catch (DataIntegrityViolationException exception) {
@@ -336,7 +318,6 @@ public class AdminCatalogService {
   }
 
   private Brand requireActiveBrand(Long brandId) {
-    if (brandRepository == null) return null;
     Brand brand =
         brandRepository
             .findById(brandId)
@@ -363,22 +344,7 @@ public class AdminCatalogService {
   }
 
   private void requireFacetValuesCompatibleWithCategory(Long productId, Long categoryId) {
-    Long invalid =
-        jdbcTemplate.queryForObject(
-            """
-            SELECT COUNT(*)
-            FROM product_facet_values pfv
-            JOIN facet_options fo ON fo.id=pfv.facet_option_id
-            WHERE pfv.product_id=?
-              AND NOT EXISTS (
-                SELECT 1 FROM category_facets cf
-                WHERE cf.category_id=? AND cf.facet_definition_id=fo.facet_definition_id
-              )
-            """,
-            Long.class,
-            productId,
-            categoryId);
-    if (invalid != null && invalid > 0) {
+    if (catalogFacets.hasIncompatibleProductValues(productId, categoryId)) {
       throw new AdminCatalogConflictException(
           "PRODUCT_FACET_CATEGORY_CONFLICT", "현재 상품 facet 값이 새 카테고리에서 허용되지 않습니다.");
     }

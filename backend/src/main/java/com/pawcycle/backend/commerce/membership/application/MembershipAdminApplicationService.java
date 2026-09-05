@@ -1,51 +1,40 @@
 package com.pawcycle.backend.commerce.membership.application;
 
 import com.pawcycle.backend.commerce.AdminAuditService;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
-import com.pawcycle.backend.commerce.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.MembershipEvaluationService;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
+import com.pawcycle.backend.commerce.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
+import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MembershipAdminApplicationService {
-  private final NativeQueryExecutor jdbc;
+  private final MembershipPersistenceAdapter membership;
   private final AdminAuditService audits;
   private final MembershipEvaluationService membershipEvaluation;
 
   public MembershipAdminApplicationService(
-      NativeQueryExecutor jdbc,
+      MembershipPersistenceAdapter membership,
       AdminAuditService audits,
       MembershipEvaluationService membershipEvaluation) {
-    this.jdbc = jdbc;
+    this.membership = membership;
     this.audits = audits;
     this.membershipEvaluation = membershipEvaluation;
   }
 
   @Transactional(readOnly = true)
-  public List<CommerceRowResponse> listGrades() {
-    return CommerceRowResponse.from(
-        jdbc.queryForList(
-            "SELECT id AS gradeId,code,name,minimum_purchase_amount AS"
-                + " minimumPurchaseAmount,display_order AS displayOrder,active,benefit_coupon_id AS"
-                + " benefitCouponId FROM membership_grades ORDER BY display_order,id"));
+  public List<MembershipGradeResponse> listGrades() {
+    return membership.findGrades().stream()
+        .map(MembershipAdminApplicationService::grade)
+        .toList();
   }
 
   @Transactional
   public long createGrade(long adminId, MembershipGradeRequest request) {
-    jdbc.update(
-        "INSERT INTO"
-            + " membership_grades(code,name,minimum_purchase_amount,display_order,active,benefit_coupon_id)"
-            + " VALUES (?,?,?,?,?,?)",
-        request.code(),
-        request.name(),
-        request.minimumPurchaseAmount(),
-        request.displayOrder(),
-        request.active(),
-        request.benefitCouponId());
-    long gradeId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    long gradeId = membership.createGrade(request);
     audits.append(adminId, "MEMBERSHIP_GRADE_CREATE", "MEMBERSHIP_GRADE", gradeId);
     return gradeId;
   }
@@ -54,5 +43,16 @@ public class MembershipAdminApplicationService {
   public void evaluate(long adminId, long memberId) {
     membershipEvaluation.evaluate(memberId);
     audits.append(adminId, "MEMBERSHIP_EVALUATE", "MEMBER", memberId);
+  }
+
+  private static MembershipGradeResponse grade(MembershipGradeView view) {
+    return new MembershipGradeResponse(
+        view.gradeId(),
+        view.code(),
+        view.name(),
+        view.minimumPurchaseAmount(),
+        view.displayOrder(),
+        view.active(),
+        view.benefitCouponId());
   }
 }

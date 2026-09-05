@@ -16,17 +16,20 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * JPA mapping for a commerce persistence record.
- */
-
 @Embeddable
-class WishlistItemId implements Serializable {
+public class WishlistItemId implements Serializable {
   @Column(name = "member_id")
-  Long memberId;
+  private Long memberId;
 
   @Column(name = "product_id")
-  Long productId;
+  private Long productId;
+
+  protected WishlistItemId() {}
+
+  public WishlistItemId(long memberId, long productId) {
+    this.memberId = memberId;
+    this.productId = productId;
+  }
 
   @Override
   public boolean equals(Object other) {

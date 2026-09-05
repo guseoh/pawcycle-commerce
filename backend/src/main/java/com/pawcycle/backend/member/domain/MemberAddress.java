@@ -1,6 +1,5 @@
 package com.pawcycle.backend.member.domain;
 
-import com.pawcycle.backend.member.domain.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -53,4 +52,41 @@ public class MemberAddress {
 
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
+
+  public MemberAddress(
+      long memberId,
+      String name,
+      String recipientName,
+      String recipientPhone,
+      String postalCode,
+      String addressLine1,
+      String addressLine2,
+      LocalDateTime now) {
+    this.memberId = memberId;
+    this.name = name;
+    this.recipientName = recipientName;
+    this.recipientPhone = recipientPhone;
+    this.postalCode = postalCode;
+    this.addressLine1 = addressLine1;
+    this.addressLine2 = addressLine2;
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
+
+  public void update(
+      String name,
+      String recipientName,
+      String recipientPhone,
+      String postalCode,
+      String addressLine1,
+      String addressLine2,
+      LocalDateTime now) {
+    this.name = name;
+    this.recipientName = recipientName;
+    this.recipientPhone = recipientPhone;
+    this.postalCode = postalCode;
+    this.addressLine1 = addressLine1;
+    this.addressLine2 = addressLine2;
+    this.updatedAt = now;
+  }
 }

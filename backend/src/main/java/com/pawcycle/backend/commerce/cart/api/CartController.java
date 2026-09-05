@@ -1,7 +1,6 @@
 package com.pawcycle.backend.commerce.cart.api;
 
 import com.pawcycle.backend.commerce.CartItemRequest;
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.QuantityRequest;
 import com.pawcycle.backend.commerce.cart.application.CartApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -27,7 +26,7 @@ public class CartController {
   }
 
   @GetMapping
-  public CommercePayload get(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
+  public CartResponse get(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return cart.get(principal.memberId());
   }
 

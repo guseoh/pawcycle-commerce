@@ -9,11 +9,11 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
+import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.support.TestSkuFactory;
 import java.math.BigDecimal;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -94,15 +94,15 @@ class CheckoutIdempotencyIntegrationTests {
   void sameCheckoutRequestReplaysAfterCartChanges() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-replay-" + UUID.randomUUID();
-    Map<String, Object> first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
 
     Sku secondSku = createSku("Replay second SKU");
     commerce.addCartItem(member.getId(), secondSku.getId(), 1);
     assertThat(cartVersion()).isEqualTo(2);
 
-    Map<String, Object> explicitReplay =
+    CheckoutResponse explicitReplay =
         checkout.checkout(member.getId(), key, addressId, null, 1L);
-    Map<String, Object> transitionReplay =
+    CheckoutResponse transitionReplay =
         checkout.checkout(member.getId(), key, addressId, null, null);
     assertThat(explicitReplay.get("orderId")).isEqualTo(first.get("orderId"));
     assertThat(transitionReplay.get("orderId")).isEqualTo(first.get("orderId"));
@@ -129,7 +129,7 @@ class CheckoutIdempotencyIntegrationTests {
   void sameCheckoutRequestReplaysAfterSuccessfulPaymentConsumesCart() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-paid-replay-" + UUID.randomUUID();
-    Map<String, Object> first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
     commerce.confirm(
         member.getId(),
         "payment-key",
@@ -137,8 +137,8 @@ class CheckoutIdempotencyIntegrationTests {
         new BigDecimal(first.get("amount").toString()));
     assertThat(cartVersion()).isEqualTo(2);
 
-    Map<String, Object> replay = checkout.checkout(member.getId(), key, addressId, null, 1L);
-    Map<String, Object> transitionReplay =
+    CheckoutResponse replay = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResponse transitionReplay =
         checkout.checkout(member.getId(), key, addressId, null, null);
     assertThat(replay.get("orderId")).isEqualTo(first.get("orderId"));
     assertThat(transitionReplay.get("orderId")).isEqualTo(first.get("orderId"));
@@ -180,7 +180,7 @@ class CheckoutIdempotencyIntegrationTests {
   void legacyCheckoutWithoutStoredCartVersionFailsClosed() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-legacy-version-" + UUID.randomUUID();
-    Map<String, Object> first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
     assertThat(
             jdbc.update(
                 "UPDATE checkout_idempotency_results SET request_cart_version=NULL WHERE"

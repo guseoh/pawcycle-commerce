@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.coupon.api;
 
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.commerce.CouponCreatedResponse;
 import com.pawcycle.backend.commerce.CouponIssueRequest;
 import com.pawcycle.backend.commerce.CouponRequest;
@@ -29,7 +28,7 @@ public class AdminCouponController {
   }
 
   @GetMapping
-  public List<CommerceRowResponse> coupons() {
+  public List<CouponResponse> coupons() {
     return coupons.list();
   }
 

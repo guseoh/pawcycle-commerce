@@ -31,6 +31,10 @@ public class InventoryEntity {
 
   protected InventoryEntity() {}
 
+  public InventoryEntity(long skuId) {
+    this.skuId = skuId;
+  }
+
   public long skuId() {
     return skuId;
   }

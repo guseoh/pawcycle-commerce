@@ -2,46 +2,128 @@ package com.pawcycle.backend.member.address.application;
 
 import com.pawcycle.backend.commerce.AddressRequest;
 import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
-import java.sql.Timestamp;
+import com.pawcycle.backend.member.address.api.AddressResponse;
+import com.pawcycle.backend.member.domain.Member;
+import com.pawcycle.backend.member.domain.MemberAddress;
+import com.pawcycle.backend.member.persistence.MemberAddressRepository;
+import com.pawcycle.backend.member.persistence.MemberRepository;
+import com.pawcycle.backend.subscription.persistence.SubscriptionShippingPersistenceAdapter;
 import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MemberAddressApplicationService {
-  private final NativeQueryExecutor jdbc;
+  private final MemberRepository members;
+  private final MemberAddressRepository addresses;
+  private final SubscriptionShippingPersistenceAdapter subscriptionShipping;
   private final Clock clock;
 
-  public MemberAddressApplicationService(NativeQueryExecutor jdbc, Clock clock) {
-    this.jdbc = jdbc;
+  public MemberAddressApplicationService(
+      MemberRepository members,
+      MemberAddressRepository addresses,
+      SubscriptionShippingPersistenceAdapter subscriptionShipping,
+      Clock clock) {
+    this.members = members;
+    this.addresses = addresses;
+    this.subscriptionShipping = subscriptionShipping;
     this.clock = clock;
   }
 
   @Transactional(readOnly = true)
-  public List<CommerceRowResponse> list(long memberId) {
-    return CommerceRowResponse.from(
-        jdbc.queryForList(
-            """
-            SELECT address.id AS addressId,address.name,address.recipient_name AS recipientName,address.recipient_phone AS recipientPhone,
-            address.postal_code AS postalCode,address.address_line1 AS addressLine1,address.address_line2 AS addressLine2,
-            (member.default_address_id=address.id) AS isDefault
-            FROM member_addresses address JOIN members member ON member.id=address.member_id
-            WHERE address.member_id=? ORDER BY address.id\
-            """,
-            memberId));
+  public List<AddressResponse> list(long memberId) {
+    Member member = requireMember(memberId);
+    Long defaultId =
+        member.getDefaultAddress() == null ? null : member.getDefaultAddress().getId();
+    return addresses.findByMemberIdOrderById(memberId).stream()
+        .map(address -> response(address, defaultId))
+        .toList();
   }
 
   @Transactional
   public long create(long memberId, AddressRequest request) {
     validate(request, true);
-    jdbc.update(
-        "INSERT INTO"
-            + " member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at,updated_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?)",
+    Member member = requireMember(memberId);
+    MemberAddress address = newAddress(memberId, request);
+    addresses.saveAndFlush(address);
+    if (member.getDefaultAddress() == null) {
+      member.assignDefaultAddress(address);
+      members.save(member);
+    }
+    subscriptionShipping.releaseAddressHolds(memberId);
+    return address.getId();
+  }
+
+  @Transactional
+  public void update(long memberId, long addressId, AddressRequest request) {
+    validate(request, true);
+    requireMember(memberId);
+    MemberAddress address =
+        addresses
+            .findByIdAndMemberId(addressId, memberId)
+            .orElseThrow(() -> notFound("ADDRESS_NOT_FOUND"));
+    address.update(
+        request.name(),
+        request.recipientName(),
+        request.recipientPhone(),
+        request.postalCode(),
+        request.addressLine1(),
+        request.addressLine2(),
+        now());
+    subscriptionShipping.releaseAddressHolds(memberId);
+  }
+
+  @Transactional
+  public void delete(long memberId, long addressId) {
+    Member member = requireMember(memberId);
+    MemberAddress address =
+        addresses
+            .findByIdAndMemberId(addressId, memberId)
+            .orElseThrow(() -> notFound("ADDRESS_NOT_FOUND"));
+    if (member.getDefaultAddress() != null
+        && Long.valueOf(addressId).equals(member.getDefaultAddress().getId())) {
+      member.clearDefaultAddress();
+      members.save(member);
+    }
+    addresses.delete(address);
+  }
+
+  @Transactional
+  public void makeDefault(long memberId, long addressId) {
+    Member member = requireMember(memberId);
+    MemberAddress address =
+        addresses
+            .findByIdAndMemberId(addressId, memberId)
+            .orElseThrow(() -> notFound("ADDRESS_NOT_FOUND"));
+    member.assignDefaultAddress(address);
+    members.save(member);
+    subscriptionShipping.releaseAddressHolds(memberId);
+  }
+
+  @Transactional
+  public void updateSubscriptionShipping(
+      long memberId, long subscriptionId, AddressRequest request) {
+    validate(request, false);
+    requireMember(memberId);
+    subscriptionShipping.update(
+        memberId,
+        subscriptionId,
+        new SubscriptionShippingPersistenceAdapter.ShippingAddress(
+            request.recipientName(),
+            request.recipientPhone(),
+            request.postalCode(),
+            request.addressLine1(),
+            request.addressLine2()));
+  }
+
+  private Member requireMember(long memberId) {
+    return members.findById(memberId).orElseThrow(() -> notFound("MEMBER_NOT_FOUND"));
+  }
+
+  private MemberAddress newAddress(long memberId, AddressRequest request) {
+    return new MemberAddress(
         memberId,
         request.name(),
         request.recipientName(),
@@ -49,123 +131,23 @@ public class MemberAddressApplicationService {
         request.postalCode(),
         request.addressLine1(),
         request.addressLine2(),
-        now(),
         now());
-    long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    Integer defaults =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM members WHERE id=? AND default_address_id IS NOT NULL", Integer.class, memberId);
-    if (defaults == 0)
-      jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", id, memberId);
-    releaseAddressHolds(memberId);
-    return id;
   }
 
-  @Transactional
-  public void update(long memberId, long addressId, AddressRequest request) {
-    validate(request, true);
-    ensureOwnership(memberId, addressId);
-    jdbc.update(
-        "UPDATE member_addresses SET"
-            + " name=?,recipient_name=?,recipient_phone=?,postal_code=?,address_line1=?,address_line2=?,updated_at=?"
-            + " WHERE id=?",
-        request.name(),
-        request.recipientName(),
-        request.recipientPhone(),
-        request.postalCode(),
-        request.addressLine1(),
-        request.addressLine2(),
-        now(),
-        addressId);
-    releaseAddressHolds(memberId);
+  private static AddressResponse response(MemberAddress address, Long defaultId) {
+    return new AddressResponse(
+        address.getId(),
+        address.getName(),
+        address.getRecipientName(),
+        address.getRecipientPhone(),
+        address.getPostalCode(),
+        address.getAddressLine1(),
+        address.getAddressLine2(),
+        address.getId().equals(defaultId));
   }
 
-  @Transactional
-  public void delete(long memberId, long addressId) {
-    ensureOwnership(memberId, addressId);
-    jdbc.update("UPDATE members SET default_address_id=NULL WHERE id=? AND default_address_id=?", memberId, addressId);
-    jdbc.update("DELETE FROM member_addresses WHERE id=?", addressId);
-  }
-
-  @Transactional
-  public void makeDefault(long memberId, long addressId) {
-    ensureOwnership(memberId, addressId);
-    jdbc.update("UPDATE members SET default_address_id=? WHERE id=?", addressId, memberId);
-    releaseAddressHolds(memberId);
-  }
-
-  @Transactional
-  public void updateSubscriptionShipping(
-      long memberId, long subscriptionId, AddressRequest request) {
-    validate(request, false);
-    if (jdbc.queryForObject(
-            "SELECT COUNT(*) FROM subscriptions WHERE id=? AND member_id=?",
-            Integer.class,
-            subscriptionId,
-            memberId)
-        != 1) {
-      notFound("SUBSCRIPTION_NOT_FOUND");
-    }
-    int future =
-        jdbc.queryForObject(
-            """
-            SELECT COUNT(*) FROM subscription_schedules schedule LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id
-            WHERE schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD') AND context.order_id IS NULL\
-            """,
-            Integer.class,
-            subscriptionId);
-    if (future == 0) {
-      throw new CommerceException(409, "SUBSCRIPTION_SHIPPING_NOT_CHANGEABLE", "변경 가능한 미래 Schedule이 없습니다.");
-    }
-    jdbc.update(
-        """
-        INSERT INTO subscription_shipping_snapshots(subscription_id,recipient_name,recipient_phone,postal_code,address_line1,address_line2,updated_at)
-        VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE recipient_name=VALUES(recipient_name),recipient_phone=VALUES(recipient_phone),postal_code=VALUES(postal_code),address_line1=VALUES(address_line1),address_line2=VALUES(address_line2),updated_at=VALUES(updated_at)\
-        """,
-        subscriptionId,
-        request.recipientName(),
-        request.recipientPhone(),
-        request.postalCode(),
-        request.addressLine1(),
-        request.addressLine2(),
-        now());
-    jdbc.update(
-        """
-        UPDATE subscription_schedules schedule LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id
-        SET schedule.status='SCHEDULED',schedule.hold_reason=NULL WHERE schedule.subscription_id=? AND schedule.status='HELD'
-        AND schedule.hold_reason='MISSING_SHIPPING_ADDRESS' AND context.order_id IS NULL\
-        """,
-        subscriptionId);
-  }
-
-  private void releaseAddressHolds(long memberId) {
-    jdbc.update(
-        "UPDATE subscription_schedules schedule JOIN subscriptions subscription ON"
-            + " subscription.id=schedule.subscription_id JOIN members member ON"
-            + " member.id=subscription.member_id LEFT JOIN subscription_shipping_snapshots snapshot"
-            + " ON snapshot.subscription_id=subscription.id LEFT JOIN subscription_order_context"
-            + " context ON context.schedule_id=schedule.id SET"
-            + " schedule.status='SCHEDULED',schedule.hold_reason=NULL WHERE"
-            + " subscription.member_id=? AND member.default_address_id IS NOT NULL AND"
-            + " subscription.status='ACTIVE' AND snapshot.subscription_id IS NULL AND"
-            + " schedule.status='HELD' AND schedule.hold_reason='MISSING_SHIPPING_ADDRESS' AND"
-            + " context.order_id IS NULL",
-        memberId);
-  }
-
-  private void ensureOwnership(long memberId, long addressId) {
-    if (jdbc.queryForObject(
-            "SELECT COUNT(*) FROM member_addresses WHERE id=? AND member_id=?",
-            Integer.class,
-            addressId,
-            memberId)
-        != 1) {
-      notFound("ADDRESS_NOT_FOUND");
-    }
-  }
-
-  private Timestamp now() {
-    return Timestamp.from(clock.instant());
+  private LocalDateTime now() {
+    return LocalDateTime.now(clock);
   }
 
   private static void validate(AddressRequest request, boolean requireName) {
@@ -188,7 +170,7 @@ public class MemberAddressApplicationService {
     }
   }
 
-  private static void notFound(String code) {
-    throw new CommerceException(404, code, "요청한 리소스를 찾을 수 없습니다.");
+  private static CommerceException notFound(String code) {
+    return new CommerceException(404, code, "요청한 리소스를 찾을 수 없습니다.");
   }
 }

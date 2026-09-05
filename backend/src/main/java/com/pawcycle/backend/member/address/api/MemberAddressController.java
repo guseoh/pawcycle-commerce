@@ -2,7 +2,6 @@ package com.pawcycle.backend.member.address.api;
 
 import com.pawcycle.backend.commerce.AddressCreatedResponse;
 import com.pawcycle.backend.commerce.AddressRequest;
-import com.pawcycle.backend.commerce.CommerceRowResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
 import jakarta.validation.Valid;
@@ -30,7 +29,7 @@ public class MemberAddressController {
   }
 
   @GetMapping("/addresses")
-  public List<CommerceRowResponse> list(
+  public List<AddressResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     return addresses.list(principal.memberId());
   }

@@ -50,4 +50,12 @@ public class Member {
     this.passwordHash = passwordHash;
     this.role = role;
   }
+
+  public void assignDefaultAddress(MemberAddress address) {
+    this.defaultAddress = address;
+  }
+
+  public void clearDefaultAddress() {
+    this.defaultAddress = null;
+  }
 }

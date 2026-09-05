@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.delivery.api;
 
-import com.pawcycle.backend.commerce.CommercePayload;
 import com.pawcycle.backend.commerce.DeliveryService;
 import com.pawcycle.backend.commerce.ReasonRequest;
 import com.pawcycle.backend.commerce.ShipmentRequest;
@@ -23,7 +22,7 @@ public class AdminDeliveryController {
   }
 
   @PostMapping("/{id}/ship")
-  public CommercePayload ship(
+  public DeliveryResponse ship(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ShipmentRequest request) {
@@ -31,13 +30,13 @@ public class AdminDeliveryController {
   }
 
   @PostMapping("/{id}/complete")
-  public CommercePayload complete(
+  public DeliveryResponse complete(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
     return deliveries.complete(principal.memberId(), id);
   }
 
   @PostMapping("/{id}/fail")
-  public CommercePayload fail(
+  public DeliveryResponse fail(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReasonRequest request) {

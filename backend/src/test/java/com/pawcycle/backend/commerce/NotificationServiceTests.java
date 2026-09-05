@@ -1,55 +1,35 @@
 package com.pawcycle.backend.commerce;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.sql.Date;
-import java.util.LinkedHashMap;
+import com.pawcycle.backend.commerce.notification.api.NotificationResponse;
+import com.pawcycle.backend.commerce.notification.persistence.NotificationPersistenceAdapter;
+import com.pawcycle.backend.commerce.notification.persistence.NotificationView;
+import java.sql.Timestamp;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 
 class NotificationServiceTests {
   @Test
   void mixedListLoadsReminderContextWithOneLeftJoinQuery() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
-    Map<String, Object> reminder = new LinkedHashMap<>();
-    reminder.put("notificationId", 1L);
-    reminder.put("type", "SUBSCRIPTION_DELIVERY_REMINDER");
-    reminder.put("referenceType", "SCHEDULE");
-    reminder.put("referenceId", 20L);
-    reminder.put("readAt", null);
-    reminder.put("createdAt", "created");
-    reminder.put("subscriptionId", 10L);
-    reminder.put("scheduledDate", Date.valueOf("2026-08-30"));
-    Map<String, Object> ordinary = new LinkedHashMap<>();
-    ordinary.put("notificationId", 2L);
-    ordinary.put("type", "ORDER_PAID");
-    ordinary.put("referenceType", "ORDER");
-    ordinary.put("referenceId", 30L);
-    ordinary.put("readAt", null);
-    ordinary.put("createdAt", "created");
-    ordinary.put("subscriptionId", null);
-    ordinary.put("scheduledDate", null);
-    when(jdbc.queryForList(anyString(), eq(7L))).thenReturn(List.of(ordinary, reminder));
+    NotificationPersistenceAdapter adapter = mock(NotificationPersistenceAdapter.class);
+    Timestamp createdAt = Timestamp.valueOf("2026-08-30 00:00:00");
+    when(adapter.findByMemberId(7L))
+        .thenReturn(
+            List.of(
+                new NotificationView(2L, "ORDER_PAID", "ORDER", 30L, null, createdAt, null, null),
+                new NotificationView(1L, "SUBSCRIPTION_DELIVERY_REMINDER", "SCHEDULE", 20L, null, createdAt, 10L, createdAt)));
 
-    List<CommerceRowResponse> result =
-        new NotificationService(jdbc, java.time.Clock.systemUTC()).list(7L);
+    List<NotificationResponse> result = new NotificationService(adapter).list(7L);
 
     assertThat(result).hasSize(2);
-    assertThat(result.get(1).jsonValues())
-        .containsEntry("subscriptionId", 10L)
-        .containsEntry("scheduledDate", Date.valueOf("2026-08-30"));
-    assertThat(result.get(0).jsonValues())
-        .doesNotContainKey("subscriptionId")
-        .doesNotContainKey("scheduledDate");
-    verify(jdbc)
-        .queryForList(
-            org.mockito.ArgumentMatchers.contains("LEFT JOIN subscription_schedules"), eq(7L));
+    assertThat(result.get(1).subscriptionId()).isEqualTo(10L);
+    assertThat(result.get(1).scheduledDate()).isEqualTo(createdAt);
+    assertThat(result.get(0).subscriptionId()).isNull();
+    assertThat(result.get(0).scheduledDate()).isNull();
+    verify(adapter).findByMemberId(7L);
   }
 }

@@ -12,8 +12,8 @@ import static org.mockito.Mockito.when;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter;
 import org.junit.jupiter.api.Test;
-import com.pawcycle.backend.foundation.persistence.NativeQueryExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -21,7 +21,7 @@ import org.springframework.transaction.TransactionStatus;
 class PaymentReconciliationServiceTests {
   @Test
   void failedProcessingBillingUsesExplicitFailureAndRetryWithoutChargingAgain() {
-    NativeQueryExecutor jdbc = mock(NativeQueryExecutor.class);
+    PaymentReconciliationPersistenceAdapter adapter = mock(PaymentReconciliationPersistenceAdapter.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus transactionStatus = mock(TransactionStatus.class);
     TossBillingAdapter billing = mock(TossBillingAdapter.class);
@@ -32,28 +32,16 @@ class PaymentReconciliationServiceTests {
     when(billing.queryCharge("provider-order"))
         .thenReturn(new TossBillingAdapter.ChargeResult("FAILED", "DECLINED"));
 
-    Map<String, Object> work = new HashMap<>();
-    work.put("id", 44L);
-    work.put("type", "BILLING");
-    work.put("status", "PROCESSING");
-    work.put("provider_order_id", "provider-order");
-    work.put("reconciliation_attempts", 0);
-    Map<String, Object> locked = new HashMap<>();
-    locked.put("id", 44L);
-    locked.put("order_id", 12L);
-    locked.put("type", "BILLING");
-    locked.put("status", "PROCESSING");
-    locked.put("reconciliation_attempts", 1);
-    locked.put("member_id", 2L);
-    locked.put("source", "SUBSCRIPTION");
-    Map<String, Object> view = Map.of("paymentId", 44L, "status", "FAILED");
-    when(jdbc.queryForList(anyString(), any(Object[].class)))
-        .thenReturn(List.of(work), List.of(locked), List.of(view));
-    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    when(adapter.findForStart(44L))
+        .thenReturn(new PaymentReconciliationPersistenceAdapter.ReconciliationWork(44L, "BILLING", "PROCESSING", "provider-order", 0));
+    when(adapter.findForCompletion(44L))
+        .thenReturn(new PaymentReconciliationPersistenceAdapter.ReconciliationTarget(44L, 12L, "BILLING", "PROCESSING", 1, 2L, "SUBSCRIPTION"));
+    when(adapter.find(44L))
+        .thenReturn(new PaymentReconciliationPersistenceAdapter.PaymentReconciliationView(44L, 12L, "FAILED", 1, null));
 
     PaymentReconciliationService service =
         new PaymentReconciliationService(
-            jdbc,
+            adapter,
             manager,
             mock(TossPaymentAdapter.class),
             billing,
@@ -62,9 +50,10 @@ class PaymentReconciliationServiceTests {
             mock(InventoryService.class),
             mock(AdminAuditService.class),
             failures,
+            mock(DeliveryService.class),
             java.time.Clock.systemUTC());
 
-    assertThat(service.reconcile(44L)).containsEntry("status", "FAILED");
+    assertThat(service.reconcile(44L).status()).isEqualTo("FAILED");
     verify(failures).recordExplicitFailure(44L, "RECONCILED_FAILED", "DECLINED");
     verify(failures).prepareNextAttempt(44L);
     verify(billing, never()).charge(anyString(), anyString(), any());
