@@ -22,6 +22,8 @@ public interface ReviewRepository extends JpaRepository<ReviewEntity, Long> {
 
   List<ReviewEntity> findByProductIdAndMemberId(Long productId, Long memberId);
 
+  boolean existsByProductIdAndMemberId(Long productId, Long memberId);
+
   long countByProductId(Long productId);
 
   List<ReviewEntity> findByProductIdOrderByCreatedAtDescIdDesc(Long productId, Pageable pageable);

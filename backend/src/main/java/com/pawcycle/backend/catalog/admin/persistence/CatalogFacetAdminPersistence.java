@@ -167,7 +167,12 @@ public class CatalogFacetAdminPersistence {
   @Transactional
   public void removeCategoryFacet(long categoryId, long definitionId) {
     requireCategory(categoryId);
-    products.findAllForUpdate();
+    List<Long> categoryProductIds =
+        products.findAllForUpdate().stream()
+            .filter(product -> product.getCategory() != null)
+            .filter(product -> product.getCategory().getId().equals(categoryId))
+            .map(Product::getId)
+            .toList();
     categoryFacets.findAllForUpdate(categoryId);
     CategoryFacetEntity current =
         categoryFacets
@@ -176,7 +181,10 @@ public class CatalogFacetAdminPersistence {
                 () ->
                     CatalogAdminValidation.missing(
                         "CATEGORY_FACET_NOT_FOUND", "카테고리 facet 배정을 확인할 수 없습니다."));
-    if (productFacets.countByCategoryAndDefinition(categoryId, definitionId) > 0)
+    if (!categoryProductIds.isEmpty()
+        && !productFacets
+            .findAllByProductIdInAndDefinitionForUpdate(categoryProductIds, definitionId)
+            .isEmpty())
       throw CatalogAdminValidation.conflict(
           "CATEGORY_FACET_IN_USE", "상품이 사용 중인 facet 배정은 제거할 수 없습니다.");
     categoryFacets.delete(current);

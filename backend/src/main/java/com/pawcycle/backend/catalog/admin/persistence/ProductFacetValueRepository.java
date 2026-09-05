@@ -2,7 +2,9 @@ package com.pawcycle.backend.catalog.admin.persistence;
 
 import com.pawcycle.backend.catalog.admin.domain.ProductFacetValueEntity;
 import com.pawcycle.backend.catalog.admin.domain.ProductFacetValueId;
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -22,12 +24,14 @@ public interface ProductFacetValueRepository extends JpaRepository<ProductFacetV
           + "cf.displayOrder, fd.id, fo.displayOrder, fo.id")
   List<Long> findOptionIdsOrdered(@Param("productId") Long productId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
-      "select count(pfv) from ProductFacetValueEntity pfv "
-          + "where pfv.product.category.id = :categoryId "
-          + "and pfv.facetOption.facetDefinition.id = :definitionId")
-  long countByCategoryAndDefinition(
-      @Param("categoryId") Long categoryId, @Param("definitionId") Long definitionId);
+      "select pfv from ProductFacetValueEntity pfv "
+          + "where pfv.product.id in :productIds "
+          + "and pfv.facetOption.facetDefinition.id = :definitionId "
+          + "order by pfv.product.id, pfv.facetOption.id")
+  List<ProductFacetValueEntity> findAllByProductIdInAndDefinitionForUpdate(
+      @Param("productIds") List<Long> productIds, @Param("definitionId") Long definitionId);
 
   @Query(
       "select count(pfv) from ProductFacetValueEntity pfv "

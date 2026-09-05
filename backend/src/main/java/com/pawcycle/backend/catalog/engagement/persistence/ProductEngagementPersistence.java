@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.ZoneId;
 import java.util.List;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +69,9 @@ public class ProductEngagementPersistence {
   @Transactional
   public long insertReview(
       long productId, long memberId, int rating, String content, Timestamp now) {
+    if (reviews.existsByProductIdAndMemberId(productId, memberId)) {
+      throw new DuplicateKeyException("Review already exists for member and product");
+    }
     ReviewEntity review =
         reviews.saveAndFlush(
             new ReviewEntity(

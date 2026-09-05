@@ -24,7 +24,7 @@ public class ReviewEntity {
   private Long memberId;
 
   @Column(nullable = false)
-  private int rating;
+  private byte rating;
 
   @Column(nullable = false, columnDefinition = "TEXT")
   private String content;
@@ -50,7 +50,7 @@ public class ReviewEntity {
       LocalDateTime updatedAt) {
     this.productId = productId;
     this.memberId = memberId;
-    this.rating = rating;
+    this.rating = (byte) rating;
     this.content = content;
     this.visible = visible;
     this.createdAt = createdAt;
@@ -58,7 +58,7 @@ public class ReviewEntity {
   }
 
   public void update(int rating, String content, LocalDateTime updatedAt) {
-    this.rating = rating;
+    this.rating = (byte) rating;
     this.content = content;
     this.updatedAt = updatedAt;
   }
