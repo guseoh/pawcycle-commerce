@@ -3,7 +3,9 @@ package com.pawcycle.backend.common.api;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -27,12 +29,15 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class CommonValidationExceptionHandler {
   @ExceptionHandler(MethodArgumentNotValidException.class)
   ResponseEntity<ApiErrorResponse> methodArgumentNotValid(MethodArgumentNotValidException exception) {
-    List<FieldErrorResponse> fieldErrors = exception.getBindingResult().getFieldErrors().stream()
+    Map<String, FieldErrorResponse> errorsByField = new LinkedHashMap<>();
+    exception.getBindingResult().getFieldErrors().stream()
         .sorted(Comparator.comparing(org.springframework.validation.FieldError::getField)
             .thenComparing(error -> Objects.requireNonNullElse(error.getDefaultMessage(), "")))
-        .map(error -> new FieldErrorResponse(error.getField(), Objects.requireNonNullElse(error.getDefaultMessage(), "요청 값이 올바르지 않습니다.")))
-        .toList();
-    return validation(fieldErrors);
+        .map(error -> new FieldErrorResponse(
+            error.getField(),
+            Objects.requireNonNullElse(error.getDefaultMessage(), "요청 값이 올바르지 않습니다.")))
+        .forEach(error -> errorsByField.putIfAbsent(error.field(), error));
+    return validation(List.copyOf(errorsByField.values()));
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
