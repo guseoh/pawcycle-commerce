@@ -3,9 +3,7 @@ package com.pawcycle.backend.common.api;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -29,15 +27,20 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class CommonValidationExceptionHandler {
   @ExceptionHandler(MethodArgumentNotValidException.class)
   ResponseEntity<ApiErrorResponse> methodArgumentNotValid(MethodArgumentNotValidException exception) {
-    Map<String, FieldErrorResponse> errorsByField = new LinkedHashMap<>();
-    exception.getBindingResult().getFieldErrors().stream()
-        .sorted(Comparator.comparing(org.springframework.validation.FieldError::getField)
-            .thenComparing(error -> Objects.requireNonNullElse(error.getDefaultMessage(), "")))
-        .map(error -> new FieldErrorResponse(
-            error.getField(),
-            Objects.requireNonNullElse(error.getDefaultMessage(), "요청 값이 올바르지 않습니다.")))
-        .forEach(error -> errorsByField.putIfAbsent(error.field(), error));
-    return validation(List.copyOf(errorsByField.values()));
+    List<FieldErrorResponse> fieldErrors =
+        exception.getBindingResult().getFieldErrors().stream()
+            .sorted(
+                Comparator.comparing(org.springframework.validation.FieldError::getField)
+                    .thenComparing(
+                        error -> Objects.requireNonNullElse(error.getDefaultMessage(), "")))
+            .map(
+                error ->
+                    new FieldErrorResponse(
+                        error.getField(),
+                        Objects.requireNonNullElse(
+                            error.getDefaultMessage(), "요청 값이 올바르지 않습니다.")))
+            .toList();
+    return validation(fieldErrors);
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -47,12 +50,14 @@ public class CommonValidationExceptionHandler {
 
   @ExceptionHandler(MissingServletRequestParameterException.class)
   ResponseEntity<ApiErrorResponse> missingParameter(MissingServletRequestParameterException exception) {
-    return validation(List.of(new FieldErrorResponse(exception.getParameterName(), "요청 파라미터가 필요합니다.")));
+    return validation(
+        List.of(new FieldErrorResponse(exception.getParameterName(), "요청 파라미터가 필요합니다.")));
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   ResponseEntity<ApiErrorResponse> typeMismatch(MethodArgumentTypeMismatchException exception) {
-    return validation(List.of(new FieldErrorResponse(exception.getName(), "요청 값의 형식이 올바르지 않습니다.")));
+    return validation(
+        List.of(new FieldErrorResponse(exception.getName(), "요청 값의 형식이 올바르지 않습니다.")));
   }
 
   private ResponseEntity<ApiErrorResponse> validation(List<FieldErrorResponse> fieldErrors) {
