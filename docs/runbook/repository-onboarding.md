@@ -39,13 +39,7 @@ PowerShell:
 .\scripts\setup-git-hooks.ps1
 ```
 
-설치 후:
-
-```bash
-git config core.hooksPath
-```
-
-값이 `.githooks`인지 확인한다.
+설치 후 `git config core.hooksPath` 값이 `.githooks`인지 확인한다.
 
 ## Discord
 
@@ -60,11 +54,13 @@ python scripts/validate-discord-payloads.py
 
 Discord는 보조 알림 채널이며 CI·Review·병합 판정을 대신하지 않는다.
 
-## 병합 PR 기록
+## 병합 PR evidence
 
 과거 `docs/learning/pull-requests/**`는 역사 자료로 유지한다.
 
-새 병합 PR은 GitHub Pull Request 자체를 권위 evidence로 사용하며, 병합 직후 bot이 `main`에 Markdown 기록 commit을 추가하는 자동화는 사용하지 않는다. 필요하면 `.github/scripts/record-merged-pr.py`를 수동 export 호환 도구로 사용할 수 있다.
+새 병합 PR은 GitHub Pull Request 자체를 권위 evidence로 사용한다. 병합 직후 bot이 `main`에 별도 Markdown commit을 추가하는 자동화는 사용하지 않는다.
+
+장기 보존이 필요한 운영·복구·측정 결과만 Harness 조건에 따라 `docs/reports/**`에 기록한다.
 
 ## 작업 완료 전 최소 확인
 
