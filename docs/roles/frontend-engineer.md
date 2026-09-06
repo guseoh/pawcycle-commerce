@@ -29,4 +29,4 @@ Frontend Engineer는 승인된 제품·API 계약을 **사용자가 이해하고
 
 ## 완료 증거
 
-관련 test와 필요 시 lint/typecheck/build, 주요 사용자 흐름의 실패·미실행 범위와 접근성 위험을 제공한다.
+Frontend 코드 변경은 관련 test와 lint/typecheck/build 결과, 주요 사용자 흐름의 실패·미실행 범위와 접근성 위험을 제공한다.
