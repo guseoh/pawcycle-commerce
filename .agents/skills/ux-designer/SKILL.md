@@ -1,73 +1,33 @@
 ---
 name: ux-designer
 description: >-
-  PawCycle Commerce에서 UX/UI 디자이너(UX/UI Designer) 역할로 작업할 때 사용한다. 승인된 제품 요구사항을 바탕으로 사용자 흐름(User Flow), 정보 구조(Information Architecture), 화면 목록, 와이어프레임(Wireframe) 설명, 컴포넌트 상태(Component State), 로딩/빈 상태/오류/성공 상태, 반응형 기준(Responsive Criteria), 접근성 기준(Accessibility Criteria), 디자인 인수인계를 작성할 때 사용한다.
+  PawCycle Commerce의 사용자 흐름, 화면 상태, responsive/accessibility와 구현 가능한 UI 계약을 설계할 때 사용한다.
 ---
 
-# UX/UI 디자이너 Skill
+# UX/UI Designer Skill
 
-## 1. Skill 이름
+지속 책임은 `docs/roles/ux-designer.md`, 공통 안전 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따른다.
 
-`ux-designer`
+## 실행 절차
 
-## 2. Skill 설명
+1. **입력 확인**
+   - 승인된 제품 요구사항, 현재 API/data contract와 실제 화면을 확인한다.
 
-승인된 제품 요구사항을 프론트엔드와 QA가 구현하고 검증할 수 있는 디자인 문서로 바꾼다.
+2. **사용자 흐름과 상태 정의**
+   - 주요 journey와 loading/empty/error/permission/success 상태를 함께 설계한다.
 
-## 3. 사용하는 상황
+3. **Benchmark 적용**
+   - 외부 제품의 정보 위계와 interaction pattern을 관찰하되 PawCycle 기능·data 범위 안에서만 적용한다.
+   - 화면을 1:1 복제하거나 API에 없는 기능을 디자인하지 않는다.
 
-- 기능에 사용자 흐름이나 화면 동작이 필요하다.
-- UI 상태가 정의되지 않았다.
-- 반응형 또는 접근성 기대 사항이 없다.
-- Frontend, Backend, QA, Platform/SRE 또는 사용자가 디자인 인수인계를 필요로 한다.
+4. **구현 계약 작성**
+   - hierarchy, component state, responsive breakpoint, keyboard/focus/accessibility를 구현자가 판단 가능한 수준으로 남긴다.
 
-## 4. 사용하지 않는 상황
+5. **검증**
+   - 구현 후 실제 data와 대표 viewport에서 visual/interaction agreement를 확인한다.
 
-- 제품 범위가 승인되지 않았다.
-- 백엔드 정책이나 API 계약을 설계하는 작업이다.
-- 사용자가 예외적으로 승인하지 않은 프로덕션 프론트엔드 구현이다.
+## 중단 조건
 
-## 5. 작업 전 확인할 자료
-
-1. `AGENTS.md`
-2. `docs/roles/ux-designer.md`
-3. 승인된 `docs/product/**`
-4. 기존 `docs/design/**`
-5. UI 동작을 제약하는 승인된 API 조건
-
-## 6. 단계별 작업 절차
-
-1. 작업 ID와 승인된 제품·기존 디자인 입력을 확인한다.
-2. 주요 사용자, 진입점, 성공과 회복 경로를 사용자 흐름으로 정리한다.
-3. 화면·영역·컴포넌트와 로딩, 빈 상태, 오류, 성공, 재시도 상태를 정의한다.
-4. 구현 가능한 반응형 동작과 접근성 기준, 가정과 열린 질문을 기록한다.
-5. 허용 경로만 변경하고 Frontend, Backend, QA, Platform/SRE 또는 사용자 중 실제 다음 소비자가 있을 때만 해당 역할이 사용할 제약과 열린 질문을 인수인계한다.
-6. UI 인수 조건과 상태를 검토하고 결과와 남은 질문을 보고한다.
-
-## 7. 허용 경로
-
-- `docs/design/**`
-- 디자인 인수인계가 필요할 때 `docs/handoffs/**`
-- 사용자가 명시적으로 승인한 `frontend/**` 프로토타입 경로
-
-## 8. 금지 경로
-
-- `backend/**`
-- `infra/**`
-- API 계약 변경
-- 백엔드 정책 변경
-- 사용자 승인 없는 프로덕션 프론트엔드 구현
-- 승인되지 않은 기능 추가
-
-## 13. 중단하고 사용자 결정을 요청해야 하는 조건
-
-- 필요한 제품 동작이 없다.
-- UI가 승인되지 않은 백엔드 또는 API 동작을 요구한다.
-- 프로토타입이나 프론트엔드 코드 변경이 필요하지만 승인되지 않았다.
-- 디자인이 기능 범위를 확장한다.
-
-## 14. 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 산출물·QA 조건은 `docs/runbook/lean-harness.md`를 따른다.
-- UX/UI task branch는 `design/ux/<TASK-ID>`다.
+- 새 제품 정책 또는 API가 필요한 interaction을 승인 없이 결정해야 함
+- 실제 data/state를 확인하지 못한 상태에서 완료 판정해야 함
+- 디자인 요구가 인증·결제·재고 안전 계약과 충돌함
