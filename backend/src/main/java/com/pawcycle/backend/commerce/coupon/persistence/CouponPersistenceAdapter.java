@@ -64,6 +64,18 @@ public class CouponPersistenceAdapter {
     coupons.flush();
   }
 
+  @Transactional(readOnly = true)
+  public CouponView find(long couponId) {
+    return coupons.findById(couponId).map(coupon -> new CouponView(
+        coupon.getId(), coupon.getName(), coupon.getDiscountType(), coupon.getDiscountValue(),
+        coupon.getMinimumOrderAmount(), coupon.getMaximumDiscountAmount(),
+        timestamp(coupon.getValidFrom()), timestamp(coupon.getValidUntil()), coupon.isActive())).orElse(null);
+  }
+
+  public void require(long couponId) {
+    requireCoupon(couponId);
+  }
+
   @Transactional
   public void issue(long couponId, long memberId) {
     requireCoupon(couponId);

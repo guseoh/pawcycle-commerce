@@ -6,7 +6,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi, type TossConfirmResult } from "@/lib/commerce-final-api";
+import { paymentApi, type TossConfirmResult } from "@/lib/payment-api";
 import { buildLoginHref, formatPrice } from "@/lib/frontend-utils";
 import { readTossCheckoutContext, readTossSuccessCallback, saveTossSuccessCallback, validateTossSuccess, type TossSuccessCallback } from "@/lib/toss-payment";
 
@@ -52,7 +52,7 @@ function SuccessContent() {
     const confirmKey = `${callback.paymentKey}\u0000${callback.providerOrderId}\u0000${expected.amount}`;
     if (!confirmPromiseRef.current || confirmKeyRef.current !== confirmKey) {
       confirmKeyRef.current = confirmKey;
-      confirmPromiseRef.current = executeWithCsrf((csrf) => commerceFinalApi.confirmToss(callback.paymentKey, callback.providerOrderId, expected.amount, csrf));
+      confirmPromiseRef.current = executeWithCsrf((csrf) => paymentApi.confirmToss(callback.paymentKey, callback.providerOrderId, expected.amount, csrf));
     }
 
     let active = true;

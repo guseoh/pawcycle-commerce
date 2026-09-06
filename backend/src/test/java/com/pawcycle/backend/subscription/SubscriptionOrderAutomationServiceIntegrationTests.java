@@ -14,6 +14,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
+import com.pawcycle.backend.member.address.application.MemberAddressCommand;
 import com.pawcycle.backend.subscription.api.CreatePetRequest;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
@@ -186,7 +187,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
       addressId =
           addresses.create(
               member.getId(),
-              new com.pawcycle.backend.commerce.AddressRequest(
+              new MemberAddressCommand(
                   "new default", "recipient", "010-0000-0000", "00000", "new address", null));
     } else {
       addresses.makeDefault(member.getId(), addressId);

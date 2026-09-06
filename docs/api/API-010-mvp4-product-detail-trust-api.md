@@ -28,7 +28,7 @@
 
 - `GET /api/products/{productId}/reviews?page=&size=`: visible Review page
 - `GET /api/products/{productId}/reviews/me`: 로그인 회원의 Review, 없으면 `REVIEW_NOT_FOUND`
-- `POST /api/products/{productId}/reviews`: `{rating: 1..5, content}`
+- `POST /api/products/{productId}/reviews`: `{rating: 1..5, content}`; 성공 시 `201 Created`, `Location: /api/reviews/{reviewId}`, `ReviewResponse` body
 - `PATCH/DELETE /api/reviews/{reviewId}`: 작성자만 가능
 - `GET /api/admin/product-reviews?page=&size=&productId=`: 전체 상태 조회
 - `PATCH /api/admin/product-reviews/{reviewId}/visibility`: `{visible}`
@@ -38,13 +38,15 @@ Review 작성은 회원 소유 Order의 해당 Product SKU가 실제 존재하�
 ## Product Q&A
 
 - `GET /api/products/{productId}/questions?page=&size=`: visible Question page
-- `POST /api/products/{productId}/questions`: `{content}`
+- `POST /api/products/{productId}/questions`: `{content}`; 성공 시 `201 Created`, `Location: /api/product-questions/{questionId}`, `QuestionResponse` body
 - `PATCH/DELETE /api/product-questions/{questionId}`: 답변 전 작성자만 가능
 - `GET /api/admin/product-questions?page=&size=&productId=`
 - `PUT /api/admin/product-questions/{questionId}/answer`: `{answer}`
 - `PATCH /api/admin/product-questions/{questionId}/visibility`: `{visible}`
 
 공개 Question 응답은 `questionId`, `content`, `answer`, `answered`, `createdAt`, `updatedAt`만 포함한다. 최초 답변 transaction에서 기존 Notification 구조로 `PRODUCT_QUESTION_ANSWERED`를 한 번 생성하고, 답변 수정에서는 생성하지 않는다. 답변이 등록된 Question은 작성자가 수정·삭제할 수 없다.
+
+Review와 Question의 성공한 DELETE는 body가 없으므로 `204 No Content`를 반환한다.
 
 목록은 `{items, page, size, totalElements, totalPages}`이며 공개 정렬은 최신 `createdAt DESC, id DESC`다. 공통 오류는 기존 `code`, `message`, `fieldErrors` shape를 따른다.
 

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, type ProductSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi } from "@/lib/commerce-final-api";
+import { cartApi } from "@/lib/cart-api";
+import { wishlistApi } from "@/lib/wishlist-api";
 import { buildLoginHref, formatPrice, notifyCommerceChanged, userFacingCatalogLabel } from "@/lib/frontend-utils";
 
 type WishlistCacheEntry = { ids: Set<number> | null; request: Promise<Set<number>> | null };
@@ -22,7 +23,7 @@ function loadWishlist(memberId: number): Promise<Set<number>> {
   const entry = wishlistEntry(memberId);
   if (entry.ids) return Promise.resolve(entry.ids);
   if (!entry.request) {
-    const request = commerceFinalApi.wishlist().then((result) => {
+    const request = wishlistApi.list().then((result) => {
       const current = wishlistByMember.get(memberId);
       const ids = new Set(result.items.map((item) => item.productId));
       if (current?.request === request) { current.ids = ids; current.request = null; }
@@ -102,7 +103,7 @@ function CatalogWishlistButton({ productId, productName }: { productId: number; 
       if (auth.status !== "authenticated") return;
       setBusy(true); setMessage(null);
       const memberId = auth.memberId;
-      void auth.executeWithCsrf((csrf) => saved ? commerceFinalApi.deleteWishlist(productId, csrf) : commerceFinalApi.addWishlist(productId, csrf)).then(() => {
+      void auth.executeWithCsrf((csrf) => saved ? wishlistApi.remove(productId, csrf) : wishlistApi.add(productId, csrf)).then(() => {
         const next = !saved;
         setSaved(next);
         const entry = memberId === null ? null : wishlistEntry(memberId);
@@ -132,7 +133,7 @@ function CatalogQuickPurchase({ product, productName, href }: { product: Product
     <button className="button button-secondary" type="button" disabled={busy} onClick={() => {
       if (busy) return;
       setBusy(true); setMessage(null);
-      void auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(singleSku.skuId, 1, csrf)).then(() => {
+      void auth.executeWithCsrf((csrf) => cartApi.add(singleSku.skuId, 1, csrf)).then(() => {
         setMessage(`${productName} 1개를 장바구니에 담았어요.`);
         notifyCommerceChanged();
       }).catch((error: unknown) => {

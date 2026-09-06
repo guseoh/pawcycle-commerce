@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
-import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
+import { orderApi, type OrderSummary } from "@/lib/order-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
 
@@ -13,7 +13,7 @@ export function CommerceOrderList() {
   const [orders, setOrders] = useState<OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    void commerceFinalApi.orders().then(setOrders).catch((reason: unknown) => {
+    void orderApi.list().then(setOrders).catch((reason: unknown) => {
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
       setError(reason instanceof ApiError ? reason.message : "주문을 불러오지 못했습니다.");
     });

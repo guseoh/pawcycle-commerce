@@ -5,6 +5,7 @@ import com.pawcycle.backend.commerce.ReturnService;
 import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,10 +23,11 @@ public class ReturnRequestController {
   }
 
   @PostMapping
-  public ReturnResponse request(
+  public ResponseEntity<ReturnResponse> request(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {
-    return returns.request(principal.memberId(), orderId, request.reason());
+    return ResponseEntity.status(201)
+        .body(returns.request(principal.memberId(), orderId, request.reason()));
   }
 }

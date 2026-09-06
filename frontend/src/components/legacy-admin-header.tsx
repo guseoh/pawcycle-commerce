@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { commerceFinalApi } from "@/lib/commerce-final-api";
+import { cartApi } from "@/lib/cart-api";
+import { wishlistApi } from "@/lib/wishlist-api";
 import { useAuth } from "@/lib/auth-context";
 import { useCatalogDiscovery } from "./catalog-discovery";
 import { buildLoginHref } from "@/lib/frontend-utils";
@@ -101,7 +102,7 @@ export function LegacyAdminHeader() {
     }
     const refreshBadges = () => {
       const request = ++requestRef.current;
-      void Promise.all([commerceFinalApi.cart(), commerceFinalApi.wishlist()]).then(([cart, wishlist]) => {
+      void Promise.all([cartApi.get(), wishlistApi.list()]).then(([cart, wishlist]) => {
         if (!active || request !== requestRef.current) return;
         setCartCount(cart.items.reduce((total, item) => total + item.quantity, 0));
         setWishlistCount(wishlist.items.length);

@@ -1,4 +1,4 @@
-import { finalProductApi, type RecommendationItem, type RecommendationResponse } from "./final-product-api.ts";
+import { recommendationApi, type RecommendationItem, type RecommendationResponse } from "./recommendation-api.ts";
 
 export type RecommendationRequest =
   | { kind: "personalized"; petId: number }
@@ -15,11 +15,11 @@ export function recommendationRequestPetId(request: RecommendationRequest): numb
 
 export function loadRecommendation(request: RecommendationRequest): Promise<RecommendationResponse> {
   switch (request.kind) {
-    case "personalized": return finalProductApi.recommendations.personalized(request.petId);
-    case "popular": return finalProductApi.recommendations.popular(request.limit, request.petType);
-    case "trending": return finalProductApi.recommendations.trending(request.limit, request.petType);
-    case "related": return finalProductApi.recommendations.related(request.productId);
-    case "complementary": return finalProductApi.recommendations.complementary(request.productId);
+    case "personalized": return recommendationApi.personalized(request.petId);
+    case "popular": return recommendationApi.popular(request.limit, request.petType);
+    case "trending": return recommendationApi.trending(request.limit, request.petType);
+    case "related": return recommendationApi.related(request.productId);
+    case "complementary": return recommendationApi.complementary(request.productId);
   }
 }
 

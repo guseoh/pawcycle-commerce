@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi, type WishlistItem } from "@/lib/commerce-final-api";
+import { wishlistApi, type WishlistItem } from "@/lib/wishlist-api";
 import { buildLoginHref, formatDateTime, notifyCommerceChanged } from "@/lib/frontend-utils";
 
 export default function WishlistPage() {
@@ -32,7 +32,7 @@ function WishlistForMember() {
 
   const load = useCallback(() => {
     const request = ++requestRef.current;
-    void commerceFinalApi.wishlist().then((result) => {
+    void wishlistApi.list().then((result) => {
       if (!activeRef.current || request !== requestRef.current) return;
       setItems(result.items); setListError(null);
     }).catch((reason: unknown) => {
@@ -61,7 +61,7 @@ function WishlistForMember() {
     setRemoveBlockedMessage(null);
     setBusy(item.productId); setItemErrors((current) => { const next = { ...current }; delete next[item.productId]; return next; });
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.deleteWishlist(item.productId, csrf));
+      await auth.executeWithCsrf((csrf) => wishlistApi.remove(item.productId, csrf));
       setItems((current) => current?.filter((candidate) => candidate.productId !== item.productId) ?? []);
       setRemoved(item); setUndoError(null); notifyCommerceChanged();
       requestAnimationFrame(() => document.querySelector<HTMLElement>(".wishlist-row .wishlist-remove, #wishlist-title")?.focus());
@@ -77,7 +77,7 @@ function WishlistForMember() {
     if (undoTimerRef.current !== null) { window.clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
     setBusy(item.productId); setUndoError(null);
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.addWishlist(item.productId, csrf));
+      await auth.executeWithCsrf((csrf) => wishlistApi.add(item.productId, csrf));
       setItems((current) => current?.some((candidate) => candidate.productId === item.productId) ? current : [...(current ?? []), item]);
       setRemoved(null); notifyCommerceChanged();
     } catch (reason) {

@@ -1,5 +1,5 @@
 import type { CatalogDiscovery, ProductFilters, ProductSort } from "./api.ts";
-import type { InteractionContext } from "./final-product-api.ts";
+import type { InteractionContext } from "./interaction-api.ts";
 
 export const PRODUCT_SORTS: { value: ProductSort; label: string }[] = [
   { value: "RECOMMENDED", label: "추천순" }, { value: "NEWEST", label: "최신순" },

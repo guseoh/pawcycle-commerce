@@ -5,10 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { LogoutControl } from "@/components/logout-control";
 import { ApiError } from "@/lib/api";
-import { commerceFinalApi, type OrderSummary } from "@/lib/commerce-final-api";
+import { orderApi, type OrderSummary } from "@/lib/order-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatIsoLocalDate, formatOrderStatus, formatPrice } from "@/lib/frontend-utils";
-import { finalProductApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/final-product-api";
+import { reorderApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/reorder-api";
+import { cartApi } from "@/lib/cart-api";
+import { notificationApi } from "@/lib/notification-api";
 import { subscriptionApi, type SubscriptionSummary } from "@/lib/subscription-api";
 
 type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
@@ -44,7 +46,7 @@ export default function MyPage() {
   const loadSnapshot = useCallback(async () => {
     if (auth.status !== "authenticated") return;
     try {
-      const [orders, subscriptions, cart, notifications] = await Promise.all([commerceFinalApi.orders(), loadAllSubscriptions(), commerceFinalApi.cart(), commerceFinalApi.notifications()]);
+      const [orders, subscriptions, cart, notifications] = await Promise.all([orderApi.list(), loadAllSubscriptions(), cartApi.get(), notificationApi.list()]);
       setSnapshot({ orders, subscriptions, cartQuantity: cart.items.reduce((total, item) => total + item.quantity, 0), unreadNotifications: notifications.filter((item) => !item.readAt).length });
       setSnapshotError(null);
     } catch (reason) {
@@ -80,7 +82,7 @@ function ReorderTimingSection() {
     const timer = window.setTimeout(() => {
       if (!active) return;
       setItems(null); setError(null);
-      void finalProductApi.reorderTiming().then((result) => { if (active) setItems(reorderTimingItems(result)); }).catch((reason: unknown) => { if (active) setError(reason instanceof ApiError ? reason.message : "재구매 시점을 불러오지 못했습니다."); });
+      void reorderApi.timing().then((result) => { if (active) setItems(reorderTimingItems(result)); }).catch((reason: unknown) => { if (active) setError(reason instanceof ApiError ? reason.message : "재구매 시점을 불러오지 못했습니다."); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
   }, [auth.status, retry]);

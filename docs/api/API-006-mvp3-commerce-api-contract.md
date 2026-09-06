@@ -47,6 +47,12 @@ Toss Test Browser 연동은 `local-integration`에서 명시적 opt-in으로만 
 | GET, POST | `/api/admin/membership-grades` | 등급 조회와 생성 |
 | POST | `/api/admin/members/{memberId}/membership/evaluate` | 최근 12개월 PAID 주문 기준 평가, 존재하지 않는 회원은 404 |
 
+## HTTP 계약 수렴 보완
+
+- 회원 배송지 생성·수정은 `MemberAddressRequest`를 사용하며 `name`을 포함한 필수·길이 검증은 HTTP 경계에서 수행한다. 구독 배송지 snapshot 변경은 `SubscriptionShippingAddressRequest`를 사용하고 `name` 없이도 기존 wire shape를 유지한다.
+- `PATCH /api/admin/coupons/{couponId}`는 전송된 필드만 병합한다. `maximumDiscountAmount: null`은 명시적 초기화로 허용하고 `{}` 및 필수 필드의 명시적 `null`은 `400 / VALIDATION_FAILED`로 거부한다. 전체 기존 payload도 계속 허용한다.
+- 성공한 body 없는 mutation은 `204 No Content`를 사용한다. 생성 응답은 식별 가능한 resource에 대해 `201 Created`와 stable `Location`을 제공한다.
+
 ## Category 및 Subscription 보류
 
 - Product 생성은 활성 실제 Category가 필수다. 내부 시스템 slug `__pawcycle_uncategorized__` Category는 legacy backfill 전용이며 신규 지정 또는 되돌리기에 사용할 수 없다. 이 slug는 일반 Category API의 slug 형식으로 생성할 수 없다.

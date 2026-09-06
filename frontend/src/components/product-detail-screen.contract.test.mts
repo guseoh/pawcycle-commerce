@@ -35,8 +35,8 @@ test("canonical product detail does not invoke the legacy subscription endpoint"
 test("canonical product detail keeps subscription entry in order detail", () => {
   const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /CANONICAL_SUBSCRIPTION_START_HREF/);
-  assert.match(source, /commerceFinalApi\.addCart/);
-  assert.match(source, /commerceFinalApi\.addWishlist/);
+  assert.match(source, /cartApi\.add/);
+  assert.match(source, /wishlistApi\.(add|remove)/);
   assert.doesNotMatch(source, /정기배송 시작|새 정기배송|\/subscriptions\/new/);
   assert.match(orderSource, /정기배송으로 다시 받기/);
   assert.match(orderSource, /OrderSubscriptionOptionsPanel/);

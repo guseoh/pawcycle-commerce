@@ -11,6 +11,7 @@ import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionSummaryResponse;
 import com.pawcycle.backend.subscription.api.UpdatePetRequest;
 import jakarta.validation.Valid;
+import java.net.URI;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,7 +37,8 @@ public class SubscriptionController {
   ResponseEntity<PetResponse> createPet(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody CreatePetRequest request) {
-    return ResponseEntity.status(201).body(service.createPet(principal.memberId(), request));
+    PetResponse response = service.createPet(principal.memberId(), request);
+    return ResponseEntity.created(URI.create("/api/pets/" + response.petId())).body(response);
   }
 
   @GetMapping("/pets")

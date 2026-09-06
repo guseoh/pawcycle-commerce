@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi, type CartItem, type PricingBreakdown } from "@/lib/commerce-final-api";
+import { cartApi, type CartItem, type PricingBreakdown } from "@/lib/cart-api";
 import { buildLoginHref, cartQuantityErrorForMaximum, cartQuantityForUpdate, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 
 type CartMutationError = { operation: "update" | "delete"; message: string };
@@ -24,7 +24,7 @@ export default function CartPage() {
   const [quantityErrors, setQuantityErrors] = useState<Record<number, string>>({});
 
   const load = useCallback(() => {
-    void commerceFinalApi.cart()
+    void cartApi.get()
       .then((result) => {
         setItems(result.items);
         setPricing(result.pricing);
@@ -67,7 +67,7 @@ export default function CartPage() {
     setBusy(item.skuId);
     setItemErrors((current) => { const next = { ...current }; delete next[item.skuId]; return next; });
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.updateCart(item.skuId, quantity, csrf));
+      await auth.executeWithCsrf((csrf) => cartApi.update(item.skuId, quantity, csrf));
       notifyCommerceChanged();
       load();
       setStatusMessage(`${item.productName} 수량을 ${quantity}개로 바꿨어요. 금액을 다시 계산했습니다.`);
@@ -86,7 +86,7 @@ export default function CartPage() {
     setBusy(item.skuId);
     setItemErrors((current) => { const next = { ...current }; delete next[item.skuId]; return next; });
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.deleteCart(item.skuId, csrf));
+      await auth.executeWithCsrf((csrf) => cartApi.remove(item.skuId, csrf));
       notifyCommerceChanged();
       load();
       setStatusMessage(`${item.productName}을 장바구니에서 삭제했어요. 금액을 다시 계산했습니다.`);

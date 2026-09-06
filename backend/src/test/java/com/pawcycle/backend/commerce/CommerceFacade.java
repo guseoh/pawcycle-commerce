@@ -10,8 +10,11 @@ import com.pawcycle.backend.commerce.order.api.OrderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderSummaryResponse;
 import com.pawcycle.backend.commerce.payment.application.PaymentApplicationService;
 import com.pawcycle.backend.commerce.payment.api.PaymentResponse;
-import com.pawcycle.backend.member.address.api.AddressResponse;
+import com.pawcycle.backend.member.address.api.MemberAddressRequest;
+import com.pawcycle.backend.member.address.application.AddressView;
 import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
+import com.pawcycle.backend.member.address.application.MemberAddressCommand;
+import com.pawcycle.backend.member.address.application.SubscriptionShippingAddressCommand;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -66,12 +69,12 @@ class CommerceFacade {
         .toList();
   }
 
-  long createAddress(long memberId, AddressRequest request) {
-    return addressService.create(memberId, request);
+  long createAddress(long memberId, MemberAddressRequest request) {
+    return addressService.create(memberId, command(request));
   }
 
-  void updateAddress(long memberId, long addressId, AddressRequest request) {
-    addressService.update(memberId, addressId, request);
+  void updateAddress(long memberId, long addressId, MemberAddressRequest request) {
+    addressService.update(memberId, addressId, command(request));
   }
 
   void deleteAddress(long memberId, long addressId) {
@@ -82,8 +85,16 @@ class CommerceFacade {
     addressService.makeDefault(memberId, addressId);
   }
 
-  void updateSubscriptionShipping(long memberId, long subscriptionId, AddressRequest request) {
-    addressService.updateSubscriptionShipping(memberId, subscriptionId, request);
+  void updateSubscriptionShipping(long memberId, long subscriptionId, MemberAddressRequest request) {
+    addressService.updateSubscriptionShipping(
+        memberId,
+        subscriptionId,
+        new SubscriptionShippingAddressCommand(
+            request.recipientName(),
+            request.recipientPhone(),
+            request.postalCode(),
+            request.addressLine1(),
+            request.addressLine2()));
   }
 
   CommercePayload checkout(
@@ -161,7 +172,7 @@ class CommerceFacade {
     return values;
   }
 
-  private static Map<String, Object> addressMap(AddressResponse address) {
+  private static Map<String, Object> addressMap(AddressView address) {
     Map<String, Object> values = new LinkedHashMap<>();
     values.put("addressId", address.addressId());
     values.put("name", address.name());
@@ -172,6 +183,16 @@ class CommerceFacade {
     values.put("addressLine2", address.addressLine2());
     values.put("isDefault", address.isDefault());
     return values;
+  }
+
+  private static MemberAddressCommand command(MemberAddressRequest request) {
+    return new MemberAddressCommand(
+        request.name(),
+        request.recipientName(),
+        request.recipientPhone(),
+        request.postalCode(),
+        request.addressLine1(),
+        request.addressLine2());
   }
 
   private static Map<String, Object> checkoutMap(CheckoutResponse response) {

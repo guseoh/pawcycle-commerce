@@ -1,4 +1,4 @@
-import { ApiError } from "./api.ts";
+import { requestJson, requestVoid } from "./http/client.ts";
 
 export type ProductStatus = "DRAFT" | "PUBLIC" | "INACTIVE";
 export type SkuStatus = "ACTIVE" | "INACTIVE";
@@ -28,80 +28,69 @@ export interface ProductFacetAssignment { productId: number; facetOptionIds: num
 export interface CategoryFacetAssignment { categoryId: number; facetDefinitionId: number; displayOrder: number }
 export interface CategoryFacetList { categoryId: number; facets: CategoryFacetAssignment[] }
 
-async function request<T>(path: string, method = "GET", body?: unknown, csrf?: string): Promise<T> {
-  const response = await fetch(`/api/admin${path}`, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(csrf ? { "X-CSRF-TOKEN": csrf } : {}) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const text = await response.text();
-  let result: unknown = null;
-  try { result = text ? JSON.parse(text) : null; } catch {
-    throw new ApiError(response.status, { code: "INVALID_API_RESPONSE", message: "서버 응답을 확인할 수 없습니다.", fieldErrors: [] });
-  }
-  if (!response.ok) {
-    if (result && typeof result === "object" && "code" in result && typeof result.code === "string" && "message" in result && typeof result.message === "string" && "fieldErrors" in result && Array.isArray(result.fieldErrors)) {
-      throw new ApiError(response.status, { code: result.code, message: result.message, fieldErrors: result.fieldErrors });
-    }
-    throw new ApiError(response.status, { code: "INTERNAL_ERROR", message: "요청을 처리하지 못했습니다.", fieldErrors: [] });
-  }
-  return result as T;
+function requestInit(method: string, body?: unknown, csrf?: string): RequestInit {
+  const headers = new Headers();
+  if (body !== undefined) headers.set("Content-Type", "application/json");
+  if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+  return { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
 }
+
+function adminPath(path: string): string { return `/api/admin${path}`; }
 
 function editable<Input, View, Patch = Partial<Input>>(path: string) {
   return {
-    create: (body: Input, csrf: string) => request<View>(path, "POST", body, csrf),
-    patch: (id: number, body: Patch, csrf: string) => request<View>(`${path}/${id}`, "PATCH", body, csrf),
+    create: (body: Input, csrf: string) => requestJson<View>(adminPath(path), requestInit("POST", body, csrf)),
+    patch: (id: number, body: Patch, csrf: string) => requestJson<View>(adminPath(`${path}/${id}`), requestInit("PATCH", body, csrf)),
   };
 }
 function removable<Input, View>(path: string) {
-  return { ...editable<Input, View>(path), remove: (id: number, csrf: string) => request<void>(`${path}/${id}`, "DELETE", undefined, csrf) };
+  return { ...editable<Input, View>(path), remove: (id: number, csrf: string) => requestVoid(adminPath(`${path}/${id}`), { method: "DELETE", headers: { "X-CSRF-TOKEN": csrf } }) };
 }
 
 export const adminCatalogApi = {
   brands: {
     ...editable<BrandInput, Brand>("/brands"),
-    list: () => request<{ brands: Brand[] }>("/brands").then((r) => r.brands),
-    get: (id: number) => request<Brand>(`/brands/${id}`),
+    list: () => requestJson<{ brands: Brand[] }>(adminPath("/brands")).then((r) => r.brands),
+    get: (id: number) => requestJson<Brand>(adminPath(`/brands/${id}`)),
   },
   categories: {
     ...editable<CategoryInput, Category>("/categories"),
-    list: () => request<{ categories: Category[] }>("/categories").then((r) => r.categories),
-    get: (id: number) => request<Category>(`/categories/${id}`),
+    list: () => requestJson<{ categories: Category[] }>(adminPath("/categories")).then((r) => r.categories),
+    get: (id: number) => requestJson<Category>(adminPath(`/categories/${id}`)),
   },
   products: {
     ...editable<ProductInput, Product, ProductPatch>("/products"),
-    list: () => request<{ products: Product[] }>("/products").then((r) => r.products),
-    get: (id: number) => request<Product>(`/products/${id}`),
+    list: () => requestJson<{ products: Product[] }>(adminPath("/products")).then((r) => r.products),
+    get: (id: number) => requestJson<Product>(adminPath(`/products/${id}`)),
   },
   skus: (productId: number) => ({
     ...editable<SkuInput, Sku, SkuPatch>(`/products/${productId}/skus`),
-    list: () => request<{ skus: Sku[] }>(`/products/${productId}/skus`).then((r) => r.skus),
-    optionAssignment: (skuId: number) => request<SkuOptionAssignment>(`/products/${productId}/skus/${skuId}/option-values`),
-    assignOptions: (skuId: number, optionValueIds: number[], csrf: string) => request<SkuOptionAssignment>(`/products/${productId}/skus/${skuId}/option-values`, "PUT", { optionValueIds }, csrf),
+    list: () => requestJson<{ skus: Sku[] }>(adminPath(`/products/${productId}/skus`)).then((r) => r.skus),
+    optionAssignment: (skuId: number) => requestJson<SkuOptionAssignment>(adminPath(`/products/${productId}/skus/${skuId}/option-values`)),
+    assignOptions: (skuId: number, optionValueIds: number[], csrf: string) => requestJson<SkuOptionAssignment>(adminPath(`/products/${productId}/skus/${skuId}/option-values`), requestInit("PUT", { optionValueIds }, csrf)),
   }),
   images: (productId: number) => ({
     ...removable<ImageInput, CatalogImage>(`/products/${productId}/images`),
-    list: () => request<{ images: CatalogImage[] }>(`/products/${productId}/images`).then((r) => r.images),
+    list: () => requestJson<{ images: CatalogImage[] }>(adminPath(`/products/${productId}/images`)).then((r) => r.images),
   }),
   optionGroups: (productId: number) => ({
     ...removable<OptionGroupInput, OptionGroup>(`/products/${productId}/option-groups`),
-    list: () => request<{ optionGroups: OptionGroup[] }>(`/products/${productId}/option-groups`).then((r) => r.optionGroups),
+    list: () => requestJson<{ optionGroups: OptionGroup[] }>(adminPath(`/products/${productId}/option-groups`)).then((r) => r.optionGroups),
   }),
   optionValues: (productId: number, groupId: number) => removable<OptionValueInput, OptionValue>(`/products/${productId}/option-groups/${groupId}/values`),
   facets: {
     ...removable<FacetInput, Facet>("/facets"),
-    list: () => request<{ facetDefinitions: Facet[] }>("/facets").then((r) => r.facetDefinitions),
-    get: (id: number) => request<Facet>(`/facets/${id}`),
+    list: () => requestJson<{ facetDefinitions: Facet[] }>(adminPath("/facets")).then((r) => r.facetDefinitions),
+    get: (id: number) => requestJson<Facet>(adminPath(`/facets/${id}`)),
   },
   facetOptions: (definitionId: number) => removable<OptionValueInput, FacetOption>(`/facets/${definitionId}/options`),
-  assignCategoryFacet: (categoryId: number, definitionId: number, displayOrder: number, csrf: string) => request<CategoryFacetAssignment>(`/categories/${categoryId}/facets/${definitionId}`, "PUT", { displayOrder }, csrf),
-  removeCategoryFacet: (categoryId: number, definitionId: number, csrf: string) => request<void>(`/categories/${categoryId}/facets/${definitionId}`, "DELETE", undefined, csrf),
-  categoryFacets: (categoryId: number) => request<CategoryFacetList>(`/categories/${categoryId}/facets`),
-  productFacetAssignment: (productId: number) => request<ProductFacetAssignment>(`/products/${productId}/facet-values`),
-  assignProductFacets: (productId: number, facetOptionIds: number[], csrf: string) => request<ProductFacetAssignment>(`/products/${productId}/facet-values`, "PUT", { facetOptionIds }, csrf),
+  assignCategoryFacet: (categoryId: number, definitionId: number, displayOrder: number, csrf: string) => requestJson<CategoryFacetAssignment>(adminPath(`/categories/${categoryId}/facets/${definitionId}`), requestInit("PUT", { displayOrder }, csrf)),
+  removeCategoryFacet: (categoryId: number, definitionId: number, csrf: string) => requestVoid(adminPath(`/categories/${categoryId}/facets/${definitionId}`), requestInit("DELETE", undefined, csrf)),
+  categoryFacets: (categoryId: number) => requestJson<CategoryFacetList>(adminPath(`/categories/${categoryId}/facets`)),
+  productFacetAssignment: (productId: number) => requestJson<ProductFacetAssignment>(adminPath(`/products/${productId}/facet-values`)),
+  assignProductFacets: (productId: number, facetOptionIds: number[], csrf: string) => requestJson<ProductFacetAssignment>(adminPath(`/products/${productId}/facet-values`), requestInit("PUT", { facetOptionIds }, csrf)),
   details: (productId: number) => ({
     ...removable<DetailInput, DetailSection>(`/products/${productId}/detail-sections`),
-    list: () => request<{ detailSections: DetailSection[] }>(`/products/${productId}/detail-sections`).then((r) => r.detailSections),
+    list: () => requestJson<{ detailSections: DetailSection[] }>(adminPath(`/products/${productId}/detail-sections`)).then((r) => r.detailSections),
   }),
 };
