@@ -50,10 +50,10 @@ GitHub 파일 쓰기 또는 ref 변경 Tool을 호출하기 직전에 다음을 
 1. 대상 저장소가 `guseoh/pawcycle-commerce`인지 확인한다.
 2. 대상 branch를 명시적으로 확인한다.
 3. 파일 create/update/delete에는 branch 인자를 생략하지 않는다.
-4. 대상 branch가 `main`이면 사용자가 현재 요청에서 직접 main 쓰기를 명시한 경우가 아니면 중단한다.
+4. 파일 create/update/delete의 대상 branch가 `main`이면 중단한다.
 5. 예상 HEAD 또는 파일 SHA를 사용해 stale write를 거부한다.
 
-일반 작업에서 `main` 변경은 승인된 PR merge를 통해서만 수행한다. reset, rebase, force push, history rewrite를 복구 수단으로 사용하지 않는다.
+`main` 내용 변경은 승인된 PR merge를 통해서만 수행한다. reset, rebase, force push, history rewrite를 복구 수단으로 사용하지 않는다.
 
 사용자가 특정 PR의 병합까지 명시적으로 위임한 경우에는 최신 head SHA, 필수 CI, 차단 리뷰와 mergeable 상태를 다시 확인한 뒤 그 PR에 한해서 병합할 수 있다. 이것은 자동 병합 정책을 의미하지 않는다.
 
