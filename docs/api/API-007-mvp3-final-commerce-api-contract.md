@@ -14,7 +14,9 @@
 
 취소는 PAID + PREPARING delivery + SUCCEEDED payment에서만 가능하고 같은 요청은 기존 aggregate를 반환한다. 반품 요청의 최초·멱등 응답은 `returnId`, `status`, `reason`, `rejectionReason`, `restock`, `requestedAt` projection을 동일하게 반환한다. 반품 요청 가능 기간은 `pawcycle.commerce.return-request-days` 설정을 사용하며 기본값은 배송 완료 후 7일이고, 주문 상세 `availableActions`도 같은 `delivered_at + requestDays` 조건을 사용한다. Billing preparation은 DB에서 READY→PROCESSING을 원자적으로 점유한 뒤 Provider issuance를 한 번만 실행한다. Billing/Refund PROCESSING 대사는 Provider write를 재실행하지 않고 query 경로만 사용하며, unresolved 결과는 원래 미확정 상태를 유지한다. Billing 대사 실패는 기존 명시적 실패와 동일한 release/retry/HELD 정책을 따른다. 명시적 Billing retry의 재고 확보 실패는 schedule을 `HELD/PAYMENT_RETRY_STOCK_UNAVAILABLE`로 유지하고 READY attempt를 만들지 않으며, 성공한 재예약은 다음 payment ID의 `RESERVE` inventory movement를 남긴다. reconciliation 한도가 10인 결제·환불은 Operations reconcile action을 노출하지 않는다. 0원 refund는 Provider 호출 없이 로컬에서 성공 처리하며, 0원보다 큰 refund만 Provider I/O를 수행한다. Refund provider 호출은 transaction 밖에서 이뤄지며, provider 미구성은 503, 상태 전이·retry 한도 위반은 409으로 기존 `ApiErrorResponse`로 응답한다.
 
-취소와 반품 요청 생성은 새 projection body를 유지하면서 `201 Created`를 반환한다. 두 projection에는 별도의 stable public GET URI가 없으므로 `Location`은 추가하지 않는다. Pet 생성은 `201 Created`와 `/api/pets/{petId}` Location을 반환한다. 성공한 body 없는 mutation은 `204 No Content`를 반환한다.
+취소와 반품 요청은 최초 생성과 멱등 재요청을 Controller 경계에서 구분하지 않으므로 기존 aggregate 반환 계약에 맞춰 `200 OK`와 projection body를 유지한다. 두 projection에는 별도의 stable public GET URI가 없다. Pet 생성은 `201 Created`와 `/api/pets/{petId}` Location을 반환한다. 성공한 body 없는 mutation은 `204 No Content`를 반환한다.
+
+관리자 Coupon `PATCH`는 현재 row를 pessimistic lock으로 읽은 뒤 전송된 필드만 기존 값과 병합한다. 따라서 서로 다른 필드의 동시 PATCH가 stale full-state merge로 서로를 덮어쓰지 않으며, 기존 `Timestamp` 값을 병합에 재사용할 때는 UTC 기준 `LocalDateTime`으로 명시 변환해 JVM 기본 시간대에 의존하지 않는다.
 
 ## Provider와 운영 경계
 

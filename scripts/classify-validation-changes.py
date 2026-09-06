@@ -55,11 +55,17 @@ def role_components(path: str) -> tuple[str, ...] | None:
 
 def is_backend_http_contract(path: str) -> bool:
     """Return whether a backend path can change the frontend-visible HTTP contract."""
-    if not path.startswith("backend/src/main/java/"):
+    source_prefix = "backend/src/main/java/com/pawcycle/backend/"
+    if not path.startswith(source_prefix):
+        return False
+    if "/performance/" in path or "/internal/" in path:
         return False
     if "/api/" in path:
         return True
     if "/common/error/" in path or path.endswith("/common/security/ApiErrorWriter.java"):
+        return True
+    filename = PurePosixPath(path).name
+    if filename.endswith("Controller.java") or filename.endswith("ExceptionHandler.java"):
         return True
     return bool(re.search(r"/(?:commerce|subscription)/[^/]*(?:Request|Response)\.java$", path))
 

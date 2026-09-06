@@ -27,7 +27,7 @@ public class ReturnRequestController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {
-    return ResponseEntity.status(201)
-        .body(returns.request(principal.memberId(), orderId, request.reason()));
+    return ResponseEntity.ok(
+        returns.request(principal.memberId(), orderId, request.reason()));
   }
 }

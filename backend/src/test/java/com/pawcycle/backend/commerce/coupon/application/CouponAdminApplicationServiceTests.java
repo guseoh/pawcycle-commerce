@@ -13,6 +13,7 @@ import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter
 import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,22 +38,25 @@ class CouponAdminApplicationServiceTests {
             new BigDecimal("10"),
             new BigDecimal("1000"),
             new BigDecimal("5000"),
-            Timestamp.valueOf("2026-08-01 00:00:00"),
-            Timestamp.valueOf("2026-09-01 00:00:00"),
+            Timestamp.from(Instant.parse("2026-08-01T00:00:00Z")),
+            Timestamp.from(Instant.parse("2026-09-01T00:00:00Z")),
             true);
-    when(coupons.find(7L)).thenReturn(current);
+    when(coupons.findForUpdate(7L)).thenReturn(current);
   }
 
   @Test
-  void nameOnlyPatchPreservesUnchangedFields() {
+  void nameOnlyPatchPreservesUnchangedFieldsUsingLockedCurrentState() {
     CouponPatchCommand patch = namePatch("새 쿠폰");
 
     service.update(1L, 7L, patch);
 
+    verify(coupons).findForUpdate(7L);
     CouponRequest merged = updatedRequest();
     assertThat(merged.name()).isEqualTo("새 쿠폰");
     assertThat(merged.discountType()).isEqualTo("PERCENTAGE");
     assertThat(merged.discountValue()).isEqualByComparingTo("10");
+    assertThat(merged.validFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+    assertThat(merged.validUntil()).isEqualTo(LocalDateTime.of(2026, 9, 1, 0, 0));
     assertThat(merged.active()).isTrue();
   }
 
@@ -167,7 +171,7 @@ class CouponAdminApplicationServiceTests {
 
   @Test
   void validPatchForUnknownCouponKeepsNotFoundContract() {
-    when(coupons.find(999L)).thenReturn(null);
+    when(coupons.findForUpdate(999L)).thenReturn(null);
     CouponPatchCommand patch = namePatch("없음");
 
     service.update(1L, 999L, patch);

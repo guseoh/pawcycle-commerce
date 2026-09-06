@@ -6,6 +6,9 @@ import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter
 import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -32,7 +35,7 @@ public class CouponAdminApplicationService {
 
   @Transactional
   public void update(long adminId, long couponId, CouponPatchCommand request) {
-    CouponView current = coupons.find(couponId);
+    CouponView current = coupons.findForUpdate(couponId);
     List<FieldErrorResponse> errors = validate(request, current);
     if (!errors.isEmpty()) throw new CouponValidationException(errors);
     if (current == null) {
@@ -50,8 +53,8 @@ public class CouponAdminApplicationService {
         request.hasDiscountValue() ? request.discountValue() : current.discountValue(),
         request.hasMinimumOrderAmount() ? request.minimumOrderAmount() : current.minimumOrderAmount(),
         request.hasMaximumDiscountAmount() ? request.maximumDiscountAmount() : current.maximumDiscountAmount(),
-        request.hasValidFrom() ? request.validFrom() : current.validFrom().toLocalDateTime(),
-        request.hasValidUntil() ? request.validUntil() : current.validUntil().toLocalDateTime(),
+        request.hasValidFrom() ? request.validFrom() : utc(current.validFrom()),
+        request.hasValidUntil() ? request.validUntil() : utc(current.validUntil()),
         request.hasActive() ? request.active() : current.active());
   }
 
@@ -68,13 +71,19 @@ public class CouponAdminApplicationService {
     if (request.hasValidUntil() && request.validUntil() == null) errors.add(new FieldErrorResponse("validUntil", "필수입니다."));
     if (request.hasActive() && request.active() == null) errors.add(new FieldErrorResponse("active", "필수입니다."));
     if (current != null && errors.stream().noneMatch(error -> error.field().equals("validFrom") || error.field().equals("validUntil"))) {
-      LocalDateTimePair range = new LocalDateTimePair(request.hasValidFrom() ? request.validFrom() : current.validFrom().toLocalDateTime(), request.hasValidUntil() ? request.validUntil() : current.validUntil().toLocalDateTime());
+      LocalDateTimePair range = new LocalDateTimePair(
+          request.hasValidFrom() ? request.validFrom() : utc(current.validFrom()),
+          request.hasValidUntil() ? request.validUntil() : utc(current.validUntil()));
       if (range.from() != null && range.until() != null && !range.from().isBefore(range.until())) errors.add(new FieldErrorResponse("validUntil", "validFrom보다 이후여야 합니다."));
     }
     return errors.stream().sorted(Comparator.comparing(FieldErrorResponse::field).thenComparing(FieldErrorResponse::message)).toList();
   }
 
-  private record LocalDateTimePair(java.time.LocalDateTime from, java.time.LocalDateTime until) {}
+  private static LocalDateTime utc(Timestamp value) {
+    return LocalDateTime.ofInstant(value.toInstant(), ZoneOffset.UTC);
+  }
+
+  private record LocalDateTimePair(LocalDateTime from, LocalDateTime until) {}
 
   @Transactional
   public void issue(long adminId, long couponId, long memberId) {

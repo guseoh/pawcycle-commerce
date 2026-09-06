@@ -61,9 +61,19 @@ class ChangeClassifierTest(unittest.TestCase):
             "backend/src/main/java/com/pawcycle/backend/catalog/engagement/api/ProductReviewController.java",
             "backend/src/main/java/com/pawcycle/backend/commerce/AddressRequest.java",
             "backend/src/main/java/com/pawcycle/backend/common/error/ApiErrorResponse.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/SubscriptionController.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/RepeatCommerceController.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/SubscriptionExceptionHandler.java",
+            "backend/src/main/java/com/pawcycle/backend/commerce/CommerceExceptionHandler.java",
         ):
             with self.subTest(path=path):
                 self.assert_groups([path], backend=True, frontend=True)
+
+    def test_internal_performance_controller_remains_backend_only(self) -> None:
+        self.assert_groups(
+            ["backend/src/main/java/com/pawcycle/backend/subscription/performance/SubscriptionBurstMeasurementController.java"],
+            backend=True,
+        )
 
     def test_backend_internal_and_test_paths_remain_backend_only(self) -> None:
         for path in (
@@ -140,6 +150,7 @@ class ChangeClassifierTest(unittest.TestCase):
             backend=True,
             frontend=True,
         )
+
 
 class WorkflowContractTest(unittest.TestCase):
     @classmethod

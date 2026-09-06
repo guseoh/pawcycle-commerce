@@ -17,7 +17,7 @@ class CommerceResourceStatusControllerTests {
   private final AuthenticatedMemberPrincipal principal = new AuthenticatedMemberPrincipal(7L);
 
   @Test
-  void cancellationCreationReturnsCreatedBodyWithoutInventedLocation() {
+  void cancellationRequestKeepsOkForCreatedOrIdempotentlyReplayedAggregate() {
     CancellationService service = mock(CancellationService.class);
     CancellationResponse expected =
         new CancellationResponse(11L, "REQUESTED", "사유", Timestamp.valueOf("2026-08-01 00:00:00"), null);
@@ -27,13 +27,13 @@ class CommerceResourceStatusControllerTests {
         new CancellationController(service)
             .request(principal, 19L, new ReasonRequest("사유"));
 
-    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
     assertThat(response.getBody()).isEqualTo(expected);
     assertThat(response.getHeaders().getFirst("Location")).isNull();
   }
 
   @Test
-  void returnCreationReturnsCreatedBodyWithoutInventedLocation() {
+  void returnRequestKeepsOkForCreatedOrIdempotentlyReplayedAggregate() {
     ReturnService service = mock(ReturnService.class);
     ReturnResponse expected =
         new ReturnResponse(13L, "REQUESTED", "사유", null, null, Timestamp.valueOf("2026-08-01 00:00:00"), null, null, null);
@@ -43,7 +43,7 @@ class CommerceResourceStatusControllerTests {
         new ReturnRequestController(service)
             .request(principal, 23L, new ReasonRequest("사유"));
 
-    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
     assertThat(response.getBody()).isEqualTo(expected);
     assertThat(response.getHeaders().getFirst("Location")).isNull();
   }
