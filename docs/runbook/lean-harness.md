@@ -3,7 +3,7 @@
 ## 1. 목적과 권위
 
 - 상태: Approved
-- 기준: PCC_V5
+- 기준: PCC_V6
 
 이 문서는 PawCycle의 **작업 등급, 저장소 변경과 실제 운영 실행 구분, 최소 PR evidence, 조건부 산출물, AI Prompt, 검증과 feedback loop**의 권위 원본이다.
 
