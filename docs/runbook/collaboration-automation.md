@@ -55,7 +55,7 @@ Production image publish는 모든 `main` push를 release 후보로 취급하지
 - `infra/production/**`
 - `.github/workflows/publish-production-images.yml`
 
-README, AGENTS, Runbook, PR 기록 같은 문서 변경은 Production image publish와 자동 deploy chain을 시작하지 않아야 한다.
+README, AGENTS, Runbook 같은 문서 변경은 Production image publish와 자동 deploy chain을 시작하지 않아야 한다.
 
 `workflow_dispatch`는 별도 명시적 실행 경로이며 실제 Production 실행 승인을 자동으로 의미하지 않는다.
 
@@ -75,9 +75,16 @@ Discord는 GitHub 상태를 알리는 보조 채널이다.
 
 GitHub Pull Request 자체를 병합 이력과 리뷰·CI evidence의 권위 원본으로 사용한다.
 
-과거 `docs/learning/pull-requests/**` 기록은 역사 자료로 보존하지만, **병합 직후 GitHub Actions가 새 Markdown을 만들고 `main`에 직접 commit/push하는 자동화는 사용하지 않는다.** 이 방식은 main drift를 만들고 문서 commit이 다른 workflow side effect를 시작할 수 있기 때문이다.
+과거 `docs/learning/pull-requests/**` 기록은 역사 자료로 보존하지만, **병합 직후 GitHub Actions가 새 Markdown을 만들고 `main`에 직접 commit/push하는 자동화와 전용 exporter/fixture/validator는 retire한다.**
 
-`.github/scripts/record-merged-pr.py`와 fixture 검증은 기존 기록을 재생성하거나 수동 export가 필요한 경우를 위한 호환 도구로만 유지한다. 새 PR 기록을 자동으로 repository history에 추가하지 않는다.
+이유는 다음과 같다.
+
+- GitHub PR과 별도 Markdown에 같은 사실을 중복 저장했다.
+- merge 뒤 bot commit이 `main` HEAD를 다시 움직였다.
+- 문서 commit이 다른 `main push` workflow의 side effect를 만들 수 있었다.
+- 새 task-ID family가 생길 때 별도 parser까지 갱신해야 했다.
+
+새 병합 기록은 PR 본문, Review, CI run과 merge commit을 그대로 evidence로 사용한다. 장기 보존이 필요한 별도 실행 증거만 `docs/reports/**`에 남긴다.
 
 ## 검증 명령
 
@@ -95,7 +102,6 @@ python -m unittest \
   scripts.test_discord_context
 
 python scripts/validate-discord-payloads.py
-python scripts/validate-obsidian-record.py
 ```
 
 workflow 또는 classifier 자체를 바꾼 경우 Repository Validation에서 영향 lane 전체가 다시 선택되는지 확인한다.
