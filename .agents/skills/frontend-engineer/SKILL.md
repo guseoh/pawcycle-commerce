@@ -1,78 +1,38 @@
 ---
 name: frontend-engineer
 description: >-
-  PawCycle Commerce에서 프론트엔드 엔지니어(Frontend Engineer) 역할로 작업할 때 사용한다. 승인된 Next.js와 TypeScript 페이지, React 컴포넌트(Component), API 연동, UI 상태, 접근성(Accessibility), 프론트엔드 테스트, 프론트엔드 인수인계를 구현하거나 작성하되 백엔드 비즈니스 규칙을 중복하지 않을 때 사용한다.
+  PawCycle Commerce의 Next.js/React UI, TypeScript API client, UI state, accessibility와 Frontend 테스트를 구현할 때 사용한다.
 ---
 
-# 프론트엔드 엔지니어 Skill
+# Frontend Engineer Skill
 
-## 1. Skill 이름
+지속 책임은 `docs/roles/frontend-engineer.md`, Frontend 코드 불변식은 `frontend/AGENTS.md`, 공통 안전 규칙은 루트 `AGENTS.md`를 따른다.
 
-`frontend-engineer`
+## 실행 절차
 
-## 2. Skill 설명
+1. **계약 확인**
+   - 승인된 UX와 Backend API contract를 확인한다.
+   - 서버 권위 값과 local UI state를 구분한다.
 
-제품, 디자인, API 입력을 기준으로 승인된 프론트엔드 동작을 구현하고 서버 비즈니스 규칙은 백엔드에 남긴다.
+2. **상태 설계**
+   - loading, empty, error, success, retry, auth-expiry 상태를 함께 정의한다.
+   - mutation 재시도와 입력 보존이 서버 안전 경계를 우회하지 않는지 확인한다.
 
-## 3. 사용하는 상황
+3. **최소 구현**
+   - 기존 shared HTTP/client/component 패턴을 재사용한다.
+   - API에 없는 제품 정책이나 가짜 데이터를 만들지 않는다.
 
-- 승인된 디자인에 프론트엔드 구현이 필요하다.
-- Next.js 페이지, React 컴포넌트, TypeScript 타입을 변경해야 한다.
-- 승인된 API 계약에 따른 연동이 필요하다.
-- 프론트엔드 테스트나 버그 수정이 필요하다.
+4. **검증**
+   - helper와 API adapter contract test를 먼저 실행한다.
+   - 중요한 interaction regression을 추가하고 lint, typecheck, test, build로 확대한다.
 
-## 4. 사용하지 않는 상황
+5. **결과 보고**
+   - 사용자에게 보이는 변화, contract 영향, 미실행 Browser/Provider 흐름과 남은 UX 위험을 정리한다.
 
-- 디자인 또는 API 계약이 승인되지 않았다.
-- 백엔드 구현 작업이다.
-- 인프라 구현 작업이다.
-- UI에 서버 정책을 중복 구현해야만 하는 변경이다.
+## 중단 조건
 
-## 5. 작업 전 확인할 자료
-
-1. `AGENTS.md`
-2. `frontend/AGENTS.md`
-3. `docs/roles/frontend-engineer.md`
-4. 승인된 제품 요구사항
-5. `docs/design/**`의 승인된 디자인 문서
-6. `docs/api/**`의 승인된 API 계약
-7. `docs/handoffs/**`의 관련 백엔드 인수인계
-8. 기존 프론트엔드 코드와 테스트
-
-## 6. 단계별 작업 절차
-
-1. 작업 ID와 승인된 제품·디자인·API 입력을 확인한다.
-2. 누락된 API·디자인 상태, 기존 관례와 최소 변경 범위를 확인한다.
-3. 서버·로컬 UI·form 상태를 구분하고 서버 비즈니스 결과를 재계산하지 않는 UI를 구현한다.
-4. 필요한 상태·접근성과 집중 테스트를 추가한다.
-5. 허용 경로만 변경하고 실제 QA 또는 다른 역할이 사용할 때만 인수인계를 작성한다. 인수인계를 작성한 경우에만 알려진 제한과 QA 메모를 포함한다.
-6. 관련 type check·lint·test·build를 실행하고 API 사용, 미실행과 위험을 보고한다.
-
-## 7. 허용 경로
-
-- `frontend/**`
-- `docs/handoffs/**`
-- 승인된 프론트엔드 관련 문서
-
-## 8. 금지 경로
-
-- `backend/**`
-- `infra/**`
-- 승인 없는 API 계약 변경
-- 가격, 할인, 재고, 결제, 구독 정책 중복 구현
-- 승인 없는 디자인 변경
-- 승인 없는 의존성 추가
-
-## 13. 중단하고 사용자 결정을 요청해야 하는 조건
-
-- API 동작을 추측해야 한다.
-- 승인된 디자인에 필요한 상태가 없다.
-- 비즈니스 정책을 프론트엔드 로직에 구현해야 한다.
-- 새 의존성 또는 상태 관리 라이브러리가 필요하다.
-- 요청된 수정에 백엔드 또는 인프라 변경이 필요하다.
-
-## 14. 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 산출물·QA 조건은 `docs/runbook/lean-harness.md`를 따른다.
-- 프론트엔드 task branch는 `feat/fe/<TASK-ID>`다.
+- 승인된 UX에 필요한 상태·필드·작업이 Backend API contract에 없어서 Backend 동작을 추측하거나 fallback을 만들어야 함
+- API에 없는 제품 동작을 새로 결정해야 함
+- 인증·결제·가격·재고 정책 변경이 필요함
+- 새 Backend contract나 dependency 승인이 필요함
+- 실제 Production 실행이 필요함

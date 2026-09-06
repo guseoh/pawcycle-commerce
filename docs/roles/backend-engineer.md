@@ -1,94 +1,33 @@
-# 백엔드 엔지니어(Backend Engineer)
+# Backend Engineer 역할
 
-## 1. 역할 목적
+Backend Engineer는 승인된 도메인·API·데이터 계약을 **서버 권위와 정합성을 보존하며 구현**한다.
 
-승인된 백엔드 동작을 도메인 규칙(Domain Rule), API, 영속성(Persistence), 트랜잭션(Transaction), 보안(Security), 테스트로 구현한다.
+공통 Git·PR·산출물 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따르고, 코드 세부 불변식은 `backend/AGENTS.md`를 따른다.
 
-## 2. 주요 책임
+## 책임
 
-- 승인된 도메인 동작을 모델링한다.
-- 승인된 API 계약(API Contract)에 맞게 API를 구현한다.
-- 트랜잭션 경계를 정의한다.
-- 영속성 동작을 구현한다.
-- 인증(Authentication)과 인가(Authorization)를 처리한다.
-- 동시성(Concurrency)과 멱등성(Idempotency) 요구사항을 다룬다.
-- 단위 테스트(Unit Test)와 통합 테스트(Integration Test)를 작성한다.
-- 실제 변경이 있으면 API·DB·ADR을 갱신하고, 실제 소비자가 있을 때만 인수인계를 작성한다.
+- Domain / Application Service 구현
+- HTTP API, validation, error contract
+- transaction, persistence, lock, CAS, idempotency
+- Spring Security 기반 서버 보안 경계
+- Backend unit/integration/regression test
 
-## 3. 책임 밖의 업무
+## 판단 기준
 
-- 프론트엔드 구현
-- 인프라 구현
-- 승인되지 않은 제품 정책 결정
-- 측정 없는 성능 최적화(Performance Optimization)
-- 요청되지 않은 광범위한 리팩터링(Refactoring)
+- 가격·재고·결제·구독 상태는 서버 권위를 유지한다.
+- transaction 또는 persistence 구조를 바꿀 때 기존 lock·idempotency·snapshot 의미를 함께 검증한다.
+- JPA는 목적이 아니라 기본 persistence 수단이며, 의미가 명확한 SQL은 제한적으로 유지할 수 있다.
+- 성능 변경은 측정 근거가 있을 때만 제안한다.
 
-## 4. 작업 입력
+## 사용자 결정이 필요한 경우
 
-- 승인된 요구사항
-- 인수 조건(Acceptance Criteria)
-- 도메인 용어집과 규칙
-- 승인된 ADR(Architecture Decision Record)
-- 승인된 OpenAPI 계약(OpenAPI Contract)
-- 기존 백엔드 코드와 테스트
+- 새 도메인 규칙
+- 외부 API wire contract 변경
+- DB schema/migration
+- 인증·인가 정책
+- 결제·재고·구독 correctness trade-off
+- 신규 dependency나 architecture 도입
 
-## 5. 주요 결과
+## 완료 증거
 
-- Spring Boot 코드
-- 백엔드 테스트
-- API 문서 변경
-- DB 변경 문서
-- 필요한 ADR
-- 실제 다음 역할이 사용할 때 프론트엔드, QA 또는 SRE 인수인계
-
-## 6. 수정 권한
-
-- `backend/**`
-- `docs/api/**`
-- `docs/adr/**`
-- `docs/handoffs/**`
-- 승인된 범위의 `docs/domain/**`
-
-## 7. 금지 사항
-
-- `frontend/**`를 수정하지 않는다.
-- `infra/**`를 수정하지 않는다.
-- 승인된 비즈니스 정책을 변경하지 않는다.
-- 승인 없이 프로덕션 의존성(Production Dependency)을 추가하지 않는다.
-- 측정 근거 없이 최적화하지 않는다.
-
-## 8. 협업 대상
-
-- 기획자: 정책 명확화
-- UX/UI 디자이너: 흐름 제약 확인
-- 프론트엔드 엔지니어: API 인수인계
-- QA 엔지니어: 테스트 시나리오와 버그 리포트
-- 플랫폼/SRE: 성능 또는 운영 증거
-
-## 9. 검토 관문
-
-- API 동작이 승인된 계약과 일치한다.
-- 의미 있게 바뀐 트랜잭션 경계와 동시성 제어 근거를 구현 문서·API/ADR·PR 중 가까운 권위 위치에서 설명할 수 있다.
-- 테스트가 비즈니스 규칙을 보호한다.
-- 실제 DB 변경이 있으면 영향이 문서화됐다.
-- 실제 소비자가 있으면 필요한 인수인계가 작성됐다.
-
-## 10. 에스컬레이션 조건
-
-- 제품 정책이 없다.
-- API 계약과 요구사항이 충돌한다.
-- 영속성 설계가 아키텍처에 영향을 준다.
-- 동시성 또는 멱등성 정책이 불명확하다.
-
-## 11. 완료 조건
-
-- 백엔드 동작이 승인 범위 안에서 구현됐다.
-- 관련 테스트가 통과했다.
-- API와 DB 영향이 문서화됐다.
-- 알려진 위험이 보고됐다.
-
-## 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 백엔드 task branch는 `feat/be/<TASK-ID>` 형식이다.
-- 하나의 task branch에는 하나의 활성 작업만 둔다.
+변경 성격에 맞는 test와 CI 결과, 실패·미실행 항목, 남은 correctness 위험을 제공한다. 실제 Production을 실행하지 않았다면 Production 검증으로 표현하지 않는다.

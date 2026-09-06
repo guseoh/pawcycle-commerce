@@ -1,76 +1,37 @@
 ---
 name: qa-engineer
 description: >-
-  PawCycle Commerce에서 QA 엔지니어(QA Engineer) 역할로 작업할 때 사용한다. 승인된 요구사항, 인수 조건(Acceptance Criteria), API 계약(API Contract), 디자인 문서, 구현 diff를 기준으로 테스트 계획(Test Plan), 테스트 케이스(Test Case), 실패 테스트(Failing Test), E2E 테스트, 버그 리포트(Bug Report), 심각도(Severity), 재검증(Retest), QA 인수인계를 작성할 때 사용한다.
+  PawCycle Commerce의 요구사항·API·구현을 독립 검증하고 재현 가능한 bug/regression evidence를 만들 때 사용한다.
 ---
 
-# QA 엔지니어 Skill
+# QA Engineer Skill
 
-## 1. Skill 이름
+지속 책임은 `docs/roles/qa-engineer.md`, QA 불변식은 `qa/AGENTS.md`, 공통 안전 규칙은 루트 `AGENTS.md`를 따른다.
 
-`qa-engineer`
+## 실행 절차
 
-## 2. Skill 설명
+1. **검증 기준 확인**
+   - 승인된 AC, API/domain contract와 구현 diff를 확인한다.
 
-제품 코드를 직접 바꾸지 않고 승인된 요구사항을 기준으로 구현을 검증하고 재현 가능한 증거를 만든다.
+2. **위험 기반 테스트 선택**
+   - 정상/실패/boundary/auth/state/idempotency/data consistency 중 변경에 필요한 경계를 고른다.
+   - 모든 체크리스트를 기계적으로 실행하지 않는다.
 
-## 3. 사용하는 상황
+3. **재현**
+   - bug는 failing test 또는 반복 가능한 절차로 먼저 재현한다.
+   - expected와 actual, 환경·사전 조건을 분리한다.
 
-- 기능에 테스트 계획이 필요하다.
-- 구현 결과에 QA 검증이 필요하다.
-- 결함에 재현 증거가 필요하다.
-- 수정 후 재검증이 필요하다.
-- 회귀 위험을 문서화해야 한다.
+4. **독립 재검증**
+   - 개발 후속 수정이 들어오면 같은 evidence path로 재검증한다.
+   - 필요하면 전체 regression으로 확대한다.
 
-## 4. 사용하지 않는 상황
+5. **판정**
+   - PASS/FAIL/BLOCKED/NOT_RUN을 실제 실행 범위에 맞게 구분한다.
+   - 미실행 Provider/Production 흐름을 PASS로 확대하지 않는다.
 
-- 제품 코드를 직접 고치는 작업이다.
-- 요구사항이 테스트 가능할 만큼 승인되지 않았다.
-- 사용자가 백엔드, 프론트엔드, 인프라 구현을 요청했다.
+## 중단 조건
 
-## 5. 작업 전 확인할 자료
-
-1. `AGENTS.md`
-2. `qa/AGENTS.md`
-3. `docs/roles/qa-engineer.md`
-4. 승인된 제품 요구사항과 인수 조건
-5. UI가 있으면 승인된 디자인 문서
-6. 연동이 있으면 승인된 API 계약
-7. 관련 구현 diff
-8. 기존 테스트
-
-## 6. 단계별 작업 절차
-
-1. 작업 ID, 승인된 인수 조건과 구현 diff를 확인한다.
-2. 각 인수 조건을 검증 항목에 연결하고 관련 정상·예외·경계, 권한·인가, 상태 전이, 중복 요청·멱등성과 회귀 위험을 고른다. UI가 있으면 관련 접근성과 반응형 동작을 포함한다.
-3. 가장 작고 신뢰할 수 있는 독립 테스트를 실행하거나 정의한다.
-4. 결함은 실패 테스트 또는 재현 가능한 버그 리포트로 남기고 제품 코드를 직접 수정하지 않는다.
-5. 수정 뒤 같은 증거 경로로 재검증하고 실제 담당 역할이 사용할 때만 인수인계를 작성한다.
-6. 결과, 심각도, 차단 사유와 남은 회귀 위험을 보고한다.
-
-## 7. 허용 경로
-
-- `qa/**`
-- 애플리케이션 영역의 테스트 전용 경로
-- `docs/qa/**`
-- `docs/handoffs/**`
-
-## 8. 금지 경로
-
-- 결함을 수정하거나 숨기는 제품 코드 변경
-- 인수 조건 변경
-- 요구사항 승인
-- 재현되지 않은 문제를 확정 버그로 기록
-
-## 13. 중단하고 사용자 결정을 요청해야 하는 조건
-
-- 인수 조건이 없거나 서로 모순된다.
-- 결함이 데이터 손실, 결제, 보안, 고객 신뢰에 영향을 줄 수 있다.
-- 테스트 환경 접근이 없다.
-- 검증하려면 제품 코드를 바꿔야 한다.
-
-## 14. 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 산출물·QA 조건은 `docs/runbook/lean-harness.md`를 따른다.
-- QA task branch는 `test/qa/<TASK-ID>`다.
+- expected behavior 자체가 승인되지 않음
+- 제품 코드를 바꿔야만 테스트를 통과시킬 수 있음
+- 재현 환경이나 필수 contract가 없어 판정할 수 없음
+- Secret·Production 실행이 필요하지만 승인되지 않음

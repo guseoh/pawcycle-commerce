@@ -66,7 +66,6 @@ jobs:
 
   classify:
     name: Classify validation changes
-    needs: conventions
     runs-on: ubuntu-latest
     outputs:
       harness: ${{ steps.paths.outputs.harness }}
@@ -94,7 +93,7 @@ jobs:
   harness:
     name: Harness validation
     if: needs.classify.outputs.harness == 'true'
-    needs: [conventions, classify]
+    needs: classify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
@@ -105,17 +104,21 @@ jobs:
       - name: Compile Harness Python
         run: |
           python -m py_compile \
+            scripts/task_id.py \
             scripts/validate-task-artifacts.py \
             scripts/validate-pr-body-encoding.py \
             scripts/classify-validation-changes.py \
             scripts/run-agent-benchmark.py \
             scripts/validate-agent-benchmark.py \
             scripts/render-agent-benchmark-charts.py \
-            .github/scripts/collect-discord-context.py
+            .github/scripts/collect-discord-context.py \
+            .github/scripts/normalize-discord-context.py
 
       - name: Run Harness regressions
         run: |
           python -m unittest \
+            scripts.test_task_id \
+            scripts.test_normalize_discord_context \
             scripts.test_validate_task_artifacts \
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
@@ -124,12 +127,11 @@ jobs:
             scripts.test_discord_payload \
             scripts.test_send_discord_notification
           python scripts/validate-discord-payloads.py
-          python scripts/validate-obsidian-record.py
 
   backend:
     name: Backend and MySQL validation
     if: needs.classify.outputs.backend == 'true'
-    needs: [conventions, classify]
+    needs: classify
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -214,7 +216,7 @@ jobs:
   frontend:
     name: Frontend validation
     if: needs.classify.outputs.frontend == 'true'
-    needs: [conventions, classify]
+    needs: classify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
@@ -252,62 +254,38 @@ jobs:
   production:
     name: Production contract validation (${{ matrix.lane }})
     if: needs.classify.outputs.production == 'true'
-    needs: [conventions, classify]
+    needs: classify
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        lane: [contracts, compose, recovery, auth-lifecycle]
+        lane: [contracts, compose, auth-lifecycle]
     steps:
       - name: Checkout pull request
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
-      - name: Validate production deployment and recovery contracts
+      - name: Validate provider-neutral production contracts
         if: matrix.lane == 'contracts'
         run: |
           bash -n \
-            infra/production/release-common.sh \
-            infra/production/materialize-ssm-env.sh \
-            infra/production/rds-read-only-preflight.sh \
-            infra/production/rds-transition-gate.sh \
-            infra/production/deploy.sh \
-            infra/production/rollback.sh \
-            infra/production/subscription-automation-control.sh \
-            infra/production/subscription-automation-preflight.sh \
-            infra/production/production-db-restore.sh \
-            infra/production/https.sh \
-            infra/production/db-backup-restore.sh \
-            infra/production/ec2-status-check-alarm-common.sh \
-            infra/production/create-ec2-status-check-alarm.sh \
-            infra/production/cleanup-ec2-status-check-alarm.sh \
-            infra/production/test-ec2-status-check-alarm.sh \
             infra/production/verify-production-auth-session-smoke.sh \
             infra/production/test-production-auth-session-smoke.sh \
             infra/production/create-production-auth-smoke-member.sh \
             infra/production/test-create-production-auth-smoke-member-lifecycle.sh \
             infra/production/import-demo-catalog.sh \
             infra/production/test-demo-catalog-import.sh \
-            infra/production/test-production-scripts.sh \
-            infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
-            infra/production/test-rds-readiness.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
-            infra/production/test-db-backup-restore.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
           python infra/production/validate-production-contracts.py
-          python infra/production/validate-production-ssm-document.py
-          bash infra/production/test-production-scripts.sh
           bash infra/production/test-demo-catalog-import.sh
-          bash infra/production/test-rds-readiness.sh
-          bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
-          bash infra/production/test-ec2-status-check-alarm.sh
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
@@ -318,10 +296,6 @@ jobs:
       - name: Validate production Compose lifecycle
         if: matrix.lane == 'compose'
         run: bash infra/production/test-production-compose.sh
-
-      - name: Validate production backup and restore lifecycle
-        if: matrix.lane == 'recovery'
-        run: bash infra/production/test-db-backup-restore.sh
 
       - name: Validate production auth smoke member lifecycle
         if: matrix.lane == 'auth-lifecycle'
