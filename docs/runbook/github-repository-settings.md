@@ -22,12 +22,12 @@ PawCycle에서 우선순위가 높은 보호는 다음이다.
 - `main` direct push 제한
 - Pull Request 필수
 - force push 금지
-- required check로 `Repository Validation` 사용
+- required check로 최종 집계 job인 `Application validation` 사용
 - 필요하면 최신 base 반영 요구
 
 개인 포트폴리오 저장소에서는 필수 승인 리뷰 수를 무조건 1로 두지 않는다. 본인이 자신의 PR을 승인할 수 없는 설정이 작업을 막을 수 있기 때문이다.
 
-`Repository Validation`은 최종 merge gate이며 metadata/convention 결과와 classifier가 선택한 component 검증을 함께 집계한다.
+`Repository Validation` workflow의 최종 merge gate는 `Application validation` check이며 metadata/convention 결과와 classifier가 선택한 component 검증을 함께 집계한다.
 
 ## Actions
 
@@ -40,16 +40,15 @@ PawCycle에서 우선순위가 높은 보호는 다음이다.
 
 병합 PR Markdown을 만들기 위해 GitHub Actions에 `contents: write`를 주는 자동화는 사용하지 않는다. 과거 `docs/learning/pull-requests/**` 기록은 보존하지만 새 병합 기록의 권위 원본은 GitHub PR이다.
 
-Production image publish는 runtime 변경에만 반응해야 한다.
+Production image publish는 모든 `main` push를 관찰할 수 있지만 실제 image build/push는 checkout된 commit diff에서 다음 runtime 변경이 확인된 경우에만 진행해야 한다.
 
 ```text
 backend/**
 frontend/**
 infra/production/**
-.github/workflows/publish-production-images.yml
 ```
 
-README, AGENTS, 일반 Runbook 같은 문서-only push가 Production image/deploy chain을 시작하면 Harness 결함으로 본다.
+README, AGENTS, 일반 Runbook, workflow 자체 같은 non-runtime push가 Production image/deploy chain을 시작하면 Harness 결함으로 본다.
 
 ## Security
 
@@ -72,7 +71,7 @@ README와 실제 구현에 맞게 description, Topics, homepage를 갱신한다.
 - [ ] 기본 브랜치가 `main`이다.
 - [ ] 일반 변경은 PR을 통해 `main`으로 들어간다.
 - [ ] force push를 허용하지 않는 방향을 검토했다.
-- [ ] `Repository Validation` required check를 검토했다.
+- [ ] `Application validation` required check를 검토했다.
 - [ ] Actions workflow permission이 최소 권한이다.
 - [ ] `DISCORD_WEBHOOK_URL`은 Secret으로만 관리된다.
 - [ ] 문서-only push가 Production release chain을 시작하지 않는다.
