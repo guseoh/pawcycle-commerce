@@ -21,7 +21,7 @@
 5. 동일 조건 재측정
 6. trade-off와 남은 한계 기록
 
-측정 없이 cache, Redis, async, queue, retry, timeout, scaling이나 application tuning을 도입하지 않는다.
+성능 개선 목적의 cache, Redis, async, queue, retry, timeout, scaling이나 application tuning은 baseline과 evidence 없이 도입하지 않는다. 보안·가용성·실패 복구에 필요한 retry/timeout 변경은 별도 위험 분석과 regression 검증을 적용한다.
 
 ## 운영 안전
 
@@ -33,7 +33,7 @@
 
 ## Release side effect
 
-문서·학습 기록·Harness metadata 같은 non-runtime 변경은 Production image publish나 deploy를 자동 시작해서는 안 된다. Release workflow는 실제 runtime/build input 변경으로 trigger 범위를 제한한다.
+문서·학습 기록·Harness metadata 같은 non-runtime 변경은 Production image build/push나 deploy를 자동 시작해서는 안 된다. Release workflow는 `main` push를 받더라도 checkout된 commit diff에서 실제 runtime/build input 변경을 판정한 뒤 publish job을 실행한다.
 
 ## 검증
 
