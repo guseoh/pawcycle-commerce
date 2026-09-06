@@ -41,13 +41,17 @@ class ReviewSummaryUpsertIntegrationTests {
         "summary-brand-" + suffix,
         "summary-brand-" + suffix);
     brandId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    long categoryId =
+        jdbc.queryForObject(
+            "SELECT id FROM categories WHERE slug='__pawcycle_uncategorized__'", Long.class);
     jdbc.update(
         """
         INSERT INTO products(brand_id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status)
-        VALUES (?, ?, NULL, ?, 'review summary', NULL, 'DOG', NULL, 'PUBLIC')
+        VALUES (?, ?, ?, ?, 'review summary', NULL, 'DOG', NULL, 'PUBLIC')
         """,
         brandId,
         "summary-product-" + suffix,
+        categoryId,
         "summary-product-" + suffix);
     productId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
