@@ -24,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class LocalQaBootstrapService {
 
   static final String QA_EMAIL_LOCAL_PART = "qa-foundation-004";
-  static final long QA_DEFAULT_BRAND_ID = 1L;
   static final String PRODUCT_NAME = "[QA FOUNDATION-004] 정기배송 사료";
   static final String PRODUCT_SHORT_DESCRIPTION = "로컬 브라우저 통합 검증 전용 상품";
   static final String PRODUCT_DESCRIPTION = "FOUNDATION-004 local-only QA fixture";
@@ -201,7 +200,6 @@ public class LocalQaBootstrapService {
                                   "QA Foundation", QA_CATEGORY_SLUG, 0, exposeProductFixture)));
       return productRepository.saveAndFlush(
           new Product(
-              QA_DEFAULT_BRAND_ID,
               category,
               PRODUCT_NAME,
               PRODUCT_SHORT_DESCRIPTION,

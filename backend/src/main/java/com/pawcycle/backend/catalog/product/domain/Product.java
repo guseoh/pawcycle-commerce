@@ -66,7 +66,6 @@ public class Product {
       String displayStatus) {
     this(
         null,
-        null,
         generatedCatalogKey(),
         name,
         shortDescription,
@@ -85,7 +84,6 @@ public class Product {
       String thumbnailUrl,
       String displayStatus) {
     this(
-        null,
         category,
         generatedCatalogKey(),
         name,
@@ -104,7 +102,6 @@ public class Product {
       String petType,
       String thumbnailUrl) {
     this(
-        null,
         category,
         generatedCatalogKey(),
         name,
@@ -125,7 +122,6 @@ public class Product {
       String thumbnailUrl,
       String displayStatus) {
     this(
-        null,
         category,
         catalogKey,
         name,
@@ -136,49 +132,7 @@ public class Product {
         ProductStatus.valueOf(displayStatus));
   }
 
-  public Product(
-      long brandId,
-      Category category,
-      String name,
-      String shortDescription,
-      String description,
-      String petType,
-      String thumbnailUrl) {
-    this(
-        brandId,
-        category,
-        generatedCatalogKey(),
-        name,
-        shortDescription,
-        description,
-        petType,
-        thumbnailUrl,
-        ProductStatus.DRAFT);
-  }
-
-  public Product(
-      long brandId,
-      Category category,
-      String name,
-      String shortDescription,
-      String description,
-      String petType,
-      String thumbnailUrl,
-      String displayStatus) {
-    this(
-        brandId,
-        category,
-        generatedCatalogKey(),
-        name,
-        shortDescription,
-        description,
-        petType,
-        thumbnailUrl,
-        ProductStatus.valueOf(displayStatus));
-  }
-
   private Product(
-      Long brandId,
       Category category,
       String catalogKey,
       String name,
@@ -187,8 +141,8 @@ public class Product {
       String petType,
       String thumbnailUrl,
       ProductStatus status) {
-    this.brandId = brandId;
     this.category = category;
+    this.brandId = 1L;
     this.catalogKey = catalogKey;
     this.name = name;
     this.shortDescription = shortDescription;
