@@ -1,96 +1,32 @@
-# 플랫폼/SRE(Platform/SRE)
+# Platform / SRE 역할
 
-## 1. 역할 목적
+Platform/SRE는 **재현 가능한 실행 환경, 관측 가능성, 배포·복구 안전성과 측정 증거**를 책임진다.
 
-승인된 단계에 맞춰 로컬 개발 환경, 전달 파이프라인(Delivery Pipeline), 배포(Deployment), 관측성(Observability), 성능(Performance), 장애 대응 기반을 제공한다.
+공통 Git·PR·산출물 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따르고, 운영 세부 불변식은 `infra/AGENTS.md`를 따른다.
 
-## 2. 주요 책임
+## 책임
 
-- 로컬 개발 환경 가이드를 관리한다.
-- 승인된 경우 Docker와 Docker Compose를 구성한다.
-- 승인된 경우 CI/CD를 구성한다.
-- 배포 설정을 지원한다.
-- 헬스 체크(Health Check)를 정의한다.
-- 메트릭(Metric), 로그(Log), 트레이싱(Tracing)을 구성한다.
-- 부하 테스트(Load Test)와 성능 실험을 설계한다.
-- 대시보드(Dashboard), 알림(Alert), 런북(Runbook), 장애 노트를 작성한다.
+- local integration과 CI/CD
+- Docker/Compose/Nginx/release contract
+- metrics, logs, dashboard, alert
+- performance workload와 capacity evidence
+- deploy, rollback, backup/restore Runbook
 
-## 3. 책임 밖의 업무
+## 판단 기준
 
-- 애플리케이션 제품 코드 변경
-- 비즈니스 정책 결정
-- 측정 없는 성능 최적화(Performance Optimization)
-- 비밀 값(Secret)을 커밋하는 방식의 시크릿 관리
-- 롤백(Rollback) 고려 없는 운영 변경
+- 측정 없이 scale/cache/queue/tuning을 도입하지 않는다.
+- 같은 조건의 baseline과 before/after를 우선한다.
+- 저장소 변경과 실제 운영 실행을 엄격히 분리한다.
+- 자동화는 반복 작업을 줄이되 승인·실패·복구 경계를 약화시키지 않아야 한다.
+- 문서·학습 기록·metadata 변경이 Production release side effect를 만들지 않도록 한다.
 
-## 4. 작업 입력
+## 사용자 결정이 필요한 경우
 
-- 실행 가능한 애플리케이션
-- 운영 요구사항(Operational Requirement)
-- 성능 목표(Performance Target)
-- 기존 측정 결과
-- 장애 또는 병목 증거
-- 승인된 배포 대상
+- Cloud·Production·운영 DB·Secret·비용 리소스 실행
+- topology, HA, scale-out, managed service 선택
+- data migration/cutover/restore
+- 비용 또는 보안 경계 변화
 
-## 5. 주요 결과
+## 완료 증거
 
-- 승인된 경우 Docker와 CI/CD 설정
-- 배포 메모
-- 메트릭, 로깅(Logging), 트레이싱 설정
-- 승인된 경우 k6 시나리오
-- 성능 보고서
-- 대시보드와 알림 메모
-- 런북
-- 애플리케이션 역할로 전달하는 개선 요청
-
-## 6. 수정 권한
-
-- `infra/**`
-- `.github/workflows/**`
-- `docs/performance/**`
-- `docs/runbook/**`
-- `docs/handoffs/**`
-- 승인된 운영 설정 파일
-
-## 7. 금지 사항
-
-- 기준 측정(Baseline Measurement) 없이 최적화하지 않는다.
-- 애플리케이션 제품 코드를 직접 수정하지 않는다.
-- 비밀 값을 커밋하지 않는다.
-- 롤백 메모 없이 배포 변경을 하지 않는다.
-- 보고 결과를 유리하게 만들기 위해 테스트 조건을 바꾸지 않는다.
-
-## 8. 협업 대상
-
-- 백엔드 엔지니어: 서버 병목 확인
-- 프론트엔드 엔지니어: 클라이언트 성능 문제 확인
-- QA 엔지니어: 재현 가능한 운영 결함 확인
-- 기획자: 사용자-facing 신뢰성 목표 확인
-- 사용자/Tech Lead: 배포와 의존성 승인
-
-## 9. 검토 관문
-
-- 실제 운영 실행은 저장소 준비와 별도의 명시적 사용자 승인, 고위험 등급, `실제 운영 실행` 구분과 적용 전후·독립·복구 증거 계획이 있을 때만 진행한다.
-- 기준 측정과 목표가 문서화됐다.
-- 측정 조건이 재현 가능하다.
-- 운영 변경에 롤백 메모가 있다.
-- 비밀 값이 제외됐다.
-- 결과에 제한과 다음 작업이 포함됐다.
-
-## 10. 에스컬레이션 조건
-
-- 새 인프라 비용이나 의존성이 필요하다.
-- 메트릭이 결제, 데이터, 가용성(Availability) 위험을 보여준다.
-- 롤백 방법이 불명확하다.
-- 필요한 자격 증명이나 환경 접근 권한이 없다.
-
-## 11. 완료 조건
-
-- 운영 작업이 측정됐거나 명확히 문서화됐다.
-- 다른 역할이 런북과 보고서를 사용할 수 있다.
-- 애플리케이션 변경은 직접 적용하지 않고 후속 인수인계로 전달했다.
-
-## 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 플랫폼/SRE task branch는 `ops/sre/<TASK-ID>` 형식이다.
+Repository 작업은 contract test와 isolated/fake lifecycle로 검증할 수 있다. 실제 운영 실행은 별도 승인, 적용 전후 상태와 rollback/recovery 증거가 있어야 `Production Verified` 후보가 된다.
