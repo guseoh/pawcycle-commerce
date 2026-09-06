@@ -30,8 +30,12 @@ COLLECTOR_SPEC.loader.exec_module(COLLECTOR)
 MISSING = COLLECTOR.MISSING
 
 
+def _visible_body(body: str) -> str:
+    return COLLECTOR.strip_fenced_code_blocks(COLLECTOR.strip_automatic_summary(body or ""))
+
+
 def _section_map(body: str) -> dict[str, str]:
-    visible = COLLECTOR.strip_fenced_code_blocks(COLLECTOR.strip_automatic_summary(body or ""))
+    visible = _visible_body(body)
     matches = list(re.finditer(r"(?m)^##\s+(.+?)\s*$", visible))
     sections: dict[str, str] = {}
     for index, heading in enumerate(matches):
@@ -77,13 +81,14 @@ def normalize_context(
     """Apply generic task-id parsing and the four-section PR contract."""
     pr = _pr_from_payload(payload) or _fetch_pr_if_needed(context, repository, api)
     body = str((pr or {}).get("body") or "")
+    visible_body = _visible_body(body)
     title = str((pr or {}).get("title") or context.get("title") or "")
     head = str(((pr or {}).get("head") or {}).get("ref") or context.get("head") or "")
     issue = payload.get("issue") if isinstance(payload.get("issue"), dict) else {}
     issue_text = f"{issue.get('title', '')}\n{issue.get('body', '')}"
     existing = str(context.get("task_id") or "")
 
-    task_id = extract_task_id(body, title, head, issue_text, existing)
+    task_id = extract_task_id(visible_body, title, head, issue_text, existing)
     context["task_id"] = task_id or MISSING
 
     if not body:
