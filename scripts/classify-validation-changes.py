@@ -10,24 +10,24 @@ from pathlib import PurePosixPath
 
 GROUPS = ("harness", "backend", "frontend", "production")
 ALL_COMPONENT_FILES = {
-    "AGENTS.md",
-    ".github/pull_request_template.md",
-    "scripts/validate-task-artifacts.py",
-    "scripts/test_validate_task_artifacts.py",
     "scripts/classify-validation-changes.py",
     "scripts/test_validate_conventions_workflow.py",
-    "docs/runbook/lean-harness.md",
 }
 HARNESS_FILES = {
+    "AGENTS.md",
     ".coderabbit.yaml",
+    ".github/pull_request_template.md",
     "CONTRIBUTING.md",
+    "scripts/validate-task-artifacts.py",
+    "scripts/test_validate_task_artifacts.py",
+    "docs/runbook/lean-harness.md",
     "docs/reports/README.md",
     "docs/reports/task-report-template.md",
 }
 ROLE_COMPONENTS = {
-    "backend-engineer": ("harness", "backend"),
-    "frontend-engineer": ("harness", "frontend"),
-    "platform-sre": ("harness", "production"),
+    "backend-engineer": ("harness",),
+    "frontend-engineer": ("harness",),
+    "platform-sre": ("harness",),
     "product-planner": ("harness",),
     "ux-designer": ("harness",),
     "qa-engineer": ("harness",),

@@ -1,88 +1,47 @@
-# 백엔드 에이전트 규칙
+# Backend 경로 규칙
 
-## 책임
+이 파일은 `backend/**`를 수정할 때의 **코드 경계와 불변식**만 정의한다. 공통 승인·Git·PR·산출물·병합 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따른다.
 
-백엔드(Backend) 영역은 Spring Boot 애플리케이션 동작, 도메인 규칙(Domain Rule), API 동작, 영속성(Persistence), 트랜잭션(Transaction), 보안(Security), 인증(Authentication), 인가(Authorization), 동시성(Concurrency), 백엔드 테스트, API 문서, DB 변경 문서, 백엔드 인수인계를 담당한다.
+## Backend 책임
 
-명시적으로 승인된 작업이 있기 전에는 백엔드 애플리케이션 코드를 생성하지 않는다.
+- 도메인 규칙과 application use case
+- HTTP API와 validation/error contract
+- 트랜잭션(transaction)·persistence·동시성·멱등성
+- 인증·인가와 서버 권위의 보안 규칙
+- Backend unit/integration/regression test
 
-## 공통 운영 기준
+## 코드 경계
 
-- 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 백엔드 task branch는 최신 `main`에서 `feat/be/<TASK-ID>`로 만든다.
-- 하나의 task branch에는 하나의 활성 작업만 둔다.
-- 병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없고 사용자가 명시 승인했을 때만 branch를 삭제한다.
+- Controller는 HTTP mapping, validation, 인증 context 전달에 집중한다.
+- 정적 API 응답은 의미 있는 타입을 사용하며 JPA Entity나 raw `Map<String, Object>`를 직접 노출하지 않는다.
+- Application Service는 use case와 트랜잭션(transaction)을 조율하고 SQL·JSON·HTTP mapping을 동시에 소유하지 않는다.
+- Domain은 승인된 invariant와 상태 전이를 보호한다.
+- Persistence 세부사항은 Repository·query/persistence adapter 내부에 둔다.
+- JPA를 관계형 persistence의 기본 경계로 사용하되, locking·CAS·복잡한 projection처럼 의미가 더 명확한 SQL은 제한적으로 허용한다.
 
-## 도메인과 비즈니스 규칙
+## 제품·데이터 안전
 
-- 승인된 도메인 규칙만 구현한다.
-- 가격, 할인, 재고, 결제, 구독 정책을 임의로 만들지 않는다.
-- 비즈니스 규칙(Business Rule)은 컨트롤러(Controller)나 프론트엔드가 아니라 백엔드 도메인 또는 애플리케이션 서비스(Application Service)에 둔다.
-- 해결되지 않은 정책 질문은 Product Decision으로 기록한다.
+- 가격, 할인, 재고, 결제, 구독 정책을 임의로 만들거나 바꾸지 않는다.
+- 트랜잭션(transaction)·lock·idempotency 의미가 바뀌면 동시 요청과 실패 경계를 함께 검증한다.
+- 주문·결제·구독 history가 현재 mutable entity 값에 의해 소급 변경되지 않도록 snapshot 의미를 보존한다.
+- API나 schema가 바뀌면 가장 가까운 canonical 문서와 consumer 영향도 함께 갱신한다.
 
-## 계층별 책임
+## 로깅과 민감정보
 
-- 컨트롤러(Controller): HTTP 요청과 응답 매핑, 검증 진입점, 인증 컨텍스트(Authentication Context) 전달
-- 서비스(Service) 또는 애플리케이션 계층(Application Layer): 유스케이스(Use Case) 조율, 트랜잭션 경계, 비즈니스 규칙 조합
-- 도메인 모델(Domain Model): 승인된 도메인 상태와 불변식(Invariant) 보호
-- 리포지토리(Repository): 영속성 접근
-
-JPA 엔티티(Entity)를 API 응답으로 직접 노출하지 않는다. 승인된 API 계약에 맞는 요청 모델(Request Model)과 응답 모델(Response Model)을 사용한다.
-
-반복적으로 적용할 코드 구조 기준은 다음과 같다.
-
-- package는 기능·도메인 책임을 먼저 드러내고, 실제 복잡도가 필요할 때만 `api`·`application`·`domain`·`persistence` 경계를 추가한다.
-- Controller는 HTTP mapping·validation·인증 context 전달에 집중한다. 정적 API 계약을 `Map<String, Object>`로 반환하지 않는다.
-- HTTP request/response는 의미 있는 top-level 타입으로 두고 application command/result, domain value, persistence projection과 구분한다.
-- schema가 실제로 동적인 adapter·document parsing을 제외하면 raw `Map`·`Object`를 web/application/domain 경계로 전달하지 않는다.
-- Application Service는 use case 조율과 transaction 경계를 맡고 SQL·JSON parsing·HTTP payload 변환을 함께 소유하지 않는다.
-- Domain은 승인된 invariant와 상태 전이를 보호하고, persistence 구현은 repository·query adapter 안에 격리한다.
-- JDBC는 복잡한 조회·집계·projection에 더 명확할 때 사용할 수 있다. Controller 또는 application orchestration이 SQL 세부사항을 알게 해서는 안 된다.
-- Java annotation·field·constructor·method를 의미 없이 한 줄에 압축하지 않고 import·spacing·이름을 일관되게 유지한다.
-- SLF4J parameterized logging을 사용한다. `DEBUG`는 진단 정보, `INFO`는 의미 있는 상태 변경 완료, `WARN`은 복구 가능한 이상, `ERROR`는 최종 실패 경계에 사용하며 같은 exception을 중복 기록하지 않는다.
-- secret, credential, token, auth/payment/billing key, session·CSRF 값, raw body와 불필요한 개인정보를 어떤 level에도 기록하지 않는다.
-- 새 dependency나 모든 기능에 동일 계층을 강제하는 architecture ceremony는 사용자 승인 없이 추가하지 않는다.
-
-## 트랜잭션, 스냅숏, 멱등성
-
-- 트랜잭션 경계 또는 동시성 제어가 의미 있게 바뀌면 구현 문서·API/ADR·PR 중 가장 가까운 권위 위치에 근거를 남긴다.
-- 주문 이력이 상품 정보 변경 이후에도 보존되어야 하면 주문 정보 스냅숏(Snapshot)을 고려한다.
-- 정기 주문 생성, 결제 재시도, 건너뛰기, 일시정지, 재개, 해지는 멱등성(Idempotency)을 고려한다.
-- 동시성 제어(Concurrency Control)를 선택하면 같은 권위 위치에 선택 근거를 남긴다.
-
-## API 및 DB 변경
-
-- API 계약이 변경되면 `docs/api/**`를 갱신한다.
-- 장기 설계에 영향을 주는 기술 결정은 `docs/adr/**`에 ADR(Architecture Decision Record)로 기록한다.
-- DB 변경과 마이그레이션(Migration) 기대 사항을 문서화한 뒤 구현에 의존한다.
-- 프론트엔드, QA, SRE 후속 작업이 필요하면 `docs/handoffs/<작업 ID>/`에 인수인계를 작성한다.
-
-## 테스트
-
-백엔드 변경에는 위험도에 맞는 집중 테스트를 포함한다.
-
-- 도메인 규칙과 서비스에 대한 단위 테스트(Unit Test)
-- 영속성, 트랜잭션, 보안, API 동작에 대한 통합 테스트(Integration Test)
-- 버그 수정에 대한 회귀 테스트(Regression Test)
-
-백엔드 프로젝트가 존재하면 관련 Gradle 검사를 실행한다. 아직 백엔드 프로젝트가 없으면 검증이 문서 검토로 제한된다고 보고한다.
+- SLF4J parameterized logging을 사용하고 같은 exception을 여러 경계에서 중복 기록하지 않는다.
+- Secret, credential, token, session·CSRF 값, payment/billing key, raw request body와 불필요한 개인정보를 로그에 남기지 않는다.
 
 ## 성능
 
-측정 근거와 사용자 승인 없이 캐시(Cache), Redis, 비동기 메시징, 인덱스(Index), 재시도(Retry), 타임아웃(Timeout), 쿼리(Query) 재작성 같은 성능 작업을 추가하지 않는다.
+측정 없이 Redis, cache, async, queue, index, retry, timeout 증가나 query rewrite를 성능 개선으로 추가하지 않는다. 문제 조건과 baseline을 먼저 확보한다.
 
-## 허용 경로
+## 검증
 
-- `backend/**`
-- `docs/api/**`
-- `docs/adr/**`
-- `docs/handoffs/**`
-- 승인된 범위의 `docs/domain/**`
+위험에 맞는 가장 작은 테스트부터 실행한다.
 
-## 금지 경로
+- 도메인·application 규칙: unit test
+- HTTP·security: contract/integration test
+- persistence·트랜잭션(transaction)·lock: 실제 MySQL integration test
+- 버그: 재현 가능한 regression test
 
-- `frontend/**`
-- `infra/**`
-- 사용자가 승인하지 않은 제품 정책 변경
-- 사용자가 승인하지 않은 프로덕션 의존성(Production Dependency)
-- 작업 범위를 벗어난 광범위한 리팩터링
+승인된 cross-stack 작업에서 `frontend/**` 또는 `infra/**`도 함께 수정할 수 있지만, 그 경로의 `AGENTS.md`를 추가로 적용한다. Backend 역할이라는 이유만으로 하나의 승인된 사용자 목적을 인위적으로 분리하지 않는다.

@@ -2,31 +2,37 @@
 
 ## 목적
 
-새 환경에서 PawCycle Commerce 저장소를 확인하고, Git Hook, Obsidian, Discord, 역할 브랜치, 검증 명령을 준비하는 절차다.
+새 환경에서 PawCycle Commerce의 **저장소 상태, Git 안전장치, Harness 검증과 협업 알림**을 준비하는 최소 절차다.
 
-## 로컬 경로
+공통 작업 규칙은 `AGENTS.md`, 위험 기반 Harness는 `docs/runbook/lean-harness.md`, branch 관례는 `CONTRIBUTING.md`를 따른다.
 
-기준 로컬 경로:
-
-```text
-<repository-root>
-```
-
-현재 Codex 작업은 위 저장소에서 수행한다.
-
-## Clone 또는 기존 저장소 확인
+## 저장소 확인
 
 ```bash
 git remote -v
-git status
+git status --short --branch
 git branch --show-current
+git fetch --prune origin
 ```
 
-기본 브랜치는 `main`이어야 한다.
+기본 브랜치는 `main`이고 실제 작업은 최신 `main`에서 새 task branch로 시작한다. 새 task branch로 이동하기 전에 기존 작업 트리가 깨끗한지 먼저 확인한다.
 
-## Git Hook 설치
+```bash
+if [ -n "$(git status --porcelain)" ]; then
+  echo "작업 트리가 깨끗하지 않습니다. 현재 작업을 먼저 commit/stash 등으로 보존하세요." >&2
+  exit 1
+fi
 
-Git Bash:
+git switch main
+git pull --ff-only origin main
+git switch -c <role-prefix>/<TASK-ID>
+```
+
+역할 prefix 예시는 `CONTRIBUTING.md`에서 확인한다. 한 사용자 목적이 여러 영역을 가로지르면 역할 수 때문에 branch나 PR을 분리하지 않는다.
+
+## Git Hook
+
+선택적으로 로컬 commit message 검증을 설치한다.
 
 ```bash
 sh scripts/setup-git-hooks.sh
@@ -38,108 +44,82 @@ PowerShell:
 .\scripts\setup-git-hooks.ps1
 ```
 
-설정 후 `git config core.hooksPath` 값이 `.githooks`인지 확인한다.
-
-## Obsidian
-
-Vault 경로:
-
-```text
-<repository-root>\docs
-```
-
-- 데스크톱과 노트북에서 각각 저장소를 clone한다.
-- 각 기기에서 `docs`를 Vault로 연다.
-- `.obsidian/`은 기기별 설정이므로 저장소에 커밋하지 않는다.
-- 문서 동기화는 Git pull과 push로 수행한다.
+설치 후 `git config core.hooksPath` 값이 `.githooks`인지 확인한다.
 
 ## Discord
 
-- GitHub Actions Secret 이름은 `DISCORD_WEBHOOK_URL`이다.
-- 실제 Webhook URL은 문서, Issue, PR, 로그에 기록하지 않는다.
-- 로컬에서는 payload 생성만 검증한다.
+GitHub Actions Secret 이름은 `DISCORD_WEBHOOK_URL`이다.
+
+- 실제 Webhook URL을 채팅·문서·Issue·PR·로그에 기록하지 않는다.
+- 로컬에서는 실제 전송보다 payload와 redaction 검증을 우선한다.
 
 ```bash
 python scripts/validate-discord-payloads.py
 ```
 
-Secret 설정 후 실제 전송은 PR 생성, 리뷰, CI 결과 같은 GitHub 이벤트로 확인한다. 전송 실패 시 Actions 로그를 확인한다.
+Discord는 보조 알림 채널이며 CI·Review·병합 판정을 대신하지 않는다.
 
-## task branch 시작
+## 병합 PR evidence
 
-최신 `main`에서 역할 prefix와 작업 ID를 결합한 task branch를 만든다.
+과거 `docs/learning/pull-requests/**`는 역사 자료로 유지한다.
 
-```bash
-git switch main
-git pull --ff-only
-git switch -c <role-prefix>/<TASK-ID>
-```
+새 병합 PR은 GitHub Pull Request 자체를 권위 evidence로 사용한다. 병합 직후 bot이 `main`에 별도 Markdown commit을 추가하는 자동화는 사용하지 않는다.
 
-위 명령의 placeholder를 실제 값으로 교체한다. 예:
+장기 보존이 필요한 운영·복구·측정 결과만 Harness 조건에 따라 `docs/reports/**`에 기록한다.
 
-```bash
-git switch -c ops/tl/HARNESS-LEAN-003
-```
+## 작업 완료 전 최소 확인
 
-역할별 브랜치:
-
-```text
-spec/po/<TASK-ID>
-design/ux/<TASK-ID>
-feat/be/<TASK-ID>
-feat/fe/<TASK-ID>
-test/qa/<TASK-ID>
-ops/sre/<TASK-ID>
-ops/tl/<TASK-ID>
-```
-
-하나의 task branch에는 하나의 활성 작업만 둔다.
-
-## task branch 완료
+기본 절차에서는 Secret 검토가 끝나기 전에 raw `git diff` 내용을 터미널이나 assistant transcript에 출력하지 않는다. 먼저 상태와 파일 목록만 확인하고, Secret 의심이 있으면 값을 출력하지 않는 방식으로 검사한 뒤 필요한 파일만 제한적으로 검토한다.
 
 ```bash
-git status
-<작업 등급에 맞는 필수 검증>
-python scripts/validate-task-artifacts.py \
-  --task-id <TASK-ID> \
-  --task-grade <경량|일반|고위험> \
-  --execution-type "저장소 변경"
+git status --short --branch
 git diff --check
-git diff
-git add <선택한 경로>
-git commit -m "<type>(<scope>): <한국어 명사형 설명>"
-git push -u origin <role-prefix>/<TASK-ID>
-gh pr create --base main --head <role-prefix>/<TASK-ID> --body-file <UTF-8-PR-body.md>
+git diff --name-status
 ```
 
-순서는 상태 확인 → 작업 등급에 맞는 필수 검증 → 산출물 validator → diff 확인 → 선택한 변경만 add → commit → 일반 push → PR이다.
+그 다음 현재 변경 영향에 맞는 검사만 선택한다.
 
-PR이 `main`에 병합되면 열린 PR·고유 commit·사용 중인 worktree가 모두 없고 사용자가 명시 승인한 경우에만 task branch를 삭제한다. 하나라도 충족하지 않으면 삭제하지 않는다. 다음 작업은 최신 `main`에서 새 작업 ID branch를 만든다.
-
-## 검증 명령
-
-현재 존재하는 검증:
+Harness 예시:
 
 ```bash
-sh scripts/test-commit-message-convention.sh
-python -m py_compile .github/scripts/*.py scripts/validate-task-artifacts.py scripts/classify-validation-changes.py
-python -m unittest scripts.test_validate_task_artifacts scripts.test_validate_conventions_workflow
-python scripts/validate-discord-payloads.py
-python scripts/validate-obsidian-record.py
+python -m py_compile \
+  scripts/validate-task-artifacts.py \
+  scripts/classify-validation-changes.py \
+  .github/scripts/collect-discord-context.py
+
+python -m unittest \
+  scripts.test_validate_task_artifacts \
+  scripts.test_validate_conventions_workflow \
+  scripts.test_discord_context
 ```
 
-작업 산출물 검증:
+Backend, Frontend, MySQL, Production 계약 검증은 해당 동작을 바꾸는 작업에서만 실행한다. workflow/classifier처럼 CI 선택 의미 자체를 바꾸는 변경은 Repository Validation의 전체 영향 lane을 확인한다.
 
-```bash
-python scripts/validate-task-artifacts.py --task-id BOOTSTRAP-004 --allow-legacy-without-grade
-```
+## PR
 
-Backend·Frontend·MySQL·로컬 통합·Production 계약 파일이 존재한다. 현재 작업과 변경 영향에 맞는 실제 검증 명령만 선택해 실행한다.
+PR 본문은 `.github/pull_request_template.md`의 최소 계약을 채운다.
 
-## 보안 확인
+- 작업 ID
+- 작업 등급
+- 실행 구분
+- 목적·포함·제외 범위
+- 실행 결과 또는 미실행 이유
+- 남은 위험과 복구 경계
 
-```bash
-git grep -ni -E '(discord\.com/api/webhooks|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|password[[:space:]]*[:=]|secret[[:space:]]*[:=]|token[[:space:]]*[:=])'
-```
+보고서·QA·Runbook·ADR·Handoff는 `docs/runbook/lean-harness.md`의 조건을 충족할 때만 만든다.
 
-실제 Secret 의심 값이 있으면 값을 출력하거나 복사하지 말고 즉시 중단해 보고한다.
+## GitHub Tool write preflight
+
+GitHub Connector/MCP로 파일을 쓸 때는 매 write 직전에 다음을 다시 확인한다.
+
+1. repository
+2. target task branch
+3. expected branch HEAD/file SHA
+4. create/update/delete 호출의 명시적 `branch`
+5. target이 `main`이 아닌지
+
+세부 절차는 `docs/runbook/github-mcp-agent.md`를 따른다.
+
+## Secret 확인
+
+Secret 의심 문자열을 발견하면 값을 복사하거나 출력하지 않고 작업을 중단한다. 저장소 전체 탐색이 필요할 때도 raw Secret을 결과에 노출하지 않는 방식을 사용한다. 저장소에 표준 Secret scanner가 없는 환경에서는 raw diff 전체 출력을 대체 수단으로 사용하지 않고, 파일 목록과 제한된 대상 검토를 우선한다.

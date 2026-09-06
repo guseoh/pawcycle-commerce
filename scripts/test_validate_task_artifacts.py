@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-import os
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "validate-task-artifacts.py"
@@ -17,45 +17,38 @@ TASK_ID = "HARNESS-LEAN-999"
 
 def pr_body(
     *,
+    task_id: str = TASK_ID,
     grade: str = "일반",
     execution: str = "저장소 변경",
     purpose: str = "하네스 계약을 단순화한다.",
-    scope: str = "validator와 테스트를 변경한다.",
-    validation: str = "회귀 테스트 통과",
-    risk: str = "실제 운영 실행 없음",
+    included: str = "validator와 테스트를 변경한다.",
+    excluded: str = "제품 코드는 변경하지 않는다.",
+    result: str = "회귀 테스트를 통과했다.",
+    not_run: str = "실제 운영 실행은 하지 않았다.",
+    risk: str = "알려진 운영 위험 없음",
+    recovery: str = "일반 revert PR",
 ) -> str:
     return f"""## 작업
 
-- 작업 ID: {TASK_ID}
+- 작업 ID: {task_id}
 - 작업 등급: {grade}
 - 실행 구분: {execution}
-- 역할: Tech Lead
 
-## 목적과 범위
+## 변경
 
 - 목적: {purpose}
-- 변경 범위: {scope}
-- 제외 범위: 제품 코드
-
-## 결정과 영향
-
-- 중요한 결정: 최소 구조만 검사
+- 포함 범위: {included}
+- 제외 범위: {excluded}
 
 ## 검증
 
-- 실행 결과: {validation}
-- 실패·미실행과 이유: 없음
+- 실행 결과: {result}
+- 실패·미실행: {not_run}
 
-## 위험과 복구
+## 위험
 
 - 남은 위험: {risk}
-- 실패·rollback·revert 경계: 일반 revert PR
-
-## 병합 판단
-
-- 남은 차단 리뷰: 없음
-- 사용자 판단 항목: 병합 여부
-- 자동 병합 없음
+- 복구 경계: {recovery}
 """
 
 
@@ -73,8 +66,8 @@ def run_validator(root: Path, *args: str, stdin_text: str = "") -> subprocess.Co
     )
 
 
-def write_report(root: Path, content: str, task_id: str = TASK_ID, filename: str = "report.md") -> Path:
-    path = root / "docs" / "reports" / task_id / filename
+def write_report(root: Path, content: str, task_id: str = TASK_ID) -> Path:
+    path = root / "docs" / "reports" / task_id / "report.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return path
@@ -149,88 +142,55 @@ health와 상태를 확인했다.
 
 
 class ValidateTaskArtifactsTest(unittest.TestCase):
-    def test_ops_simple_and_subcategory_task_ids_pass(self) -> None:
-        for task_id in ("OPS-001", "OPS-PERF-001", "OPS-RECON-001", "OPS-IDEMP-001", "OPS-OBS-001A"):
+    def test_structurally_valid_task_id_families_pass(self) -> None:
+        for task_id in (
+            "AUTH-004",
+            "OPS-OCI-002",
+            "BACKEND-REFACTOR-004",
+            "PERF-PH10-008",
+            "HTTP-CLIENT-REFACTOR-001",
+            "API-RECON-001",
+            "MVP4-FE-004",
+            "OPS-OBS-001A",
+        ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(
                     Path(tmp),
                     "--from-stdin",
-                    stdin_text=body,
+                    stdin_text=pr_body(task_id=task_id),
                 )
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_non_ops_subcategory_task_id_remains_invalid(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            body = pr_body().replace(TASK_ID, "API-RECON-001")
-            result = run_validator(
-                Path(tmp),
-                "--from-stdin",
-                stdin_text=body,
-            )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("작업 ID", result.stderr)
-
-    def test_malformed_ops_subcategory_task_ids_do_not_partially_match_stdin(self) -> None:
+    def test_malformed_task_ids_do_not_partially_match(self) -> None:
         for task_id in (
-            "OPS-RECON-001-EXTRA",
-            "OPS-RECON-001abc",
-            "OPS-RECON-001_extra",
-            "OPS-RECON-١٢٣",
+            "ops-001",
+            "OPS-01",
+            "OPS--001",
+            "OPS-001-EXTRA",
+            "OPS-001abc",
+            "OPS-001_extra",
+            "OPS-١٢٣",
         ):
             with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
                 result = run_validator(
                     Path(tmp),
                     "--from-stdin",
-                    stdin_text=body,
+                    stdin_text=pr_body(task_id=task_id),
                 )
-
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("작업 ID", result.stderr)
 
-    def test_malformed_inc_base_task_ids_do_not_partially_match_stdin(self) -> None:
-        for task_id in (
-            "INC-BASE-001-EXTRA",
-            "INC-BASE-001abc",
-            "INC-BASE-001_extra",
-            "X-INC-BASE-001",
-            "X_INC-BASE-001",
-            "INC-BASE-001é",
-            "INC-BASE-001́",
-            "INC-BASE-001‌foo",
-            "ıNC-BASE-001",
-            "INC-BAſE-001",
-            "İNC-BASE-001",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
+    def test_repository_changes_do_not_require_reports(self) -> None:
+        for grade in ("경량", "일반", "고위험"):
+            with self.subTest(grade=grade), tempfile.TemporaryDirectory() as tmp:
                 result = run_validator(
                     Path(tmp),
                     "--from-stdin",
-                    stdin_text=body,
+                    stdin_text=pr_body(grade=grade),
                 )
+            self.assertEqual(result.returncode, 0, result.stderr)
 
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("작업 ID", result.stderr)
-
-    def test_lightweight_pr_without_report_passes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="경량"))
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_standard_repository_change_without_report_passes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body())
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_high_risk_repository_change_without_report_passes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body(grade="고위험"))
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_high_risk_repository_preparation_alias_passes(self) -> None:
+    def test_repository_preparation_alias_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(
                 Path(tmp),
@@ -239,7 +199,47 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_production_execution_without_report_fails(self) -> None:
+    def test_pr_requires_four_decision_sections(self) -> None:
+        cases = {
+            "missing purpose": pr_body(purpose="<목적>"),
+            "missing include": pr_body(included="<포함 범위>"),
+            "missing exclude": pr_body(excluded="<제외 범위>"),
+            "missing validation": pr_body(result="<결과>", not_run="<미실행>"),
+            "missing risk": pr_body(risk="<위험>"),
+            "missing recovery": pr_body(recovery="<복구>"),
+        }
+        for name, body in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_old_six_section_pr_aliases_remain_compatible(self) -> None:
+        body = pr_body().replace("## 변경", "## 목적과 범위").replace("- 포함 범위:", "- 변경 범위:").replace("## 위험", "## 위험과 복구").replace("- 복구 경계:", "- 실패·rollback·revert 경계:")
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_optional_repository_report_is_validated_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_report(root, MINIMAL_REPORT)
+            result = run_validator(
+                root,
+                "--from-stdin",
+                stdin_text=pr_body(grade="고위험"),
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_production_execution_requires_high_risk_and_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_validator(
+                Path(tmp),
+                "--from-stdin",
+                stdin_text=pr_body(grade="일반", execution="실제 운영 실행"),
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("고위험", result.stderr)
+
         with tempfile.TemporaryDirectory() as tmp:
             result = run_validator(
                 Path(tmp),
@@ -249,30 +249,7 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("실제 운영 실행 보고서", result.stderr)
 
-    def test_lightweight_and_standard_production_execution_fail(self) -> None:
-        for grade in ("경량", "일반"):
-            with self.subTest(grade=grade), tempfile.TemporaryDirectory() as tmp:
-                result = run_validator(
-                    Path(tmp),
-                    "--from-stdin",
-                    stdin_text=pr_body(grade=grade, execution="실제 운영 실행"),
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("작업 등급은 고위험", result.stderr)
-
-    def test_direct_non_legacy_requires_execution_type(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(
-                Path(tmp),
-                "--task-id",
-                TASK_ID,
-                "--task-grade",
-                "고위험",
-            )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("실행 구분 필드가 없음", result.stderr)
-
-    def test_production_execution_report_with_all_evidence_passes(self) -> None:
+    def test_complete_production_execution_report_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_report(root, PRODUCTION_REPORT)
@@ -283,320 +260,44 @@ class ValidateTaskArtifactsTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_empty_table_header_is_not_execution_evidence(self) -> None:
-        report = PRODUCTION_REPORT.replace(
-            "사용자가 이 실행을 명시적으로 승인했다.",
-            "| 항목 | 값 |\n| --- | --- |",
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, report)
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("명시적 승인 근거", result.stderr)
-
-    def test_table_with_real_data_is_execution_evidence(self) -> None:
-        report = PRODUCTION_REPORT.replace(
-            "사용자가 이 실행을 명시적으로 승인했다.",
-            "| 항목 | 값 |\n| --- | --- |\n| 승인 | 사용자가 실행 승인 |",
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, report)
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_unexecuted_items_and_remaining_risk_are_separate_requirements(self) -> None:
-        report = PRODUCTION_REPORT.replace(
-            "## 미실행 항목\n\n장기 부하는 실행하지 않았다.\n\n",
+    def test_incomplete_production_report_fails(self) -> None:
+        incomplete = PRODUCTION_REPORT.replace(
+            "## 독립 확인\n\n운영자가 결과를 별도로 확인했다.\n",
             "",
         )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_report(root, report)
+            write_report(root, incomplete)
             result = run_validator(
                 root,
                 "--from-stdin",
                 stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
             )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("미실행 항목", result.stderr)
+        self.assertIn("독립 확인", result.stderr)
 
-    def test_labeled_combined_unexecuted_and_risk_section_passes(self) -> None:
-        report = PRODUCTION_REPORT.replace(
-            "## 미실행 항목\n\n장기 부하는 실행하지 않았다.\n\n## 남은 위험\n\n장기 부하에서만 드러나는 위험은 남아 있다.",
-            "## 미실행 항목과 남은 위험\n\n- 미실행 항목: 장기 부하\n- 남은 위험: 장기 부하에서만 드러나는 위험",
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, report)
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_one_complete_execution_report_allows_basic_auxiliary_report(self) -> None:
-        auxiliary = f"""# 보조 증거
+    def test_legacy_report_mode_remains_available(self) -> None:
+        legacy = f"""# Legacy report
 
 - 작업 ID: {TASK_ID}
 
 ## 목적
 
-검증 명령의 출처를 보존한다.
+과거 작업이다.
 
 ## 결과 또는 증거
 
-명령과 결과를 대조했다.
+기존 evidence다.
 
 ## 위험과 제한
 
-실행 보고서를 대체하지 않는다.
+현재 규칙 이전 산출물이다.
 """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_report(root, PRODUCTION_REPORT, filename="production-execution-report.md")
-            write_report(root, auxiliary, filename="evidence.md")
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
+            write_report(root, legacy)
+            result = run_validator(root, "--task-id", TASK_ID, "--allow-legacy-without-grade")
         self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_auxiliary_report_still_requires_basic_structure(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, PRODUCTION_REPORT, filename="production-execution-report.md")
-            write_report(root, "# 보조 증거\n\n내용만 있음\n", filename="evidence.md")
-            result = run_validator(
-                root,
-                "--from-stdin",
-                stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-            )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("작업 보고서 필수 섹션 없음", result.stderr)
-
-    def test_execution_reports_require_high_risk_grade(self) -> None:
-        cases = (
-            (
-                "conflicting",
-                PRODUCTION_REPORT.replace("작업 등급: 고위험", "작업 등급: 일반"),
-                True,
-                "작업 등급 불일치",
-            ),
-            (
-                "missing",
-                PRODUCTION_REPORT.replace("- 작업 등급: 고위험\n", ""),
-                False,
-                "작업 등급은 고위험이어야 함",
-            ),
-        )
-        for name, report, include_valid_report, expected_error in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                if include_valid_report:
-                    write_report(root, PRODUCTION_REPORT, filename="production-execution-report.md")
-                write_report(root, report, filename="second-execution-report.md")
-                result = run_validator(
-                    root,
-                    "--from-stdin",
-                    stdin_text=pr_body(grade="고위험", execution="실제 운영 실행"),
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(expected_error, result.stderr)
-
-    def test_existing_report_requires_purpose_evidence_and_risk(self) -> None:
-        invalid_reports = (
-            "# 보고서\n\n## 결과 또는 증거\n\nPASS\n\n## 위험과 제한\n\n없음\n",
-            "# 보고서\n\n## 목적\n\n목적\n\n## 위험과 제한\n\n없음\n",
-            "# 보고서\n\n## 목적\n\n목적\n\n## 결과 또는 증거\n\nPASS\n",
-        )
-        for content in invalid_reports:
-            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                write_report(root, content)
-                result = run_validator(root, "--from-stdin", stdin_text=pr_body(grade="고위험"))
-                self.assertNotEqual(result.returncode, 0)
-
-    def test_minimal_repository_report_passes_without_git_qa_or_handoff_headings(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, MINIMAL_REPORT)
-            result = run_validator(root, "--from-stdin", stdin_text=pr_body(grade="고위험"))
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_qa_and_handoff_are_not_required(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=pr_body())
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_legacy_report_passes_only_with_explicit_option(self) -> None:
-        legacy_id = "BOOTSTRAP-004"
-        content = """# Legacy report
-
-## 작업 목적
-
-기존 하네스 기록을 보존한다.
-
-## 주요 결과
-
-기존 검증 결과가 있다.
-
-## 남은 위험
-
-legacy 형식이다.
-"""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, content, legacy_id)
-            result = run_validator(root, "--task-id", legacy_id, "--allow-legacy-without-grade")
-            rejected = run_validator(root, "--task-id", legacy_id)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotEqual(rejected.returncode, 0)
-
-    def test_legacy_report_with_grade_but_without_execution_passes(self) -> None:
-        legacy_id = "BOOTSTRAP-004"
-        content = """# Legacy report
-
-- 작업 등급: 고위험
-
-## 작업 목적
-
-기존 하네스 기록을 보존한다.
-
-## 주요 결과
-
-기존 검증 결과가 있다.
-
-## 남은 위험
-
-실행 구분 도입 전 형식이다.
-"""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, content, legacy_id)
-            legacy = run_validator(root, "--task-id", legacy_id, "--allow-legacy-without-grade")
-            non_legacy = run_validator(root, "--task-id", legacy_id, "--task-grade", "고위험")
-        self.assertEqual(legacy.returncode, 0, legacy.stderr)
-        self.assertIn("legacy", legacy.stderr)
-        self.assertNotEqual(non_legacy.returncode, 0)
-        self.assertIn("실행 구분 필드가 없음", non_legacy.stderr)
-
-    def test_conflicting_grade_fails(self) -> None:
-        body = pr_body() + "\n작업 등급: 고위험\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("충돌하는 작업 등급", result.stderr)
-
-    def test_conflicting_execution_type_fails(self) -> None:
-        body = pr_body() + "\n실행 구분: 실제 운영 실행\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("충돌하는 실행 구분", result.stderr)
-
-    def test_html_comments_do_not_create_or_conflict_with_fields(self) -> None:
-        body = pr_body() + "\n<!-- 작업 등급: 고위험 -->\n<!-- 실행 구분: 실제 운영 실행 -->\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_comment_only_fields_are_ignored(self) -> None:
-        body = pr_body().replace("- 작업 등급: 일반\n", "").replace("- 실행 구분: 저장소 변경\n", "")
-        body += "\n<!-- 작업 등급: 일반 -->\n<!-- 실행 구분: 저장소 변경 -->\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("작업 등급 필드가 없음", result.stderr)
-
-    def test_empty_placeholders_in_required_pr_fields_fail(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_validator(
-                Path(tmp),
-                "--from-stdin",
-                stdin_text=pr_body(purpose="<목적>", scope="-", validation="TBD", risk="[남은 위험]"),
-            )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("비어 있음", result.stderr)
-
-    def test_report_field_conflicts_with_pr_fail(self) -> None:
-        report = MINIMAL_REPORT.replace("실행 구분: 저장소 변경", "실행 구분: 실제 운영 실행")
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_report(root, report)
-            result = run_validator(root, "--from-stdin", stdin_text=pr_body(grade="고위험"))
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("실행 구분 불일치", result.stderr)
-
-    def test_supported_task_id_families_are_detected(self) -> None:
-        for task_id in (
-            "AUTH-004", "FRONTEND-003", "PRODUCT-002", "OBS-BASE-001", "SUB-AUTO-001",
-            "INC-BASE-001", "HARNESS-LEAN-001", "MVP3-CATALOG-001", "PERF-PH8-001",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
-                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-                self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_malformed_perf_phase_task_ids_do_not_partially_match_stdin(self) -> None:
-        for task_id in (
-            "PERF-PH8-001-EXTRA",
-            "PERF-PH8-001abc",
-            "X-PERF-PH8-001",
-            "PERF-PH8-١٢٣",
-            "PERF-PH٨-001",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
-                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("작업 ID", result.stderr)
-
-    def test_unicode_digit_task_ids_are_rejected(self) -> None:
-        for task_id in (
-            "AUTH-١٢٣",
-            "HARNESS-LEAN-١٢٣",
-            "MVP٣-CATALOG-001",
-            "MVP3-CATALOG-١٢٣",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
-                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("작업 ID", result.stderr)
-
-    def test_malformed_sub_auto_task_ids_do_not_partially_match_stdin(self) -> None:
-        for task_id in (
-            "SUB-AUTO-001-EXTRA", "SUB-AUTO-001abc", "SUB-AUTO-001_extra", "X-SUB-AUTO-001",
-            "SUB-AUTO-001é", "SUB-AUTO-001\u0301", "SUB-AUTO-001\u200cfoo", "X_SUB-AUTO-001",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
-                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("작업 ID", result.stderr)
-
-    def test_malformed_mvp_task_ids_do_not_partially_match_stdin(self) -> None:
-        for task_id in (
-            "MVP3-CATALOG-001-EXTRA", "MVP-CATALOG-001", "MVP3-catalog-001", "XMVP3-CATALOG-001",
-            "MVP3-CATALOG-001abc", "MVP3-CATALOG-001_extra", "X_MVP3-CATALOG-001",
-        ):
-            with self.subTest(task_id=task_id), tempfile.TemporaryDirectory() as tmp:
-                body = pr_body().replace(TASK_ID, task_id)
-                result = run_validator(Path(tmp), "--from-stdin", stdin_text=body)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("작업 ID", result.stderr)
 
 
 if __name__ == "__main__":

@@ -1,57 +1,68 @@
 # Contributing
 
-## 저장소 목적과 현재 상태
+## 기준
 
-PawCycle Commerce는 반려동물 소모품의 일반 구매와 정기배송 구독을 다룬다. 현재 저장소에는 Spring Boot Backend, Next.js Frontend, MySQL 로컬 통합 환경과 Production 계약 파일이 있으며, 승인된 범위만 변경한다.
+작업 전에는 루트와 수정 경로의 `AGENTS.md`, 필요한 승인 계약, `docs/runbook/lean-harness.md`를 확인한다. 역할 책임이 필요한 경우 `docs/roles/**`, 실행 절차가 필요한 경우 `.agents/skills/**`를 참고한다.
 
-## 작업 전 확인
+## Task branch
 
-- 루트와 관련 경로의 `AGENTS.md`
-- 관련 `docs/roles/**`와 `.agents/skills/**`
-- 승인된 요구사항·계약·인수 조건
-- `docs/runbook/lean-harness.md`
+저장소 작업은 최신 `main`에서 별도 task branch를 만든다.
 
-## task branch
+역할이 하나로 명확할 때는 다음 prefix를 권장한다.
 
-최신 `main`에서 역할에 맞는 task branch를 만든다.
-
-| 역할 | branch 형식 |
+| 역할 | 권장 prefix |
 | --- | --- |
-| Product Planner | `spec/po/<TASK-ID>` |
-| UX/UI Designer | `design/ux/<TASK-ID>` |
-| Backend Engineer | `feat/be/<TASK-ID>` |
-| Frontend Engineer | `feat/fe/<TASK-ID>` |
-| QA Engineer | `test/qa/<TASK-ID>` |
-| Platform/SRE | `ops/sre/<TASK-ID>` |
-| Tech Lead | `ops/tl/<TASK-ID>` |
+| Product Planner | `spec/po/` |
+| UX/UI Designer | `design/ux/` |
+| Backend Engineer | `feat/be/` |
+| Frontend Engineer | `feat/fe/` |
+| QA Engineer | `test/qa/` |
+| Platform/SRE | `ops/sre/` |
+| Tech Lead / Harness | `ops/tl/` |
 
-하나의 task branch에는 하나의 활성 작업만 둔다. 고정 역할 branch를 삭제한 뒤 같은 이름으로 재생성하지 않는다.
+여러 영역을 가로지르는 coherent work unit은 목적을 잘 드러내는 별도 branch 이름을 사용할 수 있다. branch 이름 자체보다 **명시적인 non-main target과 승인된 범위**가 우선이다.
 
-## 커밋과 PR 제목
+GitHub file write Tool에서는 branch 인자를 생략하지 않는다. 일반 작업의 direct `main` write는 금지하며 PR merge를 사용한다.
 
-`<type>(<scope>): <한국어 명사형 설명>` 형식을 사용한다. 설명은 한글을 포함한 명사형으로 끝내고 마침표를 붙이지 않는다.
+## Commit / PR 제목
 
-## PR과 조건부 산출물
+Conventional Commit 형태를 사용한다.
 
-모든 작업은 PR 본문을 작성하며 다음 6개 핵심 구획을 사용한다.
+```text
+<type>(<scope>): <설명>
+<type>: <설명>
+```
+
+허용 type은 `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `build`, `ci`, `chore`, `perf`, `revert`다. 한국어의 짧고 구체적인 설명을 권장하지만 언어와 문장 종결 형태는 CI safety gate로 강제하지 않는다. 제목 끝에는 마침표를 붙이지 않는다.
+
+## PR
+
+필수 정보는 네 구획으로 제한한다.
 
 ```text
 작업
-목적과 범위
-결정과 영향
+- 작업 ID / 등급 / 실행 구분
+
+변경
+- 목적 / 포함 범위 / 제외 범위
+
 검증
-위험과 복구
-병합 판단
+- 실행 결과 / 실패·미실행
+
+위험
+- 남은 위험 / 복구 경계
 ```
 
-보고서·인수인계·QA·Runbook·ADR은 `docs/runbook/lean-harness.md`의 조건을 충족할 때만 작성한다. 일반·고위험 저장소 변경도 PR·관련 테스트·CI로 충분하면 보고서가 필요하지 않으며 생략 사유를 기본 요구하지 않는다. 실제 운영 실행은 고위험 등급과 실행 보고서가 필수다.
+중요한 결정, 외부 계약 영향, QA, migration, reviewer 한계는 실제로 필요한 경우에만 추가한다. 보고서·Handoff·Runbook·ADR도 `lean-harness.md`의 조건을 만족할 때만 작성한다.
 
 ## 검증
 
-가장 작은 관련 검사부터 실행하고, 공통 CI·보안·DB mapping·배포·복구처럼 여러 영역에 영향을 주는 변경만 관련 전체 검증을 사용한다. 실행하지 못한 필수 검증과 남은 위험은 PR에 기록한다.
+가장 작은 관련 검사에서 시작해 변경 영향에 따라 확대한다. metadata 형식 오류는 병합을 막을 수 있지만 관련 code test가 불필요하게 실행되지 못하도록 만들지 않는 것을 원칙으로 한다.
 
-## Secret과 병합
+실행하지 못한 검증, reviewer 미실행, 남은 위험은 명시한다.
 
-Secret, 인증 정보, Webhook URL, 개인 키, 개인정보와 실제 운영 식별값을 저장소·PR·로그에 넣지 않는다. 병합은 사용자가 최종 결정하며 자동 병합하지 않는다.
+## Secret / Production / Merge
 
-병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없을 때만 branch를 삭제한다. 하나라도 있으면 삭제하지 않는다.
+Secret, 인증 정보, Webhook URL, private key, 개인정보와 원시 운영 값을 저장소·PR·로그에 넣지 않는다.
+
+저장소 변경과 실제 운영 실행은 별도 승인 경계다. 특정 PR 병합은 사용자가 명시적으로 위임한 경우 최신 HEAD·CI·review를 확인한 뒤 수행할 수 있지만 자동 병합 정책으로 확대하지 않는다.

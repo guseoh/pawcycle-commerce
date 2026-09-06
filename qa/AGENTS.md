@@ -1,74 +1,46 @@
-# QA 에이전트 규칙
+# QA 경로 규칙
 
-## 책임
+이 파일은 `qa/**`와 테스트 전용 경로의 **독립 검증 경계**만 정의한다. 공통 승인·Git·PR·산출물·병합 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따른다.
 
-QA(Quality Assurance)는 승인된 요구사항(Requirements)과 인수 조건(Acceptance Criteria)을 기준으로 검증한다. QA는 요구사항, 디자인, API 계약, 구현 diff, 실행 결과를 비교한다.
+## QA 책임
 
-QA는 제품 코드를 직접 수정해서 결함을 숨기지 않는다.
+QA는 승인된 요구사항·인수 조건·API/도메인 계약과 실제 구현·실행 결과를 비교한다.
 
-## 공통 운영 기준
+검증 초점:
 
-- 공통 Git, commit·push, 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- QA task branch는 최신 `main`에서 `test/qa/<TASK-ID>`로 만든다.
-- 하나의 task branch에는 하나의 활성 QA 작업만 둔다.
-- 병합 뒤 열린 PR·고유 commit·worktree가 없을 때 branch를 삭제한다.
+- happy path와 exception path
+- boundary value
+- authentication / authorization
+- state transition
+- duplicate request / idempotency
+- data consistency와 regression
+- UI가 있으면 responsive/accessibility
 
-## 검증 초점
+## 독립성
 
-다음을 검증한다.
+- 결함을 통과시키기 위해 제품 코드나 인수 조건을 QA가 임의 수정하지 않는다.
+- 재현되지 않은 관찰을 확정 버그로 기록하지 않는다.
+- 구현에 맞추기 위해 expected result를 낮추지 않는다.
+- 제품 수정이 필요한 경우 같은 PR의 승인된 cross-stack 후속 수정으로 개발 역할이 수정하고 QA는 같은 evidence path로 재검증한다.
 
-- 정상 흐름(Happy Path)
-- 예외 흐름(Exception Path)
-- 경계값(Boundary Value)
-- 권한과 인가(Authorization)
-- 상태 전이(State Transition)
-- 중복 요청과 멱등성(Idempotency) 기대 사항
-- 회귀 위험(Regression Risk)
-- UI가 있으면 접근성과 반응형 동작
+## 결함 evidence
 
-## 버그 리포트
+유효한 bug report에는 최소한 다음이 있어야 한다.
 
-버그 리포트(Bug Report)는 재현 가능해야 한다. 다음을 포함한다.
+- 환경과 사전 조건
+- 재현 절차 또는 failing test
+- expected / actual
+- 영향 또는 severity
+- 재검증 결과
 
-- 작업 ID
-- 환경(Environment)
-- 사전 조건(Precondition)
-- 재현 절차(Steps to Reproduce)
-- 기대 결과(Expected Result)
-- 실제 결과(Actual Result)
-- 증거(Evidence)
-- 심각도(Severity)
-- 알고 있다면 의심 영역(Suspected Area)
+일반 QA severity는 다음 기준을 사용한다.
 
-재현되지 않은 관찰은 확정 버그로 기록하지 않는다. 조사 메모(Investigation Note)로 남긴다.
+- `BLOCKER`: 보안·데이터 정합성·필수 계약·핵심 사용자 흐름을 깨거나 안전한 병합을 막는 결함
+- `MAJOR`: 핵심 기능 또는 외부 계약에 의미 있는 오류가 있어 병합 전 수정이 필요한 결함
+- `MINOR`: 영향 범위가 제한적이고 핵심 계약·안전을 깨지 않아 후속 수정으로 분리 가능한 결함
 
-## 실패 우선 흐름
+문서 형식을 채우는 것보다 다른 사람이 같은 실패를 재현할 수 있는지가 우선이다. 특정 QA 문서가 별도 severity taxonomy를 정의하더라도 그 범위 밖의 일반 결함에는 위 기준을 사용한다.
 
-QA가 결함을 발견하면 다음 순서를 따른다.
+## 완료 판정
 
-1. 실패 테스트(Failing Test) 또는 재현 가능한 버그 리포트를 작성한다.
-2. 담당 역할에 수정 요청을 전달한다.
-3. 담당 역할이 제품 코드를 수정한다.
-4. 같은 증거 경로로 재검증한다.
-5. 재검증 결과(Retest Result)를 기록한다.
-
-## 심각도 기준
-
-- Critical: 데이터 손실, 결제 위험, 보안 문제, 서비스 차단 결함
-- High: 핵심 흐름을 완료할 수 없음
-- Medium: 중요한 흐름이 잘못 동작하지만 우회 가능
-- Low: 사소한 문제, 문구 문제, 비차단 불일치
-
-## 허용 경로
-
-- `qa/**`
-- 관련 애플리케이션 영역의 테스트 전용 경로
-- `docs/qa/**`
-- `docs/handoffs/**`
-
-## 금지 경로
-
-- 결함을 숨기거나 직접 수정하는 제품 코드 변경
-- 검증 없는 요구사항 승인
-- 재현 증거 없는 버그 확정
-- 구현에 맞추기 위한 인수 조건 변경
+QA Green은 검증한 범위에만 적용한다. 실행하지 않은 browser/provider/Production 흐름을 PASS로 확대하지 않는다. 실제 운영 검증이 없으면 `Production Verified`를 선언하지 않는다.

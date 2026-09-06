@@ -1,81 +1,37 @@
 ---
 name: platform-sre
 description: >-
-  PawCycle Commerce에서 플랫폼/SRE(Platform/SRE) 역할로 작업할 때 사용한다. 승인된 로컬 개발 환경, Docker, CI/CD, 배포(Deployment), 헬스 체크(Health Check), 메트릭(Metric), 로그(Log), 트레이싱(Tracing), 부하 테스트(Load Test), 성능 실험(Performance Experiment), 대시보드(Dashboard), 알림(Alert), 런북(Runbook), 롤백(Rollback) 메모, 운영 인수인계를 측정 근거에 기반해 설계하거나 구현할 때 사용한다.
+  PawCycle Commerce의 CI/CD, Docker/Compose, observability, performance measurement, deploy와 recovery 작업을 수행할 때 사용한다.
 ---
 
-# 플랫폼/SRE Skill
+# Platform / SRE Skill
 
-## 1. Skill 이름
+지속 책임은 `docs/roles/platform-sre.md`, 운영 불변식은 `infra/AGENTS.md`, 공통 안전 규칙은 루트 `AGENTS.md`를 따른다.
 
-`platform-sre`
+## 실행 절차
 
-## 2. Skill 설명
+1. **목표와 실행 구분 확인**
+   - 측정/저장소 준비인지 실제 운영 실행인지 구분한다.
+   - 실제 운영 실행이면 별도 고위험 사용자 승인을 확인한다.
 
-운영과 성능 작업을 요구사항, 측정 근거, 사용자 승인에 기반해 수행한다.
+2. **현재 상태와 기준선 확보**
+   - 관련 runtime, CI, metric, workload와 recovery contract를 확인한다.
+   - 성능 작업은 같은 조건의 baseline을 먼저 확보한다.
 
-## 3. 사용하는 상황
+3. **가장 작은 변경**
+   - 측정된 원인이나 반복 운영 문제에 직접 필요한 설정·script·workflow만 변경한다.
+   - 문서/metadata 변경이 release/deploy side effect를 만들지 않는지 확인한다.
 
-- 로컬 개발 환경 또는 인프라 작업이 승인됐다.
-- CI/CD 또는 배포 설정이 승인됐다.
-- 성능 측정 또는 부하 테스트가 요청됐다.
-- 관측성, 알림, 런북 작업이 필요하다.
-- 운영 인수인계 또는 개선 요청이 필요하다.
+4. **검증**
+   - syntax와 static contract에서 시작해 fake/isolated lifecycle, 동일 조건 재측정으로 확대한다.
+   - Production 실행은 preflight → apply → postflight → rollback/recovery evidence를 분리한다.
 
-## 4. 사용하지 않는 상황
+5. **결과 보고**
+   - baseline/change/after, trade-off, 미실행 운영 단계와 남은 한계를 구분한다.
 
-- 애플리케이션 기능 구현 작업이다.
-- 기준 성능 없이 성능 최적화가 요청됐다.
-- 필요한 비밀 값이나 운영 접근 권한이 없다.
-- 백엔드 또는 프론트엔드 제품 코드를 직접 수정해야 한다.
+## 중단 조건
 
-## 5. 작업 전 확인할 자료
-
-1. `AGENTS.md`
-2. `infra/AGENTS.md`
-3. `docs/roles/platform-sre.md`
-4. 승인된 운영 요구사항
-5. 기존 측정 결과 또는 장애 증거
-6. 관련 백엔드, 프론트엔드, QA 인수인계
-7. 기존 인프라 파일
-
-## 6. 단계별 작업 절차
-
-1. 작업 ID, 실행 구분과 승인된 운영 입력을 확인한다.
-2. 저장소 준비와 실제 운영 실행을 분리한다. Production·Cloud·운영 DB·Secret·비용 리소스 실행은 별도의 명시적 사용자 승인, 고위험 등급, `실제 운영 실행` 구분과 적용 전후·독립·복구 증거 계획이 모두 있을 때만 진행한다. 성능 작업이면 기준·목표·환경·측정 방법을 고정한다.
-3. Secret을 저장소에 넣지 않고 승인된 인프라·workflow·운영 문서만 변경한다.
-4. 반복 실행·중단·복구 절차가 있을 때 Runbook과 rollback 경계를 작성한다.
-5. 문법·계약·fixture와 관련 측정을 검증하고, 별도 승인된 실제 운영 실행을 수행한 경우에만 전후·독립·복구 증거를 남긴다.
-6. 변경, 측정 결과, 미실행, rollback 경계와 남은 위험을 보고한다.
-
-## 7. 허용 경로
-
-- `infra/**`
-- `.github/workflows/**`
-- `docs/performance/**`
-- `docs/runbook/**`
-- `docs/handoffs/**`
-- 승인된 운영 설정 파일
-
-## 8. 금지 경로
-
-- 백엔드 제품 코드
-- 프론트엔드 제품 코드
-- 비밀 값
-- 측정 없는 성능 최적화
-- 롤백 메모 없는 배포 변경
-- 결과를 유리하게 만드는 부하 조건 변경
-
-## 13. 중단하고 사용자 결정을 요청해야 하는 조건
-
-- 새로운 유료 서비스, 의존성, 인프라 컴포넌트가 필요하다.
-- 비밀 값 또는 운영 접근 권한이 필요하다.
-- 롤백 방법을 정의할 수 없다.
-- 최적화 요청에 측정 근거가 없다.
-- 애플리케이션 제품 코드 변경이 필요하다.
-
-## 14. 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 산출물·QA 조건은 `docs/runbook/lean-harness.md`를 따른다.
-- 플랫폼/SRE task branch는 `ops/sre/<TASK-ID>`다.
+- Cloud·Production·운영 DB·Secret·비용 작업의 별도 승인이 없음
+- 대상 resource 또는 rollback 지점이 불명확함
+- 성능 baseline 없이 tuning 선택을 요구함
+- Secret 또는 운영 원시 값 노출 가능성

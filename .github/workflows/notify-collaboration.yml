@@ -49,8 +49,8 @@ jobs:
           NOTIFICATION_SCENARIO: ${{ inputs.scenario }}
           NOTIFICATION_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          if [ ! -f .github/scripts/collect-discord-context.py ]; then
-            echo "필수 Discord context collector가 없습니다." >&2
+          if [ ! -f .github/scripts/collect-discord-context.py ] || [ ! -f .github/scripts/normalize-discord-context.py ]; then
+            echo "필수 Discord context script가 없습니다." >&2
             exit 1
           fi
           python .github/scripts/collect-discord-context.py \
@@ -60,6 +60,10 @@ jobs:
             --scenario "$NOTIFICATION_SCENARIO" \
             --pr-number "$NOTIFICATION_PR_NUMBER" \
             --output discord-context.json
+          python .github/scripts/normalize-discord-context.py \
+            --context-file discord-context.json \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --repository "$GITHUB_REPOSITORY"
           python - <<'PY'
           import json
           import os
