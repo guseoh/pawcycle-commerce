@@ -209,10 +209,14 @@ class WorkflowContractTest(unittest.TestCase):
             "backend/**",
             "frontend/**",
             "infra/production/**",
-            ".github/workflows/publish-production-images.yml",
         ):
             self.assertIn(required, header)
-        for forbidden in ("docs/**", "AGENTS.md", "README.md"):
+        for forbidden in (
+            ".github/workflows/publish-production-images.yml",
+            "docs/**",
+            "AGENTS.md",
+            "README.md",
+        ):
             self.assertNotIn(forbidden, header)
 
     def test_base_only_change_is_excluded_from_pull_request_diff(self) -> None:
