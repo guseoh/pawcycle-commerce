@@ -13,6 +13,7 @@ ARCHITECTURE = ROOT / "docs" / "architecture" / "production-operations-overview.
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
     WORKFLOWS / "validate-rds-automation-preflight.yml",
+    WORKFLOWS / "validate-same-sha-runtime-activation.yml",
     PRODUCTION / "materialize-ssm-env.sh",
     PRODUCTION / "ssm-parameters.env.example",
     PRODUCTION / "pawcycle-production-deploy-ssm-document.json",
@@ -36,6 +37,7 @@ RETIRED_PATHS = (
     PRODUCTION / "test-subscription-automation-preflight-datasource.sh",
     PRODUCTION / "test-production-scripts.sh",
     PRODUCTION / "test-rollback-control-compatibility.sh",
+    PRODUCTION / "test-same-sha-runtime-activation.sh",
     PRODUCTION / "release.env.example",
     RUNBOOKS / "OPS-009-aws-operations-foundation.md",
     RUNBOOKS / "OPS-010-production-single-release.md",
