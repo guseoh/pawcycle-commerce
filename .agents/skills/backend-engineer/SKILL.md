@@ -24,7 +24,7 @@ description: >-
 
 4. **검증**
    - 관련 unit test에서 시작한다.
-   - HTTP/security는 contract/integration, persistence/lock은 실제 MySQL integration으로 확대한다.
+   - HTTP/security는 contract/integration, persistence/transaction/lock 의미가 바뀌면 실제 MySQL integration으로 확대한다.
    - 버그 수정은 재현 가능한 regression을 남긴다.
 
 5. **결과 보고**
