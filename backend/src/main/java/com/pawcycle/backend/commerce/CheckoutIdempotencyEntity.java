@@ -1,20 +1,10 @@
 package com.pawcycle.backend.commerce;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 /**
  * JPA mapping for a commerce persistence record.
@@ -22,7 +12,7 @@ import java.util.Objects;
 
 @Entity
 @Table(name = "checkout_idempotency_results")
-class CheckoutIdempotencyEntity {
+public class CheckoutIdempotencyEntity {
   @EmbeddedId CheckoutIdempotencyId id;
 
   @Column(name = "order_id", nullable = false)
@@ -36,4 +26,42 @@ class CheckoutIdempotencyEntity {
 
   @Column(name = "created_at", nullable = false)
   LocalDateTime createdAt;
+
+  @Column(name = "request_cart_version")
+  Long requestCartVersion;
+
+  protected CheckoutIdempotencyEntity() {}
+
+  public CheckoutIdempotencyEntity(
+      CheckoutIdempotencyId id,
+      long orderId,
+      long paymentId,
+      String requestFingerprint,
+      LocalDateTime createdAt) {
+    this.id = id;
+    this.orderId = orderId;
+    this.paymentId = paymentId;
+    this.requestFingerprint = requestFingerprint;
+    this.createdAt = createdAt;
+  }
+
+  public CheckoutIdempotencyId getId() {
+    return id;
+  }
+
+  public long getOrderId() {
+    return orderId;
+  }
+
+  public long getPaymentId() {
+    return paymentId;
+  }
+
+  public String getRequestFingerprint() {
+    return requestFingerprint;
+  }
+
+  public Long getRequestCartVersion() {
+    return requestCartVersion;
+  }
 }

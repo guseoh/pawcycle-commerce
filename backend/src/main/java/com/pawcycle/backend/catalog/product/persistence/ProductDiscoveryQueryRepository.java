@@ -1,24 +1,37 @@
 package com.pawcycle.backend.catalog.product.persistence;
 
-import com.pawcycle.backend.catalog.product.application.*;
-
+import com.pawcycle.backend.catalog.product.application.BrandSummary;
+import com.pawcycle.backend.catalog.product.application.CategorySummary;
+import com.pawcycle.backend.catalog.product.application.ProductDetailSkuRow;
+import com.pawcycle.backend.catalog.product.application.ProductDetailSupplement;
+import com.pawcycle.backend.catalog.product.application.ProductImage;
+import com.pawcycle.backend.catalog.product.application.ProductListView;
+import com.pawcycle.backend.catalog.product.application.ProductOptionGroup;
+import com.pawcycle.backend.catalog.product.application.ProductOptionValue;
+import com.pawcycle.backend.catalog.product.application.ProductSelectedOption;
+import com.pawcycle.backend.catalog.product.application.ProductSort;
+import com.pawcycle.backend.catalog.product.application.ProductSummary;
+import com.pawcycle.backend.catalog.product.application.SkuPrice;
+import com.pawcycle.backend.catalog.product.application.SkuPriceSummary;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import jakarta.persistence.Tuple;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import java.util.Locale;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Authoritative discovery read model; dynamic filtering is kept in one JPA query boundary. */
 @Repository
 public class ProductDiscoveryQueryRepository {
-  private final JdbcTemplate jdbcTemplate;
+  private final EntityManager entityManager;
 
-  public ProductDiscoveryQueryRepository(JdbcTemplate jdbcTemplate) {
-    this.jdbcTemplate = jdbcTemplate;
+  public ProductDiscoveryQueryRepository(EntityManager entityManager) {
+    this.entityManager = entityManager;
   }
 
   @Transactional(readOnly = true)
@@ -44,33 +57,20 @@ public class ProductDiscoveryQueryRepository {
       int size,
       ProductSort sort) {
     int offset = Math.multiplyExact(page, size);
-    List<Object> parameters = new ArrayList<>();
-    String where =
-        whereClause(
-            q,
-            petType,
-            category,
-            subcategory,
-            brand,
-            facets,
-            minPrice,
-            maxPrice,
-            subscribable,
-            purchasable,
-            parameters);
-    Long total =
-        jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b"
-                + " ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id "
-                + where,
-            Long.class,
-            parameters.toArray());
+    List<QueryParameter> parameters = new ArrayList<>();
+    String where = whereClause(q, petType, category, subcategory, brand, facets, minPrice, maxPrice, subscribable, purchasable, parameters);
+    Number total =
+        (Number)
+            bind(
+                    entityManager.createNativeQuery(
+                        "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id "
+                            + where),
+                    parameters)
+                .getSingleResult();
     String order =
         switch (sort) {
-          case PRICE_ASC ->
-              " ORDER BY representative_price IS NULL ASC, representative_price ASC, p.id ASC";
-          case PRICE_DESC ->
-              " ORDER BY representative_price IS NULL ASC, representative_price DESC, p.id ASC";
+          case PRICE_ASC -> " ORDER BY representative_price IS NULL ASC, representative_price ASC, p.id ASC";
+          case PRICE_DESC -> " ORDER BY representative_price IS NULL ASC, representative_price DESC, p.id ASC";
           case RATING -> " ORDER BY average_rating IS NULL ASC, average_rating DESC, p.id DESC";
           case REVIEW_COUNT -> " ORDER BY review_count DESC, p.id DESC";
           case NEWEST, RECOMMENDED -> " ORDER BY p.id DESC";
@@ -95,163 +95,154 @@ public class ProductDiscoveryQueryRepository {
         LEFT JOIN skus s ON s.product_id=p.id LEFT JOIN inventories i ON i.sku_id=s.id
         """
             + where
-            + " GROUP BY"
-            + " p.id,p.name,p.pet_type,p.short_description,p.thumbnail_url,main_image.image_url,c.id,c.name,c.slug,b.id,b.name,b.slug,b.logo_url"
+            + " GROUP BY p.id,p.name,p.pet_type,p.short_description,p.thumbnail_url,main_image.image_url,c.id,c.name,c.slug,b.id,b.name,b.slug,b.logo_url"
             + order
-            + " LIMIT ? OFFSET ?";
-    parameters.add(size);
-    parameters.add(offset);
-    List<ProductSummary> items =
-        jdbcTemplate.query(
-            sql,
-            (rs, rowNum) -> {
-              BigDecimal price = rs.getBigDecimal("representative_price");
-              BigDecimal compareAt = rs.getBigDecimal("compare_at_price");
-              List<SkuPrice> prices =
-                  price == null
-                      ? List.of()
-                      : List.of(
-                          new SkuPrice(
-                              rs.getLong("representative_sku_id"),
-                              rs.getString("representative_sku_name"),
-                              price));
-              return new ProductSummary(
-                  rs.getLong("product_id"),
-                  rs.getString("name"),
-                  rs.getString("pet_type"),
-                  rs.getString("short_description"),
-                  rs.getString("thumbnail_url"),
-                  new CategorySummary(
-                      rs.getLong("category_id"),
-                      rs.getString("category_name"),
-                      rs.getString("category_slug")),
-                  new SkuPriceSummary(prices),
-                  rs.getInt("has_subscribable") == 1,
-                  price,
-                  rs.getInt("purchasable") == 1,
-                  new BrandSummary(
-                      rs.getLong("brand_id"),
-                      rs.getString("brand_name"),
-                      rs.getString("brand_slug"),
-                      rs.getString("brand_logo_url")),
-                  compareAt,
-                  discountRate(price, compareAt),
-                  rs.getBigDecimal("average_rating"),
-                  rs.getLong("review_count"));
-            },
-            parameters.toArray());
-    return new ProductListView(items, page, size, total == null ? 0 : total);
+            + " LIMIT :limit OFFSET :offset";
+    parameters.add(new QueryParameter("limit", size));
+    parameters.add(new QueryParameter("offset", offset));
+    List<Tuple> rows = bind(entityManager.createNativeQuery(sql, Tuple.class), parameters).getResultList();
+    List<ProductSummary> items = rows.stream().map(this::toSummary).toList();
+    return new ProductListView(items, page, size, total.longValue());
   }
 
   @Transactional(readOnly = true)
   public List<ProductDetailSkuRow> readDetailSkus(Long productId) {
-    List<ProductDetailSkuRow> rows =
-        jdbcTemplate.query(
-            """
-            SELECT s.id,s.name,s.price,s.compare_at_price,s.subscribable,COALESCE(i.available_quantity,0) available_quantity
-            FROM skus s LEFT JOIN inventories i ON i.sku_id=s.id
-            WHERE s.product_id=? AND s.status='ACTIVE' ORDER BY s.display_order ASC,s.id ASC
-            """,
-            (rs, n) ->
-                new ProductDetailSkuRow(
-                    rs.getLong("id"),
-                    rs.getString("name"),
-                    rs.getBigDecimal("price"),
-                    rs.getBigDecimal("compare_at_price"),
-                    rs.getBoolean("subscribable"),
-                    rs.getInt("available_quantity"),
-                    List.of()),
-            productId);
-    if (rows.isEmpty()) return rows;
-    Map<Long, List<ProductSelectedOption>> options = new LinkedHashMap<>();
-    jdbcTemplate.query(
-        """
-        SELECT sov.sku_id,g.id group_id,g.name group_name,v.id value_id,v.value
-        FROM sku_option_values sov JOIN product_option_values v ON v.id=sov.option_value_id
-        JOIN product_option_groups g ON g.id=v.option_group_id
-        WHERE sov.sku_id IN (SELECT id FROM skus WHERE product_id=?) ORDER BY g.display_order,v.display_order,v.id
-        """,
-        (RowCallbackHandler)
-            rs ->
-                options
-                    .computeIfAbsent(rs.getLong("sku_id"), ignored -> new ArrayList<>())
-                    .add(
-                        new ProductSelectedOption(
-                            rs.getLong("group_id"),
-                            rs.getString("group_name"),
-                            rs.getLong("value_id"),
-                            rs.getString("value"))),
-        productId);
+    List<Tuple> rows =
+        entityManager
+            .createNativeQuery(
+                "SELECT s.id,s.name,s.price,s.compare_at_price,s.subscribable,COALESCE(i.available_quantity,0) available_quantity "
+                    + "FROM skus s LEFT JOIN inventories i ON i.sku_id=s.id "
+                    + "WHERE s.product_id=:productId AND s.status='ACTIVE' ORDER BY s.display_order ASC,s.id ASC",
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
+    if (rows.isEmpty()) return List.of();
+    LinkedHashMap<Long, List<ProductSelectedOption>> options = new LinkedHashMap<>();
+    List<Tuple> optionRows =
+        entityManager
+            .createNativeQuery(
+                "SELECT sov.sku_id,g.id group_id,g.name group_name,v.id value_id,v.value "
+                    + "FROM sku_option_values sov JOIN product_option_values v ON v.id=sov.option_value_id "
+                    + "JOIN product_option_groups g ON g.id=v.option_group_id "
+                    + "WHERE sov.sku_id IN (SELECT id FROM skus WHERE product_id=:productId) "
+                    + "ORDER BY g.display_order,v.display_order,v.id",
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
+    for (Tuple row : optionRows) {
+      Long skuId = longValue(row, "sku_id");
+      options
+          .computeIfAbsent(skuId, ignored -> new ArrayList<>())
+          .add(
+              new ProductSelectedOption(
+                  longValue(row, "group_id"),
+                  stringValue(row, "group_name"),
+                  longValue(row, "value_id"),
+                  stringValue(row, "value")));
+    }
     return rows.stream()
         .map(
             row ->
                 new ProductDetailSkuRow(
-                    row.skuId(),
-                    row.skuName(),
-                    row.price(),
-                    row.compareAtPrice(),
-                    row.subscribable(),
-                    row.availableQuantity(),
-                    options.getOrDefault(row.skuId(), List.of())))
+                    longValue(row, "id"),
+                    stringValue(row, "name"),
+                    decimalValue(row, "price"),
+                    decimalValue(row, "compare_at_price"),
+                    booleanValue(row, "subscribable"),
+                    intValue(row, "available_quantity"),
+                    options.getOrDefault(longValue(row, "id"), List.of())))
         .toList();
   }
 
   @Transactional(readOnly = true)
   public ProductDetailSupplement readDetailSupplement(Long productId) {
-    List<BrandSummary> brands =
-        jdbcTemplate.query(
-            """
-            SELECT b.id,b.name,b.slug,b.logo_url FROM products p JOIN brands b ON b.id=p.brand_id
-            WHERE p.id=? AND b.active=true
-            """,
-            (rs, n) ->
-                new BrandSummary(
-                    rs.getLong("id"),
-                    rs.getString("name"),
-                    rs.getString("slug"),
-                    rs.getString("logo_url")),
-            productId);
-    if (brands.isEmpty()) return ProductDetailSupplement.empty();
+    List<Tuple> brandRows =
+        entityManager
+            .createNativeQuery(
+                "SELECT b.id,b.name,b.slug,b.logo_url FROM products p JOIN brands b ON b.id=p.brand_id "
+                    + "WHERE p.id=:productId AND b.active=true",
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
+    if (brandRows.isEmpty()) return ProductDetailSupplement.empty();
+    Tuple brandRow = brandRows.getFirst();
+    BrandSummary brand =
+        new BrandSummary(
+            longValue(brandRow, "id"),
+            stringValue(brandRow, "name"),
+            stringValue(brandRow, "slug"),
+            stringValue(brandRow, "logo_url"));
+    List<Tuple> imageRows =
+        entityManager
+            .createNativeQuery(
+                "SELECT id,image_url,alt_text,display_order,image_type FROM product_images WHERE product_id=:productId ORDER BY display_order,id",
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
     List<ProductImage> images =
-        jdbcTemplate.query(
-            "SELECT id,image_url,alt_text,display_order,image_type FROM product_images WHERE"
-                + " product_id=? ORDER BY display_order,id",
-            (rs, n) ->
-                new ProductImage(
-                    rs.getLong("id"),
-                    rs.getString("image_url"),
-                    rs.getString("alt_text"),
-                    rs.getInt("display_order"),
-                    rs.getString("image_type")),
-            productId);
-    Map<Long, ProductOptionGroup> groups = new LinkedHashMap<>();
-    jdbcTemplate.query(
-        """
-        SELECT g.id group_id,g.name group_name,g.display_order group_display_order,v.id value_id,v.value,v.display_order value_display_order
-        FROM product_option_groups g LEFT JOIN product_option_values v ON v.option_group_id=g.id
-        WHERE g.product_id=? ORDER BY g.display_order,g.id,v.display_order,v.id
-        """,
-        (RowCallbackHandler)
-            rs -> {
-              long groupId = rs.getLong("group_id");
-              ProductOptionGroup old = groups.get(groupId);
-              List<ProductOptionValue> values =
-                  old == null ? new ArrayList<>() : new ArrayList<>(old.values());
-              Long valueId = rs.getObject("value_id", Long.class);
-              if (valueId != null)
-                values.add(
-                    new ProductOptionValue(
-                        valueId, rs.getString("value"), rs.getInt("value_display_order")));
-              groups.put(
-                  groupId,
-                  new ProductOptionGroup(
-                      groupId,
-                      rs.getString("group_name"),
-                      rs.getInt("group_display_order"),
-                      values));
-            },
-        productId);
-    return new ProductDetailSupplement(brands.getFirst(), images, List.copyOf(groups.values()));
+        imageRows
+            .stream()
+            .map(
+                row ->
+                    new ProductImage(
+                        longValue(row, "id"),
+                        stringValue(row, "image_url"),
+                        stringValue(row, "alt_text"),
+                        intValue(row, "display_order"),
+                        stringValue(row, "image_type")))
+            .toList();
+    LinkedHashMap<Long, ProductOptionGroup> groups = new LinkedHashMap<>();
+    List<Tuple> optionRows =
+        entityManager
+            .createNativeQuery(
+                "SELECT g.id group_id,g.name group_name,g.display_order group_display_order,v.id value_id,v.value,v.display_order value_display_order "
+                    + "FROM product_option_groups g LEFT JOIN product_option_values v ON v.option_group_id=g.id "
+                    + "WHERE g.product_id=:productId ORDER BY g.display_order,g.id,v.display_order,v.id",
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
+    for (Tuple row : optionRows) {
+      long groupId = longValue(row, "group_id");
+      ProductOptionGroup old = groups.get(groupId);
+      List<ProductOptionValue> values = old == null ? new ArrayList<>() : new ArrayList<>(old.values());
+      Long valueId = nullableLongValue(row, "value_id");
+      if (valueId != null)
+        values.add(new ProductOptionValue(valueId, stringValue(row, "value"), intValue(row, "value_display_order")));
+      groups.put(
+          groupId,
+          new ProductOptionGroup(
+              groupId,
+              stringValue(row, "group_name"),
+              intValue(row, "group_display_order"),
+              values));
+    }
+    return new ProductDetailSupplement(brand, images, List.copyOf(groups.values()));
+  }
+
+  private ProductSummary toSummary(Tuple row) {
+    BigDecimal price = decimalValue(row, "representative_price");
+    BigDecimal compareAt = decimalValue(row, "compare_at_price");
+    Long representativeSkuId = nullableLongValue(row, "representative_sku_id");
+    List<SkuPrice> prices =
+        representativeSkuId == null
+            ? List.of()
+            : List.of(new SkuPrice(representativeSkuId, stringValue(row, "representative_sku_name"), price));
+    return new ProductSummary(
+        longValue(row, "product_id"),
+        stringValue(row, "name"),
+        stringValue(row, "pet_type"),
+        stringValue(row, "short_description"),
+        stringValue(row, "thumbnail_url"),
+        new CategorySummary(longValue(row, "category_id"), stringValue(row, "category_name"), stringValue(row, "category_slug")),
+        new SkuPriceSummary(prices),
+        intValue(row, "has_subscribable") == 1,
+        price,
+        intValue(row, "purchasable") == 1,
+        new BrandSummary(longValue(row, "brand_id"), stringValue(row, "brand_name"), stringValue(row, "brand_slug"), stringValue(row, "brand_logo_url")),
+        compareAt,
+        discountRate(price, compareAt),
+        decimalValue(row, "average_rating"),
+        longValue(row, "review_count"));
   }
 
   private String whereClause(
@@ -265,88 +256,90 @@ public class ProductDiscoveryQueryRepository {
       BigDecimal maxPrice,
       Boolean subscribable,
       Boolean purchasable,
-      List<Object> p) {
-    StringBuilder where =
-        new StringBuilder(" WHERE p.display_status='PUBLIC' AND c.active=true AND b.active=true");
+      List<QueryParameter> parameters) {
+    StringBuilder where = new StringBuilder(" WHERE p.display_status='PUBLIC' AND c.active=true AND b.active=true");
     if (q != null && !q.isBlank()) {
-      String needle = "%" + q.trim().toLowerCase(java.util.Locale.ROOT) + "%";
-      where.append(
-          " AND (LOWER(p.name) LIKE ? OR LOWER(p.short_description) LIKE ? OR"
-              + " LOWER(COALESCE(p.description,'')) LIKE ?)");
-      p.add(needle);
-      p.add(needle);
-      p.add(needle);
+      String needle = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+      String q1 = add(parameters, needle);
+      String q2 = add(parameters, needle);
+      String q3 = add(parameters, needle);
+      where.append(" AND (LOWER(p.name) LIKE :").append(q1).append(" OR LOWER(p.short_description) LIKE :").append(q2).append(" OR LOWER(COALESCE(p.description,'')) LIKE :").append(q3).append(")");
     }
-    if (petType != null && !petType.isBlank()) {
-      where.append(" AND LOWER(p.pet_type)=?");
-      p.add(petType.trim().toLowerCase(java.util.Locale.ROOT));
-    }
+    if (petType != null && !petType.isBlank()) where.append(" AND LOWER(p.pet_type)=:").append(add(parameters, petType.trim().toLowerCase(Locale.ROOT)));
     if (category != null && !category.isBlank()) {
-      where.append(" AND (LOWER(c.slug)=? OR LOWER(parent.slug)=?)");
-      String value = category.trim().toLowerCase(java.util.Locale.ROOT);
-      p.add(value);
-      p.add(value);
+      String value = category.trim().toLowerCase(Locale.ROOT);
+      where.append(" AND (LOWER(c.slug)=:").append(add(parameters, value)).append(" OR LOWER(parent.slug)=:").append(add(parameters, value)).append(")");
     }
-    if (subcategory != null && !subcategory.isBlank()) {
-      where.append(" AND c.parent_id IS NOT NULL AND LOWER(c.slug)=?");
-      p.add(subcategory.trim().toLowerCase(java.util.Locale.ROOT));
-    }
-    if (brand != null && !brand.isBlank()) {
-      where.append(" AND LOWER(b.slug)=?");
-      p.add(brand.trim().toLowerCase(java.util.Locale.ROOT));
-    }
+    if (subcategory != null && !subcategory.isBlank()) where.append(" AND c.parent_id IS NOT NULL AND LOWER(c.slug)=:").append(add(parameters, subcategory.trim().toLowerCase(Locale.ROOT)));
+    if (brand != null && !brand.isBlank()) where.append(" AND LOWER(b.slug)=:").append(add(parameters, brand.trim().toLowerCase(Locale.ROOT)));
     if (minPrice != null || maxPrice != null) {
-      where.append(
-          " AND EXISTS (SELECT 1 FROM skus sp WHERE sp.product_id=p.id AND sp.status='ACTIVE'");
-      if (minPrice != null) {
-        where.append(" AND sp.price>=?");
-        p.add(minPrice);
-      }
-      if (maxPrice != null) {
-        where.append(" AND sp.price<=?");
-        p.add(maxPrice);
-      }
+      where.append(" AND EXISTS (SELECT 1 FROM skus sp WHERE sp.product_id=p.id AND sp.status='ACTIVE'");
+      if (minPrice != null) where.append(" AND sp.price>=:").append(add(parameters, minPrice));
+      if (maxPrice != null) where.append(" AND sp.price<=:").append(add(parameters, maxPrice));
       where.append(")");
     }
-    if (subscribable != null) {
-      where.append(
-          subscribable
-              ? " AND EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND ss.status='ACTIVE'"
-                  + " AND ss.subscribable=true)"
-              : " AND NOT EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND"
-                  + " ss.status='ACTIVE' AND ss.subscribable=true)");
-    }
-    if (purchasable != null) {
-      where.append(
-          purchasable
-              ? " AND EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id WHERE"
-                  + " si.product_id=p.id AND si.status='ACTIVE' AND ii.available_quantity>0)"
-              : " AND NOT EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id"
-                  + " WHERE si.product_id=p.id AND si.status='ACTIVE' AND"
-                  + " ii.available_quantity>0)");
-    }
+    if (subscribable != null)
+      where.append(subscribable ? " AND EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND ss.status='ACTIVE' AND ss.subscribable=true)" : " AND NOT EXISTS (SELECT 1 FROM skus ss WHERE ss.product_id=p.id AND ss.status='ACTIVE' AND ss.subscribable=true)");
+    if (purchasable != null)
+      where.append(purchasable ? " AND EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id WHERE si.product_id=p.id AND si.status='ACTIVE' AND ii.available_quantity>0)" : " AND NOT EXISTS (SELECT 1 FROM skus si JOIN inventories ii ON ii.sku_id=si.id WHERE si.product_id=p.id AND si.status='ACTIVE' AND ii.available_quantity>0)");
     for (String facet : facets == null ? List.<String>of() : facets) {
       String[] pair = facet == null ? new String[0] : facet.split(":", 2);
-      if (pair.length != 2 || pair[0].isBlank() || pair[1].isBlank())
-        throw new IllegalArgumentException("facet은 key:value 형식이어야 합니다.");
-      where.append(
-          " AND EXISTS (SELECT 1 FROM product_facet_values pfv JOIN facet_options fo ON"
-              + " fo.id=pfv.facet_option_id JOIN facet_definitions fd ON"
-              + " fd.id=fo.facet_definition_id WHERE pfv.product_id=p.id AND fd.`key`=? AND"
-              + " fo.value=?)");
-      p.add(pair[0].trim());
-      p.add(pair[1].trim());
+      if (pair.length != 2 || pair[0].isBlank() || pair[1].isBlank()) throw new IllegalArgumentException("facet은 key:value 형식이어야 합니다.");
+      where.append(" AND EXISTS (SELECT 1 FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id WHERE pfv.product_id=p.id AND fd.`key`=:").append(add(parameters, pair[0].trim())).append(" AND fo.value=:").append(add(parameters, pair[1].trim())).append(")");
     }
     return where.toString();
   }
 
-  private Integer discountRate(BigDecimal price, BigDecimal compareAt) {
-    if (price == null || compareAt == null || compareAt.signum() <= 0) return null;
-    return compareAt
-        .subtract(price)
-        .multiply(BigDecimal.valueOf(100))
-        .divide(compareAt, 0, RoundingMode.DOWN)
-        .intValue();
+  private String add(List<QueryParameter> parameters, Object value) {
+    String name = "p" + parameters.size();
+    parameters.add(new QueryParameter(name, value));
+    return name;
   }
 
+  private Query bind(Query query, List<QueryParameter> parameters) {
+    parameters.forEach(parameter -> query.setParameter(parameter.name(), parameter.value()));
+    return query;
+  }
+
+  private Integer discountRate(BigDecimal price, BigDecimal compareAt) {
+    if (price == null || compareAt == null || compareAt.signum() <= 0) return null;
+    return compareAt.subtract(price).multiply(BigDecimal.valueOf(100)).divide(compareAt, 0, RoundingMode.DOWN).intValue();
+  }
+
+  private static Object value(Tuple row, String alias) {
+    return row.get(alias);
+  }
+
+  private static String stringValue(Tuple row, String alias) {
+    return (String) value(row, alias);
+  }
+
+  private static Number numberValue(Tuple row, String alias) {
+    return (Number) value(row, alias);
+  }
+
+  private static long longValue(Tuple row, String alias) {
+    return numberValue(row, alias).longValue();
+  }
+
+  private static Long nullableLongValue(Tuple row, String alias) {
+    Number number = (Number) value(row, alias);
+    return number == null ? null : number.longValue();
+  }
+
+  private static int intValue(Tuple row, String alias) {
+    return numberValue(row, alias).intValue();
+  }
+
+  private static boolean booleanValue(Tuple row, String alias) {
+    Object raw = value(row, alias);
+    return raw instanceof Boolean booleanValue ? booleanValue : numberValue(row, alias).intValue() != 0;
+  }
+
+  private static BigDecimal decimalValue(Tuple row, String alias) {
+    Number number = (Number) value(row, alias);
+    return number == null ? null : number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
+  }
+
+  private record QueryParameter(String name, Object value) {}
 }

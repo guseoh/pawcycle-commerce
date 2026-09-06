@@ -1,27 +1,33 @@
 package com.pawcycle.backend.commerce.wishlist.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class WishlistQueryRepository {
-  private final JdbcTemplate queries;
+  private final EntityManager entityManager;
 
-  public WishlistQueryRepository(JdbcTemplate queries) {
-    this.queries = queries;
+  public WishlistQueryRepository(EntityManager entityManager) {
+    this.entityManager = entityManager;
   }
 
   public List<WishlistItemView> findByMemberId(long memberId) {
-    return queries.query(
-        """
-        SELECT item.product_id AS productId,product.name AS productName,item.created_at AS createdAt
-        FROM wishlist_items item JOIN products product ON product.id=item.product_id
-        WHERE item.member_id=? ORDER BY item.created_at DESC,item.product_id DESC
-        """,
-        (rs, rowNumber) ->
-            new WishlistItemView(
-                rs.getLong("productId"), rs.getString("productName"), rs.getTimestamp("createdAt")),
-        memberId);
+    return entityManager
+        .createQuery(
+            """
+            select new com.pawcycle.backend.commerce.wishlist.persistence.WishlistItemRow(
+                item.id.productId, product.name, item.createdAt)
+            from WishlistItemEntity item
+            join Product product on product.id = item.id.productId
+            where item.id.memberId = :memberId
+            order by item.createdAt desc, item.id.productId desc
+            """,
+            WishlistItemRow.class)
+        .setParameter("memberId", memberId)
+        .getResultList()
+        .stream()
+        .map(WishlistItemRow::toView)
+        .toList();
   }
 }

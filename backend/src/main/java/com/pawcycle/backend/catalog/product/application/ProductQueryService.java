@@ -2,13 +2,8 @@ package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
-import com.pawcycle.backend.catalog.sku.domain.Sku;
-import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
-import java.util.LinkedHashMap;
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,38 +11,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductQueryService {
   private static final List<Integer> DELIVERY_CYCLES = List.of(2, 4, 8);
 
-  private final ProductListCache productListCache;
-  private final ProductListReader productListReader;
   private final ProductRepository productRepository;
-  private final SkuRepository skuRepository;
   private final ProductDiscoveryReader productDiscoveryReader;
   private final ProductDetailContentReader productDetailContentReader;
 
   public ProductQueryService(
-      ProductListCache productListCache,
-      ProductListReader productListReader,
       ProductRepository productRepository,
-      SkuRepository skuRepository) {
-    this.productListCache = productListCache;
-    this.productListReader = productListReader;
-    this.productRepository = productRepository;
-    this.skuRepository = skuRepository;
-    this.productDiscoveryReader = null;
-    this.productDetailContentReader = null;
-  }
-
-  @Autowired
-  public ProductQueryService(
-      ProductListCache productListCache,
-      ProductListReader productListReader,
-      ProductRepository productRepository,
-      SkuRepository skuRepository,
       ProductDiscoveryReader productDiscoveryReader,
       ProductDetailContentReader productDetailContentReader) {
-    this.productListCache = productListCache;
-    this.productListReader = productListReader;
     this.productRepository = productRepository;
-    this.skuRepository = skuRepository;
     this.productDiscoveryReader = productDiscoveryReader;
     this.productDetailContentReader = productDetailContentReader;
   }
@@ -65,8 +37,8 @@ public class ProductQueryService {
       String subcategory,
       String brand,
       List<String> facets,
-      java.math.BigDecimal minPrice,
-      java.math.BigDecimal maxPrice,
+      BigDecimal minPrice,
+      BigDecimal maxPrice,
       Boolean subscribable,
       Boolean purchasable,
       int page,
@@ -107,68 +79,25 @@ public class ProductQueryService {
   }
 
   public ProductListView findProducts(String q, String petType, String category) {
-    if (productDiscoveryReader != null) {
-      return findProducts(q, petType, category, 0, 20, ProductSort.NEWEST);
-    }
-    try {
-      ProductListView allProducts = productListCache.getOrLoad(this::loadProducts);
-      if ((q == null || q.isBlank())
-          && (petType == null || petType.isBlank())
-          && (category == null || category.isBlank())) {
-        return allProducts;
-      }
-      return new ProductListView(
-          allProducts.products().stream()
-              .filter(product -> matches(product, q, petType, category))
-              .toList());
-    } catch (RuntimeException exception) {
-      throw new ProductListUnavailableException(exception);
-    }
+    return findProducts(q, petType, category, 0, 20, ProductSort.NEWEST);
   }
 
   public ProductListView findProducts() {
     return findProducts(null, null, null);
   }
 
-  private ProductListView loadProducts() {
-    ProductListSnapshot snapshot = productListReader.read();
-    if (snapshot.products().isEmpty()) {
-      return new ProductListView(List.of());
-    }
-
-    Map<Long, List<SkuSnapshot>> skusByProduct = groupSkus(snapshot.skus());
-    List<ProductSummary> summaries =
-        snapshot.products().stream()
-            .map(
-                product ->
-                    toSummary(product, skusByProduct.getOrDefault(product.productId(), List.of())))
-            .toList();
-    return new ProductListView(summaries);
-  }
-
   @Transactional(readOnly = true)
   public ProductDetailView findProduct(Long productId) {
-    Product product;
     try {
-      product =
+      Product product =
           productRepository.findPublicById(productId).orElseThrow(ProductNotFoundException::new);
       List<ProductSkuDetail> skuDetails =
-          productDiscoveryReader == null
-              ? skuRepository
-                  .findAllByProductIdAndStatusOrderByDisplayOrderAscIdAsc(
-                      productId, SkuStatus.ACTIVE)
-                  .stream()
-                  .map(this::toDetail)
-                  .toList()
-              : productDiscoveryReader.readDetailSkus(productId).stream()
-                  .map(this::toDetail)
-                  .toList();
+          productDiscoveryReader.readDetailSkus(productId).stream()
+              .map(this::toDetail)
+              .toList();
       ProductDetailSupplement supplement =
-          productDiscoveryReader == null
-              ? ProductDetailSupplement.empty()
-              : productDiscoveryReader.readDetailSupplement(productId);
-      if (productDiscoveryReader != null && supplement.brand() == null)
-        throw new ProductNotFoundException();
+          productDiscoveryReader.readDetailSupplement(productId);
+      if (supplement.brand() == null) throw new ProductNotFoundException();
       return new ProductDetailView(
           product.getId(),
           product.getName(),
@@ -180,12 +109,8 @@ public class ProductQueryService {
               product.getCategory().getId(),
               product.getCategory().getName(),
               product.getCategory().getSlug()),
-          productDetailContentReader == null
-              ? List.of()
-              : productDetailContentReader.visibleSections(productId),
-          productDetailContentReader == null
-              ? ProductTrust.empty()
-              : toTrust(productDetailContentReader.trust(productId)),
+          productDetailContentReader.visibleSections(productId),
+          toTrust(productDetailContentReader.trust(productId)),
           skuDetails,
           skuDetails.stream().anyMatch(ProductSkuDetail::purchasable),
           supplement.brand(),
@@ -212,59 +137,6 @@ public class ProductQueryService {
     }
   }
 
-  private Map<Long, List<SkuSnapshot>> groupSkus(List<SkuSnapshot> skus) {
-    Map<Long, List<SkuSnapshot>> skusByProduct = new LinkedHashMap<>();
-    for (SkuSnapshot sku : skus) {
-      skusByProduct
-          .computeIfAbsent(sku.productId(), ignored -> new java.util.ArrayList<>())
-          .add(sku);
-    }
-    return skusByProduct;
-  }
-
-  private ProductSummary toSummary(ProductSnapshot product, List<SkuSnapshot> skus) {
-    List<SkuPrice> prices =
-        skus.stream().map(sku -> new SkuPrice(sku.skuId(), sku.skuName(), sku.price())).toList();
-    return new ProductSummary(
-        product.productId(),
-        product.name(),
-        product.petType(),
-        product.shortDescription(),
-        product.thumbnailUrl(),
-        new CategorySummary(
-            product.category().categoryId(), product.category().name(), product.category().slug()),
-        new SkuPriceSummary(prices),
-        skus.stream().anyMatch(SkuSnapshot::subscribable));
-  }
-
-  private boolean matches(ProductSummary product, String q, String petType, String category) {
-    return matchesQuery(product, q)
-        && (petType == null
-            || petType.isBlank()
-            || product.petType().equalsIgnoreCase(petType.trim()))
-        && (category == null
-            || category.isBlank()
-            || product.category().slug().equalsIgnoreCase(category.trim()));
-  }
-
-  private boolean matchesQuery(ProductSummary product, String q) {
-    if (q == null || q.isBlank()) return true;
-    String needle = q.trim().toLowerCase(java.util.Locale.ROOT);
-    return product.name().toLowerCase(java.util.Locale.ROOT).contains(needle)
-        || product.shortDescription().toLowerCase(java.util.Locale.ROOT).contains(needle);
-  }
-
-  private ProductSkuDetail toDetail(Sku sku) {
-    return new ProductSkuDetail(
-        sku.getId(),
-        sku.getName(),
-        sku.getPrice(),
-        sku.isSubscribable(),
-        sku.isSubscribable() ? DELIVERY_CYCLES : List.of(),
-        1,
-        true);
-  }
-
   private ProductSkuDetail toDetail(ProductDetailSkuRow sku) {
     return new ProductSkuDetail(
         sku.skuId(),
@@ -279,11 +151,11 @@ public class ProductQueryService {
         sku.selectedOptions());
   }
 
-  private Integer discountRate(java.math.BigDecimal price, java.math.BigDecimal compareAtPrice) {
+  private Integer discountRate(BigDecimal price, BigDecimal compareAtPrice) {
     if (compareAtPrice == null || price == null || compareAtPrice.signum() <= 0) return null;
     return compareAtPrice
         .subtract(price)
-        .multiply(java.math.BigDecimal.valueOf(100))
+        .multiply(BigDecimal.valueOf(100))
         .divide(compareAtPrice, 0, java.math.RoundingMode.DOWN)
         .intValue();
   }

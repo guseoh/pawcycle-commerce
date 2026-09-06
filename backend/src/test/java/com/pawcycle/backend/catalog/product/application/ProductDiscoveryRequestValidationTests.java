@@ -5,7 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
-import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -13,20 +12,11 @@ class ProductDiscoveryRequestValidationTests {
 
   @Test
   void malformedFacetIsRejectedAsRequestValidationBeforeDiscoveryFailureWrapping() {
-    ProductListCache productListCache = mock(ProductListCache.class);
-    ProductListReader productListReader = mock(ProductListReader.class);
     ProductRepository productRepository = mock(ProductRepository.class);
-    SkuRepository skuRepository = mock(SkuRepository.class);
     ProductDiscoveryReader discoveryReader = mock(ProductDiscoveryReader.class);
     ProductDetailContentReader detailContentReader = mock(ProductDetailContentReader.class);
     ProductQueryService service =
-        new ProductQueryService(
-            productListCache,
-            productListReader,
-            productRepository,
-            skuRepository,
-            discoveryReader,
-            detailContentReader);
+        new ProductQueryService(productRepository, discoveryReader, detailContentReader);
 
     assertThatThrownBy(
             () ->
