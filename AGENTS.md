@@ -39,7 +39,17 @@ GitHub branch, PR, HEAD, CI, review, Production 상태는 장기 문서나 과�
 - 이 경우 수정하는 **각 경로의 `AGENTS.md` 규칙을 모두 적용**한다.
 - 다른 영역의 새 제품 결정이 필요해지면 범위를 임의 확장하지 않고 중단한다.
 
-`docs/roles/**`는 역할의 지속 책임과 결정권을, `.agents/skills/**`는 그 역할의 실행 절차를 정의한다. 공통 Git·PR·산출물 규칙을 각 문서에 복제하지 않는다.
+`docs/roles/**`는 역할의 지속 책임과 결정권을, `.agents/skills/**`는 그 역할 또는 반복 workflow의 실행 절차를 정의한다. 공통 Git·PR·산출물 규칙을 각 문서에 복제하지 않는다.
+
+## Skill 라우팅
+
+Skill 이름을 사용자가 명시하면 해당 Skill을 우선한다. 이름을 명시하지 않아도 요청 의도가 다음 workflow와 일치하면 해당 Skill을 사용한다.
+
+- PR 병합 전 최종 검토, merge readiness 판단 → `.agents/skills/pr-readiness-review/SKILL.md`
+- Codex 실행 Prompt, Delta Prompt, 리뷰 후 후속 수정 Prompt 생성 → `.agents/skills/codex-delta-prompt/SKILL.md`
+- PR/branch CI 실패 원인 분석과 최소 후속 수정 범위 판단 → `.agents/skills/ci-failure-triage/SKILL.md`
+
+Skill은 공통 정책의 복사본이 아니다. 지속 안전 규칙은 이 파일과 경로별 `AGENTS.md`를 따르고, Skill에는 반복 실행 절차만 둔다.
 
 ## GitHub와 Git 쓰기 안전
 
