@@ -15,7 +15,7 @@ cleanup() {
 trap cleanup EXIT
 
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
-CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
 TEST_DOMAIN="ops011-nginx-test.duckdns.org"
 LETSENCRYPT_DIR="$TEST_ROOT/letsencrypt"
 CERTIFICATE_DIR="$LETSENCRYPT_DIR/live/pawcycle-production"
@@ -46,7 +46,7 @@ validate_config() {
 validate_config "$SCRIPT_DIR/nginx.conf"
 validate_config "$HTTPS_CONFIG"
 
-docker run --rm --platform linux/amd64 \
+docker run --rm \
   --entrypoint python \
   --env EXPECTED_DOMAIN="$TEST_DOMAIN" \
   --volume "$LETSENCRYPT_DIR:/etc/letsencrypt:ro" \

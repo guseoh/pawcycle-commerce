@@ -121,10 +121,9 @@ PawCycle에서는 이 과정에서 발생하는 문제를 실제 코드와 테�
   &nbsp;
   <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nginx/nginx-original.svg" width="45" alt="Nginx"/>
   &nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-plain-wordmark.svg" width="55" alt="AWS"/>
 </p>
 
-**MySQL · Flyway · Docker · Docker Compose · Nginx · AWS**
+**MySQL · Flyway · Docker · Docker Compose · Nginx · OCI**
 
 ### Observability & Development
 
@@ -150,32 +149,28 @@ PawCycle에서는 이 과정에서 발생하는 문제를 실제 코드와 테�
 Internet
    │
    ▼
- Nginx
+ OCI VCN / Public Application Subnet
    │
+ Nginx :80/:443
    ├───────────────┐
    ▼               ▼
 Next.js       Spring Boot
 Frontend         Backend
-                   │
+                   │ database-egress / TLS REQUIRED
                    ▼
-                 MySQL
+             Private DB Subnet
+             MySQL HeatWave / MySQL.Free
                    │
             ┌──────┴──────┐
             ▼             ▼
       Reconciliation   Idempotency
             │
             ▼
-        Micrometer
-            │
-            ▼
-       Prometheus
-            │
-       ┌────┴────┐
-       ▼         ▼
-    Grafana   Alertmanager
-                  │
-                  ▼
-               Discord
+        Micrometer → metrics-proxy
+                         │
+                         ▼
+                 Trial Observability host
+                 Prometheus / Grafana
 ```
 
 <details>
@@ -183,14 +178,16 @@ Frontend         Backend
 
 <br>
 
-Production 환경에서는 Application Release와 운영 Control 상태를 구분합니다.
+Production target에서는 Application Release와 운영 Control 상태를 구분합니다.
 
 - Backend / Frontend image는 commit SHA 기준으로 식별
 - GHCR에 Application image 저장
 - Nginx에서 외부 HTTPS 처리
-- Application과 MySQL은 내부 Docker Network에서 통신
+- Application Compose는 backend/frontend/proxy만 소유
+- MySQL HeatWave / MySQL.Free private endpoint는 database-egress와 TLS REQUIRED로 사용
+- OCI Run Command는 operator-approved 실행 경계
+- Object Storage logical backup과 isolated restore-verify를 Application lifecycle과 분리
 - 운영 Secret은 저장소에서 분리
-- Logical Backup과 격리 Restore 절차 구성
 - 이전 Application Release Rollback 경로 검증
 
 GitHub Actions가 Production에 자동 배포하지 않습니다.

@@ -9,6 +9,7 @@ PROMETHEUS_URL="${PAWCYCLE_PROMETHEUS_URL:-}"
 PRODUCTION_RESULT=""
 SCOPE=""
 METRICS_PORT="${PAWCYCLE_METRICS_PORT:-9464}"
+RUNTIME_DIR="${PAWCYCLE_RUNTIME_DIR:-/opt/pawcycle/runtime}"
 CONNECT_TIMEOUT_SECONDS="${PAWCYCLE_DIAGNOSTIC_CONNECT_TIMEOUT_SECONDS:-5}"
 MAX_TIME_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_TIME_SECONDS:-10}"
 MAX_SNAPSHOT_AGE_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_SNAPSHOT_AGE_SECONDS:-120}"
@@ -45,8 +46,49 @@ valid_sha() {
   [[ "$1" =~ ^[0-9a-f]{40}$ ]]
 }
 
-valid_mysql_volume() {
-  [[ "$1" == pawcycle-production-mysql-data || "$1" =~ ^pawcycle-production-mysql-candidate-[0-9a-f]{16}$ ]]
+valid_database_runtime() { [[ "$1" == external_tls_required ]]; }
+
+read_runtime_setting() {
+  local file="$1" key="$2" line value matches=0
+  local quote="'" prefix="${key}='" encoded
+  while IFS= read -r line; do
+    if [[ "$line" == "$key="* ]]; then
+      matches=$((matches + 1))
+      [[ "$line" == "$prefix"*"$quote" ]] || return 1
+      value="${line#"$prefix"}"
+      value="${value%"$quote"}"
+      encoded="$value"
+      while [[ "$encoded" == *"$quote"* ]]; do
+        [[ "$encoded" == *"\\$quote"* ]] || return 1
+        encoded="${encoded//\\$quote/}"
+      done
+      value="${value//\\$quote/$quote}"
+    fi
+  done < "$file"
+  [[ "$matches" == 1 ]] || return 1
+  printf '%s' "$value"
+}
+
+database_runtime_status() {
+  local current env host port database ssl url
+  current="$(readlink -f -- "$RUNTIME_DIR/current" 2>/dev/null || true)"
+  env="$current/backend.env"
+  [[ "$current" == "$RUNTIME_DIR"/.bundle.* && -d "$current" ]] || { printf 'invalid'; return; }
+  [[ -f "$env" && ! -L "$env" && "$(stat -c '%a' "$env" 2>/dev/null || true)" == 600 ]] || { printf 'invalid'; return; }
+  host="$(read_runtime_setting "$env" PAWCYCLE_DATASOURCE_HOST 2>/dev/null || true)"
+  port="$(read_runtime_setting "$env" PAWCYCLE_DATASOURCE_PORT 2>/dev/null || true)"
+  database="$(read_runtime_setting "$env" PAWCYCLE_DATASOURCE_DATABASE 2>/dev/null || true)"
+  ssl="$(read_runtime_setting "$env" PAWCYCLE_DATASOURCE_SSL_MODE 2>/dev/null || true)"
+  url="$(read_runtime_setting "$env" SPRING_DATASOURCE_URL 2>/dev/null || true)"
+  [[ "$port" == 3306 && "$ssl" == REQUIRED && "$database" =~ ^[A-Za-z0-9_]{1,64}$ ]] || { printf 'invalid'; return; }
+  if [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+    [[ "$host" =~ ^(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})$ ]] || { printf 'invalid'; return; }
+  elif ! [[ "$host" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ && ${#host} -le 253 ]]; then
+    printf 'invalid'
+    return
+  fi
+  [[ "$url" == "jdbc:mysql://${host}:3306/${database}?sslMode=REQUIRED&serverTimezone=UTC" ]] || { printf 'invalid'; return; }
+  printf 'external_tls_required'
 }
 
 read_required_state() {
@@ -62,8 +104,6 @@ read_required_state() {
   fi
   value="$(<"$path")"
   if [[ "$kind" == sha ]] && ! valid_sha "$value"; then
-    printf 'invalid'
-  elif [[ "$kind" == volume ]] && ! valid_mysql_volume "$value"; then
     printf 'invalid'
   else
     printf '%s' "$value"
@@ -104,11 +144,11 @@ release_coordination_status() {
 }
 
 production_assessment() {
-  local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5" current="$6" previous="$7" volume="$8"
+  local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5" current="$6" previous="$7" database_runtime="$8"
   local api_ok=false metrics_ok=false release_ok=false
   [[ "$api" =~ ^2[0-9][0-9]$ ]] && api_ok=true
   [[ "$metrics" =~ ^2[0-9][0-9]$ ]] && metrics_ok=true
-  if valid_sha "$current" && { [[ "$previous" == none ]] || valid_sha "$previous"; } && valid_mysql_volume "$volume"; then
+  if valid_sha "$current" && { [[ "$previous" == none ]] || valid_sha "$previous"; } && valid_database_runtime "$database_runtime"; then
     release_ok=true
   fi
 
@@ -127,8 +167,8 @@ production_assessment() {
 
 run_production() {
   local backend_ids backend_status docker_query api_status metrics_status
-  local current_sha_before previous_sha_before active_mysql_volume_before
-  local current_sha previous_sha active_mysql_volume assessment generated_at_epoch
+  local current_sha_before previous_sha_before database_runtime_before
+  local current_sha previous_sha database_runtime assessment generated_at_epoch
   local release_coordination_before release_coordination_after release_coordination
 
   [[ -z "$PROMETHEUS_URL" && -z "$PRODUCTION_RESULT" ]] || usage
@@ -141,7 +181,7 @@ run_production() {
   release_coordination_before="$(release_coordination_status)"
   current_sha_before="$(read_required_state current-sha sha)"
   previous_sha_before="$(read_previous_sha)"
-  active_mysql_volume_before="$(read_required_state active-mysql-volume volume)"
+  database_runtime_before="$(database_runtime_status)"
 
   docker_query=ok
   if ! backend_ids="$(docker ps --all --quiet --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' 2>/dev/null)"; then
@@ -166,7 +206,7 @@ run_production() {
 
   current_sha="$(read_required_state current-sha sha)"
   previous_sha="$(read_previous_sha)"
-  active_mysql_volume="$(read_required_state active-mysql-volume volume)"
+  database_runtime="$(database_runtime_status)"
   release_coordination_after="$(release_coordination_status)"
 
   if [[ "$release_coordination_before" != stable ]]; then
@@ -175,18 +215,18 @@ run_production() {
     release_coordination="$release_coordination_after"
   elif [[ "$current_sha_before" != "$current_sha" \
     || "$previous_sha_before" != "$previous_sha" \
-    || "$active_mysql_volume_before" != "$active_mysql_volume" ]]; then
+    || "$database_runtime_before" != "$database_runtime" ]]; then
     release_coordination=changed
   else
     release_coordination=stable
   fi
 
   generated_at_epoch="$(date +%s)"
-  assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha" "$active_mysql_volume")"
+  assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha" "$database_runtime")"
 
-  printf 'scope=production\ngenerated_at_epoch=%s\nproduction_assessment=%s\nrelease_coordination=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\ncurrent_sha=%s\nprevious_sha=%s\nactive_mysql_volume=%s\n' \
+  printf 'scope=production\ngenerated_at_epoch=%s\nproduction_assessment=%s\nrelease_coordination=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\ncurrent_sha=%s\nprevious_sha=%s\ndatabase_runtime=%s\n' \
     "$generated_at_epoch" "$assessment" "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" \
-    "$current_sha" "$previous_sha" "$active_mysql_volume"
+    "$current_sha" "$previous_sha" "$database_runtime"
   [[ "$assessment" == READY ]]
 }
 
@@ -198,7 +238,7 @@ load_production_result() {
   while IFS='=' read -r key value; do
     [[ -n "$key" && -n "$value" ]] || return 1
     case "$key" in
-      scope|generated_at_epoch|production_assessment|release_coordination|docker_query|backend|api_products_http|metrics_proxy_http|current_sha|previous_sha|active_mysql_volume) ;;
+      scope|generated_at_epoch|production_assessment|release_coordination|docker_query|backend|api_products_http|metrics_proxy_http|current_sha|previous_sha|database_runtime) ;;
       *) return 1 ;;
     esac
     [[ ! -v "SNAPSHOT[$key]" ]] || return 1
@@ -220,7 +260,7 @@ validate_production_result() {
   [[ "${SNAPSHOT[metrics_proxy_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
   calculated="$(production_assessment "${SNAPSHOT[release_coordination]}" "${SNAPSHOT[docker_query]}" "${SNAPSHOT[backend]}" \
     "${SNAPSHOT[api_products_http]}" "${SNAPSHOT[metrics_proxy_http]}" \
-    "${SNAPSHOT[current_sha]:-}" "${SNAPSHOT[previous_sha]:-}" "${SNAPSHOT[active_mysql_volume]:-}")"
+    "${SNAPSHOT[current_sha]:-}" "${SNAPSHOT[previous_sha]:-}" "${SNAPSHOT[database_runtime]:-}")"
   [[ "$calculated" == "${SNAPSHOT[production_assessment]:-}" ]]
 }
 

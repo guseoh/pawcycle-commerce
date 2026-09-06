@@ -4,7 +4,7 @@ set +x
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-MYSQL_IMAGE="mysql:8.4.10@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d"
+MYSQL_IMAGE="mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6"
 TEST_ID="ops020-test-${RANDOM}-$$"
 NETWORK="${TEST_ID}-data"
 VOLUME="${TEST_ID}-mysql"

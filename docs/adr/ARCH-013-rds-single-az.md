@@ -1,5 +1,7 @@
 # ARCH-013: 향후 MySQL RDS Single-AZ 전환 준비
 
+> Superseded by ARCH-016 for the active Production runtime. 이 문서의 본문과 과거 승인·검증 기록은 historical evidence로 보존한다.
+
 - 상태: Approved — repository readiness only
 - 날짜: 2026-08-18
 - 작업 ID: OPS-DB-002

@@ -256,25 +256,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU for ARM64 image validation
+        if: matrix.lane == 'contracts'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+
+      - name: Set up Docker Buildx for ARM64 image validation
+        if: matrix.lane == 'contracts'
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
       - name: Validate production deployment and recovery contracts
         if: matrix.lane == 'contracts'
         run: |
           bash -n \
             infra/production/release-common.sh \
-            infra/production/materialize-ssm-env.sh \
-            infra/production/rds-read-only-preflight.sh \
-            infra/production/rds-transition-gate.sh \
+            infra/production/materialize-runtime-env.sh \
+            infra/production/production-command-dispatch.sh \
+            infra/production/invoke-oci-production-command.sh \
+            infra/production/oci-db-backup-restore.sh \
             infra/production/deploy.sh \
             infra/production/rollback.sh \
             infra/production/subscription-automation-control.sh \
             infra/production/subscription-automation-preflight.sh \
-            infra/production/production-db-restore.sh \
             infra/production/https.sh \
-            infra/production/db-backup-restore.sh \
-            infra/production/ec2-status-check-alarm-common.sh \
-            infra/production/create-ec2-status-check-alarm.sh \
-            infra/production/cleanup-ec2-status-check-alarm.sh \
-            infra/production/test-ec2-status-check-alarm.sh \
             infra/production/verify-production-auth-session-smoke.sh \
             infra/production/test-production-auth-session-smoke.sh \
             infra/production/create-production-auth-smoke-member.sh \
@@ -282,24 +285,32 @@ jobs:
             infra/production/import-demo-catalog.sh \
             infra/production/test-demo-catalog-import.sh \
             infra/production/test-production-scripts.sh \
+            infra/production/test-materialize-runtime-env.sh \
+            infra/production/test-production-command-dispatch.sh \
+            infra/production/test-invoke-oci-production-command.sh \
+            infra/production/test-oci-db-backup-restore.sh \
+            infra/production/test-production-safety-contracts.sh \
             infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
-            infra/production/test-rds-readiness.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
-            infra/production/test-db-backup-restore.sh \
+            infra/production/test-subscription-automation-preflight-datasource.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
           python infra/production/validate-production-contracts.py
-          python infra/production/validate-production-ssm-document.py
           bash infra/production/test-production-scripts.sh
+          bash infra/production/test-materialize-runtime-env.sh
+          bash infra/production/test-production-command-dispatch.sh
+          bash infra/production/test-invoke-oci-production-command.sh
+          bash infra/production/test-oci-db-backup-restore.sh
+          bash infra/production/test-production-safety-contracts.sh
+          bash infra/production/test-subscription-automation-preflight-datasource.sh
           bash infra/production/test-demo-catalog-import.sh
-          bash infra/production/test-rds-readiness.sh
           bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
-          bash infra/production/test-ec2-status-check-alarm.sh
+          bash infra/production/test-production-arm64-images.sh
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
@@ -313,7 +324,7 @@ jobs:
 
       - name: Validate production backup and restore lifecycle
         if: matrix.lane == 'recovery'
-        run: bash infra/production/test-db-backup-restore.sh
+        run: bash infra/production/test-oci-db-backup-restore.sh
 
       - name: Validate production auth smoke member lifecycle
         if: matrix.lane == 'auth-lifecycle'

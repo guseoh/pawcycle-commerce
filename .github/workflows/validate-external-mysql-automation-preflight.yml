@@ -1,4 +1,4 @@
-name: RDS Automation Preflight Validation
+name: External MySQL Automation Preflight Validation
 
 on:
   pull_request:
@@ -6,10 +6,10 @@ on:
       - 'infra/production/subscription-automation-preflight.sh'
       - 'infra/production/test-subscription-automation-preflight-datasource.sh'
       - 'infra/production/release-common.sh'
-      - '.github/workflows/validate-rds-automation-preflight.yml'
+      - '.github/workflows/validate-external-mysql-automation-preflight.yml'
 
 concurrency:
-  group: rds-automation-preflight-${{ github.event.pull_request.number }}
+  group: external-mysql-automation-preflight-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   regression:
-    name: RDS automation datasource preflight regression
+    name: External MySQL datasource preflight regression
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -32,5 +32,5 @@ jobs:
             infra/production/subscription-automation-preflight.sh \
             infra/production/test-subscription-automation-preflight-datasource.sh
 
-      - name: Run datasource routing regression
+      - name: Run external datasource regression
         run: bash infra/production/test-subscription-automation-preflight-datasource.sh

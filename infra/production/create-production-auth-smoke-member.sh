@@ -3,7 +3,7 @@ set -Eeuo pipefail
 set +x
 
 CONTAINER_NAME="pawcycle-ops020-auth-smoke-member"
-DATA_NETWORK="pawcycle-production-data"
+DATA_NETWORK="pawcycle-production-database-egress"
 PROJECT_NAME="pawcycle-production"
 PASS_MESSAGE="PASS: production auth smoke member created"
 MEMBER_COMMAND_TIMEOUT_SECONDS=180
@@ -139,6 +139,10 @@ validate_backend_env_contract() {
   local automation_enabled_count=0
   local automation_batch_size_count=0
   local automation_fixed_delay_count=0
+  local datasource_host_count=0
+  local datasource_port_count=0
+  local datasource_database_count=0
+  local datasource_ssl_mode_count=0
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
@@ -165,11 +169,16 @@ validate_backend_env_contract() {
           (( automation_fixed_delay_count += 1 ))
         fi
         ;;
+      PAWCYCLE_DATASOURCE_HOST) (( datasource_host_count += 1 )) ;;
+      PAWCYCLE_DATASOURCE_PORT) [[ "$encoded_value" == 3306 ]] || return 1; (( datasource_port_count += 1 )) ;;
+      PAWCYCLE_DATASOURCE_DATABASE) [[ "$encoded_value" =~ ^[A-Za-z0-9_]{1,64}$ ]] || return 1; (( datasource_database_count += 1 )) ;;
+      PAWCYCLE_DATASOURCE_SSL_MODE) [[ "$encoded_value" == REQUIRED ]] || return 1; (( datasource_ssl_mode_count += 1 )) ;;
       *) return 1 ;;
     esac
   done < "$BACKEND_ENV_FILE"
 
-  (( url_count == 1 && username_count == 1 && password_count == 1 \
+  (( datasource_host_count == 1 && datasource_port_count == 1 && datasource_database_count == 1 \
+    && datasource_ssl_mode_count == 1 && url_count == 1 && username_count == 1 && password_count == 1 \
     && automation_enabled_count == 1 && automation_batch_size_count == 1 && automation_fixed_delay_count == 1 ))
 }
 
@@ -285,23 +294,11 @@ BACKEND_CONTAINER="${BACKEND_CONTAINERS[0]}"
 [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] \
   || die "production Backend image identity is invalid"
 
-mapfile -t MYSQL_CONTAINERS < <(
-  docker ps \
-    --filter "label=com.docker.compose.project=$PROJECT_NAME" \
-    --filter 'label=com.docker.compose.service=mysql' \
-    --format '{{.ID}}' 2>/dev/null
-)
-[[ "${#MYSQL_CONTAINERS[@]}" == "1" && -n "${MYSQL_CONTAINERS[0]}" ]] \
-  || die "production MySQL identity is invalid"
-MYSQL_CONTAINER="${MYSQL_CONTAINERS[0]}"
-[[ "$(docker_value inspect --format '{{.State.Status}}' "$MYSQL_CONTAINER")" == "running" ]] \
-  || die "production MySQL is not running"
-[[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$MYSQL_CONTAINER")" == "healthy" ]] \
-  || die "production MySQL is not healthy"
-[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$MYSQL_CONTAINER")" == "attached" ]] \
-  || die "production MySQL data network is invalid"
-[[ "$(docker_value network inspect --format '{{.Internal}}' "$DATA_NETWORK")" == "true" ]] \
-  || die "production data network is invalid"
+[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$BACKEND_CONTAINER")" == "attached" ]] \
+  || die "Backend database-egress network is invalid"
+docker_value network inspect "$DATA_NETWORK" >/dev/null
+[[ "$(docker_value network inspect --format '{{.Internal}}' "$DATA_NETWORK")" != "true" ]] \
+  || die "database-egress network must remain non-internal"
 if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
   die "OPS-020 one-shot Container already exists"
 fi

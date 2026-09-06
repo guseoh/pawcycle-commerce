@@ -129,7 +129,7 @@ promote_https_nginx_config() {
 }
 
 certbot() {
-  docker run --rm --platform linux/amd64 \
+  docker run --rm \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt" \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
     --volume "$CERTBOT_CONFIG:/tmp/certbot-cli.ini:ro" \
@@ -156,7 +156,7 @@ verify_challenge_path() {
   local probe_path=".well-known/acme-challenge/pawcycle-bootstrap-probe"
   local probe_ok=false
 
-  docker run --rm --platform linux/amd64 --entrypoint sh \
+  docker run --rm --entrypoint sh \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
     "$CERTBOT_IMAGE" -c \
     "install -d -m 755 /var/www/certbot/.well-known/acme-challenge && printf pawcycle-acme-probe > /var/www/certbot/$probe_path"
@@ -164,7 +164,7 @@ verify_challenge_path() {
     --header "Host: $HTTPS_DOMAIN" "http://127.0.0.1/$probe_path")" == "pawcycle-acme-probe" ]]; then
     probe_ok=true
   fi
-  docker run --rm --platform linux/amd64 --entrypoint sh \
+  docker run --rm --entrypoint sh \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
     "$CERTBOT_IMAGE" -c "rm -f -- /var/www/certbot/$probe_path"
   [[ "$probe_ok" == true ]] || return 1

@@ -60,7 +60,6 @@ fi
 
 prepare_release_context
 acquire_release_lock
-load_active_mysql_volume
 CURRENT_SHA="$(read_state_sha current-sha)"
 load_runtime_contract
 
@@ -91,7 +90,7 @@ if [[ "$ACTION" == "activate" ]]; then
   printf 'Preflighting current application release before Scheduler activation: %s\n' "$CURRENT_SHA"
   if ! preflight_release "$CURRENT_SHA" || ! run_automation_preflight false; then
     stop_backend_service
-    die "Scheduler activation preflight failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
+    die "Scheduler activation preflight failed; Backend was stopped so automation cannot continue, and the managed database was not modified by the Application release lifecycle"
   fi
 else
   printf 'Recreating current application Backend with Scheduler OFF before postflight: %s\n' "$CURRENT_SHA"
@@ -99,15 +98,15 @@ fi
 
 if ! activate_backend_runtime "$CURRENT_SHA"; then
   stop_backend_service
-  die "Scheduler $ACTION failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
+  die "Scheduler $ACTION failed; Backend was stopped so automation cannot continue, and the managed database was not modified by the Application release lifecycle"
 fi
 
 if ! run_automation_preflight "$EXPECTED_BUNDLE_ENABLED"; then
   if [[ "$ACTION" == "activate" ]]; then
     stop_backend_service
-    die "Scheduler activation postflight failed; Backend was stopped so automation cannot continue, and MySQL was preserved"
+    die "Scheduler activation postflight failed; Backend was stopped so automation cannot continue, and the managed database was not modified by the Application release lifecycle"
   fi
-  die "Scheduler deactivation postflight failed; Scheduler remains OFF and MySQL was preserved"
+  die "Scheduler deactivation postflight failed; Scheduler remains OFF and the managed database was not modified by the Application release lifecycle"
 fi
 
 if [[ "$ACTION" == "activate" ]]; then

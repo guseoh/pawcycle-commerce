@@ -4,6 +4,8 @@
 
 Accepted — OPS-OBS-001D 저장소 변경. 실제 Production 적용·검증은 포함하지 않는다.
 
+The existing EC2/t4g.small/Security Group/SSM implementation details and measurements below are historical AWS evidence, not current provider instructions. Active provider guidance for the OCI target is `ARCH-016` with `OPS-OBS-001`; the failure-domain separation decision remains the Trial OCI baseline and long-term physical topology is measurement pending.
+
 ## 결정
 
 Prometheus와 Grafana는 Production application EC2와 분리된 arm64 `t4g.small` Observability EC2의 별도 Compose project로 운영한다. `metrics-proxy`도 Application release Compose와 분리된 `infra/production-metrics-proxy` sibling project로 운영한다. 이 project는 `pawcycle-production-edge`와 `pawcycle-production-app`을 external network로만 참조하고 backend service name `backend:8080`에 연결한다. Production Application Compose는 mysql/backend/frontend/proxy만 소유한다.

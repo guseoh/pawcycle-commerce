@@ -1,5 +1,7 @@
 # OPS-009 DEPLOY-001 AWS 운영 기반 Runbook
 
+> Superseded by `ARCH-016` for the active OCI Production runtime. 본문은 과거 실행·승인 증거로 보존하며 현재 절차로 사용하지 않는다.
+
 ## 문서 상태와 권위
 
 - 작업 ID: `OPS-009`
