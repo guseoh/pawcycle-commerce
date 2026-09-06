@@ -58,6 +58,7 @@ class ChangeClassifierTest(unittest.TestCase):
             "scripts/validate-task-artifacts.py",
             "scripts/test_validate_task_artifacts.py",
             ".github/scripts/collect-discord-context.py",
+            ".github/scripts/normalize-discord-context.py",
         ):
             with self.subTest(path=path):
                 self.assert_groups([path], harness=True)
@@ -203,21 +204,22 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('git merge-base "$BASE_SHA" "$HEAD_SHA"', self.workflow)
         self.assertIn('git diff --no-renames --name-only "$merge_base..$HEAD_SHA"', self.workflow)
 
-    def test_production_image_publish_is_runtime_path_scoped(self) -> None:
+    def test_production_image_publish_uses_job_level_runtime_diff_gate(self) -> None:
         header = self.publish_workflow.split("permissions:", 1)[0]
-        for required in (
-            "backend/**",
-            "frontend/**",
-            "infra/production/**",
-        ):
-            self.assertIn(required, header)
+        self.assertNotIn("paths:", header)
+        self.assertIn("name: Classify production image changes", self.publish_workflow)
+        self.assertIn('git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA"', self.publish_workflow)
+        self.assertIn("grep -Eq '^(backend/|frontend/|infra/production/)'", self.publish_workflow)
+        publish_block = self.publish_workflow[self.publish_workflow.index("\n  publish:\n") :]
+        self.assertIn("needs: classify", publish_block)
+        self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
         for forbidden in (
             ".github/workflows/publish-production-images.yml",
             "docs/**",
             "AGENTS.md",
             "README.md",
         ):
-            self.assertNotIn(forbidden, header)
+            self.assertNotIn(forbidden, self.publish_workflow)
 
     def test_base_only_change_is_excluded_from_pull_request_diff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
