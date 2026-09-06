@@ -49,6 +49,12 @@ description: >-
    - Stop Conditions
    - Git/PR 결과물
 
+7. **PR handoff 계약 연결**
+   - 승인된 작업이 commit/push/Draft PR 생성까지 포함하면 Codex가 구현과 정의된 검증을 마친 뒤 PR 본문 마지막에 `<!-- pawcycle-ai-handoff: review-ready -->`를 추가하도록 최종 Prompt에 넣는다.
+   - 이 marker는 **독립 검토를 시작할 수 있다는 handoff 신호**일 뿐 `Verified`, merge-ready 또는 사용자 승인 의미가 아니다.
+   - Codex 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 다시 ChatGPT에 복사해야 하는 계약으로 만들지는 않는다.
+   - CodeRabbit은 저장소의 native auto-review를 기본으로 사용한다. 매 commit마다 `@coderabbitai review`를 수동 호출하도록 Prompt에 넣지 않는다.
+
 ## 후속 수정 모드
 
 리뷰나 CI finding 이후에는 원래 Prompt 전체를 다시 보내지 않는다. 다음만 남긴다.
@@ -59,6 +65,8 @@ description: >-
 - 보호할 기존 계약
 - regression test 또는 validator
 - 재검증 범위와 중단 조건
+
+후속 수정 후 같은 PR을 계속 사용하는 경우 최신 HEAD까지 검증을 갱신하고 handoff marker를 유지한다. marker 자체를 성공 판정으로 해석하지 않는다.
 
 ## 출력 기준
 
