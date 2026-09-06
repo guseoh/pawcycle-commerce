@@ -9,6 +9,7 @@ PRODUCTION = ROOT / "infra" / "production"
 WORKFLOWS = ROOT / ".github" / "workflows"
 RUNBOOKS = ROOT / "docs" / "runbook"
 ARCHITECTURE = ROOT / "docs" / "architecture" / "production-operations-overview.md"
+VALIDATOR = Path(__file__).resolve()
 
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
@@ -64,7 +65,11 @@ def require(condition: bool, message: str) -> None:
 
 def active_text_files(root: Path):
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix in {".sh", ".py", ".yml", ".yaml", ".json", ".env"}:
+        if (
+            path.is_file()
+            and path.resolve() != VALIDATOR
+            and path.suffix in {".sh", ".py", ".yml", ".yaml", ".json", ".env"}
+        ):
             yield path
 
 
