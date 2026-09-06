@@ -9,8 +9,11 @@ import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
 import com.pawcycle.backend.catalog.discovery.application.CatalogBrandResponse;
 import com.pawcycle.backend.catalog.discovery.application.CatalogCategoryFacetsResponse;
 import com.pawcycle.backend.catalog.discovery.application.CatalogFacetOptionResponse;
+import com.pawcycle.backend.catalog.discovery.application.CatalogFacetResponse;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,26 +66,51 @@ public class CatalogDiscoveryQueryRepository {
 
   @Transactional(readOnly = true)
   public List<CatalogCategoryFacetsResponse> findCategoryFacets() {
+    List<Category> visible = visibleCategories();
+    if (visible.isEmpty()) return List.of();
+
+    List<Long> categoryIds = visible.stream().map(Category::getId).toList();
+    List<CategoryFacetEntity> allCategoryFacets =
+        categoryFacets.findAllByCategoryIdsOrdered(categoryIds);
+
+    Map<Long, List<CategoryFacetEntity>> facetsByCategory = new LinkedHashMap<>();
+    for (CategoryFacetEntity categoryFacet : allCategoryFacets) {
+      facetsByCategory
+          .computeIfAbsent(categoryFacet.getCategory().getId(), ignored -> new ArrayList<>())
+          .add(categoryFacet);
+    }
+
+    List<Long> definitionIds =
+        allCategoryFacets.stream()
+            .map(categoryFacet -> categoryFacet.getFacetDefinition().getId())
+            .distinct()
+            .toList();
+    Map<Long, List<CatalogFacetOptionResponse>> optionsByDefinition = new LinkedHashMap<>();
+    if (!definitionIds.isEmpty()) {
+      facetOptions.findAllByDefinitionIdsOrdered(definitionIds).forEach(
+          option ->
+              optionsByDefinition
+                  .computeIfAbsent(option.getFacetDefinition().getId(), ignored -> new ArrayList<>())
+                  .add(
+                      new CatalogFacetOptionResponse(
+                          option.getId(), option.getValue(), option.getDisplayOrder())));
+    }
+
     List<CatalogCategoryFacetsResponse> result = new ArrayList<>();
-    for (Category category : visibleCategories()) {
-      List<CatalogFacetResponseBuilder> facets = new ArrayList<>();
-      for (CategoryFacetEntity categoryFacet : categoryFacets.findAllOrdered(category.getId())) {
-        var definition = categoryFacet.getFacetDefinition();
-        facets.add(
-            new CatalogFacetResponseBuilder(
-                definition.getKey(),
-                definition.getName(),
-                categoryFacet.getDisplayOrder(),
-                facetOptions.findByFacetDefinition_IdOrderByDisplayOrderAscIdAsc(definition.getId()).stream()
-                    .map(option -> new CatalogFacetOptionResponse(option.getId(), option.getValue(), option.getDisplayOrder()))
-                    .toList()));
-      }
-      result.add(
-          new CatalogCategoryFacetsResponse(
-              category.getSlug(),
-              facets.stream()
-                  .map(facet -> new com.pawcycle.backend.catalog.discovery.application.CatalogFacetResponse(facet.key, facet.name, facet.displayOrder, facet.options))
-                  .toList()));
+    for (Category category : visible) {
+      List<CatalogFacetResponse> facets =
+          facetsByCategory.getOrDefault(category.getId(), List.of()).stream()
+              .map(
+                  categoryFacet -> {
+                    var definition = categoryFacet.getFacetDefinition();
+                    return new CatalogFacetResponse(
+                        definition.getKey(),
+                        definition.getName(),
+                        categoryFacet.getDisplayOrder(),
+                        optionsByDefinition.getOrDefault(definition.getId(), List.of()));
+                  })
+              .toList();
+      result.add(new CatalogCategoryFacetsResponse(category.getSlug(), facets));
     }
     return result;
   }
@@ -102,8 +130,6 @@ public class CatalogDiscoveryQueryRepository {
             && parent.getParent() == null);
   }
 
-  public record CategoryRow(Long categoryId, Long parentId, String name, String slug, int displayOrder) {}
-
-  private record CatalogFacetResponseBuilder(
-      String key, String name, int displayOrder, List<CatalogFacetOptionResponse> options) {}
+  public record CategoryRow(
+      Long categoryId, Long parentId, String name, String slug, int displayOrder) {}
 }

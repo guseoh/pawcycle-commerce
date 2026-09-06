@@ -2,6 +2,7 @@ package com.pawcycle.backend.catalog.product.persistence;
 
 import com.pawcycle.backend.catalog.product.application.ProductDetailSectionView;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 public record ProductDetailSectionRow(
     Long id,
@@ -18,7 +19,7 @@ public record ProductDetailSectionRow(
         body,
         displayOrder,
         visible,
-        createdAt.atZone(java.time.ZoneId.systemDefault()).toInstant(),
-        updatedAt.atZone(java.time.ZoneId.systemDefault()).toInstant());
+        createdAt.toInstant(ZoneOffset.UTC),
+        updatedAt.toInstant(ZoneOffset.UTC));
   }
 }

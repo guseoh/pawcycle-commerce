@@ -1,7 +1,10 @@
 package com.pawcycle.backend.commerce.checkout.persistence;
 
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
+import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
+import com.pawcycle.backend.commerce.CartItemEntity;
 import com.pawcycle.backend.commerce.CartItemRepository;
 import com.pawcycle.backend.commerce.CheckoutIdempotencyEntity;
 import com.pawcycle.backend.commerce.CheckoutIdempotencyId;
@@ -18,12 +21,13 @@ import com.pawcycle.backend.commerce.PaymentRepository;
 import com.pawcycle.backend.member.domain.MemberAddress;
 import com.pawcycle.backend.member.persistence.MemberAddressRepository;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.TypedQuery;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 
@@ -33,6 +37,7 @@ public class CheckoutPersistenceAdapter {
   private final CheckoutIdempotencyRepository idempotencies;
   private final MemberAddressRepository addresses;
   private final CartItemRepository cartItems;
+  private final SkuRepository skus;
   private final CommerceOrderRepository orders;
   private final PaymentRepository payments;
   private final MemberCouponRepository memberCoupons;
@@ -44,6 +49,7 @@ public class CheckoutPersistenceAdapter {
       CheckoutIdempotencyRepository idempotencies,
       MemberAddressRepository addresses,
       CartItemRepository cartItems,
+      SkuRepository skus,
       CommerceOrderRepository orders,
       PaymentRepository payments,
       MemberCouponRepository memberCoupons,
@@ -53,6 +59,7 @@ public class CheckoutPersistenceAdapter {
     this.idempotencies = idempotencies;
     this.addresses = addresses;
     this.cartItems = cartItems;
+    this.skus = skus;
     this.orders = orders;
     this.payments = payments;
     this.memberCoupons = memberCoupons;
@@ -84,22 +91,26 @@ public class CheckoutPersistenceAdapter {
   }
 
   public List<CheckoutCartItem> findCartItems(long cartId) {
-    // Lock the cart rows first; the projection read intentionally follows separately so the
-    // lock scope does not depend on provider-specific DTO-query locking behavior.
-    cartItems.findAllByCartIdForUpdate(cartId);
-    TypedQuery<CheckoutCartItemRow> query =
-        entityManager.createQuery(
-            """
-            select new com.pawcycle.backend.commerce.checkout.persistence.CheckoutCartItemRow(
-                item.id.skuId, item.quantity, sku.skuCode, sku.name, sku.price, product.name)
-            from CartItemEntity item
-            join Sku sku on sku.id = item.id.skuId
-            join sku.product product
-            where item.id.cartId = :cartId
-            """,
-            CheckoutCartItemRow.class);
-    return query.setParameter("cartId", cartId).getResultList().stream()
-        .map(CheckoutCartItemRow::toView)
+    List<CartItemEntity> lockedItems = cartItems.findAllByCartIdForUpdate(cartId);
+    if (lockedItems.isEmpty()) return List.of();
+
+    List<Long> skuIds = lockedItems.stream().map(item -> item.getId().skuId()).toList();
+    Map<Long, Sku> lockedSkus = new LinkedHashMap<>();
+    for (Sku sku : skus.findAllByIdInForUpdate(skuIds)) lockedSkus.put(sku.getId(), sku);
+
+    return lockedItems.stream()
+        .map(
+            item -> {
+              Sku sku = lockedSkus.get(item.getId().skuId());
+              if (sku == null) throw new IllegalStateException("장바구니 SKU를 확인할 수 없습니다.");
+              return new CheckoutCartItem(
+                  sku.getId(),
+                  item.getQuantity(),
+                  sku.getSkuCode(),
+                  sku.getName(),
+                  sku.getPrice(),
+                  sku.getProduct().getName());
+            })
         .toList();
   }
 
@@ -126,8 +137,7 @@ public class CheckoutPersistenceAdapter {
   }
 
   public CouponRule findCouponRule(long memberId, long memberCouponId) {
-    MemberCouponEntity memberCoupon =
-        memberCoupons.findByIdForUpdate(memberCouponId).orElse(null);
+    MemberCouponEntity memberCoupon = memberCoupons.findByIdForUpdate(memberCouponId).orElse(null);
     if (memberCoupon == null
         || memberCoupon.getMemberId() != memberId
         || !"AVAILABLE".equals(memberCoupon.getStatus())) return null;

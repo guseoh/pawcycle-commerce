@@ -39,15 +39,15 @@ public class ProductImageAdminPersistence {
   @Transactional
   public ImageView createImage(long productId, ImageCreateCommand request) {
     Product product = requireProduct(productId);
+    String imageUrl = CatalogAdminValidation.requiredText(request.imageUrl(), "imageUrl", 2048);
+    String altText = CatalogAdminValidation.nullableText(request.altText(), "altText", 500);
+    int displayOrder =
+        CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder");
+    String imageType = CatalogAdminValidation.imageType(request.imageType());
     try {
       ProductImageEntity image =
           images.saveAndFlush(
-              new ProductImageEntity(
-                  product,
-                  request.imageUrl(),
-                  request.altText(),
-                  request.displayOrder(),
-                  request.imageType()));
+              new ProductImageEntity(product, imageUrl, altText, displayOrder, imageType));
       cacheInvalidator.invalidateAfterCommit();
       return toView(image);
     } catch (DataIntegrityViolationException exception) {
@@ -64,10 +64,22 @@ public class ProductImageAdminPersistence {
             || request.displayOrderPresent()
             || request.imageTypePresent());
     ProductImageEntity current = requireImage(productId, imageId);
-    String imageUrl = request.imageUrlPresent() ? CatalogAdminValidation.requiredText(request.imageUrl(), "imageUrl", 2048) : current.getImageUrl();
-    String altText = request.altTextPresent() ? CatalogAdminValidation.nullableText(request.altText(), "altText", 500) : current.getAltText();
-    int displayOrder = request.displayOrderPresent() ? CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder") : current.getDisplayOrder();
-    String imageType = request.imageTypePresent() ? CatalogAdminValidation.imageType(request.imageType()) : current.getImageType();
+    String imageUrl =
+        request.imageUrlPresent()
+            ? CatalogAdminValidation.requiredText(request.imageUrl(), "imageUrl", 2048)
+            : current.getImageUrl();
+    String altText =
+        request.altTextPresent()
+            ? CatalogAdminValidation.nullableText(request.altText(), "altText", 500)
+            : current.getAltText();
+    int displayOrder =
+        request.displayOrderPresent()
+            ? CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder")
+            : current.getDisplayOrder();
+    String imageType =
+        request.imageTypePresent()
+            ? CatalogAdminValidation.imageType(request.imageType())
+            : current.getImageType();
     try {
       current.update(imageUrl, altText, displayOrder, imageType);
       images.flush();
@@ -90,14 +102,17 @@ public class ProductImageAdminPersistence {
   private Product requireProduct(long productId) {
     return products
         .findById(productId)
-        .orElseThrow(() -> CatalogAdminValidation.missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+        .orElseThrow(
+            () -> CatalogAdminValidation.missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
   }
 
   private ProductImageEntity requireImage(long productId, long imageId) {
     return images
         .findByProduct_IdAndId(productId, imageId)
         .orElseThrow(
-            () -> CatalogAdminValidation.missing("PRODUCT_IMAGE_NOT_FOUND", "상품 이미지를 확인할 수 없습니다."));
+            () ->
+                CatalogAdminValidation.missing(
+                    "PRODUCT_IMAGE_NOT_FOUND", "상품 이미지를 확인할 수 없습니다."));
   }
 
   private ImageView toView(ProductImageEntity image) {

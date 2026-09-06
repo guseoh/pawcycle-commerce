@@ -56,11 +56,13 @@ public class ProductComparisonQueryRepository {
 
   @Transactional(readOnly = true)
   public List<String> findFacets(long productId) {
-    return entityManager
-        .createNativeQuery(
-            "SELECT CONCAT(fd.`key`,':',fo.value) FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id WHERE pfv.product_id=:productId ORDER BY fd.id,fo.display_order,fo.id")
-        .setParameter("productId", productId)
-        .getResultList();
+    List<?> values =
+        entityManager
+            .createNativeQuery(
+                "SELECT CONCAT(fd.`key`,':',fo.value) FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id WHERE pfv.product_id=:productId ORDER BY fd.id,fo.display_order,fo.id")
+            .setParameter("productId", productId)
+            .getResultList();
+    return values.stream().map(String.class::cast).toList();
   }
 
   private static Object value(Tuple row, String alias) {
@@ -82,7 +84,9 @@ public class ProductComparisonQueryRepository {
 
   private static BigDecimal decimalValue(Tuple row, String alias) {
     Number number = (Number) value(row, alias);
-    return number == null ? null : number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
+    return number == null
+        ? null
+        : number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
   }
 
   public record RawFacts(

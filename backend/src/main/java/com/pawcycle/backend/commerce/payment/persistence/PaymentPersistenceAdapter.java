@@ -64,17 +64,13 @@ public class PaymentPersistenceAdapter {
   }
 
   public List<OrderItem> findOrderItems(long orderId) {
-    return orderItems
-        .findAllByOrderId(orderId)
-        .stream()
+    return orderItems.findAllByOrderId(orderId).stream()
         .map(PaymentPersistenceAdapter::orderItem)
         .toList();
   }
 
   public void markSucceeded(long paymentId, String paymentKey) {
-    payments
-        .findById(paymentId)
-        .ifPresent(payment -> payment.markSucceeded(paymentKey, now()));
+    payments.findById(paymentId).ifPresent(payment -> payment.markSucceeded(paymentKey, now()));
   }
 
   public void markFailed(long paymentId) {
@@ -125,9 +121,9 @@ public class PaymentPersistenceAdapter {
   }
 
   private CartEntity lockCart(long memberId) {
-    return carts
-        .findByMemberIdForUpdate(memberId)
-        .orElseGet(() -> carts.saveAndFlush(new CartEntity(memberId, now())));
+    LocalDateTime now = now();
+    carts.ensureExists(memberId, now);
+    return carts.findByMemberIdForUpdate(memberId).orElseThrow();
   }
 
   private PaymentWork paymentWork(PaymentEntity payment) {

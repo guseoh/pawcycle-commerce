@@ -1,9 +1,10 @@
 package com.pawcycle.backend.commerce;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
-import java.util.List;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,10 +12,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MemberCouponRepository extends JpaRepository<MemberCouponEntity, Long> {
+  @EntityGraph(attributePaths = "coupon")
   List<MemberCouponEntity> findByMemberIdOrderByIdDesc(long memberId);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select coupon from MemberCouponEntity coupon where coupon.id = :memberCouponId")
-  Optional<MemberCouponEntity> findByIdForUpdate(@Param("memberCouponId") long memberCouponId);
+  Optional<MemberCouponEntity> findByIdForUpdate(
+      @Param("memberCouponId") long memberCouponId);
 
   @Modifying
   @Query(

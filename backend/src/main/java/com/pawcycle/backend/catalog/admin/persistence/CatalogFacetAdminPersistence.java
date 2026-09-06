@@ -83,8 +83,14 @@ public class CatalogFacetAdminPersistence {
       long definitionId, FacetDefinitionPatchCommand request) {
     CatalogAdminValidation.requirePatch(request.keyPresent() || request.namePresent());
     FacetDefinitionEntity current = requireDefinition(definitionId);
-    String key = request.keyPresent() ? CatalogAdminValidation.slug(request.key(), "key") : current.getKey();
-    String name = request.namePresent() ? CatalogAdminValidation.requiredText(request.name(), "name", 100) : current.getName();
+    String key =
+        request.keyPresent()
+            ? CatalogAdminValidation.slug(request.key(), "key")
+            : current.getKey();
+    String name =
+        request.namePresent()
+            ? CatalogAdminValidation.requiredText(request.name(), "name", 100)
+            : current.getName();
     try {
       current.update(key, name);
       definitions.flush();
@@ -123,8 +129,14 @@ public class CatalogFacetAdminPersistence {
       long definitionId, long optionId, FacetOptionPatchCommand request) {
     CatalogAdminValidation.requirePatch(request.valuePresent() || request.displayOrderPresent());
     FacetOptionEntity current = requireOption(definitionId, optionId);
-    String value = request.valuePresent() ? CatalogAdminValidation.requiredText(request.value(), "value", 100) : current.getValue();
-    int displayOrder = request.displayOrderPresent() ? CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder") : current.getDisplayOrder();
+    String value =
+        request.valuePresent()
+            ? CatalogAdminValidation.requiredText(request.value(), "value", 100)
+            : current.getValue();
+    int displayOrder =
+        request.displayOrderPresent()
+            ? CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder")
+            : current.getDisplayOrder();
     try {
       current.update(value, displayOrder);
       options.flush();
@@ -148,20 +160,12 @@ public class CatalogFacetAdminPersistence {
   @Transactional
   public CategoryFacetView assignCategoryFacet(
       long categoryId, long definitionId, CategoryFacetAssignCommand request) {
-    Category category = requireCategory(categoryId);
-    FacetDefinitionEntity definition = requireDefinition(definitionId);
-    int displayOrder = CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder");
-    try {
-      CategoryFacetEntity current =
-          categoryFacets
-              .findByIdCategoryIdAndIdFacetDefinitionId(categoryId, definitionId)
-              .orElseGet(() -> new CategoryFacetEntity(category, definition, displayOrder));
-      current.updateDisplayOrder(displayOrder);
-      categoryFacets.saveAndFlush(current);
-      return new CategoryFacetView(categoryId, definitionId, displayOrder);
-    } catch (DataIntegrityViolationException exception) {
-      throw CatalogAdminValidation.validation("displayOrder", "0 이상이어야 합니다.");
-    }
+    requireCategory(categoryId);
+    requireDefinition(definitionId);
+    int displayOrder =
+        CatalogAdminValidation.nonNegativeRequired(request.displayOrder(), "displayOrder");
+    categoryFacets.upsert(categoryId, definitionId, displayOrder);
+    return new CategoryFacetView(categoryId, definitionId, displayOrder);
   }
 
   @Transactional
@@ -184,9 +188,10 @@ public class CatalogFacetAdminPersistence {
     if (!categoryProductIds.isEmpty()
         && !productFacets
             .findAllByProductIdInAndDefinitionForUpdate(categoryProductIds, definitionId)
-            .isEmpty())
+            .isEmpty()) {
       throw CatalogAdminValidation.conflict(
           "CATEGORY_FACET_IN_USE", "상품이 사용 중인 facet 배정은 제거할 수 없습니다.");
+    }
     categoryFacets.delete(current);
     categoryFacets.flush();
   }
@@ -198,20 +203,36 @@ public class CatalogFacetAdminPersistence {
         products
             .findByIdForUpdate(productId)
             .orElseThrow(
-                () -> CatalogAdminValidation.missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+                () ->
+                    CatalogAdminValidation.missing(
+                        "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+    List<Long> ids = CatalogAdminValidation.distinct(request.facetOptionIds(), "facetOptionIds");
+    if (product.getCategory() == null) {
+      if (!ids.isEmpty()) {
+        throw CatalogAdminValidation.conflict(
+            "PRODUCT_FACET_NOT_ALLOWED", "상품 카테고리에 허용되지 않은 facet 옵션입니다.");
+      }
+      productFacets.deleteAllByProductId(productId);
+      cacheInvalidator.invalidateAfterCommit();
+      return new ProductFacetValuesView(productId, ids);
+    }
     Long categoryId = product.getCategory().getId();
     Set<Long> allowedDefinitions =
-        new HashSet<>(categoryFacets.findAllForUpdate(categoryId).stream()
-            .map(facet -> facet.getFacetDefinition().getId())
-            .toList());
-    List<Long> ids = CatalogAdminValidation.distinct(request.facetOptionIds(), "facetOptionIds");
+        new HashSet<>(
+            categoryFacets.findAllForUpdate(categoryId).stream()
+                .map(facet -> facet.getFacetDefinition().getId())
+                .toList());
     List<FacetOptionEntity> selected = options.findAllById(ids);
     if (selected.size() != ids.size()
-        || selected.stream().anyMatch(option -> !allowedDefinitions.contains(option.getFacetDefinition().getId())))
+        || selected.stream()
+            .anyMatch(
+                option -> !allowedDefinitions.contains(option.getFacetDefinition().getId()))) {
       throw CatalogAdminValidation.conflict(
           "PRODUCT_FACET_NOT_ALLOWED", "상품 카테고리에 허용되지 않은 facet 옵션입니다.");
+    }
     productFacets.deleteAllByProductId(productId);
-    productFacets.saveAllAndFlush(selected.stream().map(option -> new ProductFacetValueEntity(product, option)).toList());
+    productFacets.saveAllAndFlush(
+        selected.stream().map(option -> new ProductFacetValueEntity(product, option)).toList());
     cacheInvalidator.invalidateAfterCommit();
     return new ProductFacetValuesView(productId, ids);
   }
@@ -219,7 +240,8 @@ public class CatalogFacetAdminPersistence {
   @Transactional(readOnly = true)
   public ProductFacetValuesView productFacetValues(long productId) {
     requireProduct(productId);
-    return new ProductFacetValuesView(productId, productFacets.findOptionIdsOrdered(productId));
+    return new ProductFacetValuesView(
+        productId, productFacets.findOptionIdsOrdered(productId));
   }
 
   @Transactional(readOnly = true)
@@ -228,32 +250,49 @@ public class CatalogFacetAdminPersistence {
     return new CategoryFacetListView(
         categoryId,
         categoryFacets.findAllOrdered(categoryId).stream()
-            .map(facet -> new CategoryFacetView(categoryId, facet.getFacetDefinition().getId(), facet.getDisplayOrder()))
+            .map(
+                facet ->
+                    new CategoryFacetView(
+                        categoryId,
+                        facet.getFacetDefinition().getId(),
+                        facet.getDisplayOrder()))
             .toList());
   }
 
   private FacetDefinitionEntity requireDefinition(long id) {
     return definitions
         .findById(id)
-        .orElseThrow(() -> CatalogAdminValidation.missing("FACET_DEFINITION_NOT_FOUND", "Facet 정의를 확인할 수 없습니다."));
+        .orElseThrow(
+            () ->
+                CatalogAdminValidation.missing(
+                    "FACET_DEFINITION_NOT_FOUND", "Facet 정의를 확인할 수 없습니다."));
   }
 
   private FacetOptionEntity requireOption(long definitionId, long optionId) {
     return options
         .findByFacetDefinition_IdAndId(definitionId, optionId)
-        .orElseThrow(() -> CatalogAdminValidation.missing("FACET_OPTION_NOT_FOUND", "Facet 옵션을 확인할 수 없습니다."));
+        .orElseThrow(
+            () ->
+                CatalogAdminValidation.missing(
+                    "FACET_OPTION_NOT_FOUND", "Facet 옵션을 확인할 수 없습니다."));
   }
 
   private Category requireCategory(long categoryId) {
     return categories
         .findById(categoryId)
-        .orElseThrow(() -> CatalogAdminValidation.missing("CATEGORY_NOT_FOUND", "카테고리를 확인할 수 없습니다."));
+        .orElseThrow(
+            () ->
+                CatalogAdminValidation.missing(
+                    "CATEGORY_NOT_FOUND", "카테고리를 확인할 수 없습니다."));
   }
 
   private Product requireProduct(long productId) {
     return products
         .findById(productId)
-        .orElseThrow(() -> CatalogAdminValidation.missing("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+        .orElseThrow(
+            () ->
+                CatalogAdminValidation.missing(
+                    "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
   }
 
   private FacetDefinitionView toView(FacetDefinitionEntity definition) {
@@ -261,9 +300,7 @@ public class CatalogFacetAdminPersistence {
         definition.getId(),
         definition.getKey(),
         definition.getName(),
-        options.findByFacetDefinition_IdOrderByDisplayOrderAscIdAsc(definition.getId()).stream()
-            .map(this::toView)
-            .toList());
+        definition.getOptions().stream().map(this::toView).toList());
   }
 
   private FacetOptionView toView(FacetOptionEntity option) {

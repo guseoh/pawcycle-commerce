@@ -1,11 +1,9 @@
 package com.pawcycle.backend.catalog.engagement.persistence;
 
-import com.pawcycle.backend.catalog.engagement.domain.ProductReviewSummaryEntity;
 import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -53,17 +51,14 @@ public class ReviewSummaryQueryRepository {
 
   @Transactional(readOnly = true)
   public Optional<CachedSummary> cachedSummary(long productId) {
-    return summaries.findById(productId).map(summary -> new CachedSummary(summary.getSourceFingerprint(), summary.getSummary()));
+    return summaries
+        .findById(productId)
+        .map(summary -> new CachedSummary(summary.getSourceFingerprint(), summary.getSummary()));
   }
 
   @Transactional
   public void saveSummary(long productId, String fingerprint, String summary, Timestamp generatedAt) {
-    ProductReviewSummaryEntity entity =
-        summaries
-            .findById(productId)
-            .orElseGet(() -> new ProductReviewSummaryEntity(productId, fingerprint, summary, generatedAt.toLocalDateTime()));
-    entity.update(fingerprint, summary, generatedAt.toLocalDateTime());
-    summaries.saveAndFlush(entity);
+    summaries.upsert(productId, fingerprint, summary, generatedAt.toLocalDateTime());
   }
 
   @Transactional(readOnly = true)
@@ -73,7 +68,10 @@ public class ReviewSummaryQueryRepository {
 
   private ReviewRow toRow(ReviewEntity review) {
     return new ReviewRow(
-        review.getId(), review.getRating(), review.getContent(), Timestamp.valueOf(review.getUpdatedAt()));
+        review.getId(),
+        review.getRating(),
+        review.getContent(),
+        Timestamp.valueOf(review.getUpdatedAt()));
   }
 
   public record ReviewRow(long id, int rating, String content, Timestamp updatedAt) {}
