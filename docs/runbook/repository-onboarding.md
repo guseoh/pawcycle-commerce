@@ -15,9 +15,14 @@ git branch --show-current
 git fetch --prune origin
 ```
 
-기본 브랜치는 `main`이고 실제 작업은 최신 `main`에서 새 task branch로 시작한다.
+기본 브랜치는 `main`이고 실제 작업은 최신 `main`에서 새 task branch로 시작한다. 새 task branch로 이동하기 전에 기존 작업 트리가 깨끗한지 먼저 확인한다.
 
 ```bash
+if [ -n "$(git status --porcelain)" ]; then
+  echo "작업 트리가 깨끗하지 않습니다. 현재 작업을 먼저 commit/stash 등으로 보존하세요." >&2
+  exit 1
+fi
+
 git switch main
 git pull --ff-only origin main
 git switch -c <role-prefix>/<TASK-ID>
@@ -64,10 +69,12 @@ Discord는 보조 알림 채널이며 CI·Review·병합 판정을 대신하지 
 
 ## 작업 완료 전 최소 확인
 
+기본 절차에서는 Secret 검토가 끝나기 전에 raw `git diff` 내용을 터미널이나 assistant transcript에 출력하지 않는다. 먼저 상태와 파일 목록만 확인하고, Secret 의심이 있으면 값을 출력하지 않는 방식으로 검사한 뒤 필요한 파일만 제한적으로 검토한다.
+
 ```bash
 git status --short --branch
 git diff --check
-git diff
+git diff --name-status
 ```
 
 그 다음 현재 변경 영향에 맞는 검사만 선택한다.
@@ -115,4 +122,4 @@ GitHub Connector/MCP로 파일을 쓸 때는 매 write 직전에 다음을 다�
 
 ## Secret 확인
 
-Secret 의심 문자열을 발견하면 값을 복사하거나 출력하지 않고 작업을 중단한다. 저장소 전체 탐색이 필요할 때도 raw Secret을 결과에 노출하지 않는 방식을 사용한다.
+Secret 의심 문자열을 발견하면 값을 복사하거나 출력하지 않고 작업을 중단한다. 저장소 전체 탐색이 필요할 때도 raw Secret을 결과에 노출하지 않는 방식을 사용한다. 저장소에 표준 Secret scanner가 없는 환경에서는 raw diff 전체 출력을 대체 수단으로 사용하지 않고, 파일 목록과 제한된 대상 검토를 우선한다.
