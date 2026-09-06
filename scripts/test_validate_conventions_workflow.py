@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static and classifier regressions for Repository Validation."""
+"""Static and classifier regressions for the Lean Harness."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLASSIFIER_PATH = ROOT / "scripts" / "classify-validation-changes.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate-conventions.yml"
 METADATA_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate-pr-metadata.yml"
+PUBLISH_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-production-images.yml"
 SPEC = importlib.util.spec_from_file_location("validation_classifier", CLASSIFIER_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("validation classifier를 불러올 수 없음")
@@ -26,7 +27,7 @@ class ChangeClassifierTest(unittest.TestCase):
         actual = CLASSIFIER.classify(paths)
         self.assertEqual(actual, {name: expected.get(name, False) for name in CLASSIFIER.GROUPS})
 
-    def test_docs_only(self) -> None:
+    def test_docs_only_runs_harness(self) -> None:
         self.assert_groups(["docs/product/overview.md"], harness=True)
 
     def test_empty_change_list_allows_all_components_to_skip(self) -> None:
@@ -41,14 +42,22 @@ class ChangeClassifierTest(unittest.TestCase):
             production=True,
         )
 
-    def test_harness_paths_are_classified_independently(self) -> None:
+    def test_harness_contract_paths_do_not_run_application_stacks(self) -> None:
         for path in (
+            "AGENTS.md",
+            "backend/AGENTS.md",
+            "frontend/AGENTS.md",
+            "infra/AGENTS.md",
+            "qa/AGENTS.md",
             ".coderabbit.yaml",
+            ".github/pull_request_template.md",
             "CONTRIBUTING.md",
-            ".githooks/pre-commit",
-            ".github/scripts/example.py",
-            ".github/fixtures/example.json",
-            "scripts/example.py",
+            "docs/runbook/lean-harness.md",
+            "docs/roles/backend-engineer.md",
+            ".agents/skills/backend-engineer/SKILL.md",
+            "scripts/validate-task-artifacts.py",
+            "scripts/test_validate_task_artifacts.py",
+            ".github/scripts/collect-discord-context.py",
         ):
             with self.subTest(path=path):
                 self.assert_groups([path], harness=True)
@@ -93,13 +102,6 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_standalone_metrics_proxy_is_production_only(self) -> None:
         self.assert_groups(["infra/production-metrics-proxy/compose.yaml"], production=True)
 
-    def test_production_rename_includes_old_and_new_paths(self) -> None:
-        self.assert_groups(
-            ["infra/production/deploy.sh", "docs/archive/deploy.sh"],
-            harness=True,
-            production=True,
-        )
-
     def test_local_integration_fails_safe_to_all_components(self) -> None:
         self.assert_groups(
             ["infra/local-integration/compose.yaml"],
@@ -109,40 +111,21 @@ class ChangeClassifierTest(unittest.TestCase):
             production=True,
         )
 
-    def test_role_documents_and_skills_select_owned_components(self) -> None:
-        cases = {
-            "docs/roles/backend-engineer.md": {"harness": True, "backend": True},
-            ".agents/skills/backend-engineer/SKILL.md": {"harness": True, "backend": True},
-            "docs/roles/frontend-engineer.md": {"harness": True, "frontend": True},
-            ".agents/skills/frontend-engineer/SKILL.md": {"harness": True, "frontend": True},
-            "docs/roles/platform-sre.md": {"harness": True, "production": True},
-            ".agents/skills/platform-sre/SKILL.md": {"harness": True, "production": True},
-            "docs/roles/product-planner.md": {"harness": True},
-            "docs/roles/ux-designer.md": {"harness": True},
-            "docs/roles/qa-engineer.md": {"harness": True},
-            "docs/roles/tech-lead.md": {"harness": True},
-        }
-        for path, expected in cases.items():
+    def test_classifier_and_workflow_changes_run_all_groups(self) -> None:
+        for path in (
+            "scripts/classify-validation-changes.py",
+            "scripts/test_validate_conventions_workflow.py",
+            ".github/workflows/validate-conventions.yml",
+            ".github/workflows/publish-production-images.yml",
+        ):
             with self.subTest(path=path):
-                self.assert_groups([path], **expected)
-
-    def test_validator_change_runs_all_groups(self) -> None:
-        self.assert_groups(
-            ["scripts/validate-task-artifacts.py"],
-            harness=True,
-            backend=True,
-            frontend=True,
-            production=True,
-        )
-
-    def test_workflow_change_runs_all_groups(self) -> None:
-        self.assert_groups(
-            [".github/workflows/validate-conventions.yml"],
-            harness=True,
-            backend=True,
-            frontend=True,
-            production=True,
-        )
+                self.assert_groups(
+                    [path],
+                    harness=True,
+                    backend=True,
+                    frontend=True,
+                    production=True,
+                )
 
     def test_backend_and_frontend_are_combined(self) -> None:
         self.assert_groups(
@@ -157,6 +140,7 @@ class WorkflowContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.metadata_workflow = METADATA_WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.publish_workflow = PUBLISH_WORKFLOW_PATH.read_text(encoding="utf-8")
 
     def test_code_and_metadata_events_and_concurrency_are_separate(self) -> None:
         self.assertNotIn("edited", self.workflow.split("concurrency:", 1)[0])
@@ -170,10 +154,9 @@ class WorkflowContractTest(unittest.TestCase):
         assert code_group is not None and metadata_group is not None
         self.assertNotEqual(code_group.group(1), metadata_group.group(1))
 
-    def test_metadata_workflow_has_no_required_or_component_checks(self) -> None:
+    def test_metadata_workflow_has_no_component_checks(self) -> None:
         self.assertIn("name: PR metadata validation", self.metadata_workflow)
         for forbidden in (
-            "Commit and PR conventions",
             "Application validation",
             "Classify validation changes",
             "Harness validation",
@@ -183,19 +166,11 @@ class WorkflowContractTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, self.metadata_workflow)
 
-    def test_required_check_names_are_preserved(self) -> None:
-        self.assertIn("name: Commit and PR conventions", self.workflow)
-        self.assertIn("name: Application validation", self.workflow)
-
-    def test_component_jobs_are_parallel_and_backend_owns_mysql(self) -> None:
-        for job in ("harness:", "backend:", "frontend:", "production:"):
-            self.assertIn(job, self.workflow)
-        backend_start = self.workflow.index("\n  backend:\n")
-        frontend_start = self.workflow.index("\n  frontend:\n")
-        backend_block = self.workflow[backend_start:frontend_start]
-        self.assertIn("services:\n      mysql:", backend_block)
-        self.assertEqual(self.workflow.count("image: mysql:8.4"), 1)
-        self.assertEqual(self.workflow.count("needs: [conventions, classify]"), 4)
+    def test_classifier_and_component_jobs_do_not_wait_for_metadata_conventions(self) -> None:
+        classify_block = self.workflow[
+            self.workflow.index("\n  classify:\n") : self.workflow.index("\n  harness:\n")
+        ]
+        self.assertNotIn("needs: conventions", classify_block)
         for start_name, end_name in (
             ("harness", "backend"),
             ("backend", "frontend"),
@@ -205,26 +180,40 @@ class WorkflowContractTest(unittest.TestCase):
             block = self.workflow[
                 self.workflow.index(f"\n  {start_name}:\n") : self.workflow.index(f"\n  {end_name}:\n")
             ]
-            self.assertIn("needs: [conventions, classify]", block)
-            for component in ("harness", "backend", "frontend", "production"):
-                if component != start_name:
-                    self.assertNotIn(f"needs.{component}.result", block)
+            self.assertIn("needs: classify", block)
+            self.assertNotIn("needs: [conventions, classify]", block)
 
-    def test_aggregate_gate_propagates_failures_and_accepts_skips(self) -> None:
+    def test_final_gate_still_requires_conventions_and_selected_components(self) -> None:
+        self.assertIn("name: Commit and PR conventions", self.workflow)
+        self.assertIn("name: Application validation", self.workflow)
         self.assertIn("needs: [conventions, classify, harness, backend, frontend, production]", self.workflow)
+        self.assertIn('require_success conventions "$CONVENTIONS_RESULT"', self.workflow)
+        self.assertIn('require_success classify "$CLASSIFY_RESULT"', self.workflow)
         self.assertIn("Selected component did not succeed", self.workflow)
         self.assertIn("Unselected component was not skipped", self.workflow)
-        self.assertIn("Invalid classifier output", self.workflow)
-        self.assertIn('require_success classify "$CLASSIFY_RESULT"', self.workflow)
+
+    def test_backend_owns_mysql(self) -> None:
+        backend_start = self.workflow.index("\n  backend:\n")
+        frontend_start = self.workflow.index("\n  frontend:\n")
+        backend_block = self.workflow[backend_start:frontend_start]
+        self.assertIn("services:\n      mysql:", backend_block)
+        self.assertEqual(self.workflow.count("image: mysql:8.4"), 1)
 
     def test_merge_base_and_rename_safe_diff_are_used(self) -> None:
         self.assertIn('git merge-base "$BASE_SHA" "$HEAD_SHA"', self.workflow)
         self.assertIn('git diff --no-renames --name-only "$merge_base..$HEAD_SHA"', self.workflow)
 
-    def test_mysql_diagnostics_include_returned_values(self) -> None:
-        self.assertIn("Unexpected MySQL version::${mysql_version}", self.workflow)
-        self.assertIn("Unexpected MySQL character set::${character_set}", self.workflow)
-        self.assertIn("Unexpected MySQL collation::${collation}", self.workflow)
+    def test_production_image_publish_is_runtime_path_scoped(self) -> None:
+        header = self.publish_workflow.split("permissions:", 1)[0]
+        for required in (
+            "backend/**",
+            "frontend/**",
+            "infra/production/**",
+            ".github/workflows/publish-production-images.yml",
+        ):
+            self.assertIn(required, header)
+        for forbidden in ("docs/**", "AGENTS.md", "README.md"):
+            self.assertNotIn(forbidden, header)
 
     def test_base_only_change_is_excluded_from_pull_request_diff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,18 +234,18 @@ class WorkflowContractTest(unittest.TestCase):
             git("config", "user.email", "harness@example.invalid")
             (root / "initial.txt").write_text("initial\n", encoding="utf-8")
             git("add", "initial.txt")
-            git("commit", "-m", "chore(test): 초기 기준")
+            git("commit", "-m", "chore(test): baseline")
             git("switch", "-c", "feature")
             (root / "docs").mkdir()
             (root / "docs" / "change.md").write_text("feature\n", encoding="utf-8")
             git("add", "docs/change.md")
-            git("commit", "-m", "docs(test): 기능 변경")
+            git("commit", "-m", "docs(test): feature change")
             head_sha = git("rev-parse", "HEAD")
             git("switch", "main")
             (root / "backend").mkdir()
             (root / "backend" / "base.java").write_text("base only\n", encoding="utf-8")
             git("add", "backend/base.java")
-            git("commit", "-m", "chore(test): 기준 변경")
+            git("commit", "-m", "chore(test): base change")
             base_sha = git("rev-parse", "HEAD")
             merge_base = git("merge-base", base_sha, head_sha)
             changed = git("diff", "--no-renames", "--name-only", f"{merge_base}..{head_sha}").splitlines()
@@ -265,47 +254,31 @@ class WorkflowContractTest(unittest.TestCase):
 
 
 class DocumentationContractTest(unittest.TestCase):
-    def test_report_template_is_minimal_and_operation_sections_are_conditional(self) -> None:
-        template = (ROOT / "docs" / "reports" / "task-report-template.md").read_text(encoding="utf-8")
-        for required in ("## 작업", "실행 구분:", "## 목적", "## 결과 또는 증거", "## 위험 또는 제한"):
+    def test_pr_template_has_only_minimum_decision_sections(self) -> None:
+        template = (ROOT / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+        for required in ("## 작업", "## 변경", "## 검증", "## 위험"):
             self.assertIn(required, template)
-        for operation_only in ("## 명시적 승인 근거", "## 적용 전 확인", "## 적용 후 확인", "## 독립 확인", "## 복구·rollback", "## 미실행 항목", "## 남은 위험"):
-            self.assertIn(operation_only, template)
-        self.assertIn('실행 구분이 "실제 운영 실행"일 때만', template)
-        self.assertNotIn("QA 문서 경로 또는 생략 사유", template)
-        self.assertNotIn("인수인계 생략", template)
-        self.assertNotIn("Git 결과", template)
+        self.assertNotIn("## 병합 판단", template)
+        self.assertNotIn("## 결정과 영향", template)
 
-    def test_branch_and_role_documents_share_conditional_contracts(self) -> None:
-        contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
-        for branch in (
-            "spec/po/<TASK-ID>",
-            "design/ux/<TASK-ID>",
-            "feat/be/<TASK-ID>",
-            "feat/fe/<TASK-ID>",
-            "test/qa/<TASK-ID>",
-            "ops/sre/<TASK-ID>",
-            "ops/tl/<TASK-ID>",
-        ):
-            self.assertIn(branch, contributing)
-        self.assertIn("보고서·인수인계·QA·Runbook·ADR", contributing)
-        self.assertIn("조건을 충족할 때만", contributing)
+    def test_harness_distinguishes_spec_from_prompt_and_review_limits(self) -> None:
+        harness = (ROOT / "docs" / "runbook" / "lean-harness.md").read_text(encoding="utf-8")
+        self.assertIn("Spec ≠ Prompt", harness)
+        self.assertIn("Final Lightweight Delta Prompt", harness)
+        self.assertIn("파일 수 제한 때문에 coherent PR을 억지로 쪼개지 않는다", harness)
+        self.assertIn("특정 업무 prefix allowlist", harness)
 
+    def test_root_agent_owns_write_safety_and_path_agents_own_invariants(self) -> None:
+        root_agent = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         backend_agent = (ROOT / "backend" / "AGENTS.md").read_text(encoding="utf-8")
         backend_role = (ROOT / "docs" / "roles" / "backend-engineer.md").read_text(encoding="utf-8")
         backend_skill = (ROOT / ".agents" / "skills" / "backend-engineer" / "SKILL.md").read_text(encoding="utf-8")
-        active_rule = "하나의 task branch에는 하나의 활성 작업만 둔다."
-        for text in (backend_agent, backend_role, backend_skill):
-            self.assertIn(active_rule, text)
-
-        frontend_role = (ROOT / "docs" / "roles" / "frontend-engineer.md").read_text(encoding="utf-8")
-        ux_role = (ROOT / "docs" / "roles" / "ux-designer.md").read_text(encoding="utf-8")
-        platform_skill = (ROOT / ".agents" / "skills" / "platform-sre" / "SKILL.md").read_text(encoding="utf-8")
-        qa_skill = (ROOT / ".agents" / "skills" / "qa-engineer" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("인수인계를 작성했다면", frontend_role)
-        self.assertIn("실제 다음 소비자", ux_role)
-        self.assertIn("별도의 명시적 사용자 승인", platform_skill)
-        self.assertIn("중복 요청·멱등성", qa_skill)
+        self.assertIn("direct `main` write", root_agent)
+        self.assertIn("branch 인자를 생략하지 않는다", root_agent)
+        self.assertIn("트랜잭션", backend_agent)
+        self.assertNotIn("feat/be/<TASK-ID>", backend_agent)
+        self.assertNotIn("feat/be/<TASK-ID>", backend_role)
+        self.assertNotIn("feat/be/<TASK-ID>", backend_skill)
 
 
 if __name__ == "__main__":
