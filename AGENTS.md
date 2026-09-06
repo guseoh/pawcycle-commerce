@@ -100,7 +100,7 @@ CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR me
 
 CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
 
-CodeRabbit은 저장소의 native auto-review를 기본으로 사용한다. 최신 HEAD가 자동 review coverage에 포함되는지 확인하고, 진행 중이거나 rate limit·서비스 제한이 있으면 그 상태를 그대로 기록한다. `@coderabbitai review` 같은 수동 trigger는 자동 review가 명백히 멈춘 예외 상황에서만 사용하며 매 commit마다 반복 호출하지 않는다.
+CodeRabbit review 요청은 `.github/workflows/request-coderabbit-review.yml` 자동화를 기본으로 사용한다. `<!-- pawcycle-ai-handoff: review-ready -->` marker가 있는 PR에서 최신 HEAD review가 없으면 자동 요청하고, 저장소 전체 cooldown과 주기적 retry로 review budget을 보호한다. 저장소가 native auto-review 조건을 충족하면 자동화는 수동 요청을 보내지 않고 native review에 맡긴다. `@coderabbitai review` 수동 입력은 이 자동화 자체가 실패하거나 사용자가 명시적으로 요구한 예외 상황에서만 사용한다.
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다.
 
