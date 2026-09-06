@@ -1,100 +1,101 @@
 # PawCycle Commerce 에이전트 규칙
 
-## 프로젝트와 사용자 권한
+## 목적과 권한
 
-PawCycle Commerce는 반려동물 소모품의 일반 구매와 정기배송 구독을 다루는 이커머스 프로젝트다. 예정 기술 스택은 Spring Boot, Next.js·TypeScript, MySQL이며 승인된 단계가 오기 전에는 새 제품 코드, 의존성, DB schema, 인프라를 만들지 않는다.
+PawCycle Commerce의 AI Harness는 문서를 많이 만드는 체계가 아니라, AI가 구현을 돕더라도 사용자가 **목표·범위·위험·검증·운영 실행**을 통제할 수 있게 하는 안전 경계다.
 
-사용자는 Product Owner이자 Tech Lead다. 요구사항, 도메인 정책, 아키텍처, API 계약, DB 설계, 새 의존성, 성능 개선안, PR 병합과 실제 운영 실행은 사용자가 최종 결정한다. AI는 승인된 범위에서 제안·구현·검증하며 자동 병합하지 않는다.
+사용자는 Product Owner이자 Tech Lead이며 제품 정책, 외부 계약, 데이터·보안·비용 결정, PR 병합과 실제 운영 실행을 최종 승인한다. AI는 승인된 범위에서 조사·설계·구현·검증·리뷰와 사용자가 명시적으로 위임한 저장소 작업을 수행한다.
 
-## 공통 안전 규칙
+## 권위 순서
 
-1. 최신 기준과 작업 상태를 확인한다.
-2. 사용자가 승인한 범위만 변경한다.
-3. Secret·개인정보·운영 원시 값을 노출하지 않는다.
-4. 저장소 준비와 실제 운영 실행을 분리한다.
-5. 변경 영향에 맞는 최소 검증을 실행한다.
-6. 실패·미실행·남은 위험을 숨기지 않는다.
-7. PR 병합과 실제 운영 실행은 사용자가 최종 결정한다.
+충돌이 있으면 다음 순서로 판단한다.
 
-역할별 산출물, QA, 보고서, 인수인계와 Runbook은 항상 필요한 것이 아니라 `docs/runbook/lean-harness.md`의 조건을 충족할 때만 만든다.
+1. 현재 사용자의 명시적 지시
+2. 최신 `main`의 승인된 요구사항·계약·ADR·도메인 규칙
+3. 실제 코드·migration·설정·테스트·validator
+4. 현재 경로의 `AGENTS.md`
+5. 역할 문서와 Skill
+6. 과거 보고서·인수인계·대화
 
-## 문서 권위
+GitHub branch, PR, HEAD, CI, review, Production 상태는 장기 문서나 과거 대화로 추정하지 않고 작업 시점에 다시 확인한다.
 
-문서가 충돌하면 다음 순서로 해석한다.
+## 공통 안전 경계
 
-1. 현재 작업에서 사용자가 명시한 지시
-2. 사용자가 승인한 요구사항과 인수 조건
-3. 승인된 ADR
-4. 승인된 OpenAPI 계약
-5. 도메인 규칙과 용어집
-6. 경로별 `AGENTS.md`
-7. 역할 Skill
-8. 기존 코드 관례
+- 승인된 사용자 목적을 하나의 coherent work unit으로 다룬다. 파일 수나 역할 수만으로 작업을 쪼개지 않는다.
+- 제품 정책, API·DB·보안·비용·아키텍처 결정을 승인 없이 확정하지 않는다.
+- Secret, credential, token, private key, Webhook URL, 개인정보와 원시 운영 데이터를 저장소·Prompt·PR·로그에 넣지 않는다.
+- 저장소 변경과 실제 운영 실행을 분리한다. 저장소 준비 승인은 Production·Cloud·운영 DB·Secret·비용 리소스 실행 승인이 아니다.
+- 실패, 미실행 검증, 리뷰 한계와 남은 위험을 성공으로 바꾸어 표현하지 않는다.
+- 관련 없는 리팩터링·포맷·dependency·기술을 함께 추가하지 않는다.
 
-등급, 저장소 준비와 실제 실행 구분, 산출물·QA·검증 조건, delta-only 명세와 비소급·복구 원칙은 `docs/runbook/lean-harness.md`가 권위 원본이다. 역할의 지속 책임과 금지 범위는 `docs/roles/**`, 실제 실행 절차는 `.agents/skills/**`를 따른다. 충돌을 발견하면 문서, 내용, 구현 영향과 사용자 결정 항목을 보고한다.
+작업 등급, 실제 운영 실행 관문, 조건부 보고서·QA·Runbook·ADR와 Final Lightweight Delta Prompt 기준은 `docs/runbook/lean-harness.md`가 권위 원본이다.
 
-## 작업 시작과 범위
+## 경로와 역할
 
-파일 변경 전 작업 ID, 등급, 실행 구분, 역할, 현재 branch·worktree 상태, 승인 입력, 포함·제외 범위와 검증 방법을 확인한다. 기본 Git 확인은 다음으로 제한하고, 기존 branch 재사용·삭제, 열린 PR, local·remote 분기, 다른 worktree, 고유 미병합 commit 또는 destructive 작업 가능성이 있을 때만 상세 진단한다.
+역할은 기본 책임을 나타내며 승인된 cross-stack 작업을 인위적으로 분리하는 경계가 아니다.
 
-```bash
-git status --short --branch
-git fetch --prune origin
-git log --oneline HEAD..origin/main
-```
+- 작업이 한 영역에 한정되면 해당 역할과 경로 규칙만 적용한다.
+- 사용자가 하나의 목적에 Backend·Frontend·Harness 등 여러 영역을 함께 승인했다면 하나의 작업에서 수정할 수 있다.
+- 이 경우 수정하는 **각 경로의 `AGENTS.md` 규칙을 모두 적용**한다.
+- 다른 영역의 새 제품 결정이 필요해지면 범위를 임의 확장하지 않고 중단한다.
 
-승인되지 않은 Product Decision 또는 Technical Decision이 구현을 막으면 임의로 정하지 않고 중단한다. 기회주의적 리팩터링, 무관한 정리·포맷 변경, 의존성 추가와 다른 역할 영역 변경을 하지 않는다.
+`docs/roles/**`는 역할의 지속 책임과 결정권을, `.agents/skills/**`는 그 역할의 실행 절차를 정의한다. 공통 Git·PR·산출물 규칙을 각 문서에 복제하지 않는다.
 
-## 역할 경계
+## GitHub와 Git 쓰기 안전
 
-| 역할 | 지속 책임 | 기본 경로 |
-| --- | --- | --- |
-| Product Planner | 사용자 문제, 범위, 비즈니스 규칙, 인수 조건 | `docs/product/**`, 승인된 `docs/domain/**` |
-| UX/UI Designer | 사용자 흐름, 화면·컴포넌트 상태, 반응형, 접근성 | `docs/design/**` |
-| Backend Engineer | 도메인 로직, API, transaction, persistence, 보안, 백엔드 테스트 | `backend/**`, 승인된 API·ADR·도메인 문서 |
-| Frontend Engineer | 페이지, 컴포넌트, API 연동, UI 상태, 접근성, 프론트엔드 테스트 | `frontend/**` |
-| QA Engineer | 독립 검증, 실패 테스트, 버그 재현과 재검증 | `qa/**`, 테스트 전용 경로, `docs/qa/**` |
-| Platform/SRE | 개발 환경, CI/CD, 배포, 성능 측정, 관측성, 알림, Runbook | `infra/**`, `.github/workflows/**`, 운영 문서 |
-| Tech Lead | 승인 상태, 역할 경계, 병합 준비도, 기술 결정과 위험 판단 | 공통 Harness·승인·검토 문서 |
+`main`에 직접 제품·문서 작업을 작성하지 않는다. 새 저장소 작업은 최신 `main`에서 명시적인 task branch를 사용한다. branch 이름 관례는 `CONTRIBUTING.md`를 따른다.
 
-세부 허용·금지 경로는 현재 경로의 `AGENTS.md`와 역할 문서를 따른다. 다른 역할의 변경이 필요하면 직접 확장하지 않고 실제 소비자가 있을 때 인수인계 또는 변경 요청을 남긴다.
+GitHub 파일 쓰기 또는 ref 변경 Tool을 호출하기 직전에 다음을 확인한다.
 
-## Secret과 운영 경계
+1. 대상 저장소가 `guseoh/pawcycle-commerce`인지 확인한다.
+2. 대상 branch를 명시적으로 확인한다.
+3. 파일 create/update/delete에는 branch 인자를 생략하지 않는다.
+4. 대상 branch가 `main`이면 사용자가 현재 요청에서 직접 main 쓰기를 명시한 경우가 아니면 중단한다.
+5. 예상 HEAD 또는 파일 SHA를 사용해 stale write를 거부한다.
 
-- 비밀번호, API key, token, private key, certificate, Webhook URL과 실제 운영 식별값을 저장소·PR·로그·완료 보고에 넣지 않는다.
-- 예시는 `DB_PASSWORD=<로컬 환경 변수에서 제공>`처럼 설명 가능한 placeholder만 사용한다.
-- Secret이 필요한 기능은 값이 없을 때 안전하게 실패해야 한다.
-- 노출이 의심되면 값을 출력·복사하지 않고 작업을 중단해 보고한다.
-- 저장소 준비 승인은 Production·Cloud·운영 DB·Secret·비용 리소스 실행 승인으로 해석하지 않는다.
+일반 작업에서 `main` 변경은 승인된 PR merge를 통해서만 수행한다. reset, rebase, force push, history rewrite를 복구 수단으로 사용하지 않는다.
 
-## Git과 Pull Request
+사용자가 특정 PR의 병합까지 명시적으로 위임한 경우에는 최신 head SHA, 필수 CI, 차단 리뷰와 mergeable 상태를 다시 확인한 뒤 그 PR에 한해서 병합할 수 있다. 이것은 자동 병합 정책을 의미하지 않는다.
 
-`main`에 직접 작업하지 않는다. 새 작업은 최신 `main`에서 다음 task branch를 만든다.
+## 변경과 문서
 
-| 역할 | branch 형식 |
-| --- | --- |
-| Product Planner | `spec/po/<TASK-ID>` |
-| UX/UI Designer | `design/ux/<TASK-ID>` |
-| Backend Engineer | `feat/be/<TASK-ID>` |
-| Frontend Engineer | `feat/fe/<TASK-ID>` |
-| QA Engineer | `test/qa/<TASK-ID>` |
-| Platform/SRE | `ops/sre/<TASK-ID>` |
-| Tech Lead | `ops/tl/<TASK-ID>` |
+지속적인 계약은 가장 가까운 권위 원본에 한 번만 기록한다.
 
-하나의 task branch에는 하나의 활성 작업만 둔다. 병합 뒤 열린 PR·고유 commit·사용 중인 worktree가 모두 없고 사용자가 명시 승인했을 때만 branch를 삭제한다. 하나라도 충족하지 않으면 삭제하지 않는다. 기존 역사 branch와 과거 문서는 소급 변경하지 않는다. 자동 reset, rebase, force push와 history rewrite를 하지 않는다.
+- 제품 요구사항: `docs/product/**`
+- 도메인 규칙: `docs/domain/**`
+- 장기 기술 결정: `docs/adr/**`
+- API 계약: `docs/api/**`
+- 데이터·migration: `docs/data/**`와 DB 파일
+- 반복 운영 절차: `docs/runbook/**`
+- 장기 보존이 필요한 실행 증거: `docs/reports/**`
+- 실제 다음 역할이 소비할 전달 정보: `docs/handoffs/**`
 
-커밋과 PR 제목은 `<type>(<scope>): <한국어 명사형 설명>` 형식을 사용한다. 허용 type은 `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `build`, `ci`, `chore`, `perf`, `revert`다. 설명은 한글을 포함한 명사형으로 끝내고 마침표를 붙이지 않는다.
+PR만으로 충분한 저장소 변경에 보고서나 인수인계를 형식적으로 추가하지 않는다.
 
-모든 작업은 PR 본문을 작성한다. PR 구조와 산출물 조건은 `.github/pull_request_template.md`와 `docs/runbook/lean-harness.md`를 따른다. 한글 여러 줄 본문은 UTF-8 Markdown 파일과 `--body-file`을 사용하고 생성 직후 원격 title·body·head/base·Draft 상태를 확인한다. Codex는 필수 검증 뒤 commit·일반 push·Draft PR 생성까지 수행하되 검증 실패, 충돌, 다른 작업 혼입, Secret 의심 또는 원격 상태 불명확 시 중단한다.
+## 검증
 
-## 검증과 리뷰
+가장 작은 관련 검증에서 시작하고 변경 영향에 따라 확대한다.
 
-가장 작은 관련 검사부터 실행한다. 공통 CI·보안·migration·DB mapping·배포·복구처럼 여러 영역에 영향을 주는 변경만 관련 전체 검증과 독립 확인을 사용한다. 같은 실패를 반복 실행하지 않고 첫 원인을 한 번 수정한 뒤 관련 검사만 재실행한다.
+- 내부 구현 변경: 관련 unit/integration regression
+- 외부 HTTP 계약: Backend contract + Frontend contract
+- DB·transaction·동시성: 실제 DB 통합 검증
+- 공통 CI·classifier·workflow: Harness 회귀와 영향 받는 component lane
+- 실제 운영·복구: 별도 승인된 Runbook과 적용 전후·복구 증거
 
-모든 GitHub PR 리뷰 댓글은 한국어로 작성한다. CodeRabbit과 Codex Review는 보조 검토자이며, 버그·보안·인가·도메인 규칙·테스트 누락을 우선한다. 결제, 주문·구독 상태 전이, 개인정보와 데이터 손실 위험은 사용자가 다시 판단한다.
+CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR metadata나 문서 형식 오류가 제품 테스트 실행 자체를 불필요하게 막지 않도록 Harness를 설계한다.
 
-No Explain, No Merge 원칙에 따라 변경 이유, 데이터와 transaction 경계, 실패 상태, 보호 테스트, 주요 SQL과 운영 확인 지점을 설명할 수 없는 변경은 병합 권고하지 않는다.
+## 리뷰
 
-## 완료 보고
+CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
 
-완료 보고에는 작업 요약, 변경 파일, 검증 결과, 남은 위험과 사용자 결정 항목, commit·push·Draft PR·병합 상태를 포함한다. 실제 Production 실행 여부를 명시하며 자동 병합하지 않는다.
+외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다.
+
+고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
+
+## 완료 상태
+
+- `Implemented`: 승인된 저장소 변경 완료
+- `Verified`: 정의한 테스트·CI·통합 검증 완료
+- `Production Verified`: 실제 운영 적용 전후와 필요한 복구 증거까지 확보
+
+실제 운영을 실행하지 않은 작업에 `Production Verified`를 사용하지 않는다.
