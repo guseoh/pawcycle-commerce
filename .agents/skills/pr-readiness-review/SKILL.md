@@ -8,6 +8,20 @@ description: >-
 
 이 Skill은 **병합 준비도 검토 절차**만 정의한다. 공통 안전·Git write·운영 경계는 루트 `AGENTS.md`, Harness 완료 기준은 `docs/runbook/lean-harness.md`, GitHub evidence 수집 방법은 `docs/runbook/github-mcp-agent.md`를 따른다.
 
+## 대상 PR 자동 탐색
+
+사용자가 PR 번호를 명시하지 않았더라도 Codex/다른 AI 구현 직후 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 요청하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다.
+
+다음 순서로 관련 open PR을 찾는다.
+
+1. 현재 요청이나 대화에 명시된 PR 번호가 있으면 그것을 사용한다.
+2. 현재 작업의 Task ID 또는 branch가 알려져 있으면 정확히 일치하는 open PR을 우선한다.
+3. 그렇지 않으면 base가 `main`이고 PR 본문에 `<!-- pawcycle-ai-handoff: review-ready -->`가 있는 최신 open PR을 찾는다.
+4. 여러 후보가 있으면 현재 Task ID, branch, 최근 작업 맥락과 head SHA를 이용해 좁힌다.
+5. 그래도 동률인 후보가 남으면 임의 선택하지 않고 후보를 명시한다.
+
+handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는 사용자 승인으로 해석하지 않는다.
+
 ## 실행 절차
 
 1. **최신 상태 고정**
@@ -21,8 +35,11 @@ description: >-
    - 미실행·skipped·cancelled 검증을 success로 취급하지 않는다.
 
 3. **리뷰 확인**
+   - CodeRabbit native auto-review를 기본 review 경로로 사용하고 최신 HEAD가 review coverage에 포함되는지 확인한다.
+   - auto-review가 진행 중이면 완료로 주장하지 않는다.
+   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토로 보완한다.
+   - 자동 review가 명백히 멈춘 예외 상황에서만 `@coderabbitai review` 같은 수동 trigger를 고려하며, 매 commit마다 반복 호출하지 않는다.
    - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 대조한다.
-   - 외부 AI reviewer가 미실행·stale이면 그 한계를 명시하고 독립 검토로 보완한다.
    - reviewer 지적은 그대로 수용하지 않고 현재 계약·코드·테스트와 대조한다.
 
 4. **의미상 diff 검토**
