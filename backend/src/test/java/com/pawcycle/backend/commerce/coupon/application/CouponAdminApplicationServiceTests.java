@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.TimeZone;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -58,6 +59,22 @@ class CouponAdminApplicationServiceTests {
     assertThat(merged.validFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
     assertThat(merged.validUntil()).isEqualTo(LocalDateTime.of(2026, 9, 1, 0, 0));
     assertThat(merged.active()).isTrue();
+  }
+
+  @Test
+  void nameOnlyPatchPreservesUtcTimesUnderNonUtcJvmDefaultZone() {
+    TimeZone original = TimeZone.getDefault();
+    try {
+      TimeZone.setDefault(TimeZone.getTimeZone("Asia/Seoul"));
+
+      service.update(1L, 7L, namePatch("시간대 무관"));
+
+      CouponRequest merged = updatedRequest();
+      assertThat(merged.validFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+      assertThat(merged.validUntil()).isEqualTo(LocalDateTime.of(2026, 9, 1, 0, 0));
+    } finally {
+      TimeZone.setDefault(original);
+    }
   }
 
   @Test
