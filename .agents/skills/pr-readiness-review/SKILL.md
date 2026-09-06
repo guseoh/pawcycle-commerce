@@ -35,10 +35,12 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
    - 미실행·skipped·cancelled 검증을 success로 취급하지 않는다.
 
 3. **리뷰 확인**
-   - CodeRabbit native auto-review를 기본 review 경로로 사용하고 최신 HEAD가 review coverage에 포함되는지 확인한다.
-   - auto-review가 진행 중이면 완료로 주장하지 않는다.
+   - CodeRabbit review 요청은 `.github/workflows/request-coderabbit-review.yml` 자동화를 기본 경로로 사용한다.
+   - 현재 저장소가 native auto-review 대상이 아닌 동안에는 handoff marker가 있는 최신 HEAD를 자동 요청하고, 저장소 전체 65분 cooldown과 주기적 retry로 rate-limit 중복 요청을 피한다.
+   - 저장소가 native auto-review 조건을 충족하면 자동 요청 workflow가 수동 명령을 보내지 않고 native review에 맡긴다.
+   - 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지 확인한다. 자동 요청 comment나 passing status만으로 review 완료를 주장하지 않는다.
    - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토로 보완한다.
-   - 자동 review가 명백히 멈춘 예외 상황에서만 `@coderabbitai review` 같은 수동 trigger를 고려하며, 매 commit마다 반복 호출하지 않는다.
+   - `@coderabbitai review` 수동 입력은 자동 요청 workflow 자체가 실패하거나 사용자가 명시적으로 요구한 예외 상황에서만 사용한다.
    - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 대조한다.
    - reviewer 지적은 그대로 수용하지 않고 현재 계약·코드·테스트와 대조한다.
 
