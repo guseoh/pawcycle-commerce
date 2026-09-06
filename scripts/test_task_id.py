@@ -16,6 +16,7 @@ class TaskIdTest(unittest.TestCase):
             "OPS-OCI-002",
             "PERF-PH10-008",
             "HARNESS-LEAN-003",
+            "X-HTTP-CLIENT-REFACTOR-001",
         ):
             with self.subTest(task_id=task_id):
                 self.assertEqual(normalize_task_id(task_id), task_id)
@@ -27,7 +28,6 @@ class TaskIdTest(unittest.TestCase):
             "HTTP-CLIENT-REFACTOR-001",
         )
         for malformed in (
-            "X-HTTP-CLIENT-REFACTOR-001",
             "HTTP-CLIENT-REFACTOR-001-extra",
             "HTTP-CLIENT-REFACTOR-001_extra",
             "HTTP-CLIENT-REFACTOR-001é",
