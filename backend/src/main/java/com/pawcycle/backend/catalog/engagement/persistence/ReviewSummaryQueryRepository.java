@@ -1,9 +1,11 @@
 package com.pawcycle.backend.catalog.engagement.persistence;
 
-import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
+import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -58,7 +60,11 @@ public class ReviewSummaryQueryRepository {
 
   @Transactional
   public void saveSummary(long productId, String fingerprint, String summary, Timestamp generatedAt) {
-    summaries.upsert(productId, fingerprint, summary, generatedAt.toLocalDateTime());
+    summaries.upsert(
+        productId,
+        fingerprint,
+        summary,
+        LocalDateTime.ofInstant(generatedAt.toInstant(), ZoneOffset.UTC));
   }
 
   @Transactional(readOnly = true)
@@ -71,7 +77,7 @@ public class ReviewSummaryQueryRepository {
         review.getId(),
         review.getRating(),
         review.getContent(),
-        Timestamp.valueOf(review.getUpdatedAt()));
+        Timestamp.from(review.getUpdatedAt().toInstant(ZoneOffset.UTC)));
   }
 
   public record ReviewRow(long id, int rating, String content, Timestamp updatedAt) {}

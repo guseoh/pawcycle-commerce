@@ -8,7 +8,7 @@ import com.pawcycle.backend.commerce.CommerceException;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -77,7 +77,6 @@ public class BillingPersistenceAdapter {
         new BillingPaymentMethodEntity(memberId, preparation.getCustomerKey(), billingKey, current));
     preparations.delete(preparation);
     preparations.flush();
-    // The schedule tables still have no aggregate mapping; keep this atomic cross-table update in JPA.
     entityManager
         .createNativeQuery(
             "UPDATE subscription_schedules schedule JOIN subscriptions subscription ON subscription.id=schedule.subscription_id "
@@ -96,7 +95,7 @@ public class BillingPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   public record ClaimedPreparation(String customerKey) {}

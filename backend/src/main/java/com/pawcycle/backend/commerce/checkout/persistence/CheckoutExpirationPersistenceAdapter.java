@@ -3,12 +3,12 @@ package com.pawcycle.backend.commerce.checkout.persistence;
 import com.pawcycle.backend.commerce.CommerceOrderEntity;
 import com.pawcycle.backend.commerce.CommerceOrderRepository;
 import com.pawcycle.backend.commerce.MemberCouponRepository;
+import com.pawcycle.backend.commerce.OrderItemRepository;
 import com.pawcycle.backend.commerce.PaymentEntity;
 import com.pawcycle.backend.commerce.PaymentRepository;
-import com.pawcycle.backend.commerce.OrderItemRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
@@ -70,7 +70,7 @@ public class CheckoutExpirationPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   public record ExpirationTarget(long paymentId, long orderId, String paymentStatus, String orderStatus) {}

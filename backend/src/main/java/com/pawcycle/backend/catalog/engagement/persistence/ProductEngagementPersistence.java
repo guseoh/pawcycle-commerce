@@ -4,7 +4,7 @@ import com.pawcycle.backend.catalog.engagement.domain.ProductQuestionEntity;
 import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
@@ -246,7 +246,10 @@ public class ProductEngagementPersistence {
   public ReviewMutationState lockReview(long reviewId) {
     return reviews
         .findByIdForUpdate(reviewId)
-        .map(review -> new ReviewMutationState(review.getMemberId(), review.getProductId(), review.getRating(), review.getContent()))
+        .map(
+            review ->
+                new ReviewMutationState(
+                    review.getMemberId(), review.getProductId(), review.getRating(), review.getContent()))
         .orElse(null);
   }
 
@@ -254,7 +257,12 @@ public class ProductEngagementPersistence {
   public QuestionMutationState lockQuestion(long questionId) {
     return questions
         .findByIdForUpdate(questionId)
-        .map(question -> new QuestionMutationState(question.getMemberId(), question.getProductId(), question.getAnsweredAt() != null))
+        .map(
+            question ->
+                new QuestionMutationState(
+                    question.getMemberId(),
+                    question.getProductId(),
+                    question.getAnsweredAt() != null))
         .orElse(null);
   }
 
@@ -279,30 +287,54 @@ public class ProductEngagementPersistence {
 
   private ReviewView review(ReviewEntity review) {
     return new ReviewView(
-        review.getId(), review.getRating(), review.getContent(), instant(review.getCreatedAt()), instant(review.getUpdatedAt()));
+        review.getId(),
+        review.getRating(),
+        review.getContent(),
+        instant(review.getCreatedAt()),
+        instant(review.getUpdatedAt()));
   }
 
   private AdminReviewView adminReview(ReviewEntity review) {
     return new AdminReviewView(
-        review.getId(), review.getProductId(), review.getMemberId(), review.getRating(), review.getContent(), review.isVisible(), instant(review.getCreatedAt()), instant(review.getUpdatedAt()));
+        review.getId(),
+        review.getProductId(),
+        review.getMemberId(),
+        review.getRating(),
+        review.getContent(),
+        review.isVisible(),
+        instant(review.getCreatedAt()),
+        instant(review.getUpdatedAt()));
   }
 
   private QuestionView question(ProductQuestionEntity question) {
     return new QuestionView(
-        question.getId(), question.getContent(), question.getAnswer(), question.getAnsweredAt() != null, instant(question.getCreatedAt()), instant(question.getUpdatedAt()));
+        question.getId(),
+        question.getContent(),
+        question.getAnswer(),
+        question.getAnsweredAt() != null,
+        instant(question.getCreatedAt()),
+        instant(question.getUpdatedAt()));
   }
 
   private AdminQuestionView adminQuestion(ProductQuestionEntity question) {
     return new AdminQuestionView(
-        question.getId(), question.getProductId(), question.getMemberId(), question.getContent(), question.getAnswer(), question.getAnsweredAt() != null, question.isVisible(), instant(question.getCreatedAt()), instant(question.getUpdatedAt()));
+        question.getId(),
+        question.getProductId(),
+        question.getMemberId(),
+        question.getContent(),
+        question.getAnswer(),
+        question.getAnsweredAt() != null,
+        question.isVisible(),
+        instant(question.getCreatedAt()),
+        instant(question.getUpdatedAt()));
   }
 
   private static java.time.LocalDateTime localDateTime(Timestamp timestamp) {
-    return timestamp.toLocalDateTime();
+    return java.time.LocalDateTime.ofInstant(timestamp.toInstant(), ZoneOffset.UTC);
   }
 
   private static java.time.Instant instant(java.time.LocalDateTime value) {
-    return value.atZone(ZoneId.systemDefault()).toInstant();
+    return value.toInstant(ZoneOffset.UTC);
   }
 
   public record ReviewMutationState(long memberId, long productId, int rating, String content) {}
@@ -310,7 +342,11 @@ public class ProductEngagementPersistence {
   public record QuestionMutationState(long memberId, long productId, boolean answered) {}
 
   public record ReviewView(
-      Long reviewId, int rating, String content, java.time.Instant createdAt, java.time.Instant updatedAt) {}
+      Long reviewId,
+      int rating,
+      String content,
+      java.time.Instant createdAt,
+      java.time.Instant updatedAt) {}
 
   public record AdminReviewView(
       Long reviewId,

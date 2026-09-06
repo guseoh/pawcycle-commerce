@@ -6,7 +6,7 @@ import com.pawcycle.backend.commerce.DeliveryRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,11 +73,11 @@ public class DeliveryPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   private Timestamp timestamp(LocalDateTime value) {
-    return value == null ? null : Timestamp.valueOf(value);
+    return value == null ? null : Timestamp.from(value.toInstant(ZoneOffset.UTC));
   }
 
   public record DeliveryLock(long deliveryId, long orderId, String status) {}

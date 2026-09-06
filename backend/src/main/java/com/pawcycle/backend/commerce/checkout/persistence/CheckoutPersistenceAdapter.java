@@ -24,6 +24,7 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -262,6 +263,6 @@ public class CheckoutPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.now(clock);
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 }

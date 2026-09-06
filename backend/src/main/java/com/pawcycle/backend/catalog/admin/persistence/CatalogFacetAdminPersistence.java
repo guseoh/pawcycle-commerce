@@ -240,8 +240,7 @@ public class CatalogFacetAdminPersistence {
   @Transactional(readOnly = true)
   public ProductFacetValuesView productFacetValues(long productId) {
     requireProduct(productId);
-    return new ProductFacetValuesView(
-        productId, productFacets.findOptionIdsOrdered(productId));
+    return new ProductFacetValuesView(productId, productFacets.findOptionIdsOrdered(productId));
   }
 
   @Transactional(readOnly = true)
@@ -300,7 +299,9 @@ public class CatalogFacetAdminPersistence {
         definition.getId(),
         definition.getKey(),
         definition.getName(),
-        definition.getOptions().stream().map(this::toView).toList());
+        options.findByFacetDefinition_IdOrderByDisplayOrderAscIdAsc(definition.getId()).stream()
+            .map(this::toView)
+            .toList());
   }
 
   private FacetOptionView toView(FacetOptionEntity option) {

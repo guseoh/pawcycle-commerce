@@ -15,6 +15,7 @@ import com.pawcycle.backend.commerce.PaymentRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
@@ -143,7 +144,7 @@ public class PaymentPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.now(clock);
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   public record PaymentWork(

@@ -4,6 +4,7 @@ import com.pawcycle.backend.commerce.CommerceOrderEntity;
 import com.pawcycle.backend.commerce.CommerceOrderRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +34,7 @@ public class AdminOrderPersistenceAdapter {
         order.getMemberId(),
         order.getStatus(),
         order.getPaymentAmount(),
-        Timestamp.valueOf(order.getCreatedAt()));
+        Timestamp.from(order.getCreatedAt().toInstant(ZoneOffset.UTC)));
   }
 
   public record AdminOrderView(

@@ -5,7 +5,7 @@ import com.pawcycle.backend.commerce.AdminAuditLogRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +28,7 @@ public class AdminAuditPersistenceAdapter {
             action,
             targetType,
             targetId,
-            LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault())));
+            LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)));
   }
 
   @Transactional(readOnly = true)
@@ -42,7 +42,7 @@ public class AdminAuditPersistenceAdapter {
                     audit.getAction(),
                     audit.getTargetType(),
                     audit.getTargetId(),
-                    Timestamp.valueOf(audit.getCreatedAt())))
+                    Timestamp.from(audit.getCreatedAt().toInstant(ZoneOffset.UTC))))
         .toList();
   }
 }

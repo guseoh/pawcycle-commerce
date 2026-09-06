@@ -10,7 +10,7 @@ import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -117,10 +117,10 @@ public class CouponPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   private Timestamp timestamp(LocalDateTime value) {
-    return Timestamp.valueOf(value);
+    return Timestamp.from(value.toInstant(ZoneOffset.UTC));
   }
 }
