@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regressions for Production image publishing and explicit deploy approval gates."""
+"""Static regressions for Production image publishing and deployment decommissioning."""
 
 from pathlib import Path
 import re
@@ -12,12 +12,17 @@ PRODUCTION_DEPLOY_WORKFLOW = WORKFLOWS_DIR / "production-deploy.yml"
 AUTO_DISPATCH_PATTERNS = (
     re.compile(r"\bgh\s+workflow\s+run\s+[\"']?production-deploy\.yml\b"),
     re.compile(r"/actions/workflows/production-deploy\.yml/dispatches\b"),
-    re.compile(
-        r"createWorkflowDispatch[\s\S]{0,800}workflow_id\s*:\s*[\"']production-deploy\.yml[\"']"
-    ),
-    re.compile(
-        r"workflow_id\s*:\s*[\"']production-deploy\.yml[\"'][\s\S]{0,800}createWorkflowDispatch"
-    ),
+    re.compile(r"createWorkflowDispatch[\s\S]{0,800}workflow_id\s*:\s*[\"']production-deploy\.yml[\"']"),
+    re.compile(r"workflow_id\s*:\s*[\"']production-deploy\.yml[\"'][\s\S]{0,800}createWorkflowDispatch"),
+)
+AWS_WORKFLOW_PATTERNS = (
+    "aws-actions/configure-aws-credentials",
+    "aws ssm ",
+    "aws ec2 ",
+    "aws rds ",
+    "aws s3 ",
+    "aws cloudwatch ",
+    "aws sns ",
 )
 
 
@@ -25,11 +30,9 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
-        cls.production_deploy = PRODUCTION_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
-        cls.other_workflows = {
+        cls.workflows = {
             path.name: path.read_text(encoding="utf-8")
             for path in WORKFLOWS_DIR.glob("*.yml")
-            if path != PRODUCTION_DEPLOY_WORKFLOW
         }
 
     def test_publish_workflow_uses_job_level_runtime_diff_gate(self) -> None:
@@ -42,27 +45,21 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
 
-    def test_production_deploy_requires_explicit_workflow_dispatch(self) -> None:
-        header = self.production_deploy.split("permissions:", 1)[0]
-        self.assertIn("workflow_dispatch:", header)
-        for forbidden_trigger in (
-            "workflow_run:",
-            "workflow_call:",
-            "push:",
-            "schedule:",
-            "repository_dispatch:",
-        ):
-            self.assertNotIn(forbidden_trigger, header)
-        self.assertIn("environment: production", self.production_deploy)
+    def test_production_deploy_workflow_is_retired(self) -> None:
+        self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
 
-    def test_no_other_workflow_dispatches_production_deploy(self) -> None:
-        for workflow_name, workflow in self.other_workflows.items():
+    def test_no_workflow_dispatches_retired_production_deploy(self) -> None:
+        for workflow_name, workflow in self.workflows.items():
             for pattern in AUTO_DISPATCH_PATTERNS:
                 with self.subTest(workflow=workflow_name, pattern=pattern.pattern):
-                    self.assertIsNone(
-                        pattern.search(workflow),
-                        f"{workflow_name} must not dispatch Production Deploy automatically",
-                    )
+                    self.assertIsNone(pattern.search(workflow))
+
+    def test_no_workflow_contains_active_aws_execution(self) -> None:
+        for workflow_name, workflow in self.workflows.items():
+            lowered = workflow.lower()
+            for pattern in AWS_WORKFLOW_PATTERNS:
+                with self.subTest(workflow=workflow_name, pattern=pattern):
+                    self.assertNotIn(pattern, lowered)
 
 
 if __name__ == "__main__":

@@ -259,57 +259,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [contracts, compose, recovery, auth-lifecycle]
+        lane: [contracts, compose, auth-lifecycle]
     steps:
       - name: Checkout pull request
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
-      - name: Validate production deployment and recovery contracts
+      - name: Validate provider-neutral production contracts
         if: matrix.lane == 'contracts'
         run: |
           bash -n \
-            infra/production/release-common.sh \
-            infra/production/materialize-ssm-env.sh \
-            infra/production/rds-read-only-preflight.sh \
-            infra/production/rds-transition-gate.sh \
-            infra/production/deploy.sh \
-            infra/production/rollback.sh \
-            infra/production/subscription-automation-control.sh \
-            infra/production/subscription-automation-preflight.sh \
-            infra/production/production-db-restore.sh \
-            infra/production/https.sh \
-            infra/production/db-backup-restore.sh \
-            infra/production/ec2-status-check-alarm-common.sh \
-            infra/production/create-ec2-status-check-alarm.sh \
-            infra/production/cleanup-ec2-status-check-alarm.sh \
-            infra/production/test-ec2-status-check-alarm.sh \
             infra/production/verify-production-auth-session-smoke.sh \
             infra/production/test-production-auth-session-smoke.sh \
             infra/production/create-production-auth-smoke-member.sh \
             infra/production/test-create-production-auth-smoke-member-lifecycle.sh \
             infra/production/import-demo-catalog.sh \
             infra/production/test-demo-catalog-import.sh \
-            infra/production/test-production-scripts.sh \
-            infra/production/test-rollback-control-compatibility.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
-            infra/production/test-rds-readiness.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
-            infra/production/test-db-backup-restore.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
           python infra/production/validate-production-contracts.py
-          python infra/production/validate-production-ssm-document.py
-          bash infra/production/test-production-scripts.sh
           bash infra/production/test-demo-catalog-import.sh
-          bash infra/production/test-rds-readiness.sh
-          bash infra/production/test-rollback-control-compatibility.sh
           bash infra/production/test-production-nginx.sh
-          bash infra/production/test-ec2-status-check-alarm.sh
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
@@ -320,10 +296,6 @@ jobs:
       - name: Validate production Compose lifecycle
         if: matrix.lane == 'compose'
         run: bash infra/production/test-production-compose.sh
-
-      - name: Validate production backup and restore lifecycle
-        if: matrix.lane == 'recovery'
-        run: bash infra/production/test-db-backup-restore.sh
 
       - name: Validate production auth smoke member lifecycle
         if: matrix.lane == 'auth-lifecycle'
