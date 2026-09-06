@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Regressions for the generic task-id parser."""
+"""Regressions for the generic task-id parser and shared Harness contracts."""
 
 from __future__ import annotations
 
 import unittest
 
 from scripts.task_id import extract_task_id, normalize_task_id
+from scripts.test_pr_handoff_contract import PrHandoffContractTest  # noqa: F401
 
 
 class TaskIdTest(unittest.TestCase):
