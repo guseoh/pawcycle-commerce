@@ -29,4 +29,4 @@ Platform/SRE는 **재현 가능한 실행 환경, 관측 가능성, 배포·복�
 
 ## 완료 증거
 
-Repository 작업은 contract test와 isolated/fake lifecycle로 검증할 수 있다. 실제 운영 실행은 별도 승인, 적용 전후 상태와 rollback/recovery 증거가 있어야 `Production Verified` 후보가 된다.
+Repository 작업은 contract test와 isolated/fake lifecycle로 검증할 수 있다. 실제 운영 실행은 별도 승인, 적용 전후 상태, 독립 확인, 미실행 항목, 남은 위험과 rollback/recovery 증거가 있어야 `Production Verified` 후보가 된다.
