@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: production-images-${{ github.sha }}
@@ -68,9 +69,6 @@ jobs:
     needs: classify
     if: needs.classify.outputs.publish == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Validate immutable release input
         env:
