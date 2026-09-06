@@ -160,13 +160,13 @@ public class AdminCatalogService {
     Product product =
         productRepository.saveAndFlush(
             new Product(
+                brandId,
                 category,
                 request.name(),
                 request.shortDescription(),
                 request.description(),
                 request.petType(),
                 request.thumbnailUrl()));
-    product.updateBrandId(brandId);
     productListCacheInvalidator.invalidateAfterCommit();
     return productView(product);
   }
