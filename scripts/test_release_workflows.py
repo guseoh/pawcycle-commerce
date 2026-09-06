@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Static regressions for Production image publishing and temporary auto deploy gates."""
+"""Static regressions for Production image publishing and explicit deploy approval gates."""
 
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "publish-production-images.yml"
-AUTO_DEPLOY_WORKFLOW = ROOT / ".github" / "workflows" / "mvp4-temporary-auto-production-deploy.yml"
+WORKFLOWS_DIR = ROOT / ".github" / "workflows"
+PUBLISH_WORKFLOW = WORKFLOWS_DIR / "publish-production-images.yml"
+PRODUCTION_DEPLOY_WORKFLOW = WORKFLOWS_DIR / "production-deploy.yml"
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
-        cls.auto_deploy = AUTO_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        cls.production_deploy = PRODUCTION_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        cls.other_workflows = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in WORKFLOWS_DIR.glob("*.yml")
+            if path != PRODUCTION_DEPLOY_WORKFLOW
+        }
 
     def test_publish_workflow_uses_job_level_runtime_diff_gate(self) -> None:
         header = self.publish.split("permissions:", 1)[0]
@@ -25,13 +31,26 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
 
-    def test_auto_deploy_requires_successful_publish_job(self) -> None:
-        self.assertIn("SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}", self.auto_deploy)
-        self.assertIn('/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100', self.auto_deploy)
-        self.assertIn('.name == "Publish production images" and .conclusion == "success"', self.auto_deploy)
-        self.assertIn("echo \"deploy=false\" >> \"$GITHUB_OUTPUT\"", self.auto_deploy)
-        self.assertIn("if: steps.release.outputs.deploy == 'true'", self.auto_deploy)
-        self.assertIn("Production Deploy workflow: not dispatched", self.auto_deploy)
+    def test_production_deploy_requires_explicit_workflow_dispatch(self) -> None:
+        header = self.production_deploy.split("permissions:", 1)[0]
+        self.assertIn("workflow_dispatch:", header)
+        for forbidden_trigger in (
+            "workflow_run:",
+            "push:",
+            "schedule:",
+            "repository_dispatch:",
+        ):
+            self.assertNotIn(forbidden_trigger, header)
+        self.assertIn("environment: production", self.production_deploy)
+
+    def test_no_other_workflow_dispatches_production_deploy(self) -> None:
+        for workflow_name, workflow in self.other_workflows.items():
+            with self.subTest(workflow=workflow_name):
+                self.assertNotIn(
+                    "production-deploy.yml",
+                    workflow,
+                    f"{workflow_name} must not dispatch Production Deploy automatically",
+                )
 
 
 if __name__ == "__main__":
