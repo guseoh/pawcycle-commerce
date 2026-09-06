@@ -34,8 +34,8 @@ public class Product {
   @Column(name = "catalog_key", length = 150, unique = true)
   private String catalogKey;
 
-  @ManyToOne(fetch = FetchType.LAZY, optional = false)
-  @JoinColumn(name = "category_id", nullable = false)
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "category_id")
   private Category category;
 
   @Column(nullable = false, length = 200)
@@ -54,7 +54,7 @@ public class Product {
   private String thumbnailUrl;
 
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false, length = 20)
+  @Column(name = "display_status", nullable = false, length = 20)
   private ProductStatus status;
 
   public Product(

@@ -23,6 +23,7 @@ class ReviewSummaryUpsertIntegrationTests {
 
   private Long productId;
   private Long brandId;
+  private Long categoryId;
 
   @AfterEach
   void tearDown() {
@@ -30,6 +31,7 @@ class ReviewSummaryUpsertIntegrationTests {
       jdbc.update("DELETE FROM product_review_summaries WHERE product_id=?", productId);
       jdbc.update("DELETE FROM products WHERE id=?", productId);
     }
+    if (categoryId != null) jdbc.update("DELETE FROM categories WHERE id=?", categoryId);
     if (brandId != null) jdbc.update("DELETE FROM brands WHERE id=?", brandId);
   }
 
@@ -41,9 +43,11 @@ class ReviewSummaryUpsertIntegrationTests {
         "summary-brand-" + suffix,
         "summary-brand-" + suffix);
     brandId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    long categoryId =
-        jdbc.queryForObject(
-            "SELECT id FROM categories WHERE slug='__pawcycle_uncategorized__'", Long.class);
+    jdbc.update(
+        "INSERT INTO categories(name,slug,display_order,active) VALUES (?,?,0,true)",
+        "summary-category-" + suffix,
+        "summary-category-" + suffix);
+    categoryId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     jdbc.update(
         """
         INSERT INTO products(brand_id,catalog_key,category_id,name,short_description,description,pet_type,thumbnail_url,display_status)
