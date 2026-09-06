@@ -43,7 +43,7 @@ GitHub branch, PR, HEAD, CI, review, Production 상태는 장기 문서나 과�
 
 ## GitHub와 Git 쓰기 안전
 
-`main`에 직접 제품·문서 작업을 작성하지 않는다. 새 저장소 작업은 최신 `main`에서 명시적인 task branch를 사용한다. branch 이름 관례는 `CONTRIBUTING.md`를 따른다.
+`main`에 직접 제품·문서 작업을 작성하지 않는다. 일반 file write의 direct `main` write는 허용하지 않는다. 새 저장소 작업은 최신 `main`에서 명시적인 task branch를 사용한다. branch 이름 관례는 `CONTRIBUTING.md`를 따른다.
 
 GitHub 파일 쓰기 또는 ref 변경 Tool을 호출하기 직전에 다음을 확인한다.
 
