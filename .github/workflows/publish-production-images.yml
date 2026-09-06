@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - backend/**
+      - frontend/**
+      - infra/production/**
+      - .github/workflows/publish-production-images.yml
   workflow_dispatch:
 
 permissions:
