@@ -31,6 +31,7 @@ description: >-
 
 ## 중단 조건
 
+- 승인된 UX에 필요한 상태·필드·작업이 Backend API contract에 없어서 Backend 동작을 추측하거나 fallback을 만들어야 함
 - API에 없는 제품 동작을 새로 결정해야 함
 - 인증·결제·가격·재고 정책 변경이 필요함
 - 새 Backend contract나 dependency 승인이 필요함
