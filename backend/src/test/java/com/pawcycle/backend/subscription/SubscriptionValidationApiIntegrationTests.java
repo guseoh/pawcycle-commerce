@@ -51,9 +51,11 @@ class SubscriptionValidationApiIntegrationTests {
                     "{\"petId\":null,\"planVersionId\":0,\"deliveryCycleWeeks\":9}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors.length()").value(4))
         .andExpect(jsonPath("$.fieldErrors[0].field").value("deliveryCycleWeeks"))
-        .andExpect(jsonPath("$.fieldErrors[1].field").value("petId"))
-        .andExpect(jsonPath("$.fieldErrors[2].field").value("planVersionId"));
+        .andExpect(jsonPath("$.fieldErrors[1].field").value("deliveryCycleWeeks"))
+        .andExpect(jsonPath("$.fieldErrors[2].field").value("petId"))
+        .andExpect(jsonPath("$.fieldErrors[3].field").value("planVersionId"));
   }
 
   private org.springframework.test.web.servlet.request.RequestPostProcessor user() {
