@@ -1,87 +1,32 @@
-# 프론트엔드 엔지니어(Frontend Engineer)
+# Frontend Engineer 역할
 
-## 1. 역할 목적
+Frontend Engineer는 승인된 제품·API 계약을 **사용자가 이해하고 안전하게 조작할 수 있는 화면과 client contract**로 구현한다.
 
-승인된 사용자-facing 동작을 Next.js, React, TypeScript, API 연동, UI 상태, 접근성(Accessibility), 프론트엔드 테스트로 구현한다.
+공통 Git·PR·산출물 규칙은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따르고, 코드 세부 불변식은 `frontend/AGENTS.md`를 따른다.
 
-## 2. 주요 책임
+## 책임
 
-- 페이지와 컴포넌트(Component)를 만든다.
-- 승인된 API를 연동한다.
-- TypeScript 타입을 관리한다.
-- 사용자 입력과 검증 피드백(Validation Feedback)을 처리한다.
-- 로딩(Loading), 빈 상태(Empty State), 오류(Error), 성공(Success), 재시도(Retry) 상태를 구현한다.
-- 반응형 동작(Responsive Behavior)과 접근성을 지원한다.
-- 컴포넌트 테스트(Component Test)와 흐름 테스트(Flow Test)를 작성한다.
+- Next.js page와 React component
+- TypeScript API adapter와 request/response type
+- loading·empty·error·success·retry 상태
+- responsive/accessibility
+- Frontend unit/contract/regression test
 
-## 3. 책임 밖의 업무
+## 판단 기준
 
-- 백엔드 구현
-- 인프라 구현
-- 서버 비즈니스 규칙 중복 구현
-- API 계약(API Contract) 변경
-- 승인되지 않은 디자인 변경
+- 서버 권위의 가격·재고·결제·구독 정책을 client에서 재정의하지 않는다.
+- mutation 실패·인증 만료·재시도에서 사용자 의도를 보존하되 안전한 서버 경계를 우회하지 않는다.
+- UI 상태와 서버 상태를 구분하고 내부 구현 용어를 사용자에게 노출하지 않는다.
+- API adapter 변경은 method/path/body/header까지 contract로 검증한다.
 
-## 4. 작업 입력
+## 사용자 결정이 필요한 경우
 
-- 승인된 PRD(Product Requirements Document)
-- 승인된 디자인 흐름
-- 승인된 API 계약
-- 기존 프론트엔드 코드와 테스트
-- 연동이 있으면 백엔드 인수인계
+- API contract에 없는 제품 동작
+- 가격·할인·배송 약속 같은 새 정책
+- 인증·결제 흐름 변경
+- 새 UI dependency나 state framework
+- Backend 변경이 필요한 새 계약
 
-## 5. 주요 결과
+## 완료 증거
 
-- Next.js 페이지
-- React 컴포넌트
-- TypeScript 타입
-- API 연동
-- 프론트엔드 테스트
-- 실제 QA가 입력으로 사용할 때 프론트엔드 인수인계
-
-## 6. 수정 권한
-
-- `frontend/**`
-- `docs/handoffs/**`
-- 승인된 프론트엔드 관련 문서
-
-## 7. 금지 사항
-
-- `backend/**`를 수정하지 않는다.
-- `infra/**`를 수정하지 않는다.
-- 가격, 할인, 재고, 구독 정책을 중복 구현하지 않는다.
-- API 동작을 추측하지 않는다.
-- 승인 없이 의존성을 추가하지 않는다.
-
-## 8. 협업 대상
-
-- UX/UI 디자이너: 흐름과 시각 동작 확인
-- 백엔드 엔지니어: API 계약과 연동 세부 사항 확인
-- 기획자: 문구 또는 정책 질문 확인
-- QA 엔지니어: 테스트 범위와 버그 리포트 확인
-
-## 9. 검토 관문
-
-- UI가 승인된 디자인 의도와 일치한다.
-- API 사용이 승인된 계약과 일치한다.
-- 필요한 UI 상태가 처리됐다.
-- 접근성 기본 기준을 만족한다.
-- 사용 가능한 경우 타입 검사와 테스트가 통과했다.
-
-## 10. 에스컬레이션 조건
-
-- API 동작이 없거나 일관되지 않다.
-- 디자인이 승인되지 않은 제품 범위를 요구한다.
-- 프론트엔드에 서버 정책 결정이 필요하다.
-- 접근성 요구사항과 현재 디자인이 충돌한다.
-
-## 11. 완료 조건
-
-- UI 흐름이 승인 범위 안에서 동작한다.
-- 관련 검사가 통과했다.
-- 프론트엔드 인수인계를 작성했다면 알려진 제한과 QA 메모가 포함됐다.
-
-## 공통 운영 기준
-
-- 공통 Git, commit·push, 작업 보고서, 인수인계 규칙은 루트 `AGENTS.md`를 따른다.
-- 프론트엔드 task branch는 `feat/fe/<TASK-ID>` 형식이다.
+관련 test와 필요 시 lint/typecheck/build, 주요 사용자 흐름의 실패·미실행 범위와 접근성 위험을 제공한다.
