@@ -113,24 +113,11 @@ PawCycle에서는 다음 경계를 코드와 테스트로 다룹니다.
 
 성능과 아키텍처는 기술을 먼저 선택한 뒤 이유를 붙이지 않고, **문제를 재현하고 측정한 뒤 선택**하는 방향으로 진행합니다.
 
-초기 Subscription 조회에서는 Page Size에 따라 증가하던 SQL Query 수를 측정하고 Batch 조회로 개선한 경험이 있습니다.
-
-| API | Before 10 | Before 20 | Before 100 | After 10 | After 20 | After 100 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Plans | 32 | 52 | 212 | 14 | 14 | 14 |
-| Subscriptions | 51 | 91 | 411 | 15 | 15 | 19 |
-
-**Evidence**
-
-- [PR #102 - N+1 측정](https://github.com/guseoh/pawcycle-commerce/pull/102)
-- [PR #103 - Batch 조회 개선](https://github.com/guseoh/pawcycle-commerce/pull/103)
-
-이 수치는 당시 Local Representative Fixture 기준이며 Production 성능이나 현재 구조의 최종 Baseline을 의미하지 않습니다.
-
-현재는 성능 개선 결과나 기술 Trade-off 문서를 과장해서 먼저 작성하지 않고, 앞으로 다음 주제를 실제 측정과 함께 정리할 예정입니다.
+아직 현재 Product Completion 구조를 기준으로 한 성능 개선 글과 Trade-off 정리는 작성하지 않았기 때문에 README에서는 결과를 먼저 결론 내리지 않고, 앞으로 검증할 주제만 기록합니다.
 
 - 10K / 100K / 1M Scale Dataset과 Performance Re-baseline
 - SQL / Index / JPA Query Plan
+- N+1 / Pagination / Projection 비용
 - Transaction / Lock Contention / Deadlock
 - Connection Pool / JVM / GC
 - Redis Cache hit·miss·staleness와 유지 범위
@@ -307,7 +294,6 @@ README에는 전체 PR을 나열하지 않고 현재 PawCycle의 성격을 보�
 | --- | --- | --- |
 | Product Completion | Customer/Admin Commerce flow 연결 | [PR #267](https://github.com/guseoh/pawcycle-commerce/pull/267) |
 | Customer UX | 실제 Commerce 기준 Visual Closure | [PR #269](https://github.com/guseoh/pawcycle-commerce/pull/269) |
-| Performance | 측정 → N+1 판정 → 개선 → 재측정 | [PR #102](https://github.com/guseoh/pawcycle-commerce/pull/102), [#103](https://github.com/guseoh/pawcycle-commerce/pull/103) |
 | Concurrency | 실제 MySQL Lock footprint 검증 | [PR #104](https://github.com/guseoh/pawcycle-commerce/pull/104) |
 | Reliability | Subscription 실패 격리 / Reconciliation | [PR #106](https://github.com/guseoh/pawcycle-commerce/pull/106) |
 | Idempotency | Retention / Cleanup / Concurrency | [PR #108](https://github.com/guseoh/pawcycle-commerce/pull/108) |
@@ -319,7 +305,7 @@ README에는 전체 PR을 나열하지 않고 현재 PawCycle의 성격을 보�
 
 ## ➕ 앞으로 더 구현할 내용
 
-이 섹션은 일정표나 Phase Roadmap이 아니라 **현재 제품 이후 더 검증하거나 구현하려는 주제**만 기록합니다.
+현재 제품 이후 더 검증하거나 구현하려는 주제만 간단히 기록합니다.
 
 - 장기 운영 환경 전환과 OCI 실제 배포 검증
 - 현재 Product Completion 구조 기준 Performance Re-baseline
