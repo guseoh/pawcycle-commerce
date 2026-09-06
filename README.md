@@ -75,13 +75,13 @@ Frontend는 feature별 API module이 공통 HTTP transport를 사용하며 Sessi
 
 ### Current Architecture
 
-![Current Architecture — application, data, observability and image build flows](docs/images/readme/architecture-current.svg)
+![Current Architecture — application, data, observability and image build flows](docs/images/readme/architecture-current.png)
 
 현재 Production deployment target은 **없음**, CD는 **DEFER**입니다. OCI는 후속 방향이며 active Production 또는 Production Verified 상태가 아닙니다.
 
 ### Historical AWS Production Architecture
 
-![Historical AWS Production Architecture — retired Application and Observability EC2 instances](docs/images/readme/architecture-aws-production-retired.svg)
+![Historical AWS Production Architecture — retired Application and Observability EC2 instances](docs/images/readme/architecture-aws-production-retired.png)
 
 AWS runtime은 **retired** 상태이며, 이 그림은 과거 운영 구성을 보존한 역사적 evidence입니다. MySQL 8.4는 Application EC2의 Docker와 persistent volume에서 운영했고, S3는 DB 백업·격리 복원에 사용했습니다. RDS Single-AZ는 전환 준비만 수행했으며 Production cutover는 완료하지 않았습니다.
 
