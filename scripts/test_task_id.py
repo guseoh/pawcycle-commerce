@@ -7,6 +7,7 @@ import unittest
 
 from scripts.task_id import extract_task_id, normalize_task_id
 from scripts.test_pr_handoff_contract import PrHandoffContractTest  # noqa: F401
+from scripts.test_request_coderabbit_review import CodeRabbitReviewRequestTest  # noqa: F401
 
 
 class TaskIdTest(unittest.TestCase):
