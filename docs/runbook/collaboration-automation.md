@@ -32,6 +32,8 @@
 
 classifier와 component lane은 PR metadata 검증이 끝날 때까지 기다리지 않는다. metadata 오류는 최종 `Application validation`을 실패시킬 수 있지만 관련 제품 테스트 자체를 막지 않는다.
 
+GitHub Ruleset/Branch Protection에서 required check를 지정할 때는 workflow 이름이 아니라 최종 집계 check 이름인 **`Application validation`**을 사용한다.
+
 변경 분류 원칙은 다음과 같다.
 
 - Backend 내부 → Backend
@@ -46,18 +48,15 @@ classifier와 component lane은 PR metadata 검증이 끝날 때까지 기다리
 
 ## Production release side effect
 
-Production image publish는 모든 `main` push를 release 후보로 취급하지 않는다.
-
-자동 trigger 대상은 다음 runtime 경로로 제한한다.
+Production image publish workflow는 모든 `main` push event를 받되, 첫 job에서 push 전후 commit의 전체 changed path를 직접 판정한다. 실제 image build/push는 다음 runtime 경로가 하나라도 바뀐 경우에만 진행한다.
 
 - `backend/**`
 - `frontend/**`
 - `infra/production/**`
-- `.github/workflows/publish-production-images.yml`
 
-README, AGENTS, Runbook 같은 문서 변경은 Production image publish와 자동 deploy chain을 시작하지 않아야 한다.
+README, AGENTS, Runbook, workflow 자체 같은 non-runtime 변경은 Production image build/push와 자동 deploy chain을 시작하지 않아야 한다. event-level `paths` 필터에만 의존하지 않고 checkout된 commit diff를 job 수준에서 판정해 대규모 diff에서도 runtime 변경 누락 위험을 줄인다.
 
-`workflow_dispatch`는 별도 명시적 실행 경로이며 실제 Production 실행 승인을 자동으로 의미하지 않는다.
+`workflow_dispatch`는 별도 명시적 image publish 경로이며 실제 Production 실행 승인을 자동으로 의미하지 않는다.
 
 ## Discord 알림
 
