@@ -37,6 +37,12 @@ class TaskIdTest(unittest.TestCase):
             with self.subTest(malformed=malformed):
                 self.assertIsNone(extract_task_id("", malformed))
 
+    def test_unicode_confusables_are_not_valid_ascii_task_ids(self) -> None:
+        for malformed in ("K-001", "İ-001", "ı-001", "ſ-001"):
+            with self.subTest(malformed=malformed):
+                self.assertIsNone(normalize_task_id(malformed))
+                self.assertIsNone(extract_task_id("", malformed))
+
     def test_case_is_normalized_without_changing_the_family_grammar(self) -> None:
         self.assertEqual(
             extract_task_id("", "ops/tl/http-client-refactor-001"),
