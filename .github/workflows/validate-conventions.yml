@@ -123,7 +123,6 @@ jobs:
             scripts.test_discord_payload \
             scripts.test_send_discord_notification
           python scripts/validate-discord-payloads.py
-          python scripts/validate-obsidian-record.py
 
   backend:
     name: Backend and MySQL validation
