@@ -2,12 +2,23 @@
 """Static regressions for Production image publishing and explicit deploy approval gates."""
 
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 PUBLISH_WORKFLOW = WORKFLOWS_DIR / "publish-production-images.yml"
 PRODUCTION_DEPLOY_WORKFLOW = WORKFLOWS_DIR / "production-deploy.yml"
+AUTO_DISPATCH_PATTERNS = (
+    re.compile(r"\bgh\s+workflow\s+run\s+[\"']?production-deploy\.yml\b"),
+    re.compile(r"/actions/workflows/production-deploy\.yml/dispatches\b"),
+    re.compile(
+        r"createWorkflowDispatch[\s\S]{0,800}workflow_id\s*:\s*[\"']production-deploy\.yml[\"']"
+    ),
+    re.compile(
+        r"workflow_id\s*:\s*[\"']production-deploy\.yml[\"'][\s\S]{0,800}createWorkflowDispatch"
+    ),
+)
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
@@ -36,6 +47,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", header)
         for forbidden_trigger in (
             "workflow_run:",
+            "workflow_call:",
             "push:",
             "schedule:",
             "repository_dispatch:",
@@ -45,12 +57,12 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
     def test_no_other_workflow_dispatches_production_deploy(self) -> None:
         for workflow_name, workflow in self.other_workflows.items():
-            with self.subTest(workflow=workflow_name):
-                self.assertNotIn(
-                    "production-deploy.yml",
-                    workflow,
-                    f"{workflow_name} must not dispatch Production Deploy automatically",
-                )
+            for pattern in AUTO_DISPATCH_PATTERNS:
+                with self.subTest(workflow=workflow_name, pattern=pattern.pattern):
+                    self.assertIsNone(
+                        pattern.search(workflow),
+                        f"{workflow_name} must not dispatch Production Deploy automatically",
+                    )
 
 
 if __name__ == "__main__":
