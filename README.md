@@ -71,23 +71,19 @@ Backend는 기능별 HTTP Adapter와 Application Service, Persistence Boundary�
 
 Frontend는 feature별 API module이 공통 HTTP transport를 사용하며 Session, CSRF, Idempotency, ETag 같은 서버 계약을 클라이언트 계층에서 보존합니다.
 
-아래 그림은 **현재 저장소가 보존하는 application/container topology**이며, 특정 Cloud에서 Production으로 실행 중이라는 의미는 아닙니다.
+아래 두 그림은 현재 저장소의 application/container topology와 종료된 AWS 운영 구성을 구분합니다.
 
-```mermaid
-flowchart LR
-    U[Client] --> N[Nginx]
-    N --> F[Next.js Frontend]
-    N --> B[Spring Boot Backend]
+### Current Architecture
 
-    B --> M[(MySQL)]
-    B --> R[(Redis)]
-    B --> X[External Providers]
+![Current Architecture — application, data, observability and image build flows](docs/images/readme/architecture-current.svg)
 
-    B --> MC[Micrometer]
-    MC --> P[Prometheus]
-    P --> G[Grafana]
-    P --> A[Alertmanager]
-```
+현재 Production deployment target은 **없음**, CD는 **DEFER**입니다. OCI는 후속 방향이며 active Production 또는 Production Verified 상태가 아닙니다.
+
+### Historical AWS Production Architecture
+
+![Historical AWS Production Architecture — retired Application and Observability EC2 instances](docs/images/readme/architecture-aws-production-retired.svg)
+
+AWS runtime은 **retired** 상태이며, 이 그림은 과거 운영 구성을 보존한 역사적 evidence입니다. MySQL 8.4는 Application EC2의 Docker와 persistent volume에서 운영했고, S3는 DB 백업·격리 복원에 사용했습니다. RDS Single-AZ는 전환 준비만 수행했으며 Production cutover는 완료하지 않았습니다.
 
 현재 Cloud/Production 실행 경계는 별도 문서에서 관리합니다.
 

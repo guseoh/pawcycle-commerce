@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1020" viewBox="0 0 1280 1020" role="img" aria-labelledby="title desc">
+<title id="title">Historical AWS Production Architecture</title>
+<desc id="desc">Retired AWS architecture. Route 53 and HTTPS lead to Nginx on Application EC2, which runs Next.js, Spring Boot and Docker MySQL 8.4 with persistent EBS-backed storage. Database backups go to S3. A separate Observability EC2 hosts Prometheus and Grafana and collects Spring Boot metrics through metrics-proxy. Toss Payments and AI Provider are external. GitHub Actions publishes GHCR images for historical Application EC2 deployment.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#526779"/></marker></defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#203346;font-size:24px} .title{font-size:36px;font-weight:700}.section{font-size:25px;font-weight:700}.small{font-size:20px;fill:#53697b}.node{fill:#fff;stroke:#8da1b1;stroke-width:1.5}.edge{fill:none;stroke:#526779;stroke-width:2;marker-end:url(#arrow)}.metrics{stroke:#36877c;stroke-dasharray:7 5}.boundary{fill:#f6f8fb;stroke:#b8c5cf;stroke-width:1.5}</style>
+<rect width="1280" height="1020" fill="#ffffff"/>
+<text x="36" y="55" class="title" text-anchor="start">Historical AWS Production Architecture</text>
+<rect x="1090" y="22" width="155" height="46" rx="5" fill="#f3ece3"/>
+<text x="1167" y="53" class="section" text-anchor="middle">RETIRED</text>
+<text x="36" y="109" class="small" text-anchor="start">Build / Deploy</text>
+<rect x="35" y="130" width="160" height="60" rx="5" class="node"/>
+<text x="115.0" y="168.0" class="" text-anchor="middle">GitHub</text>
+<rect x="260" y="130" width="230" height="60" rx="5" class="node"/>
+<text x="375.0" y="168.0" class="" text-anchor="middle">GitHub Actions</text>
+<rect x="555" y="130" width="150" height="60" rx="5" class="node"/>
+<text x="630.0" y="168.0" class="" text-anchor="middle">GHCR</text>
+<path d="M 195 160 H 260" class="edge"/>
+<path d="M 490 160 H 555" class="edge"/>
+<rect x="250" y="230" width="730" height="760" rx="8" class="boundary"/>
+<text x="272" y="267" class="section" text-anchor="start">AWS</text>
+<rect x="275" y="290" width="680" height="395" rx="8" class="boundary"/>
+<text x="297" y="327" class="section" text-anchor="start">EC2 #1 &#183; Application</text>
+<rect x="275" y="805" width="680" height="155" rx="8" class="boundary"/>
+<text x="297" y="842" class="section" text-anchor="start">EC2 #2 &#183; Observability</text>
+<path d="M 705 160 H 910 V 290" class="edge"/>
+<text x="760" y="207" class="small" text-anchor="start">Deploy</text>
+<rect x="35" y="350" width="175" height="60" rx="5" class="node"/>
+<text x="122.5" y="388.0" class="" text-anchor="middle">User / Client</text>
+<rect x="25" y="475" width="200" height="85" rx="5" class="node"/>
+<text x="125.0" y="525.5" class="" text-anchor="middle">Route 53</text>
+<text x="125" y="547" class="small" text-anchor="middle">HTTPS</text>
+<path d="M 122 410 V 475" class="edge"/>
+<rect x="300" y="490" width="150" height="60" rx="5" class="node"/>
+<text x="375.0" y="528.0" class="" text-anchor="middle">Nginx</text>
+<rect x="510" y="375" width="195" height="60" rx="5" class="node"/>
+<text x="607.5" y="413.0" class="" text-anchor="middle">Next.js</text>
+<rect x="510" y="490" width="195" height="60" rx="5" class="node" style="fill:#edf4fb"/>
+<text x="607.5" y="528.0" class="" text-anchor="middle">Spring Boot</text>
+<path d="M 225 520 H 300" class="edge"/>
+<path d="M 450 520 H 480 V 405 H 510" class="edge"/>
+<path d="M 480 520 H 510" class="edge"/>
+<rect x="730" y="480" width="200" height="85" rx="5" class="node" style="fill:#f1f4f8"/>
+<text x="830.0" y="530.5" class="" text-anchor="middle">MySQL 8.4</text>
+<text x="830" y="552" class="small" text-anchor="middle">Docker</text>
+<path d="M 705 520 H 730" class="edge"/>
+<text x="815" y="628" class="small" text-anchor="middle">Persistent Volume</text>
+<text x="815" y="656" class="small" text-anchor="middle">EBS</text>
+<path d="M 830 565 V 602" class="edge"/>
+<rect x="730" y="710" width="200" height="60" rx="5" class="node"/>
+<text x="830.0" y="748.0" class="" text-anchor="middle">S3</text>
+<path d="M 930 540 H 965 V 740 H 930" class="edge"/>
+<text x="760" y="702" class="small" text-anchor="start">DB backup</text>
+<text x="1020" y="328" class="small" text-anchor="start">External providers</text>
+<rect x="1020" y="360" width="225" height="60" rx="5" class="node"/>
+<text x="1132.5" y="398.0" class="" text-anchor="middle">Toss Payments</text>
+<rect x="1020" y="470" width="225" height="60" rx="5" class="node"/>
+<text x="1132.5" y="508.0" class="" text-anchor="middle">AI Provider</text>
+<path d="M 607 490 V 455 H 995 V 390 H 1020" class="edge"/>
+<path d="M 995 455 V 500 H 1020" class="edge"/>
+<rect x="485" y="872" width="220" height="60" rx="5" class="node" style="fill:#edf7f4"/>
+<text x="595.0" y="910.0" class="" text-anchor="middle">Prometheus</text>
+<rect x="745" y="872" width="175" height="60" rx="5" class="node" style="fill:#edf7f4"/>
+<text x="832.5" y="910.0" class="" text-anchor="middle">Grafana</text>
+<path d="M 607 550 V 872" class="edge metrics"/>
+<text x="300" y="780" class="small" text-anchor="start">Metrics &#183; metrics-proxy</text>
+<path d="M 705 902 H 745" class="edge metrics"/>
+</svg>
