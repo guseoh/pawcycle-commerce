@@ -49,6 +49,8 @@ Skill 이름을 사용자가 명시하면 해당 Skill을 우선한다. 이름�
 - Codex 실행 Prompt, Delta Prompt, 리뷰 후 후속 수정 Prompt 생성 → `.agents/skills/codex-delta-prompt/SKILL.md`
 - PR/branch CI 실패 원인 분석과 최소 후속 수정 범위 판단 → `.agents/skills/ci-failure-triage/SKILL.md`
 
+Codex 또는 다른 AI 구현 작업 직후 사용자가 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 말하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다. 현재 Task ID·branch·대화 맥락을 우선 사용하고, 필요하면 `<!-- pawcycle-ai-handoff: review-ready -->` marker가 있는 최신 관련 open PR을 탐색한 뒤 `pr-readiness-review`를 적용한다. 여러 후보가 실제로 구분되지 않을 때만 임의 선택하지 않는다.
+
 Skill은 공통 정책의 복사본이 아니다. 지속 안전 규칙은 이 파일과 경로별 `AGENTS.md`를 따르고, Skill에는 반복 실행 절차만 둔다.
 
 ## GitHub와 Git 쓰기 안전
@@ -97,6 +99,8 @@ CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR me
 ## 리뷰
 
 CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
+
+CodeRabbit은 저장소의 native auto-review를 기본으로 사용한다. 최신 HEAD가 자동 review coverage에 포함되는지 확인하고, 진행 중이거나 rate limit·서비스 제한이 있으면 그 상태를 그대로 기록한다. `@coderabbitai review` 같은 수동 trigger는 자동 review가 명백히 멈춘 예외 상황에서만 사용하며 매 commit마다 반복 호출하지 않는다.
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다.
 
