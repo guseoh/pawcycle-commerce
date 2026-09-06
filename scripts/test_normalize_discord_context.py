@@ -114,6 +114,28 @@ PASSWORD=do-not-copy
         )
         self.assertNotIn("do-not-copy", repr(result))
 
+    def test_task_id_ignores_fenced_code_and_automatic_summary(self) -> None:
+        body = """```text
+작업 ID: `FAKE-TASK-001`
+```
+
+## 작업
+- 작업 ID: `REAL-TASK-001`
+
+## 변경
+- 목적: 정상 변경
+
+## Summary by CodeRabbit
+작업 ID: `SUMMARY-TASK-001`
+"""
+        context = {"task_id": "기록 없음", "title": "", "head": ""}
+        result = NORMALIZER.normalize_context(
+            context,
+            {"pull_request": {"body": body, "title": "", "head": {"ref": ""}}},
+            "guseoh/pawcycle-commerce",
+        )
+        self.assertEqual(result["task_id"], "REAL-TASK-001")
+
 
 if __name__ == "__main__":
     unittest.main()
