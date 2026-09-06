@@ -9,7 +9,9 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.api.CreatePetRequest;
 import com.pawcycle.backend.subscription.api.PageResponse;
+import com.pawcycle.backend.subscription.api.PetResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import java.util.List;
@@ -119,6 +121,17 @@ class SubscriptionControllerTests {
     assertThat(response.getHeaders().getFirst("Location")).isEqualTo("/api/subscriptions/11");
     assertThat(response.getHeaders().getFirst("ETag")).isEqualTo("\"0\"");
     assertThat(response.getHeaders().getFirst("Idempotency-Replayed")).isNull();
+  }
+
+  @Test
+  void createPetBuildsCanonicalLocation() {
+    CreatePetRequest request = new CreatePetRequest("보리", "DOG");
+    when(service.createPet(7L, request)).thenReturn(new PetResponse(17L, "보리", "DOG", null, null, false));
+
+    ResponseEntity<PetResponse> response = controller.createPet(principal, request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    assertThat(response.getHeaders().getFirst("Location")).isEqualTo("/api/pets/17");
   }
 
   private static SubscriptionDetailResponse detail(long id, String status, long version) {

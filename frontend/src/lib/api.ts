@@ -1,27 +1,6 @@
-export interface FieldError {
-  field: string;
-  message: string;
-}
-
-export interface ApiErrorBody {
-  code: string;
-  message: string;
-  fieldErrors: FieldError[];
-}
-
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly fieldErrors: FieldError[];
-
-  constructor(status: number, body: ApiErrorBody) {
-    super(body.message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = body.code;
-    this.fieldErrors = body.fieldErrors;
-  }
-}
+export { ApiError } from "./http/api-error.ts";
+export type { ApiErrorBody, FieldError } from "./http/api-error.ts";
+import { requestJson, requestVoid } from "./http/client.ts";
 
 export interface ProductPrice {
   skuId: number;
@@ -171,81 +150,6 @@ export interface MemberResponse {
 
 export interface CsrfResponse {
   token: string;
-}
-
-function isApiErrorBody(value: unknown): value is ApiErrorBody {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Partial<ApiErrorBody>;
-  return (
-    typeof candidate.code === "string" &&
-    typeof candidate.message === "string" &&
-    Array.isArray(candidate.fieldErrors)
-  );
-}
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      ...init?.headers,
-    },
-  });
-  const text = await response.text();
-  let body: unknown = null;
-
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      throw new ApiError(response.status || 500, {
-        code: "INVALID_API_RESPONSE",
-        message: "서버 응답을 확인할 수 없습니다.",
-        fieldErrors: [],
-      });
-    }
-  }
-
-  if (!response.ok) {
-    if (isApiErrorBody(body)) {
-      throw new ApiError(response.status, body);
-    }
-    throw new ApiError(response.status, {
-      code: "INTERNAL_ERROR",
-      message: "요청을 처리하지 못했습니다.",
-      fieldErrors: [],
-    });
-  }
-
-  return body as T;
-}
-
-async function requestVoid(path: string, init: RequestInit): Promise<void> {
-  const response = await fetch(path, {
-    ...init,
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      ...init.headers,
-    },
-  });
-  if (response.ok) {
-    return;
-  }
-  const body = (await response.json().catch(() => null)) as unknown;
-  if (isApiErrorBody(body)) {
-    throw new ApiError(response.status, body);
-  }
-  throw new ApiError(response.status, {
-    code: "INTERNAL_ERROR",
-    message: "요청을 처리하지 못했습니다.",
-    fieldErrors: [],
-  });
 }
 
 export const productApi = {

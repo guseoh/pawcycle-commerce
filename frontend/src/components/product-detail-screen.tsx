@@ -11,9 +11,10 @@ import { currentProductWishlist, loadProductWishlist, type ProductWishlistState 
 import { ProductTrustSections } from "./product-trust-sections";
 import { ApiError, type ProductDetail, productApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi } from "@/lib/commerce-final-api";
+import { cartApi } from "@/lib/cart-api";
+import { wishlistApi } from "@/lib/wishlist-api";
 import { buildLoginHref, formatPetType, formatPrice, notifyCommerceChanged, rememberRecentProduct, userFacingCatalogLabel, type RecentProduct } from "@/lib/frontend-utils";
-import { createInteractionEvent, finalProductApi } from "@/lib/final-product-api";
+import { createInteractionEvent, interactionApi } from "@/lib/interaction-api";
 import { productRouteMatches } from "@/lib/product-view";
 import { RecommendationSection } from "./recommendation-section";
 
@@ -66,7 +67,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     viewedProduct.current = state.product.productId;
     const event = createInteractionEvent({ type: "PRODUCT_VIEW", productId: state.product.productId, source: "product-detail" });
     if (!event) return;
-    void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send([event], csrf)).catch(() => undefined);
+    void auth.executeWithCsrf((csrf) => interactionApi.send([event], csrf)).catch(() => undefined);
   }, [auth, productId, state]);
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     let cancel = () => {};
     const timer = window.setTimeout(() => {
       cancel = loadProductWishlist(wishlistRequest, memberId, productId,
-        async () => (await commerceFinalApi.wishlist()).items.some((item) => item.productId === Number(productId)),
+        async () => (await wishlistApi.list()).items.some((item) => item.productId === Number(productId)),
         setWishlistState,
         (error) => { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") markAnonymous(); });
     }, 0);
@@ -112,7 +113,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     setBusy(true); setMessage(null);
     const request = ++authRequest.current;
     try {
-      await auth.executeWithCsrf((csrf) => wishlisted ? commerceFinalApi.deleteWishlist(product.productId, csrf) : commerceFinalApi.addWishlist(product.productId, csrf));
+      await auth.executeWithCsrf((csrf) => wishlisted ? wishlistApi.remove(product.productId, csrf) : wishlistApi.add(product.productId, csrf));
       if (request !== authRequest.current) return;
       setWishlistState({ memberId: auth.memberId, productId, status: "ready", value: !wishlisted }); setMessageKind("success"); setMessage(wishlisted ? `${productName}을 위시리스트에서 제거했어요.` : `${productName}을 위시리스트에 저장했어요.`);
       notifyCommerceChanged();
@@ -127,7 +128,7 @@ export function ProductDetailScreen({ productId }: { productId: string }) {
     if (quantityError !== null) { setMessageKind("error"); setMessage(quantityError ?? "수량을 확인해 주세요."); return; }
     setBusy(true); setMessage(null);
     const request = ++authRequest.current;
-    try { await auth.executeWithCsrf((csrf) => commerceFinalApi.addCart(selectedSku.skuId, parsed, csrf)); if (request !== authRequest.current) return; notifyCommerceChanged(); setMessageKind("success"); setMessage(`${productName} ${parsed}개를 장바구니에 담았어요.`); }
+    try { await auth.executeWithCsrf((csrf) => cartApi.add(selectedSku.skuId, parsed, csrf)); if (request !== authRequest.current) return; notifyCommerceChanged(); setMessageKind("success"); setMessage(`${productName} ${parsed}개를 장바구니에 담았어요.`); }
     catch (error) { if (request !== authRequest.current) return; if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous(); setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했습니다."); }
     finally { setBusy(false); }
   }

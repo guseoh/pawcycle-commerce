@@ -4,6 +4,7 @@ import com.pawcycle.backend.commerce.CancellationService;
 import com.pawcycle.backend.commerce.ReasonRequest;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,10 +22,11 @@ public class CancellationController {
   }
 
   @PostMapping
-  public CancellationResponse request(
+  public ResponseEntity<CancellationResponse> request(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {
-    return cancellations.request(principal.memberId(), orderId, request.reason());
+    return ResponseEntity.ok(
+        cancellations.request(principal.memberId(), orderId, request.reason()));
   }
 }

@@ -75,7 +75,7 @@ test("장바구니 수량 입력은 최종 draft만 적용한다", () => {
   assert.deepEqual([cartQuantityForUpdate(pastedDrafts.at(-1)!)], [12]);
   assert.match(cartSource, /onChange=\{\(event\) => updateDraft\(item\.skuId, event\.target\.value, item\.availableQuantity\)\}/);
   assert.match(cartSource, /onClick=\{\(\) => void applyQuantity\(item\)\}/);
-  assert.equal((cartSource.match(/commerceFinalApi\.updateCart/g) ?? []).length, 1);
+  assert.equal((cartSource.match(/cartApi\.update/g) ?? []).length, 1);
   assert.doesNotMatch(cartSource, /item\.skuCode/);
 });
 
@@ -145,8 +145,8 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
 
 test("서버 재주문과 요청 dialog는 부분 성공과 키보드 경계를 보호한다", () => {
   const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
-  assert.match(orderSource, /commerceFinalApi\.quickReorder\(orderId, csrf, attempt\.key\)/);
-  assert.doesNotMatch(orderSource, /commerceFinalApi\.addCart/);
+  assert.match(orderSource, /orderApi\.quickReorder\(orderId, csrf, attempt\.key\)/);
+  assert.doesNotMatch(orderSource, /cartApi\.add/);
   assert.doesNotMatch(orderSource, /for \(const item of order\.items\)/);
   assert.match(orderSource, /quickReorderAttempt\.current/);
   assert.match(orderSource, /response\.addedItems\.length > 0/);
@@ -161,9 +161,9 @@ test("서버 재주문과 요청 dialog는 부분 성공과 키보드 경계를 
 
 test("주문 상세는 서버 after-sales projection을 새로고침 후에도 표시하고 누락 projection을 허용한다", () => {
   const orderSource = readFileSync(new URL("./commerce-order-detail.tsx", import.meta.url), "utf8");
-  const apiSource = readFileSync(new URL("../lib/commerce-final-api.ts", import.meta.url), "utf8");
+  const apiSource = readFileSync(new URL("../lib/commerce-types.ts", import.meta.url), "utf8");
   assert.match(apiSource, /cancellation\?:/);
-  assert.match(apiSource, /rejectionReason\?:string\|null/);
+  assert.match(apiSource, /rejectionReason\?: string \| null/);
   assert.match(apiSource, /refunds\?:/);
   assert.match(orderSource, /const refunds = order\?\.refunds \?\? \[\]/);
   assert.match(orderSource, /const availableActions = order\?\.availableActions \?\? \[\]/);
@@ -301,7 +301,7 @@ test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계
   assert.match(widgetSource, /renderAgreement/);
   assert.match(widgetSource, /requestPayment/);
   assert.match(widgetSource, /NEXT_PUBLIC_TOSS_TEST_CLIENT_KEY/);
-  assert.match(successSource, /commerceFinalApi\.confirmToss/);
+  assert.match(successSource, /paymentApi\.confirmToss/);
   assert.match(successSource, /expected\.amount/);
   assert.doesNotMatch(failSource, /confirmToss/);
 });
@@ -309,7 +309,7 @@ test("결제 성공·실패 callback은 Toss v2 위젯과 backend confirm 경계
 test("Checkout cart version and idempotency conflict recovery keep the user in control", () => {
   const checkoutSource = readFileSync(new URL("../app/checkout/page.tsx", import.meta.url), "utf8");
   assert.match(checkoutSource, /setCartVersion\(cartResult\.version\)/);
-  assert.match(checkoutSource, /commerceFinalApi\.checkout\(addressId, csrf, key\.current!, couponId \?\? undefined, cartVersion\)/);
+  assert.match(checkoutSource, /checkoutApi\.create\(addressId, csrf, key\.current!, couponId \?\? undefined, cartVersion\)/);
   assert.match(checkoutSource, /const identity = `\$\{addressId\}\|\$\{couponId \?\? "none"\}\|\$\{cartVersion\}`/);
   assert.match(checkoutSource, /reason\.code === "CART_CHANGED"/);
   assert.match(checkoutSource, /reason\.code === "IDEMPOTENCY_KEY_CONFLICT"/);

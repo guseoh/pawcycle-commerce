@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { useAuth } from "@/lib/auth-context";
-import { createInteractionEvent, finalProductApi, type RecommendationResponse } from "@/lib/final-product-api";
+import { createInteractionEvent, interactionApi } from "@/lib/interaction-api";
+import type { RecommendationResponse } from "@/lib/recommendation-api";
 import { loadRecommendation, recommendationRequestKey, recommendationRequestPetId, type RecommendationRequest } from "@/lib/recommendation";
 import { RecommendationGrid } from "./recommendation-card";
 
@@ -14,7 +15,7 @@ function trackBestEffort(auth: ReturnType<typeof useAuth>, response: Recommendat
     return event ? [event] : [];
   });
   if (!events.length) return;
-  void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send(events, csrf)).catch(() => undefined);
+  void auth.executeWithCsrf((csrf) => interactionApi.send(events, csrf)).catch(() => undefined);
 }
 
 export function RecommendationSection({ id, title, description, request, source }: { id: string; title: string; description: string; request: RecommendationRequest; source: string }) {
@@ -50,7 +51,7 @@ export function RecommendationSection({ id, title, description, request, source 
       if (auth.status !== "authenticated") return;
       const event = createInteractionEvent({ type: "RECOMMENDATION_CLICK", productId: item.productId, petId: recommendationRequestPetId(request), recommendationRequestId: requestId, source });
       if (!event) return;
-      void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send([event], csrf)).catch(() => undefined);
+  void auth.executeWithCsrf((csrf) => interactionApi.send([event], csrf)).catch(() => undefined);
     }} /> : null}
   </section>;
 }

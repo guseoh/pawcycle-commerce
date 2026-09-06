@@ -6,7 +6,10 @@ import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
-import { commerceFinalApi, type Address, type CartItem, type CheckoutResult, type MemberCoupon, type PricingBreakdown } from "@/lib/commerce-final-api";
+import { addressApi, type Address } from "@/lib/address-api";
+import { cartApi, type CartItem, type PricingBreakdown } from "@/lib/cart-api";
+import { checkoutApi, type CheckoutResult } from "@/lib/checkout-api";
+import { couponApi, type MemberCoupon } from "@/lib/coupon-api";
 import { newIdempotencyKey } from "@/lib/subscription-api";
 import { TossPaymentWidget } from "@/components/toss-payment-widget";
 
@@ -34,7 +37,7 @@ export default function CheckoutPage() {
   const load = useCallback(async (): Promise<boolean> => {
     if (auth.status !== "authenticated") return false;
     try {
-      const [cartResult, addressResult] = await Promise.all([commerceFinalApi.cart(), commerceFinalApi.addresses()]);
+      const [cartResult, addressResult] = await Promise.all([cartApi.get(), addressApi.list()]);
       setCart(cartResult.items);
       setCartVersion(cartResult.version);
       setPricing(cartResult.pricing);
@@ -45,7 +48,7 @@ export default function CheckoutPage() {
       });
       setError(null);
       try {
-        const couponResult = await commerceFinalApi.coupons();
+        const couponResult = await couponApi.list();
         const availableCoupons = couponResult.filter((coupon) => coupon.status === "AVAILABLE");
         setCoupons(availableCoupons);
         setCouponId((current) => current !== null && availableCoupons.some((coupon) => coupon.memberCouponId === current) ? current : null);
@@ -106,7 +109,7 @@ export default function CheckoutPage() {
         key.current = newIdempotencyKey();
         keyIdentity.current = identity;
       }
-      const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.checkout(addressId, csrf, key.current!, couponId ?? undefined, cartVersion));
+      const response = await auth.executeWithCsrf((csrf) => checkoutApi.create(addressId, csrf, key.current!, couponId ?? undefined, cartVersion));
       setResult(response);
       notifyCommerceChanged();
     } catch (reason) {

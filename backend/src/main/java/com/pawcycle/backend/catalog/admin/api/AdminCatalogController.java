@@ -161,11 +161,12 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/products/{productId}/images/{imageId}")
-  void deleteImage(
+  ResponseEntity<Void> deleteImage(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long imageId) {
     mutations.deleteImage(principal.memberId(), productId, imageId);
+    return ResponseEntity.noContent().build();
   }
 
   @GetMapping("/products/{productId}/option-groups")
@@ -198,11 +199,12 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/products/{productId}/option-groups/{groupId}")
-  void deleteOptionGroup(
+  ResponseEntity<Void> deleteOptionGroup(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId) {
     mutations.deleteOptionGroup(principal.memberId(), productId, groupId);
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/products/{productId}/option-groups/{groupId}/values")
@@ -237,12 +239,13 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/products/{productId}/option-groups/{groupId}/values/{valueId}")
-  void deleteOptionValue(
+  ResponseEntity<Void> deleteOptionValue(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @PathVariable long groupId,
       @PathVariable long valueId) {
     mutations.deleteOptionValue(principal.memberId(), productId, groupId, valueId);
+    return ResponseEntity.noContent().build();
   }
 
   @PutMapping("/products/{productId}/skus/{skuId}/option-values")
@@ -292,10 +295,11 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/facets/{definitionId}")
-  void deleteFacetDefinition(
+  ResponseEntity<Void> deleteFacetDefinition(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId) {
     mutations.deleteFacetDefinition(principal.memberId(), definitionId);
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/facets/{definitionId}/options")
@@ -322,11 +326,12 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/facets/{definitionId}/options/{optionId}")
-  void deleteFacetOption(
+  ResponseEntity<Void> deleteFacetOption(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long definitionId,
       @PathVariable long optionId) {
     mutations.deleteFacetOption(principal.memberId(), definitionId, optionId);
+    return ResponseEntity.noContent().build();
   }
 
   @PutMapping("/categories/{categoryId}/facets/{definitionId}")
@@ -341,11 +346,12 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/categories/{categoryId}/facets/{definitionId}")
-  void removeCategoryFacet(
+  ResponseEntity<Void> removeCategoryFacet(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long categoryId,
       @PathVariable long definitionId) {
     mutations.removeCategoryFacet(principal.memberId(), categoryId, definitionId);
+    return ResponseEntity.noContent().build();
   }
 
   @PutMapping("/products/{productId}/facet-values")
@@ -398,10 +404,11 @@ public class AdminCatalogController {
   }
 
   @DeleteMapping("/products/{productId}/detail-sections/{sectionId}")
-  void deleteDetailSection(
+  ResponseEntity<Void> deleteDetailSection(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @PathVariable Long sectionId) {
     mutations.deleteDetailSection(principal.memberId(), productId, sectionId);
+    return ResponseEntity.noContent().build();
   }
 }

@@ -4,12 +4,13 @@ import Link from "next/link";
 import { OrbitMark } from "./orbit-mark";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { commerceFinalApi } from "@/lib/commerce-final-api";
+import { cartApi } from "@/lib/cart-api";
+import { wishlistApi } from "@/lib/wishlist-api";
 import { useAuth } from "@/lib/auth-context";
 import { useCatalogDiscovery } from "./catalog-discovery";
 import { buildLoginHref } from "@/lib/frontend-utils";
 import { interactionContext, parseCatalogFilters } from "@/lib/catalog-filters";
-import { createInteractionEvent, finalProductApi } from "@/lib/final-product-api";
+import { createInteractionEvent, interactionApi } from "@/lib/interaction-api";
 
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
 const RECENT_SEARCHES_KEY = "pawcycle.recent-searches";
@@ -170,7 +171,7 @@ export function AppHeader() {
     const refreshBadges = () => {
       setBadgeFailed(false);
       const request = ++requestRef.current;
-      void Promise.all([commerceFinalApi.cart(), commerceFinalApi.wishlist()]).then(([cart, wishlist]) => {
+      void Promise.all([cartApi.get(), wishlistApi.list()]).then(([cart, wishlist]) => {
         if (!active || request !== requestRef.current) return;
         setCartCount(cart.items.reduce((total, item) => total + item.quantity, 0));
         setWishlistCount(wishlist.items.length);
@@ -200,7 +201,7 @@ export function AppHeader() {
     if (query) rememberSearch(query);
     const params = new URLSearchParams(query ? { q: query } : {});
     const event = createInteractionEvent({ type: "SEARCH", source: "catalog-search", context: interactionContext(parseCatalogFilters(params)) });
-    if (status === "authenticated" && event) void auth.executeWithCsrf(csrf => finalProductApi.interactions.send([event], csrf)).catch(() => undefined);
+    if (status === "authenticated" && event) void auth.executeWithCsrf(csrf => interactionApi.send([event], csrf)).catch(() => undefined);
     router.push(query ? `/products?q=${encodeURIComponent(query)}` : "/products");
   };
   const categories = discovery.state.status === "success" ? discovery.state.data.categories : [];

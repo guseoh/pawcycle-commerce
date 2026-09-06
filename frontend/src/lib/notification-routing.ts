@@ -1,4 +1,4 @@
-import type { Notification } from "./commerce-final-api.ts";
+import type { Notification } from "./commerce-types.ts";
 
 export function notificationCopy(item: Pick<Notification, "type">): string {
   return {

@@ -4,6 +4,7 @@ import com.pawcycle.backend.commerce.CouponCreatedResponse;
 import com.pawcycle.backend.commerce.CouponIssueRequest;
 import com.pawcycle.backend.commerce.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.application.CouponAdminApplicationService;
+import com.pawcycle.backend.commerce.coupon.application.CouponPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -29,7 +30,7 @@ public class AdminCouponController {
 
   @GetMapping
   public List<CouponResponse> coupons() {
-    return coupons.list();
+    return coupons.list().stream().map(AdminCouponController::response).toList();
   }
 
   @PostMapping
@@ -45,8 +46,8 @@ public class AdminCouponController {
   public ResponseEntity<Void> update(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long couponId,
-      @Valid @RequestBody CouponRequest request) {
-    coupons.update(principal.memberId(), couponId, request);
+      @RequestBody CouponPatchRequest request) {
+    coupons.update(principal.memberId(), couponId, command(request));
     return ResponseEntity.noContent().build();
   }
 
@@ -57,5 +58,39 @@ public class AdminCouponController {
       @Valid @RequestBody CouponIssueRequest request) {
     coupons.issue(principal.memberId(), couponId, request.memberId());
     return ResponseEntity.noContent().build();
+  }
+
+  private static CouponPatchCommand command(CouponPatchRequest request) {
+    return new CouponPatchCommand(
+        request.name(),
+        request.discountType(),
+        request.discountValue(),
+        request.minimumOrderAmount(),
+        request.maximumDiscountAmount(),
+        request.validFrom(),
+        request.validUntil(),
+        request.active(),
+        request.hasName(),
+        request.hasDiscountType(),
+        request.hasDiscountValue(),
+        request.hasMinimumOrderAmount(),
+        request.hasMaximumDiscountAmount(),
+        request.hasValidFrom(),
+        request.hasValidUntil(),
+        request.hasActive());
+  }
+
+  private static CouponResponse response(
+      com.pawcycle.backend.commerce.coupon.persistence.CouponView view) {
+    return new CouponResponse(
+        view.couponId(),
+        view.name(),
+        view.discountType(),
+        view.discountValue(),
+        view.minimumOrderAmount(),
+        view.maximumDiscountAmount(),
+        view.validFrom(),
+        view.validUntil(),
+        view.active());
   }
 }

@@ -6,9 +6,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi, type OrderDetail } from "@/lib/commerce-final-api";
+import { orderApi, type OrderDetail } from "@/lib/order-api";
 import { buildLoginHref, formatDateTime, formatDeliveryStatus, formatOrderStatus, formatPaymentStatus, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
-import { finalProductApi, type OrderSubscriptionOption } from "@/lib/final-product-api";
+import { orderSubscriptionApi, type OrderSubscriptionOption } from "@/lib/order-subscription-api";
 import { newIdempotencyKey } from "@/lib/subscription-api";
 import { subscriptionApi, type Pet } from "@/lib/subscription-api";
 
@@ -55,7 +55,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
   const load = useCallback(async (clearMessage = true): Promise<boolean> => {
     if (clearMessage) { setMessage(null); setMessageKind(null); }
     try {
-      setOrder(await commerceFinalApi.order(orderId));
+      setOrder(await orderApi.detail(orderId));
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return false; }
@@ -76,7 +76,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     const timer = window.setTimeout(() => {
       if (!active) return;
       setSubscriptionOptionsStatus("loading"); setSubscriptionOptionsError(null); setSubscriptionOptionPetError(null); setSubscriptionOptionPets(null); setSubscriptionOptions(null);
-      void finalProductApi.orderSubscriptionOptions(loadedOrderId).then(async (result) => {
+      void orderSubscriptionApi.options(loadedOrderId).then(async (result) => {
         if (!active) return;
         if (!result.options.length) { setSubscriptionOptions([]); setSubscriptionOptionsStatus("ready"); return; }
         try {
@@ -123,7 +123,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
     setPending(true);
     setReasonError(null);
     try {
-      await auth.executeWithCsrf((csrf) => action === "cancel" ? commerceFinalApi.cancellation(orderId, value, csrf) : commerceFinalApi.returnRequest(orderId, value, csrf));
+      await auth.executeWithCsrf((csrf) => action === "cancel" ? orderApi.cancellation(orderId, value, csrf).then(() => undefined) : orderApi.returnRequest(orderId, value, csrf).then(() => undefined));
       setReason("");
       closeRequest();
       const refreshed = await load(false);
@@ -149,7 +149,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
         ? quickReorderAttempt.current
         : { orderId, key: newIdempotencyKey() };
       quickReorderAttempt.current = attempt;
-      const response = await auth.executeWithCsrf((csrf) => commerceFinalApi.quickReorder(orderId, csrf, attempt.key));
+      const response = await auth.executeWithCsrf((csrf) => orderApi.quickReorder(orderId, csrf, attempt.key));
       setQuickReorderResult({ orderId, skipped: response.skippedItems.length });
       if (response.addedItems.length > 0) notifyCommerceChanged();
       if (response.addedItems.length > 0 && response.skippedItems.length === 0) {

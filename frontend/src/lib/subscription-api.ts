@@ -1,4 +1,4 @@
-import { ApiError, type ApiErrorBody } from "./api.ts";
+import { requestWithMetadata, type ResponseMetadata } from "./http/client.ts";
 
 export interface Page<T> {
   page: number;
@@ -89,7 +89,7 @@ export interface SubscriptionDetail extends SubscriptionSummary {
   availableActions?: string[];
 }
 
-export interface SubscriptionApiResponse<T> { body: T; etag: string | null; location: string | null; replayed: boolean }
+export type SubscriptionApiResponse<T> = ResponseMetadata<T>;
 export interface CycleSuggestionResponse {
   subscriptionId: number;
   currentDeliveryCycleWeeks: number;
@@ -98,37 +98,7 @@ export interface CycleSuggestionResponse {
   suggestion: null | { deliveryCycleWeeks: number };
 }
 
-function isApiErrorBody(value: unknown): value is ApiErrorBody {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ApiErrorBody>;
-  return typeof candidate.code === "string" && typeof candidate.message === "string" && Array.isArray(candidate.fieldErrors);
-}
-
-async function requestSubscriptionApi<T>(path: string, init?: RequestInit): Promise<SubscriptionApiResponse<T>> {
-  const response = await fetch(path, {
-    ...init,
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: { Accept: "application/json", ...init?.headers },
-  });
-  const text = await response.text();
-  let body: unknown = null;
-  if (text) {
-    try { body = JSON.parse(text); } catch {
-      throw new ApiError(response.status || 500, { code: "INVALID_API_RESPONSE", message: "서버 응답을 확인할 수 없습니다.", fieldErrors: [] });
-    }
-  }
-  if (!response.ok) {
-    if (isApiErrorBody(body)) throw new ApiError(response.status, body);
-    throw new ApiError(response.status || 500, { code: "INTERNAL_ERROR", message: "요청을 처리하지 못했습니다.", fieldErrors: [] });
-  }
-  return {
-    body: body as T,
-    etag: response.headers.get("ETag"),
-    location: response.headers.get("Location"),
-    replayed: response.headers.get("Idempotency-Replayed") === "true",
-  };
-}
+const requestSubscriptionApi = requestWithMetadata;
 
 function query(values: Record<string, string | number | undefined>): string {
   const params = new URLSearchParams();

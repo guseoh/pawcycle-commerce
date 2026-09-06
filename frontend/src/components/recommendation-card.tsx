@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CatalogImage } from "./catalog-product-card";
-import type { RecommendationItem } from "@/lib/final-product-api";
+import type { RecommendationItem } from "@/lib/recommendation-api";
 import { userFacingCatalogLabel } from "@/lib/frontend-utils";
 import { recommendationStrategyLabel } from "@/lib/recommendation";
 

@@ -26,9 +26,9 @@ test("subscription command preserves protocol headers and reuses the caller's ac
     assert.equal(first.location, "/api/subscriptions/7");
     assert.equal(first.replayed, true);
     assert.equal(second.replayed, true);
-    assert.equal((requests[0].headers as Record<string, string>)["If-Match"], "\"3\"");
-    assert.equal((requests[0].headers as Record<string, string>)["Idempotency-Key"], key);
-    assert.equal((requests[1].headers as Record<string, string>)["Idempotency-Key"], key);
+    assert.equal(new Headers(requests[0].headers).get("If-Match"), "\"3\"");
+    assert.equal(new Headers(requests[0].headers).get("Idempotency-Key"), key);
+    assert.equal(new Headers(requests[1].headers).get("Idempotency-Key"), key);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -53,7 +53,7 @@ test("API-004 subscription JSON fixture remains assignable to the frontend contr
 
 test("MVP4 reschedule and delivery-cycle commands keep ETag and idempotency headers", async () => {
   const originalFetch = globalThis.fetch; const paths: string[] = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => { paths.push(String(input)); assert.equal((init?.headers as Record<string, string>)["If-Match"], "\"8\""); return new Response("{}", { status: 200 }); }) as typeof fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => { paths.push(String(input)); assert.equal(new Headers(init?.headers).get("If-Match"), "\"8\""); return new Response("{}", { status: 200 }); }) as typeof fetch;
   try {
     await subscriptionApi.subscriptions.command(7, "reschedule-next", { scheduledDate: "2026-09-10" }, "csrf", "\"8\"", "reschedule-key");
     await subscriptionApi.subscriptions.command(7, "change-delivery-cycle", { deliveryCycleWeeks: 8 }, "csrf", "\"8\"", "cycle-key");

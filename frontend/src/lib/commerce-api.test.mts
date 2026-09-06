@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { commerceFinalApi } from "./commerce-final-api.ts";
+import { addressApi } from "./address-api.ts";
+import { adminOperationsApi } from "./admin-operations-api.ts";
+import { billingApi } from "./billing-api.ts";
+import { cartApi } from "./cart-api.ts";
+import { checkoutApi } from "./checkout-api.ts";
+import { wishlistApi } from "./wishlist-api.ts";
+import { orderApi } from "./order-api.ts";
 import { categoryApi } from "./api.ts";
 
 test("public category API uses the readonly category authority", async () => {
@@ -35,7 +41,7 @@ test("admin operation uses the provided endpoint once with CSRF", async () => {
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
-    await commerceFinalApi.operation("refunds/9/process", "csrf-token");
+    await adminOperationsApi.processRefund(9, "csrf-token");
     assert.equal(calls, 1);
     assert.equal(method, "POST");
     assert.equal(path, "/api/admin/refunds/9/process");
@@ -59,7 +65,7 @@ test("admin billing retry uses its explicit recovery endpoint", async () => {
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
-    await commerceFinalApi.operation("payments/12/retry-billing", "csrf-token");
+    await adminOperationsApi.retryBilling(12, "csrf-token");
     assert.equal(calls, 1);
     assert.equal(path, "/api/admin/payments/12/retry-billing");
     assert.equal(method, "POST");
@@ -77,8 +83,8 @@ test("admin delivery and return operations serialize required bodies", async () 
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
-    await commerceFinalApi.operation("deliveries/3/ship", "csrf-token", { carrierCode: "CJ", trackingNumber: "T-3" });
-    await commerceFinalApi.operation("returns/4/receive", "csrf-token", { restock: true });
+    await adminOperationsApi.shipDelivery(3, { carrierCode: "CJ", trackingNumber: "T-3" }, "csrf-token");
+    await adminOperationsApi.receiveReturn(4, { restock: true }, "csrf-token");
     assert.deepEqual(requests, [
       { path: "/api/admin/deliveries/3/ship", body: JSON.stringify({ carrierCode: "CJ", trackingNumber: "T-3" }) },
       { path: "/api/admin/returns/4/receive", body: JSON.stringify({ restock: true }) },
@@ -91,13 +97,13 @@ test("admin delivery and return operations serialize required bodies", async () 
 test("cart, wishlist, address, checkout and shipping recovery use the Commerce contract", async () => {
   const original = globalThis.fetch; const requests: Array<{ path:string; method:string; body:string; csrf:string; key:string }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => { const headers=new Headers(init?.headers); requests.push({path:String(input),method:String(init?.method),body:String(init?.body??""),csrf:headers.get("X-CSRF-TOKEN")??"",key:headers.get("Idempotency-Key")??""}); return new Response("{}", {status:200,headers:{"Content-Type":"application/json"}}); }) as typeof fetch;
-  try { const address={name:"집",recipientName:"보호자",recipientPhone:"010",postalCode:"1",addressLine1:"서울",addressLine2:""}; await commerceFinalApi.addCart(5,2,"csrf"); await commerceFinalApi.addWishlist(3,"csrf"); await commerceFinalApi.createAddress(address,"csrf"); await commerceFinalApi.updateSubscriptionShipping(8,address,"csrf"); await commerceFinalApi.checkout(2,"csrf","checkout-key"); assert.deepEqual(requests.map(r=>[r.method,r.path,r.csrf,r.key]), [["POST","/api/cart/items","csrf",""],["POST","/api/wishlist/3","csrf",""],["POST","/api/addresses","csrf",""],["PUT","/api/subscriptions/8/shipping-address","csrf",""],["POST","/api/checkout","csrf","checkout-key"]]); assert.equal(requests[0].body,JSON.stringify({skuId:5,quantity:2})); assert.equal(requests[4].body,JSON.stringify({addressId:2})); } finally { globalThis.fetch=original; }
+  try { const address={name:"집",recipientName:"보호자",recipientPhone:"010",postalCode:"1",addressLine1:"서울",addressLine2:""}; await cartApi.add(5,2,"csrf"); await wishlistApi.add(3,"csrf"); await addressApi.create(address,"csrf"); await addressApi.updateSubscriptionShipping(8,address,"csrf"); await checkoutApi.create(2,"csrf","checkout-key"); assert.deepEqual(requests.map(r=>[r.method,r.path,r.csrf,r.key]), [["POST","/api/cart/items","csrf",""],["POST","/api/wishlist/3","csrf",""],["POST","/api/addresses","csrf",""],["PUT","/api/subscriptions/8/shipping-address","csrf",""],["POST","/api/checkout","csrf","checkout-key"]]); assert.equal(requests[0].body,JSON.stringify({skuId:5,quantity:2})); assert.equal(requests[4].body,JSON.stringify({addressId:2})); } finally { globalThis.fetch=original; }
 });
 
 test("billing method accepts the Backend active fixture without a wrapper", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify({ provider: "TOSS", configured: true, registered: false }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
-  try { assert.deepEqual(await commerceFinalApi.billingMethod(), { provider: "TOSS", configured: true, registered: false }); } finally { globalThis.fetch = original; }
+  try { assert.deepEqual(await billingApi.method(), { provider: "TOSS", configured: true, registered: false }); } finally { globalThis.fetch = original; }
 });
 
 test("checkout sends the server cart version and quick reorder uses one idempotent request", async () => {
@@ -109,8 +115,8 @@ test("checkout sends the server cart version and quick reorder uses one idempote
     return new Response(JSON.stringify({ addedItems: [{ skuId: 7, quantity: 2 }], skippedItems: [], cartVersion: 4 }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
-    await commerceFinalApi.checkout(3, "csrf", "checkout-key", 8, 4);
-    assert.deepEqual(await commerceFinalApi.quickReorder("12", "csrf", "reorder-key"), { addedItems: [{ skuId: 7, quantity: 2 }], skippedItems: [], cartVersion: 4 });
+    await checkoutApi.create(3, "csrf", "checkout-key", 8, 4);
+    assert.deepEqual(await orderApi.quickReorder("12", "csrf", "reorder-key"), { addedItems: [{ skuId: 7, quantity: 2 }], skippedItems: [], cartVersion: 4 });
     assert.deepEqual(requests, [
       { path: "/api/checkout", method: "POST", body: JSON.stringify({ addressId: 3, memberCouponId: 8, cartVersion: 4 }), key: "checkout-key" },
       { path: "/api/orders/12/reorder", method: "POST", body: "", key: "reorder-key" },

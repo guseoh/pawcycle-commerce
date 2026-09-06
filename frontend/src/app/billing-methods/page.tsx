@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { commerceFinalApi, type BillingMethodStatus } from "@/lib/commerce-final-api";
+import { billingApi, type BillingMethodStatus } from "@/lib/billing-api";
 import { buildLoginHref } from "@/lib/frontend-utils";
 
 export default function BillingMethodsPage() {
@@ -28,7 +28,7 @@ function BillingMethodForMember() {
 
   const load = useCallback(() => {
     const request = ++requestRef.current;
-    void commerceFinalApi.billingMethod().then((result) => {
+    void billingApi.method().then((result) => {
       if (!activeRef.current || request !== requestRef.current) return;
       setStatus(result);
       setError(null);
@@ -54,7 +54,7 @@ function BillingMethodForMember() {
     const request = ++requestRef.current;
     setBusy(true);
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.prepareBilling(csrf));
+      await auth.executeWithCsrf((csrf) => billingApi.prepare(csrf));
       if (activeRef.current && request === requestRef.current) setPrepared(true);
     } catch (reason) {
       if (activeRef.current && request === requestRef.current) setError(reason instanceof ApiError ? reason.message : "등록 준비를 시작하지 못했습니다.");

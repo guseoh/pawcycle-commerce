@@ -5,6 +5,8 @@ import com.pawcycle.backend.catalog.engagement.application.QuestionCreateCommand
 import com.pawcycle.backend.catalog.engagement.application.QuestionPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
+import java.net.URI;
+import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,12 +34,13 @@ public class ProductQuestionController {
   }
 
   @PostMapping("/api/products/{productId}/questions")
-  QuestionResponse create(
+  ResponseEntity<QuestionResponse> create(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody QuestionCreateRequest request) {
-    return service.createQuestion(
+    QuestionResponse response = service.createQuestion(
         productId, principal.memberId(), new QuestionCreateCommand(request.content()));
+    return ResponseEntity.created(URI.create("/api/product-questions/" + response.questionId())).body(response);
   }
 
   @PatchMapping("/api/product-questions/{questionId}")
@@ -52,9 +55,10 @@ public class ProductQuestionController {
   }
 
   @DeleteMapping("/api/product-questions/{questionId}")
-  void delete(
+  ResponseEntity<Void> delete(
       @PathVariable long questionId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     service.deleteQuestion(questionId, principal.memberId());
+    return ResponseEntity.noContent().build();
   }
 }

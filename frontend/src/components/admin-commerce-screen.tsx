@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { formatDateTime, formatPrice } from "@/lib/frontend-utils";
-import { adminCommerceApi, toAdminCouponInput, toAdminCouponRequest, type AdminAuditLog, type AdminCoupon, type AdminCouponRequest, type AdminInventory, type AdminMembershipGrade, type AdminOrder, type AdminCouponInput, type AdminMembershipGradeInput } from "@/lib/admin-commerce-api";
+import { adminCommerceApi, toAdminCouponInput, toAdminCouponRequest, type AdminAuditLog, type AdminCoupon, type AdminCouponRequest, type AdminInventory, type AdminMembershipGrade, type AdminOrder, type AdminCouponInput, type AdminMembershipGradeInput, type AdminMembershipGradeRequest } from "@/lib/admin-commerce-api";
 import { errorMessage, MutationFeedback, ResourceState, useAdminMutation, useAdminResource } from "@/components/admin-catalog/shared";
 import { AdminGate } from "@/components/admin-catalog/shared";
 
@@ -88,7 +88,7 @@ function CouponRow({ coupon, pending, onIssue, onUpdate }: { coupon: AdminCoupon
   return <li className="admin-commerce-row"><div><strong>{coupon.name}</strong><span>#{coupon.couponId} · {coupon.discountType === "PERCENTAGE" ? `${coupon.discountValue}%` : formatPrice(coupon.discountValue)} · {coupon.active ? "활성" : "비활성"}</span><span>{formatDateTime(coupon.validFrom)} ~ {formatDateTime(coupon.validUntil)}</span></div><div className="admin-row-actions"><button className="button button-secondary" type="button" disabled={pending} aria-expanded={action === "issue"} onClick={() => setAction((current) => current === "issue" ? null : "issue")}>발급</button><button className="button button-secondary" type="button" disabled={pending} aria-expanded={action === "edit"} onClick={() => setAction((current) => current === "edit" ? null : "edit")}>수정</button></div>{action === "issue" ? <div className="admin-inline-editor"><form className="admin-inline-form" onSubmit={issue}><label className="form-field" htmlFor={`coupon-member-${coupon.couponId}`}>발급할 회원 ID<input id={`coupon-member-${coupon.couponId}`} className="input" type="number" min="1" value={memberId} onChange={(event) => setMemberId(event.target.value)} disabled={pending} placeholder="회원 ID" /></label><button className="button button-primary" type="submit" disabled={pending || !memberId}>쿠폰 발급 확인</button></form></div> : null}{action === "edit" ? <div className="admin-inline-editor"><CouponEditForm coupon={coupon} pending={pending} onUpdate={onUpdate} onCancel={() => setAction(null)} /></div> : null}</li>;
 }
 
-function GradeCreateForm({ pending, onCreate }: { pending: boolean; onCreate: (input: Record<string, unknown>) => void }) {
+function GradeCreateForm({ pending, onCreate }: { pending: boolean; onCreate: (input: AdminMembershipGradeRequest) => void }) {
   const [form, setForm] = useState(EMPTY_GRADE);
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!form.code.trim() || !form.name.trim()) return; onCreate({ code: form.code.trim(), name: form.name.trim(), minimumPurchaseAmount: Number(form.minimumPurchaseAmount || 0), displayOrder: Number(form.displayOrder || 0), active: form.active, benefitCouponId: form.benefitCouponId ? Number(form.benefitCouponId) : null }); };
   const change = (key: keyof AdminMembershipGradeInput, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
@@ -112,21 +112,13 @@ function OrdersPanel({ resource }: { resource: ReturnType<typeof useAdminResourc
 }
 
 function AdminOrderRow({ order }: { order: AdminOrder }) {
-  const [open, setOpen] = useState(false); const [detail, setDetail] = useState<Record<string, unknown> | null>(null); const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false); const [detail, setDetail] = useState<AdminOrder | null>(null); const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (!open || detail) return; let active = true; void adminCommerceApi.order(order.orderId).then((value) => { if (active) setDetail(value); }).catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "주문 상세를 불러오지 못했습니다."); }); return () => { active = false; }; }, [detail, open, order.orderId]);
   return <li className="admin-commerce-row"><div><strong>주문 {order.orderNumber}</strong><span>#{order.orderId} · 회원 #{order.memberId} · {order.status}</span><span>{formatPrice(order.paymentAmount)} · {formatDateTime(order.createdAt)}</span></div><div className="admin-row-actions"><button className="button button-secondary" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? "상세 닫기" : "상세 보기"}</button></div>{open ? <div className="admin-inline-editor">{error ? <p className="field-error" role="alert">{error}</p> : detail ? <AdminOrderDetail detail={detail} /> : <p role="status">상세를 불러오는 중입니다.</p>}</div> : null}</li>;
 }
 
-const ORDER_DETAIL_LABELS: Record<string, string> = { orderId: "주문 ID", orderNumber: "주문 번호", memberId: "회원 ID", status: "주문 상태", paymentAmount: "결제 금액", createdAt: "주문 일시", updatedAt: "변경 일시", shippingStatus: "배송 상태", recipientName: "받는 분", recipientPhone: "연락처" };
-function AdminOrderDetail({ detail }: { detail: Record<string, unknown> }) {
-  return <div><h3>주문 상세</h3><dl className="admin-order-detail-grid">{Object.entries(detail).map(([key, value]) => <div key={key}><dt>{ORDER_DETAIL_LABELS[key] ?? key}</dt><dd>{formatAdminDetailValue(key, value)}</dd></div>)}</dl></div>;
-}
-function formatAdminDetailValue(key: string, value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "number" && /amount|price|total/i.test(key)) return formatPrice(value);
-  if (typeof value === "string" && /(At|Date|Time)$/i.test(key)) { try { return formatDateTime(value); } catch { return value; } }
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+function AdminOrderDetail({ detail }: { detail: AdminOrder }) {
+  return <div><h3>주문 상세</h3><dl className="admin-order-detail-grid"><div><dt>주문 ID</dt><dd>{detail.orderId}</dd></div><div><dt>주문 번호</dt><dd>{detail.orderNumber}</dd></div><div><dt>회원 ID</dt><dd>{detail.memberId}</dd></div><div><dt>주문 상태</dt><dd>{detail.status}</dd></div><div><dt>결제 금액</dt><dd>{formatPrice(detail.paymentAmount)}</dd></div><div><dt>주문 일시</dt><dd>{formatDateTime(detail.createdAt)}</dd></div></dl></div>;
 }
 
 function AuditPanel({ resource }: { resource: ReturnType<typeof useAdminResource<AdminAuditLog[]>> }) {

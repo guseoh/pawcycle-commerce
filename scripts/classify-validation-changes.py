@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import PurePosixPath
 
@@ -52,6 +53,23 @@ def role_components(path: str) -> tuple[str, ...] | None:
     return ROLE_COMPONENTS.get(path_role) if path_role else None
 
 
+def is_backend_http_contract(path: str) -> bool:
+    """Return whether a backend path can change the frontend-visible HTTP contract."""
+    source_prefix = "backend/src/main/java/com/pawcycle/backend/"
+    if not path.startswith(source_prefix):
+        return False
+    if "/performance/" in path or "/internal/" in path:
+        return False
+    if "/api/" in path:
+        return True
+    if "/common/error/" in path or path.endswith("/common/security/ApiErrorWriter.java"):
+        return True
+    filename = PurePosixPath(path).name
+    if filename.endswith("Controller.java") or filename.endswith("ExceptionHandler.java"):
+        return True
+    return bool(re.search(r"/(?:commerce|subscription)/[^/]*(?:Request|Response)\.java$", path))
+
+
 def classify(paths: list[str]) -> dict[str, bool]:
     result = {group: False for group in GROUPS}
     unknown: list[str] = []
@@ -67,6 +85,9 @@ def classify(paths: list[str]) -> dict[str, bool]:
                 result[component] = True
         elif path.startswith("infra/local-integration/"):
             return {group: True for group in GROUPS}
+        elif is_backend_http_contract(path):
+            result["backend"] = True
+            result["frontend"] = True
         elif path.startswith("backend/"):
             result["backend"] = True
         elif path.startswith("frontend/"):

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
-import { commerceFinalApi, type Address, type AddressRequest } from "@/lib/commerce-final-api";
+import { addressApi, type Address, type AddressRequest } from "@/lib/address-api";
 import { useAuth } from "@/lib/auth-context";
 import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
 import { buildLoginHref, formatIsoLocalDate, formatPetType, formatPrice, formatScheduleStatus, formatSubscriptionStatus, subscriptionIssueCopy, userFacingCatalogLabel } from "@/lib/frontend-utils";
@@ -83,7 +83,7 @@ export function SubscriptionDetail({ subscriptionId, created, replayed, basePath
     catch (error) { setMessageKind("error"); if (error instanceof CsrfRefreshError) setMessage("보안 정보를 갱신하지 못했습니다. 같은 요청으로 다시 시도할 수 있습니다."); else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.push(buildLoginHref(returnTo)); return; } else if (error instanceof ApiError && error.code === "SUBSCRIPTION_VERSION_MISMATCH") { setMessage("다른 변경이 먼저 반영되었습니다. 최신 정보를 확인한 뒤 다시 선택해 주세요."); setRequestKey((key) => key + 1); } else if (addonErrorCopy(error)) setMessage(addonErrorCopy(error)!); else setMessage(error instanceof ApiError ? error.message : "요청을 처리하지 못했습니다."); focusError(); }
     finally { setPending(null); }
   }
-  async function updateShippingAddress() { if (!subscription || addressSaving) return; setAddressSaving(true); setMessage(null); try { await auth.executeWithCsrf((csrf) => commerceFinalApi.updateSubscriptionShipping(subscription.subscriptionId, address, csrf)); setMessage("배송지 정보를 반영했습니다. 최신 상태를 확인합니다."); setMessageKind("success"); setShippingEditorOpen(false); setRequestKey((key) => key + 1); } catch (error) { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.push(buildLoginHref(returnTo)); return; } setMessage(error instanceof ApiError ? error.message : "배송지 정보를 저장하지 못했습니다."); setMessageKind("error"); focusError(); } finally { setAddressSaving(false); } }
+  async function updateShippingAddress() { if (!subscription || addressSaving) return; setAddressSaving(true); setMessage(null); try { await auth.executeWithCsrf((csrf) => addressApi.updateSubscriptionShipping(subscription.subscriptionId, address, csrf)); setMessage("배송지 정보를 반영했습니다. 최신 상태를 확인합니다."); setMessageKind("success"); setShippingEditorOpen(false); setRequestKey((key) => key + 1); } catch (error) { if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); router.push(buildLoginHref(returnTo)); return; } setMessage(error instanceof ApiError ? error.message : "배송지 정보를 저장하지 못했습니다."); setMessageKind("error"); focusError(); } finally { setAddressSaving(false); } }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -138,7 +138,7 @@ function AddressForm({ address, setAddress, saving, onSubmit }: { address: Addre
   const loadSavedAddresses = useCallback(() => {
     let active = true;
     setSavedState({ status: "loading" });
-    void commerceFinalApi.addresses().then((items) => { if (active) setSavedState({ status: "success", items }); }).catch((error: unknown) => {
+    void addressApi.list().then((items) => { if (active) setSavedState({ status: "success", items }); }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
       setSavedState({ status: "error", message: error instanceof ApiError ? error.message : "저장 주소를 불러오지 못했습니다." });

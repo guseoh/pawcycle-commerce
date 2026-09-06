@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
-import { commerceFinalApi, type Notification } from "@/lib/commerce-final-api";
+import { notificationApi, type Notification } from "@/lib/notification-api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime, formatIsoLocalDate } from "@/lib/frontend-utils";
 import { notificationCopy, notificationHref } from "@/lib/notification-routing";
@@ -17,7 +17,7 @@ export function NotificationScreen() {
 
   const load = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await commerceFinalApi.notifications();
+      const result = await notificationApi.list();
       setItems(result);
       setMessage(null);
       return true;
@@ -45,7 +45,7 @@ export function NotificationScreen() {
     setPending("all");
     setMessage(null);
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.readAll(csrf));
+      await auth.executeWithCsrf((csrf) => notificationApi.markAllRead(csrf));
       await refresh();
     } catch (reason) {
       setMessage(reason instanceof ApiError ? reason.message : "알림을 읽음 처리하지 못했습니다.");
@@ -58,7 +58,7 @@ export function NotificationScreen() {
     setPending(String(id));
     setMessage(null);
     try {
-      await auth.executeWithCsrf((csrf) => commerceFinalApi.readNotification(id, csrf));
+      await auth.executeWithCsrf((csrf) => notificationApi.markRead(id, csrf));
       await refresh();
     } catch (reason) {
       setMessage(reason instanceof ApiError ? reason.message : "알림을 읽음 처리하지 못했습니다.");

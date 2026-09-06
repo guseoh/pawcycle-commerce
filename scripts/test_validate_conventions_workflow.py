@@ -56,6 +56,34 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_backend_only(self) -> None:
         self.assert_groups(["backend/src/Main.java"], backend=True)
 
+    def test_backend_http_contract_runs_backend_and_frontend(self) -> None:
+        for path in (
+            "backend/src/main/java/com/pawcycle/backend/catalog/engagement/api/ProductReviewController.java",
+            "backend/src/main/java/com/pawcycle/backend/commerce/AddressRequest.java",
+            "backend/src/main/java/com/pawcycle/backend/common/error/ApiErrorResponse.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/SubscriptionController.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/RepeatCommerceController.java",
+            "backend/src/main/java/com/pawcycle/backend/subscription/SubscriptionExceptionHandler.java",
+            "backend/src/main/java/com/pawcycle/backend/commerce/CommerceExceptionHandler.java",
+        ):
+            with self.subTest(path=path):
+                self.assert_groups([path], backend=True, frontend=True)
+
+    def test_internal_performance_controller_remains_backend_only(self) -> None:
+        self.assert_groups(
+            ["backend/src/main/java/com/pawcycle/backend/subscription/performance/SubscriptionBurstMeasurementController.java"],
+            backend=True,
+        )
+
+    def test_backend_internal_and_test_paths_remain_backend_only(self) -> None:
+        for path in (
+            "backend/src/main/java/com/pawcycle/backend/commerce/CouponEntity.java",
+            "backend/src/main/java/com/pawcycle/backend/commerce/coupon/persistence/CouponView.java",
+            "backend/src/test/java/com/pawcycle/backend/commerce/CouponTest.java",
+        ):
+            with self.subTest(path=path):
+                self.assert_groups([path], backend=True)
+
     def test_frontend_only(self) -> None:
         self.assert_groups(["frontend/src/page.tsx"], frontend=True)
 
@@ -122,6 +150,7 @@ class ChangeClassifierTest(unittest.TestCase):
             backend=True,
             frontend=True,
         )
+
 
 class WorkflowContractTest(unittest.TestCase):
     @classmethod

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { formatComparisonFacets } from "@/lib/comparison-presentation";
-import { finalProductApi, type ProductComparisonFact, type ProductComparisonResponse } from "@/lib/final-product-api";
+import { productComparisonApi, type ProductComparisonFact, type ProductComparisonResponse } from "@/lib/product-comparison-api";
 import { comparisonIdsFromKey, comparisonIdsKey, parseComparisonIds } from "@/lib/comparison-selection";
 import { formatPrice } from "@/lib/frontend-utils";
 
@@ -43,7 +43,7 @@ export function ComparisonScreen({ productIdValues }: { productIdValues: readonl
       const current = parseComparisonIds(comparisonIdsFromKey(productIdKey));
       if (current.error) { setState({ status: "error", message: current.error }); return; }
       setState({ status: "loading" });
-      void finalProductApi.compare(current.ids).then((data) => { if (active) setState({ status: "success", data }); }).catch((error: unknown) => {
+      void productComparisonApi.compare(current.ids).then((data) => { if (active) setState({ status: "success", data }); }).catch((error: unknown) => {
         if (active) setState({ status: "error", message: error instanceof ApiError && error.code === "PRODUCT_NOT_FOUND" ? "비교할 상품을 찾을 수 없습니다." : error instanceof Error ? error.message : "상품 비교 정보를 불러오지 못했습니다." });
       });
     }, 0);

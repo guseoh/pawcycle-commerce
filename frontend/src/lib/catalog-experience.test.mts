@@ -6,7 +6,8 @@ import { productQuantityError, selectProductSku } from "./product-selection.ts";
 import { reviewCollectionCopy } from "./review-collection-copy.ts";
 import { loadProductResults } from "./catalog-products.ts";
 import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "./product-wishlist.ts";
-import { commerceFinalApi } from "./commerce-final-api.ts";
+import { cartApi } from "./cart-api.ts";
+import { wishlistApi } from "./wishlist-api.ts";
 
 const discovery: CatalogDiscovery = {
   categories: [{ categoryId: 1, name: "사료", slug: "food", displayOrder: 0, children: [{ categoryId: 10, name: "건식", slug: "food-dry", displayOrder: 0 }] }, { categoryId: 2, name: "용품", slug: "supplies", displayOrder: 1, children: [] }],
@@ -245,9 +246,9 @@ test("Slow wishlist lookup survives a Cart mutation and blocks wishlist mutation
   const generation = { current: 0 };
   const published: ProductWishlistState[] = [];
   try {
-    loadProductWishlist(generation, 7, "4", async () => (await commerceFinalApi.wishlist()).items.some((item) => item.productId === 4), (state) => published.push(state), () => assert.fail("Lookup must succeed"));
+    loadProductWishlist(generation, 7, "4", async () => (await wishlistApi.list()).items.some((item) => item.productId === 4), (state) => published.push(state), () => assert.fail("Lookup must succeed"));
     assert.notEqual(currentProductWishlist(published.at(-1)!, 7, "4").status, "ready");
-    await commerceFinalApi.addCart(1, 1, "test-csrf");
+    await cartApi.add(1, 1, "test-csrf");
     finishWishlist(new Response(JSON.stringify({ items: [{ productId: 4 }] })));
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(paths, ["/api/wishlist", "/api/cart/items"]);

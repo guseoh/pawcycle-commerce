@@ -80,14 +80,14 @@ test("admin commerce mutations keep CSRF and full coupon request bodies", async 
     await api.createCoupon(createdCoupon, "coupon-csrf");
     await api.updateCoupon(7, updatedCoupon, "coupon-update-csrf");
     await api.issueCoupon(7, 3, "issue-csrf");
-    await api.createMembershipGrade({ code: "PLUS" }, "grade-csrf");
+    await api.createMembershipGrade({ code: "PLUS", name: "플러스", minimumPurchaseAmount: 0, displayOrder: 1, active: true, benefitCouponId: null }, "grade-csrf");
     await api.evaluateMembership(3, "evaluate-csrf");
     assert.deepEqual(mock.calls.map((call) => [call.path, call.method, call.csrf, call.body]), [
       ["/api/admin/inventories/4/adjustments", "POST", "inventory-csrf", { delta: -2 }],
       ["/api/admin/coupons", "POST", "coupon-csrf", createdCoupon],
       ["/api/admin/coupons/7", "PATCH", "coupon-update-csrf", updatedCoupon],
       ["/api/admin/coupons/7/issues", "POST", "issue-csrf", { memberId: 3 }],
-      ["/api/admin/membership-grades", "POST", "grade-csrf", { code: "PLUS" }],
+      ["/api/admin/membership-grades", "POST", "grade-csrf", { code: "PLUS", name: "플러스", minimumPurchaseAmount: 0, displayOrder: 1, active: true, benefitCouponId: null }],
       ["/api/admin/members/3/membership/evaluate", "POST", "evaluate-csrf", {}],
     ]);
   } finally { mock.restore(); }

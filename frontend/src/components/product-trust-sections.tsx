@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { ApiError, productApi, type EngagementPage, type ProductQuestion, type ProductReview, type ProductTrust } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatDateTime } from "@/lib/frontend-utils";
-import { finalProductApi, type ReviewSummary } from "@/lib/final-product-api";
+import { productEngagementApi, type ReviewSummary } from "@/lib/product-engagement-api";
 import { isLatestRequest } from "@/lib/request-generation";
 
 interface ProductTrustSectionsProps {
@@ -188,7 +188,7 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
     setReviewSummaryStatus("loading");
     setReviewSummaryError(null);
     try {
-      const summary = await finalProductApi.reviewSummary(productId);
+      const summary = await productEngagementApi.reviewSummary(productId);
       if (!isLatestRequest(generation, reviewSummaryRequestGeneration.current)) return;
       setReviewSummary(summary);
       setReviewSummaryStatus("ready");

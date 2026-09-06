@@ -5,6 +5,8 @@ import com.pawcycle.backend.catalog.engagement.application.ReviewCreateCommand;
 import com.pawcycle.backend.catalog.engagement.application.ReviewPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
+import java.net.URI;
+import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,14 +41,15 @@ public class ProductReviewController {
   }
 
   @PostMapping("/api/products/{productId}/reviews")
-  ReviewResponse create(
+  ResponseEntity<ReviewResponse> create(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody ReviewCreateRequest request) {
-    return service.createReview(
+    ReviewResponse response = service.createReview(
         productId,
         principal.memberId(),
         new ReviewCreateCommand(request.rating(), request.content()));
+    return ResponseEntity.created(URI.create("/api/reviews/" + response.reviewId())).body(response);
   }
 
   @PatchMapping("/api/reviews/{reviewId}")
@@ -65,9 +68,10 @@ public class ProductReviewController {
   }
 
   @DeleteMapping("/api/reviews/{reviewId}")
-  void delete(
+  ResponseEntity<Void> delete(
       @PathVariable long reviewId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
     service.deleteReview(reviewId, principal.memberId());
+    return ResponseEntity.noContent().build();
   }
 }

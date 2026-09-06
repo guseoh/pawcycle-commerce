@@ -147,7 +147,8 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"rating\":5,\"content\":\"좋아요\"}"))
-        .andExpect(status().isOk())
+        .andExpect(status().isCreated())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", org.hamcrest.Matchers.startsWith("/api/reviews/")))
         .andExpect(jsonPath("$.memberId").doesNotExist());
     mockMvc
         .perform(
@@ -191,7 +192,8 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"rating\":5,\"content\":\"owner review\"}"))
-        .andExpect(status().isOk());
+        .andExpect(status().isCreated())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", org.hamcrest.Matchers.startsWith("/api/reviews/")));
     long reviewId =
         jdbc.queryForObject(
             "SELECT id FROM reviews WHERE product_id=? AND member_id=2", Long.class, productId);
@@ -228,6 +230,9 @@ class ProductEngagementApiIntegrationTests {
     org.assertj.core.api.Assertions.assertThat(
             jdbc.queryForObject("SELECT visible FROM reviews WHERE id=?", Boolean.class, reviewId))
         .isFalse();
+    mockMvc
+        .perform(delete("/api/reviews/{reviewId}", reviewId).with(user()).with(csrf()))
+        .andExpect(status().isNoContent());
 
     mockMvc
         .perform(
@@ -236,7 +241,8 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"content\":\"owner question\"}"))
-        .andExpect(status().isOk());
+        .andExpect(status().isCreated())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", org.hamcrest.Matchers.startsWith("/api/product-questions/")));
     long questionId =
         jdbc.queryForObject(
             "SELECT id FROM product_questions WHERE product_id=? AND member_id=2",
@@ -270,6 +276,9 @@ class ProductEngagementApiIntegrationTests {
         .perform(get("/api/products/{productId}/questions", productId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].memberId").doesNotExist());
+    mockMvc
+        .perform(delete("/api/product-questions/{questionId}", questionId).with(user()).with(csrf()))
+        .andExpect(status().isNoContent());
   }
 
   @Test
@@ -281,7 +290,8 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"content\":\"문의합니다\"}"))
-        .andExpect(status().isOk());
+        .andExpect(status().isCreated())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", org.hamcrest.Matchers.startsWith("/api/product-questions/")));
     long questionId =
         jdbc.queryForObject(
             "SELECT id FROM product_questions WHERE product_id=? AND member_id=2",
@@ -344,6 +354,32 @@ class ProductEngagementApiIntegrationTests {
                 .param("size", "100"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+
+  @Test
+  void commonValidationAdviceReturnsDeterministicFieldErrorsAndEmptyMalformedErrors() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/products/{productId}/reviews", productId)
+                .with(user())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"rating\":null,\"content\":\"\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("content"))
+        .andExpect(jsonPath("$.fieldErrors[1].field").value("rating"));
+
+    mockMvc
+        .perform(
+            post("/api/products/{productId}/reviews", productId)
+                .with(user())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{not-json"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors").isEmpty());
   }
 
   @Test

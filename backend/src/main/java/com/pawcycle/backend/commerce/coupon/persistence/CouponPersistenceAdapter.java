@@ -64,6 +64,20 @@ public class CouponPersistenceAdapter {
     coupons.flush();
   }
 
+  @Transactional(readOnly = true)
+  public CouponView find(long couponId) {
+    return coupons.findById(couponId).map(this::view).orElse(null);
+  }
+
+  @Transactional
+  public CouponView findForUpdate(long couponId) {
+    return coupons.findByIdForUpdate(couponId).map(this::view).orElse(null);
+  }
+
+  public void require(long couponId) {
+    requireCoupon(couponId);
+  }
+
   @Transactional
   public void issue(long couponId, long memberId) {
     requireCoupon(couponId);
@@ -74,20 +88,7 @@ public class CouponPersistenceAdapter {
 
   @Transactional(readOnly = true)
   public List<CouponView> findAll() {
-    return coupons.findAllByOrderByIdAsc().stream()
-        .map(
-            coupon ->
-                new CouponView(
-                    coupon.getId(),
-                    coupon.getName(),
-                    coupon.getDiscountType(),
-                    coupon.getDiscountValue(),
-                    coupon.getMinimumOrderAmount(),
-                    coupon.getMaximumDiscountAmount(),
-                    timestamp(coupon.getValidFrom()),
-                    timestamp(coupon.getValidUntil()),
-                    coupon.isActive()))
-        .toList();
+    return coupons.findAllByOrderByIdAsc().stream().map(this::view).toList();
   }
 
   @Transactional(readOnly = true)
@@ -107,6 +108,19 @@ public class CouponPersistenceAdapter {
                   timestamp(coupon.getValidUntil()));
             })
         .toList();
+  }
+
+  private CouponView view(CouponEntity coupon) {
+    return new CouponView(
+        coupon.getId(),
+        coupon.getName(),
+        coupon.getDiscountType(),
+        coupon.getDiscountValue(),
+        coupon.getMinimumOrderAmount(),
+        coupon.getMaximumDiscountAmount(),
+        timestamp(coupon.getValidFrom()),
+        timestamp(coupon.getValidUntil()),
+        coupon.isActive());
   }
 
   private CouponEntity requireCoupon(long couponId) {

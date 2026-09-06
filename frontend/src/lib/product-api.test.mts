@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { finalProductApi, newInteractionEventId, reorderTimingItems } from "./final-product-api.ts";
+import { interactionApi, newInteractionEventId } from "./interaction-api.ts";
+import { orderSubscriptionApi } from "./order-subscription-api.ts";
+import { productComparisonApi } from "./product-comparison-api.ts";
+import { productEngagementApi } from "./product-engagement-api.ts";
+import { recommendationApi } from "./recommendation-api.ts";
+import { reorderApi, reorderTimingItems } from "./reorder-api.ts";
 
 function capture(responses: Response[]) {
   const original = globalThis.fetch;
@@ -22,10 +27,10 @@ const recommendation = { requestId: "req-1", products: [{ productId: 301, name: 
 test("최종 추천 API는 전략별 canonical endpoint와 응답을 보존한다", async () => {
   const mock = capture([Response.json(recommendation), Response.json(recommendation), Response.json(recommendation), Response.json(recommendation)]);
   try {
-    assert.deepEqual((await finalProductApi.recommendations.popular(4, "DOG")).products, recommendation.products);
-    await finalProductApi.recommendations.trending();
-    await finalProductApi.recommendations.related(301);
-    await finalProductApi.recommendations.complementary(301);
+    assert.deepEqual((await recommendationApi.popular(4, "DOG")).products, recommendation.products);
+    await recommendationApi.trending();
+    await recommendationApi.related(301);
+    await recommendationApi.complementary(301);
     assert.deepEqual(mock.calls.map((call) => call.path), [
       "/api/recommendations/popular?limit=4&petType=DOG",
       "/api/recommendations/trending",
@@ -38,8 +43,8 @@ test("최종 추천 API는 전략별 canonical endpoint와 응답을 보존한�
 test("익명 PDP 추천은 인증 전용 mutation 없이 public GET 응답을 매핑한다", async () => {
   const mock = capture([Response.json({ ...recommendation, products: [{ ...recommendation.products[0], strategy: "RELATED" as const }] }), Response.json({ ...recommendation, products: [{ ...recommendation.products[0], strategy: "COMPLEMENTARY" as const }] })]);
   try {
-    const related = await finalProductApi.recommendations.related(301);
-    const complementary = await finalProductApi.recommendations.complementary(301);
+    const related = await recommendationApi.related(301);
+    const complementary = await recommendationApi.complementary(301);
     assert.equal(related.products[0]?.strategy, "RELATED");
     assert.equal(complementary.products[0]?.strategy, "COMPLEMENTARY");
     assert.deepEqual(mock.calls.map((call) => ({ path: call.path, method: call.method, csrf: call.headers.get("X-CSRF-TOKEN") })), [
@@ -52,7 +57,7 @@ test("익명 PDP 추천은 인증 전용 mutation 없이 public GET 응답을 �
 test("상품 상호작용은 CSRF와 event envelope를 사용하고 raw 검색어를 보내지 않는다", async () => {
   const mock = capture([new Response(null, { status: 204 })]);
   try {
-    await finalProductApi.interactions.send([{
+    await interactionApi.send([{
       eventId: "event-1", type: "SEARCH", source: "catalog",
       context: { hasTextQuery: true, petType: "DOG", category: "food", facets: ["size:small"], sort: "RECOMMENDED" },
     }], "csrf-token");
@@ -69,7 +74,7 @@ test("상호작용 event id는 UUID 형식이고 빈 batch는 요청하지 않�
   assert.match(eventId ?? "", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   const mock = capture([]);
   try {
-    await finalProductApi.interactions.send([], "csrf-token");
+    await interactionApi.send([], "csrf-token");
     assert.equal(mock.calls.length, 0);
   } finally { mock.restore(); }
 });
@@ -77,10 +82,10 @@ test("상호작용 event id는 UUID 형식이고 빈 batch는 요청하지 않�
 test("비추천 보조 기능과 compare는 명시된 경로·반복 query를 사용한다", async () => {
   const mock = capture([Response.json({ items: [] }), Response.json({ orderId: 9, options: [] }), Response.json({ status: "INSUFFICIENT_REVIEWS", summary: null, reviewCount: 1, averageRating: 4 }), Response.json({ products: [], aiStatus: "UNAVAILABLE", aiSummary: null })]);
   try {
-    assert.deepEqual(reorderTimingItems(await finalProductApi.reorderTiming()), []);
-    await finalProductApi.orderSubscriptionOptions(9);
-    await finalProductApi.reviewSummary(301);
-    await finalProductApi.compare([301, 302]);
+    assert.deepEqual(reorderTimingItems(await reorderApi.timing()), []);
+    await orderSubscriptionApi.options(9);
+    await productEngagementApi.reviewSummary(301);
+    await productComparisonApi.compare([301, 302]);
     assert.deepEqual(mock.calls.map((call) => call.path), [
       "/api/recommendations/reorder-timing",
       "/api/orders/9/subscription-options",

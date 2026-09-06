@@ -12,7 +12,7 @@ import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, cha
 import { loadProductResults } from "@/lib/catalog-products";
 import { useAuth } from "@/lib/auth-context";
 import { comparisonHref, toggleComparisonId } from "@/lib/comparison-selection";
-import { createInteractionEvent, finalProductApi } from "@/lib/final-product-api";
+import { createInteractionEvent, interactionApi, type InteractionEvent } from "@/lib/interaction-api";
 
 type LoadState = { key: string; status: "success"; response: ProductListResponse } | { key: string; status: "error"; message: string };
 
@@ -62,12 +62,11 @@ function ProductsContent() {
     } catch { sessionStorage.removeItem("pawcycle.catalog-return"); }
   }, [current?.status, query]);
 
-  type InteractionEvent = Parameters<typeof finalProductApi.interactions.send>[0][number];
   const track = (events: Array<InteractionEvent | null>) => {
     if (auth.status !== "authenticated") return;
     const validEvents = events.filter((event): event is InteractionEvent => event !== null);
     if (!validEvents.length) return;
-    void auth.executeWithCsrf((csrf) => finalProductApi.interactions.send(validEvents, csrf)).catch(() => undefined);
+    void auth.executeWithCsrf((csrf) => interactionApi.send(validEvents, csrf)).catch(() => undefined);
   };
 
   useEffect(() => {

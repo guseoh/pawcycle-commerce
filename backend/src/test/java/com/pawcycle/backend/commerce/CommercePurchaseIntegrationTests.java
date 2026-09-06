@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.member.address.api.MemberAddressRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -87,7 +89,7 @@ class CommercePurchaseIntegrationTests {
     addressId =
         commerce.createAddress(
             member.getId(),
-            new AddressRequest("집", "보호자", "010-0000-0000", "06236", "서울시 강남구", "101호"));
+            new MemberAddressRequest("집", "보호자", "010-0000-0000", "06236", "서울시 강남구", "101호"));
   }
 
   @Test
@@ -395,7 +397,7 @@ class CommercePurchaseIntegrationTests {
     long secondAddress =
         commerce.createAddress(
             member.getId(),
-            new AddressRequest("회사", "보호자", "010-0000-0000", "06237", "서울시 서초구", null));
+            new MemberAddressRequest("회사", "보호자", "010-0000-0000", "06237", "서울시 서초구", null));
     assertThatThrownBy(() -> commerce.checkout(member.getId(), key, secondAddress, null, 1L))
         .isInstanceOf(CommerceException.class)
         .satisfies(

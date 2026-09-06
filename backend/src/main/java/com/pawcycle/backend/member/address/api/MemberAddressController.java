@@ -1,9 +1,11 @@
 package com.pawcycle.backend.member.address.api;
 
 import com.pawcycle.backend.commerce.AddressCreatedResponse;
-import com.pawcycle.backend.commerce.AddressRequest;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
+import com.pawcycle.backend.member.address.application.AddressView;
+import com.pawcycle.backend.member.address.application.MemberAddressCommand;
 import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
+import com.pawcycle.backend.member.address.application.SubscriptionShippingAddressCommand;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
@@ -31,14 +33,14 @@ public class MemberAddressController {
   @GetMapping("/addresses")
   public List<AddressResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return addresses.list(principal.memberId());
+    return addresses.list(principal.memberId()).stream().map(MemberAddressController::response).toList();
   }
 
   @PostMapping("/addresses")
   public ResponseEntity<AddressCreatedResponse> create(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
-      @Valid @RequestBody AddressRequest request) {
-    long id = addresses.create(principal.memberId(), request);
+      @Valid @RequestBody MemberAddressRequest request) {
+    long id = addresses.create(principal.memberId(), command(request));
     return ResponseEntity.created(URI.create("/api/addresses/" + id))
         .body(new AddressCreatedResponse(id));
   }
@@ -47,8 +49,8 @@ public class MemberAddressController {
   public ResponseEntity<Void> update(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long addressId,
-      @Valid @RequestBody AddressRequest request) {
-    addresses.update(principal.memberId(), addressId, request);
+      @Valid @RequestBody MemberAddressRequest request) {
+    addresses.update(principal.memberId(), addressId, command(request));
     return ResponseEntity.noContent().build();
   }
 
@@ -72,8 +74,38 @@ public class MemberAddressController {
   public ResponseEntity<Void> updateSubscriptionShipping(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long subscriptionId,
-      @Valid @RequestBody AddressRequest request) {
-    addresses.updateSubscriptionShipping(principal.memberId(), subscriptionId, request);
+      @Valid @RequestBody SubscriptionShippingAddressRequest request) {
+    addresses.updateSubscriptionShipping(
+        principal.memberId(),
+        subscriptionId,
+        new SubscriptionShippingAddressCommand(
+            request.recipientName(),
+            request.recipientPhone(),
+            request.postalCode(),
+            request.addressLine1(),
+            request.addressLine2()));
     return ResponseEntity.noContent().build();
+  }
+
+  private static MemberAddressCommand command(MemberAddressRequest request) {
+    return new MemberAddressCommand(
+        request.name(),
+        request.recipientName(),
+        request.recipientPhone(),
+        request.postalCode(),
+        request.addressLine1(),
+        request.addressLine2());
+  }
+
+  private static AddressResponse response(AddressView view) {
+    return new AddressResponse(
+        view.addressId(),
+        view.name(),
+        view.recipientName(),
+        view.recipientPhone(),
+        view.postalCode(),
+        view.addressLine1(),
+        view.addressLine2(),
+        view.isDefault());
   }
 }

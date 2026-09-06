@@ -4,7 +4,7 @@ import { loadTossPayments, type TossPaymentsWidgets } from "@tosspayments/tosspa
 import { useEffect, useRef, useState } from "react";
 import { formatPrice } from "@/lib/frontend-utils";
 import { isTossTestClientKey, saveTossCheckoutContext } from "@/lib/toss-payment";
-import type { CheckoutResult } from "@/lib/commerce-final-api";
+import type { CheckoutResult } from "@/lib/checkout-api";
 
 const clientKey = process.env.NEXT_PUBLIC_TOSS_TEST_CLIENT_KEY;
 
