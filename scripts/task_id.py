@@ -8,19 +8,20 @@ import re
 
 TASK_ID_PATTERN = r"(?:[A-Z][A-Z0-9]*-)+[0-9]{3}[A-Z]?"
 _BOUNDARY = r"A-Za-z0-9_\-\x80-\U0010FFFF"
+_REGEX_FLAGS = re.IGNORECASE | re.ASCII
 TASK_ID_RE = re.compile(
     rf"(?<![{_BOUNDARY}])({TASK_ID_PATTERN})(?![{_BOUNDARY}])",
-    re.IGNORECASE,
+    _REGEX_FLAGS,
 )
 TASK_LINE_RE = re.compile(
     rf"(?im)^\s*(?:[-*]\s*)?작업\s*ID\s*:\s*`?({TASK_ID_PATTERN})`?\s*$",
-    re.IGNORECASE,
+    _REGEX_FLAGS,
 )
 
 
 def normalize_task_id(value: str) -> str | None:
     candidate = (value or "").strip().strip("`")
-    if re.fullmatch(TASK_ID_PATTERN, candidate, re.IGNORECASE):
+    if re.fullmatch(TASK_ID_PATTERN, candidate, _REGEX_FLAGS):
         return candidate.upper()
     return None
 
