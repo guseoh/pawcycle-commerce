@@ -3,7 +3,6 @@ set -Eeuo pipefail
 set +x
 
 PROJECT_NAME="pawcycle-production"
-DATA_NETWORK="pawcycle-production-data"
 CONTAINER_NAME="pawcycle-mvp4-data-002-demo-catalog-import"
 RUNTIME_DIR="/opt/pawcycle/runtime"
 STATE_DIR="/opt/pawcycle/state"
@@ -92,6 +91,43 @@ stream_backend_env() {
   printf '%s\n' 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false'
 }
 
+resolve_database_egress_network() {
+  local backend_id
+  local internal
+  local member
+  local member_count=0
+  local network
+  local network_list
+  local member_list
+  local -a non_internal_networks=()
+
+  network_list="$(docker_value inspect \
+    --format '{{range $network_name, $network_attachment := .NetworkSettings.Networks}}{{println $network_name}}{{end}}' \
+    "$BACKEND_CONTAINER")"
+  while IFS= read -r network; do
+    [[ -n "$network" ]] || continue
+    internal="$(docker_value network inspect --format '{{.Internal}}' "$network")"
+    case "$internal" in
+      true) ;;
+      false) non_internal_networks+=("$network") ;;
+      *) die "production Backend database network is invalid" ;;
+    esac
+  done <<<"$network_list"
+
+  [[ "${#non_internal_networks[@]}" == "1" ]] || die "production Backend database network is ambiguous"
+  DATABASE_EGRESS_NETWORK="${non_internal_networks[0]}"
+  backend_id="$(docker_value inspect --format '{{.Id}}' "$BACKEND_CONTAINER")"
+  member_list="$(docker_value network inspect \
+    --format '{{range $container_id, $container := .Containers}}{{println $container_id}}{{end}}' \
+    "$DATABASE_EGRESS_NETWORK")"
+  while IFS= read -r member; do
+    [[ -n "$member" ]] || continue
+    (( member_count += 1 ))
+    [[ "$member" == "$backend_id" ]] || die "production database egress network membership is invalid"
+  done <<<"$member_list"
+  [[ "$member_count" == "1" ]] || die "production database egress network membership is invalid"
+}
+
 while (( $# > 0 )); do
   case "$1" in
     --operation) OPERATION="${2:-}"; shift 2 ;;
@@ -140,19 +176,13 @@ BACKEND_DIGEST="${BACKEND_DIGEST_LINE#BACKEND_DIGEST=}"
 [[ "$BACKEND_DIGEST" == "$BACKEND_IMAGE@sha256:"* ]] || die "Backend digest repository does not match"
 
 BACKEND_CONTAINERS="$(docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' --format '{{.ID}}' 2>/dev/null)"
-MYSQL_CONTAINERS="$(docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=mysql' --format '{{.ID}}' 2>/dev/null)"
 [[ "$(printf '%s\n' "$BACKEND_CONTAINERS" | grep -c .)" == "1" ]] || die "production Backend identity is invalid"
-[[ "$(printf '%s\n' "$MYSQL_CONTAINERS" | grep -c .)" == "1" ]] || die "production MySQL identity is invalid"
 BACKEND_CONTAINER="$BACKEND_CONTAINERS"
-MYSQL_CONTAINER="$MYSQL_CONTAINERS"
 [[ "$(docker_value inspect --format '{{.State.Status}}' "$BACKEND_CONTAINER")" == "running" ]] || die "production Backend is not running"
 [[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$BACKEND_CONTAINER")" == "healthy" ]] || die "production Backend is not healthy"
 [[ "$(docker_value inspect --format '{{.Config.Image}}' "$BACKEND_CONTAINER")" == "$BACKEND_IMAGE:$RELEASE_SHA" ]] || die "production Backend image reference is invalid"
 [[ "$(docker_value inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$BACKEND_CONTAINER")" == "$RELEASE_SHA" ]] || die "production Backend revision is invalid"
-[[ "$(docker_value inspect --format '{{.State.Status}}' "$MYSQL_CONTAINER")" == "running" ]] || die "production MySQL is not running"
-[[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$MYSQL_CONTAINER")" == "healthy" ]] || die "production MySQL is not healthy"
-[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$MYSQL_CONTAINER")" == "attached" ]] || die "production data network is invalid"
-[[ "$(docker_value network inspect --format '{{.Internal}}' "$DATA_NETWORK")" == "true" ]] || die "production data network is invalid"
+resolve_database_egress_network
 docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1 && die "one-shot Container already exists" || true
 APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIGEST")"
 [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] || die "production Backend image identity is invalid"
@@ -171,7 +201,7 @@ if [[ "$OPERATION" == "apply" ]]; then
 fi
 
 set +e
-COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATA_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
+COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATABASE_EGRESS_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
 COMMAND_STATUS=$?
 set -e
 [[ "$COMMAND_STATUS" == "0" ]] || die "catalog import command failed"

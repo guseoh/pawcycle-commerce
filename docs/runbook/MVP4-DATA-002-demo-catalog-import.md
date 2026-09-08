@@ -16,7 +16,7 @@ one-shot script에는 임의의 프로세스 실행 timeout을 두지 않는다.
 
 ## 실행 순서
 
-운영자는 기존 Production runtime bundle, current release SHA, image digest state, healthy Backend/MySQL, internal data network를 먼저 확인한다. `import-demo-catalog.sh`는 기존 release lock과 runtime env 계약을 재사용하며, secret 값은 출력하지 않는다.
+운영자는 기존 Production runtime bundle, current release SHA, image digest state, healthy Backend와 Backend에 연결된 유일한 non-internal `database-egress` network를 먼저 확인한다. Production MySQL 접속 정보는 보호된 `backend.env`의 Spring datasource 환경 변수로만 주입되며, `import-demo-catalog.sh`는 Backend의 네트워크를 fail-closed로 검증하고 같은 egress network에 one-shot을 연결한다. 기존 release lock과 runtime env 계약을 재사용하며, secret 값은 출력하지 않는다.
 
 1. 저장소 준비 후 current release가 승인된 SHA인지 확인한다.
 2. dry-run/validation을 실행한다.

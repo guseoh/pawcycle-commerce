@@ -10,7 +10,7 @@
 
 ## 유지되는 안전 경계
 
-Customer target은 새로운 DB 직접 접근 경로를 만들지 않고 PR #260에서 준비된 Production Catalog command를 사용한다. script는 기존과 동일하게 current release SHA와 image digest state를 검증하고, healthy Production Backend/MySQL과 internal data network를 확인하며, release lock과 보호된 runtime env 계약을 재사용한다. Secret 값은 출력하지 않는다.
+Customer target은 새로운 DB 직접 접근 경로를 만들지 않고 PR #260에서 준비된 Production Catalog command를 사용한다. script는 기존과 동일하게 current release SHA와 image digest state를 검증하고, healthy Production Backend와 Backend에 연결된 유일한 non-internal `database-egress` network를 fail-closed로 확인한 뒤 같은 network에 one-shot을 연결한다. Production MySQL 접속 정보는 보호된 runtime `backend.env`의 Spring datasource 환경 변수로만 주입하며, release lock과 보호된 runtime env 계약을 재사용한다. Secret 값은 출력하지 않는다.
 
 `validate`는 dry-run이고 `apply`는 shell의 `--confirm-apply`와 Java command의 `confirm-apply=true`를 모두 통과해야 한다. 자동 apply와 자동 재시도는 없다. Customer Catalog importer는 기존 business key와 관계가 manifest와 충돌하면 덮어쓰지 않고 실패하며, apply는 baseline과 supplement를 하나의 transaction 경계에서 처리한다.
 
@@ -20,7 +20,7 @@ Catalog 검증은 기존 row를 `SELECT ... FOR UPDATE`로 읽을 수 있으므�
 
 아래 명령은 저장소 준비 검증에서 실행하지 않는다. 별도 고위험 실제 운영 실행 승인을 받은 뒤 현재 release와 운영 상태를 다시 확인하고 사용한다.
 
-1. 현재 Production release SHA, Backend image repository, runtime/state directory, Backend/MySQL health와 data network 상태를 확인한다.
+1. 현재 Production release SHA, Backend image repository, runtime/state directory, Backend health와 유일한 non-internal `database-egress` network 상태를 확인한다. 외부 Production MySQL endpoint와 credential은 보호된 `backend.env`에서만 주입하며 저장소나 명령 인자에 넣지 않는다.
 2. 먼저 Customer Catalog dry-run을 수행한다.
 
    ```bash
@@ -50,8 +50,8 @@ Catalog 검증은 기존 row를 `SELECT ... FOR UPDATE`로 읽을 수 있으므�
 다음 경우에는 apply를 시작하지 않거나 즉시 성공 판정을 중단한다.
 
 - current release SHA 또는 approved Backend digest가 일치하지 않음
-- Production Backend/MySQL이 running + healthy가 아님
-- internal data network 또는 runtime/state 보호 계약이 유효하지 않음
+- Production Backend가 running + healthy가 아니거나 Backend의 non-internal database-egress network가 정확히 하나가 아님
+- database-egress network가 Backend만 연결되어 있지 않거나 runtime/state 보호 계약을 만족하지 않음
 - `customer` validate가 non-zero 또는 예상 aggregate PASS summary를 반환하지 않음
 - business-key/relationship conflict 또는 lock contention 발생
 - apply confirmation이 없거나 운영 상태가 validation 이후 변경됨

@@ -23,6 +23,7 @@ PASSWORD = "fixture-password-not-secret"
 REPOSITORY = "ghcr.io/example/pawcycle-commerce-backend"
 DIGEST = f"{REPOSITORY}@sha256:{'a' * 64}"
 IMAGE_ID = f"sha256:{'b' * 64}"
+BACKEND_ID = "backend-fixture-id-full"
 PASS = "PASS: production auth smoke member created"
 
 
@@ -91,7 +92,6 @@ case "${1:-}" in
   ps)
     case " $* " in
       *com.docker.compose.service=backend*) printf '%s\\n' 'backend-fixture-id' ;;
-      *com.docker.compose.service=mysql*) printf '%s\\n' 'mysql-fixture-id' ;;
       *) exit 8 ;;
     esac
     ;;
@@ -101,13 +101,29 @@ case "${1:-}" in
       *State.Health.Status*) printf '%s\\n' 'healthy' ;;
       *Config.Image*) printf '%s:%s\\n' "$FAKE_REPOSITORY" "$FAKE_SHA" ;;
       *org.opencontainers.image.revision*) printf '%s\\n' "$FAKE_SHA" ;;
+      *NetworkSettings.Networks*)
+        printf '%s\\n' 'pawcycle-production-app' 'pawcycle-production-database-egress'
+        ;;
+      *'{{.Id}}'*) printf '%s\\n' "$FAKE_BACKEND_ID" ;;
       *.Image*) printf '%s\\n' "$FAKE_IMAGE_ID" ;;
-      *NetworkSettings.Networks*) printf '%s\\n' 'attached' ;;
       *com.pawcycle.ops020.scope*) printf '%s\\n' 'auth-smoke-member' ;;
       *) exit 8 ;;
     esac
     ;;
-  network) printf '%s\\n' 'true' ;;
+  network)
+    [[ "${2:-}" == inspect && "${3:-}" == --format ]] || exit 8
+    case "${4:-}" in
+      *Internal*)
+        case "${5:-}" in
+          *database-egress*) printf '%s\\n' 'false' ;;
+          *app*) printf '%s\\n' 'true' ;;
+          *) exit 8 ;;
+        esac
+        ;;
+      *Containers*) printf '%s\\n' "$FAKE_BACKEND_ID" ;;
+      *) exit 8 ;;
+    esac
+    ;;
   container) exit 1 ;;
   run)
     env_file=''
@@ -121,7 +137,7 @@ case "${1:-}" in
     [[ -n "$env_file" && -r "$env_file" ]]
     mapfile -t runtime_env_lines < "$env_file"
     (( ${#runtime_env_lines[@]} == 4 ))
-    [[ "${runtime_env_lines[0]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/fixture' ]]
+    [[ "${runtime_env_lines[0]}" == 'SPRING_DATASOURCE_URL=jdbc:mysql://external-db.example.test:3306/fixture' ]]
     [[ "${runtime_env_lines[1]}" == 'SPRING_DATASOURCE_USERNAME=fixture_user' ]]
     [[ "${runtime_env_lines[2]}" == "SPRING_DATASOURCE_PASSWORD=fixture_db'password" ]]
     [[ "${runtime_env_lines[3]}" == 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' ]]
@@ -156,7 +172,7 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
     (runtime / "current").symlink_to(bundle, target_is_directory=True)
     backend_env = bundle / "backend.env"
     backend_env.write_text(
-        "SPRING_DATASOURCE_URL='jdbc:mysql://mysql:3306/fixture'\n"
+        "SPRING_DATASOURCE_URL='jdbc:mysql://external-db.example.test:3306/fixture'\n"
         "SPRING_DATASOURCE_USERNAME='fixture_user'\n"
         "SPRING_DATASOURCE_PASSWORD='fixture_db\\'password'\n"
         "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='true'\n"
@@ -186,6 +202,7 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
         "FAKE_SHA": sha,
         "FAKE_DIGEST": DIGEST,
         "FAKE_IMAGE_ID": IMAGE_ID,
+        "FAKE_BACKEND_ID": BACKEND_ID,
         "FAKE_REPOSITORY": REPOSITORY,
         "FAKE_DOCKER_LOG": str(log),
         "FAKE_DOCKER_MARKER": str(marker),
@@ -283,7 +300,7 @@ def assert_run_contract(arguments: str) -> None:
     for option, value in (
         ("--name", "pawcycle-ops020-auth-smoke-member"),
         ("--label", "com.pawcycle.ops020.scope=auth-smoke-member"),
-        ("--network", "pawcycle-production-data"),
+        ("--network", "pawcycle-production-database-egress"),
         ("--tmpfs", "/tmp:size=64m,mode=1777"),
         ("--user", "pawcycle"),
         ("--security-opt", "no-new-privileges:true"),
