@@ -1,0 +1,12 @@
+# Test-only override. This file is used only by the deterministic failure-path regression.
+
+services:
+  mysql:
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - exit 1
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 0s

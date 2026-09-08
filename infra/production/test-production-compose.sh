@@ -12,6 +12,13 @@ EDGE_NETWORK="pawcycle-$VALIDATION_ID-edge"
 APP_NETWORK="pawcycle-$VALIDATION_ID-app"
 TEST_DATABASE_NETWORK="pawcycle-$VALIDATION_ID-test-database"
 DATABASE_EGRESS_NETWORK="pawcycle-$VALIDATION_ID-database-egress"
+UNHEALTHY_PROJECT_NAME="pawcycle-$VALIDATION_ID-unhealthy"
+UNHEALTHY_DATABASE_NETWORK="pawcycle-$VALIDATION_ID-unhealthy-database"
+UNHEALTHY_EDGE_NETWORK="pawcycle-$VALIDATION_ID-unhealthy-edge"
+UNHEALTHY_APP_NETWORK="pawcycle-$VALIDATION_ID-unhealthy-app"
+UNHEALTHY_EGRESS_NETWORK="pawcycle-$VALIDATION_ID-unhealthy-egress"
+UNHEALTHY_SENTINEL_NETWORK="pawcycle-$VALIDATION_ID-unrelated-sentinel"
+UNHEALTHY_MARKER=""
 HTTP_PORT="18080"
 HTTPS_PORT="18443"
 HTTPS_DOMAIN="ops-oci-003-compose-test.duckdns.org"
@@ -46,6 +53,19 @@ cleanup() {
   if [[ -f "$BACKEND_ENV" && -f "$MYSQL_ENV" ]]; then
     ACTIVE_SHA="$SHA_A" compose down --remove-orphans >/dev/null 2>&1
   fi
+  if [[ -f "$BACKEND_ENV" && -f "$MYSQL_ENV" ]]; then
+    compose_for_project \
+      "$UNHEALTHY_PROJECT_NAME" \
+      "$UNHEALTHY_EDGE_NETWORK" \
+      "$UNHEALTHY_APP_NETWORK" \
+      "$UNHEALTHY_DATABASE_NETWORK" \
+      "$UNHEALTHY_EGRESS_NETWORK" \
+      "$SCRIPT_DIR/compose.test-unhealthy.yaml" \
+      down --remove-orphans >/dev/null 2>&1
+  fi
+  if [[ "$UNHEALTHY_SENTINEL_NETWORK" == pawcycle-ops-oci-003-* ]]; then
+    docker network rm "$UNHEALTHY_SENTINEL_NETWORK" >/dev/null 2>&1
+  fi
   if [[ "$CERTBOT_WEBROOT_VOLUME" == pawcycle-ops-oci-003-* \
     && "$LETSENCRYPT_VOLUME" == pawcycle-ops-oci-003-* ]]; then
     docker volume rm "$CERTBOT_WEBROOT_VOLUME" "$LETSENCRYPT_VOLUME" >/dev/null 2>&1
@@ -77,8 +97,23 @@ PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=12345
 EOF
 chmod 600 "$MYSQL_ENV" "$BACKEND_ENV"
 
-compose() {
-  RELEASE_SHA="$ACTIVE_SHA" \
+compose_for_project() {
+  local release_sha="$1"
+  local project_name="$2"
+  local edge_network="$3"
+  local app_network="$4"
+  local test_database_network="$5"
+  local database_egress_network="$6"
+  local extra_file="$7"
+  local -a compose_files=(
+    --file "$SCRIPT_DIR/compose.yaml"
+    --file "$SCRIPT_DIR/compose.test.yaml"
+  )
+  shift 7
+  if [[ -n "$extra_file" ]]; then
+    compose_files+=(--file "$extra_file")
+  fi
+  RELEASE_SHA="$release_sha" \
   BACKEND_IMAGE="$BACKEND_IMAGE" \
   FRONTEND_IMAGE="$FRONTEND_IMAGE" \
   PAWCYCLE_TEST_MYSQL_ENV_FILE="$MYSQL_ENV" \
@@ -86,18 +121,40 @@ compose() {
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED="false" \
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE="7" \
   PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS="12345" \
-  PAWCYCLE_EDGE_NETWORK="$EDGE_NETWORK" \
-  PAWCYCLE_APP_NETWORK="$APP_NETWORK" \
-  PAWCYCLE_TEST_DATABASE_NETWORK="$TEST_DATABASE_NETWORK" \
-  PAWCYCLE_DATABASE_EGRESS_NETWORK="$DATABASE_EGRESS_NETWORK" \
+  PAWCYCLE_EDGE_NETWORK="$edge_network" \
+  PAWCYCLE_APP_NETWORK="$app_network" \
+  PAWCYCLE_TEST_DATABASE_NETWORK="$test_database_network" \
+  PAWCYCLE_DATABASE_EGRESS_NETWORK="$database_egress_network" \
   PAWCYCLE_CERTBOT_WEBROOT_VOLUME="$CERTBOT_WEBROOT_VOLUME" \
   PAWCYCLE_LETSENCRYPT_VOLUME="$LETSENCRYPT_VOLUME" \
   PAWCYCLE_NGINX_CONFIG="$NGINX_CONFIG" \
   PAWCYCLE_HTTP_PORT="$HTTP_PORT" \
   PAWCYCLE_HTTPS_PORT="$HTTPS_PORT" \
-    docker compose --project-name "$PROJECT_NAME" \
-      --file "$SCRIPT_DIR/compose.yaml" \
-      --file "$SCRIPT_DIR/compose.test.yaml" "$@"
+    docker compose --project-name "$project_name" "${compose_files[@]}" "$@"
+}
+
+compose() {
+  compose_for_project \
+    "$ACTIVE_SHA" \
+    "$PROJECT_NAME" \
+    "$EDGE_NETWORK" \
+    "$APP_NETWORK" \
+    "$TEST_DATABASE_NETWORK" \
+    "$DATABASE_EGRESS_NETWORK" \
+    "" \
+    "$@"
+}
+
+unhealthy_compose() {
+  compose_for_project \
+    "$SHA_A" \
+    "$UNHEALTHY_PROJECT_NAME" \
+    "$UNHEALTHY_EDGE_NETWORK" \
+    "$UNHEALTHY_APP_NETWORK" \
+    "$UNHEALTHY_DATABASE_NETWORK" \
+    "$UNHEALTHY_EGRESS_NETWORK" \
+    "$SCRIPT_DIR/compose.test-unhealthy.yaml" \
+    "$@"
 }
 
 validate_active_production_contract() {
@@ -210,6 +267,92 @@ wait_healthy() {
   return 1
 }
 
+wait_healthy_unhealthy_mysql() {
+  local container_id
+  local status
+  local attempt
+  for (( attempt = 0; attempt < 30; attempt++ )); do
+    container_id="$(unhealthy_compose ps --quiet mysql 2>/dev/null || true)"
+    if [[ -n "$container_id" ]]; then
+      status="$(docker inspect --format '{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)"
+      [[ "$status" == "healthy" ]] && return 0
+      [[ "$status" == "unhealthy" ]] && return 1
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+run_unhealthy_mysql_gate_regression() {
+  local gate_status
+  local backend_containers
+  local frontend_containers
+  UNHEALTHY_MARKER="$TEMP_DIR/unhealthy-mysql-gate.marker"
+  : >"$UNHEALTHY_MARKER"
+  docker network create --label "com.pawcycle.ops-oci-003.sentinel=$VALIDATION_ID" \
+    "$UNHEALTHY_SENTINEL_NETWORK" >/dev/null
+
+  set +e
+  (
+    set -Eeuo pipefail
+    unhealthy_cleanup() {
+      local status=$?
+      set +e
+      if unhealthy_compose down --remove-orphans >/dev/null 2>&1; then
+        printf '%s\n' 'compose-down-remove-orphans=PASS' >>"$UNHEALTHY_MARKER"
+      else
+        printf '%s\n' 'compose-down-remove-orphans=FAIL' >>"$UNHEALTHY_MARKER"
+      fi
+      exit "$status"
+    }
+    trap unhealthy_cleanup EXIT
+
+    unhealthy_compose up --detach --pull never --remove-orphans mysql >/dev/null 2>&1
+    if wait_healthy_unhealthy_mysql; then
+      printf '%s\n' 'health-gate=UNEXPECTED_PASS' >>"$UNHEALTHY_MARKER"
+      gate_status=99
+    else
+      gate_status=$?
+      printf '%s\n' 'health-gate=failed' >>"$UNHEALTHY_MARKER"
+    fi
+    backend_containers="$(docker ps --all --quiet \
+      --filter "label=com.docker.compose.project=$UNHEALTHY_PROJECT_NAME" \
+      --filter 'label=com.docker.compose.service=backend' 2>/dev/null || true)"
+    frontend_containers="$(docker ps --all --quiet \
+      --filter "label=com.docker.compose.project=$UNHEALTHY_PROJECT_NAME" \
+      --filter 'label=com.docker.compose.service=frontend' 2>/dev/null || true)"
+    if [[ -n "$backend_containers" || -n "$frontend_containers" ]]; then
+      printf '%s\n' 'backend-frontend=STARTED' >>"$UNHEALTHY_MARKER"
+    else
+      printf '%s\n' 'backend-frontend=NOT_STARTED' >>"$UNHEALTHY_MARKER"
+    fi
+    [[ "$gate_status" != "0" ]] || gate_status=98
+    exit "$gate_status"
+  )
+  gate_status=$?
+  set -e
+
+  [[ "$gate_status" != "0" ]] || die "unhealthy MySQL gate unexpectedly succeeded"
+  grep -Fxq 'health-gate=failed' "$UNHEALTHY_MARKER" \
+    || die "unhealthy MySQL gate did not fail closed"
+  grep -Fxq 'backend-frontend=NOT_STARTED' "$UNHEALTHY_MARKER" \
+    || die "Backend or Frontend started after unhealthy MySQL gate"
+  grep -Fxq 'compose-down-remove-orphans=PASS' "$UNHEALTHY_MARKER" \
+    || die "unhealthy MySQL cleanup did not run compose down"
+  if docker ps --all --quiet \
+    --filter "label=com.docker.compose.project=$UNHEALTHY_PROJECT_NAME" | grep -q .; then
+    die "unhealthy MySQL validation containers remained"
+  fi
+  if docker network inspect "$UNHEALTHY_DATABASE_NETWORK" >/dev/null 2>&1; then
+    die "unhealthy MySQL validation network remained"
+  fi
+  docker network inspect "$UNHEALTHY_SENTINEL_NETWORK" >/dev/null 2>&1 \
+    || die "unrelated host network was removed"
+  docker network rm "$UNHEALTHY_SENTINEL_NETWORK" >/dev/null \
+    || die "unrelated host network cleanup failed"
+  UNHEALTHY_SENTINEL_NETWORK=""
+}
+
 build_release() {
   local sha="$1"
   docker build --file "$SCRIPT_DIR/backend.Dockerfile" --label "org.opencontainers.image.revision=$sha" \
@@ -268,6 +411,7 @@ validate_test_overlay_contract
 build_release "$SHA_A"
 build_release "$SHA_B"
 docker pull "$MYSQL_IMAGE" >/dev/null
+run_unhealthy_mysql_gate_regression
 docker pull "$PROXY_IMAGE" >/dev/null
 activate_and_check "$SHA_A"
 
