@@ -55,6 +55,7 @@ cleanup() {
   fi
   if [[ -f "$BACKEND_ENV" && -f "$MYSQL_ENV" ]]; then
     compose_for_project \
+      "$SHA_A" \
       "$UNHEALTHY_PROJECT_NAME" \
       "$UNHEALTHY_EDGE_NETWORK" \
       "$UNHEALTHY_APP_NETWORK" \
