@@ -3,7 +3,6 @@ set -Eeuo pipefail
 set +x
 
 CONTAINER_NAME="pawcycle-ops020-auth-smoke-member"
-DATA_NETWORK="pawcycle-production-data"
 PROJECT_NAME="pawcycle-production"
 PASS_MESSAGE="PASS: production auth smoke member created"
 MEMBER_COMMAND_TIMEOUT_SECONDS=180
@@ -191,6 +190,43 @@ stream_backend_env() {
   printf '%s\n' 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false'
 }
 
+resolve_database_egress_network() {
+  local backend_id
+  local internal
+  local member
+  local member_count=0
+  local network
+  local network_list
+  local member_list
+  local -a non_internal_networks=()
+
+  network_list="$(docker_value inspect \
+    --format '{{range $network_name, $network_attachment := .NetworkSettings.Networks}}{{println $network_name}}{{end}}' \
+    "$BACKEND_CONTAINER")"
+  while IFS= read -r network; do
+    [[ -n "$network" ]] || continue
+    internal="$(docker_value network inspect --format '{{.Internal}}' "$network")"
+    case "$internal" in
+      true) ;;
+      false) non_internal_networks+=("$network") ;;
+      *) die "production Backend database network is invalid" ;;
+    esac
+  done <<<"$network_list"
+
+  [[ "${#non_internal_networks[@]}" == "1" ]] || die "production Backend database network is ambiguous"
+  DATABASE_EGRESS_NETWORK="${non_internal_networks[0]}"
+  backend_id="$(docker_value inspect --format '{{.Id}}' "$BACKEND_CONTAINER")"
+  member_list="$(docker_value network inspect \
+    --format '{{range $container_id, $container := .Containers}}{{println $container_id}}{{end}}' \
+    "$DATABASE_EGRESS_NETWORK")"
+  while IFS= read -r member; do
+    [[ -n "$member" ]] || continue
+    (( member_count += 1 ))
+    [[ "$member" == "$backend_id" ]] || die "production database egress network membership is invalid"
+  done <<<"$member_list"
+  [[ "$member_count" == "1" ]] || die "production database egress network membership is invalid"
+}
+
 while (( $# > 0 )); do
   case "$1" in
     --sha) RELEASE_SHA="${2:-}"; shift 2 ;;
@@ -285,23 +321,7 @@ BACKEND_CONTAINER="${BACKEND_CONTAINERS[0]}"
 [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] \
   || die "production Backend image identity is invalid"
 
-mapfile -t MYSQL_CONTAINERS < <(
-  docker ps \
-    --filter "label=com.docker.compose.project=$PROJECT_NAME" \
-    --filter 'label=com.docker.compose.service=mysql' \
-    --format '{{.ID}}' 2>/dev/null
-)
-[[ "${#MYSQL_CONTAINERS[@]}" == "1" && -n "${MYSQL_CONTAINERS[0]}" ]] \
-  || die "production MySQL identity is invalid"
-MYSQL_CONTAINER="${MYSQL_CONTAINERS[0]}"
-[[ "$(docker_value inspect --format '{{.State.Status}}' "$MYSQL_CONTAINER")" == "running" ]] \
-  || die "production MySQL is not running"
-[[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$MYSQL_CONTAINER")" == "healthy" ]] \
-  || die "production MySQL is not healthy"
-[[ "$(docker_value inspect --format "{{ if index .NetworkSettings.Networks \"$DATA_NETWORK\" }}attached{{ end }}" "$MYSQL_CONTAINER")" == "attached" ]] \
-  || die "production MySQL data network is invalid"
-[[ "$(docker_value network inspect --format '{{.Internal}}' "$DATA_NETWORK")" == "true" ]] \
-  || die "production data network is invalid"
+resolve_database_egress_network
 if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
   die "OPS-020 one-shot Container already exists"
 fi
@@ -327,7 +347,7 @@ coproc MEMBER_CONTAINER {
       --interactive \
       --name "$CONTAINER_NAME" \
       --label com.pawcycle.ops020.scope=auth-smoke-member \
-      --network "$DATA_NETWORK" \
+      --network "$DATABASE_EGRESS_NETWORK" \
       --env-file <(stream_backend_env) \
       --env 'JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 -XX:+ExitOnOutOfMemoryError' \
       --env SPRING_PROFILES_ACTIVE=production \
