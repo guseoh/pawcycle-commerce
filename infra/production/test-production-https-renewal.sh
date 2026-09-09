@@ -12,9 +12,7 @@ ENABLED_FILE="$STATE_DIR/https-enabled"
 LOCK_FILE="$TEST_ROOT/renewal.lock"
 FAKE_DOCKER_LOG="$TEST_ROOT/docker.log"
 mkdir -p "$FAKE_BIN" "$FAKE_STATE" "$STATE_DIR"
-printf '%s\n' 'renewal-test.duckdns.org' > "$DOMAIN_FILE"
-printf '%s\n' enabled > "$ENABLED_FILE"
-chmod 600 "$DOMAIN_FILE" "$ENABLED_FILE"
+chmod 700 "$STATE_DIR"
 
 cleanup() {
   rm -rf -- "$TEST_ROOT"
@@ -46,6 +44,9 @@ log_file="${FAKE_DOCKER_LOG:?}"
 printf '%s\n' "$*" >> "$log_file"
 
 case "$*" in
+  image*)
+    exit "${FAKE_IMAGE_INSPECT_STATUS:-0}"
+    ;;
   volume*)
     exit 0
     ;;
@@ -61,9 +62,9 @@ case "$*" in
     ;;
   exec*)
     if [[ "$*" == *" nginx -T"* ]]; then
-      printf '%s\n' 'server_name renewal-test.duckdns.org;'
-      printf '%s\n' 'ssl_certificate /etc/letsencrypt/live/pawcycle-production/fullchain.pem;'
-      printf '%s\n' 'ssl_certificate_key /etc/letsencrypt/live/pawcycle-production/privkey.pem;'
+      printf '%s\n' 'server_name pawcycle.duckdns.org;'
+      printf '%s\n' 'ssl_certificate /etc/letsencrypt/live/pawcycle.duckdns.org/fullchain.pem;'
+      printf '%s\n' 'ssl_certificate_key /etc/letsencrypt/live/pawcycle.duckdns.org/privkey.pem;'
       exit 0
     fi
     if [[ "$*" == *" nginx -t"* ]]; then
@@ -126,8 +127,17 @@ assert_contains 'name: ${PAWCYCLE_CERTBOT_WEBROOT_VOLUME:-pawcycle-production-ce
 assert_contains 'name: ${PAWCYCLE_LETSENCRYPT_VOLUME:-pawcycle-production-letsencrypt}' "$compose"
 assert_contains 'certbot-webroot:/var/www/certbot:ro' "$compose"
 assert_contains 'letsencrypt:/etc/letsencrypt:ro' "$compose"
-assert_contains '/etc/letsencrypt/live/pawcycle-production/fullchain.pem' "$https_config"
-assert_contains '/etc/letsencrypt/live/pawcycle-production/privkey.pem' "$https_config"
+assert_contains '/etc/letsencrypt/live/pawcycle.duckdns.org/fullchain.pem' "$https_config"
+assert_contains '/etc/letsencrypt/live/pawcycle.duckdns.org/privkey.pem' "$https_config"
+assert_contains 'ACTIVE_DOMAIN="pawcycle.duckdns.org"' "$script"
+assert_contains 'CERTBOT_IMAGE="certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9"' "$script"
+assert_contains 'image inspect' "$script"
+assert_contains '--pull never' "$script"
+assert_not_contains 'docker image pull' "$script"
+assert_not_contains '/etc/letsencrypt/live/pawcycle-production/' "$script"
+assert_not_contains 'v5.7.0' "$script"
+assert_contains 'preflight' "$script"
+assert_contains 'adopt --confirm-adopt' "$script"
 assert_contains 'nginx -t' "$script"
 assert_contains 'nginx -s reload' "$script"
 assert_contains '--deploy-hook' "$script"
@@ -155,6 +165,34 @@ assert_contains 'systemctl daemon-reload' "$installer"
 assert_not_contains 'systemctl enable' "$installer"
 assert_not_contains 'systemctl start' "$installer"
 
+run_action() {
+  local expected_status="$1"
+  shift
+  local output=""
+  local status=0
+  output="$(
+    PATH="$FAKE_BIN:$PATH" \
+      FAKE_DOCKER_LOG="$FAKE_DOCKER_LOG" \
+      FAKE_IMAGE_INSPECT_STATUS="${FAKE_IMAGE_INSPECT_STATUS:-0}" \
+      PAWCYCLE_STATE_DIR="$STATE_DIR" \
+      PAWCYCLE_HTTPS_RENEWAL_LOCK_FILE="$LOCK_FILE" \
+      bash "$script" "$@" 2>&1
+  )" || status=$?
+  [[ "$status" == "$expected_status" ]] || fail "unexpected status $status: $output"
+}
+
+run_action 0 preflight
+[[ ! -e "$DOMAIN_FILE" && ! -e "$ENABLED_FILE" ]] || fail 'preflight created adoption state'
+: > "$FAKE_DOCKER_LOG"
+run_action 1 renew --dry-run
+! grep -E '^run ' "$FAKE_DOCKER_LOG" || fail 'renewal ran without adopted state'
+run_action 1 adopt
+run_action 0 adopt --confirm-adopt
+[[ "$(<"$DOMAIN_FILE")" == pawcycle.duckdns.org ]] || fail 'adopted hostname is incorrect'
+[[ "$(<"$ENABLED_FILE")" == enabled ]] || fail 'adopted enabled state is incorrect'
+[[ "$(stat -c '%a' "$DOMAIN_FILE")" == 600 ]] || fail 'adopted hostname permissions are incorrect'
+[[ "$(stat -c '%a' "$ENABLED_FILE")" == 600 ]] || fail 'adopted enabled permissions are incorrect'
+
 run_renewal() {
   local expected_status="$1"
   local expected_reload_count="$2"
@@ -171,6 +209,7 @@ run_renewal() {
   output="$(
     PATH="$FAKE_BIN:$PATH" \
       FAKE_DOCKER_LOG="$FAKE_DOCKER_LOG" \
+      FAKE_IMAGE_INSPECT_STATUS="${FAKE_IMAGE_INSPECT_STATUS:-0}" \
       FAKE_RENEWED_MARKER="$FAKE_STATE/renewed" \
       FAKE_NO_RENEW="$fake_no_renew" \
       FAKE_CERTBOT_STATUS="$fake_certbot_status" \
@@ -194,5 +233,7 @@ run_renewal 1 0 0 1 0 0 0
 run_renewal 1 0 0 0 1 0 0
 run_renewal 1 1 0 0 0 1 0
 run_renewal 1 0 0 0 0 0 1
+FAKE_IMAGE_INSPECT_STATUS=1 run_renewal 1 0 0 0 0 0 0
+! grep -E '^run ' "$FAKE_DOCKER_LOG" || fail 'renewal ran without the approved image'
 
 printf 'OPS-OCI-004 HTTPS renewal service, timer, fail-closed, and no-restart contracts passed\n'

@@ -4,16 +4,20 @@ set -Eeuo pipefail
 set +x
 
 PROJECT_NAME="pawcycle-production"
+ACTIVE_DOMAIN="pawcycle.duckdns.org"
 STATE_DIR="${PAWCYCLE_STATE_DIR:-/opt/pawcycle/state}"
 APPROVED_DOMAIN_FILE="$STATE_DIR/https-domain"
 HTTPS_ENABLED_FILE="$STATE_DIR/https-enabled"
 CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot"
 LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt"
-CERTIFICATE_NAME="pawcycle-production"
-CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTIFICATE_NAME="$ACTIVE_DOMAIN"
+CERTBOT_IMAGE="certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9"
 MIN_CERT_VALIDITY_SECONDS="86400"
 LOCK_FILE="${PAWCYCLE_HTTPS_RENEWAL_LOCK_FILE:-/run/lock/pawcycle-production-https-renewal.lock}"
+DOCKER_BIN="docker"
 DRY_RUN=false
+ACTION="renew"
+ADOPT_CONFIRM=false
 APPROVED_DOMAIN=""
 PROXY_CONTAINER=""
 RENEWAL_MARKER_DIR=""
@@ -25,11 +29,14 @@ die() {
 
 usage() {
   cat <<'EOF'
-Usage: renew-production-certificate.sh [--dry-run]
+Usage: renew-production-certificate.sh [preflight|adopt|renew] [--confirm-adopt] [--dry-run]
 
-Checks the existing Production Let's Encrypt lineage. A live Nginx reload is
-performed only when a non-dry renewal succeeds, the certificate changed, the
-approved hostname and validity are valid, and the running Nginx config passes.
+preflight validates the live HTTPS runtime without creating state files.
+adopt --confirm-adopt records the already verified active HTTPS state; it does
+not issue, renew, replace certificates, or reload Nginx.
+renew checks the adopted lineage. A live Nginx reload is performed only when a
+non-dry renewal succeeds, the certificate changed, the approved hostname and
+validity are valid, and the running Nginx config passes.
 EOF
 }
 
@@ -41,8 +48,18 @@ cleanup() {
 trap cleanup EXIT
 
 validate_domain() {
-  [[ "$1" =~ ^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])\.duckdns\.org$ ]] \
-    || die "approved HTTPS domain is invalid"
+  [[ "$1" == "$ACTIVE_DOMAIN" ]] || die "approved HTTPS domain is not the active OCI lineage"
+}
+
+require_state_dir() {
+  [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] \
+    || die "HTTPS state directory is missing; create and approve it explicitly"
+  [[ "$(stat -c '%a' "$STATE_DIR" 2>/dev/null)" == "700" ]] \
+    || die "HTTPS state directory permissions are invalid"
+}
+
+state_path_exists() {
+  [[ -e "$1" || -L "$1" ]]
 }
 
 require_regular_state_file() {
@@ -55,12 +72,27 @@ require_regular_state_file() {
 }
 
 load_approved_domain() {
+  require_state_dir
   require_regular_state_file "$HTTPS_ENABLED_FILE" "HTTPS enabled state"
   [[ "$(<"$HTTPS_ENABLED_FILE")" == enabled ]] || die "HTTPS enabled state is invalid"
 
   require_regular_state_file "$APPROVED_DOMAIN_FILE" "approved HTTPS domain state"
   APPROVED_DOMAIN="$(<"$APPROVED_DOMAIN_FILE")"
   validate_domain "$APPROVED_DOMAIN"
+}
+
+load_optional_adoption_state() {
+  require_state_dir
+  if state_path_exists "$APPROVED_DOMAIN_FILE" || state_path_exists "$HTTPS_ENABLED_FILE"; then
+    load_approved_domain
+  else
+    APPROVED_DOMAIN="$ACTIVE_DOMAIN"
+  fi
+}
+
+check_image_presence() {
+  "$DOCKER_BIN" image inspect "$CERTBOT_IMAGE" >/dev/null 2>&1 \
+    || die "approved Certbot image is not present; install it in a separate approved step before renewal"
 }
 
 check_certificate_volumes() {
@@ -117,27 +149,33 @@ validate_runtime_https_config() {
 certificate_fingerprint() {
   "$DOCKER_BIN" run --rm --pull never --platform linux/amd64 \
     --entrypoint python \
+    --env "CERTIFICATE_PATH=/etc/letsencrypt/live/$CERTIFICATE_NAME/fullchain.pem" \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
-    "$CERTBOT_IMAGE" -c 'from cryptography import x509
+    "$CERTBOT_IMAGE" -c 'import os
+from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 
-with open("/etc/letsencrypt/live/pawcycle-production/fullchain.pem", "rb") as source:
+path = os.environ["CERTIFICATE_PATH"]
+with open(path, "rb") as source:
     certificate = x509.load_pem_x509_certificate(source.read())
 print(certificate.fingerprint(hashes.SHA256()).hex())' 2>/dev/null
 }
 
 validate_certificate() {
+  local minimum_validity_seconds="${1:-$MIN_CERT_VALIDITY_SECONDS}"
+
   "$DOCKER_BIN" run --rm --pull never --platform linux/amd64 \
     --entrypoint python \
+    --env "CERTIFICATE_PATH=/etc/letsencrypt/live/$CERTIFICATE_NAME/fullchain.pem" \
     --env "EXPECTED_DOMAIN=$APPROVED_DOMAIN" \
-    --env "MIN_VALIDITY_SECONDS=$MIN_CERT_VALIDITY_SECONDS" \
+    --env "MIN_VALIDITY_SECONDS=$minimum_validity_seconds" \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt:ro" \
     "$CERTBOT_IMAGE" -c 'import datetime
 import os
 import sys
 from cryptography import x509
 
-path = "/etc/letsencrypt/live/pawcycle-production/fullchain.pem"
+path = os.environ["CERTIFICATE_PATH"]
 try:
     with open(path, "rb") as source:
         certificate = x509.load_pem_x509_certificate(source.read())
@@ -177,6 +215,7 @@ run_certbot() {
     renewal_args+=(--deploy-hook 'touch /run/pawcycle-renewal/renewed')
   fi
 
+  check_image_presence
   "$DOCKER_BIN" run --rm --pull never --platform linux/amd64 \
     --volume "$LETSENCRYPT_VOLUME:/etc/letsencrypt" \
     --volume "$CERTBOT_WEBROOT_VOLUME:/var/www/certbot" \
@@ -188,16 +227,66 @@ run_certbot() {
     || die "Certbot renewal command failed; Nginx was not reloaded"
 }
 
-validate_and_reload_nginx() {
+validate_nginx_config() {
   "$DOCKER_BIN" exec "$PROXY_CONTAINER" nginx -t >/dev/null 2>&1 \
     || die "Nginx configuration validation failed; Nginx was not reloaded"
+}
+
+reload_nginx() {
   "$DOCKER_BIN" exec "$PROXY_CONTAINER" nginx -s reload >/dev/null 2>&1 \
     || die "Nginx reload failed; application services were not restarted"
 }
 
-DOCKER_BIN="docker"
+write_state_file() {
+  local target="$1"
+  local value="$2"
+  local temporary
+
+  temporary="$(mktemp "$STATE_DIR/.https-state.XXXXXX")" \
+    || die "HTTPS adoption state file could not be staged"
+  chmod 600 "$temporary"
+  if ! printf '%s\n' "$value" >"$temporary"; then
+    rm -f -- "$temporary"
+    die "HTTPS adoption state file could not be written"
+  fi
+  mv -- "$temporary" "$target" \
+    || die "HTTPS adoption state file could not be installed"
+}
+
+prepare_commands() {
+  command -v "$DOCKER_BIN" >/dev/null 2>&1 || die "Docker CLI is unavailable"
+  command -v stat >/dev/null 2>&1 || die "stat is unavailable"
+  command -v mktemp >/dev/null 2>&1 || die "mktemp is unavailable"
+}
+
+acquire_lock() {
+  command -v flock >/dev/null 2>&1 || die "flock is unavailable"
+  exec 9>"$LOCK_FILE" || die "renewal lock cannot be opened"
+  flock -n 9 || die "another certificate renewal is already running"
+}
+
+run_preflight() {
+  load_optional_adoption_state
+  check_image_presence
+  check_certificate_volumes
+  find_running_proxy
+  validate_proxy_mounts
+  validate_runtime_https_config
+  validate_certificate 0
+  validate_nginx_config
+}
+
 while (( $# > 0 )); do
   case "$1" in
+    preflight|adopt|renew)
+      [[ "$ACTION" == renew ]] || die "only one action may be specified"
+      ACTION="$1"
+      shift
+      ;;
+    --confirm-adopt)
+      ADOPT_CONFIRM=true
+      shift
+      ;;
     --dry-run)
       DRY_RUN=true
       shift
@@ -213,46 +302,72 @@ while (( $# > 0 )); do
   esac
 done
 
-require_regular_state_file "$APPROVED_DOMAIN_FILE" "approved HTTPS domain state"
-command -v "$DOCKER_BIN" >/dev/null 2>&1 || die "Docker CLI is unavailable"
-command -v stat >/dev/null 2>&1 || die "stat is unavailable"
-command -v flock >/dev/null 2>&1 || die "flock is unavailable"
-command -v mktemp >/dev/null 2>&1 || die "mktemp is unavailable"
+case "$ACTION" in
+  preflight|adopt|renew) ;;
+  *) die "unsupported action" ;;
+esac
+[[ "$ACTION" == adopt || "$ADOPT_CONFIRM" == false ]] \
+  || die "--confirm-adopt is valid only for adopt"
+[[ "$ACTION" == renew || "$DRY_RUN" == false ]] \
+  || die "--dry-run is valid only for renew"
+[[ "$ACTION" == adopt && "$ADOPT_CONFIRM" == true ]] \
+  || [[ "$ACTION" != adopt ]] \
+  || die "adoption requires --confirm-adopt"
 
-exec 9>"$LOCK_FILE" || die "renewal lock cannot be opened"
-flock -n 9 || die "another certificate renewal is already running"
+prepare_commands
+require_state_dir
 
-load_approved_domain
-check_certificate_volumes
-find_running_proxy
-validate_proxy_mounts
-validate_runtime_https_config
+case "$ACTION" in
+  preflight)
+    run_preflight
+    printf 'HTTPS adoption preflight passed; state files were not changed\n'
+    ;;
+  adopt)
+    acquire_lock
+    run_preflight
+    if state_path_exists "$APPROVED_DOMAIN_FILE" || state_path_exists "$HTTPS_ENABLED_FILE"; then
+      load_approved_domain
+      printf 'HTTPS adoption state is already present; no files were changed\n'
+      exit 0
+    fi
+    write_state_file "$APPROVED_DOMAIN_FILE" "$ACTIVE_DOMAIN"
+    write_state_file "$HTTPS_ENABLED_FILE" enabled
+    load_approved_domain
+    printf 'HTTPS adoption state recorded; certificates and Nginx were not changed\n'
+    ;;
+  renew)
+    acquire_lock
+    load_approved_domain
+    run_preflight
 
-RENEWAL_MARKER_DIR="$(mktemp -d)" || die "renewal marker directory could not be created"
-chmod 700 "$RENEWAL_MARKER_DIR"
-BEFORE_FINGERPRINT="$(certificate_fingerprint)" || die "current certificate could not be inspected"
-[[ "$BEFORE_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || die "current certificate fingerprint is invalid"
+    RENEWAL_MARKER_DIR="$(mktemp -d)" || die "renewal marker directory could not be created"
+    chmod 700 "$RENEWAL_MARKER_DIR"
+    BEFORE_FINGERPRINT="$(certificate_fingerprint)" || die "current certificate could not be inspected"
+    [[ "$BEFORE_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || die "current certificate fingerprint is invalid"
 
-run_certbot
+    run_certbot
 
-if [[ "$DRY_RUN" == true ]]; then
-  printf 'Certificate renewal dry-run passed; Nginx was not reloaded\n'
-  exit 0
-fi
+    if [[ "$DRY_RUN" == true ]]; then
+      printf 'Certificate renewal dry-run passed; Nginx was not reloaded\n'
+      exit 0
+    fi
 
-AFTER_FINGERPRINT="$(certificate_fingerprint)" || die "renewed certificate could not be inspected"
-[[ "$AFTER_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || die "renewed certificate fingerprint is invalid"
+    AFTER_FINGERPRINT="$(certificate_fingerprint)" || die "renewed certificate could not be inspected"
+    [[ "$AFTER_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || die "renewed certificate fingerprint is invalid"
 
-if [[ ! -e "$RENEWAL_MARKER_DIR/renewed" ]]; then
-  if [[ "$BEFORE_FINGERPRINT" == "$AFTER_FINGERPRINT" ]]; then
-    printf 'Certificate is not due for renewal; Nginx was not reloaded\n'
-    exit 0
-  fi
-  die "certificate changed without a successful renewal marker; Nginx was not reloaded"
-fi
+    if [[ ! -e "$RENEWAL_MARKER_DIR/renewed" ]]; then
+      if [[ "$BEFORE_FINGERPRINT" == "$AFTER_FINGERPRINT" ]]; then
+        printf 'Certificate is not due for renewal; Nginx was not reloaded\n'
+        exit 0
+      fi
+      die "certificate changed without a successful renewal marker; Nginx was not reloaded"
+    fi
 
-[[ "$BEFORE_FINGERPRINT" != "$AFTER_FINGERPRINT" ]] \
-  || die "renewal marker was present but the certificate did not change; Nginx was not reloaded"
-validate_certificate
-validate_and_reload_nginx
-printf 'Certificate renewal, validation, and Nginx reload passed\n'
+    [[ "$BEFORE_FINGERPRINT" != "$AFTER_FINGERPRINT" ]] \
+      || die "renewal marker was present but the certificate did not change; Nginx was not reloaded"
+    validate_certificate
+    validate_nginx_config
+    reload_nginx
+    printf 'Certificate renewal, validation, and Nginx reload passed\n'
+    ;;
+esac
