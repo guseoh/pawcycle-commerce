@@ -115,7 +115,7 @@ compose_validation exec --no-TTY prometheus \
 for _ in $(seq 1 30); do
   if curl --fail --silent --show-error \
     --user 'admin:validation-only-password' \
-    "http://127.0.0.1:${GRAFANA_PORT}/api/datasources/proxy/uid/pawcycle-production-prometheus/-/ready" \
+    "http://127.0.0.1:${GRAFANA_PORT}/api/datasources/uid/pawcycle-production-prometheus/health" \
     >/dev/null 2>&1; then
     datasource_ready=true
     break
@@ -123,10 +123,10 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 [[ "${datasource_ready:-false}" == true ]] || {
-  printf 'Grafana datasource could not reach Prometheus on the shared observability network\n' >&2
+  printf 'Grafana Prometheus datasource health check failed on the shared observability network\n' >&2
   exit 1
 }
 
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, Grafana-Prometheus connectivity, dashboards, and linux/amd64 image validation passed\n'
+printf 'Production observability Compose, Grafana-Prometheus datasource health, dashboards, and linux/amd64 image validation passed\n'
