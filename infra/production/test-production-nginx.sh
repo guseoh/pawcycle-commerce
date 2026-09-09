@@ -15,10 +15,10 @@ cleanup() {
 trap cleanup EXIT
 
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
-CERTBOT_IMAGE="certbot/certbot:v5.7.0@sha256:d07bd043d61d6bee1114235ac12c2e9a5c54b6931b3ccf5e1174d6c8c4afaa95"
+CERTBOT_IMAGE="certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9"
 TEST_DOMAIN="ops011-nginx-test.duckdns.org"
 LETSENCRYPT_DIR="$TEST_ROOT/letsencrypt"
-CERTIFICATE_DIR="$LETSENCRYPT_DIR/live/pawcycle-production"
+CERTIFICATE_DIR="$LETSENCRYPT_DIR/live/pawcycle.duckdns.org"
 CHALLENGE_DIR="$TEST_ROOT/challenge"
 HTTPS_CONFIG="$TEST_ROOT/nginx.https.conf"
 mkdir -p "$CERTIFICATE_DIR" "$CHALLENGE_DIR/.well-known/acme-challenge"
@@ -53,7 +53,7 @@ docker run --rm --platform linux/amd64 \
   "$CERTBOT_IMAGE" -c \
   'import datetime, os
 from cryptography import x509
-with open("/etc/letsencrypt/live/pawcycle-production/fullchain.pem", "rb") as source:
+with open("/etc/letsencrypt/live/pawcycle.duckdns.org/fullchain.pem", "rb") as source:
     certificate=x509.load_pem_x509_certificate(source.read())
 san=certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
 assert len(san) == 1

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run PawCycle Production HTTPS certificate renewal checks
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+OnCalendar=*-*-* 15:00:00
+AccuracySec=1min
+Persistent=true
+Unit=pawcycle-production-https-renew.service
+
+[Install]
+WantedBy=timers.target

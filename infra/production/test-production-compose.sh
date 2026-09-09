@@ -435,7 +435,7 @@ activate_and_check "$SHA_A"
 activate_and_check "$SHA_B"
 activate_and_check "$SHA_A"
 
-CERTIFICATE_SOURCE="$TEMP_DIR/letsencrypt/live/pawcycle-production"
+CERTIFICATE_SOURCE="$TEMP_DIR/letsencrypt/live/pawcycle.duckdns.org"
 mkdir -p "$CERTIFICATE_SOURCE"
 openssl req -x509 -newkey rsa:2048 -nodes \
   -keyout "$CERTIFICATE_SOURCE/privkey.pem" \
