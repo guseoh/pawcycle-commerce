@@ -27,6 +27,7 @@ services:
       - prometheus-data:/prometheus
     networks:
       - app
+      - observability
     tmpfs:
       - /etc/prometheus-runtime:size=1m,mode=1777
     restart: unless-stopped
@@ -55,6 +56,8 @@ services:
       - ${PAWCYCLE_GRAFANA_ADMIN_USER_FILE:?PAWCYCLE_GRAFANA_ADMIN_USER_FILE is required}:/run/pawcycle-secrets/grafana-admin-user:ro
       - ${PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE:?PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE is required}:/run/pawcycle-secrets/grafana-admin-password:ro
       - grafana-data:/var/lib/grafana
+    networks:
+      - observability
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.15
@@ -71,3 +74,5 @@ networks:
   app:
     name: ${PAWCYCLE_APP_NETWORK:-pawcycle-production-app}
     external: true
+  observability:
+    internal: true

@@ -13,6 +13,7 @@ VALIDATOR = Path(__file__).resolve()
 OBSERVABILITY_COMPOSE = ROOT / "infra" / "production-observability" / "compose.yaml"
 METRICS_PROXY_COMPOSE = ROOT / "infra" / "production-metrics-proxy" / "compose.yaml"
 METRICS_PROXY_CONFIG = ROOT / "infra" / "production-metrics-proxy" / "metrics-proxy.conf"
+GRAFANA_DATASOURCE = ROOT / "infra" / "production-observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
 OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-boundary.md"
 OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
 
@@ -84,6 +85,7 @@ def validate_observability_contract() -> None:
     observability = OBSERVABILITY_COMPOSE.read_text(encoding="utf-8")
     metrics_proxy = METRICS_PROXY_COMPOSE.read_text(encoding="utf-8")
     metrics_proxy_config = METRICS_PROXY_CONFIG.read_text(encoding="utf-8")
+    datasource = GRAFANA_DATASOURCE.read_text(encoding="utf-8")
 
     for marker in (
         "OCI `app01`",
@@ -105,6 +107,8 @@ def validate_observability_contract() -> None:
         require(retired not in runbook, f"retired observability execution premise remains in OPS-OBS-001: {retired}")
 
     require("PAWCYCLE_APP_NETWORK" in observability, "Prometheus app network injection is missing")
+    require("observability:" in observability and "internal: true" in observability, "shared internal observability network is missing")
+    require("url: http://prometheus:9090" in datasource, "Grafana datasource must target Prometheus by service name")
     require("metrics-proxy:9464" in runbook, "same-host metrics target is missing from OPS-OBS-001")
     require("ports:" not in metrics_proxy, "metrics-proxy must not publish a host port")
     require("PAWCYCLE_METRICS_PORT" not in metrics_proxy, "metrics-proxy host port override must be retired")
@@ -114,6 +118,10 @@ def validate_observability_contract() -> None:
     require("server backend:8080 resolve;" in metrics_proxy_config, "metrics-proxy dynamic Backend resolution is missing")
     require("/proc" in runbook and "/sys" in runbook, "host collector decision boundary is missing")
     require("OFF" in runbook and "ON" in runbook and "latency/error-rate" in runbook, "same-host calibration contract is incomplete")
+    require("worktree add --detach" in runbook, "first-time observability control bootstrap is missing")
+    require("@sha256:" in runbook and "RepoDigests" in runbook, "pinned image digest verification is missing")
+    require("linux/amd64" in runbook, "current OCI amd64 runtime verification is missing")
+    require("--scope production" in runbook and "--scope observability" in runbook, "same-host backend diagnostic flow is missing")
 
 
 def main() -> None:

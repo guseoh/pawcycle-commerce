@@ -76,15 +76,20 @@ assert "sed " in script, "Prometheus command must render the runtime target"
 assert "__PAWCYCLE_METRICS_TARGET__" in script, "Prometheus command must preserve the template placeholder"
 assert "PAWCYCLE_METRICS_TARGET" in script, "Prometheus command must preserve runtime target expansion"
 assert "exec /bin/prometheus" in script, "Prometheus command must exec the server after rendering config"
-assert set(prometheus["networks"]) == {"app"}, "Prometheus must use the Application Docker network only"
+assert set(prometheus["networks"]) == {"app", "observability"}, "Prometheus must bridge app and observability networks only"
+assert set(grafana["networks"]) == {"observability"}, "Grafana must stay isolated from the Application network"
 assert compose_model["networks"]["app"]["external"] is True, "Application Docker network must remain external"
 assert compose_model["networks"]["app"]["name"] == sys.argv[3], "Application Docker network name drifted"
+assert compose_model["networks"]["observability"].get("internal") is True, "Observability service network must remain internal"
 assert prometheus["cpus"] == 0.25 and prometheus["mem_limit"] == str(384 * 1024 * 1024), "Prometheus lean resource cap drifted"
 assert grafana["cpus"] == 0.15 and grafana["mem_limit"] == str(256 * 1024 * 1024), "Grafana lean resource cap drifted"
 assert len(prometheus["ports"]) == 1 and str(prometheus["ports"][0]["published"]) == sys.argv[4], "Prometheus UI port drifted"
 assert len(grafana["ports"]) == 1 and str(grafana["ports"][0]["published"]) == sys.argv[5], "Grafana UI port drifted"
 assert all(port.get("host_ip") == "127.0.0.1" for port in prometheus["ports"] + grafana["ports"]), "observability UI must not bind publicly"
 assert "PAWCYCLE_MYSQL" not in json.dumps(compose_model), "observability must not depend on local MySQL state"
+
+datasource = (root / "grafana" / "provisioning" / "datasources" / "prometheus.yaml").read_text(encoding="utf-8")
+assert "url: http://prometheus:9090" in datasource, "Grafana datasource must use the shared observability network service name"
 
 dashboards = sorted((root / "grafana" / "dashboards").glob("*.json"))
 assert len(dashboards) == 3, "exactly three Grafana dashboards must be provisioned"
@@ -97,8 +102,8 @@ PY
 
 for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE"; do
   manifest="$(docker buildx imagetools inspect "$image")"
-  grep -Fq 'Platform:  linux/arm64' <<<"$manifest" || {
-    printf 'linux/arm64 manifest missing for %s\n' "$image" >&2
+  grep -Fq 'Platform:  linux/amd64' <<<"$manifest" || {
+    printf 'linux/amd64 manifest missing for %s\n' "$image" >&2
     exit 1
   }
 done
@@ -106,6 +111,22 @@ done
 compose_validation up --detach --wait --wait-timeout 60
 compose_validation exec --no-TTY prometheus \
   grep -Fq "$METRICS_TARGET" /etc/prometheus-runtime/prometheus.yml
+
+for _ in $(seq 1 30); do
+  if curl --fail --silent --show-error \
+    --user 'admin:validation-only-password' \
+    "http://127.0.0.1:${GRAFANA_PORT}/api/datasources/proxy/uid/pawcycle-production-prometheus/-/ready" \
+    >/dev/null 2>&1; then
+    datasource_ready=true
+    break
+  fi
+  sleep 1
+done
+[[ "${datasource_ready:-false}" == true ]] || {
+  printf 'Grafana datasource could not reach Prometheus on the shared observability network\n' >&2
+  exit 1
+}
+
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, Prometheus, Grafana dashboard, and ARM64 image validation passed\n'
+printf 'Production observability Compose, Grafana-Prometheus connectivity, dashboards, and linux/amd64 image validation passed\n'
