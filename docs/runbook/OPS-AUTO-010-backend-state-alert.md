@@ -29,7 +29,7 @@ git diff --check
 
 ## 운영 artifact 준비
 
-병합 후 실제 운영 승인이 있을 때만 Observability EC2에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**여야 한다. 기존 control checkout의 HEAD나 working tree를 변경하지 않고, 이번 실행만을 위한 private 임시 Git 저장소에서 승인 commit을 검증한 뒤 그 commit object에서 artifact를 직접 materialize한다.
+병합 후 실제 운영 승인이 있을 때만 OCI `app01`에서 진행한다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**여야 한다. 기존 control checkout의 HEAD나 working tree를 변경하지 않고, 이번 실행만을 위한 private 임시 Git 저장소에서 승인 commit을 검증한 뒤 그 commit object에서 artifact를 직접 materialize한다.
 
 Discord sender는 같은 디렉터리의 contract helper를 import하므로 dispatcher만 단독으로 준비하면 안 된다. 승인 commit에서 dispatcher, Slack sender, Discord sender와 두 Discord contract helper를 함께 꺼낸다.
 
@@ -95,7 +95,7 @@ python3 -m py_compile \
 
 ## 최종 진단 결과 파일 생성
 
-Production snapshot을 Observability EC2로 전달한 뒤 localhost Prometheus와 결합한 **최종 결과를 fresh file로 보존**한다. 이전 실행의 고정 경로를 재사용하지 않는다. 결과 파일은 위에서 만든 private `ALERT_ROOT` 내부에 `mktemp`로 새로 만들고 mode `0600`으로 제한한다.
+같은 `app01`에서 생성한 Production snapshot을 localhost Prometheus와 결합한 **최종 결과를 fresh file로 보존**한다. 이전 실행의 고정 경로를 재사용하지 않는다. 결과 파일은 위에서 만든 private `ALERT_ROOT` 내부에 `mktemp`로 새로 만들고 mode `0600`으로 제한한다.
 
 진단의 non-zero exit도 별도로 보존한다. 비정상 상태 자체의 non-zero와 결과 파일 생성·쓰기 실패를 같은 의미로 해석하지 않는다. fresh file이 비어 있거나 부분적으로만 기록되면 dispatcher가 입력 검증에서 `UNKNOWN`으로 fail-closed 처리한다.
 
