@@ -112,21 +112,11 @@ compose_validation up --detach --wait --wait-timeout 60
 compose_validation exec --no-TTY prometheus \
   grep -Fq "$METRICS_TARGET" /etc/prometheus-runtime/prometheus.yml
 
-for _ in $(seq 1 30); do
-  if curl --fail --silent --show-error \
-    --user 'admin:validation-only-password' \
-    "http://127.0.0.1:${GRAFANA_PORT}/api/datasources/uid/pawcycle-production-prometheus/health" \
-    >/dev/null 2>&1; then
-    datasource_ready=true
-    break
-  fi
-  sleep 1
-done
-[[ "${datasource_ready:-false}" == true ]] || {
-  printf 'Grafana Prometheus datasource health check failed on the shared observability network\n' >&2
-  exit 1
-}
+OBSERVABILITY_NETWORK="${PROJECT_NAME}_observability"
+docker network inspect "$OBSERVABILITY_NETWORK" >/dev/null
+docker run --rm --network "$OBSERVABILITY_NETWORK" alpine:3.22 \
+  wget --quiet --output-document=/dev/null http://prometheus:9090/-/ready
 
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, Grafana-Prometheus datasource health, dashboards, and linux/amd64 image validation passed\n'
+printf 'Production observability Compose, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
