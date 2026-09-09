@@ -62,37 +62,37 @@ def evaluate_review_handoff(
     recent_repository_comments: list[dict[str, Any]],
 ) -> ReviewHandoffDecision:
     if pr.get("state") != "open":
-        return ReviewHandoffDecision(False, "pull request is not open")
+        return ReviewHandoffDecision(remind=False, reason="pull request is not open")
 
     if bool(pr.get("draft")):
-        return ReviewHandoffDecision(False, "pull request is draft")
+        return ReviewHandoffDecision(remind=False, reason="pull request is draft")
 
     base_ref = str(((pr.get("base") or {}).get("ref") or ""))
     if base_ref != "main":
-        return ReviewHandoffDecision(False, "base branch is not main")
+        return ReviewHandoffDecision(remind=False, reason="base branch is not main")
 
     head_repo = str((((pr.get("head") or {}).get("repo") or {}).get("full_name") or ""))
     if head_repo != repository:
-        return ReviewHandoffDecision(False, "pull request head is not from this repository")
+        return ReviewHandoffDecision(remind=False, reason="pull request head is not from this repository")
 
     body = str(pr.get("body") or "")
     if HANDOFF_MARKER not in body:
-        return ReviewHandoffDecision(False, "review-ready handoff marker is absent")
+        return ReviewHandoffDecision(remind=False, reason="review-ready handoff marker is absent")
 
     if stars >= NATIVE_AUTO_REVIEW_STAR_THRESHOLD:
-        return ReviewHandoffDecision(False, "native CodeRabbit auto-review is expected")
+        return ReviewHandoffDecision(remind=False, reason="native CodeRabbit auto-review is expected")
 
     head_sha = str(((pr.get("head") or {}).get("sha") or ""))
     if not head_sha:
-        return ReviewHandoffDecision(False, "pull request head SHA is missing")
+        return ReviewHandoffDecision(remind=False, reason="pull request head SHA is missing")
 
     if has_current_coderabbit_review(reviews, head_sha):
-        return ReviewHandoffDecision(False, "latest HEAD already has a CodeRabbit review")
+        return ReviewHandoffDecision(remind=False, reason="latest HEAD already has a CodeRabbit review")
 
     if has_current_manual_review_reminder(recent_repository_comments, head_sha):
-        return ReviewHandoffDecision(False, "latest HEAD already has a manual-review reminder")
+        return ReviewHandoffDecision(remind=False, reason="latest HEAD already has a manual-review reminder")
 
-    return ReviewHandoffDecision(True, "latest HEAD needs a user-authenticated CodeRabbit review")
+    return ReviewHandoffDecision(remind=True, reason="latest HEAD needs a user-authenticated CodeRabbit review")
 
 
 class GitHubApi:
