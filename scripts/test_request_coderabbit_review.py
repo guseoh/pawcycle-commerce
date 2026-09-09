@@ -19,10 +19,17 @@ NOW = datetime(2026, 9, 6, 6, 30, tzinfo=timezone.utc)
 HEAD = "a" * 40
 
 
-def review_ready_pr(*, head_sha: str = HEAD, body: str = HANDOFF_MARKER, head_repo: str = "guseoh/pawcycle-commerce") -> dict:
+def review_ready_pr(
+    *,
+    head_sha: str = HEAD,
+    body: str = HANDOFF_MARKER,
+    head_repo: str = "guseoh/pawcycle-commerce",
+    draft: bool = False,
+) -> dict:
     return {
         "number": 300,
         "state": "open",
+        "draft": draft,
         "body": body,
         "base": {"ref": "main"},
         "head": {"sha": head_sha, "repo": {"full_name": head_repo}},
@@ -51,6 +58,11 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
     def test_review_ready_current_repo_pr_requests_review(self) -> None:
         decision = self.decide()
         self.assertTrue(decision.request)
+
+    def test_draft_pr_does_not_consume_review_budget(self) -> None:
+        decision = self.decide(review_ready_pr(draft=True))
+        self.assertFalse(decision.request)
+        self.assertIn("draft", decision.reason)
 
     def test_missing_handoff_marker_does_not_consume_review_budget(self) -> None:
         decision = self.decide(review_ready_pr(body="## 작업\nHARNESS-LEAN-003"))
@@ -101,6 +113,7 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
     def test_workflow_uses_trusted_base_and_scheduled_retry(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "request-coderabbit-review.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request_target:", workflow)
+        self.assertIn("ready_for_review", workflow)
         self.assertIn("schedule:", workflow)
         self.assertIn("issues: write", workflow)
         self.assertIn("pull-requests: write", workflow)
