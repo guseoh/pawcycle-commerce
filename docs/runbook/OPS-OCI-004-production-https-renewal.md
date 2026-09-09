@@ -15,10 +15,11 @@
 - Runtime HTTPS Nginx config: Compose가 `/etc/nginx/conf.d/default.conf`에 read-only mount한 승인 config. 인증서 경로와 hostname 계약은 `infra/production/nginx.https.conf`를 따른다.
 - Approved hostname state: `/opt/pawcycle/state/https-domain`, regular file, mode `600`; OCI adoption 전에는 파일이 없을 수 있으며 자동화가 추정·생성하지 않는다.
 - HTTPS enabled state: `/opt/pawcycle/state/https-enabled`, 내용 `enabled`, mode `600`; 두 파일은 명시적인 adoption 이후에만 보호된 runtime state로 취급한다.
+- Reload-pending state: `/opt/pawcycle/state/https-reload-pending`, regular file, mode `600`, 내용 `pending`; 실제 갱신 후 validation·`nginx -t`·reload 중단 시 남고, 다음 non-dry renewal에서 재시도 후 성공 시에만 제거한다.
 - Certbot image: `certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9`; 실행은 `--pull never`이고 image presence는 별도 preflight다.
 - Renewal checks: 매일 03:00·15:00, `Persistent=true`
 
-인증서·private key·Certbot account·email·공인 IP·실제 hostname은 shell history, journal 복사본, PR, 저장소에 기록하지 않는다. 상태 확인은 exit code와 민감하지 않은 unit 상태만 보존한다.
+private key·Certbot account·email·공인 IP와 credential은 shell history, journal 복사본, PR, 저장소에 기록하지 않는다. 승인된 public hostname은 HTTPS config와 보호된 approved state 계약의 일부로 기록할 수 있다. 상태 확인은 exit code와 민감하지 않은 unit 상태만 보존한다.
 
 ## 설치
 
@@ -99,29 +100,34 @@ sudo /usr/local/libexec/pawcycle-production-https-renew renew --dry-run
 2. exact pinned Certbot image가 local에 존재하는지 `docker image inspect`로 확인한다. image가 없으면 `--pull never` 경계에서 중단한다.
 3. Certbot `renew`를 수행한다. renewal은 현재 `pawcycle.duckdns.org` lineage와 `/var/www/certbot` webroot를 사용한다.
 4. deploy hook와 certificate fingerprint 변화로 실제 갱신 여부를 확인한다. 아직 갱신 대상이 아니면 성공 종료하고 Nginx는 reload하지 않는다.
-5. 실제 갱신인 경우 certificate SAN이 approved hostname 하나와 정확히 일치하고 최소 잔여 유효기간을 만족하는지 검증한다.
-6. 실행 중 proxy에서 `nginx -t`를 통과한 뒤에만 `nginx -s reload`를 수행한다.
+5. 실제 갱신으로 fingerprint가 바뀌면 `/opt/pawcycle/state/https-reload-pending`을 mode `600`, 내용 `pending`으로 먼저 기록한다.
+6. certificate SAN이 approved hostname 하나와 정확히 일치하고 최소 잔여 유효기간을 만족하는지 검증한다.
+7. 실행 중 proxy에서 `nginx -t`를 통과한 뒤에만 `nginx -s reload`를 수행하고, reload가 성공한 뒤에만 reload-pending state를 제거한다.
 
 다음은 모두 fail-closed다.
 
 - Certbot renewal, renewal marker, fingerprint, hostname/validity validation, `nginx -t` 또는 reload 실패
 - adoption state가 없거나 partial/invalid하거나, exact Certbot image가 local에 없음
+- reload-pending state가 partial/invalid하거나, pending 상태에서 validation·`nginx -t`·reload가 실패함
 - proxy가 없거나 둘 이상이거나 Compose project/service/volume/runtime config mount가 계약과 다름
 - volume이 없거나 기존 service 상태가 불명확함
 
-실패 시 인증서 volume을 삭제·재생성하지 않고, Backend·Frontend를 재시작하지 않으며, private key나 credential을 출력하지 않는다. actual renewal 뒤 validation 또는 reload가 실패해도 Nginx worker는 reload 전 기존에 로드한 certificate를 계속 사용한다. 기존 certificate가 유효한 동안 public service를 유지하는 것이 이 자동화의 복구 경계다.
+실패 시 인증서 volume을 삭제·재생성하지 않고, Backend·Frontend를 재시작하지 않으며, private key나 credential을 출력하지 않는다. actual renewal 뒤 validation 또는 reload가 실패해도 Nginx worker는 reload 전 기존에 로드한 certificate를 계속 사용한다. reload-pending state는 실패 뒤에도 남으며, 다음 non-dry renewal은 certificate가 not due여도 현재 certificate와 Nginx config를 재검증하고 reload를 재시도한다. 기존 certificate가 유효한 동안 public service를 유지하는 것이 이 자동화의 복구 경계다.
 
 ## Failure / recovery
 
 1. timer 상태와 마지막 service journal의 비민감 오류만 확인한다. `systemctl stop pawcycle-production-https-renew.timer`로 반복 실행을 일시 중지할 수 있다.
 2. approved state의 존재·mode·허용된 값, running proxy의 service와 read-only volume/config mount, exact image presence, 외부 HTTP-01 reachability를 별도 승인 범위에서 확인한다. certificate/private key 내용을 출력하지 않는다.
 3. state가 없으면 위 adoption/preflight 절차로 돌아간다. partial/invalid state면 파일을 임의로 삭제·수정하지 말고 운영 복구 승인을 요청한다.
-4. 원인이 수정되기 전에는 `docker compose up`, `restart`, `down`, volume remove/create, Backend·Frontend 조작을 하지 않는다.
-5. preflight가 다시 통과하면 먼저 `renew --dry-run`을 실행하고, 그 뒤 timer service를 한 번 실행한다.
+4. `https-reload-pending`이 있으면 이를 not-due 성공으로 처리하지 않는다. preflight 후 non-dry renewal/service를 실행하면 현재 certificate와 Nginx config를 검증하고 reload를 재시도한다. 실패하면 pending state가 남아 다음 실행에서 다시 시도된다.
+5. 원인이 수정되기 전에는 `docker compose up`, `restart`, `down`, volume remove/create, Backend·Frontend 조작을 하지 않는다.
+6. pending state가 없고 preflight가 통과하면 먼저 `renew --dry-run`을 실행한 뒤 timer service를 한 번 실행한다.
 
 ```bash
 sudo systemctl stop pawcycle-production-https-renew.timer
+# pending state가 없을 때만 dry-run 수행
 sudo /usr/local/libexec/pawcycle-production-https-renew renew --dry-run
+# pending state가 있으면 dry-run은 생략하고 non-dry oneshot으로 reload 재시도
 sudo systemctl start pawcycle-production-https-renew.service
 sudo systemctl status pawcycle-production-https-renew.service --no-pager
 ```

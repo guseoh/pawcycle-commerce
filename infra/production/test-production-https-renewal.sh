@@ -9,8 +9,10 @@ FAKE_STATE="$TEST_ROOT/fake-state"
 STATE_DIR="$TEST_ROOT/state"
 DOMAIN_FILE="$STATE_DIR/https-domain"
 ENABLED_FILE="$STATE_DIR/https-enabled"
+PENDING_FILE="$STATE_DIR/https-reload-pending"
 LOCK_FILE="$TEST_ROOT/renewal.lock"
 FAKE_DOCKER_LOG="$TEST_ROOT/docker.log"
+LAST_OUTPUT=""
 mkdir -p "$FAKE_BIN" "$FAKE_STATE" "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 
@@ -68,6 +70,17 @@ case "$*" in
       exit 0
     fi
     if [[ "$*" == *" nginx -t"* ]]; then
+      if [[ "${FAKE_NGINX_TEST_AFTER_PREFLIGHT:-0}" == 1 ]]; then
+        count=0
+        if [[ -f "${FAKE_NGINX_TEST_COUNT_FILE:?}" ]]; then
+          count="$(<"$FAKE_NGINX_TEST_COUNT_FILE")"
+        fi
+        count=$((count + 1))
+        printf '%s\n' "$count" > "$FAKE_NGINX_TEST_COUNT_FILE"
+        if [[ "$count" == 1 ]]; then
+          exit 0
+        fi
+      fi
       exit "${FAKE_NGINX_TEST_STATUS:-0}"
     fi
     if [[ "$*" == *" nginx -s reload"* ]]; then
@@ -79,6 +92,17 @@ case "$*" in
   run*)
     if [[ "$*" == *--entrypoint*python* ]]; then
       if [[ "$*" == *--env*EXPECTED_DOMAIN* ]]; then
+        if [[ "${FAKE_CERTIFICATE_VALIDATION_AFTER_PREFLIGHT:-0}" == 1 ]]; then
+          count=0
+          if [[ -f "${FAKE_CERTIFICATE_VALIDATION_COUNT_FILE:?}" ]]; then
+            count="$(<"$FAKE_CERTIFICATE_VALIDATION_COUNT_FILE")"
+          fi
+          count=$((count + 1))
+          printf '%s\n' "$count" > "$FAKE_CERTIFICATE_VALIDATION_COUNT_FILE"
+          if [[ "$count" == 1 ]]; then
+            exit 0
+          fi
+        fi
         exit "${FAKE_CERTIFICATE_VALIDATION_STATUS:-0}"
       fi
       if [[ -e "${FAKE_RENEWED_MARKER:-}" ]]; then
@@ -138,6 +162,9 @@ assert_not_contains '/etc/letsencrypt/live/pawcycle-production/' "$script"
 assert_not_contains 'v5.7.0' "$script"
 assert_contains 'preflight' "$script"
 assert_contains 'adopt --confirm-adopt' "$script"
+assert_contains 'RELOAD_PENDING_FILE=' "$script"
+assert_contains 'ACTION_EXPLICIT=false' "$script"
+assert_contains 'clear_reload_pending_state' "$script"
 assert_contains 'nginx -t' "$script"
 assert_contains 'nginx -s reload' "$script"
 assert_contains '--deploy-hook' "$script"
@@ -181,6 +208,10 @@ run_action() {
   [[ "$status" == "$expected_status" ]] || fail "unexpected status $status: $output"
 }
 
+run_action 1 renew preflight
+run_action 1 renew renew
+run_action 1 renew adopt --confirm-adopt
+run_action 1 preflight renew
 run_action 0 preflight
 [[ ! -e "$DOMAIN_FILE" && ! -e "$ENABLED_FILE" ]] || fail 'preflight created adoption state'
 : > "$FAKE_DOCKER_LOG"
@@ -206,6 +237,7 @@ run_renewal() {
   local status=0
   : > "$FAKE_DOCKER_LOG"
   rm -f -- "$FAKE_STATE/renewed"
+  rm -f -- "$FAKE_STATE/nginx-test-count" "$FAKE_STATE/certificate-validation-count"
   output="$(
     PATH="$FAKE_BIN:$PATH" \
       FAKE_DOCKER_LOG="$FAKE_DOCKER_LOG" \
@@ -214,12 +246,17 @@ run_renewal() {
       FAKE_NO_RENEW="$fake_no_renew" \
       FAKE_CERTBOT_STATUS="$fake_certbot_status" \
       FAKE_NGINX_TEST_STATUS="$fake_nginx_test_status" \
+      FAKE_NGINX_TEST_AFTER_PREFLIGHT="${FAKE_NGINX_TEST_AFTER_PREFLIGHT:-0}" \
+      FAKE_NGINX_TEST_COUNT_FILE="$FAKE_STATE/nginx-test-count" \
       FAKE_NGINX_RELOAD_STATUS="$fake_nginx_reload_status" \
       FAKE_CERTIFICATE_VALIDATION_STATUS="$fake_certificate_validation_status" \
+      FAKE_CERTIFICATE_VALIDATION_AFTER_PREFLIGHT="${FAKE_CERTIFICATE_VALIDATION_AFTER_PREFLIGHT:-0}" \
+      FAKE_CERTIFICATE_VALIDATION_COUNT_FILE="$FAKE_STATE/certificate-validation-count" \
       PAWCYCLE_STATE_DIR="$STATE_DIR" \
       PAWCYCLE_HTTPS_RENEWAL_LOCK_FILE="$LOCK_FILE" \
       bash "$script" "$@" 2>&1
   )" || status=$?
+  LAST_OUTPUT="$output"
   [[ "$status" == "$expected_status" ]] || fail "unexpected status $status: $output"
   actual_reload_count="$(grep -Fxc reload "$FAKE_DOCKER_LOG" || true)"
   [[ "$actual_reload_count" == "$expected_reload_count" ]] \
@@ -228,11 +265,35 @@ run_renewal() {
 
 run_renewal 0 0 0 0 0 0 0 --dry-run
 run_renewal 0 1 0 0 0 0 0
+run_renewal 1 1 0 0 0 1 0
+[[ -f "$PENDING_FILE" ]] || fail 'reload failure did not persist pending state'
+run_renewal 0 1 1 0 0 0 0
+[[ "$LAST_OUTPUT" != *'not due'* ]] || fail 'pending reload was incorrectly reported as not due'
+[[ ! -e "$PENDING_FILE" ]] || fail 'successful pending reload did not clear state'
 run_renewal 0 0 1 0 0 0 0
 run_renewal 1 0 0 1 0 0 0
 run_renewal 1 0 0 0 1 0 0
-run_renewal 1 1 0 0 0 1 0
+FAKE_NGINX_TEST_AFTER_PREFLIGHT=1 run_renewal 1 0 0 0 1 0 0
+[[ -f "$PENDING_FILE" ]] || fail 'nginx validation failure did not preserve pending state'
+run_renewal 0 1 1 0 0 0 0
+[[ ! -e "$PENDING_FILE" ]] || fail 'nginx validation recovery did not clear pending state'
 run_renewal 1 0 0 0 0 0 1
+FAKE_CERTIFICATE_VALIDATION_AFTER_PREFLIGHT=1 run_renewal 1 0 0 0 0 0 1
+[[ -f "$PENDING_FILE" ]] || fail 'certificate validation failure did not preserve pending state'
+run_renewal 0 1 1 0 0 0 0
+[[ ! -e "$PENDING_FILE" ]] || fail 'certificate validation recovery did not clear pending state'
+printf '%s\n' invalid > "$PENDING_FILE"
+chmod 600 "$PENDING_FILE"
+run_renewal 1 0 1 0 0 0 0
+rm -f -- "$PENDING_FILE"
+printf '%s\n' pending > "$PENDING_FILE"
+chmod 644 "$PENDING_FILE"
+run_renewal 1 0 1 0 0 0 0
+rm -f -- "$PENDING_FILE"
+printf '%s\n' pending > "$FAKE_STATE/pending-target"
+ln -s "$FAKE_STATE/pending-target" "$PENDING_FILE"
+run_renewal 1 0 1 0 0 0 0
+rm -f -- "$PENDING_FILE" "$FAKE_STATE/pending-target"
 FAKE_IMAGE_INSPECT_STATUS=1 run_renewal 1 0 0 0 0 0 0
 ! grep -E '^run ' "$FAKE_DOCKER_LOG" || fail 'renewal ran without the approved image'
 

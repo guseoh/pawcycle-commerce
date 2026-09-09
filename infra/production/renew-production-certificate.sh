@@ -8,6 +8,7 @@ ACTIVE_DOMAIN="pawcycle.duckdns.org"
 STATE_DIR="${PAWCYCLE_STATE_DIR:-/opt/pawcycle/state}"
 APPROVED_DOMAIN_FILE="$STATE_DIR/https-domain"
 HTTPS_ENABLED_FILE="$STATE_DIR/https-enabled"
+RELOAD_PENDING_FILE="$STATE_DIR/https-reload-pending"
 CERTBOT_WEBROOT_VOLUME="pawcycle-production-certbot-webroot"
 LETSENCRYPT_VOLUME="pawcycle-production-letsencrypt"
 CERTIFICATE_NAME="$ACTIVE_DOMAIN"
@@ -17,10 +18,12 @@ LOCK_FILE="${PAWCYCLE_HTTPS_RENEWAL_LOCK_FILE:-/run/lock/pawcycle-production-htt
 DOCKER_BIN="docker"
 DRY_RUN=false
 ACTION="renew"
+ACTION_EXPLICIT=false
 ADOPT_CONFIRM=false
 APPROVED_DOMAIN=""
 PROXY_CONTAINER=""
 RENEWAL_MARKER_DIR=""
+RELOAD_PENDING=false
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -87,6 +90,16 @@ load_optional_adoption_state() {
     load_approved_domain
   else
     APPROVED_DOMAIN="$ACTIVE_DOMAIN"
+  fi
+}
+
+load_reload_pending_state() {
+  RELOAD_PENDING=false
+  if state_path_exists "$RELOAD_PENDING_FILE"; then
+    require_regular_state_file "$RELOAD_PENDING_FILE" "HTTPS reload-pending state"
+    [[ "$(<"$RELOAD_PENDING_FILE")" == pending ]] \
+      || die "HTTPS reload-pending state is invalid"
+    RELOAD_PENDING=true
   fi
 }
 
@@ -237,6 +250,13 @@ reload_nginx() {
     || die "Nginx reload failed; application services were not restarted"
 }
 
+validate_and_reload_certificate() {
+  validate_certificate
+  validate_nginx_config
+  reload_nginx
+  clear_reload_pending_state
+}
+
 write_state_file() {
   local target="$1"
   local value="$2"
@@ -253,6 +273,14 @@ write_state_file() {
     || die "HTTPS adoption state file could not be installed"
 }
 
+clear_reload_pending_state() {
+  load_reload_pending_state
+  [[ "$RELOAD_PENDING" == true ]] \
+    || die "HTTPS reload-pending state disappeared before it could be cleared"
+  rm -- "$RELOAD_PENDING_FILE" \
+    || die "HTTPS reload-pending state could not be cleared after reload"
+}
+
 prepare_commands() {
   command -v "$DOCKER_BIN" >/dev/null 2>&1 || die "Docker CLI is unavailable"
   command -v stat >/dev/null 2>&1 || die "stat is unavailable"
@@ -267,6 +295,7 @@ acquire_lock() {
 
 run_preflight() {
   load_optional_adoption_state
+  load_reload_pending_state
   check_image_presence
   check_certificate_volumes
   find_running_proxy
@@ -279,7 +308,8 @@ run_preflight() {
 while (( $# > 0 )); do
   case "$1" in
     preflight|adopt|renew)
-      [[ "$ACTION" == renew ]] || die "only one action may be specified"
+      [[ "$ACTION_EXPLICIT" == false ]] || die "only one action may be specified"
+      ACTION_EXPLICIT=true
       ACTION="$1"
       shift
       ;;
@@ -348,7 +378,11 @@ case "$ACTION" in
     run_certbot
 
     if [[ "$DRY_RUN" == true ]]; then
-      printf 'Certificate renewal dry-run passed; Nginx was not reloaded\n'
+      if [[ "$RELOAD_PENDING" == true ]]; then
+        printf 'Certificate renewal dry-run passed; reload-pending state remains and Nginx was not reloaded\n'
+      else
+        printf 'Certificate renewal dry-run passed; Nginx was not reloaded\n'
+      fi
       exit 0
     fi
 
@@ -357,6 +391,11 @@ case "$ACTION" in
 
     if [[ ! -e "$RENEWAL_MARKER_DIR/renewed" ]]; then
       if [[ "$BEFORE_FINGERPRINT" == "$AFTER_FINGERPRINT" ]]; then
+        if [[ "$RELOAD_PENDING" == true ]]; then
+          validate_and_reload_certificate
+          printf 'Pending certificate reload, validation, and Nginx reload passed\n'
+          exit 0
+        fi
         printf 'Certificate is not due for renewal; Nginx was not reloaded\n'
         exit 0
       fi
@@ -365,9 +404,8 @@ case "$ACTION" in
 
     [[ "$BEFORE_FINGERPRINT" != "$AFTER_FINGERPRINT" ]] \
       || die "renewal marker was present but the certificate did not change; Nginx was not reloaded"
-    validate_certificate
-    validate_nginx_config
-    reload_nginx
+    write_state_file "$RELOAD_PENDING_FILE" pending
+    validate_and_reload_certificate
     printf 'Certificate renewal, validation, and Nginx reload passed\n'
     ;;
 esac
