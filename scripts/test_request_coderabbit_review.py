@@ -103,6 +103,8 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
         self.assertIn("pull_request_target:", workflow)
         self.assertIn("schedule:", workflow)
         self.assertIn("issues: write", workflow)
+        self.assertIn("pull-requests: write", workflow)
+        self.assertNotIn("pull-requests: read", workflow)
         self.assertIn("ref: main", workflow)
         self.assertIn("python scripts/request_coderabbit_review.py", workflow)
         self.assertNotIn("github.event.pull_request.head.sha", workflow)
