@@ -41,7 +41,7 @@ def reminder_comment_payload(sha: str = HEAD, login: str = BOT_LOGIN) -> dict:
     }
 
 
-class CodeRabbitReviewHandoffTest(unittest.TestCase):
+class CodeRabbitReviewRequestTest(unittest.TestCase):
     def decide(self, pr: dict | None = None, *, stars: int = 0, reviews: list[dict] | None = None, comments: list[dict] | None = None):
         return evaluate_review_handoff(
             pr or review_ready_pr(),
