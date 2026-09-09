@@ -10,6 +10,11 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 RUNBOOKS = ROOT / "docs" / "runbook"
 ARCHITECTURE = ROOT / "docs" / "architecture" / "production-operations-overview.md"
 VALIDATOR = Path(__file__).resolve()
+OBSERVABILITY_COMPOSE = ROOT / "infra" / "production-observability" / "compose.yaml"
+METRICS_PROXY_COMPOSE = ROOT / "infra" / "production-metrics-proxy" / "compose.yaml"
+METRICS_PROXY_CONFIG = ROOT / "infra" / "production-metrics-proxy" / "metrics-proxy.conf"
+OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-boundary.md"
+OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
 
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
@@ -73,7 +78,46 @@ def active_text_files(root: Path):
             yield path
 
 
+def validate_observability_contract() -> None:
+    architecture = OBSERVABILITY_ADR.read_text(encoding="utf-8")
+    runbook = OBSERVABILITY_RUNBOOK.read_text(encoding="utf-8")
+    observability = OBSERVABILITY_COMPOSE.read_text(encoding="utf-8")
+    metrics_proxy = METRICS_PROXY_COMPOSE.read_text(encoding="utf-8")
+    metrics_proxy_config = METRICS_PROXY_CONFIG.read_text(encoding="utf-8")
+
+    for marker in (
+        "OCI `app01`",
+        "same-host Lean baseline",
+        "Deferred — Evidence Triggered",
+        "metrics-proxy:9464",
+        "과거 AWS 선택의 보존",
+    ):
+        require(marker in architecture, f"ARCH-012 observability marker is missing: {marker}")
+
+    for retired in (
+        "t4g.small",
+        "Security Group",
+        "SSM",
+        "Observability EC2",
+        "Production EC2",
+        "active-mysql-volume",
+    ):
+        require(retired not in runbook, f"retired observability execution premise remains in OPS-OBS-001: {retired}")
+
+    require("PAWCYCLE_APP_NETWORK" in observability, "Prometheus app network injection is missing")
+    require("metrics-proxy:9464" in runbook, "same-host metrics target is missing from OPS-OBS-001")
+    require("ports:" not in metrics_proxy, "metrics-proxy must not publish a host port")
+    require("PAWCYCLE_METRICS_PORT" not in metrics_proxy, "metrics-proxy host port override must be retired")
+    require("external: true" in metrics_proxy and "PAWCYCLE_APP_NETWORK" in metrics_proxy, "metrics-proxy app network must remain external")
+    require("location = /actuator/prometheus" in metrics_proxy_config, "metrics-proxy metrics location is missing")
+    require("location /" in metrics_proxy_config and "return 404" in metrics_proxy_config, "metrics-proxy must reject non-metrics paths")
+    require("server backend:8080 resolve;" in metrics_proxy_config, "metrics-proxy dynamic Backend resolution is missing")
+    require("/proc" in runbook and "/sys" in runbook, "host collector decision boundary is missing")
+    require("OFF" in runbook and "ON" in runbook and "latency/error-rate" in runbook, "same-host calibration contract is incomplete")
+
+
 def main() -> None:
+    validate_observability_contract()
     for path in RETIRED_PATHS:
         require(not path.exists(), f"retired AWS/Production artifact is still active: {path.relative_to(ROOT)}")
 

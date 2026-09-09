@@ -8,13 +8,16 @@ GRAFANA_IMAGE="grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce97
 TEMP_DIR="$(mktemp -d)"
 VALIDATION_ID="obs-validation-${RANDOM}-$$"
 PROJECT_NAME="pawcycle-$VALIDATION_ID"
+APP_NETWORK="pawcycle-$VALIDATION_ID-app"
 PROMETHEUS_VOLUME="pawcycle-$VALIDATION_ID-prometheus-data"
 GRAFANA_VOLUME="pawcycle-$VALIDATION_ID-grafana-data"
 PROMETHEUS_PORT="$((20000 + RANDOM % 10000))"
 GRAFANA_PORT="$((30000 + RANDOM % 10000))"
+METRICS_TARGET="metrics-proxy:9464"
 
 compose_validation() {
-  PAWCYCLE_METRICS_TARGET="metrics-proxy.example.invalid:9464" \
+  PAWCYCLE_METRICS_TARGET="$METRICS_TARGET" \
+  PAWCYCLE_APP_NETWORK="$APP_NETWORK" \
   PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$TEMP_DIR/grafana-admin-user" \
   PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$TEMP_DIR/grafana-admin-password" \
   PAWCYCLE_OBSERVABILITY_PROMETHEUS_VOLUME="$PROMETHEUS_VOLUME" \
@@ -28,6 +31,7 @@ cleanup() {
   local status=$?
   set +e
   compose_validation down --volumes --remove-orphans >/dev/null 2>&1
+  docker network rm "$APP_NETWORK" >/dev/null 2>&1
   rm -rf -- "$TEMP_DIR"
   return "$status"
 }
@@ -38,20 +42,21 @@ printf 'validation-only-password\n' > "$TEMP_DIR/grafana-admin-password"
 chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
+docker network create "$APP_NETWORK" >/dev/null
 compose_validation config --quiet
 compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
 docker run --rm --entrypoint sh \
   --volume "$SCRIPT_DIR/prometheus/prometheus.yml.tpl:/template:ro" \
   "$PROMETHEUS_IMAGE" -ec \
-  'sed "s|__PAWCYCLE_METRICS_TARGET__|metrics-proxy.example.invalid:9464|g" /template >/tmp/prometheus.yml && promtool check config /tmp/prometheus.yml'
+  'sed "s|__PAWCYCLE_METRICS_TARGET__|metrics-proxy:9464|g" /template >/tmp/prometheus.yml && promtool check config /tmp/prometheus.yml'
 
 if command -v python3 >/dev/null 2>&1; then
   PYTHON=(python3)
 else
   PYTHON=(py -3)
 fi
-"${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" <<'PY'
+"${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" "$APP_NETWORK" "$PROMETHEUS_PORT" "$GRAFANA_PORT" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -59,8 +64,11 @@ from pathlib import Path
 root = Path(sys.argv[1])
 compose_model = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 prometheus = compose_model["services"]["prometheus"]
+grafana = compose_model["services"]["grafana"]
 prometheus_entrypoint = prometheus["entrypoint"]
 prometheus_command = prometheus["command"]
+assert set(compose_model["services"]) == {"prometheus", "grafana"}, "observability must own only Prometheus and Grafana"
+assert "mysql" not in compose_model["services"], "observability must not own a database container"
 assert prometheus_entrypoint == ["sh", "-ec"], "Prometheus entrypoint must invoke sh -ec explicitly"
 assert len(prometheus_command) == 1, "Prometheus shell script must remain one command argument"
 script = prometheus_command[0]
@@ -68,6 +76,15 @@ assert "sed " in script, "Prometheus command must render the runtime target"
 assert "__PAWCYCLE_METRICS_TARGET__" in script, "Prometheus command must preserve the template placeholder"
 assert "PAWCYCLE_METRICS_TARGET" in script, "Prometheus command must preserve runtime target expansion"
 assert "exec /bin/prometheus" in script, "Prometheus command must exec the server after rendering config"
+assert set(prometheus["networks"]) == {"app"}, "Prometheus must use the Application Docker network only"
+assert compose_model["networks"]["app"]["external"] is True, "Application Docker network must remain external"
+assert compose_model["networks"]["app"]["name"] == sys.argv[3], "Application Docker network name drifted"
+assert prometheus["cpus"] == 0.25 and prometheus["mem_limit"] == str(384 * 1024 * 1024), "Prometheus lean resource cap drifted"
+assert grafana["cpus"] == 0.15 and grafana["mem_limit"] == str(256 * 1024 * 1024), "Grafana lean resource cap drifted"
+assert len(prometheus["ports"]) == 1 and str(prometheus["ports"][0]["published"]) == sys.argv[4], "Prometheus UI port drifted"
+assert len(grafana["ports"]) == 1 and str(grafana["ports"][0]["published"]) == sys.argv[5], "Grafana UI port drifted"
+assert all(port.get("host_ip") == "127.0.0.1" for port in prometheus["ports"] + grafana["ports"]), "observability UI must not bind publicly"
+assert "PAWCYCLE_MYSQL" not in json.dumps(compose_model), "observability must not depend on local MySQL state"
 
 dashboards = sorted((root / "grafana" / "dashboards").glob("*.json"))
 assert len(dashboards) == 3, "exactly three Grafana dashboards must be provisioned"
@@ -88,7 +105,7 @@ done
 
 compose_validation up --detach --wait --wait-timeout 60
 compose_validation exec --no-TTY prometheus \
-  grep -Fq 'metrics-proxy.example.invalid:9464' /etc/prometheus-runtime/prometheus.yml
+  grep -Fq "$METRICS_TARGET" /etc/prometheus-runtime/prometheus.yml
 compose_validation down --volumes --remove-orphans >/dev/null
 
 printf 'Production observability Compose, Prometheus, Grafana dashboard, and ARM64 image validation passed\n'
