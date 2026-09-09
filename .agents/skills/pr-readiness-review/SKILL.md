@@ -35,12 +35,12 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
    - 미실행·skipped·cancelled 검증을 success로 취급하지 않는다.
 
 3. **리뷰 확인**
-   - CodeRabbit review 요청은 `.github/workflows/request-coderabbit-review.yml` 자동화를 기본 경로로 사용한다.
-   - 현재 저장소가 native auto-review 대상이 아닌 동안에는 handoff marker가 있는 최신 HEAD를 자동 요청하고, 저장소 전체 65분 cooldown과 주기적 retry로 rate-limit 중복 요청을 피한다.
-   - 저장소가 native auto-review 조건을 충족하면 자동 요청 workflow가 수동 명령을 보내지 않고 native review에 맡긴다.
-   - 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지 확인한다. 자동 요청 comment나 passing status만으로 review 완료를 주장하지 않는다.
-   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토로 보완한다.
-   - `@coderabbitai review` 수동 입력은 자동 요청 workflow 자체가 실패하거나 사용자가 명시적으로 요구한 예외 상황에서만 사용한다.
+   - `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit review command를 GitHub Actions bot으로 대신 실행하지 않는다. native auto-review 대상이 아니고 Ready + handoff marker + 최신 HEAD review 없음 조건이면 **HEAD당 한 번의 manual-review reminder**만 남긴다.
+   - Draft PR에는 reminder를 만들지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder 없이 native review에 맡긴다.
+   - 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지 확인한다. reminder comment나 passing CodeRabbit status만으로 review 완료를 주장하지 않는다.
+   - native auto-review 대상이 아니고 최신 HEAD review가 필요한 경우, 사용자가 현재 요청이나 대화에서 PR 검토 진행을 명시적으로 위임했다면 ChatGPT는 연결된 **user-authenticated GitHub identity**로 `@coderabbitai review`를 최신 HEAD에 한 번 요청할 수 있다. 위임이 없으면 임의로 명령을 실행하지 않고 manual review 필요 상태를 보고한다.
+   - Codex와 repository automation은 `@coderabbitai review`를 호출하지 않는다.
+   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토와 테스트로 보완한다.
    - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 대조한다.
    - reviewer 지적은 그대로 수용하지 않고 현재 계약·코드·테스트와 대조한다.
 
