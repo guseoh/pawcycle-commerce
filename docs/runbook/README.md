@@ -28,6 +28,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 
 대표적으로 계속 유지하는 문서:
 
+- `OPS-OCI-004-production-https-renewal.md`
 - `SUB-AUTO-001-subscription-automation.md`
 - `MVP4-DATA-002-demo-catalog-import.md`
 - 관측·진단·성능 측정 관련 Runbook

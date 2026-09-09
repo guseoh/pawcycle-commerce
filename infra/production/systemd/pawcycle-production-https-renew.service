@@ -1,0 +1,15 @@
+[Unit]
+Description=PawCycle Production HTTPS certificate renewal
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/pawcycle-production-https-renew
+TimeoutStartSec=15min
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full

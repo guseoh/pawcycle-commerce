@@ -278,6 +278,9 @@ jobs:
             infra/production/test-demo-catalog-import.sh \
             infra/production/test-production-nginx.sh \
             infra/production/test-production-compose.sh \
+            infra/production/renew-production-certificate.sh \
+            infra/production/install-production-https-renewal.sh \
+            infra/production/test-production-https-renewal.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
@@ -286,6 +289,7 @@ jobs:
           python infra/production/validate-production-contracts.py
           bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-production-nginx.sh
+          bash infra/production/test-production-https-renewal.sh
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
