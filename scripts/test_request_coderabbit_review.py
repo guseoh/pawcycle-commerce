@@ -41,6 +41,20 @@ def reminder_comment_payload(sha: str = HEAD, login: str = BOT_LOGIN) -> dict:
     }
 
 
+def pull_request_target_types(workflow: str) -> list[str]:
+    lines = workflow.splitlines()
+    for index, line in enumerate(lines):
+        if line == "  pull_request_target:":
+            for child in lines[index + 1 :]:
+                if child and not child.startswith("    "):
+                    break
+                stripped = child.strip()
+                if stripped.startswith("types: [") and stripped.endswith("]"):
+                    values = stripped.removeprefix("types: [").removesuffix("]")
+                    return [value.strip() for value in values.split(",") if value.strip()]
+    return []
+
+
 class CodeRabbitReviewRequestTest(unittest.TestCase):
     def decide(self, pr: dict | None = None, *, stars: int = 0, reviews: list[dict] | None = None, comments: list[dict] | None = None):
         return evaluate_review_handoff(
@@ -109,7 +123,7 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
     def test_workflow_uses_trusted_base_without_scheduled_retry(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "request-coderabbit-review.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request_target:", workflow)
-        self.assertIn("ready_for_review", workflow)
+        self.assertIn("ready_for_review", pull_request_target_types(workflow))
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("schedule:", workflow)
         self.assertIn("issues: write", workflow)
