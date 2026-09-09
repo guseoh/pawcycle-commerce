@@ -74,6 +74,9 @@ def evaluate_review_request(
     if pr.get("state") != "open":
         return ReviewRequestDecision(False, "pull request is not open")
 
+    if bool(pr.get("draft")):
+        return ReviewRequestDecision(False, "pull request is draft")
+
     base_ref = str(((pr.get("base") or {}).get("ref") or ""))
     if base_ref != "main":
         return ReviewRequestDecision(False, "base branch is not main")
