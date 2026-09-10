@@ -50,6 +50,7 @@ Observability 검증은 same-host network separation, Grafana→Prometheus datas
 첫 적용에서도 기존 control directory나 임의 latest image를 가정하지 않는다. `APPROVED_SHA`는 검토·병합이 끝난 40자리 merge commit SHA여야 한다. Application control checkout의 HEAD와 working tree는 변경하지 않고 fetch와 detached sibling worktree만 사용한다.
 
 ```bash
+set -Eeuo pipefail
 umask 077
 APP_CONTROL=/opt/pawcycle/source/repo
 METRICS_CONTROL=/opt/pawcycle/metrics-proxy-control
@@ -82,10 +83,18 @@ test "$(sudo git -C "$OBS_CONTROL" rev-parse HEAD)" = "$APPROVED_SHA"
 EXPECTED_IDENTITY_SHA256="$(sudo git -C "$APP_CONTROL" show \
   "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" |
   sha256sum | awk '{print $1}')"
-sudo git -C "$APP_CONTROL" show \
-  "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" > "$IDENTITY_SCRIPT"
+if ! sudo git -C "$APP_CONTROL" show \
+  "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" > "$IDENTITY_SCRIPT"; then
+  rm -f -- "$IDENTITY_SCRIPT"
+  printf 'approved identity verifier materialization failed; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 chmod 500 "$IDENTITY_SCRIPT"
-test "$(sha256sum "$IDENTITY_SCRIPT" | awk '{print $1}')" = "$EXPECTED_IDENTITY_SHA256"
+if ! test "$(sha256sum "$IDENTITY_SCRIPT" | awk '{print $1}')" = "$EXPECTED_IDENTITY_SHA256"; then
+  rm -f -- "$IDENTITY_SCRIPT"
+  printf 'approved identity verifier checksum mismatch; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 ```
 
 Observability does not read, create, backfill, or require any obsolete Application release-state marker file.
@@ -142,8 +151,19 @@ done
 적용 전 Application release identity를 snapshot한다.
 
 ```bash
-sudo bash "$IDENTITY_SCRIPT" snapshot > "$RUNTIME_IDENTITY"
+set -Eeuo pipefail
+if ! sudo bash "$IDENTITY_SCRIPT" snapshot > "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot failed; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 chmod 600 "$RUNTIME_IDENTITY"
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot is invalid; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 
 sudo docker network inspect pawcycle-production-app >/dev/null
 ```
@@ -151,6 +171,13 @@ sudo docker network inspect pawcycle-production-app >/dev/null
 먼저 metrics-proxy를 시작한다. bootstrap에서 image를 exact digest로 준비했으므로 runtime은 `--pull never`를 유지한다.
 
 ```bash
+set -Eeuo pipefail
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity gate failed; refusing metrics-proxy mutation\n' >&2
+  exit 1
+fi
+
 cd "$METRICS_CONTROL/infra/production-metrics-proxy"
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
@@ -163,6 +190,13 @@ sudo env \
 그 다음 Observability project를 시작한다.
 
 ```bash
+set -Eeuo pipefail
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity gate failed; refusing Observability mutation\n' >&2
+  exit 1
+fi
+
 cd "$OBS_CONTROL/infra/production-observability"
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
@@ -184,6 +218,7 @@ sudo env \
 다음 확인은 secret 값을 출력하거나 process argument로 전달하지 않는다.
 
 ```bash
+set -Eeuo pipefail
 PROMETHEUS_URL=http://127.0.0.1:9090
 GRAFANA_URL=http://127.0.0.1:3000
 METRICS_PROXY_ID="$(sudo docker ps --quiet \
@@ -218,7 +253,10 @@ fi
 SHARED_OBS_NETWORKS="$(comm -12 <(printf '%s\n' "$PROM_NETWORKS") <(printf '%s\n' "$GRAFANA_NETWORKS") | sed '/^pawcycle-production-app$/d;/^$/d')"
 test "$(printf '%s\n' "$SHARED_OBS_NETWORKS" | sed '/^$/d' | wc -l)" -eq 1
 
-sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"
+if ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity changed during observability apply; failing closed\n' >&2
+  exit 1
+fi
 ```
 
 Repository validation은 validation-only credential을 사용해 Grafana datasource proxy가 `prometheus:9090`에 실제 도달하는지 검증한다. Production에서는 secret을 argv에 노출하지 않고 Prometheus target, Grafana health와 두 container의 shared internal network attachment를 확인한다.
