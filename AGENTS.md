@@ -100,7 +100,9 @@ CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR me
 
 CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
 
-CodeRabbit review 요청은 `.github/workflows/request-coderabbit-review.yml` 자동화를 기본으로 사용한다. `<!-- pawcycle-ai-handoff: review-ready -->` marker가 있는 PR에서 최신 HEAD review가 없으면 자동 요청하고, 저장소 전체 cooldown과 주기적 retry로 review budget을 보호한다. 저장소가 native auto-review 조건을 충족하면 자동화는 수동 요청을 보내지 않고 native review에 맡긴다. `@coderabbitai review` 수동 입력은 이 자동화 자체가 실패하거나 사용자가 명시적으로 요구한 예외 상황에서만 사용한다.
+`<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호다. `.github/workflows/request-coderabbit-review.yml`은 native auto-review 대상이 아닌 저장소에서 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, Ready 상태이며 최신 HEAD review가 없는 PR에 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. Draft PR에는 reminder를 남기지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder를 만들지 않고 CodeRabbit native review에 맡긴다.
+
+실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 사용자가 현재 대화에서 PR 검토 진행을 명시적으로 위임한 경우 ChatGPT는 연결된 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청할 수 있다. Codex와 repository automation은 이 명령을 발행하지 않는다. 자동 reminder, passing CodeRabbit status 또는 request comment만으로 review 완료를 주장하지 않고 실제 review submission과 `commit_id`를 확인한다.
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다.
 

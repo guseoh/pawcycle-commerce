@@ -2,28 +2,37 @@
 
 ## 상태
 
-Accepted — OPS-OBS-001D 저장소 변경. OPS-OCI-005A는 OCI app01 runtime identity와 source/control checkout 정합성만 보정한다. 실제 Production 적용·검증은 포함하지 않는다.
+Accepted — `OPS-OCI-005A` 저장소 변경. 이 ADR은 repository 계약만 변경하며 실제 OCI·Production 적용과 검증은 포함하지 않는다.
 
 ## 결정
 
-OCI 초기 Observability는 Application이 실행 중인 `app01` same-host에서 별도 Compose project로 운영한다. `metrics-proxy`도 Application release Compose와 분리된 `infra/production-metrics-proxy` sibling project로 운영한다. 이 project는 `pawcycle-production-edge`와 `pawcycle-production-app`을 external network로만 참조하고 backend service name `backend:8080`에 연결한다. Production Application Compose는 OCI Managed MySQL을 소유하지 않고 `backend`/`frontend`/`proxy`만 소유한다.
+현재 Production topology는 OCI `app01`의 Backend/Frontend/Nginx와 별도 OCI Managed MySQL이다. Production Application Compose는 `backend`, `frontend`, `proxy`만 소유하고 database lifecycle을 소유하지 않는다.
 
-Application release lifecycle이 metrics-proxy를 재기동하지 않으므로 metrics-proxy는 Docker embedded DNS resolver와 동적 upstream resolution을 사용한다. Backend container가 교체되어 `backend`의 IP가 바뀌어도 metrics-proxy를 recreate하지 않고 새 주소를 재해석할 수 있어야 한다.
+초기 Observability는 `app01` same-host Lean baseline으로 운영한다.
 
-Production host는 Backend `:8080`을 계속 host에 공개하지 않는다. 승인된 metrics 경계만 standalone `metrics-proxy`에 연결하고, proxy는 `/actuator/prometheus`만 Backend에 전달하며 나머지 path는 거부한다.
+- Prometheus와 Grafana는 `infra/production-observability`의 별도 Compose project로 유지한다.
+- `metrics-proxy`는 `infra/production-metrics-proxy`의 sibling Compose project로 유지하고 Application release lifecycle과 독립적으로 관리한다.
+- Prometheus는 Application Docker `app` network에 연결하고 `metrics-proxy:9464` Docker-internal target을 scrape한다. metrics-proxy에는 host port를 publish하지 않는다.
+- metrics-proxy는 Backend service name `backend:8080`을 동적으로 resolve하고 `/actuator/prometheus`만 전달한다. 다른 path는 404로 거부한다.
+- Prometheus와 Grafana UI는 `127.0.0.1`에만 publish한다. Grafana admin user/password는 runtime 외부 file로만 주입한다.
+- Prometheus 30초 scrape, 7일·5GB retention, Prometheus/Grafana persistent volume과 세 개의 dashboard provisioning 계약은 유지한다.
 
-Prometheus는 30초 scrape, 7일·5GB retention과 persistent volume을 사용한다. Grafana와 Prometheus UI는 host loopback에만 bind하며, 운영자 접근은 승인된 host-local forwarding으로 한정한다. Grafana admin user/password는 runtime 외부 file로만 주입한다.
+별도 Observability Compute는 **Deferred — Evidence Triggered**다. 실제 적용 후 same-host overhead를 측정해 CPU·memory·disk·application HTTP latency/error-rate overhead가 확인되거나 monitoring failure-domain 분리가 요구될 때만 별도 Compute를 재검토한다. 이 결정은 지금 새 Compute, NSG/IAM, Managed Observability 또는 추가 비용을 승인하지 않는다.
 
-## 측정 근거와 trade-off
+app01은 1 OCPU / 6 GB이므로 초기 Compose는 기존 값을 확대하지 않고 Prometheus `384m`/`0.25 CPU`, Grafana `256m`/`0.15 CPU`, metrics-proxy `32m`/`0.05 CPU`의 보수적인 상한을 사용한다. 이 값은 성능 tuning 결과가 아니며, 실제 적용 후 OFF/ON calibration으로 재평가한다.
 
-- Production 기준은 2 vCPU, 약 1.9GiB RAM, `MemAvailable` 약 500MiB, swap 0이었다.
-- 동일 host의 관측 당시 MySQL 약 504MiB, Backend 309MiB, Frontend 121MiB, Proxy 8MiB를 사용했다.
-- 따라서 당시 AWS Production host에 Prometheus·Grafana full stack을 두는 선택은 memory headroom을 잠식하고 application과 같은 failure domain을 공유하므로 제외했다. 이 historical evidence는 OCI app01 same-host baseline을 금지하지 않는다.
-- 향후 Production host를 증설하거나 Observability를 별도 Compute로 분리하는 일은 OCI evidence와 별도 승인으로 결정한다.
-- OCI app01 대상의 고정 image manifest와 observability image boundary는 repository validator가 매번 preflight한다.
+## 측정 근거와 host metric 경계
 
-## 범위와 후속 결정
+현재 repository에는 `node_exporter`, cAdvisor 또는 별도 host metric collector가 없다. 초기 baseline은 app01 host-native read-only command와 Prometheus/Application HTTP signal로 CPU·memory·disk·latency/error-rate를 같은 조건의 OFF/ON window에서 비교한다. 지속적인 host metric series가 필요해지면 host `/proc`·`/sys` mount, 권한, image lifecycle과 추가 resource를 결정해야 하므로 **Decision Required — Evidence Triggered**로 남긴다.
 
-Managed Observability(AMP/Managed Grafana)와 Alerting은 이번 결정에서 제외한다. 실제 OCI network·IAM·Compute·Secret 생성과 Production Compose 실행은 별도 고위험 실제 운영 실행 승인에서만 한다.
+## 과거 AWS 선택의 보존
 
-OCI Application의 release/deploy/rollback, health/smoke, HTTPS/certificate, Managed MySQL과 migration boundary는 observability lifecycle 밖에 둔다. Observability는 OCI Application source/control checkout `/opt/pawcycle/source/repo`를 기준으로 승인된 SHA의 detached artifact만 사용하며, Application release marker file을 만들거나 요구하지 않는다. 적용 전후에는 Application container ID, image ref/ID, Compose project/service label과 required network attachment를 read-only로 비교하고 불일치하면 fail-closed 한다. Application release lifecycle은 metrics-proxy를 recreate·wait·stop하지 않는다. metrics-proxy 장애는 해당 scrape 경로만 실패시킬 수 있으며 DB·volume·migration state를 변경하는 경로를 갖지 않는다.
+과거에는 Production application과 분리된 arm64 `t4g.small` Observability EC2, Security Group ingress, SSM port forwarding, separate metrics-proxy host를 선택했다. 당시 기준은 2 vCPU, 약 1.9 GiB RAM, `MemAvailable` 약 500 MiB, swap 0이었고, MySQL 약 504 MiB·Backend 309 MiB·Frontend 121 MiB·Proxy 8 MiB 사용량 evidence에 따라 same-host full stack을 제외했다.
+
+이 선택과 측정은 당시 AWS resource evidence에 따른 역사적 결정으로 보존한다. 현재 OCI 실행 지침으로 재사용하거나 잘못된 결정으로 소급 재작성하지 않는다.
+
+## 범위와 불변식
+
+Managed Observability, Alertmanager, centralized logging/Loki, OpenTelemetry 전환과 application/JVM/DB tuning은 이번 결정에서 제외한다. 실제 OCI network, secret, database, Compute와 Compose 실행은 별도 고위험 운영 승인에서만 수행한다.
+
+Observability 변경 또는 rollback은 Backend/Frontend/Proxy release identity, Flyway/migration state, OCI Managed MySQL lifecycle/data, HTTPS runtime과 certificate renewal state를 변경하지 않는다. Observability는 Application source/control checkout `/opt/pawcycle/source/repo`에서 승인된 SHA의 detached artifact만 사용하며 `current-sha`/`previous-sha`를 읽거나 생성·backfill하거나 요구하지 않는다. 적용 전후에는 Application container ID, image ref/ID, Compose project/service identity와 required network attachment를 read-only로 비교하고 불일치하면 fail-closed 한다. Observability failure가 발생하면 Observability Compose와 standalone metrics-proxy만 복구 대상으로 삼는다.

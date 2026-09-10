@@ -11,7 +11,15 @@ cat >"$TEST_ROOT/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$1" == ps ]]; then
   [[ "${FAKE_DOCKER_QUERY:-ok}" == fail ]] && exit 1
-  [[ "${FAKE_BACKEND_STATUS:-healthy}" == missing ]] || printf 'backend-id\n'
+  if [[ "$*" == *'service=metrics-proxy'* ]]; then
+    [[ "${FAKE_METRICS_PROXY_STATUS:-healthy}" == missing ]] || printf 'metrics-proxy-id\n'
+  else
+    [[ "${FAKE_BACKEND_STATUS:-healthy}" == missing ]] || printf 'backend-id\n'
+  fi
+  exit 0
+fi
+if [[ "$1" == exec ]]; then
+  [[ "${FAKE_METRICS_EXEC_FAIL:-false}" == true ]] && exit 1
   exit 0
 fi
 [[ "${FAKE_DOCKER_QUERY:-ok}" == inspect-fail ]] && exit 1
@@ -50,11 +58,12 @@ make_state() {
 
 run_case() {
   local name="$1" backend="$2" docker_query="$3" api="$4" metrics="$5" prometheus="$6" expected="$7"
-  local case_dir production_code final_code api_curl_fail=false metrics_curl_fail=false held_lock_fd=""
+  local case_dir production_code final_code api_curl_fail=false metrics_exec_fail=false metrics_proxy_status=healthy held_lock_fd=""
   case_dir="$TEST_ROOT/$name"
   mkdir -p "$case_dir"
   make_state "$case_dir/state"
   case "$name" in
+    missing-metrics-proxy) metrics_proxy_status=missing ;;
     deployment-in-progress) printf '%s\n' 'transition' >"$case_dir/state/release-state-transition" ;;
     deployment-lock-held)
       : >"$case_dir/state/deploy.lock"
@@ -63,15 +72,19 @@ run_case() {
       flock --nonblock "$held_lock_fd"
       ;;
     api-transfer-failure) api_curl_fail=true ;;
-    metrics-transfer-failure) metrics_curl_fail=true ;;
+    metrics-transfer-failure) metrics_exec_fail=true ;;
   esac
 
   if PATH="$TEST_ROOT/bin:$PATH" FAKE_BACKEND_STATUS="$backend" FAKE_DOCKER_QUERY="$docker_query" \
-    FAKE_API_STATUS="$api" FAKE_METRICS_STATUS="$metrics" FAKE_API_CURL_FAIL="$api_curl_fail" FAKE_METRICS_CURL_FAIL="$metrics_curl_fail" \
+    FAKE_API_STATUS="$api" FAKE_METRICS_EXEC_FAIL="$metrics_exec_fail" FAKE_METRICS_PROXY_STATUS="$metrics_proxy_status" FAKE_API_CURL_FAIL="$api_curl_fail" \
     bash "$DIAGNOSTIC" --scope production --state-dir "$case_dir/state" >"$case_dir/production"; then
     production_code=0
   else
     production_code=$?
+  fi
+  if grep -Eq 'current_sha|previous_sha|active_mysql_volume' "$case_dir/production"; then
+    printf 'OCI diagnostic must not emit retired release-state fields\n' >&2
+    exit 1
   fi
   [[ "$production_code" == 0 || "$production_code" == 1 ]]
   if [[ -n "$held_lock_fd" ]]; then exec {held_lock_fd}<&-; fi
@@ -85,10 +98,6 @@ run_case() {
     final_code=0
   else
     final_code=$?
-  fi
-  if grep -Eq 'current_sha|previous_sha|active_mysql_volume' "$case_dir/production"; then
-    printf 'OCI diagnostic must not emit retired release-state fields\n' >&2
-    exit 1
   fi
   grep -qx "status=$expected" "$case_dir/final"
   if [[ "$expected" == NORMAL ]]; then [[ "$final_code" == 0 ]]; else [[ "$final_code" != 0 ]]; fi
@@ -104,6 +113,7 @@ run_case prometheus-parse-failure healthy ok 200 200 parse-fail UNKNOWN
 run_case prometheus-request-failure healthy ok 200 200 request-fail UNKNOWN
 run_case prometheus-target-missing healthy ok 200 200 missing UNKNOWN
 run_case prometheus-target-duplicate healthy ok 200 200 duplicate UNKNOWN
+run_case missing-metrics-proxy healthy ok 200 200 up DEGRADED
 run_case deployment-in-progress healthy ok 200 200 up UNKNOWN
 run_case deployment-lock-held healthy ok 200 200 up UNKNOWN
 run_case api-transfer-failure healthy ok 200 200 up DEGRADED
@@ -122,19 +132,7 @@ for option in --prometheus-url --https-origin --state-dir; do
   grep -q '^usage:' "$TEST_ROOT/usage-error"
 done
 
-make_state "$TEST_ROOT/invalid-port-state"
-if PATH="$TEST_ROOT/bin:$PATH" PAWCYCLE_METRICS_PORT='9464@external.example:80' \
-  bash "$DIAGNOSTIC" --scope production --state-dir "$TEST_ROOT/invalid-port-state" \
-    >"$TEST_ROOT/invalid-port-out" 2>"$TEST_ROOT/invalid-port-error"; then
-  printf 'invalid metrics port unexpectedly succeeded\n' >&2
-  exit 1
-else
-  code=$?
-fi
-[[ "$code" == 64 ]]
-grep -q '^usage:' "$TEST_ROOT/invalid-port-error"
-
-if grep -E 'docker (compose|start|stop|restart|rm)|aws |flyway|mysql |(^|[[:space:]])flock([[:space:]]|$)' "$DIAGNOSTIC"; then
+if grep -E 'docker (compose|start|stop|restart|rm)|aws |flyway|mysql |active[-_]mysql|(^|[[:space:]])flock([[:space:]]|$)' "$DIAGNOSTIC"; then
   printf 'diagnostic must remain read-only and must not acquire the Production release lock\n' >&2
   exit 1
 fi

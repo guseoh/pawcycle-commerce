@@ -6,9 +6,11 @@ STATE_DIR="${PAWCYCLE_STATE_DIR:-/opt/pawcycle/state}"
 PROJECT_NAME="${PAWCYCLE_PRODUCTION_PROJECT:-pawcycle-production}"
 HTTPS_ORIGIN="${PAWCYCLE_HTTPS_ORIGIN:-}"
 PROMETHEUS_URL="${PAWCYCLE_PROMETHEUS_URL:-}"
+METRICS_PROXY_PROJECT="${PAWCYCLE_METRICS_PROXY_PROJECT:-pawcycle-production-metrics-proxy}"
+METRICS_PROXY_SERVICE="${PAWCYCLE_METRICS_PROXY_SERVICE:-metrics-proxy}"
 PRODUCTION_RESULT=""
 SCOPE=""
-METRICS_PORT="${PAWCYCLE_METRICS_PORT:-9464}"
+METRICS_INTERNAL_PORT=9464
 CONNECT_TIMEOUT_SECONDS="${PAWCYCLE_DIAGNOSTIC_CONNECT_TIMEOUT_SECONDS:-5}"
 MAX_TIME_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_TIME_SECONDS:-10}"
 MAX_SNAPSHOT_AGE_SECONDS="${PAWCYCLE_DIAGNOSTIC_MAX_SNAPSHOT_AGE_SECONDS:-120}"
@@ -97,11 +99,11 @@ production_assessment() {
 
 run_production() {
   local backend_ids backend_status docker_query api_status metrics_status
+  local metrics_proxy_ids metrics_proxy_id
   local assessment generated_at_epoch
   local release_coordination_before release_coordination_after release_coordination
 
   [[ -z "$PROMETHEUS_URL" && -z "$PRODUCTION_RESULT" ]] || usage
-  [[ "$METRICS_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$METRICS_PORT >= 1 && 10#$METRICS_PORT <= 65535)) || usage
   if [[ -z "$HTTPS_ORIGIN" && -f "$STATE_DIR/https-domain" && ! -L "$STATE_DIR/https-domain" ]]; then
     HTTPS_ORIGIN="https://$(<"$STATE_DIR/https-domain")"
   fi
@@ -128,7 +130,25 @@ run_production() {
   fi
 
   api_status="$(http_code "$HTTPS_ORIGIN/api/products")"
-  metrics_status="$(http_code "http://127.0.0.1:${METRICS_PORT}/actuator/prometheus")"
+  metrics_proxy_ids=""
+  if ! metrics_proxy_ids="$(docker ps --all --quiet \
+    --filter "label=com.docker.compose.project=$METRICS_PROXY_PROJECT" \
+    --filter "label=com.docker.compose.service=$METRICS_PROXY_SERVICE" 2>/dev/null)"; then
+    metrics_status=000
+  else
+    mapfile -t metrics_proxy_id_list < <(printf '%s\n' "$metrics_proxy_ids" | sed '/^$/d')
+    if ((${#metrics_proxy_id_list[@]} != 1)); then
+      metrics_status=000
+    else
+      metrics_proxy_id="${metrics_proxy_id_list[0]}"
+      if docker exec "$metrics_proxy_id" wget --quiet --output-document=/dev/null \
+        "http://127.0.0.1:${METRICS_INTERNAL_PORT}/actuator/prometheus" >/dev/null 2>&1; then
+        metrics_status=200
+      else
+        metrics_status=000
+      fi
+    fi
+  fi
 
   release_coordination_after="$(release_coordination_status)"
 

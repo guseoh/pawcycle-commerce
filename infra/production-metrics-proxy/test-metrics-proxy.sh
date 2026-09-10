@@ -5,16 +5,13 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME="pawcycle-metrics-proxy-validation-${RANDOM}-$$"
 APP_NETWORK="pawcycle-metrics-proxy-validation-app-${RANDOM}-$$"
-EDGE_NETWORK="pawcycle-metrics-proxy-validation-edge-${RANDOM}-$$"
 BACKEND_A_NAME="${PROJECT_NAME}-backend-a"
 BACKEND_B_NAME="${PROJECT_NAME}-backend-b"
-METRICS_PORT="19464"
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 TEMP_DIR="$(mktemp -d)"
 
 compose_validation() {
-  PAWCYCLE_APP_NETWORK="$APP_NETWORK" PAWCYCLE_EDGE_NETWORK="$EDGE_NETWORK" \
-    PAWCYCLE_METRICS_PORT="$METRICS_PORT" \
+  PAWCYCLE_APP_NETWORK="$APP_NETWORK" \
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
@@ -24,7 +21,6 @@ cleanup() {
   compose_validation down --remove-orphans >/dev/null 2>&1
   docker rm --force "$BACKEND_A_NAME" "$BACKEND_B_NAME" >/dev/null 2>&1
   docker network inspect "$APP_NETWORK" >/dev/null 2>&1 && docker network rm "$APP_NETWORK" >/dev/null 2>&1
-  docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 && docker network rm "$EDGE_NETWORK" >/dev/null 2>&1
   rm -rf "$TEMP_DIR"
   return "$status"
 }
@@ -51,7 +47,8 @@ wait_metric() {
   local attempt
 
   for attempt in $(seq 1 30); do
-    actual="$(curl --fail --silent --show-error "http://127.0.0.1:${METRICS_PORT}/actuator/prometheus" 2>/dev/null || true)"
+    actual="$(docker run --rm --network "$APP_NETWORK" --entrypoint wget "$PROXY_IMAGE" \
+      --quiet --output-document=- http://metrics-proxy:9464/actuator/prometheus 2>/dev/null || true)"
     if [[ "$actual" == "$expected" ]]; then
       return 0
     fi
@@ -61,18 +58,26 @@ wait_metric() {
   return 1
 }
 
+internal_http_code() {
+  local path="$1"
+  docker run --rm --network "$APP_NETWORK" --entrypoint sh "$PROXY_IMAGE" -ec '
+    set +e
+    wget -S -O /dev/null "http://metrics-proxy:9464$1" 2>&1 |
+      awk '\''$1 == "HTTP/1.1" { code=$2 } END { print code == "" ? "000" : code }'\''
+  ' sh "$path" | tail -n 1
+}
+
 docker network create "$APP_NETWORK" >/dev/null
-docker network create "$EDGE_NETWORK" >/dev/null
 compose_validation config --quiet
 compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
-python3 - "$TEMP_DIR/compose-model.json" "$APP_NETWORK" "$EDGE_NETWORK" "$METRICS_PORT" "$PROXY_IMAGE" <<'PY'
+python3 - "$TEMP_DIR/compose-model.json" "$APP_NETWORK" "$PROXY_IMAGE" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-expected_app, expected_edge, expected_port, expected_image = sys.argv[2:6]
+expected_app, expected_image = sys.argv[2:4]
 services = model["services"]
 assert set(services) == {"metrics-proxy"}, "standalone project must own only metrics-proxy"
 proxy = services["metrics-proxy"]
@@ -86,19 +91,16 @@ assert "no-new-privileges:true" in security_opts, "no-new-privileges must remain
 assert not proxy.get("depends_on"), "standalone metrics-proxy must not own Application lifecycle"
 
 ports = proxy.get("ports", [])
-assert len(ports) == 1, "metrics-proxy must publish exactly one host port"
-assert ports[0].get("target") == 9464, "metrics-proxy container port must remain 9464"
-assert str(ports[0].get("published")) == expected_port, "metrics-proxy published test port drifted"
+assert not ports, "metrics-proxy must not publish a host port"
 
 mounts = {mount["target"]: mount for mount in proxy.get("volumes", [])}
 config_mount = mounts.get("/etc/nginx/conf.d/default.conf")
 assert config_mount and config_mount.get("read_only") is True, "metrics-proxy config mount must remain read-only"
 
 service_networks = proxy.get("networks", {})
-assert set(service_networks) == {"app", "edge"}, "metrics-proxy must use only app and edge networks"
+assert set(service_networks) == {"app"}, "metrics-proxy must use only the Application network"
 networks = model["networks"]
 assert networks["app"].get("external") is True and networks["app"]["name"] == expected_app, "app network must remain external"
-assert networks["edge"].get("external") is True and networks["edge"]["name"] == expected_edge, "edge network must remain external"
 
 health = " ".join(proxy.get("healthcheck", {}).get("test", []))
 assert "/actuator/prometheus" in health, "metrics-proxy healthcheck must use the metrics endpoint"
@@ -112,9 +114,10 @@ grep -Fq 'return 404' "$SCRIPT_DIR/metrics-proxy.conf"
 start_backend_fixture "$BACKEND_A_NAME" 1
 compose_validation up --detach --wait --wait-timeout 60
 wait_metric 'fixture_metric 1'
-[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${METRICS_PORT}/api/products")" == "404" ]]
+[[ "$(internal_http_code /api/products)" == "404" ]]
 PROXY_ID_BEFORE="$(compose_validation ps --quiet metrics-proxy)"
 [[ -n "$PROXY_ID_BEFORE" ]]
+[[ -z "$(docker port "$PROXY_ID_BEFORE" 9464/tcp 2>/dev/null)" ]]
 
 docker rm --force "$BACKEND_A_NAME" >/dev/null
 start_backend_fixture "$BACKEND_B_NAME" 2
@@ -126,6 +129,5 @@ docker inspect "$BACKEND_B_NAME" --format '{{.State.Running}}' | grep -qx true
 compose_validation down --remove-orphans >/dev/null
 docker inspect "$BACKEND_B_NAME" --format '{{.State.Running}}' | grep -qx true
 docker network inspect "$APP_NETWORK" >/dev/null
-docker network inspect "$EDGE_NETWORK" >/dev/null
 
-printf 'Standalone metrics-proxy hardening, dynamic backend DNS, lifecycle, and endpoint contract passed\n'
+printf 'Same-host internal metrics-proxy hardening, dynamic backend DNS, lifecycle, and endpoint contract passed\n'
