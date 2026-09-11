@@ -48,9 +48,9 @@ bash infra/production/test-production-compose.sh
   ```
 
 - Prometheus/Grafana named volume은 기존 값을 유지하고 일반 `down`에서 삭제하지 않는다.
-- Prometheus, Grafana, metrics-proxy image reference는 repository의 pinned digest와 일치해야 하며 `linux/amd64` image인지 확인한다. image가 없거나 digest/platform을 확인할 수 없으면 `--pull never` 경계에서 중단한다.
+- Prometheus, Grafana, metrics-proxy image reference는 repository의 pinned digest와 일치해야 한다. local image가 없을 때만 정확한 `@sha256` reference를 pull하고 `linux/amd64`와 RepoDigest를 확인한 뒤 실제 Compose 적용은 `--pull never`로 수행한다.
 
-Application control checkout `/opt/pawcycle/source/repo`의 HEAD·working tree를 관측성 적용 때문에 checkout/pull/reset하지 않는다. 승인 SHA object가 해당 checkout에 없으면 실행을 중단하고 별도 승인된 source 준비를 요청한다.
+Application control checkout `/opt/pawcycle/source/repo`의 HEAD·working tree를 관측성 적용 때문에 checkout/pull/reset/rebase하지 않는다. 승인 merge SHA object 준비를 위한 `git fetch --prune origin main`만 허용하며, fetch 전후 HEAD와 working tree 상태가 동일해야 한다. fetch 후에도 exact 승인 SHA object가 없으면 중단한다.
 
 ## 안전한 실행 source 준비
 
@@ -70,7 +70,15 @@ SOURCE_ROOT="/opt/pawcycle/observability-source/$APPROVED_SHA"
   printf 'invalid approved merge SHA\n' >&2
   exit 64
 }
+
+APP_HEAD_BEFORE="$(sudo git -C "$APP_CONTROL" rev-parse HEAD)"
+APP_STATUS_BEFORE="$(sudo git -C "$APP_CONTROL" status --porcelain)"
+sudo git -C "$APP_CONTROL" fetch --prune origin main
+
+test "$(sudo git -C "$APP_CONTROL" rev-parse HEAD)" = "$APP_HEAD_BEFORE"
+test "$(sudo git -C "$APP_CONTROL" status --porcelain)" = "$APP_STATUS_BEFORE"
 sudo git -C "$APP_CONTROL" cat-file -e "${APPROVED_SHA}^{commit}"
+
 sudo docker network inspect pawcycle-production-app >/dev/null
 sudo test -f /opt/pawcycle/runtime/observability/grafana-admin-user
 sudo test -f /opt/pawcycle/runtime/observability/grafana-admin-password
@@ -83,7 +91,14 @@ PROMETHEUS_IMAGE='prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e5
 GRAFANA_IMAGE='grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43'
 METRICS_PROXY_IMAGE='nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1'
 for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE" "$METRICS_PROXY_IMAGE"; do
+  [[ "$image" =~ @sha256:[0-9a-f]{64}$ ]] || {
+    printf 'image is not pinned by sha256 digest: %s\n' "$image" >&2
+    exit 1
+  }
   expected_digest="${image##*@}"
+  if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
+    sudo docker pull "$image"
+  fi
   test "$(sudo docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = 'linux/amd64'
   sudo docker image inspect "$image" --format '{{range .RepoDigests}}{{println .}}{{end}}' |
     grep -Fq "@$expected_digest"
