@@ -16,6 +16,8 @@ METRICS_PROXY_CONFIG = ROOT / "infra" / "production-metrics-proxy" / "metrics-pr
 GRAFANA_DATASOURCE = ROOT / "infra" / "production-observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
 OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-boundary.md"
 OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
+BACKEND_DIAGNOSTIC = PRODUCTION / "diagnose-backend-state.sh"
+APPLICATION_IDENTITY_VERIFIER = PRODUCTION / "verify-observability-application-identity.sh"
 
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
@@ -86,6 +88,8 @@ def validate_observability_contract() -> None:
     metrics_proxy = METRICS_PROXY_COMPOSE.read_text(encoding="utf-8")
     metrics_proxy_config = METRICS_PROXY_CONFIG.read_text(encoding="utf-8")
     datasource = GRAFANA_DATASOURCE.read_text(encoding="utf-8")
+    diagnostic = BACKEND_DIAGNOSTIC.read_text(encoding="utf-8")
+    identity_verifier = APPLICATION_IDENTITY_VERIFIER.read_text(encoding="utf-8")
 
     for marker in (
         "OCI `app01`",
@@ -107,6 +111,9 @@ def validate_observability_contract() -> None:
         "/opt/pawcycle/metrics-proxy-control",
         "/opt/pawcycle/observability-control",
         "chown -R",
+        "/opt/pawcycle/control",
+        "current-sha",
+        "previous-sha",
     ):
         require(retired not in runbook, f"retired observability execution premise remains in OPS-OBS-001: {retired}")
 
@@ -115,7 +122,9 @@ def validate_observability_contract() -> None:
         "archive --format=tar",
         "tar -x -C \"$SOURCE_ROOT\"",
         "install -d -o opc -g opc -m 0750",
+        "/opt/pawcycle/source/repo",
         "/opt/pawcycle/observability-source/$APPROVED_SHA",
+        "verify-observability-application-identity.sh",
         "chmod -R a-w \"$SOURCE_ROOT\"",
         "/opt/pawcycle/runtime/observability/grafana-admin-user",
         "/opt/pawcycle/runtime/observability/grafana-admin-password",
@@ -140,6 +149,13 @@ def validate_observability_contract() -> None:
     require("@sha256:" in runbook and "RepoDigests" in runbook, "pinned image digest verification is missing")
     require("linux/amd64" in runbook, "current OCI amd64 runtime verification is missing")
     require("--scope production" in runbook and "--scope observability" in runbook, "same-host backend diagnostic flow is missing")
+    require("Application runtime identity" in runbook, "Application runtime identity gate is missing")
+    require("snapshot > \"$RUNTIME_IDENTITY\"" in runbook, "runtime identity snapshot materialization is missing")
+    require("format=oci-application-runtime-identity-v1" in identity_verifier, "OCI runtime identity verifier format is missing")
+    require("com.docker.compose.project" in identity_verifier and "com.docker.compose.service" in identity_verifier, "Compose identity labels are not verified")
+    require("NetworkID" in identity_verifier, "expected Docker network attachment identity is not verified")
+    for retired in ("current-sha", "previous-sha", "/opt/pawcycle/control"):
+        require(retired not in diagnostic, f"retired Application release-state dependency remains in diagnose-backend-state.sh: {retired}")
 
 
 def main() -> None:

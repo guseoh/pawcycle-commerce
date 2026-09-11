@@ -50,7 +50,7 @@ bash infra/production/test-production-compose.sh
 - Prometheus/Grafana named volume은 기존 값을 유지하고 일반 `down`에서 삭제하지 않는다.
 - Prometheus, Grafana, metrics-proxy image reference는 repository의 pinned digest와 일치해야 하며 `linux/amd64` image인지 확인한다. image가 없거나 digest/platform을 확인할 수 없으면 `--pull never` 경계에서 중단한다.
 
-Application control checkout `/opt/pawcycle/control`의 HEAD·working tree를 관측성 적용 때문에 checkout/pull/reset하지 않는다. 승인 SHA object가 해당 checkout에 없으면 실행을 중단하고 별도 승인된 source 준비를 요청한다.
+Application control checkout `/opt/pawcycle/source/repo`의 HEAD·working tree를 관측성 적용 때문에 checkout/pull/reset하지 않는다. 승인 SHA object가 해당 checkout에 없으면 실행을 중단하고 별도 승인된 source 준비를 요청한다.
 
 ## 안전한 실행 source 준비
 
@@ -62,7 +62,7 @@ Application control checkout `/opt/pawcycle/control`의 HEAD·working tree를 �
 set -Eeuo pipefail
 umask 077
 
-APP_CONTROL=/opt/pawcycle/control
+APP_CONTROL=/opt/pawcycle/source/repo
 APPROVED_SHA='<approved-merge-sha>'
 SOURCE_ROOT="/opt/pawcycle/observability-source/$APPROVED_SHA"
 
@@ -104,7 +104,8 @@ else
   sudo install -d -o opc -g opc -m 0750 "$SOURCE_ROOT"
   test -z "$(find "$SOURCE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)"
   sudo git -C "$APP_CONTROL" archive --format=tar "$APPROVED_SHA" \
-    infra/production-metrics-proxy infra/production-observability | \
+    infra/production-metrics-proxy infra/production-observability \
+    infra/production/verify-observability-application-identity.sh | \
     tar -x -C "$SOURCE_ROOT"
   printf '%s\n' "$APPROVED_SHA" > "$SOURCE_ROOT/.approved-sha"
   chmod 400 "$SOURCE_ROOT/.approved-sha"
@@ -117,14 +118,26 @@ test -r "$SOURCE_ROOT/infra/production-metrics-proxy/compose.yaml"
 test -r "$SOURCE_ROOT/infra/production-metrics-proxy/metrics-proxy.conf"
 test -r "$SOURCE_ROOT/infra/production-observability/compose.yaml"
 test -r "$SOURCE_ROOT/infra/production-observability/prometheus/prometheus.yml.tpl"
+test -r "$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
 test ! -e "$SOURCE_ROOT/.git"
+IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
+if ! EXPECTED_IDENTITY_SHA256="$(sudo git -C "$APP_CONTROL" show \
+  "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" |
+  sha256sum | awk '{print $1}')"; then
+  printf 'approved identity verifier checksum source unavailable; stopping\n' >&2
+  exit 1
+fi
+if ! test "$(sha256sum "$IDENTITY_SCRIPT" | awk '{print $1}')" = "$EXPECTED_IDENTITY_SHA256"; then
+  printf 'approved identity verifier checksum mismatch; stopping\n' >&2
+  exit 1
+fi
 ```
 
 `SOURCE_ROOT`가 존재하지만 marker가 없거나 source 일부가 writable이면 partial materialization으로 간주하고 실행하지 않는다. 실행 중 session이 끊겨도 이전 shell의 local variable로 재개하지 않는다. 새 session에서 read-only container 상태를 확인한 뒤 아래 rollback을 수행하거나, source marker와 application identity를 처음부터 다시 확인하고 전체 self-contained block을 재실행한다.
 
 ## Same-host 적용
 
-다음 두 적용 블록은 각각 짧고 독립적인 실행 단위다. 각 블록은 Application의 세 container ID·image identity와 `current-sha`/`previous-sha`를 적용 전후 비교한다. 이 비교가 실패하면 다음 블록으로 진행하지 않고 rollback으로 이동한다. Application `backend`, `frontend`, `proxy`와 Managed MySQL에는 Compose 명령을 실행하지 않는다.
+다음 두 적용 블록은 각각 짧고 독립적인 실행 단위다. 각 블록은 Application의 container ID·image ID·configured image reference·Compose project/service label·expected Docker network attachment를 적용 전후 비교한다. 이 비교가 실패하면 다음 블록으로 진행하지 않고 rollback으로 이동한다. Application `backend`, `frontend`, `proxy`와 Managed MySQL에는 Compose 명령을 실행하지 않는다.
 
 ### 1. Metrics proxy
 
@@ -137,16 +150,16 @@ test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
 test ! -w "$SOURCE_ROOT"
 
-APP_CONTAINER_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-APP_IMAGE_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Image}}={{.Config.Image}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-CURRENT_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/current-sha)"
-PREVIOUS_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)"
+IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
+RUNTIME_IDENTITY="$(mktemp /tmp/pawcycle-application-runtime-identity.XXXXXX)"
+trap 'rm -f -- "$RUNTIME_IDENTITY"' EXIT
+if ! sudo bash "$IDENTITY_SCRIPT" snapshot > "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot failed; stopping before metrics-proxy mutation\n' >&2
+  exit 1
+fi
+chmod 600 "$RUNTIME_IDENTITY"
+sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"
 
 sudo env PAWCYCLE_APP_NETWORK=pawcycle-production-app \
   docker compose \
@@ -159,7 +172,12 @@ sudo env PAWCYCLE_APP_NETWORK=pawcycle-production-app \
   --project-name pawcycle-production-metrics-proxy \
   --project-directory "$SOURCE_ROOT/infra/production-metrics-proxy" \
   --file "$SOURCE_ROOT/infra/production-metrics-proxy/compose.yaml" \
-  up --detach --wait --wait-timeout 60 --pull never --remove-orphans
+  up --detach --no-deps --wait --wait-timeout 60 --pull never --remove-orphans
+
+if ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity changed during metrics-proxy apply; failing closed\n' >&2
+  exit 1
+fi
 
 METRICS_PROXY_ID="$(sudo docker ps --quiet \
   --filter label=com.docker.compose.project=pawcycle-production-metrics-proxy \
@@ -169,18 +187,6 @@ test -z "$(sudo docker port "$METRICS_PROXY_ID" 9464/tcp)"
 sudo docker exec "$METRICS_PROXY_ID" wget --quiet --output-document=/dev/null \
   http://127.0.0.1:9464/actuator/prometheus
 
-APP_CONTAINER_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-APP_IMAGE_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Image}}={{.Config.Image}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-test "$APP_CONTAINER_IDS_AFTER" = "$APP_CONTAINER_IDS_BEFORE"
-test "$APP_IMAGE_IDS_AFTER" = "$APP_IMAGE_IDS_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/current-sha)" = "$CURRENT_SHA_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)" = "$PREVIOUS_SHA_BEFORE"
 ```
 
 ### 2. Prometheus and Grafana
@@ -196,16 +202,16 @@ test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
 test ! -w "$SOURCE_ROOT"
 
-APP_CONTAINER_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-APP_IMAGE_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Image}}={{.Config.Image}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-CURRENT_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/current-sha)"
-PREVIOUS_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)"
+IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
+RUNTIME_IDENTITY="$(mktemp /tmp/pawcycle-application-runtime-identity.XXXXXX)"
+trap 'rm -f -- "$RUNTIME_IDENTITY"' EXIT
+if ! sudo bash "$IDENTITY_SCRIPT" snapshot > "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot failed; stopping before Observability mutation\n' >&2
+  exit 1
+fi
+chmod 600 "$RUNTIME_IDENTITY"
+sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"
 
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
@@ -226,20 +232,13 @@ sudo env \
   --project-name pawcycle-production-observability \
   --project-directory "$SOURCE_ROOT/infra/production-observability" \
   --file "$SOURCE_ROOT/infra/production-observability/compose.yaml" \
-  up --detach --wait --wait-timeout 60 --pull never --remove-orphans
+  up --detach --no-deps --wait --wait-timeout 60 --pull never --remove-orphans
 
-APP_CONTAINER_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-APP_IMAGE_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Image}}={{.Config.Image}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-test "$APP_CONTAINER_IDS_AFTER" = "$APP_CONTAINER_IDS_BEFORE"
-test "$APP_IMAGE_IDS_AFTER" = "$APP_IMAGE_IDS_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/current-sha)" = "$CURRENT_SHA_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)" = "$PREVIOUS_SHA_BEFORE"
+if ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity changed during Observability apply; failing closed\n' >&2
+  exit 1
+fi
+
 ```
 
 `docker compose`에는 `--project-directory`와 `--file`을 명시해 현재 directory와 shell-local `cd`에 의존하지 않는다. `--pull never`는 검증한 pinned image 이외의 pull을 허용하지 않는다.
@@ -302,7 +301,7 @@ Prometheus target `up`은 Docker-internal `metrics-proxy:9464/actuator/prometheu
 2. `Runtime`: process CPU, JVM heap, GC pause, threads, Hikari active/idle/pending/max
 3. `PawCycle Operations`: reconciliation, subscription automation, idempotency, commerce pending
 
-Application container ID·image identity와 `current-sha`/`previous-sha`는 각 적용 블록에서 preflight와 postflight가 동일한지 확인한다. 이 확인은 dashboard 데이터가 정상이라는 뜻일 뿐 Production Verified 판정을 대체하지 않는다.
+Application runtime identity는 각 적용 블록에서 preflight와 postflight가 동일한지 확인한다. 이 확인은 dashboard 데이터가 정상이라는 뜻일 뿐 Production Verified 판정을 대체하지 않는다.
 
 ## Same-host backend state diagnostic
 
@@ -311,7 +310,7 @@ Application container ID·image identity와 `current-sha`/`previous-sha`는 각 
 승인 merge SHA의 진단 script를 기존 control HEAD 변경 없이 `/tmp`에 materialize하고 SHA-256을 확인한다.
 
 ```bash
-APP_CONTROL=/opt/pawcycle/control
+APP_CONTROL=/opt/pawcycle/source/repo
 APPROVED_SHA='<approved-merge-sha>'
 [[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]
 
@@ -382,7 +381,7 @@ Host metric gap을 continuous series로 해결하려면 `/proc`·`/sys` mount, �
 
 다음 중 하나라도 성립하면 적용을 중단하고 Application release, HTTPS, certificate, migration 또는 Managed MySQL을 조작하지 않는다.
 
-- Application container ID·image identity 또는 `current-sha`/`previous-sha`가 preflight와 다르다.
+- Application runtime identity snapshot이 preflight와 다르다.
 - Application Compose가 `backend`/`frontend`/`proxy` 외 service를 소유하거나 Backend `:8080` host publish가 보인다.
 - `pawcycle-production-app` network가 없거나 external network 계약이 다르다.
 - metrics-proxy가 host port를 publish하거나 endpoint-only/동적 DNS 확인에 실패한다.
