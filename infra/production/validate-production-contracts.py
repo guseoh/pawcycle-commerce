@@ -11,6 +11,7 @@ RUNBOOKS = ROOT / "docs" / "runbook"
 ARCHITECTURE = ROOT / "docs" / "architecture" / "production-operations-overview.md"
 VALIDATOR = Path(__file__).resolve()
 OBSERVABILITY_COMPOSE = ROOT / "infra" / "production-observability" / "compose.yaml"
+OBSERVABILITY_VALIDATION = ROOT / "infra" / "production-observability" / "validate-observability.sh"
 METRICS_PROXY_COMPOSE = ROOT / "infra" / "production-metrics-proxy" / "compose.yaml"
 METRICS_PROXY_CONFIG = ROOT / "infra" / "production-metrics-proxy" / "metrics-proxy.conf"
 GRAFANA_DATASOURCE = ROOT / "infra" / "production-observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
@@ -86,6 +87,7 @@ def validate_observability_contract() -> None:
     architecture = OBSERVABILITY_ADR.read_text(encoding="utf-8")
     runbook = OBSERVABILITY_RUNBOOK.read_text(encoding="utf-8")
     observability = OBSERVABILITY_COMPOSE.read_text(encoding="utf-8")
+    observability_validation = OBSERVABILITY_VALIDATION.read_text(encoding="utf-8")
     metrics_proxy = METRICS_PROXY_COMPOSE.read_text(encoding="utf-8")
     metrics_proxy_config = METRICS_PROXY_CONFIG.read_text(encoding="utf-8")
     datasource = GRAFANA_DATASOURCE.read_text(encoding="utf-8")
@@ -144,7 +146,11 @@ def validate_observability_contract() -> None:
         require(marker in runbook, f"OCI observability execution marker is missing: {marker}")
 
     require("PAWCYCLE_APP_NETWORK" in observability, "Prometheus app network injection is missing")
-    require("observability:" in observability and "internal: true" in observability, "shared internal observability network is missing")
+    require("observability:" in observability and "driver: bridge" in observability, "shared observability bridge is missing")
+    require("internal: true" not in observability, "observability bridge must allow localhost port publishing")
+    require("docker network create --internal" in observability_validation, "observability validation must reproduce the Production internal app network")
+    require("127.0.0.1:${PROMETHEUS_PORT}/-/ready" in observability_validation, "Prometheus localhost publish regression is missing")
+    require("127.0.0.1:${GRAFANA_PORT}/api/health" in observability_validation, "Grafana localhost publish regression is missing")
     require("url: http://prometheus:9090" in datasource, "Grafana datasource must target Prometheus by service name")
     require("metrics-proxy:9464" in runbook, "same-host metrics target is missing from OPS-OBS-001")
     require("ports:" not in metrics_proxy, "metrics-proxy must not publish a host port")
