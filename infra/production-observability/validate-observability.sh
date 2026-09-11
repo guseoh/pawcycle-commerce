@@ -14,6 +14,9 @@ GRAFANA_VOLUME="pawcycle-$VALIDATION_ID-grafana-data"
 PROMETHEUS_PORT="$((20000 + RANDOM % 10000))"
 GRAFANA_PORT="$((30000 + RANDOM % 10000))"
 METRICS_TARGET="metrics-proxy:9464"
+CURL_CONNECT_TIMEOUT_SECONDS=2
+CURL_MAX_TIME_SECONDS=3
+STALL_PID=""
 
 compose_validation() {
   PAWCYCLE_METRICS_TARGET="$METRICS_TARGET" \
@@ -27,9 +30,20 @@ compose_validation() {
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
+bounded_curl() {
+  curl --fail --silent --output /dev/null \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$CURL_MAX_TIME_SECONDS" \
+    "$1"
+}
+
 cleanup() {
   local status=$?
   set +e
+  if [[ -n "$STALL_PID" ]]; then
+    kill "$STALL_PID" >/dev/null 2>&1
+    wait "$STALL_PID" >/dev/null 2>&1
+  fi
   compose_validation down --volumes --remove-orphans >/dev/null 2>&1
   docker network rm "$APP_NETWORK" >/dev/null 2>&1
   rm -rf -- "$TEMP_DIR"
@@ -42,7 +56,10 @@ printf 'validation-only-password\n' > "$TEMP_DIR/grafana-admin-password"
 chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
-docker network create "$APP_NETWORK" >/dev/null
+# Production의 pawcycle-production-app network와 같은 조건을 재현한다.
+# app network 자체는 internal로 유지하고, localhost publish 경로는 observability bridge가 제공해야 한다.
+docker network create --internal "$APP_NETWORK" >/dev/null
+test "$(docker network inspect "$APP_NETWORK" --format '{{.Internal}}')" = 'true'
 compose_validation config --quiet
 compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
@@ -56,6 +73,50 @@ if command -v python3 >/dev/null 2>&1; then
 else
   PYTHON=(py -3)
 fi
+
+# TCP 연결 후 응답을 보내지 않는 endpoint에서도 bounded_curl이 제한 시간 안에 실패해야 한다.
+STALL_PORT_FILE="$TEMP_DIR/stall-port"
+"${PYTHON[@]}" - "$STALL_PORT_FILE" <<'PY' &
+import socket
+import sys
+import time
+from pathlib import Path
+
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    Path(sys.argv[1]).write_text(str(server.getsockname()[1]), encoding="utf-8")
+    connection, _ = server.accept()
+    with connection:
+        time.sleep(30)
+PY
+STALL_PID=$!
+for attempt in $(seq 1 20); do
+  if [[ -s "$STALL_PORT_FILE" ]]; then
+    break
+  fi
+  if [[ "$attempt" -eq 20 ]]; then
+    printf 'Stalled HTTP fixture did not start\n' >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+STALL_PORT="$(cat "$STALL_PORT_FILE")"
+STALL_STARTED_AT="$(date +%s)"
+if bounded_curl "http://127.0.0.1:${STALL_PORT}/"; then
+  printf 'Bounded curl unexpectedly succeeded against a stalled endpoint\n' >&2
+  exit 1
+fi
+STALL_ELAPSED="$(( $(date +%s) - STALL_STARTED_AT ))"
+kill "$STALL_PID" >/dev/null 2>&1 || true
+wait "$STALL_PID" >/dev/null 2>&1 || true
+STALL_PID=""
+if (( STALL_ELAPSED > CURL_MAX_TIME_SECONDS + 2 )); then
+  printf 'Bounded curl exceeded the expected failure window: %ss\n' "$STALL_ELAPSED" >&2
+  exit 1
+fi
+
 "${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" "$APP_NETWORK" "$PROMETHEUS_PORT" "$GRAFANA_PORT" <<'PY'
 import json
 import sys
@@ -80,7 +141,8 @@ assert set(prometheus["networks"]) == {"app", "observability"}, "Prometheus must
 assert set(grafana["networks"]) == {"observability"}, "Grafana must stay isolated from the Application network"
 assert compose_model["networks"]["app"]["external"] is True, "Application Docker network must remain external"
 assert compose_model["networks"]["app"]["name"] == sys.argv[3], "Application Docker network name drifted"
-assert compose_model["networks"]["observability"].get("internal") is True, "Observability service network must remain internal"
+assert compose_model["networks"]["observability"].get("driver") == "bridge", "Observability service network must remain a normal bridge"
+assert compose_model["networks"]["observability"].get("internal") is not True, "Observability bridge must allow localhost port publishing"
 assert prometheus["cpus"] == 0.25 and prometheus["mem_limit"] == str(384 * 1024 * 1024), "Prometheus lean resource cap drifted"
 assert grafana["cpus"] == 0.15 and grafana["mem_limit"] == str(256 * 1024 * 1024), "Grafana lean resource cap drifted"
 assert len(prometheus["ports"]) == 1 and str(prometheus["ports"][0]["published"]) == sys.argv[4], "Prometheus UI port drifted"
@@ -114,13 +176,42 @@ compose_validation exec --no-TTY prometheus \
 
 OBSERVABILITY_NETWORK="${PROJECT_NAME}_observability"
 docker network inspect "$OBSERVABILITY_NETWORK" >/dev/null
+test "$(docker network inspect "$OBSERVABILITY_NETWORK" --format '{{.Internal}}')" = 'false'
 for attempt in $(seq 1 12); do
   if docker run --rm --network "$OBSERVABILITY_NETWORK" alpine:3.22 \
     wget --quiet --output-document=/dev/null http://prometheus:9090/-/ready; then
     break
   fi
   if [[ "$attempt" -eq 12 ]]; then
-    printf 'Prometheus was not reachable on the internal observability network\n' >&2
+    printf 'Prometheus was not reachable on the shared observability network\n' >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+PROMETHEUS_ID="$(compose_validation ps --quiet prometheus)"
+GRAFANA_ID="$(compose_validation ps --quiet grafana)"
+test -n "$PROMETHEUS_ID" && test -n "$GRAFANA_ID"
+test "$(docker port "$PROMETHEUS_ID" 9090/tcp)" = "127.0.0.1:${PROMETHEUS_PORT}"
+test "$(docker port "$GRAFANA_ID" 3000/tcp)" = "127.0.0.1:${GRAFANA_PORT}"
+
+for attempt in $(seq 1 12); do
+  if bounded_curl "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready"; then
+    break
+  fi
+  if [[ "$attempt" -eq 12 ]]; then
+    printf 'Prometheus localhost endpoint was not ready\n' >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+for attempt in $(seq 1 60); do
+  if bounded_curl "http://127.0.0.1:${GRAFANA_PORT}/api/health"; then
+    break
+  fi
+  if [[ "$attempt" -eq 60 ]]; then
+    printf 'Grafana localhost endpoint was not ready\n' >&2
     exit 1
   fi
   sleep 1
@@ -128,4 +219,4 @@ done
 
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
+printf 'Production observability Compose, bounded localhost publishing, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
