@@ -47,6 +47,8 @@ Observability 검증은 same-host network separation, Grafana→Prometheus datas
 
 ## Approved artifact bootstrap
 
+Before starting the first block, open a Bash shell session that remains persistent for this procedure. Run every Bash block below in order in the same persistent Bash shell session. Do not resume a later block from a fresh shell. If the Bash or SSH session is lost, stop; do not reconstruct or guess temporary paths or shell-local variables. If partial bootstrap or control worktrees remain, use the existing separately-approved control worktree cleanup boundary before restarting the procedure.
+
 첫 적용에서도 기존 control directory나 임의 latest image를 가정하지 않는다. `APPROVED_SHA`는 검토·병합이 끝난 40자리 merge commit SHA여야 한다. Application control checkout의 HEAD와 working tree는 변경하지 않고 fetch와 detached sibling worktree만 사용한다.
 
 ```bash

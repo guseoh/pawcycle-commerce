@@ -134,6 +134,18 @@ if grep -Eq '(/opt/pawcycle/control|current-sha|previous-sha)' "$RUNBOOK"; then
   exit 1
 fi
 grep -Fq '/opt/pawcycle/source/repo' "$RUNBOOK"
+for session_contract in \
+  'same persistent Bash shell session' \
+  'every Bash block below in order' \
+  'Do not resume a later block from a fresh shell' \
+  'If the Bash or SSH session is lost, stop' \
+  'do not reconstruct or guess temporary paths or shell-local variables' \
+  'separately-approved control worktree cleanup boundary'; do
+  if ! grep -Fq -- "$session_contract" "$RUNBOOK"; then
+    printf 'observability OCI runbook missing shell session contract: %s\n' "$session_contract" >&2
+    exit 1
+  fi
+done
 if grep -Eq 'Config\.Env|\.Config\.Env|docker compose.*(environment|env)' "$IDENTITY"; then
   printf 'runtime identity contract must not inspect or print container environment\n' >&2
   exit 1
