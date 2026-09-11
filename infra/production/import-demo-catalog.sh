@@ -74,11 +74,20 @@ decode_backend_env_value() {
 
   first="${raw:0:1}"
   last="${raw: -1}"
-  if [[ "$first" == "'" || "$last" == "'" ]]; then
-    [[ "$first" == "'" && "$last" == "'" && "${#raw}" -ge 2 ]] || die "Backend runtime contract is invalid"
-    DECODED_BACKEND_ENV_VALUE="${raw:1:${#raw}-2}"
-    DECODED_BACKEND_ENV_VALUE="${DECODED_BACKEND_ENV_VALUE//\\\'/\'}"
-  fi
+  case "$IDENTITY_MODE" in
+    release-state)
+      [[ "$first" == "'" && "$last" == "'" && "${#raw}" -ge 2 ]] || die "Backend runtime contract is invalid"
+      DECODED_BACKEND_ENV_VALUE="${raw:1:${#raw}-2}"
+      DECODED_BACKEND_ENV_VALUE="${DECODED_BACKEND_ENV_VALUE//\\\'/\'}"
+      ;;
+    running-container)
+      if [[ "$first" == "'" || "$last" == "'" ]]; then
+        [[ "$first" == "'" && "$last" == "'" && "${#raw}" -ge 2 ]] || die "Backend runtime contract is invalid"
+        DECODED_BACKEND_ENV_VALUE="${raw:1:${#raw}-2}"
+        DECODED_BACKEND_ENV_VALUE="${DECODED_BACKEND_ENV_VALUE//\\\'/\'}"
+      fi
+      ;;
+  esac
 }
 
 validate_backend_env() {
