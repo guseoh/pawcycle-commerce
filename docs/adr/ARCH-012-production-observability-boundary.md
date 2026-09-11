@@ -2,7 +2,7 @@
 
 ## 상태
 
-Accepted — `OPS-OCI-005` 저장소 변경. 이 ADR은 repository 계약만 변경하며 실제 OCI·Production 적용과 검증은 포함하지 않는다.
+Accepted — `OPS-OCI-005A` 저장소 변경. 이 ADR은 repository 계약만 변경하며 실제 OCI·Production 적용과 검증은 포함하지 않는다.
 
 ## 결정
 
@@ -35,4 +35,4 @@ app01은 1 OCPU / 6 GB이므로 초기 Compose는 기존 값을 확대하지 않
 
 Managed Observability, Alertmanager, centralized logging/Loki, OpenTelemetry 전환과 application/JVM/DB tuning은 이번 결정에서 제외한다. 실제 OCI network, secret, database, Compute와 Compose 실행은 별도 고위험 운영 승인에서만 수행한다.
 
-Observability 변경 또는 rollback은 Backend/Frontend/Proxy release identity, `current-sha`/`previous-sha`, Flyway/migration state, OCI Managed MySQL lifecycle/data, HTTPS runtime과 certificate renewal state를 변경하지 않는다. Observability failure가 발생하면 Observability Compose와 standalone metrics-proxy만 복구 대상으로 삼는다.
+Observability 변경 또는 rollback은 Backend/Frontend/Proxy release identity, Flyway/migration state, OCI Managed MySQL lifecycle/data, HTTPS runtime과 certificate renewal state를 변경하지 않는다. Observability는 Application source/control checkout `/opt/pawcycle/source/repo`에서 승인된 SHA의 detached artifact만 사용하며 `current-sha`/`previous-sha`를 읽거나 생성·backfill하거나 요구하지 않는다. 적용 전후에는 Application container ID, image ref/ID, Compose project/service identity와 required network attachment를 read-only로 비교하고 불일치하면 fail-closed 한다. Observability failure가 발생하면 Observability Compose와 standalone metrics-proxy만 복구 대상으로 삼는다.

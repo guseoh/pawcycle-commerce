@@ -283,6 +283,7 @@ jobs:
             infra/production/test-production-https-renewal.sh \
             infra/production/diagnose-backend-state.sh \
             infra/production/test-diagnose-backend-state.sh \
+            infra/production/verify-observability-application-identity.sh \
             infra/production/test-observability-application-identity.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh

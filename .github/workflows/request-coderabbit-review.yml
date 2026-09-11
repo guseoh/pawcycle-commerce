@@ -1,24 +1,22 @@
-name: Request CodeRabbit Review
+name: CodeRabbit Review Handoff
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  schedule:
-    - cron: '17,47 * * * *'
   workflow_dispatch:
 
 concurrency:
-  group: coderabbit-review-${{ github.event.pull_request.number || 'sweep' }}
+  group: coderabbit-review-handoff-${{ github.event.pull_request.number || 'manual' }}
   cancel-in-progress: true
 
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
-  request-review:
-    name: Request CodeRabbit review
+  review-handoff:
+    name: Remind CodeRabbit manual review
     if: github.repository == 'guseoh/pawcycle-commerce'
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +26,7 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Request review for review-ready PRs
+      - name: Manage review handoff for review-ready PRs
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/request_coderabbit_review.py
