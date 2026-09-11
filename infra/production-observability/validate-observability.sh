@@ -42,7 +42,10 @@ printf 'validation-only-password\n' > "$TEMP_DIR/grafana-admin-password"
 chmod 400 "$TEMP_DIR/grafana-admin-user" "$TEMP_DIR/grafana-admin-password"
 docker run --rm --volume "$TEMP_DIR:/run/pawcycle-secrets" alpine:3.22 \
   chown 472:472 /run/pawcycle-secrets/grafana-admin-user /run/pawcycle-secrets/grafana-admin-password
-docker network create "$APP_NETWORK" >/dev/null
+# Production의 pawcycle-production-app network와 같은 조건을 재현한다.
+# app network 자체는 internal로 유지하고, localhost publish 경로는 observability bridge가 제공해야 한다.
+docker network create --internal "$APP_NETWORK" >/dev/null
+test "$(docker network inspect "$APP_NETWORK" --format '{{.Internal}}')" = 'true'
 compose_validation config --quiet
 compose_validation config --format json > "$TEMP_DIR/compose-model.json"
 
@@ -80,7 +83,8 @@ assert set(prometheus["networks"]) == {"app", "observability"}, "Prometheus must
 assert set(grafana["networks"]) == {"observability"}, "Grafana must stay isolated from the Application network"
 assert compose_model["networks"]["app"]["external"] is True, "Application Docker network must remain external"
 assert compose_model["networks"]["app"]["name"] == sys.argv[3], "Application Docker network name drifted"
-assert compose_model["networks"]["observability"].get("internal") is True, "Observability service network must remain internal"
+assert compose_model["networks"]["observability"].get("driver") == "bridge", "Observability service network must remain a normal bridge"
+assert compose_model["networks"]["observability"].get("internal") is not True, "Observability bridge must allow localhost port publishing"
 assert prometheus["cpus"] == 0.25 and prometheus["mem_limit"] == str(384 * 1024 * 1024), "Prometheus lean resource cap drifted"
 assert grafana["cpus"] == 0.15 and grafana["mem_limit"] == str(256 * 1024 * 1024), "Grafana lean resource cap drifted"
 assert len(prometheus["ports"]) == 1 and str(prometheus["ports"][0]["published"]) == sys.argv[4], "Prometheus UI port drifted"
@@ -114,18 +118,34 @@ compose_validation exec --no-TTY prometheus \
 
 OBSERVABILITY_NETWORK="${PROJECT_NAME}_observability"
 docker network inspect "$OBSERVABILITY_NETWORK" >/dev/null
+test "$(docker network inspect "$OBSERVABILITY_NETWORK" --format '{{.Internal}}')" = 'false'
 for attempt in $(seq 1 12); do
   if docker run --rm --network "$OBSERVABILITY_NETWORK" alpine:3.22 \
     wget --quiet --output-document=/dev/null http://prometheus:9090/-/ready; then
     break
   fi
   if [[ "$attempt" -eq 12 ]]; then
-    printf 'Prometheus was not reachable on the internal observability network\n' >&2
+    printf 'Prometheus was not reachable on the shared observability network\n' >&2
     exit 1
   fi
   sleep 1
 done
 
+for endpoint in \
+  "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready" \
+  "http://127.0.0.1:${GRAFANA_PORT}/api/health"; do
+  for attempt in $(seq 1 12); do
+    if curl --fail --silent --show-error --output /dev/null "$endpoint"; then
+      break
+    fi
+    if [[ "$attempt" -eq 12 ]]; then
+      printf 'localhost observability endpoint was not reachable: %s\n' "$endpoint" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+done
+
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
+printf 'Production observability Compose, localhost publishing, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
