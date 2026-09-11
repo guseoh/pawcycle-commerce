@@ -4,12 +4,15 @@ set +x
 
 PROJECT_NAME="pawcycle-production"
 CONTAINER_NAME="pawcycle-mvp4-data-002-demo-catalog-import"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+CONTROL_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 RUNTIME_DIR="/opt/pawcycle/runtime"
 STATE_DIR="/opt/pawcycle/state"
 RELEASE_SHA=""
 BACKEND_IMAGE=""
 TARGET="demo"
 OPERATION=""
+IDENTITY_MODE="release-state"
 CONFIRM_APPLY=0
 
 usage() {
@@ -17,13 +20,16 @@ usage() {
 Usage: import-demo-catalog.sh \
   --operation <validate|apply> \
   --sha <current-40-char-sha> \
-  --backend-image <lowercase-ghcr-repository> \
+  --backend-image <backend-image-repository> \
   [--target <demo|customer>] \
+  [--identity-mode <release-state|running-container>] \
   [--confirm-apply] \
   [--runtime-dir /opt/pawcycle/runtime] \
   [--state-dir /opt/pawcycle/state]
 
-The default target is demo. validate is a dry-run. apply requires --confirm-apply and is never automatic.
+The default target is demo. The default identity mode is release-state.
+validate is a dry-run. apply requires --confirm-apply and is never automatic.
+running-container is an explicit OCI-compatible identity path and never falls back automatically.
 EOF
 }
 
@@ -134,6 +140,7 @@ while (( $# > 0 )); do
     --sha) RELEASE_SHA="${2:-}"; shift 2 ;;
     --backend-image) BACKEND_IMAGE="${2:-}"; shift 2 ;;
     --target) TARGET="${2:-}"; shift 2 ;;
+    --identity-mode) IDENTITY_MODE="${2:-}"; shift 2 ;;
     --confirm-apply) CONFIRM_APPLY=1; shift ;;
     --runtime-dir) RUNTIME_DIR="${2:-}"; shift 2 ;;
     --state-dir) STATE_DIR="${2:-}"; shift 2 ;;
@@ -145,10 +152,23 @@ done
 [[ "$EUID" == "0" ]] || die "root execution is required"
 [[ "$TARGET" == "demo" || "$TARGET" == "customer" ]] || die "target must be demo or customer"
 [[ "$OPERATION" == "validate" || "$OPERATION" == "apply" ]] || die "operation must be validate or apply"
+[[ "$IDENTITY_MODE" == "release-state" || "$IDENTITY_MODE" == "running-container" ]] || die "identity mode must be release-state or running-container"
 [[ "$OPERATION" != "apply" || "$CONFIRM_APPLY" == "1" ]] || die "apply requires --confirm-apply"
 [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || die "approved release SHA is invalid"
-[[ "$BACKEND_IMAGE" =~ ^ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$ ]] || die "Backend image repository is invalid"
+
+case "$IDENTITY_MODE" in
+  release-state)
+    [[ "$BACKEND_IMAGE" =~ ^ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._/-]*$ ]] || die "Backend image repository is invalid"
+    ;;
+  running-container)
+    [[ "$BACKEND_IMAGE" =~ ^[a-z0-9][a-z0-9._/-]*$ && "$BACKEND_IMAGE" != *:* && "$BACKEND_IMAGE" != *@* ]] || die "Backend image repository is invalid"
+    ;;
+esac
+
 for command in docker flock grep readlink stat; do require_command "$command"; done
+if [[ "$IDENTITY_MODE" == "running-container" ]]; then
+  require_command git
+fi
 
 validate_root_directory "$RUNTIME_DIR" "runtime directory"
 validate_root_directory "$STATE_DIR" "state directory"
@@ -157,35 +177,62 @@ DEPLOY_LOCK_FILE="$STATE_DIR/deploy.lock"
 exec 9>>"$DEPLOY_LOCK_FILE"
 flock --nonblock 9 || die "another production release command is running"
 
-CURRENT_SHA_FILE="$STATE_DIR/current-sha"
-IMAGE_STATE_FILE="$STATE_DIR/$RELEASE_SHA.images"
-validate_protected_file "$CURRENT_SHA_FILE" "current release state"
-validate_protected_file "$IMAGE_STATE_FILE" "release image state"
-[[ "$(<"$CURRENT_SHA_FILE")" == "$RELEASE_SHA" ]] || die "approved SHA is not the current production release"
+case "$IDENTITY_MODE" in
+  release-state)
+    CURRENT_SHA_FILE="$STATE_DIR/current-sha"
+    IMAGE_STATE_FILE="$STATE_DIR/$RELEASE_SHA.images"
+    validate_protected_file "$CURRENT_SHA_FILE" "current release state"
+    validate_protected_file "$IMAGE_STATE_FILE" "release image state"
+    [[ "$(<"$CURRENT_SHA_FILE")" == "$RELEASE_SHA" ]] || die "approved SHA is not the current production release"
 
-RUNTIME_CURRENT="$(readlink -f -- "$RUNTIME_DIR/current" 2>/dev/null || true)"
-[[ "$RUNTIME_CURRENT" == "$RUNTIME_DIR"/.bundle.* && -d "$RUNTIME_CURRENT" ]] || die "runtime bundle target is unavailable or unsafe"
-[[ "$(stat -c '%a' "$RUNTIME_CURRENT" 2>/dev/null)" == "700" ]] || die "runtime bundle permissions are invalid"
-BACKEND_ENV_FILE="$RUNTIME_CURRENT/backend.env"
-validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
+    RUNTIME_CURRENT="$(readlink -f -- "$RUNTIME_DIR/current" 2>/dev/null || true)"
+    [[ "$RUNTIME_CURRENT" == "$RUNTIME_DIR"/.bundle.* && -d "$RUNTIME_CURRENT" ]] || die "runtime bundle target is unavailable or unsafe"
+    [[ "$(stat -c '%a' "$RUNTIME_CURRENT" 2>/dev/null)" == "700" ]] || die "runtime bundle permissions are invalid"
+    BACKEND_ENV_FILE="$RUNTIME_CURRENT/backend.env"
+    validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
+
+    BACKEND_DIGEST_LINE="$(grep -E '^BACKEND_DIGEST=ghcr\.io/.+@sha256:[0-9a-f]{64}$' "$IMAGE_STATE_FILE" 2>/dev/null || true)"
+    [[ "$(grep -c '^BACKEND_DIGEST=' "$IMAGE_STATE_FILE" 2>/dev/null)" == "1" && -n "$BACKEND_DIGEST_LINE" ]] || die "Backend digest state is invalid"
+    BACKEND_DIGEST="${BACKEND_DIGEST_LINE#BACKEND_DIGEST=}"
+    [[ "$BACKEND_DIGEST" == "$BACKEND_IMAGE@sha256:"* ]] || die "Backend digest repository does not match"
+    ;;
+  running-container)
+    BACKEND_ENV_FILE="$RUNTIME_DIR/backend.env"
+    validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
+    git -C "$CONTROL_ROOT" cat-file -e "${RELEASE_SHA}^{commit}" 2>/dev/null || die "approved release SHA is unavailable in the Production control repository"
+    git -C "$CONTROL_ROOT" merge-base --is-ancestor "$RELEASE_SHA" HEAD 2>/dev/null || die "approved release SHA is not contained in the Production control history"
+    ;;
+esac
 validate_backend_env
-
-BACKEND_DIGEST_LINE="$(grep -E '^BACKEND_DIGEST=ghcr\.io/.+@sha256:[0-9a-f]{64}$' "$IMAGE_STATE_FILE" 2>/dev/null || true)"
-[[ "$(grep -c '^BACKEND_DIGEST=' "$IMAGE_STATE_FILE" 2>/dev/null)" == "1" && -n "$BACKEND_DIGEST_LINE" ]] || die "Backend digest state is invalid"
-BACKEND_DIGEST="${BACKEND_DIGEST_LINE#BACKEND_DIGEST=}"
-[[ "$BACKEND_DIGEST" == "$BACKEND_IMAGE@sha256:"* ]] || die "Backend digest repository does not match"
 
 BACKEND_CONTAINERS="$(docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' --format '{{.ID}}' 2>/dev/null)"
 [[ "$(printf '%s\n' "$BACKEND_CONTAINERS" | grep -c .)" == "1" ]] || die "production Backend identity is invalid"
 BACKEND_CONTAINER="$BACKEND_CONTAINERS"
 [[ "$(docker_value inspect --format '{{.State.Status}}' "$BACKEND_CONTAINER")" == "running" ]] || die "production Backend is not running"
 [[ "$(docker_value inspect --format '{{.State.Health.Status}}' "$BACKEND_CONTAINER")" == "healthy" ]] || die "production Backend is not healthy"
-[[ "$(docker_value inspect --format '{{.Config.Image}}' "$BACKEND_CONTAINER")" == "$BACKEND_IMAGE:$RELEASE_SHA" ]] || die "production Backend image reference is invalid"
-[[ "$(docker_value inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$BACKEND_CONTAINER")" == "$RELEASE_SHA" ]] || die "production Backend revision is invalid"
+EXPECTED_IMAGE_REF="$BACKEND_IMAGE:$RELEASE_SHA"
+[[ "$(docker_value inspect --format '{{.Config.Image}}' "$BACKEND_CONTAINER")" == "$EXPECTED_IMAGE_REF" ]] || die "production Backend image reference is invalid"
 resolve_database_egress_network
 docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1 && die "one-shot Container already exists" || true
-APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIGEST")"
-[[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] || die "production Backend image identity is invalid"
+
+case "$IDENTITY_MODE" in
+  release-state)
+    [[ "$(docker_value inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$BACKEND_CONTAINER")" == "$RELEASE_SHA" ]] || die "production Backend revision is invalid"
+    APPROVED_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$BACKEND_DIGEST")"
+    [[ "$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")" == "$APPROVED_IMAGE_ID" ]] || die "production Backend image identity is invalid"
+    RUN_IMAGE="$BACKEND_DIGEST"
+    ;;
+  running-container)
+    EXPECTED_WORKING_DIR="$SCRIPT_DIR"
+    EXPECTED_CONFIG_FILE="$SCRIPT_DIR/compose.yaml"
+    [[ "$(docker_value inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$BACKEND_CONTAINER")" == "$EXPECTED_WORKING_DIR" ]] || die "production Backend Compose working directory is invalid"
+    [[ "$(docker_value inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$BACKEND_CONTAINER")" == "$EXPECTED_CONFIG_FILE" ]] || die "production Backend Compose source is invalid"
+    LOCAL_IMAGE_ID="$(docker_value image inspect --format '{{.Id}}' "$EXPECTED_IMAGE_REF")"
+    RUNNING_IMAGE_ID="$(docker_value inspect --format '{{.Image}}' "$BACKEND_CONTAINER")"
+    [[ "$RUNNING_IMAGE_ID" == "$LOCAL_IMAGE_ID" ]] || die "production Backend local image identity is invalid"
+    RUN_IMAGE="$RUNNING_IMAGE_ID"
+    ;;
+esac
 
 IMPORT_ARGUMENTS=(
   --spring.main.web-application-type=none
@@ -201,7 +248,7 @@ if [[ "$OPERATION" == "apply" ]]; then
 fi
 
 set +e
-COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATABASE_EGRESS_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$BACKEND_DIGEST" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
+COMMAND_OUTPUT="$(docker run --rm --name "$CONTAINER_NAME" --network "$DATABASE_EGRESS_NETWORK" --env-file <(stream_backend_env) --env JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=65.0 --env SPRING_PROFILES_ACTIVE=production --read-only --tmpfs /tmp:size=64m,mode=1777 --user pawcycle --security-opt no-new-privileges:true --cap-drop ALL --memory 640m --cpus 0.75 --pids-limit 256 --log-driver none "$RUN_IMAGE" "${IMPORT_ARGUMENTS[@]}" 2>/dev/null)"
 COMMAND_STATUS=$?
 set -e
 [[ "$COMMAND_STATUS" == "0" ]] || die "catalog import command failed"
