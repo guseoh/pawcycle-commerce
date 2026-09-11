@@ -145,6 +145,16 @@ for session_contract in \
     exit 1
   fi
 done
+for post_start_contract in \
+  '{{.State.Status}}' \
+  '{{.State.Restarting}}' \
+  '{{.RestartCount}}' \
+  'sleep 5'; do
+  if ! grep -Fq -- "$post_start_contract" "$RUNBOOK"; then
+    printf 'observability OCI runbook missing post-start stability contract: %s\n' "$post_start_contract" >&2
+    exit 1
+  fi
+done
 if grep -Eq 'Config\.Env|\.Config\.Env|docker compose.*(environment|env)' "$IDENTITY"; then
   printf 'runtime identity contract must not inspect or print container environment\n' >&2
   exit 1
