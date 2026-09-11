@@ -32,6 +32,7 @@ OCI 초기 전환 환경처럼 기존 release-state marker를 만들지 않고 �
 이 경로는 legacy state를 생성하거나 보완하지 않는다. 대신 다음 조건을 모두 fail-closed로 확인한다.
 
 - `/opt/pawcycle/runtime/backend.env`가 일반 파일이고 mode `600`
+- `backend.env`는 현재 OCI의 `KEY=value` 형식과 기존 관리형 bundle의 `KEY='value'` 형식을 모두 허용하되, 한쪽 quote만 있는 값은 잘못된 runtime 계약으로 거부한다.
 - `--sha`로 전달한 40자 SHA가 현재 Production control Git repository에 실제 commit으로 존재하고 현재 control history에 포함됨
 - 실행 중 Backend가 정확히 하나이고 `running + healthy`
 - 실행 중 Backend image reference가 `<backend-image>:<sha>`와 정확히 일치
@@ -113,6 +114,7 @@ apply는 별도 승인 뒤 `--operation apply --confirm-apply`를 사용한다.
 다음 경우에는 apply를 시작하지 않거나 즉시 성공 판정을 중단한다.
 
 - 선택한 identity mode의 필수 runtime/state 계약이 존재하지 않거나 권한이 다름
+- `backend.env`의 필수 key가 누락·중복되거나 허용되지 않은 key, 잘못된 quote 형식이 존재함
 - 전달한 SHA가 실행 중 Backend image tag와 일치하지 않음
 - `running-container`에서 SHA가 Production control Git history에 없거나 Compose source label이 현재 source와 다름
 - local image ID와 실행 중 Backend image ID가 다름
