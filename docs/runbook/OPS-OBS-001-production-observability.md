@@ -81,7 +81,7 @@ test "$(sudo stat -c '%u:%g %a' /opt/pawcycle/runtime/observability/grafana-admi
 
 PROMETHEUS_IMAGE='prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69'
 GRAFANA_IMAGE='grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43'
-METRICS_PROXY_IMAGE='nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339e81f780f814d1'
+METRICS_PROXY_IMAGE='nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1'
 for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE" "$METRICS_PROXY_IMAGE"; do
   expected_digest="${image##*@}"
   test "$(sudo docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = 'linux/amd64'
