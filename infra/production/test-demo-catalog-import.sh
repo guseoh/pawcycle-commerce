@@ -254,7 +254,7 @@ for mismatch in sha compose image network; do
   done
 done
 
-# Existing managed release bundles may use single-quoted values. They must decode to the same Docker env contract.
+# running-container accepts fully single-quoted values defensively while release-state retains its existing quoted contract.
 write_quoted_backend_env
 output="$(run_running_container_fixture validate)"
 grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' <<<"$output"
@@ -274,6 +274,10 @@ ENVEOF
 chmod 600 "$RUNTIME_FIXTURE/backend.env"
 if run_running_container_fixture validate >/dev/null 2>&1; then
   printf 'FAIL: malformed Backend runtime quoting did not fail closed\n' >&2
+  exit 1
+fi
+if grep -q '^run ' "$DOCKER_LOG"; then
+  printf 'FAIL: malformed Backend runtime quoting reached Docker run\n' >&2
   exit 1
 fi
 
