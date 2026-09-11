@@ -156,6 +156,7 @@ def validate_observability_contract() -> None:
     require("NetworkID" in identity_verifier, "expected Docker network attachment identity is not verified")
     for retired in ("current-sha", "previous-sha", "/opt/pawcycle/control"):
         require(retired not in diagnostic, f"retired Application release-state dependency remains in diagnose-backend-state.sh: {retired}")
+        require(retired not in identity_verifier, f"retired Application release-state dependency remains in verify-observability-application-identity.sh: {retired}")
 
 
 def main() -> None:
