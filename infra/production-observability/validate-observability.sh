@@ -131,19 +131,32 @@ for attempt in $(seq 1 12); do
   sleep 1
 done
 
-for endpoint in \
-  "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready" \
-  "http://127.0.0.1:${GRAFANA_PORT}/api/health"; do
-  for attempt in $(seq 1 12); do
-    if curl --fail --silent --show-error --output /dev/null "$endpoint"; then
-      break
-    fi
-    if [[ "$attempt" -eq 12 ]]; then
-      printf 'localhost observability endpoint was not reachable: %s\n' "$endpoint" >&2
-      exit 1
-    fi
-    sleep 1
-  done
+PROMETHEUS_ID="$(compose_validation ps --quiet prometheus)"
+GRAFANA_ID="$(compose_validation ps --quiet grafana)"
+test -n "$PROMETHEUS_ID" && test -n "$GRAFANA_ID"
+test "$(docker port "$PROMETHEUS_ID" 9090/tcp)" = "127.0.0.1:${PROMETHEUS_PORT}"
+test "$(docker port "$GRAFANA_ID" 3000/tcp)" = "127.0.0.1:${GRAFANA_PORT}"
+
+for attempt in $(seq 1 12); do
+  if curl --fail --silent --output /dev/null "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready"; then
+    break
+  fi
+  if [[ "$attempt" -eq 12 ]]; then
+    printf 'Prometheus localhost endpoint was not ready\n' >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+for attempt in $(seq 1 60); do
+  if curl --fail --silent --output /dev/null "http://127.0.0.1:${GRAFANA_PORT}/api/health"; then
+    break
+  fi
+  if [[ "$attempt" -eq 60 ]]; then
+    printf 'Grafana localhost endpoint was not ready\n' >&2
+    exit 1
+  fi
+  sleep 1
 done
 
 compose_validation down --volumes --remove-orphans >/dev/null
