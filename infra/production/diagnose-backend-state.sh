@@ -43,45 +43,24 @@ http_code() {
   fi
 }
 
-valid_sha() {
-  [[ "$1" =~ ^[0-9a-f]{40}$ ]]
-}
-
-read_required_state() {
-  local name="$1" kind="$2" path value
-  path="$STATE_DIR/$name"
-  if [[ ! -e "$path" && ! -L "$path" ]]; then
-    printf 'invalid'
-    return
-  fi
-  if [[ -L "$path" || ! -f "$path" || "$(stat -c '%a' "$path" 2>/dev/null || true)" != 600 ]]; then
-    printf 'invalid'
-    return
-  fi
-  value="$(<"$path")"
-  if [[ "$kind" == sha ]] && ! valid_sha "$value"; then
-    printf 'invalid'
-  else
-    printf '%s' "$value"
-  fi
-}
-
-read_previous_sha() {
-  local path="$STATE_DIR/previous-sha" value
-  if [[ ! -e "$path" && ! -L "$path" ]]; then
-    printf 'none'
-    return
-  fi
-  if [[ -L "$path" || ! -f "$path" || "$(stat -c '%a' "$path" 2>/dev/null || true)" != 600 ]]; then
-    printf 'invalid'
-    return
-  fi
-  value="$(<"$path")"
-  if valid_sha "$value"; then printf '%s' "$value"; else printf 'invalid'; fi
-}
-
 release_coordination_status() {
   local lock_path="$STATE_DIR/deploy.lock" fd
+  if [[ ! -e "$STATE_DIR" && ! -L "$STATE_DIR" ]]; then
+    printf 'stable'
+    return
+  fi
+  [[ -d "$STATE_DIR" && ! -L "$STATE_DIR" ]] || {
+    printf 'invalid'
+    return
+  }
+  if [[ ! -e "$lock_path" && ! -L "$lock_path" ]]; then
+    if [[ -e "$STATE_DIR/release-state-transition" || -L "$STATE_DIR/release-state-transition" ]]; then
+      printf 'in_progress'
+    else
+      printf 'stable'
+    fi
+    return
+  fi
   if [[ -L "$lock_path" || ! -f "$lock_path" || "$(stat -c '%a' "$lock_path" 2>/dev/null || true)" != 600 ]]; then
     printf 'invalid'
     return
@@ -100,15 +79,12 @@ release_coordination_status() {
 }
 
 production_assessment() {
-  local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5" current="$6" previous="$7"
-  local api_ok=false metrics_ok=false release_ok=false
+  local coordination="$1" docker_query="$2" backend="$3" api="$4" metrics="$5"
+  local api_ok=false metrics_ok=false
   [[ "$api" =~ ^2[0-9][0-9]$ ]] && api_ok=true
   [[ "$metrics" =~ ^2[0-9][0-9]$ ]] && metrics_ok=true
-  if valid_sha "$current" && { [[ "$previous" == none ]] || valid_sha "$previous"; }; then
-    release_ok=true
-  fi
 
-  if [[ "$coordination" != stable || "$docker_query" != ok || "$backend" == unknown || "$backend" == ambiguous || "$release_ok" != true ]]; then
+  if [[ "$coordination" != stable || "$docker_query" != ok || "$backend" == unknown || "$backend" == ambiguous ]]; then
     printf 'UNKNOWN'
   elif [[ "$backend" == healthy && "$api_ok" == true && "$metrics_ok" == true ]]; then
     printf 'READY'
@@ -124,8 +100,7 @@ production_assessment() {
 run_production() {
   local backend_ids backend_status docker_query api_status metrics_status
   local metrics_proxy_ids metrics_proxy_id
-  local current_sha_before previous_sha_before
-  local current_sha previous_sha assessment generated_at_epoch
+  local assessment generated_at_epoch
   local release_coordination_before release_coordination_after release_coordination
 
   [[ -z "$PROMETHEUS_URL" && -z "$PRODUCTION_RESULT" ]] || usage
@@ -135,8 +110,6 @@ run_production() {
   [[ "$HTTPS_ORIGIN" =~ ^https://[^[:space:]]+$ ]] || usage
 
   release_coordination_before="$(release_coordination_status)"
-  current_sha_before="$(read_required_state current-sha sha)"
-  previous_sha_before="$(read_previous_sha)"
 
   docker_query=ok
   if ! backend_ids="$(docker ps --all --quiet --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter 'label=com.docker.compose.service=backend' 2>/dev/null)"; then
@@ -177,27 +150,21 @@ run_production() {
     fi
   fi
 
-  current_sha="$(read_required_state current-sha sha)"
-  previous_sha="$(read_previous_sha)"
   release_coordination_after="$(release_coordination_status)"
 
   if [[ "$release_coordination_before" != stable ]]; then
     release_coordination="$release_coordination_before"
   elif [[ "$release_coordination_after" != stable ]]; then
     release_coordination="$release_coordination_after"
-  elif [[ "$current_sha_before" != "$current_sha" \
-    || "$previous_sha_before" != "$previous_sha" ]]; then
-    release_coordination=changed
   else
     release_coordination=stable
   fi
 
   generated_at_epoch="$(date +%s)"
-  assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" "$current_sha" "$previous_sha")"
+  assessment="$(production_assessment "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status")"
 
-  printf 'scope=production\ngenerated_at_epoch=%s\nproduction_assessment=%s\nrelease_coordination=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\ncurrent_sha=%s\nprevious_sha=%s\n' \
-    "$generated_at_epoch" "$assessment" "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status" \
-    "$current_sha" "$previous_sha"
+  printf 'scope=production\ngenerated_at_epoch=%s\nproduction_assessment=%s\nrelease_coordination=%s\ndocker_query=%s\nbackend=%s\napi_products_http=%s\nmetrics_proxy_http=%s\n' \
+    "$generated_at_epoch" "$assessment" "$release_coordination" "$docker_query" "$backend_status" "$api_status" "$metrics_status"
   [[ "$assessment" == READY ]]
 }
 
@@ -209,13 +176,13 @@ load_production_result() {
   while IFS='=' read -r key value; do
     [[ -n "$key" && -n "$value" ]] || return 1
     case "$key" in
-      scope|generated_at_epoch|production_assessment|release_coordination|docker_query|backend|api_products_http|metrics_proxy_http|current_sha|previous_sha) ;;
+      scope|generated_at_epoch|production_assessment|release_coordination|docker_query|backend|api_products_http|metrics_proxy_http) ;;
       *) return 1 ;;
     esac
     [[ ! -v "SNAPSHOT[$key]" ]] || return 1
     SNAPSHOT["$key"]="$value"
   done <"$PRODUCTION_RESULT"
-  ((${#SNAPSHOT[@]} == 10)) && [[ "${SNAPSHOT[scope]:-}" == production ]]
+  ((${#SNAPSHOT[@]} == 8)) && [[ "${SNAPSHOT[scope]:-}" == production ]]
 }
 
 validate_production_result() {
@@ -224,14 +191,13 @@ validate_production_result() {
   now="$(date +%s)"
   snapshot_age=$((10#$now - 10#${SNAPSHOT[generated_at_epoch]}))
   ((snapshot_age >= 0 && snapshot_age <= MAX_SNAPSHOT_AGE_SECONDS)) || return 1
-  [[ "${SNAPSHOT[release_coordination]:-}" =~ ^(stable|in_progress|invalid|changed)$ ]] || return 1
+  [[ "${SNAPSHOT[release_coordination]:-}" =~ ^(stable|in_progress|invalid)$ ]] || return 1
   [[ "${SNAPSHOT[docker_query]:-}" =~ ^(ok|failed)$ ]] || return 1
   [[ "${SNAPSHOT[backend]:-}" =~ ^(healthy|unhealthy|stopped|missing|unknown|ambiguous)$ ]] || return 1
   [[ "${SNAPSHOT[api_products_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
   [[ "${SNAPSHOT[metrics_proxy_http]:-}" =~ ^[0-9]{3}$ ]] || return 1
   calculated="$(production_assessment "${SNAPSHOT[release_coordination]}" "${SNAPSHOT[docker_query]}" "${SNAPSHOT[backend]}" \
-    "${SNAPSHOT[api_products_http]}" "${SNAPSHOT[metrics_proxy_http]}" \
-    "${SNAPSHOT[current_sha]:-}" "${SNAPSHOT[previous_sha]:-}")"
+    "${SNAPSHOT[api_products_http]}" "${SNAPSHOT[metrics_proxy_http]}")"
   [[ "$calculated" == "${SNAPSHOT[production_assessment]:-}" ]]
 }
 

@@ -21,6 +21,7 @@ Metrics proxy와 Observability는 Application release를 recreate·wait·stop하
 ```bash
 bash infra/production-observability/validate-observability.sh
 bash infra/production-metrics-proxy/test-metrics-proxy.sh
+bash infra/production/test-observability-application-identity.sh
 bash infra/production/test-diagnose-backend-state.sh
 python infra/production/validate-production-contracts.py
 bash infra/production/test-production-nginx.sh
@@ -46,15 +47,21 @@ Observability 검증은 same-host network separation, Grafana→Prometheus datas
 
 ## Approved artifact bootstrap
 
+Before starting the first block, open a Bash shell session that remains persistent for this procedure. Run every Bash block below in order in the same persistent Bash shell session. Do not resume a later block from a fresh shell. If the Bash or SSH session is lost, stop; do not reconstruct or guess temporary paths or shell-local variables. If partial bootstrap or control worktrees remain, use the existing separately-approved control worktree cleanup boundary before restarting the procedure.
+
 첫 적용에서도 기존 control directory나 임의 latest image를 가정하지 않는다. `APPROVED_SHA`는 검토·병합이 끝난 40자리 merge commit SHA여야 한다. Application control checkout의 HEAD와 working tree는 변경하지 않고 fetch와 detached sibling worktree만 사용한다.
 
 ```bash
-APP_CONTROL=/opt/pawcycle/control
+set -Eeuo pipefail
+umask 077
+APP_CONTROL=/opt/pawcycle/source/repo
 METRICS_CONTROL=/opt/pawcycle/metrics-proxy-control
 OBS_CONTROL=/opt/pawcycle/observability-control
 APPROVED_SHA='<approved-merge-sha>'
 GRAFANA_USER_FILE='<approved-runtime-user-file>'
 GRAFANA_PASSWORD_FILE='<approved-runtime-password-file>'
+IDENTITY_SCRIPT="$(mktemp /tmp/pawcycle-verify-observability-application-identity.XXXXXX)"
+RUNTIME_IDENTITY="$(mktemp /tmp/pawcycle-application-runtime-identity.XXXXXX)"
 
 [[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]
 test "$(uname -m)" = x86_64
@@ -74,7 +81,25 @@ sudo git -C "$APP_CONTROL" worktree add --detach "$OBS_CONTROL" "$APPROVED_SHA"
 
 test "$(sudo git -C "$METRICS_CONTROL" rev-parse HEAD)" = "$APPROVED_SHA"
 test "$(sudo git -C "$OBS_CONTROL" rev-parse HEAD)" = "$APPROVED_SHA"
+
+EXPECTED_IDENTITY_SHA256="$(sudo git -C "$APP_CONTROL" show \
+  "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" |
+  sha256sum | awk '{print $1}')"
+if ! sudo git -C "$APP_CONTROL" show \
+  "${APPROVED_SHA}:infra/production/verify-observability-application-identity.sh" > "$IDENTITY_SCRIPT"; then
+  rm -f -- "$IDENTITY_SCRIPT"
+  printf 'approved identity verifier materialization failed; stopping before runtime mutation\n' >&2
+  exit 1
+fi
+chmod 500 "$IDENTITY_SCRIPT"
+if ! test "$(sha256sum "$IDENTITY_SCRIPT" | awk '{print $1}')" = "$EXPECTED_IDENTITY_SHA256"; then
+  rm -f -- "$IDENTITY_SCRIPT"
+  printf 'approved identity verifier checksum mismatch; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 ```
+
+Observability does not read, create, backfill, or require any obsolete Application release-state marker file.
 
 Runtime image는 각 Compose의 pinned reference에서만 준비한다. 모든 image reference는 `@sha256:` digest를 포함해야 하며, local image가 없을 때만 그 exact reference를 pull한다. 준비 후 Docker가 실제로 보유한 image의 architecture와 RepoDigest를 다시 검증한다.
 
@@ -128,12 +153,19 @@ done
 적용 전 Application release identity를 snapshot한다.
 
 ```bash
-APP_CONTAINER_IDS_BEFORE="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-CURRENT_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/current-sha)"
-PREVIOUS_SHA_BEFORE="$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)"
+set -Eeuo pipefail
+if ! sudo bash "$IDENTITY_SCRIPT" snapshot > "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot failed; stopping before runtime mutation\n' >&2
+  exit 1
+fi
+chmod 600 "$RUNTIME_IDENTITY"
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  rm -f -- "$RUNTIME_IDENTITY"
+  printf 'Application runtime identity snapshot is invalid; stopping before runtime mutation\n' >&2
+  exit 1
+fi
 
 sudo docker network inspect pawcycle-production-app >/dev/null
 ```
@@ -141,18 +173,32 @@ sudo docker network inspect pawcycle-production-app >/dev/null
 먼저 metrics-proxy를 시작한다. bootstrap에서 image를 exact digest로 준비했으므로 runtime은 `--pull never`를 유지한다.
 
 ```bash
+set -Eeuo pipefail
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity gate failed; refusing metrics-proxy mutation\n' >&2
+  exit 1
+fi
+
 cd "$METRICS_CONTROL/infra/production-metrics-proxy"
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
   docker compose config --quiet
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
-  docker compose up --detach --wait --wait-timeout 60 --pull never
+  docker compose up --detach --no-deps --wait --wait-timeout 60 --pull never
 ```
 
 그 다음 Observability project를 시작한다.
 
 ```bash
+set -Eeuo pipefail
+if [[ ! -s "$RUNTIME_IDENTITY" ]] ||
+  ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity gate failed; refusing Observability mutation\n' >&2
+  exit 1
+fi
+
 cd "$OBS_CONTROL/infra/production-observability"
 sudo env \
   PAWCYCLE_APP_NETWORK=pawcycle-production-app \
@@ -165,7 +211,8 @@ sudo env \
   PAWCYCLE_METRICS_TARGET=metrics-proxy:9464 \
   PAWCYCLE_GRAFANA_ADMIN_USER_FILE="$GRAFANA_USER_FILE" \
   PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE="$GRAFANA_PASSWORD_FILE" \
-  docker compose up --detach --wait --wait-timeout 60 --pull never
+  docker compose up --detach --no-deps --wait --wait-timeout 60 --pull never
+
 ```
 
 ## 적용 후 확인
@@ -173,6 +220,7 @@ sudo env \
 다음 확인은 secret 값을 출력하거나 process argument로 전달하지 않는다.
 
 ```bash
+set -Eeuo pipefail
 PROMETHEUS_URL=http://127.0.0.1:9090
 GRAFANA_URL=http://127.0.0.1:3000
 METRICS_PROXY_ID="$(sudo docker ps --quiet \
@@ -207,13 +255,10 @@ fi
 SHARED_OBS_NETWORKS="$(comm -12 <(printf '%s\n' "$PROM_NETWORKS") <(printf '%s\n' "$GRAFANA_NETWORKS") | sed '/^pawcycle-production-app$/d;/^$/d')"
 test "$(printf '%s\n' "$SHARED_OBS_NETWORKS" | sed '/^$/d' | wc -l)" -eq 1
 
-APP_CONTAINER_IDS_AFTER="$(sudo docker inspect --format '{{.Name}}={{.Id}}' \
-  pawcycle-production-backend-1 \
-  pawcycle-production-frontend-1 \
-  pawcycle-production-proxy-1 | sort)"
-test "$APP_CONTAINER_IDS_AFTER" = "$APP_CONTAINER_IDS_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/current-sha)" = "$CURRENT_SHA_BEFORE"
-test "$(sudo cat /opt/pawcycle/state/previous-sha 2>/dev/null || true)" = "$PREVIOUS_SHA_BEFORE"
+if ! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"; then
+  printf 'Application runtime identity changed during observability apply; failing closed\n' >&2
+  exit 1
+fi
 ```
 
 Repository validation은 validation-only credential을 사용해 Grafana datasource proxy가 `prometheus:9090`에 실제 도달하는지 검증한다. Production에서는 secret을 argv에 노출하지 않고 Prometheus target, Grafana health와 두 container의 shared internal network attachment를 확인한다.
@@ -228,7 +273,7 @@ Provisioning dashboard는 다음 의미를 유지한다.
 
 ## Same-host backend state diagnostic
 
-진단은 같은 `app01`에서 두 단계를 연속 실행한다. 첫 단계는 Application/metrics-proxy/release state의 read-only snapshot이고, 두 번째는 그 fresh snapshot과 localhost Prometheus target 상태를 결합한다.
+진단은 같은 `app01`에서 두 단계를 연속 실행한다. 첫 단계는 Application runtime identity와 metrics-proxy/HTTPS transition-lock state의 read-only snapshot이고, 두 번째는 그 fresh snapshot과 localhost Prometheus target 상태를 결합한다. Application의 retired release marker는 진단 계약의 대상이 아니다.
 
 승인 merge SHA의 진단 script를 기존 control HEAD 변경 없이 `/tmp`에 materialize하고 SHA-256을 확인한다.
 
@@ -263,7 +308,7 @@ bash "$DIAG_SCRIPT" \
 최종 `NORMAL`만 exit `0`이다. `BACKEND_DOWN`, `OBSERVABILITY_DEGRADED`, `DEGRADED`, `UNKNOWN`은 non-zero다. Docker 조회 실패, release transition, malformed state, stale snapshot, Prometheus 응답·target cardinality 불일치는 fail-closed 한다. 검증 후 임시 script와 snapshot은 제거할 수 있다.
 
 ```bash
-rm -f "$DIAG_SCRIPT" "$PRODUCTION_RESULT"
+rm -f "$IDENTITY_SCRIPT" "$RUNTIME_IDENTITY" "$DIAG_SCRIPT" "$PRODUCTION_RESULT"
 ```
 
 ## Same-host overhead calibration
@@ -299,7 +344,7 @@ Host metric gap을 continuous series로 해결하려면 `/proc`·`/sys` mount, �
 
 다음 중 하나라도 성립하면 적용을 중단하고 Application release, HTTPS, certificate, migration 또는 Managed MySQL을 조작하지 않는다.
 
-- Application container ID 또는 `current-sha`/`previous-sha`가 preflight와 다르다.
+- Application runtime identity snapshot이 preflight와 다르다.
 - Application Compose가 `backend`/`frontend`/`proxy` 외 service를 소유하거나 Backend `:8080` host publish가 보인다.
 - `pawcycle-production-app` network가 없거나 external network 계약이 다르다.
 - metrics-proxy가 host port를 publish하거나 endpoint-only/동적 DNS 확인에 실패한다.
