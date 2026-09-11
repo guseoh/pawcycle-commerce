@@ -103,8 +103,27 @@ def validate_observability_contract() -> None:
         "Observability EC2",
         "Production EC2",
         "active-mysql-volume",
+        "git worktree add",
+        "/opt/pawcycle/metrics-proxy-control",
+        "/opt/pawcycle/observability-control",
+        "chown -R",
     ):
         require(retired not in runbook, f"retired observability execution premise remains in OPS-OBS-001: {retired}")
+
+    for marker in (
+        "작업 ID `OPS-OCI-005B`",
+        "archive --format=tar",
+        "tar -x -C \"$SOURCE_ROOT\"",
+        "install -d -o opc -g opc -m 0750",
+        "/opt/pawcycle/observability-source/$APPROVED_SHA",
+        "chmod -R a-w \"$SOURCE_ROOT\"",
+        "/opt/pawcycle/runtime/observability/grafana-admin-user",
+        "/opt/pawcycle/runtime/observability/grafana-admin-password",
+        "linux/amd64",
+        "--project-directory",
+        "--pull never",
+    ):
+        require(marker in runbook, f"OCI observability execution marker is missing: {marker}")
 
     require("PAWCYCLE_APP_NETWORK" in observability, "Prometheus app network injection is missing")
     require("observability:" in observability and "internal: true" in observability, "shared internal observability network is missing")
@@ -118,7 +137,6 @@ def validate_observability_contract() -> None:
     require("server backend:8080 resolve;" in metrics_proxy_config, "metrics-proxy dynamic Backend resolution is missing")
     require("/proc" in runbook and "/sys" in runbook, "host collector decision boundary is missing")
     require("OFF" in runbook and "ON" in runbook and "latency/error-rate" in runbook, "same-host calibration contract is incomplete")
-    require("worktree add --detach" in runbook, "first-time observability control bootstrap is missing")
     require("@sha256:" in runbook and "RepoDigests" in runbook, "pinned image digest verification is missing")
     require("linux/amd64" in runbook, "current OCI amd64 runtime verification is missing")
     require("--scope production" in runbook and "--scope observability" in runbook, "same-host backend diagnostic flow is missing")

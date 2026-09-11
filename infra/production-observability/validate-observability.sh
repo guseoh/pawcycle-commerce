@@ -102,7 +102,7 @@ PY
 
 for image in "$PROMETHEUS_IMAGE" "$GRAFANA_IMAGE"; do
   manifest="$(docker buildx imagetools inspect "$image")"
-  grep -Fq 'Platform:  linux/amd64' <<<"$manifest" || {
+  grep -Eq 'Platform:[[:space:]]+linux/amd64' <<<"$manifest" || {
     printf 'linux/amd64 manifest missing for %s\n' "$image" >&2
     exit 1
   }

@@ -111,6 +111,12 @@ grep -Fq 'server backend:8080 resolve;' "$SCRIPT_DIR/metrics-proxy.conf"
 grep -Fq 'location = /actuator/prometheus' "$SCRIPT_DIR/metrics-proxy.conf"
 grep -Fq 'return 404' "$SCRIPT_DIR/metrics-proxy.conf"
 
+manifest="$(docker buildx imagetools inspect "$PROXY_IMAGE")"
+grep -Eq 'Platform:[[:space:]]+linux/amd64' <<<"$manifest" || {
+  printf 'linux/amd64 manifest missing for %s\n' "$PROXY_IMAGE" >&2
+  exit 1
+}
+
 start_backend_fixture "$BACKEND_A_NAME" 1
 compose_validation up --detach --wait --wait-timeout 60
 wait_metric 'fixture_metric 1'
