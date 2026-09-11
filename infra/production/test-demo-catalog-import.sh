@@ -43,7 +43,23 @@ GIT_LOG="$FIXTURE_ROOT/git.log"
 mkdir -p "$FAKE_BIN" "$RUNTIME_FIXTURE" "$STATE_FIXTURE"
 chmod 700 "$RUNTIME_FIXTURE" "$STATE_FIXTURE"
 
-cat > "$RUNTIME_FIXTURE/backend.env" <<'ENVEOF'
+write_unquoted_backend_env() {
+  cat > "$RUNTIME_FIXTURE/backend.env" <<'ENVEOF'
+PAWCYCLE_DATASOURCE_HOST=db.internal
+PAWCYCLE_DATASOURCE_PORT=3306
+PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED
+SPRING_DATASOURCE_URL=jdbc:mysql://db.internal:3306/pawcycle
+SPRING_DATASOURCE_USERNAME=pawcycle_app
+SPRING_DATASOURCE_PASSWORD=fixture-password
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=20
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=60000
+ENVEOF
+  chmod 600 "$RUNTIME_FIXTURE/backend.env"
+}
+
+write_quoted_backend_env() {
+  cat > "$RUNTIME_FIXTURE/backend.env" <<'ENVEOF'
 PAWCYCLE_DATASOURCE_HOST='db.internal'
 PAWCYCLE_DATASOURCE_PORT='3306'
 PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'
@@ -54,7 +70,10 @@ PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED='false'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE='20'
 PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS='60000'
 ENVEOF
-chmod 600 "$RUNTIME_FIXTURE/backend.env"
+  chmod 600 "$RUNTIME_FIXTURE/backend.env"
+}
+
+write_unquoted_backend_env
 
 cat > "$FAKE_BIN/git" <<'GITEOF'
 #!/usr/bin/env bash
@@ -143,12 +162,31 @@ case "$command_name" in
     fi
     ;;
   run)
-    if [[ " $* " != *" sha256:validated-running-image "* ]]; then
+    run_args="$*"
+    env_file=""
+    while (( $# > 0 )); do
+      case "$1" in
+        --env-file)
+          env_file="${2:-}"
+          shift 2
+          ;;
+        *) shift ;;
+      esac
+    done
+    [[ -n "$env_file" && -r "$env_file" ]] || exit 4
+    grep -Fxq 'PAWCYCLE_DATASOURCE_HOST=db.internal' "$env_file" || exit 5
+    grep -Fxq 'PAWCYCLE_DATASOURCE_PORT=3306' "$env_file" || exit 5
+    grep -Fxq 'PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED' "$env_file" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_URL=jdbc:mysql://db.internal:3306/pawcycle' "$env_file" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_USERNAME=pawcycle_app' "$env_file" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_PASSWORD=fixture-password' "$env_file" || exit 5
+    grep -Fxq 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' "$env_file" || exit 5
+    if [[ " $run_args " != *" sha256:validated-running-image "* ]]; then
       printf '%s\n' 'docker run did not receive the validated image ID' >&2
-      exit 4
+      exit 6
     fi
-    if [[ " $* " == *"--pawcycle.catalog.manifest-import.mode=apply"* ]]; then
-      [[ " $* " == *"--pawcycle.catalog.manifest-import.confirm-apply=true"* ]] || exit 5
+    if [[ " $run_args " == *"--pawcycle.catalog.manifest-import.mode=apply"* ]]; then
+      [[ " $run_args " == *"--pawcycle.catalog.manifest-import.confirm-apply=true"* ]] || exit 7
       printf '%s\n' 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS baseline={CATALOG_IMPORT_RESULT operation=APPLY status=PASS} supplement={status=PASS}'
     else
       printf '%s\n' 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS baseline={CATALOG_IMPORT_RESULT operation=VALIDATE status=PASS} supplement={status=PASS}'
@@ -192,6 +230,7 @@ run_running_container_fixture() {
       "${apply_args[@]}"
 }
 
+# Current OCI runtime format is unquoted KEY=value. Validate and apply must both preserve values exactly.
 for operation in validate apply; do
   output="$(run_running_container_fixture "$operation")"
   grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' <<<"$output"
@@ -214,6 +253,29 @@ for mismatch in sha compose image network; do
   done
 done
 
+# Existing managed release bundles may use single-quoted values. They must decode to the same Docker env contract.
+write_quoted_backend_env
+output="$(run_running_container_fixture validate)"
+grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' <<<"$output"
+
+# Partial quoting is malformed and must fail before Docker run.
+cat > "$RUNTIME_FIXTURE/backend.env" <<'ENVEOF'
+PAWCYCLE_DATASOURCE_HOST='db.internal
+PAWCYCLE_DATASOURCE_PORT=3306
+PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED
+SPRING_DATASOURCE_URL=jdbc:mysql://db.internal:3306/pawcycle
+SPRING_DATASOURCE_USERNAME=pawcycle_app
+SPRING_DATASOURCE_PASSWORD=fixture-password
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=20
+PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=60000
+ENVEOF
+chmod 600 "$RUNTIME_FIXTURE/backend.env"
+if run_running_container_fixture validate >/dev/null 2>&1; then
+  printf 'FAIL: malformed Backend runtime quoting did not fail closed\n' >&2
+  exit 1
+fi
+
 # The running-container path must not silently synthesize legacy release state.
 ! grep -Fq -- 'printf '\''%s\n'\'' "$RELEASE_SHA" > "$STATE_DIR/current-sha"' "$SCRIPT"
 ! grep -Fq -- 'touch "$STATE_DIR/$RELEASE_SHA.images"' "$SCRIPT"
@@ -232,4 +294,4 @@ grep -Fq -- 'database-egress' infra/production/compose.yaml
 ! grep -Eq -- '^  mysql:' infra/production/compose.yaml
 grep -Fq -- 'postflight' backend/src/main/java/com/pawcycle/backend/catalog/application/DemoCatalogImportResult.java
 grep -Fq -- 'CUSTOMER_CATALOG_IMPORT_RESULT status=PASS' backend/src/main/java/com/pawcycle/backend/catalog/application/CustomerCatalogImportResult.java
-printf 'PASS: production catalog import target and runtime identity contract\n'
+printf 'PASS: production catalog import target, runtime identity, and Backend env contract\n'
