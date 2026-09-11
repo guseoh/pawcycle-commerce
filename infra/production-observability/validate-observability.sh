@@ -114,8 +114,17 @@ compose_validation exec --no-TTY prometheus \
 
 OBSERVABILITY_NETWORK="${PROJECT_NAME}_observability"
 docker network inspect "$OBSERVABILITY_NETWORK" >/dev/null
-docker run --rm --network "$OBSERVABILITY_NETWORK" alpine:3.22 \
-  wget --quiet --output-document=/dev/null http://prometheus:9090/-/ready
+for attempt in $(seq 1 12); do
+  if docker run --rm --network "$OBSERVABILITY_NETWORK" alpine:3.22 \
+    wget --quiet --output-document=/dev/null http://prometheus:9090/-/ready; then
+    break
+  fi
+  if [[ "$attempt" -eq 12 ]]; then
+    printf 'Prometheus was not reachable on the internal observability network\n' >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 compose_validation down --volumes --remove-orphans >/dev/null
 
