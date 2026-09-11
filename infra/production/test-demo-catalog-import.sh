@@ -174,13 +174,14 @@ case "$command_name" in
       esac
     done
     [[ -n "$env_file" && -r "$env_file" ]] || exit 4
-    grep -Fxq 'PAWCYCLE_DATASOURCE_HOST=db.internal' "$env_file" || exit 5
-    grep -Fxq 'PAWCYCLE_DATASOURCE_PORT=3306' "$env_file" || exit 5
-    grep -Fxq 'PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED' "$env_file" || exit 5
-    grep -Fxq 'SPRING_DATASOURCE_URL=jdbc:mysql://db.internal:3306/pawcycle' "$env_file" || exit 5
-    grep -Fxq 'SPRING_DATASOURCE_USERNAME=pawcycle_app' "$env_file" || exit 5
-    grep -Fxq 'SPRING_DATASOURCE_PASSWORD=fixture-password' "$env_file" || exit 5
-    grep -Fxq 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' "$env_file" || exit 5
+    env_content="$(cat "$env_file")"
+    grep -Fxq 'PAWCYCLE_DATASOURCE_HOST=db.internal' <<<"$env_content" || exit 5
+    grep -Fxq 'PAWCYCLE_DATASOURCE_PORT=3306' <<<"$env_content" || exit 5
+    grep -Fxq 'PAWCYCLE_DATASOURCE_SSL_MODE=REQUIRED' <<<"$env_content" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_URL=jdbc:mysql://db.internal:3306/pawcycle' <<<"$env_content" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_USERNAME=pawcycle_app' <<<"$env_content" || exit 5
+    grep -Fxq 'SPRING_DATASOURCE_PASSWORD=fixture-password' <<<"$env_content" || exit 5
+    grep -Fxq 'PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false' <<<"$env_content" || exit 5
     if [[ " $run_args " != *" sha256:validated-running-image "* ]]; then
       printf '%s\n' 'docker run did not receive the validated image ID' >&2
       exit 6
