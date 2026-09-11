@@ -14,6 +14,9 @@ GRAFANA_VOLUME="pawcycle-$VALIDATION_ID-grafana-data"
 PROMETHEUS_PORT="$((20000 + RANDOM % 10000))"
 GRAFANA_PORT="$((30000 + RANDOM % 10000))"
 METRICS_TARGET="metrics-proxy:9464"
+CURL_CONNECT_TIMEOUT_SECONDS=2
+CURL_MAX_TIME_SECONDS=3
+STALL_PID=""
 
 compose_validation() {
   PAWCYCLE_METRICS_TARGET="$METRICS_TARGET" \
@@ -27,9 +30,20 @@ compose_validation() {
     docker compose --project-name "$PROJECT_NAME" --file "$SCRIPT_DIR/compose.yaml" "$@"
 }
 
+bounded_curl() {
+  curl --fail --silent --output /dev/null \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$CURL_MAX_TIME_SECONDS" \
+    "$1"
+}
+
 cleanup() {
   local status=$?
   set +e
+  if [[ -n "$STALL_PID" ]]; then
+    kill "$STALL_PID" >/dev/null 2>&1
+    wait "$STALL_PID" >/dev/null 2>&1
+  fi
   compose_validation down --volumes --remove-orphans >/dev/null 2>&1
   docker network rm "$APP_NETWORK" >/dev/null 2>&1
   rm -rf -- "$TEMP_DIR"
@@ -59,6 +73,50 @@ if command -v python3 >/dev/null 2>&1; then
 else
   PYTHON=(py -3)
 fi
+
+# TCP 연결 후 응답을 보내지 않는 endpoint에서도 bounded_curl이 제한 시간 안에 실패해야 한다.
+STALL_PORT_FILE="$TEMP_DIR/stall-port"
+"${PYTHON[@]}" - "$STALL_PORT_FILE" <<'PY' &
+import socket
+import sys
+import time
+from pathlib import Path
+
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    Path(sys.argv[1]).write_text(str(server.getsockname()[1]), encoding="utf-8")
+    connection, _ = server.accept()
+    with connection:
+        time.sleep(30)
+PY
+STALL_PID=$!
+for attempt in $(seq 1 20); do
+  if [[ -s "$STALL_PORT_FILE" ]]; then
+    break
+  fi
+  if [[ "$attempt" -eq 20 ]]; then
+    printf 'Stalled HTTP fixture did not start\n' >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+STALL_PORT="$(cat "$STALL_PORT_FILE")"
+STALL_STARTED_AT="$(date +%s)"
+if bounded_curl "http://127.0.0.1:${STALL_PORT}/"; then
+  printf 'Bounded curl unexpectedly succeeded against a stalled endpoint\n' >&2
+  exit 1
+fi
+STALL_ELAPSED="$(( $(date +%s) - STALL_STARTED_AT ))"
+kill "$STALL_PID" >/dev/null 2>&1 || true
+wait "$STALL_PID" >/dev/null 2>&1 || true
+STALL_PID=""
+if (( STALL_ELAPSED > CURL_MAX_TIME_SECONDS + 2 )); then
+  printf 'Bounded curl exceeded the expected failure window: %ss\n' "$STALL_ELAPSED" >&2
+  exit 1
+fi
+
 "${PYTHON[@]}" - "$SCRIPT_DIR" "$TEMP_DIR/compose-model.json" "$APP_NETWORK" "$PROMETHEUS_PORT" "$GRAFANA_PORT" <<'PY'
 import json
 import sys
@@ -138,7 +196,7 @@ test "$(docker port "$PROMETHEUS_ID" 9090/tcp)" = "127.0.0.1:${PROMETHEUS_PORT}"
 test "$(docker port "$GRAFANA_ID" 3000/tcp)" = "127.0.0.1:${GRAFANA_PORT}"
 
 for attempt in $(seq 1 12); do
-  if curl --fail --silent --output /dev/null "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready"; then
+  if bounded_curl "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready"; then
     break
   fi
   if [[ "$attempt" -eq 12 ]]; then
@@ -149,7 +207,7 @@ for attempt in $(seq 1 12); do
 done
 
 for attempt in $(seq 1 60); do
-  if curl --fail --silent --output /dev/null "http://127.0.0.1:${GRAFANA_PORT}/api/health"; then
+  if bounded_curl "http://127.0.0.1:${GRAFANA_PORT}/api/health"; then
     break
   fi
   if [[ "$attempt" -eq 60 ]]; then
@@ -161,4 +219,4 @@ done
 
 compose_validation down --volumes --remove-orphans >/dev/null
 
-printf 'Production observability Compose, localhost publishing, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
+printf 'Production observability Compose, bounded localhost publishing, shared-network Prometheus reachability, dashboards, and linux/amd64 image validation passed\n'
