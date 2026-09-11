@@ -285,6 +285,7 @@ jobs:
             infra/production/test-diagnose-backend-state.sh \
             infra/production/verify-observability-application-identity.sh \
             infra/production/test-observability-application-identity.sh \
+            infra/production/test-observability-source-permissions.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
@@ -295,6 +296,7 @@ jobs:
           bash infra/production/test-production-auth-session-smoke.sh
           bash infra/production/test-diagnose-backend-state.sh
           bash infra/production/test-observability-application-identity.sh
+          bash infra/production/test-observability-source-permissions.sh
           python -m py_compile infra/production/test-create-production-auth-smoke-member.py
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
           bash infra/production-observability/validate-observability.sh

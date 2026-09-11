@@ -18,6 +18,7 @@ OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-b
 OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
 BACKEND_DIAGNOSTIC = PRODUCTION / "diagnose-backend-state.sh"
 APPLICATION_IDENTITY_VERIFIER = PRODUCTION / "verify-observability-application-identity.sh"
+SOURCE_PERMISSION_TEST = PRODUCTION / "test-observability-source-permissions.sh"
 
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
@@ -90,6 +91,7 @@ def validate_observability_contract() -> None:
     datasource = GRAFANA_DATASOURCE.read_text(encoding="utf-8")
     diagnostic = BACKEND_DIAGNOSTIC.read_text(encoding="utf-8")
     identity_verifier = APPLICATION_IDENTITY_VERIFIER.read_text(encoding="utf-8")
+    source_permission_test = SOURCE_PERMISSION_TEST.read_text(encoding="utf-8")
 
     for marker in (
         "OCI `app01`",
@@ -114,6 +116,7 @@ def validate_observability_contract() -> None:
         "/opt/pawcycle/control",
         "current-sha",
         "previous-sha",
+        "chmod -R a-w \"$SOURCE_ROOT\"",
     ):
         require(retired not in runbook, f"retired observability execution premise remains in OPS-OBS-001: {retired}")
 
@@ -125,12 +128,18 @@ def validate_observability_contract() -> None:
         "/opt/pawcycle/source/repo",
         "/opt/pawcycle/observability-source/$APPROVED_SHA",
         "verify-observability-application-identity.sh",
-        "chmod -R a-w \"$SOURCE_ROOT\"",
+        "find \"$SOURCE_ROOT\" -type d -exec chmod 0555 {} +",
+        "find \"$SOURCE_ROOT\" -type f -exec chmod 0444 {} +",
+        "type d ! -perm 0555",
+        "type f ! -perm 0444",
         "/opt/pawcycle/runtime/observability/grafana-admin-user",
         "/opt/pawcycle/runtime/observability/grafana-admin-password",
         "linux/amd64",
         "--project-directory",
         "--pull never",
+        "{{.State.Restarting}}",
+        "{{.RestartCount}}",
+        "sleep 5",
     ):
         require(marker in runbook, f"OCI observability execution marker is missing: {marker}")
 
@@ -154,6 +163,9 @@ def validate_observability_contract() -> None:
     require("format=oci-application-runtime-identity-v1" in identity_verifier, "OCI runtime identity verifier format is missing")
     require("com.docker.compose.project" in identity_verifier and "com.docker.compose.service" in identity_verifier, "Compose identity labels are not verified")
     require("NetworkID" in identity_verifier, "expected Docker network attachment identity is not verified")
+    require("archive --format=tar" in source_permission_test, "archive source permission regression is missing archive coverage")
+    require("65534:65534" in source_permission_test, "archive source permission regression is missing non-owner container coverage")
+    require("0500" in source_permission_test and "0400" in source_permission_test, "archive source permission regression does not reject the defective modes")
     for retired in ("current-sha", "previous-sha", "/opt/pawcycle/control"):
         require(retired not in diagnostic, f"retired Application release-state dependency remains in diagnose-backend-state.sh: {retired}")
         require(retired not in identity_verifier, f"retired Application release-state dependency remains in verify-observability-application-identity.sh: {retired}")

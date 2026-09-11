@@ -54,7 +54,7 @@ Application control checkout `/opt/pawcycle/source/repo`의 HEAD·working tree�
 
 ## 안전한 실행 source 준비
 
-기존 root-owned sibling worktree를 만들지 않는다. worktree 생성이나 광범위한 소유권 일괄 변경은 사용하지 않는다. `opc`가 새로 만든 scoped runtime directory에 승인 SHA의 관측성 경로만 `git archive`로 추출하고, 추출 후 `opc`가 쓰지 못하도록 source를 read-only로 고정한다. 이 source directory는 실행 중인 container의 bind mount가 유지되도록 두 project를 내릴 때까지 보존한다.
+기존 root-owned sibling worktree를 만들지 않는다. worktree 생성이나 광범위한 소유권 일괄 변경은 사용하지 않는다. `opc`가 새로 만든 scoped runtime directory에 승인 SHA의 관측성 경로만 `git archive`로 추출하고, 추출 후 `opc`가 수정할 수 없으면서 non-owner container user가 directory를 traverse하고 regular file을 읽을 수 있도록 source 권한을 정규화한다. 이 source directory는 실행 중인 container의 bind mount가 유지되도록 두 project를 내릴 때까지 보존한다.
 
 아래 블록은 독립적으로 실행할 수 있다. 이후 블록도 `APPROVED_SHA`와 `SOURCE_ROOT`를 다시 선언하므로 앞선 SSH shell의 local variable을 전제로 하지 않는다. `APPROVED_SHA`는 검토·병합이 끝난 **40자리 전체 merge commit SHA**를 넣는다.
 
@@ -108,9 +108,9 @@ if sudo test -e "$SOURCE_ROOT"; then
   test -d "$SOURCE_ROOT"
   test -r "$SOURCE_ROOT/.approved-sha"
   test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
-  test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
-  test ! -w "$SOURCE_ROOT"
-  test -z "$(find "$SOURCE_ROOT" -perm -u=w -print -quit)"
+  test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 555'
+  test -z "$(find "$SOURCE_ROOT" -type d ! -perm 0555 -print -quit)"
+  test -z "$(find "$SOURCE_ROOT" -type f ! -perm 0444 -print -quit)"
 else
   if ! sudo test -d /opt/pawcycle/observability-source; then
     sudo install -d -o opc -g opc -m 0750 /opt/pawcycle/observability-source
@@ -123,12 +123,13 @@ else
     infra/production/verify-observability-application-identity.sh | \
     tar -x -C "$SOURCE_ROOT"
   printf '%s\n' "$APPROVED_SHA" > "$SOURCE_ROOT/.approved-sha"
-  chmod 400 "$SOURCE_ROOT/.approved-sha"
-  chmod -R a-w "$SOURCE_ROOT"
+  find "$SOURCE_ROOT" -type d -exec chmod 0555 {} +
+  find "$SOURCE_ROOT" -type f -exec chmod 0444 {} +
 fi
 
-test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
-test -z "$(find "$SOURCE_ROOT" -perm -u=w -print -quit)"
+test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 555'
+test -z "$(find "$SOURCE_ROOT" -type d ! -perm 0555 -print -quit)"
+test -z "$(find "$SOURCE_ROOT" -type f ! -perm 0444 -print -quit)"
 test -r "$SOURCE_ROOT/infra/production-metrics-proxy/compose.yaml"
 test -r "$SOURCE_ROOT/infra/production-metrics-proxy/metrics-proxy.conf"
 test -r "$SOURCE_ROOT/infra/production-observability/compose.yaml"
@@ -148,7 +149,7 @@ if ! test "$(sha256sum "$IDENTITY_SCRIPT" | awk '{print $1}')" = "$EXPECTED_IDEN
 fi
 ```
 
-`SOURCE_ROOT`가 존재하지만 marker가 없거나 source 일부가 writable이면 partial materialization으로 간주하고 실행하지 않는다. 실행 중 session이 끊겨도 이전 shell의 local variable로 재개하지 않는다. 새 session에서 read-only container 상태를 확인한 뒤 아래 rollback을 수행하거나, source marker와 application identity를 처음부터 다시 확인하고 전체 self-contained block을 재실행한다.
+`SOURCE_ROOT`가 존재하지만 marker가 없거나 source의 directory/regular file 권한이 각각 `0555`/`0444` 계약과 다르면 partial materialization으로 간주하고 실행하지 않는다. 실행 중 session이 끊겨도 이전 shell의 local variable로 재개하지 않는다. 새 session에서 read-only container 상태를 확인한 뒤 아래 rollback을 수행하거나, source marker와 application identity를 처음부터 다시 확인하고 전체 self-contained block을 재실행한다.
 
 ## Same-host 적용
 
@@ -162,8 +163,9 @@ set -Eeuo pipefail
 APPROVED_SHA='<approved-merge-sha>'
 SOURCE_ROOT="/opt/pawcycle/observability-source/$APPROVED_SHA"
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
-test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
-test ! -w "$SOURCE_ROOT"
+test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 555'
+test -z "$(find "$SOURCE_ROOT" -type d ! -perm 0555 -print -quit)"
+test -z "$(find "$SOURCE_ROOT" -type f ! -perm 0444 -print -quit)"
 
 IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
 RUNTIME_IDENTITY="$(mktemp /tmp/pawcycle-application-runtime-identity.XXXXXX)"
@@ -214,8 +216,9 @@ SOURCE_ROOT="/opt/pawcycle/observability-source/$APPROVED_SHA"
 GRAFANA_USER_FILE=/opt/pawcycle/runtime/observability/grafana-admin-user
 GRAFANA_PASSWORD_FILE=/opt/pawcycle/runtime/observability/grafana-admin-password
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
-test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 550'
-test ! -w "$SOURCE_ROOT"
+test "$(sudo stat -c '%U %a' "$SOURCE_ROOT")" = 'opc 555'
+test -z "$(find "$SOURCE_ROOT" -type d ! -perm 0555 -print -quit)"
+test -z "$(find "$SOURCE_ROOT" -type f ! -perm 0444 -print -quit)"
 
 IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"
 RUNTIME_IDENTITY="$(mktemp /tmp/pawcycle-application-runtime-identity.XXXXXX)"
@@ -296,6 +299,22 @@ GRAFANA_NETWORKS="$(sudo docker inspect --format '{{range $name, $_ := .NetworkS
 SHARED_OBS_NETWORKS="$(comm -12 <(printf '%s\n' "$PROM_NETWORKS") <(printf '%s\n' "$GRAFANA_NETWORKS") | sed '/^pawcycle-production-app$/d;/^$/d')"
 test "$(printf '%s\n' "$SHARED_OBS_NETWORKS" | sed '/^$/d' | wc -l)" -eq 1
 
+assert_observability_running() {
+  local container_id="$1"
+  test "$(sudo docker inspect --format '{{.State.Status}}' "$container_id")" = 'running'
+  test "$(sudo docker inspect --format '{{.State.Restarting}}' "$container_id")" = 'false'
+}
+
+assert_observability_running "$PROMETHEUS_ID"
+assert_observability_running "$GRAFANA_ID"
+PROMETHEUS_RESTART_COUNT="$(sudo docker inspect --format '{{.RestartCount}}' "$PROMETHEUS_ID")"
+GRAFANA_RESTART_COUNT="$(sudo docker inspect --format '{{.RestartCount}}' "$GRAFANA_ID")"
+sleep 5
+assert_observability_running "$PROMETHEUS_ID"
+assert_observability_running "$GRAFANA_ID"
+test "$(sudo docker inspect --format '{{.RestartCount}}' "$PROMETHEUS_ID")" = "$PROMETHEUS_RESTART_COUNT"
+test "$(sudo docker inspect --format '{{.RestartCount}}' "$GRAFANA_ID")" = "$GRAFANA_RESTART_COUNT"
+
 sudo docker exec "$METRICS_PROXY_ID" wget --quiet --output-document=/dev/null \
   http://127.0.0.1:9464/actuator/prometheus
 test "$(sudo docker exec "$METRICS_PROXY_ID" sh -ec \
@@ -316,7 +335,7 @@ Prometheus target `up`은 Docker-internal `metrics-proxy:9464/actuator/prometheu
 2. `Runtime`: process CPU, JVM heap, GC pause, threads, Hikari active/idle/pending/max
 3. `PawCycle Operations`: reconciliation, subscription automation, idempotency, commerce pending
 
-Application runtime identity는 각 적용 블록에서 preflight와 postflight가 동일한지 확인한다. 이 확인은 dashboard 데이터가 정상이라는 뜻일 뿐 Production Verified 판정을 대체하지 않는다.
+Application runtime identity는 각 적용 블록에서 preflight와 postflight가 동일한지 확인한다. Observability 적용 후에는 Prometheus/Grafana가 `running`이고 restart loop가 아니며, 짧은 안정화 window 동안 `RestartCount`가 증가하지 않는지 확인한 뒤 readiness와 Prometheus target을 검사한다. 이 확인은 dashboard 데이터가 정상이라는 뜻일 뿐 Production Verified 판정을 대체하지 않는다.
 
 ## Same-host backend state diagnostic
 
@@ -402,7 +421,7 @@ Host metric gap을 continuous series로 해결하려면 `/proc`·`/sys` mount, �
 - metrics-proxy가 host port를 publish하거나 endpoint-only/동적 DNS 확인에 실패한다.
 - Prometheus/Grafana UI가 loopback 외 address에 bind되거나 pinned image/platform 확인에 실패한다.
 - Grafana runtime credential file이 regular file·`0400`·`472:472` 계약을 만족하지 않는다.
-- source marker가 없거나 source directory가 `opc`에 writable하다.
+- source marker가 없거나 source tree의 directory/regular file 권한이 각각 `0555`/`0444`가 아니어서 `opc`가 수정할 수 없고 non-owner container user가 읽을 수 있는 계약을 만족하지 않는다.
 
 실패, 중단 또는 SSH session loss 뒤에는 이전 shell의 위치·변수로 재개하지 않는다. 새 session에서 다음 read-only 확인으로 관측성 project가 부분적으로 남았는지만 확인한다.
 
