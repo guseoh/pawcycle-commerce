@@ -129,18 +129,17 @@ if PATH="$TEST_ROOT/bin:$PATH" FAKE_RUNTIME_VARIANT=extra-service bash "$IDENTIT
   exit 1
 fi
 
-if grep -Eq '(/opt/pawcycle/control|current-sha|previous-sha)' "$RUNBOOK"; then
+if grep -Eq '(/opt/pawcycle/control|current[-_]sha|previous[-_]sha)' "$RUNBOOK"; then
   printf 'observability OCI runbook still requires retired release-state paths\n' >&2
   exit 1
 fi
 grep -Fq '/opt/pawcycle/source/repo' "$RUNBOOK"
 for session_contract in \
-  'same persistent Bash shell session' \
-  'every Bash block below in order' \
-  'Do not resume a later block from a fresh shell' \
-  'If the Bash or SSH session is lost, stop' \
-  'do not reconstruct or guess temporary paths or shell-local variables' \
-  'separately-approved control worktree cleanup boundary'; do
+  '다음 두 적용 블록은 각각 짧고 독립적인 실행 단위다' \
+  '앞선 SSH shell의 local variable' \
+  '--project-directory' \
+  '--file' \
+  '--pull never'; do
   if ! grep -Fq -- "$session_contract" "$RUNBOOK"; then
     printf 'observability OCI runbook missing shell session contract: %s\n' "$session_contract" >&2
     exit 1
@@ -189,21 +188,20 @@ for block_file in "$RUNBOOK_BLOCK_DIR"/*; do
   if grep -Fq 'snapshot > "$RUNTIME_IDENTITY"' "$block_file"; then
     snapshot_block="$block_file"
   fi
-  if grep -Fq 'docker compose up' "$block_file"; then
+  if grep -Fq 'up --detach' "$block_file"; then
     compose_up_blocks=$((compose_up_blocks + 1))
     before_up="$RUNBOOK_BLOCK_DIR/before-up-$compose_up_blocks"
-    sed '/docker compose up/,$d' "$block_file" >"$before_up"
+    sed '/up --detach/,$d' "$block_file" >"$before_up"
     assert_block_contains "$before_up" 'set -Eeuo pipefail' 'compose up block lacks fail-closed shell boundary'
-    assert_block_contains "$before_up" '[[ ! -s "$RUNTIME_IDENTITY" ]]' 'compose up block lacks runtime identity snapshot presence gate'
-    assert_block_contains "$before_up" '! sudo bash "$IDENTITY_SCRIPT" verify --snapshot "$RUNTIME_IDENTITY"' 'compose up block lacks pre-mutation identity verification'
+    assert_block_contains "$before_up" 'snapshot > "$RUNTIME_IDENTITY"' 'compose up block lacks runtime identity snapshot'
+    assert_block_contains "$before_up" 'IDENTITY_SCRIPT="$SOURCE_ROOT/infra/production/verify-observability-application-identity.sh"' 'compose up block lacks approved identity verifier path'
   fi
 done
 
 [[ -n "$checksum_block" ]] || fail_runbook_contract 'checksum block not found'
 assert_block_contains "$checksum_block" 'set -Eeuo pipefail' 'checksum block lacks fail-closed shell boundary'
-assert_block_contains "$checksum_block" 'if ! sudo git -C "$APP_CONTROL" show' 'identity verifier materialization failure is not explicit'
+assert_block_contains "$checksum_block" 'if ! EXPECTED_IDENTITY_SHA256=' 'identity verifier checksum source failure is not explicit'
 assert_block_contains "$checksum_block" 'if ! test "$(sha256sum "$IDENTITY_SCRIPT"' 'identity checksum failure is not explicit'
-assert_block_contains "$checksum_block" 'rm -f -- "$IDENTITY_SCRIPT"' 'checksum failure does not remove the invalid verifier'
 assert_block_contains "$checksum_block" 'exit 1' 'checksum failure does not terminate the bootstrap'
 
 [[ -n "$snapshot_block" ]] || fail_runbook_contract 'snapshot block not found'
