@@ -14,6 +14,7 @@ TARGET="demo"
 OPERATION=""
 IDENTITY_MODE="release-state"
 CONFIRM_APPLY=0
+DECODED_BACKEND_ENV_VALUE=""
 
 usage() {
   cat <<'EOF'
@@ -63,8 +64,34 @@ docker_value() {
   printf '%s' "$value"
 }
 
+decode_backend_env_value() {
+  local raw="$1"
+  local first=""
+  local last=""
+
+  DECODED_BACKEND_ENV_VALUE="$raw"
+  [[ -n "$raw" ]] || return 0
+
+  first="${raw:0:1}"
+  last="${raw: -1}"
+  case "$IDENTITY_MODE" in
+    release-state)
+      [[ "$first" == "'" && "$last" == "'" && "${#raw}" -ge 2 ]] || die "Backend runtime contract is invalid"
+      DECODED_BACKEND_ENV_VALUE="${raw:1:${#raw}-2}"
+      DECODED_BACKEND_ENV_VALUE="${DECODED_BACKEND_ENV_VALUE//\\\'/\'}"
+      ;;
+    running-container)
+      if [[ "$first" == "'" || "$last" == "'" ]]; then
+        [[ "$first" == "'" && "$last" == "'" && "${#raw}" -ge 2 ]] || die "Backend runtime contract is invalid"
+        DECODED_BACKEND_ENV_VALUE="${raw:1:${#raw}-2}"
+        DECODED_BACKEND_ENV_VALUE="${DECODED_BACKEND_ENV_VALUE//\\\'/\'}"
+      fi
+      ;;
+  esac
+}
+
 validate_backend_env() {
-  local line key
+  local line key value
   local -A count=()
   local keys=(
     PAWCYCLE_DATASOURCE_HOST PAWCYCLE_DATASOURCE_PORT PAWCYCLE_DATASOURCE_SSL_MODE
@@ -74,9 +101,11 @@ validate_backend_env() {
   )
   for key in "${keys[@]}"; do count[$key]=0; done
   while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" == *=* ]] || die "Backend runtime contract is invalid"
     key="${line%%=*}"
-    [[ "$line" == *=* && "${line#*=}" == \'*\' ]] || die "Backend runtime contract is invalid"
+    value="${line#*=}"
     [[ -n "${count[$key]+present}" ]] || die "Backend runtime contract contains an unknown key"
+    decode_backend_env_value "$value"
     count[$key]=$((count[$key] + 1))
   done < "$BACKEND_ENV_FILE"
   for key in "${keys[@]}"; do [[ "${count[$key]}" == "1" ]] || die "Backend runtime contract is incomplete"; done
@@ -87,8 +116,8 @@ stream_backend_env() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
-    value="${value:1:${#value}-2}"
-    value="${value//\\\'/\'}"
+    decode_backend_env_value "$value"
+    value="$DECODED_BACKEND_ENV_VALUE"
     case "$key" in
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED|PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE|PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS) ;;
       *) printf '%s=%s\n' "$key" "$value" ;;
