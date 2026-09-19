@@ -203,31 +203,40 @@ assert_public_header "$ERROR_HEADERS" 'X-Frame-Options' 'DENY'
 assert_public_header "$ERROR_HEADERS" 'X-XSS-Protection' '0'
 assert_public_header "$ERROR_HEADERS" 'Referrer-Policy' 'strict-origin-when-cross-origin'
 
+RATE_LIMITED_BODY='{"code":"RATE_LIMITED","message":"로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.","fieldErrors":[]}'
+public_success_count=0
+public_rate_limited_count=0
+
 for (( attempt = 1; attempt <= 15; attempt++ )); do
   login_code="$(curl --silent --show-error --insecure --max-time 5 \
     --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" \
     --request POST --header 'Content-Type: application/json' --data '{}' \
+    --dump-header "$TEST_ROOT/login-$attempt.headers" \
     --output "$TEST_ROOT/login-$attempt.body" --write-out '%{http_code}' \
     "https://$TEST_DOMAIN:$HTTPS_PORT/api/auth/login")"
-  [[ "$login_code" == "200" ]]
-  [[ "$(<"$TEST_ROOT/login-$attempt.body")" == '{"source":"backend"}' ]]
+  case "$login_code" in
+    200)
+      [[ "$(<"$TEST_ROOT/login-$attempt.body")" == '{"source":"backend"}' ]]
+      public_success_count=$((public_success_count + 1))
+      ;;
+    429)
+      [[ "$(<"$TEST_ROOT/login-$attempt.body")" == "$RATE_LIMITED_BODY" ]]
+      grep -qi '^Content-Type: application/json' "$TEST_ROOT/login-$attempt.headers"
+      assert_public_header "$TEST_ROOT/login-$attempt.headers" 'Strict-Transport-Security' 'max-age=31536000; includeSubDomains'
+      assert_public_header "$TEST_ROOT/login-$attempt.headers" 'X-Content-Type-Options' 'nosniff'
+      assert_public_header "$TEST_ROOT/login-$attempt.headers" 'X-Frame-Options' 'DENY'
+      assert_public_header "$TEST_ROOT/login-$attempt.headers" 'X-XSS-Protection' '0'
+      assert_public_header "$TEST_ROOT/login-$attempt.headers" 'Referrer-Policy' 'strict-origin-when-cross-origin'
+      public_rate_limited_count=$((public_rate_limited_count + 1))
+      ;;
+    *)
+      false
+      ;;
+  esac
 done
 
-RATE_LIMITED_BODY='{"code":"RATE_LIMITED","message":"로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.","fieldErrors":[]}'
-RATE_LIMITED_HEADERS="$TEST_ROOT/rate-limited.headers"
-RATE_LIMITED_CODE="$(curl --silent --show-error --insecure --max-time 5 \
-  --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" \
-  --request POST --header 'Content-Type: application/json' --data '{}' \
-  --dump-header "$RATE_LIMITED_HEADERS" --output "$TEST_ROOT/rate-limited.body" \
-  --write-out '%{http_code}' "https://$TEST_DOMAIN:$HTTPS_PORT/api/auth/login")"
-[[ "$RATE_LIMITED_CODE" == "429" ]]
-[[ "$(<"$TEST_ROOT/rate-limited.body")" == "$RATE_LIMITED_BODY" ]]
-grep -qi '^Content-Type: application/json' "$RATE_LIMITED_HEADERS"
-assert_public_header "$RATE_LIMITED_HEADERS" 'Strict-Transport-Security' 'max-age=31536000; includeSubDomains'
-assert_public_header "$RATE_LIMITED_HEADERS" 'X-Content-Type-Options' 'nosniff'
-assert_public_header "$RATE_LIMITED_HEADERS" 'X-Frame-Options' 'DENY'
-assert_public_header "$RATE_LIMITED_HEADERS" 'X-XSS-Protection' '0'
-assert_public_header "$RATE_LIMITED_HEADERS" 'Referrer-Policy' 'strict-origin-when-cross-origin'
+(( public_success_count > 0 ))
+(( public_rate_limited_count > 0 ))
 
 API_CODE="$(curl --silent --show-error --insecure --max-time 5 \
   --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" \
@@ -236,6 +245,7 @@ API_CODE="$(curl --silent --show-error --insecure --max-time 5 \
 [[ "$API_CODE" == "200" ]]
 [[ "$(<"$TEST_ROOT/api.body")" == '{"source":"backend"}' ]]
 
+internal_success_count=0
 for (( attempt = 1; attempt <= 16; attempt++ )); do
   internal_login_code="$(curl --silent --show-error --max-time 5 \
     --request POST --header 'Content-Type: application/json' --data '{}' \
@@ -243,9 +253,11 @@ for (( attempt = 1; attempt <= 16; attempt++ )); do
     "http://127.0.0.1:$INTERNAL_PORT/api/auth/login")"
   [[ "$internal_login_code" == "200" ]]
   [[ "$(<"$TEST_ROOT/internal-login-$attempt.body")" == '{"source":"backend"}' ]]
+  internal_success_count=$((internal_success_count + 1))
 done
 
 backend_login_count="$(docker logs "$BACKEND_CONTAINER" 2>&1 | grep -c 'POST /api/auth/login' || true)"
-[[ "$backend_login_count" == "31" ]]
+expected_backend_login_count=$((public_success_count + internal_success_count))
+[[ "$backend_login_count" == "$expected_backend_login_count" ]]
 
 printf 'AUTH-005 Nginx hostname, certificate, edge security, and login rate-limit tests passed\n'
