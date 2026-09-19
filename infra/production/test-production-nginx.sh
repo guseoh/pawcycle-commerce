@@ -25,7 +25,6 @@ cleanup() {
   rm -rf -- "$TEST_ROOT"
 }
 trap cleanup EXIT
-trap 'status=$?; printf "AUTH-005 Nginx contract failed at line %s: %s (public_success=%s public_rate_limited=%s internal_success=%s)\n" "$LINENO" "$BASH_COMMAND" "${public_success_count:-n/a}" "${public_rate_limited_count:-n/a}" "${internal_success_count:-n/a}" >&2; exit "$status"' ERR
 
 PROXY_IMAGE="nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
 CERTBOT_IMAGE="certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9"
