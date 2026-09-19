@@ -47,7 +47,7 @@ printf 'pawcycle-acme-probe' > "$CHALLENGE_DIR/.well-known/acme-challenge/probe"
 printf '%s\n' \
   'server {' \
   '    listen 8080;' \
-  '    access_log /dev/stdout combined;' \
+  '    access_log /dev/stdout main;' \
   '    add_header Strict-Transport-Security "upstream-hsts" always;' \
   '    add_header X-Content-Type-Options "upstream-nosniff" always;' \
   '    add_header X-Frame-Options "upstream-frame" always;' \
