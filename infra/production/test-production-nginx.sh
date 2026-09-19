@@ -176,7 +176,7 @@ assert_public_header() {
 
   count="$(grep -i -c "^${header_name}:" "$header_file" || true)"
   [[ "$count" == "1" ]]
-  actual_value="$(grep -i "^${header_name}:" "$header_file" | head -n 1 | cut -d: -f2- | sed 's/^ *//')"
+  actual_value="$(grep -i "^${header_name}:" "$header_file" | head -n 1 | cut -d: -f2- | tr -d '\r' | sed 's/^ *//')"
   [[ "$actual_value" == "$expected_value" ]]
 }
 
