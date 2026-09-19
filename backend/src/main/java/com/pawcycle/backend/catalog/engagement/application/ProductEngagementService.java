@@ -85,9 +85,7 @@ public class ProductEngagementService {
   public ReviewResponse updateReview(long reviewId, long memberId, ReviewPatchCommand request) {
     if (!request.ratingPresent() && !request.contentPresent())
       throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
-    ReviewMutationState current = lockReview(reviewId);
-    if (current.memberId() != memberId)
-      throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 수정할 수 있습니다.");
+    ReviewMutationState current = lockOwnedReview(reviewId, memberId);
     int rating = request.ratingPresent() ? validRating(request.rating()) : current.rating();
     String content = request.contentPresent() ? validContent(request.content()) : current.content();
     persistence.updateReview(reviewId, rating, content, Timestamp.from(Instant.now(clock)));
@@ -96,9 +94,7 @@ public class ProductEngagementService {
 
   @Transactional
   public void deleteReview(long reviewId, long memberId) {
-    ReviewMutationState current = lockReview(reviewId);
-    if (current.memberId() != memberId)
-      throw error(403, "REVIEW_OWNER_REQUIRED", "본인의 리뷰만 삭제할 수 있습니다.");
+    lockOwnedReview(reviewId, memberId);
     persistence.deleteReview(reviewId);
   }
 
@@ -149,9 +145,7 @@ public class ProductEngagementService {
   public QuestionResponse updateQuestion(
       long questionId, long memberId, QuestionPatchCommand request) {
     if (!request.contentPresent()) throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
-    QuestionMutationState current = lockQuestion(questionId);
-    if (current.memberId() != memberId)
-      throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 수정할 수 있습니다.");
+    QuestionMutationState current = lockOwnedQuestion(questionId, memberId);
     if (current.answered()) throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 수정할 수 없습니다.");
     persistence.updateQuestion(
         questionId, validContent(request.content()), Timestamp.from(Instant.now(clock)));
@@ -160,9 +154,7 @@ public class ProductEngagementService {
 
   @Transactional
   public void deleteQuestion(long questionId, long memberId) {
-    QuestionMutationState current = lockQuestion(questionId);
-    if (current.memberId() != memberId)
-      throw error(403, "PRODUCT_QUESTION_OWNER_REQUIRED", "본인의 문의만 삭제할 수 있습니다.");
+    QuestionMutationState current = lockOwnedQuestion(questionId, memberId);
     if (current.answered()) throw error(409, "PRODUCT_QUESTION_LOCKED", "답변이 등록된 문의는 삭제할 수 없습니다.");
     persistence.deleteQuestion(questionId);
   }
@@ -208,9 +200,25 @@ public class ProductEngagementService {
         state.memberId(), state.productId(), state.rating(), state.content());
   }
 
+  private ReviewMutationState lockOwnedReview(long reviewId, long memberId) {
+    ProductEngagementPersistence.ReviewMutationState state =
+        persistence.lockOwnedReview(reviewId, memberId);
+    if (state == null) throw error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다.");
+    return new ReviewMutationState(
+        state.memberId(), state.productId(), state.rating(), state.content());
+  }
+
   private QuestionMutationState lockQuestion(long questionId) {
     ProductEngagementPersistence.QuestionMutationState state = persistence.lockQuestion(questionId);
     if (state == null) throw error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다.");
+    return new QuestionMutationState(state.memberId(), state.productId(), state.answered());
+  }
+
+  private QuestionMutationState lockOwnedQuestion(long questionId, long memberId) {
+    ProductEngagementPersistence.QuestionMutationState state =
+        persistence.lockOwnedQuestion(questionId, memberId);
+    if (state == null)
+      throw error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다.");
     return new QuestionMutationState(state.memberId(), state.productId(), state.answered());
   }
 

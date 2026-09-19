@@ -27,5 +27,11 @@ public interface ProductQuestionRepository extends JpaRepository<ProductQuestion
   @Query("select q from ProductQuestionEntity q where q.id = :questionId")
   Optional<ProductQuestionEntity> findByIdForUpdate(@Param("questionId") Long questionId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select q from ProductQuestionEntity q where q.id = :questionId and q.memberId = :memberId")
+  Optional<ProductQuestionEntity> findByIdAndMemberIdForUpdate(
+      @Param("questionId") Long questionId, @Param("memberId") Long memberId);
+
   Optional<ProductQuestionEntity> findByIdAndProductId(Long id, Long productId);
 }

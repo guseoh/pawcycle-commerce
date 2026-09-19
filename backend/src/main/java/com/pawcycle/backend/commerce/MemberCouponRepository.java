@@ -16,9 +16,11 @@ public interface MemberCouponRepository extends JpaRepository<MemberCouponEntity
   List<MemberCouponEntity> findByMemberIdOrderByIdDesc(long memberId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @Query("select coupon from MemberCouponEntity coupon where coupon.id = :memberCouponId")
-  Optional<MemberCouponEntity> findByIdForUpdate(
-      @Param("memberCouponId") long memberCouponId);
+  @Query(
+      "select coupon from MemberCouponEntity coupon "
+          + "where coupon.id = :memberCouponId and coupon.memberId = :memberId")
+  Optional<MemberCouponEntity> findByIdAndMemberIdForUpdate(
+      @Param("memberCouponId") long memberCouponId, @Param("memberId") long memberId);
 
   @Modifying
   @Query(
