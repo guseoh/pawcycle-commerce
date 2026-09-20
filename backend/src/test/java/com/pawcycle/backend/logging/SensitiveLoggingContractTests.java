@@ -55,10 +55,11 @@ class SensitiveLoggingContractTests {
           new SensitiveName("session id", "sessionid"),
           new SensitiveName("CSRF token", "csrf"),
           new SensitiveName("Authorization header", "authorization"),
-          new SensitiveName("Cookie header", "cookie"),
-          new SensitiveName("member id", "memberid"));
-  private static final Set<String> RAW_REQUEST_NAMES =
-      Set.of("body", "payload", "request", "httprequest", "servletrequest", "requestbody", "rawbody");
+          new SensitiveName("Cookie header", "cookie"));
+  private static final Set<String> RAW_REQUEST_VALUE_NAMES =
+      Set.of("body", "payload", "requestbody", "rawbody", "getbody", "getpayload");
+  private static final Set<String> RAW_REQUEST_OBJECT_NAMES =
+      Set.of("request", "httprequest", "servletrequest");
 
   @Test
   void productionLoggerArgumentsDoNotExposeSensitiveValues() throws Exception {
@@ -96,7 +97,7 @@ class SensitiveLoggingContractTests {
             new ContractCase("Authorization header", "headers.getHeader(\"Authorization\")"),
             new ContractCase("Cookie header", "headers.getHeader(\"Cookie\")"),
             new ContractCase("raw request body", "requestBody"),
-            new ContractCase("member id", "memberId"));
+            new ContractCase("raw request body", "request"));
 
     for (ContractCase contractCase : cases) {
       String source =
@@ -112,22 +113,49 @@ class SensitiveLoggingContractTests {
   }
 
   @Test
-  void ignoresSensitiveNamesOutsideLoggerCallsAndKeepsOperationalSubscriptionIdentifiers()
+  void ignoresSensitiveNamesOutsideLoggerCallsAndKeepsApprovedIdentifiersAndSafeRequestProjection()
       throws Exception {
     String source =
         """
         class ContractFixture {
           Logger log;
-          void verify(String password, long subscriptionId, long scheduleId, RuntimeException exception) {
+          void verify(
+              String password,
+              long memberId,
+              long subscriptionId,
+              long scheduleId,
+              Request request,
+              RuntimeException exception) {
             consume(password);
             log.info("Password validation completed");
-            log.error("Automation failed subscriptionId={} scheduleId={}",
-                subscriptionId, scheduleId, exception);
+            log.error("Automation failed memberId={} subscriptionId={} scheduleId={} method={}",
+                memberId, subscriptionId, scheduleId, request.getMethod(), exception);
           }
         }
         """;
 
     assertThat(findViolations("ContractFixture.java", source)).isEmpty();
+  }
+
+  @Test
+  void rejectsRawRequestObjectsAndBodyAccessButAllowsSafeRequestMetadata() throws Exception {
+    String rawRequest =
+        "class ContractFixture { Logger log; void verify(Request request) { "
+            + "log.info(\"request={}\", request); } }";
+    String rawBody =
+        "class ContractFixture { Logger log; void verify(Request request) { "
+            + "log.info(\"body={}\", request.getBody()); } }";
+    String safeMetadata =
+        "class ContractFixture { Logger log; void verify(Request request) { "
+            + "log.info(\"method={}\", request.getMethod()); } }";
+
+    assertThat(findViolations("RawRequestFixture.java", rawRequest))
+        .extracting(Violation::category)
+        .contains("raw request body");
+    assertThat(findViolations("RawBodyFixture.java", rawBody))
+        .extracting(Violation::category)
+        .contains("raw request body");
+    assertThat(findViolations("SafeRequestMetadataFixture.java", safeMetadata)).isEmpty();
   }
 
   private static Path productionSourceRoot() {
@@ -178,14 +206,18 @@ class SensitiveLoggingContractTests {
   }
 
   private static String sensitiveCategory(String name) {
-    String normalized = name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+    String normalized = normalizeName(name);
     for (SensitiveName sensitiveName : SENSITIVE_NAMES) {
       if (normalized.contains(sensitiveName.normalizedName())) return sensitiveName.category();
     }
-    if (RAW_REQUEST_NAMES.contains(normalized) || normalized.endsWith("requestbody")) {
+    if (RAW_REQUEST_VALUE_NAMES.contains(normalized) || normalized.endsWith("requestbody")) {
       return "raw request body";
     }
     return null;
+  }
+
+  private static String normalizeName(String name) {
+    return name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
   }
 
   private static final class LoggerDeclarationScanner extends TreeScanner<Void, Set<String>> {
@@ -235,6 +267,7 @@ class SensitiveLoggingContractTests {
         Set<String> categories = new LinkedHashSet<>();
         for (var argument : invocation.getArguments()) {
           if (argument instanceof LiteralTree) continue;
+          if (isDirectRawRequestObject(argument)) categories.add("raw request body");
           new SensitiveArgumentScanner(categories).scan(argument, null);
         }
         long start = trees.getSourcePositions().getStartPosition(unit, invocation);
@@ -255,6 +288,16 @@ class SensitiveLoggingContractTests {
     private boolean isLoggerReceiver(String receiver) {
       return loggerNames.stream()
           .anyMatch(name -> receiver.equals(name) || receiver.endsWith("." + name));
+    }
+
+    private boolean isDirectRawRequestObject(com.sun.source.tree.Tree argument) {
+      String name = null;
+      if (argument instanceof IdentifierTree identifier) {
+        name = identifier.getName().toString();
+      } else if (argument instanceof MemberSelectTree select) {
+        name = select.getIdentifier().toString();
+      }
+      return name != null && RAW_REQUEST_OBJECT_NAMES.contains(normalizeName(name));
     }
   }
 
