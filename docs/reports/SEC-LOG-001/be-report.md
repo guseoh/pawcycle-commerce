@@ -50,8 +50,9 @@ Backend 제품 로그에서 credential, token, session/CSRF, 결제·Billing key
 - PASS — `BillingApplicationServiceLoggingTests`, `SensitiveLoggingContractTests`, `AuthExceptionHandlerTests` focused 실행
 - PASS — 민감 logging 계약 테스트가 현재 production logger 호출에서 위반 없음 확인
 - PASS — `git diff --check`
-- NOT RUN — Backend 전체 test와 MySQL 기반 subscription 통합 테스트의 최종 판정은 Repository Validation에서 확인한다. 로컬 targeted 실행은 JDBC URL이 구성되지 않아 Spring context 시작 전에 실패했다.
-- PENDING — Harness validation, Repository Validation 전체와 PR Metadata Validation은 Draft PR의 최종 HEAD에서 확인한다.
+- PASS — Repository Validation run `35490130763`, code HEAD `8a96038c0f1639c6af3979b93733665255c89843`: Backend 전체 test/MySQL, Harness, conventions와 Application validation 성공
+- NOT RUN — 로컬 MySQL 기반 subscription 통합 테스트는 JDBC URL이 구성되지 않아 Spring context 시작 전에 실패했다. 같은 범위는 위 Repository Validation의 MySQL 8.4 환경에서 성공했다.
+- Draft PR의 최종 HEAD와 PR Metadata Validation은 동적 상태이므로 PR #298을 권위 원본으로 확인한다.
 
 ## 위험/제한
 
