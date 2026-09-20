@@ -28,7 +28,7 @@ public class BillingApplicationService {
 
   public BillingPreparationResponse prepare(long memberId) {
     String token = transaction.execute(status -> billing.createPreparation(memberId));
-    log.info("Billing method preparation created. memberId={}", memberId);
+    log.info("Billing method preparation created");
     return new BillingPreparationResponse(token);
   }
 
@@ -45,6 +45,6 @@ public class BillingApplicationService {
     // Provider I/O is deliberately outside the persistence transaction.
     String billingKey = provider.issueBillingKey(prepared.customerKey(), authKey).billingKey();
     transaction.executeWithoutResult(status -> billing.register(memberId, prepareToken, billingKey));
-    log.info("Billing method registration completed. memberId={}", memberId);
+    log.info("Billing method registration completed");
   }
 }
