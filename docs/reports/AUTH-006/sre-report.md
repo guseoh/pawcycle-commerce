@@ -118,7 +118,7 @@ Compose config 렌더링은 daemon 없이 성공했으며 project identity, loop
 
 - 실제 AUTH-006 local isolated measurement: Docker Desktop host 초기화 오류로 engine unavailable
 - Backend/MySQL integration lane과 Backend 전체 test: local MySQL runtime unavailable
-- Repository Validation 전체와 PR Metadata Validation: PR 생성 후 원격 CI에서 확인
+- Repository Validation 전체와 PR Metadata Validation: 최신 PR HEAD의 원격 gate에서 확인하며 일시적인 run 상태나 ID는 이 장기 보고서에 고정하지 않음
 - Production 검증: 승인 범위 밖이며 실행하지 않음
 
 ## 복구 경계
