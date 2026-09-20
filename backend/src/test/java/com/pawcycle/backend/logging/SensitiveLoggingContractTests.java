@@ -140,14 +140,14 @@ class SensitiveLoggingContractTests {
   @Test
   void rejectsRawRequestObjectsAndBodyAccessButAllowsSafeRequestMetadata() throws Exception {
     String rawRequest =
-        "class ContractFixture { Logger log; void verify(Request request) { "
-            + "log.info(\"request={}\", request); } }";
+        "class ContractFixture { Logger log; void verify(HttpServletRequest req) { "
+            + "log.info(\"request={}\", req); } }";
     String rawBody =
-        "class ContractFixture { Logger log; void verify(Request request) { "
-            + "log.info(\"body={}\", request.getBody()); } }";
+        "class ContractFixture { Logger log; void verify(HttpServletRequest req) { "
+            + "log.info(\"body={}\", req.getBody()); } }";
     String safeMetadata =
-        "class ContractFixture { Logger log; void verify(Request request) { "
-            + "log.info(\"method={}\", request.getMethod()); } }";
+        "class ContractFixture { Logger log; void verify(HttpServletRequest req) { "
+            + "log.info(\"method={}\", req.getMethod()); } }";
 
     assertThat(findViolations("RawRequestFixture.java", rawRequest))
         .extracting(Violation::category)
@@ -198,8 +198,12 @@ class SensitiveLoggingContractTests {
       for (CompilationUnitTree unit : units) {
         String sourceName = unit.getSourceFile().getName();
         Set<String> loggerNames = new HashSet<>();
+        Set<String> rawRequestObjectNames = new HashSet<>();
         new LoggerDeclarationScanner().scan(unit, loggerNames);
-        new LoggerInvocationScanner(sourceName, unit, trees, loggerNames, violations).scan(unit, null);
+        new RawRequestDeclarationScanner().scan(unit, rawRequestObjectNames);
+        new LoggerInvocationScanner(
+                sourceName, unit, trees, loggerNames, rawRequestObjectNames, violations)
+            .scan(unit, null);
       }
       return violations;
     }
@@ -239,11 +243,27 @@ class SensitiveLoggingContractTests {
     }
   }
 
+  private static final class RawRequestDeclarationScanner
+      extends TreeScanner<Void, Set<String>> {
+    @Override
+    public Void visitVariable(VariableTree variable, Set<String> rawRequestObjectNames) {
+      if (variable.getType() != null) {
+        String normalizedType = normalizeName(variable.getType().toString());
+        if (normalizedType.endsWith("httpservletrequest")
+            || normalizedType.endsWith("servletrequest")) {
+          rawRequestObjectNames.add(variable.getName().toString());
+        }
+      }
+      return super.visitVariable(variable, rawRequestObjectNames);
+    }
+  }
+
   private static final class LoggerInvocationScanner extends TreeScanner<Void, Void> {
     private final String sourceName;
     private final CompilationUnitTree unit;
     private final Trees trees;
     private final Set<String> loggerNames;
+    private final Set<String> rawRequestObjectNames;
     private final List<Violation> violations;
 
     private LoggerInvocationScanner(
@@ -251,11 +271,13 @@ class SensitiveLoggingContractTests {
         CompilationUnitTree unit,
         Trees trees,
         Set<String> loggerNames,
+        Set<String> rawRequestObjectNames,
         List<Violation> violations) {
       this.sourceName = sourceName;
       this.unit = unit;
       this.trees = trees;
       this.loggerNames = loggerNames;
+      this.rawRequestObjectNames = rawRequestObjectNames;
       this.violations = violations;
     }
 
@@ -297,7 +319,9 @@ class SensitiveLoggingContractTests {
       } else if (argument instanceof MemberSelectTree select) {
         name = select.getIdentifier().toString();
       }
-      return name != null && RAW_REQUEST_OBJECT_NAMES.contains(normalizeName(name));
+      return name != null
+          && (rawRequestObjectNames.contains(name)
+              || RAW_REQUEST_OBJECT_NAMES.contains(normalizeName(name)));
     }
   }
 
