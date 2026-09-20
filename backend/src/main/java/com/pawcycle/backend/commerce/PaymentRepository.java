@@ -16,9 +16,10 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, Long> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
       "select payment from PaymentEntity payment join fetch payment.order "
-          + "where payment.providerOrderId = :providerOrderId")
+          + "where payment.providerOrderId = :providerOrderId "
+          + "and payment.order.memberId = :memberId")
   Optional<PaymentEntity> findByProviderOrderIdForUpdate(
-      @Param("providerOrderId") String providerOrderId);
+      @Param("providerOrderId") String providerOrderId, @Param("memberId") long memberId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select payment from PaymentEntity payment where payment.id = :paymentId")

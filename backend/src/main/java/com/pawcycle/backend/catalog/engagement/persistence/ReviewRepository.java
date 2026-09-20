@@ -34,6 +34,12 @@ public interface ReviewRepository extends JpaRepository<ReviewEntity, Long> {
   @Query("select r from ReviewEntity r where r.id = :reviewId")
   Optional<ReviewEntity> findByIdForUpdate(@Param("reviewId") Long reviewId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select r from ReviewEntity r where r.id = :reviewId and r.memberId = :memberId")
+  Optional<ReviewEntity> findByIdAndMemberIdForUpdate(
+      @Param("reviewId") Long reviewId, @Param("memberId") Long memberId);
+
   @Query("select avg(r.rating) from ReviewEntity r where r.productId = :productId and r.visible = true")
   Double averageVisibleRating(@Param("productId") Long productId);
 }

@@ -28,6 +28,8 @@ Cart는 가격·재고를 예약하지 않으며 Checkout에서 PUBLIC Product, 
 
 Toss confirm의 성공·실패·미확정 및 동일 요청 replay 응답은 기존 `paymentId`, `status`에 `orderId`를 additive하게 포함한다. Frontend는 confirm 요청의 금액으로 Checkout 응답의 서버 금액을 사용하고, Toss redirect URL의 금액은 일치성 검증에만 사용한다.
 
+`POST /api/payments/toss/confirm`에서 존재하지 않거나 다른 회원 소유인 `providerOrderId`는 동일하게 `404 / PAYMENT_NOT_FOUND`로 반환한다.
+
 Toss Test Browser 연동은 `local-integration`에서 명시적 opt-in으로만 허용한다. Backend는 `PAWCYCLE_TOSS_TEST_ENABLED=true`와 `test_sk_` secret이 모두 유효할 때 실제 Toss Test adapter를 선택하며, live secret은 거부한다. Frontend client key는 `NEXT_PUBLIC_TOSS_TEST_CLIENT_KEY`로만 주입하며 `test_ck_`가 아니면 결제 위젯을 열지 않는다. 실제 Provider endpoint는 공식 Toss API 주소로 고정하며 Secret과 실제 key 값은 코드·문서·로그·PR에 기록하지 않는다.
 
 일반 Checkout의 READY Payment는 생성 시점부터 30분의 만료 시각을 가진다. 만료 전 confirm되지 않은 주문은 멱등적으로 `EXPIRED` 처리하며 Inventory reservation과 예약 Coupon을 반환한다. PROCESSING/UNKNOWN Payment는 이 만료 처리 대상이 아니다.

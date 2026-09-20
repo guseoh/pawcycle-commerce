@@ -138,9 +138,9 @@ public class CheckoutPersistenceAdapter {
   }
 
   public CouponRule findCouponRule(long memberId, long memberCouponId) {
-    MemberCouponEntity memberCoupon = memberCoupons.findByIdForUpdate(memberCouponId).orElse(null);
+    MemberCouponEntity memberCoupon =
+        memberCoupons.findByIdAndMemberIdForUpdate(memberCouponId, memberId).orElse(null);
     if (memberCoupon == null
-        || memberCoupon.getMemberId() != memberId
         || !"AVAILABLE".equals(memberCoupon.getStatus())) return null;
     CouponEntity coupon = coupons.findByIdForUpdate(memberCoupon.getCouponId()).orElse(null);
     if (coupon == null || !coupon.isActive() || !isValidNow(coupon)) return null;

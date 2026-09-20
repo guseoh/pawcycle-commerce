@@ -33,6 +33,8 @@
 - `GET /api/admin/product-reviews?page=&size=&productId=`: 전체 상태 조회
 - `PATCH /api/admin/product-reviews/{reviewId}/visibility`: `{visible}`
 
+Review 수정·삭제에서 존재하지 않거나 다른 회원 소유인 `reviewId`는 동일하게 `404 / REVIEW_NOT_FOUND`로 반환한다.
+
 Review 작성은 회원 소유 Order의 해당 Product SKU가 실제 존재하고 연결 Delivery가 `DELIVERED`인 경우에만 가능하다. 회원·상품당 하나의 Review만 허용하며 신규 Review는 visible로 생성된다. Admin visibility 변경과 작성자 수정은 기존 visible 값을 보존한다.
 
 ## Product Q&A
@@ -43,6 +45,8 @@ Review 작성은 회원 소유 Order의 해당 Product SKU가 실제 존재하�
 - `GET /api/admin/product-questions?page=&size=&productId=`
 - `PUT /api/admin/product-questions/{questionId}/answer`: `{answer}`
 - `PATCH /api/admin/product-questions/{questionId}/visibility`: `{visible}`
+
+Product Question 수정·삭제에서 존재하지 않거나 다른 회원 소유인 `questionId`는 동일하게 `404 / PRODUCT_QUESTION_NOT_FOUND`로 반환한다. 답변이 등록된 본인 Question의 수정·삭제는 기존 `409 / PRODUCT_QUESTION_LOCKED`를 유지한다.
 
 공개 Question 응답은 `questionId`, `content`, `answer`, `answered`, `createdAt`, `updatedAt`만 포함한다. 최초 답변 transaction에서 기존 Notification 구조로 `PRODUCT_QUESTION_ANSWERED`를 한 번 생성하고, 답변 수정에서는 생성하지 않는다. 답변이 등록된 Question은 작성자가 수정·삭제할 수 없다.
 

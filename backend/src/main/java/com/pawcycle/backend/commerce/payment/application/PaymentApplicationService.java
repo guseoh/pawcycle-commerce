@@ -48,11 +48,8 @@ public class PaymentApplicationService {
         transaction.execute(
             status -> {
               PaymentPersistenceAdapter.PaymentWork payment =
-                  payments.findByProviderOrderIdForUpdate(providerOrderId);
+                  payments.findByProviderOrderIdForUpdate(providerOrderId, memberId);
               if (payment == null) throw notFound();
-              if (payment.memberId() != memberId) {
-                throw new CommerceException(403, "PAYMENT_FORBIDDEN", "결제 소유자가 아닙니다.");
-              }
               if ("SUCCEEDED".equals(payment.status())
                   && "PAID".equals(payment.orderStatus())
                   && payment.amount().compareTo(amount) == 0

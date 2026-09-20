@@ -254,9 +254,33 @@ public class ProductEngagementPersistence {
   }
 
   @Transactional(readOnly = true)
+  public ReviewMutationState lockOwnedReview(long reviewId, long memberId) {
+    return reviews
+        .findByIdAndMemberIdForUpdate(reviewId, memberId)
+        .map(
+            review ->
+                new ReviewMutationState(
+                    review.getMemberId(), review.getProductId(), review.getRating(), review.getContent()))
+        .orElse(null);
+  }
+
+  @Transactional(readOnly = true)
   public QuestionMutationState lockQuestion(long questionId) {
     return questions
         .findByIdForUpdate(questionId)
+        .map(
+            question ->
+                new QuestionMutationState(
+                    question.getMemberId(),
+                    question.getProductId(),
+                    question.getAnsweredAt() != null))
+        .orElse(null);
+  }
+
+  @Transactional(readOnly = true)
+  public QuestionMutationState lockOwnedQuestion(long questionId, long memberId) {
+    return questions
+        .findByIdAndMemberIdForUpdate(questionId, memberId)
         .map(
             question ->
                 new QuestionMutationState(

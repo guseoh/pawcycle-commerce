@@ -205,12 +205,12 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"rating\":4}"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.code").value("REVIEW_OWNER_REQUIRED"));
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REVIEW_NOT_FOUND"));
     mockMvc
         .perform(delete("/api/reviews/{reviewId}", reviewId).with(otherUser()).with(csrf()))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.code").value("REVIEW_OWNER_REQUIRED"));
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REVIEW_NOT_FOUND"));
     mockMvc
         .perform(
             patch("/api/admin/product-reviews/{reviewId}/visibility", reviewId)
@@ -233,6 +233,19 @@ class ProductEngagementApiIntegrationTests {
     mockMvc
         .perform(delete("/api/reviews/{reviewId}", reviewId).with(user()).with(csrf()))
         .andExpect(status().isNoContent());
+    mockMvc
+        .perform(
+            patch("/api/reviews/{reviewId}", 999999L)
+                .with(user())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"rating\":4}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REVIEW_NOT_FOUND"));
+    mockMvc
+        .perform(delete("/api/reviews/{reviewId}", 999999L).with(user()).with(csrf()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REVIEW_NOT_FOUND"));
 
     mockMvc
         .perform(
@@ -255,15 +268,15 @@ class ProductEngagementApiIntegrationTests {
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"content\":\"other edit\"}"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_OWNER_REQUIRED"));
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_NOT_FOUND"));
     mockMvc
         .perform(
             delete("/api/product-questions/{questionId}", questionId)
                 .with(otherUser())
                 .with(csrf()))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_OWNER_REQUIRED"));
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_NOT_FOUND"));
     mockMvc
         .perform(
             patch("/api/product-questions/{questionId}", questionId)
@@ -279,6 +292,19 @@ class ProductEngagementApiIntegrationTests {
     mockMvc
         .perform(delete("/api/product-questions/{questionId}", questionId).with(user()).with(csrf()))
         .andExpect(status().isNoContent());
+    mockMvc
+        .perform(
+            patch("/api/product-questions/{questionId}", 999999L)
+                .with(user())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"missing\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_NOT_FOUND"));
+    mockMvc
+        .perform(delete("/api/product-questions/{questionId}", 999999L).with(user()).with(csrf()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_QUESTION_NOT_FOUND"));
   }
 
   @Test

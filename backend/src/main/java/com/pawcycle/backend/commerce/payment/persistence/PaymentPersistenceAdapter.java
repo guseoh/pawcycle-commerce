@@ -46,9 +46,9 @@ public class PaymentPersistenceAdapter {
     this.clock = clock;
   }
 
-  public PaymentWork findByProviderOrderIdForUpdate(String providerOrderId) {
+  public PaymentWork findByProviderOrderIdForUpdate(String providerOrderId, long memberId) {
     return payments
-        .findByProviderOrderIdForUpdate(providerOrderId)
+        .findByProviderOrderIdForUpdate(providerOrderId, memberId)
         .map(this::paymentWork)
         .orElse(null);
   }
@@ -135,7 +135,6 @@ public class PaymentPersistenceAdapter {
         payment.getAmount(),
         payment.getStatus(),
         payment.getPaymentKey(),
-        order.getMemberId(),
         order.getStatus());
   }
 
@@ -153,7 +152,6 @@ public class PaymentPersistenceAdapter {
       BigDecimal amount,
       String status,
       String paymentKey,
-      long memberId,
       String orderStatus) {}
 
   public record PaymentState(long paymentId, long orderId, String status) {}

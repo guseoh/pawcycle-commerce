@@ -270,7 +270,7 @@ class CommercePurchaseIntegrationTests {
                     new BigDecimal(checkout.get("amount").toString())))
         .isInstanceOf(CommerceException.class)
         .satisfies(
-            error -> assertThat(((CommerceException) error).code()).isEqualTo("PAYMENT_FORBIDDEN"));
+            error -> assertThat(((CommerceException) error).code()).isEqualTo("PAYMENT_NOT_FOUND"));
     assertThatThrownBy(
             () ->
                 commerce.confirm(
@@ -286,6 +286,80 @@ class CommercePurchaseIntegrationTests {
                 String.class,
                 providerOrderId))
         .isEqualTo("READY");
+  }
+
+  @Test
+  void confirmRejectsMissingProviderOrderIdAsPaymentNotFound() {
+    assertThatThrownBy(
+            () ->
+                commerce.confirm(
+                    member.getId(), "payment-key", "missing-" + UUID.randomUUID(), BigDecimal.ONE))
+        .isInstanceOf(CommerceException.class)
+        .satisfies(
+            error -> assertThat(((CommerceException) error).code()).isEqualTo("PAYMENT_NOT_FOUND"));
+  }
+
+  @Test
+  void checkoutScopesMemberCouponLockToAuthenticatedMemberAndPreservesUnavailableContract() {
+    commerce.addCartItem(member.getId(), sku.getId(), 1);
+    jdbc.update(
+        "INSERT INTO coupons(name,discount_type,discount_value,minimum_order_amount,valid_from,valid_until,active)"
+            + " VALUES (?,?,?,0,CURRENT_TIMESTAMP(6),DATE_ADD(CURRENT_TIMESTAMP(6),INTERVAL 1 DAY),true)",
+        "ownership-coupon-" + UUID.randomUUID(),
+        "FIXED_AMOUNT",
+        100);
+    long couponId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    jdbc.update(
+        "INSERT INTO member_coupons(member_id,coupon_id,status,issued_at) VALUES (?,?,'AVAILABLE',CURRENT_TIMESTAMP(6))",
+        member.getId(),
+        couponId);
+    long memberCouponId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    Member other =
+        memberRepository.saveAndFlush(
+            new Member(
+                "coupon-other-" + UUID.randomUUID() + "@example.test",
+                passwordEncoder.encode("test-password")));
+    jdbc.update(
+        "INSERT INTO member_coupons(member_id,coupon_id,status,issued_at) VALUES (?,?,'AVAILABLE',CURRENT_TIMESTAMP(6))",
+        other.getId(),
+        couponId);
+    long otherMemberCouponId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+    Map<String, Object> checkout =
+        commerce.checkout(member.getId(), "coupon-owner-" + UUID.randomUUID(), addressId, memberCouponId);
+    assertAmount(
+        ((Map<String, Object>) checkout.get("pricing")).get("discountAmount"),
+        BigDecimal.valueOf(100));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM member_coupons WHERE id=?", String.class, memberCouponId))
+        .isEqualTo("RESERVED");
+
+    assertThatThrownBy(
+            () ->
+                commerce.checkout(
+                    member.getId(), "coupon-other-" + UUID.randomUUID(), addressId, otherMemberCouponId))
+        .isInstanceOf(CommerceException.class)
+        .satisfies(
+            error -> assertThat(((CommerceException) error).code()).isEqualTo("COUPON_UNAVAILABLE"));
+    assertThatThrownBy(
+            () ->
+                commerce.checkout(
+                    member.getId(), "coupon-missing-" + UUID.randomUUID(), addressId, 999999999L))
+        .isInstanceOf(CommerceException.class)
+        .satisfies(
+            error -> assertThat(((CommerceException) error).code()).isEqualTo("COUPON_UNAVAILABLE"));
+    assertThat(
+            jdbc.update(
+                "UPDATE member_coupons SET status='USED' WHERE id=?", memberCouponId))
+        .isEqualTo(1);
+    assertThatThrownBy(
+            () ->
+                commerce.checkout(
+                    member.getId(), "coupon-unavailable-" + UUID.randomUUID(), addressId, memberCouponId))
+        .isInstanceOf(CommerceException.class)
+        .satisfies(
+            error -> assertThat(((CommerceException) error).code()).isEqualTo("COUPON_UNAVAILABLE"));
   }
 
   @Test
