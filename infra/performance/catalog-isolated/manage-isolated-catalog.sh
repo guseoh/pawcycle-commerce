@@ -81,57 +81,69 @@ while (($#)); do
   esac
 done
 
-for value in "$source_root" "$config_file" "$password_file" "$dataset_dir"; do
-  [[ -n "$value" && "$value" == /* ]]     || die 'source/config/password/dataset paths must be absolute'
-done
-
-source_root="$(cd -- "$source_root" && pwd -P)"
-[[ "$SCRIPT_SOURCE_ROOT" == "$source_root" ]]   || die 'manage-isolated-catalog.sh must run from the approved source root'
-
-command -v python3 >/dev/null 2>&1 || die 'python3 is required'
-command -v docker >/dev/null 2>&1 || die 'docker is required'
-docker compose version >/dev/null 2>&1 || die 'docker compose is required'
-
-python3 "$VALIDATOR"   --source-root "$source_root"   --config-file "$config_file"   --password-file "$password_file"   --dataset-dir "$dataset_dir"
-
 read_config_value() {
   local key="$1"
   awk -v key="$key" '
     index($0, key "=") == 1 {
-      print substr($0, length(key) + 2)
-      found = 1
+      value = substr($0, length(key) + 2)
+      count++
     }
-    END { if (!found) exit 1 }
+    END {
+      if (count != 1) exit 1
+      print value
+    }
   ' "$config_file"
 }
 
-dataset_id="$(read_config_value PAWCYCLE_PERF_DATASET_ID)"
-host_port="$(read_config_value PAWCYCLE_PERF_HOST_PORT)"
-backend_image="$(read_config_value PAWCYCLE_PERF_BACKEND_IMAGE)"
-manifest_path="$dataset_dir/manifest.json"
-password="$(cat "$password_file")"
+command -v docker >/dev/null 2>&1 || die 'docker is required'
+docker compose version >/dev/null 2>&1 || die 'docker compose is required'
 
-export PAWCYCLE_PERF_DB_PASSWORD="$password"
-export PAWCYCLE_PERF_MANIFEST_PATH="$manifest_path"
-export PAWCYCLE_PERF_IMPORT_OPERATION='validate'
-trap cleanup_secret EXIT
+if [[ "$action" == 'down' ]]; then
+  [[ -n "$config_file" && "$config_file" == /* ]] || die 'down requires an absolute config path'
+  [[ -f "$config_file" && ! -L "$config_file" ]] || die 'down config file must be a regular non-symlink file'
+  [[ "$(stat -c '%u' "$config_file")" == '0' ]] || die 'down config file must be root-owned'
+  [[ "$(stat -c '%a' "$config_file")" == '600' ]] || die 'down config file mode must be 0600'
+else
+  for value in "$source_root" "$config_file" "$password_file" "$dataset_dir"; do
+    [[ -n "$value" && "$value" == /* ]]     || die 'source/config/password/dataset paths must be absolute'
+  done
+
+  source_root="$(cd -- "$source_root" && pwd -P)"
+  [[ "$SCRIPT_SOURCE_ROOT" == "$source_root" ]]   || die 'manage-isolated-catalog.sh must run from the approved source root'
+
+  command -v python3 >/dev/null 2>&1 || die 'python3 is required'
+fi
+
+dataset_id="$(read_config_value PAWCYCLE_PERF_DATASET_ID)" || die 'unable to read exactly one dataset identity from config'
+
+case "$dataset_id" in
+  catalog-core-control-v1)
+    cleanup_schema='pawcycle_perf_core_control'
+    ;;
+  catalog-core-10k-v1)
+    cleanup_schema='pawcycle_perf_core_10k'
+    ;;
+  *)
+    die "unsupported performance dataset: $dataset_id"
+    ;;
+esac
+
+if [[ "$action" != 'down' ]]; then
+  python3 "$VALIDATOR"   --source-root "$source_root"   --config-file "$config_file"   --password-file "$password_file"   --dataset-dir "$dataset_dir"
+
+  host_port="$(read_config_value PAWCYCLE_PERF_HOST_PORT)"
+  backend_image="$(read_config_value PAWCYCLE_PERF_BACKEND_IMAGE)"
+  manifest_path="$dataset_dir/manifest.json"
+  password="$(cat "$password_file")"
+
+  export PAWCYCLE_PERF_DB_PASSWORD="$password"
+  export PAWCYCLE_PERF_MANIFEST_PATH="$manifest_path"
+  export PAWCYCLE_PERF_IMPORT_OPERATION='validate'
+  trap cleanup_secret EXIT
+fi
 
 compose() {
   docker compose     --project-name "$PROJECT_NAME"     --env-file "$config_file"     -f "$COMPOSE_FILE"     "$@"
-}
-
-compose config >/dev/null
-
-assert_local_backend_image() {
-  local expected_digest os_arch
-  expected_digest="${backend_image##*@}"
-
-  docker image inspect "$backend_image" >/dev/null 2>&1     || die 'approved Backend image is not present locally; verify and pull it explicitly before retrying'
-
-  os_arch="$(docker image inspect "$backend_image" --format '{{.Os}}/{{.Architecture}}')"
-  [[ "$os_arch" == 'linux/amd64' ]]     || die "approved Backend image platform must be linux/amd64 (actual=$os_arch)"
-
-  docker image inspect "$backend_image"     --format '{{range .RepoDigests}}{{println .}}{{end}}' |     grep -Fq "@$expected_digest"     || die 'local Backend image RepoDigest does not match the approved digest'
 }
 
 assert_existing_project_identity() {
@@ -146,6 +158,40 @@ assert_existing_project_identity() {
     [[ "$scope" == "$SCOPE_LABEL" ]] || die "unexpected container scope for $id"
     [[ "$dataset" == "$dataset_id" ]] || die "existing performance container belongs to dataset $dataset"
   done <<<"$ids"
+}
+
+if [[ "$action" == 'down' ]]; then
+  [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]]       || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
+  assert_existing_project_identity
+
+  # Cleanup must remain available when runtime inputs are damaged. These are
+  # interpolation-only sentinels; no image is inspected and no DB secret is read.
+  env \
+    PAWCYCLE_PERF_BACKEND_IMAGE='cleanup.invalid/unused@sha256:0000000000000000000000000000000000000000000000000000000000000000' \
+    PAWCYCLE_PERF_DB_PASSWORD='cleanup-only-unused' \
+    PAWCYCLE_PERF_DB_URL="jdbc:mysql://cleanup.invalid:3306/$cleanup_schema?sslMode=REQUIRED" \
+    PAWCYCLE_PERF_DB_USERNAME='pawcycle_perf_catalog' \
+    PAWCYCLE_PERF_HOST_PORT='65535' \
+    PAWCYCLE_PERF_IMPORT_OPERATION='validate' \
+    PAWCYCLE_PERF_MANIFEST_PATH='/dev/null' \
+    PAWCYCLE_PERF_SCHEMA="$cleanup_schema" \
+    docker compose --project-name "$PROJECT_NAME" --env-file "$config_file" -f "$COMPOSE_FILE" down --remove-orphans
+  printf 'catalog_isolated_runtime=PASS action=down project=%s\n' "$PROJECT_NAME"
+  exit 0
+fi
+
+compose config >/dev/null
+
+assert_local_backend_image() {
+  local expected_digest os_arch
+  expected_digest="${backend_image##*@}"
+
+  docker image inspect "$backend_image" >/dev/null 2>&1     || die 'approved Backend image is not present locally; verify and pull it explicitly before retrying'
+
+  os_arch="$(docker image inspect "$backend_image" --format '{{.Os}}/{{.Architecture}}')"
+  [[ "$os_arch" == 'linux/amd64' ]]     || die "approved Backend image platform must be linux/amd64 (actual=$os_arch)"
+
+  docker image inspect "$backend_image"     --format '{{range .RepoDigests}}{{println .}}{{end}}' |     grep -Fq "@$expected_digest"     || die 'local Backend image RepoDigest does not match the approved digest'
 }
 
 backend_running() {
@@ -234,13 +280,6 @@ case "$action" in
   status)
     assert_existing_project_identity
     compose ps
-    ;;
-
-  down)
-    [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]]       || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
-    assert_existing_project_identity
-    compose down --remove-orphans
-    printf 'catalog_isolated_runtime=PASS action=down project=%s\n' "$PROJECT_NAME"
     ;;
 
   *)

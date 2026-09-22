@@ -43,19 +43,47 @@ def require_regular_file(path: Path) -> Path:
     return target
 
 
-def require_source_file(path: Path) -> Path:
-    target = require_regular_file(path)
-    details = os.lstat(path)
+def canonical_source_file(source_root: Path, path: Path) -> Path:
+    root = source_root.resolve(strict=True)
+    lexical = Path(os.path.abspath(str(path)))
+    target = lexical.resolve(strict=True)
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise ProvenanceError(
+            f"source file must remain inside canonical source root: {path}"
+        ) from exc
+    if not relative.parts:
+        raise ProvenanceError(f"source file must be below source root: {path}")
+
+    current = root
+    for part in relative.parts:
+        current /= part
+        details = os.lstat(current)
+        if stat.S_ISLNK(details.st_mode):
+            raise ProvenanceError(f"source path component must not be a symlink: {current}")
+        if current != target and not stat.S_ISDIR(details.st_mode):
+            raise ProvenanceError(f"source path component must be a directory: {current}")
+    return target
+
+
+def require_source_file(source_root: Path, path: Path) -> Path:
+    target = canonical_source_file(source_root, path)
+    details = os.lstat(target)
+    if not stat.S_ISREG(details.st_mode):
+        raise ProvenanceError(f"expected source regular file: {target}")
     if details.st_uid != 0:
-        raise ProvenanceError(f"source file must be root-owned: {path}")
+        raise ProvenanceError(f"source file must be root-owned: {target}")
     if stat.S_IMODE(details.st_mode) != 0o444:
-        raise ProvenanceError(f"source file mode must be 0444: {path}")
+        raise ProvenanceError(f"source file mode must be 0444: {target}")
     return target
 
 
 def approved_source_sha(source_root: Path) -> str:
-    original = source_root
-    source_root = source_root.resolve(strict=True)
+    original = Path(os.path.abspath(str(source_root)))
+    source_root = original.resolve(strict=True)
+    if original != source_root:
+        raise ProvenanceError("source root must not contain symlinked path components")
     original_details = os.lstat(original)
     if stat.S_ISLNK(original_details.st_mode):
         raise ProvenanceError("source root must not be a symlink")
@@ -70,7 +98,7 @@ def approved_source_sha(source_root: Path) -> str:
     if (source_root / ".git").exists():
         raise ProvenanceError("materialized source must not contain .git")
 
-    marker = require_source_file(source_root / ".approved-sha")
+    marker = require_source_file(source_root, source_root / ".approved-sha")
     approved_sha = marker.read_text(encoding="utf-8").strip()
     if not SHA40.fullmatch(approved_sha):
         raise ProvenanceError("source marker must contain a 40-character lowercase SHA")
@@ -107,12 +135,15 @@ def main() -> int:
         raise ProvenanceError("provenance.json already exists; do not overwrite immutable provenance")
 
     prepare_wrapper = require_source_file(
+        source_root,
         source_root / "scripts" / "prepare-product-scale-data.py"
     )
     data_generator = require_source_file(
+        source_root,
         source_root / "scripts" / "generate-product-data-v2.py"
     )
     base_manifest = require_source_file(
+        source_root,
         source_root
         / "backend"
         / "src"

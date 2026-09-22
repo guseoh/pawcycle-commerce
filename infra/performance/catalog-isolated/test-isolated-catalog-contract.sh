@@ -73,6 +73,35 @@ assert provenance["prepareWrapperSha256"] == sha256(Path(sys.argv[2]))
 assert provenance["dataGeneratorSha256"] == sha256(Path(sys.argv[3]))
 PY
 
+external_scripts="$tmp/external-scripts"
+mkdir -m 0555 "$external_scripts"
+cp "$source_root/scripts/prepare-product-scale-data.py" "$external_scripts/"
+cp "$source_root/scripts/generate-product-data-v2.py" "$external_scripts/"
+chmod 0444 "$external_scripts"/*.py
+mv "$source_root/scripts" "$source_root/scripts-real"
+ln -s "$external_scripts" "$source_root/scripts"
+rm "$dataset_dir/provenance.json"
+if python3 "$provenance_tool" --source-root "$source_root" --dataset-dir "$dataset_dir" >/dev/null 2>&1; then
+  printf 'provenance accepted an intermediate source directory symlink\n' >&2
+  exit 1
+fi
+rm "$source_root/scripts"
+mv "$source_root/scripts-real" "$source_root/scripts"
+
+external_manifest="$tmp/external-demo-catalog.json"
+cp "$source_root/backend/src/main/resources/catalog/demo-catalog.json" "$external_manifest"
+chmod 0444 "$external_manifest"
+base_manifest="$source_root/backend/src/main/resources/catalog/demo-catalog.json"
+mv "$base_manifest" "$base_manifest-real"
+ln -s "$external_manifest" "$base_manifest"
+if python3 "$provenance_tool" --source-root "$source_root" --dataset-dir "$dataset_dir" >/dev/null 2>&1; then
+  printf 'provenance accepted a direct source file symlink\n' >&2
+  exit 1
+fi
+rm "$base_manifest"
+mv "$base_manifest-real" "$base_manifest"
+python3 "$provenance_tool" --source-root "$source_root" --dataset-dir "$dataset_dir" >/dev/null
+
 cat >"$config_file" <<EOF
 PAWCYCLE_PERF_DATASET_ID=catalog-core-control-v1
 PAWCYCLE_PERF_SCHEMA=pawcycle_perf_core_control
@@ -128,10 +157,24 @@ if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
   esac
 fi
 if [[ "${1:-}" == "ps" ]]; then
+  if [[ "${2:-}" == "-a" && "${FAKE_EXISTING_CONTAINER:-0}" == "1" ]]; then
+    printf 'fake-existing\n'
+  fi
   exit 0
 fi
 if [[ "${1:-}" == "inspect" ]]; then
-  printf 'healthy\n'
+  joined=" $* "
+  case "$joined" in
+    *"com.pawcycle.performance.scope"*)
+      printf '%s\n' "${FAKE_SCOPE_LABEL:-catalog-isolated}"
+      ;;
+    *"com.pawcycle.performance.dataset"*)
+      printf '%s\n' "${FAKE_DATASET_LABEL:-catalog-core-control-v1}"
+      ;;
+    *)
+      printf 'healthy\n'
+      ;;
+  esac
   exit 0
 fi
 
@@ -173,6 +216,10 @@ chmod +x "$fake_bin/k6"
 
 run_manager() {
   PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}"   bash "$manager" "$@"     --source-root "$source_root"     --config-file "$config_file"     --password-file "$password_file"     --dataset-dir "$dataset_dir"
+}
+
+run_down_manager() {
+  PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_EXISTING_CONTAINER="${FAKE_EXISTING_CONTAINER:-0}"   FAKE_SCOPE_LABEL="${FAKE_SCOPE_LABEL:-catalog-isolated}"   FAKE_DATASET_LABEL="${FAKE_DATASET_LABEL:-catalog-core-control-v1}"   bash "$manager" down "$@"     --config-file "$config_file"
 }
 
 run_manager preflight >/dev/null
@@ -229,7 +276,7 @@ grep -q '/actuator/health/readiness' "$curl_log"
 grep -q '/api/products' "$curl_log"
 
 : >"$docker_log"
-if run_manager down >/dev/null 2>&1; then
+if run_down_manager >/dev/null 2>&1; then
   printf 'runtime cleanup unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
 fi
@@ -239,7 +286,7 @@ if grep -q 'down --remove-orphans' "$docker_log"; then
 fi
 
 : >"$docker_log"
-run_manager down --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
+run_down_manager --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
 grep -q 'down --remove-orphans' "$docker_log"
 if grep -q -- '--volumes' "$docker_log"; then
   printf 'runtime cleanup must not remove volumes\n' >&2
@@ -247,7 +294,28 @@ if grep -q -- '--volumes' "$docker_log"; then
 fi
 
 : >"$docker_log"
-FAKE_IMAGE_MISSING=1 run_manager down   --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
+if FAKE_EXISTING_CONTAINER=1 FAKE_DATASET_LABEL='catalog-core-10k-v1' run_down_manager   --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null 2>&1; then
+  printf 'runtime cleanup accepted a dataset identity mismatch\n' >&2
+  exit 1
+fi
+if grep -q 'down --remove-orphans' "$docker_log"; then
+  printf 'runtime cleanup ran after a dataset identity mismatch\n' >&2
+  exit 1
+fi
+
+: >"$docker_log"
+if FAKE_EXISTING_CONTAINER=1 FAKE_SCOPE_LABEL='other-scope' run_down_manager   --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null 2>&1; then
+  printf 'runtime cleanup accepted a scope identity mismatch\n' >&2
+  exit 1
+fi
+if grep -q 'down --remove-orphans' "$docker_log"; then
+  printf 'runtime cleanup ran after a scope identity mismatch\n' >&2
+  exit 1
+fi
+
+rm "$dataset_dir/manifest.json" "$dataset_dir/report.json" "$dataset_dir/provenance.json" "$password_file"
+: >"$docker_log"
+FAKE_IMAGE_MISSING=1 run_down_manager --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
 grep -q 'down --remove-orphans' "$docker_log"
 if grep -q 'image inspect' "$docker_log"; then
   printf 'runtime cleanup must not depend on the local Backend image\n' >&2

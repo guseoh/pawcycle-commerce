@@ -231,6 +231,70 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             paths = self.make_fixture(Path(temp))
             self.validate_fixture(paths)
 
+    def test_internal_source_files_use_canonical_path_for_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.make_fixture(Path(temp))
+            source = self.source_contract(paths)
+            prepare_wrapper = paths["source_root"] / "scripts" / "prepare-product-scale-data.py"
+
+            canonical = validator.canonical_source_file(
+                paths["source_root"], prepare_wrapper
+            )
+            self.assertEqual(canonical, prepare_wrapper.resolve())
+            self.assertEqual(
+                validator.file_sha256(canonical),
+                source["prepare_wrapper_sha256"],
+            )
+
+    def test_intermediate_source_directory_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = self.make_fixture(root)
+            external_scripts = root / "external-scripts"
+            external_scripts.mkdir(mode=0o555)
+            for name in (
+                "prepare-product-scale-data.py",
+                "generate-product-data-v2.py",
+            ):
+                target = external_scripts / name
+                target.write_bytes(
+                    (paths["source_root"] / "scripts" / name).read_bytes()
+                )
+                target.chmod(0o444)
+
+            scripts = paths["source_root"] / "scripts"
+            scripts.rename(paths["source_root"] / "scripts-real")
+            scripts.symlink_to(external_scripts, target_is_directory=True)
+
+            with self.assertRaisesRegex(validator.ContractError, "inside canonical source root|symlink"):
+                validator.validate_source_root(paths["source_root"])
+
+    def test_direct_source_file_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = self.make_fixture(root)
+            prepare_wrapper = paths["source_root"] / "scripts" / "prepare-product-scale-data.py"
+            data_generator = paths["source_root"] / "scripts" / "generate-product-data-v2.py"
+            data_generator.unlink()
+            data_generator.symlink_to(prepare_wrapper)
+
+            with self.assertRaisesRegex(validator.ContractError, "symlink"):
+                validator.validate_source_root(paths["source_root"])
+
+    def test_source_file_resolving_outside_root_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = self.make_fixture(root)
+            outside = root / "outside-source.py"
+            outside.write_text("outside\n", encoding="utf-8")
+            outside.chmod(0o444)
+
+            with self.assertRaisesRegex(validator.ContractError, "inside canonical source root"):
+                validator.require_source_file(
+                    paths["source_root"],
+                    paths["source_root"] / ".." / outside.name,
+                )
+
     def test_live_schema_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.make_fixture(Path(temp))

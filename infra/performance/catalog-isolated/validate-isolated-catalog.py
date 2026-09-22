@@ -109,11 +109,35 @@ def require_file(path: Path, allowed_modes: Iterable[int]) -> Path:
     return target
 
 
-def require_source_file(path: Path) -> Path:
-    target = absolute_path(path)
+def canonical_source_file(source_root: Path, path: Path) -> Path:
+    root = source_root.resolve(strict=True)
+    lexical = absolute_path(path)
+    target = lexical.resolve(strict=True)
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise ContractError(
+            f"source file must remain inside canonical source root: {path}"
+        ) from exc
+    if not relative.parts:
+        raise ContractError(f"source file must be below source root: {path}")
+
+    current = root
+    for part in relative.parts:
+        current /= part
+        details = os.lstat(current)
+        if stat.S_ISLNK(details.st_mode):
+            raise ContractError(f"source path component must not be a symlink: {current}")
+        if current != target and not stat.S_ISDIR(details.st_mode):
+            raise ContractError(f"source path component must be a directory: {current}")
+    return target
+
+
+def require_source_file(source_root: Path, path: Path) -> Path:
+    target = canonical_source_file(source_root, path)
     details = os.lstat(target)
-    if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
-        raise ContractError(f"expected source regular non-symlink file: {target}")
+    if not stat.S_ISREG(details.st_mode):
+        raise ContractError(f"expected source regular file: {target}")
     if details.st_uid != 0:
         raise ContractError(f"source file must be root-owned: {target}")
     if stat.S_IMODE(details.st_mode) != 0o444:
@@ -122,7 +146,10 @@ def require_source_file(path: Path) -> Path:
 
 
 def validate_source_root(source_root: Path) -> Mapping[str, object]:
-    target = absolute_path(source_root)
+    original = absolute_path(source_root)
+    target = original.resolve(strict=True)
+    if original != target:
+        raise ContractError("source root must not contain symlinked path components")
     details = os.lstat(target)
     if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
         raise ContractError("source root must be a regular directory")
@@ -133,7 +160,7 @@ def validate_source_root(source_root: Path) -> Mapping[str, object]:
     if (target / ".git").exists():
         raise ContractError("materialized source must not contain .git")
 
-    marker = require_source_file(target / ".approved-sha")
+    marker = require_source_file(target, target / ".approved-sha")
     approved_sha = marker.read_text(encoding="utf-8").strip()
     if not SHA40.fullmatch(approved_sha):
         raise ContractError("source marker must contain a 40-character lowercase SHA")
@@ -141,12 +168,15 @@ def validate_source_root(source_root: Path) -> Mapping[str, object]:
         raise ContractError("source directory name must match the approved SHA marker")
 
     prepare_wrapper = require_source_file(
+        target,
         target / "scripts" / "prepare-product-scale-data.py"
     )
     data_generator = require_source_file(
+        target,
         target / "scripts" / "generate-product-data-v2.py"
     )
     base_manifest = require_source_file(
+        target,
         target
         / "backend"
         / "src"
