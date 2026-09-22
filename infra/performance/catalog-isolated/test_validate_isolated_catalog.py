@@ -27,7 +27,8 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
 
     def make_source(self, root: Path) -> Path:
         source_root = root / APPROVED_SHA
-        generator_path = source_root / "scripts" / "prepare-product-scale-data.py"
+        prepare_wrapper = source_root / "scripts" / "prepare-product-scale-data.py"
+        data_generator = source_root / "scripts" / "generate-product-data-v2.py"
         base_path = (
             source_root
             / "backend"
@@ -37,10 +38,11 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             / "catalog"
             / "demo-catalog.json"
         )
-        generator_path.parent.mkdir(parents=True)
+        prepare_wrapper.parent.mkdir(parents=True)
         base_path.parent.mkdir(parents=True)
 
-        generator_path.write_text("# fixture generator\n", encoding="utf-8")
+        prepare_wrapper.write_text("# fixture prepare wrapper\n", encoding="utf-8")
+        data_generator.write_text("# fixture data generator\n", encoding="utf-8")
         base_path.write_text(
             json.dumps(
                 {
@@ -56,7 +58,7 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
         marker = source_root / ".approved-sha"
         marker.write_text(APPROVED_SHA + "\n", encoding="utf-8")
 
-        for path in (generator_path, base_path, marker):
+        for path in (prepare_wrapper, data_generator, base_path, marker):
             path.chmod(0o444)
         source_root.chmod(0o555)
         return source_root
@@ -103,7 +105,8 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             / "catalog"
             / "demo-catalog.json"
         )
-        generator_path = source_root / "scripts" / "prepare-product-scale-data.py"
+        prepare_wrapper = source_root / "scripts" / "prepare-product-scale-data.py"
+        data_generator = source_root / "scripts" / "generate-product-data-v2.py"
 
         report = {
             "schemaVersion": 1,
@@ -152,7 +155,8 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             "schemaVersion": 1,
             "datasetId": dataset_id,
             "approvedSourceSha": APPROVED_SHA,
-            "generatorSha256": validator.file_sha256(generator_path),
+            "prepareWrapperSha256": validator.file_sha256(prepare_wrapper),
+            "dataGeneratorSha256": validator.file_sha256(data_generator),
             "baseManifestSha256": validator.file_sha256(base_path),
             "generatedManifestSha256": validator.file_sha256(manifest_path),
             "reportSha256": validator.file_sha256(report_path),
@@ -343,19 +347,39 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
                     self.source_contract(paths),
                 )
 
-    def test_provenance_generator_digest_mismatch_is_rejected(self) -> None:
+    def test_provenance_prepare_wrapper_digest_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.make_fixture(Path(temp))
             provenance = json.loads(
                 paths["provenance"].read_text(encoding="utf-8")
             )
-            provenance["generatorSha256"] = "0" * 64
+            provenance["prepareWrapperSha256"] = "0" * 64
             self.rewrite_json(paths["provenance"], provenance)
 
             values = validator.parse_config(paths["config"])
             with self.assertRaisesRegex(
                 validator.ContractError,
-                "provenance mismatch: generatorSha256",
+                "provenance mismatch: prepareWrapperSha256",
+            ):
+                validator.validate_dataset(
+                    paths["dataset_dir"],
+                    values,
+                    self.source_contract(paths),
+                )
+
+    def test_provenance_data_generator_digest_mismatch_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.make_fixture(Path(temp))
+            provenance = json.loads(
+                paths["provenance"].read_text(encoding="utf-8")
+            )
+            provenance["dataGeneratorSha256"] = "0" * 64
+            self.rewrite_json(paths["provenance"], provenance)
+
+            values = validator.parse_config(paths["config"])
+            with self.assertRaisesRegex(
+                validator.ContractError,
+                "provenance mismatch: dataGeneratorSha256",
             ):
                 validator.validate_dataset(
                     paths["dataset_dir"],
@@ -374,6 +398,20 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             with self.assertRaisesRegex(
                 validator.ContractError,
                 "directory name must match",
+            ):
+                validator.validate_source_root(paths["source_root"])
+
+    def test_source_file_mode_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.make_fixture(Path(temp))
+            data_generator = (
+                paths["source_root"] / "scripts" / "generate-product-data-v2.py"
+            )
+            data_generator.chmod(0o644)
+
+            with self.assertRaisesRegex(
+                validator.ContractError,
+                "source file mode must be 0444",
             ):
                 validator.validate_source_root(paths["source_root"])
 
