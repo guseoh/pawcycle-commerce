@@ -23,6 +23,7 @@ fake_bin="$tmp/bin"
 docker_log="$tmp/docker.log"
 k6_log="$tmp/k6.log"
 curl_log="$tmp/curl.log"
+approved_image='ghcr.io/guseoh/pawcycle-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
 mkdir -m 0700 "$dataset_dir"
 mkdir -p "$results_dir" "$fake_bin"
@@ -94,10 +95,10 @@ report = {
 PY
 chmod 0444 "$dataset_dir/manifest.json" "$dataset_dir/report.json"
 
-cat >"$config_file" <<'EOF'
+cat >"$config_file" <<EOF
 PAWCYCLE_PERF_DATASET_ID=catalog-core-control-v1
 PAWCYCLE_PERF_SCHEMA=pawcycle_perf_core_control
-PAWCYCLE_PERF_BACKEND_IMAGE=ghcr.io/guseoh/pawcycle-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PAWCYCLE_PERF_BACKEND_IMAGE=$approved_image
 PAWCYCLE_PERF_DB_URL=jdbc:mysql://mysql.internal:3306/pawcycle_perf_core_control?sslMode=REQUIRED
 PAWCYCLE_PERF_DB_USERNAME=pawcycle_perf_catalog
 PAWCYCLE_PERF_HOST_PORT=18080
@@ -131,10 +132,27 @@ cat >"$fake_bin/docker" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 log="${FAKE_DOCKER_LOG:?}"
+approved_image="${FAKE_APPROVED_IMAGE:?}"
 printf 'docker|operation=%s|%s\n' "${PAWCYCLE_PERF_IMPORT_OPERATION:-}" "$*" >>"$log"
 
 if [[ "${1:-}" == "compose" && "${2:-}" == "version" ]]; then
   exit 0
+fi
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  joined=" $* "
+  case "$joined" in
+    *"{{.Os}}/{{.Architecture}}"*)
+      printf 'linux/amd64\n'
+      exit 0
+      ;;
+    *".RepoDigests"*)
+      printf '%s\n' "$approved_image"
+      exit 0
+      ;;
+    *)
+      exit 0
+      ;;
+  esac
 fi
 if [[ "${1:-}" == "ps" ]]; then
   exit 0
@@ -152,8 +170,8 @@ case "$joined" in
     printf 'fake-backend\n'
     exit 0
     ;;
-  *" run --rm --no-deps catalog-import "*) exit 0 ;;
-  *" up -d backend "*) exit 0 ;;
+  *" run --rm --no-deps --pull never catalog-import "*) exit 0 ;;
+  *" up -d --pull never backend "*) exit 0 ;;
   *" down --remove-orphans "*) exit 0 ;;
   *" ps "*) exit 0 ;;
 esac
@@ -181,6 +199,7 @@ run_manager() {
   PATH="$fake_bin:$PATH" \
   FAKE_DOCKER_LOG="$docker_log" \
   FAKE_CURL_LOG="$curl_log" \
+  FAKE_APPROVED_IMAGE="$approved_image" \
   bash "$MANAGER" "$@" \
     --config-file "$config_file" \
     --password-file "$password_file" \
@@ -188,28 +207,31 @@ run_manager() {
 }
 
 run_manager preflight >/dev/null
+grep -q 'image inspect' "$docker_log"
+grep -q '{{.Os}}/{{.Architecture}}' "$docker_log"
+grep -q '.RepoDigests' "$docker_log"
 
 : >"$docker_log"
 if run_manager import-apply >/dev/null 2>&1; then
   printf 'import-apply unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
 fi
-if grep -q 'run --rm --no-deps catalog-import' "$docker_log"; then
+if grep -q 'run --rm --no-deps --pull never catalog-import' "$docker_log"; then
   printf 'import ran before acknowledgement\n' >&2
   exit 1
 fi
 
 : >"$docker_log"
 run_manager import-apply --acknowledge "APPLY:$dataset_id" >/dev/null
-grep -q 'operation=validate|.*run --rm --no-deps catalog-import' "$docker_log"
-grep -q 'operation=apply|.*run --rm --no-deps catalog-import' "$docker_log"
+grep -q 'operation=validate|.*run --rm --no-deps --pull never catalog-import' "$docker_log"
+grep -q 'operation=apply|.*run --rm --no-deps --pull never catalog-import' "$docker_log"
 
 : >"$docker_log"
 if run_manager up >/dev/null 2>&1; then
   printf 'runtime start unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
 fi
-if grep -q 'up -d backend' "$docker_log"; then
+if grep -q 'up -d --pull never backend' "$docker_log"; then
   printf 'runtime started before acknowledgement\n' >&2
   exit 1
 fi
@@ -217,7 +239,7 @@ fi
 : >"$docker_log"
 : >"$curl_log"
 run_manager up --acknowledge "START:$dataset_id" >/dev/null
-grep -q 'up -d backend' "$docker_log"
+grep -q 'up -d --pull never backend' "$docker_log"
 grep -q '/actuator/health/readiness' "$curl_log"
 grep -q '/api/products' "$curl_log"
 
