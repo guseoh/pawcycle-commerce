@@ -195,8 +195,10 @@ materialization 후 계약:
 
 - source directory 이름 = approved SHA
 - `.approved-sha` 내용 = approved SHA
-- source root mode `0555`
-- source regular file mode `0444`
+- app01 source root와 source 내부 directory는 root-owned
+- app01 source root와 source 내부 directory는 `0555`로 정규화
+- app01 source regular file은 root-owned + `0444`
+- source file까지 이어지는 전체 부모 경로에서 group/other write를 허용하지 않음
 - `.git` 없음
 - Application control checkout HEAD/working tree 불변
 
@@ -210,6 +212,16 @@ scripts/generate-product-data-v2.py
 backend/src/main/resources/catalog/demo-catalog.json
 ```
 
+app01에서는 archive 추출과 `.approved-sha` 작성이 끝난 뒤, 운영 실행 전에 source tree를 다음처럼 정규화한다.
+
+```bash
+sudo chown -R root:root "$SOURCE_ROOT"
+sudo find "$SOURCE_ROOT" -type d -exec chmod 0555 {} +
+sudo find "$SOURCE_ROOT" -type f -exec chmod 0444 {} +
+```
+
+이 계약은 provenance 생성기가 root 권한으로 approved wrapper를 실행하기 전에 비특권 사용자가 중간 directory를 통해 wrapper나 generator 경로를 교체하지 못하게 한다. 검증기는 symlink뿐 아니라 source file까지 이어지는 전체 부모 경로의 소유권과 group/other write 가능 여부도 fail-closed로 확인한다.
+
 app01의 모든 실행 블록은 먼저 다음 경계를 다시 확인한다.
 
 ```bash
@@ -221,6 +233,9 @@ test ! -L "$SOURCE_ROOT"
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 test "$(basename "$SOURCE_ROOT")" = "$APPROVED_SHA"
 test ! -e "$SOURCE_ROOT/.git"
+test "$(sudo stat -c '%u %a' "$SOURCE_ROOT")" = '0 555'
+test -z "$(sudo find "$SOURCE_ROOT" -type d \( ! -user root -o ! -perm 0555 \) -print -quit)"
+test -z "$(sudo find "$SOURCE_ROOT" -type f \( ! -user root -o ! -perm 0444 \) -print -quit)"
 
 cd "$SOURCE_ROOT"
 ```

@@ -246,6 +246,18 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
                 source["prepare_wrapper_sha256"],
             )
 
+    def test_writable_intermediate_source_directory_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.make_fixture(Path(temp))
+            scripts = paths["source_root"] / "scripts"
+            scripts.chmod(0o775)
+
+            with self.assertRaisesRegex(
+                validator.ContractError,
+                "writable by group/other",
+            ):
+                validator.validate_source_root(paths["source_root"])
+
     def test_intermediate_source_directory_symlink_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

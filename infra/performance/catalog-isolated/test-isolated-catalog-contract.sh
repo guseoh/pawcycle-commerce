@@ -88,6 +88,13 @@ fi
 rm "$source_root/scripts"
 mv "$source_root/scripts-real" "$source_root/scripts"
 
+chmod 0775 "$source_root/scripts"
+if python3 "$provenance_tool" --source-root "$source_root" --dataset-dir "$dataset_dir" >/dev/null 2>&1; then
+  printf 'provenance accepted a group-writable intermediate source directory\n' >&2
+  exit 1
+fi
+chmod 0555 "$source_root/scripts"
+
 external_manifest="$tmp/external-demo-catalog.json"
 cp "$source_root/backend/src/main/resources/catalog/demo-catalog.json" "$external_manifest"
 chmod 0444 "$external_manifest"

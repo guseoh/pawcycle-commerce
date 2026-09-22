@@ -27,6 +27,30 @@ class ProvenanceError(ValueError):
     pass
 
 
+def absolute_path(path: Path) -> Path:
+    return Path(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def require_secure_parent_chain(path: Path) -> None:
+    target = absolute_path(path)
+    current = Path(target.anchor)
+    for part in target.parts[1:-1]:
+        current = current / part
+        details = os.lstat(current)
+        if stat.S_ISLNK(details.st_mode):
+            raise ProvenanceError(f"path component must not be a symlink: {current}")
+        if not stat.S_ISDIR(details.st_mode):
+            raise ProvenanceError(f"path component must be a directory: {current}")
+        if details.st_uid != 0:
+            raise ProvenanceError(f"path component must be root-owned: {current}")
+        writable = stat.S_IMODE(details.st_mode) & 0o022
+        sticky_root = bool(details.st_mode & stat.S_ISVTX) and details.st_uid == 0
+        if writable and not sticky_root:
+            raise ProvenanceError(
+                f"path component must not be writable by group/other: {current}"
+            )
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -45,7 +69,8 @@ def require_regular_file(path: Path) -> Path:
 
 def canonical_source_file(source_root: Path, path: Path) -> Path:
     root = source_root.resolve(strict=True)
-    lexical = Path(os.path.abspath(str(path)))
+    lexical = absolute_path(path)
+    require_secure_parent_chain(lexical)
     target = lexical.resolve(strict=True)
     try:
         relative = target.relative_to(root)

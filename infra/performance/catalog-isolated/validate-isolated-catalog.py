@@ -112,6 +112,7 @@ def require_file(path: Path, allowed_modes: Iterable[int]) -> Path:
 def canonical_source_file(source_root: Path, path: Path) -> Path:
     root = source_root.resolve(strict=True)
     lexical = absolute_path(path)
+    require_secure_parent_chain(lexical)
     target = lexical.resolve(strict=True)
     try:
         relative = target.relative_to(root)
