@@ -43,20 +43,34 @@ def require_regular_file(path: Path) -> Path:
     return target
 
 
+def require_source_file(path: Path) -> Path:
+    target = require_regular_file(path)
+    details = os.lstat(path)
+    if details.st_uid != 0:
+        raise ProvenanceError(f"source file must be root-owned: {path}")
+    if stat.S_IMODE(details.st_mode) != 0o444:
+        raise ProvenanceError(f"source file mode must be 0444: {path}")
+    return target
+
+
 def approved_source_sha(source_root: Path) -> str:
+    original = source_root
     source_root = source_root.resolve(strict=True)
+    original_details = os.lstat(original)
+    if stat.S_ISLNK(original_details.st_mode):
+        raise ProvenanceError("source root must not be a symlink")
+
     details = os.lstat(source_root)
-    if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
+    if not stat.S_ISDIR(details.st_mode):
         raise ProvenanceError("source root must be a regular directory")
+    if details.st_uid != 0:
+        raise ProvenanceError("source root must be root-owned")
     if stat.S_IMODE(details.st_mode) != 0o555:
         raise ProvenanceError("source root mode must be 0555")
     if (source_root / ".git").exists():
         raise ProvenanceError("materialized source must not contain .git")
 
-    marker = require_regular_file(source_root / ".approved-sha")
-    if stat.S_IMODE(os.lstat(marker).st_mode) != 0o444:
-        raise ProvenanceError("source marker mode must be 0444")
-
+    marker = require_source_file(source_root / ".approved-sha")
     approved_sha = marker.read_text(encoding="utf-8").strip()
     if not SHA40.fullmatch(approved_sha):
         raise ProvenanceError("source marker must contain a 40-character lowercase SHA")
@@ -79,7 +93,7 @@ def main() -> int:
     args = parse_args()
     source_root = args.source_root.resolve(strict=True)
     dataset_dir = args.dataset_dir.resolve(strict=True)
-    approved_sha = approved_source_sha(source_root)
+    approved_sha = approved_source_sha(args.source_root)
 
     dataset_id = dataset_dir.name
     target_products = EXPECTED_DATASETS.get(dataset_id)
@@ -92,10 +106,13 @@ def main() -> int:
     if provenance_path.exists() or provenance_path.is_symlink():
         raise ProvenanceError("provenance.json already exists; do not overwrite immutable provenance")
 
-    prepare_script = require_regular_file(
+    prepare_wrapper = require_source_file(
         source_root / "scripts" / "prepare-product-scale-data.py"
     )
-    base_manifest = require_regular_file(
+    data_generator = require_source_file(
+        source_root / "scripts" / "generate-product-data-v2.py"
+    )
+    base_manifest = require_source_file(
         source_root
         / "backend"
         / "src"
@@ -120,7 +137,7 @@ def main() -> int:
         completed = subprocess.run(
             [
                 sys.executable,
-                str(prepare_script),
+                str(prepare_wrapper),
                 "--base-manifest",
                 str(base_manifest),
                 "--target-products",
@@ -153,7 +170,8 @@ def main() -> int:
         "schemaVersion": 1,
         "datasetId": dataset_id,
         "approvedSourceSha": approved_sha,
-        "generatorSha256": sha256(prepare_script),
+        "prepareWrapperSha256": sha256(prepare_wrapper),
+        "dataGeneratorSha256": sha256(data_generator),
         "baseManifestSha256": sha256(base_manifest),
         "generatedManifestSha256": sha256(manifest_path),
         "reportSha256": sha256(report_path),
