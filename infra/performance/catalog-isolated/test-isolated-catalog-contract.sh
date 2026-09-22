@@ -7,15 +7,22 @@ set -Eeuo pipefail
 }
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-MANAGER="$SCRIPT_DIR/manage-isolated-catalog.sh"
-COMPOSE_FILE="$SCRIPT_DIR/compose.yaml"
-K6_RUNNER="$SCRIPT_DIR/../k6/run-isolated-capacity.sh"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 
 tmp="$(mktemp -d /tmp/pawcycle-isolated-catalog-test.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 
+approved_sha='1111111111111111111111111111111111111111'
+source_root="$tmp/$approved_sha"
+isolated_dir="$source_root/infra/performance/catalog-isolated"
+k6_dir="$source_root/infra/performance/k6"
+manager="$isolated_dir/manage-isolated-catalog.sh"
+compose_file="$isolated_dir/compose.yaml"
+provenance_tool="$isolated_dir/prepare-isolated-catalog-provenance.py"
+k6_runner="$k6_dir/run-isolated-capacity.sh"
+
 dataset_id='catalog-core-control-v1'
-dataset_dir="$tmp/$dataset_id"
+dataset_dir="$tmp/data/$dataset_id"
 config_file="$tmp/$dataset_id.env"
 password_file="$tmp/db-password"
 results_dir="$tmp/results"
@@ -25,75 +32,27 @@ k6_log="$tmp/k6.log"
 curl_log="$tmp/curl.log"
 approved_image='ghcr.io/guseoh/pawcycle-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
+mkdir -p   "$source_root/infra/performance"   "$source_root/scripts"   "$source_root/backend/src/main/resources/catalog"   "$tmp/data"   "$fake_bin"
+
+cp -a "$REPO_ROOT/infra/performance/catalog-isolated" "$source_root/infra/performance/"
+cp -a "$REPO_ROOT/infra/performance/k6" "$source_root/infra/performance/"
+cp "$REPO_ROOT/scripts/prepare-product-scale-data.py" "$source_root/scripts/"
+cp "$REPO_ROOT/scripts/generate-product-data-v2.py" "$source_root/scripts/"
+cp   "$REPO_ROOT/backend/src/main/resources/catalog/demo-catalog.json"   "$source_root/backend/src/main/resources/catalog/demo-catalog.json"
+printf '%s\n' "$approved_sha" >"$source_root/.approved-sha"
+
+find "$source_root" -type d -exec chmod 0555 {} +
+find "$source_root" -type f -exec chmod 0444 {} +
+
 mkdir -m 0700 "$dataset_dir"
-mkdir -p "$results_dir" "$fake_bin"
 
-python3 - "$dataset_dir" <<'PY'
-import hashlib
-import json
-import sys
-from pathlib import Path
+python3 "$source_root/scripts/prepare-product-scale-data.py"   --target-products 32   --seed 20260826   --dataset-id "$dataset_id"   --output "$dataset_dir/manifest.json"   --report "$dataset_dir/report.json"
 
-dataset_dir = Path(sys.argv[1])
-products = []
-for index in range(32):
-    products.append({
-        "catalogKey": f"CONTROL-{index:04d}",
-        "categorySlug": "food",
-        "petType": "DOG" if index % 2 == 0 else "CAT",
-        "skus": [{
-            "skuCode": f"CONTROL-SKU-{index:04d}",
-            "status": "ACTIVE",
-            "price": 10000 + index,
-            "subscribable": index % 2 == 0,
-            "initialInventory": 20,
-        }],
-    })
-manifest = {"categories": [{"slug": "food"}], "products": products}
-manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
-(dataset_dir / "manifest.json").write_bytes(manifest_bytes)
-report = {
-    "schemaVersion": 1,
-    "datasetId": "catalog-core-control-v1",
-    "seed": 20260826,
-    "baseManifestSha256": "b" * 64,
-    "generatedManifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
-    "products": {
-        "base": 32,
-        "synthetic": 0,
-        "total": 32,
-        "petType": {"CAT": 16, "DOG": 16},
-        "category": {"food": 32},
-        "withoutSku": 0,
-        "duplicateCatalogKeys": 0,
-        "unknownCategoryReferences": 0,
-    },
-    "skus": {
-        "total": 32,
-        "fanoutByProduct": {"1": 32},
-        "status": {"ACTIVE": 32},
-        "subscribable": {"false": 16, "true": 16},
-        "duplicateSkuCodes": 0,
-    },
-    "inventory": {
-        "total": 32,
-        "stockout": 0,
-        "low_1_5": 0,
-        "normal_gt_5": 32,
-    },
-    "price": {
-        "min": 10000,
-        "p50NearestRank": 10015,
-        "p95NearestRank": 10030,
-        "max": 10031,
-    },
-}
-(dataset_dir / "report.json").write_text(
-    json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-    encoding="utf-8",
-)
-PY
 chmod 0444 "$dataset_dir/manifest.json" "$dataset_dir/report.json"
+
+python3 "$provenance_tool"   --source-root "$source_root"   --dataset-dir "$dataset_dir" >/dev/null
+
+[[ "$(stat -c '%a' "$dataset_dir/provenance.json")" == '444' ]]
 
 cat >"$config_file" <<EOF
 PAWCYCLE_PERF_DATASET_ID=catalog-core-control-v1
@@ -108,15 +67,7 @@ printf '%s\n' 'fixture-password' >"$password_file"
 chmod 0400 "$password_file"
 
 # Real Compose parsing is part of the contract test. It does not start containers.
-PAWCYCLE_PERF_DB_PASSWORD='fixture-password' \
-PAWCYCLE_PERF_MANIFEST_PATH="$dataset_dir/manifest.json" \
-PAWCYCLE_PERF_IMPORT_OPERATION='validate' \
-docker compose \
-  --project-name pawcycle-performance-catalog \
-  --profile tools \
-  --env-file "$config_file" \
-  -f "$COMPOSE_FILE" \
-  config >"$tmp/resolved-compose.yaml"
+PAWCYCLE_PERF_DB_PASSWORD='fixture-password' PAWCYCLE_PERF_MANIFEST_PATH="$dataset_dir/manifest.json" PAWCYCLE_PERF_IMPORT_OPERATION='validate' docker compose   --project-name pawcycle-performance-catalog   --profile tools   --env-file "$config_file"   -f "$compose_file"   config >"$tmp/resolved-compose.yaml"
 
 grep -q 'name: pawcycle-performance-catalog' "$tmp/resolved-compose.yaml"
 grep -q 'host_ip: 127.0.0.1' "$tmp/resolved-compose.yaml"
@@ -186,6 +137,9 @@ cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'curl|%s\n' "$*" >>"${FAKE_CURL_LOG:?}"
+if [[ "${FAKE_CURL_FAIL:-0}" == "1" ]]; then
+  exit 22
+fi
 exit 0
 EOF
 chmod +x "$fake_bin/curl"
@@ -199,15 +153,7 @@ EOF
 chmod +x "$fake_bin/k6"
 
 run_manager() {
-  PATH="$fake_bin:$PATH" \
-  FAKE_DOCKER_LOG="$docker_log" \
-  FAKE_CURL_LOG="$curl_log" \
-  FAKE_APPROVED_IMAGE="$approved_image" \
-  FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}" \
-  bash "$MANAGER" "$@" \
-    --config-file "$config_file" \
-    --password-file "$password_file" \
-    --dataset-dir "$dataset_dir"
+  PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}"   bash "$manager" "$@"     --source-root "$source_root"     --config-file "$config_file"     --password-file "$password_file"     --dataset-dir "$dataset_dir"
 }
 
 run_manager preflight >/dev/null
@@ -249,6 +195,15 @@ fi
 
 : >"$docker_log"
 : >"$curl_log"
+if FAKE_CURL_FAIL=1 run_manager up   --acknowledge "START:$dataset_id" >/dev/null 2>&1; then
+  printf 'runtime start unexpectedly succeeded when readiness/API curl failed\n' >&2
+  exit 1
+fi
+grep -q 'up -d --pull never backend' "$docker_log"
+grep -q 'down --remove-orphans' "$docker_log"
+
+: >"$docker_log"
+: >"$curl_log"
 run_manager up --acknowledge "START:$dataset_id" >/dev/null
 grep -q 'up -d --pull never backend' "$docker_log"
 grep -q '/actuator/health/readiness' "$curl_log"
@@ -273,8 +228,7 @@ if grep -q -- '--volumes' "$docker_log"; then
 fi
 
 : >"$docker_log"
-FAKE_IMAGE_MISSING=1 run_manager down \
-  --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
+FAKE_IMAGE_MISSING=1 run_manager down   --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
 grep -q 'down --remove-orphans' "$docker_log"
 if grep -q 'image inspect' "$docker_log"; then
   printf 'runtime cleanup must not depend on the local Backend image\n' >&2
@@ -282,23 +236,22 @@ if grep -q 'image inspect' "$docker_log"; then
 fi
 
 : >"$k6_log"
-if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" \
-  bash "$K6_RUNNER" \
-    --target-url 'https://example.com' \
-    --dataset-id "$dataset_id" \
-    --results-dir "$results_dir" \
-    --acknowledge-isolated-load YES >/dev/null 2>&1; then
+if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log"   bash "$k6_runner"     --source-root "$source_root"     --target-url 'https://example.com'     --dataset-id "$dataset_id"     --results-dir "$results_dir"     --acknowledge-isolated-load YES >/dev/null 2>&1; then
   printf 'isolated k6 runner accepted a non-loopback target\n' >&2
   exit 1
 fi
 [[ ! -s "$k6_log" ]]
 
-PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" \
-bash "$K6_RUNNER" \
-  --target-url 'http://127.0.0.1:18080' \
-  --dataset-id "$dataset_id" \
-  --results-dir "$results_dir" \
-  --acknowledge-isolated-load YES >/dev/null
+mkdir -p "$results_dir"
+printf 'stale\n' >"$results_dir/stale.json"
+if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log"   bash "$k6_runner"     --source-root "$source_root"     --target-url 'http://127.0.0.1:18080'     --dataset-id "$dataset_id"     --results-dir "$results_dir"     --acknowledge-isolated-load YES >/dev/null 2>&1; then
+  printf 'isolated k6 runner accepted a non-empty results directory\n' >&2
+  exit 1
+fi
+[[ ! -s "$k6_log" ]]
+rm -f "$results_dir/stale.json"
+
+PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" bash "$k6_runner"   --source-root "$source_root"   --target-url 'http://127.0.0.1:18080'   --dataset-id "$dataset_id"   --results-dir "$results_dir"   --acknowledge-isolated-load YES >/dev/null
 
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]
 grep -q 'TARGET_RPS=25' "$k6_log"
