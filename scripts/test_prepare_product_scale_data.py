@@ -77,6 +77,69 @@ class PrepareProductScaleDataTest(unittest.TestCase):
             self.assertEqual(0, report["products"]["unknownCategoryReferences"])
             self.assertEqual(0, report["skus"]["duplicateSkuCodes"])
 
+    def test_catalog_core_10k_profile_matches_documented_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = root / "catalog-core-10k.json"
+            report_path = root / "catalog-core-10k-report.json"
+
+            result = self.run_prepare(
+                manifest,
+                report_path,
+                target_products=10000,
+                seed=20260826,
+                dataset_id="catalog-core-10k-v1",
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual("catalog-core-10k-v1", report["datasetId"])
+            self.assertEqual(20260826, report["seed"])
+            self.assertEqual(
+                {"base": 32, "synthetic": 9968, "total": 10000},
+                {
+                    "base": report["products"]["base"],
+                    "synthetic": report["products"]["synthetic"],
+                    "total": report["products"]["total"],
+                },
+            )
+            self.assertEqual({"CAT": 5000, "DOG": 5000}, report["products"]["petType"])
+            self.assertEqual(
+                {
+                    "food": 2578,
+                    "hygiene": 2495,
+                    "toilet": 2427,
+                    "treats": 2500,
+                },
+                report["products"]["category"],
+            )
+            self.assertEqual(
+                {"1": 3345, "2": 3333, "3": 3322},
+                report["skus"]["fanoutByProduct"],
+            )
+            self.assertEqual(19977, report["skus"]["total"])
+            self.assertEqual(
+                {"ACTIVE": 18164, "INACTIVE": 1813},
+                report["skus"]["status"],
+            )
+            self.assertEqual(
+                {"false": 9986, "true": 9991},
+                report["skus"]["subscribable"],
+            )
+            self.assertEqual(
+                {
+                    "total": 19977,
+                    "stockout": 6651,
+                    "low_1_5": 6650,
+                    "normal_gt_5": 6676,
+                },
+                report["inventory"],
+            )
+            self.assertEqual(0, report["products"]["withoutSku"])
+            self.assertEqual(0, report["products"]["duplicateCatalogKeys"])
+            self.assertEqual(0, report["products"]["unknownCategoryReferences"])
+            self.assertEqual(0, report["skus"]["duplicateSkuCodes"])
+
     def test_wrapper_preserves_existing_generator_manifest_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
