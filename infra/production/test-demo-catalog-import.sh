@@ -261,7 +261,7 @@ grep -Fq -- 'state directory path ownership is invalid' <<<"$unsafe_state_output
 [[ ! -s "$DOCKER_LOG" ]]
 
 # A missing shared release lock must be created as root-only 0600.
-[[ "$(stat -c '%a' "$STATE_FIXTURE/deploy.lock")" == "600" ]]
+[[ "$(sudo stat -c '%a' "$STATE_FIXTURE/deploy.lock")" == "600" ]]
 
 # A pre-existing permissive lock must fail closed before Git/Docker work.
 sudo chmod 644 "$STATE_FIXTURE/deploy.lock"
