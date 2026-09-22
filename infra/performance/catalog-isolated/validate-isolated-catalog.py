@@ -38,6 +38,7 @@ REQUIRED_CONFIG_KEYS = {
 }
 IMAGE_DIGEST = re.compile(r"^[^\s]+@sha256:[0-9a-f]{64}$")
 KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 class ContractError(ValueError):
@@ -54,10 +55,6 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def mode_of(path: Path) -> int:
-    return stat.S_IMODE(os.lstat(path).st_mode)
 
 
 def require_secure_parent_chain(path: Path) -> None:
@@ -110,6 +107,51 @@ def require_file(path: Path, allowed_modes: Iterable[int]) -> Path:
             f"file mode must be one of [{rendered}]: {target} (actual={actual_mode:04o})"
         )
     return target
+
+
+def require_source_file(path: Path) -> Path:
+    target = absolute_path(path)
+    details = os.lstat(target)
+    if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
+        raise ContractError(f"expected source regular non-symlink file: {target}")
+    if stat.S_IMODE(details.st_mode) != 0o444:
+        raise ContractError(f"source file mode must be 0444: {target}")
+    return target
+
+
+def validate_source_root(source_root: Path) -> Mapping[str, object]:
+    target = absolute_path(source_root)
+    details = os.lstat(target)
+    if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
+        raise ContractError("source root must be a regular directory")
+    if stat.S_IMODE(details.st_mode) != 0o555:
+        raise ContractError("source root mode must be 0555")
+    if (target / ".git").exists():
+        raise ContractError("materialized source must not contain .git")
+
+    marker = require_source_file(target / ".approved-sha")
+    approved_sha = marker.read_text(encoding="utf-8").strip()
+    if not SHA40.fullmatch(approved_sha):
+        raise ContractError("source marker must contain a 40-character lowercase SHA")
+    if target.name != approved_sha:
+        raise ContractError("source directory name must match the approved SHA marker")
+
+    generator = require_source_file(target / "scripts" / "prepare-product-scale-data.py")
+    base_manifest = require_source_file(
+        target
+        / "backend"
+        / "src"
+        / "main"
+        / "resources"
+        / "catalog"
+        / "demo-catalog.json"
+    )
+    return {
+        "source_root": target,
+        "approved_sha": approved_sha,
+        "generator_sha256": file_sha256(generator),
+        "base_manifest_sha256": file_sha256(base_manifest),
+    }
 
 
 def parse_config(path: Path) -> Dict[str, str]:
@@ -203,7 +245,11 @@ def validate_password_file(path: Path) -> None:
         raise ContractError("DB password file must not contain NUL bytes")
 
 
-def validate_dataset(dataset_dir: Path, values: Mapping[str, str]) -> Mapping[str, object]:
+def validate_dataset(
+    dataset_dir: Path,
+    values: Mapping[str, str],
+    source: Mapping[str, object],
+) -> Mapping[str, object]:
     dataset_id = values["PAWCYCLE_PERF_DATASET_ID"]
     expected = EXPECTED_DATASETS[dataset_id]
     if dataset_dir.name != dataset_id:
@@ -213,8 +259,10 @@ def validate_dataset(dataset_dir: Path, values: Mapping[str, str]) -> Mapping[st
 
     manifest_path = require_file(dataset_dir / "manifest.json", {0o444})
     report_path = require_file(dataset_dir / "report.json", {0o444})
+    provenance_path = require_file(dataset_dir / "provenance.json", {0o444})
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     if report.get("schemaVersion") != 1:
@@ -227,6 +275,25 @@ def validate_dataset(dataset_dir: Path, values: Mapping[str, str]) -> Mapping[st
     generated_sha = report.get("generatedManifestSha256")
     if not isinstance(generated_sha, str) or generated_sha != file_sha256(manifest_path):
         raise ContractError("manifest checksum does not match dataset report")
+    if report.get("baseManifestSha256") != source["base_manifest_sha256"]:
+        raise ContractError("dataset base manifest digest does not match approved source")
+
+    expected_provenance = {
+        "schemaVersion": 1,
+        "datasetId": dataset_id,
+        "approvedSourceSha": source["approved_sha"],
+        "generatorSha256": source["generator_sha256"],
+        "baseManifestSha256": source["base_manifest_sha256"],
+        "generatedManifestSha256": generated_sha,
+        "reportSha256": file_sha256(report_path),
+        "seed": EXPECTED_SEED,
+        "productsTotal": expected["products_total"],
+    }
+    for key, expected_value in expected_provenance.items():
+        if provenance.get(key) != expected_value:
+            raise ContractError(f"dataset provenance mismatch: {key}")
+    if set(provenance) != set(expected_provenance):
+        raise ContractError("dataset provenance contains unexpected or missing fields")
 
     products = manifest.get("products")
     if not isinstance(products, list):
@@ -279,11 +346,14 @@ def validate_dataset(dataset_dir: Path, values: Mapping[str, str]) -> Mapping[st
         "products_total": actual_products,
         "skus_total": sku_total,
         "manifest_sha256": generated_sha,
+        "approved_source_sha": source["approved_sha"],
+        "provenance_sha256": file_sha256(provenance_path),
     }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--config-file", required=True, type=Path)
     parser.add_argument("--password-file", required=True, type=Path)
     parser.add_argument("--dataset-dir", required=True, type=Path)
@@ -292,6 +362,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    source = validate_source_root(args.source_root)
     config_file = require_file(args.config_file, {0o600})
     password_file = require_file(args.password_file, {0o400, 0o600})
     validate_password_file(password_file)
@@ -299,7 +370,7 @@ def main() -> int:
 
     values = parse_config(config_file)
     config_summary = validate_config(values)
-    dataset_summary = validate_dataset(dataset_dir, values)
+    dataset_summary = validate_dataset(dataset_dir, values, source)
 
     summary = {
         **dataset_summary,
