@@ -225,6 +225,7 @@ sudo find "$SOURCE_ROOT" -type f -exec chmod 0444 {} +
 app01의 모든 실행 블록은 먼저 다음 경계를 다시 확인한다.
 
 ```bash
+set -euo pipefail
 APPROVED_SHA='<approved-40-character-merge-sha>'
 SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
 
@@ -237,13 +238,13 @@ test ! -e "$SOURCE_ROOT/.git"
   set -o pipefail
   sudo find "$SOURCE_ROOT" -type d -print0 |
     sudo xargs -0 -r stat -c '%u %a' |
-    awk 'BEGIN { ok = 1 } $0 != "0 555" { ok = 0 } END { exit ok ? 0 : 1 }'
+    awk 'BEGIN { ok = 1; seen = 0 } { seen = 1; if ($0 != "0 555") ok = 0 } END { exit ok && seen ? 0 : 1 }'
 )
 (
   set -o pipefail
   sudo find "$SOURCE_ROOT" -type f -print0 |
     sudo xargs -0 -r stat -c '%u %a' |
-    awk 'BEGIN { ok = 1 } $0 != "0 444" { ok = 0 } END { exit ok ? 0 : 1 }'
+    awk 'BEGIN { ok = 1; seen = 0 } { seen = 1; if ($0 != "0 444") ok = 0 } END { exit ok && seen ? 0 : 1 }'
 )
 
 cd "$SOURCE_ROOT"
