@@ -111,6 +111,10 @@ jobs:
             scripts/run-agent-benchmark.py \
             scripts/validate-agent-benchmark.py \
             scripts/render-agent-benchmark-charts.py \
+            scripts/generate-product-data-v2.py \
+            scripts/prepare-product-scale-data.py \
+            scripts/test_generate_product_data_v2.py \
+            scripts/test_prepare_product_scale_data.py \
             .github/scripts/collect-discord-context.py \
             .github/scripts/normalize-discord-context.py
 
@@ -125,7 +129,9 @@ jobs:
             scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
             scripts.test_discord_payload \
-            scripts.test_send_discord_notification
+            scripts.test_send_discord_notification \
+            scripts.test_generate_product_data_v2 \
+            scripts.test_prepare_product_scale_data
           python scripts/validate-discord-payloads.py
 
   backend:
