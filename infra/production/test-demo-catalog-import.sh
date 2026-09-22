@@ -34,14 +34,16 @@ grep -Fq -- 'RUN_IMAGE="$BACKEND_DIGEST"' "$SCRIPT"
 
 # running-container uses executable fake Docker/Git fixtures so ordering and fail-closed behavior are tested.
 FIXTURE_ROOT="$(mktemp -d)"
-trap 'rm -rf -- "$FIXTURE_ROOT"' EXIT
+STATE_FIXTURE="$(sudo mktemp -d /tmp/pawcycle-catalog-state.XXXXXX)"
+trap 'rm -rf -- "$FIXTURE_ROOT"; sudo rm -rf -- "$STATE_FIXTURE"' EXIT
 FAKE_BIN="$FIXTURE_ROOT/bin"
 RUNTIME_FIXTURE="$FIXTURE_ROOT/runtime"
-STATE_FIXTURE="$FIXTURE_ROOT/state"
+UNSAFE_STATE_FIXTURE="$FIXTURE_ROOT/unsafe-state"
 DOCKER_LOG="$FIXTURE_ROOT/docker.log"
 GIT_LOG="$FIXTURE_ROOT/git.log"
-mkdir -p "$FAKE_BIN" "$RUNTIME_FIXTURE" "$STATE_FIXTURE"
-chmod 700 "$RUNTIME_FIXTURE" "$STATE_FIXTURE"
+mkdir -p "$FAKE_BIN" "$RUNTIME_FIXTURE" "$UNSAFE_STATE_FIXTURE"
+chmod 700 "$RUNTIME_FIXTURE" "$UNSAFE_STATE_FIXTURE"
+sudo chmod 700 "$STATE_FIXTURE"
 
 write_unquoted_backend_env() {
   cat > "$RUNTIME_FIXTURE/backend.env" <<'ENVEOF'
@@ -207,6 +209,7 @@ SCRIPT_DIR_ABS="$(cd "$(dirname "$SCRIPT")" && pwd -P)"
 run_running_container_fixture() {
   local operation="$1"
   local mismatch="${2:-}"
+  local state_dir="${3:-$STATE_FIXTURE}"
   local -a apply_args=()
   if [[ "$operation" == "apply" ]]; then
     apply_args+=(--confirm-apply)
@@ -227,7 +230,7 @@ run_running_container_fixture() {
       --sha "$RELEASE_SHA_FIXTURE" \
       --backend-image pawcycle-backend \
       --runtime-dir "$RUNTIME_FIXTURE" \
-      --state-dir "$STATE_FIXTURE" \
+      --state-dir "$state_dir" \
       "${apply_args[@]}"
 }
 
@@ -244,6 +247,18 @@ for operation in validate apply; do
   grep -Fq -- 'run ' "$DOCKER_LOG"
   grep -Fq -- 'sha256:validated-running-image' "$DOCKER_LOG"
 done
+
+# A caller-controlled state path must fail closed before Git/Docker work.
+: > "$DOCKER_LOG"
+: > "$GIT_LOG"
+set +e
+unsafe_state_output="$(run_running_container_fixture validate "" "$UNSAFE_STATE_FIXTURE" 2>&1)"
+unsafe_state_status=$?
+set -e
+[[ "$unsafe_state_status" != "0" ]]
+grep -Fq -- 'state directory path ownership is invalid' <<<"$unsafe_state_output"
+[[ ! -s "$GIT_LOG" ]]
+[[ ! -s "$DOCKER_LOG" ]]
 
 # A missing shared release lock must be created as root-only 0600.
 [[ "$(stat -c '%a' "$STATE_FIXTURE/deploy.lock")" == "600" ]]
@@ -309,6 +324,8 @@ for wrapper in "$SCRIPT" "$AUTH_SCRIPT"; do
   grep -Fq -- 'DATABASE_EGRESS_NETWORK' "$wrapper"
   grep -Fq -- '--network "$DATABASE_EGRESS_NETWORK"' "$wrapper"
   grep -Fq -- 'database egress network membership is invalid' "$wrapper"
+  grep -Fq -- 'validate_secure_root_directory "$STATE_DIR" "state directory"' "$wrapper"
+  grep -Fq -- '[[ "$owner" == "0" ]]' "$wrapper"
   [[ "$(grep -Fc -- 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"' "$wrapper")" == "2" ]]
   grep -Fq -- 'LOCK_UMASK="$(umask)"' "$wrapper"
   grep -Fq -- 'umask 077' "$wrapper"

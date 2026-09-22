@@ -112,6 +112,36 @@ validate_root_directory() {
   [[ "$(stat -c '%a' "$path" 2>/dev/null)" == "700" ]] || die "$label permissions are invalid"
 }
 
+validate_secure_root_directory() {
+  local path="$1"
+  local label="$2"
+  local canonical=""
+  local current=""
+  local component=""
+  local owner=""
+  local permissions=""
+  local -a components=()
+
+  validate_root_directory "$path" "$label"
+  canonical="$(readlink -f -- "$path" 2>/dev/null || true)"
+  [[ "$canonical" == "$path" ]] || die "$label path is not canonical"
+
+  IFS='/' read -r -a components <<<"${path#/}"
+  for component in "${components[@]}"; do
+    [[ -n "$component" ]] || continue
+    current="$current/$component"
+    [[ -d "$current" && ! -L "$current" ]] || die "$label path is unavailable or unsafe"
+    owner="$(stat -c '%u' "$current" 2>/dev/null || true)"
+    permissions="$(stat -c '%A' "$current" 2>/dev/null || true)"
+    [[ "$owner" == "0" ]] || die "$label path ownership is invalid"
+    [[ "${#permissions}" == "10" ]] || die "$label path permissions are unavailable"
+    if [[ "${permissions:5:1}" == "w" || "${permissions:8:1}" == "w" ]]; then
+      [[ "${permissions:9:1}" == "t" || "${permissions:9:1}" == "T" ]] \
+        || die "$label path permissions are unsafe"
+    fi
+  done
+}
+
 validate_protected_file() {
   local path="$1"
   local label="$2"
@@ -254,7 +284,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 validate_root_directory "$RUNTIME_DIR" "runtime directory"
-validate_root_directory "$STATE_DIR" "state directory"
+validate_secure_root_directory "$STATE_DIR" "state directory"
 DEPLOY_LOCK_FILE="$STATE_DIR/deploy.lock"
 if [[ -e "$DEPLOY_LOCK_FILE" || -L "$DEPLOY_LOCK_FILE" ]]; then
   validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"

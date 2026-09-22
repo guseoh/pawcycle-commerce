@@ -163,7 +163,10 @@ esac
 
 
 def prepare_case(
-    root: Path, mode: str, lock_mode: int | None = None
+    root: Path,
+    mode: str,
+    lock_mode: int | None = None,
+    state_owner_uid: int | None = None,
 ) -> tuple[list[str], dict[str, str], Path, Path]:
     runtime = root / "runtime"
     state = root / "state"
@@ -199,6 +202,8 @@ def prepare_case(
     image_state.write_text(f"RELEASE_SHA={sha}\nBACKEND_DIGEST={DIGEST}\n", encoding="utf-8")
     for protected in (backend_env, complete, current_sha, image_state):
         protected.chmod(0o600)
+    if state_owner_uid is not None:
+        os.chown(state, state_owner_uid, -1)
     log = root / "docker-arguments"
     marker = root / "docker-marker"
     fake_docker = fake_bin / "docker"
@@ -254,11 +259,15 @@ def run_case(
     mode: str,
     signal_during_password: bool = False,
     lock_mode: int | None = None,
+    state_owner_uid: int | None = None,
     expect_prompt: bool = True,
 ) -> tuple[int, str, str, str]:
     with tempfile.TemporaryDirectory(prefix="ops020-pty-") as temporary:
         command, environment, log, marker = prepare_case(
-            Path(temporary), mode, lock_mode=lock_mode
+            Path(temporary),
+            mode,
+            lock_mode=lock_mode,
+            state_owner_uid=state_owner_uid,
         )
         process, master, slave = start_pty(command, environment)
         transcript = bytearray()
@@ -360,6 +369,18 @@ def assert_run_contract(arguments: str) -> None:
 
 def main() -> None:
     require(os.geteuid() == 0, "PTY contract test must run as root")
+
+    status, transcript, arguments, marker = run_case(
+        "success", state_owner_uid=65534, expect_prompt=False
+    )
+    require(status != 0, "caller-controlled production state directory was accepted")
+    require(
+        "state directory path ownership is invalid" in transcript,
+        "unsafe state directory did not fail with the expected stage",
+    )
+    require("Email: " not in transcript, "credential prompt was reached with an unsafe state path")
+    require(arguments == "", "Docker was called before unsafe state path rejection")
+    require(marker == "", "Docker marker changed before unsafe state path rejection")
 
     status, transcript, arguments, marker = run_case(
         "success", lock_mode=0o644, expect_prompt=False

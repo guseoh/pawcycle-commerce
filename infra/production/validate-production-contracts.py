@@ -180,6 +180,7 @@ def validate_observability_contract() -> None:
 
 
 def validate_release_lock_contract() -> None:
+    secure_state = 'validate_secure_root_directory "$STATE_DIR" "state directory"'
     guard = 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"'
     open_lock = 'exec 9>>"$DEPLOY_LOCK_FILE"'
     capture_umask = 'LOCK_UMASK="$(umask)"'
@@ -192,6 +193,7 @@ def validate_release_lock_contract() -> None:
             text.count(guard) == 2,
             f"shared release lock must be validated before and after open: {path.relative_to(ROOT)}",
         )
+        secure_state_index = text.find(secure_state)
         first_guard = text.find(guard)
         capture_index = text.find(capture_umask)
         restrict_index = text.find(restrict_umask)
@@ -200,6 +202,7 @@ def validate_release_lock_contract() -> None:
         last_guard = text.rfind(guard)
         require(
             -1 not in (
+                secure_state_index,
                 first_guard,
                 capture_index,
                 restrict_index,
@@ -210,8 +213,20 @@ def validate_release_lock_contract() -> None:
             f"shared release lock permission markers are incomplete: {path.relative_to(ROOT)}",
         )
         require(
-            first_guard < capture_index < restrict_index < open_index < restore_index < last_guard,
+            secure_state_index
+            < first_guard
+            < capture_index
+            < restrict_index
+            < open_index
+            < restore_index
+            < last_guard,
             f"shared release lock permission ordering is invalid: {path.relative_to(ROOT)}",
+        )
+        require(
+            'owner="$(stat -c \'%u\' "$current" 2>/dev/null || true)"' in text
+            and 'permissions="$(stat -c \'%A\' "$current" 2>/dev/null || true)"' in text
+            and '[[ "$owner" == "0" ]]' in text,
+            f"shared release lock state-path ownership guard is incomplete: {path.relative_to(ROOT)}",
         )
 
 
