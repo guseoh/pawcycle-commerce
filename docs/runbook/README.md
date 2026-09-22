@@ -31,6 +31,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 - `OPS-OCI-004-production-https-renewal.md`
 - `SUB-AUTO-001-subscription-automation.md`
 - `MVP4-DATA-002-demo-catalog-import.md`
+- `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약
 - 관측·진단·성능 측정 관련 Runbook
 
 실제 Production·Cloud·운영 DB·Secret·비용 작업은 별도의 명시적 사용자 승인과 적용 전후·복구 evidence가 필요하다.
