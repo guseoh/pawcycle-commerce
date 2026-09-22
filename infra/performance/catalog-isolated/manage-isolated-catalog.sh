@@ -4,6 +4,7 @@ set -Eeuo pipefail
 PROJECT_NAME='pawcycle-performance-catalog'
 SCOPE_LABEL='catalog-isolated'
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 COMPOSE_FILE="$SCRIPT_DIR/compose.yaml"
 VALIDATOR="$SCRIPT_DIR/validate-isolated-catalog.py"
 
@@ -11,6 +12,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage:
   sudo bash manage-isolated-catalog.sh ACTION \
+    --source-root /absolute/path/to/<APPROVED_SHA> \
     --config-file /absolute/path/DATASET.env \
     --password-file /absolute/path/db-password \
     --dataset-dir /absolute/path/DATASET \
@@ -32,12 +34,17 @@ die() {
   exit 1
 }
 
+cleanup_secret() {
+  unset PAWCYCLE_PERF_DB_PASSWORD password
+}
+
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || die 'root privileges are required'
 
 action="${1:-}"
 [[ -n "$action" ]] || usage
 shift
 
+source_root=''
 config_file=''
 password_file=''
 dataset_dir=''
@@ -45,6 +52,10 @@ acknowledgement=''
 
 while (($#)); do
   case "$1" in
+    --source-root)
+      source_root="${2:-}"
+      shift 2
+      ;;
     --config-file)
       config_file="${2:-}"
       shift 2
@@ -70,18 +81,18 @@ while (($#)); do
   esac
 done
 
-for value in "$config_file" "$password_file" "$dataset_dir"; do
-  [[ -n "$value" && "$value" == /* ]] || die 'config/password/dataset paths must be absolute'
+for value in "$source_root" "$config_file" "$password_file" "$dataset_dir"; do
+  [[ -n "$value" && "$value" == /* ]]     || die 'source/config/password/dataset paths must be absolute'
 done
+
+source_root="$(cd -- "$source_root" && pwd -P)"
+[[ "$SCRIPT_SOURCE_ROOT" == "$source_root" ]]   || die 'manage-isolated-catalog.sh must run from the approved source root'
 
 command -v python3 >/dev/null 2>&1 || die 'python3 is required'
 command -v docker >/dev/null 2>&1 || die 'docker is required'
 docker compose version >/dev/null 2>&1 || die 'docker compose is required'
 
-python3 "$VALIDATOR" \
-  --config-file "$config_file" \
-  --password-file "$password_file" \
-  --dataset-dir "$dataset_dir"
+python3 "$VALIDATOR"   --source-root "$source_root"   --config-file "$config_file"   --password-file "$password_file"   --dataset-dir "$dataset_dir"
 
 read_config_value() {
   local key="$1"
@@ -103,14 +114,10 @@ password="$(cat "$password_file")"
 export PAWCYCLE_PERF_DB_PASSWORD="$password"
 export PAWCYCLE_PERF_MANIFEST_PATH="$manifest_path"
 export PAWCYCLE_PERF_IMPORT_OPERATION='validate'
-trap 'unset PAWCYCLE_PERF_DB_PASSWORD password' EXIT
+trap cleanup_secret EXIT
 
 compose() {
-  docker compose \
-    --project-name "$PROJECT_NAME" \
-    --env-file "$config_file" \
-    -f "$COMPOSE_FILE" \
-    "$@"
+  docker compose     --project-name "$PROJECT_NAME"     --env-file "$config_file"     -f "$COMPOSE_FILE"     "$@"
 }
 
 compose config >/dev/null
@@ -119,24 +126,17 @@ assert_local_backend_image() {
   local expected_digest os_arch
   expected_digest="${backend_image##*@}"
 
-  docker image inspect "$backend_image" >/dev/null 2>&1 \
-    || die 'approved Backend image is not present locally; verify and pull it explicitly before retrying'
+  docker image inspect "$backend_image" >/dev/null 2>&1     || die 'approved Backend image is not present locally; verify and pull it explicitly before retrying'
 
   os_arch="$(docker image inspect "$backend_image" --format '{{.Os}}/{{.Architecture}}')"
-  [[ "$os_arch" == 'linux/amd64' ]] \
-    || die "approved Backend image platform must be linux/amd64 (actual=$os_arch)"
+  [[ "$os_arch" == 'linux/amd64' ]]     || die "approved Backend image platform must be linux/amd64 (actual=$os_arch)"
 
-  docker image inspect "$backend_image" \
-    --format '{{range .RepoDigests}}{{println .}}{{end}}' | \
-    grep -Fq "@$expected_digest" \
-    || die 'local Backend image RepoDigest does not match the approved digest'
+  docker image inspect "$backend_image"     --format '{{range .RepoDigests}}{{println .}}{{end}}' |     grep -Fq "@$expected_digest"     || die 'local Backend image RepoDigest does not match the approved digest'
 }
 
 assert_existing_project_identity() {
   local ids id scope dataset
-  ids="$(docker ps -a \
-    --filter "label=com.docker.compose.project=$PROJECT_NAME" \
-    --format '{{.ID}}')"
+  ids="$(docker ps -a     --filter "label=com.docker.compose.project=$PROJECT_NAME"     --format '{{.ID}}')"
   [[ -n "$ids" ]] || return 0
 
   while IFS= read -r id; do
@@ -154,8 +154,7 @@ backend_running() {
 
 run_import() {
   local operation="$1"
-  PAWCYCLE_PERF_IMPORT_OPERATION="$operation" \
-    compose --profile tools run --rm --no-deps --pull never catalog-import
+  PAWCYCLE_PERF_IMPORT_OPERATION="$operation"     compose --profile tools run --rm --no-deps --pull never catalog-import
 }
 
 wait_for_backend() {
@@ -194,8 +193,7 @@ case "$action" in
     ;;
 
   import-apply)
-    [[ "$acknowledgement" == "APPLY:$dataset_id" ]] \
-      || die "import apply requires --acknowledge APPLY:$dataset_id"
+    [[ "$acknowledgement" == "APPLY:$dataset_id" ]]       || die "import apply requires --acknowledge APPLY:$dataset_id"
     assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'stop the isolated backend before catalog import'
@@ -205,20 +203,32 @@ case "$action" in
     ;;
 
   up)
-    [[ "$acknowledgement" == "START:$dataset_id" ]] \
-      || die "runtime start requires --acknowledge START:$dataset_id"
+    [[ "$acknowledgement" == "START:$dataset_id" ]]       || die "runtime start requires --acknowledge START:$dataset_id"
+    command -v curl >/dev/null 2>&1 || die 'curl is required'
     assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'isolated backend is already running'
+
+    startup_complete=0
+    startup_exit() {
+      local rc=$?
+      trap - EXIT
+      if [[ "$startup_complete" -eq 0 ]]; then
+        compose down --remove-orphans >/dev/null 2>&1 || true
+      fi
+      cleanup_secret
+      exit "$rc"
+    }
+    trap startup_exit EXIT
+
     compose up -d --pull never backend
     wait_for_backend
-    command -v curl >/dev/null 2>&1 || die 'curl is required'
-    curl --fail --silent --show-error \
-      "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
-    curl --fail --silent --show-error \
-      "http://127.0.0.1:$host_port/api/products" >/dev/null
-    printf 'catalog_isolated_runtime=PASS action=up dataset=%s endpoint=http://127.0.0.1:%s\n' \
-      "$dataset_id" "$host_port"
+    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/api/products" >/dev/null
+
+    startup_complete=1
+    trap cleanup_secret EXIT
+    printf 'catalog_isolated_runtime=PASS action=up dataset=%s endpoint=http://127.0.0.1:%s\n'       "$dataset_id" "$host_port"
     ;;
 
   status)
@@ -227,8 +237,7 @@ case "$action" in
     ;;
 
   down)
-    [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]] \
-      || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
+    [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]]       || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
     assert_existing_project_identity
     compose down --remove-orphans
     printf 'catalog_isolated_runtime=PASS action=down project=%s\n' "$PROJECT_NAME"
