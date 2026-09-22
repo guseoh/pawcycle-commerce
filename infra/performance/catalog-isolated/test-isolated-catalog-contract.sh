@@ -139,6 +139,9 @@ if [[ "${1:-}" == "compose" && "${2:-}" == "version" ]]; then
   exit 0
 fi
 if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  if [[ "${FAKE_IMAGE_MISSING:-0}" == "1" ]]; then
+    exit 1
+  fi
   joined=" $* "
   case "$joined" in
     *"{{.Os}}/{{.Architecture}}"*)
@@ -200,6 +203,7 @@ run_manager() {
   FAKE_DOCKER_LOG="$docker_log" \
   FAKE_CURL_LOG="$curl_log" \
   FAKE_APPROVED_IMAGE="$approved_image" \
+  FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}" \
   bash "$MANAGER" "$@" \
     --config-file "$config_file" \
     --password-file "$password_file" \
@@ -210,6 +214,13 @@ run_manager preflight >/dev/null
 grep -q 'image inspect' "$docker_log"
 grep -q '{{.Os}}/{{.Architecture}}' "$docker_log"
 grep -q '.RepoDigests' "$docker_log"
+
+: >"$docker_log"
+if FAKE_IMAGE_MISSING=1 run_manager preflight >/dev/null 2>&1; then
+  printf 'preflight unexpectedly succeeded without the approved local image\n' >&2
+  exit 1
+fi
+grep -q 'image inspect' "$docker_log"
 
 : >"$docker_log"
 if run_manager import-apply >/dev/null 2>&1; then
@@ -258,6 +269,15 @@ run_manager down --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
 grep -q 'down --remove-orphans' "$docker_log"
 if grep -q -- '--volumes' "$docker_log"; then
   printf 'runtime cleanup must not remove volumes\n' >&2
+  exit 1
+fi
+
+: >"$docker_log"
+FAKE_IMAGE_MISSING=1 run_manager down \
+  --acknowledge 'DOWN:pawcycle-performance-catalog' >/dev/null
+grep -q 'down --remove-orphans' "$docker_log"
+if grep -q 'image inspect' "$docker_log"; then
+  printf 'runtime cleanup must not depend on the local Backend image\n' >&2
   exit 1
 fi
 
