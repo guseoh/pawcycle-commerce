@@ -363,7 +363,8 @@ approved source marker
 `provenance.json`은 다음을 연결한다.
 
 - approved source SHA
-- prepare wrapper SHA-256\n- Data V2 generator SHA-256
+- prepare wrapper SHA-256
+- Data V2 generator SHA-256
 - base manifest SHA-256
 - generated manifest SHA-256
 - report SHA-256
