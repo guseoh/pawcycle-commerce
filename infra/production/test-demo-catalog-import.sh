@@ -245,6 +245,21 @@ for operation in validate apply; do
   grep -Fq -- 'sha256:validated-running-image' "$DOCKER_LOG"
 done
 
+# A missing shared release lock must be created as root-only 0600.
+[[ "$(stat -c '%a' "$STATE_FIXTURE/deploy.lock")" == "600" ]]
+
+# A pre-existing permissive lock must fail closed before Git/Docker work.
+sudo chmod 644 "$STATE_FIXTURE/deploy.lock"
+set +e
+lock_mode_output="$(run_running_container_fixture validate 2>&1)"
+lock_mode_status=$?
+set -e
+[[ "$lock_mode_status" != "0" ]]
+grep -Fq -- 'production release lock permissions are invalid' <<<"$lock_mode_output"
+[[ ! -s "$GIT_LOG" ]]
+[[ ! -s "$DOCKER_LOG" ]]
+sudo chmod 600 "$STATE_FIXTURE/deploy.lock"
+
 for mismatch in sha compose image network; do
   for operation in validate apply; do
     if run_running_container_fixture "$operation" "$mismatch" >/dev/null 2>&1; then
@@ -294,6 +309,10 @@ for wrapper in "$SCRIPT" "$AUTH_SCRIPT"; do
   grep -Fq -- 'DATABASE_EGRESS_NETWORK' "$wrapper"
   grep -Fq -- '--network "$DATABASE_EGRESS_NETWORK"' "$wrapper"
   grep -Fq -- 'database egress network membership is invalid' "$wrapper"
+  [[ "$(grep -Fc -- 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"' "$wrapper")" == "2" ]]
+  grep -Fq -- 'LOCK_UMASK="$(umask)"' "$wrapper"
+  grep -Fq -- 'umask 077' "$wrapper"
+  grep -Fq -- 'umask "$LOCK_UMASK"' "$wrapper"
 done
 grep -Fq -- 'database-egress' infra/production/compose.yaml
 ! grep -Eq -- '^  mysql:' infra/production/compose.yaml

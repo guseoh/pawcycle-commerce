@@ -20,6 +20,8 @@ OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
 BACKEND_DIAGNOSTIC = PRODUCTION / "diagnose-backend-state.sh"
 APPLICATION_IDENTITY_VERIFIER = PRODUCTION / "verify-observability-application-identity.sh"
 SOURCE_PERMISSION_TEST = PRODUCTION / "test-observability-source-permissions.sh"
+CATALOG_IMPORT = PRODUCTION / "import-demo-catalog.sh"
+AUTH_SMOKE_MEMBER = PRODUCTION / "create-production-auth-smoke-member.sh"
 
 RETIRED_PATHS = (
     WORKFLOWS / "production-deploy.yml",
@@ -177,8 +179,45 @@ def validate_observability_contract() -> None:
         require(retired not in identity_verifier, f"retired Application release-state dependency remains in verify-observability-application-identity.sh: {retired}")
 
 
+def validate_release_lock_contract() -> None:
+    guard = 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"'
+    open_lock = 'exec 9>>"$DEPLOY_LOCK_FILE"'
+    capture_umask = 'LOCK_UMASK="$(umask)"'
+    restrict_umask = "umask 077"
+    restore_umask = 'umask "$LOCK_UMASK"'
+
+    for path in (CATALOG_IMPORT, AUTH_SMOKE_MEMBER):
+        text = path.read_text(encoding="utf-8")
+        require(
+            text.count(guard) == 2,
+            f"shared release lock must be validated before and after open: {path.relative_to(ROOT)}",
+        )
+        first_guard = text.find(guard)
+        capture_index = text.find(capture_umask)
+        restrict_index = text.find(restrict_umask)
+        open_index = text.find(open_lock)
+        restore_index = text.find(restore_umask)
+        last_guard = text.rfind(guard)
+        require(
+            -1 not in (
+                first_guard,
+                capture_index,
+                restrict_index,
+                open_index,
+                restore_index,
+                last_guard,
+            ),
+            f"shared release lock permission markers are incomplete: {path.relative_to(ROOT)}",
+        )
+        require(
+            first_guard < capture_index < restrict_index < open_index < restore_index < last_guard,
+            f"shared release lock permission ordering is invalid: {path.relative_to(ROOT)}",
+        )
+
+
 def main() -> None:
     validate_observability_contract()
+    validate_release_lock_contract()
     for path in RETIRED_PATHS:
         require(not path.exists(), f"retired AWS/Production artifact is still active: {path.relative_to(ROOT)}")
 

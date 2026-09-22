@@ -256,9 +256,14 @@ trap 'exit 143' TERM
 validate_root_directory "$RUNTIME_DIR" "runtime directory"
 validate_root_directory "$STATE_DIR" "state directory"
 DEPLOY_LOCK_FILE="$STATE_DIR/deploy.lock"
-[[ ! -e "$DEPLOY_LOCK_FILE" || ( -f "$DEPLOY_LOCK_FILE" && ! -L "$DEPLOY_LOCK_FILE" ) ]] \
-  || die "production release lock is unsafe"
+if [[ -e "$DEPLOY_LOCK_FILE" || -L "$DEPLOY_LOCK_FILE" ]]; then
+  validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"
+fi
+LOCK_UMASK="$(umask)"
+umask 077
 exec 9>>"$DEPLOY_LOCK_FILE"
+umask "$LOCK_UMASK"
+validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"
 flock --nonblock 9 || die "another production release command is running"
 CURRENT_SHA_FILE="$STATE_DIR/current-sha"
 IMAGE_STATE_FILE="$STATE_DIR/$RELEASE_SHA.images"

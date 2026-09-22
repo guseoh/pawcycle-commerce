@@ -162,7 +162,9 @@ esac
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path, Path]:
+def prepare_case(
+    root: Path, mode: str, lock_mode: int | None = None
+) -> tuple[list[str], dict[str, str], Path, Path]:
     runtime = root / "runtime"
     state = root / "state"
     bundle = runtime / ".bundle.fixture"
@@ -187,6 +189,10 @@ def prepare_case(root: Path, mode: str) -> tuple[list[str], dict[str, str], Path
         cwd=ROOT,
         text=True,
     ).strip()
+    if lock_mode is not None:
+        deploy_lock = state / "deploy.lock"
+        deploy_lock.touch()
+        deploy_lock.chmod(lock_mode)
     current_sha = state / "current-sha"
     current_sha.write_text(f"{sha}\n", encoding="utf-8")
     image_state = state / f"{sha}.images"
@@ -244,12 +250,29 @@ def start_pty(command: list[str], environment: dict[str, str]) -> tuple[subproce
     return process, master, slave
 
 
-def run_case(mode: str, signal_during_password: bool = False) -> tuple[int, str, str, str]:
+def run_case(
+    mode: str,
+    signal_during_password: bool = False,
+    lock_mode: int | None = None,
+    expect_prompt: bool = True,
+) -> tuple[int, str, str, str]:
     with tempfile.TemporaryDirectory(prefix="ops020-pty-") as temporary:
-        command, environment, log, marker = prepare_case(Path(temporary), mode)
+        command, environment, log, marker = prepare_case(
+            Path(temporary), mode, lock_mode=lock_mode
+        )
         process, master, slave = start_pty(command, environment)
         transcript = bytearray()
         try:
+            if not expect_prompt:
+                status = collect(master, process, transcript)
+                decoded = transcript.decode("utf-8", errors="replace")
+                require(PASSWORD not in decoded, "password was echoed to the terminal")
+                return (
+                    status,
+                    decoded,
+                    log.read_text(encoding="utf-8") if log.exists() else "",
+                    marker.read_text(encoding="utf-8") if marker.exists() else "",
+                )
             read_until(master, b"Email: ", transcript)
             require(echo_enabled(slave), "email prompt unexpectedly disabled terminal echo")
             os.write(master, f"{EMAIL}\n".encode())
@@ -337,6 +360,18 @@ def assert_run_contract(arguments: str) -> None:
 
 def main() -> None:
     require(os.geteuid() == 0, "PTY contract test must run as root")
+
+    status, transcript, arguments, marker = run_case(
+        "success", lock_mode=0o644, expect_prompt=False
+    )
+    require(status != 0, "permissive production release lock was accepted")
+    require(
+        "production release lock permissions are invalid" in transcript,
+        "permissive release lock did not fail with the expected stage",
+    )
+    require("Email: " not in transcript, "credential prompt was reached with an invalid lock")
+    require(arguments == "", "Docker was called before invalid lock rejection")
+    require(marker == "", "Docker marker changed before invalid lock rejection")
 
     status, transcript, arguments, marker = run_case("success")
     require(status == 0, "successful fake Docker execution failed")
