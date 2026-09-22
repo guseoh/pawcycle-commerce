@@ -96,6 +96,7 @@ read_config_value() {
 
 dataset_id="$(read_config_value PAWCYCLE_PERF_DATASET_ID)"
 host_port="$(read_config_value PAWCYCLE_PERF_HOST_PORT)"
+backend_image="$(read_config_value PAWCYCLE_PERF_BACKEND_IMAGE)"
 manifest_path="$dataset_dir/manifest.json"
 password="$(cat "$password_file")"
 
@@ -113,6 +114,23 @@ compose() {
 }
 
 compose config >/dev/null
+
+assert_local_backend_image() {
+  local expected_digest os_arch
+  expected_digest="${backend_image##*@}"
+
+  docker image inspect "$backend_image" >/dev/null 2>&1 \
+    || die 'approved Backend image is not present locally; verify and pull it explicitly before retrying'
+
+  os_arch="$(docker image inspect "$backend_image" --format '{{.Os}}/{{.Architecture}}')"
+  [[ "$os_arch" == 'linux/amd64' ]] \
+    || die "approved Backend image platform must be linux/amd64 (actual=$os_arch)"
+
+  docker image inspect "$backend_image" \
+    --format '{{range .RepoDigests}}{{println .}}{{end}}' | \
+    grep -Fq "@$expected_digest" \
+    || die 'local Backend image RepoDigest does not match the approved digest'
+}
 
 assert_existing_project_identity() {
   local ids id scope dataset
@@ -137,7 +155,7 @@ backend_running() {
 run_import() {
   local operation="$1"
   PAWCYCLE_PERF_IMPORT_OPERATION="$operation" \
-    compose --profile tools run --rm --no-deps catalog-import
+    compose --profile tools run --rm --no-deps --pull never catalog-import
 }
 
 wait_for_backend() {
@@ -159,6 +177,8 @@ wait_for_backend() {
   done
   die 'isolated backend did not become healthy within 120 seconds'
 }
+
+assert_local_backend_image
 
 case "$action" in
   preflight)
@@ -187,7 +207,8 @@ case "$action" in
     [[ "$acknowledgement" == "START:$dataset_id" ]] \
       || die "runtime start requires --acknowledge START:$dataset_id"
     assert_existing_project_identity
-    compose up -d backend
+    backend_running && die 'isolated backend is already running'
+    compose up -d --pull never backend
     wait_for_backend
     command -v curl >/dev/null 2>&1 || die 'curl is required'
     curl --fail --silent --show-error \
