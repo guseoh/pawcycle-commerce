@@ -121,9 +121,15 @@ def canonical_source_file(source_root: Path, path: Path) -> Path:
         ) from exc
     if not relative.parts:
         raise ContractError(f"source file must be below source root: {path}")
+    try:
+        lexical_relative = lexical.relative_to(root)
+    except ValueError as exc:
+        raise ContractError(
+            f"source path must remain below canonical source root: {path}"
+        ) from exc
 
     current = root
-    for part in relative.parts:
+    for part in lexical_relative.parts:
         current /= part
         details = os.lstat(current)
         if stat.S_ISLNK(details.st_mode):
