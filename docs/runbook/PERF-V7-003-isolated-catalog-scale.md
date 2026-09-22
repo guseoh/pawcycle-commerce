@@ -233,9 +233,18 @@ test ! -L "$SOURCE_ROOT"
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 test "$(basename "$SOURCE_ROOT")" = "$APPROVED_SHA"
 test ! -e "$SOURCE_ROOT/.git"
-test "$(sudo stat -c '%u %a' "$SOURCE_ROOT")" = '0 555'
-test -z "$(sudo find "$SOURCE_ROOT" -type d \( ! -user root -o ! -perm 0555 \) -print -quit)"
-test -z "$(sudo find "$SOURCE_ROOT" -type f \( ! -user root -o ! -perm 0444 \) -print -quit)"
+(
+  set -o pipefail
+  sudo find "$SOURCE_ROOT" -type d -print0 |
+    sudo xargs -0 -r stat -c '%u %a' |
+    awk 'BEGIN { ok = 1 } $0 != "0 555" { ok = 0 } END { exit ok ? 0 : 1 }'
+)
+(
+  set -o pipefail
+  sudo find "$SOURCE_ROOT" -type f -print0 |
+    sudo xargs -0 -r stat -c '%u %a' |
+    awk 'BEGIN { ok = 1 } $0 != "0 444" { ok = 0 } END { exit ok ? 0 : 1 }'
+)
 
 cd "$SOURCE_ROOT"
 ```
