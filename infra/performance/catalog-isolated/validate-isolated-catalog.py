@@ -9,8 +9,8 @@ import json
 import os
 import re
 import stat
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Dict, Iterable, Mapping
 from urllib.parse import parse_qs, urlsplit
 
 
@@ -114,6 +114,8 @@ def require_source_file(path: Path) -> Path:
     details = os.lstat(target)
     if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
         raise ContractError(f"expected source regular non-symlink file: {target}")
+    if details.st_uid != 0:
+        raise ContractError(f"source file must be root-owned: {target}")
     if stat.S_IMODE(details.st_mode) != 0o444:
         raise ContractError(f"source file mode must be 0444: {target}")
     return target
@@ -124,6 +126,8 @@ def validate_source_root(source_root: Path) -> Mapping[str, object]:
     details = os.lstat(target)
     if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
         raise ContractError("source root must be a regular directory")
+    if details.st_uid != 0:
+        raise ContractError("source root must be root-owned")
     if stat.S_IMODE(details.st_mode) != 0o555:
         raise ContractError("source root mode must be 0555")
     if (target / ".git").exists():
@@ -136,7 +140,12 @@ def validate_source_root(source_root: Path) -> Mapping[str, object]:
     if target.name != approved_sha:
         raise ContractError("source directory name must match the approved SHA marker")
 
-    generator = require_source_file(target / "scripts" / "prepare-product-scale-data.py")
+    prepare_wrapper = require_source_file(
+        target / "scripts" / "prepare-product-scale-data.py"
+    )
+    data_generator = require_source_file(
+        target / "scripts" / "generate-product-data-v2.py"
+    )
     base_manifest = require_source_file(
         target
         / "backend"
@@ -149,13 +158,14 @@ def validate_source_root(source_root: Path) -> Mapping[str, object]:
     return {
         "source_root": target,
         "approved_sha": approved_sha,
-        "generator_sha256": file_sha256(generator),
+        "prepare_wrapper_sha256": file_sha256(prepare_wrapper),
+        "data_generator_sha256": file_sha256(data_generator),
         "base_manifest_sha256": file_sha256(base_manifest),
     }
 
 
-def parse_config(path: Path) -> Dict[str, str]:
-    values: Dict[str, str] = {}
+def parse_config(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
     for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -282,7 +292,8 @@ def validate_dataset(
         "schemaVersion": 1,
         "datasetId": dataset_id,
         "approvedSourceSha": source["approved_sha"],
-        "generatorSha256": source["generator_sha256"],
+        "prepareWrapperSha256": source["prepare_wrapper_sha256"],
+        "dataGeneratorSha256": source["data_generator_sha256"],
         "baseManifestSha256": source["base_manifest_sha256"],
         "generatedManifestSha256": generated_sha,
         "reportSha256": file_sha256(report_path),
