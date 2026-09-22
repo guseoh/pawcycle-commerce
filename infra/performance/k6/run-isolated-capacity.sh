@@ -57,7 +57,12 @@ command -v k6 >/dev/null 2>&1 || {
   exit 1
 }
 
+if [[ -e "$results_dir" ]] && [[ -n "$(find "$results_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+  printf 'results directory must be empty: %s\n' "$results_dir" >&2
+  exit 1
+fi
 mkdir -p "$results_dir"
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 for target_rps in 25 50 100 150 200 250; do
