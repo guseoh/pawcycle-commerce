@@ -178,15 +178,15 @@ wait_for_backend() {
   die 'isolated backend did not become healthy within 120 seconds'
 }
 
-assert_local_backend_image
-
 case "$action" in
   preflight)
+    assert_local_backend_image
     assert_existing_project_identity
     printf 'catalog_isolated_runtime=PASS action=preflight dataset=%s\n' "$dataset_id"
     ;;
 
   import-validate)
+    assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'stop the isolated backend before catalog import'
     run_import validate
@@ -196,6 +196,7 @@ case "$action" in
   import-apply)
     [[ "$acknowledgement" == "APPLY:$dataset_id" ]] \
       || die "import apply requires --acknowledge APPLY:$dataset_id"
+    assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'stop the isolated backend before catalog import'
     run_import validate
@@ -206,6 +207,7 @@ case "$action" in
   up)
     [[ "$acknowledgement" == "START:$dataset_id" ]] \
       || die "runtime start requires --acknowledge START:$dataset_id"
+    assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'isolated backend is already running'
     compose up -d --pull never backend
