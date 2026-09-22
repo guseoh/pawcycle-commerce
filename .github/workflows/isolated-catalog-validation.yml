@@ -7,6 +7,7 @@ on:
       - 'infra/performance/catalog-isolated/**'
       - 'infra/performance/k6/isolated-capacity-api-products.js'
       - 'infra/performance/k6/lib/isolated-capacity.js'
+      - 'infra/performance/k6/lib/baseline.js'
       - 'infra/performance/k6/run-isolated-capacity.sh'
       - 'docs/runbook/PERF-V7-003-isolated-catalog-scale.md'
       - '.github/workflows/isolated-catalog-validation.yml'
@@ -39,6 +40,7 @@ jobs:
       - name: Validate Python syntax
         run: |
           python -m py_compile \
+            infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
             infra/performance/catalog-isolated/validate-isolated-catalog.py \
             infra/performance/catalog-isolated/test_validate_isolated_catalog.py
 
