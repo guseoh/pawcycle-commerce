@@ -215,7 +215,7 @@ Import 후에는 최소한 다음 DB cardinality가 report와 일치하는지 �
 
 ## 8. Stage 0 / Dataset A 측정 비교
 
-첫 Production workload는 기존 승인된 read-only 경로를 유지한다.
+첫 Production workload는 [PERF-PH8-002 Production k6 capacity Runbook](../../docs/runbook/PERF-PH8-002-production-k6-capacity.md)의 승인된 read-only 경로를 사용한다.
 
 ```text
 GET /api/products

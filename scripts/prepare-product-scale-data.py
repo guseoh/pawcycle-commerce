@@ -112,7 +112,11 @@ def build_report(
             if isinstance(sku_code, str):
                 sku_codes.append(sku_code)
             sku_status[str(sku.get("status"))] += 1
-            subscribable["true" if sku.get("subscribable") is True else "false"] += 1
+
+            subscribable_value = sku.get("subscribable")
+            if type(subscribable_value) is not bool:
+                raise ValueError(f"SKU subscribable must be a boolean: {sku_code}")
+            subscribable["true" if subscribable_value else "false"] += 1
 
             quantity = sku.get("initialInventory")
             if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity < 0:
@@ -203,10 +207,13 @@ def main() -> int:
     args = parse_args()
     output = disposable_path(args.output, "output")
     report_path = disposable_path(args.report, "report")
+    base_path = args.base_manifest.expanduser().resolve()
     if output == report_path:
         raise ValueError("output and report paths must be different")
+    if base_path in {output, report_path}:
+        raise ValueError("output and report paths must be different from the base manifest")
 
-    base_bytes = args.base_manifest.read_bytes()
+    base_bytes = base_path.read_bytes()
     base_manifest = json.loads(base_bytes.decode("utf-8"))
     generator = load_generator()
     base_products = base_manifest.get("products")

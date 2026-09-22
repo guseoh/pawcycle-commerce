@@ -20,6 +20,7 @@ class PrepareProductScaleDataTest(unittest.TestCase):
         output: Path,
         report: Path,
         *,
+        base_manifest: Path = BASE_MANIFEST,
         target_products: int = 35,
         seed: int = 20260826,
         dataset_id: str = "catalog-core-test-v1",
@@ -29,7 +30,7 @@ class PrepareProductScaleDataTest(unittest.TestCase):
                 sys.executable,
                 str(PREPARE),
                 "--base-manifest",
-                str(BASE_MANIFEST),
+                str(base_manifest),
                 "--target-products",
                 str(target_products),
                 "--seed",
@@ -170,6 +171,61 @@ class PrepareProductScaleDataTest(unittest.TestCase):
             )
             self.assertEqual(0, legacy_result.returncode, legacy_result.stderr)
             self.assertEqual(legacy.read_bytes(), prepared.read_bytes())
+
+    def test_invalid_subscribable_type_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            malformed = root / "base.json"
+            output = root / "generated.json"
+            report = root / "report.json"
+
+            base = json.loads(BASE_MANIFEST.read_text(encoding="utf-8"))
+            base["products"][0]["skus"][0]["subscribable"] = "true"
+            malformed.write_text(
+                json.dumps(base, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_prepare(
+                output,
+                report,
+                base_manifest=malformed,
+                target_products=32,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("SKU subscribable must be a boolean", result.stderr)
+            self.assertFalse(output.exists())
+            self.assertFalse(report.exists())
+
+    def test_base_manifest_cannot_be_output_or_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = root / "base.json"
+            original = BASE_MANIFEST.read_bytes()
+
+            for collision in ("output", "report"):
+                with self.subTest(collision=collision):
+                    base.write_bytes(original)
+                    other = root / f"{collision}-other.json"
+                    other.unlink(missing_ok=True)
+                    output = base if collision == "output" else other
+                    report = base if collision == "report" else other
+
+                    result = self.run_prepare(
+                        output,
+                        report,
+                        base_manifest=base,
+                        target_products=32,
+                    )
+
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(
+                        "output and report paths must be different from the base manifest",
+                        result.stderr,
+                    )
+                    self.assertEqual(original, base.read_bytes())
+                    self.assertFalse(other.exists())
 
     def test_target_smaller_than_base_is_rejected_without_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
