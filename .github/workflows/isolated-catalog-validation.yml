@@ -46,8 +46,10 @@ jobs:
 
       - name: Validate k6 JavaScript syntax
         run: |
+          cp infra/performance/k6/lib/baseline.js /tmp/baseline.mjs
           cp infra/performance/k6/lib/isolated-capacity.js /tmp/isolated-capacity.mjs
           cp infra/performance/k6/isolated-capacity-api-products.js /tmp/isolated-capacity-api-products.mjs
+          node --check /tmp/baseline.mjs
           node --check /tmp/isolated-capacity.mjs
           node --check /tmp/isolated-capacity-api-products.mjs
 
