@@ -54,6 +54,25 @@ python3 "$provenance_tool"   --source-root "$source_root"   --dataset-dir "$data
 
 [[ "$(stat -c '%a' "$dataset_dir/provenance.json")" == '444' ]]
 
+python3 - \
+  "$dataset_dir/provenance.json" \
+  "$source_root/scripts/prepare-product-scale-data.py" \
+  "$source_root/scripts/generate-product-data-v2.py" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+provenance = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert provenance["prepareWrapperSha256"] == sha256(Path(sys.argv[2]))
+assert provenance["dataGeneratorSha256"] == sha256(Path(sys.argv[3]))
+PY
+
 cat >"$config_file" <<EOF
 PAWCYCLE_PERF_DATASET_ID=catalog-core-control-v1
 PAWCYCLE_PERF_SCHEMA=pawcycle_perf_core_control
