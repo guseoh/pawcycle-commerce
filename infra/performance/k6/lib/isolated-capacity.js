@@ -155,5 +155,14 @@ export function handleSummaryForIsolatedCapacity(data) {
     activeVUs: data.metrics.vus ? data.metrics.vus.values.max : null,
   };
 
-  return { stdout: `${JSON.stringify(summary)}\n` };
+  const output = `${JSON.stringify(summary)}\n`;
+  const resultsDir = __ENV.RESULTS_DIR;
+  if (!resultsDir) {
+    return { stdout: output };
+  }
+
+  return {
+    stdout: output,
+    [`${resultsDir}/${configuredDatasetId()}-${configuredRate()}rps.json`]: output,
+  };
 }
