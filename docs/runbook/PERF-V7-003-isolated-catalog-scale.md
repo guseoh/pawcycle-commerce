@@ -53,7 +53,7 @@ P0와 I10K는 데이터 family와 request transport가 모두 다르므로 pure 
 
 ## 아키텍처 경계
 
-승인된 제안:
+승인된 구조:
 
 ```text
 desktop k6
@@ -124,12 +124,23 @@ I10K  → catalog-core-10k-v1
 
 ```bash
 python -m py_compile \
+  infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
   infra/performance/catalog-isolated/validate-isolated-catalog.py \
   infra/performance/catalog-isolated/test_validate_isolated_catalog.py
 
 sudo python infra/performance/catalog-isolated/test_validate_isolated_catalog.py
 sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
 ```
+
+전용 CI `Isolated Catalog Validation`은 다음 변경에서 실행되어야 한다.
+
+- `infra/performance/catalog-isolated/**`
+- `infra/performance/k6/isolated-capacity-api-products.js`
+- `infra/performance/k6/lib/isolated-capacity.js`
+- `infra/performance/k6/lib/baseline.js`
+- `infra/performance/k6/run-isolated-capacity.sh`
+- 이 Runbook
+- 전용 workflow 자체
 
 검증 대상:
 
@@ -138,36 +149,54 @@ sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
 - DB URL TLS 요구
 - digest-pinned Backend image
 - config/password/dataset ownership/mode
-- manifest/report regular non-symlink
-- manifest checksum
+- manifest/report/provenance regular non-symlink
+- approved source SHA와 source marker 일치
+- approved source의 generator/base digest
+- manifest/report/provenance checksum 연결
 - Product/SKU/Inventory cardinality
 - loopback-only port
 - Production Docker network 비가입
 - import apply acknowledgement
 - runtime start acknowledgement
+- startup 실패 시 runtime cleanup
 - cleanup acknowledgement
 - cleanup `--volumes` 금지
+- local Backend image가 없어도 cleanup 가능
 - isolated k6 loopback target only
+- non-empty 결과 directory 재사용 거부
 
-## Repository source 준비
+## 승인 exact-SHA source 준비
+
+### 공통 원칙
 
 실제 실행 승인 후에도 mutable checkout에서 바로 실행하지 않는다.
 
-현재 Production control checkout의 HEAD/working tree를 바꾸지 않고 승인 merge SHA의 performance 경로를 별도 source로 materialize한다.
+모든 운영 command는 **병합이 끝난 canonical main의 40자리 merge SHA를 기준으로 materialize한 source**에서 실행한다.
 
-권장 runtime source:
+source marker:
+
+```text
+.approved-sha
+```
+
+marker 내용과 source directory 이름은 모두 exact approved SHA와 같아야 한다.
+
+### app01 source
+
+권장 경로:
 
 ```text
 /opt/pawcycle/performance-source/<APPROVED_SHA>
 ```
 
-적용 전 확인:
+Production control checkout의 HEAD/working tree를 바꾸지 않고 `OPS-OBS-001`에서 검증한 `git archive` 패턴을 재사용한다.
 
-- approved SHA 40자리
-- merge가 끝난 canonical main SHA
-- source marker와 SHA 일치
-- directory `0555`
-- regular file `0444`
+materialization 후 계약:
+
+- source directory 이름 = approved SHA
+- `.approved-sha` 내용 = approved SHA
+- source root mode `0555`
+- source regular file mode `0444`
 - `.git` 없음
 - Application control checkout HEAD/working tree 불변
 
@@ -177,50 +206,112 @@ sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
 infra/performance/catalog-isolated/**
 infra/performance/k6/**
 scripts/prepare-product-scale-data.py
+scripts/generate-product-data-v2.py
 backend/src/main/resources/catalog/demo-catalog.json
 ```
 
-source preparation은 `OPS-OBS-001`의 exact-SHA `git archive` 패턴을 재사용한다. checkout/reset/rebase/force-push로 Production control source를 변경하지 않는다.
+app01의 모든 실행 블록은 먼저 다음 경계를 다시 확인한다.
+
+```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+
+test -d "$SOURCE_ROOT"
+test ! -L "$SOURCE_ROOT"
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+test "$(basename "$SOURCE_ROOT")" = "$APPROVED_SHA"
+test ! -e "$SOURCE_ROOT/.git"
+
+cd "$SOURCE_ROOT"
+```
+
+앞선 SSH shell의 local variable을 전제로 하지 않는다. 새 shell에서는 `APPROVED_SHA`와 `SOURCE_ROOT`를 다시 선언하고 marker를 다시 확인한다.
+
+### desktop k6 source
+
+desktop도 평소 작업 checkout을 그대로 사용하지 않는다.
+
+k6를 실행하는 Bash 환경에 승인 merge SHA의 archive를 별도 materialize한다.
+
+권장 예:
+
+```text
+$HOME/pawcycle-performance-source/<APPROVED_SHA>
+```
+
+해당 source에도 `.approved-sha`를 만들고 source directory 이름과 marker가 approved SHA와 같아야 한다.
+
+k6 실행 직전:
+
+```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="$HOME/pawcycle-performance-source/$APPROVED_SHA"
+
+test -d "$SOURCE_ROOT"
+test ! -L "$SOURCE_ROOT"
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+test "$(basename "$SOURCE_ROOT")" = "$APPROVED_SHA"
+
+cd "$SOURCE_ROOT"
+```
+
+`run-isolated-capacity.sh`도 전달된 `--source-root`와 실제 script source root가 다른 경우 fail-closed한다.
 
 ## Dataset 준비
 
+Dataset도 승인 exact-SHA source에서 생성한다.
+
 ### I0
 
-workstation 또는 승인된 준비 환경에서:
-
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 python scripts/prepare-product-scale-data.py \
   --target-products 32 \
   --seed 20260826 \
   --dataset-id catalog-core-control-v1 \
-  --output tmp/performance/catalog-core-control-v1.json \
-  --report tmp/performance/catalog-core-control-v1-report.json
+  --output /approved/staging/catalog-core-control-v1/manifest.json \
+  --report /approved/staging/catalog-core-control-v1/report.json
 ```
 
 ### I10K
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 python scripts/prepare-product-scale-data.py \
   --target-products 10000 \
   --seed 20260826 \
   --dataset-id catalog-core-10k-v1 \
-  --output tmp/performance/catalog-core-10k-v1.json \
-  --report tmp/performance/catalog-core-10k-v1-report.json
+  --output /approved/staging/catalog-core-10k-v1/manifest.json \
+  --report /approved/staging/catalog-core-10k-v1/report.json
 ```
+
+위 `/approved/staging/**`은 예시다. 실제 실행에서는 승인된 absolute staging path를 사용한다.
 
 generated manifest와 report는 Git에 commit하지 않는다.
 
-app01의 승인 dataset layout:
+app01의 최종 dataset layout:
 
 ```text
 /opt/pawcycle/performance-data/catalog/
   catalog-core-control-v1/
     manifest.json
     report.json
+    provenance.json
 
   catalog-core-10k-v1/
     manifest.json
     report.json
+    provenance.json
 ```
 
 각 dataset directory:
@@ -229,13 +320,58 @@ app01의 승인 dataset layout:
 - mode `0700`
 - non-symlink
 
-manifest/report:
+manifest/report/provenance:
 
 - root-owned
 - regular non-symlink
 - mode `0444`
 
-source artifact를 위 경로에 설치할 때 checksum을 workstation report와 다시 비교한다.
+## Dataset provenance 생성
+
+`manifest.json`과 `report.json`만 서로 맞는다고 승인하지 않는다.
+
+설치된 dataset을 exact approved source의 generator로 다시 재현하고 bytes가 같은 경우에만 immutable `provenance.json`을 만든다.
+
+app01에서:
+
+```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<catalog-core-control-v1-or-catalog-core-10k-v1>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
+sudo python infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
+  --source-root "$SOURCE_ROOT" \
+  --dataset-dir "$DATASET_DIR"
+```
+
+이 도구는 다음을 확인한다.
+
+```text
+approved source marker
+→ approved source generator
+→ approved source base manifest
+→ same seed / same target count로 dataset 재생성
+→ installed manifest bytes 비교
+→ installed report bytes 비교
+→ provenance.json 생성
+```
+
+`provenance.json`은 다음을 연결한다.
+
+- approved source SHA
+- generator SHA-256
+- base manifest SHA-256
+- generated manifest SHA-256
+- report SHA-256
+- dataset ID
+- seed
+- total Product count
+
+이미 `provenance.json`이 존재하면 덮어쓰지 않고 fail-closed한다.
 
 ## Runtime config와 Secret 경계
 
@@ -274,7 +410,16 @@ Backend image는 tag-only reference를 허용하지 않는다.
 <registry>/<image>@sha256:<64-hex>
 ```
 
-가능하면 현재 승인 Production Backend와 같은 RepoDigest를 사용하고 적용 전 image OS/architecture와 digest를 독립 확인한다.
+가능하면 현재 승인 Production Backend와 같은 RepoDigest를 사용한다.
+
+runtime/import 전에는 wrapper가 다음을 확인한다.
+
+- local image 존재
+- `linux/amd64`
+- RepoDigest와 config digest 일치
+- Docker 실행 시 `--pull never`
+
+따라서 실행 시점에 암묵적으로 다른 image를 pull하지 않는다.
 
 ## OCI DB provisioning — 별도 승인 필요
 
@@ -338,19 +483,28 @@ prometheus_target=up
 
 이 중 하나라도 아니면 performance 실행을 시작하지 않는다.
 
-진단은 승인 merge SHA의 `infra/production/diagnose-backend-state.sh`를 사용하고 기존 Production control checkout을 변경하지 않는다.
+진단도 승인 merge SHA의 exact source에서 실행하고 기존 Production control checkout을 변경하지 않는다.
 
 load 종료 후에도 같은 Gate를 다시 수행한다.
 
 ## Dataset preflight
 
-실행 전:
+각 실행 shell에서 approved source marker를 다시 검증한다.
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 sudo python infra/performance/catalog-isolated/validate-isolated-catalog.py \
-  --config-file /opt/pawcycle/performance/catalog/env/<dataset>.env \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
   --password-file /opt/pawcycle/performance/catalog/db-password \
-  --dataset-dir /opt/pawcycle/performance-data/catalog/<dataset>
+  --dataset-dir "$DATASET_DIR"
 ```
 
 PASS 예:
@@ -359,20 +513,40 @@ PASS 예:
 catalog_isolation_preflight=PASS
 ```
 
+preflight는 다음을 함께 검증한다.
+
+```text
+approved source SHA
++ generator/base digest
++ provenance
++ manifest/report digest
++ dataset cardinality
++ runtime config/schema identity
+```
+
 validator는 password와 DB URL을 출력하지 않는다.
 
 ## Import
 
-모든 command는 승인 exact-SHA source의 script를 사용한다.
+모든 command는 승인 exact-SHA source에서 실행한다.
 
 ### validate
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-validate \
-  --config-file /opt/pawcycle/performance/catalog/env/<dataset>.env \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
   --password-file /opt/pawcycle/performance/catalog/db-password \
-  --dataset-dir /opt/pawcycle/performance-data/catalog/<dataset>
+  --dataset-dir "$DATASET_DIR"
 ```
 
 주의: empty performance schema에서는 Backend startup 과정의 Flyway가 migration을 적용할 수 있다. 따라서 `import-validate`도 최초 실행은 DB read-only가 아니다. **DB 실행 승인 이후**에만 수행한다.
@@ -380,12 +554,21 @@ sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
 ### apply
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-apply \
-  --config-file /opt/pawcycle/performance/catalog/env/<dataset>.env \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
   --password-file /opt/pawcycle/performance/catalog/db-password \
-  --dataset-dir /opt/pawcycle/performance-data/catalog/<dataset> \
-  --acknowledge APPLY:<dataset-id>
+  --dataset-dir "$DATASET_DIR" \
+  --acknowledge "APPLY:$DATASET_ID"
 ```
 
 wrapper는 APPLY 전에 VALIDATE를 다시 실행한다.
@@ -403,12 +586,21 @@ Backend가 실행 중이면 import를 거부한다.
 실행:
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   up \
-  --config-file /opt/pawcycle/performance/catalog/env/<dataset>.env \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
   --password-file /opt/pawcycle/performance/catalog/db-password \
-  --dataset-dir /opt/pawcycle/performance-data/catalog/<dataset> \
-  --acknowledge START:<dataset-id>
+  --dataset-dir "$DATASET_DIR" \
+  --acknowledge "START:$DATASET_ID"
 ```
 
 성공 조건:
@@ -419,6 +611,8 @@ sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
 - endpoint가 loopback 이외 interface에 publish되지 않음
 - container label dataset/schema가 config와 일치
 - Production project/network identity 불변
+
+`compose up` 이후 health/API 검증 전에 실패하면 wrapper가 생성한 performance project를 `compose down --remove-orphans`로 정리한다.
 
 response body는 evidence에 저장하지 않는다.
 
@@ -442,15 +636,27 @@ SSH tunnel overhead가 포함되므로 I0/I10K는 상대 cardinality 비교이�
 
 ## Isolated k6
 
-desktop의 repository checkout에서:
+desktop에서도 승인 exact-SHA source를 사용한다.
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="$HOME/pawcycle-performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+RUN_ID="$APPROVED_SHA-$DATASET_ID-$(date -u +%Y%m%dT%H%M%SZ)"
+RESULTS_DIR="$HOME/pawcycle-performance-results/$RUN_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 bash infra/performance/k6/run-isolated-capacity.sh \
+  --source-root "$SOURCE_ROOT" \
   --target-url http://127.0.0.1:<local-port> \
-  --dataset-id <dataset-id> \
-  --results-dir /absolute/path/to/results \
+  --dataset-id "$DATASET_ID" \
+  --results-dir "$RESULTS_DIR" \
   --acknowledge-isolated-load YES
 ```
+
+runner는 기존 non-empty results directory를 거부한다. 따라서 이전 실행과 새 실행의 일부 RPS 결과가 하나의 series처럼 섞이지 않는다.
 
 고정 stage:
 
@@ -485,9 +691,13 @@ I0 / I10K 모두 동일한 evidence schema를 사용한다.
 최소:
 
 - approved main SHA
+- exact source marker SHA
 - Backend image digest
 - dataset ID
-- manifest checksum
+- provenance SHA-256
+- base manifest SHA-256
+- generated manifest SHA-256
+- report SHA-256
 - Product/SKU/Inventory cardinality
 - measurement start/end UTC
 - target/actual RPS
@@ -509,6 +719,9 @@ Secret, DB password, session, cookie, raw Product response, raw Production DB ro
 - Production diagnostic != READY
 - Observability diagnostic != NORMAL
 - release transition 존재
+- source marker != approved SHA
+- script source root != approved source root
+- provenance mismatch
 - dataset checksum mismatch
 - config/schema/dataset identity mismatch
 - performance account grant가 두 schema보다 넓음
@@ -525,18 +738,29 @@ Secret, DB password, session, cookie, raw Product response, raw Production DB ro
 
 ## Runtime cleanup
 
-runtime만 내릴 때:
+runtime만 내릴 때도 승인 exact source를 사용한다.
 
 ```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   down \
-  --config-file /opt/pawcycle/performance/catalog/env/<dataset>.env \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
   --password-file /opt/pawcycle/performance/catalog/db-password \
-  --dataset-dir /opt/pawcycle/performance-data/catalog/<dataset> \
+  --dataset-dir "$DATASET_DIR" \
   --acknowledge DOWN:pawcycle-performance-catalog
 ```
 
 이 command는 performance Compose project만 대상으로 하며 `--volumes`를 사용하지 않는다.
+
+local Backend image가 이미 없어도 exact project identity가 맞으면 runtime cleanup은 가능해야 한다.
 
 DB schema/account는 이 command가 삭제하지 않는다.
 
