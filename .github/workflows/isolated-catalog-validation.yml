@@ -1,0 +1,60 @@
+name: Isolated Catalog Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'infra/performance/catalog-isolated/**'
+      - 'infra/performance/k6/isolated-capacity-api-products.js'
+      - 'infra/performance/k6/lib/isolated-capacity.js'
+      - 'infra/performance/k6/lib/baseline.js'
+      - 'infra/performance/k6/run-isolated-capacity.sh'
+      - 'docs/runbook/PERF-V7-003-isolated-catalog-scale.md'
+      - '.github/workflows/isolated-catalog-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Isolated Catalog contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24'
+
+      - name: Validate shell syntax
+        run: |
+          bash -n \
+            infra/performance/catalog-isolated/manage-isolated-catalog.sh \
+            infra/performance/catalog-isolated/test-isolated-catalog-contract.sh \
+            infra/performance/k6/run-isolated-capacity.sh
+
+      - name: Validate Python syntax
+        run: |
+          python -m py_compile \
+            infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
+            infra/performance/catalog-isolated/validate-isolated-catalog.py \
+            infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+
+      - name: Validate k6 JavaScript syntax
+        run: |
+          cp infra/performance/k6/lib/baseline.js /tmp/baseline.mjs
+          cp infra/performance/k6/lib/isolated-capacity.js /tmp/isolated-capacity.mjs
+          cp infra/performance/k6/isolated-capacity-api-products.js /tmp/isolated-capacity-api-products.mjs
+          node --check /tmp/baseline.mjs
+          node --check /tmp/isolated-capacity.mjs
+          node --check /tmp/isolated-capacity-api-products.mjs
+
+      - name: Validate isolated Catalog preflight
+        run: sudo python infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+
+      - name: Validate isolated Catalog lifecycle
+        run: sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh

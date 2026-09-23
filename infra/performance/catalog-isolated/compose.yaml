@@ -1,0 +1,89 @@
+name: pawcycle-performance-catalog
+
+x-backend-environment: &backend-environment
+  SPRING_PROFILES_ACTIVE: production
+  SPRING_DATASOURCE_URL: ${PAWCYCLE_PERF_DB_URL:?PAWCYCLE_PERF_DB_URL is required}
+  SPRING_DATASOURCE_USERNAME: ${PAWCYCLE_PERF_DB_USERNAME:?PAWCYCLE_PERF_DB_USERNAME is required}
+  SPRING_DATASOURCE_PASSWORD: ${PAWCYCLE_PERF_DB_PASSWORD:?PAWCYCLE_PERF_DB_PASSWORD is required}
+  SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+  SPRING_FLYWAY_ENABLED: "true"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus
+  PAWCYCLE_PRODUCT_LIST_CACHE_ENABLED: "false"
+  PAWCYCLE_SCHEDULER_ENABLED: "false"
+  PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: "false"
+  CORS_ALLOWED_ORIGINS: http://127.0.0.1:${PAWCYCLE_PERF_HOST_PORT:?PAWCYCLE_PERF_HOST_PORT is required}
+
+x-runtime-hardening: &runtime-hardening
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 384
+  mem_limit: 640m
+  cpus: 1.5
+
+x-performance-labels: &performance-labels
+  com.pawcycle.performance.scope: catalog-isolated
+  com.pawcycle.performance.dataset: ${PAWCYCLE_PERF_DATASET_ID:?PAWCYCLE_PERF_DATASET_ID is required}
+  com.pawcycle.performance.schema: ${PAWCYCLE_PERF_SCHEMA:?PAWCYCLE_PERF_SCHEMA is required}
+
+services:
+  backend:
+    image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
+    restart: "no"
+    environment:
+      <<: *backend-environment
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${PAWCYCLE_PERF_HOST_PORT:?PAWCYCLE_PERF_HOST_PORT is required}:8080"
+    networks:
+      - performance-db-egress
+    labels:
+      <<: *performance-labels
+      com.pawcycle.performance.role: backend
+    <<: *runtime-hardening
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - http://127.0.0.1:8080/actuator/health/readiness
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  catalog-import:
+    profiles:
+      - tools
+    image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
+    restart: "no"
+    environment:
+      <<: *backend-environment
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "true"
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_TARGET: demo
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_OPERATION: ${PAWCYCLE_PERF_IMPORT_OPERATION:?PAWCYCLE_PERF_IMPORT_OPERATION is required}
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_MANIFEST: file:/run/pawcycle/catalog/manifest.json
+      PAWCYCLE_SCHEDULER_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: "false"
+    volumes:
+      - type: bind
+        source: ${PAWCYCLE_PERF_MANIFEST_PATH:?PAWCYCLE_PERF_MANIFEST_PATH is required}
+        target: /run/pawcycle/catalog/manifest.json
+        read_only: true
+    networks:
+      - performance-db-egress
+    labels:
+      <<: *performance-labels
+      com.pawcycle.performance.role: catalog-import
+    <<: *runtime-hardening
+
+networks:
+  performance-db-egress:
+    driver: bridge
