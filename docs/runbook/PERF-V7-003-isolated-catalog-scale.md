@@ -516,6 +516,69 @@ prometheus_target=up
 
 load 종료 후에도 같은 Gate를 다시 수행한다.
 
+## Clock synchronization preflight
+
+Desktop, app01, OCI Monitoring의 timestamp를 같은 measurement window에 비교하기 전에
+clock synchronization을 read-only로 확인한다. Desktop과 app01은 synchronized 상태여야
+하고, 두 host 사이의 관측 offset upper bound가 1초 미만이어야 한다. 확인이 불가능하거나
+1초 이상이면 실제 I0/I10K load를 시작하지 않는다. OCI Monitoring service clock은 operator가
+조정하지 않으며, 그 timestamp는 1분 aggregation window로만 해석한다.
+
+Windows Desktop에서 다음을 확인한다.
+
+```powershell
+Get-Service W32Time | Select-Object Name, Status
+w32tm /query /status
+```
+
+`W32Time`이 `Running`이어야 한다. status의 `Source`가 `Local CMOS Clock`이 아니고,
+`Last Successful Sync Time`이 현재 시각 기준 24시간 이내여야 한다. 이 조건을 만족하지 않으면
+실제 load를 시작하지 않는다.
+
+app01에서 다음 중 사용할 수 있는 read-only 상태 명령을 실행한다.
+
+```bash
+timedatectl show -p NTP -p NTPSynchronized -p TimeUSec
+# 또는 chrony가 구성된 경우:
+chronyc tracking
+```
+
+`NTPSynchronized=yes`여야 한다. chrony를 쓰는 경우 `Leap status: Normal`이어야 한다.
+상태를 판정할 수 없으면 실제 load를 시작하지 않는다.
+
+두 host 시계의 차이를 확인하려면 Windows PowerShell에서 SSH alias를 지정하고 아래
+read-only probe를 실행한다. SSH는 기존 접근 경로를 사용한다. probe는 app01에서 UTC 시각을
+읽고, Desktop의 송수신 시각 중간값과 왕복시간으로 offset의 보수적 상한을 계산한다.
+5회 중 가장 작은 상한도 1초 미만이어야 한다.
+
+```powershell
+$App01SshAlias = 'app01'
+$Samples = foreach ($Index in 1..5) {
+  $Timer = [Diagnostics.Stopwatch]::StartNew()
+  $Before = [DateTimeOffset]::UtcNow
+  $RemoteText = ssh -o BatchMode=yes $App01SshAlias 'date -u +%s.%N'
+  $After = [DateTimeOffset]::UtcNow
+  $Timer.Stop()
+  if ($LASTEXITCODE -ne 0 -or $RemoteText -notmatch '^\d+\.\d+$') {
+    throw 'app01 clock probe failed; block the load'
+  }
+  $RemoteSeconds = [double]::Parse($RemoteText, [Globalization.CultureInfo]::InvariantCulture)
+  $MidpointSeconds = (($Before - [DateTimeOffset]::UnixEpoch).TotalSeconds +
+    ($After - [DateTimeOffset]::UnixEpoch).TotalSeconds) / 2
+  $OffsetSeconds = $RemoteSeconds - $MidpointSeconds
+  [pscustomobject]@{
+    OffsetSeconds = $OffsetSeconds
+    OffsetUpperBoundSeconds = [Math]::Abs($OffsetSeconds) + $Timer.Elapsed.TotalSeconds / 2
+  }
+}
+$BestBound = ($Samples | Measure-Object OffsetUpperBoundSeconds -Minimum).Minimum
+if ($BestBound -ge 1) { throw 'Desktop/app01 clock offset is not verified below one second; block the load' }
+$Samples
+```
+
+Probe 실패, synchronized 상태 불명, 또는 best upper bound가 1초 이상이면 실제 load는 차단한다.
+OCI Monitoring service clock에는 변경을 가하지 않는다.
+
 ## Dataset preflight
 
 각 실행 shell에서 approved source marker를 다시 검증한다.
@@ -744,8 +807,9 @@ collector가 시작되지 않거나 중단되거나 필수 metric/구간 sample�
 다음 RPS로 진행하지 않는다. 실패한 stage의 k6 요약과 이미 수집된 Host JSONL은
 보존한다. 결과 디렉터리는 Git 밖에 두고 접근을 제한한다. 장기 보고서에는
 필요한 aggregate만 옮기고 raw `/actuator/prometheus` payload는 보존하지 않는다.
-OCI datapoint 게시 지연은 20초 간격으로 최대 세 번만 재확인하고, 그래도 없으면
-수집 실패로 중단한다.
+collector는 query 전에 마지막으로 예상되는 겹침 bucket의 종료 시각까지 기다린다.
+그 뒤 OCI datapoint 게시가 늦으면 20초 간격으로 최대 6회(총 추가 대기 최대 120초)
+재확인한다. measurement와 겹치는 예상 bucket이 모두 도착하지 않으면 수집 실패로 중단한다.
 
 I0 / I10K 모두 동일한 evidence schema를 사용한다.
 

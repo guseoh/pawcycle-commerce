@@ -1,6 +1,45 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+k6_pid=''
+collector_pid=''
+
+job_is_running() {
+  local target_pid="$1" job_pid
+  while IFS= read -r job_pid; do
+    [[ "$job_pid" == "$target_pid" ]] && return 0
+  done < <(jobs -pr)
+  return 1
+}
+
+stop_and_reap() {
+  local child_pid="$1"
+  [[ "$child_pid" =~ ^[0-9]+$ ]] || return 0
+  if job_is_running "$child_pid"; then
+    kill -TERM "$child_pid" 2>/dev/null || true
+  fi
+  wait "$child_pid" 2>/dev/null || true
+}
+
+cleanup_children() {
+  local exit_status=$?
+  trap - EXIT INT TERM HUP
+  if [[ -n "$k6_pid" ]]; then
+    stop_and_reap "$k6_pid"
+    k6_pid=''
+  fi
+  if [[ -n "$collector_pid" ]]; then
+    stop_and_reap "$collector_pid"
+    collector_pid=''
+  fi
+  exit "$exit_status"
+}
+
+trap cleanup_children EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -128,11 +167,10 @@ for target_rps in 25 50 100 150 200 250; do
   collector_pid=$!
   for _ in {1..10}; do
     [[ -s "$host_samples" ]] && break
-    kill -0 "$collector_pid" 2>/dev/null || break
+    job_is_running "$collector_pid" || break
     sleep 1
   done
-  if ! kill -0 "$collector_pid" 2>/dev/null || [[ ! -s "$host_samples" ]]; then
-    wait "$collector_pid" || true
+  if ! job_is_running "$collector_pid" || [[ ! -s "$host_samples" ]]; then
     printf 'Host evidence collector did not start\n' >&2
     exit 1
   fi
@@ -147,21 +185,25 @@ for target_rps in 25 50 100 150 200 250; do
     "$script_dir/isolated-capacity-api-products.js")
   k6 "${k6_args[@]}" &
   k6_pid=$!
-  while kill -0 "$k6_pid" 2>/dev/null; do
-    if ! kill -0 "$collector_pid" 2>/dev/null; then
-      kill "$k6_pid" 2>/dev/null || true
-      wait "$k6_pid" || true
+  while job_is_running "$k6_pid"; do
+    if ! job_is_running "$collector_pid"; then
+      stop_and_reap "$k6_pid"
+      k6_pid=''
       wait "$collector_pid" || true
+      collector_pid=''
       printf 'Host evidence collector stopped during load\n' >&2
       exit 1
     fi
     sleep 2
   done
   wait "$k6_pid" || k6_ok=false
+  k6_pid=''
   if ! wait "$collector_pid"; then
+    collector_pid=''
     printf 'Host evidence collector failed; stop before next stage\n' >&2
     exit 1
   fi
+  collector_pid=''
   python3 "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" assemble \
     --summary "$results_dir/$dataset_id-${target_rps}rps.json" \
     --host-samples "$host_samples" \

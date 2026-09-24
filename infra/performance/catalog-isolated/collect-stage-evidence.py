@@ -44,6 +44,12 @@ OCI_METRICS = {
     "StatementLatency": "mean",
 }
 OCI_BUCKET_WIDTH = dt.timedelta(minutes=1)
+OCI_PUBLICATION_RETRY_INTERVAL_SECONDS = 20
+OCI_PUBLICATION_MAX_RETRIES = 6
+GC_PAUSE_METRICS = {
+    "jvm_gc_pause_seconds_count": "gcPauseCount",
+    "jvm_gc_pause_seconds_sum": "gcPauseSeconds",
+}
 CONTAINER = "pawcycle-performance-catalog-backend-1"
 METRIC_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+(-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$')
 
@@ -85,11 +91,57 @@ def select_oci_points(points, start, end):
             and parse_utc(point["windowStartUtc"]) < end]
 
 
+def expected_oci_bucket_ends(start, end):
+    bucket_end = start.replace(second=0, microsecond=0) + OCI_BUCKET_WIDTH
+    expected = []
+    while bucket_end - OCI_BUCKET_WIDTH < end:
+        expected.append(bucket_end)
+        bucket_end += OCI_BUCKET_WIDTH
+    return expected
+
+
+def wait_for_last_oci_bucket(bucket_ends, now=None):
+    if not bucket_ends:
+        raise ValueError("measurement window has no OCI aggregation bucket")
+    current_time = now or dt.datetime.now(dt.timezone.utc)
+    wait_seconds = (bucket_ends[-1] - current_time).total_seconds()
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+
+
+def validate_k6_summary(summary):
+    if not isinstance(summary, dict):
+        raise ValueError("k6 summary must be a JSON object")
+    timestamps = ("measurementStartUtc", "measurementEndUtc")
+    if any(not isinstance(summary.get(key), str) or not summary[key].strip() for key in timestamps):
+        raise ValueError("k6 summary measurement timestamps must be non-empty strings")
+    try:
+        start = parse_utc(summary["measurementStartUtc"])
+        end = parse_utc(summary["measurementEndUtc"])
+    except ValueError:
+        raise ValueError("k6 summary measurement timestamps must include a valid timezone") from None
+    max_latency_ms = summary.get("maxMs")
+    if isinstance(max_latency_ms, bool) or not isinstance(max_latency_ms, (int, float)):
+        raise ValueError("k6 summary maxMs must be a finite non-negative number")
+    try:
+        max_latency_ms = float(max_latency_ms)
+    except (OverflowError, ValueError):
+        raise ValueError("k6 summary maxMs must be a finite non-negative number") from None
+    if not math.isfinite(max_latency_ms) or max_latency_ms < 0:
+        raise ValueError("k6 summary maxMs must be a finite non-negative number")
+    return start, end, max_latency_ms
+
+
 def parse_metrics(payload):
     result = {}
     for line in payload.splitlines():
         match = METRIC_LINE.fullmatch(line)
-        if not match or match[1] not in METRICS:
+        if not match:
+            metric_name = line.split("{", 1)[0].split(" ", 1)[0]
+            if metric_name in GC_PAUSE_METRICS:
+                raise ValueError("isolated actuator GC pause metric is malformed")
+            continue
+        if match[1] not in METRICS:
             continue
         name, labels, raw = match.groups()
         if name.startswith("jvm_memory_"):
@@ -103,11 +155,15 @@ def parse_metrics(payload):
             key = METRICS[name]
         value = float(raw)
         if not math.isfinite(value):
+            if name in GC_PAUSE_METRICS:
+                raise ValueError("isolated actuator GC pause metric is not finite")
             continue
         result[key] = result.get(key, 0.0) + value
+    for key in GC_PAUSE_METRICS.values():
+        result.setdefault(key, 0.0)
     required = {"processCpu", "systemCpu", "jvmMemoryUsedHeap", "jvmMemoryCommittedHeap",
-                "jvmMemoryMaxHeap", "jvmMemoryUsedNonHeap", "gcPauseCount",
-                "gcPauseSeconds", "liveThreads", "peakThreads", "tomcatBusy",
+                "jvmMemoryMaxHeap", "jvmMemoryUsedNonHeap", "liveThreads",
+                "peakThreads", "tomcatBusy",
                 "tomcatMax", "hikariActive", "hikariIdle", "hikariPending",
                 "hikariMax", "hikariAcquireCount", "hikariAcquireSeconds",
                 "hikariUsageCount", "hikariUsageSeconds"}
@@ -241,35 +297,42 @@ def oci_points(metric, statistic, start, end):
 
 def assemble(args):
     summary = json.loads(Path(args.summary).read_text())
-    start = parse_utc(summary["measurementStartUtc"])
-    end = parse_utc(summary["measurementEndUtc"])
-    max_latency_ms = float(summary["maxMs"])
+    start, end, max_latency_ms = validate_k6_summary(summary)
     allowed_window_seconds = 120 + max_latency_ms / 1000 + 1
     if not start < end or max_latency_ms < 0 or (end - start).total_seconds() > allowed_window_seconds:
         raise ValueError("invalid k6 measurement window")
     query_start, query_end = oci_query_bounds(start, end)
+    expected_bucket_ends = expected_oci_bucket_ends(start, end)
+    expected_bucket_set = set(expected_bucket_ends)
     samples = [json.loads(line) for line in Path(args.host_samples).read_text().splitlines() if line]
     selected = [sample for sample in samples if start <= parse_utc(sample["timestampUtc"]) <= end]
     if len(selected) < 15:
         raise ValueError("insufficient Host/JVM/Hikari samples in measurement window")
     if any(sample["container"]["restartCount"] or sample["container"]["oomKilled"] or sample["container"]["health"] != "healthy" for sample in selected):
         raise ValueError("isolated container unhealthy in measurement window")
+    wait_for_last_oci_bucket(expected_bucket_ends)
     mysql = {}
-    for attempt in range(4):
+    for attempt in range(OCI_PUBLICATION_MAX_RETRIES + 1):
         for metric, statistic in OCI_METRICS.items():
             if metric in mysql:
                 continue
             points = oci_points(metric, statistic, query_start, query_end)
             selected_points = select_oci_points(points, start, end)
-            if selected_points:
-                mysql[metric] = selected_points
+            point_by_bucket_end = {}
+            for point in selected_points:
+                bucket_end = parse_utc(point["windowEndUtc"])
+                if bucket_end in expected_bucket_set:
+                    point_by_bucket_end.setdefault(bucket_end, point)
+            if expected_bucket_set.issubset(point_by_bucket_end):
+                mysql[metric] = [point_by_bucket_end[bucket_end]
+                                 for bucket_end in expected_bucket_ends]
         if len(mysql) == len(OCI_METRICS):
             break
-        if attempt < 3:
-            time.sleep(20)
+        if attempt < OCI_PUBLICATION_MAX_RETRIES:
+            time.sleep(OCI_PUBLICATION_RETRY_INTERVAL_SECONDS)
     if len(mysql) != len(OCI_METRICS):
         missing = sorted(OCI_METRICS.keys() - mysql.keys())
-        raise ValueError(f"OCI Monitoring has no measurement-window datapoint for {', '.join(missing)}")
+        raise ValueError(f"OCI Monitoring has no complete expected bucket set for {', '.join(missing)}")
     result = {"datasetId": summary["datasetId"], "targetRps": summary["targetRps"],
               "measurementStartUtc": summary["measurementStartUtc"],
               "measurementEndUtc": summary["measurementEndUtc"],
