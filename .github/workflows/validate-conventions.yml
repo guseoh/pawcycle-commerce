@@ -127,6 +127,7 @@ jobs:
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
             scripts.test_agent_benchmark_tools \
+            scripts.test_auth_csrf_session_measurement \
             scripts.test_discord_context \
             scripts.test_discord_payload \
             scripts.test_send_discord_notification \

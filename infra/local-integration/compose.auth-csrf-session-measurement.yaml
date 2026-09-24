@@ -1,0 +1,18 @@
+name: pawcycle-auth006-csrf-session-measurement
+
+services:
+  backend:
+    environment:
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: "false"
+      PAWCYCLE_MVP2_RECONCILIATION_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_DELIVERY_REMINDER_ENABLED: "false"
+      PAWCYCLE_COMMERCE_BILLING_ENABLED: "false"
+      PAWCYCLE_PRODUCT_LIST_CACHE_ENABLED: "false"
+      SERVER_TOMCAT_MBEANREGISTRY_ENABLED: "true"
+    ports:
+      - "127.0.0.1::8080"
+
+volumes:
+  mysql-data:
+    name: pawcycle-auth006-csrf-session-measurement-mysql-data
