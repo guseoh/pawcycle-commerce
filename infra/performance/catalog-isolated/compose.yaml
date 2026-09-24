@@ -37,6 +37,7 @@ services:
     environment:
       <<: *backend-environment
       PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "false"
+      SERVER_TOMCAT_MBEANREGISTRY_ENABLED: "true"
     ports:
       - "127.0.0.1:${PAWCYCLE_PERF_HOST_PORT:?PAWCYCLE_PERF_HOST_PORT is required}:8080"
     networks:
