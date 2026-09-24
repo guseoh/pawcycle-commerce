@@ -733,7 +733,7 @@ Runner는 각 stage 직전에 approved source의 collector를 SSH로 app01에서
 collector는 isolated Backend의 loopback `/actuator/prometheus`, `/proc`,
 `docker inspect`/`docker stats`에서 allowlisted timestamp/value만 stdout JSONL로
 전송한다. Production Prometheus target이나 Observability topology는 변경하지 않는다.
-k6 요약에는 실제 measurement 요청의 첫/마지막 UTC가 포함된다. Runner는 그 구간에
+k6 요약에는 첫 measurement 요청 직전부터 마지막 measurement 응답 완료까지의 UTC가 포함된다. Runner는 그 구간에
 속한 Host/Container/JVM/Tomcat/Hikari sample과 OCI Monitoring 1분 datapoint만
 `*-evidence.json`에 합친다. OCI 1분 해상도는 120초 stage보다 거칠며 같은 DB
 System의 Production traffic도 포함한다. 이 한계를 병목 판정에 반영한다.
@@ -762,7 +762,8 @@ I0 / I10K 모두 동일한 evidence schema를 사용한다.
 - target/actual RPS
 - error / dropped iteration
 - p50/p95/p99/max
-- Host CPU/memory/iowait/swap
+- Host CPU user/system/iowait, MemAvailable, SwapTotal/SwapFree, root filesystem free
+- sample interval의 `/proc/vmstat` `pswpin`/`pswpout` page 및 byte delta (swap capacity와 분리)
 - isolated Backend CPU/memory/restart/OOM
 - JVM/Tomcat/Hikari
 - OCI MySQL CPU/memory/connections/statements/statement latency

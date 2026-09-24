@@ -217,9 +217,40 @@ cat >"$fake_bin/k6" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'k6|%s\n' "$*" >>"${FAKE_K6_LOG:?}"
+results_dir=''
+dataset_id=''
+target_rps=''
+while (($#)); do
+  if [[ "$1" == '-e' ]]; then
+    case "${2:-}" in
+      RESULTS_DIR=*) results_dir="${2#RESULTS_DIR=}" ;;
+      ISOLATED_DATASET_ID=*) dataset_id="${2#ISOLATED_DATASET_ID=}" ;;
+      TARGET_RPS=*) target_rps="${2#TARGET_RPS=}" ;;
+    esac
+    shift 2
+  else
+    shift
+  fi
+done
+if [[ -n "$results_dir" ]]; then
+  cat >"$results_dir/$dataset_id-${target_rps}rps.json" <<'SUMMARY'
+{"datasetId":"catalog-core-control-v1","targetRps":25,"actualRps":25,"measurementStartUtc":"2026-09-24T00:00:00Z","measurementEndUtc":"2026-09-24T00:02:00.500Z","maxMs":500,"droppedIterations":0,"expectedStatusErrorRate":0}
+SUMMARY
+  sed -i "s/\"datasetId\":\"catalog-core-control-v1\"/\"datasetId\":\"$dataset_id\"/; s/\"targetRps\":25/\"targetRps\":$target_rps/; s/\"actualRps\":25/\"actualRps\":$target_rps/" "$results_dir/$dataset_id-${target_rps}rps.json"
+fi
 exit 0
 EOF
 chmod +x "$fake_bin/k6"
+
+cat >"$fake_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat >"$fake_bin/oci" <<'EOF'
+#!/usr/bin/env bash
+printf '{"data":[{"aggregated-datapoints":[{"timestamp":"2026-09-24T00:01:00Z","value":1}]}]}\n'
+EOF
+chmod +x "$fake_bin/ssh" "$fake_bin/oci"
 
 run_manager() {
   PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}"   bash "$manager" "$@"     --source-root "$source_root"     --config-file "$config_file"     --password-file "$password_file"     --dataset-dir "$dataset_dir"
@@ -330,15 +361,70 @@ if grep -q 'image inspect' "$docker_log"; then
 fi
 
 : >"$k6_log"
-if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log"   bash "$k6_runner"     --source-root "$source_root"     --target-url 'https://example.com'     --dataset-id "$dataset_id"     --results-dir "$results_dir"     --acknowledge-isolated-load YES >/dev/null 2>&1; then
+if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" "$BASH" "$k6_runner" \
+  --source-root "$source_root" --target-url 'https://example.com' \
+  --dataset-id "$dataset_id" --results-dir "$results_dir" \
+  --evidence-ssh-target app01 --isolated-host-port 18081 \
+  --acknowledge-isolated-load YES >/dev/null 2>&1; then
   printf 'isolated k6 runner accepted a non-loopback target\n' >&2
   exit 1
 fi
 [[ ! -s "$k6_log" ]]
 
+run_capacity() {
+  PATH="${RUNNER_PATH:-$fake_bin:$PATH}" FAKE_K6_LOG="$k6_log" \
+    "$BASH" "$k6_runner" \
+    --source-root "$source_root" \
+    --target-url 'http://127.0.0.1:18080' \
+    --dataset-id "$dataset_id" \
+    --results-dir "$results_dir" \
+    "$@" \
+    --acknowledge-isolated-load YES
+}
+
+assert_capacity_rejected() {
+  local description="$1"
+  shift
+  : >"$k6_log"
+  if run_capacity "$@" >/dev/null 2>&1; then
+    printf 'isolated k6 runner accepted invalid Evidence setup: %s\n' "$description" >&2
+    exit 1
+  fi
+  [[ ! -s "$k6_log" ]]
+}
+
+export PAWCYCLE_PERF_OCI_COMPARTMENT_ID='ocid1.compartment.fixture'
+export PAWCYCLE_PERF_OCI_DB_SYSTEM_ID='ocid1.mysqldbsystem.fixture'
+
+assert_capacity_rejected 'both Evidence arguments omitted'
+assert_capacity_rejected 'only SSH target supplied' --evidence-ssh-target app01
+assert_capacity_rejected 'only host port supplied' --isolated-host-port 18081
+assert_capacity_rejected 'invalid SSH target' --evidence-ssh-target 'app01;touch' --isolated-host-port 18081
+assert_capacity_rejected 'invalid port' --evidence-ssh-target app01 --isolated-host-port 0
+assert_capacity_rejected 'port out of range' --evidence-ssh-target app01 --isolated-host-port 65536
+
+unset PAWCYCLE_PERF_OCI_DB_SYSTEM_ID
+assert_capacity_rejected 'OCI Monitoring identity absent' --evidence-ssh-target app01 --isolated-host-port 18081
+export PAWCYCLE_PERF_OCI_DB_SYSTEM_ID='ocid1.mysqldbsystem.fixture'
+
+missing_ssh_path="$tmp/missing-ssh"
+missing_python_path="$tmp/missing-python"
+missing_oci_path="$tmp/missing-oci"
+mkdir -p "$missing_ssh_path" "$missing_python_path" "$missing_oci_path"
+python3_path="$(command -v python3)"
+cp "$fake_bin/oci" "$missing_ssh_path/oci"
+ln -s "$python3_path" "$missing_ssh_path/python3"
+cp "$fake_bin/ssh" "$missing_python_path/ssh"
+cp "$fake_bin/oci" "$missing_python_path/oci"
+cp "$fake_bin/ssh" "$missing_oci_path/ssh"
+ln -s "$python3_path" "$missing_oci_path/python3"
+RUNNER_PATH="$missing_ssh_path" assert_capacity_rejected 'ssh CLI absent' --evidence-ssh-target app01 --isolated-host-port 18081
+RUNNER_PATH="$missing_python_path" assert_capacity_rejected 'python3 absent' --evidence-ssh-target app01 --isolated-host-port 18081
+RUNNER_PATH="$missing_oci_path" assert_capacity_rejected 'OCI CLI absent' --evidence-ssh-target app01 --isolated-host-port 18081
+
 mkdir -p "$results_dir"
 printf 'stale\n' >"$results_dir/stale.json"
-if PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log"   bash "$k6_runner"     --source-root "$source_root"     --target-url 'http://127.0.0.1:18080'     --dataset-id "$dataset_id"     --results-dir "$results_dir"     --acknowledge-isolated-load YES >/dev/null 2>&1; then
+if run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
   printf 'isolated k6 runner accepted a non-empty results directory\n' >&2
   exit 1
 fi
@@ -349,32 +435,44 @@ cat >"$fake_bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-cat >"$fake_bin/oci" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-chmod +x "$fake_bin/ssh" "$fake_bin/oci"
+chmod +x "$fake_bin/ssh"
 : >"$k6_log"
-if PAWCYCLE_PERF_OCI_COMPARTMENT_ID=fixture PAWCYCLE_PERF_OCI_DB_SYSTEM_ID=fixture \
-  PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" bash "$k6_runner" \
-    --source-root "$source_root" \
-    --target-url 'http://127.0.0.1:18080' \
-    --dataset-id "$dataset_id" \
-    --results-dir "$results_dir" \
-    --evidence-ssh-target app01 \
-    --isolated-host-port 18081 \
-    --acknowledge-isolated-load YES >/dev/null 2>&1; then
+assert_capacity_rejected 'collector start failure' --evidence-ssh-target app01 --isolated-host-port 18081
+
+cat >"$fake_bin/ssh" <<'PY'
+#!/usr/bin/env python3
+import datetime as dt
+import json
+import time
+
+start = dt.datetime(2026, 9, 24, 0, 0, tzinfo=dt.timezone.utc)
+for second in range(0, 121, 5):
+    print(json.dumps({
+        "timestampUtc": (start + dt.timedelta(seconds=second)).isoformat().replace("+00:00", "Z"),
+        "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"},
+    }), flush=True)
+time.sleep(2)
+PY
+chmod +x "$fake_bin/ssh"
+
+run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null
+[[ "$(wc -l <"$k6_log")" -eq 6 ]]
+[[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
+[[ -f "$results_dir/$dataset_id-250rps-evidence.json" ]]
+grep -q 'TARGET_RPS=25' "$k6_log"
+grep -q 'TARGET_RPS=250' "$k6_log"
+grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
+
+cat >"$fake_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$fake_bin/ssh"
+: >"$k6_log"
+if run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
   printf 'isolated k6 runner loaded after evidence collector failure\n' >&2
   exit 1
 fi
 [[ ! -s "$k6_log" ]]
-rm -f "$results_dir/$dataset_id-25rps-host.jsonl"
-
-PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" bash "$k6_runner"   --source-root "$source_root"   --target-url 'http://127.0.0.1:18080'   --dataset-id "$dataset_id"   --results-dir "$results_dir"   --acknowledge-isolated-load YES >/dev/null
-
-[[ "$(wc -l <"$k6_log")" -eq 6 ]]
-grep -q 'TARGET_RPS=25' "$k6_log"
-grep -q 'TARGET_RPS=250' "$k6_log"
-grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
 
 printf 'isolated_catalog_contract_test=PASS\n'

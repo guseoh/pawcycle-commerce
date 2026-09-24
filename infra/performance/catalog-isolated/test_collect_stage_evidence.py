@@ -14,6 +14,26 @@ SPEC.loader.exec_module(collector)
 
 
 class EvidenceTest(unittest.TestCase):
+    def test_swap_activity_is_an_interval_delta_and_fails_closed(self):
+        before = collector.parse_swap_counters("pswpin 12\npswpout 30\n")
+        after = collector.parse_swap_counters("pswpin 15\npswpout 31\n")
+        with mock.patch.object(collector.os, "sysconf", return_value=4096, create=True):
+            self.assertEqual(collector.swap_activity(before, after), {
+                "swapInActivityPages": 3,
+                "swapOutActivityPages": 1,
+                "swapInActivityBytes": 12288,
+                "swapOutActivityBytes": 4096,
+            })
+            with self.assertRaisesRegex(ValueError, "moved backwards"):
+                collector.swap_activity(after, before)
+        for malformed in (
+            "pswpin 12\n",
+            "pswpin nope\npswpout 30\n",
+            "pswpin 12\npswpin 13\npswpout 30\n",
+        ):
+            with self.assertRaisesRegex(ValueError, "swap activity counters"):
+                collector.parse_swap_counters(malformed)
+
     def test_oci_projection_discards_resource_identity(self):
         response = {"data": [{"dimensions": {"resourceID": "resource-marker"},
                               "aggregated-datapoints": [
@@ -43,10 +63,10 @@ class EvidenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             start = dt.datetime(2026, 9, 24, 0, 0, tzinfo=dt.timezone.utc)
-            end = start + dt.timedelta(seconds=120)
+            end = start + dt.timedelta(seconds=120, milliseconds=500)
             summary = {"datasetId": "catalog-core-control-v1", "targetRps": 25,
                        "measurementStartUtc": start.isoformat(),
-                       "measurementEndUtc": end.isoformat()}
+                       "measurementEndUtc": end.isoformat(), "maxMs": 500}
             (root / "summary.json").write_text(json.dumps(summary))
             samples = []
             for seconds in range(-5, 126, 5):
@@ -66,6 +86,13 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(len(result["hostJvmTomcatHikariSamples"]), 25)
             self.assertEqual(set(result["ociMysql"]), set(collector.OCI_METRICS))
             self.assertNotIn("ocid", args.output.read_text())
+            too_wide = dict(summary, measurementEndUtc=(start + dt.timedelta(seconds=122)).isoformat())
+            (root / "too-wide.json").write_text(json.dumps(too_wide))
+            too_wide_args = type("Args", (), {"summary": root / "too-wide.json",
+                                               "host_samples": root / "samples.jsonl",
+                                               "output": root / "too-wide-evidence.json"})()
+            with self.assertRaisesRegex(ValueError, "invalid k6 measurement window"):
+                collector.assemble(too_wide_args)
             args.output = root / "missing.json"
             with mock.patch.object(collector, "oci_points", return_value=[]), \
                  mock.patch.object(collector.time, "sleep"):
@@ -85,6 +112,21 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(set(retried["ociMysql"]), set(calls))
             self.assertTrue(all(count == 2 for count in calls.values()))
             sleep.assert_called_once_with(20)
+
+    def test_k6_evidence_clock_spans_request_start_through_completion(self):
+        js = (MODULE_PATH.parents[1] / "k6" / "lib" / "isolated-capacity.js").read_text()
+        request = js[js.index("export function request(measurement)"):]
+        start = request.index("const requestStartedAt = Date.now();")
+        call = request.index("const response = http.get(")
+        completion = request.index("const requestCompletedAt = Date.now();")
+        clock_start = request.index("measurementClock.add(requestStartedAt);")
+        clock_end = request.index("measurementClock.add(requestCompletedAt);")
+        self.assertLess(start, call)
+        self.assertLess(call, completion)
+        self.assertLess(completion, clock_start)
+        self.assertLess(clock_start, clock_end)
+        self.assertIn("measurementStartUtc: clock.min", request)
+        self.assertIn("measurementEndUtc: clock.max", request)
 
 
 if __name__ == "__main__":

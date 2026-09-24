@@ -101,21 +101,50 @@ def cpu_ticks():
     return sum(values[:8]), values[0] + values[1], values[2], values[4]
 
 
-def host_sample(previous):
+def parse_swap_counters(payload):
+    counters = {}
+    for line in payload.splitlines():
+        fields = line.split()
+        if fields and fields[0] in {"pswpin", "pswpout"}:
+            if len(fields) != 2 or fields[0] in counters or not fields[1].isdigit():
+                raise ValueError("host swap activity counters are malformed")
+            counters[fields[0]] = int(fields[1])
+    if counters.keys() != {"pswpin", "pswpout"}:
+        raise ValueError("host swap activity counters are unavailable")
+    return counters["pswpin"], counters["pswpout"]
+
+
+def swap_activity(previous, current):
+    page_size = os.sysconf("SC_PAGE_SIZE")
+    if page_size <= 0 or current[0] < previous[0] or current[1] < previous[1]:
+        raise ValueError("host swap activity counters moved backwards")
+    swap_in_pages = current[0] - previous[0]
+    swap_out_pages = current[1] - previous[1]
+    return {
+        "swapInActivityPages": swap_in_pages,
+        "swapOutActivityPages": swap_out_pages,
+        "swapInActivityBytes": swap_in_pages * page_size,
+        "swapOutActivityBytes": swap_out_pages * page_size,
+    }
+
+
+def host_sample(previous_cpu, previous_swap):
     current = cpu_ticks()
-    total = current[0] - previous[0]
+    current_swap = parse_swap_counters(Path("/proc/vmstat").read_text())
+    total = current[0] - previous_cpu[0]
     if total <= 0:
         raise ValueError("host CPU counters did not advance")
     mem = dict(re.findall(r"^(\w+):\s+(\d+) kB$", Path("/proc/meminfo").read_text(), re.M))
     disk = os.statvfs("/")
-    return current, {
-        "cpuUserPct": 100 * (current[1] - previous[1]) / total,
-        "cpuSystemPct": 100 * (current[2] - previous[2]) / total,
-        "cpuIoWaitPct": 100 * (current[3] - previous[3]) / total,
+    return (current, current_swap), {
+        "cpuUserPct": 100 * (current[1] - previous_cpu[1]) / total,
+        "cpuSystemPct": 100 * (current[2] - previous_cpu[2]) / total,
+        "cpuIoWaitPct": 100 * (current[3] - previous_cpu[3]) / total,
         "memAvailableBytes": int(mem["MemAvailable"]) * 1024,
         "swapTotalBytes": int(mem["SwapTotal"]) * 1024,
         "swapFreeBytes": int(mem["SwapFree"]) * 1024,
         "filesystemAvailableBytes": disk.f_bavail * disk.f_frsize,
+        **swap_activity(previous_swap, current_swap),
     }
 
 
@@ -150,11 +179,12 @@ def container_sample():
 def sample(args):
     if args.port < 1 or args.port > 65535 or args.duration_seconds < 1:
         raise ValueError("invalid sampling port or duration")
-    previous = cpu_ticks()
+    previous_cpu = cpu_ticks()
+    previous_swap = parse_swap_counters(Path("/proc/vmstat").read_text())
     deadline = time.monotonic() + args.duration_seconds
     while time.monotonic() < deadline:
         time.sleep(min(args.interval_seconds, max(0, deadline - time.monotonic())))
-        previous, host = host_sample(previous)
+        (previous_cpu, previous_swap), host = host_sample(previous_cpu, previous_swap)
         container = container_sample()
         if container["restartCount"] or container["oomKilled"] or container["health"] != "healthy":
             raise ValueError("isolated container became unhealthy, restarted, or OOM killed")
@@ -190,7 +220,9 @@ def assemble(args):
     summary = json.loads(Path(args.summary).read_text())
     start = parse_utc(summary["measurementStartUtc"])
     end = parse_utc(summary["measurementEndUtc"])
-    if not start < end or (end - start).total_seconds() > 121:
+    max_latency_ms = float(summary["maxMs"])
+    allowed_window_seconds = 120 + max_latency_ms / 1000 + 1
+    if not start < end or max_latency_ms < 0 or (end - start).total_seconds() > allowed_window_seconds:
         raise ValueError("invalid k6 measurement window")
     samples = [json.loads(line) for line in Path(args.host_samples).read_text().splitlines() if line]
     selected = [sample for sample in samples if start <= parse_utc(sample["timestampUtc"]) <= end]

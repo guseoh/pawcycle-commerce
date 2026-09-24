@@ -106,6 +106,7 @@ export function optionsForIsolatedCapacity() {
 }
 
 export function request(measurement) {
+  const requestStartedAt = Date.now();
   const response = http.get(`${localBaseUrl()}/api/products`, {
     redirects: 0,
     responseType: "none",
@@ -115,6 +116,7 @@ export function request(measurement) {
       dataset_id: configuredDatasetId(),
     },
   });
+  const requestCompletedAt = Date.now();
   const expected = check(response, {
     "expected status": (result) => result.status === 200,
   });
@@ -128,7 +130,8 @@ export function request(measurement) {
   }
 
   measurementIterations.add(1);
-  measurementClock.add(Date.now());
+  measurementClock.add(requestStartedAt);
+  measurementClock.add(requestCompletedAt);
   expectedStatusErrorRate.add(!expected);
   measurementLatency.add(response.timings.duration);
 }

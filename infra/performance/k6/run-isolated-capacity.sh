@@ -70,18 +70,21 @@ case "$dataset_id" in
 esac
 [[ "$results_dir" == /* ]] || usage
 [[ "$acknowledgement" == 'YES' ]] || usage
-if [[ -n "$evidence_ssh_target" || -n "$isolated_host_port" ]]; then
-  [[ "$evidence_ssh_target" =~ ^[a-zA-Z0-9][a-zA-Z0-9._@-]*$ ]] || usage
-  [[ "$isolated_host_port" =~ ^[0-9]{1,5}$ ]] || usage
-  ((10#$isolated_host_port >= 1 && 10#$isolated_host_port <= 65535)) || usage
-  command -v ssh >/dev/null 2>&1 || { printf 'ssh is required for evidence collection\n' >&2; exit 1; }
-  command -v python3 >/dev/null 2>&1 || { printf 'python3 is required for evidence collection\n' >&2; exit 1; }
-  command -v oci >/dev/null 2>&1 || { printf 'OCI CLI is required for evidence collection\n' >&2; exit 1; }
-  [[ -n "${PAWCYCLE_PERF_OCI_COMPARTMENT_ID:-}" && -n "${PAWCYCLE_PERF_OCI_DB_SYSTEM_ID:-}" ]] || {
-    printf 'OCI Monitoring resource identities are required in the environment\n' >&2
-    exit 1
-  }
-fi
+[[ -n "$evidence_ssh_target" && -n "$isolated_host_port" ]] || usage
+[[ "$evidence_ssh_target" =~ ^[a-zA-Z0-9][a-zA-Z0-9._@-]*$ ]] || usage
+[[ "$isolated_host_port" =~ ^[0-9]{1,5}$ ]] || usage
+((10#$isolated_host_port >= 1 && 10#$isolated_host_port <= 65535)) || usage
+command -v ssh >/dev/null 2>&1 || { printf 'ssh is required for evidence collection\n' >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { printf 'python3 is required for evidence collection\n' >&2; exit 1; }
+command -v oci >/dev/null 2>&1 || { printf 'OCI CLI is required for evidence collection\n' >&2; exit 1; }
+[[ "${PAWCYCLE_PERF_OCI_COMPARTMENT_ID:-}" =~ ^ocid1\.compartment\.[a-zA-Z0-9._-]+$ ]] || {
+  printf 'OCI Monitoring compartment identity is required in the environment\n' >&2
+  exit 1
+}
+[[ "${PAWCYCLE_PERF_OCI_DB_SYSTEM_ID:-}" =~ ^ocid1\.mysqldbsystem\.[a-zA-Z0-9._-]+$ ]] || {
+  printf 'OCI Monitoring DB System identity is required in the environment\n' >&2
+  exit 1
+}
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 script_source_root="$(cd -- "$script_dir/../../.." && pwd -P)"
@@ -117,21 +120,23 @@ fi
 mkdir -p "$results_dir"
 
 for target_rps in 25 50 100 150 200 250; do
-  collector_pid=''
-  if [[ -n "$evidence_ssh_target" ]]; then
-    host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
-    remote_collector="/opt/pawcycle/performance-source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
-    ssh -o BatchMode=yes "$evidence_ssh_target" \
-      sudo -n python3 "$remote_collector" sample --port "$isolated_host_port" \
-      --duration-seconds 165 >"$host_samples" &
-    collector_pid=$!
-    sleep 6
-    if ! kill -0 "$collector_pid" 2>/dev/null || [[ ! -s "$host_samples" ]]; then
-      wait "$collector_pid" || true
-      printf 'Host evidence collector did not start\n' >&2
-      exit 1
-    fi
+  host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
+  remote_collector="/opt/pawcycle/performance-source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
+  ssh -o BatchMode=yes "$evidence_ssh_target" \
+    sudo -n python3 "$remote_collector" sample --port "$isolated_host_port" \
+    --duration-seconds 165 >"$host_samples" &
+  collector_pid=$!
+  for _ in {1..10}; do
+    [[ -s "$host_samples" ]] && break
+    kill -0 "$collector_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if ! kill -0 "$collector_pid" 2>/dev/null || [[ ! -s "$host_samples" ]]; then
+    wait "$collector_pid" || true
+    printf 'Host evidence collector did not start\n' >&2
+    exit 1
   fi
+
   k6_ok=true
   k6_args=(run
     -e "BASE_URL=$target_url"
@@ -140,33 +145,27 @@ for target_rps in 25 50 100 150 200 250; do
     -e "TARGET_RPS=$target_rps"
     -e "RESULTS_DIR=$results_dir"
     "$script_dir/isolated-capacity-api-products.js")
-  if [[ -n "$collector_pid" ]]; then
-    k6 "${k6_args[@]}" &
-    k6_pid=$!
-    while kill -0 "$k6_pid" 2>/dev/null; do
-      if ! kill -0 "$collector_pid" 2>/dev/null; then
-        kill "$k6_pid" 2>/dev/null || true
-        wait "$k6_pid" || true
-        wait "$collector_pid" || true
-        printf 'Host evidence collector stopped during load\n' >&2
-        exit 1
-      fi
-      sleep 2
-    done
-    wait "$k6_pid" || k6_ok=false
-  else
-    k6 "${k6_args[@]}" || k6_ok=false
-  fi
-  if [[ -n "$collector_pid" ]]; then
-    if ! wait "$collector_pid"; then
-      printf 'Host evidence collector failed; stop before next stage\n' >&2
+  k6 "${k6_args[@]}" &
+  k6_pid=$!
+  while kill -0 "$k6_pid" 2>/dev/null; do
+    if ! kill -0 "$collector_pid" 2>/dev/null; then
+      kill "$k6_pid" 2>/dev/null || true
+      wait "$k6_pid" || true
+      wait "$collector_pid" || true
+      printf 'Host evidence collector stopped during load\n' >&2
       exit 1
     fi
-    python3 "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" assemble \
-      --summary "$results_dir/$dataset_id-${target_rps}rps.json" \
-      --host-samples "$host_samples" \
-      --output "$results_dir/$dataset_id-${target_rps}rps-evidence.json"
+    sleep 2
+  done
+  wait "$k6_pid" || k6_ok=false
+  if ! wait "$collector_pid"; then
+    printf 'Host evidence collector failed; stop before next stage\n' >&2
+    exit 1
   fi
+  python3 "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" assemble \
+    --summary "$results_dir/$dataset_id-${target_rps}rps.json" \
+    --host-samples "$host_samples" \
+    --output "$results_dir/$dataset_id-${target_rps}rps-evidence.json"
   if [[ "$k6_ok" != true ]]; then
     printf 'k6 stage failed; stop before next RPS\n' >&2
     exit 1
