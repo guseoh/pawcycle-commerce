@@ -742,6 +742,8 @@ collector가 시작되지 않거나 중단되거나 필수 metric/구간 sample�
 다음 RPS로 진행하지 않는다. 실패한 stage의 k6 요약과 이미 수집된 Host JSONL은
 보존한다. 결과 디렉터리는 Git 밖에 두고 접근을 제한한다. 장기 보고서에는
 필요한 aggregate만 옮기고 raw `/actuator/prometheus` payload는 보존하지 않는다.
+OCI datapoint 게시 지연은 20초 간격으로 최대 세 번만 재확인하고, 그래도 없으면
+수집 실패로 중단한다.
 
 I0 / I10K 모두 동일한 evidence schema를 사용한다.
 

@@ -199,12 +199,22 @@ def assemble(args):
     if any(sample["container"]["restartCount"] or sample["container"]["oomKilled"] or sample["container"]["health"] != "healthy" for sample in selected):
         raise ValueError("isolated container unhealthy in measurement window")
     mysql = {}
-    for metric, statistic in OCI_METRICS.items():
-        points = oci_points(metric, statistic, start.isoformat().replace("+00:00", "Z"),
-                            (end + dt.timedelta(minutes=1)).isoformat().replace("+00:00", "Z"))
-        mysql[metric] = [point for point in points if start <= parse_utc(point["timestampUtc"]) <= end]
-        if not mysql[metric]:
-            raise ValueError(f"OCI Monitoring has no {metric} datapoint in measurement window")
+    for attempt in range(4):
+        for metric, statistic in OCI_METRICS.items():
+            if metric in mysql:
+                continue
+            points = oci_points(metric, statistic, start.isoformat().replace("+00:00", "Z"),
+                                (end + dt.timedelta(minutes=1)).isoformat().replace("+00:00", "Z"))
+            selected_points = [point for point in points if start <= parse_utc(point["timestampUtc"]) <= end]
+            if selected_points:
+                mysql[metric] = selected_points
+        if len(mysql) == len(OCI_METRICS):
+            break
+        if attempt < 3:
+            time.sleep(20)
+    if len(mysql) != len(OCI_METRICS):
+        missing = sorted(OCI_METRICS.keys() - mysql.keys())
+        raise ValueError(f"OCI Monitoring has no measurement-window datapoint for {', '.join(missing)}")
     result = {"datasetId": summary["datasetId"], "targetRps": summary["targetRps"],
               "measurementStartUtc": summary["measurementStartUtc"],
               "measurementEndUtc": summary["measurementEndUtc"],

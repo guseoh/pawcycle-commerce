@@ -67,9 +67,24 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(set(result["ociMysql"]), set(collector.OCI_METRICS))
             self.assertNotIn("ocid", args.output.read_text())
             args.output = root / "missing.json"
-            with mock.patch.object(collector, "oci_points", return_value=[]):
-                with self.assertRaisesRegex(ValueError, "no CPUUtilization datapoint"):
+            with mock.patch.object(collector, "oci_points", return_value=[]), \
+                 mock.patch.object(collector.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "no measurement-window datapoint"):
                     collector.assemble(args)
+            args.output = root / "retried.json"
+            calls = {name: 0 for name in collector.OCI_METRICS}
+
+            def delayed(metric, _statistic, _start, _end):
+                calls[metric] += 1
+                return [] if calls[metric] == 1 else points
+
+            with mock.patch.object(collector, "oci_points", side_effect=delayed), \
+                 mock.patch.object(collector.time, "sleep") as sleep:
+                collector.assemble(args)
+            retried = json.loads(args.output.read_text())
+            self.assertEqual(set(retried["ociMysql"]), set(calls))
+            self.assertTrue(all(count == 2 for count in calls.values()))
+            sleep.assert_called_once_with(20)
 
 
 if __name__ == "__main__":
