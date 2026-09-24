@@ -345,6 +345,31 @@ fi
 [[ ! -s "$k6_log" ]]
 rm -f "$results_dir/stale.json"
 
+cat >"$fake_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat >"$fake_bin/oci" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$fake_bin/ssh" "$fake_bin/oci"
+: >"$k6_log"
+if PAWCYCLE_PERF_OCI_COMPARTMENT_ID=fixture PAWCYCLE_PERF_OCI_DB_SYSTEM_ID=fixture \
+  PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" bash "$k6_runner" \
+    --source-root "$source_root" \
+    --target-url 'http://127.0.0.1:18080' \
+    --dataset-id "$dataset_id" \
+    --results-dir "$results_dir" \
+    --evidence-ssh-target app01 \
+    --isolated-host-port 18081 \
+    --acknowledge-isolated-load YES >/dev/null 2>&1; then
+  printf 'isolated k6 runner loaded after evidence collector failure\n' >&2
+  exit 1
+fi
+[[ ! -s "$k6_log" ]]
+rm -f "$results_dir/$dataset_id-25rps-host.jsonl"
+
 PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" bash "$k6_runner"   --source-root "$source_root"   --target-url 'http://127.0.0.1:18080'   --dataset-id "$dataset_id"   --results-dir "$results_dir"   --acknowledge-isolated-load YES >/dev/null
 
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]

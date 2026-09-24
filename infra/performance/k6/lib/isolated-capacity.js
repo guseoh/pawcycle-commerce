@@ -29,6 +29,7 @@ export const measurementLatency = new Trend(
   "isolated_capacity_measurement_latency",
   true
 );
+export const measurementClock = new Trend("isolated_capacity_measurement_clock_ms");
 
 function configuredRate() {
   const rate = Number(__ENV.TARGET_RPS);
@@ -100,7 +101,7 @@ export function optionsForIsolatedCapacity() {
       dropped_iterations: ["count==0"],
     },
     discardResponseBodies: true,
-    summaryTrendStats: ["med", "p(95)", "p(99)", "max"],
+    summaryTrendStats: ["min", "med", "p(95)", "p(99)", "max"],
   };
 }
 
@@ -127,6 +128,7 @@ export function request(measurement) {
   }
 
   measurementIterations.add(1);
+  measurementClock.add(Date.now());
   expectedStatusErrorRate.add(!expected);
   measurementLatency.add(response.timings.duration);
 }
@@ -135,11 +137,14 @@ export function handleSummaryForIsolatedCapacity(data) {
   const values = (metric) => data.metrics[metric]?.values || {};
   const iterations = values("isolated_capacity_measurement_iterations");
   const latency = values("isolated_capacity_measurement_latency");
+  const clock = values("isolated_capacity_measurement_clock_ms");
 
   const summary = {
     datasetId: configuredDatasetId(),
     targetRps: configuredRate(),
     actualRps: (iterations.count || 0) / MEASUREMENT_SECONDS,
+    measurementStartUtc: clock.min ? new Date(clock.min).toISOString() : null,
+    measurementEndUtc: clock.max ? new Date(clock.max).toISOString() : null,
     droppedIterations: data.metrics.dropped_iterations
       ? data.metrics.dropped_iterations.values.count
       : 0,

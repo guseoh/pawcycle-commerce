@@ -126,9 +126,12 @@ I10K  → catalog-core-10k-v1
 python -m py_compile \
   infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
   infra/performance/catalog-isolated/validate-isolated-catalog.py \
-  infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+  infra/performance/catalog-isolated/test_validate_isolated_catalog.py \
+  infra/performance/catalog-isolated/collect-stage-evidence.py \
+  infra/performance/catalog-isolated/test_collect_stage_evidence.py
 
 sudo python infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+python infra/performance/catalog-isolated/test_collect_stage_evidence.py
 sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
 ```
 
@@ -679,6 +682,8 @@ bash infra/performance/k6/run-isolated-capacity.sh \
   --target-url http://127.0.0.1:<local-port> \
   --dataset-id "$DATASET_ID" \
   --results-dir "$RESULTS_DIR" \
+  --evidence-ssh-target <approved-app01-ssh-alias> \
+  --isolated-host-port <performance-port> \
   --acknowledge-isolated-load YES
 ```
 
@@ -711,6 +716,32 @@ threshold:
 한 stage가 실패하면 다음 RPS로 진행하지 않는다.
 
 ## Evidence
+
+실제 I0/I10K 실행에서는 위 두 evidence 인자를 필수로 사용한다. Desktop의 같은
+approved source에 `python3`, `oci` CLI와 기존 OCI Monitoring read 권한이 필요하다.
+`PAWCYCLE_PERF_OCI_COMPARTMENT_ID`와 `PAWCYCLE_PERF_OCI_DB_SYSTEM_ID`는
+승인된 기존 secure environment에서 제공한다. 값은 command output, 결과 파일,
+Issue/PR/report에 쓰지 않는다. 실행 전에 read-only OCI Monitoring query로
+`oci_mysql_database`의 아래 여섯 지표가 대상 DB System에 존재하는지 확인한다.
+
+```text
+CPUUtilization, MemoryUtilization, ActiveConnections,
+CurrentConnections, Statements, StatementLatency
+```
+
+Runner는 각 stage 직전에 approved source의 collector를 SSH로 app01에서 실행한다.
+collector는 isolated Backend의 loopback `/actuator/prometheus`, `/proc`,
+`docker inspect`/`docker stats`에서 allowlisted timestamp/value만 stdout JSONL로
+전송한다. Production Prometheus target이나 Observability topology는 변경하지 않는다.
+k6 요약에는 실제 measurement 요청의 첫/마지막 UTC가 포함된다. Runner는 그 구간에
+속한 Host/Container/JVM/Tomcat/Hikari sample과 OCI Monitoring 1분 datapoint만
+`*-evidence.json`에 합친다. OCI 1분 해상도는 120초 stage보다 거칠며 같은 DB
+System의 Production traffic도 포함한다. 이 한계를 병목 판정에 반영한다.
+
+collector가 시작되지 않거나 중단되거나 필수 metric/구간 sample이 없으면
+다음 RPS로 진행하지 않는다. 실패한 stage의 k6 요약과 이미 수집된 Host JSONL은
+보존한다. 결과 디렉터리는 Git 밖에 두고 접근을 제한한다. 장기 보고서에는
+필요한 aggregate만 옮기고 raw `/actuator/prometheus` payload는 보존하지 않는다.
 
 I0 / I10K 모두 동일한 evidence schema를 사용한다.
 

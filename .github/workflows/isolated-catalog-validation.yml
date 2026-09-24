@@ -42,7 +42,9 @@ jobs:
           python -m py_compile \
             infra/performance/catalog-isolated/prepare-isolated-catalog-provenance.py \
             infra/performance/catalog-isolated/validate-isolated-catalog.py \
-            infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+            infra/performance/catalog-isolated/test_validate_isolated_catalog.py \
+            infra/performance/catalog-isolated/collect-stage-evidence.py \
+            infra/performance/catalog-isolated/test_collect_stage_evidence.py
 
       - name: Validate k6 JavaScript syntax
         run: |
@@ -55,6 +57,9 @@ jobs:
 
       - name: Validate isolated Catalog preflight
         run: sudo python infra/performance/catalog-isolated/test_validate_isolated_catalog.py
+
+      - name: Validate isolated evidence collector
+        run: python infra/performance/catalog-isolated/test_collect_stage_evidence.py
 
       - name: Validate isolated Catalog lifecycle
         run: sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
