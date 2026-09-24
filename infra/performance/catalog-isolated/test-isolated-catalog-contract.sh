@@ -382,6 +382,10 @@ run_capacity() {
     --acknowledge-isolated-load YES
 }
 
+clear_capacity_results() {
+  find "$results_dir" -mindepth 1 -maxdepth 1 -type f -delete
+}
+
 assert_capacity_rejected() {
   local description="$1"
   shift
@@ -438,6 +442,7 @@ EOF
 chmod +x "$fake_bin/ssh"
 : >"$k6_log"
 assert_capacity_rejected 'collector start failure' --evidence-ssh-target app01 --isolated-host-port 18081
+clear_capacity_results
 
 cat >"$fake_bin/ssh" <<'PY'
 #!/usr/bin/env python3
@@ -463,6 +468,7 @@ grep -q 'TARGET_RPS=25' "$k6_log"
 grep -q 'TARGET_RPS=250' "$k6_log"
 grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
 
+clear_capacity_results
 cat >"$fake_bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 exit 1
