@@ -44,7 +44,28 @@ class EvidenceTest(unittest.TestCase):
              mock.patch.object(collector, "command", return_value=json.dumps(response)):
             points = collector.oci_points("CPUUtilization", "mean",
                                           "2026-09-24T00:00:00Z", "2026-09-24T00:02:00Z")
-        self.assertEqual(points, [{"timestampUtc": "2026-09-24T00:01:00Z", "value": 42}])
+        self.assertEqual(points, [{"windowStartUtc": "2026-09-24T00:00:00Z",
+                                   "windowEndUtc": "2026-09-24T00:01:00Z", "value": 42}])
+
+    def test_oci_measurement_window_uses_bucket_overlap_and_exclusive_query_end(self):
+        start = collector.parse_utc("2026-09-24T12:00:30Z")
+        end = collector.parse_utc("2026-09-24T12:02:30Z")
+        points = [collector.oci_bucket_point(f"2026-09-24T12:{minute:02d}:00Z", minute)
+                  for minute in range(0, 5)]
+
+        selected = collector.select_oci_points(points, start, end)
+        self.assertEqual([point["windowEndUtc"] for point in selected], [
+            "2026-09-24T12:01:00Z",
+            "2026-09-24T12:02:00Z",
+            "2026-09-24T12:03:00Z",
+        ])
+        query_start, query_end = collector.oci_query_bounds(start, end)
+        self.assertEqual(query_start, "2026-09-24T11:59:30Z")
+        self.assertEqual(query_end, "2026-09-24T12:03:30Z")
+        self.assertLess(collector.parse_utc("2026-09-24T12:03:00Z"),
+                        collector.parse_utc(query_end))
+        self.assertGreaterEqual(collector.parse_utc("2026-09-24T12:04:00Z"),
+                                collector.parse_utc(query_end))
 
     def test_allowlist_excludes_unrelated_metrics_and_requires_runtime_metrics(self):
         lines = []
@@ -62,8 +83,8 @@ class EvidenceTest(unittest.TestCase):
     def test_assemble_keeps_only_measurement_window_and_rejects_missing_oci(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            start = dt.datetime(2026, 9, 24, 0, 0, tzinfo=dt.timezone.utc)
-            end = start + dt.timedelta(seconds=120, milliseconds=500)
+            start = dt.datetime(2026, 9, 24, 12, 0, 30, tzinfo=dt.timezone.utc)
+            end = start + dt.timedelta(seconds=120)
             summary = {"datasetId": "catalog-core-control-v1", "targetRps": 25,
                        "measurementStartUtc": start.isoformat(),
                        "measurementEndUtc": end.isoformat(), "maxMs": 500}
@@ -78,13 +99,21 @@ class EvidenceTest(unittest.TestCase):
             args = type("Args", (), {"summary": root / "summary.json",
                                      "host_samples": root / "samples.jsonl",
                                      "output": root / "evidence.json"})()
-            points = [{"timestampUtc": (start + dt.timedelta(seconds=60)).isoformat(),
-                       "value": 1.0}]
-            with mock.patch.object(collector, "oci_points", return_value=points):
+            points = [collector.oci_bucket_point((start + dt.timedelta(seconds=offset)).isoformat(),
+                                                  float(offset))
+                      for offset in (-30, 30, 90, 150, 210)]
+            with mock.patch.object(collector, "oci_points", return_value=points) as query:
                 collector.assemble(args)
             result = json.loads(args.output.read_text())
             self.assertEqual(len(result["hostJvmTomcatHikariSamples"]), 25)
             self.assertEqual(set(result["ociMysql"]), set(collector.OCI_METRICS))
+            query_start, query_end = collector.oci_query_bounds(start, end)
+            self.assertEqual(query.call_args_list[0].args[2:], (query_start, query_end))
+            self.assertEqual([point["windowEndUtc"] for point in result["ociMysql"]["CPUUtilization"]], [
+                "2026-09-24T12:01:00Z",
+                "2026-09-24T12:02:00Z",
+                "2026-09-24T12:03:00Z",
+            ])
             self.assertNotIn("ocid", args.output.read_text())
             too_wide = dict(summary, measurementEndUtc=(start + dt.timedelta(seconds=122)).isoformat())
             (root / "too-wide.json").write_text(json.dumps(too_wide))

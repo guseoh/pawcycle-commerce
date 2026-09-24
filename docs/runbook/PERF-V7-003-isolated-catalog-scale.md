@@ -734,9 +734,11 @@ collector는 isolated Backend의 loopback `/actuator/prometheus`, `/proc`,
 `docker inspect`/`docker stats`에서 allowlisted timestamp/value만 stdout JSONL로
 전송한다. Production Prometheus target이나 Observability topology는 변경하지 않는다.
 k6 요약에는 첫 measurement 요청 직전부터 마지막 measurement 응답 완료까지의 UTC가 포함된다. Runner는 그 구간에
-속한 Host/Container/JVM/Tomcat/Hikari sample과 OCI Monitoring 1분 datapoint만
-`*-evidence.json`에 합친다. OCI 1분 해상도는 120초 stage보다 거칠며 같은 DB
-System의 Production traffic도 포함한다. 이 한계를 병목 판정에 반영한다.
+속한 Host/Container/JVM/Tomcat/Hikari sample과 겹치는 OCI Monitoring 1분 aggregation bucket만
+`*-evidence.json`에 합친다. OCI bucket은 순간값이 아닌 `windowStartUtc`/`windowEndUtc`로
+표현하며, OCI `endTime`이 exclusive이므로 query 시작/종료를 각각 1분 확장한 뒤
+measurement와 겹치지 않는 bucket은 제거한다. OCI 1분 해상도는 120초 stage보다 거칠며
+같은 DB System의 Production traffic도 포함한다. 이 한계를 병목 판정에 반영한다.
 
 collector가 시작되지 않거나 중단되거나 필수 metric/구간 sample이 없으면
 다음 RPS로 진행하지 않는다. 실패한 stage의 k6 요약과 이미 수집된 Host JSONL은

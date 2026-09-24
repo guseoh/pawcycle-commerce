@@ -43,6 +43,7 @@ OCI_METRICS = {
     "Statements": "sum",
     "StatementLatency": "mean",
 }
+OCI_BUCKET_WIDTH = dt.timedelta(minutes=1)
 CONTAINER = "pawcycle-performance-catalog-backend-1"
 METRIC_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+(-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$')
 
@@ -60,6 +61,28 @@ def parse_utc(value):
 
 def command(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=15).stdout.strip()
+
+
+def format_utc(value):
+    return value.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def oci_bucket_point(timestamp, value):
+    bucket_end = parse_utc(timestamp)
+    bucket_start = bucket_end - OCI_BUCKET_WIDTH
+    return {"windowStartUtc": format_utc(bucket_start),
+            "windowEndUtc": format_utc(bucket_end), "value": value}
+
+
+def oci_query_bounds(start, end):
+    # OCI endTime is exclusive; one extra resolution interval includes the last overlapping bucket.
+    return format_utc(start - OCI_BUCKET_WIDTH), format_utc(end + OCI_BUCKET_WIDTH)
+
+
+def select_oci_points(points, start, end):
+    return [point for point in points
+            if parse_utc(point["windowEndUtc"]) > start
+            and parse_utc(point["windowStartUtc"]) < end]
 
 
 def parse_metrics(payload):
@@ -209,7 +232,7 @@ def oci_points(metric, statistic, start, end):
         series = json.loads(raw)["data"]
         if len(series) != 1:
             raise ValueError("ambiguous or missing OCI metric stream")
-        points = [{"timestampUtc": point["timestamp"], "value": point["value"]}
+        points = [oci_bucket_point(point["timestamp"], point["value"])
                   for item in series for point in item["aggregated-datapoints"]]
     except (subprocess.SubprocessError, KeyError, ValueError) as exc:
         raise ValueError(f"OCI Monitoring query failed for {metric}") from None
@@ -224,6 +247,7 @@ def assemble(args):
     allowed_window_seconds = 120 + max_latency_ms / 1000 + 1
     if not start < end or max_latency_ms < 0 or (end - start).total_seconds() > allowed_window_seconds:
         raise ValueError("invalid k6 measurement window")
+    query_start, query_end = oci_query_bounds(start, end)
     samples = [json.loads(line) for line in Path(args.host_samples).read_text().splitlines() if line]
     selected = [sample for sample in samples if start <= parse_utc(sample["timestampUtc"]) <= end]
     if len(selected) < 15:
@@ -235,9 +259,8 @@ def assemble(args):
         for metric, statistic in OCI_METRICS.items():
             if metric in mysql:
                 continue
-            points = oci_points(metric, statistic, start.isoformat().replace("+00:00", "Z"),
-                                (end + dt.timedelta(minutes=1)).isoformat().replace("+00:00", "Z"))
-            selected_points = [point for point in points if start <= parse_utc(point["timestampUtc"]) <= end]
+            points = oci_points(metric, statistic, query_start, query_end)
+            selected_points = select_oci_points(points, start, end)
             if selected_points:
                 mysql[metric] = selected_points
         if len(mysql) == len(OCI_METRICS):
