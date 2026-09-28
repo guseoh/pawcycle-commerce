@@ -147,6 +147,13 @@ approved_sha="$(tr -d '\r\n' <"$source_root/.approved-sha")"
   exit 1
 }
 
+# The desktop archive can have a different local path from the app01 archive.
+source "$source_root/infra/performance/catalog-isolated/app01-paths.sh"
+[[ "$PAWCYCLE_PERF_APP01_SOURCE_BASE" == /* ]] || {
+  printf 'app01 performance source base must be absolute\n' >&2
+  exit 1
+}
+
 command -v k6 >/dev/null 2>&1 || {
   printf 'k6 is required\n' >&2
   exit 1
@@ -160,7 +167,7 @@ mkdir -p "$results_dir"
 
 for target_rps in 25 50 100 150 200 250; do
   host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
-  remote_collector="/opt/pawcycle/performance-source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
+  remote_collector="$PAWCYCLE_PERF_APP01_SOURCE_BASE/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
   ssh -o BatchMode=yes "$evidence_ssh_target" \
     sudo -n python3 "$remote_collector" sample --port "$isolated_host_port" \
     --duration-seconds 165 >"$host_samples" &

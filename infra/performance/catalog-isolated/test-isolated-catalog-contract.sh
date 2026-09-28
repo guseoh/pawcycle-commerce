@@ -38,6 +38,7 @@ fake_bin="$tmp/bin"
 docker_log="$tmp/docker.log"
 k6_log="$tmp/k6.log"
 curl_log="$tmp/curl.log"
+ssh_log="$tmp/ssh.log"
 approved_image='ghcr.io/guseoh/pawcycle-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
 mkdir -p   "$source_root/infra/performance"   "$source_root/scripts"   "$source_root/backend/src/main/resources/catalog"   "$tmp/data"   "$fake_bin"
@@ -141,6 +142,13 @@ with open(sys.argv[1], encoding="utf-8") as stream:
     compose = json.load(stream)
 assert compose["services"]["backend"]["environment"]["SERVER_TOMCAT_MBEANREGISTRY_ENABLED"] == "true"
 assert "SERVER_TOMCAT_MBEANREGISTRY_ENABLED" not in compose["services"]["catalog-import"]["environment"]
+bootstrap = compose["services"]["schema-bootstrap"]
+assert bootstrap["command"] == ["--spring.main.web-application-type=none"]
+assert bootstrap["environment"]["SPRING_FLYWAY_ENABLED"] == "true"
+assert bootstrap["environment"]["PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED"] == "false"
+assert set(bootstrap["networks"]) == {"performance-db-egress"}
+assert bootstrap["image"] == compose["services"]["backend"]["image"]
+assert compose["services"]["catalog-import"]["environment"]["PAWCYCLE_CATALOG_MANIFEST_IMPORT_MODE"] == "validate"
 PY
 
 grep -q 'name: pawcycle-performance-catalog' "$tmp/resolved-compose.yaml"
@@ -212,7 +220,14 @@ case "$joined" in
     printf 'fake-backend\n'
     exit 0
     ;;
-  *" run --rm --no-deps --pull never catalog-import "*) exit 0 ;;
+  *" run --rm --no-deps --pull never schema-bootstrap "*)
+    [[ "${FAKE_BOOTSTRAP_FAIL:-0}" != "1" ]]
+    exit $?
+    ;;
+  *" run --rm --no-deps --pull never catalog-import "*)
+    [[ "${FAKE_IMPORT_FAIL:-0}" != "1" ]]
+    exit $?
+    ;;
   *" up -d --pull never backend "*) exit 0 ;;
   *" down --remove-orphans "*) exit 0 ;;
   *" ps "*) exit 0 ;;
@@ -300,7 +315,12 @@ PY
 chmod +x "$fake_bin/ssh" "$fake_bin/oci"
 
 run_manager() {
-  PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}"   bash "$manager" "$@"     --source-root "$source_root"     --config-file "$config_file"     --password-file "$password_file"     --dataset-dir "$dataset_dir"
+  PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$docker_log" FAKE_CURL_LOG="$curl_log" \
+    FAKE_APPROVED_IMAGE="$approved_image" FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}" \
+    FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}" FAKE_BOOTSTRAP_FAIL="${FAKE_BOOTSTRAP_FAIL:-0}" \
+    FAKE_IMPORT_FAIL="${FAKE_IMPORT_FAIL:-0}" FAKE_EXISTING_CONTAINER="${FAKE_EXISTING_CONTAINER:-0}" \
+    bash "$manager" "$@" --source-root "$source_root" --config-file "$config_file" \
+      --password-file "$password_file" --dataset-dir "$dataset_dir"
 }
 
 run_down_manager() {
@@ -320,6 +340,28 @@ fi
 grep -q 'image inspect' "$docker_log"
 
 : >"$docker_log"
+if run_manager schema-bootstrap >/dev/null 2>&1; then
+  printf 'schema bootstrap unexpectedly succeeded without acknowledgement\n' >&2
+  exit 1
+fi
+if grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"; then
+  printf 'schema bootstrap ran before acknowledgement\n' >&2
+  exit 1
+fi
+
+: >"$docker_log"
+run_manager schema-bootstrap --acknowledge "BOOTSTRAP:$dataset_id" >/dev/null
+grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"
+grep -q 'down --remove-orphans' "$docker_log"
+
+: >"$docker_log"
+if FAKE_BOOTSTRAP_FAIL=1 run_manager schema-bootstrap --acknowledge "BOOTSTRAP:$dataset_id" >/dev/null 2>&1; then
+  printf 'schema bootstrap unexpectedly succeeded after migration failure\n' >&2
+  exit 1
+fi
+grep -q 'down --remove-orphans' "$docker_log"
+
+: >"$docker_log"
 if run_manager import-apply >/dev/null 2>&1; then
   printf 'import-apply unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
@@ -332,7 +374,67 @@ fi
 : >"$docker_log"
 run_manager import-apply --acknowledge "APPLY:$dataset_id" >/dev/null
 grep -q 'operation=validate|.*run --rm --no-deps --pull never catalog-import' "$docker_log"
-grep -q 'operation=apply|.*run --rm --no-deps --pull never catalog-import' "$docker_log"
+grep -q 'operation=apply|.*run --rm --no-deps --pull never catalog-import --pawcycle.catalog.manifest-import.confirm-apply=true' "$docker_log"
+if grep 'operation=validate|' "$docker_log" | grep -q -- '--pawcycle.catalog.manifest-import.confirm-apply'; then
+  printf 'validate received the apply confirmation\n' >&2
+  exit 1
+fi
+
+: >"$docker_log"
+if run_manager rehearse >/dev/null 2>&1; then
+  printf 'rehearsal unexpectedly succeeded without acknowledgement\n' >&2
+  exit 1
+fi
+if grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"; then
+  printf 'rehearsal started before acknowledgement\n' >&2
+  exit 1
+fi
+
+: >"$docker_log"
+if FAKE_EXISTING_CONTAINER=1 run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null 2>&1; then
+  printf 'rehearsal accepted an existing performance container\n' >&2
+  exit 1
+fi
+if grep -q 'down --remove-orphans' "$docker_log"; then
+  printf 'rehearsal cleaned an existing performance container\n' >&2
+  exit 1
+fi
+
+for attempt in 1 2; do
+  : >"$docker_log"
+  : >"$curl_log"
+  run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null
+  python3 - "$docker_log" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+steps = [
+    ("image inspect",), ("run --rm --no-deps --pull never schema-bootstrap",),
+    ("operation=validate|", "run --rm --no-deps --pull never catalog-import"),
+    ("operation=apply|", "run --rm --no-deps --pull never catalog-import"),
+    ("up -d --pull never backend",), ("down --remove-orphans",),
+]
+positions = [next(i for i, line in enumerate(lines) if all(part in line for part in step)) for step in steps]
+assert positions == sorted(positions), positions
+assert "--pawcycle.catalog.manifest-import.confirm-apply=true" in lines[positions[3]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions[2]]
+PY
+  grep -q '/actuator/health/readiness' "$curl_log"
+  grep -q '/api/products' "$curl_log"
+  if grep -q -- '--volumes' "$docker_log"; then
+    printf 'rehearsal cleanup must not remove volumes\n' >&2
+    exit 1
+  fi
+done
+
+for failure in bootstrap import curl; do
+  : >"$docker_log"
+  case "$failure" in
+    bootstrap) FAKE_BOOTSTRAP_FAIL=1 run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null 2>&1 && exit 1 ;;
+    import) FAKE_IMPORT_FAIL=1 run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null 2>&1 && exit 1 ;;
+    curl) FAKE_CURL_FAIL=1 run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null 2>&1 && exit 1 ;;
+  esac
+  grep -q 'down --remove-orphans' "$docker_log"
+done
 
 : >"$docker_log"
 if run_manager up >/dev/null 2>&1; then
@@ -420,6 +522,7 @@ fi
 
 run_capacity() {
   PATH="${RUNNER_PATH:-$fake_bin:$PATH}" FAKE_K6_LOG="$k6_log" \
+    FAKE_SSH_LOG="$ssh_log" \
     FAKE_K6_HOLD="${FAKE_K6_HOLD:-0}" \
     FAKE_K6_PID_FILE="${FAKE_K6_PID_FILE:-}" \
     FAKE_K6_SIGNAL_LOG="${FAKE_K6_SIGNAL_LOG:-}" \
@@ -508,8 +611,12 @@ cat >"$fake_bin/ssh" <<'PY'
 #!/usr/bin/env python3
 import datetime as dt
 import json
+import os
+import sys
 import time
 
+with open(os.environ["FAKE_SSH_LOG"], "a", encoding="utf-8") as stream:
+    stream.write(" ".join(sys.argv[1:]) + "\n")
 start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=10)
 for second in range(0, 121, 5):
     print(json.dumps({
@@ -521,6 +628,7 @@ PY
 chmod +x "$fake_bin/ssh"
 
 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null
+grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py" "$ssh_log"
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
 [[ -f "$results_dir/$dataset_id-250rps-evidence.json" ]]

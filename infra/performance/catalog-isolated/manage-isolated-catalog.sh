@@ -20,8 +20,10 @@ Usage:
 
 Actions:
   preflight
+  schema-bootstrap --acknowledge BOOTSTRAP:DATASET_ID
   import-validate
   import-apply   --acknowledge APPLY:DATASET_ID
+  rehearse       --acknowledge REHEARSE:DATASET_ID
   up             --acknowledge START:DATASET_ID
   status
   down           --acknowledge DOWN:pawcycle-performance-catalog
@@ -160,6 +162,12 @@ assert_existing_project_identity() {
   done <<<"$ids"
 }
 
+assert_empty_project() {
+  local ids
+  ids="$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT_NAME" --format '{{.ID}}')"
+  [[ -z "$ids" ]] || die 'isolated project already has containers; inspect and clean it before bootstrap/rehearsal'
+}
+
 if [[ "$action" == 'down' ]]; then
   [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]]       || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
   assert_existing_project_identity
@@ -200,7 +208,40 @@ backend_running() {
 
 run_import() {
   local operation="$1"
-  PAWCYCLE_PERF_IMPORT_OPERATION="$operation"     compose --profile tools run --rm --no-deps --pull never catalog-import
+  if [[ "$operation" == 'apply' ]]; then
+    PAWCYCLE_PERF_IMPORT_OPERATION="$operation" compose --profile tools run --rm --no-deps --pull never catalog-import \
+      --pawcycle.catalog.manifest-import.confirm-apply=true
+  else
+    PAWCYCLE_PERF_IMPORT_OPERATION="$operation" compose --profile tools run --rm --no-deps --pull never catalog-import
+  fi
+}
+
+run_bootstrap() {
+  compose --profile tools run --rm --no-deps --pull never schema-bootstrap
+}
+
+run_with_cleanup() {
+  local kind="$1"
+  shift
+  cleanup_runtime() {
+    local exit_status=$?
+    trap - EXIT
+    if ! compose down --remove-orphans; then
+      printf 'catalog_isolated_runtime=FAIL reason=isolated runtime cleanup failed\n' >&2
+      exit_status=1
+    fi
+    cleanup_secret
+    exit "$exit_status"
+  }
+  trap cleanup_runtime EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  "$@"
+  compose down --remove-orphans || die 'isolated runtime cleanup failed'
+  trap cleanup_secret EXIT
+  trap - INT TERM HUP
+  printf 'catalog_isolated_runtime=PASS action=%s dataset=%s\n' "$kind" "$dataset_id"
 }
 
 wait_for_backend() {
@@ -230,6 +271,13 @@ case "$action" in
     printf 'catalog_isolated_runtime=PASS action=preflight dataset=%s\n' "$dataset_id"
     ;;
 
+  schema-bootstrap)
+    [[ "$acknowledgement" == "BOOTSTRAP:$dataset_id" ]] || die "schema bootstrap requires --acknowledge BOOTSTRAP:$dataset_id"
+    assert_local_backend_image
+    assert_empty_project
+    run_with_cleanup schema-bootstrap run_bootstrap
+    ;;
+
   import-validate)
     assert_local_backend_image
     assert_existing_project_identity
@@ -246,6 +294,23 @@ case "$action" in
     run_import validate
     run_import apply
     printf 'catalog_isolated_runtime=PASS action=import-apply dataset=%s\n' "$dataset_id"
+    ;;
+
+  rehearse)
+    [[ "$acknowledgement" == "REHEARSE:$dataset_id" ]] || die "rehearsal requires --acknowledge REHEARSE:$dataset_id"
+    command -v curl >/dev/null 2>&1 || die 'curl is required'
+    assert_local_backend_image
+    assert_empty_project
+    run_rehearsal() {
+      run_bootstrap
+      run_import validate
+      run_import apply
+      compose up -d --pull never backend
+      wait_for_backend
+      curl --fail --silent --show-error "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+      curl --fail --silent --show-error "http://127.0.0.1:$host_port/api/products" >/dev/null
+    }
+    run_with_cleanup rehearse run_rehearsal
     ;;
 
   up)
