@@ -627,7 +627,7 @@ validator는 password와 DB URL을 출력하지 않는다.
 
 ## Schema bootstrap → Import → Runtime → Load
 
-empty performance schema는 import command로 초기화하지 않는다. `ProductionDemoCatalogImportCommand`는 `spring.flyway.enabled=false`를 강제하므로, import 전에 명시적 `schema-bootstrap`이 필요하다. Bootstrap은 승인된 Backend image를 `SPRING_MAIN_WEB_APPLICATION_TYPE=servlet`로 잠시 시작해 Flyway와 JPA startup을 확인하고 container-internal readiness health가 healthy가 되면 정리한다. `web-application-type=none`은 approved Production image의 `ProductionAuthSmokeMemberBootstrap`이 maintenance candidate로 해석해 `SpringApplication.run` 전에 실패할 수 있으므로 사용하지 않으며, auth-smoke maintenance enabled도 설정하지 않는다. Bootstrap은 host port를 publish하지 않고 `performance-db-egress`만 사용한다. 성공·실패 후 isolated container/network를 정리하되 DB schema/account와 데이터는 보존한다. 이미 migration이 적용된 schema에서 Flyway는 version history를 확인해 미적용 migration만 수행한다. 반복 rehearsal의 import는 동일 manifest와 기존 데이터가 일치할 때만 진행하며 충돌은 실패로 중단한다.
+empty performance schema는 import command로 초기화하지 않는다. `ProductionDemoCatalogImportCommand`는 `spring.flyway.enabled=false`를 강제하므로, import 전에 명시적 `schema-bootstrap`이 필요하다. Bootstrap은 승인된 Backend image를 `SPRING_MAIN_WEB_APPLICATION_TYPE=servlet`로 잠시 시작해 Flyway와 JPA startup을 확인한다. Container-internal readiness health가 healthy가 된 직후 manager가 schema-bootstrap container만 stop/remove하고, rehearsal의 다음 import 단계가 performance DB egress network를 재사용한다. `web-application-type=none`은 approved Production image의 `ProductionAuthSmokeMemberBootstrap`이 maintenance candidate로 해석해 `SpringApplication.run` 전에 실패할 수 있으므로 사용하지 않으며, auth-smoke maintenance enabled도 설정하지 않는다. Bootstrap은 host port를 publish하지 않고 `performance-db-egress`만 사용한다. Bootstrap 실패는 outer cleanup으로 isolated container/network를 정리하며 DB schema/account와 데이터는 보존한다. 이미 migration이 적용된 schema에서 Flyway는 version history를 확인해 미적용 migration만 수행한다. 반복 rehearsal의 import는 동일 manifest와 기존 데이터가 일치할 때만 진행하며 충돌은 실패로 중단한다.
 
 실제 OCI schema/account provisioning과 별도 실행 승인을 완료한 후:
 
@@ -661,7 +661,7 @@ sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   --acknowledge "REHEARSE:$DATASET_ID"
 ```
 
-rehearsal은 preflight → schema bootstrap → import validate → import apply → isolated Backend 시작 → readiness 및 `/api/products` smoke → down을 수행한다. 시작 전 performance Compose project에 기존 container가 있으면 중단한다. 성공·실패 모두 container/network를 정리하며 DB schema/account와 imported data는 자동 삭제하지 않는다. 실패 시 DB의 부분 변경 가능성을 조사한 뒤 다시 실행한다.
+rehearsal은 preflight → schema bootstrap detached start → healthy wait → bootstrap service stop/remove → import validate → import apply → isolated Backend 시작 → readiness 및 `/api/products` smoke → project down을 수행한다. Bootstrap service가 health를 통과하지 못하거나 stop/remove가 실패하면 fail-closed하고 outer project cleanup을 실행한다. 시작 전 performance Compose project에 기존 container가 있으면 중단한다. 성공·실패 모두 container/network를 정리하며 DB schema/account와 imported data는 자동 삭제하지 않는다. 실패 시 DB의 부분 변경 가능성을 조사한 뒤 다시 실행한다.
 
 `schema-bootstrap`, `import-validate`, `import-apply`, `rehearse`, `up`, `down`은 app01의 `/run/lock/pawcycle-performance-catalog.lock`을 nonblocking 방식으로 공유한다. 다른 lifecycle action이 실행 중이면 fail-closed하며, process 종료 시 kernel lock이 자동 해제된다. read-only `preflight`와 `status`는 lock을 사용하지 않는다.
 

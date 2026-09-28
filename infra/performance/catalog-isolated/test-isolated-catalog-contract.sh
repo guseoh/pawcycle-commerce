@@ -256,6 +256,10 @@ case "$joined" in
     [[ "${FAKE_BOOTSTRAP_FAIL:-0}" != "1" ]]
     exit $?
     ;;
+  *" rm --stop --force schema-bootstrap "*)
+    [[ "${FAKE_BOOTSTRAP_CLEANUP_FAIL:-0}" != "1" ]]
+    exit $?
+    ;;
   *" run --rm --no-deps --pull never catalog-import "*)
     [[ "${FAKE_IMPORT_FAIL:-0}" != "1" ]]
     exit $?
@@ -289,6 +293,11 @@ chmod +x "$fake_bin/sleep"
 cat >"$fake_bin/k6" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${FAKE_K6_HOLD:-0}" == "1" ]]; then
+  trap 'printf "TERM\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' TERM
+  trap 'printf "INT\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' INT
+  trap 'printf "HUP\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' HUP
+fi
 printf 'k6|%s\n' "$*" >>"${FAKE_K6_LOG:?}"
 [[ -z "${FAKE_K6_PID_FILE:-}" ]] || printf '%s\n' "$$" >"$FAKE_K6_PID_FILE"
 results_dir=''
@@ -323,9 +332,6 @@ with open(sys.argv[1], "w", encoding="utf-8") as stream:
 PY
 fi
 if [[ "${FAKE_K6_HOLD:-0}" == "1" ]]; then
-  trap 'printf "TERM\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' TERM
-  trap 'printf "INT\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' INT
-  trap 'printf "HUP\n" >>"${FAKE_K6_SIGNAL_LOG:?}"; exit 0' HUP
   while :; do sleep 1; done
 fi
 exit 0
@@ -357,6 +363,7 @@ run_manager() {
   PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$docker_log" FAKE_CURL_LOG="$curl_log" \
     FAKE_APPROVED_IMAGE="$approved_image" FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}" \
     FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}" FAKE_BOOTSTRAP_FAIL="${FAKE_BOOTSTRAP_FAIL:-0}" \
+    FAKE_BOOTSTRAP_CLEANUP_FAIL="${FAKE_BOOTSTRAP_CLEANUP_FAIL:-0}" \
     FAKE_IMPORT_FAIL="${FAKE_IMPORT_FAIL:-0}" FAKE_EXISTING_CONTAINER="${FAKE_EXISTING_CONTAINER:-0}" \
     bash "$manager" "$@" --source-root "$source_root" --config-file "$config_file" \
       --password-file "$password_file" --dataset-dir "$dataset_dir"
@@ -454,6 +461,7 @@ steps = [
     "up -d --no-deps --pull never schema-bootstrap",
     "ps -q schema-bootstrap",
     "State.Health",
+    "rm --stop --force schema-bootstrap",
     "down --remove-orphans",
 ]
 positions = [next(i for i, line in enumerate(lines) if step in line) for step in steps]
@@ -526,6 +534,7 @@ steps = [
     ("up -d --no-deps --pull never schema-bootstrap",),
     ("ps -q schema-bootstrap",),
     ("State.Health",),
+    ("rm --stop --force schema-bootstrap",),
     ("operation=validate|", "run --rm --no-deps --pull never catalog-import"),
     ("operation=apply|", "run --rm --no-deps --pull never catalog-import"),
     ("up -d --pull never backend",),
@@ -535,8 +544,8 @@ steps = [
 ]
 positions = [next(i for i, line in enumerate(lines) if all(part in line for part in step)) for step in steps]
 assert positions == sorted(positions), positions
-assert "--pawcycle.catalog.manifest-import.confirm-apply=true" in lines[positions[4]]
-assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions[3]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply=true" in lines[positions[5]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions[4]]
 PY
   grep -q '/actuator/health/readiness' "$curl_log"
   grep -q '/api/products' "$curl_log"
@@ -557,6 +566,22 @@ for failure in bootstrap import curl; do
   esac
   grep -q 'down --remove-orphans' "$docker_log"
 done
+
+: >"$docker_log"
+if FAKE_BOOTSTRAP_CLEANUP_FAIL=1 run_manager rehearse --acknowledge "REHEARSE:$dataset_id" >/dev/null 2>&1; then
+  printf 'rehearsal unexpectedly continued after schema-bootstrap cleanup failed\n' >&2
+  exit 1
+fi
+python3 - "$docker_log" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+cleanup = next(i for i, line in enumerate(lines) if "rm --stop --force schema-bootstrap" in line)
+down = next(i for i, line in enumerate(lines) if "down --remove-orphans" in line)
+assert cleanup < down, (cleanup, down)
+assert not any("catalog-import" in line for line in lines)
+assert not any("up -d --pull never backend" in line for line in lines)
+assert not any("event|curl|" in line for line in lines)
+PY
 
 : >"$docker_log"
 if run_manager up >/dev/null 2>&1; then

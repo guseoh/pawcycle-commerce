@@ -252,6 +252,7 @@ run_import() {
 run_bootstrap() {
   compose --profile tools up -d --no-deps --pull never schema-bootstrap
   wait_for_service_health schema-bootstrap
+  compose --profile tools rm --stop --force schema-bootstrap || die 'isolated schema-bootstrap cleanup failed'
 }
 
 run_with_cleanup() {
