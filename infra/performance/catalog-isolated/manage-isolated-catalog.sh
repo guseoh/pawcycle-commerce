@@ -250,7 +250,9 @@ run_import() {
 }
 
 run_bootstrap() {
-  compose --profile tools run --rm --no-deps --pull never schema-bootstrap
+  compose --profile tools up -d --no-deps --pull never schema-bootstrap
+  wait_for_service_health schema-bootstrap
+  compose --profile tools rm --stop --force schema-bootstrap || die 'isolated schema-bootstrap cleanup failed'
 }
 
 run_with_cleanup() {
@@ -277,10 +279,10 @@ run_with_cleanup() {
   printf 'catalog_isolated_runtime=PASS action=%s dataset=%s\n' "$kind" "$dataset_id"
 }
 
-wait_for_backend() {
-  local cid state i
-  cid="$(compose ps -q backend)"
-  [[ -n "$cid" ]] || die 'isolated backend container was not created'
+wait_for_service_health() {
+  local service="$1" cid state i
+  cid="$(compose ps -q "$service")"
+  [[ -n "$cid" ]] || die "isolated $service container was not created"
 
   for i in $(seq 1 60); do
     state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid")"
@@ -289,12 +291,12 @@ wait_for_backend() {
         return 0
         ;;
       unhealthy|exited|dead)
-        die "isolated backend entered state $state"
+        die "isolated $service entered state $state"
         ;;
     esac
     sleep 2
   done
-  die 'isolated backend did not become healthy within 120 seconds'
+  die "isolated $service did not become healthy within 120 seconds"
 }
 
 case "$action" in
@@ -339,7 +341,7 @@ case "$action" in
       run_import validate
       run_import apply
       compose up -d --pull never backend
-      wait_for_backend
+      wait_for_service_health backend
       curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
       curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
     }
@@ -366,7 +368,7 @@ case "$action" in
     trap startup_exit EXIT
 
     compose up -d --pull never backend
-    wait_for_backend
+    wait_for_service_health backend
     curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
     curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
 

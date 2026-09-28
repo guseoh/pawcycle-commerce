@@ -36,10 +36,9 @@ services:
       - tools
     image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
     restart: "no"
-    command:
-      - --spring.main.web-application-type=none
     environment:
       <<: *backend-environment
+      SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
       PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "false"
     networks:
       - performance-db-egress
@@ -47,6 +46,18 @@ services:
       <<: *performance-labels
       com.pawcycle.performance.role: schema-bootstrap
     <<: *runtime-hardening
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - http://127.0.0.1:8080/actuator/health/readiness
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   backend:
     image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
