@@ -307,8 +307,8 @@ case "$action" in
       run_import apply
       compose up -d --pull never backend
       wait_for_backend
-      curl --fail --silent --show-error "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
-      curl --fail --silent --show-error "http://127.0.0.1:$host_port/api/products" >/dev/null
+      curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+      curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
     }
     run_with_cleanup rehearse run_rehearsal
     ;;

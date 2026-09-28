@@ -420,6 +420,8 @@ assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions
 PY
   grep -q '/actuator/health/readiness' "$curl_log"
   grep -q '/api/products' "$curl_log"
+  grep -q -- '--max-time 10 .*actuator/health/readiness' "$curl_log"
+  grep -q -- '--max-time 10 .*api/products' "$curl_log"
   if grep -q -- '--volumes' "$docker_log"; then
     printf 'rehearsal cleanup must not remove volumes\n' >&2
     exit 1
