@@ -20,8 +20,10 @@ Usage:
 
 Actions:
   preflight
+  schema-bootstrap --acknowledge BOOTSTRAP:DATASET_ID
   import-validate
   import-apply   --acknowledge APPLY:DATASET_ID
+  rehearse       --acknowledge REHEARSE:DATASET_ID
   up             --acknowledge START:DATASET_ID
   status
   down           --acknowledge DOWN:pawcycle-performance-catalog
@@ -32,6 +34,28 @@ EOF
 die() {
   printf 'catalog_isolated_runtime=FAIL reason=%s\n' "$*" >&2
   exit 1
+}
+
+LIFECYCLE_LOCK_FILE="/run/lock/$PROJECT_NAME.lock"
+LIFECYCLE_LOCK_FD=''
+
+acquire_lifecycle_lock() {
+  command -v flock >/dev/null 2>&1 || die 'flock is required for isolated lifecycle actions'
+  [[ -d /run/lock && ! -L /run/lock ]] || die 'host lifecycle lock directory /run/lock is unavailable'
+  [[ ! -L "$LIFECYCLE_LOCK_FILE" ]] || die 'host lifecycle lock file must not be a symlink'
+  if [[ -e "$LIFECYCLE_LOCK_FILE" ]]; then
+    [[ -f "$LIFECYCLE_LOCK_FILE" ]] || die 'host lifecycle lock path must be a regular file'
+    [[ "$(stat -c '%u' "$LIFECYCLE_LOCK_FILE")" == '0' ]] || die 'host lifecycle lock file must be root-owned'
+  fi
+  local original_umask
+  original_umask="$(umask)"
+  umask 077
+  if ! exec {LIFECYCLE_LOCK_FD}>>"$LIFECYCLE_LOCK_FILE"; then
+    umask "$original_umask"
+    die 'unable to open host lifecycle lock file'
+  fi
+  umask "$original_umask"
+  flock -n "$LIFECYCLE_LOCK_FD" || die 'another isolated Catalog lifecycle action is running; retry after it completes'
 }
 
 cleanup_secret() {
@@ -80,6 +104,17 @@ while (($#)); do
       ;;
   esac
 done
+
+case "$action" in
+  preflight|status)
+    ;;
+  schema-bootstrap|import-validate|import-apply|rehearse|up|down)
+    acquire_lifecycle_lock
+    ;;
+  *)
+    usage
+    ;;
+esac
 
 read_config_value() {
   local key="$1"
@@ -160,6 +195,12 @@ assert_existing_project_identity() {
   done <<<"$ids"
 }
 
+assert_empty_project() {
+  local ids
+  ids="$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT_NAME" --format '{{.ID}}')"
+  [[ -z "$ids" ]] || die 'isolated project already has containers; inspect and clean it before bootstrap/rehearsal'
+}
+
 if [[ "$action" == 'down' ]]; then
   [[ "$acknowledgement" == "DOWN:$PROJECT_NAME" ]]       || die "runtime cleanup requires --acknowledge DOWN:$PROJECT_NAME"
   assert_existing_project_identity
@@ -200,7 +241,40 @@ backend_running() {
 
 run_import() {
   local operation="$1"
-  PAWCYCLE_PERF_IMPORT_OPERATION="$operation"     compose --profile tools run --rm --no-deps --pull never catalog-import
+  if [[ "$operation" == 'apply' ]]; then
+    PAWCYCLE_PERF_IMPORT_OPERATION="$operation" compose --profile tools run --rm --no-deps --pull never catalog-import \
+      --pawcycle.catalog.manifest-import.confirm-apply=true
+  else
+    PAWCYCLE_PERF_IMPORT_OPERATION="$operation" compose --profile tools run --rm --no-deps --pull never catalog-import
+  fi
+}
+
+run_bootstrap() {
+  compose --profile tools run --rm --no-deps --pull never schema-bootstrap
+}
+
+run_with_cleanup() {
+  local kind="$1"
+  shift
+  cleanup_runtime() {
+    local exit_status=$?
+    trap - EXIT
+    if ! compose down --remove-orphans; then
+      printf 'catalog_isolated_runtime=FAIL reason=isolated runtime cleanup failed\n' >&2
+      exit_status=1
+    fi
+    cleanup_secret
+    exit "$exit_status"
+  }
+  trap cleanup_runtime EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  "$@"
+  compose down --remove-orphans || die 'isolated runtime cleanup failed'
+  trap cleanup_secret EXIT
+  trap - INT TERM HUP
+  printf 'catalog_isolated_runtime=PASS action=%s dataset=%s\n' "$kind" "$dataset_id"
 }
 
 wait_for_backend() {
@@ -230,6 +304,13 @@ case "$action" in
     printf 'catalog_isolated_runtime=PASS action=preflight dataset=%s\n' "$dataset_id"
     ;;
 
+  schema-bootstrap)
+    [[ "$acknowledgement" == "BOOTSTRAP:$dataset_id" ]] || die "schema bootstrap requires --acknowledge BOOTSTRAP:$dataset_id"
+    assert_local_backend_image
+    assert_empty_project
+    run_with_cleanup schema-bootstrap run_bootstrap
+    ;;
+
   import-validate)
     assert_local_backend_image
     assert_existing_project_identity
@@ -246,6 +327,23 @@ case "$action" in
     run_import validate
     run_import apply
     printf 'catalog_isolated_runtime=PASS action=import-apply dataset=%s\n' "$dataset_id"
+    ;;
+
+  rehearse)
+    [[ "$acknowledgement" == "REHEARSE:$dataset_id" ]] || die "rehearsal requires --acknowledge REHEARSE:$dataset_id"
+    command -v curl >/dev/null 2>&1 || die 'curl is required'
+    assert_local_backend_image
+    assert_empty_project
+    run_rehearsal() {
+      run_bootstrap
+      run_import validate
+      run_import apply
+      compose up -d --pull never backend
+      wait_for_backend
+      curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+      curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
+    }
+    run_with_cleanup rehearse run_rehearsal
     ;;
 
   up)
@@ -269,8 +367,8 @@ case "$action" in
 
     compose up -d --pull never backend
     wait_for_backend
-    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
-    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/api/products" >/dev/null
+    curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+    curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
 
     startup_complete=1
     trap cleanup_secret EXIT

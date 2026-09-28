@@ -184,13 +184,20 @@ source marker:
 
 marker 내용과 source directory 이름은 모두 exact approved SHA와 같아야 한다.
 
-### app01 source
+### app01 canonical performance layout
 
-권장 경로:
+canonical root와 경로:
 
 ```text
-/opt/pawcycle/performance-source/<APPROVED_SHA>
+/opt/pawcycle-performance/
+├── source/<APPROVED_SHA>
+├── data/catalog/<DATASET_ID>
+└── runtime/catalog/
+    ├── env/<DATASET_ID>.env
+    └── db-password
 ```
+
+app01 performance root의 기준은 `infra/performance/catalog-isolated/app01-paths.sh`다. source, dataset, config, secret을 위 layout으로 둔다. Production `/opt/pawcycle`의 owner/mode 변경을 전제로 하지 않는다. source까지의 parent chain은 root-owned이고 group/other writable이 아니어야 한다.
 
 Production control checkout의 HEAD/working tree를 바꾸지 않고 `OPS-OBS-001`에서 검증한 `git archive` 패턴을 재사용한다.
 
@@ -230,7 +237,7 @@ app01의 모든 실행 블록은 먼저 다음 경계를 다시 확인한다.
 ```bash
 set -euo pipefail
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 
 test -d "$SOURCE_ROOT"
 test ! -L "$SOURCE_ROOT"
@@ -293,7 +300,7 @@ Dataset도 승인 exact-SHA source에서 생성한다.
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -310,7 +317,7 @@ python scripts/prepare-product-scale-data.py \
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -330,7 +337,7 @@ generated manifest와 report는 Git에 commit하지 않는다.
 app01의 최종 dataset layout:
 
 ```text
-/opt/pawcycle/performance-data/catalog/
+/opt/pawcycle-performance/data/catalog/
   catalog-core-control-v1/
     manifest.json
     report.json
@@ -364,9 +371,9 @@ app01에서:
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<catalog-core-control-v1-or-catalog-core-10k-v1>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -409,8 +416,8 @@ runtime config는 repository 밖에 둔다.
 예시 경로:
 
 ```text
-/opt/pawcycle/performance/catalog/env/catalog-core-control-v1.env
-/opt/pawcycle/performance/catalog/env/catalog-core-10k-v1.env
+/opt/pawcycle-performance/runtime/catalog/env/catalog-core-control-v1.env
+/opt/pawcycle-performance/runtime/catalog/env/catalog-core-10k-v1.env
 ```
 
 config:
@@ -423,7 +430,7 @@ config:
 DB password:
 
 ```text
-/opt/pawcycle/performance/catalog/db-password
+/opt/pawcycle-performance/runtime/catalog/db-password
 ```
 
 - root-owned
@@ -585,17 +592,17 @@ OCI Monitoring service clock에는 변경을 가하지 않는다.
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<dataset-id>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
 
 sudo python infra/performance/catalog-isolated/validate-isolated-catalog.py \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle/performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR"
 ```
 
@@ -618,6 +625,46 @@ approved source SHA
 
 validator는 password와 DB URL을 출력하지 않는다.
 
+## Schema bootstrap → Import → Runtime → Load
+
+empty performance schema는 import command로 초기화하지 않는다. `ProductionDemoCatalogImportCommand`는 `spring.flyway.enabled=false`를 강제한다. 승인된 Backend image의 별도 non-web runtime으로 Flyway migration을 먼저 실행한다. bootstrap container와 isolated network는 성공·실패 시 정리하고 DB schema/account 및 데이터는 보존한다. 이미 migration이 적용된 schema에서 Flyway는 version history를 확인해 미적용 migration만 수행한다. 반복 rehearsal의 import는 동일 manifest와 기존 데이터가 일치할 때만 진행하며 충돌은 실패로 중단한다.
+
+실제 OCI schema/account provisioning과 별도 실행 승인을 완료한 후:
+
+```bash
+APPROVED_SHA='<approved-40-character-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
+DATASET_ID='<dataset-id>'
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
+
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+cd "$SOURCE_ROOT"
+
+sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
+  schema-bootstrap \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
+  --dataset-dir "$DATASET_DIR" \
+  --acknowledge "BOOTSTRAP:$DATASET_ID"
+```
+
+actual load의 canonical 절차는 아래 `rehearse` 한 번으로 bootstrap → validate → apply → runtime smoke → down을 확인한 뒤, `up`으로 runtime을 다시 올려 load를 실행하는 것이다. 위 단독 `schema-bootstrap`과 아래 개별 import 명령은 단계별 재개·진단에 사용한다. rehearsal은 실제 OCI 실행이며 repository validation 결과로 대체할 수 없다.
+
+```bash
+sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
+  rehearse \
+  --source-root "$SOURCE_ROOT" \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
+  --dataset-dir "$DATASET_DIR" \
+  --acknowledge "REHEARSE:$DATASET_ID"
+```
+
+rehearsal은 preflight → schema bootstrap → import validate → import apply → isolated Backend 시작 → readiness 및 `/api/products` smoke → down을 수행한다. 시작 전 performance Compose project에 기존 container가 있으면 중단한다. 성공·실패 모두 container/network를 정리하며 DB schema/account와 imported data는 자동 삭제하지 않는다. 실패 시 DB의 부분 변경 가능성을 조사한 뒤 다시 실행한다.
+
+`schema-bootstrap`, `import-validate`, `import-apply`, `rehearse`, `up`, `down`은 app01의 `/run/lock/pawcycle-performance-catalog.lock`을 nonblocking 방식으로 공유한다. 다른 lifecycle action이 실행 중이면 fail-closed하며, process 종료 시 kernel lock이 자동 해제된다. read-only `preflight`와 `status`는 lock을 사용하지 않는다.
+
 ## Import
 
 모든 command는 승인 exact-SHA source에서 실행한다.
@@ -626,9 +673,9 @@ validator는 password와 DB URL을 출력하지 않는다.
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<dataset-id>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -636,20 +683,20 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-validate \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle/performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR"
 ```
 
-주의: empty performance schema에서는 Backend startup 과정의 Flyway가 migration을 적용할 수 있다. 따라서 `import-validate`도 최초 실행은 DB read-only가 아니다. **DB 실행 승인 이후**에만 수행한다.
+empty performance schema에서 `import-validate`는 Flyway migration을 적용하지 않는다. 먼저 `schema-bootstrap`을 성공시켜야 한다. validate는 schema를 읽어 검증하며, 실제 OCI DB 접근이므로 **DB 실행 승인 이후**에만 수행한다.
 
 ### apply
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<dataset-id>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -657,13 +704,13 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-apply \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle/performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "APPLY:$DATASET_ID"
 ```
 
-wrapper는 APPLY 전에 VALIDATE를 다시 실행한다.
+wrapper는 APPLY 전에 VALIDATE를 다시 실행하고 apply command에 `--pawcycle.catalog.manifest-import.confirm-apply=true`를 전달한다. validate에는 이 확인 인자를 전달하지 않는다.
 
 Backend가 실행 중이면 import를 거부한다.
 
@@ -679,9 +726,9 @@ Backend가 실행 중이면 import를 거부한다.
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<dataset-id>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -689,8 +736,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   up \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle/performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "START:$DATASET_ID"
 ```
@@ -868,9 +915,9 @@ runtime만 내릴 때도 승인 exact source를 사용한다.
 
 ```bash
 APPROVED_SHA='<approved-40-character-merge-sha>'
-SOURCE_ROOT="/opt/pawcycle/performance-source/$APPROVED_SHA"
+SOURCE_ROOT="/opt/pawcycle-performance/source/$APPROVED_SHA"
 DATASET_ID='<dataset-id>'
-DATASET_DIR="/opt/pawcycle/performance-data/catalog/$DATASET_ID"
+DATASET_DIR="/opt/pawcycle-performance/data/catalog/$DATASET_ID"
 
 test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
 cd "$SOURCE_ROOT"
@@ -878,8 +925,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   down \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle/performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle/performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge DOWN:pawcycle-performance-catalog
 ```

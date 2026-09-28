@@ -31,6 +31,23 @@ x-performance-labels: &performance-labels
   com.pawcycle.performance.schema: ${PAWCYCLE_PERF_SCHEMA:?PAWCYCLE_PERF_SCHEMA is required}
 
 services:
+  schema-bootstrap:
+    profiles:
+      - tools
+    image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
+    restart: "no"
+    command:
+      - --spring.main.web-application-type=none
+    environment:
+      <<: *backend-environment
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "false"
+    networks:
+      - performance-db-egress
+    labels:
+      <<: *performance-labels
+      com.pawcycle.performance.role: schema-bootstrap
+    <<: *runtime-hardening
+
   backend:
     image: ${PAWCYCLE_PERF_BACKEND_IMAGE:?PAWCYCLE_PERF_BACKEND_IMAGE is required}
     restart: "no"
@@ -69,7 +86,7 @@ services:
       SPRING_MAIN_WEB_APPLICATION_TYPE: none
       PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED: "true"
       PAWCYCLE_CATALOG_MANIFEST_IMPORT_TARGET: demo
-      PAWCYCLE_CATALOG_MANIFEST_IMPORT_OPERATION: ${PAWCYCLE_PERF_IMPORT_OPERATION:?PAWCYCLE_PERF_IMPORT_OPERATION is required}
+      PAWCYCLE_CATALOG_MANIFEST_IMPORT_MODE: ${PAWCYCLE_PERF_IMPORT_OPERATION:?PAWCYCLE_PERF_IMPORT_OPERATION is required}
       PAWCYCLE_CATALOG_MANIFEST_IMPORT_MANIFEST: file:/run/pawcycle/catalog/manifest.json
       PAWCYCLE_SCHEDULER_ENABLED: "false"
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: "false"
