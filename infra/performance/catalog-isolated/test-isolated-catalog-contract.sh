@@ -45,6 +45,9 @@ k6_log="$tmp/k6.log"
 curl_log="$tmp/curl.log"
 ssh_log="$tmp/ssh.log"
 approved_image='ghcr.io/guseoh/pawcycle-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+FAKE_BOOTSTRAP_STATE='healthy'
+FAKE_BACKEND_STATE='healthy'
+export FAKE_BOOTSTRAP_STATE FAKE_BACKEND_STATE
 
 mkdir -p   "$source_root/infra/performance"   "$source_root/scripts"   "$source_root/backend/src/main/resources/catalog"   "$tmp/data"   "$fake_bin"
 
@@ -148,9 +151,20 @@ with open(sys.argv[1], encoding="utf-8") as stream:
 assert compose["services"]["backend"]["environment"]["SERVER_TOMCAT_MBEANREGISTRY_ENABLED"] == "true"
 assert "SERVER_TOMCAT_MBEANREGISTRY_ENABLED" not in compose["services"]["catalog-import"]["environment"]
 bootstrap = compose["services"]["schema-bootstrap"]
-assert bootstrap["command"] == ["--spring.main.web-application-type=none"]
-assert bootstrap["environment"]["SPRING_FLYWAY_ENABLED"] == "true"
-assert bootstrap["environment"]["PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED"] == "false"
+bootstrap_environment = bootstrap["environment"]
+assert bootstrap_environment["SPRING_MAIN_WEB_APPLICATION_TYPE"] == "servlet"
+assert "--spring.main.web-application-type=none" not in str(bootstrap.get("command"))
+assert bootstrap_environment["SPRING_FLYWAY_ENABLED"] == "true"
+assert bootstrap_environment["PAWCYCLE_CATALOG_MANIFEST_IMPORT_ENABLED"] == "false"
+assert bootstrap_environment["PAWCYCLE_SCHEDULER_ENABLED"] == "false"
+assert bootstrap_environment["PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED"] == "false"
+assert not any("AUTH_SMOKE" in key for key in bootstrap_environment)
+assert "pawcycle.maintenance.create-auth-smoke-member.enabled" not in str(bootstrap)
+assert not bootstrap.get("ports")
+assert bootstrap["healthcheck"]["test"] == [
+    "CMD", "curl", "--fail", "--silent", "--show-error",
+    "http://127.0.0.1:8080/actuator/health/readiness",
+]
 assert set(bootstrap["networks"]) == {"performance-db-egress"}
 assert bootstrap["image"] == compose["services"]["backend"]["image"]
 assert compose["services"]["catalog-import"]["environment"]["PAWCYCLE_CATALOG_MANIFEST_IMPORT_MODE"] == "validate"
@@ -204,6 +218,15 @@ fi
 if [[ "${1:-}" == "inspect" ]]; then
   joined=" $* "
   case "$joined" in
+    *".State.Health"*|*".State.Status"*)
+      if [[ "$4" == "fake-schema-bootstrap" ]]; then
+        printf '%s\n' "$FAKE_BOOTSTRAP_STATE"
+      elif [[ "$4" == "fake-backend" ]]; then
+        printf '%s\n' "$FAKE_BACKEND_STATE"
+      else
+        printf 'healthy\n'
+      fi
+      ;;
     *"com.pawcycle.performance.scope"*)
       printf '%s\n' "${FAKE_SCOPE_LABEL:-catalog-isolated}"
       ;;
@@ -225,7 +248,11 @@ case "$joined" in
     printf 'fake-backend\n'
     exit 0
     ;;
-  *" run --rm --no-deps --pull never schema-bootstrap "*)
+  *" ps -q schema-bootstrap "*)
+    printf 'fake-schema-bootstrap\n'
+    exit 0
+    ;;
+  *" up -d --no-deps --pull never schema-bootstrap "*)
     [[ "${FAKE_BOOTSTRAP_FAIL:-0}" != "1" ]]
     exit $?
     ;;
@@ -245,12 +272,19 @@ cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'curl|%s\n' "$*" >>"${FAKE_CURL_LOG:?}"
+printf 'event|curl|%s\n' "$*" >>"${FAKE_DOCKER_LOG:?}"
 if [[ "${FAKE_CURL_FAIL:-0}" == "1" ]]; then
   exit 22
 fi
 exit 0
 EOF
 chmod +x "$fake_bin/curl"
+
+cat >"$fake_bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$fake_bin/sleep"
 
 cat >"$fake_bin/k6" <<'EOF'
 #!/usr/bin/env bash
@@ -406,22 +440,41 @@ if run_manager schema-bootstrap >/dev/null 2>&1; then
   printf 'schema bootstrap unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
 fi
-if grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"; then
+if grep -q 'up -d --no-deps --pull never schema-bootstrap' "$docker_log"; then
   printf 'schema bootstrap ran before acknowledgement\n' >&2
   exit 1
 fi
 
 : >"$docker_log"
 run_manager schema-bootstrap --acknowledge "BOOTSTRAP:$dataset_id" >/dev/null
-grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"
-grep -q 'down --remove-orphans' "$docker_log"
+python3 - "$docker_log" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+steps = [
+    "up -d --no-deps --pull never schema-bootstrap",
+    "ps -q schema-bootstrap",
+    "State.Health",
+    "down --remove-orphans",
+]
+positions = [next(i for i, line in enumerate(lines) if step in line) for step in steps]
+assert positions == sorted(positions), positions
+PY
 
 : >"$docker_log"
 if FAKE_BOOTSTRAP_FAIL=1 run_manager schema-bootstrap --acknowledge "BOOTSTRAP:$dataset_id" >/dev/null 2>&1; then
-  printf 'schema bootstrap unexpectedly succeeded after migration failure\n' >&2
+  printf 'schema bootstrap unexpectedly succeeded when detached start failed\n' >&2
   exit 1
 fi
 grep -q 'down --remove-orphans' "$docker_log"
+
+for state in unhealthy exited starting; do
+  : >"$docker_log"
+  if FAKE_BOOTSTRAP_STATE="$state" run_manager schema-bootstrap --acknowledge "BOOTSTRAP:$dataset_id" >/dev/null 2>&1; then
+    printf 'schema bootstrap unexpectedly succeeded with health state %s\n' "$state" >&2
+    exit 1
+  fi
+  grep -q 'down --remove-orphans' "$docker_log"
+done
 
 : >"$docker_log"
 if run_manager import-apply >/dev/null 2>&1; then
@@ -447,7 +500,7 @@ if run_manager rehearse >/dev/null 2>&1; then
   printf 'rehearsal unexpectedly succeeded without acknowledgement\n' >&2
   exit 1
 fi
-if grep -q 'run --rm --no-deps --pull never schema-bootstrap' "$docker_log"; then
+if grep -q 'up -d --no-deps --pull never schema-bootstrap' "$docker_log"; then
   printf 'rehearsal started before acknowledgement\n' >&2
   exit 1
 fi
@@ -470,15 +523,20 @@ for attempt in 1 2; do
 import sys
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
 steps = [
-    ("image inspect",), ("run --rm --no-deps --pull never schema-bootstrap",),
+    ("up -d --no-deps --pull never schema-bootstrap",),
+    ("ps -q schema-bootstrap",),
+    ("State.Health",),
     ("operation=validate|", "run --rm --no-deps --pull never catalog-import"),
     ("operation=apply|", "run --rm --no-deps --pull never catalog-import"),
-    ("up -d --pull never backend",), ("down --remove-orphans",),
+    ("up -d --pull never backend",),
+    ("event|curl|", "/actuator/health/readiness"),
+    ("event|curl|", "/api/products"),
+    ("down --remove-orphans",),
 ]
 positions = [next(i for i, line in enumerate(lines) if all(part in line for part in step)) for step in steps]
 assert positions == sorted(positions), positions
-assert "--pawcycle.catalog.manifest-import.confirm-apply=true" in lines[positions[3]]
-assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions[2]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply=true" in lines[positions[4]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[positions[3]]
 PY
   grep -q '/actuator/health/readiness' "$curl_log"
   grep -q '/api/products' "$curl_log"

@@ -627,7 +627,7 @@ validator는 password와 DB URL을 출력하지 않는다.
 
 ## Schema bootstrap → Import → Runtime → Load
 
-empty performance schema는 import command로 초기화하지 않는다. `ProductionDemoCatalogImportCommand`는 `spring.flyway.enabled=false`를 강제한다. 승인된 Backend image의 별도 non-web runtime으로 Flyway migration을 먼저 실행한다. bootstrap container와 isolated network는 성공·실패 시 정리하고 DB schema/account 및 데이터는 보존한다. 이미 migration이 적용된 schema에서 Flyway는 version history를 확인해 미적용 migration만 수행한다. 반복 rehearsal의 import는 동일 manifest와 기존 데이터가 일치할 때만 진행하며 충돌은 실패로 중단한다.
+empty performance schema는 import command로 초기화하지 않는다. `ProductionDemoCatalogImportCommand`는 `spring.flyway.enabled=false`를 강제하므로, import 전에 명시적 `schema-bootstrap`이 필요하다. Bootstrap은 승인된 Backend image를 `SPRING_MAIN_WEB_APPLICATION_TYPE=servlet`로 잠시 시작해 Flyway와 JPA startup을 확인하고 container-internal readiness health가 healthy가 되면 정리한다. `web-application-type=none`은 approved Production image의 `ProductionAuthSmokeMemberBootstrap`이 maintenance candidate로 해석해 `SpringApplication.run` 전에 실패할 수 있으므로 사용하지 않으며, auth-smoke maintenance enabled도 설정하지 않는다. Bootstrap은 host port를 publish하지 않고 `performance-db-egress`만 사용한다. 성공·실패 후 isolated container/network를 정리하되 DB schema/account와 데이터는 보존한다. 이미 migration이 적용된 schema에서 Flyway는 version history를 확인해 미적용 migration만 수행한다. 반복 rehearsal의 import는 동일 manifest와 기존 데이터가 일치할 때만 진행하며 충돌은 실패로 중단한다.
 
 실제 OCI schema/account provisioning과 별도 실행 승인을 완료한 후:
 
@@ -688,7 +688,7 @@ sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   --dataset-dir "$DATASET_DIR"
 ```
 
-empty performance schema에서 `import-validate`는 Flyway migration을 적용하지 않는다. 먼저 `schema-bootstrap`을 성공시켜야 한다. validate는 schema를 읽어 검증하며, 실제 OCI DB 접근이므로 **DB 실행 승인 이후**에만 수행한다.
+empty performance schema에서 `import-validate`는 Flyway migration을 적용하지 않는다. `schema-bootstrap`이 성공해 schema migration과 JPA startup을 확인한 뒤 validate를 실행한다. validate는 schema를 읽어 검증하며, 실제 OCI DB 접근이므로 **DB 실행 승인 이후**에만 수행한다.
 
 ### apply
 
