@@ -11,10 +11,15 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 
 tmp="$(mktemp -d /tmp/pawcycle-isolated-catalog-test.XXXXXX)"
 runner_pid=''
+lock_holder_pid=''
 cleanup_test() {
   if [[ -n "$runner_pid" ]]; then
     kill -TERM "$runner_pid" 2>/dev/null || true
     wait "$runner_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$lock_holder_pid" ]]; then
+    kill -TERM "$lock_holder_pid" 2>/dev/null || true
+    wait "$lock_holder_pid" 2>/dev/null || true
   fi
   rm -rf "$tmp"
 }
@@ -327,6 +332,63 @@ run_down_manager() {
   PATH="$fake_bin:$PATH"   FAKE_DOCKER_LOG="$docker_log"   FAKE_CURL_LOG="$curl_log"   FAKE_APPROVED_IMAGE="$approved_image"   FAKE_IMAGE_MISSING="${FAKE_IMAGE_MISSING:-0}"   FAKE_EXISTING_CONTAINER="${FAKE_EXISTING_CONTAINER:-0}"   FAKE_SCOPE_LABEL="${FAKE_SCOPE_LABEL:-catalog-isolated}"   FAKE_DATASET_LABEL="${FAKE_DATASET_LABEL:-catalog-core-control-v1}"   bash "$manager" down "$@"     --config-file "$config_file"
 }
 
+command -v flock >/dev/null 2>&1 || {
+  printf 'flock is required by the lifecycle contract test\n' >&2
+  exit 1
+}
+lock_file='/run/lock/pawcycle-performance-catalog.lock'
+lock_ready="$tmp/lifecycle-lock-held"
+(
+  exec 9>>"$lock_file"
+  flock -n 9
+  : >"$lock_ready"
+  exec sleep 60
+) &
+lock_holder_pid=$!
+for _ in {1..50}; do
+  [[ -f "$lock_ready" ]] && break
+  sleep 0.1
+done
+[[ -f "$lock_ready" ]] || {
+  printf 'unable to hold lifecycle lock for concurrency regression\n' >&2
+  exit 1
+}
+for locked_action in schema-bootstrap import-validate import-apply rehearse up; do
+  : >"$docker_log"
+  case "$locked_action" in
+    schema-bootstrap) action_args=(--acknowledge "BOOTSTRAP:$dataset_id") ;;
+    import-apply) action_args=(--acknowledge "APPLY:$dataset_id") ;;
+    rehearse) action_args=(--acknowledge "REHEARSE:$dataset_id") ;;
+    up) action_args=(--acknowledge "START:$dataset_id") ;;
+    *) action_args=() ;;
+  esac
+  if run_manager "$locked_action" "${action_args[@]}" >"$tmp/lock-output" 2>"$tmp/lock-error"; then
+    printf 'lifecycle action ran while another process held the lock: %s\n' "$locked_action" >&2
+    exit 1
+  fi
+  grep -q 'another isolated Catalog lifecycle action is running' "$tmp/lock-error"
+  [[ ! -s "$docker_log" ]] || {
+    printf 'lifecycle action reached Docker while lock was held: %s\n' "$locked_action" >&2
+    exit 1
+  }
+done
+: >"$docker_log"
+if run_down_manager --acknowledge 'DOWN:pawcycle-performance-catalog' >"$tmp/lock-output" 2>"$tmp/lock-error"; then
+  printf 'down ran while another process held the lock\n' >&2
+  exit 1
+fi
+grep -q 'another isolated Catalog lifecycle action is running' "$tmp/lock-error"
+[[ ! -s "$docker_log" ]]
+: >"$docker_log"
+run_manager preflight >/dev/null
+grep -q 'image inspect' "$docker_log"
+: >"$docker_log"
+run_manager status >/dev/null
+grep -q 'compose' "$docker_log"
+kill -TERM "$lock_holder_pid" 2>/dev/null || true
+wait "$lock_holder_pid" 2>/dev/null || true
+lock_holder_pid=''
+
 run_manager preflight >/dev/null
 grep -q 'image inspect' "$docker_log"
 grep -q '{{.Os}}/{{.Architecture}}' "$docker_log"
@@ -463,6 +525,8 @@ run_manager up --acknowledge "START:$dataset_id" >/dev/null
 grep -q 'up -d --pull never backend' "$docker_log"
 grep -q '/actuator/health/readiness' "$curl_log"
 grep -q '/api/products' "$curl_log"
+grep -q -- '--max-time 10 .*actuator/health/readiness' "$curl_log"
+grep -q -- '--max-time 10 .*api/products' "$curl_log"
 
 : >"$docker_log"
 if run_down_manager >/dev/null 2>&1; then
@@ -630,6 +694,7 @@ PY
 chmod +x "$fake_bin/ssh"
 
 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null
+grep -q "^PAWCYCLE_PERF_APP01_ROOT='/opt/pawcycle-performance'$" "$source_root/infra/performance/catalog-isolated/app01-paths.sh"
 grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py" "$ssh_log"
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]

@@ -36,6 +36,28 @@ die() {
   exit 1
 }
 
+LIFECYCLE_LOCK_FILE="/run/lock/$PROJECT_NAME.lock"
+LIFECYCLE_LOCK_FD=''
+
+acquire_lifecycle_lock() {
+  command -v flock >/dev/null 2>&1 || die 'flock is required for isolated lifecycle actions'
+  [[ -d /run/lock && ! -L /run/lock ]] || die 'host lifecycle lock directory /run/lock is unavailable'
+  [[ ! -L "$LIFECYCLE_LOCK_FILE" ]] || die 'host lifecycle lock file must not be a symlink'
+  if [[ -e "$LIFECYCLE_LOCK_FILE" ]]; then
+    [[ -f "$LIFECYCLE_LOCK_FILE" ]] || die 'host lifecycle lock path must be a regular file'
+    [[ "$(stat -c '%u' "$LIFECYCLE_LOCK_FILE")" == '0' ]] || die 'host lifecycle lock file must be root-owned'
+  fi
+  local original_umask
+  original_umask="$(umask)"
+  umask 077
+  if ! exec {LIFECYCLE_LOCK_FD}>>"$LIFECYCLE_LOCK_FILE"; then
+    umask "$original_umask"
+    die 'unable to open host lifecycle lock file'
+  fi
+  umask "$original_umask"
+  flock -n "$LIFECYCLE_LOCK_FD" || die 'another isolated Catalog lifecycle action is running; retry after it completes'
+}
+
 cleanup_secret() {
   unset PAWCYCLE_PERF_DB_PASSWORD password
 }
@@ -82,6 +104,17 @@ while (($#)); do
       ;;
   esac
 done
+
+case "$action" in
+  preflight|status)
+    ;;
+  schema-bootstrap|import-validate|import-apply|rehearse|up|down)
+    acquire_lifecycle_lock
+    ;;
+  *)
+    usage
+    ;;
+esac
 
 read_config_value() {
   local key="$1"
@@ -334,8 +367,8 @@ case "$action" in
 
     compose up -d --pull never backend
     wait_for_backend
-    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
-    curl --fail --silent --show-error       "http://127.0.0.1:$host_port/api/products" >/dev/null
+    curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/actuator/health/readiness" >/dev/null
+    curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$host_port/api/products" >/dev/null
 
     startup_complete=1
     trap cleanup_secret EXIT

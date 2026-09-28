@@ -184,15 +184,20 @@ source marker:
 
 marker 내용과 source directory 이름은 모두 exact approved SHA와 같아야 한다.
 
-### app01 source
+### app01 canonical performance layout
 
-canonical 경로:
+canonical root와 경로:
 
 ```text
-/opt/pawcycle-performance/source/<APPROVED_SHA>
+/opt/pawcycle-performance/
+├── source/<APPROVED_SHA>
+├── data/catalog/<DATASET_ID>
+└── runtime/catalog/
+    ├── env/<DATASET_ID>.env
+    └── db-password
 ```
 
-app01 performance 전용 경로의 기준은 `infra/performance/catalog-isolated/app01-paths.sh`다. source, dataset, config, secret을 `/opt/pawcycle-performance/**` 아래에 둔다. Production `/opt/pawcycle`의 owner/mode 변경을 전제로 하지 않는다. source까지의 parent chain은 root-owned이고 group/other writable이 아니어야 한다.
+app01 performance root의 기준은 `infra/performance/catalog-isolated/app01-paths.sh`다. source, dataset, config, secret을 위 layout으로 둔다. Production `/opt/pawcycle`의 owner/mode 변경을 전제로 하지 않는다. source까지의 parent chain은 root-owned이고 group/other writable이 아니어야 한다.
 
 Production control checkout의 HEAD/working tree를 바꾸지 않고 `OPS-OBS-001`에서 검증한 `git archive` 패턴을 재사용한다.
 
@@ -411,8 +416,8 @@ runtime config는 repository 밖에 둔다.
 예시 경로:
 
 ```text
-/opt/pawcycle-performance/catalog/env/catalog-core-control-v1.env
-/opt/pawcycle-performance/catalog/env/catalog-core-10k-v1.env
+/opt/pawcycle-performance/runtime/catalog/env/catalog-core-control-v1.env
+/opt/pawcycle-performance/runtime/catalog/env/catalog-core-10k-v1.env
 ```
 
 config:
@@ -425,7 +430,7 @@ config:
 DB password:
 
 ```text
-/opt/pawcycle-performance/catalog/db-password
+/opt/pawcycle-performance/runtime/catalog/db-password
 ```
 
 - root-owned
@@ -596,8 +601,8 @@ cd "$SOURCE_ROOT"
 
 sudo python infra/performance/catalog-isolated/validate-isolated-catalog.py \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR"
 ```
 
@@ -638,8 +643,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   schema-bootstrap \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "BOOTSTRAP:$DATASET_ID"
 ```
@@ -650,13 +655,15 @@ actual load의 canonical 절차는 아래 `rehearse` 한 번으로 bootstrap →
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   rehearse \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "REHEARSE:$DATASET_ID"
 ```
 
 rehearsal은 preflight → schema bootstrap → import validate → import apply → isolated Backend 시작 → readiness 및 `/api/products` smoke → down을 수행한다. 시작 전 performance Compose project에 기존 container가 있으면 중단한다. 성공·실패 모두 container/network를 정리하며 DB schema/account와 imported data는 자동 삭제하지 않는다. 실패 시 DB의 부분 변경 가능성을 조사한 뒤 다시 실행한다.
+
+`schema-bootstrap`, `import-validate`, `import-apply`, `rehearse`, `up`, `down`은 app01의 `/run/lock/pawcycle-performance-catalog.lock`을 nonblocking 방식으로 공유한다. 다른 lifecycle action이 실행 중이면 fail-closed하며, process 종료 시 kernel lock이 자동 해제된다. read-only `preflight`와 `status`는 lock을 사용하지 않는다.
 
 ## Import
 
@@ -676,8 +683,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-validate \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR"
 ```
 
@@ -697,8 +704,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   import-apply \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "APPLY:$DATASET_ID"
 ```
@@ -729,8 +736,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   up \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "START:$DATASET_ID"
 ```
@@ -918,8 +925,8 @@ cd "$SOURCE_ROOT"
 sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   down \
   --source-root "$SOURCE_ROOT" \
-  --config-file "/opt/pawcycle-performance/catalog/env/$DATASET_ID.env" \
-  --password-file /opt/pawcycle-performance/catalog/db-password \
+  --config-file "/opt/pawcycle-performance/runtime/catalog/env/$DATASET_ID.env" \
+  --password-file /opt/pawcycle-performance/runtime/catalog/db-password \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge DOWN:pawcycle-performance-catalog
 ```
