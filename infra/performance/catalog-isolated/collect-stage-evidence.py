@@ -35,6 +35,17 @@ METRICS = {
     "hikaricp_connections_usage_seconds_count": "hikariUsageCount",
     "hikaricp_connections_usage_seconds_sum": "hikariUsageSeconds",
 }
+PRODUCT_DISCOVERY_PHASES = (
+    "count-query",
+    "list-query",
+    "row-mapping",
+    "repository-total",
+)
+PRODUCT_DISCOVERY_PHASE_METRICS = {
+    "pawcycle_catalog_product_discovery_phase_seconds_count": "count",
+    "pawcycle_catalog_product_discovery_phase_seconds_sum": "sumSeconds",
+    "pawcycle_catalog_product_discovery_phase_seconds_max": "maxSeconds",
+}
 OCI_METRICS = {
     "CPUUtilization": "mean",
     "MemoryUtilization": "mean",
@@ -134,16 +145,40 @@ def validate_k6_summary(summary):
 
 def parse_metrics(payload):
     result = {}
+    phase_values = {
+        phase: {"count": None, "sumSeconds": None, "maxSeconds": None}
+        for phase in PRODUCT_DISCOVERY_PHASES
+    }
+    seen_phase_metrics = set()
     for line in payload.splitlines():
         match = METRIC_LINE.fullmatch(line)
         if not match:
             metric_name = line.split("{", 1)[0].split(" ", 1)[0]
             if metric_name in GC_PAUSE_METRICS:
                 raise ValueError("isolated actuator GC pause metric is malformed")
-            continue
-        if match[1] not in METRICS:
+            if metric_name in PRODUCT_DISCOVERY_PHASE_METRICS:
+                raise ValueError("isolated actuator product discovery phase metric is malformed")
             continue
         name, labels, raw = match.groups()
+        if name in PRODUCT_DISCOVERY_PHASE_METRICS:
+            phase_match = re.fullmatch(r'phase="([^"]+)"', labels or "")
+            if phase_match is None or phase_match[1] not in phase_values:
+                raise ValueError("product discovery phase metric has unexpected labels")
+            phase = phase_match[1]
+            statistic = PRODUCT_DISCOVERY_PHASE_METRICS[name]
+            series = (phase, statistic)
+            if series in seen_phase_metrics:
+                raise ValueError("product discovery phase metric is duplicated")
+            value = float(raw)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError("product discovery phase metric is not finite and non-negative")
+            if statistic == "count" and not value.is_integer():
+                raise ValueError("product discovery phase count is not an integer")
+            seen_phase_metrics.add(series)
+            phase_values[phase][statistic] = value
+            continue
+        if name not in METRICS:
+            continue
         if name.startswith("jvm_memory_"):
             if 'area="heap"' in (labels or ""):
                 key = METRICS[name] + "Heap"
@@ -169,7 +204,29 @@ def parse_metrics(payload):
                 "hikariUsageCount", "hikariUsageSeconds"}
     if required - result.keys():
         raise ValueError("isolated actuator is missing required allowlisted metrics")
+    expected_phase_metrics = {
+        (phase, statistic)
+        for phase in PRODUCT_DISCOVERY_PHASES
+        for statistic in ("count", "sumSeconds", "maxSeconds")
+    }
+    if expected_phase_metrics - seen_phase_metrics:
+        raise ValueError("isolated actuator is missing required product discovery phase metrics")
+    result["productDiscoveryPhases"] = phase_values
     return result
+
+
+def validate_product_discovery_phases(sample):
+    phases = sample.get("productDiscoveryPhases")
+    if not isinstance(phases, dict) or set(phases) != set(PRODUCT_DISCOVERY_PHASES):
+        raise ValueError("sample is missing the fixed product discovery phases")
+    expected_statistics = {"count", "sumSeconds", "maxSeconds"}
+    for phase, statistics in phases.items():
+        if not isinstance(statistics, dict) or set(statistics) != expected_statistics:
+            raise ValueError(f"sample has malformed product discovery phase: {phase}")
+        for name, value in statistics.items():
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value < 0):
+                raise ValueError(f"sample has invalid product discovery phase value: {phase}/{name}")
 
 
 def cpu_ticks():
@@ -269,8 +326,10 @@ def sample(args):
             raise ValueError("isolated container became unhealthy, restarted, or OOM killed")
         with urllib.request.urlopen(f"http://127.0.0.1:{args.port}/actuator/prometheus", timeout=3) as response:
             metrics = parse_metrics(response.read(2_000_000).decode("utf-8"))
+        product_discovery_phases = metrics.pop("productDiscoveryPhases")
         print(json.dumps({"timestampUtc": utc_now(), "host": host,
-                          "container": container, "jvmTomcatHikari": metrics},
+                          "container": container, "jvmTomcatHikari": metrics,
+                          "productDiscoveryPhases": product_discovery_phases},
                          sort_keys=True), flush=True)
 
 
@@ -308,6 +367,8 @@ def assemble(args):
     selected = [sample for sample in samples if start <= parse_utc(sample["timestampUtc"]) <= end]
     if len(selected) < 15:
         raise ValueError("insufficient Host/JVM/Hikari samples in measurement window")
+    for sample in selected:
+        validate_product_discovery_phases(sample)
     if any(sample["container"]["restartCount"] or sample["container"]["oomKilled"] or sample["container"]["health"] != "healthy" for sample in selected):
         raise ValueError("isolated container unhealthy in measurement window")
     wait_for_last_oci_bucket(expected_bucket_ends)

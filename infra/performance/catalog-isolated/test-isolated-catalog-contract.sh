@@ -150,8 +150,11 @@ with open(sys.argv[1], encoding="utf-8") as stream:
     compose = json.load(stream)
 assert compose["services"]["backend"]["environment"]["SERVER_TOMCAT_MBEANREGISTRY_ENABLED"] == "true"
 assert "SERVER_TOMCAT_MBEANREGISTRY_ENABLED" not in compose["services"]["catalog-import"]["environment"]
+assert compose["services"]["backend"]["environment"]["PAWCYCLE_CATALOG_PRODUCT_DISCOVERY_DIAGNOSTICS_ENABLED"] == "true"
 bootstrap = compose["services"]["schema-bootstrap"]
 bootstrap_environment = bootstrap["environment"]
+assert "PAWCYCLE_CATALOG_PRODUCT_DISCOVERY_DIAGNOSTICS_ENABLED" not in bootstrap_environment
+assert "PAWCYCLE_CATALOG_PRODUCT_DISCOVERY_DIAGNOSTICS_ENABLED" not in compose["services"]["catalog-import"]["environment"]
 assert bootstrap_environment["SPRING_MAIN_WEB_APPLICATION_TYPE"] == "servlet"
 assert "--spring.main.web-application-type=none" not in str(bootstrap.get("command"))
 assert bootstrap_environment["SPRING_FLYWAY_ENABLED"] == "true"
@@ -764,6 +767,10 @@ import os
 import sys
 import time
 
+phases = {
+    phase: {"count": 1.0, "sumSeconds": 0.25, "maxSeconds": 0.125}
+    for phase in ("count-query", "list-query", "row-mapping", "repository-total")
+}
 with open(os.environ["FAKE_SSH_LOG"], "a", encoding="utf-8") as stream:
     stream.write(" ".join(sys.argv[1:]) + "\n")
 start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=10)
@@ -771,6 +778,7 @@ for second in range(0, 121, 5):
     print(json.dumps({
         "timestampUtc": (start + dt.timedelta(seconds=second)).isoformat().replace("+00:00", "Z"),
         "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"},
+        "productDiscoveryPhases": phases,
     }), flush=True)
 time.sleep(2)
 PY
@@ -819,8 +827,13 @@ import json
 import os
 import time
 
+phases = {
+    phase: {"count": 1.0, "sumSeconds": 0.25, "maxSeconds": 0.125}
+    for phase in ("count-query", "list-query", "row-mapping", "repository-total")
+}
 print(json.dumps({"timestampUtc": "2026-09-24T00:00:00Z",
-                  "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"}}), flush=True)
+                  "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"},
+                  "productDiscoveryPhases": phases}), flush=True)
 while not os.path.getsize(os.environ["FAKE_K6_LOG"]):
     time.sleep(0.05)
 time.sleep(3)
@@ -845,7 +858,7 @@ trap 'printf "TERM\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' TERM
 trap 'printf "INT\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' INT
 trap 'printf "HUP\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' HUP
 printf '%s\n' "$$" >"${FAKE_SSH_PID_FILE:?}"
-printf '{"timestampUtc":"2026-09-24T00:00:00Z","container":{"restartCount":0,"oomKilled":false,"health":"healthy"}}\n'
+printf '{"timestampUtc":"2026-09-24T00:00:00Z","container":{"restartCount":0,"oomKilled":false,"health":"healthy"},"productDiscoveryPhases":{"count-query":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"list-query":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"row-mapping":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"repository-total":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125}}}\n'
 while :; do sleep 1; done
 EOF
 chmod +x "$fake_bin/ssh"

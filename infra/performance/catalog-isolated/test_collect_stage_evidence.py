@@ -16,6 +16,13 @@ collector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(collector)
 
 
+def fixture_discovery_phases(count=1.0):
+    return {
+        phase: {"count": count, "sumSeconds": 0.25, "maxSeconds": 0.125}
+        for phase in collector.PRODUCT_DISCOVERY_PHASES
+    }
+
+
 class EvidenceTest(unittest.TestCase):
     def test_swap_activity_is_an_interval_delta_and_fails_closed(self):
         before = collector.parse_swap_counters("pswpin 12\npswpout 30\n")
@@ -79,15 +86,34 @@ class EvidenceTest(unittest.TestCase):
             lines.append(f"{name}{labels} 1")
         lines.extend(["jvm_memory_used_bytes{area=\"nonheap\"} 2",
                       "some_secret_metric{password=\"must-not-persist\"} 99"])
+        expected_phases = {}
+        for index, phase in enumerate(collector.PRODUCT_DISCOVERY_PHASES, start=1):
+            expected_phases[phase] = {
+                "count": float(index),
+                "sumSeconds": index / 10,
+                "maxSeconds": index / 20,
+            }
+            for metric_name, statistic in collector.PRODUCT_DISCOVERY_PHASE_METRICS.items():
+                value = expected_phases[phase][statistic]
+                lines.append(f'{metric_name}{{phase="{phase}"}} {value}')
         parsed = collector.parse_metrics("\n".join(lines))
         self.assertNotIn("some_secret_metric", parsed)
         self.assertEqual(parsed["jvmMemoryUsedNonHeap"], 2)
         self.assertEqual(parsed["gcPauseCount"], 0.0)
         self.assertEqual(parsed["gcPauseSeconds"], 0.0)
+        self.assertEqual(parsed["productDiscoveryPhases"], expected_phases)
         without_tomcat = [line for line in lines
                           if not line.startswith("tomcat_threads_busy_threads ")]
         with self.assertRaisesRegex(ValueError, "missing required allowlisted metrics"):
             collector.parse_metrics("\n".join(without_tomcat))
+        with self.assertRaisesRegex(ValueError, "unexpected labels"):
+            collector.parse_metrics("\n".join(lines + [
+                'pawcycle_catalog_product_discovery_phase_seconds_count{phase="count-query",query="dynamic"} 2'
+            ]))
+        without_a_phase = [line for line in lines
+                           if not ("phase=\"row-mapping\"" in line)]
+        with self.assertRaisesRegex(ValueError, "missing required product discovery phase metrics"):
+            collector.parse_metrics("\n".join(without_a_phase))
         with self.assertRaises(ValueError):
             collector.parse_metrics("process_cpu_usage 0.1")
         for invalid_gc in ("jvm_gc_pause_seconds_count NaN",
@@ -149,7 +175,8 @@ class EvidenceTest(unittest.TestCase):
                 timestamp = (start + dt.timedelta(seconds=seconds)).isoformat()
                 samples.append(json.dumps({"timestampUtc": timestamp,
                                            "container": {"restartCount": 0, "oomKilled": False,
-                                                         "health": "healthy"}}))
+                                                         "health": "healthy"},
+                                           "productDiscoveryPhases": fixture_discovery_phases()}))
             (root / "samples.jsonl").write_text("\n".join(samples))
             args = type("Args", (), {"summary": root / "summary.json",
                                      "host_samples": root / "samples.jsonl",
@@ -167,6 +194,8 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(events[1], "query")
             result = json.loads(args.output.read_text())
             self.assertEqual(len(result["hostJvmTomcatHikariSamples"]), 25)
+            self.assertEqual(result["hostJvmTomcatHikariSamples"][0]["productDiscoveryPhases"],
+                             fixture_discovery_phases())
             self.assertEqual(set(result["ociMysql"]), set(collector.OCI_METRICS))
             query_start, query_end = collector.oci_query_bounds(start, end)
             self.assertEqual(query.call_args_list[0].args[2:], (query_start, query_end))

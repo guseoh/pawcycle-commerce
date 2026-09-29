@@ -13,25 +13,43 @@ import com.pawcycle.backend.catalog.product.application.ProductSort;
 import com.pawcycle.backend.catalog.product.application.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.SkuPriceSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import jakarta.persistence.Tuple;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Authoritative discovery read model; dynamic filtering is kept in one JPA query boundary. */
 @Repository
 public class ProductDiscoveryQueryRepository {
-  private final EntityManager entityManager;
+  private static final String DISCOVERY_PHASE_METRIC = "pawcycle.catalog.product.discovery.phase";
 
-  public ProductDiscoveryQueryRepository(EntityManager entityManager) {
+  private final EntityManager entityManager;
+  private final MeterRegistry meterRegistry;
+  private final boolean diagnosticsEnabled;
+  private final Map<DiscoveryPhase, Timer> discoveryPhaseTimers;
+
+  public ProductDiscoveryQueryRepository(
+      EntityManager entityManager,
+      MeterRegistry meterRegistry,
+      @Value("${pawcycle.catalog.product.discovery.diagnostics.enabled:false}")
+          boolean diagnosticsEnabled) {
     this.entityManager = entityManager;
+    this.meterRegistry = meterRegistry;
+    this.diagnosticsEnabled = diagnosticsEnabled;
+    this.discoveryPhaseTimers =
+        diagnosticsEnabled ? registerDiscoveryPhaseTimers(meterRegistry) : Map.of();
   }
 
   @Transactional(readOnly = true)
@@ -56,17 +74,57 @@ public class ProductDiscoveryQueryRepository {
       int page,
       int size,
       ProductSort sort) {
+    Timer.Sample repositorySample = startDiagnosticTimer();
+    try {
+      return readProductList(
+          q,
+          petType,
+          category,
+          subcategory,
+          brand,
+          facets,
+          minPrice,
+          maxPrice,
+          subscribable,
+          purchasable,
+          page,
+          size,
+          sort);
+    } finally {
+      stopDiagnosticTimer(repositorySample, DiscoveryPhase.REPOSITORY_TOTAL);
+    }
+  }
+
+  private ProductListView readProductList(
+      String q,
+      String petType,
+      String category,
+      String subcategory,
+      String brand,
+      List<String> facets,
+      BigDecimal minPrice,
+      BigDecimal maxPrice,
+      Boolean subscribable,
+      Boolean purchasable,
+      int page,
+      int size,
+      ProductSort sort) {
     int offset = Math.multiplyExact(page, size);
     List<QueryParameter> parameters = new ArrayList<>();
     String where = whereClause(q, petType, category, subcategory, brand, facets, minPrice, maxPrice, subscribable, purchasable, parameters);
-    Number total =
-        (Number)
-            bind(
-                    entityManager.createNativeQuery(
-                        "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id "
-                            + where),
-                    parameters)
-                .getSingleResult();
+    Query countQuery =
+        bind(
+            entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id "
+                    + where),
+            parameters);
+    Timer.Sample countSample = startDiagnosticTimer();
+    Number total;
+    try {
+      total = (Number) countQuery.getSingleResult();
+    } finally {
+      stopDiagnosticTimer(countSample, DiscoveryPhase.COUNT_QUERY);
+    }
     String order =
         switch (sort) {
           case PRICE_ASC -> " ORDER BY representative_price IS NULL ASC, representative_price ASC, p.id ASC";
@@ -100,9 +158,40 @@ public class ProductDiscoveryQueryRepository {
             + " LIMIT :limit OFFSET :offset";
     parameters.add(new QueryParameter("limit", size));
     parameters.add(new QueryParameter("offset", offset));
-    List<Tuple> rows = bind(entityManager.createNativeQuery(sql, Tuple.class), parameters).getResultList();
-    List<ProductSummary> items = rows.stream().map(this::toSummary).toList();
+    Query listQuery = bind(entityManager.createNativeQuery(sql, Tuple.class), parameters);
+    Timer.Sample listSample = startDiagnosticTimer();
+    List<Tuple> rows;
+    try {
+      rows = listQuery.getResultList();
+    } finally {
+      stopDiagnosticTimer(listSample, DiscoveryPhase.LIST_QUERY);
+    }
+    Timer.Sample mappingSample = startDiagnosticTimer();
+    List<ProductSummary> items;
+    try {
+      items = rows.stream().map(this::toSummary).toList();
+    } finally {
+      stopDiagnosticTimer(mappingSample, DiscoveryPhase.ROW_MAPPING);
+    }
     return new ProductListView(items, page, size, total.longValue());
+  }
+
+  private Timer.Sample startDiagnosticTimer() {
+    return diagnosticsEnabled ? Timer.start(meterRegistry) : null;
+  }
+
+  private void stopDiagnosticTimer(Timer.Sample sample, DiscoveryPhase phase) {
+    if (sample != null) sample.stop(discoveryPhaseTimers.get(phase));
+  }
+
+  private static Map<DiscoveryPhase, Timer> registerDiscoveryPhaseTimers(MeterRegistry registry) {
+    Map<DiscoveryPhase, Timer> timers = new EnumMap<>(DiscoveryPhase.class);
+    for (DiscoveryPhase phase : DiscoveryPhase.values()) {
+      timers.put(
+          phase,
+          Timer.builder(DISCOVERY_PHASE_METRIC).tag("phase", phase.tagValue).register(registry));
+    }
+    return Map.copyOf(timers);
   }
 
   @Transactional(readOnly = true)
@@ -342,4 +431,17 @@ public class ProductDiscoveryQueryRepository {
   }
 
   private record QueryParameter(String name, Object value) {}
+
+  private enum DiscoveryPhase {
+    COUNT_QUERY("count-query"),
+    LIST_QUERY("list-query"),
+    ROW_MAPPING("row-mapping"),
+    REPOSITORY_TOTAL("repository-total");
+
+    private final String tagValue;
+
+    DiscoveryPhase(String tagValue) {
+      this.tagValue = tagValue;
+    }
+  }
 }
