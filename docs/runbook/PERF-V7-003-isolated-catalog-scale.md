@@ -799,14 +799,18 @@ bash infra/performance/k6/run-isolated-capacity.sh \
 
 runner는 기존 non-empty results directory를 거부한다. 따라서 이전 실행과 새 실행의 일부 RPS 결과가 하나의 series처럼 섞이지 않는다.
 
-고정 stage:
+기본 실행은 전체 series를 순서대로 진행한다.
 
 ```text
 25 → 50 → 100 → 150 → 200 → 250 RPS
-각 stage:
-  warm-up 30s
-  measurement 120s
 ```
+
+승인된 한 단계만 실행할 때는 위 명령에 `--target-rps <supported-rate>`를 추가한다.
+지원 값은 `25`, `50`, `100`, `150`, `200`, `250`이다. 예를 들어
+`--target-rps 25`는 25 RPS stage의 collector, k6, evidence assemble을 완료한 뒤 종료하며
+다음 RPS를 자동 실행하지 않는다. 단일 stage도 동일하게 warm-up 30초,
+measurement 120초, 아래 threshold와 evidence 수집 계약을 적용한다.
+실제 load는 실행 모드와 관계없이 별도 사용자 승인 후에만 수행한다.
 
 threshold:
 

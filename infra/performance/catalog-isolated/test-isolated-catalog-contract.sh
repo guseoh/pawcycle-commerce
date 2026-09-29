@@ -680,8 +680,8 @@ run_capacity() {
     --target-url 'http://127.0.0.1:18080' \
     --dataset-id "$dataset_id" \
     --results-dir "$results_dir" \
-    "$@" \
-    --acknowledge-isolated-load YES
+    --acknowledge-isolated-load YES \
+    "$@"
 }
 
 clear_capacity_results() {
@@ -776,6 +776,19 @@ time.sleep(2)
 PY
 chmod +x "$fake_bin/ssh"
 
+assert_capacity_cli_rejected() {
+  : >"$ssh_log"
+  assert_capacity_rejected "$@"
+  [[ ! -s "$ssh_log" ]]
+}
+
+assert_capacity_cli_rejected 'unsupported target RPS' 'Usage:' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 30
+assert_capacity_cli_rejected 'malformed target RPS' 'Usage:' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps abc
+assert_capacity_cli_rejected 'missing target RPS' 'Usage:' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps
+
 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null
 grep -q "^PAWCYCLE_PERF_APP01_ROOT='/opt/pawcycle-performance'$" "$source_root/infra/performance/catalog-isolated/app01-paths.sh"
 grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py" "$ssh_log"
@@ -785,6 +798,18 @@ grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalo
 grep -q 'TARGET_RPS=25' "$k6_log"
 grep -q 'TARGET_RPS=250' "$k6_log"
 grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
+
+clear_capacity_results
+: >"$k6_log"
+: >"$ssh_log"
+run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 25 >/dev/null
+[[ "$(wc -l <"$k6_log")" -eq 1 ]]
+[[ "$(wc -l <"$ssh_log")" -eq 1 ]]
+grep -q 'TARGET_RPS=25' "$k6_log"
+[[ -f "$results_dir/$dataset_id-25rps.json" ]]
+[[ -f "$results_dir/$dataset_id-25rps-host.jsonl" ]]
+[[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
+[[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 3 ]]
 
 clear_capacity_results
 cat >"$fake_bin/ssh" <<'PY'
