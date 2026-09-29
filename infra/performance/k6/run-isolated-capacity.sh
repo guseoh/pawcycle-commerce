@@ -49,6 +49,7 @@ Usage:
     --dataset-id catalog-core-control-v1|catalog-core-10k-v1 \
     --results-dir /absolute/path \
     --evidence-ssh-target SSH_ALIAS --isolated-host-port PORT \
+    [--target-rps 25|50|100|150|200|250] \
     --acknowledge-isolated-load YES
 EOF
   exit 64
@@ -61,6 +62,7 @@ results_dir=''
 acknowledgement=''
 evidence_ssh_target=''
 isolated_host_port=''
+target_rates=(25 50 100 150 200 250)
 
 while (($#)); do
   case "$1" in
@@ -86,6 +88,14 @@ while (($#)); do
       ;;
     --isolated-host-port)
       isolated_host_port="${2:-}"
+      shift 2
+      ;;
+    --target-rps)
+      (($# >= 2)) || usage
+      case "$2" in
+        25|50|100|150|200|250) target_rates=("$2") ;;
+        *) usage ;;
+      esac
       shift 2
       ;;
     --acknowledge-isolated-load)
@@ -165,7 +175,7 @@ if [[ -e "$results_dir" ]] && [[ -n "$(find "$results_dir" -mindepth 1 -maxdepth
 fi
 mkdir -p "$results_dir"
 
-for target_rps in 25 50 100 150 200 250; do
+for target_rps in "${target_rates[@]}"; do
   host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
   remote_collector="$PAWCYCLE_PERF_APP01_ROOT/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
   ssh -o BatchMode=yes "$evidence_ssh_target" \
