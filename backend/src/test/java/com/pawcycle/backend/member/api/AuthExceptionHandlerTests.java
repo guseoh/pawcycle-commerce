@@ -17,7 +17,10 @@ class AuthExceptionHandlerTests {
 
   @Test
   void unexpectedExceptionIsLoggedWithoutChangingSafeResponse(CapturedOutput output) {
-    RuntimeException exception = new RuntimeException("diagnostic cause");
+    RuntimeException exception =
+        new RuntimeException("TOP_LEVEL_SENTINEL", new IllegalStateException("CAUSE_SENTINEL"));
+
+    exception.addSuppressed(new IllegalArgumentException("SUPPRESSED_SENTINEL"));
 
     ResponseEntity<ApiErrorResponse> response =
         authExceptionHandler.handleUnexpectedException(exception);
@@ -28,6 +31,8 @@ class AuthExceptionHandlerTests {
     assertThat(output)
         .contains(
             "Unexpected exception while handling authentication request",
-            "java.lang.RuntimeException: diagnostic cause");
+            "exceptionType=java.lang.RuntimeException",
+            "AuthExceptionHandlerTests.unexpectedExceptionIsLoggedWithoutChangingSafeResponse")
+        .doesNotContain("TOP_LEVEL_SENTINEL", "CAUSE_SENTINEL", "SUPPRESSED_SENTINEL");
   }
 }

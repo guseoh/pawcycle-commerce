@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.product.api;
 
+import com.pawcycle.backend.common.logging.SafeExceptionLogger;
 import com.pawcycle.backend.catalog.product.application.ProductDetailUnavailableException;
 import com.pawcycle.backend.catalog.product.application.ProductListUnavailableException;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
@@ -30,7 +31,7 @@ public class ProductExceptionHandler {
   @ExceptionHandler(ProductListUnavailableException.class)
   ResponseEntity<ApiErrorResponse> handleListUnavailable(
       ProductListUnavailableException exception) {
-    log.error("Unexpected exception while querying public product list", exception);
+    SafeExceptionLogger.error(log, "Unexpected exception while querying public product list", exception);
     return ResponseEntity.internalServerError()
         .body(
             ApiErrorResponse.withoutFieldErrors("PRODUCT_LIST_UNAVAILABLE", "상품 목록을 불러오지 못했습니다."));
@@ -39,7 +40,7 @@ public class ProductExceptionHandler {
   @ExceptionHandler(ProductDetailUnavailableException.class)
   ResponseEntity<ApiErrorResponse> handleDetailUnavailable(
       ProductDetailUnavailableException exception) {
-    log.error("Unexpected exception while querying public product detail", exception);
+    SafeExceptionLogger.error(log, "Unexpected exception while querying public product detail", exception);
     return ResponseEntity.internalServerError()
         .body(
             ApiErrorResponse.withoutFieldErrors(
