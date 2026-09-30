@@ -863,7 +863,10 @@ run_capacity --evidence-ssh-target fixture-user@fixture-host --isolated-host-por
 [[ -s "$results_dir/$dataset_id-25rps.json" ]]
 [[ -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
 [[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
-! grep -Fq "$identity_file" "$tmp/explicit-output" "$tmp/explicit-error"
+if grep -Fq "$identity_file" "$tmp/explicit-output" "$tmp/explicit-error"; then
+  printf 'SSH identity path appeared in runner output\n' >&2
+  exit 1
+fi
 python3 - "$ssh_log" "$explicit_ssh" "$identity_file" "$approved_sha" <<'PY'
 import json
 import sys
