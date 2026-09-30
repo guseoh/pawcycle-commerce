@@ -797,6 +797,82 @@ bash infra/performance/k6/run-isolated-capacity.sh \
   --acknowledge-isolated-load YES
 ```
 
+### Windows PowerShell 5 + Git for Windows
+
+앞에서 materialize한 **exact approved desktop source archive**에서 실행한다. 평소 checkout이나
+다른 SHA의 runner를 호출하지 않는다. 아래는 별도 실제 load 승인, clock/Production Gate,
+loopback SSH tunnel 준비가 끝난 뒤 사용할 실행 예시이며, 저장소 검증은 OCI load를 승인하거나
+수행하지 않는다. `<...>`는 승인된 로컬 값으로 대체하고 실제 식별값/키를 저장소에 기록하지 않는다.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$ApprovedSha = '<approved-40-character-merge-sha>'
+$SourceRoot = Join-Path $env:USERPROFILE "pawcycle-performance-source/$ApprovedSha"
+$DatasetId = '<catalog-core-control-v1-or-catalog-core-10k-v1>'
+$TargetRps = '<approved-supported-rate>'
+$RunId = "$ApprovedSha-$DatasetId-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
+$ResultsDir = Join-Path $env:USERPROFILE "pawcycle-performance-results/$RunId"
+$GitBash = 'C:/Program Files/Git/bin/bash.exe'
+$Cygpath = 'C:/Program Files/Git/usr/bin/cygpath.exe'
+$EvidenceSshExecutable = 'C:/Windows/System32/OpenSSH/ssh.exe'
+$EvidenceSshIdentityFile = 'C:/<approved-local-key-directory>/<identity-file>'
+$EvidenceSshTarget = '<user>@<host>'
+
+if ($ApprovedSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid approved SHA' }
+$Source = Get-Item -LiteralPath $SourceRoot
+$Marker = Get-Item -LiteralPath (Join-Path $SourceRoot '.approved-sha')
+if (-not $Source.PSIsContainer -or $Marker.PSIsContainer -or
+    ($Source.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+    ($Marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+    $Source.Name -cne $ApprovedSha -or
+    (Get-Content -LiteralPath $Marker.FullName -Raw).Trim() -cne $ApprovedSha -or
+    (Test-Path -LiteralPath (Join-Path $SourceRoot '.git'))) {
+    throw 'Approved source archive identity mismatch'
+}
+foreach ($Executable in @($GitBash, $Cygpath, $EvidenceSshExecutable)) {
+    if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Required executable missing' }
+}
+# Existing approved secure environment; do not print or hard-code these identities.
+foreach ($Name in @('PAWCYCLE_PERF_OCI_COMPARTMENT_ID', 'PAWCYCLE_PERF_OCI_DB_SYSTEM_ID')) {
+    if (-not [Environment]::GetEnvironmentVariable($Name, 'Process')) { throw 'OCI identity environment missing' }
+}
+
+# Convert only local paths consumed by Bash. Keep the SSH executable/identity native.
+$SourcePosix = & $Cygpath -u -- $Source.FullName
+if ($LASTEXITCODE -ne 0) { throw 'Source path conversion failed' }
+$ResultsPosix = & $Cygpath -u -- $ResultsDir
+if ($LASTEXITCODE -ne 0) { throw 'Results path conversion failed' }
+$Runner = "$SourcePosix/infra/performance/k6/run-isolated-capacity.sh"
+$RunnerArgs = @(
+    $Runner,
+    '--source-root', $SourcePosix,
+    '--target-url', 'http://127.0.0.1:<local-port>',
+    '--dataset-id', $DatasetId,
+    '--results-dir', $ResultsPosix,
+    '--evidence-ssh-target', $EvidenceSshTarget,
+    '--evidence-ssh-executable', $EvidenceSshExecutable,
+    '--evidence-ssh-identity-file', $EvidenceSshIdentityFile,
+    '--isolated-host-port', '<performance-port>',
+    '--target-rps', $TargetRps,
+    '--acknowledge-isolated-load', 'YES'
+)
+& $GitBash @RunnerArgs
+if ($LASTEXITCODE -ne 0) { throw 'Isolated capacity stage failed; do not advance RPS' }
+```
+
+`python3`, `oci`, `k6`는 이 Git Bash의 `PATH`에서 실행 가능해야 한다. OCI CLI에는 기존
+Monitoring read 권한이 필요하며 두 OCI identity 환경변수 요구사항은 Linux 경로와 같다.
+SSH target은 승인된 alias 또는 직접 `<user>@<host>`를 사용할 수 있다. Windows에서 인증이
+검증된 OpenSSH executable을 명시하고 identity는 `C:/...` native forward-slash 경로로 전달한다.
+identity 경로를 runner의 일반 출력에 기록하지 않으며 키 내용은 읽거나 출력하지 않는다.
+
+두 SSH option을 생략하면 기존 `PATH`의 `ssh`를 사용하고 `-i`를 추가하지 않는다.
+runner는 선택한 executable을 하나의 경로/이름으로 실행하고 identity를 별도 `-i` argv로 전달한다.
+collector의 `sudo -n python3 /opt/pawcycle-performance/...` 호출은 하나의 SSH remote-command
+argument이며 `MSYS2_ARG_CONV_EXCL='*'`는 그 SSH process에만 적용된다. 전역 MSYS/Git 설정은
+바꾸지 않는다. PowerShell은 Bash 파일의 종료 상태만 확인하며 collector/k6 lifetime, cleanup,
+summary/host JSONL/evidence 조립과 fail-closed 판정은 기존 Bash runner가 소유한다.
+
 runner는 기존 non-empty results directory를 거부한다. 따라서 이전 실행과 새 실행의 일부 RPS 결과가 하나의 series처럼 섞이지 않는다.
 
 기본 실행은 전체 series를 순서대로 진행한다.
