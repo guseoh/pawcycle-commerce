@@ -36,7 +36,9 @@ class ProductQueryServiceTests {
   void setUp() {
     productQueryService =
         new ProductQueryService(
-            productRepository, productDiscoveryReader, productDetailContentReader);
+            productRepository, productDiscoveryReader, productDetailContentReader,
+            new com.pawcycle.backend.catalog.product.diagnostics.DiscoveryLifecycleDiagnostics(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), false));
   }
 
   @Test

@@ -13,6 +13,7 @@ import com.pawcycle.backend.catalog.product.application.ProductSort;
 import com.pawcycle.backend.catalog.product.application.ProductSummary;
 import com.pawcycle.backend.catalog.product.application.SkuPrice;
 import com.pawcycle.backend.catalog.product.application.SkuPriceSummary;
+import com.pawcycle.backend.catalog.product.diagnostics.DiscoveryLifecycleDiagnostics;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.persistence.EntityManager;
@@ -75,6 +76,7 @@ public class ProductDiscoveryQueryRepository {
       int size,
       ProductSort sort) {
     Timer.Sample repositorySample = startDiagnosticTimer();
+    if (diagnosticsEnabled) DiscoveryLifecycleDiagnostics.repositoryEnter();
     try {
       return readProductList(
           q,
@@ -91,6 +93,7 @@ public class ProductDiscoveryQueryRepository {
           size,
           sort);
     } finally {
+      if (diagnosticsEnabled) DiscoveryLifecycleDiagnostics.repositoryExit();
       stopDiagnosticTimer(repositorySample, DiscoveryPhase.REPOSITORY_TOTAL);
     }
   }

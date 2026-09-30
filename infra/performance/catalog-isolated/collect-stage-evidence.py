@@ -46,6 +46,73 @@ PRODUCT_DISCOVERY_PHASE_METRICS = {
     "pawcycle_catalog_product_discovery_phase_seconds_sum": "sumSeconds",
     "pawcycle_catalog_product_discovery_phase_seconds_max": "maxSeconds",
 }
+LIFECYCLE_PHASES = (
+    "transaction-begin", "transaction-commit", "transaction-rollback",
+    "transaction-completion", "transaction-cleanup", "connection-acquire",
+    "pre-repository", "repository-with-connection", "repository-body-paired",
+    "post-repository-connection-hold", "connection-release", "connection-lease-total",
+)
+LIFECYCLE_PREFIX = "pawcycle_catalog_product_discovery_lifecycle"
+LIFECYCLE_METRICS = {
+    LIFECYCLE_PREFIX + "_seconds_count": "count",
+    LIFECYCLE_PREFIX + "_seconds_sum": "sumSeconds",
+    LIFECYCLE_PREFIX + "_seconds_max": "maxSeconds",
+    LIFECYCLE_PREFIX + "_calls_total": "calls",
+    LIFECYCLE_PREFIX + "_pairs_total": "pairs",
+}
+
+
+def parse_lifecycle_metrics(payload):
+    phases = {phase: {} for phase in LIFECYCLE_PHASES}
+    coverage = {unit: {} for unit in ("calls", "pairs")}
+    seen = set()
+    for line in payload.splitlines():
+        name = line.split("{", 1)[0].split(" ", 1)[0]
+        if name not in LIFECYCLE_METRICS:
+            continue
+        match = METRIC_LINE.fullmatch(line)
+        if match is None:
+            raise ValueError("discovery lifecycle metric is malformed")
+        name, labels, raw = match.groups()
+        statistic = LIFECYCLE_METRICS[name]
+        counter = statistic in coverage
+        label = re.fullmatch(r'result="(matched|unmatched)"' if counter else r'phase="([^"]+)"', labels or "")
+        if label is None or (not counter and label[1] not in phases):
+            raise ValueError("discovery lifecycle metric has unexpected labels")
+        key = (name, label[1])
+        if key in seen:
+            raise ValueError("discovery lifecycle metric is duplicated")
+        seen.add(key)
+        value = float(raw)
+        if not math.isfinite(value) or value < 0 or ((counter or statistic == "count") and not value.is_integer()):
+            raise ValueError("discovery lifecycle metric has invalid value")
+        if counter:
+            coverage[statistic][label[1]] = value
+        else:
+            phases[label[1]][statistic] = value
+    if not seen:
+        return None
+    result = {"phases": phases, "coverage": coverage}
+    validate_lifecycle(result)
+    return result
+
+
+def validate_lifecycle(value):
+    if not isinstance(value, dict) or set(value) != {"phases", "coverage"}:
+        raise ValueError("discovery lifecycle field is malformed")
+    for group, keys, fields in (("phases", LIFECYCLE_PHASES, ("count", "sumSeconds", "maxSeconds")),
+                                 ("coverage", ("calls", "pairs"), ("matched", "unmatched"))):
+        entries = value[group]
+        if not isinstance(entries, dict) or set(entries) != set(keys):
+            raise ValueError("discovery lifecycle field is incomplete")
+        for statistics in entries.values():
+            if not isinstance(statistics, dict) or set(statistics) != set(fields):
+                raise ValueError("discovery lifecycle field is incomplete")
+            for key, number in statistics.items():
+                if (isinstance(number, bool) or not isinstance(number, (int, float))
+                        or not math.isfinite(number) or number < 0
+                        or ((group == "coverage" or key == "count") and number != int(number))):
+                    raise ValueError("discovery lifecycle field has invalid value")
 OCI_METRICS = {
     "CPUUtilization": "mean",
     "MemoryUtilization": "mean",
@@ -212,6 +279,9 @@ def parse_metrics(payload):
     if expected_phase_metrics - seen_phase_metrics:
         raise ValueError("isolated actuator is missing required product discovery phase metrics")
     result["productDiscoveryPhases"] = phase_values
+    lifecycle = parse_lifecycle_metrics(payload)
+    if lifecycle is not None:
+        result["productDiscoveryLifecycle"] = lifecycle
     return result
 
 
@@ -327,10 +397,13 @@ def sample(args):
         with urllib.request.urlopen(f"http://127.0.0.1:{args.port}/actuator/prometheus", timeout=3) as response:
             metrics = parse_metrics(response.read(2_000_000).decode("utf-8"))
         product_discovery_phases = metrics.pop("productDiscoveryPhases")
-        print(json.dumps({"timestampUtc": utc_now(), "host": host,
+        lifecycle = metrics.pop("productDiscoveryLifecycle", None)
+        sample = {"timestampUtc": utc_now(), "host": host,
                           "container": container, "jvmTomcatHikari": metrics,
-                          "productDiscoveryPhases": product_discovery_phases},
-                         sort_keys=True), flush=True)
+                          "productDiscoveryPhases": product_discovery_phases}
+        if lifecycle is not None:
+            sample["productDiscoveryLifecycle"] = lifecycle
+        print(json.dumps(sample, sort_keys=True), flush=True)
 
 
 def oci_points(metric, statistic, start, end):
@@ -369,6 +442,8 @@ def assemble(args):
         raise ValueError("insufficient Host/JVM/Hikari samples in measurement window")
     for sample in selected:
         validate_product_discovery_phases(sample)
+        if "productDiscoveryLifecycle" in sample:
+            validate_lifecycle(sample["productDiscoveryLifecycle"])
     if any(sample["container"]["restartCount"] or sample["container"]["oomKilled"] or sample["container"]["health"] != "healthy" for sample in selected):
         raise ValueError("isolated container unhealthy in measurement window")
     wait_for_last_oci_bucket(expected_bucket_ends)
