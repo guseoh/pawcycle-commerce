@@ -982,6 +982,48 @@ performance runtime과 exact performance schema/account만 별도 승인 범위�
 
 ## 판정
 
+### Opt-in discovery lifecycle diagnostics
+
+기존 `pawcycle.catalog.product.discovery.diagnostics.enabled`가 true일 때만
+`pawcycle.catalog.product.discovery.lifecycle`을 추가한다. 기존 4-phase metric은 유지한다.
+service가 reader transaction proxy 호출 전에 scope를 열고 반환/예외 뒤 finally에서 제거한다.
+Spring `TransactionExecutionListener`는 기존 manager에 추가하며 Hibernate session별
+`SessionEventListener`는 acquisition/release callback을 관측한다. pool/DataSource/manager를
+wrap하거나 connection handling 설정을 바꾸지 않는다.
+
+고정 phase:
+
+- `transaction-begin`: Spring beforeBegin → afterBegin.
+- `transaction-commit` / `transaction-rollback`: 해당 before → after callback.
+- `transaction-completion`: beforeCommit 또는 beforeRollback → reader proxy 반환 경계.
+- `transaction-cleanup`: afterCommit 또는 afterRollback → reader proxy 반환 경계.
+- `connection-acquire`: Hibernate acquisition start → end.
+- `pre-repository`: 획득 완료부터 첫 repository 진입까지 lease와 겹치는 시간.
+- `repository-with-connection`: repository 본문과 획득 완료 → release start의 교집합 합.
+- `repository-body-paired`: 완결된 호출의 repository 본문 시간; 기존 total을 대체하지 않음.
+- `post-repository-connection-hold`: 마지막 repository 종료 이후 release start까지의 교집합.
+- `connection-release`: Hibernate release start → end.
+- `connection-lease-total`: Hibernate acquisition end → release end.
+
+하나의 호출에 여러 acquire/release pair가 있으면 완전한 pair별로 기록한다. acquisition이
+본문 중간에 발생해도 교집합으로 계산한다. 실제 교집합이 비어 있는 0은 유효하지만,
+불완전 sequence를 0ms로 합성하지 않는다. 고정 result matched/unmatched를 사용하는
+`pawcycle.catalog.product.discovery.lifecycle.calls`와 `.pairs` Counter로 coverage를 확인한다.
+pair Timer의 count와 호출/본문/transaction Timer의 count는 multi-pair에서 다르다.
+재진입·중복/역순 event는 unmatched로 남기며 request/thread/connection ID label은 없다.
+
+completion/cleanup은 proxy 반환까지의 관측 경계이며 순수 JDBC commit/cleanup method
+시간이 아니다. acquisition/release end callback은 실패 시 finally에도 호출될 수 있다.
+lease-total은 close/recycle 후 callback까지 포함한 외부 근사값이며 Hikari usage와 정확히
+동일하지 않다. Hikari의 ms 단위, callback overhead, 완료 cohort 차이를 함께 해석한다.
+여러 repository body 사이의 공백은 repository-with-connection에 포함하지 않으므로
+세 구간을 lease-total과 무조건 보존식으로 비교하지 않는다.
+
+collector의 `productDiscoveryLifecycle`은 optional extension이다. field가 없는 과거 sample은
+그대로 assemble하며, extension이 존재하면 고정 phase/coverage 전체와 값·label을 검증한다.
+기존 evidence/SQL/API/dataset/workload를 변경하지 않는다. 계측 overhead는 미측정이며,
+동일 150 RPS 재측정은 별도 승인 후 수행한다. 200/250 RPS는 계속 BLOCKED다.
+
 I0와 I10K가 끝난 뒤:
 
 ```text

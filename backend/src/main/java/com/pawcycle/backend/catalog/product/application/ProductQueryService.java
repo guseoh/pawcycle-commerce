@@ -2,6 +2,7 @@ package com.pawcycle.backend.catalog.product.application;
 
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
+import com.pawcycle.backend.catalog.product.diagnostics.DiscoveryLifecycleDiagnostics;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -14,14 +15,16 @@ public class ProductQueryService {
   private final ProductRepository productRepository;
   private final ProductDiscoveryReader productDiscoveryReader;
   private final ProductDetailContentReader productDetailContentReader;
+  private final DiscoveryLifecycleDiagnostics diagnostics;
 
-  public ProductQueryService(
-      ProductRepository productRepository,
+  public ProductQueryService(ProductRepository productRepository,
       ProductDiscoveryReader productDiscoveryReader,
-      ProductDetailContentReader productDetailContentReader) {
+      ProductDetailContentReader productDetailContentReader,
+      DiscoveryLifecycleDiagnostics diagnostics) {
     this.productRepository = productRepository;
     this.productDiscoveryReader = productDiscoveryReader;
     this.productDetailContentReader = productDetailContentReader;
+    this.diagnostics = diagnostics;
   }
 
   public ProductListView findProducts(
@@ -58,7 +61,7 @@ public class ProductQueryService {
       throw new IllegalArgumentException("가격 범위가 올바르지 않습니다.");
     }
     validateFacets(facets);
-    try {
+    try (var scope = diagnostics.openScope()) {
       return productDiscoveryReader.read(
           q,
           petType,

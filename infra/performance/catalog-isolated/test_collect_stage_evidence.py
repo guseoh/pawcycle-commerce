@@ -24,6 +24,28 @@ def fixture_discovery_phases(count=1.0):
 
 
 class EvidenceTest(unittest.TestCase):
+    def test_optional_lifecycle_accepts_legacy_and_requires_complete_bounded_extension(self):
+        self.assertIsNone(collector.parse_lifecycle_metrics("unrelated 1"))
+        lines = []
+        for phase in collector.LIFECYCLE_PHASES:
+            for suffix, value in (("count", 2), ("sum", 0.02), ("max", 0.01)):
+                lines.append(f'{collector.LIFECYCLE_PREFIX}_seconds_{suffix}{{phase="{phase}"}} {value}')
+        for unit in ("calls", "pairs"):
+            for result in ("matched", "unmatched"):
+                lines.append(f'{collector.LIFECYCLE_PREFIX}_{unit}_total{{result="{result}"}} 2')
+        parsed = collector.parse_lifecycle_metrics("\n".join(lines))
+        self.assertEqual(parsed["phases"]["connection-acquire"]["count"], 2)
+        self.assertEqual(parsed["coverage"]["pairs"]["matched"], 2)
+        for invalid in (lines[:-1], lines + [lines[0]],
+                        [line.replace('phase="connection-acquire"', 'phase="dynamic"') for line in lines],
+                        [line.replace('result="matched"', 'result="matched",request="dynamic"') for line in lines],
+                        [line.replace(' 2', ' NaN') for line in lines],
+                        [line.replace(' 2', ' 1.5') for line in lines]):
+            with self.assertRaises(ValueError):
+                collector.parse_lifecycle_metrics("\n".join(invalid))
+        with self.assertRaises(ValueError):
+            collector.validate_lifecycle({"phases": {}, "coverage": {}})
+
     def test_swap_activity_is_an_interval_delta_and_fails_closed(self):
         before = collector.parse_swap_counters("pswpin 12\npswpout 30\n")
         after = collector.parse_swap_counters("pswpin 15\npswpout 31\n")

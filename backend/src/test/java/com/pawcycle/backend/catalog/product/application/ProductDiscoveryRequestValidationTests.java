@@ -16,7 +16,9 @@ class ProductDiscoveryRequestValidationTests {
     ProductDiscoveryReader discoveryReader = mock(ProductDiscoveryReader.class);
     ProductDetailContentReader detailContentReader = mock(ProductDetailContentReader.class);
     ProductQueryService service =
-        new ProductQueryService(productRepository, discoveryReader, detailContentReader);
+        new ProductQueryService(productRepository, discoveryReader, detailContentReader,
+            new com.pawcycle.backend.catalog.product.diagnostics.DiscoveryLifecycleDiagnostics(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), false));
 
     assertThatThrownBy(
             () ->
