@@ -289,6 +289,11 @@ chmod +x "$fake_bin/curl"
 
 cat >"$fake_bin/sleep" <<'EOF'
 #!/usr/bin/env bash
+# Capacity startup polling must give the background Python collector time to start.
+# Keep lifecycle-manager retries fast; only capacity tests use real polling delays.
+if [[ -n "${FAKE_K6_LOG:-}" ]]; then
+  exec /bin/sleep "$@"
+fi
 exit 0
 EOF
 chmod +x "$fake_bin/sleep"
@@ -712,6 +717,13 @@ assert_capacity_rejected() {
 export PAWCYCLE_PERF_OCI_COMPARTMENT_ID='ocid1.compartment.fixture'
 export PAWCYCLE_PERF_OCI_DB_SYSTEM_ID='ocid1.mysqldbsystem.fixture'
 
+assert_capacity_rejected 'unapproved source root' 'k6 runner must run from the approved source root' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --source-root "$tmp"
+assert_capacity_rejected 'unsupported dataset' 'Usage:' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --dataset-id unsupported
+assert_capacity_rejected 'missing load acknowledgement' 'Usage:' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --acknowledge-isolated-load NO
+
 assert_capacity_rejected 'both Evidence arguments omitted' 'Usage:'
 assert_capacity_rejected 'only SSH target supplied' 'Usage:' --evidence-ssh-target app01
 assert_capacity_rejected 'only host port supplied' 'Usage:' --isolated-host-port 18081
@@ -772,7 +784,8 @@ phases = {
     for phase in ("count-query", "list-query", "row-mapping", "repository-total")
 }
 with open(os.environ["FAKE_SSH_LOG"], "a", encoding="utf-8") as stream:
-    stream.write(" ".join(sys.argv[1:]) + "\n")
+    stream.write(json.dumps({"executable": sys.argv[0], "argv": sys.argv[1:],
+                             "msysArgConvExcl": os.environ.get("MSYS2_ARG_CONV_EXCL")}) + "\n")
 start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=10)
 for second in range(0, 121, 5):
     print(json.dumps({
@@ -798,6 +811,21 @@ assert_capacity_cli_rejected 'missing target RPS' 'Usage:' \
   --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps
 
 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null
+python3 - "$ssh_log" "$approved_sha" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    calls = [json.loads(line) for line in stream]
+assert len(calls) == 6
+for call in calls:
+    assert call["executable"].endswith("/bin/ssh")
+    assert call["msysArgConvExcl"] == "*"
+    assert call["argv"] == [
+        "-o", "BatchMode=yes", "app01",
+        f"sudo -n python3 '/opt/pawcycle-performance/source/{sys.argv[2]}/infra/performance/catalog-isolated/collect-stage-evidence.py' sample --port '18081' --duration-seconds 165",
+    ]
+PY
 grep -q "^PAWCYCLE_PERF_APP01_ROOT='/opt/pawcycle-performance'$" "$source_root/infra/performance/catalog-isolated/app01-paths.sh"
 grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py" "$ssh_log"
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]
@@ -820,6 +848,46 @@ grep -q 'TARGET_RPS=25' "$k6_log"
 [[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 3 ]]
 
 clear_capacity_results
+explicit_ssh="$tmp/explicit ssh/selected-ssh"
+identity_file='C:/fixture keys/identity'
+mkdir -p "$(dirname "$explicit_ssh")"
+cp "$fake_bin/ssh" "$explicit_ssh"
+# The PATH client must not be used when an executable is explicitly selected.
+printf '#!/usr/bin/env bash\nexit 1\n' >"$fake_bin/ssh"
+: >"$k6_log"
+: >"$ssh_log"
+run_capacity --evidence-ssh-target fixture-user@fixture-host --isolated-host-port 18081 \
+  --evidence-ssh-executable "$explicit_ssh" --evidence-ssh-identity-file "$identity_file" \
+  --target-rps 25 >"$tmp/explicit-output" 2>"$tmp/explicit-error"
+[[ "$(wc -l <"$k6_log")" -eq 1 ]]
+[[ -s "$results_dir/$dataset_id-25rps.json" ]]
+[[ -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
+[[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
+! grep -Fq "$identity_file" "$tmp/explicit-output" "$tmp/explicit-error"
+python3 - "$ssh_log" "$explicit_ssh" "$identity_file" "$approved_sha" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    calls = [json.loads(line) for line in stream]
+assert len(calls) == 1
+call = calls[0]
+assert call["executable"] == sys.argv[2]
+assert call["msysArgConvExcl"] == "*"
+assert call["argv"] == [
+    "-o", "BatchMode=yes", "-i", sys.argv[3], "fixture-user@fixture-host",
+    f"sudo -n python3 '/opt/pawcycle-performance/source/{sys.argv[4]}/infra/performance/catalog-isolated/collect-stage-evidence.py' sample --port '18081' --duration-seconds 165",
+]
+PY
+clear_capacity_results
+assert_capacity_cli_rejected 'explicit SSH executable absent' 'ssh is required for evidence collection' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --evidence-ssh-executable "$tmp/no-such-ssh"
+chmod 0644 "$explicit_ssh"
+assert_capacity_cli_rejected 'explicit SSH executable not executable' 'ssh is required for evidence collection' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --evidence-ssh-executable "$explicit_ssh"
+assert_capacity_cli_rejected 'SSH command string is not an executable' 'ssh is required for evidence collection' \
+  --evidence-ssh-target app01 --isolated-host-port 18081 --evidence-ssh-executable 'ssh -v'
+
 cat >"$fake_bin/ssh" <<'PY'
 #!/usr/bin/env python3
 import datetime as dt

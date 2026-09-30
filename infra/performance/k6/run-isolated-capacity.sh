@@ -49,6 +49,8 @@ Usage:
     --dataset-id catalog-core-control-v1|catalog-core-10k-v1 \
     --results-dir /absolute/path \
     --evidence-ssh-target SSH_ALIAS --isolated-host-port PORT \
+    [--evidence-ssh-executable SSH_EXECUTABLE] \
+    [--evidence-ssh-identity-file IDENTITY_FILE] \
     [--target-rps 25|50|100|150|200|250] \
     --acknowledge-isolated-load YES
 EOF
@@ -61,6 +63,8 @@ dataset_id=''
 results_dir=''
 acknowledgement=''
 evidence_ssh_target=''
+evidence_ssh_executable='ssh'
+evidence_ssh_identity_file=''
 isolated_host_port=''
 target_rates=(25 50 100 150 200 250)
 
@@ -84,6 +88,16 @@ while (($#)); do
       ;;
     --evidence-ssh-target)
       evidence_ssh_target="${2:-}"
+      shift 2
+      ;;
+    --evidence-ssh-executable)
+      (($# >= 2)) && [[ -n "$2" ]] || usage
+      evidence_ssh_executable="$2"
+      shift 2
+      ;;
+    --evidence-ssh-identity-file)
+      (($# >= 2)) && [[ -n "$2" ]] || usage
+      evidence_ssh_identity_file="$2"
       shift 2
       ;;
     --isolated-host-port)
@@ -123,7 +137,8 @@ esac
 [[ "$evidence_ssh_target" =~ ^[a-zA-Z0-9][a-zA-Z0-9._@-]*$ ]] || usage
 [[ "$isolated_host_port" =~ ^[0-9]{1,5}$ ]] || usage
 ((10#$isolated_host_port >= 1 && 10#$isolated_host_port <= 65535)) || usage
-command -v ssh >/dev/null 2>&1 || { printf 'ssh is required for evidence collection\n' >&2; exit 1; }
+evidence_ssh_executable="$(command -v -- "$evidence_ssh_executable")" && \
+  [[ -f "$evidence_ssh_executable" && -x "$evidence_ssh_executable" ]] || { printf 'ssh is required for evidence collection\n' >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { printf 'python3 is required for evidence collection\n' >&2; exit 1; }
 command -v oci >/dev/null 2>&1 || { printf 'OCI CLI is required for evidence collection\n' >&2; exit 1; }
 [[ "${PAWCYCLE_PERF_OCI_COMPARTMENT_ID:-}" =~ ^ocid1\.compartment\.[a-zA-Z0-9._-]+$ ]] || {
@@ -175,12 +190,18 @@ if [[ -e "$results_dir" ]] && [[ -n "$(find "$results_dir" -mindepth 1 -maxdepth
 fi
 mkdir -p "$results_dir"
 
+evidence_ssh_args=(-o BatchMode=yes)
+if [[ -n "$evidence_ssh_identity_file" ]]; then
+  evidence_ssh_args+=(-i "$evidence_ssh_identity_file")
+fi
+
 for target_rps in "${target_rates[@]}"; do
   host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
   remote_collector="$PAWCYCLE_PERF_APP01_ROOT/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
-  ssh -o BatchMode=yes "$evidence_ssh_target" \
-    sudo -n python3 "$remote_collector" sample --port "$isolated_host_port" \
-    --duration-seconds 165 >"$host_samples" &
+  # One remote-command argument; native Windows SSH must receive Linux paths unchanged.
+  remote_command="sudo -n python3 '$remote_collector' sample --port '$isolated_host_port' --duration-seconds 165"
+  MSYS2_ARG_CONV_EXCL='*' "$evidence_ssh_executable" "${evidence_ssh_args[@]}" \
+    "$evidence_ssh_target" "$remote_command" >"$host_samples" &
   collector_pid=$!
   for _ in {1..10}; do
     [[ -s "$host_samples" ]] && break
