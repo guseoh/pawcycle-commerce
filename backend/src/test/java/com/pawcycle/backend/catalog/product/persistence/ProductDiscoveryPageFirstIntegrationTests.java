@@ -85,6 +85,29 @@ class ProductDiscoveryPageFirstIntegrationTests {
   }
 
   @Test
+  void unfilteredOrderedPagesPreserveVisibilityTotalsAndEveryProjection() {
+    jdbc.update("UPDATE products SET display_status='DRAFT' WHERE brand_id<>?", brandId);
+    long draft = product("newer-draft");
+    jdbc.update("UPDATE products SET display_status='DRAFT' WHERE id=?", draft);
+    long inactiveCategory = category("inactive-" + suffix, null, false);
+    long excludedCategoryProduct = product("newer-inactive-category");
+    jdbc.update("UPDATE products SET category_id=? WHERE id=?", inactiveCategory, excludedCategoryProduct);
+    jdbc.update(
+        "INSERT INTO brands(name,slug,active,display_order) VALUES ('Inactive',?,false,0)",
+        "inactive-" + suffix);
+    long inactiveBrand = lastId();
+    long excludedBrandProduct = product("newer-inactive-brand");
+    jdbc.update("UPDATE products SET brand_id=? WHERE id=?", inactiveBrand, excludedBrandProduct);
+
+    for (ProductSort sort : List.of(ProductSort.NEWEST, ProductSort.RECOMMENDED)) {
+      for (int page = 0; page <= 3; page++) {
+        assertThat(repository.read(null, null, null, page, 2, sort))
+            .isEqualTo(read(sort, page, 2));
+      }
+    }
+  }
+
+  @Test
   void newestFirstPageUsesDescendingProductIdsAndPreservesTotals() {
     assertPage(read(ProductSort.NEWEST, 0, 2), 0, 2, 5, newestId, ratedId);
   }

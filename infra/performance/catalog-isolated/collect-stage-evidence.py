@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 
@@ -144,7 +145,14 @@ def parse_utc(value):
 
 
 def command(*args):
-    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=15).stdout.strip()
+    stage = {("docker", "inspect"): "docker_inspect",
+             ("docker", "stats"): "docker_stats"}.get(tuple(args[:2]), "external_command")
+    try:
+        return subprocess.run(args, check=True, capture_output=True, text=True, timeout=15).stdout.strip()
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"{stage}_timeout") from None
+    except (OSError, subprocess.CalledProcessError):
+        raise ValueError(f"{stage}_failed") from None
 
 
 def format_utc(value):
@@ -382,6 +390,16 @@ def container_sample():
     }
 
 
+def read_isolated_metrics(port):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/actuator/prometheus", timeout=3) as response:
+            payload = response.read(2_000_000).decode("utf-8")
+    except (OSError, urllib.error.URLError) as exc:
+        timed_out = isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError)
+        raise ValueError("actuator_fetch_timeout" if timed_out else "actuator_fetch_failed") from None
+    return parse_metrics(payload)
+
+
 def sample(args):
     if args.port < 1 or args.port > 65535 or args.duration_seconds < 1:
         raise ValueError("invalid sampling port or duration")
@@ -394,8 +412,7 @@ def sample(args):
         container = container_sample()
         if container["restartCount"] or container["oomKilled"] or container["health"] != "healthy":
             raise ValueError("isolated container became unhealthy, restarted, or OOM killed")
-        with urllib.request.urlopen(f"http://127.0.0.1:{args.port}/actuator/prometheus", timeout=3) as response:
-            metrics = parse_metrics(response.read(2_000_000).decode("utf-8"))
+        metrics = read_isolated_metrics(args.port)
         product_discovery_phases = metrics.pop("productDiscoveryPhases")
         lifecycle = metrics.pop("productDiscoveryLifecycle", None)
         sample = {"timestampUtc": utc_now(), "host": host,
