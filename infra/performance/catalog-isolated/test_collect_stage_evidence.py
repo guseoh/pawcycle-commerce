@@ -24,6 +24,32 @@ def fixture_discovery_phases(count=1.0):
 
 
 class EvidenceTest(unittest.TestCase):
+    def test_external_failures_have_fixed_stage_reasons_without_command_or_stderr(self):
+        for operation, stage in (("inspect", "docker_inspect"), ("stats", "docker_stats"),
+                                 ("monitoring", "external_command")):
+            command = ["docker" if operation != "monitoring" else "oci", operation, "private-value"]
+            for error, suffix in ((collector.subprocess.TimeoutExpired(command, 15), "timeout"),
+                                  (collector.subprocess.CalledProcessError(1, command, stderr="private-value"), "failed"),
+                                  (OSError("private-value"), "failed")):
+                with self.subTest(operation=operation, suffix=suffix), \
+                     mock.patch.object(collector.subprocess, "run", side_effect=error):
+                    with self.assertRaisesRegex(ValueError, f"^{stage}_{suffix}$"):
+                        collector.command(*command)
+
+    def test_actuator_connection_and_read_timeouts_remain_fatal(self):
+        for error in (TimeoutError("private-value"), collector.urllib.error.URLError(TimeoutError())):
+            with mock.patch.object(collector.urllib.request, "urlopen", side_effect=error):
+                with self.assertRaisesRegex(ValueError, "^actuator_fetch_timeout$"):
+                    collector.read_isolated_metrics(18081)
+        with mock.patch.object(collector.urllib.request, "urlopen") as fetch:
+            fetch.return_value.__enter__.return_value.read.side_effect = TimeoutError("private-value")
+            with self.assertRaisesRegex(ValueError, "^actuator_fetch_timeout$"):
+                collector.read_isolated_metrics(18081)
+            fetch.assert_called_once_with("http://127.0.0.1:18081/actuator/prometheus", timeout=3)
+        with mock.patch.object(collector.urllib.request, "urlopen", side_effect=collector.urllib.error.URLError("private-value")):
+            with self.assertRaisesRegex(ValueError, "^actuator_fetch_failed$"):
+                collector.read_isolated_metrics(18081)
+
     def test_optional_lifecycle_accepts_legacy_and_requires_complete_bounded_extension(self):
         self.assertIsNone(collector.parse_lifecycle_metrics("unrelated 1"))
         lines = []

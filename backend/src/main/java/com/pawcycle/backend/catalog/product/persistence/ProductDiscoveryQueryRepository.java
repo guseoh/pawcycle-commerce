@@ -137,10 +137,16 @@ public class ProductDiscoveryQueryRepository {
           case NEWEST, RECOMMENDED -> " ORDER BY p.id DESC";
         };
     boolean pageFirst = sort == ProductSort.NEWEST || sort == ProductSort.RECOMMENDED;
+    // Bound filters may benefit from selective indexes; constrain only the unfiltered page.
+    boolean orderedPageFirst =
+        pageFirst && parameters.isEmpty() && subscribable == null && purchasable == null;
     // LIMIT prevents MySQL from merging this derived table into the outer aggregation.
     String productSource =
         pageFirst
-            ? "(SELECT p.* FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id "
+            ? (orderedPageFirst
+                    ? "(SELECT /*+ JOIN_PREFIX(p) NO_BNL(c, b) */ p.* FROM products p FORCE INDEX(PRIMARY) "
+                    : "(SELECT p.* FROM products p ")
+                + "JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id "
                 + "LEFT JOIN categories parent ON parent.id=c.parent_id"
                 + where
                 + order
