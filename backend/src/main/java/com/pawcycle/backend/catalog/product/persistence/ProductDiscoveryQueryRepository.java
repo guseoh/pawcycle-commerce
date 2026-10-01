@@ -136,6 +136,16 @@ public class ProductDiscoveryQueryRepository {
           case REVIEW_COUNT -> " ORDER BY review_count DESC, p.id DESC";
           case NEWEST, RECOMMENDED -> " ORDER BY p.id DESC";
         };
+    boolean pageFirst = sort == ProductSort.NEWEST || sort == ProductSort.RECOMMENDED;
+    // LIMIT prevents MySQL from merging this derived table into the outer aggregation.
+    String productSource =
+        pageFirst
+            ? "(SELECT p.* FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id "
+                + "LEFT JOIN categories parent ON parent.id=c.parent_id"
+                + where
+                + order
+                + " LIMIT :limit OFFSET :offset) p"
+            : "products p";
     String sql =
         """
         SELECT p.id product_id,p.name,p.pet_type,p.short_description,
@@ -150,15 +160,19 @@ public class ProductDiscoveryQueryRepository {
                (SELECT COUNT(*) FROM reviews r WHERE r.product_id=p.id AND r.visible=true) review_count,
                MAX(CASE WHEN s.status='ACTIVE' AND s.subscribable=true THEN 1 ELSE 0 END) has_subscribable,
                MAX(CASE WHEN s.status='ACTIVE' AND i.available_quantity > 0 THEN 1 ELSE 0 END) purchasable
-        FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id
+        FROM
+        """
+            + productSource
+            + """
+         JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id
         LEFT JOIN categories parent ON parent.id=c.parent_id
         LEFT JOIN product_images main_image ON main_image.product_id=p.id AND main_image.image_type='MAIN'
         LEFT JOIN skus s ON s.product_id=p.id LEFT JOIN inventories i ON i.sku_id=s.id
         """
-            + where
+            + (pageFirst ? "" : where)
             + " GROUP BY p.id,p.name,p.pet_type,p.short_description,p.thumbnail_url,main_image.image_url,c.id,c.name,c.slug,b.id,b.name,b.slug,b.logo_url"
             + order
-            + " LIMIT :limit OFFSET :offset";
+            + (pageFirst ? "" : " LIMIT :limit OFFSET :offset");
     parameters.add(new QueryParameter("limit", size));
     parameters.add(new QueryParameter("offset", offset));
     Query listQuery = bind(entityManager.createNativeQuery(sql, Tuple.class), parameters);
