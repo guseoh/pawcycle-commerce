@@ -622,10 +622,65 @@ grep -q 'down --remove-orphans' "$docker_log"
 : >"$curl_log"
 run_manager up --acknowledge "START:$dataset_id" >/dev/null
 grep -q 'up -d --pull never backend' "$docker_log"
+if grep -Eq 'catalog-import|schema-bootstrap|operation=apply\|' "$docker_log"; then
+  printf 'EXACT runtime start unexpectedly performed import/bootstrap\n' >&2
+  exit 1
+fi
 grep -q '/actuator/health/readiness' "$curl_log"
 grep -q '/api/products' "$curl_log"
 grep -q -- '--max-time 10 .*actuator/health/readiness' "$curl_log"
 grep -q -- '--max-time 10 .*api/products' "$curl_log"
+
+# Historical origin fixtures retain identical artifact/generator digests.
+python3 - "$dataset_dir/provenance.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+provenance = json.loads(path.read_text(encoding="utf-8"))
+provenance["approvedSourceSha"] = "2" * 40
+path.chmod(0o644)
+path.write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+path.chmod(0o444)
+PY
+dataset_checksums_before="$(sha256sum "$dataset_dir/manifest.json" "$dataset_dir/report.json" "$dataset_dir/provenance.json")"
+for import_failure in 0 1; do
+  : >"$docker_log"
+  : >"$curl_log"
+  if [[ "$import_failure" == 0 ]]; then
+    run_manager up --acknowledge "START:$dataset_id" >"$tmp/equivalent-up.log"
+  elif FAKE_IMPORT_FAIL=1 run_manager up --acknowledge "START:$dataset_id" >"$tmp/equivalent-up.log" 2>&1; then
+    printf 'DIGEST_EQUIVALENT runtime start accepted failed import validation\n' >&2
+    exit 1
+  fi
+  grep -q 'catalog_isolation_preflight=PASS' "$tmp/equivalent-up.log"
+  grep -q '"dataset_source_compatibility": "DIGEST_EQUIVALENT"' "$tmp/equivalent-up.log"
+  if grep -q 'fixture-password' "$tmp/equivalent-up.log"; then
+    printf 'runtime start exposed the DB password\n' >&2
+    exit 1
+  fi
+  python3 - "$docker_log" "$import_failure" "$approved_image" "$compose_file" <<'PY'
+import sys
+
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+imports = [i for i, line in enumerate(lines) if "run --rm --no-deps --pull never catalog-import" in line]
+assert len(imports) == 1, imports
+assert "operation=validate|" in lines[imports[0]]
+assert "--pawcycle.catalog.manifest-import.confirm-apply" not in lines[imports[0]]
+assert sys.argv[3] in next(line for line in lines if "image inspect" in line)
+assert "-f " + sys.argv[4] in lines[imports[0]]
+assert not any("operation=apply|" in line or "schema-bootstrap" in line for line in lines)
+starts = [i for i, line in enumerate(lines) if "up -d --pull never backend" in line]
+if sys.argv[2] == "0":
+    assert len(starts) == 1 and imports[0] < starts[0], (imports, starts)
+    assert any("event|curl|" in line and "/api/products" in line for line in lines)
+else:
+    assert not starts, starts
+    assert not any("down --remove-orphans" in line or "event|curl|" in line for line in lines)
+PY
+  [[ "$(sha256sum "$dataset_dir/manifest.json" "$dataset_dir/report.json" "$dataset_dir/provenance.json")" == "$dataset_checksums_before" ]]
+done
 
 : >"$docker_log"
 if run_down_manager >/dev/null 2>&1; then

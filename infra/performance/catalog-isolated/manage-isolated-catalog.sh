@@ -164,7 +164,16 @@ case "$dataset_id" in
 esac
 
 if [[ "$action" != 'down' ]]; then
-  python3 "$VALIDATOR"   --source-root "$source_root"   --config-file "$config_file"   --password-file "$password_file"   --dataset-dir "$dataset_dir"
+  preflight_summary="$(python3 "$VALIDATOR" --source-root "$source_root" --config-file "$config_file" --password-file "$password_file" --dataset-dir "$dataset_dir")"
+  printf '%s\n' "$preflight_summary"
+
+  if [[ "$action" == 'up' ]]; then
+    dataset_source_compatibility="$(printf '%s\n' "$preflight_summary" | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().splitlines()[-1])["dataset_source_compatibility"])')"
+    case "$dataset_source_compatibility" in
+      EXACT|DIGEST_EQUIVALENT) ;;
+      *) die 'unsupported dataset source compatibility' ;;
+    esac
+  fi
 
   host_port="$(read_config_value PAWCYCLE_PERF_HOST_PORT)"
   backend_image="$(read_config_value PAWCYCLE_PERF_BACKEND_IMAGE)"
@@ -354,6 +363,10 @@ case "$action" in
     assert_local_backend_image
     assert_existing_project_identity
     backend_running && die 'isolated backend is already running'
+
+    if [[ "$dataset_source_compatibility" == 'DIGEST_EQUIVALENT' ]]; then
+      run_import validate || die 'digest-equivalent dataset failed current-source import validation; Backend was not started'
+    fi
 
     startup_complete=0
     startup_exit() {

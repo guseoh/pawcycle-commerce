@@ -424,6 +424,8 @@ Dataset/provenance 절차가 필요하다. 기존 provenance를 rebind/replace/d
 
 Preflight summary의 `approved_source_sha`는 계속 현재 execution source SHA를 뜻한다.
 `dataset_origin_source_sha`와 `dataset_source_compatibility`로 origin과 compatibility를 구분한다.
+`DIGEST_EQUIVALENT`는 Dataset artifact compatibility이며 imported DB/runtime compatibility
+자체를 보장하지 않는다. 기존 DB 재사용은 아래 `up`의 current-source import validate Gate로 확인한다.
 
 ## Runtime config와 Secret 경계
 
@@ -757,6 +759,13 @@ sudo bash infra/performance/catalog-isolated/manage-isolated-catalog.sh \
   --dataset-dir "$DATASET_DIR" \
   --acknowledge "START:$DATASET_ID"
 ```
+
+`up`은 validator summary의 `dataset_source_compatibility`를 사용한다. `EXACT`는 기존
+runtime 시작 흐름을 유지한다. `DIGEST_EQUIVALENT`는 Backend 시작 전에 현재 exact source와
+digest-pinned approved Backend image의 `catalog-import` validate mode를 한 번 실행한다.
+validate가 실패하면 non-zero로 종료하며 Backend `compose up`과 startup cleanup을 실행하지 않는다.
+이 Gate는 import apply, schema-bootstrap, Dataset/provenance 변경, DB cleanup이나 자동 retry를 하지 않는다.
+실제 DB 접근이므로 `up` 실행 승인은 이 read-only validation도 포함해야 한다.
 
 성공 조건:
 
