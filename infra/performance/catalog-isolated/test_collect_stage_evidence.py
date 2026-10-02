@@ -105,6 +105,48 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(points, [{"windowStartUtc": "2026-09-24T00:00:00Z",
                                    "windowEndUtc": "2026-09-24T00:01:00Z", "value": 42}])
 
+    def test_preflight_reads_all_six_metrics_without_emitting_cli_payload(self):
+        recent = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=3)
+        points = [collector.oci_bucket_point(recent.isoformat(), 42)]
+        output = io.StringIO()
+        with mock.patch.object(collector, "oci_points", return_value=points) as query, \
+             contextlib.redirect_stdout(output):
+            collector.preflight()
+        self.assertEqual(output.getvalue(), "evidence_preflight=PASS\n")
+        self.assertEqual([(call.args[0], call.args[1]) for call in query.call_args_list],
+                         list(collector.OCI_METRICS.items()))
+        self.assertEqual(len({call.args[2:] for call in query.call_args_list}), 1)
+
+    def test_preflight_rejects_each_missing_metric_without_retry(self):
+        recent = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=3)
+        points = [collector.oci_bucket_point(recent.isoformat(), 42)]
+        for missing in collector.OCI_METRICS:
+            with self.subTest(missing=missing), \
+                 mock.patch.object(collector, "oci_points", side_effect=lambda metric, *args: [] if metric == missing else points) as query, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                with self.assertRaisesRegex(ValueError, f"no recent datapoints for {missing}"):
+                    collector.preflight()
+                self.assertEqual(output.getvalue(), "")
+                self.assertEqual(query.call_count, list(collector.OCI_METRICS).index(missing) + 1)
+
+    def test_preflight_cli_failure_is_sanitized_and_missing_identity_is_fatal(self):
+        error = io.StringIO()
+        with mock.patch.dict(collector.os.environ, {
+            "PAWCYCLE_PERF_OCI_COMPARTMENT_ID": "ocid1.compartment.fixture",
+            "PAWCYCLE_PERF_OCI_DB_SYSTEM_ID": "ocid1.mysqldbsystem.fixture",
+            "OCI_CLI_PROFILE": "fixture", "OCI_CLI_REGION": "fixture-region"}, clear=True), \
+             mock.patch.object(collector.subprocess, "run", side_effect=collector.subprocess.CalledProcessError(
+                 1, ["oci"], stderr="private-marker ocid1.compartment.fixture")), \
+             mock.patch.object(sys, "argv", ["collect-stage-evidence.py", "preflight"]), \
+             contextlib.redirect_stderr(error):
+            self.assertEqual(collector.main(), 1)
+        self.assertEqual(error.getvalue(), "evidence_collection=FAIL reason=OCI Monitoring query failed for CPUUtilization\n")
+        with mock.patch.dict(collector.os.environ, {}, clear=True), \
+             mock.patch.object(collector, "command") as command:
+            with self.assertRaisesRegex(ValueError, "resource identity is missing"):
+                collector.preflight()
+            command.assert_not_called()
+
     def test_oci_measurement_window_uses_bucket_overlap_and_exclusive_query_end(self):
         start = collector.parse_utc("2026-09-24T12:00:30Z")
         end = collector.parse_utc("2026-09-24T12:02:30Z")

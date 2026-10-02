@@ -839,6 +839,7 @@ $RunId = "$ApprovedSha-$DatasetId-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmss
 $ResultsDir = Join-Path $env:USERPROFILE "pawcycle-performance-results/$RunId"
 $GitBash = 'C:/Program Files/Git/bin/bash.exe'
 $Cygpath = 'C:/Program Files/Git/usr/bin/cygpath.exe'
+$PythonExecutable = 'C:/<approved-python-directory>/python.exe'
 $EvidenceSshExecutable = 'C:/Windows/System32/OpenSSH/ssh.exe'
 $EvidenceSshIdentityFile = 'C:/<approved-local-key-directory>/<identity-file>'
 $EvidenceSshTarget = '<user>@<host>'
@@ -854,12 +855,13 @@ if (-not $Source.PSIsContainer -or $Marker.PSIsContainer -or
     (Test-Path -LiteralPath (Join-Path $SourceRoot '.git'))) {
     throw 'Approved source archive identity mismatch'
 }
-foreach ($Executable in @($GitBash, $Cygpath, $EvidenceSshExecutable)) {
+foreach ($Executable in @($GitBash, $Cygpath, $EvidenceSshExecutable, $PythonExecutable)) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Required executable missing' }
 }
 # Existing approved secure environment; do not print or hard-code these identities.
-foreach ($Name in @('PAWCYCLE_PERF_OCI_COMPARTMENT_ID', 'PAWCYCLE_PERF_OCI_DB_SYSTEM_ID')) {
-    if (-not [Environment]::GetEnvironmentVariable($Name, 'Process')) { throw 'OCI identity environment missing' }
+foreach ($Name in @('PAWCYCLE_PERF_OCI_COMPARTMENT_ID', 'PAWCYCLE_PERF_OCI_DB_SYSTEM_ID',
+                    'OCI_CLI_PROFILE', 'OCI_CLI_REGION')) {
+    if (-not [Environment]::GetEnvironmentVariable($Name, 'Process')) { throw 'OCI execution environment missing' }
 }
 
 # Convert only local paths consumed by Bash. Keep the SSH executable/identity native.
@@ -874,6 +876,7 @@ $RunnerArgs = @(
     '--target-url', 'http://127.0.0.1:<local-port>',
     '--dataset-id', $DatasetId,
     '--results-dir', $ResultsPosix,
+    '--python-executable', $PythonExecutable,
     '--evidence-ssh-target', $EvidenceSshTarget,
     '--evidence-ssh-executable', $EvidenceSshExecutable,
     '--evidence-ssh-identity-file', $EvidenceSshIdentityFile,
@@ -885,8 +888,17 @@ $RunnerArgs = @(
 if ($LASTEXITCODE -ne 0) { throw 'Isolated capacity stage failed; do not advance RPS' }
 ```
 
-`python3`, `oci`, `k6`는 이 Git Bash의 `PATH`에서 실행 가능해야 한다. OCI CLI에는 기존
-Monitoring read 권한이 필요하며 두 OCI identity 환경변수 요구사항은 Linux 경로와 같다.
+`oci`, `k6`는 이 Git Bash의 `PATH`에서 실행 가능해야 한다. Desktop Python은
+`--python-executable`로 실제 Python 3 executable 하나를 선택한다. 생략 시 Linux와 동일하게
+`python3`를 사용한다. runner는 존재 검사 뒤 실제 major version을 실행 검증하며, preflight와
+assemble에 같은 interpreter를 사용한다. WindowsApps App Execution Alias는 interpreter가
+아니므로 이를 선택하면 load 전에 실패한다. app01의 remote `sudo -n python3`는 별도 Linux 계약이다.
+
+Windows 예시는 승인된 기존 `OCI_CLI_PROFILE` / `OCI_CLI_REGION`을 **Process 환경**에
+명시한 뒤 실행한다. resource identity만으로 CLI context가 선택되지는 않는다.
+[OCI CLI 공식 환경변수 계약](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/clienvironmentvariables.htm)의
+`OCI_CLI_CONFIG_FILE`, `OCI_CLI_AUTH` 등 기존 config/auth 경로를 그대로 사용하며 credential을
+복사하거나 출력하지 않는다. Linux의 유효한 default config/profile/region도 계속 허용한다.
 SSH target은 승인된 alias 또는 직접 `<user>@<host>`를 사용할 수 있다. Windows에서 인증이
 검증된 OpenSSH executable을 명시하고 identity는 `C:/...` native forward-slash 경로로 전달한다.
 identity 경로를 runner의 일반 출력에 기록하지 않으며 키 내용은 읽거나 출력하지 않는다.
@@ -933,11 +945,16 @@ threshold:
 ## Evidence
 
 실제 I0/I10K 실행에서는 위 두 evidence 인자를 필수로 사용한다. Desktop의 같은
-approved source에 `python3`, `oci` CLI와 기존 OCI Monitoring read 권한이 필요하다.
+approved source에 검증 가능한 Python 3, `oci` CLI와 기존 OCI Monitoring read 권한이 필요하다.
 `PAWCYCLE_PERF_OCI_COMPARTMENT_ID`와 `PAWCYCLE_PERF_OCI_DB_SYSTEM_ID`는
 승인된 기존 secure environment에서 제공한다. 값은 command output, 결과 파일,
-Issue/PR/report에 쓰지 않는다. 실행 전에 read-only OCI Monitoring query로
-`oci_mysql_database`의 아래 여섯 지표가 대상 DB System에 존재하는지 확인한다.
+Issue/PR/report에 쓰지 않는다. runner는 SSH collector/k6 시작 전에 exact source의
+`collect-stage-evidence.py preflight`로 assembly와 동일한 CLI context에서 아래 여섯 지표를
+read-only 조회한다. 최근 2분을 제외한 이전 10분 구간에 각 지표의 단일 stream과 datapoint가
+있어야 `evidence_preflight=PASS`다. 인증/profile/region 오류, CLI 실패 또는 누락 지표는
+즉시 중단하며 CLI payload/stderr와 식별값은 출력하지 않는다. 이 조회는 실제 OCI read이므로
+fake CLI를 사용하는 저장소 regression과 구분한다. 실행 중 context나 게시 상태가 바뀔 수
+있으므로 preflight PASS가 stage evidence completeness나 safety Gate를 대체하지 않는다.
 
 ```text
 CPUUtilization, MemoryUtilization, ActiveConnections,
@@ -959,6 +976,12 @@ collector가 시작되지 않거나 중단되거나 필수 metric/구간 sample�
 다음 RPS로 진행하지 않는다. 실패한 stage의 k6 요약과 이미 수집된 Host JSONL은
 보존한다. 결과 디렉터리는 Git 밖에 두고 접근을 제한한다. 장기 보고서에는
 필요한 aggregate만 옮기고 raw `/actuator/prometheus` payload는 보존하지 않는다.
+자동 assemble 실패는 `automatic_evidence_assembly=FAIL k6_ok=<true|false>`로 구분하고
+원래 종료 상태를 유지한다. summary/host가 정상이어도 clean runner PASS로 기록하지 않는다.
+원본 inputs와 exact collector/source identity, 종료 상태, post-load safety Gate를 확인한 뒤
+별도 read-only assemble로 복구한 경우 `RECOVERED_MEASUREMENT / automatic assembly failure`
+로 기록하고 복구한 execution context를 명시한다. 이는 runner 실패 이력을 지우거나 workload
+threshold 실패를 성공으로 바꾸지 않는다. 자동 retry/recovery/load 재실행은 하지 않는다.
 collector는 query 전에 마지막으로 예상되는 겹침 bucket의 종료 시각까지 기다린다.
 그 뒤 OCI datapoint 게시가 늦으면 20초 간격으로 최대 6회(총 추가 대기 최대 120초)
 재확인한다. measurement와 겹치는 예상 bucket이 모두 도착하지 않으면 수집 실패로 중단한다.

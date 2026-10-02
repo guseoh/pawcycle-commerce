@@ -499,9 +499,22 @@ def assemble(args):
         stream.write("\n")
 
 
+def preflight():
+    # Use the same OCI CLI auth/config/profile/region resolution as assembly.
+    # Older, closed buckets avoid depending on publication of the current minute.
+    end = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=2)
+    start = end - dt.timedelta(minutes=10)
+    for metric, statistic in OCI_METRICS.items():
+        points = oci_points(metric, statistic, format_utc(start), format_utc(end))
+        if not select_oci_points(points, start, end):
+            raise ValueError(f"OCI Monitoring preflight has no recent datapoints for {metric}")
+    print("evidence_preflight=PASS")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="mode", required=True)
+    sub.add_parser("preflight")
     sampling = sub.add_parser("sample")
     sampling.add_argument("--port", type=int, required=True)
     sampling.add_argument("--duration-seconds", type=int, default=165)
@@ -514,6 +527,8 @@ def main():
     try:
         if args.mode == "sample":
             sample(args)
+        elif args.mode == "preflight":
+            preflight()
         else:
             assemble(args)
     except (OSError, KeyError, ValueError, subprocess.SubprocessError) as exc:
