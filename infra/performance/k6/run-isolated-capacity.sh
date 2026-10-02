@@ -51,6 +51,7 @@ Usage:
     --evidence-ssh-target SSH_ALIAS --isolated-host-port PORT \
     [--evidence-ssh-executable SSH_EXECUTABLE] \
     [--evidence-ssh-identity-file IDENTITY_FILE] \
+    [--python-executable PYTHON_EXECUTABLE] \
     [--target-rps 25|50|100|150|200|250] \
     --acknowledge-isolated-load YES
 EOF
@@ -65,6 +66,7 @@ acknowledgement=''
 evidence_ssh_target=''
 evidence_ssh_executable='ssh'
 evidence_ssh_identity_file=''
+python_executable='python3'
 isolated_host_port=''
 target_rates=(25 50 100 150 200 250)
 
@@ -104,6 +106,11 @@ while (($#)); do
       isolated_host_port="${2:-}"
       shift 2
       ;;
+    --python-executable)
+      (($# >= 2)) && [[ -n "$2" ]] || usage
+      python_executable="$2"
+      shift 2
+      ;;
     --target-rps)
       (($# >= 2)) || usage
       case "$2" in
@@ -139,7 +146,15 @@ esac
 ((10#$isolated_host_port >= 1 && 10#$isolated_host_port <= 65535)) || usage
 evidence_ssh_executable="$(command -v -- "$evidence_ssh_executable")" && \
   [[ -f "$evidence_ssh_executable" && -x "$evidence_ssh_executable" ]] || { printf 'ssh is required for evidence collection\n' >&2; exit 1; }
-command -v python3 >/dev/null 2>&1 || { printf 'python3 is required for evidence collection\n' >&2; exit 1; }
+python_executable="$(command -v -- "$python_executable")" && \
+  [[ -f "$python_executable" && -x "$python_executable" ]] || {
+  printf 'Python 3 executable is required for evidence collection\n' >&2; exit 1;
+}
+# Execution aliases can exist on PATH without providing an interpreter.
+python_major="$("$python_executable" -c 'import sys; print(sys.version_info.major)' 2>/dev/null)" && \
+  [[ "${python_major%$'\r'}" == '3' ]] || {
+  printf 'Python 3 interpreter preflight failed; select a usable --python-executable\n' >&2; exit 1;
+}
 command -v oci >/dev/null 2>&1 || { printf 'OCI CLI is required for evidence collection\n' >&2; exit 1; }
 [[ "${PAWCYCLE_PERF_OCI_COMPARTMENT_ID:-}" =~ ^ocid1\.compartment\.[a-zA-Z0-9._-]+$ ]] || {
   printf 'OCI Monitoring compartment identity is required in the environment\n' >&2
@@ -188,6 +203,7 @@ if [[ -e "$results_dir" ]] && [[ -n "$(find "$results_dir" -mindepth 1 -maxdepth
   printf 'results directory must be empty: %s\n' "$results_dir" >&2
   exit 1
 fi
+"$python_executable" "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" preflight
 mkdir -p "$results_dir"
 
 evidence_ssh_args=(-o BatchMode=yes)
@@ -242,10 +258,16 @@ for target_rps in "${target_rates[@]}"; do
     exit 1
   fi
   collector_pid=''
-  python3 "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" assemble \
+  if "$python_executable" "$source_root/infra/performance/catalog-isolated/collect-stage-evidence.py" assemble \
     --summary "$results_dir/$dataset_id-${target_rps}rps.json" \
     --host-samples "$host_samples" \
-    --output "$results_dir/$dataset_id-${target_rps}rps-evidence.json"
+    --output "$results_dir/$dataset_id-${target_rps}rps-evidence.json"; then
+    :
+  else
+    assembly_status=$?
+    printf 'automatic_evidence_assembly=FAIL k6_ok=%s; preserve summary and host samples; do not rerun load or advance RPS\n' "$k6_ok" >&2
+    exit "$assembly_status"
+  fi
   if [[ "$k6_ok" != true ]]; then
     printf 'k6 stage failed; stop before next RPS\n' >&2
     exit 1

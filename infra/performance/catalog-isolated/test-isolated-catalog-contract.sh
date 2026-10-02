@@ -362,8 +362,20 @@ cat >"$fake_bin/oci" <<'PY'
 #!/usr/bin/env python3
 import datetime as dt
 import json
+import os
 import sys
 
+if (os.environ.get("FAKE_OCI_FAIL") == "1" or
+    (os.environ.get("FAKE_OCI_DEFAULT_CONTEXT") != "1" and
+     (not os.environ.get("OCI_CLI_PROFILE") or not os.environ.get("OCI_CLI_REGION")))):
+    print("private-marker ocid1.compartment.fixture ocid1.mysqldbsystem.fixture", file=sys.stderr)
+    sys.exit(1)
+if os.environ.get("FAKE_OCI_LOG"):
+    with open(os.environ["FAKE_OCI_LOG"], "a", encoding="utf-8") as stream:
+        stream.write("query\n")
+    with open(os.environ["FAKE_OCI_LOG"], encoding="utf-8") as stream:
+        if os.environ.get("FAKE_OCI_FAIL_ASSEMBLY") == "1" and len(stream.readlines()) > 6:
+            sys.exit(1)
 start = dt.datetime.fromisoformat(sys.argv[sys.argv.index("--start-time") + 1].replace("Z", "+00:00"))
 end = dt.datetime.fromisoformat(sys.argv[sys.argv.index("--end-time") + 1].replace("Z", "+00:00"))
 bucket_end = start.replace(second=0, microsecond=0) + dt.timedelta(minutes=1)
@@ -775,10 +787,13 @@ assert_capacity_rejected() {
     exit 1
   fi
   [[ ! -s "$k6_log" ]]
+  [[ "$output" != *'ocid1.'* && "$output" != *'private-marker'* ]]
 }
 
 export PAWCYCLE_PERF_OCI_COMPARTMENT_ID='ocid1.compartment.fixture'
 export PAWCYCLE_PERF_OCI_DB_SYSTEM_ID='ocid1.mysqldbsystem.fixture'
+export OCI_CLI_PROFILE='fixture'
+export OCI_CLI_REGION='fixture-region'
 
 assert_capacity_rejected 'unapproved source root' 'k6 runner must run from the approved source root' \
   --evidence-ssh-target app01 --isolated-host-port 18081 --source-root "$tmp"
@@ -813,8 +828,26 @@ cp "$fake_bin/oci" "$missing_python_path/oci"
 cp "$fake_bin/ssh" "$missing_oci_path/ssh"
 ln -s "$python3_path" "$missing_oci_path/python3"
 RUNNER_PATH="$missing_ssh_path" assert_capacity_rejected 'ssh CLI absent' 'ssh is required for evidence collection' --evidence-ssh-target app01 --isolated-host-port 18081
-RUNNER_PATH="$missing_python_path" assert_capacity_rejected 'python3 absent' 'python3 is required for evidence collection' --evidence-ssh-target app01 --isolated-host-port 18081
+RUNNER_PATH="$missing_python_path" assert_capacity_rejected 'python3 absent' 'Python 3 executable is required for evidence collection' --evidence-ssh-target app01 --isolated-host-port 18081
 RUNNER_PATH="$missing_oci_path" assert_capacity_rejected 'OCI CLI absent' 'OCI CLI is required for evidence collection' --evidence-ssh-target app01 --isolated-host-port 18081
+
+alias_path="$tmp/windows-alias"
+mkdir -p "$alias_path"
+printf '#!/bin/bash\nprintf "Python\\n"\nexit 49\n' >"$alias_path/python3"
+chmod +x "$alias_path/python3"
+RUNNER_PATH="$alias_path:$fake_bin:$PATH" assert_capacity_rejected 'Windows execution alias' 'Python 3 interpreter preflight failed' --evidence-ssh-target app01 --isolated-host-port 18081
+printf '#!/bin/bash\nprintf "2\\n"\n' >"$alias_path/python3"
+RUNNER_PATH="$alias_path:$fake_bin:$PATH" assert_capacity_rejected 'Python 2 interpreter' 'Python 3 interpreter preflight failed' --evidence-ssh-target app01 --isolated-host-port 18081
+assert_capacity_rejected 'explicit Python absent' 'Python 3 executable is required' --python-executable "$tmp/no-python" --evidence-ssh-target app01 --isolated-host-port 18081
+
+unset OCI_CLI_PROFILE
+assert_capacity_rejected 'missing OCI profile context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+export OCI_CLI_PROFILE='fixture'
+unset OCI_CLI_REGION
+assert_capacity_rejected 'missing OCI region context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+export OCI_CLI_REGION='fixture-region'
+FAKE_OCI_FAIL=1 assert_capacity_rejected 'invalid OCI authentication context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+[[ ! -e "$results_dir" ]]
 
 mkdir -p "$results_dir"
 printf 'stale\n' >"$results_dir/stale.json"
@@ -910,6 +943,41 @@ grep -q 'TARGET_RPS=25' "$k6_log"
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
 [[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 3 ]]
 
+clear_capacity_results
+selected_python="$tmp/python with spaces/interpreter"
+mkdir -p "$(dirname "$selected_python")"
+cat >"$selected_python" <<EOF
+#!/bin/bash
+printf '%s\\n' "\$1" >>"$tmp/python-calls"
+if [[ "\$1" == '-c' ]]; then printf '3\\r\\n'; else exec "$python3_path" "\$@"; fi
+EOF
+chmod +x "$selected_python"
+: >"$k6_log"
+: >"$ssh_log"
+run_capacity --python-executable "$selected_python" --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 50 >/dev/null
+[[ "$(wc -l <"$tmp/python-calls")" -eq 3 ]]
+[[ -s "$results_dir/$dataset_id-50rps-evidence.json" ]]
+clear_capacity_results
+
+# Linux DEFAULT/config-file auth remains usable without profile/region env overrides.
+unset OCI_CLI_PROFILE OCI_CLI_REGION
+FAKE_OCI_DEFAULT_CONTEXT=1 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 50 >/dev/null
+export OCI_CLI_PROFILE='fixture' OCI_CLI_REGION='fixture-region'
+clear_capacity_results
+
+# A post-load context failure preserves inputs, stops the series, and never retries load.
+export FAKE_OCI_LOG="$tmp/oci-calls" FAKE_OCI_FAIL_ASSEMBLY=1
+: >"$FAKE_OCI_LOG"
+: >"$k6_log"
+if run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >"$tmp/assembly-failure" 2>&1; then
+  printf 'runner accepted automatic assembly failure\n' >&2; exit 1
+fi
+grep -Fq 'automatic_evidence_assembly=FAIL k6_ok=true' "$tmp/assembly-failure"
+[[ "$(wc -l <"$k6_log")" -eq 1 ]]
+[[ -s "$results_dir/$dataset_id-25rps.json" && -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
+[[ ! -e "$results_dir/$dataset_id-25rps-evidence.json" ]]
+! grep -Eq 'ocid1\.|private-marker' "$tmp/assembly-failure"
+unset FAKE_OCI_LOG FAKE_OCI_FAIL_ASSEMBLY
 clear_capacity_results
 explicit_ssh="$tmp/explicit ssh/selected-ssh"
 identity_file='C:/fixture keys/identity'
