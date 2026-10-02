@@ -208,7 +208,7 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
     def source_contract(self, paths: dict[str, Path]):
         return validator.validate_source_root(paths["source_root"])
 
-    def validate_fixture(self, paths: dict[str, Path]) -> None:
+    def validate_fixture(self, paths: dict[str, Path]):
         source = self.source_contract(paths)
         config_file = validator.require_file(paths["config"], {0o600})
         password_file = validator.require_file(paths["password"], {0o400, 0o600})
@@ -216,7 +216,7 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
         dataset_dir = validator.require_directory(paths["dataset_dir"], 0o700)
         values = validator.parse_config(config_file)
         validator.validate_config(values)
-        validator.validate_dataset(dataset_dir, values, source)
+        return validator.validate_dataset(dataset_dir, values, source)
 
     def rewrite_json(self, path: Path, payload: dict) -> None:
         path.chmod(0o644)
@@ -229,7 +229,10 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
     def test_valid_control_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.make_fixture(Path(temp))
-            self.validate_fixture(paths)
+            summary = self.validate_fixture(paths)
+            self.assertEqual(summary["approved_source_sha"], APPROVED_SHA)
+            self.assertEqual(summary["dataset_origin_source_sha"], APPROVED_SHA)
+            self.assertEqual(summary["dataset_source_compatibility"], "EXACT")
 
     def test_internal_source_files_use_canonical_path_for_digest(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -403,7 +406,7 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
                     self.source_contract(paths),
                 )
 
-    def test_provenance_source_sha_mismatch_is_rejected(self) -> None:
+    def test_historical_provenance_with_equivalent_inputs_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.make_fixture(Path(temp))
             provenance = json.loads(
@@ -412,16 +415,76 @@ class IsolatedCatalogValidatorTest(unittest.TestCase):
             provenance["approvedSourceSha"] = "2" * 40
             self.rewrite_json(paths["provenance"], provenance)
 
-            values = validator.parse_config(paths["config"])
-            with self.assertRaisesRegex(
-                validator.ContractError,
-                "provenance mismatch: approvedSourceSha",
-            ):
-                validator.validate_dataset(
-                    paths["dataset_dir"],
-                    values,
-                    self.source_contract(paths),
-                )
+            before = {
+                key: paths[key].read_bytes()
+                for key in ("provenance", "manifest", "report")
+            }
+            summary = self.validate_fixture(paths)
+            self.assertEqual(summary["approved_source_sha"], APPROVED_SHA)
+            self.assertEqual(summary["dataset_origin_source_sha"], "2" * 40)
+            self.assertEqual(summary["dataset_source_compatibility"], "DIGEST_EQUIVALENT")
+            for key, payload in before.items():
+                self.assertEqual(paths[key].read_bytes(), payload)
+
+    def test_historical_provenance_contract_drift_is_rejected(self) -> None:
+        changes = {
+            "prepareWrapperSha256": "0" * 64,
+            "dataGeneratorSha256": "0" * 64,
+            "baseManifestSha256": "0" * 64,
+            "generatedManifestSha256": "0" * 64,
+            "reportSha256": "0" * 64,
+            "schemaVersion": 2,
+            "datasetId": "catalog-core-10k-v1",
+            "seed": 20260827,
+            "productsTotal": 10000,
+        }
+        for field, value in changes.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp:
+                paths = self.make_fixture(Path(temp))
+                provenance = json.loads(paths["provenance"].read_text(encoding="utf-8"))
+                provenance["approvedSourceSha"] = "2" * 40
+                provenance[field] = value
+                self.rewrite_json(paths["provenance"], provenance)
+                with self.assertRaisesRegex(validator.ContractError, f"provenance mismatch: {field}"):
+                    self.validate_fixture(paths)
+
+    def test_malformed_provenance_origin_sha_is_rejected(self) -> None:
+        for origin in (None, 123, "", "2" * 39, "2" * 41, "A" * 40, "g" * 40):
+            with self.subTest(origin=origin), tempfile.TemporaryDirectory() as temp:
+                paths = self.make_fixture(Path(temp))
+                provenance = json.loads(paths["provenance"].read_text(encoding="utf-8"))
+                provenance["approvedSourceSha"] = origin
+                self.rewrite_json(paths["provenance"], provenance)
+                with self.assertRaisesRegex(validator.ContractError, "approvedSourceSha"):
+                    self.validate_fixture(paths)
+
+    def test_historical_provenance_field_set_drift_is_rejected(self) -> None:
+        for field in ("approvedSourceSha", "reportSha256", "unexpected"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp:
+                paths = self.make_fixture(Path(temp))
+                provenance = json.loads(paths["provenance"].read_text(encoding="utf-8"))
+                provenance["approvedSourceSha"] = "2" * 40
+                if field == "unexpected":
+                    provenance[field] = True
+                else:
+                    del provenance[field]
+                self.rewrite_json(paths["provenance"], provenance)
+                with self.assertRaisesRegex(validator.ContractError, "provenance"):
+                    self.validate_fixture(paths)
+
+    def test_historical_provenance_installed_checksum_drift_is_rejected(self) -> None:
+        for key in ("manifest", "report"):
+            with self.subTest(file=key), tempfile.TemporaryDirectory() as temp:
+                paths = self.make_fixture(Path(temp))
+                provenance = json.loads(paths["provenance"].read_text(encoding="utf-8"))
+                provenance["approvedSourceSha"] = "2" * 40
+                self.rewrite_json(paths["provenance"], provenance)
+                paths[key].chmod(0o644)
+                with paths[key].open("a", encoding="utf-8") as target:
+                    target.write("\n")
+                paths[key].chmod(0o444)
+                with self.assertRaisesRegex(validator.ContractError, "checksum|reportSha256"):
+                    self.validate_fixture(paths)
 
     def test_provenance_prepare_wrapper_digest_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

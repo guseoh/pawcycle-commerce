@@ -71,6 +71,14 @@ python3 "$provenance_tool"   --source-root "$source_root"   --dataset-dir "$data
 
 [[ "$(stat -c '%a' "$dataset_dir/provenance.json")" == '444' ]]
 
+provenance_checksum_before="$(sha256sum "$dataset_dir/provenance.json")"
+if python3 "$provenance_tool" --source-root "$source_root" --dataset-dir "$dataset_dir" >"$tmp/provenance-overwrite.log" 2>&1; then
+  printf 'provenance tool overwrote an existing immutable provenance\n' >&2
+  exit 1
+fi
+grep -Fq 'provenance.json already exists; do not overwrite immutable provenance' "$tmp/provenance-overwrite.log"
+[[ "$(sha256sum "$dataset_dir/provenance.json")" == "$provenance_checksum_before" ]]
+
 python3 - \
   "$dataset_dir/provenance.json" \
   "$source_root/scripts/prepare-product-scale-data.py" \

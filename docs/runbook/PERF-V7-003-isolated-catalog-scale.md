@@ -153,7 +153,8 @@ sudo bash infra/performance/catalog-isolated/test-isolated-catalog-contract.sh
 - digest-pinned Backend image
 - config/password/dataset ownership/mode
 - manifest/report/provenance regular non-symlink
-- approved source SHA와 source marker 일치
+- current approved execution source SHA와 source marker 일치
+- immutable provenance origin SHA 형식과 Dataset 생성 입력 digest compatibility
 - approved source의 generator/base digest
 - manifest/report/provenance checksum 연결
 - Product/SKU/Inventory cardinality
@@ -397,7 +398,7 @@ approved source marker
 
 `provenance.json`은 다음을 연결한다.
 
-- approved source SHA
+- Dataset 생성·증명 origin source SHA (`approvedSourceSha`)
 - prepare wrapper SHA-256
 - Data V2 generator SHA-256
 - base manifest SHA-256
@@ -408,6 +409,21 @@ approved source marker
 - total Product count
 
 이미 `provenance.json`이 존재하면 덮어쓰지 않고 fail-closed한다.
+
+현재 approved source SHA는 실제 실행 코드 identity다. source directory basename과
+`.approved-sha`는 현재 승인 SHA와 정확히 일치해야 하며 ownership/mode와 `.git` 부재 계약도 유지한다.
+provenance의 `approvedSourceSha`는 Dataset을 처음 생성·증명한 immutable origin이며
+유효한 lowercase 40-character SHA여야 한다.
+
+Validator는 origin이 현재 source SHA와 같으면 `EXACT`, 다르면 Dataset 생성 입력인
+prepare wrapper, Data V2 generator, base manifest digest가 모두 현재 source와 같을 때만
+`DIGEST_EQUIVALENT`로 기존 Dataset을 재사용한다. 두 경우 모두 provenance schema/field set,
+dataset ID, seed, productsTotal, manifest/report 실제 checksum과 기존 cardinality/relationship
+계약 전체를 검증한다. 생성 입력이 하나라도 바뀌면 compatible로 취급하지 않으며 새
+Dataset/provenance 절차가 필요하다. 기존 provenance를 rebind/replace/delete하지 않는다.
+
+Preflight summary의 `approved_source_sha`는 계속 현재 execution source SHA를 뜻한다.
+`dataset_origin_source_sha`와 `dataset_source_compatibility`로 origin과 compatibility를 구분한다.
 
 ## Runtime config와 Secret 경계
 
@@ -615,9 +631,9 @@ catalog_isolation_preflight=PASS
 preflight는 다음을 함께 검증한다.
 
 ```text
-approved source SHA
+current approved execution source SHA
 + generator/base digest
-+ provenance
++ immutable provenance origin + EXACT / DIGEST_EQUIVALENT compatibility
 + manifest/report digest
 + dataset cardinality
 + runtime config/schema identity

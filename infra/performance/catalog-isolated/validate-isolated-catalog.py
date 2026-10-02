@@ -325,10 +325,16 @@ def validate_dataset(
     if report.get("baseManifestSha256") != source["base_manifest_sha256"]:
         raise ContractError("dataset base manifest digest does not match approved source")
 
+    origin_sha = provenance.get("approvedSourceSha")
+    if not isinstance(origin_sha, str) or not SHA40.fullmatch(origin_sha):
+        raise ContractError(
+            "dataset provenance approvedSourceSha must contain a 40-character lowercase SHA"
+        )
+
     expected_provenance = {
         "schemaVersion": 1,
         "datasetId": dataset_id,
-        "approvedSourceSha": source["approved_sha"],
+        "approvedSourceSha": origin_sha,
         "prepareWrapperSha256": source["prepare_wrapper_sha256"],
         "dataGeneratorSha256": source["data_generator_sha256"],
         "baseManifestSha256": source["base_manifest_sha256"],
@@ -395,6 +401,10 @@ def validate_dataset(
         "skus_total": sku_total,
         "manifest_sha256": generated_sha,
         "approved_source_sha": source["approved_sha"],
+        "dataset_origin_source_sha": origin_sha,
+        "dataset_source_compatibility": (
+            "EXACT" if origin_sha == source["approved_sha"] else "DIGEST_EQUIVALENT"
+        ),
         "provenance_sha256": file_sha256(provenance_path),
     }
 
