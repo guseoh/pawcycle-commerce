@@ -53,6 +53,8 @@ mkdir -p   "$source_root/infra/performance"   "$source_root/scripts"   "$source_
 
 cp -a "$REPO_ROOT/infra/performance/catalog-isolated" "$source_root/infra/performance/"
 cp -a "$REPO_ROOT/infra/performance/k6" "$source_root/infra/performance/"
+mkdir -p "$source_root/infra/production"
+cp "$REPO_ROOT/infra/production/diagnose-backend-state.sh" "$source_root/infra/production/"
 cp "$REPO_ROOT/scripts/prepare-product-scale-data.py" "$source_root/scripts/"
 cp "$REPO_ROOT/scripts/generate-product-data-v2.py" "$source_root/scripts/"
 cp   "$REPO_ROOT/backend/src/main/resources/catalog/demo-catalog.json"   "$source_root/backend/src/main/resources/catalog/demo-catalog.json"
@@ -354,10 +356,31 @@ exit 0
 EOF
 chmod +x "$fake_bin/k6"
 
-cat >"$fake_bin/ssh" <<'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
+cat >"$fake_bin/ssh" <<'PY'
+#!/usr/bin/env python3
+import shlex
+import sys
+
+command = sys.argv[-1]
+if command.startswith("bash -s -- "):
+    phase = shlex.split(command)[-1]
+    sys.stdin.read()
+    production = ["scope=production", "generated_at_epoch=1791000000",
+                  "production_assessment=READY", "release_coordination=stable",
+                  "docker_query=ok", "backend=healthy", "api_products_http=200",
+                  "metrics_proxy_http=200"]
+    observability = ["status=NORMAL", "production_assessment=READY", "prometheus_target=up"]
+    print("__PAWCYCLE_GATE_PRODUCTION_BEGIN__")
+    print("\n".join(production))
+    print("__PAWCYCLE_GATE_PRODUCTION_END__")
+    print("__PAWCYCLE_GATE_OBSERVABILITY_BEGIN__")
+    print("\n".join(observability))
+    print("__PAWCYCLE_GATE_OBSERVABILITY_END__")
+    print(f"__PAWCYCLE_GATE_STATUS__ phase={phase} source_exit=0 production_exit=0 observability_exit=0 production_read_exit=0 observability_read_exit=0")
+    sys.exit(0)
+sys.exit(1)
+PY
+cp "$fake_bin/ssh" "$tmp/gate-valid-ssh"
 cat >"$fake_bin/oci" <<'PY'
 #!/usr/bin/env python3
 import datetime as dt
@@ -755,9 +778,14 @@ fi
 run_capacity() {
   PATH="${RUNNER_PATH:-$fake_bin:$PATH}" FAKE_K6_LOG="$k6_log" \
     FAKE_SSH_LOG="$ssh_log" \
+    FAKE_GATE_SCRIPT_LOG="$tmp/gate-script.log" \
+    FAKE_GATE_MODE="${FAKE_GATE_MODE:-normal}" \
+    FAKE_SSH_COLLECTOR_MODE="${FAKE_SSH_COLLECTOR_MODE:-normal}" \
     FAKE_K6_HOLD="${FAKE_K6_HOLD:-0}" \
     FAKE_K6_PID_FILE="${FAKE_K6_PID_FILE:-}" \
     FAKE_K6_SIGNAL_LOG="${FAKE_K6_SIGNAL_LOG:-}" \
+    FAKE_SSH_PID_FILE="${FAKE_SSH_PID_FILE:-}" \
+    FAKE_SSH_SIGNAL_LOG="${FAKE_SSH_SIGNAL_LOG:-}" \
     "$BASH" "$k6_runner" \
     --source-root "$source_root" \
     --target-url 'http://127.0.0.1:18080' \
@@ -858,11 +886,7 @@ fi
 [[ ! -s "$k6_log" ]]
 rm -f "$results_dir/stale.json"
 
-cat >"$fake_bin/ssh" <<'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
-chmod +x "$fake_bin/ssh"
+cp "$tmp/gate-valid-ssh" "$fake_bin/ssh"
 : >"$k6_log"
 assert_capacity_rejected 'collector start failure' 'Host evidence collector did not start' --evidence-ssh-target app01 --isolated-host-port 18081
 clear_capacity_results
@@ -872,6 +896,8 @@ cat >"$fake_bin/ssh" <<'PY'
 import datetime as dt
 import json
 import os
+import shlex
+import signal
 import sys
 import time
 
@@ -879,19 +905,85 @@ phases = {
     phase: {"count": 1.0, "sumSeconds": 0.25, "maxSeconds": 0.125}
     for phase in ("count-query", "list-query", "row-mapping", "repository-total")
 }
+arguments = sys.argv[1:]
+command = arguments[-1]
 with open(os.environ["FAKE_SSH_LOG"], "a", encoding="utf-8") as stream:
-    stream.write(json.dumps({"executable": sys.argv[0], "argv": sys.argv[1:],
+    stream.write(json.dumps({"executable": sys.argv[0], "argv": arguments,
                              "msysArgConvExcl": os.environ.get("MSYS2_ARG_CONV_EXCL")}) + "\n")
+
+if command.startswith("bash -s -- "):
+    phase = shlex.split(command)[-1]
+    remote_script = sys.stdin.read()
+    script_log = os.environ.get("FAKE_GATE_SCRIPT_LOG")
+    if script_log:
+        with open(script_log, "a", encoding="utf-8") as stream:
+            stream.write(remote_script + "\n")
+    mode = os.environ.get("FAKE_GATE_MODE", "normal")
+    production = ["scope=production", f"generated_at_epoch={int(time.time())}",
+                  "production_assessment=READY", "release_coordination=stable",
+                  "docker_query=ok", "backend=healthy", "api_products_http=200",
+                  "metrics_proxy_http=200"]
+    observability = ["status=NORMAL", "production_assessment=READY", "prometheus_target=up"]
+    production_exit = 0
+    observability_exit = 0
+    if mode == "production-failure" and phase == "pre":
+        production[2] = "production_assessment=DEGRADED"
+        observability = ["status=DEGRADED", "production_assessment=DEGRADED", "prometheus_target=up"]
+        production_exit = 1
+        observability_exit = 1
+    elif mode == "snapshot-validation-failure" and phase == "post":
+        production = [line for line in production if not line.startswith("backend=")]
+        observability = ["status=UNKNOWN", "production_assessment=UNKNOWN", "prometheus_target=up"]
+        observability_exit = 1
+    print("__PAWCYCLE_GATE_PRODUCTION_BEGIN__")
+    print("\n".join(production))
+    print("__PAWCYCLE_GATE_PRODUCTION_END__")
+    print("__PAWCYCLE_GATE_OBSERVABILITY_BEGIN__")
+    print("\n".join(observability))
+    print("__PAWCYCLE_GATE_OBSERVABILITY_END__")
+    print(f"__PAWCYCLE_GATE_STATUS__ phase={phase} source_exit=0 production_exit={production_exit} observability_exit={observability_exit} production_read_exit=0 observability_read_exit=0")
+    raise SystemExit(0)
+
+collector_mode = os.environ.get("FAKE_SSH_COLLECTOR_MODE", "normal")
+if collector_mode == "start-fail":
+    raise SystemExit(1)
+
 start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=10)
-for second in range(0, 121, 5):
+sample_seconds = (0,) if collector_mode in {"load-fail", "hold"} else range(0, 121, 5)
+def sample(second):
     print(json.dumps({
         "timestampUtc": (start + dt.timedelta(seconds=second)).isoformat().replace("+00:00", "Z"),
         "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"},
         "productDiscoveryPhases": phases,
     }), flush=True)
+for second in sample_seconds:
+    sample(second)
+
+if collector_mode == "load-fail":
+    while not os.path.getsize(os.environ["FAKE_K6_LOG"]):
+        time.sleep(0.05)
+    time.sleep(3)
+    raise SystemExit(1)
+if collector_mode == "hold":
+    signal_names = {signal.SIGTERM: "TERM", signal.SIGINT: "INT", signal.SIGHUP: "HUP"}
+    def stop(signum, _frame):
+        path = os.environ.get("FAKE_SSH_SIGNAL_LOG")
+        if path:
+            with open(path, "a", encoding="utf-8") as stream:
+                stream.write(signal_names[signum] + "\n")
+        raise SystemExit(0)
+    for signum in signal_names:
+        signal.signal(signum, stop)
+    pid_file = os.environ.get("FAKE_SSH_PID_FILE")
+    if pid_file:
+        with open(pid_file, "w", encoding="utf-8") as stream:
+            stream.write(str(os.getpid()) + "\n")
+    while True:
+        time.sleep(1)
 time.sleep(2)
 PY
 chmod +x "$fake_bin/ssh"
+cp "$fake_bin/ssh" "$tmp/full-capacity-ssh"
 
 assert_capacity_cli_rejected() {
   : >"$ssh_log"
@@ -913,11 +1005,16 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
     calls = [json.loads(line) for line in stream]
-assert len(calls) == 6
-for call in calls:
-    assert call["executable"].endswith("/bin/ssh")
-    assert call["msysArgConvExcl"] == "*"
-    assert call["argv"] == [
+assert len(calls) == 18
+for stage_index in range(6):
+    pre_gate, collector, post_gate = calls[stage_index * 3:stage_index * 3 + 3]
+    for call in (pre_gate, collector, post_gate):
+        assert call["executable"].endswith("/bin/ssh")
+        assert call["msysArgConvExcl"] == "*"
+        assert call["argv"][:3] == ["-o", "BatchMode=yes", "app01"]
+    assert pre_gate["argv"][3].startswith("bash -s -- ") and pre_gate["argv"][3].endswith(" pre")
+    assert post_gate["argv"][3].startswith("bash -s -- ") and post_gate["argv"][3].endswith(" post")
+    assert collector["argv"] == [
         "-o", "BatchMode=yes", "app01",
         f"sudo -n python3 '/opt/pawcycle-performance/source/{sys.argv[2]}/infra/performance/catalog-isolated/collect-stage-evidence.py' sample --port '18081' --duration-seconds 165",
     ]
@@ -927,6 +1024,13 @@ grep -q "/opt/pawcycle-performance/source/$approved_sha/infra/performance/catalo
 [[ "$(wc -l <"$k6_log")" -eq 6 ]]
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
 [[ -f "$results_dir/$dataset_id-250rps-evidence.json" ]]
+grep -Fxq 'production_assessment=READY' "$results_dir/$dataset_id-25rps-pre-production-gate.txt"
+grep -Fxq 'status=NORMAL' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
+[[ "$(wc -l <"$results_dir/$dataset_id-25rps-pre-production-gate.txt")" -eq 8 ]]
+[[ "$(wc -l <"$results_dir/$dataset_id-25rps-post-observability-gate.txt")" -eq 3 ]]
+grep -Fq 'sudo -n bash "$diagnostic" --scope production >"$production_result"' "$tmp/gate-script.log"
+grep -Fq -- '--production-result "$production_result"' "$tmp/gate-script.log"
+grep -Fq 'bash "$diagnostic" --scope observability' "$tmp/gate-script.log"
 grep -q 'TARGET_RPS=25' "$k6_log"
 grep -q 'TARGET_RPS=250' "$k6_log"
 grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
@@ -936,13 +1040,47 @@ clear_capacity_results
 : >"$ssh_log"
 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 25 >/dev/null
 [[ "$(wc -l <"$k6_log")" -eq 1 ]]
-[[ "$(wc -l <"$ssh_log")" -eq 1 ]]
+[[ "$(wc -l <"$ssh_log")" -eq 3 ]]
 grep -q 'TARGET_RPS=25' "$k6_log"
 [[ -f "$results_dir/$dataset_id-25rps.json" ]]
 [[ -f "$results_dir/$dataset_id-25rps-host.jsonl" ]]
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
-[[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 3 ]]
+for phase in pre post; do
+  [[ -s "$results_dir/$dataset_id-25rps-$phase-production-gate.txt" ]]
+  [[ -s "$results_dir/$dataset_id-25rps-$phase-observability-gate.txt" ]]
+  [[ -s "$results_dir/$dataset_id-25rps-$phase-gate-context.txt" ]]
+done
+[[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 9 ]]
 
+# Production failure preserves its raw snapshot and the Observability result, and blocks load.
+clear_capacity_results
+: >"$k6_log"
+if FAKE_GATE_MODE=production-failure run_capacity --evidence-ssh-target app01 \
+  --isolated-host-port 18081 --target-rps 50 >"$tmp/production-gate-failure" 2>&1; then
+  printf 'runner accepted a failed Production gate\n' >&2
+  exit 1
+fi
+[[ ! -s "$k6_log" ]]
+grep -Fxq 'production_assessment=DEGRADED' "$results_dir/$dataset_id-50rps-pre-production-gate.txt"
+grep -Fxq 'status=DEGRADED' "$results_dir/$dataset_id-50rps-pre-observability-gate.txt"
+grep -Fxq 'production_diagnostic_exit=1' "$results_dir/$dataset_id-50rps-pre-gate-context.txt"
+grep -Fxq 'observability_diagnostic_exit=1' "$results_dir/$dataset_id-50rps-pre-gate-context.txt"
+clear_capacity_results
+
+# An invalid snapshot is retained with Observability UNKNOWN after a completed fake stage.
+: >"$k6_log"
+if FAKE_GATE_MODE=snapshot-validation-failure run_capacity --evidence-ssh-target app01 \
+  --isolated-host-port 18081 >"$tmp/snapshot-validation-failure" 2>&1; then
+  printf 'runner accepted an UNKNOWN post-load Observability gate\n' >&2
+  exit 1
+fi
+[[ "$(wc -l <"$k6_log")" -eq 1 ]]
+grep -q 'TARGET_RPS=25' "$k6_log"
+[[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
+! grep -q '^backend=' "$results_dir/$dataset_id-25rps-post-production-gate.txt"
+grep -Fxq 'status=UNKNOWN' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
+grep -Fxq 'production_assessment=UNKNOWN' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
+grep -Fxq 'observability_diagnostic_exit=1' "$results_dir/$dataset_id-25rps-post-gate-context.txt"
 clear_capacity_results
 selected_python="$tmp/python with spaces/interpreter"
 mkdir -p "$(dirname "$selected_python")"
@@ -994,6 +1132,8 @@ run_capacity --evidence-ssh-target fixture-user@fixture-host --isolated-host-por
 [[ -s "$results_dir/$dataset_id-25rps.json" ]]
 [[ -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
 [[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
+[[ -s "$results_dir/$dataset_id-25rps-pre-production-gate.txt" ]]
+[[ -s "$results_dir/$dataset_id-25rps-post-observability-gate.txt" ]]
 if grep -Fq "$identity_file" "$tmp/explicit-output" "$tmp/explicit-error"; then
   printf 'SSH identity path appeared in runner output\n' >&2
   exit 1
@@ -1004,14 +1144,16 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
     calls = [json.loads(line) for line in stream]
-assert len(calls) == 1
-call = calls[0]
-assert call["executable"] == sys.argv[2]
-assert call["msysArgConvExcl"] == "*"
-assert call["argv"] == [
-    "-o", "BatchMode=yes", "-i", sys.argv[3], "fixture-user@fixture-host",
-    f"sudo -n python3 '/opt/pawcycle-performance/source/{sys.argv[4]}/infra/performance/catalog-isolated/collect-stage-evidence.py' sample --port '18081' --duration-seconds 165",
-]
+assert len(calls) == 3
+for call in calls:
+    assert call["executable"] == sys.argv[2]
+    assert call["msysArgConvExcl"] == "*"
+    assert call["argv"][:5] == ["-o", "BatchMode=yes", "-i", sys.argv[3], "fixture-user@fixture-host"]
+assert calls[0]["argv"][5].startswith("bash -s -- ") and calls[0]["argv"][5].endswith(" pre")
+assert calls[1]["argv"][5] == (
+    f"sudo -n python3 '/opt/pawcycle-performance/source/{sys.argv[4]}/infra/performance/catalog-isolated/collect-stage-evidence.py' sample --port '18081' --duration-seconds 165"
+)
+assert calls[2]["argv"][5].startswith("bash -s -- ") and calls[2]["argv"][5].endswith(" post")
 PY
 clear_capacity_results
 assert_capacity_cli_rejected 'explicit SSH executable absent' 'ssh is required for evidence collection' \
@@ -1022,28 +1164,10 @@ assert_capacity_cli_rejected 'explicit SSH executable not executable' 'ssh is re
 assert_capacity_cli_rejected 'SSH command string is not an executable' 'ssh is required for evidence collection' \
   --evidence-ssh-target app01 --isolated-host-port 18081 --evidence-ssh-executable 'ssh -v'
 
-cat >"$fake_bin/ssh" <<'PY'
-#!/usr/bin/env python3
-import datetime as dt
-import json
-import os
-import time
-
-phases = {
-    phase: {"count": 1.0, "sumSeconds": 0.25, "maxSeconds": 0.125}
-    for phase in ("count-query", "list-query", "row-mapping", "repository-total")
-}
-print(json.dumps({"timestampUtc": "2026-09-24T00:00:00Z",
-                  "container": {"restartCount": 0, "oomKilled": False, "health": "healthy"},
-                  "productDiscoveryPhases": phases}), flush=True)
-while not os.path.getsize(os.environ["FAKE_K6_LOG"]):
-    time.sleep(0.05)
-time.sleep(3)
-raise SystemExit(1)
-PY
-chmod +x "$fake_bin/ssh"
+cp "$tmp/full-capacity-ssh" "$fake_bin/ssh"
 : >"$k6_log"
-if FAKE_K6_HOLD=1 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
+if FAKE_K6_HOLD=1 FAKE_SSH_COLLECTOR_MODE=load-fail run_capacity \
+  --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
   printf 'isolated k6 runner succeeded after evidence collector failure\n' >&2
   exit 1
 fi
@@ -1053,21 +1177,13 @@ grep -q 'TARGET_RPS=25' "$k6_log"
 [[ ! -e "$results_dir/$dataset_id-50rps-host.jsonl" ]]
 clear_capacity_results
 
-cat >"$fake_bin/ssh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-trap 'printf "TERM\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' TERM
-trap 'printf "INT\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' INT
-trap 'printf "HUP\n" >>"${FAKE_SSH_SIGNAL_LOG:?}"; exit 0' HUP
-printf '%s\n' "$$" >"${FAKE_SSH_PID_FILE:?}"
-printf '{"timestampUtc":"2026-09-24T00:00:00Z","container":{"restartCount":0,"oomKilled":false,"health":"healthy"},"productDiscoveryPhases":{"count-query":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"list-query":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"row-mapping":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125},"repository-total":{"count":1.0,"sumSeconds":0.25,"maxSeconds":0.125}}}\n'
-while :; do sleep 1; done
-EOF
-chmod +x "$fake_bin/ssh"
+cp "$tmp/full-capacity-ssh" "$fake_bin/ssh"
 signal_dir="$tmp/signal-test"
 mkdir -p "$signal_dir"
 : >"$k6_log"
 PATH="$fake_bin:$PATH" FAKE_K6_LOG="$k6_log" FAKE_K6_HOLD=1 \
+  FAKE_SSH_LOG="$tmp/signal-ssh.log" FAKE_GATE_SCRIPT_LOG="$tmp/signal-gate-script.log" \
+  FAKE_GATE_MODE=normal FAKE_SSH_COLLECTOR_MODE=hold \
   FAKE_K6_PID_FILE="$signal_dir/k6.pid" FAKE_K6_SIGNAL_LOG="$signal_dir/k6.signals" \
   FAKE_SSH_PID_FILE="$signal_dir/ssh.pid" FAKE_SSH_SIGNAL_LOG="$signal_dir/ssh.signals" \
   "$BASH" "$k6_runner" --source-root "$source_root" \
