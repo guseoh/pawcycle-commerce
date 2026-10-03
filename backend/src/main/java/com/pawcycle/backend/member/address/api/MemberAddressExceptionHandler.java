@@ -1,5 +1,6 @@
 package com.pawcycle.backend.member.address.api;
 
+import com.pawcycle.backend.common.logging.SafeExceptionLogger;
 import com.pawcycle.backend.commerce.CommerceException;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.member.address.application.MemberAddressException;
@@ -28,7 +29,7 @@ public class MemberAddressExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   ResponseEntity<ApiErrorResponse> unexpected(Exception exception) {
-    log.error("Unexpected exception while processing member address request", exception);
+    SafeExceptionLogger.error(log, "Unexpected exception while processing member address request", exception);
     return ResponseEntity.internalServerError()
         .body(ApiErrorResponse.withoutFieldErrors(
             "MEMBER_ADDRESS_UNAVAILABLE", "배송지 요청을 처리하지 못했습니다."));

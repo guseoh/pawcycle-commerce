@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.common.logging.SafeExceptionLogger;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ public class CommerceExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   ResponseEntity<ApiErrorResponse> unexpected(Exception exception) {
-    log.error("Unexpected exception while processing commerce request", exception);
+    SafeExceptionLogger.error(log, "Unexpected exception while processing commerce request", exception);
     return ResponseEntity.internalServerError()
         .body(ApiErrorResponse.withoutFieldErrors("INTERNAL_ERROR", "요청을 처리할 수 없습니다."));
   }

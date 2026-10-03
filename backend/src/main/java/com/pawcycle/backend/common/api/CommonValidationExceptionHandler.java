@@ -22,7 +22,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
   "com.pawcycle.backend.catalog.admin.api",
   "com.pawcycle.backend.catalog.engagement.api",
   "com.pawcycle.backend.member.address.api",
-  "com.pawcycle.backend.subscription"
+  "com.pawcycle.backend.subscription",
+  "com.pawcycle.backend.recommendation"
 })
 public class CommonValidationExceptionHandler {
   @ExceptionHandler(MethodArgumentNotValidException.class)

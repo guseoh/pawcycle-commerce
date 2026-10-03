@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.admin.api;
 
+import com.pawcycle.backend.common.logging.SafeExceptionLogger;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogNotFoundException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogValidationException;
@@ -37,7 +38,7 @@ public class AdminCatalogExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception) {
-    log.error("Unexpected exception while processing admin catalog request", exception);
+    SafeExceptionLogger.error(log, "Unexpected exception while processing admin catalog request", exception);
     return ResponseEntity.internalServerError()
         .body(
             ApiErrorResponse.withoutFieldErrors(
