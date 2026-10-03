@@ -221,6 +221,19 @@ infra/performance/k6/**
 scripts/prepare-product-scale-data.py
 scripts/generate-product-data-v2.py
 backend/src/main/resources/catalog/demo-catalog.json
+infra/production/diagnose-backend-state.sh
+```
+
+app01과 Desktop의 exact-SHA source는 모두 위 선택 경로를 사용한다. `infra/production/**` 전체를 archive하지 않고 runner가 검증·실행하는 `diagnose-backend-state.sh` 단일 파일만 포함한다. materialization 순서는 다음과 같다.
+
+```text
+approved SHA
+→ selective immutable source materialization
+→ infra/performance/**
+→ required generator/catalog inputs
+→ infra/production/diagnose-backend-state.sh
+→ .approved-sha
+→ immutable permission normalization
 ```
 
 app01에서는 archive 추출과 `.approved-sha` 작성이 끝난 뒤, 운영 실행 전에 source tree를 다음처럼 정규화한다.
@@ -267,7 +280,7 @@ cd "$SOURCE_ROOT"
 
 desktop도 평소 작업 checkout을 그대로 사용하지 않는다.
 
-k6를 실행하는 Bash 환경에 승인 merge SHA의 archive를 별도 materialize한다.
+k6를 실행하는 Bash 환경에 승인 merge SHA의 archive를 별도 materialize한다. app01과 같은 선택 경로를 사용하여 `infra/production/diagnose-backend-state.sh`를 포함해야 한다. 이 단일 파일을 위해 `infra/production/**` 전체를 materialize하지 않는다.
 
 권장 예:
 

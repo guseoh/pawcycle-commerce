@@ -823,6 +823,16 @@ export PAWCYCLE_PERF_OCI_DB_SYSTEM_ID='ocid1.mysqldbsystem.fixture'
 export OCI_CLI_PROFILE='fixture'
 export OCI_CLI_REGION='fixture-region'
 
+diagnostic_script="$source_root/infra/production/diagnose-backend-state.sh"
+mv "$diagnostic_script" "$tmp/diagnose-backend-state.sh"
+: >"$ssh_log"
+assert_capacity_rejected 'approved Production diagnostic missing from source' \
+  'approved Production diagnostic is missing or invalid' \
+  --evidence-ssh-target app01 --isolated-host-port 18081
+[[ ! -s "$ssh_log" ]]
+mv "$tmp/diagnose-backend-state.sh" "$diagnostic_script"
+rmdir "$results_dir"
+
 assert_capacity_rejected 'unapproved source root' 'k6 runner must run from the approved source root' \
   --evidence-ssh-target app01 --isolated-host-port 18081 --source-root "$tmp"
 assert_capacity_rejected 'unsupported dataset' 'Usage:' \
