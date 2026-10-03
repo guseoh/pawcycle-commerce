@@ -1028,6 +1028,23 @@ grep -Fxq 'production_assessment=READY' "$results_dir/$dataset_id-25rps-pre-prod
 grep -Fxq 'status=NORMAL' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
 [[ "$(wc -l <"$results_dir/$dataset_id-25rps-pre-production-gate.txt")" -eq 8 ]]
 [[ "$(wc -l <"$results_dir/$dataset_id-25rps-post-observability-gate.txt")" -eq 3 ]]
+python3 - "$results_dir/$dataset_id-25rps-pre-production-gate.txt" \
+  "$results_dir/$dataset_id-25rps-post-observability-gate.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+production_lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+assert [line.split("=", 1)[0] for line in production_lines] == [
+    "scope", "generated_at_epoch", "production_assessment", "release_coordination",
+    "docker_query", "backend", "api_products_http", "metrics_proxy_http",
+]
+assert re.fullmatch(r"[0-9]{10}", production_lines[1].split("=", 1)[1])
+observability_lines = Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()
+assert observability_lines == [
+    "status=NORMAL", "production_assessment=READY", "prometheus_target=up",
+]
+PY
 grep -Fq 'sudo -n bash "$diagnostic" --scope production >"$production_result"' "$tmp/gate-script.log"
 grep -Fq -- '--production-result "$production_result"' "$tmp/gate-script.log"
 grep -Fq 'bash "$diagnostic" --scope observability' "$tmp/gate-script.log"
