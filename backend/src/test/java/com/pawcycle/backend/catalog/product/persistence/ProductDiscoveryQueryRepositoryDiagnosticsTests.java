@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.product.application.ProductListView;
@@ -24,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,6 +36,12 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
   private static final String METRIC = "pawcycle.catalog.product.discovery.phase";
   private static final String DIAGNOSTICS_PROPERTY =
       "pawcycle.catalog.product.discovery.diagnostics.enabled";
+  private static final String BASE_COUNT_SQL =
+      "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id ";
+  private static final String V3_COUNT_SQL =
+      "SELECT /*+ JOIN_PREFIX(p) NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id";
+  private static final String DEFAULT_COUNT_FILTERS =
+      " WHERE p.display_status='PUBLIC' AND c.active=true AND b.active=true";
   private static final Set<String> PHASES =
       Set.of("count-query", "list-query", "row-mapping", "repository-total");
 
@@ -63,6 +72,57 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
           assertThat(result.items()).hasSize(1);
           assertThat(result.items().getFirst().productId()).isEqualTo(42L);
           assertThat(context.getBean(SimpleMeterRegistry.class).getMeters()).isEmpty();
+        });
+  }
+
+  @Test
+  void unfilteredNewestAndRecommendedCountsUseTheV3ProductFirstJoinOrder() {
+    contextRunner.run(
+        context -> {
+          EntityManager entityManager = context.getBean(EntityManager.class);
+          stubSuccessfulQueries(entityManager, List.of(productRow()));
+          ProductDiscoveryQueryRepository repository =
+              context.getBean(ProductDiscoveryQueryRepository.class);
+
+          discover(repository, ProductSort.NEWEST);
+          discover(repository, ProductSort.RECOMMENDED);
+          discover(repository, ProductSort.PRICE_ASC);
+
+          ArgumentCaptor<String> countSql = ArgumentCaptor.forClass(String.class);
+          verify(entityManager, times(3)).createNativeQuery(countSql.capture());
+          assertThat(countSql.getAllValues().subList(0, 2))
+              .containsOnly(V3_COUNT_SQL + DEFAULT_COUNT_FILTERS);
+          assertThat(countSql.getAllValues().get(2))
+              .isEqualTo(BASE_COUNT_SQL + DEFAULT_COUNT_FILTERS);
+        });
+  }
+
+  @Test
+  void filteredNewestAndRecommendedCountsKeepTheGeneralCountJoins() {
+    contextRunner.run(
+        context -> {
+          EntityManager entityManager = context.getBean(EntityManager.class);
+          stubSuccessfulQueries(entityManager, List.of(productRow()));
+          ProductDiscoveryQueryRepository repository =
+              context.getBean(ProductDiscoveryQueryRepository.class);
+
+          for (ProductSort sort : List.of(ProductSort.NEWEST, ProductSort.RECOMMENDED)) {
+            repository.read(
+                "term", null, null, null, null, List.of(), null, null, null, null, 0, 20, sort);
+          }
+
+          ArgumentCaptor<String> countSql = ArgumentCaptor.forClass(String.class);
+          verify(entityManager, times(2)).createNativeQuery(countSql.capture());
+          assertThat(countSql.getAllValues())
+              .allSatisfy(
+                  statement ->
+                      assertThat(statement)
+                          .startsWith(BASE_COUNT_SQL + DEFAULT_COUNT_FILTERS)
+                          .contains(
+                              "LOWER(p.name) LIKE :p0",
+                              "LOWER(p.short_description) LIKE :p1",
+                              "LOWER(COALESCE(p.description,'')) LIKE :p2")
+                          .doesNotContain("JOIN_PREFIX", "NO_BNL", "FORCE INDEX"));
         });
   }
 
@@ -166,6 +226,11 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
 
   private static ProductListView discover(ProductDiscoveryQueryRepository repository) {
     return repository.read(null, null, null, 0, 20, ProductSort.NEWEST);
+  }
+
+  private static ProductListView discover(
+      ProductDiscoveryQueryRepository repository, ProductSort sort) {
+    return repository.read(null, null, null, 0, 20, sort);
   }
 
   private static void stubSuccessfulQueries(EntityManager entityManager, List<Tuple> rows) {
