@@ -115,11 +115,17 @@ public class ProductDiscoveryQueryRepository {
     int offset = Math.multiplyExact(page, size);
     List<QueryParameter> parameters = new ArrayList<>();
     String where = whereClause(q, petType, category, subcategory, brand, facets, minPrice, maxPrice, subscribable, purchasable, parameters);
+    boolean pageFirst = sort == ProductSort.NEWEST || sort == ProductSort.RECOMMENDED;
+    // Bound filters may benefit from selective indexes; constrain only the unfiltered page.
+    boolean orderedPageFirst =
+        pageFirst && parameters.isEmpty() && subscribable == null && purchasable == null;
+    String countSql =
+        orderedPageFirst
+            ? "SELECT /*+ JOIN_PREFIX(p) NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id"
+            : "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id ";
     Query countQuery =
         bind(
-            entityManager.createNativeQuery(
-                "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id "
-                    + where),
+            entityManager.createNativeQuery(countSql + where),
             parameters);
     Timer.Sample countSample = startDiagnosticTimer();
     Number total;
@@ -136,10 +142,6 @@ public class ProductDiscoveryQueryRepository {
           case REVIEW_COUNT -> " ORDER BY review_count DESC, p.id DESC";
           case NEWEST, RECOMMENDED -> " ORDER BY p.id DESC";
         };
-    boolean pageFirst = sort == ProductSort.NEWEST || sort == ProductSort.RECOMMENDED;
-    // Bound filters may benefit from selective indexes; constrain only the unfiltered page.
-    boolean orderedPageFirst =
-        pageFirst && parameters.isEmpty() && subscribable == null && purchasable == null;
     // LIMIT prevents MySQL from merging this derived table into the outer aggregation.
     String productSource =
         pageFirst
