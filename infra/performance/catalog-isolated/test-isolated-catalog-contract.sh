@@ -1257,7 +1257,8 @@ assert_capacity_cli_rejected 'SSH command string is not an executable' 'ssh is r
 
 cp "$tmp/full-capacity-ssh" "$fake_bin/ssh"
 : >"$k6_log"
-if FAKE_K6_HOLD=1 FAKE_K6_EMIT_OUTPUT=1 FAKE_SSH_COLLECTOR_MODE=load-fail run_capacity \
+if FAKE_K6_HOLD=1 FAKE_K6_EMIT_OUTPUT=1 FAKE_K6_SIGNAL_LOG="$tmp/load-fail-k6.signals" \
+  FAKE_SSH_COLLECTOR_MODE=load-fail run_capacity \
   --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
   printf 'isolated k6 runner succeeded after evidence collector failure\n' >&2
   exit 1
