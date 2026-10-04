@@ -4,6 +4,15 @@ set -Eeuo pipefail
 k6_pid=''
 collector_pid=''
 gate_transport_file=''
+k6_stdout=''
+k6_stderr=''
+k6_context=''
+k6_summary=''
+k6_host_samples=''
+k6_target_rps=''
+k6_started_at_utc=''
+k6_finished_at_utc=''
+k6_exit=''
 
 job_is_running() {
   local target_pid="$1" job_pid
@@ -22,6 +31,21 @@ stop_and_reap() {
   wait "$child_pid" 2>/dev/null || true
 }
 
+write_k6_context() {
+  [[ -n "$k6_context" ]] || return 0
+  local summary_present=false host_samples_present=false
+  [[ -s "$k6_summary" ]] && summary_present=true
+  [[ -s "$k6_host_samples" ]] && host_samples_present=true
+  {
+    printf 'target_rps=%s\n' "$k6_target_rps"
+    printf 'k6_started_at_utc=%s\n' "$k6_started_at_utc"
+    printf 'k6_finished_at_utc=%s\n' "$k6_finished_at_utc"
+    printf 'k6_exit=%s\n' "$k6_exit"
+    printf 'summary_present=%s\n' "$summary_present"
+    printf 'host_samples_present=%s\n' "$host_samples_present"
+  } >"$k6_context"
+}
+
 cleanup_children() {
   local exit_status=$?
   trap - EXIT INT TERM HUP
@@ -30,12 +54,30 @@ cleanup_children() {
     gate_transport_file=''
   fi
   if [[ -n "$k6_pid" ]]; then
-    stop_and_reap "$k6_pid"
+    if job_is_running "$k6_pid"; then
+      kill -TERM "$k6_pid" 2>/dev/null || true
+    fi
+    if wait "$k6_pid"; then
+      k6_exit=0
+    else
+      k6_exit=$?
+    fi
     k6_pid=''
+    k6_finished_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    write_k6_context
   fi
   if [[ -n "$collector_pid" ]]; then
     stop_and_reap "$collector_pid"
     collector_pid=''
+  fi
+  if [[ -n "$k6_context" ]]; then
+    if [[ "$k6_exit" == 'running' ]]; then
+      k6_exit='runner_interrupted'
+    fi
+    if [[ -n "$k6_started_at_utc" && -z "$k6_finished_at_utc" ]]; then
+      k6_finished_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    fi
+    write_k6_context
   fi
   exit "$exit_status"
 }
@@ -438,6 +480,19 @@ for target_rps in "${target_rates[@]}"; do
   fi
 
   host_samples="$results_dir/$dataset_id-${target_rps}rps-host.jsonl"
+  k6_target_rps="$target_rps"
+  k6_summary="$results_dir/$dataset_id-${target_rps}rps.json"
+  k6_stdout="$results_dir/$dataset_id-${target_rps}rps-k6.stdout.log"
+  k6_stderr="$results_dir/$dataset_id-${target_rps}rps-k6.stderr.log"
+  k6_context="$results_dir/$dataset_id-${target_rps}rps-k6-context.txt"
+  k6_host_samples="$host_samples"
+  k6_started_at_utc=''
+  k6_finished_at_utc=''
+  k6_exit='not_started'
+  : >"$k6_stdout"
+  : >"$k6_stderr"
+  write_k6_context
+
   remote_collector="$PAWCYCLE_PERF_APP01_ROOT/source/$approved_sha/infra/performance/catalog-isolated/collect-stage-evidence.py"
   # One remote-command argument; native Windows SSH must receive Linux paths unchanged.
   remote_command="sudo -n python3 '$remote_collector' sample --port '$isolated_host_port' --duration-seconds 165"
@@ -454,6 +509,9 @@ for target_rps in "${target_rates[@]}"; do
       stop_and_reap "$collector_pid"
     fi
     collector_pid=''
+    k6_finished_at_utc=''
+    k6_exit='not_started'
+    write_k6_context
     run_safety_gate "$target_rps" post || true
     printf 'Host evidence collector did not start\n' >&2
     exit 1
@@ -467,12 +525,24 @@ for target_rps in "${target_rates[@]}"; do
     -e "TARGET_RPS=$target_rps"
     -e "RESULTS_DIR=$results_dir"
     "$script_dir/isolated-capacity-api-products.js")
-  k6 "${k6_args[@]}" &
+  k6_started_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  k6_exit='running'
+  write_k6_context
+  k6 "${k6_args[@]}" >"$k6_stdout" 2>"$k6_stderr" &
   k6_pid=$!
   while job_is_running "$k6_pid"; do
     if ! job_is_running "$collector_pid"; then
-      stop_and_reap "$k6_pid"
+      if job_is_running "$k6_pid"; then
+        kill -TERM "$k6_pid" 2>/dev/null || true
+      fi
+      if wait "$k6_pid"; then
+        k6_exit=0
+      else
+        k6_exit=$?
+      fi
       k6_pid=''
+      k6_finished_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+      write_k6_context
       wait "$collector_pid" || true
       collector_pid=''
       run_safety_gate "$target_rps" post || true
@@ -481,8 +551,15 @@ for target_rps in "${target_rates[@]}"; do
     fi
     sleep 2
   done
-  wait "$k6_pid" || k6_ok=false
+  if wait "$k6_pid"; then
+    k6_exit=0
+  else
+    k6_exit=$?
+    k6_ok=false
+  fi
   k6_pid=''
+  k6_finished_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  write_k6_context
   if ! wait "$collector_pid"; then
     collector_pid=''
     run_safety_gate "$target_rps" post || true
