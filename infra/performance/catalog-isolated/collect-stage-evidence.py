@@ -122,6 +122,10 @@ OCI_METRICS = {
     "Statements": "sum",
     "StatementLatency": "mean",
 }
+OCI_METRIC_DIMENSIONS = {
+    "CPUUtilization": {"resourceType": "mysql"},
+    "MemoryUtilization": {"resourceType": "mysql"},
+}
 OCI_BUCKET_WIDTH = dt.timedelta(minutes=1)
 OCI_PUBLICATION_RETRY_INTERVAL_SECONDS = 20
 OCI_PUBLICATION_MAX_RETRIES = 6
@@ -428,19 +432,28 @@ def oci_points(metric, statistic, start, end):
     db_system = os.environ.get("PAWCYCLE_PERF_OCI_DB_SYSTEM_ID", "")
     if not compartment.startswith("ocid1.compartment.") or not db_system.startswith("ocid1.mysqldbsystem."):
         raise ValueError("OCI Monitoring resource identity is missing")
-    query = f'{metric}[1m]{{resourceID = "{db_system}"}}.{statistic}()'
+    dimensions = [f'resourceID = "{db_system}"']
+    dimensions.extend(f'{name} = "{value}"'
+                      for name, value in OCI_METRIC_DIMENSIONS.get(metric, {}).items())
+    query = f'{metric}[1m]{{{", ".join(dimensions)}}}.{statistic}()'
     try:
         raw = command("oci", "monitoring", "metric-data", "summarize-metrics-data",
                       "--compartment-id", compartment, "--namespace", "oci_mysql_database",
                       "--query-text", query, "--start-time", start, "--end-time", end,
                       "--resolution", "1m")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        raise ValueError(f"OCI Monitoring CLI failed for {metric}") from None
+    try:
         series = json.loads(raw)["data"]
-        if len(series) != 1:
-            raise ValueError("ambiguous or missing OCI metric stream")
+    except (json.JSONDecodeError, KeyError, TypeError):
+        raise ValueError(f"OCI Monitoring response invalid for {metric}") from None
+    if not isinstance(series, list) or len(series) != 1:
+        raise ValueError(f"OCI Monitoring stream cardinality mismatch for {metric}")
+    try:
         points = [oci_bucket_point(point["timestamp"], point["value"])
                   for item in series for point in item["aggregated-datapoints"]]
-    except (subprocess.SubprocessError, KeyError, ValueError) as exc:
-        raise ValueError(f"OCI Monitoring query failed for {metric}") from None
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(f"OCI Monitoring datapoints invalid for {metric}") from None
     return points
 
 
