@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+trap 'status=$?; printf "isolated catalog contract failed at line %s (exit %s)\n" "$LINENO" "$status" >&2' ERR
 
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || {
   printf 'test must run as root\n' >&2
