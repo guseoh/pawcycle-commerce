@@ -92,18 +92,60 @@ class EvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "swap activity counters"):
                 collector.parse_swap_counters(malformed)
 
-    def test_oci_projection_discards_resource_identity(self):
+    def test_cpu_and_memory_queries_select_mysql_host_and_project_points(self):
         response = {"data": [{"dimensions": {"resourceID": "resource-marker"},
                               "aggregated-datapoints": [
                                   {"timestamp": "2026-09-24T00:01:00Z", "value": 42}]}]}
         with mock.patch.dict(collector.os.environ, {
             "PAWCYCLE_PERF_OCI_COMPARTMENT_ID": "ocid1." + "compartment.fixture",
-            "PAWCYCLE_PERF_OCI_DB_SYSTEM_ID": "ocid1." + "mysqldbsystem.fixture"}), \
-             mock.patch.object(collector, "command", return_value=json.dumps(response)):
-            points = collector.oci_points("CPUUtilization", "mean",
-                                          "2026-09-24T00:00:00Z", "2026-09-24T00:02:00Z")
-        self.assertEqual(points, [{"windowStartUtc": "2026-09-24T00:00:00Z",
-                                   "windowEndUtc": "2026-09-24T00:01:00Z", "value": 42}])
+            "PAWCYCLE_PERF_OCI_DB_SYSTEM_ID": "ocid1." + "mysqldbsystem.fixture"}):
+            for metric in ("CPUUtilization", "MemoryUtilization"):
+                with self.subTest(metric=metric), \
+                     mock.patch.object(collector, "command", return_value=json.dumps(response)) as command:
+                    points = collector.oci_points(metric, "mean",
+                                                  "2026-09-24T00:00:00Z", "2026-09-24T00:02:00Z")
+                args = command.call_args[0]
+                query = args[args.index("--query-text") + 1]
+                expected_query = (
+                    f'{metric}[1m]{{resourceID = "ocid1.mysqldbsystem.fixture", '
+                    'resourceType = "mysql"}.mean()'
+                )
+                self.assertEqual(query, expected_query)
+                self.assertEqual(points, [{"windowStartUtc": "2026-09-24T00:00:00Z",
+                                           "windowEndUtc": "2026-09-24T00:01:00Z", "value": 42}])
+
+    def test_other_oci_metrics_keep_db_system_resource_id_only(self):
+        response = {"data": [{"aggregated-datapoints": [
+            {"timestamp": "2026-09-24T00:01:00Z", "value": 42}]}]}
+        with mock.patch.dict(collector.os.environ, {
+            "PAWCYCLE_PERF_OCI_COMPARTMENT_ID": "ocid1." + "compartment.fixture",
+            "PAWCYCLE_PERF_OCI_DB_SYSTEM_ID": "ocid1." + "mysqldbsystem.fixture"}):
+            for metric, statistic in (("ActiveConnections", "max"),
+                                      ("CurrentConnections", "max"),
+                                      ("Statements", "sum"),
+                                      ("StatementLatency", "mean")):
+                with self.subTest(metric=metric), \
+                     mock.patch.object(collector, "command", return_value=json.dumps(response)) as command:
+                    collector.oci_points(metric, statistic,
+                                        "2026-09-24T00:00:00Z", "2026-09-24T00:02:00Z")
+                args = command.call_args[0]
+                query = args[args.index("--query-text") + 1]
+                expected_query = f'{metric}[1m]{{resourceID = "ocid1.mysqldbsystem.fixture"}}.{statistic}()'
+                self.assertEqual(query, expected_query)
+
+    def test_oci_stream_cardinality_must_be_exactly_one(self):
+        stream = {"aggregated-datapoints": [
+            {"timestamp": "2026-09-24T00:01:00Z", "value": 42}]}
+        with mock.patch.dict(collector.os.environ, {
+            "PAWCYCLE_PERF_OCI_COMPARTMENT_ID": "ocid1." + "compartment.fixture",
+            "PAWCYCLE_PERF_OCI_DB_SYSTEM_ID": "ocid1." + "mysqldbsystem.fixture"}):
+            for streams in ([], [stream, stream]):
+                with self.subTest(streams=len(streams)), \
+                     mock.patch.object(collector, "command", return_value=json.dumps({"data": streams})):
+                    with self.assertRaisesRegex(
+                            ValueError, "^OCI Monitoring stream cardinality mismatch for CPUUtilization$"):
+                        collector.oci_points("CPUUtilization", "mean",
+                                             "2026-09-24T00:00:00Z", "2026-09-24T00:02:00Z")
 
     def test_preflight_reads_all_six_metrics_without_emitting_cli_payload(self):
         recent = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=3)
@@ -140,7 +182,12 @@ class EvidenceTest(unittest.TestCase):
              mock.patch.object(sys, "argv", ["collect-stage-evidence.py", "preflight"]), \
              contextlib.redirect_stderr(error):
             self.assertEqual(collector.main(), 1)
-        self.assertEqual(error.getvalue(), "evidence_collection=FAIL reason=OCI Monitoring query failed for CPUUtilization\n")
+        self.assertEqual(
+            error.getvalue(),
+            "evidence_collection=FAIL reason=OCI Monitoring CLI failed for CPUUtilization\n",
+        )
+        self.assertNotIn("private-marker", error.getvalue())
+        self.assertNotIn("ocid1.", error.getvalue())
         with mock.patch.dict(collector.os.environ, {}, clear=True), \
              mock.patch.object(collector, "command") as command:
             with self.assertRaisesRegex(ValueError, "resource identity is missing"):

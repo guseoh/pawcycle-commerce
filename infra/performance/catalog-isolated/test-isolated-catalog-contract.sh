@@ -879,12 +879,12 @@ RUNNER_PATH="$alias_path:$fake_bin:$PATH" assert_capacity_rejected 'Python 2 int
 assert_capacity_rejected 'explicit Python absent' 'Python 3 executable is required' --python-executable "$tmp/no-python" --evidence-ssh-target app01 --isolated-host-port 18081
 
 unset OCI_CLI_PROFILE
-assert_capacity_rejected 'missing OCI profile context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+assert_capacity_rejected 'missing OCI profile context' 'OCI Monitoring CLI failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
 export OCI_CLI_PROFILE='fixture'
 unset OCI_CLI_REGION
-assert_capacity_rejected 'missing OCI region context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+assert_capacity_rejected 'missing OCI region context' 'OCI Monitoring CLI failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
 export OCI_CLI_REGION='fixture-region'
-FAKE_OCI_FAIL=1 assert_capacity_rejected 'invalid OCI authentication context' 'OCI Monitoring query failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
+FAKE_OCI_FAIL=1 assert_capacity_rejected 'invalid OCI authentication context' 'OCI Monitoring CLI failed for CPUUtilization' --evidence-ssh-target app01 --isolated-host-port 18081
 [[ ! -e "$results_dir" ]]
 
 mkdir -p "$results_dir"
