@@ -318,6 +318,10 @@ if [[ "${FAKE_K6_HOLD:-0}" == "1" ]]; then
 fi
 printf 'k6|%s\n' "$*" >>"${FAKE_K6_LOG:?}"
 [[ -z "${FAKE_K6_PID_FILE:-}" ]] || printf '%s\n' "$$" >"$FAKE_K6_PID_FILE"
+if [[ "${FAKE_K6_EMIT_OUTPUT:-0}" == "1" ]]; then
+  printf 'fake k6 stdout marker\n'
+  printf 'fake k6 stderr marker\n' >&2
+fi
 results_dir=''
 dataset_id=''
 target_rps=''
@@ -352,7 +356,7 @@ fi
 if [[ "${FAKE_K6_HOLD:-0}" == "1" ]]; then
   while :; do sleep 1; done
 fi
-exit 0
+exit "${FAKE_K6_EXIT_STATUS:-0}"
 EOF
 chmod +x "$fake_bin/k6"
 
@@ -899,6 +903,13 @@ rm -f "$results_dir/stale.json"
 cp "$tmp/gate-valid-ssh" "$fake_bin/ssh"
 : >"$k6_log"
 assert_capacity_rejected 'collector start failure' 'Host evidence collector did not start' --evidence-ssh-target app01 --isolated-host-port 18081
+[[ -f "$results_dir/$dataset_id-25rps-k6.stdout.log" ]]
+[[ -f "$results_dir/$dataset_id-25rps-k6.stderr.log" ]]
+grep -Fxq 'k6_started_at_utc=' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'k6_finished_at_utc=' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'k6_exit=not_started' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'summary_present=false' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'host_samples_present=false' "$results_dir/$dataset_id-25rps-k6-context.txt"
 clear_capacity_results
 
 cat >"$fake_bin/ssh" <<'PY'
@@ -1069,19 +1080,61 @@ grep -q 'ISOLATED_DATASET_ID=catalog-core-control-v1' "$k6_log"
 clear_capacity_results
 : >"$k6_log"
 : >"$ssh_log"
-run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 25 >/dev/null
+FAKE_K6_EMIT_OUTPUT=1 FAKE_K6_SECRET_SENTINEL='must-not-be-dumped' \
+  run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 --target-rps 25 \
+  >"$tmp/k6-success" 2>&1
 [[ "$(wc -l <"$k6_log")" -eq 1 ]]
 [[ "$(wc -l <"$ssh_log")" -eq 3 ]]
 grep -q 'TARGET_RPS=25' "$k6_log"
 [[ -f "$results_dir/$dataset_id-25rps.json" ]]
 [[ -f "$results_dir/$dataset_id-25rps-host.jsonl" ]]
 [[ -f "$results_dir/$dataset_id-25rps-evidence.json" ]]
+[[ -s "$results_dir/$dataset_id-25rps-k6.stdout.log" ]]
+[[ -s "$results_dir/$dataset_id-25rps-k6.stderr.log" ]]
+grep -Fxq 'fake k6 stdout marker' "$results_dir/$dataset_id-25rps-k6.stdout.log"
+grep -Fxq 'fake k6 stderr marker' "$results_dir/$dataset_id-25rps-k6.stderr.log"
+! grep -Fq 'must-not-be-dumped' "$results_dir/$dataset_id-25rps-k6.stdout.log" \
+  "$results_dir/$dataset_id-25rps-k6.stderr.log" "$results_dir/$dataset_id-25rps-k6-context.txt" \
+  "$tmp/k6-success"
+grep -Eq '^k6_started_at_utc=[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$' \
+  "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Eq '^k6_finished_at_utc=[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$' \
+  "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'target_rps=25' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'k6_exit=0' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'summary_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'host_samples_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
 for phase in pre post; do
   [[ -s "$results_dir/$dataset_id-25rps-$phase-production-gate.txt" ]]
   [[ -s "$results_dir/$dataset_id-25rps-$phase-observability-gate.txt" ]]
   [[ -s "$results_dir/$dataset_id-25rps-$phase-gate-context.txt" ]]
 done
-[[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 9 ]]
+[[ "$(find "$results_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 12 ]]
+
+# A non-zero k6 exit preserves both streams and exact stage context, then blocks later rates.
+clear_capacity_results
+: >"$k6_log"
+if FAKE_K6_EMIT_OUTPUT=1 FAKE_K6_EXIT_STATUS=23 FAKE_K6_SECRET_SENTINEL='must-not-be-dumped' \
+  run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 \
+  >"$tmp/k6-nonzero-failure" 2>&1; then
+  printf 'isolated k6 runner accepted a non-zero k6 exit\n' >&2
+  exit 1
+fi
+[[ "$(wc -l <"$k6_log")" -eq 1 ]]
+grep -q 'TARGET_RPS=25' "$k6_log"
+[[ -s "$results_dir/$dataset_id-25rps.json" && -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
+[[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
+grep -Fxq 'fake k6 stdout marker' "$results_dir/$dataset_id-25rps-k6.stdout.log"
+grep -Fxq 'fake k6 stderr marker' "$results_dir/$dataset_id-25rps-k6.stderr.log"
+grep -Fxq 'k6_exit=23' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'summary_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'host_samples_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
+! grep -Fq 'must-not-be-dumped' "$results_dir/$dataset_id-25rps-k6.stdout.log" \
+  "$results_dir/$dataset_id-25rps-k6.stderr.log" "$results_dir/$dataset_id-25rps-k6-context.txt" \
+  "$tmp/k6-nonzero-failure"
+[[ ! -e "$results_dir/$dataset_id-50rps-k6.stdout.log" ]]
+[[ ! -e "$results_dir/$dataset_id-50rps-host.jsonl" ]]
+clear_capacity_results
 
 # Production failure preserves its raw snapshot and the Observability result, and blocks load.
 clear_capacity_results
@@ -1108,6 +1161,9 @@ fi
 [[ "$(wc -l <"$k6_log")" -eq 1 ]]
 grep -q 'TARGET_RPS=25' "$k6_log"
 [[ -s "$results_dir/$dataset_id-25rps-evidence.json" ]]
+[[ -f "$results_dir/$dataset_id-25rps-k6.stdout.log" ]]
+[[ -f "$results_dir/$dataset_id-25rps-k6.stderr.log" ]]
+grep -Fxq 'k6_exit=0' "$results_dir/$dataset_id-25rps-k6-context.txt"
 ! grep -q '^backend=' "$results_dir/$dataset_id-25rps-post-production-gate.txt"
 grep -Fxq 'status=UNKNOWN' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
 grep -Fxq 'production_assessment=UNKNOWN' "$results_dir/$dataset_id-25rps-post-observability-gate.txt"
@@ -1138,10 +1194,13 @@ clear_capacity_results
 export FAKE_OCI_LOG="$tmp/oci-calls" FAKE_OCI_FAIL_ASSEMBLY=1
 : >"$FAKE_OCI_LOG"
 : >"$k6_log"
-if run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >"$tmp/assembly-failure" 2>&1; then
+if FAKE_K6_EMIT_OUTPUT=1 run_capacity --evidence-ssh-target app01 --isolated-host-port 18081 >"$tmp/assembly-failure" 2>&1; then
   printf 'runner accepted automatic assembly failure\n' >&2; exit 1
 fi
 grep -Fq 'automatic_evidence_assembly=FAIL k6_ok=true' "$tmp/assembly-failure"
+grep -Fxq 'fake k6 stdout marker' "$results_dir/$dataset_id-25rps-k6.stdout.log"
+grep -Fxq 'fake k6 stderr marker' "$results_dir/$dataset_id-25rps-k6.stderr.log"
+grep -Fxq 'k6_exit=0' "$results_dir/$dataset_id-25rps-k6-context.txt"
 [[ "$(wc -l <"$k6_log")" -eq 1 ]]
 [[ -s "$results_dir/$dataset_id-25rps.json" && -s "$results_dir/$dataset_id-25rps-host.jsonl" ]]
 [[ ! -e "$results_dir/$dataset_id-25rps-evidence.json" ]]
@@ -1197,7 +1256,7 @@ assert_capacity_cli_rejected 'SSH command string is not an executable' 'ssh is r
 
 cp "$tmp/full-capacity-ssh" "$fake_bin/ssh"
 : >"$k6_log"
-if FAKE_K6_HOLD=1 FAKE_SSH_COLLECTOR_MODE=load-fail run_capacity \
+if FAKE_K6_HOLD=1 FAKE_K6_EMIT_OUTPUT=1 FAKE_SSH_COLLECTOR_MODE=load-fail run_capacity \
   --evidence-ssh-target app01 --isolated-host-port 18081 >/dev/null 2>&1; then
   printf 'isolated k6 runner succeeded after evidence collector failure\n' >&2
   exit 1
@@ -1206,6 +1265,11 @@ fi
 grep -q 'TARGET_RPS=25' "$k6_log"
 [[ ! -e "$results_dir/$dataset_id-25rps-evidence.json" ]]
 [[ ! -e "$results_dir/$dataset_id-50rps-host.jsonl" ]]
+grep -Fxq 'fake k6 stdout marker' "$results_dir/$dataset_id-25rps-k6.stdout.log"
+grep -Fxq 'fake k6 stderr marker' "$results_dir/$dataset_id-25rps-k6.stderr.log"
+grep -Fxq 'k6_exit=0' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'summary_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
+grep -Fxq 'host_samples_present=true' "$results_dir/$dataset_id-25rps-k6-context.txt"
 clear_capacity_results
 
 cp "$tmp/full-capacity-ssh" "$fake_bin/ssh"
