@@ -59,7 +59,7 @@ After measurement: `2026-10-05T14:19:35.929Z`–`14:21:35.914Z`.
 
 실제 I10K schema의 기존/후보 count는 모두 10,000이다. read-only CTE fixture에서도 PUBLIC만 포함하고 DRAFT, inactive category/brand를 제외해 동일한 count 1을 반환했다. candidate 적용 전후 및 After load 이후 첫 페이지 응답 전체의 canonical JSON SHA-256이 동일하므로 IDs/order, total과 모든 projection이 같다. HTTP 200, 첫 페이지 20개, total 10,000을 확인했다. 고객 데이터나 원시 response/ID는 저장하지 않았다.
 
-`backend/gradlew.bat test --tests '*ProductDiscoveryQueryRepositoryDiagnosticsTests' bootJar --console=plain`은 성공했고 unit tests 7개가 통과했다. 기존 `ProductDiscoveryPageFirstIntegrationTests.unfilteredOrderedPagesPreserveVisibilityTotalsAndEveryProjection`는 PUBLIC/inactive/DRAFT, 모든 projection, NEWEST/RECOMMENDED와 pagination 동일성을 검증하며 Repository Validation CI의 MySQL service에서 전체 Backend 검증과 함께 실행한다.
+`backend/gradlew.bat test --tests '*ProductDiscoveryQueryRepositoryDiagnosticsTests' bootJar --console=plain`은 성공했고 unit tests 7개가 통과했다. 기존 `ProductDiscoveryPageFirstIntegrationTests.unfilteredOrderedPagesPreserveVisibilityTotalsAndEveryProjection`는 PUBLIC/inactive/DRAFT, 모든 projection, NEWEST/RECOMMENDED와 pagination 동일성을 검증한다. [Repository Validation run 37325028132](https://github.com/guseoh/pawcycle-commerce/actions/runs/37325028132/job/111813525087)에서 실제 MySQL service 확인, 전체 Backend test, 반복 test 없는 build가 모두 성공했다(검증 HEAD: `08b64256b5c447c988d70dc8054910efe59b1c9e`). 최초 PR conventions는 본문 `남은 위험:` 필드 누락으로 실패했으며, 본문 수정 후 [PR metadata run 37325485770](https://github.com/guseoh/pawcycle-commerce/actions/runs/37325485770)이 성공했다. source code를 추가로 수정하지 않고 이 CI evidence를 기록한다.
 
 ## 복구·rollback
 
@@ -67,7 +67,7 @@ After measurement: `2026-10-05T14:19:35.929Z`–`14:21:35.914Z`.
 
 ## 미실행 항목
 
-로컬 전체 Backend validation은 직전 실행에서 datasource URL 미설정으로 context 초기화가 실패했다. 실행 중인 repository-owned test MySQL을 발견하지 못해 같은 실패를 반복하지 않고 Draft PR Repository Validation의 CI MySQL service에 full tests/build와 integration tests를 위임한다. Production datasource와 I10K credential을 테스트 환경으로 복사하지 않았다. merge, CodeRabbit 요청, Production 적용은 수행하지 않는다.
+로컬 전체 Backend validation은 직전 실행에서 datasource URL 미설정으로 context 초기화가 실패했다. 실행 중인 repository-owned test MySQL을 발견하지 못해 같은 실패를 반복하지 않고 Draft PR Repository Validation의 CI MySQL service에서 full tests/build와 integration tests를 완료했다. Production datasource와 I10K credential을 테스트 환경으로 복사하지 않았다. merge, CodeRabbit 요청, Production 적용은 수행하지 않는다.
 
 ## 남은 위험
 
