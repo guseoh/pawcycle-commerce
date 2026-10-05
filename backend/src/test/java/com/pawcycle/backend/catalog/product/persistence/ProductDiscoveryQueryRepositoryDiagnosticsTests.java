@@ -38,8 +38,8 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
       "pawcycle.catalog.product.discovery.diagnostics.enabled";
   private static final String BASE_COUNT_SQL =
       "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id ";
-  private static final String V3_COUNT_SQL =
-      "SELECT /*+ JOIN_PREFIX(p) NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id";
+  private static final String UNFILTERED_COUNT_SQL =
+      "SELECT /*+ NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id";
   private static final String DEFAULT_COUNT_FILTERS =
       " WHERE p.display_status='PUBLIC' AND c.active=true AND b.active=true";
   private static final Set<String> PHASES =
@@ -76,7 +76,7 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
   }
 
   @Test
-  void unfilteredNewestAndRecommendedCountsUseTheV3ProductFirstJoinOrder() {
+  void unfilteredNewestAndRecommendedCountsAllowOptimizerJoinOrder() {
     contextRunner.run(
         context -> {
           EntityManager entityManager = context.getBean(EntityManager.class);
@@ -91,7 +91,7 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
           ArgumentCaptor<String> countSql = ArgumentCaptor.forClass(String.class);
           verify(entityManager, times(3)).createNativeQuery(countSql.capture());
           assertThat(countSql.getAllValues().subList(0, 2))
-              .containsOnly(V3_COUNT_SQL + DEFAULT_COUNT_FILTERS);
+              .containsOnly(UNFILTERED_COUNT_SQL + DEFAULT_COUNT_FILTERS);
           assertThat(countSql.getAllValues().get(2))
               .isEqualTo(BASE_COUNT_SQL + DEFAULT_COUNT_FILTERS);
         });
