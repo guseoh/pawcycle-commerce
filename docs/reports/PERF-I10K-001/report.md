@@ -74,4 +74,3 @@ After measurement: `2026-10-05T14:19:35.929Z`–`14:21:35.914Z`.
 단일 Before/After이므로 반복 측정의 통계적 유의성이나 더 큰 catalog/cardinality의 성능을 주장하지 않는다. After는 backend를 재생성한 후보이며 30초 warm-up은 동일하지만 control/candidate runtime age는 다르다. process CPU 평균은 2.75%에서 7.38%, GC pause는 49에서 81 ms로 증가했으나 API percentile/pool 대기는 개선됐고 관측 CPU 포화는 없었다. 증가 원인은 확인되지 않았다.
 
 Prometheus의 기존 정상 target은 Production backend다. isolated timer/JVM/Hikari/Tomcat 값은 기존 runner가 해당 backend의 `/actuator/prometheus`에서 자동 수집한 sample이며 Grafana에 isolated 시계열이 있다고 주장하지 않는다. 두 runner invocation 모두 종료에서 `pop_var_context` 오류/exit 1을 반환했다. k6는 각각 exit 0이고 pre/post gate는 통과했다. Before OCI 부가 evidence는 생성됐지만 After OCI aggregate evidence는 생성되지 않아 OCI 비교는 미검증이다. 이 부가 evidence 문제를 위해 Harness를 변경하거나 부하를 재실행하지 않았다. CI 결과는 PR의 현재 HEAD checks로 확인한다.
-
