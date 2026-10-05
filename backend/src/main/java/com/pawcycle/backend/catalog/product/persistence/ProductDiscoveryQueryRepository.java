@@ -121,7 +121,7 @@ public class ProductDiscoveryQueryRepository {
         pageFirst && parameters.isEmpty() && subscribable == null && purchasable == null;
     String countSql =
         orderedPageFirst
-            ? "SELECT /*+ JOIN_PREFIX(p) NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id"
+            ? "SELECT /*+ NO_BNL(c, b) */ COUNT(*) FROM products p FORCE INDEX(PRIMARY) JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id"
             : "SELECT COUNT(*) FROM products p JOIN categories c ON c.id=p.category_id JOIN brands b ON b.id=p.brand_id LEFT JOIN categories parent ON parent.id=c.parent_id ";
     Query countQuery =
         bind(
