@@ -10,6 +10,8 @@ trap 'status=$?; printf "isolated catalog contract failed at line %s (exit %s)\n
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 
+node --test "$SCRIPT_DIR/test_isolated_capacity.mjs"
+
 tmp="$(mktemp -d /tmp/pawcycle-isolated-catalog-test.XXXXXX)"
 runner_pid=''
 lock_holder_pid=''

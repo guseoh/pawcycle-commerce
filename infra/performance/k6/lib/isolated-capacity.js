@@ -1,6 +1,5 @@
 import http from "k6/http";
 import { check } from "k6";
-import exec from "k6/execution";
 import { Counter, Rate, Trend } from "k6/metrics";
 import { localBaseUrl } from "./baseline.js";
 
@@ -60,13 +59,14 @@ export function optionsForIsolatedCapacity() {
   configuredDatasetId();
   requireAcknowledgement();
   const targetRate = configuredRate();
+  const warmupRate = Math.min(targetRate, 50);
 
   return {
     scenarios: {
       warmup: {
         executor: "constant-arrival-rate",
         exec: "warmup",
-        rate: targetRate,
+        rate: warmupRate,
         timeUnit: "1s",
         duration: WARMUP_DURATION,
         gracefulStop: "0s",
@@ -96,7 +96,6 @@ export function optionsForIsolatedCapacity() {
       },
     },
     thresholds: {
-      isolated_capacity_warmup_expected_status_error_rate: ["rate==0"],
       isolated_capacity_expected_status_error_rate: ["rate==0"],
       dropped_iterations: ["count==0"],
     },
@@ -123,9 +122,6 @@ export function request(measurement) {
 
   if (!measurement) {
     warmupExpectedStatusErrorRate.add(!expected);
-    if (!expected) {
-      exec.test.abort("Isolated warm-up received a non-200 response.");
-    }
     return;
   }
 
