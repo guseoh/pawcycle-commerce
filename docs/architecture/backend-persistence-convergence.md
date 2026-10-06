@@ -55,7 +55,7 @@
 
 - `commerce/payment/persistence/PaymentReconciliationPersistenceAdapter.java`: provider recovery/reconciliation debt는 이번 작업에서 수정하지 않는다.
 - `commerce/cancellation/**`, `commerce/refund/**`, `commerce/returning/**`: after-sales 보상·재고·상태 전이는 결제/배송과 함께 lock ordering 및 failure recovery를 독립 검증해야 한다.
-- `commerce/order/persistence/OrderPersistenceAdapter.java`: order read와 quick-reorder idempotency/cart mutation이 한 adapter에 결합되어 있어 typed projection과 cart lock 분리 후 전환한다.
+- `commerce/order/persistence/OrderPersistenceAdapter.java`와 `QuickReorderPersistenceAdapter.java`: order read와 Quick Reorder command persistence boundary 분리는 BACKEND-REFACTOR-004에서 완료했다. 두 경계는 아직 JDBC를 사용하며, raw `Map`은 Quick Reorder 경계에 남아 있다. typed projection과 추가 persistence convergence는 후속 대상이다.
 - `commerce/notification/**`, `commerce/operations/**`: subscription schedule을 포함한 cross-domain 운영 projection이다.
 - `interaction/**`, `recommendation/**`: event/recommendation projection은 commerce aggregate persistence와 독립된 read/write 모델이다.
 - billing registration의 `subscription_schedules` JOIN UPDATE: subscription schedule entity mapping 승인 전까지 EntityManager native query로 atomicity를 보존한다.

@@ -6,6 +6,7 @@ import com.pawcycle.backend.commerce.order.api.OrderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderSummaryResponse;
 import com.pawcycle.backend.commerce.order.persistence.OrderPersistenceAdapter;
 import com.pawcycle.backend.commerce.order.persistence.OrderView;
+import com.pawcycle.backend.commerce.order.persistence.QuickReorderPersistenceAdapter;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -18,16 +19,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class OrderApplicationService {
   private final OrderPersistenceAdapter orders;
+  private final QuickReorderPersistenceAdapter quickReorders;
   private final TransactionTemplate transaction;
   private final Clock clock;
   private final int returnRequestDays;
 
   public OrderApplicationService(
       OrderPersistenceAdapter orders,
+      QuickReorderPersistenceAdapter quickReorders,
       org.springframework.transaction.PlatformTransactionManager transactionManager,
       Clock clock,
       @Value("${pawcycle.commerce.return-request-days:7}") int returnRequestDays) {
     this.orders = orders;
+    this.quickReorders = quickReorders;
     this.transaction = new TransactionTemplate(transactionManager);
     this.clock = clock;
     this.returnRequestDays = returnRequestDays;
@@ -58,8 +62,9 @@ public class OrderApplicationService {
     if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 128) {
       throw new CommerceException(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key가 필요합니다.");
     }
-    OrderPersistenceAdapter.ReorderResult result =
-        transaction.execute(status -> orders.reorder(memberId, sourceOrderId, idempotencyKey));
+    QuickReorderPersistenceAdapter.ReorderResult result =
+        transaction.execute(
+            status -> quickReorders.reorder(memberId, sourceOrderId, idempotencyKey));
     return new OrderReorderResponse(
         result.addedItems().stream()
             .map(item -> new OrderReorderResponse.Item(item.skuId(), item.quantity()))
