@@ -1,0 +1,1927 @@
+{
+  "source_sha": "cb4e9b46031b42c46f2f4a4dfbab0871acb82b4e",
+  "phase": "measurement",
+  "pool_size": 120,
+  "target_rps": 20,
+  "warmup_seconds": 30,
+  "measurement_seconds": 120,
+  "start_utc": "2026-10-06T12:58:36.668Z",
+  "end_utc": "2026-10-06T13:00:36.719Z",
+  "k6_exit": 0,
+  "status_error_rate": 0,
+  "dropped_iterations": 0,
+  "k6": {
+    "metrics": {
+      "iterations": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 2401,
+          "rate": 18.887179215902318
+        }
+      },
+      "http_req_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 24.1503,
+          "p(95)": 41.90540000000001,
+          "p(99)": 66.14685800000004,
+          "max": 3649.083,
+          "avg": 28.68243171036205,
+          "min": 14.6284
+        }
+      },
+      "vus_max": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "min": 120,
+          "max": 120,
+          "value": 120
+        }
+      },
+      "http_req_connecting": {
+        "contains": "time",
+        "values": {
+          "p(99)": 1.049652,
+          "max": 7.8239,
+          "avg": 0.04232796504369536,
+          "min": 0,
+          "med": 0,
+          "p(95)": 0
+        },
+        "type": "trend"
+      },
+      "http_req_failed": {
+        "contains": "default",
+        "values": {
+          "passes": 0,
+          "fails": 2403,
+          "rate": 0
+        },
+        "type": "rate"
+      },
+      "http_req_sending": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "min": 0,
+          "med": 0,
+          "p(95)": 0,
+          "p(99)": 0.525458,
+          "max": 1.2024,
+          "avg": 0.012911277569704536
+        }
+      },
+      "http_req_waiting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 28.568376695796875,
+          "min": 14.6284,
+          "med": 24.0913,
+          "p(95)": 41.79338,
+          "p(99)": 65.72454400000004,
+          "max": 3648.4917
+        }
+      },
+      "http_req_blocked": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 0.048852476071577174,
+          "min": 0,
+          "med": 0,
+          "p(95)": 0,
+          "p(99)": 1.0788440000000001,
+          "max": 7.8239
+        }
+      },
+      "iteration_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 25.96170366513953,
+          "min": 14.6883,
+          "med": 24.3697,
+          "p(95)": 41.9118,
+          "p(99)": 64.0705,
+          "max": 115.4851
+        }
+      },
+      "vus": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "http_req_duration{expected_response:true}": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 66.14685800000004,
+          "max": 3649.083,
+          "avg": 28.68243171036205,
+          "min": 14.6284,
+          "med": 24.1503,
+          "p(95)": 41.90540000000001
+        }
+      },
+      "http_reqs": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 2403,
+          "rate": 18.902911976598613
+        }
+      },
+      "http_req_receiving": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "min": 0,
+          "med": 0,
+          "p(95)": 0.5902900000000001,
+          "p(99)": 1.514724,
+          "max": 6.3448,
+          "avg": 0.10114373699542249
+        }
+      },
+      "data_received": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "rate": 12164.806561785848,
+          "count": 1546430
+        }
+      },
+      "data_sent": {
+        "contains": "data",
+        "values": {
+          "count": 933216,
+          "rate": 7341.032002976884
+        },
+        "type": "counter"
+      },
+      "checkout_requests": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 2401,
+          "rate": 18.887179215902318
+        }
+      },
+      "http_req_tls_handshaking": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 0,
+          "p(95)": 0,
+          "p(99)": 0,
+          "max": 0,
+          "avg": 0,
+          "min": 0
+        }
+      },
+      "checkout_latency": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 25.762415785089566,
+          "min": 14.6284,
+          "med": 24.1416,
+          "p(95)": 41.7966,
+          "p(99)": 64.0705,
+          "max": 115.4851
+        }
+      },
+      "checkout_expected_status_errors": {
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 2401
+        },
+        "thresholds": {
+          "rate==0": {
+            "ok": true
+          }
+        },
+        "type": "rate"
+      }
+    },
+    "state": {
+      "testRunDurationMs": 127123.2709,
+      "isStdOutTTY": false,
+      "isStdErrTTY": false
+    }
+  },
+  "warmup_requests": 601,
+  "measurement_requests": 2401,
+  "runtime_before": {
+    "image": "sha256:149428b38e1773bcab8176135486c08db38186c22cdf41dcb9fb51b18206b791",
+    "started": "2026-10-06T12:40:55.102222987Z",
+    "restarts": 0,
+    "oom": false,
+    "running": true,
+    "memory_bytes": 0,
+    "nano_cpus": 0,
+    "pids": null
+  },
+  "runtime_after": {
+    "image": "sha256:149428b38e1773bcab8176135486c08db38186c22cdf41dcb9fb51b18206b791",
+    "started": "2026-10-06T12:40:55.102222987Z",
+    "restarts": 0,
+    "oom": false,
+    "running": true,
+    "memory_bytes": 0,
+    "nano_cpus": 0,
+    "pids": null
+  },
+  "fixture_before": {
+    "members": 120,
+    "orders": 0,
+    "payments_ready": 0,
+    "reservations": 0,
+    "reserved_quantity": 0,
+    "minimum_stock": 10000,
+    "cart_items": 120
+  },
+  "fixture_after": {
+    "members": 120,
+    "orders": 3002,
+    "payments_ready": 3002,
+    "reservations": 3002,
+    "reserved_quantity": 3002,
+    "minimum_stock": 9974,
+    "cart_items": 120
+  },
+  "fixture_contract_matches_requests": true,
+  "measurement_fixture_before": {
+    "members": 120,
+    "orders": 601,
+    "payments_ready": 601,
+    "reservations": 601,
+    "reserved_quantity": 601,
+    "minimum_stock": 9994,
+    "cart_items": 120
+  },
+  "measurement_fixture_delta_matches_requests": true,
+  "mysql_runtime_before": {
+    "image": "sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6",
+    "started": "2026-10-06T12:40:34.550337053Z",
+    "restarts": 0,
+    "oom": false,
+    "running": true,
+    "memory_bytes": 0,
+    "nano_cpus": 0,
+    "pids": null
+  },
+  "mysql_runtime_after": {
+    "image": "sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6",
+    "started": "2026-10-06T12:40:34.550337053Z",
+    "restarts": 0,
+    "oom": false,
+    "running": true,
+    "memory_bytes": 0,
+    "nano_cpus": 0,
+    "pids": null
+  },
+  "resource_interval_seconds": 5,
+  "resource_samples": [
+    {
+      "at_utc": "2026-10-06T12:58:38.959Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 40.11,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 30.43,
+        "memory_used_bytes": 578604236.8,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:58:43.977Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 17.82,
+        "memory_used_bytes": 573780787.2,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 26.67,
+        "memory_used_bytes": 578709094.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:58:48.965Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 45.38,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 20.47,
+        "memory_used_bytes": 578709094.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:58:53.991Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 26.87,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 18.5,
+        "memory_used_bytes": 578604236.8,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:58:58.960Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 22.19,
+        "memory_used_bytes": 573675929.6,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 19.43,
+        "memory_used_bytes": 578709094.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:03.955Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 22.56,
+        "memory_used_bytes": 573675929.6,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 18.26,
+        "memory_used_bytes": 579023667.2,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:07.958Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 20.44,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 24.32,
+        "memory_used_bytes": 578499379.2,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:13.940Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 37.42,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 20.09,
+        "memory_used_bytes": 582274252.8,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:19.002Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 23.95,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 24.16,
+        "memory_used_bytes": 578813952.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:22.964Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 20.3,
+        "memory_used_bytes": 574095360.0,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 19.36,
+        "memory_used_bytes": 578604236.8,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:28.989Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 19.57,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 25.6,
+        "memory_used_bytes": 578709094.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:32.961Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 17.57,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 16.76,
+        "memory_used_bytes": 578918809.6,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:38.982Z",
+      "mysql_threads": {
+        "Threads_connected": 12,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 19.79,
+        "memory_used_bytes": 574095360.0,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 16.54,
+        "memory_used_bytes": 578813952.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:44.043Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 25.42,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 25.82,
+        "memory_used_bytes": 578918809.6,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:48.975Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 45.54,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 28.96,
+        "memory_used_bytes": 578813952.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:52.953Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 18.36,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 19.2,
+        "memory_used_bytes": 579023667.2,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T12:59:57.988Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 18.53,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 17.67,
+        "memory_used_bytes": 579233382.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:03.941Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 16.11,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 15.7,
+        "memory_used_bytes": 579233382.4,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:09.177Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 21.18,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 30.82,
+        "memory_used_bytes": 581435392.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:12.977Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 20.93,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 19.51,
+        "memory_used_bytes": 581645107.2,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:18.965Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 24.11,
+        "memory_used_bytes": 573990502.4,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 18.5,
+        "memory_used_bytes": 581435392.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:23.975Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 17.79,
+        "memory_used_bytes": 573885644.8,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 17.11,
+        "memory_used_bytes": 581435392.0,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:28.996Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 3
+      },
+      "backend": {
+        "cpu_percent": 16.34,
+        "memory_used_bytes": 574095360.0,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 25.9,
+        "memory_used_bytes": 581540249.6,
+        "memory_limit_bytes": 8282844430.336
+      }
+    },
+    {
+      "at_utc": "2026-10-06T13:00:32.952Z",
+      "mysql_threads": {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      "backend": {
+        "cpu_percent": 26.7,
+        "memory_used_bytes": 574095360.0,
+        "memory_limit_bytes": 8282844430.336
+      },
+      "mysql": {
+        "cpu_percent": 19.25,
+        "memory_used_bytes": 581645107.2,
+        "memory_limit_bytes": 8282844430.336
+      }
+    }
+  ],
+  "resource_sample_errors": [],
+  "mysql": {
+    "digests": [
+      {
+        "digest": "f2b9be5f0f32ca7507e4ddf133cd2fad0993a1c26fde9caa6f067b1af2b7603c",
+        "sql": "COMMIT",
+        "count": 2428,
+        "timer_ps": 17203230829000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 17203.230829,
+        "average_ms": 7.085350423805601,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "53eae3ba96f4b93b76282901aa9be73528f860066e29abd0e48ceefe2c45c4bd",
+        "sql": "INSERT INTO `orders` ( `address_line1` , `address_line2` , `created_at` , `discount_amount` , `member_id` , `order_number` , `original_amount` , `paid_at` , `payment_amount` , `postal_code` , `recipient_name` , `recipient_phone` , `shipping_fee` , SOURCE , STATUS ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 1168427831000,
+        "lock_ps": 4112000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 1168.427831,
+        "average_ms": 0.4866421620158268,
+        "lock_ms": 4.112
+      },
+      {
+        "digest": "093741d0556730065d5d107ba8cbfa134d73774d613eee1e09bef6dad2cf52a1",
+        "sql": "INSERT INTO `payments` ( `amount` , `approved_at` , `attempt_no` , `created_at` , `expires_at` , `failed_at` , `failure_code` , `failure_message` , `idempotency_key` , `last_reconciled_at` , `order_id` , `payment_key` , `provider` , `provider_order_id` , `provider_status` , `reconciliation_attempts` , `requested_at` , STATUS , TYPE ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 1127408436000,
+        "lock_ps": 4340000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 1127.408436,
+        "average_ms": 0.46955786588921283,
+        "lock_ms": 4.34
+      },
+      {
+        "digest": "67f3aa006fc26f576b60cf4383dcae03c08435fdf8b5b5d01431ac5073599a3a",
+        "sql": "SELECT `s1_0` . `id` , `s1_0` . `compare_at_price` , `s1_0` . `display_order` , `s1_0` . `name` , `s1_0` . `price` , `s1_0` . `product_id` , `p1_0` . `id` , `p1_0` . `brand_id` , `p1_0` . `catalog_key` , `p1_0` . `category_id` , `p1_0` . `description` , `p1_0` . `name` , `p1_0` . `pet_type` , `p1_0` . `short_description` , `p1_0` . `display_status` , `p1_0` . `thumbnail_url` , `s1_0` . `sku_code` , `s1_0` . `status` , `s1_0` . `subscribable` FROM `skus` `s1_0` JOIN `products` `p1_0` ON `p1_0` . `id` = `s1_0` . `product_id` WHERE `s1_0` . `id` IN (...) FOR UPDATE OF `s1_0`",
+        "count": 2401,
+        "timer_ps": 1041923315000,
+        "lock_ps": 8246000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 1041.923315,
+        "average_ms": 0.43395390045814247,
+        "lock_ms": 8.246
+      },
+      {
+        "digest": "1b7106b73099f02d7c44c2ea9819e4e1a16797ffb328490373838e7c024559e7",
+        "sql": "SELECT COUNT ( `s1_0` . `id` ) FROM `skus` `s1_0` JOIN `products` `p1_0` ON `p1_0` . `id` = `s1_0` . `product_id` JOIN `categories` `c1_0` ON `c1_0` . `id` = `p1_0` . `category_id` WHERE `s1_0` . `id` = ? AND `s1_0` . `status` = ? AND `p1_0` . `display_status` = ? AND `c1_0` . `active` = TRUE",
+        "count": 2401,
+        "timer_ps": 933271275000,
+        "lock_ps": 7357000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 933.271275,
+        "average_ms": 0.38870107246980423,
+        "lock_ms": 7.357
+      },
+      {
+        "digest": "c43b42fd18c1061698bc35b86f73c680681c021636c31de3af786a5fa536a987",
+        "sql": "INSERT INTO `inventory_movements` ( `available_after` , `available_before` , `cancellation_id` , `created_at` , `payment_id` , `quantity` , `reserved_after` , `reserved_before` , `return_id` , `sku_id` , `source_id` , TYPE ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 859518813000,
+        "lock_ps": 3228000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 859.518813,
+        "average_ms": 0.3579836788837984,
+        "lock_ms": 3.228
+      },
+      {
+        "digest": "2ad118df3b3b05b20b137d350589ee139d07a71800e26d1a80e85946b48ddd1e",
+        "sql": "UPDATE `inventories` `ie1_0` SET `available_quantity` = ( `ie1_0` . `available_quantity` - ? ) , `reserved_quantity` = ( `ie1_0` . `reserved_quantity` + ? ) , `version` = ( `ie1_0` . `version` + ? ) WHERE `ie1_0` . `sku_id` = ? AND `ie1_0` . `version` = ? AND `ie1_0` . `available_quantity` >= ?",
+        "count": 2401,
+        "timer_ps": 816429329000,
+        "lock_ps": 5161000000,
+        "examined": 2401,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 816.429329,
+        "average_ms": 0.3400372049146189,
+        "lock_ms": 5.161
+      },
+      {
+        "digest": "fce1c6ecdee9131b8dc8922b2704b4d7e0c57ad6d82c3f665446045f5fc7eb6b",
+        "sql": "SELECT `cie1_0` . `cart_id` , `cie1_0` . `sku_id` , `cie1_0` . `quantity` FROM `cart_items` `cie1_0` WHERE `cie1_0` . `cart_id` = ? FOR UPDATE OF `cie1_0`",
+        "count": 2401,
+        "timer_ps": 760047363000,
+        "lock_ps": 5032000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 760.047363,
+        "average_ms": 0.3165545035401916,
+        "lock_ms": 5.032
+      },
+      {
+        "digest": "44fb1466428bbf632b7c9a11c88517aa067cf3fafac4e892fee32e73cbf9cd82",
+        "sql": "INSERT INTO `checkout_idempotency_results` ( `created_at` , `order_id` , `payment_id` , `request_cart_version` , `request_fingerprint` , `idempotency_key` , `member_id` ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 738886051000,
+        "lock_ps": 3608000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 738.886051,
+        "average_ms": 0.3077409625156185,
+        "lock_ms": 3.608
+      },
+      {
+        "digest": "40a845f4d3b78e7dc1dd9949fb5535eb53249c8e77d452c19ec37fb750c3b2a1",
+        "sql": "UPDATE `checkout_idempotency_results` `cie1_0` SET `request_cart_version` = ? WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ? AND `cie1_0` . `request_cart_version` IS NULL",
+        "count": 2401,
+        "timer_ps": 697366994000,
+        "lock_ps": 2379000000,
+        "examined": 2401,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 697.366994,
+        "average_ms": 0.2904485605997501,
+        "lock_ms": 2.379
+      },
+      {
+        "digest": "ed28ee381f1ecff39fd30cfdb51f4347055bfbba9c3d701b748a8c39dc53eea1",
+        "sql": "INSERT INTO `order_items` ( `line_amount` , `order_id` , `product_name_snapshot` , `quantity` , `sku_code_snapshot` , `sku_id` , `sku_name_snapshot` , `snapshot_quality` , `unit_price` ) VALUES (...)",
+        "count": 2400,
+        "timer_ps": 687888747000,
+        "lock_ps": 2921000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 687.888747,
+        "average_ms": 0.28662031125,
+        "lock_ms": 2.921
+      },
+      {
+        "digest": "158bfe3d4b4b0a372a4acdb38affe2cb4f6b3cb21a9af0ea9fad9a9a083ac18a",
+        "sql": "SET `autocommit` = ?",
+        "count": 4856,
+        "timer_ps": 665323431000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 665.323431,
+        "average_ms": 0.1370105912273476,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "1e76c36307ed8d8a301580103139536d2f438743baa3ababeebe2a1fd435ea6b",
+        "sql": "SELECT `ma1_0` . `id` , `ma1_0` . `address_line1` , `ma1_0` . `address_line2` , `ma1_0` . `created_at` , `ma1_0` . `member_id` , `ma1_0` . `name` , `ma1_0` . `postal_code` , `ma1_0` . `recipient_name` , `ma1_0` . `recipient_phone` , `ma1_0` . `updated_at` FROM `member_addresses` `ma1_0` WHERE `ma1_0` . `id` = ? AND `ma1_0` . `member_id` = ?",
+        "count": 2401,
+        "timer_ps": 649976927000,
+        "lock_ps": 4250000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 649.976927,
+        "average_ms": 0.2707109233652645,
+        "lock_ms": 4.25
+      },
+      {
+        "digest": "9cff5eb8d575ac430e94a6deafc855fdda8abee36a0db0beb1aebe4c7fa8c0a4",
+        "sql": "SELECT `m1_0` . `id` , `m1_0` . `default_address_id` , `m1_0` . `email` , `m1_0` . `password_hash` , `m1_0` . `role` FROM `members` `m1_0` WHERE `m1_0` . `id` = ? FOR UPDATE OF `m1_0`",
+        "count": 2401,
+        "timer_ps": 624160948000,
+        "lock_ps": 6760000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 624.160948,
+        "average_ms": 0.2599587455226989,
+        "lock_ms": 6.76
+      },
+      {
+        "digest": "eb0645ea52a2e690f955c53b94ca74938352f7eacedfba4aa5ff3791d330f3c7",
+        "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ?",
+        "count": 2401,
+        "timer_ps": 608878647000,
+        "lock_ps": 3909000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 608.878647,
+        "average_ms": 0.25359377217825907,
+        "lock_ms": 3.909
+      },
+      {
+        "digest": "27b935c399d8ef76cdf72167b6699d567a46c926d3cd74fa0bca4b3ae07a89c1",
+        "sql": "SELECT `pe1_0` . `id` , `pe1_0` . `amount` , `pe1_0` . `approved_at` , `pe1_0` . `attempt_no` , `pe1_0` . `created_at` , `pe1_0` . `expires_at` , `pe1_0` . `failed_at` , `pe1_0` . `failure_code` , `pe1_0` . `failure_message` , `pe1_0` . `idempotency_key` , `pe1_0` . `last_reconciled_at` , `pe1_0` . `order_id` , `pe1_0` . `payment_key` , `pe1_0` . `provider` , `pe1_0` . `provider_order_id` , `pe1_0` . `provider_status` , `pe1_0` . `reconciliation_attempts` , `pe1_0` . `requested_at` , `pe1_0` . `status` , `pe1_0` . `succeeded_order_id` , `pe1_0` . `type` FROM `payments` `pe1_0` WHERE `pe1_0` . `id` = ?",
+        "count": 2401,
+        "timer_ps": 596367659000,
+        "lock_ps": 3004000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 596.367659,
+        "average_ms": 0.24838303165347772,
+        "lock_ms": 3.004
+      },
+      {
+        "digest": "3c91306c1a1cec2e435edc7e0ded0bcf5b9e618eedd96d7756ccefc6a2a05fd8",
+        "sql": "SELECT `ie1_0` . `sku_id` , `ie1_0` . `available_quantity` , `ie1_0` . `reserved_quantity` , `ie1_0` . `version` FROM `inventories` `ie1_0` WHERE `ie1_0` . `sku_id` = ?",
+        "count": 2401,
+        "timer_ps": 571589733000,
+        "lock_ps": 3453000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 571.589733,
+        "average_ms": 0.2380631957517701,
+        "lock_ms": 3.453
+      },
+      {
+        "digest": "814178f17392193b9f6f15c0faa9f426c40a6b4cc15713b74945041cad7ff977",
+        "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE ( `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` ) IN ( (...) )",
+        "count": 2401,
+        "timer_ps": 559431786000,
+        "lock_ps": 2954000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 559.431786,
+        "average_ms": 0.23299949437734277,
+        "lock_ms": 2.954
+      },
+      {
+        "digest": "f66191877d3bb1480a79df15eeadaed281f09cf2ae557243c82391e29ba2c3b2",
+        "sql": "SELECT `ce1_0` . `id` , `ce1_0` . `created_at` , `ce1_0` . `member_id` , `ce1_0` . `updated_at` , `ce1_0` . `version` FROM `carts` `ce1_0` WHERE `ce1_0` . `member_id` = ? FOR UPDATE OF `ce1_0`",
+        "count": 2401,
+        "timer_ps": 540212418000,
+        "lock_ps": 3796000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 540.212418,
+        "average_ms": 0.22499475968346522,
+        "lock_ms": 3.796
+      },
+      {
+        "digest": "a51e17b1b07895c10c397d496f566248fbfdfa0d7077107337b537329d7afd9b",
+        "sql": "SELECT `p` . `id` `product_id` , `p` . `name` , `p` . `pet_type` , `p` . `short_description` , COALESCE ( `main_image` . `image_url` , `p` . `thumbnail_url` ) `thumbnail_url` , `c` . `id` `category_id` , `c` . `name` `category_name` , `c` . `slug` `category_slug` , `b` . `id` `brand_id` , `b` . `name` `brand_name` , `b` . `slug` `brand_slug` , `b` . `logo_url` `brand_logo_url` , ( SELECT `s2` . `price` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `representative_price` , ( SELECT `s2` . `compare_at_price` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `compare_at_price` , ( SELECT `s2` . `id` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `representative_sku_id` , ( SELECT `s2` . `name` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status`",
+        "count": 25,
+        "timer_ps": 65310289000,
+        "lock_ps": 162000000,
+        "examined": 6550,
+        "affected": 0,
+        "sent": 500,
+        "errors": 0,
+        "total_ms": 65.310289,
+        "average_ms": 2.61241156,
+        "lock_ms": 0.162
+      },
+      {
+        "digest": "b0a2105f85f781a2af3593f66431f1528f14f14566499839ea27e23911fb9a5a",
+        "sql": "SHOW GLOBAL STATUS WHERE `Variable_name` IN (...)",
+        "count": 26,
+        "timer_ps": 27146345000,
+        "lock_ps": 45000000,
+        "examined": 54,
+        "affected": 0,
+        "sent": 54,
+        "errors": 0,
+        "total_ms": 27.146345,
+        "average_ms": 1.0440901923076924,
+        "lock_ms": 0.045
+      },
+      {
+        "digest": "cc88afa24cc703b105e8a30f44ea1a682533be91cf8696d285114adf53398357",
+        "sql": "SELECT /*+ NO_BNL ( `c` , `b` ) */ COUNT ( * ) FROM `products` `p` FORCE INDEX ( PRIMARY ) JOIN `categories` `c` ON `c` . `id` = `p` . `category_id` JOIN `brands` `b` ON `b` . `id` = `p` . `brand_id` WHERE `p` . `display_status` = ? AND `c` . `active` = TRUE AND `b` . `active` = TRUE",
+        "count": 25,
+        "timer_ps": 15525277000,
+        "lock_ps": 83000000,
+        "examined": 7825,
+        "affected": 0,
+        "sent": 25,
+        "errors": 0,
+        "total_ms": 15.525277,
+        "average_ms": 0.62101108,
+        "lock_ms": 0.083
+      },
+      {
+        "digest": "44e35cee979ba420eb49a8471f852bbe15b403c89742704817dfbaace0d99dbb",
+        "sql": "SELECT @@`version_comment` LIMIT ?",
+        "count": 60,
+        "timer_ps": 11160821000,
+        "lock_ps": 0,
+        "examined": 60,
+        "affected": 0,
+        "sent": 60,
+        "errors": 0,
+        "total_ms": 11.160821,
+        "average_ms": 0.18601368333333335,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "9cf78ec1ee2746bb4c688b21593f69a1eba7026ba2277d7717cd8defb167449a",
+        "sql": "SET SESSION TRANSACTION READ ONLY",
+        "count": 27,
+        "timer_ps": 4132842000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 4.132842,
+        "average_ms": 0.15306822222222222,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "664a2aec28f52c38fac12d5adf14d7f8da06346ba3a594072cc152ad9bcecb59",
+        "sql": "SET SESSION TRANSACTION READ WRITE",
+        "count": 27,
+        "timer_ps": 2387100000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 2.3871,
+        "average_ms": 0.08841111111111111,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "552495773dc4ae5624b44f334efaba5ec04e19569e0bef3c99c54d1c3999253d",
+        "sql": "SELECT `pe1_0` . `id` FROM `payments` `pe1_0` WHERE `pe1_0` . `type` = ? AND `pe1_0` . `status` = ? AND `pe1_0` . `expires_at` IS NOT NULL AND `pe1_0` . `expires_at` <= ? ORDER BY `pe1_0` . `expires_at` , `pe1_0` . `id` LIMIT ?",
+        "count": 2,
+        "timer_ps": 2099177000,
+        "lock_ps": 4000000,
+        "examined": 2458,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 2.099177,
+        "average_ms": 1.0495885,
+        "lock_ms": 0.004
+      },
+      {
+        "digest": "d1b44b0c19af710b5a679907e284acd2ddc285201794bc69a2389d77baedddae",
+        "sql": "SELECT ?",
+        "count": 24,
+        "timer_ps": 1751644000,
+        "lock_ps": 0,
+        "examined": 24,
+        "affected": 0,
+        "sent": 24,
+        "errors": 0,
+        "total_ms": 1.751644,
+        "average_ms": 0.07298516666666667,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "4f04df24b7b05b2016ae92832a5a4b75e3d3925ff545d004564561a22f0be243",
+        "sql": "SELECT `COUNT` FROM `INFORMATION_SCHEMA` . `INNODB_METRICS` WHERE NAME = ?",
+        "count": 1,
+        "timer_ps": 1154998000,
+        "lock_ps": 2000000,
+        "examined": 314,
+        "affected": 0,
+        "sent": 1,
+        "errors": 0,
+        "total_ms": 1.154998,
+        "average_ms": 1.154998,
+        "lock_ms": 0.002
+      },
+      {
+        "digest": "456981d1aa1bf7f5b44a015a2dd7c05b2dc4c7bcaf7ca9d7188e5947edce179b",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_command_idempotency_results` WHERE `completed_at` IS NOT NULL",
+        "count": 2,
+        "timer_ps": 806069000,
+        "lock_ps": 4000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.806069,
+        "average_ms": 0.4030345,
+        "lock_ms": 0.004
+      },
+      {
+        "digest": "41bd76e1ade0706437265199b00759a0e6b0abf21f760697b2908d212fb8ef0d",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_creation_idempotency_results` WHERE `completed_at` IS NOT NULL",
+        "count": 2,
+        "timer_ps": 641854000,
+        "lock_ps": 6000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.641854,
+        "average_ms": 0.320927,
+        "lock_ms": 0.006
+      },
+      {
+        "digest": "516a6d0709c235c4c8b935c63d584d115e470495a3951caad08b183d62661ee0",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_creation_idempotency_results` WHERE `completed_at` < ?",
+        "count": 2,
+        "timer_ps": 606251000,
+        "lock_ps": 5000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.606251,
+        "average_ms": 0.3031255,
+        "lock_ms": 0.005
+      },
+      {
+        "digest": "d46bae74ecd8ac1c76c92c1ec61da4ca5783913250e821c00d81903a0077574d",
+        "sql": "SELECT ( SELECT COUNT ( * ) FROM `order_returns` WHERE STATUS = ? ) + ( SELECT COUNT ( * ) FROM `refunds` WHERE STATUS IN (...) ) + ( SELECT COUNT ( * ) FROM `payments` WHERE STATUS IN (...) )",
+        "count": 2,
+        "timer_ps": 600251000,
+        "lock_ps": 3000000,
+        "examined": 2,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.600251,
+        "average_ms": 0.3001255,
+        "lock_ms": 0.003
+      },
+      {
+        "digest": "15a4beccd94e82ea64024812fe57d2f31230417ae0036c6dfeb9166c556d2c0a",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_command_idempotency_results` WHERE `completed_at` < ?",
+        "count": 2,
+        "timer_ps": 392833000,
+        "lock_ps": 4000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.392833,
+        "average_ms": 0.1964165,
+        "lock_ms": 0.004
+      }
+    ],
+    "innodb_delta": {
+      "Innodb_row_lock_time": 0,
+      "Innodb_row_lock_time_max": 0,
+      "Innodb_row_lock_waits": 0,
+      "Performance_schema_digest_lost": 0
+    },
+    "innodb_deadlocks_delta": 0,
+    "transaction_snapshots": [
+      "transaction\t6209\t182231179824000\t5512\t143290703710000",
+      "transaction\t8652\t232652991059000\t7928\t193570012616000"
+    ],
+    "threads_before_after": [
+      {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      },
+      {
+        "Threads_connected": 11,
+        "Threads_running": 2
+      }
+    ]
+  },
+  "commit_timeline": [
+    {
+      "at_utc": "2026-10-06T12:58:36.668Z",
+      "count": 5841,
+      "timer_ps": 46293969530000
+    },
+    {
+      "at_utc": "2026-10-06T12:58:51.779Z",
+      "count": 6158,
+      "timer_ps": 48724224063000
+    },
+    {
+      "at_utc": "2026-10-06T12:59:07.501Z",
+      "count": 6474,
+      "timer_ps": 50839361238000
+    },
+    {
+      "at_utc": "2026-10-06T12:59:23.182Z",
+      "count": 6793,
+      "timer_ps": 52951322292000
+    },
+    {
+      "at_utc": "2026-10-06T12:59:38.952Z",
+      "count": 7116,
+      "timer_ps": 55524184389000
+    },
+    {
+      "at_utc": "2026-10-06T12:59:55.050Z",
+      "count": 7437,
+      "timer_ps": 58032733262000
+    },
+    {
+      "at_utc": "2026-10-06T13:00:10.741Z",
+      "count": 7754,
+      "timer_ps": 60166106397000
+    },
+    {
+      "at_utc": "2026-10-06T13:00:26.465Z",
+      "count": 8072,
+      "timer_ps": 62243422095000
+    },
+    {
+      "at_utc": "2026-10-06T13:00:36.719Z",
+      "count": 8269,
+      "timer_ps": 63497200359000
+    }
+  ],
+  "commit_timeline_sample_errors": [],
+  "classification": "stable",
+  "runtime_stable": true,
+  "backend_scrape_healthy": true,
+  "digest_complete": true,
+  "prometheus_counter_deltas": {
+    "hikari_acquire": {
+      "count": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 2201.0
+      },
+      "sum_seconds": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 0.062018693999999985
+      },
+      "average_ms": 0.028178
+    },
+    "hikari_usage_connection_hold": {
+      "count": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 2201.0
+      },
+      "sum_seconds": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 47.327
+      },
+      "average_ms": 21.502499
+    },
+    "gc_pause": {
+      "count": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 11.0
+      },
+      "sum_seconds": {
+        "samples": 9,
+        "from_utc": "2026-10-06T12:58:36.668Z",
+        "to_utc": "2026-10-06T13:00:36.668Z",
+        "delta": 0.064
+      },
+      "average_ms": 5.818182
+    }
+  },
+  "gate_failures": [],
+  "attribution": {
+    "actual_rps": 19.999833404136574,
+    "latency_ms": {
+      "avg": 25.762415785089566,
+      "min": 14.6284,
+      "med": 24.1416,
+      "p(95)": 41.7966,
+      "p(99)": 64.0705,
+      "max": 115.4851
+    },
+    "prometheus": {
+      "Hikari active": {
+        "samples": 9,
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.1111111111111111
+      },
+      "Hikari idle": {
+        "samples": 9,
+        "min": 9.0,
+        "max": 10.0,
+        "mean": 9.88888888888889
+      },
+      "Hikari pending": {
+        "samples": 9,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "Hikari max": {
+        "samples": 9,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "process CPU": {
+        "samples": 9,
+        "min": 0.00044289431434423965,
+        "max": 0.025515534781413253,
+        "mean": 0.01809506361777724
+      },
+      "system CPU": {
+        "samples": 9,
+        "min": 0.1864725743067471,
+        "max": 0.3206333498268184,
+        "mean": 0.252265036256792
+      },
+      "JVM heap used": {
+        "samples": 9,
+        "min": 85657120.0,
+        "max": 169620432.0,
+        "mean": 129451955.55555555
+      },
+      "JVM heap committed": {
+        "samples": 9,
+        "min": 192937984.0,
+        "max": 192937984.0,
+        "mean": 192937984.0
+      },
+      "JVM heap max": {
+        "samples": 9,
+        "min": 2071986174.0,
+        "max": 2071986174.0,
+        "mean": 2071986174.0
+      },
+      "JVM live threads": {
+        "samples": 9,
+        "min": 43.0,
+        "max": 43.0,
+        "mean": 43.0
+      },
+      "JVM peak threads": {
+        "samples": 9,
+        "min": 43.0,
+        "max": 43.0,
+        "mean": 43.0
+      }
+    },
+    "counter_deltas": {
+      "hikari_acquire": {
+        "count": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 2201.0
+        },
+        "sum_seconds": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 0.062018693999999985
+        },
+        "average_ms": 0.028178
+      },
+      "hikari_usage_connection_hold": {
+        "count": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 2201.0
+        },
+        "sum_seconds": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 47.327
+        },
+        "average_ms": 21.502499
+      },
+      "gc_pause": {
+        "count": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 11.0
+        },
+        "sum_seconds": {
+          "samples": 9,
+          "from_utc": "2026-10-06T12:58:36.668Z",
+          "to_utc": "2026-10-06T13:00:36.668Z",
+          "delta": 0.064
+        },
+        "average_ms": 5.818182
+      }
+    },
+    "pending_longest_positive_samples": 0,
+    "docker": {
+      "backend": {
+        "cpu_percent": {
+          "samples": 24,
+          "mean": 24.374166666666667,
+          "max": 45.54
+        },
+        "memory_used_bytes": {
+          "samples": 24,
+          "mean": 573946811.7333333,
+          "max": 574095360.0
+        }
+      },
+      "mysql": {
+        "cpu_percent": {
+          "samples": 24,
+          "mean": 21.62625,
+          "max": 30.82
+        },
+        "memory_used_bytes": {
+          "samples": 24,
+          "mean": 579639705.6,
+          "max": 582274252.8
+        }
+      }
+    },
+    "mysql_threads": {
+      "Threads_connected": {
+        "samples": 24,
+        "min": 11,
+        "max": 12,
+        "mean": 11.041666666666666
+      },
+      "Threads_running": {
+        "samples": 24,
+        "min": 2,
+        "max": 3,
+        "mean": 2.375
+      }
+    },
+    "commit": {
+      "digest": "f2b9be5f0f32ca7507e4ddf133cd2fad0993a1c26fde9caa6f067b1af2b7603c",
+      "sql": "COMMIT",
+      "count": 2428,
+      "timer_ps": 17203230829000,
+      "lock_ps": 0,
+      "examined": 0,
+      "affected": 0,
+      "sent": 0,
+      "errors": 0,
+      "total_ms": 17203.230829,
+      "average_ms": 7.085350423805601,
+      "lock_ms": 0.0
+    },
+    "checkout_digests": [
+      {
+        "digest": "53eae3ba96f4b93b76282901aa9be73528f860066e29abd0e48ceefe2c45c4bd",
+        "sql": "INSERT INTO `orders` ( `address_line1` , `address_line2` , `created_at` , `discount_amount` , `member_id` , `order_number` , `original_amount` , `paid_at` , `payment_amount` , `postal_code` , `recipient_name` , `recipient_phone` , `shipping_fee` , SOURCE , STATUS ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 1168427831000,
+        "lock_ps": 4112000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 1168.427831,
+        "average_ms": 0.4866421620158268,
+        "lock_ms": 4.112
+      },
+      {
+        "digest": "093741d0556730065d5d107ba8cbfa134d73774d613eee1e09bef6dad2cf52a1",
+        "sql": "INSERT INTO `payments` ( `amount` , `approved_at` , `attempt_no` , `created_at` , `expires_at` , `failed_at` , `failure_code` , `failure_message` , `idempotency_key` , `last_reconciled_at` , `order_id` , `payment_key` , `provider` , `provider_order_id` , `provider_status` , `reconciliation_attempts` , `requested_at` , STATUS , TYPE ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 1127408436000,
+        "lock_ps": 4340000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 1127.408436,
+        "average_ms": 0.46955786588921283,
+        "lock_ms": 4.34
+      },
+      {
+        "digest": "67f3aa006fc26f576b60cf4383dcae03c08435fdf8b5b5d01431ac5073599a3a",
+        "sql": "SELECT `s1_0` . `id` , `s1_0` . `compare_at_price` , `s1_0` . `display_order` , `s1_0` . `name` , `s1_0` . `price` , `s1_0` . `product_id` , `p1_0` . `id` , `p1_0` . `brand_id` , `p1_0` . `catalog_key` , `p1_0` . `category_id` , `p1_0` . `description` , `p1_0` . `name` , `p1_0` . `pet_type` , `p1_0` . `short_description` , `p1_0` . `display_status` , `p1_0` . `thumbnail_url` , `s1_0` . `sku_code` , `s1_0` . `status` , `s1_0` . `subscribable` FROM `skus` `s1_0` JOIN `products` `p1_0` ON `p1_0` . `id` = `s1_0` . `product_id` WHERE `s1_0` . `id` IN (...) FOR UPDATE OF `s1_0`",
+        "count": 2401,
+        "timer_ps": 1041923315000,
+        "lock_ps": 8246000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 1041.923315,
+        "average_ms": 0.43395390045814247,
+        "lock_ms": 8.246
+      },
+      {
+        "digest": "1b7106b73099f02d7c44c2ea9819e4e1a16797ffb328490373838e7c024559e7",
+        "sql": "SELECT COUNT ( `s1_0` . `id` ) FROM `skus` `s1_0` JOIN `products` `p1_0` ON `p1_0` . `id` = `s1_0` . `product_id` JOIN `categories` `c1_0` ON `c1_0` . `id` = `p1_0` . `category_id` WHERE `s1_0` . `id` = ? AND `s1_0` . `status` = ? AND `p1_0` . `display_status` = ? AND `c1_0` . `active` = TRUE",
+        "count": 2401,
+        "timer_ps": 933271275000,
+        "lock_ps": 7357000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 933.271275,
+        "average_ms": 0.38870107246980423,
+        "lock_ms": 7.357
+      },
+      {
+        "digest": "c43b42fd18c1061698bc35b86f73c680681c021636c31de3af786a5fa536a987",
+        "sql": "INSERT INTO `inventory_movements` ( `available_after` , `available_before` , `cancellation_id` , `created_at` , `payment_id` , `quantity` , `reserved_after` , `reserved_before` , `return_id` , `sku_id` , `source_id` , TYPE ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 859518813000,
+        "lock_ps": 3228000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 859.518813,
+        "average_ms": 0.3579836788837984,
+        "lock_ms": 3.228
+      },
+      {
+        "digest": "2ad118df3b3b05b20b137d350589ee139d07a71800e26d1a80e85946b48ddd1e",
+        "sql": "UPDATE `inventories` `ie1_0` SET `available_quantity` = ( `ie1_0` . `available_quantity` - ? ) , `reserved_quantity` = ( `ie1_0` . `reserved_quantity` + ? ) , `version` = ( `ie1_0` . `version` + ? ) WHERE `ie1_0` . `sku_id` = ? AND `ie1_0` . `version` = ? AND `ie1_0` . `available_quantity` >= ?",
+        "count": 2401,
+        "timer_ps": 816429329000,
+        "lock_ps": 5161000000,
+        "examined": 2401,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 816.429329,
+        "average_ms": 0.3400372049146189,
+        "lock_ms": 5.161
+      },
+      {
+        "digest": "fce1c6ecdee9131b8dc8922b2704b4d7e0c57ad6d82c3f665446045f5fc7eb6b",
+        "sql": "SELECT `cie1_0` . `cart_id` , `cie1_0` . `sku_id` , `cie1_0` . `quantity` FROM `cart_items` `cie1_0` WHERE `cie1_0` . `cart_id` = ? FOR UPDATE OF `cie1_0`",
+        "count": 2401,
+        "timer_ps": 760047363000,
+        "lock_ps": 5032000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 760.047363,
+        "average_ms": 0.3165545035401916,
+        "lock_ms": 5.032
+      },
+      {
+        "digest": "44fb1466428bbf632b7c9a11c88517aa067cf3fafac4e892fee32e73cbf9cd82",
+        "sql": "INSERT INTO `checkout_idempotency_results` ( `created_at` , `order_id` , `payment_id` , `request_cart_version` , `request_fingerprint` , `idempotency_key` , `member_id` ) VALUES (...)",
+        "count": 2401,
+        "timer_ps": 738886051000,
+        "lock_ps": 3608000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 738.886051,
+        "average_ms": 0.3077409625156185,
+        "lock_ms": 3.608
+      },
+      {
+        "digest": "40a845f4d3b78e7dc1dd9949fb5535eb53249c8e77d452c19ec37fb750c3b2a1",
+        "sql": "UPDATE `checkout_idempotency_results` `cie1_0` SET `request_cart_version` = ? WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ? AND `cie1_0` . `request_cart_version` IS NULL",
+        "count": 2401,
+        "timer_ps": 697366994000,
+        "lock_ps": 2379000000,
+        "examined": 2401,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 697.366994,
+        "average_ms": 0.2904485605997501,
+        "lock_ms": 2.379
+      },
+      {
+        "digest": "ed28ee381f1ecff39fd30cfdb51f4347055bfbba9c3d701b748a8c39dc53eea1",
+        "sql": "INSERT INTO `order_items` ( `line_amount` , `order_id` , `product_name_snapshot` , `quantity` , `sku_code_snapshot` , `sku_id` , `sku_name_snapshot` , `snapshot_quality` , `unit_price` ) VALUES (...)",
+        "count": 2400,
+        "timer_ps": 687888747000,
+        "lock_ps": 2921000000,
+        "examined": 0,
+        "affected": 2401,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 687.888747,
+        "average_ms": 0.28662031125,
+        "lock_ms": 2.921
+      },
+      {
+        "digest": "1e76c36307ed8d8a301580103139536d2f438743baa3ababeebe2a1fd435ea6b",
+        "sql": "SELECT `ma1_0` . `id` , `ma1_0` . `address_line1` , `ma1_0` . `address_line2` , `ma1_0` . `created_at` , `ma1_0` . `member_id` , `ma1_0` . `name` , `ma1_0` . `postal_code` , `ma1_0` . `recipient_name` , `ma1_0` . `recipient_phone` , `ma1_0` . `updated_at` FROM `member_addresses` `ma1_0` WHERE `ma1_0` . `id` = ? AND `ma1_0` . `member_id` = ?",
+        "count": 2401,
+        "timer_ps": 649976927000,
+        "lock_ps": 4250000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 649.976927,
+        "average_ms": 0.2707109233652645,
+        "lock_ms": 4.25
+      },
+      {
+        "digest": "9cff5eb8d575ac430e94a6deafc855fdda8abee36a0db0beb1aebe4c7fa8c0a4",
+        "sql": "SELECT `m1_0` . `id` , `m1_0` . `default_address_id` , `m1_0` . `email` , `m1_0` . `password_hash` , `m1_0` . `role` FROM `members` `m1_0` WHERE `m1_0` . `id` = ? FOR UPDATE OF `m1_0`",
+        "count": 2401,
+        "timer_ps": 624160948000,
+        "lock_ps": 6760000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 624.160948,
+        "average_ms": 0.2599587455226989,
+        "lock_ms": 6.76
+      },
+      {
+        "digest": "eb0645ea52a2e690f955c53b94ca74938352f7eacedfba4aa5ff3791d330f3c7",
+        "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ?",
+        "count": 2401,
+        "timer_ps": 608878647000,
+        "lock_ps": 3909000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 608.878647,
+        "average_ms": 0.25359377217825907,
+        "lock_ms": 3.909
+      },
+      {
+        "digest": "27b935c399d8ef76cdf72167b6699d567a46c926d3cd74fa0bca4b3ae07a89c1",
+        "sql": "SELECT `pe1_0` . `id` , `pe1_0` . `amount` , `pe1_0` . `approved_at` , `pe1_0` . `attempt_no` , `pe1_0` . `created_at` , `pe1_0` . `expires_at` , `pe1_0` . `failed_at` , `pe1_0` . `failure_code` , `pe1_0` . `failure_message` , `pe1_0` . `idempotency_key` , `pe1_0` . `last_reconciled_at` , `pe1_0` . `order_id` , `pe1_0` . `payment_key` , `pe1_0` . `provider` , `pe1_0` . `provider_order_id` , `pe1_0` . `provider_status` , `pe1_0` . `reconciliation_attempts` , `pe1_0` . `requested_at` , `pe1_0` . `status` , `pe1_0` . `succeeded_order_id` , `pe1_0` . `type` FROM `payments` `pe1_0` WHERE `pe1_0` . `id` = ?",
+        "count": 2401,
+        "timer_ps": 596367659000,
+        "lock_ps": 3004000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 596.367659,
+        "average_ms": 0.24838303165347772,
+        "lock_ms": 3.004
+      },
+      {
+        "digest": "3c91306c1a1cec2e435edc7e0ded0bcf5b9e618eedd96d7756ccefc6a2a05fd8",
+        "sql": "SELECT `ie1_0` . `sku_id` , `ie1_0` . `available_quantity` , `ie1_0` . `reserved_quantity` , `ie1_0` . `version` FROM `inventories` `ie1_0` WHERE `ie1_0` . `sku_id` = ?",
+        "count": 2401,
+        "timer_ps": 571589733000,
+        "lock_ps": 3453000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 571.589733,
+        "average_ms": 0.2380631957517701,
+        "lock_ms": 3.453
+      },
+      {
+        "digest": "814178f17392193b9f6f15c0faa9f426c40a6b4cc15713b74945041cad7ff977",
+        "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE ( `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` ) IN ( (...) )",
+        "count": 2401,
+        "timer_ps": 559431786000,
+        "lock_ps": 2954000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 559.431786,
+        "average_ms": 0.23299949437734277,
+        "lock_ms": 2.954
+      },
+      {
+        "digest": "f66191877d3bb1480a79df15eeadaed281f09cf2ae557243c82391e29ba2c3b2",
+        "sql": "SELECT `ce1_0` . `id` , `ce1_0` . `created_at` , `ce1_0` . `member_id` , `ce1_0` . `updated_at` , `ce1_0` . `version` FROM `carts` `ce1_0` WHERE `ce1_0` . `member_id` = ? FOR UPDATE OF `ce1_0`",
+        "count": 2401,
+        "timer_ps": 540212418000,
+        "lock_ps": 3796000000,
+        "examined": 2401,
+        "affected": 0,
+        "sent": 2401,
+        "errors": 0,
+        "total_ms": 540.212418,
+        "average_ms": 0.22499475968346522,
+        "lock_ms": 3.796
+      }
+    ],
+    "background_digests": [
+      {
+        "digest": "158bfe3d4b4b0a372a4acdb38affe2cb4f6b3cb21a9af0ea9fad9a9a083ac18a",
+        "sql": "SET `autocommit` = ?",
+        "count": 4856,
+        "timer_ps": 665323431000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 665.323431,
+        "average_ms": 0.1370105912273476,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "a51e17b1b07895c10c397d496f566248fbfdfa0d7077107337b537329d7afd9b",
+        "sql": "SELECT `p` . `id` `product_id` , `p` . `name` , `p` . `pet_type` , `p` . `short_description` , COALESCE ( `main_image` . `image_url` , `p` . `thumbnail_url` ) `thumbnail_url` , `c` . `id` `category_id` , `c` . `name` `category_name` , `c` . `slug` `category_slug` , `b` . `id` `brand_id` , `b` . `name` `brand_name` , `b` . `slug` `brand_slug` , `b` . `logo_url` `brand_logo_url` , ( SELECT `s2` . `price` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `representative_price` , ( SELECT `s2` . `compare_at_price` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `compare_at_price` , ( SELECT `s2` . `id` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status` = ? ORDER BY `s2` . `price` ASC , `s2` . `id` ASC LIMIT ? ) `representative_sku_id` , ( SELECT `s2` . `name` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` AND `s2` . `status`",
+        "count": 25,
+        "timer_ps": 65310289000,
+        "lock_ps": 162000000,
+        "examined": 6550,
+        "affected": 0,
+        "sent": 500,
+        "errors": 0,
+        "total_ms": 65.310289,
+        "average_ms": 2.61241156,
+        "lock_ms": 0.162
+      },
+      {
+        "digest": "b0a2105f85f781a2af3593f66431f1528f14f14566499839ea27e23911fb9a5a",
+        "sql": "SHOW GLOBAL STATUS WHERE `Variable_name` IN (...)",
+        "count": 26,
+        "timer_ps": 27146345000,
+        "lock_ps": 45000000,
+        "examined": 54,
+        "affected": 0,
+        "sent": 54,
+        "errors": 0,
+        "total_ms": 27.146345,
+        "average_ms": 1.0440901923076924,
+        "lock_ms": 0.045
+      },
+      {
+        "digest": "cc88afa24cc703b105e8a30f44ea1a682533be91cf8696d285114adf53398357",
+        "sql": "SELECT /*+ NO_BNL ( `c` , `b` ) */ COUNT ( * ) FROM `products` `p` FORCE INDEX ( PRIMARY ) JOIN `categories` `c` ON `c` . `id` = `p` . `category_id` JOIN `brands` `b` ON `b` . `id` = `p` . `brand_id` WHERE `p` . `display_status` = ? AND `c` . `active` = TRUE AND `b` . `active` = TRUE",
+        "count": 25,
+        "timer_ps": 15525277000,
+        "lock_ps": 83000000,
+        "examined": 7825,
+        "affected": 0,
+        "sent": 25,
+        "errors": 0,
+        "total_ms": 15.525277,
+        "average_ms": 0.62101108,
+        "lock_ms": 0.083
+      },
+      {
+        "digest": "44e35cee979ba420eb49a8471f852bbe15b403c89742704817dfbaace0d99dbb",
+        "sql": "SELECT @@`version_comment` LIMIT ?",
+        "count": 60,
+        "timer_ps": 11160821000,
+        "lock_ps": 0,
+        "examined": 60,
+        "affected": 0,
+        "sent": 60,
+        "errors": 0,
+        "total_ms": 11.160821,
+        "average_ms": 0.18601368333333335,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "9cf78ec1ee2746bb4c688b21593f69a1eba7026ba2277d7717cd8defb167449a",
+        "sql": "SET SESSION TRANSACTION READ ONLY",
+        "count": 27,
+        "timer_ps": 4132842000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 4.132842,
+        "average_ms": 0.15306822222222222,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "664a2aec28f52c38fac12d5adf14d7f8da06346ba3a594072cc152ad9bcecb59",
+        "sql": "SET SESSION TRANSACTION READ WRITE",
+        "count": 27,
+        "timer_ps": 2387100000,
+        "lock_ps": 0,
+        "examined": 0,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 2.3871,
+        "average_ms": 0.08841111111111111,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "552495773dc4ae5624b44f334efaba5ec04e19569e0bef3c99c54d1c3999253d",
+        "sql": "SELECT `pe1_0` . `id` FROM `payments` `pe1_0` WHERE `pe1_0` . `type` = ? AND `pe1_0` . `status` = ? AND `pe1_0` . `expires_at` IS NOT NULL AND `pe1_0` . `expires_at` <= ? ORDER BY `pe1_0` . `expires_at` , `pe1_0` . `id` LIMIT ?",
+        "count": 2,
+        "timer_ps": 2099177000,
+        "lock_ps": 4000000,
+        "examined": 2458,
+        "affected": 0,
+        "sent": 0,
+        "errors": 0,
+        "total_ms": 2.099177,
+        "average_ms": 1.0495885,
+        "lock_ms": 0.004
+      },
+      {
+        "digest": "d1b44b0c19af710b5a679907e284acd2ddc285201794bc69a2389d77baedddae",
+        "sql": "SELECT ?",
+        "count": 24,
+        "timer_ps": 1751644000,
+        "lock_ps": 0,
+        "examined": 24,
+        "affected": 0,
+        "sent": 24,
+        "errors": 0,
+        "total_ms": 1.751644,
+        "average_ms": 0.07298516666666667,
+        "lock_ms": 0.0
+      },
+      {
+        "digest": "4f04df24b7b05b2016ae92832a5a4b75e3d3925ff545d004564561a22f0be243",
+        "sql": "SELECT `COUNT` FROM `INFORMATION_SCHEMA` . `INNODB_METRICS` WHERE NAME = ?",
+        "count": 1,
+        "timer_ps": 1154998000,
+        "lock_ps": 2000000,
+        "examined": 314,
+        "affected": 0,
+        "sent": 1,
+        "errors": 0,
+        "total_ms": 1.154998,
+        "average_ms": 1.154998,
+        "lock_ms": 0.002
+      },
+      {
+        "digest": "456981d1aa1bf7f5b44a015a2dd7c05b2dc4c7bcaf7ca9d7188e5947edce179b",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_command_idempotency_results` WHERE `completed_at` IS NOT NULL",
+        "count": 2,
+        "timer_ps": 806069000,
+        "lock_ps": 4000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.806069,
+        "average_ms": 0.4030345,
+        "lock_ms": 0.004
+      },
+      {
+        "digest": "41bd76e1ade0706437265199b00759a0e6b0abf21f760697b2908d212fb8ef0d",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_creation_idempotency_results` WHERE `completed_at` IS NOT NULL",
+        "count": 2,
+        "timer_ps": 641854000,
+        "lock_ps": 6000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.641854,
+        "average_ms": 0.320927,
+        "lock_ms": 0.006
+      },
+      {
+        "digest": "516a6d0709c235c4c8b935c63d584d115e470495a3951caad08b183d62661ee0",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_creation_idempotency_results` WHERE `completed_at` < ?",
+        "count": 2,
+        "timer_ps": 606251000,
+        "lock_ps": 5000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.606251,
+        "average_ms": 0.3031255,
+        "lock_ms": 0.005
+      },
+      {
+        "digest": "d46bae74ecd8ac1c76c92c1ec61da4ca5783913250e821c00d81903a0077574d",
+        "sql": "SELECT ( SELECT COUNT ( * ) FROM `order_returns` WHERE STATUS = ? ) + ( SELECT COUNT ( * ) FROM `refunds` WHERE STATUS IN (...) ) + ( SELECT COUNT ( * ) FROM `payments` WHERE STATUS IN (...) )",
+        "count": 2,
+        "timer_ps": 600251000,
+        "lock_ps": 3000000,
+        "examined": 2,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.600251,
+        "average_ms": 0.3001255,
+        "lock_ms": 0.003
+      },
+      {
+        "digest": "15a4beccd94e82ea64024812fe57d2f31230417ae0036c6dfeb9166c556d2c0a",
+        "sql": "SELECT COUNT ( * ) FROM `subscription_command_idempotency_results` WHERE `completed_at` < ?",
+        "count": 2,
+        "timer_ps": 392833000,
+        "lock_ps": 4000000,
+        "examined": 0,
+        "affected": 0,
+        "sent": 2,
+        "errors": 0,
+        "total_ms": 0.392833,
+        "average_ms": 0.1964165,
+        "lock_ms": 0.004
+      }
+    ]
+  },
+  "attribution_method": "Checkout identity SELECTs and table-scoped DML; read-only classification after collection; raw counters and workload unchanged"
+}

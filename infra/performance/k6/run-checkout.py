@@ -1,7 +1,8 @@
-"""Local-only PERF-COMMERCE-001 runner; credentials and identities stay in memory.
+"""Local-only Checkout runner; credentials and identities stay in memory.
 
 Run after starting the existing local-integration Compose services:
   python infra/performance/k6/run-checkout.py --stage before --attempt v120
+PERF-COMMERCE-002: --ladder [--backend-port 18080], stops at first hard failure.
 The runner refuses to overwrite evidence. --cleanup RUN_MARKER recovers its own
 fixture after an interruption; the non-secret marker is printed before seeding.
 """
@@ -30,6 +31,9 @@ COMPOSE = ['docker', 'compose', '--env-file', str(LOCAL / '.env.local'), '-f', s
 FIELDS = ['count', 'timer_ps', 'lock_ps', 'examined', 'affected', 'sent', 'errors']
 BASE_MAIN_SHA = 'a3787d8cd0437b40c4aa6817996d70d2168610b7'
 POOL_SIZE = 120
+LADDER_RATES = (5, 10, 15, 20)
+LADDER_MAIN_SHA = 'cb4e9b46031b42c46f2f4a4dfbab0871acb82b4e'
+BASE_URL = 'http://127.0.0.1:8080'
 BEFORE_CORRECTNESS_FILES = {
     'backend/src/main/java/com/pawcycle/backend/commerce/CheckoutIdempotencyRepository.java',
     'backend/src/main/java/com/pawcycle/backend/commerce/checkout/persistence/CheckoutPersistenceAdapter.java',
@@ -74,7 +78,7 @@ def inspect(service):
                 env.get('PAWCYCLE_LOCAL_QA_BOOTSTRAP_RESET_SUBSCRIPTIONS', 'false') != 'false':
             raise RuntimeError('STOP: local runtime/Toss/reset gate failed')
         bindings = item['HostConfig']['PortBindings'].get('8080/tcp', [])
-        if bindings != [{'HostIp': '127.0.0.1', 'HostPort': '8080'}]:
+        if bindings != [{'HostIp': '127.0.0.1', 'HostPort': BASE_URL.rsplit(':', 1)[1]}]:
             raise RuntimeError('STOP: Backend must publish only the fixed loopback port')
     if service == 'mysql' and not any(m.get('Name') == 'pawcycle-local-integration-mysql-data'
                                      and m['Destination'] == '/var/lib/mysql' for m in item['Mounts']):
@@ -163,7 +167,7 @@ def login(email, password, address):
     cookies = http.cookiejar.CookieJar()
     client = build_opener(HTTPCookieProcessor(cookies))
     def request(path, body=None, headers=None):
-        req = Request('http://127.0.0.1:8080' + path,
+        req = Request(BASE_URL + path,
                       None if body is None else json.dumps(body).encode(), headers or {})
         with client.open(req, timeout=15) as response:
             return json.load(response)
@@ -187,8 +191,15 @@ WHERE SCHEMA_NAME=DATABASE() AND DIGEST IS NOT NULL;""")
     locks = dict(row.split('\t') for row in sql("SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_row_lock_waits','Innodb_row_lock_time','Innodb_row_lock_time_max','Innodb_deadlocks','Performance_schema_digest_lost');").splitlines())
     deadlocks = sql("SELECT COUNT FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE NAME='lock_deadlocks';")
     transactions = sql("SELECT EVENT_NAME,COUNT_STAR,SUM_TIMER_WAIT,COUNT_READ_WRITE,SUM_TIMER_READ_WRITE FROM performance_schema.events_transactions_summary_global_by_event_name;")
+    threads = mysql_threads()
     return {'digests': digests, 'locks': {k: int(v) for k, v in locks.items()},
-            'innodb_deadlocks': int(deadlocks) if deadlocks else None, 'transactions': transactions}
+            'innodb_deadlocks': int(deadlocks) if deadlocks else None, 'transactions': transactions,
+            'threads': threads}
+
+
+def mysql_threads():
+    return {key: int(value) for key, value in (row.split('\t') for row in sql(
+        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected','Threads_running');").splitlines())}
 
 
 def commit_counters(snapshot_data):
@@ -220,7 +231,8 @@ def mysql_delta(before, after):
             'innodb_deadlocks_delta': (after['innodb_deadlocks'] - before['innodb_deadlocks']
                                        if before.get('innodb_deadlocks') is not None
                                        and after.get('innodb_deadlocks') is not None else None),
-            'transaction_snapshots': [before['transactions'], after['transactions']]}
+            'transaction_snapshots': [before['transactions'], after['transactions']],
+            'threads_before_after': [before.get('threads', {}), after.get('threads', {})]}
 
 
 def prometheus(start, end):
@@ -249,6 +261,9 @@ def prometheus(start, end):
         'Hikari idle': 'hikaricp_connections_idle',
         'Hikari pending': 'hikaricp_connections_pending',
         'process CPU': 'process_cpu_usage',
+        'system CPU': 'system_cpu_usage',
+        'JVM heap committed': 'sum(jvm_memory_committed_bytes{area="heap"})',
+        'JVM heap max': 'sum(jvm_memory_max_bytes{area="heap"})',
         'JVM heap used': 'sum(jvm_memory_used_bytes{area="heap"})',
         'JVM live threads': 'jvm_threads_live_threads',
         'JVM peak threads': 'jvm_threads_peak_threads',
@@ -309,12 +324,151 @@ def classify_measurement(dropped, k6_exit, status_error_rate, no_deadlocks,
     return 'valid_before' if gates else 'invalid_measurement'
 
 
-def main():
+def memory_bytes(value):
+    # Same Docker stats JSON / memory conversion pattern as catalog-isolated collector.
+    match = re.fullmatch(r'([\d.]+)([kMGT]?i?B)', value.strip())
+    units = {'B': 1, 'kB': 1000, 'MB': 1000**2, 'GB': 1000**3, 'TB': 1000**4,
+             'KiB': 1024, 'MiB': 1024**2, 'GiB': 1024**3, 'TiB': 1024**4}
+    if not match or match[2] not in units:
+        raise ValueError('Docker memory usage format unavailable')
+    return float(match[1]) * units[match[2]]
+
+
+def resource_sample(containers):
+    raw = command(['docker', 'stats', '--no-stream', '--format', '{{json .}}', *containers.values()])
+    rows = {row['ID']: row for row in map(json.loads, raw.splitlines())}
+    result = {'at_utc': utc(), 'mysql_threads': mysql_threads()}
+    for service, cid in containers.items():
+        row = next(value for key, value in rows.items() if cid.startswith(key))
+        used, limit = row['MemUsage'].split(' / ')
+        result[service] = {'cpu_percent': float(row['CPUPerc'].rstrip('%')),
+                           'memory_used_bytes': memory_bytes(used),
+                           'memory_limit_bytes': memory_bytes(limit)}
+    return result
+
+
+def actual_rps(evidence):
+    duration = (dt.datetime.fromisoformat(evidence['end_utc'].replace('Z', '+00:00')) -
+                dt.datetime.fromisoformat(evidence['start_utc'].replace('Z', '+00:00'))).total_seconds()
+    return metric_count(evidence['k6'], 'checkout_requests') / duration if duration > 0 else 0
+
+
+def stage_failures(evidence, check_actual=True):
+    checks = {'status_errors': evidence['status_error_rate'] == 0,
+              'dropped': evidence['dropped_iterations'] == 0,
+              'deadlock': evidence['mysql'].get('innodb_deadlocks_delta') == 0,
+              'restart_oom': evidence['runtime_stable'],
+              'fixture_mismatch': evidence['fixture_contract_matches_requests'],
+              'backend_scrape': evidence['backend_scrape_healthy'],
+              'actual_rps': not check_actual or actual_rps(evidence) >= evidence['target_rps'] * 0.98,
+              'digest_loss': evidence['digest_complete'], 'k6_exit': evidence['k6_exit'] == 0}
+    return [name for name, passed in checks.items() if not passed]
+
+
+def consecutive_positive(series):
+    longest = 0
+    for row in series:
+        current = 0
+        for _, value in row['values']:
+            current = current + 1 if math.isfinite(float(value)) and float(value) > 0 else 0
+            longest = max(longest, current)
+    return longest
+
+
+def is_checkout_digest(statement):
+    tables = r'\b(members|member_addresses|carts|cart_items|checkout_idempotency_results|products|skus|inventories|inventory_movements|orders|order_items|payments)\b'
+    if not re.match(r'^(SELECT|INSERT|UPDATE)\b', statement) or not re.search(tables, statement, re.I):
+        return False
+    if re.search(r'performance_schema|INFORMATION_SCHEMA', statement, re.I):
+        return False
+    # Checkout SELECTs target member/cart/SKU/payment/idempotency identities.
+    # Merely mentioning products/skus/payments also matches catalog healthchecks,
+    # payment expiry scans and aggregate Micrometer gauges; exclude those scans.
+    identity_predicate = bool(re.search(
+        r'(?:\.|\bWHERE)\s*`?(?:id|member_id|cart_id|sku_id|idempotency_key)`?\s*(?:=\s*\?|IN\s*\(\.\.\.\))',
+        statement, re.I))
+    composite_id = ('checkout_idempotency_results' in statement and bool(re.search(
+        r'WHERE\s*\([^)]*\bidempotency_key\b[^)]*\bmember_id\b[^)]*\)\s*IN\s*\(', statement, re.I)))
+    return not statement.startswith('SELECT') or identity_predicate or composite_id
+
+
+def stage_attribution(evidence, prom):
+    stats = {q['title']: q['stats'] for q in prom['queries']}
+    samples = evidence.get('resource_samples', [])
+    resources = {}
+    for service in ['backend', 'mysql']:
+        resources[service] = {}
+        for field in ['cpu_percent', 'memory_used_bytes']:
+            values = [row[service][field] for row in samples]
+            resources[service][field] = {'samples': len(values), 'mean': statistics.mean(values),
+                                       'max': max(values)} if values else {'samples': 0}
+    threads = {}
+    for field in ['Threads_connected', 'Threads_running']:
+        values = [row['mysql_threads'][field] for row in samples]
+        threads[field] = {'samples': len(values), 'min': min(values), 'max': max(values),
+                          'mean': statistics.mean(values)} if values else {'samples': 0}
+    pending = next(q for q in prom['queries'] if q['title'] == 'Hikari pending')
+    digests = evidence['mysql']['digests']
+    checkout_digests = [row for row in digests if is_checkout_digest(row['sql'])]
+    return {'actual_rps': actual_rps(evidence),
+            'latency_ms': evidence['k6']['metrics']['checkout_latency']['values'],
+            'prometheus': {name: stats[name] for name in ['Hikari active', 'Hikari idle', 'Hikari pending',
+                'Hikari max', 'process CPU', 'system CPU', 'JVM heap used', 'JVM heap committed',
+                'JVM heap max', 'JVM live threads', 'JVM peak threads']},
+            'counter_deltas': prom['counter_deltas'],
+            'pending_longest_positive_samples': consecutive_positive(pending['series']),
+            'docker': resources, 'mysql_threads': threads,
+            'commit': next((row for row in digests if row['sql'].strip().upper() == 'COMMIT'), None),
+            'checkout_digests': checkout_digests,
+            'background_digests': [row for row in digests if row not in checkout_digests
+                                   and row['sql'].strip().upper() != 'COMMIT']}
+
+
+def run_ladder(backend_port, run_stage=None):
+    if run_stage is None:
+        baseline = {service: inspect(service) for service in ['backend', 'mysql']}
+        def run_stage(rate):
+            if any(not runtime_unchanged(baseline[service], inspect(service)) for service in baseline):
+                raise RuntimeError('STOP: ladder runtime changed between stages')
+            return main(['--stage', 'ladder', '--attempt', f'rps-{rate}',
+                         '--target-rps', str(rate), '--backend-port', str(backend_port)])
+    results = []
+    for rate in LADDER_RATES:
+        evidence = run_stage(rate)
+        results.append({'target_rps': rate, 'phase': evidence['phase'],
+                        'classification': evidence['classification'],
+                        'gate_failures': evidence['gate_failures']})
+        if evidence['classification'] != 'stable':
+            break
+    return {'stages': results, 'not_run_rps': list(LADDER_RATES[len(results):])}
+
+
+def main(argv=None):
+    global BASE_URL
     parser = argparse.ArgumentParser()
-    parser.add_argument('--stage', choices=['before', 'after'])
+    parser.add_argument('--stage', choices=['before', 'after', 'ladder'])
+    parser.add_argument('--ladder', action='store_true')
+    parser.add_argument('--target-rps', type=int, choices=LADDER_RATES, default=20)
+    parser.add_argument('--backend-port', type=int, default=8080)
     parser.add_argument('--attempt')
     parser.add_argument('--cleanup')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if not 1024 <= args.backend_port <= 65535:
+        parser.error('Backend port must be a non-privileged loopback port')
+    BASE_URL = f'http://127.0.0.1:{args.backend_port}'
+    evidence_dir = ROOT / 'docs/reports/PERF-COMMERCE-002/evidence' if args.ladder or args.stage == 'ladder' else EVIDENCE
+    if args.ladder:
+        if command(['git', 'branch', '--show-current']) != 'codex/perf-commerce-002' or \
+                command(['git', 'rev-parse', 'HEAD']) != LADDER_MAIN_SHA or \
+                command(['git', 'rev-parse', 'origin/main']) != LADDER_MAIN_SHA or \
+                command(['git', 'status', '--porcelain', '--', 'backend']):
+            raise RuntimeError('STOP: ladder requires unmodified Backend on the task main baseline')
+        if any(evidence_dir.glob('ladder-*.json')):
+            raise RuntimeError('STOP: ladder evidence exists; do not repeat')
+        result = run_ladder(args.backend_port)
+        (evidence_dir / 'ladder.json').write_text(json.dumps(result, indent=2) + '\n')
+        print(json.dumps(result), flush=True)
+        return result
     inspect('mysql')
     state_before = inspect('backend')
     if args.cleanup:
@@ -330,7 +484,7 @@ def main():
     if args.stage == 'before':
         require_before_source_state()
     prefix = f'{args.stage}-{args.attempt}'
-    paths = {suffix: EVIDENCE / f'{prefix}-{suffix}.json'
+    paths = {suffix: evidence_dir / f'{prefix}-{suffix}.json'
              for suffix in ['warmup', 'measurement', 'prometheus', 'cleanup']}
     if any(path.exists() for path in paths.values()):
         raise RuntimeError('STOP: this attempt already has evidence; do not repeat it')
@@ -344,13 +498,19 @@ def main():
                     if '=' in line and not line.startswith('#'))
     marker = 'pc001-' + uuid.uuid4().hex[:12]
     print(f'Fixture cleanup marker: {marker}', flush=True)
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
     seeded = False
     server = None
     commit_stop = threading.Event()
     commit_lock = threading.Lock()
     commit_samples = []
     commit_sample_errors = []
+    resource_stop = threading.Event()
+    resource_samples = []
+    resource_errors = []
+    containers = {service: command(COMPOSE + ['ps', '-q', service]) for service in ['backend', 'mysql']}
+    mysql_before = inspect('mysql')
+    resource_monitor = None
     try:
         addresses = seed(marker, settings['PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL'])
         seeded = True
@@ -377,6 +537,19 @@ def main():
                     commit_sample_errors.append(type(error).__name__)
                     return
 
+        def observe_resources():
+            while not resource_stop.wait(0.05) and 'start' not in events:
+                pass
+            due = time.monotonic()
+            while not resource_stop.is_set():
+                try:
+                    resource_samples.append(resource_sample(containers))
+                except Exception as error:
+                    resource_errors.append({'at_utc': utc(), 'error': type(error).__name__})
+                due += 5
+                if resource_stop.wait(max(0, due - time.monotonic())):
+                    return
+
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass
@@ -389,6 +562,7 @@ def main():
                             append_commit_sample(events['start'], commit_counters(events['before']))
                     elif self.path == '/end':
                         events['end'] = utc()
+                        resource_stop.set()
                         events['after'] = snapshot()
                         if events.get('phase') == 'measurement':
                             append_commit_sample(events['end'], commit_counters(events['after']))
@@ -403,22 +577,27 @@ def main():
         server = HTTPServer(('127.0.0.1', 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         env = os.environ.copy()
-        env.update(BASE_URL='http://127.0.0.1:8080', CHECKOUT_POOL=json.dumps(pool),
+        env.update(BASE_URL=BASE_URL, CHECKOUT_POOL=json.dumps(pool), CHECKOUT_RPS=str(args.target_rps),
                    CHECKOUT_COLLECTOR=f'http://127.0.0.1:{server.server_port}', CHECKOUT_RUN=marker)
         summaries = {}
         for phase in ['warmup', 'measurement']:
             events.clear()
             events['phase'] = phase
+            phase_fixture_before = fixture_counts(marker)
             env['CHECKOUT_PHASE'] = phase
             monitor = None
             if phase == 'measurement':
                 commit_stop.clear()
+                resource_stop.clear()
                 monitor = threading.Thread(target=observe_commit_timeline, daemon=True)
                 monitor.start()
+                if args.stage == 'ladder':
+                    resource_monitor = threading.Thread(target=observe_resources, daemon=True)
+                    resource_monitor.start()
             with tempfile.TemporaryDirectory(prefix='pc001-') as temporary:
                 summary = Path(temporary) / 'summary.json'
                 env['CHECKOUT_SUMMARY'] = str(summary)
-                print(f'{phase}: 20 RPS / {30 if phase == "warmup" else 120}s / {POOL_SIZE} isolated VUs', flush=True)
+                print(f'{phase}: {args.target_rps} RPS / {30 if phase == "warmup" else 120}s / {POOL_SIZE} isolated VUs', flush=True)
                 result = subprocess.run(['k6', 'run', '--quiet', str(Path(__file__).with_name('checkout.js'))],
                                         env=env, capture_output=True, text=True, encoding='utf-8')
                 if not summary.exists():
@@ -435,6 +614,27 @@ def main():
                     'dropped_iterations': phase_dropped, 'k6': summaries[phase],
                     'runtime_before': state_before, 'runtime_after': runtime_after_phase,
                     'mysql': phase_mysql}
+                if args.stage == 'ladder':
+                    counts = fixture_counts(marker)
+                    time.sleep(16)
+                    prom = prometheus(events['start'], events['end'])
+                    scrape = next(q for q in prom['queries'] if q.get('panel_id') == 13)['stats']
+                    mysql_after = inspect('mysql')
+                    warmup_evidence.update(phase='warmup', target_rps=args.target_rps,
+                        fixture_contract_matches_requests=fixture_delta_matches(
+                            phase_fixture_before, counts, metric_count(summaries[phase], 'checkout_requests')),
+                        runtime_stable=runtime_unchanged(state_before, runtime_after_phase)
+                            and runtime_unchanged(mysql_before, mysql_after),
+                        backend_scrape_healthy=scrape.get('min') == 1 and scrape.get('samples', 0) >= 2,
+                        digest_complete=phase_mysql['innodb_delta'].get('Performance_schema_digest_lost') == 0)
+                    # Capacity is measured over 120s; warm-up gates correctness/drops only.
+                    warmup_evidence['gate_failures'] = stage_failures(warmup_evidence, check_actual=False)
+                    warmup_evidence['classification'] = 'hard_failure' if warmup_evidence['gate_failures'] else 'stable'
+                    warmup_evidence['actual_rps'] = actual_rps(warmup_evidence)
+                    if warmup_evidence['gate_failures']:
+                        paths['prometheus'].write_text(json.dumps(prom, indent=2) + '\n')
+                        paths['warmup'].write_text(json.dumps(warmup_evidence, indent=2) + '\n')
+                        return warmup_evidence
                 paths['warmup'].write_text(json.dumps(warmup_evidence, indent=2) + '\n')
                 deadlocks = phase_mysql.get('innodb_deadlocks_delta')
                 restarted = runtime_after_phase['started'] != state_before['started'] or runtime_after_phase['restarts'] != state_before['restarts']
@@ -444,7 +644,10 @@ def main():
 
             commit_stop.set()
             if monitor:
-                monitor.join(timeout=2)
+                monitor.join()
+            resource_stop.set()
+            if resource_monitor:
+                resource_monitor.join()
             counts = fixture_counts(marker)
             warmup_requests = int(summaries['warmup']['metrics']['checkout_requests']['values']['count'])
             measurement_requests = int(summaries['measurement']['metrics']['checkout_requests']['values']['count'])
@@ -454,7 +657,7 @@ def main():
                     ['orders', 'payments_ready', 'reservations', 'reserved_quantity'])
                 and counts['cart_items'] == POOL_SIZE and counts['minimum_stock'] > 0)
             evidence = {'source_sha': command(['git', 'rev-parse', 'HEAD']),
-                'pool_size': POOL_SIZE, 'target_rps': 20, 'warmup_seconds': 30, 'measurement_seconds': 120,
+                'phase': 'measurement', 'pool_size': POOL_SIZE, 'target_rps': args.target_rps, 'warmup_seconds': 30, 'measurement_seconds': 120,
                 'start_utc': events.get('start'), 'end_utc': events.get('end'),
                 'k6_exit': result.returncode, 'status_error_rate': phase_errors,
                 'dropped_iterations': phase_dropped, 'k6': summaries[phase],
@@ -462,6 +665,13 @@ def main():
                 'runtime_before': state_before, 'runtime_after': runtime_after_phase,
                 'fixture_before': fixture_before, 'fixture_after': counts,
                 'fixture_contract_matches_requests': fixture_contract,
+                'measurement_fixture_before': phase_fixture_before,
+                'measurement_fixture_delta_matches_requests': fixture_delta_matches(
+                    phase_fixture_before, counts, measurement_requests),
+                'mysql_runtime_before': mysql_before, 'mysql_runtime_after': inspect('mysql'),
+                'resource_interval_seconds': 5,
+                'resource_samples': [s for s in resource_samples if events['start'] <= s['at_utc'] <= events['end']],
+                'resource_sample_errors': resource_errors,
                 'mysql': mysql_delta(events['before'], events['after']),
                 'commit_timeline': sorted(commit_samples, key=lambda row: row['at_utc']),
                 'commit_timeline_sample_errors': commit_sample_errors}
@@ -491,6 +701,18 @@ def main():
                          'backend_scrape_healthy': scrape_healthy, 'digest_complete': digest_complete,
                          'prometheus_counter_deltas': prom['counter_deltas']})
         paths['measurement'].write_text(json.dumps(evidence, indent=2) + '\n')
+        if args.stage == 'ladder':
+            evidence['runtime_stable'] = runtime_stable and runtime_unchanged(
+                mysql_before, evidence['mysql_runtime_after'])
+            evidence['fixture_contract_matches_requests'] = fixture_contract and evidence['measurement_fixture_delta_matches_requests']
+            evidence['backend_scrape_healthy'] = scrape_healthy and scrape.get('samples', 0) >= 2
+            evidence['digest_complete'] = evidence['mysql']['innodb_delta'].get('Performance_schema_digest_lost') == 0
+            evidence['gate_failures'] = stage_failures(evidence)
+            evidence['classification'] = 'hard_failure' if evidence['gate_failures'] else 'stable'
+            evidence['attribution'] = stage_attribution(evidence, prom)
+            paths['measurement'].write_text(json.dumps(evidence, indent=2) + '\n')
+            print(f"Stage {args.target_rps}: {evidence['classification']}; gates={evidence['gate_failures']}", flush=True)
+            return evidence
         if not runtime_stable:
             raise RuntimeError('STOP: Backend restart/OOM during measurement')
         if not digest_complete:
@@ -502,6 +724,9 @@ def main():
         print(f"Measurement evidence saved; classification={classification}; dropped={phase_dropped}", flush=True)
     finally:
         commit_stop.set()
+        resource_stop.set()
+        if resource_monitor:
+            resource_monitor.join()
         if server:
             server.shutdown()
         if seeded:
@@ -509,6 +734,19 @@ def main():
             paths['cleanup'].write_text(json.dumps(
                 {'verified': True, 'boundary': f'exact run namespace; {POOL_SIZE} dedicated members/products/SKUs; shared QA preserved'}, indent=2) + '\n')
             print('Exact fixture cleanup verified', flush=True)
+
+
+def runtime_unchanged(before, after):
+    return (after['running'] and not after['oom'] and before['started'] == after['started']
+            and before['restarts'] == after['restarts'] and before['image'] == after['image']
+            and all(before[key] == after[key] for key in ['memory_bytes', 'nano_cpus', 'pids']))
+
+
+def fixture_delta_matches(before, after, requests):
+    return (all(after[key] - before[key] == requests for key in
+                ['orders', 'payments_ready', 'reservations', 'reserved_quantity'])
+            and after['members'] == POOL_SIZE and after['cart_items'] == POOL_SIZE
+            and after['minimum_stock'] > 0)
 
 
 if __name__ == '__main__':

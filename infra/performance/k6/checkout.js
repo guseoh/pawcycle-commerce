@@ -10,12 +10,14 @@ if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin || '') ||
 const pool = JSON.parse(__ENV.CHECKOUT_POOL || '[]');
 if (pool.length !== 120) throw new Error('Checkout requires exactly 120 dedicated members.');
 const duration = __ENV.CHECKOUT_PHASE === 'warmup' ? '30s' : '120s';
+const rate = Number(__ENV.CHECKOUT_RPS || '20');
+if (![5, 10, 15, 20].includes(rate)) throw new Error('Unsupported Checkout stage rate.');
 const requests = new Counter('checkout_requests');
 const errors = new Rate('checkout_expected_status_errors');
 const latency = new Trend('checkout_latency', true);
 http.setResponseCallback(http.expectedStatuses(200));
 export const options = {
-  scenarios: { checkout: { executor: 'constant-arrival-rate', rate: 20, timeUnit: '1s',
+  scenarios: { checkout: { executor: 'constant-arrival-rate', rate, timeUnit: '1s',
     duration, preAllocatedVUs: 120, maxVUs: 120, gracefulStop: '5s' } },
   thresholds: { checkout_expected_status_errors: ['rate==0'] },
   summaryTrendStats: ['avg', 'min', 'med', 'p(95)', 'p(99)', 'max'],

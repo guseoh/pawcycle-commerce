@@ -128,6 +128,91 @@ class CheckoutRunnerTests(unittest.TestCase):
                     self.assertRaises(RuntimeError):
                 runner.require_before_source_state()
 
+    def stage(self):
+        return {'start_utc': '2026-10-06T00:00:00Z', 'end_utc': '2026-10-06T00:02:00Z',
+                'target_rps': 5, 'k6': {'metrics': {'checkout_requests': {'values': {'count': 588}}}},
+                'status_error_rate': 0, 'dropped_iterations': 0,
+                'mysql': {'innodb_deadlocks_delta': 0}, 'runtime_stable': True,
+                'fixture_contract_matches_requests': True, 'backend_scrape_healthy': True,
+                'digest_complete': True, 'k6_exit': 0}
+
+    def test_ladder_gates_every_failure_and_accepts_exact_98_percent(self):
+        self.assertEqual(runner.stage_failures(self.stage()), [])
+        changes = [('status_error_rate', 0.01, 'status_errors'), ('dropped_iterations', 1, 'dropped'),
+                   ('runtime_stable', False, 'restart_oom'),
+                   ('fixture_contract_matches_requests', False, 'fixture_mismatch'),
+                   ('backend_scrape_healthy', False, 'backend_scrape'),
+                   ('digest_complete', False, 'digest_loss'), ('k6_exit', 99, 'k6_exit')]
+        for field, value, expected in changes:
+            evidence = self.stage()
+            evidence[field] = value
+            with self.subTest(gate=field):
+                self.assertEqual(runner.stage_failures(evidence), [expected])
+        for deadlock in [1, None]:
+            evidence = self.stage()
+            evidence['mysql']['innodb_deadlocks_delta'] = deadlock
+            self.assertEqual(runner.stage_failures(evidence), ['deadlock'])
+        evidence = self.stage()
+        evidence['k6']['metrics']['checkout_requests']['values']['count'] = 587
+        self.assertEqual(runner.stage_failures(evidence), ['actual_rps'])
+        self.assertEqual(runner.stage_failures(evidence, check_actual=False), [])
+
+    def test_no_higher_stage_is_run_after_first_failure_including_warmup(self):
+        for fail_at in runner.LADDER_RATES:
+            for phase in ['warmup', 'measurement']:
+                called = []
+                def run(rate):
+                    called.append(rate)
+                    return {'classification': 'hard_failure' if rate == fail_at else 'stable',
+                            'phase': phase, 'gate_failures': ['dropped'] if rate == fail_at else []}
+                result = runner.run_ladder(18080, run)
+                self.assertEqual(called, list(runner.LADDER_RATES[:runner.LADDER_RATES.index(fail_at) + 1]))
+                self.assertEqual(result['not_run_rps'], list(runner.LADDER_RATES[len(called):]))
+
+    def test_resource_json_is_sanitized_and_memory_units_match_existing_pattern(self):
+        rows = [{'ID': cid, 'CPUPerc': '12.5%', 'MemUsage': '2MiB / 4GiB',
+                 'Name': 'omit-container-name', 'PIDs': '7'} for cid in ['abc', 'def']]
+        with patch.object(runner, 'command', return_value='\n'.join(map(json.dumps, rows))) as command, \
+                patch.object(runner, 'mysql_threads', return_value={'Threads_connected': 12, 'Threads_running': 1}):
+            sample = runner.resource_sample({'backend': 'abcdef', 'mysql': 'defabc'})
+        self.assertEqual(command.call_args.args[0][1:5], ['stats', '--no-stream', '--format', '{{json .}}'])
+        self.assertEqual(sample['backend'], {'cpu_percent': 12.5, 'memory_used_bytes': 2 * 1024**2,
+                                            'memory_limit_bytes': 4 * 1024**3})
+        self.assertNotIn('Name', str(sample))
+        with self.assertRaises(ValueError):
+            runner.memory_bytes('unknown')
+
+    def test_pending_one_point_is_distinguished_from_consecutive_queueing(self):
+        self.assertEqual(runner.consecutive_positive([{'values': [[0, '0'], [15, '8'], [30, '0']]}]), 1)
+        self.assertEqual(runner.consecutive_positive([{'values': [[0, '1'], [15, '2'], [30, '3']]}]), 3)
+
+    def test_catalog_health_expiry_and_metric_scans_are_not_checkout_cost(self):
+        for statement in ['SELECT COUNT ( * ) FROM `products` `p` FORCE INDEX ( PRIMARY ) WHERE `p` . `display_status` = ?',
+                          'SELECT ( SELECT `s2` . `price` FROM `skus` `s2` WHERE `s2` . `product_id` = `p` . `id` ) FROM `products` `p`',
+                          'SELECT COUNT ( * ) FROM `payments` WHERE STATUS IN (...)',
+                          'SELECT `p` . `id` FROM `payments` `p` WHERE `p` . `expires_at` <= ? ORDER BY `p` . `id` LIMIT ?',
+                          'SELECT * FROM performance_schema.data_lock_waits']:
+            self.assertFalse(runner.is_checkout_digest(statement), statement)
+        for statement in ['SELECT * FROM `members` `m` WHERE `m` . `id` = ? FOR UPDATE',
+                          'SELECT * FROM `skus` `s` WHERE `s` . `id` IN (...) FOR UPDATE',
+                          'SELECT * FROM `carts` WHERE member_id = ?',
+                          'SELECT * FROM `checkout_idempotency_results` `c` WHERE ( `c` . `idempotency_key` , `c` . `member_id` ) IN ( (...) )',
+                          'INSERT INTO `payments` VALUES (...)',
+                          'UPDATE `inventories` SET `reserved_quantity` = ? WHERE `sku_id` = ?']:
+            self.assertTrue(runner.is_checkout_digest(statement), statement)
+
+    def test_fixture_delta_and_runtime_gates_preserve_boundary(self):
+        before = {'orders': 100, 'payments_ready': 100, 'reservations': 100, 'reserved_quantity': 100}
+        after = {**dict.fromkeys(before, 700), 'members': 120, 'cart_items': 120, 'minimum_stock': 9990}
+        self.assertTrue(runner.fixture_delta_matches(before, after, 600))
+        after['reservations'] += 1
+        self.assertFalse(runner.fixture_delta_matches(before, after, 600))
+        state = {'running': True, 'oom': False, 'started': 'start', 'restarts': 0,
+                 'image': 'image', 'memory_bytes': 0, 'nano_cpus': 0, 'pids': None}
+        self.assertTrue(runner.runtime_unchanged(state, state))
+        for field, value in [('restarts', 1), ('image', 'other'), ('oom', True), ('nano_cpus', 1)]:
+            self.assertFalse(runner.runtime_unchanged(state, {**state, field: value}))
+
 
 if __name__ == '__main__':
     unittest.main()
