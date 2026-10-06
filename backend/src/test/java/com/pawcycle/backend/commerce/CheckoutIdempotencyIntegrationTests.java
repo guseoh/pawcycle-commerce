@@ -16,7 +16,13 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.support.TestSkuFactory;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -202,6 +208,162 @@ class CheckoutIdempotencyIntegrationTests {
                 "SELECT COUNT(*) FROM orders WHERE id=?", Integer.class, first.get("orderId")))
         .isEqualTo(1);
   }
+
+  @Test
+  void concurrentSameMemberAndKeySerializesAndReplaysOneCheckout() throws Exception {
+    commerce.addCartItem(member.getId(), sku.getId(), 1);
+    String key = "checkout-concurrent-replay-" + UUID.randomUUID();
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      Future<CheckoutResponse> first = executor.submit(() -> checkoutTogether(key, ready, start));
+      Future<CheckoutResponse> second = executor.submit(() -> checkoutTogether(key, ready, start));
+      assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+      CheckoutResponse firstResponse = first.get(15, TimeUnit.SECONDS);
+      CheckoutResponse secondResponse = second.get(15, TimeUnit.SECONDS);
+
+      assertThat(firstResponse.get("orderId")).isEqualTo(secondResponse.get("orderId"));
+      assertThat(firstResponse.get("paymentId")).isEqualTo(secondResponse.get("paymentId"));
+    }
+
+    assertThat(count("orders", member.getId())).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM payments payment JOIN orders commerce_order ON"
+                    + " commerce_order.id=payment.order_id WHERE commerce_order.member_id=?",
+                Integer.class,
+                member.getId()))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM checkout_idempotency_results WHERE member_id=? AND"
+                    + " idempotency_key=?",
+                Integer.class,
+                member.getId(),
+                key))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inventory_movements movement JOIN payments payment ON"
+                    + " payment.id=movement.payment_id JOIN orders commerce_order ON"
+                    + " commerce_order.id=payment.order_id WHERE commerce_order.member_id=?"
+                    + " AND movement.sku_id=? AND movement.type='RESERVE'",
+                Integer.class,
+                member.getId(),
+                sku.getId()))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT available_quantity FROM inventories WHERE sku_id=?",
+                Integer.class,
+                sku.getId()))
+        .isEqualTo(4);
+  }
+
+  @Test
+  void concurrentDifferentMembersCheckoutIndependentSkusWithoutDeadlock() throws Exception {
+    List<CheckoutFixture> fixtures =
+        List.of(createCheckoutFixture(), createCheckoutFixture(), createCheckoutFixture(), createCheckoutFixture());
+    CountDownLatch ready = new CountDownLatch(fixtures.size());
+    CountDownLatch start = new CountDownLatch(1);
+
+    try (var executor = Executors.newFixedThreadPool(fixtures.size())) {
+      List<Future<CheckoutResponse>> results = new ArrayList<>();
+      for (CheckoutFixture fixture : fixtures) {
+        results.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  if (!start.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Checkout concurrency start timed out.");
+                  }
+                  return checkout.checkout(
+                      fixture.member().getId(), fixture.key(), fixture.addressId(), null, 1L);
+                }));
+      }
+      assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+      for (Future<CheckoutResponse> result : results) {
+        assertThat(result.get(15, TimeUnit.SECONDS)).isNotNull();
+      }
+    }
+
+    for (CheckoutFixture fixture : fixtures) {
+      assertThat(count("orders", fixture.member().getId())).isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM payments payment JOIN orders commerce_order ON"
+                      + " commerce_order.id=payment.order_id WHERE commerce_order.member_id=?",
+                  Integer.class,
+                  fixture.member().getId()))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM checkout_idempotency_results WHERE member_id=? AND"
+                      + " idempotency_key=?",
+                  Integer.class,
+                  fixture.member().getId(),
+                  fixture.key()))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT reserved_quantity FROM inventories WHERE sku_id=?",
+                  Integer.class,
+                  fixture.sku().getId()))
+          .isEqualTo(1);
+    }
+  }
+
+  private CheckoutResponse checkoutTogether(
+      String key, CountDownLatch ready, CountDownLatch start) throws InterruptedException {
+    ready.countDown();
+    if (!start.await(10, TimeUnit.SECONDS)) {
+      throw new IllegalStateException("Checkout concurrency start timed out.");
+    }
+    return checkout.checkout(member.getId(), key, addressId, null, 1L);
+  }
+
+  private CheckoutFixture createCheckoutFixture() {
+    Member checkoutMember =
+        members.saveAndFlush(
+            new Member(
+                "checkout-concurrent-" + UUID.randomUUID() + "@example.test",
+                passwordEncoder.encode("test-password")));
+    Category checkoutCategory =
+        categories.saveAndFlush(new Category("Checkout", "checkout-" + UUID.randomUUID(), 0, true));
+    Product checkoutProduct =
+        products.saveAndFlush(
+            new Product(
+                checkoutCategory,
+                "Independent checkout product",
+                "Purchase test",
+                "Purchase test",
+                "DOG",
+                null,
+                "PUBLIC"));
+    Sku checkoutSku =
+        skus.saveAndFlush(
+            TestSkuFactory.sku(checkoutProduct, "Independent checkout SKU", BigDecimal.valueOf(1500), false, 1));
+    jdbc.update(
+        "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (?,5,0,0)",
+        checkoutSku.getId());
+    long checkoutAddress =
+        commerce.createAddress(
+            checkoutMember.getId(),
+            new MemberAddressRequest("집", "보호자", "010-0000-0000", "06236", "서울시 강남구", null));
+    commerce.addCartItem(checkoutMember.getId(), checkoutSku.getId(), 1);
+    return new CheckoutFixture(
+        checkoutMember, checkoutSku, checkoutAddress, "checkout-independent-" + UUID.randomUUID());
+  }
+
+  private int count(String table, long memberId) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM " + table + " WHERE member_id=?", Integer.class, memberId);
+  }
+
+  private record CheckoutFixture(Member member, Sku sku, long addressId, String key) {}
 
   private long cartVersion() {
     return ((Number) commerce.cart(member.getId()).get("version")).longValue();

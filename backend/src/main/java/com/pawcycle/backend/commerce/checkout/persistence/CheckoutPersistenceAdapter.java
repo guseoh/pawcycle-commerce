@@ -70,7 +70,7 @@ public class CheckoutPersistenceAdapter {
 
   public CheckoutReplay findReplay(long memberId, String idempotencyKey) {
     CheckoutIdempotencyEntity result =
-        idempotencies.findForUpdate(memberId, idempotencyKey).orElse(null);
+        idempotencies.findResult(memberId, idempotencyKey).orElse(null);
     if (result == null) return null;
     CommerceOrderEntity order = orders.findById(result.getOrderId()).orElseThrow();
     PaymentEntity payment = payments.findById(result.getPaymentId()).orElseThrow();
