@@ -1,0 +1,111 @@
+{
+  "status": "STOP",
+  "reason": "Warm-up failed; measurement never started.",
+  "source_sha": "a3787d8cd0437b40c4aa6817996d70d2168610b7",
+  "observed_utc": "2026-10-06T05:52:07.780Z",
+  "checkout_cumulative_counts_since_backend_start": [
+    {
+      "status": "500",
+      "count": 48.0,
+      "observed_epoch": 1791265921.051
+    },
+    {
+      "status": "200",
+      "count": 219.0,
+      "observed_epoch": 1791265921.051
+    }
+  ],
+  "runtime": {
+    "image": "sha256:b5db830711874fb4caefd8b7c14dd0c046a268b6d76573f0c13ed41d108a83c6",
+    "started": "2026-10-06T05:47:13.620590074Z",
+    "restarts": 0,
+    "oom": false,
+    "running": true,
+    "memory_bytes": 0,
+    "nano_cpus": 0,
+    "pids": null
+  },
+  "innodb_status_since_mysql_start": {
+    "Innodb_row_lock_time": 16665,
+    "Innodb_row_lock_time_max": 1627,
+    "Innodb_row_lock_waits": 71,
+    "Performance_schema_digest_lost": 0
+  },
+  "checkout_idempotency_digests_since_mysql_start": [
+    {
+      "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ? FOR UPDATE OF `cie1_0`",
+      "count": 267,
+      "timer_ps": 705202342000,
+      "lock_ps": 946000000,
+      "examined": 0,
+      "affected": 0,
+      "sent": 0,
+      "errors": 0,
+      "total_ms": 705.202342,
+      "average_ms": 2.6412072734082397,
+      "lock_ms": 0.946
+    },
+    {
+      "sql": "SELECT `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` , `cie1_0` . `created_at` , `cie1_0` . `order_id` , `cie1_0` . `payment_id` , `cie1_0` . `request_cart_version` , `cie1_0` . `request_fingerprint` FROM `checkout_idempotency_results` `cie1_0` WHERE ( `cie1_0` . `idempotency_key` , `cie1_0` . `member_id` ) IN ( (...) )",
+      "count": 267,
+      "timer_ps": 447061607000,
+      "lock_ps": 526000000,
+      "examined": 0,
+      "affected": 0,
+      "sent": 0,
+      "errors": 0,
+      "total_ms": 447.061607,
+      "average_ms": 1.6743880411985017,
+      "lock_ms": 0.526
+    },
+    {
+      "sql": "INSERT INTO `checkout_idempotency_results` ( `created_at` , `order_id` , `payment_id` , `request_cart_version` , `request_fingerprint` , `idempotency_key` , `member_id` ) VALUES (...)",
+      "count": 267,
+      "timer_ps": 21523370093000,
+      "lock_ps": 16666144000000,
+      "examined": 0,
+      "affected": 219,
+      "sent": 0,
+      "errors": 48,
+      "total_ms": 21523.370093,
+      "average_ms": 80.61187300749064,
+      "lock_ms": 16666.144
+    },
+    {
+      "sql": "UPDATE `checkout_idempotency_results` `cie1_0` SET `request_cart_version` = ? WHERE `cie1_0` . `member_id` = ? AND `cie1_0` . `idempotency_key` = ? AND `cie1_0` . `request_cart_version` IS NULL",
+      "count": 219,
+      "timer_ps": 317764149000,
+      "lock_ps": 365000000,
+      "examined": 219,
+      "affected": 219,
+      "sent": 0,
+      "errors": 0,
+      "total_ms": 317.764149,
+      "average_ms": 1.4509778493150685,
+      "lock_ms": 0.365
+    }
+  ],
+  "latest_deadlock_lock_summary": [
+    {
+      "index": "PRIMARY",
+      "table": "checkout_idempotency_results",
+      "mode": "X"
+    },
+    {
+      "index": "PRIMARY",
+      "table": "checkout_idempotency_results",
+      "mode": "X insert intention waiting"
+    },
+    {
+      "index": "PRIMARY",
+      "table": "checkout_idempotency_results",
+      "mode": "X"
+    },
+    {
+      "index": "PRIMARY",
+      "table": "checkout_idempotency_results",
+      "mode": "X insert intention waiting"
+    }
+  ],
+  "limitations": "No valid Before. Counts are process/database lifetime counters, not measurement deltas. No raw rows/IDs/deadlock SQL retained."
+}
