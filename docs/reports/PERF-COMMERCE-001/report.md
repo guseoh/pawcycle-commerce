@@ -9,6 +9,25 @@
 - tuning decision: **REVERT (Hikari max 10 → 16 후보만 해당)** — 후보 After는 dropped 35와 fixture-to-request 불일치 77건으로 invalid이며, 기본 max 10으로 복구함. 이 REVERT는 deadlock correctness correction을 되돌린다는 의미가 아님.
 - Production/Cloud 실행 및 Production Verified 근거 없음.
 
+## 목적
+
+Checkout 부하 측정에서 발견한 idempotency deadlock을 실제 InnoDB lock evidence로 규명하고 최소 correctness correction으로 제거한다. 그 수정의 동시성 계약을 실제 MySQL에서 검증한 뒤, 같은 local-only Slice에서 20 RPS Checkout capacity와 Hikari pool 단일 후보를 측정해 KEEP/REVERT 여부를 근거로 판단한다. Production/Cloud/Toss 실행이나 schema/index 변경은 범위에 포함하지 않는다.
+
+## 주요 결과
+
+- Deadlock 원인은 missing idempotency row의 pessimistic locking read가 만든 PRIMARY supremum gap lock과 뒤이은 INSERT INTENTION cycle로 확인됐다.
+- replay 조회의 `PESSIMISTIC_WRITE`만 제거하고 선행 member row `FOR UPDATE`, transaction, idempotency 계약은 유지했으며 실제 MySQL 동시성 회귀와 load에서 재발이 없었다. correctness correction은 **KEEP**이다.
+- 120 VU / target 20 RPS 후보는 status error 0이었지만 dropped 18이 남아 valid Before가 아니라 **capacity-failure candidate**로 기록한다.
+- Hikari max10 → 16 단일 후보는 dropped 35와 fixture-to-request 불일치 77건으로 valid After가 아니며, pending 감소 외 지표도 KEEP을 정당화하지 못해 **REVERT**했다.
+
+## 위험과 제한
+
+- valid Before를 확보하지 못했으므로 20 RPS에서의 안정 capacity 상한은 확정하지 않는다.
+- Hikari16 후보 After는 fixture consistency gate 실패로 유효한 동일 조건 비교가 아니며 성능 우열의 확정 근거로 사용하지 않는다.
+- load generator, Backend, MySQL이 같은 local host를 공유해 system CPU 포화 신호에 host 부하가 섞일 수 있다.
+- 초기 실행의 deadlock counter baseline은 보존되지 않았다. 이후 runner는 deadlock delta를 확보할 수 없으면 fail-closed 하도록 보강했다.
+- Production/Cloud 실행은 하지 않았으며 이 Slice는 Production Verified가 아니다.
+
 ## 초기 STOP 근거
 
 수정 후 50 VU correctness warm-up은 30초 동안 601 Checkout을 처리했고 status error 0, dropped 0으로 통과했다. 이어진 120초 measurement는 2,367 Checkout, status error 0, k6 `http_req_failed` rate 0이었으나 dropped iteration 34건으로 종료 코드 99를 반환했다. 따라서 이 실행은 performance baseline으로 사용할 수 없다. 사용자가 정한 invalid-baseline STOP을 적용해 재실행, After, 성능 코드 변경을 중단했다.
