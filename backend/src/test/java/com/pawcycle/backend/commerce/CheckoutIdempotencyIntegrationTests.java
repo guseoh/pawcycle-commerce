@@ -316,6 +316,65 @@ class CheckoutIdempotencyIntegrationTests {
     }
   }
 
+  @Test
+  void concurrentDifferentMembersReserveOneSharedSkuWithoutInventoryConflicts() throws Exception {
+    int requestCount = 8;
+    jdbc.update("UPDATE inventories SET available_quantity=? WHERE sku_id=?", requestCount, sku.getId());
+    List<CheckoutFixture> fixtures = new ArrayList<>();
+    for (int index = 0; index < requestCount; index++) fixtures.add(createCheckoutFixture(sku));
+    CountDownLatch ready = new CountDownLatch(fixtures.size());
+    CountDownLatch start = new CountDownLatch(1);
+
+    try (var executor = Executors.newFixedThreadPool(fixtures.size())) {
+      List<Future<CheckoutResponse>> results = new ArrayList<>();
+      for (CheckoutFixture fixture : fixtures) {
+        results.add(executor.submit(() -> checkoutTogether(fixture, ready, start)));
+      }
+      assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+      for (Future<CheckoutResponse> result : results) {
+        assertThat(result.get(20, TimeUnit.SECONDS)).isNotNull();
+      }
+    }
+
+    for (CheckoutFixture fixture : fixtures) {
+      assertThat(count("orders", fixture.member().getId())).isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM payments payment JOIN orders commerce_order ON"
+                      + " commerce_order.id=payment.order_id WHERE commerce_order.member_id=?"
+                      + " AND payment.status='READY'",
+                  Integer.class,
+                  fixture.member().getId()))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM checkout_idempotency_results WHERE member_id=? AND"
+                      + " idempotency_key=?",
+                  Integer.class,
+                  fixture.member().getId(),
+                  fixture.key()))
+          .isEqualTo(1);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM inventory_movements movement JOIN payments payment ON"
+                      + " payment.id=movement.payment_id JOIN orders commerce_order ON"
+                      + " commerce_order.id=payment.order_id WHERE commerce_order.member_id=?"
+                      + " AND movement.sku_id=? AND movement.type='RESERVE'",
+                  Integer.class,
+                  fixture.member().getId(),
+                  sku.getId()))
+          .isEqualTo(1);
+    }
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?",
+                sku.getId()))
+        .containsEntry("available_quantity", 0)
+        .containsEntry("reserved_quantity", requestCount)
+        .containsEntry("version", (long) requestCount);
+  }
+
   private CheckoutResponse checkoutTogether(
       String key, CountDownLatch ready, CountDownLatch start) throws InterruptedException {
     ready.countDown();
@@ -323,6 +382,17 @@ class CheckoutIdempotencyIntegrationTests {
       throw new IllegalStateException("Checkout concurrency start timed out.");
     }
     return checkout.checkout(member.getId(), key, addressId, null, 1L);
+  }
+
+  private CheckoutResponse checkoutTogether(
+      CheckoutFixture fixture, CountDownLatch ready, CountDownLatch start)
+      throws InterruptedException {
+    ready.countDown();
+    if (!start.await(10, TimeUnit.SECONDS)) {
+      throw new IllegalStateException("Checkout concurrency start timed out.");
+    }
+    return checkout.checkout(
+        fixture.member().getId(), fixture.key(), fixture.addressId(), null, 1L);
   }
 
   private CheckoutFixture createCheckoutFixture() {
@@ -356,6 +426,21 @@ class CheckoutIdempotencyIntegrationTests {
     commerce.addCartItem(checkoutMember.getId(), checkoutSku.getId(), 1);
     return new CheckoutFixture(
         checkoutMember, checkoutSku, checkoutAddress, "checkout-independent-" + UUID.randomUUID());
+  }
+
+  private CheckoutFixture createCheckoutFixture(Sku sharedSku) {
+    Member checkoutMember =
+        members.saveAndFlush(
+            new Member(
+                "checkout-shared-sku-" + UUID.randomUUID() + "@example.test",
+                passwordEncoder.encode("test-password")));
+    long checkoutAddress =
+        commerce.createAddress(
+            checkoutMember.getId(),
+            new MemberAddressRequest("집", "보호자", "010-0000-0000", "06236", "서울시 강남구", null));
+    commerce.addCartItem(checkoutMember.getId(), sharedSku.getId(), 1);
+    return new CheckoutFixture(
+        checkoutMember, sharedSku, checkoutAddress, "checkout-shared-sku-" + UUID.randomUUID());
   }
 
   private int count(String table, long memberId) {

@@ -100,6 +100,32 @@ class CheckoutRunnerTests(unittest.TestCase):
                                              'dropped_iterations'), 3)
         self.assertEqual(runner.metric_count({'metrics': {}}, 'dropped_iterations'), 0)
 
+    def test_status_error_counts_keep_http_status_tags(self):
+        summary = {'metrics': {
+            'checkout_status_errors{status: "409"}': {'values': {'count': 3}},
+            'checkout_status_errors{status: "500"}': {'values': {'count': 2}},
+            'checkout_status_errors{status=409}': {'values': {'count': 4}},
+            'checkout_requests': {'values': {'count': 10}},
+        }}
+        self.assertEqual(runner.status_error_counts(summary), {'409': 7, '500': 2})
+
+    def test_sql_boundary_summary_distinguishes_shared_sku_lock_and_inventory_update(self):
+        rows = [
+            {'sql': 'SELECT * FROM `skus` WHERE `id` IN (...) FOR UPDATE', 'count': 8,
+             'timer_ps': 2_000_000_000, 'lock_ps': 1_500_000_000},
+            {'sql': 'SELECT * FROM `inventories` WHERE `sku_id` = ?', 'count': 8,
+             'timer_ps': 800_000_000, 'lock_ps': 0},
+            {'sql': 'UPDATE `inventories` SET `version` = `version` + ?', 'count': 8,
+             'timer_ps': 1_200_000_000, 'lock_ps': 500_000_000},
+            {'sql': 'COMMIT', 'count': 8, 'timer_ps': 4_000_000_000, 'lock_ps': 0},
+        ]
+        summary = runner.digest_boundary_summaries(rows)
+        self.assertEqual(summary['sku_select_for_update']['statement_count'], 8)
+        self.assertEqual(summary['sku_select_for_update']['average_ms'], 0.25)
+        self.assertEqual(summary['inventory_select']['statement_count'], 8)
+        self.assertEqual(summary['inventory_reserve_update']['statement_count'], 8)
+        self.assertEqual(summary['commit']['total_ms'], 4)
+
     def test_dropped_run_is_capacity_candidate_only_when_all_measurement_gates_pass(self):
         args = (18, 0, 0, True, True, True, True, True)
         self.assertEqual(runner.classify_measurement(*args), 'capacity_failure_candidate')
@@ -164,7 +190,8 @@ class CheckoutRunnerTests(unittest.TestCase):
                 def run(rate):
                     called.append(rate)
                     return {'classification': 'hard_failure' if rate == fail_at else 'stable',
-                            'phase': phase, 'gate_failures': ['dropped'] if rate == fail_at else []}
+                            'phase': phase, 'actual_rps': rate,
+                            'gate_failures': ['dropped'] if rate == fail_at else []}
                 result = runner.run_ladder(18080, run)
                 self.assertEqual(called, list(runner.LADDER_RATES[:runner.LADDER_RATES.index(fail_at) + 1]))
                 self.assertEqual(result['not_run_rps'], list(runner.LADDER_RATES[len(called):]))
@@ -173,9 +200,10 @@ class CheckoutRunnerTests(unittest.TestCase):
         rows = [{'ID': cid, 'CPUPerc': '12.5%', 'MemUsage': '2MiB / 4GiB',
                  'Name': 'omit-container-name', 'PIDs': '7'} for cid in ['abc', 'def']]
         with patch.object(runner, 'command', return_value='\n'.join(map(json.dumps, rows))) as command, \
+                patch.object(runner, 'sql', return_value='0'), \
                 patch.object(runner, 'mysql_threads', return_value={'Threads_connected': 12, 'Threads_running': 1}):
             sample = runner.resource_sample({'backend': 'abcdef', 'mysql': 'defabc'})
-        self.assertEqual(command.call_args.args[0][1:5], ['stats', '--no-stream', '--format', '{{json .}}'])
+        self.assertEqual(command.call_args_list[0].args[0][1:5], ['stats', '--no-stream', '--format', '{{json .}}'])
         self.assertEqual(sample['backend'], {'cpu_percent': 12.5, 'memory_used_bytes': 2 * 1024**2,
                                             'memory_limit_bytes': 4 * 1024**3})
         self.assertNotIn('Name', str(sample))
@@ -202,11 +230,30 @@ class CheckoutRunnerTests(unittest.TestCase):
             self.assertTrue(runner.is_checkout_digest(statement), statement)
 
     def test_fixture_delta_and_runtime_gates_preserve_boundary(self):
-        before = {'orders': 100, 'payments_ready': 100, 'reservations': 100, 'reserved_quantity': 100}
-        after = {**dict.fromkeys(before, 700), 'members': 120, 'cart_items': 120, 'minimum_stock': 9990}
+        before = {'orders': 100, 'payments_ready': 100, 'payments': 100, 'idempotency_results': 100,
+                  'reservations': 100, 'reserved_quantity': 100, 'available_quantity': 999900,
+                  'inventory_version': 100, 'members': 120, 'cart_items': 120,
+                  'products': 120, 'skus': 120, 'inventories': 120}
+        after = {**{key: value + 600 for key, value in before.items()
+                    if key in ['orders', 'payments_ready', 'payments', 'idempotency_results',
+                               'reservations', 'reserved_quantity', 'inventory_version']},
+                 **{key: value for key, value in before.items()
+                    if key not in ['orders', 'payments_ready', 'payments', 'idempotency_results',
+                                   'reservations', 'reserved_quantity', 'inventory_version']},
+                 'available_quantity': 999300, 'negative_inventories': 0,
+                 'duplicate_payment_orders': 0, 'minimum_stock': 9990}
         self.assertTrue(runner.fixture_delta_matches(before, after, 600))
         after['reservations'] += 1
         self.assertFalse(runner.fixture_delta_matches(before, after, 600))
+        shared_before = {**before, 'available_quantity': 10000, 'products': 1, 'skus': 1, 'inventories': 1}
+        shared_after = {**shared_before, 'orders': 700, 'payments_ready': 700, 'payments': 700,
+                        'idempotency_results': 700, 'reservations': 700, 'reserved_quantity': 700,
+                        'available_quantity': 9400, 'inventory_version': 700,
+                        'negative_inventories': 0, 'duplicate_payment_orders': 0,
+                        'minimum_stock': 9400}
+        self.assertTrue(runner.fixture_delta_matches(shared_before, shared_after, 600, 'shared'))
+        shared_after['inventory_version'] += 1
+        self.assertFalse(runner.fixture_delta_matches(shared_before, shared_after, 600, 'shared'))
         state = {'running': True, 'oom': False, 'started': 'start', 'restarts': 0,
                  'image': 'image', 'memory_bytes': 0, 'nano_cpus': 0, 'pids': None}
         self.assertTrue(runner.runtime_unchanged(state, state))

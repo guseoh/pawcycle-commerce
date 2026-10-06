@@ -13,6 +13,7 @@ const duration = __ENV.CHECKOUT_PHASE === 'warmup' ? '30s' : '120s';
 const rate = Number(__ENV.CHECKOUT_RPS || '20');
 if (![5, 10, 15, 20].includes(rate)) throw new Error('Unsupported Checkout stage rate.');
 const requests = new Counter('checkout_requests');
+const statusErrors = new Counter('checkout_status_errors');
 const errors = new Rate('checkout_expected_status_errors');
 const latency = new Trend('checkout_latency', true);
 http.setResponseCallback(http.expectedStatuses(200));
@@ -38,6 +39,7 @@ export default function () {
     });
   requests.add(1);
   errors.add(response.status !== 200);
+  if (response.status !== 200) statusErrors.add(1, { status: String(response.status) });
   latency.add(response.timings.duration);
 }
 export function teardown() {

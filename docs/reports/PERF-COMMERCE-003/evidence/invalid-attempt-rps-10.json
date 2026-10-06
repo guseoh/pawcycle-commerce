@@ -1,0 +1,13 @@
+{
+  "valid_for_after_comparison": false,
+  "reason": "Backend container still used the pre-build image; run was an invalid candidate attempt and is retained for audit only.",
+  "running_container_image": "sha256:149428b38e1773bcab8176135486c08db38186c22cdf41dcb9fb51b18206b791",
+  "expected_tagged_image": "sha256:54a000f7d1cbbe3b173c3b2cdee84c662f03c0547a6db57a91a277cede3a71ad",
+  "container_started_utc": "2026-10-06T12:40:55.102222987Z",
+  "tagged_image_created_utc": "2026-10-06T14:14:20.32167963Z",
+  "retained_files": [
+    "shared-invalid-attempt-rps-10-warmup.json",
+    "shared-invalid-attempt-rps-10-prometheus.json",
+    "shared-invalid-attempt-rps-10-cleanup.json"
+  ]
+}
