@@ -1,0 +1,51 @@
+{
+  "task": "PERF-COMMERCE-002",
+  "base_main": "cb4e9b46031b42c46f2f4a4dfbab0871acb82b4e",
+  "branch": "codex/perf-commerce-002",
+  "backend_source_unmodified": true,
+  "backend_loopback": "http://127.0.0.1:18080",
+  "runtime": {
+    "backend": {
+      "image": "sha256:149428b38e1773bcab8176135486c08db38186c22cdf41dcb9fb51b18206b791",
+      "started": "2026-10-06T12:40:55.102222987Z",
+      "restarts": 0,
+      "oom": false,
+      "running": true,
+      "memory_bytes": 0,
+      "nano_cpus": 0,
+      "pids": null
+    },
+    "mysql": {
+      "image": "sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6",
+      "started": "2026-10-06T12:40:34.550337053Z",
+      "restarts": 0,
+      "oom": false,
+      "running": true,
+      "memory_bytes": 0,
+      "nano_cpus": 0,
+      "pids": null
+    }
+  },
+  "k6": "k6.exe v2.2.0 (commit/00a9a1b7f5, go1.26.5, windows/amd64)",
+  "mysql": "8.4.10\tREPEATABLE-READ\t1\t1\t1\t10000",
+  "hikari_max": 10,
+  "scrape_interval_seconds": 15,
+  "fixture_size": 120,
+  "startup": "Fresh local-integration volumes in current Docker daemon; same runtime/resources across stages; unrelated local project preserved",
+  "docker": {
+    "ServerVersion": "29.8.0",
+    "NCPU": 12,
+    "MemTotal": 8282894336,
+    "OperatingSystem": "Docker Desktop",
+    "OSType": "linux",
+    "Architecture": "x86_64",
+    "KernelVersion": "5.15.153.1-microsoft-standard-WSL2"
+  },
+  "services": {
+    "mysql": "mysql:8.4.10",
+    "redis": "redis:8.10.0-alpine3.23",
+    "backend": "pawcycle-local-integration-backend",
+    "prometheus": "prom/prometheus:v3.13.2",
+    "grafana": "grafana/grafana:13.1.3"
+  }
+}

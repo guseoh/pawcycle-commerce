@@ -1,0 +1,29 @@
+{
+  "stages": [
+    {
+      "target_rps": 5,
+      "phase": "measurement",
+      "classification": "stable",
+      "gate_failures": []
+    },
+    {
+      "target_rps": 10,
+      "phase": "measurement",
+      "classification": "stable",
+      "gate_failures": []
+    },
+    {
+      "target_rps": 15,
+      "phase": "measurement",
+      "classification": "stable",
+      "gate_failures": []
+    },
+    {
+      "target_rps": 20,
+      "phase": "measurement",
+      "classification": "stable",
+      "gate_failures": []
+    }
+  ],
+  "not_run_rps": []
+}
