@@ -1,13 +1,15 @@
-# PERF-COMMERCE-001 — STOP: valid Before 미확보
+# PERF-COMMERCE-001 — Checkout deadlock correction KEEP / Hikari16 REVERT
 
 - Slice: 기존 `PERF-COMMERCE-001` continuation (새 Slice 아님)
-- 기준 main / HEAD: `a3787d8cd0437b40c4aa6817996d70d2168610b7`
-- Branch: `codex/perf-commerce-001` (수정사항 미커밋)
+- 기준 main: `a3787d8cd0437b40c4aa6817996d70d2168610b7`
+- Branch: `codex/perf-commerce-001`
 - 실행 범위: `infra/local-integration` 전용
-- correctness correction: **KEEP 후보 — 코드 및 실제 MySQL 회귀 통과, load에서도 status/deadlock 재발 없음**
-- performance decision: **STOP** — measurement dropped 34 iterations로 유효 Before 조건을 충족하지 못함. `KEEP / REVERT / NO_CHANGE` 판정, 성능 변경, After를 수행하지 않음.
+- correctness decision: **KEEP** — missing-row idempotency replay 조회의 `PESSIMISTIC_WRITE` 제거가 실제 MySQL 동시성 회귀와 load에서 deadlock/status error 재발 없이 검증됨.
+- capacity result: **20 RPS capacity-failure candidate** — 120 VU 측정에서 status error 0이었지만 dropped 18로 valid Before는 확보하지 못함.
+- tuning decision: **REVERT (Hikari max 10 → 16 후보만 해당)** — 후보 After는 dropped 35와 fixture-to-request 불일치 77건으로 invalid이며, 기본 max 10으로 복구함. 이 REVERT는 deadlock correctness correction을 되돌린다는 의미가 아님.
+- Production/Cloud 실행 및 Production Verified 근거 없음.
 
-## STOP 근거
+## 초기 STOP 근거
 
 수정 후 50 VU correctness warm-up은 30초 동안 601 Checkout을 처리했고 status error 0, dropped 0으로 통과했다. 이어진 120초 measurement는 2,367 Checkout, status error 0, k6 `http_req_failed` rate 0이었으나 dropped iteration 34건으로 종료 코드 99를 반환했다. 따라서 이 실행은 performance baseline으로 사용할 수 없다. 사용자가 정한 invalid-baseline STOP을 적용해 재실행, After, 성능 코드 변경을 중단했다.
 
@@ -112,7 +114,7 @@ Cart item locking read, member `FOR UPDATE`, address lookup, SKU locking read, p
 - 50 VU correctness warm-up: status error 0 / dropped 0
 - 120초 measurement: dropped 34; valid Before 아님. After/최적화/최종 KEEP·REVERT·NO_CHANGE 판정 없음.
 
-현재 작업은 명시적 invalid-baseline STOP 상태다. commit/push/Draft PR을 만들지 않았다. Branch 변경과 failure/measurement/Grafana/Prometheus evidence는 보존했다. 재개하려면 20 RPS에서 dropped 0을 보장할 VU/endpoint capacity 조건을 이 환경에서 먼저 정해야 하며, 현재 확인된 pool pending 신호가 원인인지 별도 evidence로 판단해야 한다. 프로덕션 실행이나 merge는 없다.
+이 시점의 50 VU 실행은 invalid-baseline STOP으로 보존한다. 이후 같은 Slice에서 120 VU capacity candidate와 Hikari16 단일 후보까지 추가 검증했으며, 최종 결과는 아래 continuation 절에 기록한다. 기존 failure/measurement/Grafana/Prometheus evidence는 삭제하지 않는다. 프로덕션 실행이나 merge는 없다.
 
 ## 120 VU continuation 및 pool 변경 판정 (2026-10-06)
 
