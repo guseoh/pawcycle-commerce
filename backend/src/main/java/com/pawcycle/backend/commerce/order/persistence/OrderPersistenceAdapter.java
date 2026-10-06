@@ -4,7 +4,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -172,10 +171,6 @@ public class OrderPersistenceAdapter {
   private static Boolean nullableBoolean(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
     boolean value = rs.getBoolean(column);
     return rs.wasNull() ? null : value;
-  }
-
-  private static long number(Map<?, ?> row, String key) {
-    return ((Number) row.get(key)).longValue();
   }
 
   public record Summary(
