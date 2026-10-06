@@ -27,7 +27,7 @@ public class InventoryService {
 
   public void reserve(long skuId, int quantity, long paymentId) {
     requirePositiveQuantity(quantity);
-    InventoryEntity inventory = inventories.findById(skuId).orElse(null);
+    InventoryEntity inventory = inventories.findLockedBySkuId(skuId).orElse(null);
     if (inventory == null || inventory.availableQuantity() < quantity) {
       throw new CommerceException(409, "INVENTORY_INSUFFICIENT", "재고가 부족합니다.");
     }

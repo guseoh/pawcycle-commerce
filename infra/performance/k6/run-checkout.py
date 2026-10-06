@@ -3,6 +3,7 @@
 Run after starting the existing local-integration Compose services:
   python infra/performance/k6/run-checkout.py --stage before --attempt v120
 PERF-COMMERCE-002: --ladder [--backend-port 18080], stops at first hard failure.
+PERF-COMMERCE-003: --perf003 [--backend-port 18080] runs isolated control then shared-SKU ladder.
 The runner refuses to overwrite evidence. --cleanup RUN_MARKER recovers its own
 fixture after an interruption; the non-secret marker is printed before seeding.
 """
@@ -27,12 +28,14 @@ import uuid
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = ROOT / 'infra/local-integration'
 EVIDENCE = ROOT / 'docs/reports/PERF-COMMERCE-001/evidence'
+PERF003_EVIDENCE = ROOT / 'docs/reports/PERF-COMMERCE-003/evidence'
 COMPOSE = ['docker', 'compose', '--env-file', str(LOCAL / '.env.local'), '-f', str(LOCAL / 'compose.yaml')]
 FIELDS = ['count', 'timer_ps', 'lock_ps', 'examined', 'affected', 'sent', 'errors']
 BASE_MAIN_SHA = 'a3787d8cd0437b40c4aa6817996d70d2168610b7'
 POOL_SIZE = 120
 LADDER_RATES = (5, 10, 15, 20)
 LADDER_MAIN_SHA = 'cb4e9b46031b42c46f2f4a4dfbab0871acb82b4e'
+PERF003_MAIN_SHA = '6ed3cdb09c89ad0db8570621992ebf817ba26497'
 BASE_URL = 'http://127.0.0.1:8080'
 BEFORE_CORRECTNESS_FILES = {
     'backend/src/main/java/com/pawcycle/backend/commerce/CheckoutIdempotencyRepository.java',
@@ -100,7 +103,9 @@ def require_before_source_state():
         raise RuntimeError('STOP: Before allows only the approved idempotency correctness correction')
 
 
-def seed(marker, email):
+def seed(marker, email, fixture_profile='isolated'):
+    if fixture_profile not in ['isolated', 'shared']:
+        raise RuntimeError('Invalid fixture profile')
     if not re.fullmatch(r'qa-foundation-004@[a-zA-Z0-9.-]+', email):
         raise RuntimeError('Invalid QA bootstrap email contract')
     if sql(f"SELECT COUNT(*) FROM members WHERE email='{email}' AND role='USER';") != '1':
@@ -110,15 +115,25 @@ def seed(marker, email):
     queries = ["START TRANSACTION;",
         f"INSERT INTO brands(name,slug,active,display_order) VALUES ('Checkout perf','{marker}',true,0); SET @b=LAST_INSERT_ID();",
         f"INSERT INTO categories(name,slug,active,display_order) VALUES ('Checkout perf','{marker}',true,0); SET @c=LAST_INSERT_ID();"]
+    if fixture_profile == 'shared':
+        queries += [
+            f"INSERT INTO products(brand_id,category_id,catalog_key,name,short_description,description,pet_type,display_status) VALUES (@b,@c,'{marker}-shared','Checkout perf','Synthetic','Local shared-SKU performance fixture','DOG','PUBLIC'); SET @p=LAST_INSERT_ID();",
+            f"INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (@p,'{marker}-shared','Checkout shared SKU',19900,false,0,'ACTIVE'); SET @s=LAST_INSERT_ID();",
+            "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (@s,10000,0,0);",
+        ]
     for n in range(1, POOL_SIZE + 1):
         queries += [
             f"INSERT INTO members(email,password_hash,role) SELECT '{marker}-{n}@local.invalid',password_hash,'USER' FROM members WHERE email='{email}'; SET @m=LAST_INSERT_ID();",
             "INSERT INTO member_addresses(member_id,name,recipient_name,recipient_phone,postal_code,address_line1,created_at,updated_at) VALUES (@m,'Checkout perf','Synthetic','00000000000','00000','Synthetic local fixture',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));",
-            f"INSERT INTO products(brand_id,category_id,catalog_key,name,short_description,description,pet_type,display_status) VALUES (@b,@c,'{marker}-{n}','Checkout perf','Synthetic','Local performance fixture','DOG','PUBLIC'); SET @p=LAST_INSERT_ID();",
-            f"INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (@p,'{marker}-{n}','Checkout perf',19900,false,0,'ACTIVE'); SET @s=LAST_INSERT_ID();",
-            "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (@s,10000,0,0);",
             "INSERT INTO carts(member_id,created_at,updated_at,version) VALUES (@m,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6),0); SET @cart=LAST_INSERT_ID();",
-            "INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (@cart,@s,1);"]
+        ]
+        if fixture_profile == 'isolated':
+            queries += [
+                f"INSERT INTO products(brand_id,category_id,catalog_key,name,short_description,description,pet_type,display_status) VALUES (@b,@c,'{marker}-{n}','Checkout perf','Synthetic','Local performance fixture','DOG','PUBLIC'); SET @p=LAST_INSERT_ID();",
+                f"INSERT INTO skus(product_id,sku_code,name,price,subscribable,display_order,status) VALUES (@p,'{marker}-{n}','Checkout perf',19900,false,0,'ACTIVE'); SET @s=LAST_INSERT_ID();",
+                "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (@s,10000,0,0);",
+            ]
+        queries += ["INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (@cart,@s,1);"]
     sql('\n'.join(queries + ['COMMIT;']))
     rows = sql(f"SELECT m.email,a.id FROM members m JOIN member_addresses a ON a.member_id=m.id WHERE m.email LIKE '{marker}-%';")
     return dict(row.split('\t') for row in rows.splitlines())
@@ -127,10 +142,10 @@ def seed(marker, email):
 def cleanup(marker):
     # Exact generated namespace plus marker-owned category/product/SKU joins.
     # No global reset, FK disabling, schema reset, volume deletion or shared QA mutation.
-    if not re.fullmatch(r'pc001-[0-9a-f]{12}', marker):
+    if not re.fullmatch(r'pc00[13]-[0-9a-f]{12}', marker):
         raise RuntimeError('Invalid cleanup marker')
     emails = ','.join(f"'{marker}-{n}@local.invalid'" for n in range(1, POOL_SIZE + 1))
-    keys = ','.join(f"'{marker}-{n}'" for n in range(1, POOL_SIZE + 1))
+    keys = ','.join([*(f"'{marker}-{n}'" for n in range(1, POOL_SIZE + 1)), f"'{marker}-shared'"])
     m = f"SELECT id FROM members WHERE email IN ({emails})"
     sql(f"""START TRANSACTION;
 DELETE im FROM inventory_movements im JOIN payments p ON p.id=im.payment_id JOIN orders o ON o.id=p.order_id WHERE o.member_id IN ({m});
@@ -148,7 +163,18 @@ DELETE FROM products WHERE catalog_key IN ({keys});
 DELETE FROM categories WHERE slug='{marker}';
 DELETE FROM brands WHERE slug='{marker}';
 COMMIT;""")
-    if sql(f"SELECT (SELECT COUNT(*) FROM members WHERE email LIKE '{marker}-%') + (SELECT COUNT(*) FROM products WHERE catalog_key LIKE '{marker}-%') + (SELECT COUNT(*) FROM skus WHERE sku_code LIKE '{marker}-%') + (SELECT COUNT(*) FROM categories WHERE slug='{marker}') + (SELECT COUNT(*) FROM brands WHERE slug='{marker}');") != '0':
+    if sql(f"""SELECT
+ (SELECT COUNT(*) FROM members WHERE email LIKE '{marker}-%')
+ +(SELECT COUNT(*) FROM member_addresses a JOIN members m ON m.id=a.member_id WHERE m.email LIKE '{marker}-%@local.invalid')
+ +(SELECT COUNT(*) FROM carts c JOIN members m ON m.id=c.member_id WHERE m.email LIKE '{marker}-%@local.invalid')
+ +(SELECT COUNT(*) FROM products WHERE catalog_key LIKE '{marker}-%')
+ +(SELECT COUNT(*) FROM skus WHERE sku_code LIKE '{marker}-%')
+ +(SELECT COUNT(*) FROM categories WHERE slug='{marker}')
+ +(SELECT COUNT(*) FROM brands WHERE slug='{marker}')
+ +(SELECT COUNT(*) FROM orders o JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid')
+ +(SELECT COUNT(*) FROM payments p JOIN orders o ON o.id=p.order_id JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid')
+ +(SELECT COUNT(*) FROM checkout_idempotency_results r JOIN members m ON m.id=r.member_id WHERE m.email LIKE '{marker}-%@local.invalid')
+ +(SELECT COUNT(*) FROM inventory_movements im JOIN skus s ON s.id=im.sku_id WHERE s.sku_code LIKE '{marker}-%');""") != '0':
         raise RuntimeError('STOP: fixture cleanup verification failed')
 
 
@@ -156,8 +182,17 @@ def fixture_counts(marker):
     rows = sql(f"""SELECT 'members',COUNT(*) FROM members WHERE email LIKE '{marker}-%@local.invalid'
 UNION ALL SELECT 'orders',COUNT(*) FROM orders o JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid'
 UNION ALL SELECT 'payments_ready',COUNT(*) FROM payments p JOIN orders o ON o.id=p.order_id JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid' AND p.status='READY'
+UNION ALL SELECT 'payments',COUNT(*) FROM payments p JOIN orders o ON o.id=p.order_id JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid'
+UNION ALL SELECT 'duplicate_payment_orders',COUNT(*) FROM (SELECT p.order_id FROM payments p JOIN orders o ON o.id=p.order_id JOIN members m ON m.id=o.member_id WHERE m.email LIKE '{marker}-%@local.invalid' GROUP BY p.order_id HAVING COUNT(*)>1) duplicates
+UNION ALL SELECT 'idempotency_results',COUNT(*) FROM checkout_idempotency_results r JOIN members m ON m.id=r.member_id WHERE m.email LIKE '{marker}-%@local.invalid'
 UNION ALL SELECT 'reservations',COUNT(*) FROM inventory_movements im JOIN skus s ON s.id=im.sku_id WHERE s.sku_code LIKE '{marker}-%' AND im.type='RESERVE'
 UNION ALL SELECT 'reserved_quantity',SUM(i.reserved_quantity) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%'
+UNION ALL SELECT 'available_quantity',SUM(i.available_quantity) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%'
+UNION ALL SELECT 'inventory_version',SUM(i.version) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%'
+UNION ALL SELECT 'negative_inventories',COUNT(*) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%' AND (i.available_quantity<0 OR i.reserved_quantity<0)
+UNION ALL SELECT 'products',COUNT(*) FROM products WHERE catalog_key LIKE '{marker}-%'
+UNION ALL SELECT 'skus',COUNT(*) FROM skus WHERE sku_code LIKE '{marker}-%'
+UNION ALL SELECT 'inventories',COUNT(*) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%'
 UNION ALL SELECT 'minimum_stock',MIN(i.available_quantity) FROM inventories i JOIN skus s ON s.id=i.sku_id WHERE s.sku_code LIKE '{marker}-%'
 UNION ALL SELECT 'cart_items',COUNT(*) FROM cart_items ci JOIN carts c ON c.id=ci.cart_id JOIN members m ON m.id=c.member_id WHERE m.email LIKE '{marker}-%@local.invalid' AND ci.quantity=1 AND c.version=0;""")
     return {key: int(value) for key, value in (row.split('\t') for row in rows.splitlines())}
@@ -192,9 +227,10 @@ WHERE SCHEMA_NAME=DATABASE() AND DIGEST IS NOT NULL;""")
     deadlocks = sql("SELECT COUNT FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE NAME='lock_deadlocks';")
     transactions = sql("SELECT EVENT_NAME,COUNT_STAR,SUM_TIMER_WAIT,COUNT_READ_WRITE,SUM_TIMER_READ_WRITE FROM performance_schema.events_transactions_summary_global_by_event_name;")
     threads = mysql_threads()
+    lock_waits = int(sql('SELECT COUNT(*) FROM performance_schema.data_lock_waits;'))
     return {'digests': digests, 'locks': {k: int(v) for k, v in locks.items()},
             'innodb_deadlocks': int(deadlocks) if deadlocks else None, 'transactions': transactions,
-            'threads': threads}
+            'threads': threads, 'active_lock_wait_count': lock_waits}
 
 
 def mysql_threads():
@@ -231,6 +267,9 @@ def mysql_delta(before, after):
             'innodb_deadlocks_delta': (after['innodb_deadlocks'] - before['innodb_deadlocks']
                                        if before.get('innodb_deadlocks') is not None
                                        and after.get('innodb_deadlocks') is not None else None),
+            'innodb_lock_status_before': before['locks'],
+            'innodb_lock_status_after': after['locks'],
+            'active_lock_wait_count_before_after': [before.get('active_lock_wait_count'), after.get('active_lock_wait_count')],
             'transaction_snapshots': [before['transactions'], after['transactions']],
             'threads_before_after': [before.get('threads', {}), after.get('threads', {})]}
 
@@ -315,6 +354,17 @@ def metric_count(summary, metric):
     return int(summary.get('metrics', {}).get(metric, {}).get('values', {}).get('count', 0))
 
 
+def status_error_counts(summary):
+    counts = {}
+    for name, metric in summary.get('metrics', {}).items():
+        if not name.startswith('checkout_status_errors'):
+            continue
+        status = re.search(r'(?:^|[,{])\s*status\s*[:=]\s*["\']?([^,"\'}]+)', name)
+        key = status.group(1).strip().strip('"').strip("'") if status else 'unknown'
+        counts[key] = counts.get(key, 0) + int(metric.get('values', {}).get('count', 0))
+    return counts
+
+
 def classify_measurement(dropped, k6_exit, status_error_rate, no_deadlocks,
                         runtime_stable, fixture_contract, digest_complete, scrape_healthy):
     gates = (k6_exit == 0 and status_error_rate == 0 and no_deadlocks and runtime_stable
@@ -338,6 +388,11 @@ def resource_sample(containers):
     raw = command(['docker', 'stats', '--no-stream', '--format', '{{json .}}', *containers.values()])
     rows = {row['ID']: row for row in map(json.loads, raw.splitlines())}
     result = {'at_utc': utc(), 'mysql_threads': mysql_threads()}
+    try:
+        result['active_lock_wait_count'] = int(sql('SELECT COUNT(*) FROM performance_schema.data_lock_waits;'))
+    except Exception as error:
+        result['active_lock_wait_count'] = None
+        result['lock_wait_sample_error'] = type(error).__name__
     for service, cid in containers.items():
         row = next(value for key, value in rows.items() if cid.startswith(key))
         used, limit = row['MemUsage'].split(' / ')
@@ -392,6 +447,29 @@ def is_checkout_digest(statement):
     return not statement.startswith('SELECT') or identity_predicate or composite_id
 
 
+def digest_boundary_summaries(digests):
+    boundaries = {'commit': [], 'sku_select_for_update': [], 'inventory_select': [], 'inventory_reserve_update': []}
+    for row in digests:
+        statement = row['sql'].upper()
+        if statement.strip() == 'COMMIT':
+            boundaries['commit'].append(row)
+        elif statement.startswith('SELECT') and re.search(r'FROM\s+`?SKUS`?', statement) and 'FOR UPDATE' in statement:
+            boundaries['sku_select_for_update'].append(row)
+        elif statement.startswith('SELECT') and re.search(r'FROM\s+`?INVENTORIES`?', statement):
+            boundaries['inventory_select'].append(row)
+        elif statement.startswith('UPDATE') and re.search(r'\bINVENTORIES\b', statement):
+            boundaries['inventory_reserve_update'].append(row)
+    result = {}
+    for name, rows in boundaries.items():
+        count = sum(row['count'] for row in rows)
+        timer_ps = sum(row['timer_ps'] for row in rows)
+        result[name] = {'digest_count': len(rows), 'statement_count': count,
+                        'total_ms': timer_ps / 1e9,
+                        'average_ms': timer_ps / count / 1e9 if count else None,
+                        'lock_ms': sum(row['lock_ps'] for row in rows) / 1e9}
+    return result
+
+
 def stage_attribution(evidence, prom):
     stats = {q['title']: q['stats'] for q in prom['queries']}
     samples = evidence.get('resource_samples', [])
@@ -410,32 +488,54 @@ def stage_attribution(evidence, prom):
     pending = next(q for q in prom['queries'] if q['title'] == 'Hikari pending')
     digests = evidence['mysql']['digests']
     checkout_digests = [row for row in digests if is_checkout_digest(row['sql'])]
+    lock_wait_samples = [row['active_lock_wait_count'] for row in samples
+                         if row.get('active_lock_wait_count') is not None]
+    sample_times = [dt.datetime.fromisoformat(row['at_utc'].replace('Z', '+00:00')).timestamp()
+                    for row in samples]
+    sample_intervals = [later - earlier for earlier, later in zip(sample_times, sample_times[1:])]
     return {'actual_rps': actual_rps(evidence),
             'latency_ms': evidence['k6']['metrics']['checkout_latency']['values'],
+            'status_error_counts': evidence.get('status_error_counts', {}),
             'prometheus': {name: stats[name] for name in ['Hikari active', 'Hikari idle', 'Hikari pending',
                 'Hikari max', 'process CPU', 'system CPU', 'JVM heap used', 'JVM heap committed',
                 'JVM heap max', 'JVM live threads', 'JVM peak threads']},
             'counter_deltas': prom['counter_deltas'],
             'pending_longest_positive_samples': consecutive_positive(pending['series']),
+            'pending_samples': pending['stats'],
             'docker': resources, 'mysql_threads': threads,
+            'data_lock_waits': {'samples': len(lock_wait_samples),
+                                'mean': statistics.mean(lock_wait_samples) if lock_wait_samples else None,
+                                'max': max(lock_wait_samples) if lock_wait_samples else None,
+                                'sample_errors': sum(row.get('active_lock_wait_count') is None for row in samples)},
+            'resource_sampling_completion_interval_seconds': {
+                'samples': len(sample_intervals),
+                'mean': statistics.mean(sample_intervals) if sample_intervals else None,
+                'min': min(sample_intervals) if sample_intervals else None,
+                'max': max(sample_intervals) if sample_intervals else None,
+                'errors': len(evidence.get('resource_sample_errors', []))},
             'commit': next((row for row in digests if row['sql'].strip().upper() == 'COMMIT'), None),
+            'sql_boundaries': digest_boundary_summaries(digests),
             'checkout_digests': checkout_digests,
             'background_digests': [row for row in digests if row not in checkout_digests
                                    and row['sql'].strip().upper() != 'COMMIT']}
 
 
-def run_ladder(backend_port, run_stage=None):
+def run_ladder(backend_port, run_stage=None, stage_name='ladder', fixture_profile='isolated'):
     if run_stage is None:
         baseline = {service: inspect(service) for service in ['backend', 'mysql']}
         def run_stage(rate):
             if any(not runtime_unchanged(baseline[service], inspect(service)) for service in baseline):
                 raise RuntimeError('STOP: ladder runtime changed between stages')
-            return main(['--stage', 'ladder', '--attempt', f'rps-{rate}',
-                         '--target-rps', str(rate), '--backend-port', str(backend_port)])
+            return main(['--stage', stage_name, '--attempt', f'rps-{rate}',
+                         '--target-rps', str(rate), '--backend-port', str(backend_port),
+                         '--fixture-profile', fixture_profile])
     results = []
     for rate in LADDER_RATES:
         evidence = run_stage(rate)
-        results.append({'target_rps': rate, 'phase': evidence['phase'],
+        stage_actual_rps = actual_rps(evidence) if evidence.get('start_utc') and evidence.get('end_utc') else evidence.get('actual_rps')
+        results.append({'target_rps': rate, 'actual_rps': stage_actual_rps,
+                        'start_utc': evidence.get('start_utc'), 'end_utc': evidence.get('end_utc'),
+                        'phase': evidence['phase'],
                         'classification': evidence['classification'],
                         'gate_failures': evidence['gate_failures']})
         if evidence['classification'] != 'stable':
@@ -443,20 +543,66 @@ def run_ladder(backend_port, run_stage=None):
     return {'stages': results, 'not_run_rps': list(LADDER_RATES[len(results):])}
 
 
+def run_perf003(backend_port):
+    if command(['git', 'branch', '--show-current']) != 'codex/perf-commerce-003' or \
+            command(['git', 'rev-parse', 'HEAD']) != PERF003_MAIN_SHA or \
+            command(['git', 'rev-parse', 'origin/main']) != PERF003_MAIN_SHA or \
+            command(['git', 'status', '--porcelain', '--', 'backend']):
+        raise RuntimeError('STOP: PERF-COMMERCE-003 requires unchanged Backend on the fetched issue baseline')
+    if PERF003_EVIDENCE.exists() and any(PERF003_EVIDENCE.iterdir()):
+        raise RuntimeError('STOP: PERF-COMMERCE-003 evidence exists; do not repeat the load')
+    baseline = {service: inspect(service) for service in ['backend', 'mysql']}
+    control = main(['--stage', 'control', '--attempt', 'isolated-20', '--target-rps', '20',
+                    '--backend-port', str(backend_port), '--fixture-profile', 'isolated'])
+    control_result = {'target_rps': 20, 'actual_rps': actual_rps(control),
+                      'start_utc': control.get('start_utc'), 'end_utc': control.get('end_utc'),
+                      'classification': control['classification'], 'gate_failures': control['gate_failures'],
+                      'evidence_prefix': 'control-isolated-20'}
+    if control['classification'] != 'stable':
+        result = {'control': control_result, 'shared_sku': {'stages': [], 'not_run_rps': list(LADDER_RATES)},
+                  'stop_reason': 'isolated control failed; shared-SKU ladder not run'}
+    else:
+        if any(not runtime_unchanged(baseline[service], inspect(service)) for service in baseline):
+            raise RuntimeError('STOP: runtime changed after isolated control')
+        shared = run_ladder(backend_port, stage_name='shared', fixture_profile='shared')
+        result = {'control': control_result, 'shared_sku': shared,
+                  'stop_reason': 'first shared-SKU hard failure' if shared['not_run_rps'] else None}
+    PERF003_EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (PERF003_EVIDENCE / 'run.json').write_text(json.dumps(result, indent=2) + '\n')
+    return result
+
+
 def main(argv=None):
     global BASE_URL
     parser = argparse.ArgumentParser()
-    parser.add_argument('--stage', choices=['before', 'after', 'ladder'])
+    parser.add_argument('--stage', choices=['before', 'after', 'ladder', 'control', 'shared'])
     parser.add_argument('--ladder', action='store_true')
+    parser.add_argument('--perf003', action='store_true')
     parser.add_argument('--target-rps', type=int, choices=LADDER_RATES, default=20)
     parser.add_argument('--backend-port', type=int, default=8080)
+    parser.add_argument('--fixture-profile', choices=['isolated', 'shared'], default='isolated')
     parser.add_argument('--attempt')
     parser.add_argument('--cleanup')
     args = parser.parse_args(argv)
     if not 1024 <= args.backend_port <= 65535:
         parser.error('Backend port must be a non-privileged loopback port')
     BASE_URL = f'http://127.0.0.1:{args.backend_port}'
-    evidence_dir = ROOT / 'docs/reports/PERF-COMMERCE-002/evidence' if args.ladder or args.stage == 'ladder' else EVIDENCE
+    perf003_stage = args.stage in ['control', 'shared']
+    evidence_dir = PERF003_EVIDENCE if perf003_stage or args.perf003 else (
+        ROOT / 'docs/reports/PERF-COMMERCE-002/evidence' if args.ladder or args.stage == 'ladder' else EVIDENCE)
+    if args.perf003:
+        if args.stage or args.ladder or args.cleanup:
+            parser.error('--perf003 cannot be combined with --stage, --ladder or --cleanup')
+        result = run_perf003(args.backend_port)
+        print(json.dumps(result), flush=True)
+        return result
+    if perf003_stage and (command(['git', 'branch', '--show-current']) != 'codex/perf-commerce-003' or
+                          command(['git', 'rev-parse', 'HEAD']) != PERF003_MAIN_SHA or
+                          command(['git', 'rev-parse', 'origin/main']) != PERF003_MAIN_SHA):
+        raise RuntimeError('STOP: PERF-COMMERCE-003 stages require the issue main baseline')
+    if (args.stage == 'control' and (args.target_rps != 20 or args.fixture_profile != 'isolated')) or \
+            (args.stage == 'shared' and args.fixture_profile != 'shared'):
+        parser.error('control requires isolated 20 RPS; shared requires the shared fixture profile')
     if args.ladder:
         if command(['git', 'branch', '--show-current']) != 'codex/perf-commerce-002' or \
                 command(['git', 'rev-parse', 'HEAD']) != LADDER_MAIN_SHA or \
@@ -472,7 +618,7 @@ def main(argv=None):
     inspect('mysql')
     state_before = inspect('backend')
     if args.cleanup:
-        if not re.fullmatch(r'pc001-[0-9a-f]{12}', args.cleanup):
+        if not re.fullmatch(r'pc00[13]-[0-9a-f]{12}', args.cleanup):
             raise RuntimeError('Invalid cleanup marker')
         cleanup(args.cleanup)
         print('Exact fixture cleanup verified')
@@ -496,7 +642,7 @@ def main(argv=None):
         raise RuntimeError('STOP: local backend scrape unavailable')
     settings = dict(line.split('=', 1) for line in (LOCAL / '.env.local').read_text().splitlines()
                     if '=' in line and not line.startswith('#'))
-    marker = 'pc001-' + uuid.uuid4().hex[:12]
+    marker = ('pc003-' if perf003_stage else 'pc001-') + uuid.uuid4().hex[:12]
     print(f'Fixture cleanup marker: {marker}', flush=True)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     seeded = False
@@ -512,10 +658,13 @@ def main(argv=None):
     mysql_before = inspect('mysql')
     resource_monitor = None
     try:
-        addresses = seed(marker, settings['PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL'])
+        addresses = seed(marker, settings['PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL'], args.fixture_profile)
         seeded = True
         fixture_before = fixture_counts(marker)
-        if fixture_before['members'] != POOL_SIZE or fixture_before['cart_items'] != POOL_SIZE or fixture_before['minimum_stock'] != 10000:
+        expected_skus = 1 if args.fixture_profile == 'shared' else POOL_SIZE
+        if (fixture_before['members'] != POOL_SIZE or fixture_before['cart_items'] != POOL_SIZE or
+                fixture_before['products'] != expected_skus or fixture_before['skus'] != expected_skus or
+                fixture_before['inventories'] != expected_skus or fixture_before['minimum_stock'] != 10000):
             raise RuntimeError('STOP: fixture identity/stock gate failed')
         pool = [login(f'{marker}-{n}@local.invalid', settings['PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD'],
                       addresses[f'{marker}-{n}@local.invalid']) for n in range(1, POOL_SIZE + 1)]
@@ -591,13 +740,14 @@ def main(argv=None):
                 resource_stop.clear()
                 monitor = threading.Thread(target=observe_commit_timeline, daemon=True)
                 monitor.start()
-                if args.stage == 'ladder':
+                if args.stage in ['ladder', 'control', 'shared']:
                     resource_monitor = threading.Thread(target=observe_resources, daemon=True)
                     resource_monitor.start()
             with tempfile.TemporaryDirectory(prefix='pc001-') as temporary:
                 summary = Path(temporary) / 'summary.json'
                 env['CHECKOUT_SUMMARY'] = str(summary)
-                print(f'{phase}: {args.target_rps} RPS / {30 if phase == "warmup" else 120}s / {POOL_SIZE} isolated VUs', flush=True)
+                profile_label = 'shared-SKU' if args.fixture_profile == 'shared' else 'isolated-SKU'
+                print(f'{phase}: {args.target_rps} RPS / {30 if phase == "warmup" else 120}s / {POOL_SIZE} VUs / {profile_label}', flush=True)
                 result = subprocess.run(['k6', 'run', '--quiet', str(Path(__file__).with_name('checkout.js'))],
                                         env=env, capture_output=True, text=True, encoding='utf-8')
                 if not summary.exists():
@@ -609,20 +759,25 @@ def main(argv=None):
             phase_dropped = metric_count(summaries[phase], 'dropped_iterations')
             if phase == 'warmup':
                 warmup_evidence = {'phase': 'correctness-warmup', 'pool_size': POOL_SIZE,
+                    'fixture_profile': args.fixture_profile,
                     'start_utc': events.get('start'), 'end_utc': events.get('end'),
                     'k6_exit': result.returncode, 'status_error_rate': phase_errors,
+                    'status_error_counts': status_error_counts(summaries[phase]),
                     'dropped_iterations': phase_dropped, 'k6': summaries[phase],
                     'runtime_before': state_before, 'runtime_after': runtime_after_phase,
+                    'fixture_before': phase_fixture_before,
                     'mysql': phase_mysql}
-                if args.stage == 'ladder':
+                if args.stage in ['ladder', 'control', 'shared']:
                     counts = fixture_counts(marker)
+                    warmup_evidence['fixture_after'] = counts
                     time.sleep(16)
                     prom = prometheus(events['start'], events['end'])
                     scrape = next(q for q in prom['queries'] if q.get('panel_id') == 13)['stats']
                     mysql_after = inspect('mysql')
                     warmup_evidence.update(phase='warmup', target_rps=args.target_rps,
                         fixture_contract_matches_requests=fixture_delta_matches(
-                            phase_fixture_before, counts, metric_count(summaries[phase], 'checkout_requests')),
+                            phase_fixture_before, counts, metric_count(summaries[phase], 'checkout_requests'),
+                            args.fixture_profile),
                         runtime_stable=runtime_unchanged(state_before, runtime_after_phase)
                             and runtime_unchanged(mysql_before, mysql_after),
                         backend_scrape_healthy=scrape.get('min') == 1 and scrape.get('samples', 0) >= 2,
@@ -652,22 +807,22 @@ def main(argv=None):
             warmup_requests = int(summaries['warmup']['metrics']['checkout_requests']['values']['count'])
             measurement_requests = int(summaries['measurement']['metrics']['checkout_requests']['values']['count'])
             expected_requests = warmup_requests + measurement_requests
-            fixture_contract = (
-                all(counts[key] == expected_requests for key in
-                    ['orders', 'payments_ready', 'reservations', 'reserved_quantity'])
-                and counts['cart_items'] == POOL_SIZE and counts['minimum_stock'] > 0)
+            fixture_contract = fixture_delta_matches(fixture_before, counts, expected_requests,
+                                                      args.fixture_profile)
             evidence = {'source_sha': command(['git', 'rev-parse', 'HEAD']),
                 'phase': 'measurement', 'pool_size': POOL_SIZE, 'target_rps': args.target_rps, 'warmup_seconds': 30, 'measurement_seconds': 120,
+                'fixture_profile': args.fixture_profile,
                 'start_utc': events.get('start'), 'end_utc': events.get('end'),
                 'k6_exit': result.returncode, 'status_error_rate': phase_errors,
                 'dropped_iterations': phase_dropped, 'k6': summaries[phase],
+                'status_error_counts': status_error_counts(summaries[phase]),
                 'warmup_requests': warmup_requests, 'measurement_requests': measurement_requests,
                 'runtime_before': state_before, 'runtime_after': runtime_after_phase,
                 'fixture_before': fixture_before, 'fixture_after': counts,
                 'fixture_contract_matches_requests': fixture_contract,
                 'measurement_fixture_before': phase_fixture_before,
                 'measurement_fixture_delta_matches_requests': fixture_delta_matches(
-                    phase_fixture_before, counts, measurement_requests),
+                    phase_fixture_before, counts, measurement_requests, args.fixture_profile),
                 'mysql_runtime_before': mysql_before, 'mysql_runtime_after': inspect('mysql'),
                 'resource_interval_seconds': 5,
                 'resource_samples': [s for s in resource_samples if events['start'] <= s['at_utc'] <= events['end']],
@@ -675,6 +830,7 @@ def main(argv=None):
                 'mysql': mysql_delta(events['before'], events['after']),
                 'commit_timeline': sorted(commit_samples, key=lambda row: row['at_utc']),
                 'commit_timeline_sample_errors': commit_sample_errors}
+            evidence['actual_rps'] = actual_rps(evidence)
             paths['measurement'].write_text(json.dumps(evidence, indent=2) + '\n')
             break
 
@@ -701,7 +857,7 @@ def main(argv=None):
                          'backend_scrape_healthy': scrape_healthy, 'digest_complete': digest_complete,
                          'prometheus_counter_deltas': prom['counter_deltas']})
         paths['measurement'].write_text(json.dumps(evidence, indent=2) + '\n')
-        if args.stage == 'ladder':
+        if args.stage in ['ladder', 'control', 'shared']:
             evidence['runtime_stable'] = runtime_stable and runtime_unchanged(
                 mysql_before, evidence['mysql_runtime_after'])
             evidence['fixture_contract_matches_requests'] = fixture_contract and evidence['measurement_fixture_delta_matches_requests']
@@ -732,7 +888,7 @@ def main(argv=None):
         if seeded:
             cleanup(marker)
             paths['cleanup'].write_text(json.dumps(
-                {'verified': True, 'boundary': f'exact run namespace; {POOL_SIZE} dedicated members/products/SKUs; shared QA preserved'}, indent=2) + '\n')
+                {'verified': True, 'boundary': f'exact {args.fixture_profile} fixture namespace; 120 dedicated members/carts/addresses; shared QA preserved'}, indent=2) + '\n')
             print('Exact fixture cleanup verified', flush=True)
 
 
@@ -742,11 +898,17 @@ def runtime_unchanged(before, after):
             and all(before[key] == after[key] for key in ['memory_bytes', 'nano_cpus', 'pids']))
 
 
-def fixture_delta_matches(before, after, requests):
-    return (all(after[key] - before[key] == requests for key in
-                ['orders', 'payments_ready', 'reservations', 'reserved_quantity'])
+def fixture_delta_matches(before, after, requests, fixture_profile='isolated'):
+    sku_count = 1 if fixture_profile == 'shared' else POOL_SIZE
+    exact_deltas = all(after[key] - before[key] == requests for key in
+                       ['orders', 'payments_ready', 'payments', 'idempotency_results',
+                        'reservations', 'reserved_quantity', 'inventory_version'])
+    return (exact_deltas
+            and after['available_quantity'] - before['available_quantity'] == -requests
+            and after['negative_inventories'] == 0 and after['duplicate_payment_orders'] == 0
             and after['members'] == POOL_SIZE and after['cart_items'] == POOL_SIZE
-            and after['minimum_stock'] > 0)
+            and after['products'] == sku_count and after['skus'] == sku_count
+            and after['inventories'] == sku_count and after['minimum_stock'] > 0)
 
 
 if __name__ == '__main__':

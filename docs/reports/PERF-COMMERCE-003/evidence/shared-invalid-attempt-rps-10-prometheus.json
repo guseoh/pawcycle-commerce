@@ -1,0 +1,1364 @@
+{
+  "dashboard_uid": "pawcycle-local-observability",
+  "start_utc": "2026-10-06T14:14:20.514Z",
+  "end_utc": "2026-10-06T14:14:50.735Z",
+  "step_seconds": 15,
+  "rate_interval": "1m",
+  "queries": [
+    {
+      "panel_id": 1,
+      "title": "HTTP requests and errors",
+      "query": "sum(rate(http_server_requests_seconds_count[1m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "8.111651887903639"
+            ],
+            [
+              1791296075.514,
+              "8.867060758255922"
+            ],
+            [
+              1791296090.514,
+              "9.06747266423682"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 8.111651887903639,
+        "max": 9.06747266423682,
+        "mean": 8.682061770132128
+      }
+    },
+    {
+      "panel_id": 1,
+      "title": "HTTP requests and errors",
+      "query": "sum(rate(http_server_requests_seconds_count{status=~\"4..\"}[1m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0.28891457018401634"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.28891457018401634,
+        "mean": 0.09630485672800544
+      }
+    },
+    {
+      "panel_id": 1,
+      "title": "HTTP requests and errors",
+      "query": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    {
+      "panel_id": 2,
+      "title": "HTTP latency",
+      "query": "sum(rate(http_server_requests_seconds_sum[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count[1m])), 1e-9)",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.03593112306301373"
+            ],
+            [
+              1791296075.514,
+              "0.03487067261403512"
+            ],
+            [
+              1791296090.514,
+              "0.054261934539215774"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.03487067261403512,
+        "max": 0.054261934539215774,
+        "mean": 0.041687910072088205
+      }
+    },
+    {
+      "panel_id": 2,
+      "title": "HTTP latency",
+      "query": "max(http_server_requests_seconds_max)",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.285163617"
+            ],
+            [
+              1791296075.514,
+              "0.285163617"
+            ],
+            [
+              1791296090.514,
+              "1.240339357"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.285163617,
+        "max": 1.240339357,
+        "mean": 0.6035555303333333
+      }
+    },
+    {
+      "panel_id": 17,
+      "title": "HTTP latency percentiles",
+      "query": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket[1m])))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.12881173525833334"
+            ],
+            [
+              1791296075.514,
+              "0.12456150726833333"
+            ],
+            [
+              1791296090.514,
+              "0.12168706849415536"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.12168706849415536,
+        "max": 0.12881173525833334,
+        "mean": 0.12502010367360733
+      }
+    },
+    {
+      "panel_id": 17,
+      "title": "HTTP latency percentiles",
+      "query": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket[1m])))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.15476981629375006"
+            ],
+            [
+              1791296075.514,
+              "0.147684238842"
+            ],
+            [
+              1791296090.514,
+              "0.8876265722000023"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.147684238842,
+        "max": 0.8876265722000023,
+        "mean": 0.3966935424452508
+      }
+    },
+    {
+      "panel_id": 18,
+      "title": "HTTP request error ratio",
+      "query": "sum(rate(http_server_requests_seconds_count{status=~\"4..|5..\"}[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count[1m])), 1e-9)",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0.031862745098039214"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.031862745098039214,
+        "mean": 0.010620915032679737
+      }
+    },
+    {
+      "panel_id": 3,
+      "title": "JVM heap",
+      "query": "sum(jvm_memory_used_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "172328912"
+            ],
+            [
+              1791296075.514,
+              "96440776"
+            ],
+            [
+              1791296090.514,
+              "175083976"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 96440776.0,
+        "max": 175083976.0,
+        "mean": 147951221.33333334
+      }
+    },
+    {
+      "panel_id": 3,
+      "title": "JVM heap",
+      "query": "sum(jvm_memory_committed_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "192937984"
+            ],
+            [
+              1791296075.514,
+              "192937984"
+            ],
+            [
+              1791296090.514,
+              "192937984"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 192937984.0,
+        "max": 192937984.0,
+        "mean": 192937984.0
+      }
+    },
+    {
+      "panel_id": 3,
+      "title": "JVM heap",
+      "query": "sum(jvm_memory_max_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "2071986174"
+            ],
+            [
+              1791296075.514,
+              "2071986174"
+            ],
+            [
+              1791296090.514,
+              "2071986174"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 2071986174.0,
+        "max": 2071986174.0,
+        "mean": 2071986174.0
+      }
+    },
+    {
+      "panel_id": 4,
+      "title": "JVM GC and threads",
+      "query": "sum(rate(jvm_gc_pause_seconds_count[5m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.00701803635342831"
+            ],
+            [
+              1791296075.514,
+              "0.01052698065140956"
+            ],
+            [
+              1791296090.514,
+              "0.010527017590646396"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.00701803635342831,
+        "max": 0.010527017590646396,
+        "mean": 0.009357344865161422
+      }
+    },
+    {
+      "panel_id": 4,
+      "title": "JVM GC and threads",
+      "query": "jvm_threads_live_threads",
+      "series": [
+        {
+          "metric": {
+            "__name__": "jvm_threads_live_threads",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "44"
+            ],
+            [
+              1791296075.514,
+              "44"
+            ],
+            [
+              1791296090.514,
+              "44"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 44.0,
+        "max": 44.0,
+        "mean": 44.0
+      }
+    },
+    {
+      "panel_id": 4,
+      "title": "JVM GC and threads",
+      "query": "jvm_threads_peak_threads",
+      "series": [
+        {
+          "metric": {
+            "__name__": "jvm_threads_peak_threads",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "58"
+            ],
+            [
+              1791296075.514,
+              "58"
+            ],
+            [
+              1791296090.514,
+              "58"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 58.0,
+        "max": 58.0,
+        "mean": 58.0
+      }
+    },
+    {
+      "panel_id": 5,
+      "title": "Process and system CPU",
+      "query": "process_cpu_usage",
+      "series": [
+        {
+          "metric": {
+            "__name__": "process_cpu_usage",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0.03981538119334927"
+            ],
+            [
+              1791296075.514,
+              "0.0049326068253513055"
+            ],
+            [
+              1791296090.514,
+              "0.017656590490026262"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0049326068253513055,
+        "max": 0.03981538119334927,
+        "mean": 0.02080152616957561
+      }
+    },
+    {
+      "panel_id": 5,
+      "title": "Process and system CPU",
+      "query": "system_cpu_usage",
+      "series": [
+        {
+          "metric": {
+            "__name__": "system_cpu_usage",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0.4551064657808417"
+            ],
+            [
+              1791296075.514,
+              "0.32301164057572107"
+            ],
+            [
+              1791296090.514,
+              "0.4070183281180152"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.32301164057572107,
+        "max": 0.4551064657808417,
+        "mean": 0.39504547815819263
+      }
+    },
+    {
+      "panel_id": 6,
+      "title": "Hikari connections",
+      "query": "hikaricp_connections_active",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_active",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    {
+      "panel_id": 6,
+      "title": "Hikari connections",
+      "query": "hikaricp_connections_idle",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_idle",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "10"
+            ],
+            [
+              1791296075.514,
+              "10"
+            ],
+            [
+              1791296090.514,
+              "10"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      }
+    },
+    {
+      "panel_id": 6,
+      "title": "Hikari connections",
+      "query": "hikaricp_connections_pending",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_pending",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    {
+      "panel_id": 13,
+      "title": "Backend scrape availability",
+      "query": "up{job=\"pawcycle-backend\"}",
+      "series": [
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "1"
+            ],
+            [
+              1791296075.514,
+              "1"
+            ],
+            [
+              1791296090.514,
+              "1"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      }
+    },
+    {
+      "title": "checkout request rate",
+      "query": "sum(rate(http_server_requests_seconds_count{uri=\"/api/checkout\"}[1m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0.8889283968176364"
+            ],
+            [
+              1791296090.514,
+              "4.222597564227931"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 4.222597564227931,
+        "mean": 1.7038419870151893
+      }
+    },
+    {
+      "title": "checkout p95",
+      "query": "histogram_quantile(0.95, sum by(le)(rate(http_server_requests_seconds_bucket{uri=\"/api/checkout\"}[1m])))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "NaN"
+            ],
+            [
+              1791296075.514,
+              "0.067108864"
+            ],
+            [
+              1791296090.514,
+              "0.5592405322499995"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 2,
+        "min": 0.067108864,
+        "max": 0.5592405322499995,
+        "mean": 0.31317469812499976
+      }
+    },
+    {
+      "title": "checkout p99",
+      "query": "histogram_quantile(0.99, sum by(le)(rate(http_server_requests_seconds_bucket{uri=\"/api/checkout\"}[1m])))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "NaN"
+            ],
+            [
+              1791296075.514,
+              "0.10290025760000002"
+            ],
+            [
+              1791296090.514,
+              "1.0916375210500011"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 2,
+        "min": 0.10290025760000002,
+        "max": 1.0916375210500011,
+        "mean": 0.5972688893250006
+      }
+    },
+    {
+      "title": "checkout 4xx",
+      "query": "sum(rate(http_server_requests_seconds_count{uri=\"/api/checkout\",status=~\"4..\"}[1m]))",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0.28891457018401634"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.28891457018401634,
+        "mean": 0.09630485672800544
+      }
+    },
+    {
+      "title": "checkout 5xx",
+      "query": "sum(rate(http_server_requests_seconds_count{uri=\"/api/checkout\",status=~\"5..\"}[1m]))",
+      "series": [],
+      "stats": {
+        "samples": 0
+      }
+    },
+    {
+      "title": "GC pause sum",
+      "query": "sum(jvm_gc_pause_seconds_sum)",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "0.916"
+            ],
+            [
+              1791296075.514,
+              "0.96"
+            ],
+            [
+              1791296090.514,
+              "0.96"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.916,
+        "max": 0.96,
+        "mean": 0.9453333333333334
+      }
+    },
+    {
+      "title": "GC pause count",
+      "query": "sum(jvm_gc_pause_seconds_count)",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "91"
+            ],
+            [
+              1791296075.514,
+              "92"
+            ],
+            [
+              1791296090.514,
+              "92"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 91.0,
+        "max": 92.0,
+        "mean": 91.66666666666667
+      }
+    },
+    {
+      "title": "Hikari max",
+      "query": "hikaricp_connections_max",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_max",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "10"
+            ],
+            [
+              1791296075.514,
+              "10"
+            ],
+            [
+              1791296090.514,
+              "10"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      }
+    },
+    {
+      "title": "Hikari acquire count",
+      "query": "hikaricp_connections_acquire_seconds_count",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_acquire_seconds_count",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "14170"
+            ],
+            [
+              1791296075.514,
+              "14215"
+            ],
+            [
+              1791296090.514,
+              "14374"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 14170.0,
+        "max": 14374.0,
+        "mean": 14253.0
+      }
+    },
+    {
+      "title": "Hikari acquire sum",
+      "query": "hikaricp_connections_acquire_seconds_sum",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_acquire_seconds_sum",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "19.253325946"
+            ],
+            [
+              1791296075.514,
+              "19.25590682"
+            ],
+            [
+              1791296090.514,
+              "19.488746569"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 19.253325946,
+        "max": 19.488746569,
+        "mean": 19.332659778333333
+      }
+    },
+    {
+      "title": "Hikari usage count",
+      "query": "hikaricp_connections_usage_seconds_count",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_usage_seconds_count",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "14170"
+            ],
+            [
+              1791296075.514,
+              "14215"
+            ],
+            [
+              1791296090.514,
+              "14374"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 14170.0,
+        "max": 14374.0,
+        "mean": 14253.0
+      }
+    },
+    {
+      "title": "Hikari usage sum",
+      "query": "hikaricp_connections_usage_seconds_sum",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_usage_seconds_sum",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "401.909"
+            ],
+            [
+              1791296075.514,
+              "403.46"
+            ],
+            [
+              1791296090.514,
+              "416.886"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 401.909,
+        "max": 416.886,
+        "mean": 407.41833333333335
+      }
+    },
+    {
+      "title": "Hikari active",
+      "query": "hikaricp_connections_active",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_active",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    {
+      "title": "Hikari idle",
+      "query": "hikaricp_connections_idle",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_idle",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "10"
+            ],
+            [
+              1791296075.514,
+              "10"
+            ],
+            [
+              1791296090.514,
+              "10"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      }
+    },
+    {
+      "title": "Hikari pending",
+      "query": "hikaricp_connections_pending",
+      "series": [
+        {
+          "metric": {
+            "__name__": "hikaricp_connections_pending",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend",
+            "pool": "HikariPool-1"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0"
+            ],
+            [
+              1791296075.514,
+              "0"
+            ],
+            [
+              1791296090.514,
+              "0"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    {
+      "title": "process CPU",
+      "query": "process_cpu_usage",
+      "series": [
+        {
+          "metric": {
+            "__name__": "process_cpu_usage",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0.03981538119334927"
+            ],
+            [
+              1791296075.514,
+              "0.0049326068253513055"
+            ],
+            [
+              1791296090.514,
+              "0.017656590490026262"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.0049326068253513055,
+        "max": 0.03981538119334927,
+        "mean": 0.02080152616957561
+      }
+    },
+    {
+      "title": "system CPU",
+      "query": "system_cpu_usage",
+      "series": [
+        {
+          "metric": {
+            "__name__": "system_cpu_usage",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "0.4551064657808417"
+            ],
+            [
+              1791296075.514,
+              "0.32301164057572107"
+            ],
+            [
+              1791296090.514,
+              "0.4070183281180152"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 0.32301164057572107,
+        "max": 0.4551064657808417,
+        "mean": 0.39504547815819263
+      }
+    },
+    {
+      "title": "JVM heap committed",
+      "query": "sum(jvm_memory_committed_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "192937984"
+            ],
+            [
+              1791296075.514,
+              "192937984"
+            ],
+            [
+              1791296090.514,
+              "192937984"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 192937984.0,
+        "max": 192937984.0,
+        "mean": 192937984.0
+      }
+    },
+    {
+      "title": "JVM heap max",
+      "query": "sum(jvm_memory_max_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "2071986174"
+            ],
+            [
+              1791296075.514,
+              "2071986174"
+            ],
+            [
+              1791296090.514,
+              "2071986174"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 2071986174.0,
+        "max": 2071986174.0,
+        "mean": 2071986174.0
+      }
+    },
+    {
+      "title": "JVM heap used",
+      "query": "sum(jvm_memory_used_bytes{area=\"heap\"})",
+      "series": [
+        {
+          "metric": {},
+          "values": [
+            [
+              1791296060.514,
+              "172328912"
+            ],
+            [
+              1791296075.514,
+              "96440776"
+            ],
+            [
+              1791296090.514,
+              "175083976"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 96440776.0,
+        "max": 175083976.0,
+        "mean": 147951221.33333334
+      }
+    },
+    {
+      "title": "JVM live threads",
+      "query": "jvm_threads_live_threads",
+      "series": [
+        {
+          "metric": {
+            "__name__": "jvm_threads_live_threads",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "44"
+            ],
+            [
+              1791296075.514,
+              "44"
+            ],
+            [
+              1791296090.514,
+              "44"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 44.0,
+        "max": 44.0,
+        "mean": 44.0
+      }
+    },
+    {
+      "title": "JVM peak threads",
+      "query": "jvm_threads_peak_threads",
+      "series": [
+        {
+          "metric": {
+            "__name__": "jvm_threads_peak_threads",
+            "instance": "backend:8080",
+            "job": "pawcycle-backend"
+          },
+          "values": [
+            [
+              1791296060.514,
+              "58"
+            ],
+            [
+              1791296075.514,
+              "58"
+            ],
+            [
+              1791296090.514,
+              "58"
+            ]
+          ]
+        }
+      ],
+      "stats": {
+        "samples": 3,
+        "min": 58.0,
+        "max": 58.0,
+        "mean": 58.0
+      }
+    }
+  ],
+  "counter_deltas": {
+    "hikari_acquire": {
+      "count": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 204.0
+      },
+      "sum_seconds": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 0.23542062299999955
+      },
+      "average_ms": 1.154023
+    },
+    "hikari_usage_connection_hold": {
+      "count": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 204.0
+      },
+      "sum_seconds": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 14.977000000000032
+      },
+      "average_ms": 73.416667
+    },
+    "gc_pause": {
+      "count": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 1.0
+      },
+      "sum_seconds": {
+        "samples": 3,
+        "from_utc": "2026-10-06T14:14:20.514Z",
+        "to_utc": "2026-10-06T14:14:50.514Z",
+        "delta": 0.04399999999999993
+      },
+      "average_ms": 44.0
+    }
+  }
+}

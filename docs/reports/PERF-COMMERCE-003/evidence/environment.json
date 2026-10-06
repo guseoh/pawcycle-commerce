@@ -1,0 +1,136 @@
+{
+  "task_id": "PERF-COMMERCE-003",
+  "issue": 335,
+  "captured_at_utc": "2026-10-06T14:09:17Z",
+  "issue_main_sha": "6ed3cdb09c89ad0db8570621992ebf817ba26497",
+  "branch": "codex/perf-commerce-003",
+  "runtime_scope": "local-only infra/local-integration",
+  "compose_files": [
+    "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.yaml",
+    "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.prometheus.yaml",
+    "C:\\Users\\guseo\\AppData\\Local\\Temp\\pawcycle-perf-commerce-002-runtime.yaml"
+  ],
+  "compose_override": "C:/Users/guseo/AppData/Local/Temp/pawcycle-perf-commerce-002-runtime.yaml",
+  "docker": {
+    "version": "29.8.0 / 29.8.0",
+    "os_type": "linux",
+    "architecture": "x86_64",
+    "cpus": 12,
+    "memory_bytes": 8282894336
+  },
+  "k6": "k6.exe v2.2.0 (commit/00a9a1b7f5, go1.26.5, windows/amd64)",
+  "backend": {
+    "runtime": {
+      "image": "sha256:149428b38e1773bcab8176135486c08db38186c22cdf41dcb9fb51b18206b791",
+      "started": "2026-10-06T12:40:55.102222987Z",
+      "restarts": 0,
+      "oom": false,
+      "running": true,
+      "memory_bytes": 0,
+      "nano_cpus": 0,
+      "pids": null
+    },
+    "image_tag": "pawcycle-local-integration-backend",
+    "compose_files": [
+      "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.yaml",
+      "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.prometheus.yaml",
+      "C:\\Users\\guseo\\AppData\\Local\\Temp\\pawcycle-perf-commerce-002-runtime.yaml"
+    ],
+    "candidate_after": {
+      "image": "sha256:54a000f7d1cbbe3b173c3b2cdee84c662f03c0547a6db57a91a277cede3a71ad",
+      "started_utc": "2026-10-06T14:18:37.456765676Z",
+      "restarts": 0,
+      "oom": false,
+      "running": true
+    }
+  },
+  "mysql": {
+    "runtime": {
+      "image": "sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6",
+      "started": "2026-10-06T12:40:34.550337053Z",
+      "restarts": 0,
+      "oom": false,
+      "running": true,
+      "memory_bytes": 0,
+      "nano_cpus": 0,
+      "pids": null
+    },
+    "image_tag": "mysql:8.4.10",
+    "compose_files": [
+      "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.yaml",
+      "C:\\Users\\guseo\\IdeaProjects\\pawcycle-commerce\\infra\\local-integration\\compose.prometheus.yaml",
+      "C:\\Users\\guseo\\AppData\\Local\\Temp\\pawcycle-perf-commerce-002-runtime.yaml"
+    ]
+  },
+  "mysql_settings": {
+    "version": "8.4.10",
+    "transaction_isolation": "REPEATABLE-READ",
+    "performance_schema": true,
+    "innodb_flush_log_at_trx_commit": 1,
+    "sync_binlog": 1,
+    "performance_schema_digests_size": 10000
+  },
+  "observability": {
+    "prometheus_image": "prom/prometheus:v3.13.2",
+    "grafana_image": "grafana/grafana:13.1.3",
+    "prometheus_url": "http://127.0.0.1:9090",
+    "grafana_url": "http://127.0.0.1:3001",
+    "backend_scrape_healthy": true,
+    "hikari_max_current": [
+      {
+        "metric": {
+          "__name__": "hikaricp_connections_max",
+          "instance": "backend:8080",
+          "job": "pawcycle-backend",
+          "pool": "HikariPool-1"
+        },
+        "value": [
+          1791295757.33,
+          "10"
+        ]
+      }
+    ]
+  },
+  "runtime_safety": {
+    "backend_profile": "local-integration",
+    "toss_test_enabled": false,
+    "bootstrap_subscription_reset": false,
+    "backend_loopback_port": 18080,
+    "hikari_max": "10 (runtime gauge)",
+    "backend_and_mysql_resource_limits": "unlimited (0; unchanged)"
+  },
+  "grafana_screenshot_renderer": {
+    "image_tag": "grafana/grafana-image-renderer:latest",
+    "image_id": "sha256:76542ccc4c045e5ff9f80f87b25de6fcc71b31222172de5031a8ceba33772ee1",
+    "repo_digests": [
+      "grafana/grafana-image-renderer@sha256:76542ccc4c045e5ff9f80f87b25de6fcc71b31222172de5031a8ceba33772ee1"
+    ],
+    "used_after_measurements_only": true,
+    "temporary_compose_override_removed": true,
+    "grafana_original_compose_runtime_restored": true,
+    "temporary_auth_token_saved_in_evidence": false,
+    "image_removed_after_screenshot": true
+  },
+  "screenshots": [
+    {
+      "path": "grafana/control-isolated-20.png",
+      "from_utc": "2026-10-06T13:46:23.841Z",
+      "to_utc": "2026-10-06T13:48:23.846Z"
+    },
+    {
+      "path": "grafana/shared-rps-5.png",
+      "from_utc": "2026-10-06T13:50:30.286Z",
+      "to_utc": "2026-10-06T13:52:30.290Z"
+    },
+    {
+      "path": "grafana/shared-rps-10-hard-failure.png",
+      "from_utc": "2026-10-06T13:53:34.404Z",
+      "to_utc": "2026-10-06T13:54:04.416Z"
+    },
+    {
+      "path": "grafana/shared-after-rps-10.png",
+      "from_utc": "2026-10-06T14:21:17.438Z",
+      "to_utc": "2026-10-06T14:23:17.495Z"
+    }
+  ]
+}
