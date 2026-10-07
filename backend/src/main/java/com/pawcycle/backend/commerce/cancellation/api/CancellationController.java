@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.cancellation.api;
 
-import com.pawcycle.backend.commerce.CancellationService;
-import com.pawcycle.backend.commerce.ReasonRequest;
+import com.pawcycle.backend.commerce.cancellation.application.CancellationService;
+import com.pawcycle.backend.commerce.common.api.ReasonRequest;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;

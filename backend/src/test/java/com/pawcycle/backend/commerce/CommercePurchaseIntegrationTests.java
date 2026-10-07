@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+
 import com.pawcycle.backend.member.address.api.MemberAddressRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;

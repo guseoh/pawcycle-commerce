@@ -1,11 +1,11 @@
 package com.pawcycle.backend.commerce.billing.api;
 
-import com.pawcycle.backend.commerce.BillingCompleteRequest;
-import com.pawcycle.backend.commerce.BillingMethodQueryService;
-import com.pawcycle.backend.commerce.BillingMethodResponse;
-import com.pawcycle.backend.commerce.BillingPreparationResponse;
-import com.pawcycle.backend.commerce.PaymentCapabilitiesResponse;
-import com.pawcycle.backend.commerce.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.billing.api.BillingCompleteRequest;
+import com.pawcycle.backend.commerce.billing.application.BillingMethodQueryService;
+import com.pawcycle.backend.commerce.billing.api.BillingMethodResponse;
+import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
+import com.pawcycle.backend.commerce.billing.api.PaymentCapabilitiesResponse;
+import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.billing.application.BillingApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

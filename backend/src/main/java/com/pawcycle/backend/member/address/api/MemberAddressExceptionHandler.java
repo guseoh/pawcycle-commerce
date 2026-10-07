@@ -1,6 +1,6 @@
 package com.pawcycle.backend.member.address.api;
 
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.member.address.application.MemberAddressException;
 import org.slf4j.Logger;

@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
-import com.pawcycle.backend.commerce.CommerceOrderEntity;
-import com.pawcycle.backend.commerce.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.order.domain.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.order.persistence.CommerceOrderRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.ZoneOffset;

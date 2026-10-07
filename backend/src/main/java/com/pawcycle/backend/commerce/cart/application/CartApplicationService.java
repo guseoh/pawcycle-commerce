@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.cart.application;
 
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.cart.api.CartItemResponse;
 import com.pawcycle.backend.commerce.cart.api.CartPricingResponse;
 import com.pawcycle.backend.commerce.cart.api.CartResponse;

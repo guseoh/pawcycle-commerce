@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.cart.api;
 
-import com.pawcycle.backend.commerce.CartItemRequest;
-import com.pawcycle.backend.commerce.QuantityRequest;
+import com.pawcycle.backend.commerce.cart.api.CartItemRequest;
+import com.pawcycle.backend.commerce.cart.api.QuantityRequest;
 import com.pawcycle.backend.commerce.cart.application.CartApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;

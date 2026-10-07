@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.inventory.application;
 
-import com.pawcycle.backend.commerce.AdminAuditService;
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.InventoryService;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.inventory.api.InventoryResponse;
 import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import java.util.List;

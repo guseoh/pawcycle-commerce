@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.inventory.api;
 
-import com.pawcycle.backend.commerce.InventoryAdjustmentRequest;
+import com.pawcycle.backend.commerce.inventory.api.InventoryAdjustmentRequest;
 import com.pawcycle.backend.commerce.inventory.application.InventoryAdminApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

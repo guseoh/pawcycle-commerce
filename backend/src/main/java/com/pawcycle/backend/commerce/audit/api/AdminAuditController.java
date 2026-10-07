@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.audit.api;
 
-import com.pawcycle.backend.commerce.AdminAuditService;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

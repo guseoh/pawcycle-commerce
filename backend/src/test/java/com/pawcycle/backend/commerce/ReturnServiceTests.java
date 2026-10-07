@@ -1,5 +1,10 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
+import com.pawcycle.backend.commerce.inventory.application.InventoryService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
+import com.pawcycle.backend.commerce.returning.application.ReturnService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
-import com.pawcycle.backend.commerce.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;

@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.coupon.api;
 
-import com.pawcycle.backend.commerce.CouponCreatedResponse;
-import com.pawcycle.backend.commerce.CouponIssueRequest;
-import com.pawcycle.backend.commerce.CouponRequest;
+import com.pawcycle.backend.commerce.coupon.api.CouponCreatedResponse;
+import com.pawcycle.backend.commerce.coupon.api.CouponIssueRequest;
+import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.application.CouponAdminApplicationService;
 import com.pawcycle.backend.commerce.coupon.application.CouponPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;

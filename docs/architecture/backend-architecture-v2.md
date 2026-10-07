@@ -1,6 +1,7 @@
 # Backend Architecture V2 baseline and guardrails
 
-Task ID: `BACKEND-REFACTOR-V2-001` (Program T01) · Master #339 · Issue #340 · 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-002` (Program T02) · Master #339 · Issue #342 · 저장소 변경.
+T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
 Inventory 기준은 `90657b188b23f9405cf7ae469cf25b4db9ffee12`이다. 손으로 작성한
 `backend/src/main/java/com/pawcycle/backend/**/*.java`만 세며 generated Q-type, test,
@@ -8,14 +9,14 @@ build output을 제외한다. 이 문서는 V2의 canonical baseline과 선택 �
 기존 `backend-persistence-convergence.md`는 이전 전환의 계약·evidence로 보존한다.
 이 baseline은 전체 Program의 완료 선언이 아니다.
 
-## Current Delta
+## T01 baseline Delta
 
 이미 main에 반영된 catalog/cart/checkout/payment JPA 전환과 004의 Order read/Quick
 Reorder 분리를 다시 구현하지 않는다. T01은 inventory, dependency freeze, 선택 기준과
 상품 비교 facet read 하나의 Querydsl pilot만 추가한다. API/schema/index, lock,
 transaction ownership, idempotency, provider I/O, package topology는 변경하지 않는다.
 
-## Source inventory
+## T01 source inventory
 
 | 영역 | Java files | feature 밖 root files |
 | --- | ---: | ---: |
@@ -103,8 +104,8 @@ EntityManager 7개는 모두 persistence package에 있다:
 
 | Native-containing class | 유지하는 의미 |
 | --- | --- |
-| `commerce/CartRepository` | absent cart의 MySQL atomic ensure; find/save 대체 시 unique race |
-| `commerce/DeliveryRepository` | callback 중복의 atomic delivery ensure |
+| `commerce/cart/persistence/CartRepository` | absent cart의 MySQL atomic ensure; find/save 대체 시 unique race |
+| `commerce/delivery/persistence/DeliveryRepository` | callback 중복의 atomic delivery ensure |
 | `catalog/admin/persistence/CategoryFacetRepository` | category facet atomic upsert |
 | `catalog/engagement/persistence/ProductReviewSummaryRepository` | 최초 summary cache 생성의 atomic upsert |
 | `catalog/engagement/persistence/ProductEngagementPersistence` | engagement 집계·write SQL; 개별 statement는 후속 convergence 대상 |
@@ -128,7 +129,7 @@ persistence 내부에서 typed Row/Facts로 변환된다. pilot은 facet scalar 
 InteractionEventRequest/InteractionService의 event payload, 4개 catalog import persistence,
 LocalQaSubscriptionFixtureService, LegacySubscriptionMigrationProcessor다. payload Map과
 import mapping을 일반 HTTP response의 raw persistence leakage와 혼동하지 않는다.
-기존 application → api DTO 의존은 아래 125개 dependency edge로 별도 동결한다.
+기존 application → api DTO 의존은 T01의 125개와 T02에서 드러난 14개 dependency edge로 별도 동결한다.
 
 ## Target package / dependency contract
 
@@ -137,7 +138,7 @@ Commerce feature는 cart, checkout, order, payment, inventory, coupon, billing, 
 cancellation, refund, returning, membership, notification, audit, operations, metrics다.
 Subscription은 api/application/domain/persistence/automation을 분리하며 migration/performance는
 운영 요청 경로와 격리한다. Recommendation/interaction도 같은 layer 원칙을 적용한다.
-package move는 T02/T03 범위이며 T01에서 수행하지 않는다.
+Commerce package move는 T02에서 수행한다. Subscription/Recommendation/Interaction은 T03 범위다.
 
 | Layer | 책임 / dependency |
 | --- | --- |
@@ -165,8 +166,9 @@ feature-local Row/View/record를 사용하고 HTTP DTO와 분리한다. OSIV=fal
 ## Transaction / high-risk boundary inventory
 
 `TransactionTemplate` 13개 owners:
-Commerce root `CancellationService`, `DeliveryService`, `PaymentReconciliationService`,
-`RefundService`, `ReturnService`, `SubscriptionBillingProcessor`, `SubscriptionBillingRetryProcessor`;
+Commerce feature application `cancellation.CancellationService`, `delivery.DeliveryService`,
+`payment.PaymentReconciliationService`, `refund.RefundService`, `returning.ReturnService`,
+`billing.SubscriptionBillingProcessor`, `billing.SubscriptionBillingRetryProcessor`;
 Subscription root `SubscriptionOrderProcessor`, `SubscriptionReconciliationApplicationService`;
 layered application `BillingApplicationService`, `CheckoutApplicationService`,
 `OrderApplicationService`, `PaymentApplicationService`.
@@ -237,13 +239,14 @@ handwritten code의 Q-type/Querydsl 사용은 persistence 밖에서 금지한다
 - handwritten non-persistence → Querydsl/Q-type 금지
 
 api Entity 규칙은 return만이 아니라 필드·signature·generic dependency도 제한한다. API에서
-직접 Entity를 사용하는 새 우회도 막는다. flat root class는 아직 layer 판별이 되지 않으므로
-T02/T03 package normalization이 enforcement 범위를 넓힌다. 이 staged 한계를 숨기지 않는다.
+직접 Entity를 사용하는 새 우회도 막는다. T02는 Commerce root production class가 0임을
+검증하여 layer 판별 범위를 넓힌다. Subscription/Recommendation/Interaction의 flat root는
+T03까지 남는 staged 한계다.
 reflection/string-based runtime lookup, JSON raw mapping, transaction correctness, 성능은 이
 dependency guard로 증명하지 않으며 해당 contract/MySQL test가 담당한다.
 
-`src/test/resources/architecture/legacy-dependencies.txt`에 baseline 131개 edge를 고정한다:
-application → api 125, api → persistence 1(CouponView 위치), runtime → isolated 5(CLI entry
+`src/test/resources/architecture/legacy-dependencies.txt`에 baseline 145개 edge를 고정한다:
+application → api 139, api → persistence 1(CouponView 위치), runtime → isolated 5(CLI entry
 point와 import facade). domain-adapter/application-sql/api-storage/Querydsl 예외는 없다.
 기존 edge가 사라지면 baseline에서 삭제해야 한다. 신규 edge 또는 사라진 edge를 테스트가
 자동 승인하거나 baseline에 쓰지 않는다. 실패 diagnostic만 build/reports에 저장한다.
@@ -264,5 +267,128 @@ cd backend
 
 Source: [ArchUnit 1.5.0](https://github.com/TNG/ArchUnit/releases/tag/v1.5.0).
 실제 실행 결과와 CI/head는 PR에 기록한다. 이 문서의 KEEP은 Production Verified나
-병합 승인이 아니다. T01 복구는 코드/build/test/document 변경의 일반 revert이며
-DB/data/운영 rollback은 필요하지 않다. T02는 T01 PR이 merge된 뒤에만 시작한다.
+병합 승인이 아니다. T01/T02 복구는 코드/build/test/document 변경의 일반 revert이며
+DB/data/운영 rollback은 필요하지 않다. T03는 T02 PR이 merge된 뒤에만 시작한다.
+
+## T02 Commerce topology Delta
+
+기준 main은 `873f144e93979d3c40612fc4abdbb1895986fbd3` (T01 merge)다. 이번 Delta는
+root class 이동, dependent import, discovery regression, guard와 이 문서 갱신만 포함한다.
+JDBC/JPA/Querydsl 전환, query rewrite, DTO/Entity 재설계, transaction·lock·idempotency·provider
+동작 변경, schema/index/migration과 T03 package normalization은 제외한다.
+
+### Before / after
+
+| 범위 | Before | After |
+| --- | ---: | ---: |
+| Commerce root direct production Java | 93 | 0 |
+| Commerce production Java | 199 | 198 |
+| Member production Java | 34 | 35 |
+| Backend handwritten production Java | 585 | 585 |
+
+92개는 Commerce feature/layer로 이동한다. `AddressCreatedResponse` 한 개는 실제 유일한
+소비자인 `MemberAddressController`의 `member.address.api`로 이동한다. API body/JSON과
+bounded context의 runtime ownership은 그대로다.
+
+| Feature | root에서 이동한 class | 이동 후 feature total |
+| --- | ---: | ---: |
+| audit | 3 | 7 |
+| billing | 17 | 20 |
+| cancellation | 2 | 5 |
+| cart | 7 | 17 |
+| checkout | 8 | 20 |
+| common | 3 | 3 |
+| coupon | 7 | 19 |
+| delivery | 4 | 8 |
+| inventory | 2 | 10 |
+| membership | 6 | 16 |
+| metrics | 1 | 2 |
+| notification | 3 | 7 |
+| operations | 1 | 4 |
+| order | 7 | 18 |
+| payment | 8 | 15 |
+| refund | 6 | 9 |
+| returning | 3 | 5 |
+| returnrequest | 1 | 3 |
+| wishlist | 3 | 10 |
+| 합계 | 92 | 198 |
+
+### Classification / visibility
+
+DTO는 실제 소비 feature의 `api`, service/processor/trigger는 기존 runtime feature의
+`application`, repository는 `persistence`에 둔다. Toss의 payment/billing/refund 10개 type은
+각 feature의 `infrastructure.toss`로 이동한다. provider interface, HTTP/client와 fallback은
+보존한다. `CommerceException`은 `common.error`, handler는 `common.api`에 두고
+`@RestControllerAdvice(basePackages = "com.pawcycle.backend.commerce")`를 그대로 유지한다.
+공유 `ReasonRequest`는 cancellation/delivery/return API가 사용하므로 `common.api`에 둔다.
+
+옮긴 JPA Entity 22개 중 domain 9개는 CartEntity/CartItemEntity, CommerceOrderEntity/
+CommerceOrderItemEntity, CouponEntity/MemberCouponEntity, DeliveryEntity, PaymentEntity와
+WishlistItemEntity다. 앞의 8개는 상태·행위 또는 aggregate 의미가 있고 WishlistItemEntity와
+identity는 application에서 직접 사용하는 feature model이다. CartItemId/WishlistItemId도
+같은 domain에 둔다. 나머지 mapping-only Entity 13개는 feature persistence에 둔다:
+AdminAuditLogEntity, BillingPaymentMethodEntity, BillingPaymentMethodPreparationEntity,
+CheckoutIdempotencyEntity, MemberMembershipEntity, MembershipGradeEntity,
+MembershipHistoryEntity, NotificationEntity, OrderCancellationEntity, OrderReturnEntity,
+RefundEntity, SubscriptionOrderContextEntity, SubscriptionShippingSnapshotEntity.
+InventoryEntity/InventoryMovementEntity는 이미 feature-local이다. Commerce JPA Entity는
+24개로 동일하며 JPA annotation/table/column/relation을 변경하지 않는다.
+
+SubscriptionBilling service/processor/retry/trigger는 기존 Commerce billing runtime owner이므로
+`commerce.billing.application`에 둔다. SubscriptionOrderContextEntity와
+SubscriptionShippingSnapshotEntity는 application의 직접 사용 없이 DB context/snapshot을
+매핑하므로 기존 Commerce order 소유권 안의 `order.persistence`에 둔다. T03/T09 bounded
+context 재설계를 선행하지 않는다. AdminOrderQueryService와 CommerceMetrics도 기존
+order/metrics runtime owner의 application으로 이동한다.
+
+**Visibility 변경은 0개**다. package-private mapping은 repository/adapter와 co-location한다.
+provider test 5개와 SubscriptionBillingProcessorTests 1개도 구현 package로 옮겨 기존
+package-private constructor/helper 접근을 유지한다. method/field/class modifier를 넓히지 않는다.
+
+### Baseline change evidence
+
+T01의 131개 edge는 유지한다. **RESOLVED 0 / RECLASSIFIED 14 / NEW VIOLATION 0**이며
+baseline은 145개다. 다음 표의 source는 모두 `commerce.<feature>.application`, target은
+`commerce.<feature>.api`다. Before의 `root`는 `com.pawcycle.backend.commerce`를 뜻한다.
+새 layer segment가 기존 DTO coupling을 탐지하게 하므로 14개를 명시적 diff로 추가했다.
+테스트가 baseline을 생성하거나 승인하지 않는다.
+
+| After source → target | Before dependency |
+| --- | --- |
+| audit.AdminAuditService → AdminAuditResponse | root source → 기존 audit.api target |
+| billing.BillingApplicationService → BillingPreparationResponse | 기존 billing.application source → root target |
+| billing.BillingMethodQueryService → BillingMethodResponse | root source → root target |
+| cancellation.CancellationService → CancellationResponse | root source → 기존 cancellation.api target |
+| checkout.CheckoutIdempotencyService → CheckoutResponse | root source → 기존 checkout.api target |
+| coupon.CouponAdminApplicationService → CouponRequest | 기존 coupon.application source → root target |
+| delivery.DeliveryService → DeliveryResponse | root source → 기존 delivery.api target |
+| membership.MembershipAdminApplicationService → MembershipGradeRequest | 기존 membership.application source → root target |
+| notification.NotificationService → NotificationResponse | root source → 기존 notification.api target |
+| operations.OperationsQueryService → OperationsPendingResponse | root source → 기존 operations.api target |
+| order.AdminOrderQueryService → AdminOrderResponse | root source → 기존 order.api target |
+| payment.PaymentReconciliationService → PaymentReconciliationResponse | root source → 기존 payment.api target |
+| refund.RefundService → RefundResponse | root source → 기존 refund.api target |
+| returning.ReturnService → ReturnResponse | root source → 기존 returning.api target |
+
+기준 main과 T02의 compiled production을 동일 ArchUnit importer로 비교했다. class/nested/Q-type의
+package 이동을 정규화한 전체 dependency graph는 **817개 class / 7,602개 edge**로 동일하다.
+추가/삭제 edge는 각각 0개이며 위 14개는 모두 Before graph에서 직접 확인했다. package/import를
+제외한 기존 production/test body 비교도 동일하다(guard assertion 추가는 의도한 test 변경).
+SQL/JPQL/native string, bean name/조건/scheduler, transaction/lock/idempotency와 HTTP/JSON
+annotation/body는 그대로다. guard만으로 runtime correctness를 주장하지 않는다.
+
+### Verification / remaining debt
+
+`CommerceTopologyIntegrationTests`는 기존 Entity 24개의 이름을 metamodel과 대조하고 기존
+Commerce JpaRepository 18개가 각각 한 개씩 등록되는지 확인한다. expiration processor와
+exception handler bean도 확인한다. 기존 Commerce/MySQL regression과 전체 Backend test는
+context/bootstrap, controller/JSON, lock/rollback/replay/provider 경계를 검증한다.
+clean compileJava의 Q-type 재생성, compileTestJava, architecture guard, Commerce MySQL와
+T01 facet pilot, full Backend tests, build, diff check, repository validator, CI를 완료 조건으로 둔다.
+실행 결과/CI/최종 HEAD는 Draft PR에 기록한다.
+
+JdbcTemplate 35, JpaRepository 36, EntityManager 7, native-containing class 8,
+TransactionTemplate 13 등의 T01 persistence inventory는 그대로다. 새 Querydsl query/Q-type
+사용을 추가하지 않는다. application → api 139개 debt와 나머지 legacy edge는 후속 convergence
+대상이다. T02는 topology 정규화와 탐지 범위 확대이며 이 debt의 해결 선언이 아니다.
+Draft PR 생성·CI 확인 후 STOP한다. Ready/merge/CodeRabbit 요청과 Production 실행은 하지 않는다.

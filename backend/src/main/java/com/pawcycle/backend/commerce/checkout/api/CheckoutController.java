@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.checkout.api;
 
-import com.pawcycle.backend.commerce.CheckoutIdempotencyService;
-import com.pawcycle.backend.commerce.CheckoutRequest;
-import com.pawcycle.backend.commerce.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService;
+import com.pawcycle.backend.commerce.checkout.api.CheckoutRequest;
+import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

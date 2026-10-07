@@ -2,8 +2,8 @@ package com.pawcycle.backend.commerce.cart.persistence;
 
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.commerce.CartEntity;
-import com.pawcycle.backend.commerce.CartRepository;
+import com.pawcycle.backend.commerce.cart.domain.CartEntity;
+import com.pawcycle.backend.commerce.cart.persistence.CartRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import java.util.List;

@@ -1,11 +1,11 @@
 package com.pawcycle.backend.commerce.payment.application;
 
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.DeliveryService;
-import com.pawcycle.backend.commerce.InventoryService;
-import com.pawcycle.backend.commerce.MembershipEvaluationService;
-import com.pawcycle.backend.commerce.NotificationService;
-import com.pawcycle.backend.commerce.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
+import com.pawcycle.backend.commerce.inventory.application.InventoryService;
+import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
+import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.payment.api.PaymentResponse;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceAdapter;
 import java.math.BigDecimal;

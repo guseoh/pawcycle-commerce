@@ -1,10 +1,10 @@
 package com.pawcycle.backend.commerce.billing.persistence;
 
-import com.pawcycle.backend.commerce.BillingPaymentMethodEntity;
-import com.pawcycle.backend.commerce.BillingPaymentMethodPreparationEntity;
-import com.pawcycle.backend.commerce.BillingPaymentMethodPreparationRepository;
-import com.pawcycle.backend.commerce.BillingPaymentMethodRepository;
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodEntity;
+import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodPreparationEntity;
+import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodPreparationRepository;
+import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodRepository;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.LocalDateTime;

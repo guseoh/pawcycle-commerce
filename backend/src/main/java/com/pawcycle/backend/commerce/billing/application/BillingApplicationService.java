@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.billing.application;
 
-import com.pawcycle.backend.commerce.BillingPreparationResponse;
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.TossBillingAdapter;
+import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.billing.persistence.BillingPersistenceAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

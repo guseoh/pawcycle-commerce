@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.notification.api;
 
-import com.pawcycle.backend.commerce.NotificationService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.util.List;
 import org.springframework.http.ResponseEntity;

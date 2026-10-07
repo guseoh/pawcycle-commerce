@@ -22,6 +22,10 @@ class BackendArchitectureTests {
     // Import production output only: test fixtures and dependency jars are not rule origins.
     JavaClasses classes = new ClassFileImporter().importPath(Path.of("build/classes/java/main"));
     assertThat(classes).isNotEmpty();
+    assertThat(classes.stream()
+        .filter(type -> type.getPackageName().equals("com.pawcycle.backend.commerce"))
+        .map(JavaClass::getName).toList())
+        .as("Commerce production types must belong to a feature package").isEmpty();
     Set<String> actual = violations(classes);
     // Diagnostics never update the checked-in baseline, including on CI.
     Path report = Path.of("build/reports/architecture/current-violations.txt");

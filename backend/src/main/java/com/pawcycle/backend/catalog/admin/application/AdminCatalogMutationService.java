@@ -46,7 +46,7 @@ import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.SkuResponse;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.admin.persistence.ProductDetailSectionPersistence;
-import com.pawcycle.backend.commerce.AdminAuditService;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 import org.springframework.stereotype.Service;

@@ -7,8 +7,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.commerce.AdminAuditService;
-import com.pawcycle.backend.commerce.CouponRequest;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
+import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
 import java.math.BigDecimal;

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.refund.api;
 
-import com.pawcycle.backend.commerce.RefundService;
+import com.pawcycle.backend.commerce.refund.application.RefundService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;

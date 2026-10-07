@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.membership.api;
 
-import com.pawcycle.backend.commerce.MembershipGradeCreatedResponse;
-import com.pawcycle.backend.commerce.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeCreatedResponse;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

@@ -2,6 +2,8 @@
 # Reasons: application-api = legacy API DTO coupling; api-persistence = CouponView placement;
 # runtime-maintenance = existing CLI entry points/import facade pending T11 isolation.
 # Delete resolved edges. Adding exceptions requires reviewed task evidence; tests never write this file.
+# T02: 14 RECLASSIFIED edges below were present at main 873f144 before layer names.
+# Normalized compiled dependency graph is identical: 817 classes / 7602 edges; NEW=0.
 api-persistence | com.pawcycle.backend.commerce.coupon.api.AdminCouponController -> com.pawcycle.backend.commerce.coupon.persistence.CouponView
 application-api | com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService -> com.pawcycle.backend.catalog.admin.api.BrandCreateRequest
 application-api | com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService -> com.pawcycle.backend.catalog.admin.api.BrandPatchRequest
@@ -133,3 +135,19 @@ runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.paw
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogRealismCorrectionPersistence
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence
+
+# T02 RECLASSIFIED: existing root services/API records now have application/api packages.
+application-api | com.pawcycle.backend.commerce.audit.application.AdminAuditService -> com.pawcycle.backend.commerce.audit.api.AdminAuditResponse
+application-api | com.pawcycle.backend.commerce.billing.application.BillingApplicationService -> com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse
+application-api | com.pawcycle.backend.commerce.billing.application.BillingMethodQueryService -> com.pawcycle.backend.commerce.billing.api.BillingMethodResponse
+application-api | com.pawcycle.backend.commerce.cancellation.application.CancellationService -> com.pawcycle.backend.commerce.cancellation.api.CancellationResponse
+application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
+application-api | com.pawcycle.backend.commerce.coupon.application.CouponAdminApplicationService -> com.pawcycle.backend.commerce.coupon.api.CouponRequest
+application-api | com.pawcycle.backend.commerce.delivery.application.DeliveryService -> com.pawcycle.backend.commerce.delivery.api.DeliveryResponse
+application-api | com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService -> com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest
+application-api | com.pawcycle.backend.commerce.notification.application.NotificationService -> com.pawcycle.backend.commerce.notification.api.NotificationResponse
+application-api | com.pawcycle.backend.commerce.operations.application.OperationsQueryService -> com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse
+application-api | com.pawcycle.backend.commerce.order.application.AdminOrderQueryService -> com.pawcycle.backend.commerce.order.api.AdminOrderResponse
+application-api | com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService -> com.pawcycle.backend.commerce.payment.api.PaymentReconciliationResponse
+application-api | com.pawcycle.backend.commerce.refund.application.RefundService -> com.pawcycle.backend.commerce.refund.api.RefundResponse
+application-api | com.pawcycle.backend.commerce.returning.application.ReturnService -> com.pawcycle.backend.commerce.returning.api.ReturnResponse

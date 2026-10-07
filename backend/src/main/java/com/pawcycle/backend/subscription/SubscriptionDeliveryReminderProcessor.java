@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription;
 
-import com.pawcycle.backend.commerce.NotificationService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.subscription.persistence.SubscriptionDeliveryReminderPersistence;
 import java.time.Clock;
 import java.time.LocalDate;
