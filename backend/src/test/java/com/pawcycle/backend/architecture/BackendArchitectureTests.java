@@ -16,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BackendArchitectureTests {
   private static final String ROOT = "com.pawcycle.backend.";
+  private static final Set<String> LAYERED_ROOTS = Set.of(
+      ROOT + "commerce", ROOT + "subscription", ROOT + "recommendation", ROOT + "interaction");
 
   @Test
   void productionDependenciesMustNotAddLegacyViolations() throws Exception {
@@ -23,9 +25,9 @@ class BackendArchitectureTests {
     JavaClasses classes = new ClassFileImporter().importPath(Path.of("build/classes/java/main"));
     assertThat(classes).isNotEmpty();
     assertThat(classes.stream()
-        .filter(type -> type.getPackageName().equals("com.pawcycle.backend.commerce"))
+        .filter(type -> LAYERED_ROOTS.contains(type.getPackageName()))
         .map(JavaClass::getName).toList())
-        .as("Commerce production types must belong to a feature package").isEmpty();
+        .as("Normalized runtime production types must belong to a feature/layer package").isEmpty();
     Set<String> actual = violations(classes);
     // Diagnostics never update the checked-in baseline, including on CI.
     Path report = Path.of("build/reports/architecture/current-violations.txt");

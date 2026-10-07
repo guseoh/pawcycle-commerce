@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.SubscriptionApiException;
+import com.pawcycle.backend.subscription.api.SubscriptionApiException;
 import com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse;
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.util.ArrayList;

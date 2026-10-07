@@ -1,5 +1,10 @@
 package com.pawcycle.backend.subscription;
 
+import com.pawcycle.backend.subscription.application.SubscriptionResult;
+import com.pawcycle.backend.subscription.application.SubscriptionService;
+import com.pawcycle.backend.subscription.automation.SubscriptionIdempotencyCleanupResult;
+import com.pawcycle.backend.subscription.automation.SubscriptionIdempotencyCleanupService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pawcycle.backend.catalog.category.domain.Category;

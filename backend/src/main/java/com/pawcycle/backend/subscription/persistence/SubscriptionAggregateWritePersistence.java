@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.subscription.SubscriptionApiException;
+import com.pawcycle.backend.subscription.api.SubscriptionApiException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
