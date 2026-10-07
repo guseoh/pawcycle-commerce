@@ -12,7 +12,7 @@ public class RecommendationMetrics {
   private final Counter fallback;
   private final Timer aiCall;
 
-  public RecommendationMetrics(MeterRegistry registry) {
+  RecommendationMetrics(MeterRegistry registry) {
     success = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "success");
     fallback = registry.counter("pawcycle.recommendation.ai.outcomes", "result", "fallback");
     aiCall = registry.timer("pawcycle.recommendation.ai.call");

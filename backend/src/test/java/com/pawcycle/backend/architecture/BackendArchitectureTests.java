@@ -76,6 +76,7 @@ class BackendArchitectureTests {
     }
     if (inLayer(origin, "domain") && internal
         && (inLayer(target, "api") || inLayer(target, "infrastructure"))) result.add("domain-adapter");
+    if (inLayer(origin, "persistence") && internal && inLayer(target, "api")) result.add("persistence-api");
     if (inLayer(origin, "api")) {
       if (internal && inLayer(target, "persistence")) result.add("api-persistence");
       // Stronger than Entity return-only: also catches generic Entity return types and fields.
@@ -127,6 +128,12 @@ class BackendArchitectureTests {
         .containsExactly("domain-adapter");
     assertThat(rules(ROOT + "example.api.Controller", ROOT + "example.persistence.Store", false))
         .containsExactly("api-persistence");
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "example.api.Dto", false))
+        .containsExactly("persistence-api");
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "other.api.Failure", false))
+        .containsExactly("persistence-api");
+    assertThat(rules(ROOT + "example.persistence.Store", "external.api.Dto", false)).isEmpty();
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "example.persistence.Row", false)).isEmpty();
     assertThat(rules(ROOT + "example.api.Controller", ROOT + "example.domain.Entity", true))
         .containsExactly("api-storage");
     assertThat(rules(ROOT + "example.application.UseCase", ROOT + "example.performance.Harness", false))

@@ -201,3 +201,16 @@ application-api | com.pawcycle.backend.subscription.application.SubscriptionServ
 application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.SubscriptionCommandRequest
 application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.SubscriptionSummaryResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.UpdatePetRequest
+# T03 RECLASSIFIED: persistence-api edges individually confirmed on main 5c077b8.
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.BrandCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.ProductCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.SkuCreateRequest
+persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence$Product -> com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest
+persistence-api | com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter -> com.pawcycle.backend.commerce.coupon.api.CouponRequest
+persistence-api | com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter -> com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest
+persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateQueryPersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException
+persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateWritePersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException

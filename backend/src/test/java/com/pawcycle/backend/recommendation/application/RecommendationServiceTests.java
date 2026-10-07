@@ -4,7 +4,7 @@ import com.pawcycle.backend.recommendation.api.RecommendationItem;
 import com.pawcycle.backend.recommendation.api.RecommendationResponse;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
 import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
-import com.pawcycle.backend.recommendation.infrastructure.metrics.RecommendationMetrics;
+import com.pawcycle.backend.recommendation.infrastructure.metrics.RecommendationMetricsFixture;
 import com.pawcycle.backend.recommendation.persistence.RecommendationQueryAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,7 +34,7 @@ class RecommendationServiceTests {
     ai = mock(RecommendationAiClient.class);
     meters = new SimpleMeterRegistry();
     service =
-        new RecommendationService(repository, ai, new RecommendationMetrics(meters), Clock.systemUTC());
+        new RecommendationService(repository, ai, RecommendationMetricsFixture.create(meters), Clock.systemUTC());
   }
 
   @Test

@@ -236,6 +236,7 @@ handwritten code의 Q-type/Querydsl 사용은 persistence 밖에서 금지한다
 - application의 JdbcTemplate/EntityManager와 application → api 금지
 - domain → api/infrastructure 금지
 - api → persistence와 api의 Entity/SQL 도구 참조 금지
+- persistence → 내부 api 금지 (`persistence-api`)
 - normal runtime → maintenance/bootstrap/migration/performance 금지
 - handwritten non-persistence → Querydsl/Q-type 금지
 
@@ -246,9 +247,10 @@ root production class를 금지한다. 네 영역 모두 root가 0이며 legacy 
 reflection/string-based runtime lookup, JSON raw mapping, transaction correctness, 성능은 이
 dependency guard로 증명하지 않으며 해당 contract/MySQL test가 담당한다.
 
-`src/test/resources/architecture/legacy-dependencies.txt`에 baseline 192개 edge를 고정한다:
-application → api 186, api → persistence 1(CouponView 위치), runtime → isolated 5(CLI entry
-point와 import facade). domain-adapter/application-sql/api-storage/Querydsl 예외는 없다.
+`src/test/resources/architecture/legacy-dependencies.txt`에 baseline 204개 edge를 고정한다:
+application → api 186, api → persistence 1(CouponView 위치), persistence → api 12,
+runtime → isolated 5(CLI entry point와 import facade).
+domain-adapter/application-sql/api-storage/Querydsl 예외는 없다.
 기존 edge가 사라지면 baseline에서 삭제해야 한다. 신규 edge 또는 사라진 edge를 테스트가
 자동 승인하거나 baseline에 쓰지 않는다. 실패 diagnostic만 build/reports에 저장한다.
 새 예외 추가는 이유와 해당 Task evidence를 동반한 명시적 diff review가 필요하다.
@@ -455,7 +457,7 @@ Before는 모두 `com.pawcycle.backend.<area>.<Class>` root다. 아래 After에�
 
 ### T03 visibility inventory
 
-**60개 명시적 선언 / 19개 top-level type**에서 필요한 public 접근만 추가한다. package-private
+**52개 명시적 선언 / 18개 top-level type**에서 필요한 public 접근만 추가한다. package-private
 co-location으로 해결 가능한 test는 application/api/automation에 옮긴다. SubscriptionServiceIntegrationTests는
 기존 gauge refresh helper를 직접 사용하는 automation package에 둔다. 독립 AI-disabled test method는
 RecommendationAiConfigurationTests로 옮겨 configuration class/bean method를 package-private로 유지한다.
@@ -471,6 +473,13 @@ SubscriptionReconciliationApplicationService constructor는 외부 직접 생성
 package-private를 유지하고 class/reconcileActiveSubscriptions만 public으로 바꾼다. Recommendation
 service/query adapter와 Interaction adapter constructor도 기존 visibility를 유지한다. 아래 목록이 전체
 명시적 변경이며 method body/signature type/annotation은 동일하다.
+
+후속 correction에서 PetPlanApplicationService class와 6개 operation은 같은 application package의
+SubscriptionService만 사용함을 확인하여 package-private로 복원했다. constructor도 기존
+package-private다. RecommendationMetrics constructor 역시 package-private로 복원하고 test source의
+동일 metrics package에 RecommendationMetricsFixture를 두었다. application test는 이 helper로
+실제 SimpleMeterRegistry instance를 사용하며 metric 이름/tag/counter assertion은 그대로다.
+Spring @Component 생성과 실제 cross-package 호출 operation의 public 접근은 유지한다.
 
 | Type | Public declarations (기존 type/parameter 보존) | Reason |
 | --- | --- | --- |
@@ -488,28 +497,49 @@ service/query adapter와 Interaction adapter constructor도 기존 visibility를
 | `recommendation.domain.RecommendationCategory` | `public record RecommendationCategory(long categoryId, String name, String slug) {}` | persistence/application/AI에서 공유 model·delta 접근 |
 | `recommendation.domain.RecommendationMemberSignals` | `public record RecommendationMemberSignals` | persistence/application/AI에서 공유 model·delta 접근 |
 | `recommendation.domain.RecommendationTrendScore` | `public record RecommendationTrendScore(long recent, long previous)`<br>`public long delta()` | persistence/application/AI에서 공유 model·delta 접근 |
-| `recommendation.infrastructure.metrics.RecommendationMetrics` | `public class RecommendationMetrics`<br>`public RecommendationMetrics(MeterRegistry registry)`<br>`public void success()`<br>`public void fallback()`<br>`public <T> T recordAiCall(Supplier<T> call)` | application/infrastructure 간 호출; 기존 service test의 real metrics fixture constructor도 필요 |
+| `recommendation.infrastructure.metrics.RecommendationMetrics` | `public class RecommendationMetrics`<br>`public void success()`<br>`public void fallback()`<br>`public <T> T recordAiCall(Supplier<T> call)` | application/infrastructure 간 실제 production 호출 |
 | `recommendation.persistence.RecommendationQueryAdapter` | `public class RecommendationQueryAdapter`<br>`public Map<Long, Long> coPurchaseCounts(long productId)`<br>`public String findOwnedPetType(long memberId, long petId)`<br>`public List<RecommendationCandidate> findPurchasableCandidates(String petType)`<br>`public Set<Long> activeSubscriptionProductIds(long memberId, long petId)`<br>`public Set<Long> exposedProductIds(long memberId, int days)`<br>`public RecommendationMemberSignals memberSignals(long memberId, long petId)`<br>`public Map<Long, Long> popularScores(String petType)`<br>`public Map<Long, RecommendationTrendScore> trendScores(List<Long> productIds, LocalDate today)`<br>`public List<String> subscriptionCategorySlugs(long memberId, long petId)`<br>`public List<String> purchaseCategorySlugs(long memberId)`<br>`public List<String> wishlistCategorySlugs(long memberId)` | application이 기존 adapter operation/record 접근 |
-| `subscription.application.PetPlanApplicationService` | `public class PetPlanApplicationService`<br>`public PetResponse createPet(long memberId, CreatePetRequest request)`<br>`public PetResponse updatePet(long memberId, long petId, UpdatePetRequest request)`<br>`public PageResponse<PetResponse> pets(long memberId, int page, int size)`<br>`public PetResponse pet(long memberId, long petId)`<br>`public PageResponse<PlanVersionResponse> plans(long memberId, long petId, int page, int size)`<br>`public PlanVersionResponse planVersion(long memberId, long petId, long versionId)` | API/automation이 application service operation 접근 |
 | `subscription.application.SubscriptionReconciliationApplicationService` | `public class SubscriptionReconciliationApplicationService`<br>`public void reconcileActiveSubscriptions()` | API/automation이 application service operation 접근 |
 | `subscription.automation.SubscriptionMetrics` | `public Timer.Sample startReconciliation()`<br>`public void finishReconciliation(Timer.Sample sample, int processed, int failures)` | application reconciliation이 automation metrics를 호출 |
 
 ### T03 baseline evidence
 
-T02의 145개 edge는 유지한다. **RESOLVED 0 / RECLASSIFIED 47 / NEW VIOLATION 0**, After는
-192개(application-api 186 / api-persistence 1 / runtime-maintenance 5)다. Before와 After의 compiled
+T02의 145개 edge는 유지한다. **RESOLVED 0 / RECLASSIFIED 59 / NEW VIOLATION 0**, After는
+204개(application-api 186 / api-persistence 1 / persistence-api 12 / runtime-maintenance 5)다.
+새 persistence-api rule은 내부 API로 향하는 같은 feature/다른 feature의 persistence 의존성을
+모두 탐지하며 외부 api와 persistence 내부 의존성을 허용하는 regression assertion으로 보호한다.
+최초 실행에서 알려진 Subscription 2개 외에 Catalog maintenance 8개와 Commerce 2개도 탐지했다.
+추가 10개 edge를 발생시킨 production source는 기준 main과 동일했고 main 소스와 compiled graph에서
+각 edge의 존재를 확인한 후에만 baseline에 명시적으로 추가했다. 테스트는 baseline을 수정하지 않는다.
+Before와 After의 compiled
 production dependency graph는 동일 ArchUnit importer로 캡처했다. class/nested/array element의
 package 이동을 정규화하면 **817개 class / 7,602개 edge, 추가 0 / 삭제 0**이다. enum의 `$VALUES`
-배열 element 이름 이동도 정규화에 포함한다. 47개 모두 Before graph에서 같은 edge를 확인했다.
-기존 705개 production/test source의 body 비교도 명시적 visibility와 독립 AI test co-location을
-제외하고 동일하다. SQL/row mapping, JPA, Spring/transaction/schedule annotation, metric/prompt와
-API/JSON 필드를 보존했다. baseline은 테스트가 생성/승인하지 않으며 근거가 있는 47개만 명시적으로 추가했다.
+배열 element 이름 이동도 정규화에 포함한다. 59개 모두 Before graph에서 같은 edge를 확인했다.
+기존 705개 production/test source의 body 비교도 명시적 visibility, 독립 AI test co-location과
+후속 correction의 test-only metrics helper 생성 호출을 제외하고 동일하다. SQL/row mapping, JPA,
+Spring/transaction/schedule annotation, metric/prompt, API/JSON 필드와 기존 metric assertion을
+보존했다. baseline은 테스트가 생성/승인하지 않으며 근거가 있는 59개만 명시적으로 추가했다.
 
 아래 source/target에는 `com.pawcycle.backend.` prefix를 붙인다. Subscription target은 원래
 `subscription.api`이며 **SubscriptionApiException만 Before `subscription.SubscriptionApiException`**이다.
 Recommendation/Interaction target은 전부 Before area root이며 After `<area>.api`다. 각 target list는
 개별 Before/After edge를 뜻한다. 모든 항목의 이유는 기존 의존성에 layer 이름이 생겨 guard가 새로
 탐지한 application/API DTO·exception coupling이다.
+
+기존 47개 application-api edge는 그대로 유지한다. 추가 12개 persistence-api edge는
+다음과 같이 전수 대조했다. Subscription 2개는 main `5c077b878593dfc994dd10f23f0d7fdc9d864d60`에서도
+각 persistence class가 `subscription.SubscriptionApiException`을 생성했다. target만
+`subscription.api.SubscriptionApiException`으로 이동했으므로 새 semantic coupling이 아니다.
+Catalog/Commerce 10개는 origin/target 이름과 body까지 main과 동일하며 새 rule로 기존 debt가 드러난다.
+
+| Before/After source (Subscription target만 위 이동 적용) | Before/After targets | Edge count |
+| --- | --- | ---: |
+| `subscription.persistence.SubscriptionAggregateQueryPersistence` | `subscription.SubscriptionApiException` → `subscription.api.SubscriptionApiException` | 1 |
+| `subscription.persistence.SubscriptionAggregateWritePersistence` | `subscription.SubscriptionApiException` → `subscription.api.SubscriptionApiException` | 1 |
+| `catalog.maintenance.persistence.CustomerCatalogImportPersistence` | `catalog.admin.api.BrandCreateRequest`, `catalog.admin.api.CategoryCreateRequest`, `catalog.admin.api.DetailSectionCreateRequest`, `catalog.admin.api.FacetDefinitionCreateRequest`, `catalog.admin.api.FacetOptionCreateRequest`, `catalog.admin.api.ProductCreateRequest`, `catalog.admin.api.SkuCreateRequest` | 7 |
+| `catalog.maintenance.persistence.CustomerCatalogImportPersistence$Product` | `catalog.admin.api.DetailSectionCreateRequest` | 1 |
+| `commerce.coupon.persistence.CouponPersistenceAdapter` | `commerce.coupon.api.CouponRequest` | 1 |
+| `commerce.membership.persistence.MembershipPersistenceAdapter` | `commerce.membership.api.MembershipGradeRequest` | 1 |
 
 | Before source | After source | After targets (Before 위치는 위 규칙) | Edge count |
 | --- | --- | --- | ---: |
@@ -542,8 +572,21 @@ Commerce regression, full Backend, build -x test, diff check와 repository valid
 둔다. 실제 실행 결과와 최종 HEAD는 Draft PR에 기록한다. Reflection/string lookup과 transaction
 correctness는 dependency guard만으로 증명하지 않는다.
 
+후속 correction은 clean compileJava → compileTestJava, guard 3개, PetPlan unit 1개,
+Recommendation service unit 8개, 관련 targeted unit 10개, MySQL integration/topology 59개,
+full Backend 432개(실패/오류/skip 0), build -x test를 통과했다. MySQL 8.4.11의 새 disposable
+database와 UTC test JVM을 사용했다. 최종 validator/CI 결과와 HEAD는 같은 Draft PR #345에 기록한다.
+
 JPA/Querydsl/native/JDBC는 KEEP이며 새 query를 추가하지 않는다. JdbcTemplate 35,
 JpaRepository 36, EntityManager 7, native-containing class 8, TransactionTemplate 13 등 inventory는
-그대로다. application/API 186개 coupling과 raw mapping 부채는 해결하지 않았다. T04 typed read,
+그대로다. application/API 186개와 persistence/API 12개 coupling과 raw mapping 부채는 해결하지 않았다.
+SubscriptionApiException의 persistence/API 경계 정리는 T10 debt로 남긴다. 또한 package split으로
+드러난 아래 의존성도 flat package 시절부터 존재한 coupling이며 이번 correction에서 제거하지 않는다:
+
+- `subscription.application.SubscriptionCommandApplicationService` → `subscription.automation.SubscriptionOrderAutomationService`: 기존 schedule 계산 공유, T09 command/automation convergence debt.
+- `subscription.application.SubscriptionReconciliationApplicationService` → `subscription.automation.SubscriptionMetrics`, `subscription.automation.SubscriptionOrderAutomationService`: 기존 metrics와 schedule 계산 공유, T09 command/automation convergence debt.
+- `recommendation.application.RecommendationService` → `recommendation.infrastructure.metrics.RecommendationMetrics`: 기존 metrics 호출, T10 application/provider convergence debt.
+
+T04 typed read,
 T05 recommendation/query, T08 Subscription read, T09 command/automation, T10 provider 경계가
 후속 범위다. T03 Draft PR·CI 확인 뒤 STOP하고 T04는 시작하지 않는다.

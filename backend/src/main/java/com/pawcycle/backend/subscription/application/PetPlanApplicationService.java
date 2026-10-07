@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class PetPlanApplicationService {
+class PetPlanApplicationService {
   private final SubscriptionAggregatePersistence store;
   private final SubscriptionApplicationSupport support;
 
@@ -36,7 +36,7 @@ public class PetPlanApplicationService {
   }
 
   @Transactional
-  public PetResponse createPet(long memberId, CreatePetRequest request) {
+  PetResponse createPet(long memberId, CreatePetRequest request) {
     String name = requiredText(request.name(), "name", 50);
     String type = requiredText(request.petType(), "petType", 3);
     if (!List.of("DOG", "CAT").contains(type)) throw support.validation("petType");
@@ -44,7 +44,7 @@ public class PetPlanApplicationService {
   }
 
   @Transactional
-  public PetResponse updatePet(long memberId, long petId, UpdatePetRequest request) {
+  PetResponse updatePet(long memberId, long petId, UpdatePetRequest request) {
     store.findOwnedPet(memberId, petId);
     if (!request.hasChanges()) throw support.validation("request");
     String name = request.isNamePresent() ? requiredText(request.getName(), "name", 50) : null;
@@ -65,18 +65,18 @@ public class PetPlanApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public PageResponse<PetResponse> pets(long memberId, int page, int size) {
+  PageResponse<PetResponse> pets(long memberId, int page, int size) {
     PageProjection<PetProjection> result = store.findPets(memberId, page(page, size), size);
     return page(result, result.items().stream().map(this::pet).toList());
   }
 
   @Transactional(readOnly = true)
-  public PetResponse pet(long memberId, long petId) {
+  PetResponse pet(long memberId, long petId) {
     return pet(store.findOwnedPet(memberId, petId));
   }
 
   @Transactional(readOnly = true)
-  public PageResponse<PlanVersionResponse> plans(long memberId, long petId, int page, int size) {
+  PageResponse<PlanVersionResponse> plans(long memberId, long petId, int page, int size) {
     PetProjection pet = store.findOwnedPet(memberId, petId);
     PageProjection<PlanVersionProjection> result =
         store.findSalePlanVersions(pet.petType(), support.today(), page(page, size), size);
@@ -96,7 +96,7 @@ public class PetPlanApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public PlanVersionResponse planVersion(long memberId, long petId, long versionId) {
+  PlanVersionResponse planVersion(long memberId, long petId, long versionId) {
     PetProjection pet = store.findOwnedPet(memberId, petId);
     PlanVersionProjection version = store.findPlanVersion(versionId);
     validateAvailable(pet, version);
