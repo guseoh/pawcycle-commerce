@@ -1,5 +1,9 @@
 package com.pawcycle.backend.catalog.product.persistence;
 
+import com.pawcycle.backend.catalog.admin.domain.QFacetDefinitionEntity;
+import com.pawcycle.backend.catalog.admin.domain.QFacetOptionEntity;
+import com.pawcycle.backend.catalog.admin.domain.QProductFacetValueEntity;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
 import java.math.BigDecimal;
@@ -56,13 +60,17 @@ public class ProductComparisonQueryRepository {
 
   @Transactional(readOnly = true)
   public List<String> findFacets(long productId) {
-    List<?> values =
-        entityManager
-            .createNativeQuery(
-                "SELECT CONCAT(fd.`key`,':',fo.value) FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id WHERE pfv.product_id=:productId ORDER BY fd.id,fo.display_order,fo.id")
-            .setParameter("productId", productId)
-            .getResultList();
-    return values.stream().map(String.class::cast).toList();
+    var value = new QProductFacetValueEntity("value");
+    var option = new QFacetOptionEntity("option");
+    var definition = new QFacetDefinitionEntity("definition");
+    return new JPAQueryFactory(entityManager)
+        .select(definition.key.concat(":").concat(option.value))
+        .from(value)
+        .join(value.facetOption, option)
+        .join(option.facetDefinition, definition)
+        .where(value.product.id.eq(productId))
+        .orderBy(definition.id.asc(), option.displayOrder.asc(), option.id.asc())
+        .fetch();
   }
 
   private static Object value(Tuple row, String alias) {
