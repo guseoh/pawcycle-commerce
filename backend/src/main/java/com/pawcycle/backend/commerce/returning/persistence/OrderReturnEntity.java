@@ -41,4 +41,13 @@ class OrderReturnEntity {
 
   @Column(name = "requested_at", nullable = false)
   LocalDateTime requestedAt;
+
+  @Column(insertable = false, updatable = false)
+  Boolean restock;
+
+  @Column(name = "received_at", insertable = false, updatable = false)
+  LocalDateTime receivedAt;
+
+  @Column(name = "completed_at", insertable = false, updatable = false)
+  LocalDateTime completedAt;
 }

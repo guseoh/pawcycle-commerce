@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-003` (Program T03) · Master #339 · Issue #344 · 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-004` (Program T04) · Master #339 · Issue #346 · 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -590,3 +590,71 @@ SubscriptionApiException의 persistence/API 경계 정리는 T10 debt로 남긴�
 T04 typed read,
 T05 recommendation/query, T08 Subscription read, T09 command/automation, T10 provider 경계가
 후속 범위다. T03 Draft PR·CI 확인 뒤 STOP하고 T04는 시작하지 않는다.
+
+## T04 Customer Order read convergence
+
+T01~T03는 merge 완료됐다. T03 #344 / PR #345의 merge commit인
+`fbf2e956d87be57644c13f724d1469b71ea1cf7c`를 T04 기준 main으로 고정한다.
+이번 Delta는 customer Order read이며 Cart/Wishlist와 Admin Order read는 기존 구현을 유지한다.
+
+### Persistence selection / preserved boundaries
+
+- Cart: 기존 `CartQueryRepository`의 typed JPQL `CartItemRow → CartItemView`를 KEEP한다. production no-op이며 write/lock/version 변경은 없다.
+- Wishlist: 기존 `WishlistQueryRepository`의 typed JPQL `WishlistItemRow → WishlistItemView`를 KEEP한다. production no-op이다.
+- Order: `OrderPersistenceAdapter`의 JdbcTemplate/ResultSet read 8개를 EntityManager typed JPQL constructor projection으로 전환한다. 기존 `OrderView`와 `Summary`의 공개 shape는 유지한다.
+- Querydsl은 확대하지 않는다. member list, owned header, items, latest payment, delivery, cancellation, return, refunds는 각각 고정 predicate/order/limit이며 optional filter나 dynamic sort 조합이 없다. 짧은 JPQL로 기존 query family를 직접 표현하는 편이 단순하다. 새 native SQL은 없다.
+
+list는 member filter와 id DESC, detail은 orderId + memberId ownership을 보존한다. items는
+id 순서와 기존 SKU/product/name/price/snapshotQuality snapshot, payment는 attemptNo DESC의
+최신 1건, refunds는 attemptNo 순서다. 없는/타 회원 주문은 기존 null → ORDER_NOT_FOUND이며
+optional child는 null, items/refunds는 empty list다. nullable restock은 Boolean 그대로다.
+snapshot amount/address와 `OrderApplicationService.toResponse()`의 availableActions 및 API JSON은 변경하지 않는다.
+
+기존 JPA mapping에 없던 cancellation.completedAt, return.restock/receivedAt/completedAt,
+refund.reconciliationAttempts 5개 attribute만 `insertable=false, updatable=false`로 추가한다.
+기존 DB column을 읽으며 entity visibility/getter/association과 write persistence body, schema,
+index, migration을 변경하지 않는다. `OrderReadRows`는 persistence-local typed row이며 raw Map,
+Object[] 또는 untyped Tuple을 application/API에 추가하지 않는다.
+
+기존 read entry point에는 transaction이 없다. projection은 lazy entity 탐색이 필요 없어 새로운
+readOnly transaction을 추가하지 않는다. Application transaction ownership, lock와 idempotency는 유지한다.
+`QuickReorderPersistenceAdapter`는 missing-row lock/replay/cart mutation의 T06 경계이므로 변경하지 않는다.
+
+### Timestamp compatibility
+
+OrderView/Summary/API의 java.sql.Timestamp 계약은 유지한다. 현재 Hibernate 7.4의
+`hibernate.jdbc.time_zone=UTC`는 UTC calendar로 Timestamp를 추출하고 LocalDateTime으로 감싼다.
+OrderReadRows는 이 변환의 DATETIME wall value를 복원한 뒤 기존 JDBC getTimestamp의 JVM-local
+해석을 적용한다. nullable 값과 microsecond precision을 보존하며 global time-zone 설정은 변경하지 않는다.
+UTC와 Asia/Seoul의 별도 test JVM에서 기준 main의 frozen JDBC reference와 typed JPQL 결과 및
+HTTP JSON을 비교한다. [Hibernate JDBC time-zone handling](https://docs.jboss.org/hibernate/orm/7.0/userguide/html_single/Hibernate_User_Guide.html#basic-datetime-time-zone)은 현재 dependency source와도 대조했다.
+
+### Actual source inventory / architecture Delta
+
+production Java source를 symbol별로 집계한다. generated Q-type은 제외한다.
+
+| Source inventory | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| JdbcTemplate | 35 | 34 | -1: customer Order read |
+| runtime JdbcTemplate | 26 | 25 | -1 |
+| EntityManager | 7 | 8 | +1: OrderPersistenceAdapter |
+| `com.querydsl` reference | 1 | 1 | 0: 기존 T01 pilot |
+| Backend production Java | 585 | 586 | +1: persistence-local OrderReadRows |
+
+guard의 실제 report는 frozen baseline과 동일한 204개다: application-api 186,
+api-persistence 1, persistence-api 12, runtime-maintenance 5.
+**RESOLVED 0 / RECLASSIFIED 0 / NEW 0**이며 checked-in baseline을 변경하지 않는다.
+
+### Regression / remaining debt
+
+CustomerOrderReadModelIntegrationTests는 기준 main Order adapter의 test-only frozen JDBC reference와
+실제 MySQL 결과를 대조한다. member isolation/id ordering, missing/childless order, FULL/LEGACY_PARTIAL
+item snapshot, latest payment/refund attempt ordering, delivery lifecycle, cancellation/return timestamps,
+nullable restock과 HTTP JSON/availableActions를 보호한다. Cart/Wishlist typed read도 ownership/order와
+cart version 비변경을 검증한다. 기존 CommercePurchaseIntegrationTests와 T01 Querydsl pilot은 유지한다.
+
+clean compile/Q-type regeneration → test compile → architecture guard → T01 pilot → focused read
+regression → Commerce purchase → 영향받는 MySQL → full Backend → build → validators → 최신 HEAD
+Repository Validation을 완료 조건으로 한다. 실제 실행 결과는 Draft PR에 기록한다.
+T05 operations/metrics/membership/recommendation read, T08 Subscription read와 T06/T07의
+write/concurrency debt는 남는다. Draft PR 이후 STOP하고 T05는 시작하지 않는다.
