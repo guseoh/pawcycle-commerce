@@ -16,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BackendArchitectureTests {
   private static final String ROOT = "com.pawcycle.backend.";
+  private static final Set<String> LAYERED_ROOTS = Set.of(
+      ROOT + "commerce", ROOT + "subscription", ROOT + "recommendation", ROOT + "interaction");
 
   @Test
   void productionDependenciesMustNotAddLegacyViolations() throws Exception {
@@ -23,9 +25,9 @@ class BackendArchitectureTests {
     JavaClasses classes = new ClassFileImporter().importPath(Path.of("build/classes/java/main"));
     assertThat(classes).isNotEmpty();
     assertThat(classes.stream()
-        .filter(type -> type.getPackageName().equals("com.pawcycle.backend.commerce"))
+        .filter(type -> LAYERED_ROOTS.contains(type.getPackageName()))
         .map(JavaClass::getName).toList())
-        .as("Commerce production types must belong to a feature package").isEmpty();
+        .as("Normalized runtime production types must belong to a feature/layer package").isEmpty();
     Set<String> actual = violations(classes);
     // Diagnostics never update the checked-in baseline, including on CI.
     Path report = Path.of("build/reports/architecture/current-violations.txt");
@@ -74,6 +76,7 @@ class BackendArchitectureTests {
     }
     if (inLayer(origin, "domain") && internal
         && (inLayer(target, "api") || inLayer(target, "infrastructure"))) result.add("domain-adapter");
+    if (inLayer(origin, "persistence") && internal && inLayer(target, "api")) result.add("persistence-api");
     if (inLayer(origin, "api")) {
       if (internal && inLayer(target, "persistence")) result.add("api-persistence");
       // Stronger than Entity return-only: also catches generic Entity return types and fields.
@@ -125,6 +128,12 @@ class BackendArchitectureTests {
         .containsExactly("domain-adapter");
     assertThat(rules(ROOT + "example.api.Controller", ROOT + "example.persistence.Store", false))
         .containsExactly("api-persistence");
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "example.api.Dto", false))
+        .containsExactly("persistence-api");
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "other.api.Failure", false))
+        .containsExactly("persistence-api");
+    assertThat(rules(ROOT + "example.persistence.Store", "external.api.Dto", false)).isEmpty();
+    assertThat(rules(ROOT + "example.persistence.Store", ROOT + "example.persistence.Row", false)).isEmpty();
     assertThat(rules(ROOT + "example.api.Controller", ROOT + "example.domain.Entity", true))
         .containsExactly("api-storage");
     assertThat(rules(ROOT + "example.application.UseCase", ROOT + "example.performance.Harness", false))

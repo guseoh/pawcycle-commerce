@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.migration;
 
-import com.pawcycle.backend.subscription.LegacySubscriptionPreflight;
+import com.pawcycle.backend.subscription.migration.LegacySubscriptionPreflight;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

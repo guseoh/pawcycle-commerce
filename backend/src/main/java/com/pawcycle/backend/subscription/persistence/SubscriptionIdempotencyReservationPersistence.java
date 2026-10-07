@@ -1,7 +1,7 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.subscription.StoredIdempotencyResult;
-import com.pawcycle.backend.subscription.SubscriptionOperationResult;
+import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotencyResult;
+import com.pawcycle.backend.subscription.application.SubscriptionOperationResult;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
