@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.delivery.persistence;
 
-import com.pawcycle.backend.commerce.CommerceOrderRepository;
-import com.pawcycle.backend.commerce.DeliveryEntity;
-import com.pawcycle.backend.commerce.DeliveryRepository;
+import com.pawcycle.backend.commerce.order.persistence.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.delivery.domain.DeliveryEntity;
+import com.pawcycle.backend.commerce.delivery.persistence.DeliveryRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.LocalDateTime;

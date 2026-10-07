@@ -1,11 +1,11 @@
 package com.pawcycle.backend.commerce.coupon.persistence;
 
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.CouponEntity;
-import com.pawcycle.backend.commerce.CouponRepository;
-import com.pawcycle.backend.commerce.CouponRequest;
-import com.pawcycle.backend.commerce.MemberCouponEntity;
-import com.pawcycle.backend.commerce.MemberCouponRepository;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.coupon.domain.CouponEntity;
+import com.pawcycle.backend.commerce.coupon.persistence.CouponRepository;
+import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
+import com.pawcycle.backend.commerce.coupon.domain.MemberCouponEntity;
+import com.pawcycle.backend.commerce.coupon.persistence.MemberCouponRepository;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.sql.Timestamp;
 import java.time.Clock;

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.ArrayList;

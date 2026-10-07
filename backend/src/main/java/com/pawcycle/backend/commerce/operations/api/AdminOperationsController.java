@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.operations.api;
 
-import com.pawcycle.backend.commerce.OperationsQueryService;
+import com.pawcycle.backend.commerce.operations.application.OperationsQueryService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

@@ -1,5 +1,13 @@
 package com.pawcycle.backend.commerce;
 
+import com.pawcycle.backend.commerce.billing.api.BillingMethodResponse;
+import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
+import com.pawcycle.backend.commerce.billing.api.BillingRetryResponse;
+import com.pawcycle.backend.commerce.billing.api.PaymentCapabilitiesResponse;
+import com.pawcycle.backend.commerce.coupon.api.CouponCreatedResponse;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeCreatedResponse;
+import com.pawcycle.backend.member.address.api.AddressCreatedResponse;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;

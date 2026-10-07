@@ -1,11 +1,11 @@
 package com.pawcycle.backend.commerce.checkout.persistence;
 
-import com.pawcycle.backend.commerce.CommerceOrderEntity;
-import com.pawcycle.backend.commerce.CommerceOrderRepository;
-import com.pawcycle.backend.commerce.MemberCouponRepository;
-import com.pawcycle.backend.commerce.OrderItemRepository;
-import com.pawcycle.backend.commerce.PaymentEntity;
-import com.pawcycle.backend.commerce.PaymentRepository;
+import com.pawcycle.backend.commerce.order.domain.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.order.persistence.CommerceOrderRepository;
+import com.pawcycle.backend.commerce.coupon.persistence.MemberCouponRepository;
+import com.pawcycle.backend.commerce.order.persistence.OrderItemRepository;
+import com.pawcycle.backend.commerce.payment.domain.PaymentEntity;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;

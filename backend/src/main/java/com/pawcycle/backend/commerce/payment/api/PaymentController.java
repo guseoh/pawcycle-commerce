@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.payment.api;
 
-import com.pawcycle.backend.commerce.PaymentConfirmRequest;
+import com.pawcycle.backend.commerce.payment.api.PaymentConfirmRequest;
 import com.pawcycle.backend.commerce.payment.application.PaymentApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

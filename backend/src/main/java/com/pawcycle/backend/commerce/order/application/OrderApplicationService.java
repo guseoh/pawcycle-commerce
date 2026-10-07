@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.order.application;
 
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.order.api.OrderReorderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderSummaryResponse;

@@ -1,10 +1,10 @@
 package com.pawcycle.backend.commerce.wishlist.application;
 
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.WishlistItemEntity;
-import com.pawcycle.backend.commerce.WishlistItemId;
-import com.pawcycle.backend.commerce.WishlistItemRepository;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.wishlist.domain.WishlistItemEntity;
+import com.pawcycle.backend.commerce.wishlist.domain.WishlistItemId;
+import com.pawcycle.backend.commerce.wishlist.persistence.WishlistItemRepository;
 import com.pawcycle.backend.commerce.wishlist.api.WishlistItemResponse;
 import com.pawcycle.backend.commerce.wishlist.api.WishlistResponse;
 import com.pawcycle.backend.commerce.wishlist.persistence.WishlistItemView;

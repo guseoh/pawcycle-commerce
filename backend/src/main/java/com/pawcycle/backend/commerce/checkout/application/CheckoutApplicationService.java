@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.checkout.application;
 
-import com.pawcycle.backend.commerce.CommerceException;
-import com.pawcycle.backend.commerce.InventoryService;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.cart.persistence.CartPersistenceAdapter;
 import com.pawcycle.backend.commerce.checkout.api.CheckoutPricingResponse;
 import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;

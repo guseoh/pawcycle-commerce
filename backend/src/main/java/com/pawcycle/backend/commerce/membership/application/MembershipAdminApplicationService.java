@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.membership.application;
 
-import com.pawcycle.backend.commerce.AdminAuditService;
-import com.pawcycle.backend.commerce.MembershipEvaluationService;
-import com.pawcycle.backend.commerce.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
+import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;

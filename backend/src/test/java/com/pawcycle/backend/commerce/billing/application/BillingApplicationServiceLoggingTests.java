@@ -6,8 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.commerce.BillingPreparationResponse;
-import com.pawcycle.backend.commerce.TossBillingAdapter;
+import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
+import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.billing.persistence.BillingPersistenceAdapter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

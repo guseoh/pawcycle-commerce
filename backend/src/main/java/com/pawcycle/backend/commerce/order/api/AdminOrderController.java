@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.order.api;
 
-import com.pawcycle.backend.commerce.AdminOrderQueryService;
+import com.pawcycle.backend.commerce.order.application.AdminOrderQueryService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.audit.persistence;
 
-import com.pawcycle.backend.commerce.AdminAuditLogEntity;
-import com.pawcycle.backend.commerce.AdminAuditLogRepository;
+import com.pawcycle.backend.commerce.audit.persistence.AdminAuditLogEntity;
+import com.pawcycle.backend.commerce.audit.persistence.AdminAuditLogRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.LocalDateTime;

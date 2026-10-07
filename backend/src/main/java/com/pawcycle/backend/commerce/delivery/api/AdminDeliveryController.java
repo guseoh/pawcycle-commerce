@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.delivery.api;
 
-import com.pawcycle.backend.commerce.DeliveryService;
-import com.pawcycle.backend.commerce.ReasonRequest;
-import com.pawcycle.backend.commerce.ShipmentRequest;
+import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
+import com.pawcycle.backend.commerce.common.api.ReasonRequest;
+import com.pawcycle.backend.commerce.delivery.api.ShipmentRequest;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

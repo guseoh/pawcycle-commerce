@@ -7,7 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.commerce.NotificationService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.subscription.persistence.SubscriptionDeliveryReminderPersistence;
 import com.pawcycle.backend.subscription.persistence.SubscriptionDeliveryReminderPersistence.ReminderTarget;
 import java.time.Clock;

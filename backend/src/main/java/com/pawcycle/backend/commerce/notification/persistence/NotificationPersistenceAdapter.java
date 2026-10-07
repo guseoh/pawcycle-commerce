@@ -1,6 +1,6 @@
 package com.pawcycle.backend.commerce.notification.persistence;
 
-import com.pawcycle.backend.commerce.CommerceException;
+import com.pawcycle.backend.commerce.common.error.CommerceException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Clock;
