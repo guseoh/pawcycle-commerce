@@ -4,7 +4,7 @@ import com.pawcycle.backend.commerce.coupon.api.MemberCouponResponse;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
 import com.pawcycle.backend.commerce.coupon.persistence.MemberCouponView;
 import com.pawcycle.backend.commerce.membership.api.MembershipResponse;
-import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
+import com.pawcycle.backend.commerce.membership.persistence.MembershipQueryRepository;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipView;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -13,10 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MemberBenefitApplicationService {
   private final CouponPersistenceAdapter coupons;
-  private final MembershipPersistenceAdapter membership;
+  private final MembershipQueryRepository membership;
 
   public MemberBenefitApplicationService(
-      CouponPersistenceAdapter coupons, MembershipPersistenceAdapter membership) {
+      CouponPersistenceAdapter coupons, MembershipQueryRepository membership) {
     this.coupons = coupons;
     this.membership = membership;
   }

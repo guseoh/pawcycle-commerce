@@ -1,11 +1,16 @@
 package com.pawcycle.backend.recommendation.persistence;
 
+// Frozen main e6f880dc9952c077f9d10fbff4d897c8c6b3baa5; test-only JDBC reference.
+
+import com.pawcycle.backend.recommendation.domain.RecommendationBrand;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
+import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
 import com.pawcycle.backend.recommendation.domain.RecommendationMemberSignals;
 import com.pawcycle.backend.recommendation.domain.RecommendationTrendScore;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,18 +18,28 @@ import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-@Component
-public class RecommendationQueryAdapter {
+final class LegacyRecommendationQueryAdapter {
   private final JdbcTemplate jdbc;
-  private final RecommendationJpaQueryRepository portable;
 
-  RecommendationQueryAdapter(JdbcTemplate jdbc, RecommendationJpaQueryRepository portable) {
+  LegacyRecommendationQueryAdapter(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
-    this.portable = portable;
   }
 
   public Map<Long, Long> coPurchaseCounts(long productId) {
-    return portable.coPurchaseCounts(productId);
+    return jdbc.query(
+        """
+        SELECT other_product.id,COUNT(DISTINCT o.id) FROM orders o JOIN payments pay ON pay.order_id=o.id AND pay.status='SUCCEEDED'
+        JOIN order_items source_item ON source_item.order_id=o.id JOIN skus source_sku ON source_sku.id=source_item.sku_id
+        JOIN order_items other_item ON other_item.order_id=o.id AND other_item.sku_id<>source_item.sku_id JOIN skus other_sku ON other_sku.id=other_item.sku_id
+        JOIN products other_product ON other_product.id=other_sku.product_id WHERE o.source='ONE_TIME' AND o.status='PAID' AND source_sku.product_id=? AND other_product.id<>? GROUP BY other_product.id
+        """,
+        rs -> {
+          Map<Long, Long> values = new HashMap<>();
+          while (rs.next()) values.put(rs.getLong(1), rs.getLong(2));
+          return values;
+        },
+        productId,
+        productId);
   }
 
   public String findOwnedPetType(long memberId, long petId) {
@@ -36,8 +51,52 @@ public class RecommendationQueryAdapter {
   }
 
   public List<RecommendationCandidate> findPurchasableCandidates(String petType) {
-    List<RecommendationCandidate> base = portable.findPurchasableCandidates(petType);
+    String typeClause = petType == null || petType.isBlank() ? "" : " AND product.pet_type=?";
+    List<Object> args = petType == null || petType.isBlank() ? List.of() : List.of(petType);
+    List<RecommendationCandidate> base =
+        jdbc.query(
+            """
+            SELECT product.id AS product_id,product.name AS product_name,
+                   product.short_description AS product_short_description,
+                   product.thumbnail_url AS product_thumbnail_url,product.pet_type AS product_pet_type,
+                   category.id AS category_id,category.name AS category_name,category.slug AS category_slug,
+                   brand.id AS brand_id,brand.name AS brand_name,brand.slug AS brand_slug
+            FROM products product JOIN categories category ON category.id=product.category_id
+            JOIN brands brand ON brand.id=product.brand_id
+            WHERE product.display_status='PUBLIC' AND category.active=true AND brand.active=true
+              AND EXISTS (SELECT 1 FROM skus sku JOIN inventories inventory ON inventory.sku_id=sku.id
+                         WHERE sku.product_id=product.id AND sku.status='ACTIVE' AND inventory.available_quantity>0)
+            """
+                + typeClause
+                + " ORDER BY product.id",
+            (rs, row) ->
+                new RecommendationCandidate(
+                    rs.getLong(1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getString(5),
+                    new RecommendationCategory(
+                        rs.getLong(6), rs.getString(7), rs.getString(8)),
+                    new RecommendationBrand(
+                        rs.getLong(9), rs.getString(10), rs.getString(11)),
+                    List.of(),
+                    0),
+            args.toArray());
     if (base.isEmpty()) return base;
+    Map<Long, List<String>> facets = new HashMap<>();
+    jdbc.query(
+        "SELECT pfv.product_id,fd.`key`,fo.value FROM product_facet_values pfv JOIN facet_options"
+            + " fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON"
+            + " fd.id=fo.facet_definition_id WHERE pfv.product_id IN ("
+            + placeholders(base.size())
+            + ") ORDER BY pfv.product_id,fd.id,fo.display_order,fo.id",
+        (org.springframework.jdbc.core.RowCallbackHandler)
+            rs ->
+                facets
+                    .computeIfAbsent(rs.getLong(1), ignored -> new ArrayList<>())
+                    .add(rs.getString(2) + ":" + rs.getString(3)),
+        base.stream().map(RecommendationCandidate::productId).toArray());
     Map<Long, Long> popular = popularScores(petType);
     return base.stream()
         .map(
@@ -50,7 +109,7 @@ public class RecommendationQueryAdapter {
                     candidate.petType(),
                     candidate.category(),
                     candidate.brand(),
-                    candidate.facets(),
+                    facets.getOrDefault(candidate.productId(), List.of()),
                     popular.getOrDefault(candidate.productId(), 0L)))
         .toList();
   }
@@ -290,11 +349,23 @@ public class RecommendationQueryAdapter {
   }
 
   public List<String> purchaseCategorySlugs(long memberId) {
-    return portable.purchaseCategorySlugs(memberId);
+    return categories(
+        "SELECT category.slug FROM orders orders JOIN payments payment ON"
+            + " payment.order_id=orders.id AND payment.status='SUCCEEDED' JOIN order_items item ON"
+            + " item.order_id=orders.id JOIN skus sku ON sku.id=item.sku_id JOIN products product"
+            + " ON product.id=sku.product_id JOIN categories category ON"
+            + " category.id=product.category_id WHERE orders.member_id=? AND orders.status='PAID'"
+            + " GROUP BY category.id,category.slug ORDER BY COUNT(*) DESC,category.id",
+        memberId);
   }
 
   public List<String> wishlistCategorySlugs(long memberId) {
-    return portable.wishlistCategorySlugs(memberId);
+    return categories(
+        "SELECT category.slug FROM wishlist_items wishlist JOIN products product ON"
+            + " product.id=wishlist.product_id JOIN categories category ON"
+            + " category.id=product.category_id WHERE wishlist.member_id=? GROUP BY"
+            + " category.id,category.slug ORDER BY COUNT(*) DESC,category.id",
+        memberId);
   }
 
   private Map<Long, Integer> interactionCounts(long memberId, String type, int days) {

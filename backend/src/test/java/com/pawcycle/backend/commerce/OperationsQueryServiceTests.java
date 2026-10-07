@@ -10,20 +10,20 @@ import static org.mockito.Mockito.when;
 
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository;
+import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository.PendingRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 class OperationsQueryServiceTests {
   @Test
   void exposesApprovedOperationsWithOnlyExecutableActions() {
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
     Timestamp now = Timestamp.from(Instant.now());
-    List<Map<String, Object>> rows =
+    List<PendingRow> rows =
         List.of(
             row("DELIVERY_PREPARING", 1L, now, null),
             row("DELIVERY_SHIPPED", 2L, now, null),
@@ -34,7 +34,7 @@ class OperationsQueryServiceTests {
             row("PAYMENT_RETRY_STOCK_UNAVAILABLE", 7L, now, 1),
             row("PAYMENT_UNKNOWN", 8L, now, null),
             row("REFUND_UNKNOWN", 9L, now, 1));
-    when(jdbc.queryForList(anyString())).thenReturn(rows);
+    when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<PendingRow>>any())).thenReturn(rows);
 
     OperationsQueryRepository queries = new OperationsQueryRepository(jdbc);
     List<OperationsPendingResponse> result = new OperationsQueryService(queries).pending();
@@ -52,20 +52,15 @@ class OperationsQueryServiceTests {
             List.of("RECONCILE_PAYMENT"),
             List.of("RECONCILE_REFUND"));
     org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
-    verify(jdbc).queryForList(sql.capture());
+    verify(jdbc).query(sql.capture(), org.mockito.ArgumentMatchers.<RowMapper<PendingRow>>any());
     assertThat(sql.getValue())
         .contains(
             "status='PROCESSING' AND reconciliation_attempts<10",
             "status='UNKNOWN' AND reconciliation_attempts<10");
   }
 
-  private static Map<String, Object> row(
+  private static PendingRow row(
       String type, long referenceId, Timestamp createdAt, Integer attemptNo) {
-    Map<String, Object> row = new LinkedHashMap<>();
-    row.put("type", type);
-    row.put("referenceId", referenceId);
-    row.put("createdAt", createdAt);
-    row.put("attemptNo", attemptNo);
-    return row;
+    return new PendingRow(type, referenceId, createdAt, attemptNo);
   }
 }

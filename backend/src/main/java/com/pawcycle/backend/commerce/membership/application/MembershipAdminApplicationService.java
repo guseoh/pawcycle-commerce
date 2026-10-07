@@ -6,6 +6,7 @@ import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
+import com.pawcycle.backend.commerce.membership.persistence.MembershipQueryRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,21 +14,24 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MembershipAdminApplicationService {
   private final MembershipPersistenceAdapter membership;
+  private final MembershipQueryRepository queries;
   private final AdminAuditService audits;
   private final MembershipEvaluationService membershipEvaluation;
 
   public MembershipAdminApplicationService(
       MembershipPersistenceAdapter membership,
+      MembershipQueryRepository queries,
       AdminAuditService audits,
       MembershipEvaluationService membershipEvaluation) {
     this.membership = membership;
+    this.queries = queries;
     this.audits = audits;
     this.membershipEvaluation = membershipEvaluation;
   }
 
   @Transactional(readOnly = true)
   public List<MembershipGradeResponse> listGrades() {
-    return membership.findGrades().stream()
+    return queries.findGrades().stream()
         .map(MembershipAdminApplicationService::grade)
         .toList();
   }

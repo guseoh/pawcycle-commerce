@@ -1,20 +1,23 @@
 package com.pawcycle.backend.commerce.operations.persistence;
 
+// Frozen main e6f880dc9952c077f9d10fbff4d897c8c6b3baa5; test-only JDBC reference.
+
 import java.sql.Timestamp;
+import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository.PendingRow;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-@Repository
-public class OperationsQueryRepository {
+final class LegacyOperationsQueryRepository {
   private final JdbcTemplate jdbc;
 
-  public OperationsQueryRepository(JdbcTemplate jdbc) {
+  public LegacyOperationsQueryRepository(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 
   public List<PendingRow> findPending() {
-    return jdbc.query(
+    return jdbc.queryForList(
         """
             SELECT 'DELIVERY_PREPARING' AS type,id AS referenceId,COALESCE(shipped_at,delivered_at,failed_at,CURRENT_TIMESTAMP(6)) AS createdAt,NULL AS attemptNo FROM deliveries WHERE status='PREPARING'
             UNION ALL SELECT 'DELIVERY_SHIPPED',id,shipped_at,NULL FROM deliveries WHERE status='SHIPPED'
@@ -45,14 +48,26 @@ public class OperationsQueryRepository {
             UNION ALL SELECT 'MISSING_BILLING_METHOD',id,scheduled_date,NULL FROM subscription_schedules WHERE status='HELD' AND hold_reason='MISSING_BILLING_METHOD'
             UNION ALL SELECT 'PAYMENT_RETRY_EXHAUSTED',id,scheduled_date,NULL FROM subscription_schedules WHERE status='HELD' AND hold_reason='PAYMENT_RETRY_EXHAUSTED'
             ORDER BY createdAt DESC
-            """,
-        (rs, rowNumber) -> {
-          int attemptNo = rs.getInt("attemptNo");
-          Integer nullableAttemptNo = rs.wasNull() ? null : attemptNo;
-          return new PendingRow(rs.getString("type"), rs.getLong("referenceId"),
-              rs.getTimestamp("createdAt"), nullableAttemptNo);
-        });
+            """)
+        .stream()
+        .map(
+            row ->
+                new PendingRow(
+                    (String) row.get("type"),
+                    ((Number) row.get("referenceId")).longValue(),
+                    toTimestamp(row.get("createdAt")),
+                    row.get("attemptNo") == null
+                        ? null
+                        : ((Number) row.get("attemptNo")).intValue()))
+        .toList();
   }
 
-  public record PendingRow(String type, long referenceId, Timestamp createdAt, Integer attemptNo) {}
+  private static Timestamp toTimestamp(Object value) {
+    if (value == null) return null;
+    if (value instanceof Timestamp timestamp) return timestamp;
+    if (value instanceof LocalDateTime dateTime) return Timestamp.valueOf(dateTime);
+    throw new IllegalArgumentException("지원하지 않는 operations timestamp 타입입니다: " + value.getClass());
+  }
+
+
 }
