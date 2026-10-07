@@ -38,4 +38,7 @@ class OrderCancellationEntity {
 
   @Column(name = "requested_at", nullable = false)
   LocalDateTime requestedAt;
+
+  @Column(name = "completed_at", insertable = false, updatable = false)
+  LocalDateTime completedAt;
 }

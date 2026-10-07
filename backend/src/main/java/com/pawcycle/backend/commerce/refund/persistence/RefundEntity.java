@@ -45,6 +45,9 @@ class RefundEntity {
   @Column(name = "attempt_no", nullable = false)
   int attemptNo;
 
+  @Column(name = "reconciliation_attempts", nullable = false, insertable = false, updatable = false)
+  int reconciliationAttempts;
+
   @Column(name = "source_id", insertable = false, updatable = false)
   Long sourceId;
 
