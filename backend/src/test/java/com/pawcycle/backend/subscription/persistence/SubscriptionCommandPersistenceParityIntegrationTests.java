@@ -279,8 +279,17 @@ class SubscriptionCommandPersistenceParityIntegrationTests {
   }
 
   private Object call(Object target, String method, Object... arguments) throws Exception {
-    var found = java.util.Arrays.stream(target.getClass().getMethods())
-        .filter(value -> value.getName().equals(method) && value.getParameterCount() == arguments.length).findFirst().orElseThrow();
+    var matches = java.util.Arrays.stream(target.getClass().getMethods())
+        .filter(value -> value.getName().equals(method) && value.getParameterCount() == arguments.length)
+        .filter(value -> java.util.stream.IntStream.range(0, arguments.length)
+            .allMatch(i -> org.springframework.util.ClassUtils.isAssignableValue(
+                value.getParameterTypes()[i], arguments[i])))
+        .toList();
+    if (matches.size() != 1) {
+      throw new IllegalStateException(
+          "Expected exactly one compatible method: " + method + ", found " + matches.size());
+    }
+    var found = matches.getFirst();
     try {
       return found.invoke(target, arguments);
     } catch (InvocationTargetException failure) {
