@@ -1033,7 +1033,7 @@ null-only list page from 500 to 200, retaining the existing schema, nullable Pet
 HTTP regression covers first/last/all-null, mixed, empty pages and nullable detail. Persistence parity
 remains exact; HTTP comparison uses the corrected composition for both stores.
 
-Corrected UTC and Asia/Seoul differential suites each pass all five tests. The measured subscription
+Corrected UTC and Asia/Seoul differential suites each pass all six tests. The measured subscription
 page uses six prepared statements for both one and 33 runtime subscriptions; plans use five
 including owned-pet lookup, count, page, batch items and cycles. Empty subscription pages use two,
 and empty batches issue zero additional SQL. Hibernate entity load count is zero. These are JPA-side
