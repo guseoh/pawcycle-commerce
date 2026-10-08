@@ -53,6 +53,9 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// Cached Spring contexts retain their Hikari pools until eviction or JVM shutdown.
+	// Bound test-only retention so distinct integration fixtures fit the MySQL service cap.
+	systemProperty 'spring.test.context.cache.maxSize', '8'
 }
 
 // Avoid static Q-type initialization cycles in bidirectional JPA associations.

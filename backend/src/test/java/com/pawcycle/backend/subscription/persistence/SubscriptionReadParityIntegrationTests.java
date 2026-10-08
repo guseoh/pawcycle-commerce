@@ -178,9 +178,8 @@ class SubscriptionReadParityIntegrationTests {
     assertThat(store.findPlanVersion(versionId).currentPlanVersionId()).isNull();
     compareHttp("/api/subscription-plan-versions/" + versionId + "?petId=" + petId, 409);
     compareHttp("/api/subscriptions", 200);
-    // Frozen main also fails when every pet ID on the page is null (empty Map.of().get(null)).
-    // T08 preserves this existing error; repairing the application contract is a separate task.
-    compareHttp("/api/subscriptions?size=1&page=0", 500);
+    // Correction intentionally repairs frozen main's null-only page 500 to the existing nullable-pet response.
+    compareHttp("/api/subscriptions?size=1&page=0", 200);
     compareHttp("/api/subscriptions?size=1&page=99", 200);
     compareHttp("/api/subscriptions/" + subscriptionId, 200);
     compareHttp("/api/subscriptions/" + subscriptionId + "?scheduleSize=1&schedulePage=1&commandSize=1&commandPage=1", 200);
@@ -206,6 +205,25 @@ class SubscriptionReadParityIntegrationTests {
     compareHttp("/api/subscriptions/" + subscriptionId, 404);
     memberId = realMember;
     assertThatThrownBy(() -> store.findSnapshot(Long.MAX_VALUE)).isInstanceOf(java.util.NoSuchElementException.class);
+  }
+
+  @Test
+  void nullablePetPagesReturn200WithTheExistingNullableResponseShape() throws Exception {
+    // The frozen persistence returns Map.of() for an empty pet batch: old application get(null) throws.
+    assertThatThrownBy(() -> legacy.findOwnedPets(memberId, List.of()).get(null))
+        .isInstanceOf(NullPointerException.class);
+    compareHttp("/api/subscriptions?size=1&page=0", 200);
+    http.perform(get("/api/subscriptions?size=1&page=0").with(authentication(
+            new UsernamePasswordAuthenticationToken(new AuthenticatedMemberPrincipal(memberId), null,
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))))))
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].pet").value((Object) null))
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalElements").value(3));
+    jdbc.update("UPDATE subscriptions SET pet_id=NULL WHERE member_id=?", memberId);
+    compareHttp("/api/subscriptions?size=1&page=2", 200);
+    compareHttp("/api/subscriptions?size=100&page=0", 200);
+    compareHttp("/api/subscriptions?size=1&page=99", 200);
+    compareHttp("/api/subscriptions/" + subscriptionId, 200);
   }
 
   @Test

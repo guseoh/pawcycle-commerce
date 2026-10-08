@@ -29,42 +29,49 @@ import org.springframework.stereotype.Component;
 class SubscriptionReadQueries {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
   private final SubscriptionReadRepository reads;
+  private final PetReadRepository pets;
+  private final PlanReadRepository plans;
+  private final SubscriptionDeliveryReadRepository delivery;
 
-  SubscriptionReadQueries(SubscriptionReadRepository reads) {
+  SubscriptionReadQueries(SubscriptionReadRepository reads, PetReadRepository pets,
+      PlanReadRepository plans, SubscriptionDeliveryReadRepository delivery) {
     this.reads = reads;
+    this.pets = pets;
+    this.plans = plans;
+    this.delivery = delivery;
   }
 
   Optional<PetProjection> ownedPet(long memberId, long petId) {
-    return reads.ownedPet(memberId, petId);
+    return pets.findByMemberIdAndId(memberId, petId);
   }
 
   Optional<PlanVersionProjection> planVersion(long id) {
-    return reads.planVersion(id);
+    return plans.planVersion(id);
   }
 
   Optional<SubscriptionProjection> ownedSubscription(long memberId, long id) {
-    return reads.ownedSubscription(memberId, id);
+    return reads.findByMemberIdAndIdAndRuntimeManagedTrue(memberId, id);
   }
 
   PageProjection<PetProjection> pets(long memberId, int page, int size) {
-    long total = reads.petCount(memberId);
-    return new PageProjection<>(page, size, total, reads.pets(memberId, PageRequest.of(page, size)));
+    long total = pets.countByMemberId(memberId);
+    return new PageProjection<>(page, size, total, pets.findByMemberIdOrderByIdAsc(memberId, PageRequest.of(page, size)));
   }
 
   PageProjection<PlanVersionProjection> salePlans(String petType, LocalDate today, int page, int size) {
-    long total = reads.salePlanCount(petType, today);
+    long total = plans.salePlanCount(petType, today);
     return new PageProjection<>(page, size, total,
-        reads.salePlans(petType, today, PageRequest.of(page, size)));
+        plans.salePlans(petType, today, PageRequest.of(page, size)));
   }
 
   Map<Long, List<SubscriptionItemProjection>> planItems(List<Long> ids) {
-    return ids.isEmpty() ? Map.of() : groupedItems(reads.planItems(ids));
+    return ids.isEmpty() ? Map.of() : groupedItems(plans.planItems(ids));
   }
 
   Map<Long, List<Integer>> cycles(List<Long> ids) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, List<Integer>> result = new HashMap<>();
-    for (var cycle : reads.cycles(ids)) {
+    for (var cycle : plans.cycles(ids)) {
       result.computeIfAbsent(cycle.versionId(), ignored -> new ArrayList<>()).add(cycle.weeks());
     }
     return result;
@@ -77,15 +84,15 @@ class SubscriptionReadQueries {
   }
 
   PageProjection<SubscriptionProjection> subscriptions(long memberId, int page, int size) {
-    long total = reads.subscriptionCount(memberId);
+    long total = reads.countByMemberIdAndRuntimeManagedTrue(memberId);
     return new PageProjection<>(page, size, total,
-        reads.subscriptions(memberId, PageRequest.of(page, size)));
+        reads.findByMemberIdAndRuntimeManagedTrueOrderByIdDesc(memberId, PageRequest.of(page, size)));
   }
 
   Map<Long, PetProjection> ownedPets(long memberId, List<Long> ids) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, PetProjection> result = new HashMap<>();
-    reads.ownedPets(memberId, ids).forEach(pet -> result.put(pet.id(), pet));
+    pets.findByMemberIdAndIdIn(memberId, ids).forEach(pet -> result.put(pet.id(), pet));
     return result;
   }
 
@@ -103,20 +110,20 @@ class SubscriptionReadQueries {
   Map<Long, LocalDate> nextSchedules(List<Long> ids, LocalDate today) {
     if (ids.isEmpty()) return Map.of();
     Map<Long, LocalDate> result = new HashMap<>();
-    reads.nextSchedules(ids, today).forEach(row -> result.putIfAbsent(row.subscriptionId(), row.date()));
+    delivery.nextSchedules(ids, today).forEach(row -> result.putIfAbsent(row.subscriptionId(), row.date()));
     return result;
   }
 
   Optional<LocalDate> nextSchedule(long id, LocalDate today) {
-    return reads.nextSchedule(id, today, PageRequest.of(0, 1)).stream().findFirst();
+    return delivery.nextSchedule(id, today, PageRequest.of(0, 1)).stream().findFirst();
   }
 
   Optional<PendingSubscriptionChange> pendingChange(long id) {
-    return reads.pendingChange(id);
+    return delivery.pendingChange(id);
   }
 
   Optional<NextDeliveryProjection> nextDelivery(long id) {
-    return reads.nextDelivery(id, PageRequest.of(0, 1)).stream().findFirst();
+    return delivery.nextDelivery(id, PageRequest.of(0, 1)).stream().findFirst();
   }
 
   List<SubscriptionItemDetailProjection> snapshotItemDetails(long id) {
@@ -124,16 +131,16 @@ class SubscriptionReadQueries {
   }
 
   List<ScheduleAddonProjection> addons(long id) {
-    return reads.addons(id);
+    return delivery.addons(id);
   }
 
   int addonCount(long id) {
-    return reads.addonCount(id);
+    return delivery.addonCount(id);
   }
 
   PageProjection<ScheduleViewProjection> schedules(long id, int page, int size) {
-    long total = reads.scheduleCount(id);
-    return new PageProjection<>(page, size, total, reads.schedules(id, PageRequest.of(page, size)));
+    long total = delivery.scheduleCount(id);
+    return new PageProjection<>(page, size, total, delivery.schedules(id, PageRequest.of(page, size)));
   }
 
   PageProjection<CommandHistoryProjection> history(long id, int page, int size) {
