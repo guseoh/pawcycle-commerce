@@ -921,8 +921,11 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
                 } catch (java.sql.SQLException blocked) {
                   return blocked.getErrorCode();
                 } finally {
-                  connection.rollback();
-                  statement.execute("SET SESSION innodb_lock_wait_timeout=" + timeout);
+                  try {
+                    connection.rollback();
+                  } finally {
+                    statement.execute("SET SESSION innodb_lock_wait_timeout=" + timeout);
+                  }
                 }
               }
             });
