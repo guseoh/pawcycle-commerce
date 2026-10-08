@@ -1346,4 +1346,4 @@ Nine non-runtime maintenance/bootstrap/migration/performance JDBC files remain T
 Final Runtime JdbcTemplate 0 is still Master #339's T12 gate, and every remaining owner must be
 converted or explicitly reassigned/decided; counts alone do not close that gate.
 Rollback is a normal revert of T09 code/tests/document. No migration/data repair or operating resource
-rollback is required. Draft PR handoff only; Ready/CodeRabbit request/merge are not executed.
+rollback is required. At the original T09 handoff, PR #357 was Draft and Ready/CodeRabbit request/merge had not yet occurred. Subsequent PR, external review and merge states are recorded in GitHub.
