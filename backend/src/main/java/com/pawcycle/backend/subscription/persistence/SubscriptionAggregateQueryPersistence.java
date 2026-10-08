@@ -37,8 +37,8 @@ class SubscriptionAggregateQueryPersistence {
   private final SubscriptionNativeSql nativeSql;
   private final SubscriptionReadQueries reads;
   private final JPAQueryFactory queries;
-  private final QSubscriptionCommandRows_Subscription subscription = new QSubscriptionCommandRows_Subscription("subscription");
-  private final QSubscriptionCommandRows_Schedule schedule = new QSubscriptionCommandRows_Schedule("schedule");
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
 
   SubscriptionAggregateQueryPersistence(SubscriptionReadQueries reads, EntityManager entities) {
     this.nativeSql = new SubscriptionNativeSql(entities);
@@ -240,8 +240,8 @@ public List<ScheduleProjection> futureSchedulesForUpdate(long subscriptionId, Lo
   }
 
 public Optional<ProcessedScheduleProjection> lastProcessedSchedule(long subscriptionId) {
-    var order = new QSubscriptionOrderRows_Order("processed");
-    var snapshot = new QSubscriptionCommandRows_Snapshot("snapshot");
+    var order = new QSubscriptionOrderEntity("processed");
+    var snapshot = new QSubscriptionSnapshotEntity("snapshot");
     return Optional.ofNullable(queries.select(Projections.constructor(ProcessedScheduleProjection.class, order.scheduledDate, snapshot.deliveryCycleWeeks))
         .from(order).join(snapshot).on(snapshot.id.eq(order.snapshotId)).where(order.subscriptionId.eq(subscriptionId))
         .orderBy(order.scheduledDate.desc(), order.id.desc()).fetchFirst());

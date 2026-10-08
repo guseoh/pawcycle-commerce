@@ -32,9 +32,9 @@ public class SubscriptionOrderPersistence {
   private final SubscriptionNativeSql nativeSql;
   private final EntityManager entities;
   private final JPAQueryFactory queries;
-  private final QSubscriptionCommandRows_Subscription subscription = new QSubscriptionCommandRows_Subscription("subscription");
-  private final QSubscriptionCommandRows_Schedule schedule = new QSubscriptionCommandRows_Schedule("schedule");
-  private final QSubscriptionCommandRows_Pending pending = new QSubscriptionCommandRows_Pending("pending");
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
+  private final QPendingPlanChangeEntity pending = new QPendingPlanChangeEntity("pending");
   private final QInventoryEntity inventory = new QInventoryEntity("inventory");
 
   public SubscriptionOrderPersistence(EntityManager entities) {
@@ -48,13 +48,13 @@ public class SubscriptionOrderPersistence {
           + " effective_snapshot_id=?,status='SCHEDULED',hold_reason=NULL WHERE id=?";
 
   public List<ExistingOrderRow> lockExistingOrders(long scheduleId) {
-    var order = new QSubscriptionOrderRows_Order("existing");
+    var order = new QSubscriptionOrderEntity("existing");
     return queries.select(Projections.constructor(ExistingOrderRow.class, order.id)).from(order)
         .where(order.scheduleId.eq(scheduleId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch();
   }
 
   public Optional<SnapshotRow> findSnapshot(long snapshotId, long subscriptionId) {
-    var snapshot = new QSubscriptionCommandRows_Snapshot("snapshot");
+    var snapshot = new QSubscriptionSnapshotEntity("snapshot");
     var row = queries.select(snapshot.id, snapshot.planVersionId, snapshot.packagePriceKrw, snapshot.deliveryCycleWeeks)
         .from(snapshot).where(snapshot.id.eq(snapshotId), snapshot.subscriptionId.eq(subscriptionId)).fetchOne();
     return Optional.ofNullable(row).map(value -> new SnapshotRow(value.get(snapshot.id), value.get(snapshot.planVersionId),
@@ -75,9 +75,12 @@ public class SubscriptionOrderPersistence {
       long reservedBefore,
       long reservedAfter,
       LocalDateTime createdAt) {
-    insert(InventoryMovementEntity.subscriptionReservation(skuId, paymentId, quantity,
+    var row = InventoryMovementEntity.subscriptionReservation(skuId, paymentId, quantity,
         Math.toIntExact(availableBefore), Math.toIntExact(availableAfter), Math.toIntExact(reservedBefore), Math.toIntExact(reservedAfter),
-        java.sql.Timestamp.from(createdAt.toInstant(java.time.ZoneOffset.UTC))));
+        java.sql.Timestamp.from(createdAt.toInstant(java.time.ZoneOffset.UTC)));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -110,7 +113,10 @@ public class SubscriptionOrderPersistence {
       BigDecimal unitPrice,
       int quantity,
       BigDecimal lineAmount) {
-    insert(new CommerceOrderItemEntity(orderId, skuId, skuCode, productName, skuName, unitPrice, quantity, lineAmount));
+    var row = new CommerceOrderItemEntity(orderId, skuId, skuCode, productName, skuName, unitPrice, quantity, lineAmount);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -135,8 +141,11 @@ public class SubscriptionOrderPersistence {
       int attempt,
       LocalDateTime requestedAt,
       LocalDateTime createdAt) {
-    insert(PaymentEntity.billing(orderId, amount, providerOrderId, idempotencyKey, attempt,
-        SubscriptionJdbcTime.forUtcCalendar(requestedAt), SubscriptionJdbcTime.forUtcCalendar(createdAt)));
+    var row = PaymentEntity.billing(orderId, amount, providerOrderId, idempotencyKey, attempt,
+        SubscriptionJdbcTime.forUtcCalendar(requestedAt), SubscriptionJdbcTime.forUtcCalendar(createdAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -147,7 +156,10 @@ public class SubscriptionOrderPersistence {
       long snapshotId,
       long planVersionId,
       LocalDate scheduledDate) {
-    insert(new SubscriptionOrderContextEntity(orderId, subscriptionId, scheduleId, snapshotId, planVersionId, scheduledDate));
+    var row = new SubscriptionOrderContextEntity(orderId, subscriptionId, scheduleId, snapshotId, planVersionId, scheduledDate);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -162,8 +174,11 @@ public class SubscriptionOrderPersistence {
       String addressLine1,
       String addressLine2,
       LocalDateTime createdAt) {
-    insert(CommerceOrderEntity.subscription(orderNumber, memberId, originalAmount, paymentAmount,
-        recipientName, recipientPhone, postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(createdAt)));
+    var row = CommerceOrderEntity.subscription(orderNumber, memberId, originalAmount, paymentAmount,
+        recipientName, recipientPhone, postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(createdAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -175,8 +190,11 @@ public class SubscriptionOrderPersistence {
       String addressLine1,
       String addressLine2,
       LocalDateTime updatedAt) {
-    insert(new SubscriptionShippingSnapshotEntity(subscriptionId, recipientName, recipientPhone,
-        postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(updatedAt)));
+    var row = new SubscriptionShippingSnapshotEntity(subscriptionId, recipientName, recipientPhone,
+        postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(updatedAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -201,11 +219,10 @@ public class SubscriptionOrderPersistence {
   }
 
   public int insertFutureSchedule(long subscriptionId, LocalDate scheduledDate) {
-    var row = new SubscriptionCommandRows.Schedule();
-    row.subscriptionId = subscriptionId;
-    row.scheduledDate = scheduledDate;
-    row.status = "SCHEDULED";
-    insert(row);
+    var row = new SubscriptionScheduleEntity(subscriptionId, scheduledDate);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -243,27 +260,24 @@ public class SubscriptionOrderPersistence {
   }
 
   public int deleteScheduleAddOns(long scheduleId) {
-    var addon = new QSubscriptionCommandRows_Addon("addon");
+    var addon = new QSubscriptionScheduleAddonEntity("addon");
     return Math.toIntExact(queries.delete(addon).where(addon.scheduleId.eq(scheduleId)).execute());
   }
 
   public int insertSubscriptionOrderAddOn(
       long orderId, long skuId, int quantity, BigDecimal price) {
-    var row = new SubscriptionOrderRows.Addon();
-    row.orderId = orderId;
-    row.skuId = skuId;
-    row.quantity = quantity;
-    row.price = price;
-    insert(row);
+    var row = new SubscriptionOrderAddonItemEntity(orderId, skuId, quantity, price);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
   public int insertSubscriptionOrderItem(long orderId, long skuId, int quantity) {
-    var row = new SubscriptionOrderRows.Item();
-    row.orderId = orderId;
-    row.skuId = skuId;
-    row.quantity = quantity;
-    insert(row);
+    var row = new SubscriptionOrderItemEntity(orderId, skuId, quantity);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -276,17 +290,11 @@ public class SubscriptionOrderPersistence {
       LocalDate scheduledDate,
       LocalDateTime processedAt,
       BigDecimal total) {
-    var row = new SubscriptionOrderRows.Order();
-    row.memberId = memberId;
-    row.subscriptionId = subscriptionId;
-    row.scheduleId = scheduleId;
-    row.snapshotId = snapshotId;
-    row.planVersionId = planVersionId;
-    row.scheduledDate = scheduledDate;
-    row.processedAt = processedAt;
-    row.total = total;
-    row.status = "CREATED";
-    insert(row);
+    var row = new SubscriptionOrderEntity(memberId, subscriptionId, scheduleId,
+        snapshotId, planVersionId, scheduledDate, processedAt, total);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return 1;
   }
 
@@ -339,12 +347,12 @@ public class SubscriptionOrderPersistence {
 
   public List<Candidate> findDueCandidates(
       LocalDate today, LocalDate repeatedToday, int batchSize) {
-    var existing = new QSubscriptionOrderRows_Order("existing");
-    var prior = new QSubscriptionCommandRows_Schedule("prior");
+    var existing = new QSubscriptionOrderEntity("existing");
+    var prior = new QSubscriptionScheduleEntity("prior");
     var context = new QSubscriptionOrderContextEntity("context");
     var payment = new QPaymentEntity("payment");
-    var earlier = new QSubscriptionCommandRows_Schedule("earlier");
-    var earlierOrder = new QSubscriptionOrderRows_Order("earlierOrder");
+    var earlier = new QSubscriptionScheduleEntity("earlier");
+    var earlierOrder = new QSubscriptionOrderEntity("earlierOrder");
     var unresolvedPrior = JPAExpressions.selectOne().from(prior).join(context).on(context.scheduleId.eq(prior.id))
         .join(payment).on(payment.orderId.eq(context.orderId))
         .where(prior.subscriptionId.eq(schedule.subscriptionId), precedes(prior, schedule), payment.status.ne("SUCCEEDED")).exists();
@@ -359,18 +367,12 @@ public class SubscriptionOrderPersistence {
         .orderBy(schedule.scheduledDate.asc(), schedule.id.asc()).limit(batchSize).fetch();
   }
 
-  private BooleanExpression eligible(QSubscriptionCommandRows_Schedule row) {
+  private BooleanExpression eligible(QSubscriptionScheduleEntity row) {
     return row.status.eq("SCHEDULED").or(row.status.eq("HELD").and(row.holdReason.eq("ORDER_STOCK_UNAVAILABLE")));
   }
 
-  private BooleanExpression precedes(QSubscriptionCommandRows_Schedule earlier, QSubscriptionCommandRows_Schedule later) {
+  private BooleanExpression precedes(QSubscriptionScheduleEntity earlier, QSubscriptionScheduleEntity later) {
     return earlier.scheduledDate.lt(later.scheduledDate).or(earlier.scheduledDate.eq(later.scheduledDate).and(earlier.id.lt(later.id)));
-  }
-
-  private void insert(Object row) {
-    entities.persist(row);
-    entities.flush();
-    entities.detach(row);
   }
 
   public record Candidate(long subscriptionId, long scheduleId) {}

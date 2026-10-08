@@ -14,8 +14,8 @@ public class SubscriptionIdempotencyReservationPersistence {
   private final SubscriptionNativeSql nativeSql;
   private final EntityManager entities;
   private final JPAQueryFactory queries;
-  private final QSubscriptionReservationRows_Creation creation = new QSubscriptionReservationRows_Creation("creation");
-  private final QSubscriptionReservationRows_Command commandRow = new QSubscriptionReservationRows_Command("command");
+  private final QSubscriptionCreationReservationEntity creation = new QSubscriptionCreationReservationEntity("creation");
+  private final QSubscriptionCommandReservationEntity commandRow = new QSubscriptionCommandReservationEntity("command");
 
   public SubscriptionIdempotencyReservationPersistence(EntityManager entities) {
     this.nativeSql = new SubscriptionNativeSql(entities);
@@ -29,29 +29,25 @@ public class SubscriptionIdempotencyReservationPersistence {
         .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
     if (!queries.select(creation.key).from(creation).where(creation.memberId.eq(memberId), creation.key.eq(key))
         .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch().isEmpty()) return false;
-    var row = new SubscriptionReservationRows.Creation();
-    row.memberId = memberId;
-    row.key = key;
-    row.fingerprint = fingerprint;
-    insert(row);
+    var row = new SubscriptionCreationReservationEntity(memberId, key, fingerprint);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return true;
   }
 
   public boolean reserveCommand(
       long memberId, long subscriptionId, String command, String key, String fingerprint) {
-    var parent = new QSubscriptionCommandRows_Subscription("parent");
+    var parent = new QSubscriptionEntity("parent");
     requireParent(queries.select(parent.id).from(parent).where(parent.id.eq(subscriptionId), parent.memberId.eq(memberId))
         .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
     if (!queries.select(commandRow.key).from(commandRow)
         .where(commandRow.memberId.eq(memberId), commandRow.subscriptionId.eq(subscriptionId), commandRow.command.eq(command), commandRow.key.eq(key))
         .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch().isEmpty()) return false;
-    var row = new SubscriptionReservationRows.Command();
-    row.memberId = memberId;
-    row.subscriptionId = subscriptionId;
-    row.command = command;
-    row.key = key;
-    row.fingerprint = fingerprint;
-    insert(row);
+    var row = new SubscriptionCommandReservationEntity(memberId, subscriptionId, command, key, fingerprint);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     return true;
   }
 
@@ -120,12 +116,6 @@ public class SubscriptionIdempotencyReservationPersistence {
     queries.update(commandRow).set(commandRow.bodyJson, bodyJson)
         .where(commandRow.memberId.eq(memberId), commandRow.subscriptionId.eq(subscriptionId), commandRow.command.eq(command), commandRow.key.eq(key)).execute();
   }
-  private void insert(Object row) {
-    entities.persist(row);
-    entities.flush();
-    entities.detach(row);
-  }
-
   private void requireParent(Long id) {
     if (id == null) throw new org.springframework.dao.EmptyResultDataAccessException(1);
   }

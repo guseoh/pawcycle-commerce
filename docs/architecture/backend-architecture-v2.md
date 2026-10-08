@@ -1190,6 +1190,28 @@ stay scalar. Addon mapping is used for bulk mutation only; DB-clock upsert remai
 snapshot-item/history/common order/payment/inventory shadow entity or per-table Repository is added.
 All inserted records are flushed/detached; callers own the unchanged transactions.
 
+Issue #356 §9 and the independent review of PR #357 require individual top-level entities.
+The correction removes SubscriptionCommandRows, SubscriptionOrderRows and
+SubscriptionReservationRows. The same eleven mappings now live in PetEntity,
+SubscriptionEntity, SubscriptionSnapshotEntity, SubscriptionScheduleEntity,
+PendingPlanChangeEntity, SubscriptionScheduleAddonEntity, SubscriptionOrderEntity,
+SubscriptionOrderItemEntity, SubscriptionOrderAddonItemEntity,
+SubscriptionCreationReservationEntity and SubscriptionCommandReservationEntity.
+Five composite ID records and SubscriptionReservationResponse are also top-level types.
+No existing mutable entity maps these eleven tables; seven matching T08 mappings are
+@Immutable, while common order context/shipping entities map different tables. Reusing
+those types would change the read/write contract rather than remove a redundant mapping.
+
+The feature-local persistence classes use private fields, Lombok @Getter and protected
+@NoArgsConstructor. Constructors establish the original INSERT values; no @Data, @Setter,
+new Repository, interface or domain aggregate is added. The add-on mapping remains bulk-only.
+Querydsl regenerates Q-types for the independent classes. JPA entity names, columns, PK
+components, date/time JDBC types, CAS and native SQL stay unchanged. Concrete constructor
+calls replace package-field assignment and the untyped insert(Object) helpers; each adapter
+explicitly retains persist → flush → detach before returning an ID or executing the next
+statement. State transitions and transaction ownership remain with existing callers.
+The T08 container and broad DDD/aggregate design remain separate follow-up candidates.
+
 An actual Seoul characterization of the existing common order mapping writes 23:59:59.123456 as
 14:59:59.123456 when given the old JDBC LocalDateTime directly: Hibernate binds Timestamp with its
 configured UTC Calendar. `SubscriptionJdbcTime.forUtcCalendar` encodes that JDBC wall clock only
@@ -1264,6 +1286,44 @@ CRLF/LF manifest-byte test fails. Discord normalized payload validation passes 2
 Harness classifier is true, Frontend/Production false. Architecture remains frozen 204 / NEW 0 /
 removed 0; schema/index and Production pools/cap remain unchanged. Linux CI Harness remains a
 separate required gate.
+
+### PR #357 correction verification and coupon isolation diagnosis
+
+The correction recompiles main/test sources and regenerates top-level Querydsl Q-types.
+Existing UTC MySQL selection passes 61 tests in nine classes (zero failures/errors/skips),
+including the frozen differential, command/creation, idempotency, reconciliation, automation,
+T08 read/HTTP, time characterization and Architecture guard. The 31 privileged physical lock
+pairs run locally rather than being replaced by the default CI observer skip. Mapping review
+also confirms unchanged names/tables/field types/column annotations/order for all eleven entities.
+Seoul differential/T08 HTTP/time characterization/automation/Architecture selection passes
+34 tests in five classes (zero failures/errors/skips) and build. Architecture output matches
+the frozen 204 entries exactly: NEW 0 / removed 0. Existing lock footprints, failure-after-flush
+rollback, CAS, replay, same-transaction visibility and DATE/DATETIME(6)/DECIMAL behavior remain
+protected by the existing tests, without weakening fixtures or assertions.
+
+After that selection, all 14 CommercePurchaseIntegrationTests pass under UTC on the same
+disposable schema, without reset, fixture or coupon/checkout changes. This exercises class-local
+interaction and T09-created committed data, but does not reproduce every full-suite predecessor
+or prove absence of cross-context contamination. The original local full-suite coupon failure
+remains unconfirmed; the original HEAD's successful Linux full-suite CI is separate evidence.
+The subsequent correction run on a fresh schema passes all 530 tests in 130 classes and build
+under UTC, including all 14 purchase tests and the privileged lock observer (no skips).
+This is a successful new full-suite observation, not a diagnosed repair of the earlier failure.
+MySQL's unchanged cap is 151, observed peak is 90 and only the observer connection remains
+after all test pools close. No unconditional same-payload full-suite retry is used.
+The test is not transactional and uses separate JDBC INSERT/LAST_INSERT_ID calls; IDs are
+connection-scoped. Its CURRENT_TIMESTAMP(6) validity boundary is checked against the injected
+JVM clock in UTC. These are diagnostic candidates, not established causes. UUID member/category/
+SKU fixtures and scoped member-coupon locks are present; the timezone-changing unit test restores
+its default in finally. No speculative fixture, pool, cache, coupon or production-time change is
+made. Any future reproduction should capture connection identity, selected coupon/status and
+DB/JVM validity instants before deciding whether fixture isolation or product code needs repair.
+
+Local Harness runs 146 tests with 145 passes and the unchanged Windows CRLF/LF manifest-byte
+failure. An initial sandbox run fails on temporary Git-fixture ACLs; the normal-permission run
+removes those environment errors. Discord's 22 fixtures, relevant validator compilation and
+Backend/Harness-only classification pass. Correction HEAD's whole Backend/MySQL/build and Linux
+Harness are required CI gates, with their dynamic result recorded in the PR.
 
 ### Remaining owners and rollback
 

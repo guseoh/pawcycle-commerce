@@ -13,10 +13,10 @@ class SubscriptionAggregateWritePersistence {
   private final SubscriptionNativeSql nativeSql;
   private final EntityManager entities;
   private final JPAQueryFactory queries;
-  private final QSubscriptionCommandRows_Subscription subscription = new QSubscriptionCommandRows_Subscription("subscription");
-  private final QSubscriptionCommandRows_Schedule schedule = new QSubscriptionCommandRows_Schedule("schedule");
-  private final QSubscriptionCommandRows_Pending pending = new QSubscriptionCommandRows_Pending("pending");
-  private final QSubscriptionCommandRows_Addon addon = new QSubscriptionCommandRows_Addon("addon");
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
+  private final QPendingPlanChangeEntity pending = new QPendingPlanChangeEntity("pending");
+  private final QSubscriptionScheduleAddonEntity addon = new QSubscriptionScheduleAddonEntity("addon");
 
   SubscriptionAggregateWritePersistence(EntityManager entities) {
     this.nativeSql = new SubscriptionNativeSql(entities);
@@ -26,18 +26,11 @@ class SubscriptionAggregateWritePersistence {
 
 public long insertSubscription(
       long memberId, long versionId, int cycle, long petId, LocalDate created, LocalDate next) {
-    var row = new SubscriptionCommandRows.Subscription();
-    row.memberId = memberId;
-    row.skuId = firstSku(versionId);
-    row.quantity = 1;
-    row.deliveryCycleWeeks = cycle;
-    row.createdDate = created;
-    row.nextOrderDate = next;
-    row.petId = petId;
-    row.status = "ACTIVE";
-    row.runtimeManaged = true;
-    insert(row);
-    return row.id;
+    var row = new SubscriptionEntity(memberId, firstSku(versionId), cycle, petId, created, next);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void setCurrentSnapshot(long subscriptionId, long snapshotId) {
@@ -53,12 +46,11 @@ public long createSnapshot(long subscriptionId, long versionId, int cycle, long 
   }
 
 public long insertPet(long memberId, String name, String petType) {
-    var row = new SubscriptionCommandRows.Pet();
-    row.memberId = memberId;
-    row.name = name;
-    row.petType = petType;
-    insert(row);
-    return row.id;
+    var row = new PetEntity(memberId, name, petType);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void updatePet(
@@ -70,7 +62,7 @@ public void updatePet(
       boolean breedPresent,
       java.math.BigDecimal weightKg,
       boolean weightPresent) {
-    var pet = new QSubscriptionCommandRows_Pet("pet");
+    var pet = new QPetEntity("pet");
     var update = queries.update(pet).where(pet.id.eq(petId), pet.memberId.eq(memberId));
     if (namePresent) update.set(pet.name, name);
     if (breedPresent) update.set(pet.breed, breed);
@@ -80,11 +72,10 @@ public void updatePet(
 
 public void replacePendingPlanChange(long subscriptionId, long snapshotId, long scheduleId) {
     deletePendingPlanChange(subscriptionId);
-    var row = new SubscriptionCommandRows.Pending();
-    row.subscriptionId = subscriptionId;
-    row.snapshotId = snapshotId;
-    row.targetScheduleId = scheduleId;
-    insert(row);
+    var row = new PendingPlanChangeEntity(subscriptionId, snapshotId, scheduleId);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
   }
 
 public void setSubscriptionPet(long subscriptionId, long petId) {
@@ -96,12 +87,11 @@ public void markSkipped(long scheduleId) {
   }
 
 public long insertScheduledAndReturnId(long subscriptionId, LocalDate date) {
-    var row = new SubscriptionCommandRows.Schedule();
-    row.subscriptionId = subscriptionId;
-    row.scheduledDate = date;
-    row.status = "SCHEDULED";
-    insert(row);
-    return row.id;
+    var row = new SubscriptionScheduleEntity(subscriptionId, date);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void retargetPendingPlanChange(long subscriptionId, long scheduleId) {
@@ -203,15 +193,13 @@ public void deleteDeliveryReminders(long subscriptionId) {
   }
 
 private long snapshot(long subscriptionId, long versionId, int cycle, long price) {
-    var row = new SubscriptionCommandRows.Snapshot();
-    row.subscriptionId = subscriptionId;
-    row.planVersionId = versionId;
-    row.packagePriceKrw = price;
-    row.deliveryCycleWeeks = cycle;
-    insert(row);
+    var row = new SubscriptionSnapshotEntity(subscriptionId, versionId, cycle, price);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
     // Atomic INSERT SELECT avoids hydrating/copying every immutable plan item.
-    nativeSql.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?", row.id, versionId);
-    return row.id;
+    nativeSql.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?", row.getId(), versionId);
+    return row.getId();
   }
 
 private long firstSku(long versionId) {
@@ -219,10 +207,5 @@ private long firstSku(long versionId) {
     Long id = queries.select(item.skuId).from(item).where(item.planVersionId.eq(versionId)).orderBy(item.skuId.asc()).fetchFirst();
     if (id == null) throw new org.springframework.dao.EmptyResultDataAccessException(1);
     return id;
-  }
-  private void insert(Object row) {
-    entities.persist(row);
-    entities.flush();
-    entities.detach(row);
   }
 }
