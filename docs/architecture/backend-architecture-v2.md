@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-007` (Program T07) · Master #339 · Issue #352 · 고위험 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-008` (Program T08) · Master #339 · Issue #354 · 고위험 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -915,3 +915,204 @@ MySQL 테스트로 보완하며 외부 AI review submission은 미실행으로 �
 복구는 tests/document의 일반 revert이고 production/schema/data 변경은 없다. 향후 제품 코드 rollback이
 이미 처리된 외부 환불이나 재고·DB side effect를 자동 보상하지 않으며 Production 복구는 별도 승인 영역이다.
 T08 이후/Production/Cloud는 제외하고 Draft PR에서 STOP한다. Ready/CodeRabbit/merge를 수행하지 않는다.
+
+## T08 Subscription typed read convergence
+
+기준 main은 T07 merged `2993384b2d91453aa31015a3d57baaf36b61667d`이다.
+2026-10-08 Master #339의 승인 목표 개정은 **운영 Runtime 직접 JdbcTemplate 최종 0**이다.
+위 T01~T07 inventory/KEEP와 검증은 각 시점의 역사 evidence로 보존한다. 특히 T07 KEEP는
+영구 JDBC allowlist나 최종 전환 완료 판정이 아니다. T08에서 T07 command를 강제 변환하지
+않으며, 남은 command는 T09/후속 단계에서 동작 동등성을 근거로 JPA 경계로 수렴해야 한다.
+T12에서 Runtime 0 미달이면 남은 gap을 명시하며 완료 선언하지 않는다.
+
+### Method inventory and decisions
+
+`SubscriptionAggregatePersistence`의 상속/public query 및 write method signature를 보존한다.
+`SubscriptionAggregateQueryPersistence`는 compatibility routing만 추가하고 T09 JDBC를 유지한다.
+순수 read 구현은 `SubscriptionReadQueries`에서 Pet / Plan / Subscription / Delivery의
+feature-local read 경계로 위임한다. Spring Data derived DTO / JPQL DTO rewriting과
+선택적 Querydsl scalar projection을 사용하며
+raw Map row mapping, entity 결과, 새 transaction/lock/flush 설정을 도입하지 않는다.
+
+| Method family | T08 판정 / 구현 | 보호 경계 |
+| --- | --- | --- |
+| findPets / findOwnedPet / findOwnedPets | CONVERT: member-owned scalar PetProjection | nullable breed/weight, id ASC, count/page, ownership 404 |
+| findSalePlanVersions / findPlanVersion | CONVERT: scalar plan+version join | current version, type, on_sale, migration-only, inclusive DATE bounds, nullable current version, error 구분 |
+| findPlanItems / findDeliveryCycles (각 single+batch overload) | CONVERT: typed owner/item/cycle rows | batched IN, SKU/cycle ASC, empty-IN skip |
+| findSubscriptions / findOwnedSubscription | CONVERT: scalar SubscriptionProjection | runtime_managed, member, id DESC, nullable pet, count/page |
+| findSnapshots / findSnapshot / findSnapshotItems | CONVERT: typed snapshot base + immutable item rows | BIGINT KRW, cycle/quantity, batch, missing snapshot exception |
+| findNextSchedules / findNextSchedule | CONVERT: scalar DATE + NOT EXISTS order | SCHEDULED/date>=today, processed exclusion, date/id ASC, first per subscription |
+| findPendingChange / findNextDeliverySchedule | CONVERT: typed pending/schedule projection | pending/effective snapshot precedence remains application-owned; HELD branch includes ordered rows as before |
+| findSnapshotItemDetails / findScheduleAddons / scheduleAddonCount | CONVERT: scalar SKU/product join and count | DECIMAL(18,2), nullable thumbnail, SKU ASC, availableActions unchanged |
+| findScheduleViews / findCommandHistory | CONVERT: explicit count + paginated projection | date/time DESC then id DESC; DATETIME(6) Timestamp→Instant→Seoul string |
+| lockOwnedSubscription / lockNextScheduled / lockActiveSubscription / hasUnprocessedDueSchedule / futureSchedulesForUpdate | KEEP execution / DEFER conversion T09 | FOR UPDATE SQL, predicate, order, missing row and lock scope are unchanged |
+| deliveryCycleAllowed / planContainsSku / scheduleAddonConflicts / findEligibleAddonSku / hasScheduleAddon / scheduleDateTaken | KEEP execution / DEFER conversion T09 | command preconditions and conflict/stock semantics unchanged |
+| activeSubscriptionIds / lastProcessedSchedule / scheduleExists / findPendingSnapshotId | KEEP execution / DEFER conversion T09 | reconciliation/automation selection and pending semantics unchanged |
+| SubscriptionAggregateWritePersistence / SubscriptionSchedulePersistence.heldScheduleIds / order, billing, reminder, idempotency owners | KEEP execution / DEFER conversion T09 | write, CAS, unique, reservation, status transition, transaction and automation unchanged |
+
+23 public read overloads are converted; 15 public command/lock query methods have identical bodies
+to the baseline. Single snapshot reads retain two queries, list composition retains batched queries.
+13 minimal immutable entity mappings have scalar IDs/columns only, including composite IDs for
+items/cycles/addons. No aggregate graph, eager association, new schema/index or dependency is added.
+Existing Sku/Product mappings are used only in scalar joins. No new native SQL or EntityManager
+wrapper is needed. Repository results never hydrate read entities, avoiding stale entity state after
+the unchanged JDBC writes in the same transaction.
+
+History's immutable read column uses `SubscriptionHistoryTimestampJdbcType` for extraction only.
+It calls the same JDBC `getTimestamp()` overload as main, rather than Hibernate's UTC Calendar
+overload. First Seoul differential tests exposed a 9-hour shift with the default Hibernate type;
+this column-scoped correction restores parity without changing global time-zone settings, command
+writes, DATE mappings or transaction boundaries. The frozen JDBC DATETIME result itself differs
+between UTC and Seoul JVMs; T08 preserves each existing baseline rather than normalizing it.
+
+### Correction design decision (PR #355 independent review)
+
+Reviewed HEAD `489d2c9` used one repository for five concerns and shared constructor/alias strings.
+The correction keeps the facade and caller-owned transaction, with four concrete read boundaries:
+Pet (derived DTO), Plan (fixed joins), Subscription (identity/snapshots/history), and Delivery
+(schedule eligibility/pending/addons). No per-table repository, extra port or write API is added.
+
+| Alternative | Evaluation and resulting choice |
+| --- | --- |
+| Existing entity reuse | Sku/Product remain reused. SubscriptionOrderContextEntity maps subscription_order_context, not subscription_orders; substituting it changes processed exclusion. No existing entity maps the other required tables. |
+| Derived DTO | Pet ownership/list/batch/count and runtime Subscription ownership/list/count fit property predicates. PetProjection marks its canonical constructor because it also has a convenience constructor. DTO results avoid entity hydration after JDBC writes. |
+| JPQL DTO rewriting | Plan joins and snapshot/item/history selections keep explicit columns, joins and ordering. Spring Data generates constructor expressions from typed returns, removing handwritten fully qualified constructor strings. SALE owns its FROM/join/filters locally for count/list consistency. |
+| Selective Querydsl | Delivery combines correlated NOT EXISTS, HELD-or-SCHEDULED grouping and pending/catalog joins. Q paths pass the correlated schedule explicitly, replacing the externally bound UNORDERED alias string. The existing dependency/pilot is reused. |
+| Querydsl everywhere / interface projections | Rejected: Q paths add boilerplate to simple predicates; getter interfaces duplicate existing records and need adapters. Querydsl constructor expressions still check constructor compatibility at runtime, covered by MySQL parity. |
+| Aggregate graphs / associations | Rejected: expands mapping/flush/first-level-cache behavior and risks stale reads after unchanged JDBC writes. Scalar mappings and DTO results suffice. |
+
+All 13 mappings remain after query-specific evaluation. Each is a JPQL/Querydsl root or join, not a
+duplicate full domain aggregate. Replacing these roots with SQL recreates the rejected native-wrapper
+boundary. The existing commerce order context is a different table and cannot replace Order below.
+
+| Mapping | Required read use |
+| --- | --- |
+| Pet | ownership, page/count, member-owned batch |
+| Plan | current sale / archived version joins |
+| PlanVersion | price, migration flag, version identity |
+| PlanItem | ordered version item batch |
+| Cycle | ordered allowed-cycle batch |
+| Subscription | runtime/member ownership, page/count |
+| Snapshot | immutable base single/batch |
+| SnapshotItem | ordered batch and catalog detail join |
+| Schedule | next batch/single, delivery, pending target date, page/count |
+| Order | correlated processed-order exclusion |
+| PendingChange | snapshot/target schedule join |
+| Addon | persisted DECIMAL price, catalog join/count |
+| CommandHistory | ordered DATETIME(6) history/count |
+
+History extraction remains column-scoped. LocalDateTime interprets the wall-clock value differently
+from frozen Timestamp→Instant; default Hibernate extraction uses the UTC Calendar and shifts Seoul
+results. Global timezone changes affect command/T09 writes. Legacy no-Calendar extraction is the
+minimum compatibility choice until an independently approved time-contract migration. Next-schedule
+batches still select eligible rows then take the first per subscription, as frozen JDBC already did;
+no unmeasured query optimization is claimed.
+
+### Parity and validation evidence
+
+`LegacySubscriptionReadReference` is a test-only frozen subset of main's JDBC implementation.
+Its 23 public read bodies are unchanged from the baseline. Differential tests use the same MySQL 8.4
+fixture/transaction, then route only reads through that oracle for baseline HTTP requests and reset
+the spy for the real JPA path. Controllers, application composition, validation, serialization,
+security and ETag run unchanged for both paths. Oracle SQL is never runtime code.
+
+Fixtures cover zero/one/multi pages, empty batches, owner 404, legacy exclusion, nullable profiles/pet,
+sale boundaries/migration/archived version, BIGINT KRW up to 9007199254740991, processed schedule
+exclusion, HELD and no schedule, pending vs effective snapshot precedence, nullable thumbnail,
+DECIMAL addon totals, command timestamp ties/microseconds and invalid/overflow pagination.
+Schedule dates cannot tie within a subscription due to the existing unique constraint; date/id ordering
+remains explicit. Same-transaction JDBC INSERT/UPDATE/DELETE → repeated scalar reads cover Pet,
+subscription version/status, snapshots, pending changes, addons and command history without refresh
+or new transaction boundaries.
+
+The initial HEAD preserved the nullable-only page 500; the correction request explicitly includes
+its repair. A pre-correction HTTP run reproduces 500 in both frozen JDBC and JPA paths. DATA-003
+permits migrated legacy subscriptions without a Pet to be read; detail and mixed pages already emit
+pet:null. The application now guards null petId before map lookup. This deliberately changes the
+null-only list page from 500 to 200, retaining the existing schema, nullable Pet and ownership checks.
+HTTP regression covers first/last/all-null, mixed, empty pages and nullable detail. Persistence parity
+remains exact; HTTP comparison uses the corrected composition for both stores.
+
+Corrected UTC and Asia/Seoul differential suites each pass all six tests. The measured subscription
+page uses six prepared statements for both one and 33 runtime subscriptions; plans use five
+including owned-pet lookup, count, page, batch items and cycles. Empty subscription pages use two,
+and empty batches issue zero additional SQL. Hibernate entity load count is zero. These are JPA-side
+measurements, not measured JDBC-versus-JPA statement counts. Frozen JDBC batch results and source
+strategy are separately checked; no latency/throughput improvement is claimed.
+
+Initial Seoul subscription/Architecture selection ran 55 tests: four differential history failures
+were corrected by the scoped extractor; two unchanged cleanup tests remained. A separate archive
+of exact main `2993384` and a fresh local database reproduced both failures without any T08 source:
+`cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting` (00:00 vs 09:00) and
+`cleanupDeletesOnlyExpiredRowsWithinEachTableBatch` (expected 1 vs 2). The other 48 selected tests
+passed, including command, reconciliation, automation, creation/database and idempotency concurrency.
+The corrected Seoul differential five pass separately. Cleanup's existing non-UTC fixture/runtime
+time behavior is a residual T09 boundary, not repaired by T08 or claimed as Seoul-green.
+
+Initial full selection executed 518 tests, with 12 environment/context failures: seven maintenance
+subprocess stderr assertions received Java's JAVA_TOOL_OPTIONS announcement; the new differential
+context's five tests failed at initialization after cached pools reached MySQL's 151 connection cap
+(Max_used_connections 152). Timezone is now supplied by a temporary Gradle Test.systemProperty
+init script, not inherited environment; no production/process test is weakened. The new parity
+class alone uses a maximum pool of two and minimum idle zero, with AFTER_CLASS context cleanup.
+Production pools, server capacity and the frozen architecture baseline are unchanged. Focused
+failed-class verification passes all 12 tests on fresh disposable MySQL 8.4.11 (151 connections).
+The local runner's fixture storage is disposable tmpfs; no runtime durability/performance claim is
+made. Full selection's other 506 tests passed, including the 204 / NEW 0 architecture guard and
+existing Subscription/Commerce regressions. Clean compileJava/Q regeneration/compileTestJava
+completed; build is checked without repeating those successful tests. Independent latest HEAD
+Repository Validation supplies the full-suite retry on its fresh MySQL 8.4 service and build gate;
+actual CI status belongs in the PR checks, not a premature closure claim in this document.
+
+### Correction CI diagnosis and validation
+
+Run 37736689676 / Backend test first failed in the new parity context's Flyway connection acquisition;
+four parity cases then hit Spring's context failure threshold. Cached contexts keep their Hikari pools
+alive until eviction/shutdown. CI shutdown lists 16 retained pools, whose default ten-connection idle
+capacity exceeds MySQL's 151 cap. CI output omits the final server error message, so exhaustion is a
+supported inference, not an observed CI server error. The equivalent local full run observed Too many
+connections and Max_used_connections=152. A class-local pool of two and AFTER_CLASS cleanup cannot
+free earlier pools before that class's Flyway initialization.
+
+Gradle's Test JVM now sets spring.test.context.cache.maxSize=8. Spring's documented
+[context-cache LRU lifecycle](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/caching.html)
+closes the context
+and its Hikari datasource, bounding retained test pools and leaving headroom for a constructing context
+and smoke subprocess. Production pool sizing, server capacity, command transactions and CI retry policy
+are unchanged. The parity class retains its small pool and AFTER_CLASS cleanup. Full MySQL validation
+must pass at the unchanged cap and demonstrate pool closure before JVM shutdown.
+
+Correction validation: UTC parity/HTTP six plus Architecture three pass; Seoul parity/HTTP six pass.
+A fresh disposable MySQL 8.4.11 schema with unchanged max_connections=151 runs all 519 Backend
+tests (128 classes, zero failures/errors) and build successfully. Max_used_connections is 90 and final
+Threads_connected is one (the observer). Test output records 12 Hikari pool closures on Test worker
+before JVM shutdown, including fixture contexts without DirtiesContext; retention is actually bounded.
+Architecture remains frozen 204 / NEW 0 / removed 0. No command/lock/write/automation or oracle
+source changed from reviewed HEAD. These results validate compatibility/lifecycle separately from the
+maintainability choices above; latest correction HEAD CI evidence belongs in the PR.
+
+Harness Python compile, metadata validators and Discord's 22 fixtures pass locally. Six Python
+encoding failures were corrected by UTF-8 runner settings (that test class passes 12/12). The unchanged
+Windows generator CRLF/LF manifest-byte test still fails locally; Linux CI Harness is checked separately.
+The previously reproduced main Seoul cleanup failures remain outside this correction's time contract.
+
+### Source inventory and remaining Delta
+
+| source criterion | T07 main | T08 | meaning |
+| --- | ---: | ---: | --- |
+| direct JdbcTemplate files | 34 | 34 | mixed compatibility/command and write owners remain |
+| runtime direct JdbcTemplate files | 25 | 25 | read conversion must be measured by methods, not this file count |
+| direct EntityManager files | 10 | 11 | selective Querydsl delivery factory; no native wrapper |
+| JpaRepository files | 36 | 36 | new read repository exposes only Spring Data Repository query methods |
+| Querydsl production reference files | 2 | 3 | delivery correlation/grouping replaces alias strings |
+| handwritten production Java | 588 | 596 | read rows, four local repositories, delegate, batch DTOs and scoped Timestamp extraction |
+
+Notification read, RepeatCommerceQueryRepository and SubscriptionMetricsQueryRepository remain
+outside #354's aggregate read Delta. Earlier T08 candidate labels do not imply their conversion
+is complete. These residual JDBC owners, T07 command KEEP and T09 command/automation must be
+included in the remaining Program inventory and evaluated before T12 Runtime 0 closure.
+
+Rollback is a normal revert of T08 read code/tests/document; there is no schema/data migration.
+No Production/Cloud/provider/operating DB execution or external AI review submission is performed.
+Independent confirmation comes from latest HEAD Repository Validation, not the handoff marker.
+T09 and later work are excluded; the task stops at Draft PR without Ready/CodeRabbit request/merge.

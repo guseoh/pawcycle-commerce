@@ -80,7 +80,7 @@ class SubscriptionQueryApplicationService {
                 subscription ->
                     summary(
                         subscription,
-                        pets.get(subscription.petId()),
+                        subscription.petId() == null ? null : pets.get(subscription.petId()),
                         snapshot(
                             snapshots.get(subscription.currentSnapshotId()),
                             items.getOrDefault(subscription.currentSnapshotId(), List.of())),
