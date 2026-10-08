@@ -8,17 +8,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
-@Repository
-public class QuickReorderPersistenceAdapter {
+/** Frozen JDBC protocol from main e7833f1; never delegates to the production adapter. */
+class FrozenQuickReorderJdbcReference {
   private final JdbcTemplate queries;
   private final ObjectMapper objectMapper;
   private final Clock clock;
 
-  public QuickReorderPersistenceAdapter(JdbcTemplate queries, ObjectMapper objectMapper, Clock clock) {
+  FrozenQuickReorderJdbcReference(JdbcTemplate queries, ObjectMapper objectMapper, Clock clock) {
     this.queries = queries;
     this.objectMapper = objectMapper;
     this.clock = clock;
@@ -26,17 +24,16 @@ public class QuickReorderPersistenceAdapter {
 
   public ReorderResult reorder(long memberId, long sourceOrderId, String idempotencyKey) {
     lockMember(memberId);
-    IdempotencyRow existing =
+    Map<String, Object> existing =
         one(
             "SELECT source_order_id AS sourceOrderId,response_json AS responseJson FROM quick_reorder_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE",
-            (rs, rowNumber) -> new IdempotencyRow(rs.getLong("sourceOrderId"), rs.getString("responseJson")),
             memberId,
             idempotencyKey);
     if (existing != null) {
-      if (existing.sourceOrderId() != sourceOrderId) {
+      if (number(existing, "sourceOrderId") != sourceOrderId) {
         throw new CommerceException(409, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key가 다른 주문에 사용되었습니다.");
       }
-      return storedResponse(existing.responseJson());
+      return storedResponse((String) existing.get("responseJson"));
     }
     if (queries.queryForObject(
             "SELECT COUNT(*) FROM orders WHERE id=? AND member_id=?", Integer.class, sourceOrderId, memberId)
@@ -44,19 +41,15 @@ public class QuickReorderPersistenceAdapter {
       throw new CommerceException(404, "ORDER_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
     CartLock cart = lockCart(memberId);
-    List<SourceItem> sourceItems =
-        queries.query(
+    List<Map<String, Object>> sourceItems =
+        queries.queryForList(
             "SELECT item.sku_id AS skuId,item.quantity,sku.status AS skuStatus,product.display_status AS productStatus,category.active AS categoryActive,inventory.available_quantity AS availableQuantity FROM order_items item JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id LEFT JOIN inventories inventory ON inventory.sku_id=sku.id WHERE item.order_id=? ORDER BY item.id FOR UPDATE",
-            (rs, rowNumber) -> new SourceItem(
-                rs.getLong("skuId"), rs.getInt("quantity"), rs.getString("skuStatus"),
-                rs.getString("productStatus"), rs.getBoolean("categoryActive"),
-                rs.getObject("availableQuantity", Integer.class)),
             sourceOrderId);
     List<ReorderItem> addedItems = new ArrayList<>();
     List<SkippedItem> skippedItems = new ArrayList<>();
-    for (SourceItem sourceItem : sourceItems) {
-      long skuId = sourceItem.skuId();
-      int quantity = sourceItem.quantity();
+    for (Map<String, Object> sourceItem : sourceItems) {
+      long skuId = number(sourceItem, "skuId");
+      int quantity = (int) number(sourceItem, "quantity");
       String reason = reorderSkipReason(sourceItem, quantity);
       if (reason != null) {
         skippedItems.add(new SkippedItem(skuId, quantity, reason));
@@ -96,12 +89,12 @@ public class QuickReorderPersistenceAdapter {
     return result;
   }
 
-  private String reorderSkipReason(SourceItem sourceItem, int quantity) {
-    if (!"ACTIVE".equals(sourceItem.skuStatus())
-        || !"PUBLIC".equals(sourceItem.productStatus())
-        || !sourceItem.categoryActive()) return "SKU_NOT_PURCHASABLE";
-    Integer available = sourceItem.availableQuantity();
-    if (available == null || available < quantity) return "OUT_OF_STOCK";
+  private String reorderSkipReason(Map<String, Object> sourceItem, int quantity) {
+    if (!"ACTIVE".equals(sourceItem.get("skuStatus"))
+        || !"PUBLIC".equals(sourceItem.get("productStatus"))
+        || !booleanValue(sourceItem.get("categoryActive"))) return "SKU_NOT_PURCHASABLE";
+    Object available = sourceItem.get("availableQuantity");
+    if (!(available instanceof Number number) || number.intValue() < quantity) return "OUT_OF_STOCK";
     return null;
   }
 
@@ -144,8 +137,8 @@ public class QuickReorderPersistenceAdapter {
       queries.update("INSERT INTO carts(member_id,created_at,updated_at) VALUES (?,?,?)", memberId, now(), now());
       cartId = queries.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
-    return one("SELECT id,version FROM carts WHERE id=? FOR UPDATE",
-        (rs, rowNumber) -> new CartLock(rs.getLong("id"), rs.getLong("version")), cartId);
+    Map<String, Object> row = one("SELECT id,version FROM carts WHERE id=? FOR UPDATE", cartId);
+    return new CartLock(cartId, number(row, "version"));
   }
 
   private long incrementCartVersion(long cartId) {
@@ -153,13 +146,19 @@ public class QuickReorderPersistenceAdapter {
     return queries.queryForObject("SELECT version FROM carts WHERE id=?", Long.class, cartId);
   }
 
-  private <T> T one(String sql, RowMapper<T> mapper, Object... args) {
-    List<T> rows = queries.query(sql, mapper, args);
-    return rows.isEmpty() ? null : rows.getFirst();
+  private Map<String, Object> one(String sql, Object... args) {
+    List<Map<String, Object>> rows = queries.queryForList(sql, args);
+    return rows.isEmpty() ? null : new LinkedHashMap<>(rows.getFirst());
   }
 
   private Timestamp now() {
     return Timestamp.from(clock.instant());
+  }
+
+  private static boolean booleanValue(Object value) {
+    return value instanceof Boolean booleanValue
+        ? booleanValue
+        : value instanceof Number number && number.intValue() != 0;
   }
 
   private static long number(Map<?, ?> row, String key) {
@@ -173,9 +172,4 @@ public class QuickReorderPersistenceAdapter {
   public record SkippedItem(long skuId, int quantity, String reason) {}
 
   private record CartLock(long id, long version) {}
-
-  private record IdempotencyRow(long sourceOrderId, String responseJson) {}
-
-  private record SourceItem(long skuId, int quantity, String skuStatus, String productStatus,
-                            boolean categoryActive, Integer availableQuantity) {}
 }
