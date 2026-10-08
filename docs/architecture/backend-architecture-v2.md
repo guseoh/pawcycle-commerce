@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-004` (Program T04) · Master #339 · Issue #346 · 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-005` (Program T05) · Master #339 · Issue #348 · 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -658,3 +658,70 @@ regression → Commerce purchase → 영향받는 MySQL → full Backend → bui
 Repository Validation을 완료 조건으로 한다. 실제 실행 결과는 Draft PR에 기록한다.
 T05 operations/metrics/membership/recommendation read, T08 Subscription read와 T06/T07의
 write/concurrency debt는 남는다. Draft PR 이후 STOP하고 T05는 시작하지 않는다.
+
+## T05 Secondary read persistence boundaries
+
+T04 #346 / PR #347의 merge commit `e6f880dc9952c077f9d10fbff4d897c8c6b3baa5`를
+T05 기준 main으로 고정한다. #348의 최신 Delta에 따라 Operations/Metrics/Membership/Recommendation만
+다룬다. JDBC 파일 수 감소나 Querydsl 확대 자체를 완료 조건으로 삼지 않는다.
+
+### KEEP / JPA / Querydsl selection
+
+- Operations: 16종 cross-feature 운영 projection의 MySQL `UNION ALL`, correlated `NOT EXISTS`, latest payment subquery, DATE/DATETIME coercion, `CURRENT_TIMESTAMP(6)`와 final `createdAt DESC`를 그대로 KEEP한다. 분해하면 query 수와 조립 복잡성이 늘어난다. `queryForList()` raw Map parsing만 typed `PendingRow` RowMapper로 교체한다. `attemptNo` null, Timestamp와 availableActions 계약은 유지한다. T12 runtime JDBC allowlist 재확인 대상이다.
+- Commerce Metrics: single scalar aggregate와 1분 scheduled gauge cache는 JDBC KEEP / production no-op다. 요청 경로가 아니며 raw Map leakage가 없다. JPA 전환으로 count 3개를 만들거나 vendor SQL을 다시 쓰지 않는다. metric name/status 집합/schedule/cache 의미는 유지한다.
+- Membership: 고정 mapped read인 `findGrades()`와 `findForMember()`만 EntityManager typed JPQL `MembershipQueryRepository`로 분리한다. application consumer가 cross-package여서 class/constructor/read method는 최소 public이며 entity visibility/getter/association은 확대하지 않는다. customer membership과 admin list만 새 repository를 사용한다. `MembershipPersistenceAdapter.createGrade()`와 기존 Clock/constructor, evaluation/history/coupon/`FOR UPDATE` body는 유지한다.
+- Recommendation: optional petType, Product/Category/Brand join, SKU/Inventory EXISTS와 facet ordering이 있는 candidate family는 package-private `RecommendationJpaQueryRepository`의 Querydsl typed constructor rows로 전환한다. mapped co-purchase와 purchase/wishlist category ranking도 이 repository에서 처리한다. `RecommendationQueryAdapter`의 public method shape와 popular score 조합은 유지한다. Q-type/JPAQueryFactory는 persistence 안에 둔다.
+
+Membership은 displayOrder/id 순서, nullable benefitCouponId, current grade/amount, row 없을 때
+BASIC fallback과 evaluatedAt Timestamp 계약을 유지한다. T04와 같은 현재 Hibernate UTC JDBC calendar
+역변환을 persistence-local row에 적용한다. 기존 application read/write transaction owner와
+`open-in-view=false`를 유지하며 새 transaction을 만들지 않는다.
+
+Recommendation은 PUBLIC product, active category/brand, ACTIVE SKU와 available inventory > 0,
+optional petType, product id 순서와 facet product/definition/displayOrder/option id 순서를 유지한다.
+co-purchase는 DISTINCT order count이며 purchase/wishlist ranking의 기존 join multiplicity와
+COUNT DESC/category id tie-break를 보존한다. medical filter/AI/scoring/ranking/exploration 정책은 변경하지 않는다.
+
+### Explicit recommendation residual JDBC
+
+다음은 기존 adapter 안에 KEEP하며 신규 Pet/Subscription/Interaction entity mapping을 추가하지 않는다.
+
+| Residual family | KEEP reason |
+| --- | --- |
+| findOwnedPetType | pets mapping 없음 |
+| activeSubscriptionProductIds / subscriptionCategorySlugs | subscription aggregate mapping 없음; T08 경계 |
+| exposedProductIds / interactionCounts | interaction_events mapping 없음; MySQL UTC time-window analytics |
+| memberSignals / productCounts / categoryCounts / facetCounts | cross-domain signal aggregates와 DATE_SUB time window |
+| popularScores / addPopular | order/cart/wishlist/interaction 여러 source와 window의 기존 합산 |
+| trendScores | derived table + UNION ALL |
+| filterCounts / filterFacetCounts | JSON_EXTRACT/JSON_UNQUOTE/JSON_TABLE |
+
+16개 residual method body와 Operations SQL은 기준 main과 동일하다. residual JDBC helper 파일 분리는
+현재 책임 경계를 개선하지 않아 추가하지 않는다. 기존 Membership write의 persistence-api coupling은 남는다.
+Subscription aggregate/read 자체는 blocker가 없어 T08로 유지한다.
+
+### Actual inventory / guard / evidence
+
+generated Q-type을 제외한 production source file 집계다.
+
+| Source inventory | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| JdbcTemplate | 34 | 34 | 0: KEEP residual/write files |
+| runtime JdbcTemplate | 25 | 25 | 0 |
+| EntityManager | 8 | 10 | +2: Membership/Recommendation query repository |
+| com.querydsl reference | 1 | 2 | +1: Recommendation query repository |
+| Backend production Java | 586 | 588 | +2: query repositories |
+
+Architecture actual report는 frozen baseline 204개와 동일하다: application-api 186,
+api-persistence 1, persistence-api 12, runtime-maintenance 5.
+**RESOLVED 0 / RECLASSIFIED 0 / NEW 0**이며 baseline을 생성하거나 추가 승인하지 않는다.
+
+test-only frozen main JDBC reference와 실제 MySQL 결과를 비교한다. Operations 16종/type/id/time/attempt,
+newer refund와 latest payment exclusion, CURRENT_TIMESTAMP microsecond/null/DATE coercion/actions,
+Membership order/coupon/current/fallback/Timestamp/HTTP JSON와 기존 create/evaluate history/coupon/audit,
+Recommendation eligibility/order/facets/co-purchase/ranking/popular assembly를 보호한다.
+T01 Querydsl, T04 Order, Metrics/application/controller/Commerce regression과 full Backend/build/validators/
+최신 HEAD Repository Validation을 완료 조건으로 하며 실제 결과는 Draft PR에 기록한다.
+
+T06/T07 write/concurrency, T08 Subscription read, T09 command/automation, T10 provider/transaction,
+T11 maintenance와 T12 residual allowlist 판정은 남는다. Draft PR 이후 STOP하고 T06은 시작하지 않는다.
