@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-005` (Program T05) · Master #339 · Issue #348 · 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-006` (Program T06) · Master #339 · Issue #350 · 고위험 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -725,3 +725,88 @@ T01 Querydsl, T04 Order, Metrics/application/controller/Commerce regression과 f
 
 T06/T07 write/concurrency, T08 Subscription read, T09 command/automation, T10 provider/transaction,
 T11 maintenance와 T12 residual allowlist 판정은 남는다. Draft PR 이후 STOP하고 T06은 시작하지 않는다.
+
+## T06 Commerce write persistence boundaries
+
+T05 #348 / PR #349의 squash merge `e7833f1fd69cecda2df6cdee2af0f2ea2424214a`를 기준으로
+#350의 최신 Delta만 수행한다. 목적은 JDBC 파일 수 감소가 아니라 기존 write protocol을
+보존하면서 raw SQL row mapping과 실제 MySQL에서 재현한 cursor 결함을 최소 변경하는 것이다.
+
+### Quick Reorder: typed JDBC / protocol KEEP
+
+`QuickReorderPersistenceAdapter`의 SQL raw Map을 private `IdempotencyRow`, `SourceItem`,
+`CartLock`과 typed RowMapper로 바꾼다. nullable inventory는 `getObject(..., Integer.class)`로
+보존하고 category boolean/status/quantity는 각 JDBC type으로 읽는다. JSON serialization과
+legacy replay 역직렬화용 Map은 SQL raw-row debt와 구분해 유지한다.
+
+기준 main의 모든 SQL 문자열이 동일하며 acquisition 순서는 다음과 같다.
+
+1. member `FOR UPDATE` → member/key replay row `FOR UPDATE`.
+2. source order ownership 확인 → member cart `FOR UPDATE` 또는 missing cart INSERT /
+   `LAST_INSERT_ID()` → cart id/version `FOR UPDATE`.
+3. source order item/product/SKU/category/inventory `ORDER BY item.id FOR UPDATE`.
+4. cart item UPDATE 후 missing item INSERT → added item이 있을 때만 cart version 증가 → replay INSERT.
+
+`OrderApplicationService.reorder()`의 TransactionTemplate이 계속 transaction owner다.
+동일 key/source는 저장된 response를 재생하며 다른 source는 기존 409, missing member/order는
+기존 404다. stock absent/insufficient 및 inactive SKU/product/category skip 순서·수량을 보존한다.
+cart contents/version/replay는 한 transaction에서 rollback한다. source 내 duplicate SKU는 기존
+`uk_order_items_sku(order_id,sku_id)`가 금지한다. 기존 cart의 같은 SKU는 UPDATE로 합산한다.
+새 association/flush/unique constraint 또는 lock 순서·범위 변경은 없다.
+
+### Payment Reconciliation: MySQL fail-before / minimal correction
+
+Production 수정 전에 disposable MySQL 8.4.11에서 `ONE_TIME + NORMAL/UNKNOWN`, order quantity 2,
+cart quantity 5, reserved inventory 2를 구성하고 실제 `PaymentReconciliationService.reconcile()`를
+실행했다. provider만 대체했으며 provider query가 transaction 밖이고 start attempt 1이 이미
+commit됐음을 확인했다. 결과는 `consumeCart()`의 `stream().findFirst()`에서 NPE였다.
+RowMapper는 이미 현재 행에 위치하지만 내부 `rs.next()`가 cursor를 다시 이동해 null을 반환하고,
+findFirst가 null을 Optional로 만들며 실패한다. 단순 cart 차감 생략으로 끝나는 결함이 아니다.
+
+MySQL 실패 후 상태는 payment UNKNOWN / order PAYMENT_ACTION_REQUIRED / cart quantity 5 /
+reserved inventory 2 / reconciliation attempts 1이었다. 즉 completion transaction은 rollback되고
+start transaction은 남는다. 이는 로컬 재현 evidence이며 Production 사고·영향 건수는 판정하지 않는다.
+수정은 `(rs,rowNumber) -> rs.getInt(1)` 한 줄이며 다른 adapter 내용은 기준 main과 동일하다.
+실제 행을 읽어 cart quantity가 3으로 감소하는 pass-after test와 equal/less 시 DELETE를 보호한다.
+
+Provider recovery protocol도 KEEP한다: start payment lock/attempt commit → 외부 query → completion
+payment/order join lock → SKU 순서 inventory mutation → status/order/delivery/coupon → ONE_TIME cart
+lock/item lock/consume → membership/notification/audit. 두 completion의 잠금 재확인으로 중복 효과를
+방지한다. UNKNOWN 또는 BILLING/PROCESSING gate, 10회 cap, unavailable/timeout/unknown와 billing
+failure 후속 retry는 기존 동작이다. provider_status의 동적 값과 `RECONCILED_FAILED`도 유지한다.
+
+cart absent는 생성하지 않고, item absent는 skip한다. existing cart는 `updated_at`을 갱신하지만
+**version을 증가시키지 않는 기존 reconciliation 의미를 유지**한다. 일반 Payment 경로와의 차이는
+향후 계약 확인 책임이며 이번 correction에서 통합하지 않는다. provider 호출을 transaction 안으로
+옮기거나 reconciliation SQL을 providerStatus가 다른 entity transition으로 치환하지 않는다.
+
+### Normal Payment / Inventory KEEP and evidence
+
+`PaymentPersistenceAdapter`의 JPA payment/order transition, missing cart atomic ensure/pessimistic lock,
+`InventoryService`의 MANDATORY caller transaction, pessimistic lock, version/available CAS와 movement
+audit는 production no-op이다. 실제 MySQL regression으로 reserve/deduct/release/restore와 version,
+stale CAS, caller rollback, missing inventory, Checkout concurrent reservation과 일반 Payment cart race를 보호한다.
+
+Quick Reorder는 frozen main JDBC reference의 동일 입력을 rollback transaction에서 비교한다:
+typed result/stored JSON/cart rows/version parity, mixed eligibility와 source item ordering. legacy가 저장한
+response의 application replay/HTTP JSON, first-cart 동시 same-key 요청과 기존 overflow rollback도 검증한다.
+Payment Reconciliation은 actual MySQL state/movement/coupon/delivery/membership/notification/audit,
+external provider transaction 경계, success/failure/uncertain, completion rollback와 overlapping query를 검증한다.
+실물 Toss 호출은 실행하지 않는다.
+
+Source inventory는 JdbcTemplate **34 / runtime 25**, EntityManager **10**, Querydsl production reference **2**,
+Backend production Java **588**로 모두 유지한다. JDBC 감소 0도 유효한 수렴이다.
+compiled Architecture Guard report는 frozen baseline **204**와 동일하다: application-api 186 /
+api-persistence 1 / persistence-api 12 / runtime-maintenance 5. **RESOLVED 0 / RECLASSIFIED 0 / NEW 0**.
+baseline을 자동 재생성하거나 추가 승인하지 않는다.
+
+clean compileJava/Q-type regeneration → compileTestJava → Architecture Guard → MySQL targeted →
+T01 Querydsl/T04/T05/Commerce/Checkout regression → full Backend → build -x test → validators →
+최신 HEAD Repository Validation을 Gate로 사용한다. 실행 결과·fail-before/pass-after·실패 correction과
+미실행 review는 Draft PR에 기록한다. 독립 확인은 별도 CI 환경의 최신 HEAD 검증으로 보완하며 외부
+AI review submission을 수행한 것으로 표현하지 않는다.
+
+복구 경계는 두 production adapter와 tests/document의 일반 revert이며 schema/data migration은 없다.
+배포 뒤 실제로 성공 완료된 대사의 cart 소비를 revert가 되돌리지는 않으므로 운영 데이터 복구는 별도 승인
+영역이다. 이번 작업에는 disposable local MySQL만 사용한다. T07 이후/Production/Cloud는 제외한다.
+Draft PR에서 STOP하며 Ready 전환, CodeRabbit 요청, merge를 수행하지 않는다.
