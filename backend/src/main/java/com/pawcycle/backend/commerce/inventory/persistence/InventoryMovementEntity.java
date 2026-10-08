@@ -105,6 +105,14 @@ public class InventoryMovementEntity {
         createdAt);
   }
 
+  /** Subscription reservations historically have payment_id but no source_id. */
+  public static InventoryMovementEntity subscriptionReservation(
+      long skuId, long paymentId, int quantity, int availableBefore, int availableAfter,
+      int reservedBefore, int reservedAfter, Timestamp createdAt) {
+    return new InventoryMovementEntity(skuId, paymentId, "RESERVE", quantity,
+        availableBefore, availableAfter, reservedBefore, reservedAfter, null, null, null, createdAt);
+  }
+
   public static InventoryMovementEntity adminAdjustment(
       long skuId,
       int quantity,

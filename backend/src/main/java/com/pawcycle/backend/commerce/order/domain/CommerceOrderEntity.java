@@ -96,6 +96,15 @@ public class CommerceOrderEntity {
     this.createdAt = createdAt;
   }
 
+  public static CommerceOrderEntity subscription(
+      String number, long memberId, BigDecimal originalAmount, BigDecimal paymentAmount,
+      String name, String phone, String postalCode, String line1, String line2, LocalDateTime createdAt) {
+    var row = new CommerceOrderEntity(number, memberId, originalAmount, BigDecimal.ZERO,
+        BigDecimal.ZERO, paymentAmount, name, phone, postalCode, line1, line2, createdAt);
+    row.source = "SUBSCRIPTION";
+    return row;
+  }
+
   public Long getId() {
     return id;
   }

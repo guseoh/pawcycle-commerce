@@ -112,6 +112,16 @@ public class PaymentEntity {
     this.createdAt = now;
   }
 
+  public static PaymentEntity billing(
+      long orderId, BigDecimal amount, String providerOrderId, String idempotencyKey,
+      int attempt, LocalDateTime requestedAt, LocalDateTime createdAt) {
+    var row = new PaymentEntity(orderId, amount, providerOrderId, idempotencyKey, requestedAt, null);
+    row.type = "BILLING";
+    row.attemptNo = attempt;
+    row.createdAt = createdAt;
+    return row;
+  }
+
   public Long getId() {
     return id;
   }

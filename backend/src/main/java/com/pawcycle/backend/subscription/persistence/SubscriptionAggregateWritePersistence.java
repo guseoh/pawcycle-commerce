@@ -2,46 +2,43 @@ package com.pawcycle.backend.subscription.persistence;
 
 import com.pawcycle.backend.subscription.api.SubscriptionApiException;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import com.pawcycle.backend.commerce.notification.persistence.QNotificationEntity;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.Expressions;
 
-/** Write-side SQL for aggregate state transitions and immutable snapshots. */
+/** JPA command writes with explicitly retained atomic MySQL operations. */
 class SubscriptionAggregateWritePersistence {
-  private final JdbcTemplate jdbc;
+  private final SubscriptionNativeSql nativeSql;
+  private final EntityManager entities;
+  private final JPAQueryFactory queries;
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
+  private final QPendingPlanChangeEntity pending = new QPendingPlanChangeEntity("pending");
+  private final QSubscriptionScheduleAddonEntity addon = new QSubscriptionScheduleAddonEntity("addon");
 
-  SubscriptionAggregateWritePersistence(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  SubscriptionAggregateWritePersistence(EntityManager entities) {
+    this.nativeSql = new SubscriptionNativeSql(entities);
+    this.entities = entities;
+    this.queries = new JPAQueryFactory(entities);
   }
 
 public long insertSubscription(
       long memberId, long versionId, int cycle, long petId, LocalDate created, LocalDate next) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,pet_id,status,version,current_snapshot_id,legacy_api_visible,runtime_managed)"
-            + " VALUES (?,?,?,?,?,?,?,'ACTIVE',0,NULL,false,true)",
-        memberId,
-        firstSku(versionId),
-        1,
-        cycle,
-        created,
-        next,
-        petId);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    var row = new SubscriptionEntity(memberId, firstSku(versionId), cycle, petId, created, next);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void setCurrentSnapshot(long subscriptionId, long snapshotId) {
-    jdbc.update(
-        "UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshotId, subscriptionId);
+    queries.update(subscription).set(subscription.currentSnapshotId, snapshotId).where(subscription.id.eq(subscriptionId)).execute();
   }
 
 public void insertScheduled(long subscriptionId, LocalDate date) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id)"
-            + " VALUES (?,?,'SCHEDULED',NULL)",
-        subscriptionId,
-        date);
+    insertScheduledAndReturnId(subscriptionId, date);
   }
 
 public long createSnapshot(long subscriptionId, long versionId, int cycle, long price) {
@@ -49,9 +46,11 @@ public long createSnapshot(long subscriptionId, long versionId, int cycle, long 
   }
 
 public long insertPet(long memberId, String name, String petType) {
-    jdbc.update(
-        "INSERT INTO pets(member_id,name,pet_type) VALUES (?,?,?)", memberId, name, petType);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    var row = new PetEntity(memberId, name, petType);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void updatePet(
@@ -63,73 +62,56 @@ public void updatePet(
       boolean breedPresent,
       java.math.BigDecimal weightKg,
       boolean weightPresent) {
-    List<String> columns = new ArrayList<>();
-    List<Object> arguments = new ArrayList<>();
-    if (namePresent) {
-      columns.add("name=?");
-      arguments.add(name);
-    }
-    if (breedPresent) {
-      columns.add("breed=?");
-      arguments.add(breed);
-    }
-    if (weightPresent) {
-      columns.add("weight_kg=?");
-      arguments.add(weightKg);
-    }
-    arguments.add(petId);
-    arguments.add(memberId);
-    if (jdbc.update(
-            "UPDATE pets SET " + String.join(",", columns) + " WHERE id=? AND member_id=?",
-            arguments.toArray())
-        != 1) throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
+    var pet = new QPetEntity("pet");
+    var update = queries.update(pet).where(pet.id.eq(petId), pet.memberId.eq(memberId));
+    if (namePresent) update.set(pet.name, name);
+    if (breedPresent) update.set(pet.breed, breed);
+    if (weightPresent) update.set(pet.weightKg, weightKg);
+    if (update.execute() != 1) throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
   }
 
 public void replacePendingPlanChange(long subscriptionId, long snapshotId, long scheduleId) {
-    jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId);
-    jdbc.update(
-        "INSERT INTO pending_plan_changes(subscription_id,snapshot_id,target_schedule_id) VALUES"
-            + " (?,?,?)",
-        subscriptionId,
-        snapshotId,
-        scheduleId);
+    deletePendingPlanChange(subscriptionId);
+    var row = new PendingPlanChangeEntity(subscriptionId, snapshotId, scheduleId);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
   }
 
 public void setSubscriptionPet(long subscriptionId, long petId) {
-    jdbc.update("UPDATE subscriptions SET pet_id=? WHERE id=?", petId, subscriptionId);
+    queries.update(subscription).set(subscription.petId, petId).where(subscription.id.eq(subscriptionId)).execute();
   }
 
 public void markSkipped(long scheduleId) {
-    jdbc.update("UPDATE subscription_schedules SET status='SKIPPED' WHERE id=?", scheduleId);
+    queries.update(schedule).set(schedule.status, "SKIPPED").where(schedule.id.eq(scheduleId)).execute();
   }
 
 public long insertScheduledAndReturnId(long subscriptionId, LocalDate date) {
-    insertScheduled(subscriptionId, date);
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    var row = new SubscriptionScheduleEntity(subscriptionId, date);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return row.getId();
   }
 
 public void retargetPendingPlanChange(long subscriptionId, long scheduleId) {
-    jdbc.update(
-        "UPDATE pending_plan_changes SET target_schedule_id=? WHERE subscription_id=?",
-        scheduleId,
-        subscriptionId);
+    queries.update(pending).set(pending.targetScheduleId, scheduleId).where(pending.subscriptionId.eq(subscriptionId)).execute();
   }
 
 public void setSubscriptionStatus(long subscriptionId, String status) {
-    jdbc.update("UPDATE subscriptions SET status=? WHERE id=?", status, subscriptionId);
+    queries.update(subscription).set(subscription.status, status).where(subscription.id.eq(subscriptionId)).execute();
   }
 
 public void setScheduleStatus(long scheduleId, String status) {
-    jdbc.update(
-        "UPDATE subscription_schedules SET status=?,hold_reason=CASE WHEN ?='HELD' THEN hold_reason"
-            + " ELSE NULL END WHERE id=?",
-        status,
-        status,
-        scheduleId);
+    // Keep the original database comparison/collation, rather than a Java case-sensitive branch.
+    var holdReason = new CaseBuilder().when(Expressions.asString(status).eq("HELD"))
+        .then(schedule.holdReason).otherwise((String) null);
+    queries.update(schedule).set(schedule.status, status).set(schedule.holdReason, holdReason)
+        .where(schedule.id.eq(scheduleId)).execute();
   }
 
 public void upsertScheduleAddon(long scheduleId, long skuId, int quantity, java.math.BigDecimal price) {
-    jdbc.update(
+    nativeSql.update(
         "INSERT INTO"
             + " subscription_schedule_addons(schedule_id,sku_id,quantity,unit_price_krw,created_at,updated_at)"
             + " VALUES (?,?,?, ?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE"
@@ -141,15 +123,12 @@ public void upsertScheduleAddon(long scheduleId, long skuId, int quantity, java.
   }
 
 public void deleteScheduleAddon(long scheduleId, long skuId) {
-    if (jdbc.update(
-            "DELETE FROM subscription_schedule_addons WHERE schedule_id=? AND sku_id=?",
-            scheduleId,
-            skuId)
-        != 1) throw new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다.");
+    if (queries.delete(addon).where(addon.scheduleId.eq(scheduleId), addon.skuId.eq(skuId)).execute() != 1)
+      throw new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다.");
   }
 
 public void deleteScheduleAddons(long subscriptionId) {
-    jdbc.update(
+    nativeSql.update(
         "DELETE addon FROM subscription_schedule_addons addon JOIN subscription_schedules schedule"
             + " ON schedule.id=addon.schedule_id WHERE schedule.subscription_id=? AND"
             + " schedule.status IN ('SCHEDULED','HELD')",
@@ -157,26 +136,20 @@ public void deleteScheduleAddons(long subscriptionId) {
   }
 
 public void moveScheduleAddons(long fromScheduleId, long toScheduleId) {
-    jdbc.update(
-        "UPDATE subscription_schedule_addons SET schedule_id=? WHERE schedule_id=?",
-        toScheduleId,
-        fromScheduleId);
+    queries.update(addon).set(addon.scheduleId, toScheduleId).where(addon.scheduleId.eq(fromScheduleId)).execute();
   }
 
 public void reschedule(long scheduleId, LocalDate date) {
-    jdbc.update("UPDATE subscription_schedules SET scheduled_date=? WHERE id=?", date, scheduleId);
+    queries.update(schedule).set(schedule.scheduledDate, date).where(schedule.id.eq(scheduleId)).execute();
   }
 
 public void rescheduleHeld(long scheduleId, LocalDate date) {
-    jdbc.update(
-        "UPDATE subscription_schedules SET scheduled_date=?,status='SCHEDULED',hold_reason=NULL"
-            + " WHERE id=?",
-        date,
-        scheduleId);
+    queries.update(schedule).set(schedule.scheduledDate, date).set(schedule.status, "SCHEDULED")
+        .setNull(schedule.holdReason).where(schedule.id.eq(scheduleId)).execute();
   }
 
 public void cancelUnorderedSchedules(long subscriptionId) {
-    jdbc.update(
+    nativeSql.update(
         "UPDATE subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON"
             + " existing_order.schedule_id=schedule.id SET schedule.status='CANCELED' WHERE"
             + " schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD') AND"
@@ -185,19 +158,16 @@ public void cancelUnorderedSchedules(long subscriptionId) {
   }
 
 public void deletePendingPlanChange(long subscriptionId) {
-    jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id=?", subscriptionId);
+    queries.delete(pending).where(pending.subscriptionId.eq(subscriptionId)).execute();
   }
 
 public boolean incrementVersion(long subscriptionId, long expected) {
-    return jdbc.update(
-            "UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?",
-            subscriptionId,
-            expected)
-        == 1;
+    return queries.update(subscription).set(subscription.version, subscription.version.add(1))
+        .where(subscription.id.eq(subscriptionId), subscription.version.eq(expected)).execute() == 1;
   }
 
 public void insertCommandHistory(long subscriptionId, String command, long before, long after) {
-    jdbc.update(
+    nativeSql.update(
         "INSERT INTO"
             + " subscription_command_history(subscription_id,command_type,occurred_at,version_before,version_after)"
             + " VALUES (?,?,UTC_TIMESTAMP(6),?,?)",
@@ -208,14 +178,13 @@ public void insertCommandHistory(long subscriptionId, String command, long befor
   }
 
 public void deleteDeliveryReminder(long scheduleId) {
-    jdbc.update(
-        "DELETE FROM notifications WHERE type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
-            + " reference_type='SCHEDULE' AND reference_id=?",
-        scheduleId);
+    var notification = new QNotificationEntity("notification");
+    queries.delete(notification).where(notification.type.eq("SUBSCRIPTION_DELIVERY_REMINDER"),
+        notification.referenceType.eq("SCHEDULE"), notification.referenceId.eq(scheduleId)).execute();
   }
 
 public void deleteDeliveryReminders(long subscriptionId) {
-    jdbc.update(
+    nativeSql.update(
         "DELETE notification FROM notifications notification JOIN subscription_schedules schedule"
             + " ON schedule.id=notification.reference_id AND notification.reference_type='SCHEDULE'"
             + " WHERE notification.type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
@@ -224,27 +193,19 @@ public void deleteDeliveryReminders(long subscriptionId) {
   }
 
 private long snapshot(long subscriptionId, long versionId, int cycle, long price) {
-    jdbc.update(
-        "INSERT INTO"
-            + " subscription_snapshots(subscription_id,source_plan_version_id,package_total_krw,delivery_cycle_weeks)"
-            + " VALUES (?,?,?,?)",
-        subscriptionId,
-        versionId,
-        price,
-        cycle);
-    long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-    jdbc.update(
-        "INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT"
-            + " ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?",
-        id,
-        versionId);
-    return id;
+    var row = new SubscriptionSnapshotEntity(subscriptionId, versionId, cycle, price);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    // Atomic INSERT SELECT avoids hydrating/copying every immutable plan item.
+    nativeSql.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT ?,sku_id,quantity FROM plan_items WHERE plan_version_id=?", row.getId(), versionId);
+    return row.getId();
   }
 
 private long firstSku(long versionId) {
-    return jdbc.queryForObject(
-        "SELECT sku_id FROM plan_items WHERE plan_version_id=? ORDER BY sku_id LIMIT 1",
-        Long.class,
-        versionId);
+    var item = new QSubscriptionReadRows_PlanItem("item");
+    Long id = queries.select(item.skuId).from(item).where(item.planVersionId.eq(versionId)).orderBy(item.skuId.asc()).fetchFirst();
+    if (id == null) throw new org.springframework.dao.EmptyResultDataAccessException(1);
+    return id;
   }
 }

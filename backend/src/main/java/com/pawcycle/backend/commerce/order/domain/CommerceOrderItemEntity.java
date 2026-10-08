@@ -74,6 +74,13 @@ public class CommerceOrderItemEntity {
     this.lineAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
   }
 
+  public CommerceOrderItemEntity(
+      long orderId, long skuId, String skuCode, String productName, String skuName,
+      BigDecimal unitPrice, int quantity, BigDecimal lineAmount) {
+    this(orderId, skuId, skuCode, productName, skuName, unitPrice, quantity);
+    this.lineAmount = lineAmount;
+  }
+
   public long getSkuId() {
     return skuId;
   }

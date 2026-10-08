@@ -22,16 +22,28 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.core.types.Projections;
+import com.pawcycle.backend.catalog.sku.domain.QSku;
+import com.pawcycle.backend.catalog.product.domain.QProduct;
+import com.pawcycle.backend.catalog.category.domain.QCategory;
+import com.pawcycle.backend.catalog.brand.domain.QBrand;
+import com.pawcycle.backend.commerce.inventory.persistence.QInventoryEntity;
 
-/** Compatibility query facade: typed JPA reads; unchanged T09 JDBC command preconditions/locks. */
+/** Typed JPA command preconditions; special JOIN/LIMIT locks retain the original MySQL SQL. */
 class SubscriptionAggregateQueryPersistence {
-  private final JdbcTemplate jdbc;
+  private final SubscriptionNativeSql nativeSql;
   private final SubscriptionReadQueries reads;
+  private final JPAQueryFactory queries;
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
 
-  SubscriptionAggregateQueryPersistence(JdbcTemplate jdbc, SubscriptionReadQueries reads) {
-    this.jdbc = jdbc;
+  SubscriptionAggregateQueryPersistence(SubscriptionReadQueries reads, EntityManager entities) {
+    this.nativeSql = new SubscriptionNativeSql(entities);
     this.reads = reads;
+    this.queries = new JPAQueryFactory(entities);
   }
 
 public PetProjection findOwnedPet(long memberId, long petId) {
@@ -45,70 +57,42 @@ public PlanVersionProjection findPlanVersion(long versionId) {
   }
 
 public boolean deliveryCycleAllowed(long versionId, int cycle) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM plan_version_delivery_cycles WHERE plan_version_id=? AND"
-                + " delivery_cycle_weeks=?",
-            Integer.class,
-            versionId,
-            cycle)
-        > 0;
+    var c = new QSubscriptionReadRows_Cycle("cycle");
+    return queries.select(c.count()).from(c).where(c.planVersionId.eq(versionId), c.deliveryCycleWeeks.eq(cycle)).fetchOne() > 0;
   }
 
 public boolean planContainsSku(long versionId, long skuId) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM plan_items WHERE plan_version_id=? AND sku_id=?",
-            Integer.class,
-            versionId,
-            skuId)
-        > 0;
+    var i = new QSubscriptionReadRows_PlanItem("item");
+    return queries.select(i.count()).from(i).where(i.planVersionId.eq(versionId), i.skuId.eq(skuId)).fetchOne() > 0;
   }
 
 public boolean scheduleAddonConflicts(long scheduleId, long versionId) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM subscription_schedule_addons addon JOIN plan_items item ON"
-                + " item.sku_id=addon.sku_id WHERE addon.schedule_id=? AND item.plan_version_id=?",
-            Integer.class,
-            scheduleId,
-            versionId)
-        > 0;
+    var a = new QSubscriptionReadRows_Addon("addon");
+    var i = new QSubscriptionReadRows_PlanItem("item");
+    return queries.select(a.count()).from(a).join(i).on(i.skuId.eq(a.skuId))
+        .where(a.scheduleId.eq(scheduleId), i.planVersionId.eq(versionId)).fetchOne() > 0;
   }
 
 public AddonSkuProjection findEligibleAddonSku(long skuId) {
-    return one(
-            "SELECT sku.id sku_id,product.id product_id,product.name product_name,sku.name"
-                + " sku_name,sku.price,product.display_status,category.active"
-                + " category_active,brand.active brand_active,sku.status"
-                + " sku_status,COALESCE(inventory.available_quantity,0) available_quantity FROM"
-                + " skus sku JOIN products product ON product.id=sku.product_id JOIN categories"
-                + " category ON category.id=product.category_id JOIN brands brand ON"
-                + " brand.id=product.brand_id LEFT JOIN inventories inventory ON"
-                + " inventory.sku_id=sku.id WHERE sku.id=?",
-            skuId)
-        .map(
-            row ->
-                new AddonSkuProjection(
-                    skuId,
-                    longValue(row, "product_id"),
-                    (String) row.get("product_name"),
-                    (String) row.get("sku_name"),
-                    (java.math.BigDecimal) row.get("price"),
-                    "ACTIVE".equals(row.get("sku_status"))
-                        && "PUBLIC".equals(row.get("display_status"))
-                        && Boolean.TRUE.equals(row.get("category_active"))
-                        && Boolean.TRUE.equals(row.get("brand_active"))
-                        && intValue(row, "available_quantity") > 0))
+    var sku = new QSku("sku");
+    var product = new QProduct("product");
+    var category = new QCategory("category");
+    var brand = new QBrand("brand");
+    var inventory = new QInventoryEntity("inventory");
+    var eligible = sku.status.eq(com.pawcycle.backend.catalog.sku.domain.SkuStatus.ACTIVE).and(product.status.eq(com.pawcycle.backend.catalog.product.domain.ProductStatus.PUBLIC))
+        .and(category.active.isTrue()).and(brand.active.isTrue()).and(inventory.availableQuantity.coalesce(0).gt(0));
+    return Optional.ofNullable(queries.select(Projections.constructor(AddonSkuProjection.class,
+            sku.id, product.id, product.name, sku.name, sku.price, eligible))
+        .from(sku).join(sku.product, product).join(product.category, category).join(brand).on(brand.id.eq(product.brandId))
+        .leftJoin(inventory).on(inventory.skuId.eq(sku.id)).where(sku.id.eq(skuId)).fetchOne())
         .orElseThrow(() -> new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다."));
   }
 
 public SubscriptionProjection lockOwnedSubscription(long memberId, long subscriptionId) {
-    return one(
-            "SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id"
-                + " FROM subscriptions WHERE id=? AND member_id=? AND runtime_managed=true FOR UPDATE",
-            subscriptionId,
-            memberId)
-        .map(this::subscription)
-        .orElseThrow(
-            () -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
+    return Optional.ofNullable(queries.select(Projections.constructor(SubscriptionProjection.class, subscription.id, subscription.memberId, subscription.status, subscription.version, subscription.petId, subscription.deliveryCycleWeeks, subscription.currentSnapshotId)).from(subscription)
+        .where(subscription.id.eq(subscriptionId), subscription.memberId.eq(memberId), subscription.runtimeManaged.isTrue())
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne())
+        .orElseThrow(() -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
   }
 
 public SubscriptionProjection findOwnedSubscription(long memberId, long subscriptionId) {
@@ -146,21 +130,14 @@ public SubscriptionSnapshot findSnapshot(long snapshotId) {
   }
 
 public ScheduleProjection lockNextScheduled(long subscriptionId) {
-    return one(
+    return nativeSql.query(
             "SELECT schedule.id,schedule.scheduled_date FROM subscription_schedules schedule LEFT"
-                + " JOIN subscription_orders existing_order ON"
-                + " existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND"
-                + " (schedule.status='SCHEDULED' OR (schedule.status='HELD' AND"
-                + " schedule.hold_reason='ORDER_STOCK_UNAVAILABLE')) AND existing_order.id IS NULL"
-                + " ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE",
-            subscriptionId)
-        .map(
-            row ->
-                new ScheduleProjection(
-                    longValue(row, "id"), date(row.get("scheduled_date"))))
-        .orElseThrow(
-            () ->
-                new SubscriptionApiException(409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
+                + " JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE schedule.subscription_id=? AND"
+                + " (schedule.status='SCHEDULED' OR (schedule.status='HELD' AND schedule.hold_reason='ORDER_STOCK_UNAVAILABLE')) AND existing_order.id IS NULL"
+                + " ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE", ScheduleProjection.class, subscriptionId)
+        .addScalar("id", Long.class).addScalar("scheduled_date", LocalDate.class)
+        .getResultList().stream().findFirst()
+        .orElseThrow(() -> new SubscriptionApiException(409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
   }
 
 public Optional<PendingSubscriptionChange> findPendingChange(long subscriptionId) {
@@ -172,12 +149,8 @@ public int scheduleAddonCount(long scheduleId) {
   }
 
 public boolean hasScheduleAddon(long scheduleId, long skuId) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=? AND sku_id=?",
-            Integer.class,
-            scheduleId,
-            skuId)
-        > 0;
+    var a = new QSubscriptionReadRows_Addon("addon");
+    return queries.select(a.count()).from(a).where(a.scheduleId.eq(scheduleId), a.skuId.eq(skuId)).fetchOne() > 0;
   }
 
 public List<ScheduleAddonProjection> findScheduleAddons(long scheduleId) {
@@ -185,36 +158,13 @@ public List<ScheduleAddonProjection> findScheduleAddons(long scheduleId) {
   }
 
 public boolean scheduleDateTaken(long subscriptionId, LocalDate date, long excludedScheduleId) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND"
-                + " scheduled_date=? AND id<>?",
-            Integer.class,
-            subscriptionId,
-            date,
-            excludedScheduleId)
-        > 0;
+    return queries.select(schedule.count()).from(schedule).where(schedule.subscriptionId.eq(subscriptionId),
+        schedule.scheduledDate.eq(date), schedule.id.ne(excludedScheduleId)).fetchOne() > 0;
   }
 
-private SubscriptionProjection subscription(Map<String, Object> row) {
-    return new SubscriptionProjection(
-        longValue(row, "id"),
-        longValue(row, "member_id"),
-        (String) row.get("status"),
-        longValue(row, "version"),
-        row.get("pet_id") == null ? null : longValue(row, "pet_id"),
-        intValue(row, "delivery_cycle_weeks"),
-        longValue(row, "current_snapshot_id"));
-  }
 
-private LocalDate date(Object value) {
-    if (value == null) return null;
-    if (value instanceof LocalDate localDate) return localDate;
-    if (value instanceof java.sql.Date sqlDate) return sqlDate.toLocalDate();
-    if (value instanceof java.sql.Timestamp timestamp) {
-      return timestamp.toLocalDateTime().toLocalDate();
-    }
-    throw new IllegalArgumentException("Unsupported date value type: " + value.getClass().getName());
-  }
+
+
 
 public PageProjection<SubscriptionProjection> findSubscriptions(
       long memberId, int page, int size) {
@@ -242,9 +192,8 @@ public Optional<LocalDate> findNextSchedule(long subscriptionId, LocalDate today
   }
 
 public Optional<Long> findPendingSnapshotId(long subscriptionId) {
-    return one(
-            "SELECT snapshot_id FROM pending_plan_changes WHERE subscription_id=?", subscriptionId)
-        .map(row -> longValue(row, "snapshot_id"));
+    var p = new QSubscriptionReadRows_PendingChange("pending");
+    return Optional.ofNullable(queries.select(p.snapshotId).from(p).where(p.subscriptionId.eq(subscriptionId)).fetchOne());
   }
 
 public Optional<NextDeliveryProjection> findNextDeliverySchedule(long subscriptionId) {
@@ -266,77 +215,40 @@ public PageProjection<CommandHistoryProjection> findCommandHistory(
   }
 
 public List<Long> activeSubscriptionIds() {
-    return jdbc.queryForList(
-        "SELECT id FROM subscriptions WHERE runtime_managed=true AND status='ACTIVE' ORDER BY id",
-        Long.class);
+    return queries.select(subscription.id).from(subscription).where(subscription.runtimeManaged.isTrue(), subscription.status.eq("ACTIVE"))
+        .orderBy(subscription.id.asc()).fetch();
   }
 
 public Optional<SubscriptionProjection> lockActiveSubscription(long subscriptionId) {
-    return one(
-            "SELECT id,member_id,status,version,pet_id,delivery_cycle_weeks,current_snapshot_id"
-                + " FROM subscriptions WHERE id=? AND runtime_managed=true AND status='ACTIVE' FOR"
-                + " UPDATE",
-            subscriptionId)
-        .map(this::subscription);
+    return Optional.ofNullable(queries.select(Projections.constructor(SubscriptionProjection.class, subscription.id, subscription.memberId, subscription.status, subscription.version, subscription.petId, subscription.deliveryCycleWeeks, subscription.currentSnapshotId)).from(subscription)
+        .where(subscription.id.eq(subscriptionId), subscription.runtimeManaged.isTrue(), subscription.status.eq("ACTIVE"))
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
   }
 
 public boolean hasUnprocessedDueSchedule(long subscriptionId, LocalDate today) {
-    return !jdbc.queryForList(
-            "SELECT schedule.id FROM subscription_schedules schedule LEFT JOIN subscription_orders"
-                + " existing_order ON existing_order.schedule_id=schedule.id WHERE"
-                + " schedule.subscription_id=? AND schedule.status='SCHEDULED' AND"
-                + " schedule.scheduled_date<=? AND existing_order.id IS NULL ORDER BY"
-                + " schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE",
-            subscriptionId,
-            today)
-        .isEmpty();
+    return !nativeSql.query(
+            "SELECT schedule.id FROM subscription_schedules schedule LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id=schedule.id WHERE"
+                + " schedule.subscription_id=? AND schedule.status='SCHEDULED' AND schedule.scheduled_date<=? AND existing_order.id IS NULL ORDER BY"
+                + " schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE", Long.class, subscriptionId, today)
+        .getResultList().isEmpty();
   }
 
 public List<ScheduleProjection> futureSchedulesForUpdate(long subscriptionId, LocalDate today) {
-    return jdbc.query(
-        "SELECT id,scheduled_date FROM subscription_schedules WHERE subscription_id=? AND"
-            + " status='SCHEDULED' AND scheduled_date>? ORDER BY scheduled_date,id FOR UPDATE",
-        (rs, rowNum) ->
-            new ScheduleProjection(
-                rs.getLong("id"), rs.getDate("scheduled_date").toLocalDate()),
-        subscriptionId,
-        today);
+    return queries.select(Projections.constructor(ScheduleProjection.class, schedule.id, schedule.scheduledDate))
+        .from(schedule).where(schedule.subscriptionId.eq(subscriptionId), schedule.status.eq("SCHEDULED"), schedule.scheduledDate.gt(today))
+        .orderBy(schedule.scheduledDate.asc(), schedule.id.asc()).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch();
   }
 
 public Optional<ProcessedScheduleProjection> lastProcessedSchedule(long subscriptionId) {
-    return one(
-            "SELECT orders.scheduled_date,snapshot.delivery_cycle_weeks FROM subscription_orders"
-                + " orders JOIN subscription_snapshots snapshot ON"
-                + " snapshot.id=orders.effective_snapshot_id WHERE orders.subscription_id=? ORDER"
-                + " BY orders.scheduled_date DESC,orders.id DESC LIMIT 1",
-            subscriptionId)
-        .map(
-            row ->
-                new ProcessedScheduleProjection(
-                    date(row.get("scheduled_date")), intValue(row, "delivery_cycle_weeks")));
+    var order = new QSubscriptionOrderEntity("processed");
+    var snapshot = new QSubscriptionSnapshotEntity("snapshot");
+    return Optional.ofNullable(queries.select(Projections.constructor(ProcessedScheduleProjection.class, order.scheduledDate, snapshot.deliveryCycleWeeks))
+        .from(order).join(snapshot).on(snapshot.id.eq(order.snapshotId)).where(order.subscriptionId.eq(subscriptionId))
+        .orderBy(order.scheduledDate.desc(), order.id.desc()).fetchFirst());
   }
 
 public boolean scheduleExists(long subscriptionId, LocalDate date) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND"
-                + " scheduled_date=?",
-            Integer.class,
-            subscriptionId,
-            date)
-        > 0;
+    return queries.select(schedule.count()).from(schedule)
+        .where(schedule.subscriptionId.eq(subscriptionId), schedule.scheduledDate.eq(date)).fetchOne() > 0;
   }
-
-private Optional<Map<String, Object>> one(String sql, Object... args) {
-    List<Map<String, Object>> rows = jdbc.queryForList(sql, args);
-    return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
-  }
-
-private long longValue(Map<String, Object> r, String k) {
-    return ((Number) r.get(k)).longValue();
-  }
-
-private int intValue(Map<String, Object> r, String k) {
-    return ((Number) r.get(k)).intValue();
-  }
-
 }

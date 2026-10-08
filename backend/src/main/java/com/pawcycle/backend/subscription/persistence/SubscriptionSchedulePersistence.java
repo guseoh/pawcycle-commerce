@@ -1,22 +1,19 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SubscriptionSchedulePersistence {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
 
-  public SubscriptionSchedulePersistence(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public SubscriptionSchedulePersistence(EntityManager entities) {
+    this.entities = entities;
   }
 
   public List<Long> heldScheduleIds(long subscriptionId) {
-    return jdbc.queryForList(
-        "SELECT id FROM subscription_schedules WHERE subscription_id=? AND status='HELD' ORDER BY"
-            + " scheduled_date,id",
-        Long.class,
-        subscriptionId);
+    return entities.createQuery("select s.id from SubCommandSchedule s where s.subscriptionId=:id and s.status='HELD' order by s.scheduledDate,s.id", Long.class)
+        .setParameter("id", subscriptionId).getResultList();
   }
 }

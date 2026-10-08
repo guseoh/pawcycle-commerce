@@ -5,89 +5,65 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
+import jakarta.persistence.EntityManager;
+import com.pawcycle.backend.commerce.notification.persistence.QNotificationEntity;
+import jakarta.persistence.LockModeType;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.jpa.JPAExpressions;
+import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.pawcycle.backend.commerce.order.domain.CommerceOrderEntity;
+import com.pawcycle.backend.commerce.order.domain.CommerceOrderItemEntity;
+import com.pawcycle.backend.commerce.order.persistence.SubscriptionOrderContextEntity;
+import com.pawcycle.backend.commerce.order.persistence.SubscriptionShippingSnapshotEntity;
+import com.pawcycle.backend.commerce.order.persistence.QSubscriptionOrderContextEntity;
+import com.pawcycle.backend.commerce.order.persistence.QSubscriptionShippingSnapshotEntity;
+import com.pawcycle.backend.commerce.payment.domain.PaymentEntity;
+import com.pawcycle.backend.commerce.payment.domain.QPaymentEntity;
+import com.pawcycle.backend.commerce.inventory.persistence.InventoryMovementEntity;
+import com.pawcycle.backend.commerce.inventory.persistence.QInventoryEntity;
+import com.pawcycle.backend.commerce.billing.persistence.QBillingPaymentMethodEntity;
+import com.pawcycle.backend.catalog.sku.domain.QSku;
+import com.pawcycle.backend.catalog.product.domain.QProduct;
+import org.springframework.stereotype.Repository;
 
-@Component
+@Repository
 public class SubscriptionOrderPersistence {
-  private final JdbcTemplate jdbc;
+  private final SubscriptionNativeSql nativeSql;
+  private final EntityManager entities;
+  private final JPAQueryFactory queries;
+  private final QSubscriptionEntity subscription = new QSubscriptionEntity("subscription");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
+  private final QPendingPlanChangeEntity pending = new QPendingPlanChangeEntity("pending");
+  private final QInventoryEntity inventory = new QInventoryEntity("inventory");
 
-  public SubscriptionOrderPersistence(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public SubscriptionOrderPersistence(EntityManager entities) {
+    this.nativeSql = new SubscriptionNativeSql(entities);
+    this.entities = entities;
+    this.queries = new JPAQueryFactory(entities);
   }
 
   public static final String UPDATE_SCHEDULE_EFFECTIVE_SQL =
       "UPDATE subscription_schedules SET"
           + " effective_snapshot_id=?,status='SCHEDULED',hold_reason=NULL WHERE id=?";
 
-  private static final String FIND_DUE_CANDIDATES_SQL =
-      """
-      SELECT schedule.id AS schedule_id, schedule.subscription_id
-      FROM subscription_schedules schedule
-      JOIN subscriptions subscription ON subscription.id = schedule.subscription_id
-      LEFT JOIN subscription_orders existing_order ON existing_order.schedule_id = schedule.id
-      WHERE subscription.runtime_managed = true
-        AND subscription.status = 'ACTIVE'
-        AND (schedule.status = 'SCHEDULED'
-             OR (schedule.status = 'HELD' AND schedule.hold_reason = 'ORDER_STOCK_UNAVAILABLE'))
-        AND schedule.scheduled_date <= ?
-        AND existing_order.id IS NULL
-        AND NOT EXISTS (
-            SELECT 1
-            FROM subscription_schedules prior_schedule
-            JOIN subscription_order_context prior_context ON prior_context.schedule_id = prior_schedule.id
-            JOIN payments prior_payment ON prior_payment.order_id = prior_context.order_id
-            WHERE prior_schedule.subscription_id = schedule.subscription_id
-              AND (prior_schedule.scheduled_date < schedule.scheduled_date
-                   OR (prior_schedule.scheduled_date = schedule.scheduled_date AND prior_schedule.id < schedule.id))
-              AND prior_payment.status <> 'SUCCEEDED'
-        )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM subscription_schedules earlier
-            LEFT JOIN subscription_orders earlier_order ON earlier_order.schedule_id = earlier.id
-            WHERE earlier.subscription_id = schedule.subscription_id
-              AND (earlier.status = 'SCHEDULED'
-                   OR (earlier.status = 'HELD' AND earlier.hold_reason = 'ORDER_STOCK_UNAVAILABLE'))
-              AND earlier.scheduled_date <= ?
-              AND earlier_order.id IS NULL
-              AND (earlier.scheduled_date < schedule.scheduled_date
-                   OR (earlier.scheduled_date = schedule.scheduled_date AND earlier.id < schedule.id))
-        )
-      ORDER BY schedule.scheduled_date, schedule.id
-      LIMIT ?
-      """;
-
   public List<ExistingOrderRow> lockExistingOrders(long scheduleId) {
-    return jdbc.query(
-        "SELECT id FROM subscription_orders WHERE schedule_id=? FOR UPDATE",
-        (rs, row) -> new ExistingOrderRow(rs.getLong("id")),
-        scheduleId);
+    var order = new QSubscriptionOrderEntity("existing");
+    return queries.select(Projections.constructor(ExistingOrderRow.class, order.id)).from(order)
+        .where(order.scheduleId.eq(scheduleId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch();
   }
 
   public Optional<SnapshotRow> findSnapshot(long snapshotId, long subscriptionId) {
-    return jdbc
-        .query(
-            "SELECT id,source_plan_version_id,package_total_krw,delivery_cycle_weeks "
-                + "FROM subscription_snapshots WHERE id=? AND subscription_id=?",
-            (rs, row) ->
-                new SnapshotRow(
-                    rs.getLong("id"),
-                    rs.getLong("source_plan_version_id"),
-                    rs.getBigDecimal("package_total_krw"),
-                    rs.getInt("delivery_cycle_weeks")),
-            snapshotId,
-            subscriptionId)
-        .stream()
-        .findFirst();
+    var snapshot = new QSubscriptionSnapshotEntity("snapshot");
+    var row = queries.select(snapshot.id, snapshot.planVersionId, snapshot.packagePriceKrw, snapshot.deliveryCycleWeeks)
+        .from(snapshot).where(snapshot.id.eq(snapshotId), snapshot.subscriptionId.eq(subscriptionId)).fetchOne();
+    return Optional.ofNullable(row).map(value -> new SnapshotRow(value.get(snapshot.id), value.get(snapshot.planVersionId),
+        BigDecimal.valueOf(value.get(snapshot.packagePriceKrw)), value.get(snapshot.deliveryCycleWeeks)));
   }
 
   public int holdSchedule(String reason, long scheduleId) {
-    return jdbc.update(
-        "UPDATE subscription_schedules SET status='HELD',hold_reason=? WHERE id=? AND"
-            + " (status='SCHEDULED' OR (status='HELD' AND hold_reason='ORDER_STOCK_UNAVAILABLE'))",
-        reason,
-        scheduleId);
+    return Math.toIntExact(queries.update(schedule).set(schedule.status, "HELD").set(schedule.holdReason, reason)
+        .where(schedule.id.eq(scheduleId), eligible(schedule)).execute());
   }
 
   public int insertReservationMovement(
@@ -99,55 +75,33 @@ public class SubscriptionOrderPersistence {
       long reservedBefore,
       long reservedAfter,
       LocalDateTime createdAt) {
-    return jdbc.update(
-        """
-        INSERT INTO inventory_movements(sku_id,payment_id,type,quantity,available_before,available_after,reserved_before,reserved_after,created_at)
-        VALUES (?,?,'RESERVE',?,?,?,?,?,?)\
-        """,
-        skuId,
-        paymentId,
-        quantity,
-        availableBefore,
-        availableAfter,
-        reservedBefore,
-        reservedAfter,
-        createdAt);
+    var row = InventoryMovementEntity.subscriptionReservation(skuId, paymentId, quantity,
+        Math.toIntExact(availableBefore), Math.toIntExact(availableAfter), Math.toIntExact(reservedBefore), Math.toIntExact(reservedAfter),
+        java.sql.Timestamp.from(createdAt.toInstant(java.time.ZoneOffset.UTC)));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int reserveInventory(
       int quantity, int reservedQuantity, long skuId, long expectedVersion, int minimumQuantity) {
-    return jdbc.update(
-        """
-        UPDATE inventories SET available_quantity=available_quantity-?,reserved_quantity=reserved_quantity+?,version=version+1
-        WHERE sku_id=? AND version=? AND available_quantity>=?\
-        """,
-        quantity,
-        reservedQuantity,
-        skuId,
-        expectedVersion,
-        minimumQuantity);
+    return Math.toIntExact(queries.update(inventory)
+        .set(inventory.availableQuantity, inventory.availableQuantity.subtract(quantity))
+        .set(inventory.reservedQuantity, inventory.reservedQuantity.add(reservedQuantity))
+        .set(inventory.version, inventory.version.add(1))
+        .where(inventory.skuId.eq(skuId), inventory.version.eq(expectedVersion), inventory.availableQuantity.goe(minimumQuantity)).execute());
   }
 
   public Optional<InventoryRow> findInventory(long skuId) {
-    return jdbc
-        .query(
-            "SELECT available_quantity,reserved_quantity,version FROM inventories WHERE"
-                + " sku_id=?",
-            (rs, row) ->
-                new InventoryRow(
-                    rs.getLong("available_quantity"),
-                    rs.getLong("reserved_quantity"),
-                    rs.getLong("version")),
-            skuId)
-        .stream()
-        .findFirst();
+    return Optional.ofNullable(queries.select(Projections.constructor(InventoryRow.class,
+            inventory.availableQuantity.longValue(), inventory.reservedQuantity.longValue(), inventory.version))
+        .from(inventory).where(inventory.skuId.eq(skuId)).fetchOne());
   }
 
   public Integer lockAvailableQuantity(long skuId) {
-    return jdbc.query(
-        "SELECT available_quantity FROM inventories WHERE sku_id=? FOR UPDATE",
-        rs -> rs.next() ? rs.getInt(1) : null,
-        skuId);
+    return queries.select(inventory.availableQuantity).from(inventory).where(inventory.skuId.eq(skuId))
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne();
   }
 
   public int insertOrderItem(
@@ -159,41 +113,24 @@ public class SubscriptionOrderPersistence {
       BigDecimal unitPrice,
       int quantity,
       BigDecimal lineAmount) {
-    return jdbc.update(
-        """
-        INSERT INTO order_items(order_id,sku_id,snapshot_quality,sku_code_snapshot,product_name_snapshot,sku_name_snapshot,unit_price,quantity,line_amount)
-        VALUES (?,?,'FULL',?,?,?,?,?,?)\
-        """,
-        orderId,
-        skuId,
-        skuCode,
-        productName,
-        skuName,
-        unitPrice,
-        quantity,
-        lineAmount);
+    var row = new CommerceOrderItemEntity(orderId, skuId, skuCode, productName, skuName, unitPrice, quantity, lineAmount);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public List<PricedItem> findPricedSnapshotItems(long snapshotId) {
-    return jdbc.query(
-        """
-        SELECT item.sku_id,item.quantity,sku.sku_code,sku.name AS sku_name,sku.price,product.name AS product_name
-        FROM subscription_snapshot_items item JOIN skus sku ON sku.id=item.sku_id
-        JOIN products product ON product.id=sku.product_id WHERE item.snapshot_id=? ORDER BY item.sku_id\
-        """,
-        (rs, row) ->
-            new PricedItem(
-                rs.getLong("sku_id"),
-                rs.getInt("quantity"),
-                rs.getString("sku_code"),
-                rs.getString("sku_name"),
-                rs.getBigDecimal("price"),
-                rs.getString("product_name")),
-        snapshotId);
+    var item = new QSubscriptionReadRows_SnapshotItem("item");
+    var sku = new QSku("sku");
+    var product = new QProduct("product");
+    return queries.select(Projections.constructor(PricedItem.class, item.skuId, item.quantity, sku.skuCode, sku.name, sku.price, product.name))
+        .from(item).join(sku).on(sku.id.eq(item.skuId)).join(sku.product, product)
+        .where(item.snapshotId.eq(snapshotId)).orderBy(item.skuId.asc()).fetch();
   }
 
   public Long lastInsertedId() {
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    return nativeSql.query("SELECT LAST_INSERT_ID()", Long.class).uniqueResult();
   }
 
   public int insertBillingPayment(
@@ -204,18 +141,12 @@ public class SubscriptionOrderPersistence {
       int attempt,
       LocalDateTime requestedAt,
       LocalDateTime createdAt) {
-    return jdbc.update(
-        """
-        INSERT INTO payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,created_at)
-        VALUES (?,'BILLING','TOSS','READY',?,?,?,?,?,?)\
-        """,
-        orderId,
-        amount,
-        providerOrderId,
-        idempotencyKey,
-        attempt,
-        requestedAt,
-        createdAt);
+    var row = PaymentEntity.billing(orderId, amount, providerOrderId, idempotencyKey, attempt,
+        SubscriptionJdbcTime.forUtcCalendar(requestedAt), SubscriptionJdbcTime.forUtcCalendar(createdAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int insertOrderContext(
@@ -225,17 +156,11 @@ public class SubscriptionOrderPersistence {
       long snapshotId,
       long planVersionId,
       LocalDate scheduledDate) {
-    return jdbc.update(
-        """
-        INSERT INTO subscription_order_context(order_id,subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,scheduled_date)
-        VALUES (?,?,?,?,?,?)\
-        """,
-        orderId,
-        subscriptionId,
-        scheduleId,
-        snapshotId,
-        planVersionId,
-        scheduledDate);
+    var row = new SubscriptionOrderContextEntity(orderId, subscriptionId, scheduleId, snapshotId, planVersionId, scheduledDate);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int insertOrder(
@@ -249,22 +174,12 @@ public class SubscriptionOrderPersistence {
       String addressLine1,
       String addressLine2,
       LocalDateTime createdAt) {
-    return jdbc.update(
-        """
-        INSERT INTO orders(order_number,member_id,source,status,original_amount,discount_amount,shipping_fee,payment_amount,
-         recipient_name,recipient_phone,postal_code,address_line1,address_line2,created_at)
-        VALUES (?,?,'SUBSCRIPTION','PAYMENT_PENDING',?,0,0,?,?,?,?,?,?,?)\
-        """,
-        orderNumber,
-        memberId,
-        originalAmount,
-        paymentAmount,
-        recipientName,
-        recipientPhone,
-        postalCode,
-        addressLine1,
-        addressLine2,
-        createdAt);
+    var row = CommerceOrderEntity.subscription(orderNumber, memberId, originalAmount, paymentAmount,
+        recipientName, recipientPhone, postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(createdAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int insertShippingSnapshot(
@@ -275,91 +190,51 @@ public class SubscriptionOrderPersistence {
       String addressLine1,
       String addressLine2,
       LocalDateTime updatedAt) {
-    return jdbc.update(
-        """
-        INSERT INTO subscription_shipping_snapshots(subscription_id,recipient_name,recipient_phone,postal_code,address_line1,address_line2,updated_at)
-        VALUES (?,?,?,?,?,?,?)\
-        """,
-        subscriptionId,
-        recipientName,
-        recipientPhone,
-        postalCode,
-        addressLine1,
-        addressLine2,
-        updatedAt);
+    var row = new SubscriptionShippingSnapshotEntity(subscriptionId, recipientName, recipientPhone,
+        postalCode, addressLine1, addressLine2, SubscriptionJdbcTime.forUtcCalendar(updatedAt));
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public Optional<ShippingRow> lockDefaultAddress(long memberId) {
-    return jdbc
-        .query(
-            """
-            SELECT address.recipient_name,address.recipient_phone,address.postal_code,address.address_line1,address.address_line2
-            FROM members member JOIN member_addresses address ON address.id=member.default_address_id
-            WHERE member.id=? FOR UPDATE\
-            """,
-            (rs, row) ->
-                new ShippingRow(
-                    rs.getString("recipient_name"),
-                    rs.getString("recipient_phone"),
-                    rs.getString("postal_code"),
-                    rs.getString("address_line1"),
-                    rs.getString("address_line2")),
-            memberId)
-        .stream()
-        .findFirst();
+    return nativeSql.query("""
+        SELECT address.recipient_name,address.recipient_phone,address.postal_code,address.address_line1,address.address_line2
+        FROM members member JOIN member_addresses address ON address.id=member.default_address_id
+        WHERE member.id=? FOR UPDATE
+        """, ShippingRow.class, memberId).getResultList().stream().findFirst();
   }
 
   public Optional<ShippingRow> lockShippingSnapshot(long subscriptionId) {
-    return jdbc
-        .query(
-            "SELECT recipient_name,recipient_phone,postal_code,address_line1,address_line2 "
-                + "FROM subscription_shipping_snapshots WHERE subscription_id=? FOR UPDATE",
-            (rs, row) ->
-                new ShippingRow(
-                    rs.getString("recipient_name"),
-                    rs.getString("recipient_phone"),
-                    rs.getString("postal_code"),
-                    rs.getString("address_line1"),
-                    rs.getString("address_line2")),
-            subscriptionId)
-        .stream()
-        .findFirst();
+    var shipping = new QSubscriptionShippingSnapshotEntity("shipping");
+    return Optional.ofNullable(queries.select(Projections.constructor(ShippingRow.class,
+            shipping.recipientName, shipping.recipientPhone, shipping.postalCode, shipping.addressLine1, shipping.addressLine2))
+        .from(shipping).where(shipping.subscriptionId.eq(subscriptionId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
   }
 
   public int incrementVersion(long subscriptionId, long expectedVersion) {
-    return jdbc.update(
-        "UPDATE subscriptions SET version=version+1 WHERE id=? AND version=?",
-        subscriptionId,
-        expectedVersion);
+    return Math.toIntExact(queries.update(subscription).set(subscription.version, subscription.version.add(1))
+        .where(subscription.id.eq(subscriptionId), subscription.version.eq(expectedVersion)).execute());
   }
 
   public int insertFutureSchedule(long subscriptionId, LocalDate scheduledDate) {
-    return jdbc.update(
-        "INSERT INTO subscription_schedules("
-            + "subscription_id,scheduled_date,status,effective_snapshot_id"
-            + ") VALUES (?,?,'SCHEDULED',NULL)",
-        subscriptionId,
-        scheduledDate);
+    var row = new SubscriptionScheduleEntity(subscriptionId, scheduledDate);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public List<FutureScheduleRow> lockFutureSchedules(long subscriptionId, LocalDate today) {
-    return jdbc.query(
-        "SELECT id,scheduled_date FROM subscription_schedules "
-            + "WHERE subscription_id=? AND status='SCHEDULED' AND scheduled_date>? "
-            + "ORDER BY scheduled_date,id FOR UPDATE",
-        (rs, row) ->
-            new FutureScheduleRow(rs.getLong("id"), rs.getDate("scheduled_date").toLocalDate()),
-        subscriptionId,
-        today);
+    return queries.select(Projections.constructor(FutureScheduleRow.class, schedule.id, schedule.scheduledDate))
+        .from(schedule).where(schedule.subscriptionId.eq(subscriptionId), schedule.status.eq("SCHEDULED"), schedule.scheduledDate.gt(today))
+        .orderBy(schedule.scheduledDate.asc(), schedule.id.asc()).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetch();
   }
 
   public int deletePendingChange(long subscriptionId, long snapshotId, long scheduleId) {
-    return jdbc.update(
-        "DELETE FROM pending_plan_changes "
-            + "WHERE subscription_id=? AND snapshot_id=? AND target_schedule_id=?",
-        subscriptionId,
-        snapshotId,
-        scheduleId);
+    return Math.toIntExact(queries.delete(pending).where(pending.subscriptionId.eq(subscriptionId),
+        pending.snapshotId.eq(snapshotId), pending.targetScheduleId.eq(scheduleId)).execute());
   }
 
   public int promoteSnapshot(
@@ -368,49 +243,42 @@ public class SubscriptionOrderPersistence {
       long subscriptionId,
       long expectedSnapshotId,
       int expectedCycleWeeks) {
-    return jdbc.update(
-        "UPDATE subscriptions SET current_snapshot_id=?,delivery_cycle_weeks=? "
-            + "WHERE id=? AND current_snapshot_id=? AND delivery_cycle_weeks=?",
-        snapshotId,
-        cycleWeeks,
-        subscriptionId,
-        expectedSnapshotId,
-        expectedCycleWeeks);
+    return Math.toIntExact(queries.update(subscription).set(subscription.currentSnapshotId, snapshotId)
+        .set(subscription.deliveryCycleWeeks, cycleWeeks).where(subscription.id.eq(subscriptionId),
+            subscription.currentSnapshotId.eq(expectedSnapshotId), subscription.deliveryCycleWeeks.eq(expectedCycleWeeks)).execute());
   }
 
   public int deleteReminder(long scheduleId) {
-    return jdbc.update(
-        "DELETE FROM notifications WHERE type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
-            + " reference_type='SCHEDULE' AND reference_id=?",
-        scheduleId);
+    var notification = new QNotificationEntity("notification");
+    return Math.toIntExact(queries.delete(notification).where(notification.type.eq("SUBSCRIPTION_DELIVERY_REMINDER"),
+        notification.referenceType.eq("SCHEDULE"), notification.referenceId.eq(scheduleId)).execute());
   }
 
   public int setEffectiveSnapshot(long snapshotId, long scheduleId) {
-    return jdbc.update(UPDATE_SCHEDULE_EFFECTIVE_SQL, snapshotId, scheduleId);
+    return Math.toIntExact(queries.update(schedule).set(schedule.effectiveSnapshotId, snapshotId)
+        .set(schedule.status, "SCHEDULED").setNull(schedule.holdReason).where(schedule.id.eq(scheduleId)).execute());
   }
 
   public int deleteScheduleAddOns(long scheduleId) {
-    return jdbc.update("DELETE FROM subscription_schedule_addons WHERE schedule_id=?", scheduleId);
+    var addon = new QSubscriptionScheduleAddonEntity("addon");
+    return Math.toIntExact(queries.delete(addon).where(addon.scheduleId.eq(scheduleId)).execute());
   }
 
   public int insertSubscriptionOrderAddOn(
       long orderId, long skuId, int quantity, BigDecimal price) {
-    return jdbc.update(
-        "INSERT INTO"
-            + " subscription_order_addon_items(subscription_order_id,sku_id,quantity,unit_price_krw)"
-            + " VALUES (?,?,?,?)",
-        orderId,
-        skuId,
-        quantity,
-        price);
+    var row = new SubscriptionOrderAddonItemEntity(orderId, skuId, quantity, price);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int insertSubscriptionOrderItem(long orderId, long skuId, int quantity) {
-    return jdbc.update(
-        "INSERT INTO subscription_order_items(order_id,sku_id,quantity) VALUES (?,?,?)",
-        orderId,
-        skuId,
-        quantity);
+    var row = new SubscriptionOrderItemEntity(orderId, skuId, quantity);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public int insertSubscriptionOrder(
@@ -422,123 +290,89 @@ public class SubscriptionOrderPersistence {
       LocalDate scheduledDate,
       LocalDateTime processedAt,
       BigDecimal total) {
-    return jdbc.update(
-        "INSERT INTO"
-            + " subscription_orders(member_id,subscription_id,schedule_id,effective_snapshot_id,source_plan_version_id,scheduled_date,processed_at,package_total_krw,status)"
-            + " VALUES (?,?,?,?,?,?,?,?,'CREATED')",
-        memberId,
-        subscriptionId,
-        scheduleId,
-        snapshotId,
-        planVersionId,
-        scheduledDate,
-        processedAt,
-        total);
+    var row = new SubscriptionOrderEntity(memberId, subscriptionId, scheduleId,
+        snapshotId, planVersionId, scheduledDate, processedAt, total);
+    entities.persist(row);
+    entities.flush();
+    entities.detach(row);
+    return 1;
   }
 
   public List<AddOnRow> lockAddOns(long scheduleId) {
-    return jdbc.query(
-        """
+    return nativeSql.query("""
         SELECT addon.sku_id,addon.quantity,addon.unit_price_krw,sku.sku_code,sku.name AS sku_name,
                sku.status AS sku_status,product.name AS product_name,product.display_status,
                category.active AS category_active,brand.active AS brand_active
         FROM subscription_schedule_addons addon JOIN skus sku ON sku.id=addon.sku_id
         JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id
         JOIN brands brand ON brand.id=product.brand_id
-        WHERE addon.schedule_id=? ORDER BY addon.sku_id FOR UPDATE\
-        """,
-        (rs, row) ->
-            new AddOnRow(
-                rs.getLong("sku_id"),
-                rs.getInt("quantity"),
-                rs.getBigDecimal("unit_price_krw"),
-                rs.getString("sku_code"),
-                rs.getString("sku_name"),
-                rs.getString("sku_status"),
-                rs.getString("product_name"),
-                rs.getString("display_status"),
-                rs.getBoolean("category_active"),
-                rs.getBoolean("brand_active")),
-        scheduleId);
+        WHERE addon.schedule_id=? ORDER BY addon.sku_id FOR UPDATE
+        """, AddOnRow.class, scheduleId)
+        .addScalar("sku_id", Long.class).addScalar("quantity", Integer.class).addScalar("unit_price_krw", BigDecimal.class)
+        .addScalar("sku_code", String.class).addScalar("sku_name", String.class).addScalar("sku_status", String.class)
+        .addScalar("product_name", String.class).addScalar("display_status", String.class)
+        .addScalar("category_active", Boolean.class).addScalar("brand_active", Boolean.class).getResultList();
   }
 
   public List<SnapshotItem> findSnapshotItems(long snapshotId) {
-    return jdbc.query(
-        "SELECT sku_id,quantity FROM subscription_snapshot_items "
-            + "WHERE snapshot_id=? ORDER BY sku_id",
-        (rs, row) -> new SnapshotItem(rs.getLong("sku_id"), rs.getInt("quantity")),
-        snapshotId);
+    var item = new QSubscriptionReadRows_SnapshotItem("item");
+    return queries.select(Projections.constructor(SnapshotItem.class, item.skuId, item.quantity))
+        .from(item).where(item.snapshotId.eq(snapshotId)).orderBy(item.skuId.asc()).fetch();
   }
 
   public Optional<PendingChangeRow> lockPendingChange(long subscriptionId) {
-    return jdbc
-        .query(
-            "SELECT snapshot_id,target_schedule_id FROM pending_plan_changes "
-                + "WHERE subscription_id=? FOR UPDATE",
-            (rs, row) ->
-                new PendingChangeRow(rs.getLong("snapshot_id"), rs.getLong("target_schedule_id")),
-            subscriptionId)
-        .stream()
-        .findFirst();
+    return Optional.ofNullable(queries.select(Projections.constructor(PendingChangeRow.class, pending.snapshotId, pending.targetScheduleId))
+        .from(pending).where(pending.subscriptionId.eq(subscriptionId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
   }
 
   public Optional<BillingMethodRow> lockBillingMethod(long memberId) {
-    return jdbc
-        .query(
-            "SELECT id FROM billing_payment_methods WHERE member_id=? AND status='ACTIVE' FOR"
-                + " UPDATE",
-            (rs, row) -> new BillingMethodRow(rs.getLong("id")),
-            memberId)
-        .stream()
-        .findFirst();
+    var billing = new QBillingPaymentMethodEntity("billing");
+    return queries.select(Projections.constructor(BillingMethodRow.class, billing.id)).from(billing)
+        .where(billing.memberId.eq(memberId), billing.status.eq("ACTIVE")).setLockMode(LockModeType.PESSIMISTIC_WRITE)
+        .fetch().stream().findFirst();
   }
 
   public Optional<ScheduleRow> lockSchedule(long scheduleId) {
-    return jdbc
-        .query(
-            "SELECT id,subscription_id,scheduled_date,status,hold_reason,effective_snapshot_id "
-                + "FROM subscription_schedules WHERE id=? FOR UPDATE",
-            (rs, row) ->
-                new ScheduleRow(
-                    rs.getLong("id"),
-                    rs.getLong("subscription_id"),
-                    rs.getDate("scheduled_date").toLocalDate(),
-                    rs.getString("status"),
-                    rs.getString("hold_reason"),
-                    rs.getObject("effective_snapshot_id", Long.class)),
-            scheduleId)
-        .stream()
-        .findFirst();
+    return Optional.ofNullable(queries.select(Projections.constructor(ScheduleRow.class,
+            schedule.id, schedule.subscriptionId, schedule.scheduledDate, schedule.status, schedule.holdReason, schedule.effectiveSnapshotId))
+        .from(schedule).where(schedule.id.eq(scheduleId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
   }
 
   public Optional<SubscriptionRow> lockSubscription(long subscriptionId) {
-    return jdbc
-        .query(
-            "SELECT"
-                + " id,member_id,status,runtime_managed,version,current_snapshot_id,delivery_cycle_weeks"
-                + " FROM subscriptions WHERE id=? FOR UPDATE",
-            (rs, row) ->
-                new SubscriptionRow(
-                    rs.getLong("id"),
-                    rs.getLong("member_id"),
-                    rs.getString("status"),
-                    rs.getBoolean("runtime_managed"),
-                    rs.getLong("version"),
-                    rs.getLong("current_snapshot_id"),
-                    rs.getInt("delivery_cycle_weeks")),
-            subscriptionId)
-        .stream()
-        .findFirst();
+    return Optional.ofNullable(queries.select(Projections.constructor(SubscriptionRow.class,
+            subscription.id, subscription.memberId, subscription.status, subscription.runtimeManaged,
+            subscription.version, subscription.currentSnapshotId.coalesce(0L), subscription.deliveryCycleWeeks))
+        .from(subscription).where(subscription.id.eq(subscriptionId)).setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne());
   }
 
   public List<Candidate> findDueCandidates(
       LocalDate today, LocalDate repeatedToday, int batchSize) {
-    return jdbc.query(
-        FIND_DUE_CANDIDATES_SQL,
-        (rs, row) -> new Candidate(rs.getLong("subscription_id"), rs.getLong("schedule_id")),
-        today,
-        repeatedToday,
-        batchSize);
+    var existing = new QSubscriptionOrderEntity("existing");
+    var prior = new QSubscriptionScheduleEntity("prior");
+    var context = new QSubscriptionOrderContextEntity("context");
+    var payment = new QPaymentEntity("payment");
+    var earlier = new QSubscriptionScheduleEntity("earlier");
+    var earlierOrder = new QSubscriptionOrderEntity("earlierOrder");
+    var unresolvedPrior = JPAExpressions.selectOne().from(prior).join(context).on(context.scheduleId.eq(prior.id))
+        .join(payment).on(payment.orderId.eq(context.orderId))
+        .where(prior.subscriptionId.eq(schedule.subscriptionId), precedes(prior, schedule), payment.status.ne("SUCCEEDED")).exists();
+    var earlierUnordered = JPAExpressions.selectOne().from(earlier).leftJoin(earlierOrder).on(earlierOrder.scheduleId.eq(earlier.id))
+        .where(earlier.subscriptionId.eq(schedule.subscriptionId), eligible(earlier), earlier.scheduledDate.loe(repeatedToday),
+            earlierOrder.id.isNull(), precedes(earlier, schedule)).exists();
+    return queries.select(Projections.constructor(Candidate.class, schedule.subscriptionId, schedule.id))
+        .from(schedule).join(subscription).on(subscription.id.eq(schedule.subscriptionId))
+        .leftJoin(existing).on(existing.scheduleId.eq(schedule.id))
+        .where(subscription.runtimeManaged.isTrue(), subscription.status.eq("ACTIVE"), eligible(schedule),
+            schedule.scheduledDate.loe(today), existing.id.isNull(), unresolvedPrior.not(), earlierUnordered.not())
+        .orderBy(schedule.scheduledDate.asc(), schedule.id.asc()).limit(batchSize).fetch();
+  }
+
+  private BooleanExpression eligible(QSubscriptionScheduleEntity row) {
+    return row.status.eq("SCHEDULED").or(row.status.eq("HELD").and(row.holdReason.eq("ORDER_STOCK_UNAVAILABLE")));
+  }
+
+  private BooleanExpression precedes(QSubscriptionScheduleEntity earlier, QSubscriptionScheduleEntity later) {
+    return earlier.scheduledDate.lt(later.scheduledDate).or(earlier.scheduledDate.eq(later.scheduledDate).and(earlier.id.lt(later.id)));
   }
 
   public record Candidate(long subscriptionId, long scheduleId) {}
