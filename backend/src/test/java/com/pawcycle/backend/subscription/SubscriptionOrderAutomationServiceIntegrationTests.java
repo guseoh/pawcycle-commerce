@@ -8,8 +8,7 @@ import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationS
 import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationTrigger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 
@@ -87,7 +86,8 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
   @Autowired private MeterRegistry meterRegistry;
   @Autowired private ApplicationContext applicationContext;
   @Autowired private PlatformTransactionManager transactionManager;
-  @MockitoSpyBean private JdbcTemplate nativeJdbc;
+  @Autowired private JdbcTemplate nativeJdbc;
+  @MockitoSpyBean private com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence orderRows;
 
   private TransactionalTestSql jdbc;
   private Member member;
@@ -149,7 +149,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 
   @AfterEach
   void tearDown() {
-    reset(nativeJdbc);
+    reset(orderRows);
     cleanFixtures();
   }
 
@@ -472,20 +472,17 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     long successfulSubscriptionId = createSubscription("successful", basePlanVersionId, 2);
     moveOnlyUnprocessedSchedule(successfulSubscriptionId, TODAY);
 
-    doAnswer(
-            invocation -> {
-              int updated = (int) invocation.callRealMethod();
-              if (invocation.getArgument(2, Number.class).longValue() == failedScheduleId) {
-                throw new IllegalStateException("intentional transaction failure");
-              }
-              return updated;
-            })
-        .when(nativeJdbc)
-        .update(
-            eq(
-                com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence
-                    .UPDATE_SCHEDULE_EFFECTIVE_SQL),
-            any(Object[].class));
+    // Reach the real processor cardinality invariant after common/subscription order and pending
+    // promotion, rather than throwing inside Spring's repository exception translator.
+    doAnswer(invocation -> {
+      java.util.List<com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.FutureScheduleRow> rows =
+          (java.util.List<com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.FutureScheduleRow>) invocation.callRealMethod();
+      if (invocation.getArgument(0, Number.class).longValue() != failedSubscriptionId) return rows;
+      var conflicting = new java.util.ArrayList<>(rows);
+      conflicting.add(new com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.FutureScheduleRow(-1, TODAY.plusDays(1)));
+      conflicting.add(new com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.FutureScheduleRow(-2, TODAY.plusDays(2)));
+      return conflicting;
+    }).when(orderRows).lockFutureSchedules(anyLong(), org.mockito.ArgumentMatchers.any(LocalDate.class));
 
     SubscriptionAutomationBatchResult first = automation.processDueSchedules(10);
 
@@ -516,7 +513,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
             "scheduleId=" + failedScheduleId,
             "failureCategory=INVARIANT");
 
-    reset(nativeJdbc);
+    reset(orderRows);
     SubscriptionAutomationBatchResult retried = automation.processDueSchedules(10);
 
     assertThat(retried).isEqualTo(new SubscriptionAutomationBatchResult(1, 1, 0, 0));
@@ -862,6 +859,159 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     } finally {
       executor.shutdownNow();
     }
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"stock", "common-order", "subscription-order", "next-schedule"})
+  void rollbackAfterFlushedDatabasePhasesPreservesInventoryAndAllowsRetry(String phase) {
+    long subscriptionId = createSubscription("rollback-" + phase, basePlanVersionId, 2);
+    moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+    var before = jdbc.queryForMap("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?", firstSku.getId());
+    org.mockito.stubbing.Answer<Object> failure = invocation -> {
+      invocation.callRealMethod();
+      throw new org.springframework.dao.DataIntegrityViolationException("intentional database rollback probe");
+    };
+    switch (phase) {
+      case "stock" -> org.mockito.Mockito.doAnswer(failure).when(orderRows).reserveInventory(
+          org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), anyLong(), anyLong(), org.mockito.ArgumentMatchers.anyInt());
+      case "common-order" -> org.mockito.Mockito.doAnswer(failure).when(orderRows).insertOrder(
+          org.mockito.ArgumentMatchers.anyString(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+          org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+          org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+      case "subscription-order" -> org.mockito.Mockito.doAnswer(failure).when(orderRows).insertSubscriptionOrder(
+          anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+      case "next-schedule" -> org.mockito.Mockito.doAnswer(failure).when(orderRows).insertFutureSchedule(anyLong(), org.mockito.ArgumentMatchers.any());
+      default -> throw new AssertionError(phase);
+    }
+    assertThat(automation.processDueSchedules(10)).isEqualTo(new SubscriptionAutomationBatchResult(1, 0, 1, 0));
+    assertThat(orderCount(subscriptionId)).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId())).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_movements WHERE sku_id IN (?,?)", Integer.class, firstSku.getId(), secondSku.getId())).isZero();
+    assertThat(jdbc.queryForMap("SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?", firstSku.getId())).isEqualTo(before);
+    assertThat(jdbc.queryForObject("SELECT version FROM subscriptions WHERE id=?", Long.class, subscriptionId)).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_schedules WHERE subscription_id=? AND scheduled_date>?", Integer.class, subscriptionId, TODAY)).isZero();
+    reset(orderRows);
+    assertThat(automation.processDueSchedules(10)).isEqualTo(new SubscriptionAutomationBatchResult(1, 1, 0, 0));
+  }
+
+  @Test
+  void inventoryExistingAndMissingRowLocksBlockCompetingWritesForBothStores() throws Exception {
+    var old = new com.pawcycle.backend.subscription.persistence.LegacySubscriptionOrderReference(
+        nativeJdbc, applicationContext.getBean(jakarta.persistence.EntityManager.class));
+    var dataSource = applicationContext.getBean(javax.sql.DataSource.class);
+    var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    try (var worker = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+      for (boolean missing : java.util.List.of(false, true)) {
+        if (missing) jdbc.update("DELETE FROM inventories WHERE sku_id=?", firstSku.getId());
+        for (var store : java.util.List.of(old, orderRows)) {
+          tx.executeWithoutResult(status -> {
+            Integer available = store.lockAvailableQuantity(firstSku.getId());
+            if (missing) assertThat(available).isNull(); else assertThat(available).isNotNull();
+            var competing = worker.submit(() -> {
+              try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+                connection.setAutoCommit(false);
+                int timeout;
+                try (var value = statement.executeQuery("SELECT @@SESSION.innodb_lock_wait_timeout")) { value.next(); timeout = value.getInt(1); }
+                try {
+                  statement.execute("SET SESSION innodb_lock_wait_timeout=1");
+                  statement.executeUpdate(missing
+                      ? "INSERT INTO inventories(sku_id,available_quantity,reserved_quantity,version) VALUES (" + firstSku.getId() + ",20,0,0)"
+                      : "UPDATE inventories SET available_quantity=available_quantity-1 WHERE sku_id=" + firstSku.getId());
+                  return 0;
+                } catch (java.sql.SQLException blocked) {
+                  return blocked.getErrorCode();
+                } finally {
+                  connection.rollback();
+                  statement.execute("SET SESSION innodb_lock_wait_timeout=" + timeout);
+                }
+              }
+            });
+            try { assertThat(competing.get(5, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(1205); }
+            catch (Exception failure) { throw new AssertionError(failure); }
+            status.setRollbackOnly();
+          });
+        }
+      }
+    }
+  }
+
+  @Test
+  void privilegedLocalMysqlLockFootprintsMatchFrozenSqlForEveryCommandLock() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("pawcycle.t09.observeLocks"),
+        "MySQL performance_schema observation is executed on the disposable local fixture only");
+    long subscriptionId = createSubscription("lock-footprints", basePlanVersionId, 2);
+    long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+    subscriptions.command(member.getId(), subscriptionId, "change-plan", "footprint", "\"0\"",
+        new SubscriptionCommandRequest(null, alternatePlanVersionId, null, null, null, null));
+    var em = applicationContext.getBean(jakarta.persistence.EntityManager.class);
+    var old = new com.pawcycle.backend.subscription.persistence.LegacySubscriptionOrderReference(nativeJdbc, em);
+    var oldAggregate = com.pawcycle.backend.subscription.persistence.LegacySubscriptionCommandQueryReference.from(nativeJdbc, applicationContext);
+    var aggregate = applicationContext.getBean(com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence.class);
+    var oldReservations = new com.pawcycle.backend.subscription.persistence.LegacySubscriptionReservationReference(nativeJdbc);
+    var reservations = applicationContext.getBean(com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence.class);
+    var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    tx.executeWithoutResult(status -> {
+      aggregate.insertScheduled(subscriptionId, TODAY.plusDays(14));
+      orderRows.insertShippingSnapshot(subscriptionId, "fixture", "fixture", "fixture", "fixture", null, java.time.LocalDateTime.of(2026, 10, 7, 0, 0));
+      aggregate.upsertScheduleAddon(scheduleId, secondSku.getId(), 1, new BigDecimal("1234.56"));
+      reservations.reserveCreation(member.getId(), "existing-lock-evidence", "a".repeat(64));
+      reservations.reserveCommand(member.getId(), subscriptionId, "PAUSE", "existing-lock-evidence", "a".repeat(64));
+    });
+    java.util.List<Runnable> frozen = java.util.List.of(
+        () -> oldAggregate.lockOwnedSubscription(member.getId(), subscriptionId), () -> oldAggregate.lockActiveSubscription(subscriptionId),
+        () -> oldAggregate.lockNextScheduled(subscriptionId), () -> oldAggregate.hasUnprocessedDueSchedule(subscriptionId, TODAY),
+        () -> oldAggregate.futureSchedulesForUpdate(subscriptionId, TODAY), () -> old.lockSubscription(subscriptionId),
+        () -> old.lockSchedule(scheduleId), () -> old.lockExistingOrders(scheduleId), () -> old.lockDefaultAddress(member.getId()),
+        () -> old.lockShippingSnapshot(subscriptionId), () -> old.lockBillingMethod(member.getId()), () -> old.lockPendingChange(subscriptionId),
+        () -> old.lockAddOns(scheduleId), () -> old.lockAvailableQuantity(firstSku.getId()), () -> old.lockFutureSchedules(subscriptionId, TODAY),
+        () -> oldReservations.reserveCreation(member.getId(), "lock-evidence", "a".repeat(64)),
+        () -> oldReservations.reserveCommand(member.getId(), subscriptionId, "PAUSE", "lock-evidence", "a".repeat(64)),
+        () -> old.lockSchedule(Long.MAX_VALUE), () -> old.lockExistingOrders(Long.MAX_VALUE), () -> old.lockShippingSnapshot(Long.MAX_VALUE),
+        () -> oldReservations.lockCreationResult(member.getId(), "existing-lock-evidence"),
+        () -> oldReservations.lockCommandResult(member.getId(), subscriptionId, "PAUSE", "existing-lock-evidence"),
+        () -> oldReservations.reserveCreation(member.getId(), "existing-lock-evidence", "a".repeat(64)),
+        () -> oldReservations.reserveCommand(member.getId(), subscriptionId, "PAUSE", "existing-lock-evidence", "a".repeat(64)),
+        () -> old.lockSubscription(Long.MAX_VALUE), () -> old.lockPendingChange(Long.MAX_VALUE),
+        () -> old.lockBillingMethod(Long.MAX_VALUE), () -> old.lockAvailableQuantity(Long.MAX_VALUE),
+        () -> old.lockFutureSchedules(Long.MAX_VALUE, TODAY), () -> oldAggregate.futureSchedulesForUpdate(Long.MAX_VALUE, TODAY),
+        () -> oldAggregate.hasUnprocessedDueSchedule(Long.MAX_VALUE, TODAY));
+    java.util.List<Runnable> jpa = java.util.List.of(
+        () -> aggregate.lockOwnedSubscription(member.getId(), subscriptionId), () -> aggregate.lockActiveSubscription(subscriptionId),
+        () -> aggregate.lockNextScheduled(subscriptionId), () -> aggregate.hasUnprocessedDueSchedule(subscriptionId, TODAY),
+        () -> aggregate.futureSchedulesForUpdate(subscriptionId, TODAY), () -> orderRows.lockSubscription(subscriptionId),
+        () -> orderRows.lockSchedule(scheduleId), () -> orderRows.lockExistingOrders(scheduleId), () -> orderRows.lockDefaultAddress(member.getId()),
+        () -> orderRows.lockShippingSnapshot(subscriptionId), () -> orderRows.lockBillingMethod(member.getId()), () -> orderRows.lockPendingChange(subscriptionId),
+        () -> orderRows.lockAddOns(scheduleId), () -> orderRows.lockAvailableQuantity(firstSku.getId()), () -> orderRows.lockFutureSchedules(subscriptionId, TODAY),
+        () -> reservations.reserveCreation(member.getId(), "lock-evidence", "a".repeat(64)),
+        () -> reservations.reserveCommand(member.getId(), subscriptionId, "PAUSE", "lock-evidence", "a".repeat(64)),
+        () -> orderRows.lockSchedule(Long.MAX_VALUE), () -> orderRows.lockExistingOrders(Long.MAX_VALUE), () -> orderRows.lockShippingSnapshot(Long.MAX_VALUE),
+        () -> reservations.lockCreationResult(member.getId(), "existing-lock-evidence"),
+        () -> reservations.lockCommandResult(member.getId(), subscriptionId, "PAUSE", "existing-lock-evidence"),
+        () -> reservations.reserveCreation(member.getId(), "existing-lock-evidence", "a".repeat(64)),
+        () -> reservations.reserveCommand(member.getId(), subscriptionId, "PAUSE", "existing-lock-evidence", "a".repeat(64)),
+        () -> orderRows.lockSubscription(Long.MAX_VALUE), () -> orderRows.lockPendingChange(Long.MAX_VALUE),
+        () -> orderRows.lockBillingMethod(Long.MAX_VALUE), () -> orderRows.lockAvailableQuantity(Long.MAX_VALUE),
+        () -> orderRows.lockFutureSchedules(Long.MAX_VALUE, TODAY), () -> aggregate.futureSchedulesForUpdate(Long.MAX_VALUE, TODAY),
+        () -> aggregate.hasUnprocessedDueSchedule(Long.MAX_VALUE, TODAY));
+    for (int i = 0; i < frozen.size(); i++) {
+      assertThat(lockFootprint(tx, jpa.get(i))).as("physical lock pair %s", i).isEqualTo(lockFootprint(tx, frozen.get(i)));
+    }
+  }
+
+  private java.util.List<java.util.Map<String, Object>> lockFootprint(
+      org.springframework.transaction.support.TransactionTemplate tx, Runnable lock) {
+    return tx.execute(status -> {
+      lock.run();
+      var rows = nativeJdbc.queryForList("""
+          SELECT OBJECT_NAME,INDEX_NAME,LOCK_TYPE,LOCK_MODE,LOCK_STATUS,LOCK_DATA
+          FROM performance_schema.data_locks
+          WHERE THREAD_ID=(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID())
+          ORDER BY OBJECT_NAME,INDEX_NAME,LOCK_TYPE,LOCK_MODE,LOCK_DATA
+          """);
+      assertThat(rows).isNotEmpty();
+      status.setRollbackOnly();
+      return rows;
+    });
   }
 
   private long createPlanVersion(String suffix, long price, long skuId, int quantity) {

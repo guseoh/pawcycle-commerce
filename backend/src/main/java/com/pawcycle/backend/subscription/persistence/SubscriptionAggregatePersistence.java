@@ -1,7 +1,7 @@
 package com.pawcycle.backend.subscription.persistence;
 
 import java.time.LocalDate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
 
 /** Aggregate persistence boundary; query and write SQL live in focused delegates. */
@@ -9,9 +9,9 @@ import org.springframework.stereotype.Repository;
 public class SubscriptionAggregatePersistence extends SubscriptionAggregateQueryPersistence {
   private final SubscriptionAggregateWritePersistence writes;
 
-  public SubscriptionAggregatePersistence(JdbcTemplate jdbc, SubscriptionReadQueries reads) {
-    super(jdbc, reads);
-    this.writes = new SubscriptionAggregateWritePersistence(jdbc);
+  public SubscriptionAggregatePersistence(SubscriptionReadQueries reads, EntityManager entities) {
+    super(reads, entities);
+    this.writes = new SubscriptionAggregateWritePersistence(entities);
   }
 
   public long insertSubscription(long memberId, long versionId, int cycle, long petId, LocalDate created, LocalDate next) {

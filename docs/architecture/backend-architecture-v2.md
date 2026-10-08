@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-008` (Program T08) · Master #339 · Issue #354 · 고위험 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-009` (Program T09) · Master #339 · Issue #356 · 고위험 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -1116,3 +1116,174 @@ Rollback is a normal revert of T08 read code/tests/document; there is no schema/
 No Production/Cloud/provider/operating DB execution or external AI review submission is performed.
 Independent confirmation comes from latest HEAD Repository Validation, not the handoff marker.
 T09 and later work are excluded; the task stops at Draft PR without Ready/CodeRabbit request/merge.
+
+
+## T09 Command, reconciliation and order automation convergence
+
+기준 main `852e56d3760a1c1370f0bf4a6b88b56d1f918eab` / merged T08 PR #355.
+Issue #356의 승인된 Delta만 수행한다. T08의 23개 typed read와 nullable-pet HTTP 교정,
+application service/processor, transaction owner, schema/index/API는 변경하지 않는다.
+T09에는 주문 생성 시점의 BILLING/READY payment DB 기록을 포함한다. 외부 provider,
+billing retry/recovery는 T10, cleanup/retention/migration/bootstrap는 T11, 최종 inventory와
+Runtime 0 closure는 T12다. Production/Cloud/운영 DB/실제 결제 실행은 제외한다.
+
+### Persistence decisions and method ledger
+
+단순 INSERT는 `persist → flush → detach`로 IDENTITY 실행 시점을 고정한다. Snapshot item
+copy는 하나의 INSERT SELECT를 유지한다. 조건부 변경은 Querydsl JPA bulk update/delete로
+affected-row 계약을 보존하며 `@Version`, load-then-save, 자동 clear/flush repository로 바꾸지
+않는다. Lock 조회는 scalar DTO/value projection으로 수행하여 bulk CAS 이후 managed entity의
+오래된 version/inventory/snapshot이 응답에 섞이지 않게 한다. Spring Data repository를 테이블별로
+추가하지 않는다. 단일 held-ID 조회에는 짧은 typed JPQL을 사용하고, 조건부 bulk 및 due 후보의
+상관식에는 기존 Querydsl을 선택한다. 새 dependency/repository/interface는 없다.
+
+아래 ledger는 facade delegate를 중복 계산하지 않은 public method **83개**를 분류한다:
+**JPA CONVERT 70**, **JPA INSERT + Native copy 1**, **Native SQL KEEP 12**.
+Native KEEP은 SQL의 원자성/lock/DB-clock 의미를 유지한 JPA execution이며, 그 자체를
+설계 개선이나 성능 개선으로 주장하지 않는다. 개선은 실제 CRUD/조건부 변경/typed projection,
+공통 entity 재사용, raw Map 제거와 한 transaction 안의 명시적 실행 순서다.
+
+| Owner / methods | Decision | Reason / preserved contract |
+| --- | --- | --- |
+| AggregateQuery: deliveryCycleAllowed, planContainsSku, scheduleAddonConflicts, findEligibleAddonSku, hasScheduleAddon, scheduleDateTaken | CONVERT | typed catalog/plan predicates, nullable inventory coalesce and eligibility |
+| AggregateQuery: lockOwnedSubscription, lockActiveSubscription, futureSchedulesForUpdate | CONVERT | same single-table predicates, ordering, pessimistic write lock; scalar results |
+| AggregateQuery: activeSubscriptionIds, lastProcessedSchedule, scheduleExists, findPendingSnapshotId | CONVERT | explicit ordering/existence and pending/snapshot projection |
+| AggregateQuery: lockNextScheduled, hasUnprocessedDueSchedule | Native KEEP | LEFT JOIN + ORDER BY/LIMIT FOR UPDATE footprint and missing-row/gap behavior |
+| AggregateWrite: insertSubscription, insertPet, insertScheduled, insertScheduledAndReturnId, replacePendingPlanChange | CONVERT | immediate INSERT/IDENTITY; pending DELETE precedes INSERT |
+| AggregateWrite: setCurrentSnapshot, updatePet, setSubscriptionPet, markSkipped, retargetPendingPlanChange, setSubscriptionStatus, setScheduleStatus, deleteScheduleAddon, moveScheduleAddons, reschedule, rescheduleHeld, deletePendingPlanChange, incrementVersion | CONVERT | same partial fields, HOLD reason, PK move/unique backstop and affected-row CAS |
+| AggregateWrite: createSnapshot (private snapshot), private firstSku | JPA + Native copy / CONVERT | snapshot IDENTITY then atomic INSERT SELECT; typed ordered first SKU, same empty-result error |
+| AggregateWrite: upsertScheduleAddon | Native KEEP | atomic ON DUPLICATE KEY UPDATE, creation timestamp preserved, DB UTC microseconds |
+| AggregateWrite: deleteScheduleAddons, cancelUnorderedSchedules, deleteDeliveryReminders | Native KEEP | original multi-table write predicates, existing-order exclusions and parent scope |
+| AggregateWrite: insertCommandHistory | Native KEEP | DB UTC_TIMESTAMP(6) history |
+| AggregateWrite: deleteDeliveryReminder; Order: deleteReminder | CONVERT / reuse | typed bulk delete over existing NotificationEntity; exact type/reference/schedule scope |
+| Reservations: reserveCreation, reserveCommand, lockCreationResult, lockCommandResult, updateStoredCreationBody, updateStoredCommandBody | CONVERT | parent then composite scope lock; case-sensitive DB key, NULL status→0, JSON/replay/body repair |
+| Reservations: updateCreationResponse, updateCommandResponse | Native KEEP | first completion COALESCE(...,UTC_TIMESTAMP(6)); later replay/body repair cannot reset retention clock |
+| Schedule: heldScheduleIds | CONVERT | typed JPQL, scheduled_date/id ordering |
+| Order: insertOrder, insertOrderItem, insertBillingPayment, insertReservationMovement, insertOrderContext, insertShippingSnapshot | CONVERT / reuse | existing common entities, explicit SUBSCRIPTION/BILLING/READY factories, source_id=NULL movement |
+| Order: insertSubscriptionOrder, insertSubscriptionOrderItem, insertSubscriptionOrderAddOn, insertFutureSchedule | CONVERT | identity/composite immutable order records; unique schedule and snapshot/decimal values |
+| Order: reserveInventory, holdSchedule, incrementVersion, deletePendingChange, promoteSnapshot, setEffectiveSnapshot, deleteScheduleAddOns | CONVERT | original conditions and affected rows; inventory quantity/reservedQuantity/minimumQuantity remain distinct |
+| Order: findSnapshot, findInventory, findPricedSnapshotItems, findSnapshotItems | CONVERT | scalar typed values; BIGINT snapshot price becomes BigDecimal.valueOf without SQL cast/scale drift |
+| Order: lockExistingOrders, lockAvailableQuantity, lockShippingSnapshot, lockFutureSchedules, lockPendingChange, lockBillingMethod, lockSchedule, lockSubscription | CONVERT | same single-table scopes; billing fetches/locks all matching rows before choosing first |
+| Order: findDueCandidates | CONVERT | bounded oldest unordered due schedule/subscription; correlated unpaid-prior and earlier-unordered exclusions; two cutoff arguments remain independent |
+| Order: lockDefaultAddress, lockAddOns | Native KEEP | joined member/address and addon/SKU/product/category/brand row locks; SKU ordering |
+| Order: lastInsertedId | Native KEEP | facade/caller API and same physical transaction connection |
+
+`SubscriptionNativeSql` is feature-local execution support for the limited vendor operations above.
+It exposes typed native result classes/scalars, no raw Map rows or generic repository interface.
+The original SQL predicates remain explicit at their owner. Native DATE parameters use a scoped
+Hibernate JDBC 4.2 LocalDate type, matching JDBC's direct bind rather than a global UTC Calendar.
+Order/reservation boundaries use Repository exception translation for real JPA constraint failures.
+
+### Write-model reuse, cache and time boundary
+
+Reuse six existing common entities: CommerceOrderEntity, CommerceOrderItemEntity, PaymentEntity,
+InventoryMovementEntity, SubscriptionOrderContextEntity and SubscriptionShippingSnapshotEntity;
+complete the last two existing mappings instead of adding shadow tables. Inventory, Member,
+BillingPaymentMethod, NotificationEntity and catalog entities serve typed queries/conditional updates.
+
+Eleven new scalar write entities are restricted to tables with no mutable mapping: Pet, Subscription,
+Snapshot, Schedule, Pending, Addon; two composite reservations; subscription Order/Item/Addon.
+Seven tables overlap T08 immutable read metadata. This cost is explicit: making the 13 T08 read
+models writable would expose incomplete INSERT fields/dirty checking, and loading them for commands
+would introduce stale cache state after bulk writes. T08 metadata stays immutable and projections
+stay scalar. Addon mapping is used for bulk mutation only; DB-clock upsert remains native. No new
+snapshot-item/history/common order/payment/inventory shadow entity or per-table Repository is added.
+All inserted records are flushed/detached; callers own the unchanged transactions.
+
+An actual Seoul characterization of the existing common order mapping writes 23:59:59.123456 as
+14:59:59.123456 when given the old JDBC LocalDateTime directly: Hibernate binds Timestamp with its
+configured UTC Calendar. `SubscriptionJdbcTime.forUtcCalendar` encodes that JDBC wall clock only
+at the subscription INSERT boundary and the entity is immediately detached. Common order/payment/
+shipping mappings and their other callers keep existing behavior. Movement uses Timestamp.from of
+the UTC wall clock; new subscription order DATETIME/command DATE columns use scoped JDBC 4.2 types.
+Global hibernate.jdbc.time_zone, T08 history extractor and public/application timestamps are unchanged.
+UTC/Seoul differential evidence is required before accepting this narrow compatibility conversion.
+The earlier documented Seoul cleanup failures are now explicitly owned by T11 per Issue #356;
+T09 does not silently repair their time/retention contract.
+
+### Transaction and lock acquisition order
+
+Creation: member parent → reservation scope → validation → subscription → snapshot/copy → current
+snapshot → schedule → unchanged T08 response/ETag → replay completion, in the existing transaction.
+Command: owned subscription → idempotency parent/scope → fingerprint/replay **before If-Match** →
+command-specific schedule/validation → writes → version CAS → history → typed response/replay.
+Reconciliation: active IDs outside target transaction; each REQUIRES_NEW target locks active subscription
+→ unordered due check (preserve due) → future schedules (1 no-op / >1 fail / 0 repair) → processed
+snapshot/date selection → insert → version CAS. Failure isolation and scheduling rules are unchanged.
+
+Order automation remains each target REQUIRES_NEW: subscription → schedule → existing subscription
+order → shipping snapshot → joined default member/address if snapshot missing → shipping INSERT →
+billing method → current snapshot read → pending lock → effective snapshot/items → joined add-ons →
+available inventory locks in aggregated SKU order → common order/context/payment → inventory CAS/
+movement/common items → subscription order/items/add-on copy → add-on deletion → effective schedule/
+reminder → pending promotion/deletion → future locks/insert → version CAS. No remote call is moved
+inside this transaction. Processor/application source is unchanged.
+
+### Verification evidence
+
+Baseline main targeted MySQL suite: 47 command/creation/idempotency/
+reconciliation/automation/T08 parity tests pass before production changes. Differential tests use
+frozen exact-main SQL, the same fixture/transaction and savepoint rollback; generated identities and
+UUIDs are excluded from digest equality, but parent/FK association, column values, counts, affected
+rows and ID use on the physical transaction connection are checked. DB-generated completion/history
+clocks are verified for UTC/first-write preservation, not compared across separate instants.
+
+UTC differential/automation/reconciliation/idempotency selection passes 27 tests; Seoul command,
+creation/DB constraints, T08 HTTP/read parity, new differential/time characterization, automation,
+reconciliation, idempotency and Architecture selection passes 61 tests with no skips/failures.
+31 physical lock pairs (present and missing rows, new and existing reservation scopes) compare
+performance_schema.data_locks table/index/record/gap/mode/status/data on committed identical fixtures,
+rolling back each old/JPA target transaction. All footprints match. This privileged observer test is
+local-only via pawcycle.t09.observeLocks=true and SELECT on performance_schema for this disposable
+container; default CI skips only that observer. A separate default test requires both old and JPA
+existing/missing inventory locking reads to block competing UPDATE/INSERT (MySQL 1205), without
+sleep races or pool/server timeout/cap changes. Processor lock acquisition sequence is unchanged.
+
+New rollback probes execute the real write/flush then fail after common order, stock CAS, subscription
+order and next schedule INSERT. Existing pending rollback reaches the real processor cardinality
+invariant after pending promotion; all target writes roll back, another target commits and retry
+succeeds. Moving the artificial exception outside Repository translation preserves the original
+INVARIANT log assertion and strengthens the rollback phase. Existing concurrency ticks, command vs
+scheduler, pending cycle/add-on/decimal/stock and per-subscription reconciliation regressions pass.
+The final self-review also keeps setScheduleStatus's database CASE/collation semantics (including
+lowercase held) rather than a Java string branch, verified against the frozen SQL.
+
+Fresh-schema full UTC execution runs 530 tests in 130 classes: 529 pass, one existing coupon ownership
+checkout test fails with COUPON_UNAVAILABLE. No T09 test or Architecture test fails. Exact main
+852e56d archive and the T09 tree each pass that coupon test in isolation; a direct root cause is not
+confirmed, so this is recorded as a local full-run failure rather than declared unrelated/fixed.
+Coupon/checkout code and fixture are unchanged. Do not hide it by unconditional full-suite retries;
+latest HEAD Linux CI must supply the whole Backend/MySQL/build verification. Focused coupon +
+frozen mutation regression and build pass after the CASE correction. Final Seoul selection after CASE and typed reminder deletion changes passes 56 tests plus build.
+MySQL 8.4.11 retains max_connections=151; observed peak is 91, final connected count is one
+(the observer), including the exact-main diagnostic run. Latest HEAD CI is recorded in the PR;
+CI is not claimed here before execution.
+
+Local UTF-8 Harness runs 146 regressions: 145 pass, the previously documented unchanged Windows
+CRLF/LF manifest-byte test fails. Discord normalized payload validation passes 22 fixtures. Backend/
+Harness classifier is true, Frontend/Production false. Architecture remains frozen 204 / NEW 0 /
+removed 0; schema/index and Production pools/cap remain unchanged. Linux CI Harness remains a
+separate required gate.
+
+### Remaining owners and rollback
+
+Source criterion: hand-written production Java containing the named dependency, excluding generated
+Q/test/build files. Direct JdbcTemplate **34→28**, runtime **25→19** (exclude catalog maintenance,
+foundation bootstrap, subscription migration/performance). EntityManager **11→18**, Querydsl **3→7**,
+JpaRepository **36→36**. T09's six direct JDBC owners are eliminated; this is not Program closure.
+
+| Remaining direct runtime JDBC owners | Next owner / rationale |
+| --- | --- |
+| SubscriptionBillingPersistence, SubscriptionBillingRetryPersistence | T10 provider/retry/remote transaction boundary |
+| PaymentReconciliationPersistenceAdapter | T10 provider recovery boundary review |
+| CancellationPersistenceAdapter, RefundPersistenceAdapter, ReturnPersistenceAdapter | T12 residual compatibility inventory/reassignment; prior compensating-lock KEEP is not a permanent exception |
+| SubscriptionIdempotencyCleanupPersistence | T11 retention/repair/Seoul contract and cleanup concurrency |
+| SubscriptionShippingPersistenceAdapter, SubscriptionDeliveryReminderPersistence | T12 residual inventory gate; separate shipping/reminder callers and rollback scopes are unchanged T09 indirect dependencies |
+| RepeatCommerceQueryRepository, SubscriptionMetricsQueryRepository, NotificationPersistenceAdapter | T12 residual read inventory (T08 candidate labels did not mean completed) |
+| MembershipEvaluationPersistenceAdapter, MembershipPersistenceAdapter, CommerceMetricsQueryRepository, OperationsQueryRepository, QuickReorderPersistenceAdapter, InteractionEventPersistenceAdapter, RecommendationQueryAdapter | T12 residual inventory/reassignment; prior KEEP is not a permanent allowlist |
+
+Nine non-runtime maintenance/bootstrap/migration/performance JDBC files remain T11 inventory.
+Final Runtime JdbcTemplate 0 is still Master #339's T12 gate, and every remaining owner must be
+converted or explicitly reassigned/decided; counts alone do not close that gate.
+Rollback is a normal revert of T09 code/tests/document. No migration/data repair or operating resource
+rollback is required. Draft PR handoff only; Ready/CodeRabbit request/merge are not executed.

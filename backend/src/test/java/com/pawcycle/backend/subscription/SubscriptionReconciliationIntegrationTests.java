@@ -6,7 +6,7 @@ import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationS
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 
@@ -50,15 +50,12 @@ class SubscriptionReconciliationIntegrationTests {
   private static final String EMAIL_PREFIX = "ops-recon-001-";
   private static final String PRODUCT_PREFIX = "OPS-RECON-001 product ";
   private static final String PLAN_PREFIX = "OPS-RECON-001 plan ";
-  private static final String INSERT_FUTURE_SCHEDULE =
-      "INSERT INTO"
-          + " subscription_schedules(subscription_id,scheduled_date,status,effective_snapshot_id)"
-          + " VALUES (?,?,'SCHEDULED',NULL)";
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
   @Autowired private SubscriptionService service;
   @Autowired private SubscriptionOrderAutomationService automation;
-  @MockitoSpyBean private JdbcTemplate nativeJdbc;
+  @Autowired private JdbcTemplate nativeJdbc;
+  @MockitoSpyBean private com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence aggregate;
   @Autowired private MemberRepository members;
   @Autowired private ProductRepository products;
   @Autowired private SkuRepository skus;
@@ -142,7 +139,7 @@ class SubscriptionReconciliationIntegrationTests {
 
   @AfterEach
   void tearDown() {
-    reset(nativeJdbc);
+    reset(aggregate);
     cleanFixtures();
   }
 
@@ -216,14 +213,14 @@ class SubscriptionReconciliationIntegrationTests {
     long successfulSubscriptionId = createProcessedSubscription("successful-repair");
     doAnswer(
             invocation -> {
-              int updated = (int) invocation.callRealMethod();
-              if (invocation.getArgument(1, Number.class).longValue() == failedSubscriptionId) {
+              invocation.callRealMethod();
+              if (invocation.getArgument(0, Number.class).longValue() == failedSubscriptionId) {
                 throw new IllegalStateException("intentional reconciliation repair failure");
               }
-              return updated;
+              return null;
             })
-        .when(nativeJdbc)
-        .update(eq(INSERT_FUTURE_SCHEDULE), any(Object[].class));
+        .when(aggregate)
+        .insertScheduled(anyLong(), any(LocalDate.class));
 
     service.reconcileActiveSubscriptions();
 
@@ -244,7 +241,7 @@ class SubscriptionReconciliationIntegrationTests {
             "Subscription reconciliation failed; subscriptionId=" + failedSubscriptionId,
             "intentional reconciliation repair failure");
 
-    reset(nativeJdbc);
+    reset(aggregate);
     service.reconcileActiveSubscriptions();
 
     assertThat(futureScheduleCount(failedSubscriptionId)).isEqualTo(1);

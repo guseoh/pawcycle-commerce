@@ -22,7 +22,7 @@ import java.util.Objects;
 
 @Entity
 @Table(name = "subscription_shipping_snapshots")
-class SubscriptionShippingSnapshotEntity {
+public class SubscriptionShippingSnapshotEntity {
   @Id
   @Column(name = "subscription_id")
   Long subscriptionId;
@@ -32,4 +32,21 @@ class SubscriptionShippingSnapshotEntity {
 
   @Column(name = "updated_at", nullable = false)
   LocalDateTime updatedAt;
+  @Column(name = "recipient_phone", nullable = false) String recipientPhone;
+  @Column(name = "postal_code", nullable = false) String postalCode;
+  @Column(name = "address_line1", nullable = false) String addressLine1;
+  @Column(name = "address_line2") String addressLine2;
+
+  protected SubscriptionShippingSnapshotEntity() {}
+
+  public SubscriptionShippingSnapshotEntity(long subscriptionId, String name, String phone,
+      String postalCode, String line1, String line2, LocalDateTime updatedAt) {
+    this.subscriptionId = subscriptionId;
+    this.recipientName = name;
+    this.recipientPhone = phone;
+    this.postalCode = postalCode;
+    this.addressLine1 = line1;
+    this.addressLine2 = line2;
+    this.updatedAt = updatedAt;
+  }
 }
