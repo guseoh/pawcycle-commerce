@@ -9,8 +9,8 @@ import org.springframework.stereotype.Repository;
 public class SubscriptionAggregatePersistence extends SubscriptionAggregateQueryPersistence {
   private final SubscriptionAggregateWritePersistence writes;
 
-  public SubscriptionAggregatePersistence(JdbcTemplate jdbc) {
-    super(jdbc);
+  public SubscriptionAggregatePersistence(JdbcTemplate jdbc, SubscriptionReadQueries reads) {
+    super(jdbc, reads);
     this.writes = new SubscriptionAggregateWritePersistence(jdbc);
   }
 
