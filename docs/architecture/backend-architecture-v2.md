@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-006` (Program T06) · Master #339 · Issue #350 · 고위험 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-007` (Program T07) · Master #339 · Issue #352 · 고위험 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -810,3 +810,108 @@ AI review submission을 수행한 것으로 표현하지 않는다.
 배포 뒤 실제로 성공 완료된 대사의 cart 소비를 revert가 되돌리지는 않으므로 운영 데이터 복구는 별도 승인
 영역이다. 이번 작업에는 disposable local MySQL만 사용한다. T07 이후/Production/Cloud는 제외한다.
 Draft PR에서 STOP하며 Ready 전환, CodeRabbit 요청, merge를 수행하지 않는다.
+
+## T07 After-sales and notification write boundaries
+
+T06 #350 / PR #351의 squash merge `3cdf2481d0f63b1ddc97ea11d79383e9cdeffc2b`를 기준으로
+#352의 최신 Delta를 평가했다. `API-007`의 취소/반품 replay 200, member isolation 404, 상태 충돌 409,
+provider unavailable 503, refund provider outside transaction, unresolved PROCESSING 유지와 zero amount
+provider 생략 계약을 보존한다. T07의 실제 Delta는 **MySQL protocol regression + KEEP/DEFER 판정**이다.
+모든 production source와 SQL은 기준 main 그대로이며 JPA 전환 자체나 JDBC 파일 감소를 목표로 삼지 않는다.
+
+### Method-level selection
+
+| 경계 / method family | T07 판정 | 근거 / 후속 책임 |
+| --- | --- | --- |
+| Cancellation member-order/existing/delivery/success-payment/return absence locks, typed views | JDBC KEEP | 이미 typed records이며 lock scope/order와 missing-row behavior가 명시적이다. entity 도입으로 해결할 raw row debt가 없다. |
+| Cancellation create/cancelDelivery/SKU items/createRefund | JDBC KEEP | cancellation unique, timestamp, inventory compensation와 `INSERT...SELECT` refund가 하나의 application transaction이다. 부분 entity mapping/flush 변경의 이점이 입증되지 않았다. |
+| Return request locks/create/read | JDBC KEEP | existing replay, cancellation absence, delivery deadline/nullable restock와 SQL cursor 계약이 이미 작고 typed다. |
+| Return decide/receive/createRefund | JDBC KEEP | decided/received admin/time 등 command 필드의 entity mapping이 불완전하고 restock/receivedAt/completedAt은 read-only다. JPA 전환은 mapping과 flush 순서를 늘린다. |
+| Refund start/retry/reconciliation/completion/read/coupon/source completion | JDBC KEEP | typed projections, status-specific SQL, generated keys/unique, retry INSERT...SELECT와 2-phase provider recovery가 명시적이다. 부분 entity만으로 동등한 command를 단순화하지 못한다. |
+| Notification create | native JDBC KEEP | unique event + ON DUPLICATE KEY UPDATE id=id로 동시 dedup와 원래 createdAt을 원자적으로 보존한다. |
+| Notification markRead / markAllRead | JDBC KEEP | 각각 한 UPDATE로 member/row count/COALESCE 및 unread predicate를 보장한다. JPA는 readAt mapping과 bulk-write repository/flush 규칙을 추가해야 하며 현재보다 단순하다는 근거가 없다. |
+| Notification findByMemberId | JDBC KEEP; read 재평가 DEFER T08 | typed nullable projection + schedule LEFT JOIN은 Subscription read 경계다. T07에서 join이나 entity를 추가하지 않는다. |
+| Operations | KEEP / production no-op | controller는 GET-only이며 새 write use case가 없다. command/API를 발명하지 않는다. |
+
+**JPA-convert 0**이다. aggregate JPA write migration의 동등성/유지보수 이점은 이번 범위에서 입증하지
+않았으므로 DEFER하며 현재 실행 구현은 KEEP한다. Notification의 두 SQL은 추가 mapping과
+bulk-write repository를 도입해 바꾸는 이점이 확인되지 않았다.
+최종 residual allowlist 승인은 T12 책임이다.
+
+### Lock, transaction and failure boundaries kept
+
+CancellationService의 TransactionTemplate은 member-scoped order → existing cancellation → delivery →
+SUCCEEDED payment → return absence의 FOR UPDATE 순서를 유지한다. cancellation INSERT → delivery
+CANCELLED → SKU 순서 inventory restore/movement → refund INSERT...SELECT가 한 transaction이다.
+same-order 경쟁 두 요청은 같은 aggregate를 replay하고 refund/각 SKU movement는 한 개다.
+
+Return request도 order → existing return → cancellation absence → delivery 순서다. PREPARING에서는
+cancellation만, DELIVERED에서는 return만 허용되므로 둘 다 유효한 가상의 배송 상태를 만들지 않는다.
+각 실제 상태에서 cancellation/return 경쟁의 성공 1건·기존 409 1건과 compensation 결과를 검증했다.
+return deadline은 deliveredAt + 7 days의 **inclusive** boundary이며 ±1 microsecond를 UTC/Seoul에서
+검증했다. 기존 return replay는 restock/decided/received/completed nullable projection을 보존한다.
+
+Return decide의 REQUESTED gate + notification + audit, receive의 APPROVED gate + 선택적 SKU 순서
+restore/movement + REFUND_PENDING fields + refund INSERT + audit는 각 transaction에서 유지한다.
+approve/reject 경쟁은 decision/notification/audit 한 건이며 receive 경쟁은 refund와 restock 한 번이다.
+restock=false는 movement가 없다. refund INSERT 이후 exception, decision/receive audit exception을
+주입하여 cancellation/delivery, return fields, stock/version/movement/refund/notification rollback을 확인했다.
+
+Refund process는 READY lock→PROCESSING/processedAt commit → 외부 provider → completion lock의
+2-phase protocol이다. process 중복은 409이며 provider write 1회다. reconcile은 PROCESSING/UNKNOWN
+start attempt commit → 외부 query → completion이며 겹친 query는 attempts 2 / success effects 1회다.
+retry는 FAILED source row lock → existing next-attempt lock → INSERT...SELECT이며 경쟁 두 요청이
+같은 next attempt를 반환한다. 새 idempotency key와 source+attempt unique/최대 3회, 10회 reconciliation cap을 유지한다.
+
+provider 미구성 503이나 timeout 후 committed PROCESSING이 남는 것은 승인된 복구 계약이다.
+unresolved 결과는 원래 PROCESSING/UNKNOWN을 유지하며 UNKNOWN action notification은 dedup한다.
+실패는 TOSS_REJECTED/providerStatus와 REFUND_PENDING source/coupon USED를 유지한다. completion audit
+실패는 coupon/source-complete/membership/notification을 rollback하고 PROCESSING start는 남긴다.
+그 뒤 reconcile query로 완료하며 새 외부 refund를 발행하지 않는다. zero amount는 provider 접근 자체가 없다.
+성공은 source completion/coupon release/membership history/notification과 같은 transaction으로 commit된다.
+이미 restore된 재고를 refund completion에서 다시 복원하지 않는다.
+
+generated source_id/succeeded_order_id와 unique를 actual MySQL에서 확인했다. 두 source의 반대 FK는
+nullable로 보존한다. 유효 schema는 source에 맞는 FK를 NOT NULL로 요구하여 source_id 자체의 NULL
+fixture는 만들 수 없다. nullable sourceId retry guard를 시험하려고 constraints를 끄거나 migration하지 않는다.
+두 번째 succeeded attempt의 generated unique 위반은 transaction을 rollback하고 READY를 유지한다.
+
+Notification은 concurrent create dedup/original createdAt, concurrent/repeated markRead의 첫 timestamp
+freeze와 false 404 없음, member 404, markAllRead unread-only/member isolation, caller rollback을 검증했다.
+fixed clock의 Timestamp microseconds와 schedule reminder LEFT JOIN의 nullable context는 UTC/Seoul에서
+동일하다. 목록 HTTP JSON, read/readAll 204와 다른 member 404도 실제 security/controller 경계에서 확인했다.
+
+### Validation and remaining risk
+
+새 tests는 committed isolated fixtures로 구성하고 outer test transaction 없이 실제 services와 worker
+transaction을 실행한다. race helper는 CommerceException을 outcome으로 수집하고 각 test에서 기대
+status/code를 검증한다. 예상하지 않은 DB/deadlock 오류는 테스트를 실패시킨다.
+실패 주입은 spy를 통해 실제 refund INSERT 직후 또는 audit 호출 경계를
+검증하며 provider만 mock한다. 실물 Toss는 호출하지 않는다.
+
+최초 Cancellation/Return 16개 중 15개 PASS, refund INSERT 이후 rollback test의 예외 assertion은
+Spring Repository exception translation을 반영해 correction했다. 해당 test와 Refund 15개 **16개 PASS**,
+Notification/after-sales HTTP **8개 PASS**, 독립 Asia/Seoul JVM/database **11개 PASS**를 확보했다.
+생산 동작 수정으로 테스트를 우회하지 않았다. HTTP projection의 replay/nullable/time/DECIMAL, member
+404·admin 403·state 409·validation 400을 보호한다.
+
+최초 full 513개 중 6개는 후반 Subscription context 생성에서 MySQL 1040 / Too many connections로
+실패했다. disposable server max_connections 151 / Max_used_connections 152를 확인했다. 새 spy/mock
+context 두 개를 suite 전체에 cache하면 추가 Hikari pool이 남으므로 해당 두 test class에 AFTER_CLASS
+DirtiesContext를 적용해 class 종료 시 연결을 해제한다. production pool/capacity/DB 설정은 바꾸지 않는다.
+수정한 두 클래스와 실패했던 기존 클래스 **39개 PASS** 후 동일 server 한도 151의 fresh database에서
+full Backend **513개 PASS (failures/errors/skipped 0)**, build -x test PASS를 확보했다.
+Architecture 포함 관련 회귀 **87개 PASS**와 PR/task/title/encoding validators를 완료한다.
+
+clean compileJava/Q regeneration/compileTestJava, Architecture Guard, T01/T04/T05/T06/Commerce/Checkout
+regression, full Backend, build -x test, validators와 최신 HEAD Repository Validation을 완료 Gate로 사용한다.
+실제 full/CI count와 최초 실패 correction·미실행은 Draft PR에 기록한다. frozen architecture baseline을
+재생성하지 않는다. production inventory는 JDBC **34 / runtime 25**, EntityManager **10**, Querydsl **2**,
+Java **588**로 유지하며 architecture baseline **204 / NEW 0**을 요구한다.
+
+남은 위험은 기존 lock/protocol/부분 JPA mapping과 provider 지연·실물 I/O·운영 DB 영향의 미검증이다.
+실제 scheduler 처리나 Subscription read 전환은 수행하지 않았다. 독립 확인은 별도 CI 환경의 최신 HEAD
+MySQL 테스트로 보완하며 외부 AI review submission은 미실행으로 기록한다.
+복구는 tests/document의 일반 revert이고 production/schema/data 변경은 없다. 향후 제품 코드 rollback이
+이미 처리된 외부 환불이나 재고·DB side effect를 자동 보상하지 않으며 Production 복구는 별도 승인 영역이다.
+T08 이후/Production/Cloud는 제외하고 Draft PR에서 STOP한다. Ready/CodeRabbit/merge를 수행하지 않는다.
