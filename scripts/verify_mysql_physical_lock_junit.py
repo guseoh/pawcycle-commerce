@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fail CI when mandatory MySQL physical lock tests are absent, skipped, or failed."""
 from pathlib import Path
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -17,6 +18,17 @@ T10_SOURCES = [
     ROOT / "backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingLockWorkDiagnosisIntegrationTests.java",
     ROOT / "backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingRecoveryPersistenceParityIntegrationTests.java",
 ]
+
+
+def require_t10_abc_source(source: str) -> None:
+    """The JUnit invocation ordinals must still map to A, B, C in this order."""
+    source_pattern = (
+        r'@ValueSource\\s*\\(\\s*strings\\s*=\\s*\\{\\s*"A"\\s*,\\s*"B"\\s*,\\s*"C"\\s*\\}\\s*\\)'
+        r'\\s*void\\s+fixedReadViewHistoryAndBothInsertBlockingPaths\\s*\\('
+    )
+    if re.search(source_pattern, source) is None:
+        raise ValueError("T10 fixed physical lock @ValueSource must be exactly A, B, C")
+
 
 def verify(reports: Path, sources: list[bool]) -> list[str]:
     if any(sources) and not all(sources):
@@ -35,12 +47,27 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
             raise ValueError(f"{classname}.{name}: expected {count} executions; got {len(matches)}")
         if any(any(c.find(tag) is not None for tag in ("skipped", "error", "failure")) for c in matches):
             raise ValueError(f"{classname}.{name}: skipped or failed")
+        if all(sources) and (classname, name, count) == T10[0]:
+            # Gradle JUnit XML names: method(String)[1], [2], [3] (optional display-name suffix).
+            # Counting three rows alone would accept [1],[1],[1] and mask absent B/C.
+            invocations = []
+            pattern = re.compile(re.escape(name) + r"\\([^)]*\\)\\s*\\[(\\d+)\\](?:\\s+.*)?")
+            for case in matches:
+                match = pattern.fullmatch(case.get("name", ""))
+                if match is None:
+                    raise ValueError(f"{classname}.{name}: unrecognized JUnit invocation identity")
+                invocations.append(int(match.group(1)))
+            if sorted(invocations) != [1, 2, 3]:
+                raise ValueError(f"{classname}.{name}: T10 A/B/C invocations missing or duplicated: {invocations}")
         checked.append(f"{name}={count} PASS")
     return checked
 
 def main() -> int:
     try:
-        for value in verify(ROOT / "backend/build/test-results/test", [p.is_file() for p in T10_SOURCES]):
+        sources = [p.is_file() for p in T10_SOURCES]
+        if all(sources):
+            require_t10_abc_source(T10_SOURCES[0].read_text(encoding="utf-8"))
+        for value in verify(ROOT / "backend/build/test-results/test", sources):
             print(f"LOCK_CI_GATE=PASS {value}")
     except (ValueError, ET.ParseError, OSError) as exc:
         print(f"LOCK_CI_GATE=FAIL {exc}", file=sys.stderr)
