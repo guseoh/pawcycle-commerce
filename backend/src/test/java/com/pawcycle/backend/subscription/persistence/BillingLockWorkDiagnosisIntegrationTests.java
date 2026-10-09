@@ -634,6 +634,11 @@ public class BillingLockWorkDiagnosisIntegrationTests {
     while (System.nanoTime() < deadline) {
       var waits = jdbc.queryForList("SELECT request.ENGINE_TRANSACTION_ID request_transaction,blocker.ENGINE_TRANSACTION_ID blocker_transaction,request.OBJECT_NAME,request.INDEX_NAME,request.LOCK_TYPE REQUEST_TYPE,request.LOCK_MODE REQUEST_MODE,request.LOCK_STATUS REQUEST_STATUS,request.LOCK_DATA REQUEST_DATA,blocker.LOCK_MODE BLOCK_MODE,blocker.LOCK_STATUS BLOCK_STATUS,blocker.LOCK_DATA BLOCK_DATA FROM performance_schema.data_lock_waits waits JOIN performance_schema.data_locks request ON request.ENGINE_LOCK_ID=waits.REQUESTING_ENGINE_LOCK_ID JOIN performance_schema.data_locks blocker ON blocker.ENGINE_LOCK_ID=waits.BLOCKING_ENGINE_LOCK_ID WHERE request.THREAD_ID=(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID=?) AND blocker.THREAD_ID=(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID())", contender);
       if (!waits.isEmpty()) return waits;
+      try { Thread.sleep(20); }
+      catch (InterruptedException error) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted waiting for database wait", error);
+      }
     }
     throw new AssertionError("No database wait observed for contender " + contender);
   }

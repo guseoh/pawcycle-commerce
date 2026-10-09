@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -49,6 +50,8 @@ class BillingRecoveryPersistenceParityIntegrationTests {
   @Autowired PaymentReconciliationPersistenceAdapter reconciliation;
   private TransactionTemplate tx;
   private long member, order, payment, sku, missingInventorySku, schedule, cart, coupon;
+  private long secondSku, subscription, product, category, brand, couponDefinition, billingMethod;
+  private long firstOrderItem, secondOrderItem;
   private final Timestamp time = Timestamp.valueOf("2026-09-18 23:59:59.123456");
   private final Clock clock = Clock.fixed(Instant.parse("2026-09-18T14:59:59.123456Z"), ZoneOffset.UTC);
   private LegacySubscriptionBillingPersistence oldBilling;
@@ -68,28 +71,62 @@ class BillingRecoveryPersistenceParityIntegrationTests {
       var f = new SecondaryReadFixtures(jdbc, entities);
       member = f.member();
       var category = f.category(false);
-      var product = f.product(category, f.brand(true), "DOG", "PUBLIC");
+      this.category = category.getId();
+      var brand = f.brand(true);
+      this.brand = brand.getId();
+      var product = f.product(category, brand, "DOG", "PUBLIC");
+      this.product = product.getId();
       var first = f.sku(product, SkuStatus.ACTIVE, 10);
       var second = f.sku(product, SkuStatus.ACTIVE, 10);
       missingInventorySku = f.sku(product, SkuStatus.ACTIVE, null).getId();
       sku = first.getId();
+      secondSku = second.getId();
       order = f.order(member, "SUBSCRIPTION", "PAYMENT_PENDING", new BigDecimal("1234.56"), null);
       f.item(order, second);
+      secondOrderItem = f.lastId();
       f.item(order, first);
+      firstOrderItem = f.lastId();
       payment = f.payment(order, "BILLING", "READY", 1);
       jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,status,version) VALUES (?,?,1,2,'2026-09-01','2026-09-18','ACTIVE',0)", member, sku);
-      long subscription = f.lastId();
+      subscription = f.lastId();
       jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status) VALUES (?,'2026-09-18','SCHEDULED')", subscription);
       schedule = f.lastId();
       jdbc.update("INSERT INTO subscription_order_context(order_id,subscription_id,schedule_id,scheduled_date) VALUES (?,?,?,'2026-09-18')", order, subscription, schedule);
       jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?,'ACTIVE',?)", member, SecondaryReadFixtures.unique(), "fixture-only", time);
+      billingMethod = f.lastId();
       jdbc.update("INSERT INTO carts(member_id,version,created_at,updated_at) VALUES (?,7,?,?)", member, time, time);
       cart = f.lastId();
       jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,5)", cart, sku);
       jdbc.update("INSERT INTO coupons(name,discount_type,discount_value,minimum_order_amount,valid_from,valid_until,active) VALUES ('T10','FIXED_AMOUNT',1,0,'2026-01-01','2027-01-01',true)");
-      long definition = f.lastId();
-      jdbc.update("INSERT INTO member_coupons(member_id,coupon_id,status,reserved_order_id,issued_at) VALUES (?,?,'RESERVED',?,?)", member, definition, order, time);
+      couponDefinition = f.lastId();
+      jdbc.update("INSERT INTO member_coupons(member_id,coupon_id,status,reserved_order_id,issued_at) VALUES (?,?,'RESERVED',?,?)", member, couponDefinition, order, time);
       coupon = f.lastId();
+    });
+  }
+
+  @AfterEach
+  void cleanFixtures() {
+    if (tx == null) return; // Version/setup failure before the fixture transaction starts.
+    tx.executeWithoutResult(status -> {
+      entities.clear();
+      // Parent IDs also cover an unexpected committed retry/contender owned by this fixture.
+      jdbc.update("DELETE FROM payments WHERE order_id=?", order);
+      jdbc.update("DELETE FROM order_items WHERE id IN (?,?)", firstOrderItem, secondOrderItem);
+      jdbc.update("DELETE FROM subscription_order_context WHERE order_id=?", order);
+      jdbc.update("DELETE FROM member_coupons WHERE id=?", coupon);
+      jdbc.update("DELETE FROM cart_items WHERE cart_id=?", cart);
+      jdbc.update("DELETE FROM carts WHERE id=?", cart);
+      jdbc.update("DELETE FROM orders WHERE id=?", order);
+      jdbc.update("DELETE FROM subscription_schedules WHERE id=?", schedule);
+      jdbc.update("DELETE FROM subscriptions WHERE id=?", subscription);
+      jdbc.update("DELETE FROM billing_payment_methods WHERE id=? OR member_id=?", billingMethod, member);
+      jdbc.update("DELETE FROM inventories WHERE sku_id IN (?,?,?)", sku, secondSku, missingInventorySku);
+      jdbc.update("DELETE FROM skus WHERE id IN (?,?,?)", sku, secondSku, missingInventorySku);
+      jdbc.update("DELETE FROM products WHERE id=?", product);
+      jdbc.update("DELETE FROM categories WHERE id=?", category);
+      jdbc.update("DELETE FROM brands WHERE id=?", brand);
+      jdbc.update("DELETE FROM coupons WHERE id=?", couponDefinition);
+      jdbc.update("DELETE FROM members WHERE id=?", member);
     });
   }
 
