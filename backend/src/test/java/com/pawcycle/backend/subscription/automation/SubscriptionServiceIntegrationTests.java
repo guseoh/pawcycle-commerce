@@ -748,6 +748,132 @@ class SubscriptionServiceIntegrationTests {
 
   @Test
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  void cleanupPreservesMicrosecondCutoffAndUnfinishedRowsWithBatchOne() {
+    long subscriptionId = cleanupSubscription();
+    Instant now = Instant.parse("2026-08-09T00:00:00.123456Z");
+    LocalDateTime cutoff = LocalDateTime.ofInstant(now, ZoneOffset.UTC).minusDays(30);
+    insertCreationResult("micro-before", cutoff.minusNanos(1000));
+    insertCreationResult("micro-equal", cutoff);
+    insertCreationResult("micro-after", cutoff.plusNanos(1000));
+    insertCommandResult(subscriptionId, "micro-before", cutoff.minusNanos(1000));
+    insertCommandResult(subscriptionId, "micro-equal", cutoff);
+    insertCommandResult(subscriptionId, "micro-after", cutoff.plusNanos(1000));
+    insertCreationReservation("micro-incomplete");
+    insertCommandReservation(subscriptionId, "micro-incomplete");
+    insertCreationResult("micro-unsuccessful", null);
+    insertCommandResult(subscriptionId, "micro-unsuccessful", null);
+    insertCreationResult("micro-no-body", null);
+    insertCommandResult(subscriptionId, "micro-no-body", null);
+    for (String table : new String[] {
+        "subscription_creation_idempotency_results", "subscription_command_idempotency_results"}) {
+      jdbc.update("UPDATE " + table + " SET response_status=400 WHERE member_id=? AND idempotency_key=?",
+          member.getId(), "micro-unsuccessful");
+      jdbc.update("UPDATE " + table + " SET response_body=NULL WHERE member_id=? AND idempotency_key=?",
+          member.getId(), "micro-no-body");
+    }
+
+    SubscriptionIdempotencyCleanupProcessor cleanup = cleanupAt(now);
+    TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+    assertThat(transaction.<SubscriptionIdempotencyCleanupResult>execute(status -> cleanup.deleteExpired(1)))
+        .isEqualTo(new SubscriptionIdempotencyCleanupResult(0, 0, 1, 1));
+    var retained = cleanupRecords();
+    assertThat(transaction.<SubscriptionIdempotencyCleanupResult>execute(status -> cleanup.deleteExpired(1)))
+        .isEqualTo(new SubscriptionIdempotencyCleanupResult(0, 0, 0, 0));
+    assertThat(cleanupRecords()).isEqualTo(retained);
+    for (String table : new String[] {
+        "subscription_creation_idempotency_results", "subscription_command_idempotency_results"}) {
+      assertThat(resultCompletedAt(table, "micro-equal")).isEqualTo(cutoff);
+      assertThat(resultCompletedAt(table, "micro-after")).isEqualTo(cutoff.plusNanos(1000));
+      assertThat(resultCompletedAt(table, "micro-incomplete")).isNull();
+      assertThat(resultCompletedAt(table, "micro-unsuccessful")).isNull();
+      assertThat(resultCompletedAt(table, "micro-no-body")).isNull();
+    }
+    assertThat(creationResultExists("micro-before")).isFalse();
+    assertThat(commandResultExists(subscriptionId, "micro-before")).isFalse();
+    assertThat(retained).hasSize(10);
+  }
+
+  @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  void cleanupRepairAndDeleteRollbackPreserveStoredResponsesAndUtcRecoveryTime() {
+    long subscriptionId = cleanupSubscription();
+    Instant now = Instant.parse("2026-08-09T00:00:00.123456Z");
+    LocalDateTime expired = LocalDateTime.ofInstant(now, ZoneOffset.UTC).minusDays(31);
+    insertCreationResult("rollback-expired", expired);
+    insertCommandResult(subscriptionId, "rollback-expired", expired);
+    insertCreationResult("rollback-repair", null);
+    insertCommandResult(subscriptionId, "rollback-repair", null);
+    insertCreationReservation("rollback-incomplete");
+    insertCommandReservation(subscriptionId, "rollback-incomplete");
+    var before = cleanupRecords();
+    SubscriptionIdempotencyCleanupProcessor cleanup = cleanupAt(now);
+    TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+    assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+      assertThat(cleanup.deleteExpired(1))
+          .isEqualTo(new SubscriptionIdempotencyCleanupResult(1, 1, 1, 1));
+      assertUtcRepairTime();
+      throw new IllegalStateException("TEST-SEOUL-001 rollback after repair and delete");
+    })).isInstanceOf(IllegalStateException.class)
+        .hasMessage("TEST-SEOUL-001 rollback after repair and delete");
+    assertThat(cleanupRecords()).isEqualTo(before);
+
+    assertThat(transaction.<SubscriptionIdempotencyCleanupResult>execute(status -> cleanup.deleteExpired(1)))
+        .isEqualTo(new SubscriptionIdempotencyCleanupResult(1, 1, 1, 1));
+    assertUtcRepairTime();
+    var retained = cleanupRecords();
+    assertThat(transaction.<SubscriptionIdempotencyCleanupResult>execute(status -> cleanup.deleteExpired(2)))
+        .isEqualTo(new SubscriptionIdempotencyCleanupResult(0, 0, 0, 0));
+    assertThat(cleanupRecords()).isEqualTo(retained);
+    assertThat(retained).hasSize(4);
+    assertThat(resultCompletedAt("subscription_creation_idempotency_results", "rollback-incomplete"))
+        .isNull();
+    assertThat(resultCompletedAt("subscription_command_idempotency_results", "rollback-incomplete"))
+        .isNull();
+  }
+
+  private void assertUtcRepairTime() {
+    for (String table : new String[] {
+        "subscription_creation_idempotency_results", "subscription_command_idempotency_results"}) {
+      assertThat(jdbc.queryForObject(
+          "SELECT CAST(completed_at AS CHAR) FROM " + table + " WHERE member_id=? AND idempotency_key=?",
+          String.class, member.getId(), "rollback-repair"))
+          .isEqualTo("2026-08-09 00:00:00.123456");
+    }
+  }
+
+  private long cleanupSubscription() {
+    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long subscriptionId = service.createSubscription(
+        member.getId(), "cleanup-boundary", new CreateSubscriptionRequest(petId, planVersionId, 4))
+        .body().subscriptionId();
+    jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?",
+        member.getId(), "cleanup-boundary");
+    return subscriptionId;
+  }
+
+  private SubscriptionIdempotencyCleanupProcessor cleanupAt(Instant now) {
+    Clock cleanupClock = Clock.fixed(now, ZoneId.of("Asia/Seoul"));
+    SubscriptionMetrics metrics = new SubscriptionMetrics(new SimpleMeterRegistry(),
+        new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(jdbcExecutor),
+        cleanupClock);
+    return new SubscriptionIdempotencyCleanupProcessor(
+        new com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+        cleanupClock, metrics);
+  }
+
+  private java.util.List<java.util.Map<String, Object>> cleanupRecords() {
+    return jdbc.queryForList("SELECT 'creation' scope,idempotency_key,payload_fingerprint,response_status,response_body,"
+        + "location_header,etag_header,CAST(completed_at AS CHAR) completed_at"
+        + " FROM subscription_creation_idempotency_results WHERE member_id=? UNION ALL"
+        + " SELECT 'command' scope,idempotency_key,payload_fingerprint,response_status,response_body,"
+        + "location_header,etag_header,CAST(completed_at AS CHAR) completed_at"
+        + " FROM subscription_command_idempotency_results WHERE member_id=? ORDER BY scope,idempotency_key",
+        member.getId(), member.getId());
+  }
+
+  @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void legacyWhitespacePetTypeNormalizesHidesV1AndDoesNotConsumeDueSchedule() {
     jdbc.update("UPDATE products SET pet_type=' DOG ' WHERE id=?", sku.getProduct().getId());
     jdbc.update(

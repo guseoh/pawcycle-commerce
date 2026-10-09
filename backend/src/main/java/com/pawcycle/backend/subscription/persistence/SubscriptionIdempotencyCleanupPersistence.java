@@ -1,18 +1,19 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SubscriptionIdempotencyCleanupPersistence {
+  // completed_at is a UTC DATETIME(6); avoid JVM-zone conversion through Timestamp.
   private final JdbcTemplate jdbc;
 
   public SubscriptionIdempotencyCleanupPersistence(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 
-  public int deleteExpiredCommands(Timestamp cutoff, int batchSize) {
+  public int deleteExpiredCommands(LocalDateTime cutoff, int batchSize) {
     return jdbc.update(
         "DELETE FROM subscription_command_idempotency_results WHERE completed_at < ? ORDER BY"
             + " completed_at,member_id,subscription_id,command_type,idempotency_key LIMIT ?",
@@ -20,7 +21,7 @@ public class SubscriptionIdempotencyCleanupPersistence {
         batchSize);
   }
 
-  public int deleteExpiredCreations(Timestamp cutoff, int batchSize) {
+  public int deleteExpiredCreations(LocalDateTime cutoff, int batchSize) {
     return jdbc.update(
         "DELETE FROM subscription_creation_idempotency_results WHERE completed_at < ? ORDER"
             + " BY completed_at,member_id,idempotency_key LIMIT ?",
@@ -28,7 +29,7 @@ public class SubscriptionIdempotencyCleanupPersistence {
         batchSize);
   }
 
-  public int repairCommandCompletion(Timestamp now, int batchSize) {
+  public int repairCommandCompletion(LocalDateTime now, int batchSize) {
     return jdbc.update(
         "UPDATE subscription_command_idempotency_results SET completed_at=? WHERE"
             + " completed_at IS NULL AND response_status BETWEEN 200 AND 299 AND"
@@ -38,7 +39,7 @@ public class SubscriptionIdempotencyCleanupPersistence {
         batchSize);
   }
 
-  public int repairCreationCompletion(Timestamp now, int batchSize) {
+  public int repairCreationCompletion(LocalDateTime now, int batchSize) {
     return jdbc.update(
         "UPDATE subscription_creation_idempotency_results SET completed_at=? WHERE"
             + " completed_at IS NULL AND response_status BETWEEN 200 AND 299 AND"
