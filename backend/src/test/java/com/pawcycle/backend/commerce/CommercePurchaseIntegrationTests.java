@@ -1,6 +1,8 @@
 package com.pawcycle.backend.commerce;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.coupon.domain.CouponEntity;
+import com.pawcycle.backend.commerce.coupon.persistence.CouponRepository;
 
 import com.pawcycle.backend.member.address.api.MemberAddressRequest;
 
@@ -17,6 +19,9 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.support.TestSkuFactory;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,6 +44,8 @@ class CommercePurchaseIntegrationTests {
   private final ProductRepository productRepository;
   private final SkuRepository skuRepository;
   private final PasswordEncoder passwordEncoder;
+  @Autowired private CouponRepository coupons;
+  @Autowired private Clock clock;
   private Member member;
   private Sku sku;
   private long addressId;
@@ -304,13 +311,14 @@ class CommercePurchaseIntegrationTests {
   @Test
   void checkoutScopesMemberCouponLockToAuthenticatedMemberAndPreservesUnavailableContract() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
-    jdbc.update(
-        "INSERT INTO coupons(name,discount_type,discount_value,minimum_order_amount,valid_from,valid_until,active)"
-            + " VALUES (?,?,?,0,CURRENT_TIMESTAMP(6),DATE_ADD(CURRENT_TIMESTAMP(6),INTERVAL 1 DAY),true)",
-        "ownership-coupon-" + UUID.randomUUID(),
-        "FIXED_AMOUNT",
-        100);
-    long couponId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    // Use the application's Clock and coupon write mapping, as the admin path does.
+    LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+    long couponId =
+        coupons.saveAndFlush(
+            new CouponEntity(
+                "ownership-coupon-" + UUID.randomUUID(), "FIXED_AMOUNT",
+                BigDecimal.valueOf(100), BigDecimal.ZERO, null, now, now.plusDays(1), true))
+            .getId();
     jdbc.update(
         "INSERT INTO member_coupons(member_id,coupon_id,status,issued_at) VALUES (?,?,'AVAILABLE',CURRENT_TIMESTAMP(6))",
         member.getId(),
