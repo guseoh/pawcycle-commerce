@@ -44,7 +44,20 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
         matches = [c for c in cases if c.get("classname") == classname and
                    (c.get("name") == name or c.get("name", "").startswith(name + "("))]
         if len(matches) != count:
-            raise ValueError(f"{classname}.{name}: expected {count} executions; got {len(matches)}")
+            # Output bounded JUnit identities for triage. This does not relax the gate:
+            # missing/ambiguous physical lock executions still fail closed.
+            nearby = sorted({
+                (case.get("classname", ""), case.get("name", ""), 
+                 "SKIP" if case.find("skipped") is not None else "PRESENT")
+                for case in cases
+                if "BillingLockWorkDiagnosis" in case.get("classname", "")
+                or "fixedReadViewHistory" in case.get("name", "")
+            })
+            report_files = [p.name for p in files if "BillingLock" in p.name or "BillingRecovery" in p.name]
+            raise ValueError(
+                f"{classname}.{name}: expected {count} executions; got {len(matches)}; "
+                f"JUnit nearby={nearby[:20]!r}; report_files={report_files[:15]!r}"
+            )
         if any(any(c.find(tag) is not None for tag in ("skipped", "error", "failure")) for c in matches):
             raise ValueError(f"{classname}.{name}: skipped or failed")
         if all(sources) and (classname, name, count) == T10[0]:
