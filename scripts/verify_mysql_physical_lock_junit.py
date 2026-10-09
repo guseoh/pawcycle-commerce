@@ -41,8 +41,14 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
         cases += list(ET.parse(file).iter("testcase"))
     checked = []
     for classname, name, count in [T09, *(T10 if all(sources) else [])]:
-        matches = [c for c in cases if c.get("classname") == classname and
-                   (c.get("name") == name or c.get("name", "").startswith(name + "("))]
+        if all(sources) and (classname, name, count) == T10[0]:
+            # Real Gradle JUnit XML identifies these parameterized cases by label.
+            matches = [c for c in cases if c.get("classname") == classname
+                       and (c.get("name", "").startswith("[") and "kind" in c.get("name", "")
+                            or c.get("name", "").startswith(name + "("))]
+        else:
+            matches = [c for c in cases if c.get("classname") == classname and
+                       (c.get("name") == name or c.get("name", "").startswith(name + "("))]
         if len(matches) != count:
             # Output bounded JUnit identities for triage. This does not relax the gate:
             # missing/ambiguous physical lock executions still fail closed.
@@ -61,17 +67,14 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
         if any(any(c.find(tag) is not None for tag in ("skipped", "error", "failure")) for c in matches):
             raise ValueError(f"{classname}.{name}: skipped or failed")
         if all(sources) and (classname, name, count) == T10[0]:
-            # Gradle JUnit XML names: method(String)[1], [2], [3] (optional display-name suffix).
-            # Counting three rows alone would accept [1],[1],[1] and mask absent B/C.
-            invocations = []
-            pattern = re.compile(re.escape(name) + r"\([^)]*\)\s*\[(\d+)\](?:\s+.*)?")
-            for case in matches:
-                match = pattern.fullmatch(case.get("name", ""))
-                if match is None:
-                    raise ValueError(f"{classname}.{name}: unrecognized JUnit invocation identity")
-                invocations.append(int(match.group(1)))
-            if sorted(invocations) != [1, 2, 3]:
-                raise ValueError(f"{classname}.{name}: T10 A/B/C invocations missing or duplicated: {invocations}")
+            # The ValueSource source contract fixes [1]/[2]/[3] to A/B/C.
+            expected = ['[1] kind = "A"', '[2] kind = "B"', '[3] kind = "C"']
+            identities = sorted(c.get("name", "") for c in matches)
+            if identities != expected:
+                raise ValueError(
+                    f"{classname}.{name}: T10 A/B/C invocations missing or duplicated: "
+                    f"expected={expected!r}, got={identities!r}"
+                )
         checked.append(f"{name}={count} PASS")
     return checked
 
