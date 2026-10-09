@@ -11,7 +11,7 @@ class LockJUnitGateTests(unittest.TestCase):
             root = Path(tmp)
             with self.assertRaisesRegex(ValueError, "Missing JUnit"):
                 verify(root, [False, False])
-            ET.ElementTree(ET.Element("testsuite")).write(root / "TEST.xml")
+            ET.ElementTree(ET.Element("testsuite")).write(root / "TEST-fixture.xml")
             with self.assertRaisesRegex(ValueError, "expected 1"):
                 verify(root, [False, False])
 
@@ -22,7 +22,7 @@ class LockJUnitGateTests(unittest.TestCase):
                 ET.SubElement(case, state)
                 root = ET.Element("testsuite")
                 root.append(case)
-                ET.ElementTree(root).write(Path(tmp) / "TEST.xml")
+                ET.ElementTree(root).write(Path(tmp) / "TEST-fixture.xml")
                 with self.assertRaisesRegex(ValueError, "skipped or failed"):
                     verify(Path(tmp), [False, False])
 
@@ -33,11 +33,11 @@ class LockJUnitGateTests(unittest.TestCase):
             for cls, name, count in T10:
                 for i in range(count):
                     root.append(ET.Element("testcase", classname=cls, name=name + f"(String)[{i+1}]"))
-            ET.ElementTree(root).write(Path(tmp) / "TEST.xml")
+            ET.ElementTree(root).write(Path(tmp) / "TEST-fixture.xml")
             self.assertEqual(len(verify(Path(tmp), [False, False])), 1)
             self.assertEqual(len(verify(Path(tmp), [True, True])), 3)
             root.remove(root[-1])
-            ET.ElementTree(root).write(Path(tmp) / "TEST.xml")
+            ET.ElementTree(root).write(Path(tmp) / "TEST-fixture.xml")
             with self.assertRaisesRegex(ValueError, "expected 1"):
                 verify(Path(tmp), [True, True])
             with self.assertRaisesRegex(ValueError, "Partial T10"):
