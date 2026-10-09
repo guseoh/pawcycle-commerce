@@ -106,6 +106,8 @@ jobs:
           python -m py_compile \
             scripts/task_id.py \
             scripts/validate-task-artifacts.py \
+            scripts/verify_mysql_physical_lock_junit.py \
+            scripts/test_verify_mysql_physical_lock_junit.py \
             scripts/validate-pr-body-encoding.py \
             scripts/classify-validation-changes.py \
             scripts/run-agent-benchmark.py \
@@ -126,6 +128,7 @@ jobs:
             scripts.test_validate_task_artifacts \
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
+            scripts.test_verify_mysql_physical_lock_junit \
             scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
             scripts.test_discord_payload \
@@ -189,6 +192,42 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare disposable MySQL physical lock observation
+        env:
+          MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
+          MYSQL_ROOT_PASSWORD: ci-only-root-not-a-secret
+          MYSQL_DATABASE: pawcycle_test
+          MYSQL_USERNAME: pawcycle_ci
+          MYSQL_PASSWORD: ci-only-not-a-secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Root is used ONLY to configure the disposable mysql:8.4 service.
+          # PROCESS is required by information_schema.INNODB_METRICS (T10 observer).
+          docker exec -i --env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$MYSQL_CONTAINER_ID" \
+            mysql --batch --user=root <<'SQL'
+          GRANT PROCESS ON *.* TO 'pawcycle_ci'@'%';
+          GRANT SELECT ON performance_schema.data_locks TO 'pawcycle_ci'@'%';
+          GRANT SELECT ON performance_schema.data_lock_waits TO 'pawcycle_ci'@'%';
+          GRANT SELECT ON performance_schema.threads TO 'pawcycle_ci'@'%';
+          GRANT SELECT ON performance_schema.events_statements_history TO 'pawcycle_ci'@'%';
+          GRANT SELECT ON performance_schema.setup_consumers TO 'pawcycle_ci'@'%';
+          SQL
+          for source in performance_schema.data_locks performance_schema.data_lock_waits \
+            performance_schema.threads performance_schema.events_statements_history \
+            information_schema.INNODB_METRICS; do
+            docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" \
+              mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" \
+              --execute="SELECT COUNT(*) FROM $source" >/dev/null
+          done
+          active="$(docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" \
+            mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" \
+            --execute="SELECT COUNT(*) FROM performance_schema.setup_consumers WHERE NAME IN ('global_instrumentation','thread_instrumentation','events_statements_current','events_statements_history') AND ENABLED='YES'")"
+          if [ "$active" != 4 ]; then
+            echo "::error title=MySQL physical observation unavailable::required consumers disabled" >&2
+            exit 1
+          fi
+
       - name: Set up Java 25
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
         with:
@@ -209,7 +248,12 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
           SPRING_DATASOURCE_USERNAME: pawcycle_ci
           SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
+          # Opt in only for the disposable test JVM, not application/Production.
+          JAVA_TOOL_OPTIONS: -Dpawcycle.t09.observeLocks=true
         run: ./gradlew test
+
+      - name: Require physical-lock JUnit execution
+        run: python scripts/verify_mysql_physical_lock_junit.py
 
       - name: Backend build without repeated tests
         working-directory: backend
