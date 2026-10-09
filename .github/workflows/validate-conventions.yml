@@ -206,7 +206,6 @@ jobs:
           # PROCESS is required by information_schema.INNODB_METRICS (T10 observer).
           docker exec -i --env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$MYSQL_CONTAINER_ID" \
             mysql --batch --user=root <<'SQL'
-          GRANT PROCESS ON *.* TO 'pawcycle_ci'@'%';
           GRANT SELECT ON performance_schema.data_locks TO 'pawcycle_ci'@'%';
           GRANT SELECT ON performance_schema.data_lock_waits TO 'pawcycle_ci'@'%';
           GRANT SELECT ON performance_schema.threads TO 'pawcycle_ci'@'%';
@@ -214,12 +213,20 @@ jobs:
           GRANT SELECT ON performance_schema.setup_consumers TO 'pawcycle_ci'@'%';
           SQL
           for source in performance_schema.data_locks performance_schema.data_lock_waits \
-            performance_schema.threads performance_schema.events_statements_history \
-            information_schema.INNODB_METRICS; do
+            performance_schema.threads performance_schema.events_statements_history; do
             docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" \
               mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" \
               --execute="SELECT COUNT(*) FROM $source" >/dev/null
           done
+          # PROCESS is MySQL-global; grant it only when the T10 observer is present.
+          if [ -f backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingLockWorkDiagnosisIntegrationTests.java ] || \
+             [ -f backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingRecoveryPersistenceParityIntegrationTests.java ]; then
+            docker exec --env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$MYSQL_CONTAINER_ID" \
+              mysql --batch --user=root --execute="GRANT PROCESS ON *.* TO 'pawcycle_ci'@'%';"
+            docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" \
+              mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" \
+              --execute="SELECT COUNT(*) FROM information_schema.INNODB_METRICS" >/dev/null
+          fi
           active="$(docker exec --env MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER_ID" \
             mysql --batch --skip-column-names --user="$MYSQL_USERNAME" "$MYSQL_DATABASE" \
             --execute="SELECT COUNT(*) FROM performance_schema.setup_consumers WHERE NAME IN ('global_instrumentation','thread_instrumentation','events_statements_current','events_statements_history') AND ENABLED='YES'")"

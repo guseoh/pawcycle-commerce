@@ -200,6 +200,18 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("services:\n      mysql:", backend_block)
         self.assertEqual(self.workflow.count("image: mysql:8.4"), 1)
 
+    def test_disposable_mysql_lock_gate_enforces_junit(self) -> None:
+        # The broad PROCESS grant is conditional and never sent to Production.
+        self.assertIn("image: mysql:8.4", self.workflow)
+        self.assertIn("Prepare disposable MySQL physical lock observation", self.workflow)
+        self.assertIn("GRANT SELECT ON performance_schema.data_locks", self.workflow)
+        self.assertIn("GRANT SELECT ON performance_schema.data_lock_waits", self.workflow)
+        self.assertIn("information_schema.INNODB_METRICS", self.workflow)
+        self.assertIn("if [ -f backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingLockWorkDiagnosisIntegrationTests.java ]", self.workflow)
+        self.assertIn("JAVA_TOOL_OPTIONS: -Dpawcycle.t09.observeLocks=true", self.workflow)
+        self.assertIn("Require physical-lock JUnit execution", self.workflow)
+        self.assertIn("python scripts/verify_mysql_physical_lock_junit.py", self.workflow)
+
     def test_merge_base_and_rename_safe_diff_are_used(self) -> None:
         self.assertIn('git merge-base "$BASE_SHA" "$HEAD_SHA"', self.workflow)
         self.assertIn('git diff --no-renames --name-only "$merge_base..$HEAD_SHA"', self.workflow)
