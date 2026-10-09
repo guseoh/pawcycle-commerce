@@ -2,7 +2,6 @@ package com.pawcycle.backend.subscription.automation;
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence;
 import io.micrometer.core.instrument.Timer;
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -55,13 +54,11 @@ public class SubscriptionIdempotencyCleanupProcessor {
     }
     try {
       LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-      Timestamp nowTimestamp = Timestamp.from(now.toInstant(ZoneOffset.UTC));
-      int creationRepaired = persistence.repairCreationCompletion(nowTimestamp, batchSize);
-      int commandRepaired = persistence.repairCommandCompletion(nowTimestamp, batchSize);
+      int creationRepaired = persistence.repairCreationCompletion(now, batchSize);
+      int commandRepaired = persistence.repairCommandCompletion(now, batchSize);
       LocalDateTime cutoff = now.minus(RETENTION);
-      Timestamp cutoffTimestamp = Timestamp.from(cutoff.toInstant(ZoneOffset.UTC));
-      int creationDeleted = persistence.deleteExpiredCreations(cutoffTimestamp, batchSize);
-      int commandDeleted = persistence.deleteExpiredCommands(cutoffTimestamp, batchSize);
+      int creationDeleted = persistence.deleteExpiredCreations(cutoff, batchSize);
+      int commandDeleted = persistence.deleteExpiredCommands(cutoff, batchSize);
       SubscriptionIdempotencyCleanupResult result =
           new SubscriptionIdempotencyCleanupResult(
               creationRepaired, commandRepaired, creationDeleted, commandDeleted);
