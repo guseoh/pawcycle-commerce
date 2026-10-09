@@ -53,7 +53,7 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
             # Output bounded JUnit identities for triage. This does not relax the gate:
             # missing/ambiguous physical lock executions still fail closed.
             nearby = sorted({
-                (case.get("classname", ""), case.get("name", ""), 
+                (case.get("classname", ""), case.get("name", ""),
                  "SKIP" if case.find("skipped") is not None else "PRESENT")
                 for case in cases
                 if "BillingLockWorkDiagnosis" in case.get("classname", "")
