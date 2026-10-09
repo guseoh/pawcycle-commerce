@@ -37,6 +37,13 @@ class LockJUnitGateTests(unittest.TestCase):
             ET.ElementTree(valid).write(report)
             self.assertEqual(len(verify(Path(tmp), [True, True])), 3)
 
+            # An aborted/assumption-skipped T10 invocation must fail the required CI gate.
+            skipped = ET.SubElement(list(valid)[1], "skipped")
+            ET.ElementTree(valid).write(report)
+            with self.assertRaisesRegex(ValueError, "skipped or failed"):
+                verify(Path(tmp), [True, True])
+            list(valid)[1].remove(skipped)
+
             # Same invocation reported three times must not hide missing B or C.
             cases = list(valid)
             cases[2].set("name", '[1] kind = "A"')
