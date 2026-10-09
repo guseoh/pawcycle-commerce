@@ -100,7 +100,7 @@ public class SubscriptionBillingRetryProcessor {
               audits.append(adminId, "BILLING_RETRY_STOCK_UNAVAILABLE", "PAYMENT", failedPaymentId);
             return 0L;
           }
-          persistence.insertAttempt(
+          long nextId = persistence.insertAttempt(
               payment.orderId(),
               order.amount(),
               "TOSS-SUB-" + UUID.randomUUID(),
@@ -108,7 +108,6 @@ public class SubscriptionBillingRetryProcessor {
               nextAttempt,
               now(),
               now());
-          long nextId = persistence.lastInsertedId();
           applyReservations(reservations, nextId);
           persistence.releaseStockHold(payment.scheduleId());
           if (adminId != null) audits.append(adminId, "BILLING_RETRY", "PAYMENT", nextId);

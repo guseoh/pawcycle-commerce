@@ -3,86 +3,73 @@ package com.pawcycle.backend.subscription.persistence;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.commerce.payment.domain.QPaymentEntity;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentNativeLocks;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceQueries;
+import com.querydsl.core.types.Projections;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
+import com.pawcycle.backend.commerce.payment.domain.PaymentEntity;
+import com.pawcycle.backend.commerce.payment.persistence.PaymentRepository;
+import com.pawcycle.backend.commerce.order.domain.QCommerceOrderEntity;
+import com.querydsl.jpa.JPAExpressions;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SubscriptionBillingRetryPersistence {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
+  private final PaymentRepository payments;
+  private final PaymentNativeLocks locks;
+  private final PaymentPersistenceQueries writes;
+  private final JPAQueryFactory queries;
+  private final QPaymentEntity payment = new QPaymentEntity("payment");
+  private final QSubscriptionScheduleEntity schedule = new QSubscriptionScheduleEntity("schedule");
 
-  public SubscriptionBillingRetryPersistence(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public SubscriptionBillingRetryPersistence(EntityManager entities, PaymentRepository payments) {
+    this.entities = entities;
+    this.payments = payments;
+    this.locks = new PaymentNativeLocks(entities);
+    this.writes = new PaymentPersistenceQueries(entities);
+    this.queries = new JPAQueryFactory(entities);
   }
 
   public InventoryState lockInventory(long skuId) {
-    return jdbc
-        .query(
-            "SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=?"
-                + " FOR UPDATE",
-            (rs, row) ->
-                new InventoryState(
-                    rs.getInt("available_quantity"),
-                    rs.getInt("reserved_quantity"),
-                    rs.getLong("version")),
-            skuId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT available_quantity,reserved_quantity,version FROM inventories WHERE sku_id=? FOR UPDATE
+        """, InventoryState.class, skuId);
   }
 
   public List<OrderItem> findOrderedItems(long orderId) {
-    return jdbc.query(
-        "SELECT sku_id,quantity FROM order_items WHERE order_id=? ORDER BY sku_id",
-        (rs, row) -> new OrderItem(rs.getLong("sku_id"), rs.getInt("quantity")),
-        orderId);
+    return writes.items(orderId, OrderItem.class, true);
   }
 
   public List<OrderItem> findItems(long orderId) {
-    return jdbc.query(
-        "SELECT sku_id,quantity FROM order_items WHERE order_id=?",
-        (rs, row) -> new OrderItem(rs.getLong("sku_id"), rs.getInt("quantity")),
-        orderId);
+    return writes.items(orderId, OrderItem.class, false);
   }
 
   public int markPaymentOrderActionRequired(long paymentId) {
-    return jdbc.update(
-        "UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=(SELECT order_id"
-            + " FROM payments WHERE id=?)",
-        paymentId);
+    var order = new QCommerceOrderEntity("orders");
+    return writes.mutate(() -> queries.update(order).set(order.status, "PAYMENT_ACTION_REQUIRED")
+        .where(order.id.eq(JPAExpressions.select(payment.orderId).from(payment).where(payment.id.eq(paymentId)))).execute());
   }
 
   public int recordReconciliation(int attempts, Timestamp now, long paymentId) {
-    return jdbc.update(
-        "UPDATE payments SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",
-        attempts,
-        now,
-        paymentId);
+    return writes.reconciliation(attempts, now, paymentId);
   }
 
   public ReconciliationRow lockReconciliation(long paymentId) {
-    return jdbc
-        .query(
-            "SELECT reconciliation_attempts,status FROM payments WHERE id=? FOR UPDATE",
-            (rs, row) ->
-                new ReconciliationRow(rs.getInt("reconciliation_attempts"), rs.getString("status")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT reconciliation_attempts,status FROM payments WHERE id=? FOR UPDATE
+        """, ReconciliationRow.class, paymentId);
   }
 
   public int releaseStockHold(long scheduleId) {
-    return jdbc.update(
-        "UPDATE subscription_schedules SET status='SCHEDULED',hold_reason=NULL WHERE id=? AND"
-            + " status='HELD' AND hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE'",
-        scheduleId);
+    return writes.mutate(() -> queries.update(schedule).set(schedule.status, "SCHEDULED")
+        .setNull(schedule.holdReason).where(schedule.id.eq(scheduleId), schedule.status.eq("HELD"),
+            schedule.holdReason.eq("PAYMENT_RETRY_STOCK_UNAVAILABLE")).execute());
   }
 
-  public Long lastInsertedId() {
-    return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-  }
-
-  public int insertAttempt(
+  public long insertAttempt(
       long orderId,
       BigDecimal amount,
       String providerOrderId,
@@ -90,113 +77,63 @@ public class SubscriptionBillingRetryPersistence {
       int attempt,
       Timestamp requestedAt,
       Timestamp createdAt) {
-    return jdbc.update(
-        "INSERT INTO"
-            + " payments(order_id,type,provider,status,amount,provider_order_id,idempotency_key,attempt_no,requested_at,created_at)"
-            + " VALUES (?,'BILLING','TOSS','READY',?,?,?,?,?,?)",
-        orderId,
-        amount,
-        providerOrderId,
-        idempotencyKey,
-        attempt,
-        requestedAt,
-        createdAt);
+    var row = PaymentEntity.billing(orderId, amount, providerOrderId, idempotencyKey, attempt,
+        PaymentPersistenceQueries.jdbcTime(requestedAt), PaymentPersistenceQueries.jdbcTime(createdAt));
+    payments.saveAndFlush(row);
+    long id = row.getId();
+    entities.detach(row);
+    return id;
   }
 
   public int holdStockUnavailable(long scheduleId) {
-    return jdbc.update(
-        "UPDATE subscription_schedules SET"
-            + " status='HELD',hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE' WHERE id=?",
-        scheduleId);
+    return writes.mutate(() -> queries.update(schedule).set(schedule.status, "HELD")
+        .set(schedule.holdReason, "PAYMENT_RETRY_STOCK_UNAVAILABLE").where(schedule.id.eq(scheduleId)).execute());
   }
 
   public RetryOrder lockOrder(long orderId) {
-    return jdbc
-        .query(
-            "SELECT payment_amount,status FROM orders WHERE id=? FOR UPDATE",
-            (rs, row) -> new RetryOrder(rs.getBigDecimal("payment_amount"), rs.getString("status")),
-            orderId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT payment_amount,status FROM orders WHERE id=? FOR UPDATE
+        """, RetryOrder.class, orderId);
   }
 
   public Long findExistingAttempt(long orderId, int attempt) {
-    return jdbc.query(
-        "SELECT id FROM payments WHERE order_id=? AND attempt_no=?",
-        rs -> rs.next() ? rs.getLong(1) : null,
-        orderId,
-        attempt);
+    return queries.select(payment.id).from(payment)
+        .where(payment.orderId.eq(orderId), payment.attemptNo.eq(attempt)).fetchOne();
   }
 
   public Integer countStockHolds(long scheduleId) {
-    return jdbc.queryForObject(
-        "SELECT COUNT(*) FROM subscription_schedules WHERE id=? AND status='HELD' AND"
-            + " hold_reason='PAYMENT_RETRY_STOCK_UNAVAILABLE'",
-        Integer.class,
-        scheduleId);
+    return Math.toIntExact(queries.select(schedule.count()).from(schedule)
+        .where(schedule.id.eq(scheduleId), schedule.status.eq("HELD"),
+            schedule.holdReason.eq("PAYMENT_RETRY_STOCK_UNAVAILABLE")).fetchOne());
   }
 
   public RetryAttempt lockRetryAttempt(long paymentId) {
-    return jdbc
-        .query(
-            """
-            SELECT payment.order_id,payment.attempt_no,payment.status,context.schedule_id
-            FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
-            WHERE payment.id=? FOR UPDATE\
-            """,
-            (rs, row) ->
-                new RetryAttempt(
-                    rs.getLong("order_id"),
-                    rs.getInt("attempt_no"),
-                    rs.getString("status"),
-                    rs.getLong("schedule_id")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT payment.order_id,payment.attempt_no,payment.status,context.schedule_id
+        FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
+        WHERE payment.id=? FOR UPDATE
+        """, RetryAttempt.class, paymentId);
   }
 
   public int holdRetryExhausted(long scheduleId) {
-    return jdbc.update(
-        "UPDATE subscription_schedules SET"
-            + " status='HELD',hold_reason='PAYMENT_RETRY_EXHAUSTED' WHERE id=?",
-        scheduleId);
+    return writes.mutate(() -> queries.update(schedule).set(schedule.status, "HELD")
+        .set(schedule.holdReason, "PAYMENT_RETRY_EXHAUSTED").where(schedule.id.eq(scheduleId)).execute());
   }
 
   public int markOrderActionRequired(long orderId) {
-    return jdbc.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=?", orderId);
+    return writes.orderStatus("PAYMENT_ACTION_REQUIRED", orderId);
   }
 
   public int markFailed(String providerStatus, String failureCode, Timestamp now, long paymentId) {
-    return jdbc.update(
-        "UPDATE payments SET status='FAILED',provider_status=?,failure_code=?,failed_at=?"
-            + " WHERE id=?",
-        providerStatus,
-        failureCode,
-        now,
-        paymentId);
+    return writes.failed(providerStatus, failureCode, now, paymentId);
   }
 
   public FailureAttempt lockFailureAttempt(long paymentId) {
-    return jdbc
-        .query(
-            """
-            SELECT payment.id,payment.order_id,payment.attempt_no,payment.status,context.schedule_id
-            FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
-            WHERE payment.id=? FOR UPDATE\
-            """,
-            (rs, row) ->
-                new FailureAttempt(
-                    rs.getLong("id"),
-                    rs.getLong("order_id"),
-                    rs.getInt("attempt_no"),
-                    rs.getString("status"),
-                    rs.getLong("schedule_id")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT payment.id,payment.order_id,payment.attempt_no,payment.status,context.schedule_id
+        FROM payments payment JOIN subscription_order_context context ON context.order_id=payment.order_id
+        WHERE payment.id=? FOR UPDATE
+        """, FailureAttempt.class, paymentId);
   }
 
   public record FailureAttempt(

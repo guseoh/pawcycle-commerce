@@ -1,6 +1,6 @@
 # Backend Architecture V2 baseline and guardrails
 
-Current Task: `BACKEND-REFACTOR-V2-009` (Program T09) · Master #339 · Issue #356 · 고위험 저장소 변경.
+Current Task: `BACKEND-REFACTOR-V2-010` (Program T10 / `BACKEND-REFACTOR-V2-T10`) · Master #339 · Issue #358 · 고위험 저장소 변경.
 T02 topology: `BACKEND-REFACTOR-V2-002` · Issue #342 / PR #343.
 T01 baseline: `BACKEND-REFACTOR-V2-001` · Issue #340 / PR #341.
 
@@ -1347,3 +1347,265 @@ Final Runtime JdbcTemplate 0 is still Master #339's T12 gate, and every remainin
 converted or explicitly reassigned/decided; counts alone do not close that gate.
 Rollback is a normal revert of T09 code/tests/document. No migration/data repair or operating resource
 rollback is required. At the original T09 handoff, PR #357 was Draft and Ready/CodeRabbit request/merge had not yet occurred. Subsequent PR, external review and merge states are recorded in GitHub.
+
+## T10 Billing, retry and common payment recovery persistence
+
+Issue #358 / Master #339; approved repository work based on main `8bf7ab67`.
+The numeric repository task ID is `BACKEND-REFACTOR-V2-010`; Program T10 is the user's
+`BACKEND-REFACTOR-V2-T10`. T09 order creation/reservation, provider implementations, scheduler
+enablement, HTTP/schema/migrations and Production execution are unchanged.
+
+### Conversion and Native KEEP
+
+| Public surface / transaction owner | T10 implementation and preserved contract |
+| --- | --- |
+| Billing candidates and ordered items / processor selection and completion | Typed Querydsl projections using existing Payment/OrderItem mappings; BILLING READY/PROCESSING, payment ID ASC, SKU ASC |
+| Billing claim, unknown, success, order paid, missing-method hold / processor claim and completion | Field-specific bulk writes retain CAS predicate, affected rows and unrelated fields; no reuse of entity methods that also change paymentKey/providerStatus |
+| Retry failure/reconciliation/hold/status, item reads, existing attempt and stock-hold count / RetryProcessor TransactionTemplate | Existing typed mappings; FAILED-only retry, attempt 1→2→3, UNKNOWN query-only, reconciliation cap 10 and hold reasons stay in the unchanged use case |
+| Retry insertAttempt / retry reservation transaction | PaymentEntity.billing + PaymentRepository.saveAndFlush, generated getId returned directly; one caller replaces insertAttempt→LAST_INSERT_ID with that ID; flush/detach and all unique constraints remain |
+| Reconciliation attempts/payment/order/coupon writes and view / start or completion TransactionTemplate | Same individual fields and RESERVED predicate; typed DATETIME wall-clock read preserves no-Calendar Timestamp semantics |
+| Reconciliation cart consumption / completion transaction | Absent cart returns without creation; absent item skips; quantity ≤ ordered deletes, otherwise subtracts; version unchanged, updated_at always touched for an existing cart |
+
+`PaymentPersistenceQueries` shares existing typed payment/order/item ownership and field-specific
+writes. Bulk mutation flushes pending work before writing and clears managed state afterwards;
+read-after-write and rollback-after-flush regressions protect this boundary. Timestamp inputs are
+encoded only at these existing UTC-Calendar mappings, preserving JDBC DATETIME(6) wall clocks in
+UTC/Seoul. No new entity/shadow mapping or global timezone setting is introduced.
+
+`PaymentNativeLocks` contains only typed locking reads. Original SQL retains payment→order/context,
+LEFT JOIN ACTIVE method and inventory SKU ordering, including absent-row/index/gap behavior:
+Billing lockWork/lockProcessingPayment; Retry lockFailureAttempt/lockRetryAttempt/lockOrder/
+lockInventory/lockReconciliation; Reconciliation start/completion and cart/cart-item locks.
+These JOIN and missing-row lock footprints are not inferred from JPQL pessimistic locks. Ordinary
+reads and writes are converted, rather than mechanically wrapping every JDBC SQL in native queries.
+There is no unverified delegation to PaymentPersistenceAdapter and no new runtime JDBC.
+Provider charge follows committed READY→PROCESSING; queryCharge/queryPayment follows committed
+reconciliation start; completion remains separate. Reconciliation never confirms or charges again.
+
+### DELETE physical-history diagnosis and retained regression
+
+The original UTC failure compared identical lockWork SQL/input after committed ACTIVE-method DELETE:
+legacy had an extra `billing_payment_methods / fk_billing_payment_methods_member / RECORD / X /
+GRANTED / 105,65` entry; the JPA observation lacked it. Other observed locks matched. The first
+unpinned B experiment also recorded Legacy↔JPA inequality. Neither is reclassified as a success.
+Original transaction identity, execution plan and the actual purge event were not captured; the
+historical purge timing remains unconfirmed.
+
+Disposable MySQL **8.4.11 / REPEATABLE READ** experiments used A (never present), B (ACTIVE→DELETE)
+and C (ACTIVE→REVOKED). With physical history fixed, Legacy↔Legacy and Legacy↔JPA matched every
+table/index/type/mode/status/data entry, including both query orders in the same transaction.
+Actual Hibernate SQL, parameter ID, session settings and EXPLAIN access paths matched: payment,
+orders/context PRIMARY const; method FK member index ref. Releasing an older read view reproduced
+the deleted-index-entry disappearance using Legacy↔Legacy alone; this separates physical-history
+instability from a demonstrated persistence semantic change, without claiming the original purge
+event was observed.
+
+`MysqlReadView` opens an independent read-only REPEATABLE READ consistent read **before DELETE**.
+It holds the pre-delete history through both independent lock observations and contender checks,
+then explicitly rolls back/closes on success or exception. The original DELETE equality assertion
+and all compared lock rows are retained; the deleted member/method index entry is additionally
+asserted present. The snapshot owns zero data_locks. While it remains open, same-member INSERT
+waits on `fk_billing_payment_methods_member`, resumes with affectedRows=1 after the actual holder
+ends, and rolls back the fixture insertion; a different-member INSERT completes during the hold.
+Thus the snapshot's retention does not supply the blocking lock or postpone contender completion.
+
+Stable A/B/C and fixed DELETE comparisons remain regressions. Privileged physical observation
+skips only actual MySQL access-denied errors (1142/1143/1227); ordinary differential and provider
+state regressions still run in CI. Unpinned/purge-lifetime experiments are manual diagnostics enabled
+by `JAVA_TOOL_OPTIONS=-Dpawcycle.t10.diagnoseHistory=true`; their observed mismatches are recorded,
+not weakened assertions or production correctness gates. New raw diagnostics use a unique directory
+under `build/reports/t10-lock-diagnosis/`; original local failure/first B evidence is not overwritten.
+Reproduce with fresh disposable MySQL, root observation privileges, and
+`gradlew test --tests '*BillingLockWorkDiagnosisIntegrationTests' --tests '*BillingRecoveryPersistenceParityIntegrationTests'`.
+
+### Remaining owners and rollback
+
+Hand-written production source classification (exclude Q/test/build) measures direct JdbcTemplate
+**28→25**, ordinary runtime **19→16**; nine catalog maintenance/foundation bootstrap/subscription
+migration/performance files remain non-runtime. EntityManager **18→23**, JPAQueryFactory **7→11**,
+JpaRepository **36→36**. These are dependency-containing source files, not native SQL counts.
+T11 owns SubscriptionIdempotencyCleanupPersistence and the nine non-runtime files; T12 retains
+Cancellation/Refund/ReturnPersistenceAdapter, SubscriptionShippingPersistenceAdapter,
+SubscriptionDeliveryReminderPersistence, RepeatCommerceQueryRepository, SubscriptionMetricsQueryRepository,
+NotificationPersistenceAdapter, MembershipEvaluationPersistenceAdapter, MembershipPersistenceAdapter,
+CommerceMetricsQueryRepository, OperationsQueryRepository, QuickReorderPersistenceAdapter,
+InteractionEventPersistenceAdapter and RecommendationQueryAdapter. Runtime 0 is still a later gate.
+Rollback is a normal revert of T10 code/tests/document; no migration/data repair, provider or
+operating resource rollback is required. Actual validation and residual limitations follow in this
+section and the Draft PR; no Production Verified claim is made.
+
+### T10 resumed validation — STOP, no commit/push/PR
+
+The latest remote main remains `8bf7ab67a96be2527d2bf3c6cb57d9e02ae90e81`.
+Privileged UTC fixed-lock/original DELETE plus manual diagnosis executes eight tests without
+failure/skip; Billing/Retry/Reconciliation selection passes 41 and T09/NORMAL selection passes 47.
+Fresh-schema full UTC MySQL tests and `build -x test` pass. XML reports 554 tests, zero failures/errors,
+seven skips: three privileged fixed-history invocations, one original physical observer, two manual
+diagnostic definitions and the existing opt-in T09 observer. Privileged local runs execute these
+observers. Architecture output matches all frozen 204 entries, NEW 0 / removed 0. Linux Harness
+passes 146 regressions and Discord's 22 fixtures; task-artifact/encoding/Python compilation and
+Backend/Harness-only classification pass.
+
+Earlier local failures are retained: Windows Harness has the unchanged CRLF/LF byte comparison
+failure; a read-only Linux mount rejects fixture cleanup, resolved by a writable temporary archive;
+full UTC initially has seven process-output failures because inherited JAVA_TOOL_OPTIONS prints
+into child stderr. Removing that environment variable and setting timezone only on Gradle Test
+tasks passes all seven. A reused-schema full attempt is aborted after existing catalog cleanup/FK
+and count failures: retained committed orders/subscriptions reference catalog rows. No fixtures,
+thresholds or production code are changed; the final whole-suite evidence uses a new empty schema.
+
+The subsequent fresh-schema **Seoul selection runs 72 tests: 71 pass, one fails, zero skip**.
+Fixed A/B/C Legacy↔Legacy/Legacy↔JPA/blocking and the unchanged original DELETE assertion pass.
+All 13 persistence parity, 25 reconciliation, four T09 command parity, 20 automation and three
+Architecture tests pass. The failure is the manual **B-unpinned same-transaction Legacy→JPA**
+comparison at `BillingLockWorkDiagnosisIntegrationTests.sameTransaction`: first observation contains
+`billing_payment_methods / fk_billing_payment_methods_member / RECORD / X / GRANTED / 72,60`,
+the second does not. Both retain successor `73,58 / X,GAP`; payment 56/order 53/context 53 locks match.
+The historical read view is deliberately absent in this diagnostic. The actual purge event and a
+Legacy↔Legacy same-transaction counterpart were not observed; neither purge nor timezone is asserted
+as its cause. An assertion before the diagnostic write prevents the in-memory session/transaction
+detail from reaching B-unpinned.txt; the complete failure XML and observed difference are preserved
+in a new local `build/reports/t10-lock-diagnosis/seoul-unpinned-failure-*/` directory.
+
+**STOP remains active.** No assertion is removed/relaxed, no success rerun is used to replace this
+failure, and no commit/push/Draft PR/latest-HEAD PR CI is performed. The smallest next diagnostic
+should first persist raw evidence even when an assertion throws, then compare both execution orders
+and Legacy↔Legacy inside one unpinned transaction with the same deleted history, capturing transaction
+identity, index-record/purge changes and actual blocking. This needs an explicit resumed scope after
+the STOP report. Full Seoul/Seoul cleanup repair remains unexecuted/outside T10 (T11).
+
+### Seoul B-unpinned minimal follow-up diagnosis
+
+Only the diagnostic test/evidence lifecycle is extended; product SQL, mappings, flush behavior,
+schema/index/isolation and passing assertions are unchanged. First/second server SQL, EXPLAIN,
+connection/thread/transaction identity, all original lock fields, read-view/DELETE times and exceptions
+are saved before equality assertions. Finally paths roll back holders/contenders, close snapshots,
+delete only owned fixture rows and preserve primary failures. ENGINE_LOCK_ID only joins MySQL wait
+relations; it is never an equivalence key.
+
+Natural unpinned Legacy→Legacy and Legacy→JPA each pass once (two independent fixtures in one fresh
+schema); this does **not** replace the original failure or prove its cause. The necessary controlled
+contrast uses separate new schemas `pawcycle_t10_seoul_pair_ll` and `pawcycle_t10_seoul_pair_lj`,
+identical fixture IDs/payment input 1, MySQL 8.4.11 / REPEATABLE READ / JVM Asia/Seoul. An independent
+non-locking read view starts before ACTIVE→DELETE, holds the first Legacy observation and is released
+while the holder and competing INSERT remain active. **Both exact equality assertions FAIL**:
+first includes `fk_billing_payment_methods_member / RECORD / X / GRANTED / 2,4`, second lacks it;
+the remaining eight physical entries are identical, including successor `3,2 / X,GAP` and payment,
+order/context PRIMARY `1 / X,REC_NOT_GAP`. LL and LJ first lists match each other exactly, as do
+their second lists. The deleted-entry disappearance is observed **before any second lockWork call**
+in each contrast (three/two engine-state probes), so JPA/query/flush is not required for this mechanism.
+
+LL retains connection/thread/transaction `708/3729/84963`; LJ retains `713/3828/86874` across its two
+calls. Actual bound SQL is identical; within-pair EXPLAIN JSON matches exactly. Cross-schema EXPLAIN
+differs only in the schema qualifier of attached_condition. Both first/second INSERT observations
+remain `X,GAP,INSERT_INTENTION WAITING` against successor `3,2 / X,GAP GRANTED`; different-member
+INSERT returns one during the hold, same-member INSERT returns one after holder rollback, and both
+contenders roll back. Payment READY/attempt 1/amount, order PAYMENT_PENDING, schedule SCHEDULED,
+inventory 10/reserved 0, method/movement counts 0 remain identical. Both failed contrasts clean all
+owned members/payments/methods; no InnoDB transaction remains afterwards.
+
+Classification: read-view lifetime and asynchronous physical-history/lock-observation maintenance
+can produce the original pattern without JPA and without changed blocking/state in these contrasts.
+The precise original `72,60` event remains unobserved; `purge_del_mark_records` is disabled in the
+server's existing instrumentation, so its zero count is not purge evidence. No monitor, index,
+isolation or product setting is changed. JPA→JPA/JPA→Legacy and broad test suites are unnecessary
+for this minimum separation and are not run. **STOP remains recommended** pending acceptance of
+this bounded diagnosis; neither controlled FAIL nor the original failure is converted to PASS.
+
+Reproduce the natural method `seoulBUnpinnedLegacyFirstPairs` once, then
+`seoulBReleasedViewLegacyFirstPairs` on separate empty schemas, first Legacy then JPA. Pass
+`user.timezone=Asia/Seoul`, `pawcycle.t10.diagnoseHistory=true`, and optionally
+`pawcycle.t10.pair=Legacy|JPA` as Gradle Test system properties via a local init script. Raw first/second
+evidence remains in unique ignored directories (`299c40cc-7dde-4f7d-9760-8200b2b7032f` for LL,
+`b70e8310-a692-4ccf-9df8-001372bf133f` for LJ), with failure XML/offline comparison retained under
+`build/reports/t10-validation`. Existing original-failure/first B/Seoul failure evidence is preserved.
+
+### Lock Oracle validity and release-transition regression
+
+Strict raw footprint equality applies to the same SQL/input/isolation/access path **while physical
+record history is held constant**, including the independent pre-DELETE read view retained throughout
+the fixed A/B/C observations. These assertions and their competing INSERT checks remain unchanged.
+A naturally unpinned equality result is an observation, not a guarantee that history cannot change.
+Equality across a deliberately released read view is not that same precondition: the original
+first/second FAILs remain historical evidence, with the actual original purge instant unconfirmed.
+
+The release-only Oracle compares independent Legacy→Legacy and Legacy→JPA **transitions**, after
+checking each raw frame against the complete fixture-bound footprint: first has nine entries;
+the before-second-call frame and second each have exactly the same eight retained entries.
+The only removal is the target deleted-method FK RECORD/X/GRANTED; additions are forbidden.
+All table/index/type/mode/status/data fields are checked, including the successor FK X,GAP and the
+payment/order/context PRIMARY locks. Only after these exact raw checks are fixture IDs assigned
+explicit roles to compare independent fixtures; no unknown record or field is filtered or ignored.
+
+The holder connection/transaction and within-pair EXPLAIN remain equal, and observation order is
+first → view release → engine-state frame → second. Actual bound SQL must match the frozen statement.
+A statement-history watermark requires a fresh second execution on the holder connection, preventing
+inherited Legacy locks from hiding a missing/moved JPA call. Both wait frames require exactly one
+FK RECORD/X,GAP,INSERT_INTENTION WAITING against the same successor X,GAP GRANTED and holder
+transaction. Different-member INSERT completes during the hold; same-member INSERT completes with
+one affected row after holder rollback. Existing state digest/contender rollback/cleanup checks remain.
+
+The minimum Seoul/MySQL run passes **five tests, zero failures/errors/skips**: fixed A/B/C (three),
+release differential Oracle (one, executing both paths), and the original DELETE physical regression
+(one). Ten faults injected into actual captured JPA observations are rejected: successor index,
+mode/status/type/data changes; missing payment lock; extra lock; contender no longer waiting;
+connection change; and missing second SQL execution despite inherited locks. This is bounded
+counterexample evidence, not a proof against every possible concurrency/engine regression.
+Original `first/second exact equality=false` remains in both new release traces; the new transition
+Oracle passes without relabeling the prior FAILs. Original/first B/Seoul failure XML and raw release
+FAIL evidence remain intact. New Oracle/rejection evidence is under
+`build/reports/t10-lock-diagnosis/6a3d1ddf-c98b-4f5f-a854-796f8786006e/`.
+
+No new purge-cause experiment, product persistence/schema/index/isolation change, or broad suite is
+performed. The released-view test now runs both paths together (pair-owner selection applies only
+to the separate unpinned diagnosis). Validation requires statement-history/physical-observation
+privileges and the existing history diagnostic opt-in; CI execution is not claimed here.
+The lock-Oracle STOP can be lifted for resuming separately authorized remaining T10 gates;
+**T10 as a whole is not Verified**. Git/PR and operational execution remain unperformed in this phase.
+
+### Final T10 local gates after authorized Oracle STOP release
+
+The preceding STOP entries are retained historical results. With the accepted Oracle unchanged,
+the user authorized remaining validation and Draft PR creation. Main still equals `8bf7ab67`.
+No product SQL, isolation, index, Provider boundary or assertion is changed during final validation.
+
+| Gate / disposable MySQL 8.4.11 | Actual result |
+| --- | --- |
+| Privileged Seoul fixed A/B/C, original DELETE, release Oracle | 5 PASS / 0 FAIL / 0 SKIP, current-code evidence retained; 10 injected regressions rejected; no repeated purge experiment |
+| Seoul Billing/Retry/Reconciliation selection | 41 PASS / 0 FAIL / 0 SKIP |
+| Seoul T09/NORMAL selection | 46 PASS / 1 existing main coupon FAIL / 0 SKIP |
+| Full UTC, fresh workspace/schema, schema-only CI account | XML 556: 547 PASS / 0 FAIL / 9 SKIP; `gradlew test` PASS |
+| Backend packaging | `gradlew build -x test` PASS |
+| Full Seoul, fresh schema, same CI account | XML 556: 544 PASS / 3 existing main FAIL / 9 SKIP; whole suite **FAIL**, not relabeled PASS |
+| Architecture Guard | 204 frozen/current, NEW 0 / removed 0 |
+| Linux Harness / related validators | 146 regressions, 22 Discord fixtures, Python compilation, task artifact and Backend/Harness-only classification PASS |
+| Direct JdbcTemplate source measurement | 28→25 total / 19→16 runtime; exactly three approved owners removed, no owner added |
+
+Seoul failures reproduce on an unchanged archive of this exact main with independent empty schemas:
+`CommercePurchaseIntegrationTests.checkoutScopesMemberCouponLockToAuthenticatedMemberAndPreservesUnavailableContract`
+throws COUPON_UNAVAILABLE; `SubscriptionServiceIntegrationTests.cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting`
+reads 09:00 instead of 00:00; `cleanupDeletesOnlyExpiredRowsWithinEachTableBatch` deletes two instead
+of one. Full and baseline failure messages match exactly. Checkout/coupon fixture and cleanup code
+are unchanged; these timezone issues remain outside T10. Cleanup rollback/concurrency regressions pass.
+
+The earlier UTC 554/7 SKIP comprised fixed-history A/B/C (three) and the original physical observer
+(one) without observation privileges, the T09 opt-in observer (one), and two manual diagnosis
+definitions. Current UTC/Seoul 556/9 retain those seven and add two opt-in definitions:
+`seoulBUnpinnedLegacyFirstPairs` and `seoulBReleasedViewLegacyFirstPairs`. The other manual definitions
+are `unpinnedSeparateAndSameTransactionComparisons` and
+`deletedRecordReadViewLifetimeSeparatesHistoryFromPersistenceExecution`. Privileged fixed-history,
+original DELETE and T09 observers execute in separate local runs; the release Oracle also executes
+in its selected privileged run. Schema-only CI does not execute physical observers; SKIP is not PASS.
+
+A first final UTC run on a new schema but retained Gradle test history fails 11 catalog checks:
+the previously failed CommercePurchase class runs first and leaves cart_items/products before global
+catalog cleanup. An unchanged-main minimum checkout→catalog sequence reproduces the same SKU FK
+failure. Failure XML/order and baseline evidence are retained. One clean workspace with the exact
+T10 diff, no prior test history and CI credentials passes the complete UTC suite above; no test,
+fixture or threshold is weakened. Full-suite test-order sensitivity remains a validation limitation.
+
+Final local XML/counts and baseline comparisons remain under ignored `build/reports/t10-validation/`;
+all original lock FAIL evidence remains intact. Latest-HEAD CI and independent review status belong
+in the Draft PR. The accepted lock STOP is released and no new unexplained regression is found;
+whole Seoul and Production Verified claims are not made. Recovery remains the normal T10 revert
+described above; no actual Provider or operating execution occurred.
