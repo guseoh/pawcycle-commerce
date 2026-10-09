@@ -255,9 +255,19 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:${{ job.services.mysql.ports['3306'] }}/pawcycle_test
           SPRING_DATASOURCE_USERNAME: pawcycle_ci
           SPRING_DATASOURCE_PASSWORD: ci-only-not-a-secret
-          # Opt in only for the disposable test JVM, not application/Production.
-          JAVA_TOOL_OPTIONS: -Dpawcycle.t09.observeLocks=true
-        run: ./gradlew test
+        # This property must apply only to the Gradle Test JVM: JAVA_TOOL_OPTIONS
+        # would also leak into child Java processes exercised by auth-smoke tests.
+        run: |
+          cat > "$RUNNER_TEMP/pawcycle-lock-ci.init.gradle" <<'GRADLE'
+          gradle.beforeProject { project ->
+            project.plugins.withId('java') {
+              project.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+                systemProperty 'pawcycle.t09.observeLocks', 'true'
+              }
+            }
+          }
+          GRADLE
+          ./gradlew test --init-script "$RUNNER_TEMP/pawcycle-lock-ci.init.gradle"
 
       - name: Require physical-lock JUnit execution
         run: python scripts/verify_mysql_physical_lock_junit.py

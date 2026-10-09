@@ -208,7 +208,9 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("GRANT SELECT ON performance_schema.data_lock_waits", self.workflow)
         self.assertIn("information_schema.INNODB_METRICS", self.workflow)
         self.assertIn("if [ -f backend/src/test/java/com/pawcycle/backend/subscription/persistence/BillingLockWorkDiagnosisIntegrationTests.java ]", self.workflow)
-        self.assertIn("JAVA_TOOL_OPTIONS: -Dpawcycle.t09.observeLocks=true", self.workflow)
+        self.assertIn("systemProperty 'pawcycle.t09.observeLocks', 'true'", self.workflow)
+        self.assertIn("--init-script", self.workflow)
+        self.assertNotIn("JAVA_TOOL_OPTIONS:", self.workflow)
         self.assertIn("Require physical-lock JUnit execution", self.workflow)
         self.assertIn("python scripts/verify_mysql_physical_lock_junit.py", self.workflow)
 
