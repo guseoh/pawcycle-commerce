@@ -214,26 +214,26 @@ class WorkflowContractTest(unittest.TestCase):
         self.assert_lock_gate_cannot_be_bypassed(self.workflow)
 
     def assert_lock_gate_cannot_be_bypassed(self, workflow: str) -> None:
-        backend_block = workflow.split("\\n  backend:\\n", 1)[1].split("\\n  frontend:\\n", 1)[0]
-        test_start = backend_block.index("\\n      - name: Backend test\\n")
-        gate_start = backend_block.index("\\n      - name: Require physical-lock JUnit execution\\n")
-        build_start = backend_block.index("\\n      - name: Backend build without repeated tests\\n")
+        backend_block = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
+        test_start = backend_block.index("\n      - name: Backend test\n")
+        gate_start = backend_block.index("\n      - name: Require physical-lock JUnit execution\n")
+        build_start = backend_block.index("\n      - name: Backend build without repeated tests\n")
         self.assertLess(test_start, gate_start, "Physical gate must execute after Backend test")
         self.assertLess(gate_start, build_start, "Physical gate must execute before Backend build")
         gate_block = backend_block[gate_start:build_start]
         self.assertIn("run: python scripts/verify_mysql_physical_lock_junit.py", gate_block)
         self.assertNotIn("continue-on-error:", gate_block)
-        self.assertNotRegex(gate_block, r"(?m)^\\s*if:\\s*")
+        self.assertNotRegex(gate_block, r"(?m)^\s*if:\s*")
 
     def test_lock_gate_rejects_skipped_optional_and_reordered_steps(self) -> None:
-        gate = ("      - name: Require physical-lock JUnit execution\\n"
-                "        run: python scripts/verify_mysql_physical_lock_junit.py\\n")
+        gate = ("      - name: Require physical-lock JUnit execution\n"
+                "        run: python scripts/verify_mysql_physical_lock_junit.py\n")
         self.assertIn(gate, self.workflow)
         altered = (
-            self.workflow.replace(gate, gate + "        continue-on-error: true\\n"),
-            self.workflow.replace(gate, gate + "        if: false\\n"),
+            self.workflow.replace(gate, gate + "        continue-on-error: true\n"),
+            self.workflow.replace(gate, gate + "        if: false\n"),
             self.workflow.replace(gate, "").replace(
-                "      - name: Backend test\\n", gate + "      - name: Backend test\\n", 1),
+                "      - name: Backend test\n", gate + "      - name: Backend test\n", 1),
         )
         for mutant in altered:
             with self.subTest(mutant=mutant), self.assertRaises(AssertionError):

@@ -54,10 +54,10 @@ class LockJUnitGateTests(unittest.TestCase):
 
     def test_t10_abc_value_source_mapping_is_frozen(self):
         method = "void fixedReadViewHistoryAndBothInsertBlockingPaths(String kind)"
-        require_t10_abc_source('@ValueSource(strings = {"A", "B", "C"})\\n' + method)
+        require_t10_abc_source('@ValueSource(strings = {"A", "B", "C"})\n' + method)
         for values in ('{"A", "A", "C"}', '{"C", "B", "A"}', '{"A", "B"}'):
             with self.subTest(values=values), self.assertRaisesRegex(ValueError, "exactly A, B, C"):
-                require_t10_abc_source("@ValueSource(strings = " + values + ")\\n" + method)
+                require_t10_abc_source("@ValueSource(strings = " + values + ")\n" + method)
 
     def test_t09_and_t10_required_when_sources_present(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -23,8 +23,8 @@ T10_SOURCES = [
 def require_t10_abc_source(source: str) -> None:
     """The JUnit invocation ordinals must still map to A, B, C in this order."""
     source_pattern = (
-        r'@ValueSource\\s*\\(\\s*strings\\s*=\\s*\\{\\s*"A"\\s*,\\s*"B"\\s*,\\s*"C"\\s*\\}\\s*\\)'
-        r'\\s*void\\s+fixedReadViewHistoryAndBothInsertBlockingPaths\\s*\\('
+        r'@ValueSource\s*\(\s*strings\s*=\s*\{\s*"A"\s*,\s*"B"\s*,\s*"C"\s*\}\s*\)'
+        r'\s*void\s+fixedReadViewHistoryAndBothInsertBlockingPaths\s*\('
     )
     if re.search(source_pattern, source) is None:
         raise ValueError("T10 fixed physical lock @ValueSource must be exactly A, B, C")
@@ -51,7 +51,7 @@ def verify(reports: Path, sources: list[bool]) -> list[str]:
             # Gradle JUnit XML names: method(String)[1], [2], [3] (optional display-name suffix).
             # Counting three rows alone would accept [1],[1],[1] and mask absent B/C.
             invocations = []
-            pattern = re.compile(re.escape(name) + r"\\([^)]*\\)\\s*\\[(\\d+)\\](?:\\s+.*)?")
+            pattern = re.compile(re.escape(name) + r"\([^)]*\)\s*\[(\d+)\](?:\s+.*)?")
             for case in matches:
                 match = pattern.fullmatch(case.get("name", ""))
                 if match is None:
