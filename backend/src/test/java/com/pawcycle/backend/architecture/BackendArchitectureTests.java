@@ -57,11 +57,8 @@ class BackendArchitectureTests {
     }
     assertThat(owners.stream().filter(BackendArchitectureTests::isolated).toList()).hasSize(9);
     assertThat(owners.stream().filter(owner -> !isolated(owner)).toList()).containsExactlyInAnyOrder(
-        ROOT + "interaction.persistence.InteractionEventPersistenceAdapter",
         ROOT + "subscription.persistence.SubscriptionShippingPersistenceAdapter",
-        ROOT + "subscription.persistence.SubscriptionDeliveryReminderPersistence",
         ROOT + "commerce.returning.persistence.ReturnPersistenceAdapter",
-        ROOT + "commerce.notification.persistence.NotificationPersistenceAdapter",
         ROOT + "commerce.refund.persistence.RefundPersistenceAdapter",
         ROOT + "commerce.order.persistence.QuickReorderPersistenceAdapter",
         ROOT + "commerce.membership.persistence.MembershipPersistenceAdapter",
