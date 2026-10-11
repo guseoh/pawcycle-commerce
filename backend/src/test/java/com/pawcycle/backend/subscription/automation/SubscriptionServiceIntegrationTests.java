@@ -65,6 +65,7 @@ class SubscriptionServiceIntegrationTests {
   @Autowired private CategoryRepository categories;
   @Autowired private PasswordEncoder passwordEncoder;
   @Autowired private SubscriptionIdempotencyCleanupService cleanupService;
+  @Autowired private com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence cleanupPersistence;
   @Autowired private MeterRegistry meterRegistry;
   @Autowired private PlatformTransactionManager transactionManager;
   private Member member;
@@ -465,8 +466,7 @@ class SubscriptionServiceIntegrationTests {
             cleanupClock);
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
-            new com.pawcycle.backend.subscription.persistence
-                .SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+            cleanupPersistence,
             cleanupClock,
             metrics);
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
@@ -565,8 +565,7 @@ class SubscriptionServiceIntegrationTests {
             cleanupClock);
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
-            new com.pawcycle.backend.subscription.persistence
-                .SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+            cleanupPersistence,
             cleanupClock,
             metrics);
 
@@ -842,6 +841,94 @@ class SubscriptionServiceIntegrationTests {
     }
   }
 
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(ints = {1, 2})
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  void cleanupNativeMutationsMatchFrozenJdbcTargetsOrderCountsAndMicroseconds(int batchSize) {
+    long firstSubscription = cleanupSubscription();
+    long petId = service.createPet(member.getId(), new CreatePetRequest("parity", "DOG")).petId();
+    long secondSubscription = service.createSubscription(member.getId(), "parity-subscription",
+        new CreateSubscriptionRequest(petId, planVersionId, 4)).body().subscriptionId();
+    jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?",
+        member.getId());
+    LocalDateTime now = LocalDateTime.of(2026, 8, 9, 0, 0, 0, 123456000);
+    LocalDateTime cutoff = now.minusDays(30);
+    for (String key : java.util.List.of("z-repair", "a-repair", "m-repair")) {
+      insertCreationResult(key, null);
+      insertCommandResult(secondSubscription, key, null);
+      insertCommandResult(firstSubscription, key, null);
+    }
+    // Same completion time forces PK tie breaking; insert in reverse key order.
+    for (String key : java.util.List.of("z-expired", "a-expired", "m-expired")) {
+      insertCreationResult(key, cutoff.minusNanos(1000));
+      insertCommandResult(firstSubscription, key, cutoff.minusNanos(1000));
+    }
+    insertCreationResult("equal", cutoff);
+    insertCommandResult(firstSubscription, "equal", cutoff);
+    insertCreationResult("after", cutoff.plusNanos(1000));
+    insertCommandResult(firstSubscription, "after", cutoff.plusNanos(1000));
+    insertCreationReservation("incomplete");
+    insertCommandReservation(firstSubscription, "incomplete");
+    insertCreationResult("non2xx", null);
+    insertCommandResult(firstSubscription, "non2xx", null);
+    insertCreationResult("no-body", null);
+    insertCommandResult(firstSubscription, "no-body", null);
+    // Include status 299 and command_type ordering independently of the key ordering.
+    jdbc.update("UPDATE subscription_command_idempotency_results SET command_type='CANCEL',"
+        + "response_status=299 WHERE member_id=? AND idempotency_key='z-repair'", member.getId());
+    for (String table : java.util.List.of("subscription_creation_idempotency_results",
+        "subscription_command_idempotency_results")) {
+      jdbc.update("UPDATE " + table + " SET response_status=300 WHERE member_id=? AND idempotency_key='non2xx'",
+          member.getId());
+      jdbc.update("UPDATE " + table + " SET response_body=NULL WHERE member_id=? AND idempotency_key='no-body'",
+          member.getId());
+    }
+    var before = parityCleanupRecords();
+    var reference = new com.pawcycle.backend.subscription.persistence.LegacySubscriptionIdempotencyCleanupReference(jdbc);
+    var oldStages = rollbackCleanupStages(java.util.List.of(
+        () -> reference.repairCreationCompletion(now, batchSize),
+        () -> reference.repairCommandCompletion(now, batchSize),
+        () -> reference.deleteExpiredCreations(cutoff, batchSize),
+        () -> reference.deleteExpiredCommands(cutoff, batchSize)));
+    assertThat(parityCleanupRecords()).isEqualTo(before);
+    var newStages = rollbackCleanupStages(java.util.List.of(
+        () -> cleanupPersistence.repairCreationCompletion(now, batchSize),
+        () -> cleanupPersistence.repairCommandCompletion(now, batchSize),
+        () -> cleanupPersistence.deleteExpiredCreations(cutoff, batchSize),
+        () -> cleanupPersistence.deleteExpiredCommands(cutoff, batchSize)));
+    assertThat(newStages).isEqualTo(oldStages);
+    assertThat(newStages.subList(0, 4)).extracting(CleanupStage::affected).containsExactly(
+        batchSize, batchSize, batchSize, batchSize);
+    assertThat(parityCleanupRecords()).isEqualTo(before);
+  }
+
+  private java.util.List<CleanupStage> rollbackCleanupStages(java.util.List<java.util.function.IntSupplier> mutations) {
+    return new TransactionTemplate(transactionManager).execute(status -> {
+      var stages = new java.util.ArrayList<CleanupStage>();
+      // Drain enough batches to compare later selections and final no-op behavior too.
+      for (int round = 0; round < 7; round++) {
+        for (var mutation : mutations) {
+          int affected = mutation.getAsInt();
+          stages.add(new CleanupStage(affected, parityCleanupRecords()));
+        }
+      }
+      status.setRollbackOnly();
+      return stages;
+    });
+  }
+
+  private java.util.List<java.util.Map<String, Object>> parityCleanupRecords() {
+    return jdbc.queryForList("SELECT 'creation' scope,member_id,subscription_id,'' command_type,idempotency_key,"
+        + "payload_fingerprint,response_status,response_body,location_header,etag_header,CAST(completed_at AS CHAR) completed_at"
+        + " FROM subscription_creation_idempotency_results WHERE member_id=? UNION ALL"
+        + " SELECT 'command' scope,member_id,subscription_id,command_type,idempotency_key,"
+        + "payload_fingerprint,response_status,response_body,location_header,etag_header,CAST(completed_at AS CHAR) completed_at"
+        + " FROM subscription_command_idempotency_results WHERE member_id=?"
+        + " ORDER BY scope,member_id,subscription_id,command_type,idempotency_key", member.getId(), member.getId());
+  }
+
+  private record CleanupStage(int affected, java.util.List<java.util.Map<String, Object>> rows) {}
+
   private long cleanupSubscription() {
     long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
     long subscriptionId = service.createSubscription(
@@ -858,7 +945,7 @@ class SubscriptionServiceIntegrationTests {
         new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(jdbcExecutor),
         cleanupClock);
     return new SubscriptionIdempotencyCleanupProcessor(
-        new com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence(jdbcExecutor),
+        cleanupPersistence,
         cleanupClock, metrics);
   }
 

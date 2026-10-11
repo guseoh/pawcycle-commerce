@@ -2,11 +2,14 @@ package com.pawcycle.backend.subscription.persistence;
 
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import org.hibernate.Session;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.query.TypedParameterValue;
 import org.hibernate.type.descriptor.java.LocalDateJavaType;
+import org.hibernate.type.descriptor.java.LocalDateTimeJavaType;
 import org.hibernate.type.descriptor.jdbc.LocalDateJdbcType;
+import org.hibernate.type.descriptor.jdbc.LocalDateTimeJdbcType;
 import org.hibernate.type.internal.BasicTypeImpl;
 
 /** Only the vendor operations whose JOIN locks, atomicity or DB clock must remain explicit SQL. */
@@ -34,6 +37,10 @@ final class SubscriptionNativeSql {
       if (argument instanceof LocalDate date) {
         argument = new TypedParameterValue<>(
             new BasicTypeImpl<>(LocalDateJavaType.INSTANCE, LocalDateJdbcType.INSTANCE), date);
+      } else if (argument instanceof LocalDateTime dateTime) {
+        // UTC DATETIME(6) uses JDBC 4.2 setObject, without Timestamp/UTC Calendar conversion.
+        argument = new TypedParameterValue<>(
+            new BasicTypeImpl<>(LocalDateTimeJavaType.INSTANCE, LocalDateTimeJdbcType.INSTANCE), dateTime);
       }
       query.setParameter(i + 1, argument);
     }

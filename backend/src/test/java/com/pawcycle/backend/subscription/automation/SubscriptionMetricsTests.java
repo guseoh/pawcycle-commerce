@@ -177,13 +177,14 @@ class SubscriptionMetricsTests {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     SubscriptionMetrics metrics =
         new SubscriptionMetrics(registry, new SubscriptionMetricsQueryRepository(jdbc), clock);
+    var persistence = org.mockito.Mockito.mock(
+        com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence.class);
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
-            new com.pawcycle.backend.subscription.persistence
-                .SubscriptionIdempotencyCleanupPersistence(jdbc),
+            persistence,
             clock,
             metrics);
-    when(jdbc.update(anyString(), any(Object[].class)))
+    when(persistence.repairCreationCompletion(any(LocalDateTime.class), eq(1)))
         .thenThrow(new IllegalStateException("test cleanup failure"));
 
     assertThatThrownBy(() -> cleanup.deleteExpired(1))
