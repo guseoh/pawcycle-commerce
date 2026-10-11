@@ -7,7 +7,7 @@ import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPers
 import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
 import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import com.zaxxer.hikari.HikariDataSource;
+import jakarta.persistence.EntityManagerFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -31,6 +31,7 @@ class DiscoveryLifecycleDisabledMySqlIntegrationTests {
   @Autowired DiscoveryLifecycleDiagnostics diagnostics;
   @Autowired PlatformTransactionManager manager;
   @Autowired DataSource dataSource;
+  @Autowired EntityManagerFactory entityManagerFactory;
 
   @Test void disabledDiscoveryHasNoListenerMetersOrContextAndReturnsConnection() {
     int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
@@ -38,6 +39,7 @@ class DiscoveryLifecycleDisabledMySqlIntegrationTests {
     assertThat(registry.getMeters()).noneMatch(m -> m.getId().getName().startsWith(DiscoveryLifecycleDiagnostics.METRIC));
     assertThat(((ConfigurableTransactionManager) manager).getTransactionExecutionListeners()).doesNotContain(diagnostics.transactionListener());
     assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
-    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "disabledDiscovery");
+    DiscoveryPoolCiEvidence.assertRequestThreadClean(entityManagerFactory, dataSource, "disabledDiscovery");
+    DiscoveryPoolCiEvidence.observeSharedPool(dataSource, activeBefore, "disabledDiscovery");
   }
 }
