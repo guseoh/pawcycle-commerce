@@ -12,7 +12,11 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,6 +91,46 @@ class DiscoveryLifecycleMySqlIntegrationTests {
     }
     assertThat(calls("matched")).isEqualTo(before + 6);
     DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "concurrentWorkers");
+  }
+
+  @Test void unrelatedBorrowerKeepsPoolActiveAfterCompletedDiscovery() throws Exception {
+    // Deterministic counterexample: a pool-wide active count is not a request-local lease.
+    assertThat(dataSource).isInstanceOf(HikariDataSource.class);
+    var pool = ((HikariDataSource) dataSource).getHikariPoolMXBean();
+    assertThat(pool).isNotNull();
+    CountDownLatch borrowed = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Future<Void> borrower = executor.submit(() -> {
+      try (var ignored = dataSource.getConnection()) {
+        borrowed.countDown();
+        if (!release.await(15, TimeUnit.SECONDS)) {
+          throw new IllegalStateException("Controlled Hikari borrower was not released in time");
+        }
+      }
+      return null;
+    });
+    try {
+      assertThat(borrowed.await(5, TimeUnit.SECONDS)).as("borrower acquired connection").isTrue();
+      assertThat(pool.getActiveConnections()).as("controlled borrower holds a lease").isPositive();
+      double matchedBefore = calls("matched");
+      double unmatchedBefore = calls("unmatched");
+      assertThat(service.findProducts().items()).isNotNull();
+      assertThat(calls("matched")).isEqualTo(matchedBefore + 1);
+      assertThat(calls("unmatched")).isEqualTo(unmatchedBefore);
+      assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
+      // A different legitimate borrower remains active after discovery has returned.
+      assertThat(pool.getActiveConnections()).as("unrelated borrower is still active").isPositive();
+    } finally {
+      release.countDown();
+      try {
+        borrower.get(5, TimeUnit.SECONDS);
+      } finally {
+        executor.shutdownNow();
+        assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+            .as("controlled borrower worker stopped").isTrue();
+      }
+    }
   }
 
   private double calls(String result) {
