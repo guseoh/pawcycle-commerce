@@ -1,6 +1,12 @@
 package com.pawcycle.backend.commerce.payment.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.pawcycle.backend.commerce.payment.domain.QPaymentEntity;
+import com.pawcycle.backend.commerce.coupon.domain.QMemberCouponEntity;
+import com.pawcycle.backend.commerce.cart.domain.QCartEntity;
+import com.pawcycle.backend.commerce.cart.domain.QCartItemEntity;
+import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -9,142 +15,101 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class PaymentReconciliationPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final PaymentNativeLocks locks;
+  private final PaymentPersistenceQueries writes;
+  private final JPAQueryFactory queries;
   private final Clock clock;
 
-  public PaymentReconciliationPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public PaymentReconciliationPersistenceAdapter(EntityManager entities, Clock clock) {
+    this.locks = new PaymentNativeLocks(entities);
+    this.writes = new PaymentPersistenceQueries(entities);
+    this.queries = new JPAQueryFactory(entities);
     this.clock = clock;
   }
 
   public ReconciliationWork findForStart(long paymentId) {
-    return queries
-        .query(
-            "SELECT id,type,status,provider_order_id AS providerOrderId,reconciliation_attempts AS reconciliationAttempts FROM payments WHERE id=? FOR UPDATE",
-            (rs, rowNumber) ->
-                new ReconciliationWork(
-                    rs.getLong("id"),
-                    rs.getString("type"),
-                    rs.getString("status"),
-                    rs.getString("providerOrderId"),
-                    rs.getInt("reconciliationAttempts")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("SELECT id,type,status,provider_order_id,reconciliation_attempts FROM payments WHERE id=? FOR UPDATE",
+        ReconciliationWork.class, paymentId);
   }
 
   public void incrementAttempts(long paymentId, int attempts) {
-    queries.update(
-        "UPDATE payments SET reconciliation_attempts=?,last_reconciled_at=? WHERE id=?",
-        attempts,
-        now(),
-        paymentId);
+    writes.reconciliation(attempts, now(), paymentId);
   }
 
   public ReconciliationTarget findForCompletion(long paymentId) {
-    return queries
-        .query(
-            "SELECT payment.id,payment.order_id AS orderId,payment.type,payment.status,payment.reconciliation_attempts AS reconciliationAttempts,orders.member_id AS memberId,orders.source FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=? FOR UPDATE",
-            (rs, rowNumber) ->
-                new ReconciliationTarget(
-                    rs.getLong("id"),
-                    rs.getLong("orderId"),
-                    rs.getString("type"),
-                    rs.getString("status"),
-                    rs.getInt("reconciliationAttempts"),
-                    rs.getLong("memberId"),
-                    rs.getString("source")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return locks.first("""
+        SELECT payment.id,payment.order_id,payment.type,payment.status,payment.reconciliation_attempts,orders.member_id,orders.source
+        FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=? FOR UPDATE
+        """, ReconciliationTarget.class, paymentId);
   }
 
   public List<OrderItem> findOrderItems(long orderId) {
-    return queries.query(
-        "SELECT sku_id AS skuId,quantity FROM order_items WHERE order_id=? ORDER BY sku_id",
-        (rs, rowNumber) -> new OrderItem(rs.getLong("skuId"), rs.getInt("quantity")),
-        orderId);
+    return writes.items(orderId, OrderItem.class, true);
   }
 
   public void markSucceeded(long paymentId, String providerStatus, Timestamp paidAt) {
-    queries.update(
-        "UPDATE payments SET status='SUCCEEDED',provider_status=?,approved_at=? WHERE id=?",
-        providerStatus,
-        paidAt,
-        paymentId);
+    writes.succeeded(providerStatus, paidAt, paymentId);
   }
 
   public void markFailed(long paymentId, String providerStatus) {
-    queries.update(
-        "UPDATE payments SET status='FAILED',provider_status=?,failure_code='RECONCILED_FAILED',failed_at=? WHERE id=?",
-        providerStatus,
-        now(),
-        paymentId);
+    writes.failed(providerStatus, "RECONCILED_FAILED", now(), paymentId);
   }
 
   public void markOrderPaid(long orderId, Timestamp paidAt) {
-    queries.update("UPDATE orders SET status='PAID',paid_at=? WHERE id=?", paidAt, orderId);
+    writes.orderPaid(paidAt, orderId);
   }
 
   public void markOrderPaymentFailed(long orderId) {
-    queries.update("UPDATE orders SET status='PAYMENT_FAILED' WHERE id=?", orderId);
+    writes.orderStatus("PAYMENT_FAILED", orderId);
   }
 
   public void markOrderActionRequired(long orderId) {
-    queries.update("UPDATE orders SET status='PAYMENT_ACTION_REQUIRED' WHERE id=?", orderId);
+    writes.orderStatus("PAYMENT_ACTION_REQUIRED", orderId);
   }
 
   public void useReservedCoupon(long orderId, Timestamp paidAt) {
-    queries.update(
-        "UPDATE member_coupons SET status='USED',used_at=? WHERE reserved_order_id=? AND status='RESERVED'",
-        paidAt,
-        orderId);
+    var coupon = new QMemberCouponEntity("coupon");
+    writes.mutate(() -> queries.update(coupon).set(coupon.status, "USED")
+        .set(coupon.usedAt, PaymentPersistenceQueries.jdbcTime(paidAt))
+        .where(coupon.reservedOrderId.eq(orderId), coupon.status.eq("RESERVED")).execute());
   }
 
   public void releaseReservedCoupon(long orderId) {
-    queries.update(
-        "UPDATE member_coupons SET status='AVAILABLE',reserved_order_id=NULL WHERE reserved_order_id=? AND status='RESERVED'",
-        orderId);
+    var coupon = new QMemberCouponEntity("coupon");
+    writes.mutate(() -> queries.update(coupon).set(coupon.status, "AVAILABLE").setNull(coupon.reservedOrderId)
+        .where(coupon.reservedOrderId.eq(orderId), coupon.status.eq("RESERVED")).execute());
   }
 
   public void consumeCart(long memberId, long orderId) {
-    Long cartId =
-        queries.query("SELECT id FROM carts WHERE member_id=? FOR UPDATE", rs -> rs.next() ? rs.getLong(1) : null, memberId);
+    Long cartId = locks.first("SELECT id FROM carts WHERE member_id=? FOR UPDATE", Long.class, memberId);
     if (cartId == null) return;
+    var cartItem = new QCartItemEntity("cartItem");
     for (OrderItem item : findOrderItems(orderId)) {
-      Integer current =
-          queries.query(
-              "SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
-              (rs, rowNumber) -> rs.getInt(1),
-              cartId,
-              item.skuId()).stream().findFirst().orElse(null);
+      Integer current = locks.first("SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
+          Integer.class, cartId, item.skuId());
       if (current == null) continue;
+      var predicate = cartItem.id.cartId.eq(cartId).and(cartItem.id.skuId.eq(item.skuId()));
       if (current <= item.quantity()) {
-        queries.update("DELETE FROM cart_items WHERE cart_id=? AND sku_id=?", cartId, item.skuId());
+        writes.mutate(() -> queries.delete(cartItem).where(predicate).execute());
       } else {
-        queries.update("UPDATE cart_items SET quantity=? WHERE cart_id=? AND sku_id=?", current - item.quantity(), cartId, item.skuId());
+        writes.mutate(() -> queries.update(cartItem).set(cartItem.quantity, current - item.quantity()).where(predicate).execute());
       }
     }
-    queries.update("UPDATE carts SET updated_at=? WHERE id=?", now(), cartId);
+    var cart = new QCartEntity("cart");
+    writes.mutate(() -> queries.update(cart).set(cart.updatedAt, PaymentPersistenceQueries.jdbcTime(now()))
+        .where(cart.id.eq(cartId)).execute());
   }
 
   public PaymentReconciliationView find(long paymentId) {
-    return queries
-        .query(
-            "SELECT id AS paymentId,order_id AS orderId,status,reconciliation_attempts AS reconciliationAttempts,last_reconciled_at AS lastReconciledAt FROM payments WHERE id=?",
-            (rs, rowNumber) ->
-                new PaymentReconciliationView(
-                    rs.getLong("paymentId"),
-                    rs.getLong("orderId"),
-                    rs.getString("status"),
-                    rs.getInt("reconciliationAttempts"),
-                    rs.getTimestamp("lastReconciledAt")),
-            paymentId)
-        .stream()
-        .findFirst()
-        .orElse(null);
+    var payment = new QPaymentEntity("payment");
+    // Read MySQL's DATETIME wall clock as text: legacy getTimestamp() had no UTC Calendar.
+    var wallClock = Expressions.stringTemplate("cast({0} as string)", payment.lastReconciledAt);
+    var row = queries.select(payment.id, payment.orderId, payment.status, payment.reconciliationAttempts, wallClock)
+        .from(payment).where(payment.id.eq(paymentId)).fetchOne();
+    if (row == null) return null;
+    String time = row.get(wallClock);
+    return new PaymentReconciliationView(row.get(payment.id), row.get(payment.orderId), row.get(payment.status),
+        row.get(payment.reconciliationAttempts), time == null ? null : Timestamp.valueOf(time));
   }
 
   private Timestamp now() {

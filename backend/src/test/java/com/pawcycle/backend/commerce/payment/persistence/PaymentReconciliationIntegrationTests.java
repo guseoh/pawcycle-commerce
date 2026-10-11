@@ -6,6 +6,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
@@ -20,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -41,9 +46,152 @@ class PaymentReconciliationIntegrationTests {
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
   @Autowired private PlatformTransactionManager manager;
+  @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingProcessor processor;
+  @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingService retries;
   @MockitoBean private TossPaymentAdapter provider;
   @MockitoBean private TossBillingAdapter billingProvider;
   @MockitoSpyBean private NotificationService notifications;
+
+  @AfterEach
+  void reconciliationNeverConfirmsNormalPayment() {
+    verify(provider, never()).confirm(anyString(), anyString(), any());
+  }
+
+  @Test
+  void billingChargeObservesCommittedClaimAndConcurrentProcessorCannotChargeTwice() throws Exception {
+    Fixture f = billingFixture();
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    when(billingProvider.isConfigured()).thenReturn(true);
+    when(billingProvider.charge(anyString(), anyString(), any())).thenAnswer(invocation -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("PROCESSING");
+      assertThat(integer("SELECT COUNT(*) FROM deliveries WHERE order_id=?", f.order())).isZero();
+      entered.countDown();
+      assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+      return new TossBillingAdapter.ChargeResult("SUCCEEDED", "DYNAMIC_DONE");
+    });
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var first = executor.submit(() -> processor.process(f.payment()));
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      executor.submit(() -> processor.process(f.payment())).get(10, TimeUnit.SECONDS);
+      release.countDown();
+      first.get(10, TimeUnit.SECONDS);
+    } finally { release.countDown(); }
+    processor.process(f.payment());
+    verify(billingProvider, times(1)).charge(anyString(), anyString(), any());
+    verify(billingProvider, never()).queryCharge(anyString());
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=? AND type='DEDUCT'", f.payment())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM deliveries WHERE order_id=?", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM notifications WHERE reference_id=? AND type='ORDER_PAID'", f.order())).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT provider_status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("DYNAMIC_DONE");
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void billingUnknownOrTimeoutNeverCreatesReadyRetryOrRecharges(boolean timeout) {
+    Fixture f = billingFixture();
+    when(billingProvider.isConfigured()).thenReturn(true);
+    if (timeout) when(billingProvider.charge(anyString(), anyString(), any())).thenThrow(new IllegalStateException("fixture timeout"));
+    else when(billingProvider.charge(anyString(), anyString(), any())).thenReturn(new TossBillingAdapter.ChargeResult("UNKNOWN", "PENDING"));
+    processor.process(f.payment());
+    processor.process(f.payment());
+    when(billingProvider.queryCharge(anyString())).thenAnswer(invocation -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(10);
+      return new TossBillingAdapter.ChargeResult("UNKNOWN", "PENDING");
+    });
+    jdbc.update("UPDATE payments SET reconciliation_attempts=9 WHERE id=?", f.payment());
+    assertThat(service.reconcile(f.payment()).status()).isEqualTo("UNKNOWN");
+    assertThat(retries.recordUnknownReconciliationAttempt(f.payment())).isFalse();
+    assertThatThrownBy(() -> retries.prepareNextAttempt(f.payment())).isInstanceOf(CommerceException.class);
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=?", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=?", f.payment())).isZero();
+    assertThat(integer("SELECT reserved_quantity FROM inventories WHERE sku_id=?", f.sku())).isEqualTo(2);
+    assertThat(jdbc.queryForObject("SELECT status FROM orders WHERE id=?", String.class, f.order())).isEqualTo("PAYMENT_ACTION_REQUIRED");
+    verify(billingProvider, times(1)).charge(anyString(), anyString(), any());
+    verify(billingProvider, times(1)).queryCharge(anyString());
+    verifyNoInteractions(provider);
+  }
+
+  @Test
+  void explicitFailuresReleaseAndReserveAttemptsOneTwoThreeThenHold() {
+    Fixture f = billingFixture();
+    when(billingProvider.isConfigured()).thenReturn(true);
+    when(billingProvider.charge(anyString(), anyString(), any())).thenAnswer(invocation -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='PROCESSING'", f.order())).isEqualTo(1);
+      return new TossBillingAdapter.ChargeResult("FAILED", "DECLINED");
+    });
+    processor.process(f.payment());
+    long second = jdbc.queryForObject("SELECT id FROM payments WHERE order_id=? AND attempt_no=2", Long.class, f.order());
+    assertThat(retries.prepareNextAttempt(f.payment())).isEqualTo(second);
+    processor.process(second);
+    long third = jdbc.queryForObject("SELECT id FROM payments WHERE order_id=? AND attempt_no=3", Long.class, f.order());
+    assertThatThrownBy(() -> processor.process(third)).isInstanceOf(CommerceException.class);
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='FAILED'", f.order())).isEqualTo(3);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id IN (SELECT id FROM payments WHERE order_id=?) AND type='RELEASE'", f.order())).isEqualTo(3);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id IN (SELECT id FROM payments WHERE order_id=?) AND type='RESERVE'", f.order())).isEqualTo(2);
+    assertThat(integer("SELECT reserved_quantity FROM inventories WHERE sku_id=?", f.sku())).isZero();
+    assertThat(jdbc.queryForObject("SELECT hold_reason FROM subscription_schedules WHERE id=(SELECT schedule_id FROM subscription_order_context WHERE order_id=?)", String.class, f.order())).isEqualTo("PAYMENT_RETRY_EXHAUSTED");
+    assertThat(jdbc.queryForObject("SELECT status FROM orders WHERE id=?", String.class, f.order())).isEqualTo("PAYMENT_ACTION_REQUIRED");
+    verify(billingProvider, times(3)).charge(anyString(), anyString(), any());
+    verify(billingProvider, never()).queryCharge(anyString());
+  }
+
+  @Test
+  void stockHoldCreatesNoAttemptThenConcurrentRetriesReuseOneGeneratedIdentity() throws Exception {
+    Fixture f = billingFixture();
+    jdbc.update("UPDATE payments SET status='PROCESSING' WHERE id=?", f.payment());
+    retries.recordExplicitFailure(f.payment(), "FIXTURE_FAILED");
+    jdbc.update("UPDATE inventories SET available_quantity=0 WHERE sku_id=?", f.sku());
+    assertThat(retries.prepareNextAttempt(f.payment())).isZero();
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=?", f.order())).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT hold_reason FROM subscription_schedules WHERE id=(SELECT schedule_id FROM subscription_order_context WHERE order_id=?)", String.class, f.order())).isEqualTo("PAYMENT_RETRY_STOCK_UNAVAILABLE");
+    jdbc.update("UPDATE inventories SET available_quantity=10 WHERE sku_id=?", f.sku());
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var first = executor.submit(() -> retries.prepareNextAttempt(f.payment()));
+      var second = executor.submit(() -> retries.prepareNextAttempt(f.payment()));
+      assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo(second.get(10, TimeUnit.SECONDS));
+    }
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=? AND attempt_no=2", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id IN (SELECT id FROM payments WHERE order_id=?) AND type='RESERVE'", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM subscription_schedules WHERE id=(SELECT schedule_id FROM subscription_order_context WHERE order_id=?) AND status='SCHEDULED' AND hold_reason IS NULL", f.order())).isEqualTo(1);
+    verifyNoInteractions(provider, billingProvider);
+  }
+
+  @Test
+  void billingReconciliationFailureQueriesOnlyAndCreatesNextAttemptAfterExplicitRelease() {
+    Fixture f = billingFixture();
+    jdbc.update("UPDATE payments SET status='PROCESSING' WHERE id=?", f.payment());
+    when(billingProvider.isConfigured()).thenReturn(true);
+    when(billingProvider.queryCharge(anyString())).thenAnswer(invocation -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(1);
+      return new TossBillingAdapter.ChargeResult("FAILED", "CUSTOM_DECLINED");
+    });
+    assertThat(service.reconcile(f.payment()).status()).isEqualTo("FAILED");
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id=? AND attempt_no=2 AND status='READY'", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=? AND type='RELEASE'", f.payment())).isEqualTo(1);
+    verify(billingProvider, times(1)).queryCharge(anyString());
+    verify(billingProvider, never()).charge(anyString(), anyString(), any());
+    verifyNoInteractions(provider);
+  }
+
+  private Fixture billingFixture() {
+    Fixture f = fixture(5);
+    new TransactionTemplate(manager).executeWithoutResult(status -> {
+      jdbc.update("UPDATE orders SET source='SUBSCRIPTION' WHERE id=?", f.order());
+      jdbc.update("UPDATE payments SET type='BILLING',status='READY' WHERE id=?", f.payment());
+      jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,status,version) VALUES (?,?,1,2,'2026-09-01','2026-09-18','ACTIVE',0)", f.member(), f.sku());
+      long subscription = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+      jdbc.update("INSERT INTO subscription_schedules(subscription_id,scheduled_date,status) VALUES (?,'2026-09-18','SCHEDULED')", subscription);
+      long schedule = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+      jdbc.update("INSERT INTO subscription_order_context(order_id,subscription_id,schedule_id,scheduled_date) VALUES (?,?,?,'2026-09-18')", f.order(), subscription, schedule);
+      jdbc.update("INSERT INTO billing_payment_methods(member_id,provider,customer_key,billing_key,status,created_at) VALUES (?,'TOSS',?,?,'ACTIVE',?)", f.member(), "fixture-" + f.member(), "fixture-" + f.member(), SecondaryReadFixtures.stamp());
+    });
+    return f;
+  }
 
   @Test
   void successConsumesExistingCartQuantityAfterProviderQueryOutsideTransaction() {

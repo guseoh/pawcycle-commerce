@@ -30,26 +30,32 @@ class LockJUnitGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             valid = ET.Element("testsuite")
             valid.append(ET.Element("testcase", classname=T09[0], name=T09[1] + "()"))
-            for index in (1, 2, 3):
-                valid.append(ET.Element("testcase", classname=T10[0][0],
-                                        name=T10[0][1] + f"(String)[{index}]"))
+            for label in ['[1] kind = "A"', '[2] kind = "B"', '[3] kind = "C"']:
+                valid.append(ET.Element("testcase", classname=T10[0][0], name=label))
             valid.append(ET.Element("testcase", classname=T10[1][0], name=T10[1][1] + "()"))
             report = Path(tmp) / "TEST-physical.xml"
             ET.ElementTree(valid).write(report)
             self.assertEqual(len(verify(Path(tmp), [True, True])), 3)
 
+            # An aborted/assumption-skipped T10 invocation must fail the required CI gate.
+            skipped = ET.SubElement(list(valid)[1], "skipped")
+            ET.ElementTree(valid).write(report)
+            with self.assertRaisesRegex(ValueError, "skipped or failed"):
+                verify(Path(tmp), [True, True])
+            list(valid)[1].remove(skipped)
+
             # Same invocation reported three times must not hide missing B or C.
             cases = list(valid)
-            cases[2].set("name", T10[0][1] + "(String)[1]")
+            cases[2].set("name", '[1] kind = "A"')
             ET.ElementTree(valid).write(report)
             with self.assertRaisesRegex(ValueError, "missing or duplicated"):
                 verify(Path(tmp), [True, True])
-            cases[2].set("name", T10[0][1] + "(String)[2]")
+            cases[2].set("name", '[2] kind = "B"')
 
             # Unknown or unlabelled invocation must fail closed, not count as PASS.
-            cases[3].set("name", T10[0][1] + "(String)")
+            cases[3].set("name", '[3] kind = "X"')
             ET.ElementTree(valid).write(report)
-            with self.assertRaisesRegex(ValueError, "unrecognized JUnit invocation"):
+            with self.assertRaisesRegex(ValueError, "missing or duplicated"):
                 verify(Path(tmp), [True, True])
 
     def test_t10_abc_value_source_mapping_is_frozen(self):
@@ -63,9 +69,9 @@ class LockJUnitGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = ET.Element("testsuite")
             root.append(ET.Element("testcase", classname=T09[0], name=T09[1] + "()"))
-            for cls, name, count in T10:
-                for i in range(count):
-                    root.append(ET.Element("testcase", classname=cls, name=name + f"(String)[{i+1}]"))
+            for label in ['[1] kind = "A"', '[2] kind = "B"', '[3] kind = "C"']:
+                root.append(ET.Element("testcase", classname=T10[0][0], name=label))
+            root.append(ET.Element("testcase", classname=T10[1][0], name=T10[1][1] + "()"))
             ET.ElementTree(root).write(Path(tmp) / "TEST-fixture.xml")
             self.assertEqual(len(verify(Path(tmp), [False, False])), 1)
             self.assertEqual(len(verify(Path(tmp), [True, True])), 3)
