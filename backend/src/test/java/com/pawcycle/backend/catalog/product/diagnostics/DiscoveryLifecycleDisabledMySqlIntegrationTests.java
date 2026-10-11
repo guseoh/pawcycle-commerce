@@ -23,10 +23,11 @@ class DiscoveryLifecycleDisabledMySqlIntegrationTests {
   @Autowired DataSource dataSource;
 
   @Test void disabledDiscoveryHasNoListenerMetersOrContextAndReturnsConnection() {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     assertThat(service.findProducts().items()).isNotNull();
     assertThat(registry.getMeters()).noneMatch(m -> m.getId().getName().startsWith(DiscoveryLifecycleDiagnostics.METRIC));
     assertThat(((ConfigurableTransactionManager) manager).getTransactionExecutionListeners()).doesNotContain(diagnostics.transactionListener());
     assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "disabledDiscovery");
   }
 }

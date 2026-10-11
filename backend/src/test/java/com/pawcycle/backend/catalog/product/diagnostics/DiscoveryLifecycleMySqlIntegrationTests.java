@@ -34,12 +34,13 @@ class DiscoveryLifecycleMySqlIntegrationTests {
   @Autowired PlatformTransactionManager manager;
 
   @Test void actualDiscoveryOwnsTransactionAndReturnsConnection() {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     double before = calls("matched");
     assertThat(service.findProducts().items()).isNotNull();
     assertThat(calls("matched")).isEqualTo(before + 1);
     assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
     assertThat(dataSource).isInstanceOf(HikariDataSource.class);
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "actualDiscovery");
     assertThat(((ConfigurableTransactionManager) manager).getTransactionExecutionListeners()).contains(diagnostics.transactionListener());
     assertThat(registry.get("pawcycle.catalog.product.discovery.phase").tag("phase", "repository-total").timer().count()).isPositive();
     for (String phase : java.util.List.of("transaction-begin", "transaction-commit", "transaction-cleanup",
@@ -50,6 +51,7 @@ class DiscoveryLifecycleMySqlIntegrationTests {
 
   @Test void realCountAndListSqlFailuresRollbackAndReturnConnection() {
     for (int failurePoint : new int[] {1, 2}) {
+      int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
       double before = calls("matched");
       long rollbacks = registry.get(DiscoveryLifecycleDiagnostics.METRIC).tag("phase", "transaction-rollback").timer().count();
       assertThatThrownBy(() -> {
@@ -58,11 +60,12 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       assertThat(calls("matched")).isEqualTo(before + 1);
       assertThat(registry.get(DiscoveryLifecycleDiagnostics.METRIC).tag("phase", "transaction-rollback").timer().count()).isEqualTo(rollbacks + 1);
       assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
-      assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+      DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "failureRollback");
     }
   }
 
   @Test void realConcurrentTransactionsDoNotMixReusedWorkerScopes() throws Exception {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     double before = calls("matched");
     try (var executor = Executors.newFixedThreadPool(2)) {
       var futures = executor.invokeAll(java.util.stream.IntStream.range(0, 6)
@@ -73,7 +76,7 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       for (var future : futures) assertThat(future.get()).isTrue();
     }
     assertThat(calls("matched")).isEqualTo(before + 6);
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "concurrentWorkers");
   }
 
   private double calls(String result) {
