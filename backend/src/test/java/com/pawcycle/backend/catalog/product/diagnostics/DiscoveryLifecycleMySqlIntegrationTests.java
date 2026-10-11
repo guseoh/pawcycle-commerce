@@ -90,7 +90,7 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       assertThat(registry.get(DiscoveryLifecycleDiagnostics.METRIC).tag("phase", "transaction-rollback").timer().count()).isEqualTo(rollbacks + 1);
       assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
       DiscoveryPoolCiEvidence.assertRequestThreadClean(entityManagerFactory, dataSource, "failureRollback");
-    DiscoveryPoolCiEvidence.observeSharedPool(dataSource, activeBefore, "failureRollback");
+      DiscoveryPoolCiEvidence.observeSharedPool(dataSource, activeBefore, "failureRollback");
     }
   }
 
