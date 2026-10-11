@@ -3,6 +3,10 @@ package com.pawcycle.backend.catalog.product.diagnostics;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pawcycle.backend.catalog.product.application.ProductQueryService;
+import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPersistenceAdapter;
+import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import javax.sql.DataSource;
@@ -17,16 +21,23 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ActiveProfiles("test")
 class DiscoveryLifecycleDisabledMySqlIntegrationTests {
   @Autowired ProductQueryService service;
+  // Controlled isolation: these unrelated scheduled tasks otherwise borrow from this same pool.
+  // Only their DB query collaborators are mocked; discovery's JPA transaction is still real.
+  @MockitoBean CommerceMetricsQueryRepository commerceMetricsQueries;
+  @MockitoBean SubscriptionMetricsQueryRepository subscriptionMetricsQueries;
+  @MockitoBean CheckoutExpirationPersistenceAdapter expirationLookup;
+
   @Autowired MeterRegistry registry;
   @Autowired DiscoveryLifecycleDiagnostics diagnostics;
   @Autowired PlatformTransactionManager manager;
   @Autowired DataSource dataSource;
 
   @Test void disabledDiscoveryHasNoListenerMetersOrContextAndReturnsConnection() {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     assertThat(service.findProducts().items()).isNotNull();
     assertThat(registry.getMeters()).noneMatch(m -> m.getId().getName().startsWith(DiscoveryLifecycleDiagnostics.METRIC));
     assertThat(((ConfigurableTransactionManager) manager).getTransactionExecutionListeners()).doesNotContain(diagnostics.transactionListener());
     assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "disabledDiscovery");
   }
 }

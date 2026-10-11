@@ -4,11 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.product.application.ProductQueryService;
+import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPersistenceAdapter;
+import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,17 +37,24 @@ class DiscoveryLifecycleMySqlIntegrationTests {
   @Autowired DiscoveryLifecycleDiagnostics diagnostics;
   @Autowired MeterRegistry registry;
   @Autowired ProductQueryService service;
+  // Controlled isolation: these unrelated scheduled tasks otherwise borrow from this same pool.
+  // Only their DB query collaborators are mocked; discovery's JPA transaction is still real.
+  @MockitoBean CommerceMetricsQueryRepository commerceMetricsQueries;
+  @MockitoBean SubscriptionMetricsQueryRepository subscriptionMetricsQueries;
+  @MockitoBean CheckoutExpirationPersistenceAdapter expirationLookup;
+
   @Autowired Probe probe;
   @Autowired DataSource dataSource;
   @Autowired PlatformTransactionManager manager;
 
   @Test void actualDiscoveryOwnsTransactionAndReturnsConnection() {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     double before = calls("matched");
     assertThat(service.findProducts().items()).isNotNull();
     assertThat(calls("matched")).isEqualTo(before + 1);
     assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
     assertThat(dataSource).isInstanceOf(HikariDataSource.class);
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "actualDiscovery");
     assertThat(((ConfigurableTransactionManager) manager).getTransactionExecutionListeners()).contains(diagnostics.transactionListener());
     assertThat(registry.get("pawcycle.catalog.product.discovery.phase").tag("phase", "repository-total").timer().count()).isPositive();
     for (String phase : java.util.List.of("transaction-begin", "transaction-commit", "transaction-cleanup",
@@ -50,6 +65,7 @@ class DiscoveryLifecycleMySqlIntegrationTests {
 
   @Test void realCountAndListSqlFailuresRollbackAndReturnConnection() {
     for (int failurePoint : new int[] {1, 2}) {
+      int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
       double before = calls("matched");
       long rollbacks = registry.get(DiscoveryLifecycleDiagnostics.METRIC).tag("phase", "transaction-rollback").timer().count();
       assertThatThrownBy(() -> {
@@ -58,11 +74,12 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       assertThat(calls("matched")).isEqualTo(before + 1);
       assertThat(registry.get(DiscoveryLifecycleDiagnostics.METRIC).tag("phase", "transaction-rollback").timer().count()).isEqualTo(rollbacks + 1);
       assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
-      assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+      DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "failureRollback");
     }
   }
 
   @Test void realConcurrentTransactionsDoNotMixReusedWorkerScopes() throws Exception {
+    int activeBefore = DiscoveryPoolCiEvidence.active(dataSource);
     double before = calls("matched");
     try (var executor = Executors.newFixedThreadPool(2)) {
       var futures = executor.invokeAll(java.util.stream.IntStream.range(0, 6)
@@ -73,7 +90,47 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       for (var future : futures) assertThat(future.get()).isTrue();
     }
     assertThat(calls("matched")).isEqualTo(before + 6);
-    assertThat(((HikariDataSource) dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+    DiscoveryPoolCiEvidence.assertIdle(dataSource, activeBefore, "concurrentWorkers");
+  }
+
+  @Test void unrelatedBorrowerKeepsPoolActiveAfterCompletedDiscovery() throws Exception {
+    // Deterministic counterexample: a pool-wide active count is not a request-local lease.
+    assertThat(dataSource).isInstanceOf(HikariDataSource.class);
+    var pool = ((HikariDataSource) dataSource).getHikariPoolMXBean();
+    assertThat(pool).isNotNull();
+    CountDownLatch borrowed = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Future<Void> borrower = executor.submit(() -> {
+      try (var ignored = dataSource.getConnection()) {
+        borrowed.countDown();
+        if (!release.await(15, TimeUnit.SECONDS)) {
+          throw new IllegalStateException("Controlled Hikari borrower was not released in time");
+        }
+      }
+      return null;
+    });
+    try {
+      assertThat(borrowed.await(5, TimeUnit.SECONDS)).as("borrower acquired connection").isTrue();
+      assertThat(pool.getActiveConnections()).as("controlled borrower holds a lease").isPositive();
+      double matchedBefore = calls("matched");
+      double unmatchedBefore = calls("unmatched");
+      assertThat(service.findProducts().items()).isNotNull();
+      assertThat(calls("matched")).isEqualTo(matchedBefore + 1);
+      assertThat(calls("unmatched")).isEqualTo(unmatchedBefore);
+      assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
+      // A different legitimate borrower remains active after discovery has returned.
+      assertThat(pool.getActiveConnections()).as("unrelated borrower is still active").isPositive();
+    } finally {
+      release.countDown();
+      try {
+        borrower.get(5, TimeUnit.SECONDS);
+      } finally {
+        executor.shutdownNow();
+        assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+            .as("controlled borrower worker stopped").isTrue();
+      }
+    }
   }
 
   private double calls(String result) {
