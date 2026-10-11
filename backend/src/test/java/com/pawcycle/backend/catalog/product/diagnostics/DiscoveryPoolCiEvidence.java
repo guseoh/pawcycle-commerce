@@ -25,6 +25,12 @@ final class DiscoveryPoolCiEvidence {
     var pool = hikari.getHikariPoolMXBean();
     int observed = pool.getActiveConnections();
     if (observed != 0) {
+      // Capture workers as close to the first nonzero snapshot as possible.
+      // Pool counts are aggregate and may change independently between these samples.
+      int firstIdle = pool.getIdleConnections();
+      int firstTotal = pool.getTotalConnections();
+      int firstPending = pool.getThreadsAwaitingConnection();
+      List<String> firstWorkers = dbWorkerStacks();
       // The first nonzero sample still fails, even if the later values reach zero.
       int[] later = new int[12];
       for (int i = 0; i < later.length; i++) {
@@ -32,9 +38,10 @@ final class DiscoveryPoolCiEvidence {
         later[i] = pool.getActiveConnections();
       }
       System.err.printf(
-          "DISCOVERY_POOL_CI_EVIDENCE boundary=%s before=%d observed=%d later=%s idle=%d total=%d pending=%d workers=%s%n",
-          boundary, before, observed, Arrays.toString(later), pool.getIdleConnections(),
-          pool.getTotalConnections(), pool.getThreadsAwaitingConnection(), dbWorkerStacks());
+          "DISCOVERY_POOL_CI_EVIDENCE boundary=%s before=%d observed=%d firstIdle=%d firstTotal=%d firstPending=%d firstWorkers=%s later=%s finalIdle=%d finalTotal=%d finalPending=%d finalWorkers=%s%n",
+          boundary, before, observed, firstIdle, firstTotal, firstPending, firstWorkers,
+          Arrays.toString(later), pool.getIdleConnections(), pool.getTotalConnections(),
+          pool.getThreadsAwaitingConnection(), dbWorkerStacks());
     }
     assertThat(observed).as("shared Hikari active connections after " + boundary).isZero();
   }
