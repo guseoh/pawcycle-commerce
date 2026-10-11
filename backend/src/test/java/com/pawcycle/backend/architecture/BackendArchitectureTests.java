@@ -44,6 +44,31 @@ class BackendArchitectureTests {
     assertThat(removed).as("Remove resolved entries from the baseline").isEmpty();
   }
 
+  @Test
+  void directRuntimeJdbcOwnersRemainWithinTheT12Remainder() {
+    JavaClasses classes = new ClassFileImporter().importPath(Path.of("build/classes/java/main"));
+    Set<String> owners = new TreeSet<>();
+    for (JavaClass type : classes) {
+      if (generatedQueryType(type)) continue;
+      if (type.getDirectDependenciesFromSelf().stream().anyMatch(dependency ->
+          dependency.getTargetClass().getName().equals("org.springframework.jdbc.core.JdbcTemplate"))) {
+        owners.add(type.getName());
+      }
+    }
+    assertThat(owners.stream().filter(BackendArchitectureTests::isolated).toList()).hasSize(9);
+    assertThat(owners.stream().filter(owner -> !isolated(owner)).toList()).containsExactlyInAnyOrder(
+        ROOT + "interaction.persistence.InteractionEventPersistenceAdapter",
+        ROOT + "subscription.persistence.SubscriptionShippingPersistenceAdapter",
+        ROOT + "subscription.persistence.SubscriptionDeliveryReminderPersistence",
+        ROOT + "commerce.returning.persistence.ReturnPersistenceAdapter",
+        ROOT + "commerce.notification.persistence.NotificationPersistenceAdapter",
+        ROOT + "commerce.refund.persistence.RefundPersistenceAdapter",
+        ROOT + "commerce.order.persistence.QuickReorderPersistenceAdapter",
+        ROOT + "commerce.membership.persistence.MembershipPersistenceAdapter",
+        ROOT + "commerce.membership.persistence.MembershipEvaluationPersistenceAdapter",
+        ROOT + "commerce.cancellation.persistence.CancellationPersistenceAdapter");
+  }
+
   private static Set<String> violations(JavaClasses classes) {
     Set<String> actual = new TreeSet<>();
     for (JavaClass origin : classes) {

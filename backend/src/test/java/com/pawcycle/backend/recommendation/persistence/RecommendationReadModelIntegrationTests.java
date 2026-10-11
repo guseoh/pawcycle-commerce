@@ -143,6 +143,152 @@ class RecommendationReadModelIntegrationTests {
     assertThat(queries.findPurchasableCandidates("DOG")).isEqualTo(legacy.findPurchasableCandidates("DOG"));
   }
 
+  @Test
+  void remainingSignalsJsonOwnershipAndSubscriptionAggregatesMatchFrozenJdbcAtMicrosecondBoundaries() {
+    long pet = pet(memberId, "DOG");
+    long foreignPet = pet(fixtures.member(), "DOG");
+    long active = subscription(pet, "ACTIVE", true);
+    subscription(pet, "PAUSED", true);
+    subscription(pet, "ACTIVE", false);
+    subscription(foreignPet, "ACTIVE", true);
+    var definition = new FacetDefinitionEntity(SecondaryReadFixtures.unique(), "Facet");
+    entities.persist(definition);
+    var option = new FacetOptionEntity(definition, "unicode:값", 0);
+    entities.persist(option);
+    entities.persist(new ProductFacetValueEntity(first, option));
+    entities.flush(); entities.clear();
+    java.time.LocalDateTime now = java.time.LocalDateTime.of(2026,9,18,12,34,56,123456000);
+    jdbc.execute("SET timestamp=" + now.toEpochSecond(java.time.ZoneOffset.UTC) + ".123456");
+    try {
+      Sku another = fixtures.sku(first, SkuStatus.ACTIVE, 10);
+      jdbc.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) SELECT current_snapshot_id,?,1 FROM subscriptions WHERE id=?", another.getId(), active);
+      for (int offset : List.of(-1,0,1)) {
+        long order = paid("ONE_TIME"); fixtures.item(order, firstSku); fixtures.item(order, another);
+        jdbc.update("UPDATE orders SET paid_at=? WHERE id=?", now.minusDays(180).plusNanos(offset*1000L), order);
+        for (String type : List.of("PRODUCT_VIEW","RECOMMENDATION_CLICK","PRODUCT_IMPRESSION","RECOMMENDATION_IMPRESSION"))
+          event(first.getId(), type, now.minusDays(30).plusNanos(offset*1000L), "{}");
+        event(null, "FILTER", now.minusDays(30).plusNanos(offset*1000L),
+            "{\"category\":\"" + firstCategory.getSlug() + "\",\"brand\":\"" + brand.getSlug()
+                + "\",\"facets\":[\"" + definition.getKey() + ":unicode:값\",\"duplicate\",\"duplicate\",null]}");
+      }
+      event(null, "FILTER", now, "{}");
+      event(null, "FILTER", now, "{\"category\":null,\"brand\":\"\",\"facets\":[]}");
+      event(null, "FILTER", now, "{\"category\":123,\"brand\":true,\"facets\":[\"한글\",\"\"]}");
+      event(null, "PRODUCT_VIEW", now, "{}");
+      wish(memberId, first); wish(memberId, second);
+      for (long candidatePet : List.of(pet, foreignPet, Long.MAX_VALUE))
+        com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+            () -> legacy.findOwnedPetType(memberId, candidatePet), () -> queries.findOwnedPetType(memberId, candidatePet));
+      for (long candidatePet : List.of(pet, foreignPet, Long.MAX_VALUE)) {
+        com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+            () -> legacy.activeSubscriptionProductIds(memberId, candidatePet), () -> queries.activeSubscriptionProductIds(memberId, candidatePet));
+        com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+            () -> legacy.subscriptionCategorySlugs(memberId, candidatePet), () -> queries.subscriptionCategorySlugs(memberId, candidatePet));
+        com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+            () -> legacy.memberSignals(memberId, candidatePet), () -> queries.memberSignals(memberId, candidatePet));
+      }
+      assertThat(com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+          () -> legacy.exposedProductIds(memberId, 30), () -> queries.exposedProductIds(memberId, 30))).contains(first.getId());
+      com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+          () -> legacy.memberSignals(Long.MAX_VALUE, pet), () -> queries.memberSignals(Long.MAX_VALUE, pet));
+      for (String type : new String[] {null,"", "  ","DOG","CAT","UNKNOWN"})
+        com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+            () -> legacy.popularScores(type), () -> queries.popularScores(type));
+    } finally { jdbc.execute("SET timestamp=0"); }
+  }
+
+  @Test
+  void trendUnionKeepsAllRowsWhileFrozenJdbcDocumentsTheApprovedFirstRowCorrection() {
+    java.time.LocalDate today = java.time.LocalDate.of(2026,9,18);
+    for (java.time.LocalDateTime at : List.of(today.minusDays(14).atStartOfDay().minusNanos(1000),
+        today.minusDays(14).atStartOfDay(), today.minusDays(7).atStartOfDay().minusNanos(1000),
+        today.minusDays(7).atStartOfDay(), today.atStartOfDay().minusNanos(1000), today.atStartOfDay())) {
+      long order = paid("ONE_TIME"); fixtures.item(order, firstSku);
+      fixtures.payment(order, "NORMAL", "FAILED", 2);
+      jdbc.update("UPDATE orders SET paid_at=? WHERE id=?", at, order);
+      event(first.getId(), "RECOMMENDATION_CLICK", at, "{}");
+      event(first.getId(), "PRODUCT_VIEW", at, "{}");
+    }
+    wish(memberId, first);
+    jdbc.update("UPDATE wishlist_items SET created_at=? WHERE member_id=? AND product_id=?",
+        today.minusDays(7), memberId, first.getId());
+    long otherOrder = paid("SUBSCRIPTION"); fixtures.item(otherOrder, secondSku);
+    jdbc.update("UPDATE orders SET paid_at=? WHERE id=?", today.minusDays(1), otherOrder);
+    Product noActivity = fixtures.product(firstCategory, brand, "DOG", "PUBLIC");
+    entities.flush();
+    var firstScore = new com.pawcycle.backend.recommendation.domain.RecommendationTrendScore(18,16);
+    var secondScore = new com.pawcycle.backend.recommendation.domain.RecommendationTrendScore(5,0);
+    assertThat(legacy.trendScores(List.of(first.getId()), today)).isEmpty();
+    assertThat(com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+        () -> trendOracle(List.of(first.getId()), today),
+        () -> queries.trendScores(List.of(first.getId()), today)))
+        .containsExactlyEntriesOf(java.util.Map.of(first.getId(), firstScore));
+    List<Long> ids = List.of(first.getId(), second.getId(), first.getId(), noActivity.getId(), Long.MAX_VALUE);
+    var expected = java.util.Map.of(first.getId(), firstScore, second.getId(), secondScore);
+    assertThat(com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+        () -> trendOracle(ids, today), () -> queries.trendScores(ids, today))).isEqualTo(expected);
+    // Frozen reference is unchanged: exactly one SQL group was lost, all remaining scores agree.
+    var frozen = legacy.trendScores(ids, today);
+    assertThat(frozen).hasSize(expected.size() - 1);
+    assertThat(expected).containsAllEntriesOf(frozen);
+    com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+        () -> legacy.trendScores(List.of(), today), () -> queries.trendScores(List.of(), today));
+    assertThat(com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+        () -> trendOracle(List.of(noActivity.getId()), today),
+        () -> queries.trendScores(List.of(noActivity.getId()), today))).isEmpty();
+  }
+
+  // Normal row-by-row JDBC Oracle: same weights/windows, without advancing the callback cursor.
+  private java.util.Map<Long, com.pawcycle.backend.recommendation.domain.RecommendationTrendScore> trendOracle(
+      List<Long> ids, java.time.LocalDate today) {
+    if (ids.isEmpty()) return java.util.Map.of();
+    String sql = """
+        SELECT a.product_id,
+          COALESCE(SUM(CASE WHEN a.activity_at>=? AND a.activity_at<? THEN a.weight ELSE 0 END),0),
+          COALESCE(SUM(CASE WHEN a.activity_at>=? AND a.activity_at<? THEN a.weight ELSE 0 END),0)
+        FROM (
+          SELECT sku.product_id,o.paid_at activity_at,5 weight FROM orders o
+          JOIN payments p ON p.order_id=o.id AND p.status='SUCCEEDED'
+          JOIN order_items oi ON oi.order_id=o.id JOIN skus sku ON sku.id=oi.sku_id WHERE o.status='PAID'
+          UNION ALL SELECT w.product_id,w.created_at,2 FROM wishlist_items w
+          UNION ALL SELECT e.product_id,e.occurred_at,2 FROM interaction_events e WHERE e.event_type='RECOMMENDATION_CLICK'
+          UNION ALL SELECT e.product_id,e.occurred_at,1 FROM interaction_events e WHERE e.event_type='PRODUCT_VIEW'
+        ) a WHERE a.product_id IN (
+        """ + String.join(",", java.util.Collections.nCopies(ids.size(), "?")) + ") GROUP BY a.product_id";
+    var arguments = new java.util.ArrayList<Object>(List.of(today.minusDays(7), today, today.minusDays(14), today.minusDays(7)));
+    arguments.addAll(ids);
+    var rows = jdbc.query(sql, (rs, rowNumber) -> new TrendOracleRow(rs.getLong(1), rs.getLong(2), rs.getLong(3)), arguments.toArray());
+    var result = new java.util.HashMap<Long, com.pawcycle.backend.recommendation.domain.RecommendationTrendScore>();
+    for (var row : rows) result.put(row.id(), new com.pawcycle.backend.recommendation.domain.RecommendationTrendScore(row.recent(),row.previous()));
+    return result;
+  }
+
+  private record TrendOracleRow(long id, long recent, long previous) {}
+
+  private long pet(long owner, String type) {
+    jdbc.update("INSERT INTO pets(member_id,name,pet_type) VALUES (?,'Fixture',?)", owner, type);
+    return fixtures.lastId();
+  }
+
+  private long subscription(long pet, String status, boolean runtime) {
+    jdbc.update("INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES ('Fixture','DOG',true)");
+    long plan = fixtures.lastId();
+    jdbc.update("INSERT INTO plan_versions(plan_id,package_price_krw) VALUES (?,1000)", plan);
+    long version = fixtures.lastId();
+    jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,pet_id,runtime_managed,status) VALUES (?,?,1,4,'2026-09-01','2026-09-30',?,?,?)", memberId, firstSku.getId(), pet, runtime, status);
+    long id = fixtures.lastId();
+    jdbc.update("INSERT INTO subscription_snapshots(subscription_id,source_plan_version_id,package_total_krw,delivery_cycle_weeks) VALUES (?,?,1000,4)", id, version);
+    long snapshot = fixtures.lastId();
+    jdbc.update("INSERT INTO subscription_snapshot_items(snapshot_id,sku_id,quantity) VALUES (?,?,1)", snapshot, firstSku.getId());
+    jdbc.update("UPDATE subscriptions SET current_snapshot_id=? WHERE id=?", snapshot, id);
+    return id;
+  }
+
+  private void event(Long product, String type, java.time.LocalDateTime at, String context) {
+    jdbc.update("INSERT INTO interaction_events(event_id,member_id,product_id,event_type,recommendation_request_id,occurred_at,context) VALUES (?,?,?,?,?,?,?)",
+        UUID.randomUUID().toString(), memberId, product, type, UUID.randomUUID().toString(), at, context);
+  }
+
   private long ineligible(Category category, Brand owner, String display, SkuStatus status, Integer inventory) {
     Product product = fixtures.product(category, owner, "DOG", display);
     fixtures.sku(product, status, inventory);

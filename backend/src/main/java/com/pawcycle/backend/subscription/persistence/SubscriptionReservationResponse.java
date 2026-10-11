@@ -26,6 +26,11 @@ public abstract class SubscriptionReservationResponse {
   @Column(name = "etag_header", length = 64)
   private String etag;
 
+  // DATETIME(6) is a UTC wall-clock value, read/bound through JDBC 4.2 without a Calendar.
+  @org.hibernate.annotations.JdbcType(org.hibernate.type.descriptor.jdbc.LocalDateTimeJdbcType.class)
+  @Column(name = "completed_at", insertable = false, updatable = false)
+  private java.time.LocalDateTime completedAt;
+
   protected SubscriptionReservationResponse(String fingerprint) {
     this.fingerprint = fingerprint;
   }

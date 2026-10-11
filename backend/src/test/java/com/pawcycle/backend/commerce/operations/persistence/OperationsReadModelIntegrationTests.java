@@ -47,7 +47,11 @@ class OperationsReadModelIntegrationTests {
 
   @Test
   void allSixteenTypesKeepProjectionNullAttemptDateCoercionOrderingAndActions() {
-    long pendingBefore = metrics.countPendingOperations();
+    long pendingBefore = com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+        () -> jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM order_returns WHERE status='REQUESTED')"
+            + "+(SELECT COUNT(*) FROM refunds WHERE status IN ('READY','FAILED','UNKNOWN'))"
+            + "+(SELECT COUNT(*) FROM payments WHERE status='UNKNOWN')", Long.class),
+        metrics::countPendingOperations);
     Map<String, Long> expected = new HashMap<>();
     for (String state : List.of("PREPARING", "SHIPPED", "FAILED")) {
       long order = order("PAID");
@@ -86,7 +90,7 @@ class OperationsReadModelIntegrationTests {
     assertThat(metrics.countPendingOperations()).isEqualTo(pendingBefore + 5);
     jdbc.execute("SET timestamp=" + SecondaryReadFixtures.stamp().toLocalDateTime().toEpochSecond(java.time.ZoneOffset.UTC) + ".123456");
     try {
-      var actual = queries.findPending();
+      var actual = com.pawcycle.backend.support.ReadQueryParity.compare(jdbc, legacy::findPending, queries::findPending);
       assertThat(actual).isEqualTo(legacy.findPending());
       for (var entry : expected.entrySet()) assertThat(actual).anySatisfy(row -> {
         assertThat(row.type()).isEqualTo(entry.getKey());
@@ -101,7 +105,7 @@ class OperationsReadModelIntegrationTests {
           .isSortedAccordingTo(Comparator.nullsLast(Comparator.reverseOrder()));
       var retry = actual.stream().filter(row -> row.referenceId() == expected.get("PAYMENT_RETRY_STOCK_UNAVAILABLE") && row.type().equals("PAYMENT_RETRY_STOCK_UNAVAILABLE")).findFirst().orElseThrow();
       assertThat(retry.createdAt()).isEqualTo(Timestamp.valueOf("2026-09-23 00:00:00"));
-      var referenceService = new OperationsQueryService(new OperationsQueryRepository(jdbc) {
+      var referenceService = new OperationsQueryService(new OperationsQueryRepository(entities) {
         @Override public List<PendingRow> findPending() { return legacy.findPending(); }
       });
       assertThat(service.pending()).isEqualTo(referenceService.pending());

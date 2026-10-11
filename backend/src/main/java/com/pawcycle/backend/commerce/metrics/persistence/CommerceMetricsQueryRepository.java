@@ -1,23 +1,23 @@
 package com.pawcycle.backend.commerce.metrics.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class CommerceMetricsQueryRepository {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
 
-  public CommerceMetricsQueryRepository(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public CommerceMetricsQueryRepository(EntityManager entities) {
+    this.entities = entities;
   }
 
   public long countPendingOperations() {
     Long value =
-        jdbc.queryForObject(
-            "SELECT (SELECT COUNT(*) FROM order_returns WHERE status='REQUESTED')+(SELECT COUNT(*)"
-                + " FROM refunds WHERE status IN ('READY','FAILED','UNKNOWN'))+(SELECT COUNT(*)"
-                + " FROM payments WHERE status IN ('UNKNOWN'))",
-            Long.class);
+        entities.createQuery(
+            "select (select count(r) from OrderReturnEntity r where r.status='REQUESTED')"
+                + " + (select count(r) from RefundEntity r where r.status in ('READY','FAILED','UNKNOWN'))"
+                + " + (select count(p) from PaymentEntity p where p.status='UNKNOWN')",
+            Long.class).getSingleResult();
     return value == null ? 0L : value;
   }
 }
