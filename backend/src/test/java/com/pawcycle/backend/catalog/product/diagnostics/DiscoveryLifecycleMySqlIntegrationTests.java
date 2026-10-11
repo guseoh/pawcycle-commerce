@@ -13,12 +13,15 @@ import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.PersistenceContext;
+import java.sql.Connection;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -91,6 +94,37 @@ class DiscoveryLifecycleMySqlIntegrationTests {
       assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
       DiscoveryPoolCiEvidence.assertRequestThreadClean(entityManagerFactory, dataSource, "failureRollback");
       DiscoveryPoolCiEvidence.observeSharedPool(dataSource, activeBefore, "failureRollback");
+    }
+  }
+
+  @Test void actualJdbcLeaseHandleClosesAfterCommitAndRollback() throws Exception {
+    assertThat(dataSource).isInstanceOf(HikariDataSource.class);
+    for (boolean fail : new boolean[] {false, true}) {
+      AtomicReference<Connection> captured = new AtomicReference<>();
+      double matchedBefore = calls("matched");
+      double unmatchedBefore = calls("unmatched");
+      double matchedPairsBefore = pairs("matched");
+      double unmatchedPairsBefore = pairs("unmatched");
+      try (var scope = diagnostics.openScope()) {
+        if (fail) {
+          assertThatThrownBy(() -> probe.readWithLeaseCapture(captured, true))
+              .isInstanceOf(RuntimeException.class);
+        } else {
+          probe.readWithLeaseCapture(captured, false);
+        }
+      }
+      Connection lease = captured.get();
+      assertThat(lease).as("Hibernate exposed the borrowed JDBC connection").isNotNull();
+      // A Hikari close returns this logical lease to the pool; it need not close the physical socket.
+      assertThat(lease.isClosed()).as("borrowed JDBC handle returned after " +
+          (fail ? "rollback" : "commit")).isTrue();
+      assertThat(calls("matched")).isEqualTo(matchedBefore + 1);
+      assertThat(calls("unmatched")).isEqualTo(unmatchedBefore);
+      assertThat(pairs("matched")).isGreaterThan(matchedPairsBefore);
+      assertThat(pairs("unmatched")).isEqualTo(unmatchedPairsBefore);
+      assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
+      DiscoveryPoolCiEvidence.assertRequestThreadClean(
+          entityManagerFactory, dataSource, fail ? "leaseRollback" : "leaseCommit");
     }
   }
 
@@ -176,6 +210,21 @@ class DiscoveryLifecycleMySqlIntegrationTests {
   }
   static class Probe {
     @PersistenceContext EntityManager entityManager;
+    @Transactional(readOnly = true)
+    public void readWithLeaseCapture(AtomicReference<Connection> captured, boolean fail) {
+      DiscoveryLifecycleDiagnostics.repositoryEnter();
+      try {
+        entityManager.unwrap(Session.class).doWork(connection -> {
+          assertThat(connection.isClosed()).as("connection is open inside the transaction").isFalse();
+          captured.set(connection);
+        });
+        entityManager.createNativeQuery(fail
+            ? "SELECT lifecycle_missing_column FROM products" : "SELECT 1").getSingleResult();
+      } finally {
+        DiscoveryLifecycleDiagnostics.repositoryExit();
+      }
+    }
+
     @Transactional(readOnly = true)
     public void read(int failurePoint) {
       DiscoveryLifecycleDiagnostics.repositoryEnter();
