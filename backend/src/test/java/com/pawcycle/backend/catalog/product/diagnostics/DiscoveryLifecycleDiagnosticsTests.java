@@ -86,6 +86,27 @@ class DiscoveryLifecycleDiagnosticsTests {
     assertThat(coverage("calls", "unmatched")).isEqualTo(1);
   }
 
+  @Test void missingReleaseCallbackFailsDespiteNormalTransactionAndRepositoryCompletion() {
+    var tx = new SimpleTransactionStatus();
+    try (var scope = diagnostics.openScope()) {
+      diagnostics.beforeBegin(tx);
+      var listener = new DiscoverySessionEventListener();
+      listener.jdbcConnectionAcquisitionStart();
+      listener.jdbcConnectionAcquisitionEnd();
+      diagnostics.afterBegin(tx, null);
+      DiscoveryLifecycleDiagnostics.repositoryEnter();
+      DiscoveryLifecycleDiagnostics.repositoryExit();
+      diagnostics.beforeCommit(tx);
+      diagnostics.afterCommit(tx, null);
+      // Deliberately omit jdbcConnectionReleaseStart/End.
+    }
+    assertThat(coverage("calls", "matched")).isZero();
+    assertThat(coverage("calls", "unmatched")).isEqualTo(1);
+    assertThat(coverage("pairs", "matched")).isZero();
+    assertThat(coverage("pairs", "unmatched")).isEqualTo(1);
+    assertThat(DiscoveryLifecycleDiagnostics.currentScope()).isNull();
+  }
+
   @Test void rollbackAndExceptionCleanTheScopeBeforeThreadReuse() {
     assertThatThrownBy(() -> {
       var tx = new SimpleTransactionStatus();
