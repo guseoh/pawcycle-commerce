@@ -1693,3 +1693,15 @@ T12's remaining ordinary Runtime owners are:
 These remain T12's Runtime-0 gate; KEEP decisions from older tasks are not permanent exceptions.
 Recovery is an ordinary revert PR restoring the JDBC adapter/helper binding and associated tests;
 there is no schema or operating-data recovery step because no operating execution occurs.
+
+### T11 local verification evidence
+
+MySQL 8.4.11 / REPEATABLE READ / max_connections=151, loopback-only disposable instance:
+UTC full suite on a clean checkout and new schema selects 571 JUnit cases: **567 PASS, failure/error 0,
+4 SKIP**. The four skips are existing T10 `diagnoseHistory` opt-in diagnostic methods, not the
+mandatory physical-lock gate. The T09 command-lock observer (1), T10 fixed A/B/C observer (3),
+and T10 record/index/gap competing-write observer (1) all execute and pass the JUnit gate.
+`build -x test` passes. Seoul cleanup/metrics/concurrency/Billing-Recovery selection passes 28 cases
+with failure/error/skip 0. Related task metadata/classifier/physical-lock Harness regressions pass 78.
+Architecture baseline stays at 204, NEW/RESOLVED 0. Whole Seoul suite and external independent review
+are unexecuted; latest PR HEAD CI is dynamic evidence in Draft PR #370, not a Production verification.
