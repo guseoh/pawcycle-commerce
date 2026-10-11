@@ -1609,3 +1609,99 @@ all original lock FAIL evidence remains intact. Latest-HEAD CI and independent r
 in the Draft PR. The accepted lock STOP is released and no new unexplained regression is found;
 whole Seoul and Production Verified claims are not made. Recovery remains the normal T10 revert
 described above; no actual Provider or operating execution occurred.
+
+## T11 — Cleanup native mutations and maintenance JDBC isolation
+
+Task `BACKEND-REFACTOR-V2-011`, Issue #369; implementation baseline `c2ec51d` (T11/12).
+This is repository preparation on disposable MySQL only; API, schema, migration, global timezone,
+business policy, real Provider, Production, Cloud and operating data remain outside the task.
+
+### Cleanup persistence contract
+
+`SubscriptionIdempotencyCleanupPersistence` now delegates its four unchanged MySQL `UPDATE`/`DELETE`
+statements to the existing feature-local `SubscriptionNativeSql`. Predicates, `ORDER BY`, batch
+`LIMIT`, affected rows and repair Creation → repair Command → delete Creation → delete Command
+remain unchanged. The processor still owns one transaction and records success only after commit,
+failure after rollback. No SELECT/delete decomposition, entity flush/clear or new abstraction is added.
+
+Native `LocalDateTime` parameters explicitly use `LocalDateTimeJavaType` + `LocalDateTimeJdbcType`,
+matching the original JDBC 4.2 direct binding of UTC wall-clock values into `DATETIME(6)`.
+This avoids the configured Hibernate UTC Calendar converting a JVM-local `Timestamp`.
+The existing native helper's other callers do not currently pass `LocalDateTime` parameters;
+entity time mappings and the T09/T10 transaction/lock boundaries remain unchanged.
+[Hibernate's JDBC type contract](https://docs.hibernate.org/orm/current/javadocs/org/hibernate/type/SqlTypes.html)
+describes this direct `setObject` mapping; actual MySQL row comparisons, rather than that description,
+are the acceptance evidence.
+
+`LegacySubscriptionIdempotencyCleanupReference` freezes the four JDBC statements from `c2ec51d` in
+test source. The differential test uses the same committed fixture with rollback-isolated old/new
+runs, comparing affected rows and complete response/completion snapshots after every mutation across
+seven rounds, batch sizes 1/2, equal-time PK ties, multiple subscriptions/command types, repairs,
+cutoff ±1µs and excluded records. Existing integration tests additionally assert literal UTC
+microseconds, rollback/retry, commit metrics and concurrent stored-response replay versus cleanup.
+
+### Nine JDBC owners: audited execution allowlist (KEEP)
+
+Bean presence alone is not execution permission. No new uncontrolled execution path was found;
+the existing JDBC import/bootstrap/migration/measurement contracts are retained without new profiles.
+Paths below are relative to `backend/src/main/java/com/pawcycle/backend/`.
+
+| JDBC owner | Bean / profile / property | Actual entry and HTTP / scheduler reachability | Production opt-in / isolation evidence |
+| --- | --- | --- | --- |
+| `catalog/maintenance/persistence/CustomerCatalogImportPersistence` | Unconditional `@Repository`; customer manifest property only selects input | `CustomerCatalogImportService.validate/apply` via import runner; local V3 wrapper constructs it. No ordinary HTTP/scheduler caller | Production import gates below; local V3 profile and enabled property. Bean is dormant in default Production |
+| `catalog/maintenance/persistence/CustomerCatalogRealismCorrectionPersistence` | Unconditional `@Repository`; realism manifest input | Demo/customer import and facade validate/apply only; no ordinary HTTP/scheduler | Same import/bootstrap gates; construction performs no DML |
+| `catalog/maintenance/persistence/DemoCatalogImportPersistence` | Unconditional `@Repository`; demo manifest input | Production import runner or local demo fixture; no ordinary HTTP/scheduler | Same CLI gates; local demo is enabled by default **only** in the explicit local-integration profile |
+| `catalog/maintenance/persistence/ProductDetailSectionFixturePersistence` | `@Repository`, `local-integration & !test & !production & !prod` | Local demo fixture → local demo bootstrap runner; no HTTP/scheduler | Not a Production bean, including mixed production/prod profiles |
+| `foundation/bootstrap/LocalCustomerCatalogV3FixtureService` | `@Service`, same local-only profile | `LocalCustomerCatalogV3Configuration` runner; `pawcycle.local-customer-catalog-v3.enabled=true`; requires default demo manifest and enabled baseline | Production/mixed profiles excluded; no HTTP/scheduler |
+| `foundation/bootstrap/LocalQaBootstrapService` | Unconditional `@Service`, no profile on service | Only `LocalQaBootstrapConfiguration` runner; local-only configuration and `pawcycle.local-qa-bootstrap.enabled=true` (default false) | Dormant Production bean; no HTTP/scheduler. References from subscription fixture are inlined constants, not execution calls |
+| `foundation/bootstrap/LocalQaSubscriptionFixtureService` | Unconditional `@Service`, no profile on service | Same local QA runner, immediately after QA member/catalog bootstrap | Same local-only and enabled gates; no Production/HTTP/scheduler caller |
+| `subscription/migration/LegacySubscriptionMigrationProcessor` | Unconditional `@Service`; no profile/property | No production-source caller, runner, HTTP or scheduler. Explicit `preflight()` / `migrateAfterSourceWriteFreeze(true)` only | External approved source-write freeze is the operator prerequisite; false is rejected before JDBC. A boolean cannot establish that external freeze by itself |
+| `subscription/performance/SubscriptionBurstMeasurementService` | `@Service`, `subscription-burst-measurement & !production & !prod`; required marker path, run-armed default false | Profile-matched controller exposes POST `/internal/performance/subscription-burst/setup` and `/drain`; no auto runner/scheduler | **HTTP reachable in opted-in measurement context**; controller/service/security config absent in Production/prod, including mixed profiles. Method execution additionally requires run-armed |
+
+`PawcycleBackendApplication.main` first intercepts catalog import requests with
+`ProductionDemoCatalogImportCommand`. Explicit enabled=true requires web-application-type=none,
+validate/apply mode and supported target; apply confirmation must be supplied on the command line.
+The command enforces a non-web application, disables Flyway, and terminates after the result.
+`ProductionDemoCatalogImportConfiguration` additionally requires production|prod and enabled=true,
+validates target/mode and rejects unconfirmed apply. Default Production starts no import runner.
+These are intentional operator entry points, not new normal customer execution paths.
+
+`MaintenanceJdbcIsolationTests` constrains compiled production callers for all nine owners,
+checks measurement default/Production/mixed profile exclusion and explicit measurement registration
+without workload execution, and verifies migration's missing-freeze rejection before SQL.
+Existing import CLI/configuration and local bootstrap tests retain their opt-in/confirmation/profile
+contracts. The source references to demo manifest and QA names are constants and do not execute tools.
+
+Architecture Guard's five `runtime-maintenance` baseline edges remain: main → catalog import command,
+main → auth smoke bootstrap (outside these nine), and catalog import facade → its three persistence
+owners. Their intentional command/facade boundaries remain present, so **none is removed** merely
+because execution safety is documented. No blanket exception or baseline relaxation is introduced.
+
+### Updated direct JDBC inventory and T12 handoff
+
+Handwritten main Java sources, excluding tests/generated/build, contain direct JdbcTemplate imports
+in **25→24 owners**, ordinary Runtime **16→15**. The nine KEEP owners above are unchanged;
+Cleanup is the only owner removed. Earlier historical counts remain measurements of their own tasks.
+T12's remaining ordinary Runtime owners are:
+
+| Feature | Persistence owners |
+| --- | --- |
+| Commerce | `CancellationPersistenceAdapter`, `RefundPersistenceAdapter`, `ReturnPersistenceAdapter`, `MembershipEvaluationPersistenceAdapter`, `MembershipPersistenceAdapter`, `CommerceMetricsQueryRepository`, `NotificationPersistenceAdapter`, `OperationsQueryRepository`, `QuickReorderPersistenceAdapter` |
+| Subscription | `RepeatCommerceQueryRepository`, `SubscriptionDeliveryReminderPersistence`, `SubscriptionMetricsQueryRepository`, `SubscriptionShippingPersistenceAdapter` |
+| Interaction / Recommendation | `InteractionEventPersistenceAdapter`, `RecommendationQueryAdapter` |
+
+These remain T12's Runtime-0 gate; KEEP decisions from older tasks are not permanent exceptions.
+Recovery is an ordinary revert PR restoring the JDBC adapter/helper binding and associated tests;
+there is no schema or operating-data recovery step because no operating execution occurs.
+
+### T11 local verification evidence
+
+MySQL 8.4.11 / REPEATABLE READ / max_connections=151, loopback-only disposable instance:
+UTC full suite on a clean checkout and new schema selects 571 JUnit cases: **567 PASS, failure/error 0,
+4 SKIP**. The four skips are existing T10 `diagnoseHistory` opt-in diagnostic methods, not the
+mandatory physical-lock gate. The T09 command-lock observer (1), T10 fixed A/B/C observer (3),
+and T10 record/index/gap competing-write observer (1) all execute and pass the JUnit gate.
+`build -x test` passes. Seoul cleanup/metrics/concurrency/Billing-Recovery selection passes 28 cases
+with failure/error/skip 0. Related task metadata/classifier/physical-lock Harness regressions pass 78.
+Architecture baseline stays at 204, NEW/RESOLVED 0. Whole Seoul suite and external independent review
+are unexecuted; latest PR HEAD CI is dynamic evidence in Draft PR #370, not a Production verification.
