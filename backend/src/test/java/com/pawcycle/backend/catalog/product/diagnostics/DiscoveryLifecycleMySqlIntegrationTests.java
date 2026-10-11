@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.catalog.product.application.ProductQueryService;
+import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPersistenceAdapter;
+import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
+import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityManager;
@@ -29,6 +33,12 @@ class DiscoveryLifecycleMySqlIntegrationTests {
   @Autowired DiscoveryLifecycleDiagnostics diagnostics;
   @Autowired MeterRegistry registry;
   @Autowired ProductQueryService service;
+  // Controlled isolation: these unrelated scheduled tasks otherwise borrow from this same pool.
+  // Only their DB query collaborators are mocked; discovery's JPA transaction is still real.
+  @MockitoBean CommerceMetricsQueryRepository commerceMetricsQueries;
+  @MockitoBean SubscriptionMetricsQueryRepository subscriptionMetricsQueries;
+  @MockitoBean CheckoutExpirationPersistenceAdapter expirationLookup;
+
   @Autowired Probe probe;
   @Autowired DataSource dataSource;
   @Autowired PlatformTransactionManager manager;
