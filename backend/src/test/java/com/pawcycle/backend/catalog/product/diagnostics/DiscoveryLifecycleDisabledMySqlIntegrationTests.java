@@ -37,7 +37,7 @@ class DiscoveryLifecycleDisabledMySqlIntegrationTests {
   @Autowired DataSource dataSource;
   @Autowired EntityManagerFactory entityManagerFactory;
 
-  @Test void disabledDiscoveryHasNoListenerMetersOrContextAndReturnsConnection() {
+  @Test void disabledDiscoveryHasNoListenerMetersOrContextAndReturnsConnection() throws Exception {
     assertThat(dataSource).isInstanceOf(HikariDataSource.class);
     AtomicReference<Connection> captured = new AtomicReference<>();
     // Spy only this query boundary. The service, JPA transaction and actual SQL remain real.
