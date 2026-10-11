@@ -2,19 +2,22 @@ package com.pawcycle.backend.commerce.operations.persistence;
 
 import java.sql.Timestamp;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class OperationsQueryRepository {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
 
-  public OperationsQueryRepository(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public OperationsQueryRepository(EntityManager entities) {
+    this.entities = entities;
   }
 
   public List<PendingRow> findPending() {
-    return jdbc.query(
+    return entities.unwrap(Session.class).createNativeQuery(
         """
             SELECT 'DELIVERY_PREPARING' AS type,id AS referenceId,COALESCE(shipped_at,delivered_at,failed_at,CURRENT_TIMESTAMP(6)) AS createdAt,NULL AS attemptNo FROM deliveries WHERE status='PREPARING'
             UNION ALL SELECT 'DELIVERY_SHIPPED',id,shipped_at,NULL FROM deliveries WHERE status='SHIPPED'
@@ -46,12 +49,13 @@ public class OperationsQueryRepository {
             UNION ALL SELECT 'PAYMENT_RETRY_EXHAUSTED',id,scheduled_date,NULL FROM subscription_schedules WHERE status='HELD' AND hold_reason='PAYMENT_RETRY_EXHAUSTED'
             ORDER BY createdAt DESC
             """,
-        (rs, rowNumber) -> {
-          int attemptNo = rs.getInt("attemptNo");
-          Integer nullableAttemptNo = rs.wasNull() ? null : attemptNo;
-          return new PendingRow(rs.getString("type"), rs.getLong("referenceId"),
-              rs.getTimestamp("createdAt"), nullableAttemptNo);
-        });
+        PendingRow.class)
+        .addScalar("type", String.class)
+        .addScalar("referenceId", Long.class)
+        .addScalar("createdAt", new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE,
+            new OperationsTimestampJdbcType()))
+        .addScalar("attemptNo", Integer.class)
+        .getResultList();
   }
 
   public record PendingRow(String type, long referenceId, Timestamp createdAt, Integer attemptNo) {}

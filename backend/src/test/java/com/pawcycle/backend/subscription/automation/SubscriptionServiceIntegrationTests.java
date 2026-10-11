@@ -58,7 +58,7 @@ class SubscriptionServiceIntegrationTests {
   @Autowired private SubscriptionService service;
   @Autowired private LegacySubscriptionMigrationProcessor legacyMigration;
   @Autowired private JdbcTemplate jdbc;
-  @Autowired private JdbcTemplate jdbcExecutor;
+  @Autowired private jakarta.persistence.EntityManager entities;
   @Autowired private MemberRepository members;
   @Autowired private ProductRepository products;
   @Autowired private SkuRepository skus;
@@ -462,7 +462,7 @@ class SubscriptionServiceIntegrationTests {
         new SubscriptionMetrics(
             registry,
             new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
-                jdbcExecutor),
+                entities),
             cleanupClock);
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
@@ -561,7 +561,7 @@ class SubscriptionServiceIntegrationTests {
         new SubscriptionMetrics(
             registry,
             new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
-                jdbcExecutor),
+                entities),
             cleanupClock);
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
@@ -942,7 +942,7 @@ class SubscriptionServiceIntegrationTests {
   private SubscriptionIdempotencyCleanupProcessor cleanupAt(Instant now) {
     Clock cleanupClock = Clock.fixed(now, ZoneId.of("Asia/Seoul"));
     SubscriptionMetrics metrics = new SubscriptionMetrics(new SimpleMeterRegistry(),
-        new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(jdbcExecutor),
+        new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(entities),
         cleanupClock);
     return new SubscriptionIdempotencyCleanupProcessor(
         cleanupPersistence,

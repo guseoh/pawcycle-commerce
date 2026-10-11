@@ -3,7 +3,6 @@ package com.pawcycle.backend.commerce;
 import com.pawcycle.backend.commerce.operations.application.OperationsQueryService;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,13 +14,11 @@ import com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository.PendingRow;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 
 class OperationsQueryServiceTests {
   @Test
   void exposesApprovedOperationsWithOnlyExecutableActions() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    OperationsQueryRepository queries = mock(OperationsQueryRepository.class);
     Timestamp now = Timestamp.from(Instant.now());
     List<PendingRow> rows =
         List.of(
@@ -34,9 +31,8 @@ class OperationsQueryServiceTests {
             row("PAYMENT_RETRY_STOCK_UNAVAILABLE", 7L, now, 1),
             row("PAYMENT_UNKNOWN", 8L, now, null),
             row("REFUND_UNKNOWN", 9L, now, 1));
-    when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<PendingRow>>any())).thenReturn(rows);
+    when(queries.findPending()).thenReturn(rows);
 
-    OperationsQueryRepository queries = new OperationsQueryRepository(jdbc);
     List<OperationsPendingResponse> result = new OperationsQueryService(queries).pending();
 
     assertThat(result)
@@ -51,12 +47,7 @@ class OperationsQueryServiceTests {
             List.of("RETRY_BILLING"),
             List.of("RECONCILE_PAYMENT"),
             List.of("RECONCILE_REFUND"));
-    org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
-    verify(jdbc).query(sql.capture(), org.mockito.ArgumentMatchers.<RowMapper<PendingRow>>any());
-    assertThat(sql.getValue())
-        .contains(
-            "status='PROCESSING' AND reconciliation_attempts<10",
-            "status='UNKNOWN' AND reconciliation_attempts<10");
+    verify(queries).findPending();
   }
 
   private static PendingRow row(

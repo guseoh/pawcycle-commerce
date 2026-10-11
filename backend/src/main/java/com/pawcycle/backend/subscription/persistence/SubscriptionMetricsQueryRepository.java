@@ -1,38 +1,29 @@
 package com.pawcycle.backend.subscription.persistence;
 
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class SubscriptionMetricsQueryRepository {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
 
-  public SubscriptionMetricsQueryRepository(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  public SubscriptionMetricsQueryRepository(EntityManager entities) {
+    this.entities = entities;
   }
 
   public long countCompletedRows(boolean creation) {
-    return count("SELECT COUNT(*) FROM " + table(creation) + " WHERE completed_at IS NOT NULL");
+    return entities.createQuery("select count(r) from " + entity(creation)
+        + " r where r.completedAt is not null", Long.class).getSingleResult();
   }
 
   public long countCleanupCandidates(boolean creation, LocalDateTime cutoff) {
-    Long value =
-        jdbc.queryForObject(
-            "SELECT COUNT(*) FROM " + table(creation) + " WHERE completed_at < ?",
-            Long.class,
-            cutoff);
-    return value == null ? 0L : value;
+    return entities.createQuery("select count(r) from " + entity(creation)
+        + " r where r.completedAt < :cutoff", Long.class)
+        .setParameter("cutoff", cutoff).getSingleResult();
   }
 
-  private long count(String sql) {
-    Long value = jdbc.queryForObject(sql, Long.class);
-    return value == null ? 0L : value;
-  }
-
-  private static String table(boolean creation) {
-    return creation
-        ? "subscription_creation_idempotency_results"
-        : "subscription_command_idempotency_results";
+  private static String entity(boolean creation) {
+    return creation ? "SubCreationReservation" : "SubCommandReservation";
   }
 }
