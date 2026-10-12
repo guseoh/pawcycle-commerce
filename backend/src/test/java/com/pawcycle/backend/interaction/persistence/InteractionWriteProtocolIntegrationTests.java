@@ -1,6 +1,7 @@
 package com.pawcycle.backend.interaction.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static com.pawcycle.backend.support.ReadQueryParity.compare;
 
@@ -102,9 +103,18 @@ class InteractionWriteProtocolIntegrationTests {
     service.record(member, batch);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Long.class, member)).isEqualTo(50);
     assertThatThrownBy(() -> tx().executeWithoutResult(status -> {
-      service.record(other, batch.stream().map(e -> new InteractionEventRequest(e.eventId(), e.type(), e.productId(), null, null, null, null)).toList());
+      assertThatCode(() -> service.record(other, batch.stream()
+          .map(e -> new InteractionEventRequest(e.eventId(), e.type(), e.productId(), null, null, null, null))
+          .toList())).doesNotThrowAnyException();
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Long.class, other)).isEqualTo(50);
       adapter.insert(new InteractionRecord(other, UUID.randomUUID().toString(), "INVALID", null, null, null, null, null, FIRST));
-    })).isInstanceOf(RuntimeException.class);
+    })).isInstanceOf(RuntimeException.class).satisfies(failure -> {
+      Throwable cause = failure;
+      while (cause.getCause() != null) cause = cause.getCause();
+      assertThat(cause).isInstanceOf(java.sql.SQLException.class);
+      // MySQL ER_CHECK_CONSTRAINT_VIOLATED; independent of localized exception messages.
+      assertThat(((java.sql.SQLException) cause).getErrorCode()).isEqualTo(3819);
+    });
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Long.class, other)).isZero();
   }
 
