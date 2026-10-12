@@ -1,7 +1,12 @@
 package com.pawcycle.backend.commerce.notification.persistence;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
+import org.hibernate.FlushMode;
+import org.hibernate.query.MutationQuery;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -9,27 +14,24 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class NotificationPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final EntityManager entities;
   private final Clock clock;
 
-  public NotificationPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public NotificationPersistenceAdapter(EntityManager entities, Clock clock) {
+    this.entities = entities;
     this.clock = clock;
   }
 
   public void create(long memberId, String type, String referenceType, long referenceId) {
-    queries.update(
-        "INSERT INTO notifications(member_id,type,reference_type,reference_id,created_at) VALUES"
-            + " (?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id",
-        memberId,
-        type,
-        referenceType,
-        referenceId,
-        Timestamp.from(clock.instant()));
+    mutation("INSERT INTO notifications(member_id,type,reference_type,reference_id,created_at) VALUES"
+            + " (:member,:type,:referenceType,:reference,:created) ON DUPLICATE KEY UPDATE id=id")
+        .setParameter("member", memberId).setParameter("type", type)
+        .setParameter("referenceType", referenceType).setParameter("reference", referenceId)
+        .setParameter("created", Timestamp.from(clock.instant()), timestampType()).executeUpdate();
   }
 
   public List<NotificationView> findByMemberId(long memberId) {
-    return queries.query(
+    return entities.unwrap(Session.class).createNativeQuery(
         "SELECT notification.id AS notificationId,notification.type,notification.reference_type"
             + " AS referenceType,notification.reference_id AS referenceId,notification.read_at"
             + " AS readAt,notification.created_at AS createdAt,schedule.subscription_id AS"
@@ -37,39 +39,37 @@ public class NotificationPersistenceAdapter {
             + " notification LEFT JOIN subscription_schedules schedule ON"
             + " notification.type='SUBSCRIPTION_DELIVERY_REMINDER' AND"
             + " notification.reference_type='SCHEDULE' AND"
-            + " schedule.id=notification.reference_id WHERE notification.member_id=? ORDER BY"
+            + " schedule.id=notification.reference_id WHERE notification.member_id=:member ORDER BY"
             + " notification.id DESC",
-        (rs, rowNumber) -> {
-          long subscriptionId = rs.getLong("subscriptionId");
-          boolean subscriptionMissing = rs.wasNull();
-          return new NotificationView(
-              rs.getLong("notificationId"),
-              rs.getString("type"),
-              rs.getString("referenceType"),
-              rs.getLong("referenceId"),
-              rs.getTimestamp("readAt"),
-              rs.getTimestamp("createdAt"),
-              subscriptionMissing ? null : subscriptionId,
-              rs.getTimestamp("scheduledDate"));
-        },
-        memberId);
+        NotificationView.class)
+        .addScalar("notificationId", Long.class).addScalar("type", String.class)
+        .addScalar("referenceType", String.class).addScalar("referenceId", Long.class)
+        .addScalar("readAt", timestampType()).addScalar("createdAt", timestampType())
+        .addScalar("subscriptionId", Long.class).addScalar("scheduledDate", timestampType())
+        .setHibernateFlushMode(FlushMode.COMMIT).setParameter("member", memberId).getResultList();
   }
 
   public void markRead(long memberId, long notificationId) {
-    if (queries.update(
-            "UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND member_id=?",
-            Timestamp.from(clock.instant()),
-            notificationId,
-            memberId)
-        != 1) {
+    if (mutation("UPDATE notifications SET read_at=COALESCE(read_at,:read) WHERE id=:id AND member_id=:member")
+        .setParameter("read", Timestamp.from(clock.instant()), timestampType())
+        .setParameter("id", notificationId).setParameter("member", memberId).executeUpdate() != 1) {
       throw new CommerceException(404, "NOTIFICATION_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
   }
 
   public void markAllRead(long memberId) {
-    queries.update(
-        "UPDATE notifications SET read_at=? WHERE member_id=? AND read_at IS NULL",
-        Timestamp.from(clock.instant()),
-        memberId);
+    mutation("UPDATE notifications SET read_at=:read WHERE member_id=:member AND read_at IS NULL")
+        .setParameter("read", Timestamp.from(clock.instant()), timestampType())
+        .setParameter("member", memberId).executeUpdate();
+  }
+
+  private MutationQuery mutation(String sql) {
+    // JDBC did not flush pending entity changes before these independent atomic statements.
+    return entities.unwrap(Session.class).createNativeMutationQuery(sql)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private static BasicTypeImpl<Timestamp> timestampType() {
+    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new NotificationTimestampJdbcType());
   }
 }

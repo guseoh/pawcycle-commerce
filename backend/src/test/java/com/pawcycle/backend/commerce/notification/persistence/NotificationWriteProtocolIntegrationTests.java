@@ -154,7 +154,42 @@ class NotificationWriteProtocolIntegrationTests {
   private UsernamePasswordAuthenticationToken auth(long member) {
     return new UsernamePasswordAuthenticationToken(new AuthenticatedMemberPrincipal(member), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
   }
-  private NotificationPersistenceAdapter at(Instant instant) { return new NotificationPersistenceAdapter(jdbc, Clock.fixed(instant, ZoneOffset.UTC)); }
+  @Test
+  void projectionAndAtomicStatementCountsMatchFrozenIncludingDuplicateReadAndMissingSchedule() {
+    long member = member();
+    new TransactionTemplate(manager).executeWithoutResult(status -> {
+      var legacy = new LegacyNotificationPersistenceAdapter(jdbc, Clock.fixed(FIRST, ZoneOffset.UTC));
+      legacy.create(member, "ORDER_PAID", "ORDER", 101);
+      var expected = legacy.findByMemberId(member).getFirst();
+      jdbc.update("DELETE FROM notifications WHERE id=?", expected.notificationId());
+      assertOneStatement("Com_insert", () -> at(FIRST).create(member, "ORDER_PAID", "ORDER", 101));
+      var actual = at(FIRST).findByMemberId(member).getFirst();
+      assertThat(actual.createdAt()).isEqualTo(expected.createdAt());
+      assertOneStatement("Com_insert", () -> at(FIRST.plusSeconds(1)).create(member, "ORDER_PAID", "ORDER", 101));
+      assertOneStatement("Com_update", () -> at(FIRST).markRead(member, actual.notificationId()));
+      assertOneStatement("Com_update", () -> at(FIRST.plusSeconds(1)).markRead(member, actual.notificationId()));
+      legacy.markRead(member, actual.notificationId()); // JDBC found-row semantics also accepts the no-op.
+      at(FIRST).create(member, "SUBSCRIPTION_DELIVERY_REMINDER", "SCHEDULE", Long.MAX_VALUE);
+      at(FIRST).create(member, "ORDER_PAID", "SCHEDULE", Long.MAX_VALUE);
+      com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+          () -> legacy.findByMemberId(member), () -> at(FIRST).findByMemberId(member));
+      assertOneStatement("Com_update", () -> at(FIRST.plusSeconds(2)).markAllRead(member));
+      com.pawcycle.backend.support.ReadQueryParity.compare(jdbc,
+          () -> legacy.findByMemberId(member), () -> at(FIRST).findByMemberId(member));
+      status.setRollbackOnly();
+    });
+  }
+
+  private void assertOneStatement(String counter, Runnable statement) {
+    long before = jdbc.queryForObject("SHOW SESSION STATUS LIKE ?", (rs, row) -> rs.getLong(2), counter);
+    long selects = jdbc.queryForObject("SHOW SESSION STATUS LIKE 'Com_select'", (rs, row) -> rs.getLong(2));
+    statement.run();
+    long after = jdbc.queryForObject("SHOW SESSION STATUS LIKE ?", (rs, row) -> rs.getLong(2), counter);
+    assertThat(after).isEqualTo(before + 1);
+    long selectsAfter = jdbc.queryForObject("SHOW SESSION STATUS LIKE 'Com_select'", (rs, row) -> rs.getLong(2));
+    assertThat(selectsAfter).isEqualTo(selects);
+  }
+  private NotificationPersistenceAdapter at(Instant instant) { return new NotificationPersistenceAdapter(entities, Clock.fixed(instant, ZoneOffset.UTC)); }
   private long member() { return new TransactionTemplate(manager).execute(status -> new SecondaryReadFixtures(jdbc, entities).member()); }
   private void createAt(long member, long reference) { new TransactionTemplate(manager).executeWithoutResult(status -> at(FIRST).create(member, "ORDER_PAID", "ORDER", reference)); }
   private long id(long member, long reference) { return jdbc.queryForObject("SELECT id FROM notifications WHERE member_id=? AND reference_id=?", Long.class, member, reference); }

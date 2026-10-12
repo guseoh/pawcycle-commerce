@@ -1,43 +1,51 @@
 package com.pawcycle.backend.interaction.persistence;
 
 import java.sql.Timestamp;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.FlushModeType;
+import org.hibernate.Session;
+import org.hibernate.FlushMode;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import org.springframework.stereotype.Component;
 
 @Component
 public class InteractionEventPersistenceAdapter {
-  private final JdbcTemplate jdbc;
+  private final EntityManager entities;
 
-  InteractionEventPersistenceAdapter(JdbcTemplate jdbc) {
-    this.jdbc = jdbc;
+  InteractionEventPersistenceAdapter(EntityManager entities) {
+    this.entities = entities;
   }
 
   public boolean petBelongsToMember(long petId, long memberId) {
-    return jdbc.queryForObject(
-            "SELECT COUNT(*) FROM pets WHERE id=? AND member_id=?", Integer.class, petId, memberId)
-        == 1;
+    return entities.createQuery("select count(p) from SubReadPet p where p.id=:pet and p.memberId=:member", Long.class)
+        .setFlushMode(FlushModeType.COMMIT).setParameter("pet", petId).setParameter("member", memberId)
+        .getSingleResult() == 1;
   }
 
   public boolean productExists(long productId) {
-    return jdbc.queryForObject("SELECT COUNT(*) FROM products WHERE id=?", Integer.class, productId)
-        == 1;
+    return entities.createQuery("select count(p) from Product p where p.id=:product", Long.class)
+        .setFlushMode(FlushModeType.COMMIT).setParameter("product", productId).getSingleResult() == 1;
   }
 
   public void insert(InteractionRecord event) {
-    jdbc.update(
+    entities.unwrap(Session.class).createNativeMutationQuery(
         """
         INSERT INTO interaction_events(member_id,event_id,event_type,product_id,pet_id,source,recommendation_request_id,context,occurred_at)
-        VALUES (?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id
-        """,
-        event.memberId(),
-        event.eventId(),
-        event.eventType(),
-        event.productId(),
-        event.petId(),
-        event.source(),
-        event.recommendationRequestId(),
-        event.contextJson(),
-        event.occurredAt());
+        VALUES (:member,:event,:type,:product,:pet,:source,:request,:context,:occurred) ON DUPLICATE KEY UPDATE id=id
+        """)
+        .setHibernateFlushMode(FlushMode.COMMIT)
+        .setParameter("member", event.memberId())
+        .setParameter("event", event.eventId())
+        .setParameter("type", event.eventType())
+        .setParameter("product", event.productId(), Long.class)
+        .setParameter("pet", event.petId(), Long.class)
+        .setParameter("source", event.source(), String.class)
+        .setParameter("request", event.recommendationRequestId(), String.class)
+        .setParameter("context", event.contextJson(), String.class)
+        .setParameter("occurred", event.occurredAt(), new BasicTypeImpl<>(
+            JdbcTimestampJavaType.INSTANCE, new InteractionTimestampJdbcType()))
+        .executeUpdate();
   }
 
   public record InteractionRecord(
