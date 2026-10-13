@@ -86,8 +86,12 @@ public class SubscriptionShippingPersistenceAdapter {
         .setHibernateFlushMode(FlushMode.COMMIT);
   }
 
+  // Shared descriptors are stateless and preserve the existing JDBC Timestamp binder.
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new SubscriptionShippingTimestampJdbcType());
+
   private static BasicTypeImpl<Timestamp> timestampType() {
-    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new SubscriptionShippingTimestampJdbcType());
+    return LEGACY_TIMESTAMP_TYPE;
   }
 
   public record ShippingAddress(
