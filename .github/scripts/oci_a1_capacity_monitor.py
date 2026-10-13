@@ -200,11 +200,19 @@ def sync_issue(api, status, count, observed_at, run_url):
             })
             print("OUT_OF_HOST_CAPACITY: tracking Issue closed; no Discord alert.")
         else:
-            print("OUT_OF_HOST_CAPACITY: no notification.")
+            if existing and existing.get("assignees"):
+                api.request("PATCH", "/issues/" + str(existing["number"]), {"assignees": []})
+                print("OUT_OF_HOST_CAPACITY unchanged: cleared legacy Issue assignments; no Discord alert.")
+            else:
+                print("OUT_OF_HOST_CAPACITY: no notification.")
         return
 
     if existing and previous == "AVAILABLE":
-        print("AVAILABLE unchanged: no duplicate Discord alert.")
+        if existing.get("assignees"):
+            api.request("PATCH", "/issues/" + str(existing["number"]), {"assignees": []})
+            print("AVAILABLE unchanged: cleared legacy Issue assignments; no duplicate Discord alert.")
+        else:
+            print("AVAILABLE unchanged: no duplicate Discord alert.")
         return
 
     # Deliver before updating the durable state record. A failed webhook leaves
