@@ -1,7 +1,12 @@
 package com.pawcycle.backend.subscription.persistence;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.hibernate.query.MutationQuery;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import java.sql.Timestamp;
 import java.time.Clock;
 import org.springframework.stereotype.Repository;
@@ -9,64 +14,58 @@ import org.springframework.stereotype.Repository;
 /** Owns the subscription tables touched by a member's shipping-address change. */
 @Repository
 public class SubscriptionShippingPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final EntityManager entities;
   private final Clock clock;
 
-  public SubscriptionShippingPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public SubscriptionShippingPersistenceAdapter(EntityManager entities, Clock clock) {
+    this.entities = entities;
     this.clock = clock;
   }
 
   public void update(long memberId, long subscriptionId, ShippingAddress address) {
-    if (queries.queryForObject(
-            "SELECT COUNT(*) FROM subscriptions WHERE id=? AND member_id=?",
-            Integer.class,
-            subscriptionId,
-            memberId)
-        != 1) {
+    if (entities.unwrap(Session.class).createNativeQuery(
+            "SELECT COUNT(*) FROM subscriptions WHERE id=:subscription AND member_id=:member", Long.class)
+        .setHibernateFlushMode(FlushMode.COMMIT).setParameter("subscription", subscriptionId)
+        .setParameter("member", memberId).getSingleResult() != 1) {
       throw new CommerceException(404, "SUBSCRIPTION_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
-    int future =
-        queries.queryForObject(
+    long future =
+        entities.unwrap(Session.class).createNativeQuery(
             """
             SELECT COUNT(*) FROM subscription_schedules schedule
             LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id
-            WHERE schedule.subscription_id=? AND schedule.status IN ('SCHEDULED','HELD')
+            WHERE schedule.subscription_id=:subscription AND schedule.status IN ('SCHEDULED','HELD')
               AND context.order_id IS NULL
             """,
-            Integer.class,
-            subscriptionId);
+            Long.class).setHibernateFlushMode(FlushMode.COMMIT)
+            .setParameter("subscription", subscriptionId).getSingleResult();
     if (future == 0) {
       throw new CommerceException(
           409, "SUBSCRIPTION_SHIPPING_NOT_CHANGEABLE", "변경 가능한 미래 Schedule이 없습니다.");
     }
     Timestamp now = Timestamp.from(clock.instant());
-    queries.update(
+    mutation(
         """
         INSERT INTO subscription_shipping_snapshots(subscription_id,recipient_name,recipient_phone,postal_code,address_line1,address_line2,updated_at)
-        VALUES (?,?,?,?,?,?,?)
+        VALUES (:subscription,:name,:phone,:postal,:line1,:line2,:now)
         ON DUPLICATE KEY UPDATE recipient_name=VALUES(recipient_name),recipient_phone=VALUES(recipient_phone),postal_code=VALUES(postal_code),address_line1=VALUES(address_line1),address_line2=VALUES(address_line2),updated_at=VALUES(updated_at)
-        """,
-        subscriptionId,
-        address.recipientName(),
-        address.recipientPhone(),
-        address.postalCode(),
-        address.addressLine1(),
-        address.addressLine2(),
-        now);
-    queries.update(
+        """)
+        .setParameter("subscription", subscriptionId).setParameter("name", address.recipientName())
+        .setParameter("phone", address.recipientPhone()).setParameter("postal", address.postalCode())
+        .setParameter("line1", address.addressLine1()).setParameter("line2", address.addressLine2(), String.class)
+        .setParameter("now", now, timestampType()).executeUpdate();
+    mutation(
         """
         UPDATE subscription_schedules schedule
         LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id
         SET schedule.status='SCHEDULED',schedule.hold_reason=NULL
-        WHERE schedule.subscription_id=? AND schedule.status='HELD'
+        WHERE schedule.subscription_id=:subscription AND schedule.status='HELD'
           AND schedule.hold_reason='MISSING_SHIPPING_ADDRESS' AND context.order_id IS NULL
-        """,
-        subscriptionId);
+        """).setParameter("subscription", subscriptionId).executeUpdate();
   }
 
   public void releaseAddressHolds(long memberId) {
-    queries.update(
+    mutation(
         """
         UPDATE subscription_schedules schedule
         JOIN subscriptions subscription ON subscription.id=schedule.subscription_id
@@ -74,12 +73,21 @@ public class SubscriptionShippingPersistenceAdapter {
         LEFT JOIN subscription_shipping_snapshots snapshot ON snapshot.subscription_id=subscription.id
         LEFT JOIN subscription_order_context context ON context.schedule_id=schedule.id
         SET schedule.status='SCHEDULED',schedule.hold_reason=NULL
-        WHERE subscription.member_id=? AND member.default_address_id IS NOT NULL
+        WHERE subscription.member_id=:member AND member.default_address_id IS NOT NULL
           AND subscription.status='ACTIVE' AND snapshot.subscription_id IS NULL
           AND schedule.status='HELD' AND schedule.hold_reason='MISSING_SHIPPING_ADDRESS'
           AND context.order_id IS NULL
-        """,
-        memberId);
+        """).setParameter("member", memberId).executeUpdate();
+  }
+
+  private MutationQuery mutation(String sql) {
+    // Preserve JDBC visibility: the address service owns its explicit saveAndFlush calls.
+    return entities.unwrap(Session.class).createNativeMutationQuery(sql)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private static BasicTypeImpl<Timestamp> timestampType() {
+    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new SubscriptionShippingTimestampJdbcType());
   }
 
   public record ShippingAddress(

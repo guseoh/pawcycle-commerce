@@ -38,7 +38,9 @@ public class MembershipAdminApplicationService {
 
   @Transactional
   public long createGrade(long adminId, MembershipGradeRequest request) {
-    long gradeId = membership.createGrade(request);
+    long gradeId = membership.createGrade(new CreateMembershipGradeCommand(
+        request.code(), request.name(), request.minimumPurchaseAmount(),
+        request.displayOrder(), request.active(), request.benefitCouponId()));
     audits.append(adminId, "MEMBERSHIP_GRADE_CREATE", "MEMBERSHIP_GRADE", gradeId);
     return gradeId;
   }
