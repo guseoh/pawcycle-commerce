@@ -1,5 +1,7 @@
 # OCI Tokyo A1 Capacity Watch (Discord + GitHub Issue Tracking)
 
+Task ID: `OCI-A1-001`
+
 This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **never** launches VMs, retries instance creation, creates capacity reservations, or changes running resources. Monitoring is **disabled by default** until the owner enables it.
 
 ## Target and behavior
