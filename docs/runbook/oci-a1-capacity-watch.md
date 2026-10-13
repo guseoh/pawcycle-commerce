@@ -1,4 +1,4 @@
-# OCI Tokyo A1 Capacity Watch (GitHub Issues)
+# OCI Tokyo A1 Capacity Watch (Discord + GitHub Issue Tracking)
 
 This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **never** launches VMs, retries instance creation, creates capacity reservations, or changes running resources. Monitoring is **disabled by default** until the owner enables it.
 
@@ -7,10 +7,10 @@ This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **n
 - Target region: `ap-tokyo-1`; availability domain: `nREs:AP-TOKYO-1-AD-1`.
 - Shape: `VM.Standard.A1.Flex`, exactly **2 OCPU / 12 GB**.
 - GitHub Actions executes each hour at minute 17 UTC, subject to scheduling delay or skipped runs.
-- `OUT_OF_HOST_CAPACITY`: no new Issue. If there was an AVAILABLE alert, close it when status changes.
-- `AVAILABLE`: create/assign one GitHub Issue to `guseoh`, or reopen it and mention the owner on the next AVAILABLE transition.
-- Repeated AVAILABLE results are silent; a manually closed AVAILABLE Issue is not reopened until an unavailable observation has occurred.
-- Unexpected capacity status, authentication error, missing secret, or failed GitHub API request: job **fails**, never reports capacity as available.
+- `OUT_OF_HOST_CAPACITY`: no Discord alert. If a tracking Issue exists, close it and clear assignments when status changes.
+- `AVAILABLE` transition: send one Discord embed, then create or reopen an unassigned GitHub Issue for status tracking. The Issue contains no owner mention.
+- Repeated AVAILABLE results are silent; a manually closed AVAILABLE Issue is not reopened until an unavailable observation has occurred. Failed Discord delivery leaves the previous Issue status intact so the next scheduled run can retry.
+- Unexpected capacity status, authentication error, missing secret, or failed GitHub/Discord API request: job **fails**, never reports capacity as available.
 - The result is point-in-time information; it is neither a reservation nor a successful provisioning guarantee.
 - Existing `pawcycle-arm-01` instances are **not checked automatically**; verify across compartments before manual provisioning.
 
@@ -39,15 +39,16 @@ Open https://github.com/guseoh/pawcycle-commerce/settings/secrets/actions and cr
 | `OCI_API_FINGERPRINT` | API key fingerprint registered under that user |
 | `OCI_API_PRIVATE_KEY` | Complete private PEM, including BEGIN and END lines |
 | `OCI_API_PASSPHRASE` | Optional; only for an encrypted PEM |
+| `DISCORD_WEBHOOK_URL` | Discord webhook for AVAILABLE transition alerts; never printed by the workflow |
 
 GitHub automatically supplies `GITHUB_TOKEN` with `issues: write` only in this workflow. Do not use the temporary OCI Cloud Shell security-token session for unattended Actions.
 
 ## 3. Validate before enabling hourly checks
 
-1. Once merged to **main**, open the [workflow page](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) and click **Run workflow → self_test**. The offline tests must pass with **no OCI credentials**.
-2. After the Secrets and OCI IAM policy are configured, click **Run workflow → check**. This makes **one** real report query; confirm a valid status in the run summary.
+1. Once merged to **main**, open the [workflow page](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) and click **Run workflow → self_test**. The offline tests must pass with **no OCI credentials and no Discord message**.
+2. After the Secrets and OCI IAM policy are configured, click **Run workflow → check**. This makes **one** real report query; confirm a valid status in the run summary. If it detects a new AVAILABLE transition, it will send a real Discord alert.
 3. Only then visit https://github.com/guseoh/pawcycle-commerce/settings/variables/actions and create a repository variable **`OCI_A1_MONITOR_ENABLED`** with value **`true`**. Scheduled checks start then.
-4. Configure [GitHub notifications](https://github.com/settings/notifications) for participating/assigned/@mentioned Issues via web, email, or mobile; the alert Issue is assigned to the repository owner and mentions them.
+4. Capacity alerts go to the channel configured by `DISCORD_WEBHOOK_URL`; GitHub Issues are unassigned tracking records without owner mentions. Repository watchers may still receive GitHub notifications according to their own settings.
 5. Occasionally check failed scheduled runs in Actions; scheduling isn't continuous or guaranteed.
 
 To disable immediately, set `OCI_A1_MONITOR_ENABLED` to `false` or remove the variable. No real VM creation is possible in this workflow.
