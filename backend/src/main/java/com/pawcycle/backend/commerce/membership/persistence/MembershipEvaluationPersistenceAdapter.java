@@ -87,8 +87,12 @@ public class MembershipEvaluationPersistenceAdapter {
         .setHibernateFlushMode(FlushMode.COMMIT);
   }
 
+  // Shared descriptors are stateless and preserve the existing JDBC Timestamp binder.
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new MembershipTimestampJdbcType());
+
   private static BasicTypeImpl<Timestamp> timestampType() {
-    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new MembershipTimestampJdbcType());
+    return LEGACY_TIMESTAMP_TYPE;
   }
 
   private Timestamp now() { return Timestamp.from(clock.instant()); }
