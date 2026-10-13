@@ -7,8 +7,8 @@ This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **n
 - Target region: `ap-tokyo-1`; availability domain: `nREs:AP-TOKYO-1-AD-1`.
 - Shape: `VM.Standard.A1.Flex`, exactly **2 OCPU / 12 GB**.
 - GitHub Actions executes each hour at minute 17 UTC, subject to scheduling delay or skipped runs.
-- `OUT_OF_HOST_CAPACITY`: no Discord alert. If a tracking Issue exists, close it and clear assignments when status changes.
-- `AVAILABLE` transition: send one Discord embed, then create or reopen an unassigned GitHub Issue for status tracking. The Issue contains no owner mention.
+- `OUT_OF_HOST_CAPACITY`: no Discord alert. If a tracking Issue exists, close it and clear assignments when status changes; stale assignments are also cleared on unchanged reports.
+- `AVAILABLE` transition: send one Discord embed, then create or reopen an unassigned GitHub Issue for status tracking. The Issue contains no owner mention, and any legacy owner assignment is removed.
 - Repeated AVAILABLE results are silent; a manually closed AVAILABLE Issue is not reopened until an unavailable observation has occurred. Failed Discord delivery leaves the previous Issue status intact so the next scheduled run can retry.
 - Unexpected capacity status, authentication error, missing secret, or failed GitHub/Discord API request: job **fails**, never reports capacity as available.
 - The result is point-in-time information; it is neither a reservation nor a successful provisioning guarantee.
