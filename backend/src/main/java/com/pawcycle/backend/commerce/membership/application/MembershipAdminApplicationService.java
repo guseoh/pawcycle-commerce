@@ -5,6 +5,7 @@ import com.pawcycle.backend.commerce.membership.application.MembershipEvaluation
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.persistence.CreateMembershipGradeCommand;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipQueryRepository;
 import java.util.List;
