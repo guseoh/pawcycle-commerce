@@ -109,6 +109,24 @@ class MonitorTests(unittest.TestCase):
         self.assertNotIn("@", payload["body"])
         send_alert.assert_called_once_with(None, "now", "run")
 
+    @patch.object(monitor, "send_discord_alert")
+    def test_repeat_available_clears_legacy_assignments_without_spam(self, send_alert):
+        issue = self.issue("AVAILABLE")
+        issue["assignees"] = [{"login": "guseoh"}]
+        api = self.api(issue)
+        monitor.sync_issue(api, "AVAILABLE", 1, "now", "run")
+        self.assertEqual(api.request.call_args.args[2], {"assignees": []})
+        send_alert.assert_not_called()
+
+    @patch.object(monitor, "send_discord_alert")
+    def test_repeat_unavailable_clears_legacy_assignments_without_discord(self, send_alert):
+        issue = self.issue("OUT_OF_HOST_CAPACITY", "closed")
+        issue["assignees"] = [{"login": "guseoh"}]
+        api = self.api(issue)
+        monitor.sync_issue(api, "OUT_OF_HOST_CAPACITY", None, "now", "run")
+        self.assertEqual(api.request.call_args.args[2], {"assignees": []})
+        send_alert.assert_not_called()
+
     def test_discord_payload_has_mention_protection_and_capacity_details(self):
         payload = monitor.discord_payload(1, "now", "https://github.com/run")
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
