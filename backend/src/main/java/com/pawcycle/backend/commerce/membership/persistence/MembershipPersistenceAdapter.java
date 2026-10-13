@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
-import com.pawcycle.backend.commerce.membership.application.CreateMembershipGradeCommand;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
 
