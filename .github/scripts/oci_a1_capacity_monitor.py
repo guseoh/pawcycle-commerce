@@ -141,6 +141,53 @@ def issue_body(status, count, observed_at, run_url):
     ])
 
 
+def discord_payload(count, observed_at, run_url):
+    count_text = "not provided" if count is None else str(count)
+    return {
+        "username": "PawCycle A1 Capacity Watch",
+        "allowed_mentions": {"parse": []},
+        "embeds": [{
+            "title": "OCI A1 capacity is AVAILABLE",
+            "description": "A point-in-time capacity report detected availability. This is not a reservation or launch guarantee.",
+            "color": 3066993,
+            "fields": [
+                {"name": "Region / AD", "value": "ap-tokyo-1 / nREs:AP-TOKYO-1-AD-1", "inline": True},
+                {"name": "Shape", "value": "VM.Standard.A1.Flex", "inline": True},
+                {"name": "CPU / Memory", "value": "2 OCPU / 12 GB", "inline": True},
+                {"name": "Available count", "value": count_text, "inline": True},
+                {"name": "Checked UTC", "value": observed_at, "inline": True},
+            ],
+            "url": run_url,
+            "footer": {"text": "PawCycle Commerce · OCI Capacity Report · no VM created"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }],
+    }
+
+
+def send_discord_alert(count, observed_at, run_url):
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        raise ValueError("Missing required Secret: DISCORD_WEBHOOK_URL")
+
+    import importlib.util
+    from pathlib import Path
+
+    sender_path = Path(__file__).with_name("send-discord-notification.py")
+    spec = importlib.util.spec_from_file_location("oci_capacity_discord_sender", sender_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Unable to load Discord notification sender")
+    sender = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sender)
+    result = sender.send(
+        webhook_url,
+        discord_payload(count, observed_at, run_url),
+        retries=3,
+        event="oci_a1_available",
+    )
+    if result != 0:
+        raise RuntimeError("Discord capacity alert delivery failed")
+
+
 def sync_issue(api, status, count, observed_at, run_url):
     existing = api.find_issue()
     previous = MARKER.search(existing.get("body") or "").group(1) if existing else None
@@ -149,34 +196,40 @@ def sync_issue(api, status, count, observed_at, run_url):
             api.request("PATCH", "/issues/" + str(existing["number"]), {
                 "state": "closed", "state_reason": "not_planned",
                 "body": issue_body(status, count, observed_at, run_url),
+                "assignees": [],
             })
-            print("OUT_OF_HOST_CAPACITY: existing available alert closed.")
+            print("OUT_OF_HOST_CAPACITY: tracking Issue closed; no Discord alert.")
         else:
-            print("OUT_OF_HOST_CAPACITY: no notification.")
+            if existing and existing.get("assignees"):
+                api.request("PATCH", "/issues/" + str(existing["number"]), {"assignees": []})
+                print("OUT_OF_HOST_CAPACITY unchanged: cleared legacy Issue assignments; no Discord alert.")
+            else:
+                print("OUT_OF_HOST_CAPACITY: no notification.")
         return
 
     if existing and previous == "AVAILABLE":
-        print("AVAILABLE unchanged: no duplicate alert.")
+        if existing.get("assignees"):
+            api.request("PATCH", "/issues/" + str(existing["number"]), {"assignees": []})
+            print("AVAILABLE unchanged: cleared legacy Issue assignments; no duplicate Discord alert.")
+        else:
+            print("AVAILABLE unchanged: no duplicate Discord alert.")
         return
 
+    # Deliver before updating the durable state record. A failed webhook leaves
+    # the prior state intact so the next scheduled run can retry the alert.
+    send_discord_alert(count, observed_at, run_url)
     body = issue_body(status, count, observed_at, run_url)
     if existing:
         api.request("PATCH", "/issues/" + str(existing["number"]), {
-            "state": "open", "body": body,
+            "state": "open", "body": body, "assignees": [],
         })
-        api.request("POST", "/issues/" + str(existing["number"]) + "/comments", {
-            "body": "@" + api.owner + " OCI A1 capacity is reported AVAILABLE again. "
-                    "Check OCI and existing `pawcycle-arm-01` before any manual launch. "
-                    + run_url,
-        })
-        print("AVAILABLE transition: alert reopened and owner mentioned.")
+        print("AVAILABLE transition: Discord alert sent; tracking Issue reopened without assignment or mention.")
     else:
-        created = api.request("POST", "/issues", {
+        api.request("POST", "/issues", {
             "title": TITLE,
-            "body": "@" + api.owner + " Capacity indication detected.\n\n" + body,
-            "assignees": [api.owner],
+            "body": body,
         })
-        print("AVAILABLE transition: alert Issue assigned. " + created["html_url"])
+        print("AVAILABLE transition: Discord alert sent; unassigned tracking Issue created.")
 
 
 def main():
