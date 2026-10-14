@@ -9,12 +9,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -51,7 +53,7 @@ class QuickReorderTypedMappingIntegrationTests {
     Fixture f = fixture(true);
     var fixed = Clock.fixed(Instant.parse("2026-10-08T00:00:00Z"), ZoneOffset.UTC);
     var legacy = new FrozenQuickReorderJdbcReference(jdbc, json, fixed);
-    var typed = new QuickReorderPersistenceAdapter(jdbc, json, fixed);
+    var typed = new QuickReorderPersistenceAdapter(entities, json, fixed);
     String key = UUID.randomUUID().toString();
     Snapshot before = rollbackSnapshot(f, key, () -> legacy.reorder(f.member(), f.order(), key));
     Snapshot after = rollbackSnapshot(f, key, () -> typed.reorder(f.member(), f.order(), key));
@@ -65,6 +67,45 @@ class QuickReorderTypedMappingIntegrationTests {
     assertThat(result.get("skippedItems").get(3).get("reason").asText()).isEqualTo("SKU_NOT_PURCHASABLE");
     assertThat(result.get("skippedItems").get(4).get("reason").asText()).isEqualTo("SKU_NOT_PURCHASABLE");
     assertThat(result.get("cartVersion").asLong()).isEqualTo(1);
+  }
+
+  @Test
+  void statementCountsExistingRowLocksMicrosecondsAndRollbackMatchFrozen() {
+    Fixture f = fixture(true);
+    var fixed = Clock.fixed(Instant.parse("2026-10-14T00:00:00.123456Z"), ZoneOffset.UTC);
+    var stamp = Timestamp.from(fixed.instant());
+    new TransactionTemplate(manager).executeWithoutResult(status -> {
+      jdbc.update("INSERT INTO carts(member_id,created_at,updated_at) VALUES (?,?,?)", f.member(), stamp, stamp);
+      long cart = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+      jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,1)", cart, f.sku());
+    });
+    String key = UUID.randomUUID().toString();
+    var before = physicalSnapshot(f, key, () -> new FrozenQuickReorderJdbcReference(jdbc, json, fixed).reorder(f.member(), f.order(), key));
+    var after = physicalSnapshot(f, key, () -> new QuickReorderPersistenceAdapter(entities, json, fixed).reorder(f.member(), f.order(), key));
+    assertThat(after).isEqualTo(before);
+    assertThat(after.updatedAt()).isEqualTo(stamp);
+    assertThat(after.createdAt()).isEqualTo(stamp);
+    assertThat(after.createdAt().getNanos()).isEqualTo(123456000);
+    assertThat(quantity(f.member(), f.sku())).isEqualTo(1);
+    assertThat(version(f.member())).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quick_reorder_idempotency_results WHERE member_id=?", Long.class, f.member())).isZero();
+  }
+
+  @Test
+  void sourceEligibilityDoesNotAutoFlushOrDetachDirtyManagedCategory() {
+    Fixture f = fixture(true);
+    new TransactionTemplate(manager).executeWithoutResult(status -> {
+      long categoryId = jdbc.queryForObject("SELECT product.category_id FROM products product JOIN skus sku ON sku.product_id=product.id WHERE sku.id=?", Long.class, f.sku());
+      var category = entities.find(Category.class, categoryId);
+      category.update(null, null, null, false);
+      var result = new QuickReorderPersistenceAdapter(entities, json, Clock.systemUTC()).reorder(f.member(), f.order(), UUID.randomUUID().toString());
+      assertThat(result.addedItems()).hasSize(1);
+      assertThat(jdbc.queryForObject("SELECT active FROM categories WHERE id=?", Boolean.class, categoryId)).isTrue();
+      assertThat(entities.contains(category)).isTrue();
+      entities.flush();
+      assertThat(jdbc.queryForObject("SELECT active FROM categories WHERE id=?", Boolean.class, categoryId)).isFalse();
+      status.setRollbackOnly();
+    });
   }
 
   @Test
@@ -94,6 +135,46 @@ class QuickReorderTypedMappingIntegrationTests {
     assertError(() -> orders.reorder(stranger, Long.MAX_VALUE, "missing-order"), 404, "ORDER_NOT_FOUND");
     assertError(() -> orders.reorder(Long.MAX_VALUE, f.order(), "missing-member"), 404, "MEMBER_NOT_FOUND");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM carts WHERE member_id=?", Integer.class, stranger)).isZero();
+  }
+
+  @Test
+  void firstCartCompetitorPhysicallyWaitsOnMemberThenReplaysForBothImplementations() throws Exception {
+    for (boolean frozen : List.of(true, false)) {
+      Fixture f = fixture(true);
+      String key = UUID.randomUUID().toString();
+      var connection = new java.util.concurrent.atomic.AtomicLong();
+      var competitor = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<String>>();
+      var transaction = new TransactionTemplate(manager);
+      transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+      var fixed = Clock.fixed(Instant.parse("2026-10-14T00:00:00.123456Z"), ZoneOffset.UTC);
+      java.util.function.Supplier<String> reorder = () -> json.writeValueAsString(frozen
+          ? new FrozenQuickReorderJdbcReference(jdbc, json, fixed).reorder(f.member(), f.order(), key)
+          : new QuickReorderPersistenceAdapter(entities, json, fixed).reorder(f.member(), f.order(), key));
+      try (var executor = Executors.newSingleThreadExecutor()) {
+        String holder = transaction.execute(status -> {
+          String result = reorder.get();
+          competitor.set(executor.submit(() -> transaction.execute(other -> {
+            connection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+            return reorder.get();
+          })));
+          long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+          int waiting = 0;
+          while (waiting == 0 && System.nanoTime() < deadline) {
+            waiting = jdbc.queryForObject("SELECT COUNT(*) FROM performance_schema.data_lock_waits waiters JOIN performance_schema.data_locks blocker ON blocker.ENGINE_LOCK_ID=waiters.BLOCKING_ENGINE_LOCK_ID AND blocker.ENGINE=waiters.ENGINE JOIN performance_schema.threads requester ON requester.THREAD_ID=waiters.REQUESTING_THREAD_ID WHERE requester.PROCESSLIST_ID=? AND blocker.OBJECT_SCHEMA=DATABASE() AND blocker.OBJECT_NAME='members' AND blocker.INDEX_NAME='PRIMARY' AND blocker.LOCK_DATA=?", Integer.class, connection.get(), Long.toString(f.member()));
+            if (waiting == 0) {
+              try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+            }
+          }
+          assertThat(waiting).as("observed member row wait; frozen=%s", frozen).isPositive();
+          return result;
+        });
+        assertThat(competitor.get().get(15, TimeUnit.SECONDS)).isEqualTo(holder);
+      }
+      assertThat(quantity(f.member(), f.sku())).isEqualTo(2);
+      assertThat(version(f.member())).isEqualTo(1);
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM carts WHERE member_id=?", Long.class, f.member())).isEqualTo(1);
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quick_reorder_idempotency_results WHERE member_id=?", Long.class, f.member())).isEqualTo(1);
+    }
   }
 
   @Test
@@ -150,6 +231,30 @@ class QuickReorderTypedMappingIntegrationTests {
     });
   }
 
+  private PhysicalSnapshot physicalSnapshot(Fixture f, String key, java.util.function.Supplier<?> action) {
+    var transaction = new TransactionTemplate(manager);
+    transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+    return transaction.execute(status -> {
+      assertThat(jdbc.queryForObject("SELECT @@transaction_isolation", String.class)).isEqualTo("REPEATABLE-READ");
+      var before = statementCounters();
+      String result = json.writeValueAsString(action.get());
+      var counts = statementCounters(); counts.replaceAll((name, value) -> value - before.get(name));
+      var locks = jdbc.queryForList("SELECT OBJECT_NAME,INDEX_NAME,LOCK_TYPE,LOCK_MODE,LOCK_DATA FROM performance_schema.data_locks WHERE OBJECT_SCHEMA=DATABASE() AND THREAD_ID=(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID()) ORDER BY OBJECT_NAME,INDEX_NAME,LOCK_TYPE,LOCK_MODE,LOCK_DATA");
+      assertThat(locks).isNotEmpty();
+      var snapshot = new PhysicalSnapshot(result, stored(f.member(), key), counts, locks,
+          jdbc.queryForObject("SELECT updated_at FROM carts WHERE member_id=?", Timestamp.class, f.member()),
+          jdbc.queryForObject("SELECT created_at FROM quick_reorder_idempotency_results WHERE member_id=? AND idempotency_key=?", Timestamp.class, f.member(), key));
+      status.setRollbackOnly(); return snapshot;
+    });
+  }
+
+  private java.util.Map<String, Long> statementCounters() {
+    var counts = new java.util.LinkedHashMap<String, Long>();
+    jdbc.query("SHOW SESSION STATUS WHERE Variable_name IN ('Com_select','Com_insert','Com_insert_select','Com_update','Com_update_multi')",
+        (org.springframework.jdbc.core.RowCallbackHandler) rs -> counts.put(rs.getString(1), rs.getLong(2)));
+    return counts;
+  }
+
   private Fixture fixture(boolean eligible) {
     return new TransactionTemplate(manager).execute(status -> {
       var fixtures = new SecondaryReadFixtures(jdbc, entities);
@@ -184,4 +289,6 @@ class QuickReorderTypedMappingIntegrationTests {
   private int quantity(long member, long sku) { return jdbc.queryForObject("SELECT item.quantity FROM cart_items item JOIN carts cart ON cart.id=item.cart_id WHERE cart.member_id=? AND item.sku_id=?", Integer.class, member, sku); }
   private record Fixture(long member, long order, long sku) {}
   private record Snapshot(String resultJson, String storedJson, List<java.util.Map<String, Object>> items, long version) {}
+  private record PhysicalSnapshot(String resultJson, String storedJson, java.util.Map<String, Long> counts,
+      List<java.util.Map<String, Object>> locks, Timestamp updatedAt, Timestamp createdAt) {}
 }

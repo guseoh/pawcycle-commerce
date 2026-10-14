@@ -1,6 +1,12 @@
 package com.pawcycle.backend.commerce.cancellation.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.persistence.EntityManager;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.hibernate.query.NativeQuery;
+import org.hibernate.query.MutationQuery;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
@@ -9,115 +15,117 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class CancellationPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final EntityManager entities;
   private final Clock clock;
 
-  public CancellationPersistenceAdapter(JdbcTemplate queries, Clock clock) {
-    this.queries = queries;
+  public CancellationPersistenceAdapter(EntityManager entities, Clock clock) {
+    this.entities = entities;
     this.clock = clock;
   }
 
   public OrderLock findOrderForUpdate(long memberId, long orderId) {
-    return queries
-        .query(
-            "SELECT id,status FROM orders WHERE id=? AND member_id=? FOR UPDATE",
-            (rs, rowNumber) -> new OrderLock(rs.getLong("id"), rs.getString("status")),
-            orderId,
-            memberId)
+    return query("SELECT id,status FROM orders WHERE id=?1 AND member_id=?2 FOR UPDATE", OrderLock.class)
+        .addScalar("id", Long.class)
+        .addScalar("status", String.class)
+        .setParameter(1, orderId)
+        .setParameter(2, memberId).getResultList()
         .stream()
         .findFirst()
         .orElse(null);
   }
 
   public CancellationView findExisting(long orderId) {
-    return queries
-        .query(
-            "SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE order_id=? FOR UPDATE",
-            (rs, rowNumber) ->
-                new CancellationView(
-                    rs.getLong("cancellationId"),
-                    rs.getString("status"),
-                    rs.getString("reason"),
-                    rs.getTimestamp("requestedAt"),
-                    rs.getTimestamp("completedAt")),
-            orderId)
+    return query("SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE order_id=?1 FOR UPDATE", CancellationView.class)
+        .addScalar("cancellationId", Long.class)
+        .addScalar("status", String.class)
+        .addScalar("reason", String.class)
+        .addScalar("requestedAt", timestampType())
+        .addScalar("completedAt", timestampType())
+        .setParameter(1, orderId).getResultList()
         .stream()
         .findFirst()
         .orElse(null);
   }
 
   public DeliveryLock findDeliveryForUpdate(long orderId) {
-    return queries
-        .query(
-            "SELECT id,status FROM deliveries WHERE order_id=? FOR UPDATE",
-            (rs, rowNumber) -> new DeliveryLock(rs.getLong("id"), rs.getString("status")),
-            orderId)
+    return query("SELECT id,status FROM deliveries WHERE order_id=?1 FOR UPDATE", DeliveryLock.class)
+        .addScalar("id", Long.class)
+        .addScalar("status", String.class)
+        .setParameter(1, orderId).getResultList()
         .stream()
         .findFirst()
         .orElse(null);
   }
 
   public boolean hasReturnForUpdate(long orderId) {
-    return !queries
-        .query("SELECT id FROM order_returns WHERE order_id=? FOR UPDATE", (rs, rowNumber) -> rs.getLong(1), orderId)
+    return !query("SELECT id FROM order_returns WHERE order_id=?1 FOR UPDATE", Long.class)
+        .setParameter(1, orderId).getResultList()
         .isEmpty();
   }
 
   public boolean hasSuccessfulPayment(long orderId) {
-    return !queries
-        .query(
-            "SELECT id FROM payments WHERE order_id=? AND status='SUCCEEDED' FOR UPDATE",
-            (rs, rowNumber) -> rs.getLong(1),
-            orderId)
+    return !query("SELECT id FROM payments WHERE order_id=?1 AND status='SUCCEEDED' FOR UPDATE", Long.class)
+        .setParameter(1, orderId).getResultList()
         .isEmpty();
   }
 
   public long create(long orderId, String reason) {
     Timestamp now = now();
-    queries.update(
-        "INSERT INTO order_cancellations(order_id,status,reason,requested_at) VALUES (?,'REFUND_PENDING',?,?)",
-        orderId,
-        reason,
-        now);
-    return queries.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    mutation("INSERT INTO order_cancellations(order_id,status,reason,requested_at) VALUES (?1,'REFUND_PENDING',?2,?3)")
+        .setParameter(1, orderId)
+        .setParameter(2, reason, String.class)
+        .setParameter(3, now, timestampType()).executeUpdate();
+    return query("SELECT LAST_INSERT_ID()", Long.class).getSingleResult();
   }
 
   public void cancelDelivery(long deliveryId) {
-    queries.update("UPDATE deliveries SET status='CANCELLED',cancelled_at=? WHERE id=?", now(), deliveryId);
+    mutation("UPDATE deliveries SET status='CANCELLED',cancelled_at=?1 WHERE id=?2")
+        .setParameter(1, now(), timestampType())
+        .setParameter(2, deliveryId).executeUpdate();
   }
 
   public void createRefund(long orderId, long cancellationId) {
-    queries.update(
-        "INSERT INTO refunds(order_id,source,cancellation_id,status,amount,provider,idempotency_key,attempt_no,requested_at) SELECT ?,'CANCELLATION',?,'READY',payment_amount,'TOSS',?,1,? FROM orders WHERE id=?",
-        orderId,
-        cancellationId,
-        "refund-" + UUID.randomUUID(),
-        now(),
-        orderId);
+    mutation("INSERT INTO refunds(order_id,source,cancellation_id,status,amount,provider,idempotency_key,attempt_no,requested_at) SELECT ?1,'CANCELLATION',?2,'READY',payment_amount,'TOSS',?3,1,?4 FROM orders WHERE id=?5")
+        .setParameter(1, orderId)
+        .setParameter(2, cancellationId)
+        .setParameter(3, "refund-" + UUID.randomUUID())
+        .setParameter(4, now(), timestampType())
+        .setParameter(5, orderId).executeUpdate();
   }
 
   public CancellationView find(long cancellationId) {
-    return queries
-        .query(
-            "SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE id=?",
-            (rs, rowNumber) ->
-                new CancellationView(
-                    rs.getLong("cancellationId"),
-                    rs.getString("status"),
-                    rs.getString("reason"),
-                    rs.getTimestamp("requestedAt"),
-                    rs.getTimestamp("completedAt")),
-            cancellationId)
+    return query("SELECT id AS cancellationId,status,reason,requested_at AS requestedAt,completed_at AS completedAt FROM order_cancellations WHERE id=?1", CancellationView.class)
+        .addScalar("cancellationId", Long.class)
+        .addScalar("status", String.class)
+        .addScalar("reason", String.class)
+        .addScalar("requestedAt", timestampType())
+        .addScalar("completedAt", timestampType())
+        .setParameter(1, cancellationId).getResultList()
         .stream()
         .findFirst()
         .orElse(null);
   }
 
   public List<OrderItem> findOrderItems(long orderId) {
-    return queries.query(
-        "SELECT sku_id AS skuId,quantity FROM order_items WHERE order_id=? ORDER BY sku_id",
-        (rs, rowNumber) -> new OrderItem(rs.getLong("skuId"), rs.getInt("quantity")),
-        orderId);
+    return query("SELECT sku_id AS skuId,quantity FROM order_items WHERE order_id=?1 ORDER BY sku_id", OrderItem.class)
+        .addScalar("skuId", Long.class)
+        .addScalar("quantity", Integer.class)
+        .setParameter(1, orderId).getResultList();
+  }
+
+  private <T> NativeQuery<T> query(String sql, Class<T> type) {
+    // JDBC did not auto-flush pending managed state before these ordered SQL statements.
+    return entities.unwrap(Session.class).createNativeQuery(sql, type)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private MutationQuery mutation(String sql) {
+    return entities.unwrap(Session.class).createNativeMutationQuery(sql)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private static BasicTypeImpl<Timestamp> timestampType() {
+    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new CancellationTimestampJdbcType());
   }
 
   private Timestamp now() {
