@@ -211,6 +211,5 @@ persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerC
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.SkuCreateRequest
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence$Product -> com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest
 persistence-api | com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter -> com.pawcycle.backend.commerce.coupon.api.CouponRequest
-persistence-api | com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter -> com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest
 persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateQueryPersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateWritePersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException

@@ -5,6 +5,7 @@ import com.pawcycle.backend.commerce.membership.application.MembershipEvaluation
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.persistence.CreateMembershipGradeCommand;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipQueryRepository;
 import java.util.List;
@@ -38,7 +39,9 @@ public class MembershipAdminApplicationService {
 
   @Transactional
   public long createGrade(long adminId, MembershipGradeRequest request) {
-    long gradeId = membership.createGrade(request);
+    long gradeId = membership.createGrade(new CreateMembershipGradeCommand(
+        request.code(), request.name(), request.minimumPurchaseAmount(),
+        request.displayOrder(), request.active(), request.benefitCouponId()));
     audits.append(adminId, "MEMBERSHIP_GRADE_CREATE", "MEMBERSHIP_GRADE", gradeId);
     return gradeId;
   }
