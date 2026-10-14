@@ -143,15 +143,29 @@ class SubscriptionShippingWriteProtocolIntegrationTests {
 
   @Test
   void defaultAddressFlushDirtyMemberVisibilityAndCallerRollbackArePreserved() {
+    // Separate committed fixtures make the rollback proof independent for both protocols.
+    for (boolean frozen : List.of(false, true)) {
+      var rollbackFixture = tx().execute(s -> fixture());
+      assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
+        addresses.create(rollbackFixture.member(), address("rollback"));
+        update(frozen, rollbackFixture.member(), rollbackFixture.subscription(), null);
+        assertThat(snapshot(rollbackFixture)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM subscription_schedules WHERE id=?",
+            String.class, rollbackFixture.schedule())).isEqualTo("SCHEDULED");
+        throw new IllegalStateException("caller rollback");
+      })).isInstanceOf(IllegalStateException.class).hasMessage("caller rollback");
+      assertThat(snapshot(rollbackFixture)).isEmpty();
+      assertThat(jdbc.queryForObject("SELECT status FROM subscription_schedules WHERE id=?",
+          String.class, rollbackFixture.schedule())).isEqualTo("HELD");
+      assertThat(jdbc.queryForObject("SELECT hold_reason FROM subscription_schedules WHERE id=?",
+          String.class, rollbackFixture.schedule())).isEqualTo("MISSING_SHIPPING_ADDRESS");
+      assertThat(jdbc.queryForObject("SELECT default_address_id FROM members WHERE id=?",
+          Long.class, rollbackFixture.member())).isNull();
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_addresses WHERE member_id=?",
+          Long.class, rollbackFixture.member())).isZero();
+    }
+
     var f = tx().execute(s -> fixture());
-    assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
-      addresses.create(f.member(), address("rollback"));
-      update(false, f.member(), f.subscription(), null);
-      throw new IllegalStateException("caller rollback");
-    })).isInstanceOf(IllegalStateException.class);
-    assertThat(snapshot(f)).isEmpty();
-    assertThat(jdbc.queryForObject("SELECT status FROM subscription_schedules WHERE id=?", String.class, f.schedule())).isEqualTo("HELD");
-    assertThat(jdbc.queryForObject("SELECT default_address_id FROM members WHERE id=?", Long.class, f.member())).isNull();
     tx().executeWithoutResult(s -> addresses.create(f.member(), address("committed")));
     assertThat(jdbc.queryForObject("SELECT status FROM subscription_schedules WHERE id=?", String.class, f.schedule())).isEqualTo("SCHEDULED");
     tx().executeWithoutResult(s -> {
