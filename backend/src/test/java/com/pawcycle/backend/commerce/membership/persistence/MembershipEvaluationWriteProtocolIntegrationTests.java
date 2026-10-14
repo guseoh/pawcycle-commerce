@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
@@ -51,6 +52,7 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
   @Autowired EntityManager entities;
   @Autowired PlatformTransactionManager manager;
   @Autowired MembershipAdminApplicationService admin;
+  @Autowired AdminAuditService audits;
   @Autowired WebApplicationContext context;
   @Autowired ObjectMapper json;
   private final java.util.Set<Long> ownedMembers = new java.util.HashSet<>();
@@ -130,24 +132,45 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
   void couponAndAuditFailureRollBackMembershipHistoryAndGrade() {
     long member = tx().execute(s -> member());
     long grade = tx().execute(s -> grade("0", null));
-    assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
-      actual().saveMembership(member, grade, BigDecimal.TEN);
-      actual().recordChange(member, null, grade, BigDecimal.TEN, Long.MAX_VALUE);
-    })).isInstanceOf(RuntimeException.class);
-    assertThat(state(member)).allSatisfy(rows -> assertThat(rows).isEmpty());
-    assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
-      actual().saveMembership(member, grade, BigDecimal.TEN);
-      actual().recordChange(member, Long.MAX_VALUE, grade, BigDecimal.TEN, null);
-    })).isInstanceOf(RuntimeException.class);
-    assertThat(state(member)).allSatisfy(rows -> assertThat(rows).isEmpty());
-    String code = code();
-    assertThatThrownBy(() -> admin.createGrade(Long.MAX_VALUE, new MembershipGradeRequest(code, "audit rollback", BigDecimal.ZERO, 0, true, null)))
-        .isInstanceOf(RuntimeException.class);
-    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM membership_grades WHERE code=?", Long.class, code)).isZero();
-    assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
-      actual().saveMembership(member, Long.MAX_VALUE, BigDecimal.TEN);
-    })).isInstanceOf(RuntimeException.class);
-    assertThat(state(member)).allSatisfy(rows -> assertThat(rows).isEmpty());
+
+    assertRollbackParity(member,
+        () -> {
+          actual().saveMembership(member, grade, BigDecimal.TEN);
+          actual().recordChange(member, null, grade, BigDecimal.TEN, Long.MAX_VALUE);
+        },
+        () -> {
+          legacy().saveMembership(member, grade, BigDecimal.TEN);
+          legacy().recordChange(member, null, grade, BigDecimal.TEN, Long.MAX_VALUE);
+        });
+
+    assertRollbackParity(member,
+        () -> {
+          actual().saveMembership(member, grade, BigDecimal.TEN);
+          actual().recordChange(member, Long.MAX_VALUE, grade, BigDecimal.TEN, null);
+        },
+        () -> {
+          legacy().saveMembership(member, grade, BigDecimal.TEN);
+          legacy().recordChange(member, Long.MAX_VALUE, grade, BigDecimal.TEN, null);
+        });
+
+    String actualCode = code();
+    int actualError = errorCode(() -> admin.createGrade(
+        Long.MAX_VALUE, new MembershipGradeRequest(actualCode, "audit rollback", BigDecimal.ZERO, 0, true, null)));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM membership_grades WHERE code=?", Long.class, actualCode)).isZero();
+    String frozenCode = code();
+    int frozenError = errorCode(() -> {
+      long createdGrade = new LegacyMembershipPersistenceAdapter(jdbc, CLOCK).createGrade(
+          new MembershipGradeRequest(frozenCode, "audit rollback", BigDecimal.ZERO, 0, true, null));
+      audits.append(Long.MAX_VALUE, "MEMBERSHIP_GRADE_CREATE", "MEMBERSHIP_GRADE", createdGrade);
+    });
+    assertThat(frozenError).isEqualTo(actualError).isEqualTo(1452);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM membership_grades WHERE code=?", Long.class, frozenCode)).isZero();
+    assertThat(jdbc.queryForObject(
+        "SELECT COUNT(*) FROM admin_audit_logs WHERE admin_id=?", Long.class, Long.MAX_VALUE)).isZero();
+
+    assertRollbackParity(member,
+        () -> actual().saveMembership(member, Long.MAX_VALUE, BigDecimal.TEN),
+        () -> legacy().saveMembership(member, Long.MAX_VALUE, BigDecimal.TEN));
   }
 
   @Test
@@ -294,6 +317,14 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
       return jdbc.queryForList("SELECT CONCAT_WS('|',LOCK_TYPE,COALESCE(INDEX_NAME,''),LOCK_MODE,COALESCE(LOCK_DATA,'')) FROM performance_schema.data_locks WHERE OBJECT_SCHEMA=DATABASE() AND OBJECT_NAME='member_memberships' AND THREAD_ID=(SELECT THREAD_ID FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID()) ORDER BY LOCK_TYPE,INDEX_NAME,LOCK_MODE,LOCK_DATA", String.class);
     });
   }
+  private void assertRollbackParity(long member, Runnable currentWrite, Runnable frozenWrite) {
+    int currentError = errorCode(currentWrite);
+    assertThat(state(member)).allSatisfy(rows -> assertThat(rows).isEmpty());
+    int frozenError = errorCode(frozenWrite);
+    assertThat(frozenError).isEqualTo(currentError).isEqualTo(1452);
+    assertThat(state(member)).allSatisfy(rows -> assertThat(rows).isEmpty());
+  }
+
   private int errorCode(Runnable call) {
     try { tx().executeWithoutResult(s -> call.run()); throw new AssertionError("Expected DB constraint failure"); }
     catch (RuntimeException error) { return sqlCode(error); }
