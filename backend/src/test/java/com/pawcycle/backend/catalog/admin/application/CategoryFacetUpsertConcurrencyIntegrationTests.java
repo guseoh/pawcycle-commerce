@@ -2,7 +2,7 @@ package com.pawcycle.backend.catalog.admin.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetAssignCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryFacetAssignCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;

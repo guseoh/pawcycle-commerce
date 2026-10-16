@@ -1,46 +1,45 @@
 package com.pawcycle.backend.catalog.admin.application;
 
-import static com.pawcycle.backend.catalog.admin.application.CatalogAdminMapping.command;
 import static com.pawcycle.backend.catalog.admin.application.CatalogAdminMapping.response;
 
 import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.BrandPatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandPatchCommand;
 import com.pawcycle.backend.catalog.admin.api.BrandResponse;
 import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryFacetAssignRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryFacetAssignCommand;
 import com.pawcycle.backend.catalog.admin.api.CategoryFacetListResponse;
 import com.pawcycle.backend.catalog.admin.api.CategoryFacetResponse;
 import com.pawcycle.backend.catalog.admin.api.CategoryPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.CategoryResponse;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.DetailSectionListResponse;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionPatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionPatchCommand;
 import com.pawcycle.backend.catalog.admin.api.DetailSectionResponse;
-import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetDefinitionCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.FacetDefinitionListResponse;
-import com.pawcycle.backend.catalog.admin.api.FacetDefinitionPatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetDefinitionPatchCommand;
 import com.pawcycle.backend.catalog.admin.api.FacetDefinitionResponse;
-import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.FacetOptionPatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetOptionCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetOptionPatchCommand;
 import com.pawcycle.backend.catalog.admin.api.FacetOptionResponse;
-import com.pawcycle.backend.catalog.admin.api.ImageCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImageCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.ImageListResponse;
-import com.pawcycle.backend.catalog.admin.api.ImagePatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImagePatchCommand;
 import com.pawcycle.backend.catalog.admin.api.ImageResponse;
-import com.pawcycle.backend.catalog.admin.api.OptionGroupCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.OptionGroupListResponse;
-import com.pawcycle.backend.catalog.admin.api.OptionGroupPatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupPatchCommand;
 import com.pawcycle.backend.catalog.admin.api.OptionGroupResponse;
-import com.pawcycle.backend.catalog.admin.api.OptionValueCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.OptionValuePatchRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValueCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValuePatchCommand;
 import com.pawcycle.backend.catalog.admin.api.OptionValueResponse;
 import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductFacetValuesCommand;
 import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesResponse;
 import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.ProductResponse;
 import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuOptionValuesCommand;
 import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesResponse;
 import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.admin.api.SkuResponse;
@@ -100,12 +99,12 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public BrandResponse updateBrand(long adminId, long brandId, BrandPatchRequest request) {
+  public BrandResponse updateBrand(long adminId, long brandId, BrandPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_BRAND_UPDATE",
         "BRAND",
-        () -> response(catalogExpansionAdminService.updateBrand(brandId, command(request))),
+        () -> response(catalogExpansionAdminService.updateBrand(brandId, request)),
         ignored -> brandId);
   }
 
@@ -171,25 +170,25 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public ImageResponse createImage(long adminId, long productId, ImageCreateRequest request) {
+  public ImageResponse createImage(long adminId, long productId, ImageCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_PRODUCT_IMAGE_CREATE",
         "PRODUCT_IMAGE",
-        () -> response(catalogExpansionAdminService.createImage(productId, command(request))),
+        () -> response(catalogExpansionAdminService.createImage(productId, request)),
         ImageResponse::imageId);
   }
 
   @Transactional
   public ImageResponse updateImage(
-      long adminId, long productId, long imageId, ImagePatchRequest request) {
+      long adminId, long productId, long imageId, ImagePatchCommand request) {
     return execute(
         adminId,
         "CATALOG_PRODUCT_IMAGE_UPDATE",
         "PRODUCT_IMAGE",
         () ->
             response(
-                catalogExpansionAdminService.updateImage(productId, imageId, command(request))),
+                catalogExpansionAdminService.updateImage(productId, imageId, request)),
         ignored -> imageId);
   }
 
@@ -205,18 +204,18 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public OptionGroupResponse createOptionGroup(
-      long adminId, long productId, OptionGroupCreateRequest request) {
+      long adminId, long productId, OptionGroupCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_OPTION_GROUP_CREATE",
         "PRODUCT_OPTION_GROUP",
-        () -> response(catalogExpansionAdminService.createOptionGroup(productId, command(request))),
+        () -> response(catalogExpansionAdminService.createOptionGroup(productId, request)),
         OptionGroupResponse::optionGroupId);
   }
 
   @Transactional
   public OptionGroupResponse updateOptionGroup(
-      long adminId, long productId, long groupId, OptionGroupPatchRequest request) {
+      long adminId, long productId, long groupId, OptionGroupPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_OPTION_GROUP_UPDATE",
@@ -224,7 +223,7 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.updateOptionGroup(
-                    productId, groupId, command(request))),
+                    productId, groupId, request)),
         ignored -> groupId);
   }
 
@@ -240,7 +239,7 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public OptionValueResponse createOptionValue(
-      long adminId, long productId, long groupId, OptionValueCreateRequest request) {
+      long adminId, long productId, long groupId, OptionValueCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_OPTION_VALUE_CREATE",
@@ -248,13 +247,13 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.createOptionValue(
-                    productId, groupId, command(request))),
+                    productId, groupId, request)),
         OptionValueResponse::optionValueId);
   }
 
   @Transactional
   public OptionValueResponse updateOptionValue(
-      long adminId, long productId, long groupId, long valueId, OptionValuePatchRequest request) {
+      long adminId, long productId, long groupId, long valueId, OptionValuePatchCommand request) {
     return execute(
         adminId,
         "CATALOG_OPTION_VALUE_UPDATE",
@@ -262,7 +261,7 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.updateOptionValue(
-                    productId, groupId, valueId, command(request))),
+                    productId, groupId, valueId, request)),
         ignored -> valueId);
   }
 
@@ -278,7 +277,7 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public SkuOptionValuesResponse setSkuOptionValues(
-      long adminId, long productId, long skuId, SkuOptionValuesRequest request) {
+      long adminId, long productId, long skuId, SkuOptionValuesCommand request) {
     return execute(
         adminId,
         "CATALOG_SKU_OPTION_VALUES_SET",
@@ -286,31 +285,31 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.setSkuOptionValues(
-                    productId, skuId, command(request))),
+                    productId, skuId, request)),
         ignored -> skuId);
   }
 
   @Transactional
   public FacetDefinitionResponse createFacetDefinition(
-      long adminId, FacetDefinitionCreateRequest request) {
+      long adminId, FacetDefinitionCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_FACET_CREATE",
         "FACET_DEFINITION",
-        () -> response(catalogExpansionAdminService.createFacetDefinition(command(request))),
+        () -> response(catalogExpansionAdminService.createFacetDefinition(request)),
         FacetDefinitionResponse::facetDefinitionId);
   }
 
   @Transactional
   public FacetDefinitionResponse updateFacetDefinition(
-      long adminId, long definitionId, FacetDefinitionPatchRequest request) {
+      long adminId, long definitionId, FacetDefinitionPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_FACET_UPDATE",
         "FACET_DEFINITION",
         () ->
             response(
-                catalogExpansionAdminService.updateFacetDefinition(definitionId, command(request))),
+                catalogExpansionAdminService.updateFacetDefinition(definitionId, request)),
         ignored -> definitionId);
   }
 
@@ -326,20 +325,20 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public FacetOptionResponse createFacetOption(
-      long adminId, long definitionId, FacetOptionCreateRequest request) {
+      long adminId, long definitionId, FacetOptionCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_FACET_OPTION_CREATE",
         "FACET_OPTION",
         () ->
             response(
-                catalogExpansionAdminService.createFacetOption(definitionId, command(request))),
+                catalogExpansionAdminService.createFacetOption(definitionId, request)),
         FacetOptionResponse::facetOptionId);
   }
 
   @Transactional
   public FacetOptionResponse updateFacetOption(
-      long adminId, long definitionId, long optionId, FacetOptionPatchRequest request) {
+      long adminId, long definitionId, long optionId, FacetOptionPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_FACET_OPTION_UPDATE",
@@ -347,7 +346,7 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.updateFacetOption(
-                    definitionId, optionId, command(request))),
+                    definitionId, optionId, request)),
         ignored -> optionId);
   }
 
@@ -363,7 +362,7 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public CategoryFacetResponse assignCategoryFacet(
-      long adminId, long categoryId, long definitionId, CategoryFacetAssignRequest request) {
+      long adminId, long categoryId, long definitionId, CategoryFacetAssignCommand request) {
     return execute(
         adminId,
         "CATALOG_CATEGORY_FACET_SET",
@@ -371,7 +370,7 @@ public class AdminCatalogMutationService {
         () ->
             response(
                 catalogExpansionAdminService.assignCategoryFacet(
-                    categoryId, definitionId, command(request))),
+                    categoryId, definitionId, request)),
         ignored -> categoryId);
   }
 
@@ -387,36 +386,36 @@ public class AdminCatalogMutationService {
 
   @Transactional
   public ProductFacetValuesResponse setProductFacetValues(
-      long adminId, long productId, ProductFacetValuesRequest request) {
+      long adminId, long productId, ProductFacetValuesCommand request) {
     return execute(
         adminId,
         "CATALOG_PRODUCT_FACET_VALUES_SET",
         "PRODUCT",
         () ->
             response(
-                catalogExpansionAdminService.setProductFacetValues(productId, command(request))),
+                catalogExpansionAdminService.setProductFacetValues(productId, request)),
         ignored -> productId);
   }
 
   @Transactional
   public DetailSectionResponse createDetailSection(
-      long adminId, Long productId, DetailSectionCreateRequest request) {
+      long adminId, Long productId, DetailSectionCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_DETAIL_SECTION_CREATE",
         "PRODUCT_DETAIL_SECTION",
-        () -> response(productDetailSectionService.create(productId, command(request))),
+        () -> response(productDetailSectionService.create(productId, request)),
         DetailSectionResponse::sectionId);
   }
 
   @Transactional
   public DetailSectionResponse updateDetailSection(
-      long adminId, Long productId, Long sectionId, DetailSectionPatchRequest request) {
+      long adminId, Long productId, Long sectionId, DetailSectionPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_DETAIL_SECTION_UPDATE",
         "PRODUCT_DETAIL_SECTION",
-        () -> response(productDetailSectionService.update(productId, sectionId, command(request))),
+        () -> response(productDetailSectionService.update(productId, sectionId, request)),
         ignored -> sectionId);
   }
 

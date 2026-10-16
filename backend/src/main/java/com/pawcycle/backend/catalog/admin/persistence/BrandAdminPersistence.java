@@ -1,6 +1,6 @@
 package com.pawcycle.backend.catalog.admin.persistence;
 
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.BrandPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandPatchCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.BrandView;
 import com.pawcycle.backend.catalog.brand.domain.Brand;
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;

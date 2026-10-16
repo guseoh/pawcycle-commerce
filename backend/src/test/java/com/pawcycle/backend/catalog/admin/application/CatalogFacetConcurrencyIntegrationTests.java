@@ -62,7 +62,7 @@ class CatalogFacetConcurrencyIntegrationTests {
             () ->
                 expansionService.setProductFacetValues(
                     productId,
-                    new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+                    new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
                         .ProductFacetValuesCommand(List.of(facetOptionId))),
             () -> expansionService.removeCategoryFacet(sourceCategoryId, facetDefinitionId));
 
@@ -81,7 +81,7 @@ class CatalogFacetConcurrencyIntegrationTests {
     seedCatalog(true);
     expansionService.setProductFacetValues(
         productId,
-        new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+        new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
             .ProductFacetValuesCommand(List.of(facetOptionId)));
 
     ConcurrentResult results =
