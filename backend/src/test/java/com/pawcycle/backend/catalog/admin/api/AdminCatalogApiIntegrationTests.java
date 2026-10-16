@@ -336,21 +336,21 @@ class AdminCatalogApiIntegrationTests {
             .productId();
     var definition =
         catalogExpansionAdminService.createFacetDefinition(
-            new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+            new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
                 .FacetDefinitionCreateCommand("material", "Material"));
     var option =
         catalogExpansionAdminService.createFacetOption(
             definition.facetDefinitionId(),
-            new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+            new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
                 .FacetOptionCreateCommand("cotton", 0));
     catalogExpansionAdminService.assignCategoryFacet(
         first.getId(),
         definition.facetDefinitionId(),
-        new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+        new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
             .CategoryFacetAssignCommand(0));
     catalogExpansionAdminService.setProductFacetValues(
         productId,
-        new com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels
+        new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands
             .ProductFacetValuesCommand(List.of(option.facetOptionId())));
 
     ProductPatchRequest categoryPatch = new ProductPatchRequest();

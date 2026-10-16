@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.admin.api;
 
+import static com.pawcycle.backend.catalog.admin.api.CatalogAdminCommandMapping.command;
+
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -48,7 +50,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long brandId,
       @RequestBody BrandPatchRequest request) {
-    BrandResponse brand = mutations.updateBrand(principal.memberId(), brandId, request);
+    BrandResponse brand = mutations.updateBrand(principal.memberId(), brandId, command(request));
     return brand;
   }
 
@@ -144,7 +146,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long productId,
       @Valid @RequestBody ImageCreateRequest request) {
-    ImageResponse image = mutations.createImage(principal.memberId(), productId, request);
+    ImageResponse image = mutations.createImage(principal.memberId(), productId, command(request));
     return ResponseEntity.created(
             URI.create("/api/admin/products/" + productId + "/images/" + image.imageId()))
         .body(image);
@@ -156,7 +158,7 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @PathVariable long imageId,
       @RequestBody ImagePatchRequest request) {
-    ImageResponse image = mutations.updateImage(principal.memberId(), productId, imageId, request);
+    ImageResponse image = mutations.updateImage(principal.memberId(), productId, imageId, command(request));
     return image;
   }
 
@@ -180,7 +182,7 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @Valid @RequestBody OptionGroupCreateRequest request) {
     OptionGroupResponse group =
-        mutations.createOptionGroup(principal.memberId(), productId, request);
+        mutations.createOptionGroup(principal.memberId(), productId, command(request));
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/" + productId + "/option-groups/" + group.optionGroupId()))
@@ -194,7 +196,7 @@ public class AdminCatalogController {
       @PathVariable long groupId,
       @RequestBody OptionGroupPatchRequest request) {
     OptionGroupResponse group =
-        mutations.updateOptionGroup(principal.memberId(), productId, groupId, request);
+        mutations.updateOptionGroup(principal.memberId(), productId, groupId, command(request));
     return group;
   }
 
@@ -214,7 +216,7 @@ public class AdminCatalogController {
       @PathVariable long groupId,
       @Valid @RequestBody OptionValueCreateRequest request) {
     OptionValueResponse value =
-        mutations.createOptionValue(principal.memberId(), productId, groupId, request);
+        mutations.createOptionValue(principal.memberId(), productId, groupId, command(request));
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/"
@@ -234,7 +236,7 @@ public class AdminCatalogController {
       @PathVariable long valueId,
       @RequestBody OptionValuePatchRequest request) {
     OptionValueResponse value =
-        mutations.updateOptionValue(principal.memberId(), productId, groupId, valueId, request);
+        mutations.updateOptionValue(principal.memberId(), productId, groupId, valueId, command(request));
     return value;
   }
 
@@ -255,7 +257,7 @@ public class AdminCatalogController {
       @PathVariable long skuId,
       @Valid @RequestBody SkuOptionValuesRequest request) {
     SkuOptionValuesResponse values =
-        mutations.setSkuOptionValues(principal.memberId(), productId, skuId, request);
+        mutations.setSkuOptionValues(principal.memberId(), productId, skuId, command(request));
     return values;
   }
 
@@ -279,7 +281,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody FacetDefinitionCreateRequest request) {
     FacetDefinitionResponse definition =
-        mutations.createFacetDefinition(principal.memberId(), request);
+        mutations.createFacetDefinition(principal.memberId(), command(request));
     return ResponseEntity.created(URI.create("/api/admin/facets/" + definition.facetDefinitionId()))
         .body(definition);
   }
@@ -290,7 +292,7 @@ public class AdminCatalogController {
       @PathVariable long definitionId,
       @RequestBody FacetDefinitionPatchRequest request) {
     FacetDefinitionResponse definition =
-        mutations.updateFacetDefinition(principal.memberId(), definitionId, request);
+        mutations.updateFacetDefinition(principal.memberId(), definitionId, command(request));
     return definition;
   }
 
@@ -308,7 +310,7 @@ public class AdminCatalogController {
       @PathVariable long definitionId,
       @Valid @RequestBody FacetOptionCreateRequest request) {
     FacetOptionResponse option =
-        mutations.createFacetOption(principal.memberId(), definitionId, request);
+        mutations.createFacetOption(principal.memberId(), definitionId, command(request));
     return ResponseEntity.created(
             URI.create("/api/admin/facets/" + definitionId + "/options/" + option.facetOptionId()))
         .body(option);
@@ -321,7 +323,7 @@ public class AdminCatalogController {
       @PathVariable long optionId,
       @RequestBody FacetOptionPatchRequest request) {
     FacetOptionResponse option =
-        mutations.updateFacetOption(principal.memberId(), definitionId, optionId, request);
+        mutations.updateFacetOption(principal.memberId(), definitionId, optionId, command(request));
     return option;
   }
 
@@ -341,7 +343,7 @@ public class AdminCatalogController {
       @PathVariable long definitionId,
       @Valid @RequestBody CategoryFacetAssignRequest request) {
     CategoryFacetResponse facet =
-        mutations.assignCategoryFacet(principal.memberId(), categoryId, definitionId, request);
+        mutations.assignCategoryFacet(principal.memberId(), categoryId, definitionId, command(request));
     return facet;
   }
 
@@ -360,7 +362,7 @@ public class AdminCatalogController {
       @PathVariable long productId,
       @Valid @RequestBody ProductFacetValuesRequest request) {
     ProductFacetValuesResponse values =
-        mutations.setProductFacetValues(principal.memberId(), productId, request);
+        mutations.setProductFacetValues(principal.memberId(), productId, command(request));
     return values;
   }
 
@@ -385,7 +387,7 @@ public class AdminCatalogController {
       @PathVariable Long productId,
       @Valid @RequestBody DetailSectionCreateRequest request) {
     DetailSectionResponse section =
-        mutations.createDetailSection(principal.memberId(), productId, request);
+        mutations.createDetailSection(principal.memberId(), productId, command(request));
     return ResponseEntity.created(
             URI.create(
                 "/api/admin/products/" + productId + "/detail-sections/" + section.sectionId()))
@@ -399,7 +401,7 @@ public class AdminCatalogController {
       @PathVariable Long sectionId,
       @RequestBody DetailSectionPatchRequest request) {
     DetailSectionResponse section =
-        mutations.updateDetailSection(principal.memberId(), productId, sectionId, request);
+        mutations.updateDetailSection(principal.memberId(), productId, sectionId, command(request));
     return section;
   }
 

@@ -2,9 +2,9 @@ package com.pawcycle.backend.catalog.admin.persistence;
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogNotFoundException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogValidationException;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionCreateCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionPatchCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionView;
 import com.pawcycle.backend.catalog.product.domain.ProductDetailSectionEntity;
 import com.pawcycle.backend.catalog.product.persistence.ProductDetailSectionRepository;
