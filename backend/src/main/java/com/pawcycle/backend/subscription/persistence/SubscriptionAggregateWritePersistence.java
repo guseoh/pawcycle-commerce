@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import java.time.LocalDate;
 import jakarta.persistence.EntityManager;
 import com.pawcycle.backend.commerce.notification.persistence.QNotificationEntity;
@@ -67,7 +67,7 @@ public void updatePet(
     if (namePresent) update.set(pet.name, name);
     if (breedPresent) update.set(pet.breed, breed);
     if (weightPresent) update.set(pet.weightKg, weightKg);
-    if (update.execute() != 1) throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
+    if (update.execute() != 1) throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
   }
 
 public void replacePendingPlanChange(long subscriptionId, long snapshotId, long scheduleId) {
@@ -124,7 +124,7 @@ public void upsertScheduleAddon(long scheduleId, long skuId, int quantity, java.
 
 public void deleteScheduleAddon(long scheduleId, long skuId) {
     if (queries.delete(addon).where(addon.scheduleId.eq(scheduleId), addon.skuId.eq(skuId)).execute() != 1)
-      throw new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다.");
   }
 
 public void deleteScheduleAddons(long subscriptionId) {

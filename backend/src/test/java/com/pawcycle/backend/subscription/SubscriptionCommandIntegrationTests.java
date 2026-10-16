@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
 import com.pawcycle.backend.subscription.automation.SubscriptionAutomationBatchResult;
@@ -265,7 +265,7 @@ class SubscriptionCommandIntegrationTests {
             () ->
                 service.command(
                     member.getId(), subscriptionId, "pause", "missing-if-match", null, SubscriptionCommandRequest.empty()))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IF_MATCH_REQUIRED");
   }
 
@@ -277,7 +277,7 @@ class SubscriptionCommandIntegrationTests {
             () ->
                 service.command(
                     member.getId(), subscriptionId, "pause", "invalid-if-match", "0", SubscriptionCommandRequest.empty()))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IF_MATCH_INVALID");
   }
 
@@ -289,7 +289,7 @@ class SubscriptionCommandIntegrationTests {
             () ->
                 service.command(
                     member.getId(), subscriptionId, "pause", "stale-if-match", "\"1\"", SubscriptionCommandRequest.empty()))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
   }
 
@@ -451,7 +451,7 @@ class SubscriptionCommandIntegrationTests {
                     "unsupported-pending-cycle",
                     "\"1\"",
                     new SubscriptionCommandRequest(null, null, 8, null, null, null)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "DELIVERY_CYCLE_NOT_ALLOWED");
   }
 
@@ -555,7 +555,7 @@ class SubscriptionCommandIntegrationTests {
                     "\"0\"",
                     new SubscriptionCommandRequest(
                         null, null, null, requestedDate.plusDays(1), null, null)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
   }
 
@@ -580,7 +580,7 @@ class SubscriptionCommandIntegrationTests {
                     "today-reschedule",
                     "\"0\"",
                     new SubscriptionCommandRequest(null, null, null, today, null, null)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_NOT_FUTURE");
     assertThatThrownBy(
             () ->
@@ -591,7 +591,7 @@ class SubscriptionCommandIntegrationTests {
                     "duplicate-reschedule",
                     "\"0\"",
                     new SubscriptionCommandRequest(null, null, null, existingDate, null, null)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_CONFLICT");
     assertThatThrownBy(
             () ->
@@ -602,7 +602,7 @@ class SubscriptionCommandIntegrationTests {
                     "invalid-calendar-reschedule",
                     "\"0\"",
                     SubscriptionCommandRequest.empty()))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
     assertThatThrownBy(
             () ->
@@ -613,7 +613,7 @@ class SubscriptionCommandIntegrationTests {
                     "non-string-reschedule",
                     "\"0\"",
                     SubscriptionCommandRequest.empty()))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
   }
 
@@ -924,15 +924,15 @@ class SubscriptionCommandIntegrationTests {
     long previousVersionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
     assertThatThrownBy(() -> service.planVersion(member.getId(), dogPetId, previousVersionId))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "PLAN_NOT_AVAILABLE");
     assertThatThrownBy(() -> service.planVersion(member.getId(), catPetId, planVersionId))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "PLAN_PET_TYPE_MISMATCH");
 
     jdbc.update("UPDATE subscription_plans SET current_plan_version_id=NULL WHERE id=?", planId);
     assertThatThrownBy(() -> service.planVersion(member.getId(), dogPetId, planVersionId))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "PLAN_NOT_AVAILABLE");
   }
 
@@ -945,7 +945,7 @@ class SubscriptionCommandIntegrationTests {
                     member.getId(),
                     "invalid-pet-id",
                     new CreateSubscriptionRequest(-1L, planVersionId, 4)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
     assertThat(
             jdbc.queryForObject(

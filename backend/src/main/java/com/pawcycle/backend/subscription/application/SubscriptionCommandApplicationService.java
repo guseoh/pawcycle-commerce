@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationService;
 import com.pawcycle.backend.subscription.persistence.projection.AddonSkuProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PendingSubscriptionChange;
@@ -73,7 +73,7 @@ class SubscriptionCommandApplicationService {
             "SET_NEXT_DELIVERY_ADDON",
             "REMOVE_NEXT_DELIVERY_ADDON")
         .contains(normalized))
-      throw new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다.");
     support.validateKey(key);
     String fingerprint = support.fingerprint(request);
     SubscriptionProjection subscription =
@@ -89,8 +89,8 @@ class SubscriptionCommandApplicationService {
 
     long expected = support.parseEtag(ifMatch);
     if (subscription.version() != expected)
-      throw new SubscriptionApiException(
-          412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     rejectHeldScheduleMutation(subscription, normalized);
     switch (normalized) {
       case "CHANGE_PLAN" -> changePlan(memberId, subscription, request);
@@ -105,8 +105,8 @@ class SubscriptionCommandApplicationService {
       default -> throw new IllegalStateException();
     }
     if (!store.incrementVersion(subscriptionId, expected))
-      throw new SubscriptionApiException(
-          412, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     store.insertCommandHistory(subscriptionId, normalized, expected, expected + 1);
     var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
@@ -135,7 +135,7 @@ class SubscriptionCommandApplicationService {
       StoredIdempotencyResult stored,
       String fingerprint) {
     if (!fingerprint.equals(stored.fingerprint()))
-      throw new SubscriptionApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
     var body = support.responseBody(stored.bodyJson());
     reservations.updateStoredCommandBody(
         memberId, subscriptionId, command, key, support.bodyJson(body));
@@ -151,7 +151,7 @@ class SubscriptionCommandApplicationService {
             ? support.requiredLong(request.petId(), "petId")
             : subscription.petId();
     if (request.petId() != null && petId != request.petId())
-      throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
     PetProjection pet = store.findOwnedPet(memberId, petId);
     SubscriptionSnapshot basis = pendingOrCurrentSnapshot(subscription);
     long versionId = support.requiredLong(request.planVersionId(), "planVersionId");
@@ -159,8 +159,8 @@ class SubscriptionCommandApplicationService {
         availableVersion(pet, versionId, basis.deliveryCycleWeeks());
     ScheduleProjection schedule = store.lockNextScheduled(subscription.id());
     if (store.scheduleAddonConflicts(schedule.id(), versionId))
-      throw new SubscriptionApiException(
-          409, "ADDON_CONFLICTS_WITH_PLAN", "Add-on을 먼저 제거해야 Plan을 변경할 수 있습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.CONFLICT, "ADDON_CONFLICTS_WITH_PLAN", "Add-on을 먼저 제거해야 Plan을 변경할 수 있습니다.");
     long snapshot =
         store.createSnapshot(
             subscription.id(), versionId, basis.deliveryCycleWeeks(), version.packagePriceKrw());
@@ -173,11 +173,11 @@ class SubscriptionCommandApplicationService {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     int cycle = support.requiredInt(request.deliveryCycleWeeks(), "deliveryCycleWeeks");
     if (!List.of(2, 4, 8).contains(cycle))
-      throw new SubscriptionApiException(409, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
     SubscriptionSnapshot basis = pendingOrCurrentSnapshot(subscription);
     if (!store.deliveryCycleAllowed(basis.planVersionId(), cycle))
-      throw new SubscriptionApiException(
-          409, "DELIVERY_CYCLE_NOT_ALLOWED", "적용될 PlanVersion이 요청 배송 주기를 지원하지 않습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "적용될 PlanVersion이 요청 배송 주기를 지원하지 않습니다.");
     ScheduleProjection schedule = store.lockNextScheduled(subscription.id());
     long snapshot =
         store.createSnapshot(
@@ -190,11 +190,11 @@ class SubscriptionCommandApplicationService {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     LocalDate requestedDate = support.requiredDate(request.scheduledDate(), "scheduledDate");
     if (!requestedDate.isAfter(support.today()))
-      throw new SubscriptionApiException(409, "SCHEDULE_DATE_NOT_FUTURE", "새 배송일은 오늘보다 미래여야 합니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "SCHEDULE_DATE_NOT_FUTURE", "새 배송일은 오늘보다 미래여야 합니다.");
     ScheduleProjection schedule = store.lockNextScheduled(subscription.id());
     if (requestedDate.equals(schedule.scheduledDate())
         || store.scheduleDateTaken(subscription.id(), requestedDate, schedule.id()))
-      throw new SubscriptionApiException(409, "SCHEDULE_DATE_CONFLICT", "같은 날짜의 Schedule이 이미 존재합니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "SCHEDULE_DATE_CONFLICT", "같은 날짜의 Schedule이 이미 존재합니다.");
     store.reschedule(schedule.id(), requestedDate);
     store.deleteDeliveryReminder(schedule.id());
   }
@@ -256,18 +256,18 @@ class SubscriptionCommandApplicationService {
     long skuId = support.requiredLong(request.skuId(), "skuId");
     int quantity = support.requiredInt(request.quantity(), "quantity");
     if (quantity < 1 || quantity > 10)
-      throw new SubscriptionApiException(400, "VALIDATION_FAILED", "quantity는 1~10이어야 합니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.BAD_REQUEST, "VALIDATION_FAILED", "quantity는 1~10이어야 합니다.");
     ScheduleProjection schedule = store.lockNextScheduled(subscription.id());
     SubscriptionSnapshot basis = pendingOrCurrentSnapshot(subscription);
     if (store.planContainsSku(basis.planVersionId(), skuId))
-      throw new SubscriptionApiException(
-          409, "ADDON_SKU_ALREADY_INCLUDED", "기본 Plan에 포함된 SKU는 Add-on으로 추가할 수 없습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.CONFLICT, "ADDON_SKU_ALREADY_INCLUDED", "기본 Plan에 포함된 SKU는 Add-on으로 추가할 수 없습니다.");
     if (!store.hasScheduleAddon(schedule.id(), skuId)
         && store.scheduleAddonCount(schedule.id()) >= 10)
-      throw new SubscriptionApiException(409, "ADDON_LIMIT_EXCEEDED", "한 Schedule의 Add-on은 최대 10개입니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "ADDON_LIMIT_EXCEEDED", "한 Schedule의 Add-on은 최대 10개입니다.");
     AddonSkuProjection sku = store.findEligibleAddonSku(skuId);
     if (!sku.eligible())
-      throw new SubscriptionApiException(409, "ADDON_NOT_AVAILABLE", "Add-on을 구매할 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "ADDON_NOT_AVAILABLE", "Add-on을 구매할 수 없습니다.");
     store.upsertScheduleAddon(schedule.id(), skuId, quantity, sku.price());
   }
 
@@ -284,7 +284,7 @@ class SubscriptionCommandApplicationService {
       PetProjection pet, long versionId, int cycle) {
     PlanVersionProjection version = store.findPlanVersion(versionId);
     if (!pet.petType().equals(version.targetPetType()))
-      throw new SubscriptionApiException(409, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
     LocalDate today = support.today();
     if (version.currentPlanVersionId() == null
         || version.currentPlanVersionId() != version.id()
@@ -293,9 +293,9 @@ class SubscriptionCommandApplicationService {
         || version.migrationOnly()
         || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
         || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
-      throw new SubscriptionApiException(409, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
     if (!store.deliveryCycleAllowed(versionId, cycle))
-      throw new SubscriptionApiException(409, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
     return version;
   }
 }

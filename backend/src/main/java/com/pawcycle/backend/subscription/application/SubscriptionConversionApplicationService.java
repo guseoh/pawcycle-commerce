@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.api.SubscriptionOptionsResponse;
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.time.Clock;
@@ -26,7 +26,7 @@ public class SubscriptionConversionApplicationService {
   @Transactional(readOnly = true)
   public SubscriptionOptionsResponse subscriptionOptions(long memberId, long orderId) {
     if (queries.findPaidOneTimeOrder(memberId, orderId).isEmpty()) {
-      throw new SubscriptionApiException(404, "ORDER_NOT_FOUND", "주문을 찾을 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "ORDER_NOT_FOUND", "주문을 찾을 수 없습니다.");
     }
     java.util.Set<Long> sourceProducts = queries.findOrderProductIds(orderId);
     List<SubscriptionOptionsResponse.Option> options = new ArrayList<>();

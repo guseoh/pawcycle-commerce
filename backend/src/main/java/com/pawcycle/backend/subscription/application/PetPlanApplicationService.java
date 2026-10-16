@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.persistence.projection.PageProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PetProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PlanVersionProjection;
@@ -106,7 +106,7 @@ class PetPlanApplicationService {
   private void validateAvailable(PetProjection pet, PlanVersionProjection version) {
     LocalDate today = support.today();
     if (!pet.petType().equals(version.targetPetType()))
-      throw new SubscriptionApiException(409, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
     if (version.currentPlanVersionId() == null
         || version.currentPlanVersionId() != version.id()
         || version.planName() == null
@@ -114,7 +114,7 @@ class PetPlanApplicationService {
         || version.migrationOnly()
         || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
         || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
-      throw new SubscriptionApiException(409, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
   }
 
   private int page(int page, int size) {

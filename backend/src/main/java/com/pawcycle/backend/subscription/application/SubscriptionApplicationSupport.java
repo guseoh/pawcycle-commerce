@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import java.math.BigDecimal;
@@ -25,14 +25,14 @@ final class SubscriptionApplicationSupport {
   }
 
   long parseEtag(String value) {
-    if (value == null) throw new SubscriptionApiException(428, "IF_MATCH_REQUIRED", "If-Match가 필요합니다.");
+    if (value == null) throw new SubscriptionFailure(SubscriptionFailure.Kind.PRECONDITION_REQUIRED, "IF_MATCH_REQUIRED", "If-Match가 필요합니다.");
     if (!value.matches("\\\"[0-9]+\\\""))
-      throw new SubscriptionApiException(400, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.BAD_REQUEST, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.");
     try {
       return Long.parseLong(value.substring(1, value.length() - 1));
     } catch (NumberFormatException exception) {
-      throw new SubscriptionApiException(
-          400, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.", exception);
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.BAD_REQUEST, "IF_MATCH_INVALID", "If-Match 형식이 올바르지 않습니다.", exception);
     }
   }
 
@@ -87,12 +87,12 @@ final class SubscriptionApplicationSupport {
     return LocalDate.now(clock.withZone(SEOUL));
   }
 
-  SubscriptionApiException validation(String field) {
-    return new SubscriptionApiException(400, "VALIDATION_FAILED", field + " 값을 확인해 주세요.");
+  SubscriptionFailure validation(String field) {
+    return new SubscriptionFailure(SubscriptionFailure.Kind.BAD_REQUEST, "VALIDATION_FAILED", field + " 값을 확인해 주세요.");
   }
 
-  SubscriptionApiException state() {
-    return new SubscriptionApiException(
-        409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "현재 Subscription 상태에서는 명령을 실행할 수 없습니다.");
+  SubscriptionFailure state() {
+    return new SubscriptionFailure(
+        SubscriptionFailure.Kind.CONFLICT, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "현재 Subscription 상태에서는 명령을 실행할 수 없습니다.");
   }
 }
