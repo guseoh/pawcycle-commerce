@@ -139,3 +139,23 @@ class HealthTests(TestCase):
         values = [f["value"] for f in payload["embeds"][0]["fields"]]
         self.assertIn("CHECK_FAILED", values)
         self.assertNotIn("hidden details", str(payload))
+
+    @patch.object(health, "sync_health")
+    @patch.object(health, "daily_report", return_value=("CHECK_FAILED", "RuntimeError"))
+    @patch.object(health, "scheduled_runs", return_value=[run(1)])
+    def test_daily_probe_failure_also_raises_monitor_health_incident(self, _runs, _daily, sync):
+        with patch.dict("os.environ", {"OCI_A1_HEALTH_MODE": "daily"}):
+            with self.assertRaisesRegex(RuntimeError, "Daily capacity check/alert failed"):
+                health.main()
+        report = sync.call_args.args[0]
+        self.assertTrue(report["unhealthy"])
+        self.assertIn("Daily capacity check/alert failed", report["reasons"][-1])
+
+    @patch.object(health, "sync_health")
+    @patch.object(health, "daily_report")
+    @patch.object(health, "scheduled_runs", return_value=[run(1)])
+    def test_preview_does_not_probe_oci(self, _runs, daily, sync):
+        with patch.dict("os.environ", {"OCI_A1_HEALTH_MODE": "preview"}):
+            health.main()
+        daily.assert_not_called()
+        sync.assert_not_called()
