@@ -69,11 +69,11 @@ jobs:
             (github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && 'daily' || 'watch') }}
       GITHUB_TOKEN: ${{ github.token }}
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-      OCI_API_FINGERPRINT: ${{ secrets.OCI_API_FINGERPRINT }}
-      OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
-      OCI_API_PASSPHRASE: ${{ secrets.OCI_API_PASSPHRASE }}
+      OCI_TENANCY_OCID: ${{ github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && secrets.OCI_TENANCY_OCID || '' }}
+      OCI_USER_OCID: ${{ github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && secrets.OCI_USER_OCID || '' }}
+      OCI_API_FINGERPRINT: ${{ github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && secrets.OCI_API_FINGERPRINT || '' }}
+      OCI_API_PRIVATE_KEY: ${{ github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && secrets.OCI_API_PRIVATE_KEY || '' }}
+      OCI_API_PASSPHRASE: ${{ github.event_name == 'schedule' && github.event.schedule == '47 0 * * *' && secrets.OCI_API_PASSPHRASE || '' }}
     steps:
       - name: Checkout trusted repository code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
