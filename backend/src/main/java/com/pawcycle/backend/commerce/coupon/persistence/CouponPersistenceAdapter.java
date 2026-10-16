@@ -3,7 +3,6 @@ package com.pawcycle.backend.commerce.coupon.persistence;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.coupon.domain.CouponEntity;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponRepository;
-import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.domain.MemberCouponEntity;
 import com.pawcycle.backend.commerce.coupon.persistence.MemberCouponRepository;
 import com.pawcycle.backend.member.persistence.MemberRepository;
@@ -34,7 +33,7 @@ public class CouponPersistenceAdapter {
   }
 
   @Transactional
-  public long create(CouponRequest request) {
+  public long create(CouponWriteCommand request) {
     return coupons
         .saveAndFlush(
             new CouponEntity(
@@ -50,7 +49,7 @@ public class CouponPersistenceAdapter {
   }
 
   @Transactional
-  public void update(long couponId, CouponRequest request) {
+  public void update(long couponId, CouponWriteCommand request) {
     CouponEntity coupon = requireCoupon(couponId);
     coupon.update(
         request.name(),

@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class InteractionEventPersistenceAdapter {
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new InteractionTimestampJdbcType());
   private final EntityManager entities;
 
   InteractionEventPersistenceAdapter(EntityManager entities) {
@@ -43,8 +45,7 @@ public class InteractionEventPersistenceAdapter {
         .setParameter("source", event.source(), String.class)
         .setParameter("request", event.recommendationRequestId(), String.class)
         .setParameter("context", event.contextJson(), String.class)
-        .setParameter("occurred", event.occurredAt(), new BasicTypeImpl<>(
-            JdbcTimestampJavaType.INSTANCE, new InteractionTimestampJdbcType()))
+        .setParameter("occurred", event.occurredAt(), LEGACY_TIMESTAMP_TYPE)
         .executeUpdate();
   }
 
