@@ -1,12 +1,11 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.commerce.order.domain.QuickReorderPolicy;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import jakarta.persistence.EntityManager;
 import org.hibernate.FlushMode;
 import org.hibernate.Session;
@@ -20,12 +19,12 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class QuickReorderPersistenceAdapter {
   private final EntityManager entities;
-  private final ObjectMapper objectMapper;
+  private final QuickReorderResultCodec codec;
   private final Clock clock;
 
   public QuickReorderPersistenceAdapter(EntityManager entities, ObjectMapper objectMapper, Clock clock) {
     this.entities = entities;
-    this.objectMapper = objectMapper;
+    this.codec = new QuickReorderResultCodec(objectMapper);
     this.clock = clock;
   }
 
@@ -39,7 +38,7 @@ public class QuickReorderPersistenceAdapter {
       if (existing.sourceOrderId() != sourceOrderId) {
         throw new CommerceException(409, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key가 다른 주문에 사용되었습니다.");
       }
-      return storedResponse(existing.responseJson());
+      return codec.decode(existing.responseJson());
     }
     if (query("SELECT COUNT(*) FROM orders WHERE id=?1 AND member_id=?2", Integer.class)
           .setParameter(1, sourceOrderId)
@@ -59,7 +58,8 @@ public class QuickReorderPersistenceAdapter {
     for (SourceItem sourceItem : sourceItems) {
       long skuId = sourceItem.skuId();
       int quantity = sourceItem.quantity();
-      String reason = reorderSkipReason(sourceItem, quantity);
+      String reason = QuickReorderPolicy.skipReason(sourceItem.skuStatus(), sourceItem.productStatus(),
+          sourceItem.categoryActive(), sourceItem.availableQuantity(), quantity);
       if (reason != null) {
         skippedItems.add(new SkippedItem(skuId, quantity, reason));
         continue;
@@ -81,56 +81,17 @@ public class QuickReorderPersistenceAdapter {
     if (!addedItems.isEmpty()) resultCartVersion = incrementCartVersion(cart.id);
     ReorderResult result = new ReorderResult(addedItems, skippedItems, resultCartVersion);
     try {
-      Map<String, Object> json = new LinkedHashMap<>();
-      json.put("addedItems", addedItems);
-      json.put("skippedItems", skippedItems);
-      json.put("cartVersion", resultCartVersion);
       mutation("INSERT INTO quick_reorder_idempotency_results(member_id,idempotency_key,source_order_id,response_json,cart_version,created_at) VALUES (?1,?2,?3,?4,?5,?6)")
           .setParameter(1, memberId)
           .setParameter(2, idempotencyKey)
           .setParameter(3, sourceOrderId)
-          .setParameter(4, objectMapper.writeValueAsString(json))
+          .setParameter(4, codec.encode(result))
           .setParameter(5, resultCartVersion)
           .setParameter(6, now(), timestampType()).executeUpdate();
     } catch (Exception exception) {
       throw new IllegalStateException("Quick Reorder 결과를 저장할 수 없습니다.", exception);
     }
     return result;
-  }
-
-  private String reorderSkipReason(SourceItem sourceItem, int quantity) {
-    if (!"ACTIVE".equals(sourceItem.skuStatus())
-        || !"PUBLIC".equals(sourceItem.productStatus())
-        || !sourceItem.categoryActive()) return "SKU_NOT_PURCHASABLE";
-    Integer available = sourceItem.availableQuantity();
-    if (available == null || available < quantity) return "OUT_OF_STOCK";
-    return null;
-  }
-
-  private ReorderResult storedResponse(String responseJson) {
-    try {
-      var responseType =
-          objectMapper.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class);
-      Map<String, Object> response = objectMapper.readValue(responseJson, responseType);
-      List<ReorderItem> added =
-          ((List<?>) response.get("addedItems"))
-              .stream()
-              .map(item -> item instanceof Map<?, ?> map
-                  ? new ReorderItem(number(map, "skuId"), (int) number(map, "quantity"))
-                  : new ReorderItem(0, 0))
-              .toList();
-      List<SkippedItem> skipped =
-          ((List<?>) response.get("skippedItems"))
-              .stream()
-              .map(item -> {
-                Map<?, ?> map = (Map<?, ?>) item;
-                return new SkippedItem(number(map, "skuId"), (int) number(map, "quantity"), (String) map.get("reason"));
-              })
-              .toList();
-      return new ReorderResult(added, skipped, number(response, "cartVersion"));
-    } catch (Exception exception) {
-      throw new CommerceException(409, "IDEMPOTENCY_KEY_CONFLICT", "저장된 Quick Reorder 결과를 읽을 수 없습니다.");
-    }
   }
 
   private void lockMember(long memberId) {
@@ -183,10 +144,6 @@ public class QuickReorderPersistenceAdapter {
 
   private Timestamp now() {
     return Timestamp.from(clock.instant());
-  }
-
-  private static long number(Map<?, ?> row, String key) {
-    return ((Number) row.get(key)).longValue();
   }
 
   public record ReorderResult(List<ReorderItem> addedItems, List<SkippedItem> skippedItems, long cartVersion) {}
