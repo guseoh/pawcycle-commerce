@@ -61,6 +61,16 @@ To disable both capacity and health checks immediately, set `OCI_A1_MONITOR_ENAB
 
 **Alert troubleshooting:** `OUT_OF_HOST_CAPACITY` never sends an urgent capacity notification. Use the daily Discord status and [capacity watch Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) to verify polling. For missed/failed checks, inspect [monitor health Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-monitor-health.yml). A daily Discord report is evidence of the daily job, not proof that all 24 hourly checks ran.
 
+## Monitor-health acceptance checks (after separate deployment approval)
+
+1. Review the new `OCI A1 Monitor Health` PR offline test results. Do not treat PR CI as a live OCI/Discord test.
+2. After merge, run its `workflow_dispatch → self_test`, then `preview` on `main`. Preview only reads scheduled run history and must not post to Discord or change an Issue.
+3. Once scheduled in production, confirm **one daily Discord status** appears around 09:47 KST, including the direct OCI Capacity Report status and the preceding 24-hour successful/total scheduled check counts. `OUT_OF_HOST_CAPACITY` is a normal capacity status, not a failed job.
+4. If the latest primary scheduled job fails or the last success becomes over 3 hours old, expect one *health-warning* Discord alert and an unassigned `[OCI A1 Monitor] Scheduled-check health alert` Issue. A later healthy observation should close that Issue without another warning.
+5. Validate the **AVAILABLE transition alert** only against a genuine OCI `AVAILABLE` report; never fake availability, create a VM, or emit a false production notification just to test Discord.
+
+The health workflow does not check `pawcycle-arm-01` automatically, and scheduled watchdog runs can themselves be delayed or skipped by GitHub Actions.
+
 ## 4. Before acting on an alert
 
 Reopen the [OCI Console](https://cloud.oracle.com/) and confirm the latest Capacity Report manually. In **Compute → Instances**, check all relevant compartments for `pawcycle-arm-01` before any instance provisioning; also review Always Free quotas, remaining credits and any active billing charges.
