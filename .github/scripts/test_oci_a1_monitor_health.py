@@ -125,7 +125,7 @@ class HealthTests(TestCase):
         report = health.evaluate([run(1)], NOW)
         with patch.object(monitor, "fetch_capacity", return_value=("OUT_OF_HOST_CAPACITY", None)), \
              patch.object(monitor, "sync_issue") as sync:
-            self.assertEqual(health.daily_report(report, NOW), "OUT_OF_HOST_CAPACITY")
+            self.assertEqual(health.daily_report(report, NOW), ("OUT_OF_HOST_CAPACITY", None))
             sync.assert_called_once()
         self.assertIn("daily capacity", send.call_args.args[0]["embeds"][0]["title"])
 
@@ -134,8 +134,7 @@ class HealthTests(TestCase):
         import oci_a1_capacity_monitor as monitor
         report = health.evaluate([run(1)], NOW)
         with patch.object(monitor, "fetch_capacity", side_effect=RuntimeError("hidden details")):
-            with self.assertRaisesRegex(RuntimeError, "Daily OCI Capacity Report failed"):
-                health.daily_report(report, NOW)
+            self.assertEqual(health.daily_report(report, NOW), ("CHECK_FAILED", "RuntimeError"))
         payload = send.call_args.args[0]
         values = [f["value"] for f in payload["embeds"][0]["fields"]]
         self.assertIn("CHECK_FAILED", values)
