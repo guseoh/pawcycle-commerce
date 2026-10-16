@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse;
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.util.ArrayList;
@@ -23,16 +23,16 @@ public class SubscriptionCycleSuggestionApplicationService {
             .findRuntimeSubscription(memberId, subscriptionId)
             .orElseThrow(
                 () ->
-                    new SubscriptionApiException(
-                        404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
+                    new SubscriptionFailure(
+                        SubscriptionFailure.Kind.NOT_FOUND, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
     if (!"ACTIVE".equals(subscription.status())) {
-      throw new SubscriptionApiException(
-          409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "ACTIVE Subscription만 제안할 수 있습니다.");
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.CONFLICT, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "ACTIVE Subscription만 제안할 수 있습니다.");
     }
     List<java.time.LocalDate> dates = queries.findSuccessfulScheduleDates(subscriptionId);
     if (dates.size() < 3) {
-      throw new SubscriptionApiException(
-          409,
+      throw new SubscriptionFailure(
+          SubscriptionFailure.Kind.CONFLICT,
           "CYCLE_SUGGESTION_INSUFFICIENT_HISTORY",
           "성공적으로 처리된 Subscription 주문이 3회 이상 필요합니다.");
     }

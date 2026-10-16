@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.persistence.projection.CommandHistoryProjection;
 import com.pawcycle.backend.subscription.persistence.projection.NextDeliveryProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PageProjection;
@@ -161,7 +161,7 @@ class SubscriptionQueryApplicationService {
       SubscriptionSnapshotResponse currentSnapshot,
       LocalDate nextScheduledDate) {
     if (subscription.petId() != null && pet == null)
-      throw new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
     return new SubscriptionSummaryResponse(
         subscription.id(),
         subscription.status(),

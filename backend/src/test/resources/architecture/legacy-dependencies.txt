@@ -167,16 +167,10 @@ application-api | com.pawcycle.backend.subscription.application.PetPlanApplicati
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanItemResponse
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanSaleResponse
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanVersionResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.UpdatePetRequest
-application-api | com.pawcycle.backend.subscription.application.SubscriptionApplicationSupport -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.SubscriptionApplicationSupport -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionCommandApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.SubscriptionCommandApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionCommandRequest
-application-api | com.pawcycle.backend.subscription.application.SubscriptionConversionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.SubscriptionCreationApplicationService -> com.pawcycle.backend.subscription.api.CreateSubscriptionRequest
-application-api | com.pawcycle.backend.subscription.application.SubscriptionCreationApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
-application-api | com.pawcycle.backend.subscription.application.SubscriptionCycleSuggestionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.SubscriptionOperationResult -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.CommandHistoryResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.NextDeliveryResponse
@@ -185,7 +179,6 @@ application-api | com.pawcycle.backend.subscription.application.SubscriptionQuer
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.PetResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.ScheduleResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionAddonResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionApiException
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionIssueResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionQueryApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionItemDetailResponse
@@ -210,5 +203,3 @@ persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerC
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.ProductCreateRequest
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.SkuCreateRequest
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence$Product -> com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest
-persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateQueryPersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException
-persistence-api | com.pawcycle.backend.subscription.persistence.SubscriptionAggregateWritePersistence -> com.pawcycle.backend.subscription.api.SubscriptionApiException

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
 import com.pawcycle.backend.subscription.automation.SubscriptionIdempotencyCleanupProcessor;
@@ -418,7 +418,7 @@ class SubscriptionServiceIntegrationTests {
                     member.getId(),
                     "create-replay-key",
                     new CreateSubscriptionRequest(petId, planVersionId, 2)))
-        .isInstanceOf(SubscriptionApiException.class)
+        .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IDEMPOTENCY_KEY_REUSED");
   }
 

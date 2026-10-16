@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.persistence.projection.PetProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PlanVersionProjection;
 import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotencyResult;
@@ -71,7 +71,7 @@ class SubscriptionCreationApplicationService {
       StoredIdempotencyResult stored,
       String fingerprint) {
     if (!fingerprint.equals(stored.fingerprint()))
-      throw new SubscriptionApiException(409, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
     var body = support.responseBody(stored.bodyJson());
     reservations.updateStoredCreationBody(memberId, key, support.bodyJson(body));
     return new SubscriptionOperationResult(
@@ -82,7 +82,7 @@ class SubscriptionCreationApplicationService {
       PetProjection pet, long versionId, int cycle) {
     PlanVersionProjection version = store.findPlanVersion(versionId);
     if (!pet.petType().equals(version.targetPetType()))
-      throw new SubscriptionApiException(409, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
     LocalDate today = support.today();
     if (version.currentPlanVersionId() == null
         || version.currentPlanVersionId() != version.id()
@@ -91,9 +91,9 @@ class SubscriptionCreationApplicationService {
         || version.migrationOnly()
         || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
         || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
-      throw new SubscriptionApiException(409, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
     if (!store.deliveryCycleAllowed(versionId, cycle))
-      throw new SubscriptionApiException(409, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
+      throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");
     return version;
   }
 }

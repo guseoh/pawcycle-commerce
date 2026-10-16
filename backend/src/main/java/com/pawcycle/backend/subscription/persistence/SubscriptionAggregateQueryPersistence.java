@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.persistence;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.persistence.projection.AddonSkuProjection;
 import com.pawcycle.backend.subscription.persistence.projection.CommandHistoryProjection;
 import com.pawcycle.backend.subscription.persistence.projection.NextDeliveryProjection;
@@ -48,12 +48,12 @@ class SubscriptionAggregateQueryPersistence {
 
 public PetProjection findOwnedPet(long memberId, long petId) {
     return reads.ownedPet(memberId, petId)
-        .orElseThrow(() -> new SubscriptionApiException(404, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다."));
   }
 
 public PlanVersionProjection findPlanVersion(long versionId) {
     return reads.planVersion(versionId)
-        .orElseThrow(() -> new SubscriptionApiException(404, "PLAN_VERSION_NOT_FOUND", "PlanVersion을 찾을 수 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PLAN_VERSION_NOT_FOUND", "PlanVersion을 찾을 수 없습니다."));
   }
 
 public boolean deliveryCycleAllowed(long versionId, int cycle) {
@@ -85,19 +85,19 @@ public AddonSkuProjection findEligibleAddonSku(long skuId) {
             sku.id, product.id, product.name, sku.name, sku.price, eligible))
         .from(sku).join(sku.product, product).join(product.category, category).join(brand).on(brand.id.eq(product.brandId))
         .leftJoin(inventory).on(inventory.skuId.eq(sku.id)).where(sku.id.eq(skuId)).fetchOne())
-        .orElseThrow(() -> new SubscriptionApiException(404, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "ADDON_NOT_FOUND", "Add-on을 찾을 수 없습니다."));
   }
 
 public SubscriptionProjection lockOwnedSubscription(long memberId, long subscriptionId) {
     return Optional.ofNullable(queries.select(Projections.constructor(SubscriptionProjection.class, subscription.id, subscription.memberId, subscription.status, subscription.version, subscription.petId, subscription.deliveryCycleWeeks, subscription.currentSnapshotId)).from(subscription)
         .where(subscription.id.eq(subscriptionId), subscription.memberId.eq(memberId), subscription.runtimeManaged.isTrue())
         .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne())
-        .orElseThrow(() -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
   }
 
 public SubscriptionProjection findOwnedSubscription(long memberId, long subscriptionId) {
     return reads.ownedSubscription(memberId, subscriptionId)
-        .orElseThrow(() -> new SubscriptionApiException(404, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다."));
   }
 
 public PageProjection<PetProjection> findPets(long memberId, int page, int size) {
@@ -137,7 +137,7 @@ public ScheduleProjection lockNextScheduled(long subscriptionId) {
                 + " ORDER BY schedule.scheduled_date,schedule.id LIMIT 1 FOR UPDATE", ScheduleProjection.class, subscriptionId)
         .addScalar("id", Long.class).addScalar("scheduled_date", LocalDate.class)
         .getResultList().stream().findFirst()
-        .orElseThrow(() -> new SubscriptionApiException(409, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
+        .orElseThrow(() -> new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "SUBSCRIPTION_COMMAND_NOT_ALLOWED", "다음 Schedule이 없습니다."));
   }
 
 public Optional<PendingSubscriptionChange> findPendingChange(long subscriptionId) {

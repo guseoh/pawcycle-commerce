@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.SubscriptionApiException;
+import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.persistence.projection.NextDeliveryProjection;
 import com.pawcycle.backend.subscription.persistence.projection.SubscriptionProjection;
 
@@ -71,7 +71,7 @@ class SubscriptionCommandStateTests {
                       "held-" + command,
                       "\"0\"",
                       SubscriptionCommandRequest.empty()))
-          .isInstanceOf(SubscriptionApiException.class)
+          .isInstanceOf(SubscriptionFailure.class)
           .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_COMMAND_NOT_ALLOWED");
       verify(store, never()).lockNextScheduled(1L);
       verify(store, never()).incrementVersion(anyLong(), anyLong());
