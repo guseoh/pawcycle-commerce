@@ -49,6 +49,58 @@ class QuickReorderTypedMappingIntegrationTests {
   @Autowired private WebApplicationContext context;
 
   @Test
+  void legacyStoredShapesReplayWithExactlyTheSameResultsOrConflictsWithoutCartWrites() {
+    Fixture f = fixture(true);
+    var fixed = Clock.fixed(Instant.parse("2026-10-08T00:00:00Z"), ZoneOffset.UTC);
+    var legacy = new FrozenQuickReorderJdbcReference(jdbc, json, fixed);
+    var typed = new QuickReorderPersistenceAdapter(entities, json, fixed);
+    for (String payload : List.of(
+        "{\"addedItems\":[null,7,\"text\",true,[]],\"skippedItems\":[],\"cartVersion\":1,\"extra\":true}",
+        "{\"addedItems\":[{\"skuId\":12.9,\"quantity\":4294967297}],\"skippedItems\":[{\"skuId\":3,\"quantity\":4,\"reason\":null}],\"cartVersion\":1.9}",
+        "{}", "[]", "null",
+        "{\"addedItems\":[{}],\"skippedItems\":[],\"cartVersion\":1}",
+        "{\"addedItems\":[],\"skippedItems\":[null],\"cartVersion\":1}",
+        "{\"addedItems\":[],\"skippedItems\":[],\"cartVersion\":\"1\"}")) {
+      new TransactionTemplate(manager).executeWithoutResult(status -> {
+        String key = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO quick_reorder_idempotency_results(member_id,idempotency_key,source_order_id,response_json,cart_version,created_at) VALUES (?,?,?,?,0,?)",
+            f.member(), key, f.order(), payload, Timestamp.from(fixed.instant()));
+        String before = replayOutcome(() -> legacy.reorder(f.member(), f.order(), key));
+        String after = replayOutcome(() -> typed.reorder(f.member(), f.order(), key));
+        assertThat(after).as("stored legacy JSON: %s", payload).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM carts WHERE member_id=?", Integer.class, f.member())).isZero();
+        assertThat(json.readTree(stored(f.member(), key))).isEqualTo(json.readTree(payload));
+        status.setRollbackOnly();
+      });
+    }
+  }
+
+  @Test
+  void serializationFailureKeepsStorageExceptionAndRollsBackEarlierCartWritesForBothProtocols() {
+    Fixture f = fixture(true);
+    ObjectMapper failing = org.mockito.Mockito.mock(ObjectMapper.class);
+    var failure = new IllegalArgumentException("test serialization failure");
+    org.mockito.Mockito.when(failing.writeValueAsString(org.mockito.ArgumentMatchers.any())).thenThrow(failure);
+    for (boolean frozen : List.of(true, false)) {
+      String key = UUID.randomUUID().toString();
+      assertThatThrownBy(() -> new TransactionTemplate(manager).executeWithoutResult(status -> {
+        if (frozen) new FrozenQuickReorderJdbcReference(jdbc, failing, Clock.systemUTC()).reorder(f.member(), f.order(), key);
+        else new QuickReorderPersistenceAdapter(entities, failing, Clock.systemUTC()).reorder(f.member(), f.order(), key);
+      })).isInstanceOf(IllegalStateException.class).hasMessage("Quick Reorder 결과를 저장할 수 없습니다.").hasCause(failure);
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM carts WHERE member_id=?", Integer.class, f.member())).isZero();
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quick_reorder_idempotency_results WHERE member_id=? AND idempotency_key=?", Integer.class, f.member(), key)).isZero();
+    }
+  }
+
+  private String replayOutcome(java.util.function.Supplier<?> action) {
+    try {
+      return json.writeValueAsString(action.get());
+    } catch (CommerceException exception) {
+      return exception.status() + ":" + exception.code() + ":" + exception.getMessage();
+    }
+  }
+
+  @Test
   void typedRowsMatchFrozenJdbcResultStoredJsonAndCartIncludingSkipOrdering() {
     Fixture f = fixture(true);
     var fixed = Clock.fixed(Instant.parse("2026-10-08T00:00:00Z"), ZoneOffset.UTC);
