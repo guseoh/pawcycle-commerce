@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.admin.api;
 
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.DetailSectionView;
 import java.time.Instant;
 
 public record DetailSectionResponse(
@@ -10,4 +11,16 @@ public record DetailSectionResponse(
     int displayOrder,
     boolean visible,
     Instant createdAt,
-    Instant updatedAt) {}
+    Instant updatedAt) {
+  public static DetailSectionResponse from(DetailSectionView value) {
+    return new DetailSectionResponse(
+        value.sectionId(),
+        value.productId(),
+        value.title(),
+        value.body(),
+        value.displayOrder(),
+        value.visible(),
+        value.createdAt(),
+        value.updatedAt());
+  }
+}

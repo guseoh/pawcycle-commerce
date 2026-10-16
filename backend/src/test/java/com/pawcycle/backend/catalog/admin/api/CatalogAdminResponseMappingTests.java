@@ -72,13 +72,27 @@ class CatalogAdminResponseMappingTests {
       String label, Class<?> type, int pattern, boolean empty) throws Exception {
     Object view = fixture(type, 101, pattern, empty);
     Object expected = map(FrozenCatalogAdminResponseMapping.class, view);
-    Object actual = map(CatalogAdminResponseMapping.class, view);
+    Object actual = from(view);
     assertThat(actual).isExactlyInstanceOf(expected.getClass()).isEqualTo(expected);
     assertThat(JSON.writeValueAsString(actual)).isEqualTo(JSON.writeValueAsString(expected));
   }
 
+  private static Object from(Object view) throws Exception {
+    Method legacy = FrozenCatalogAdminResponseMapping.class.getDeclaredMethod("response", view.getClass());
+    return legacy.getReturnType().getMethod("from", view.getClass()).invoke(null, view);
+  }
+
   static Stream<Method> mappings() {
-    return Arrays.stream(CatalogAdminResponseMapping.class.getDeclaredMethods());
+    return Arrays.stream(FrozenCatalogAdminResponseMapping.class.getDeclaredMethods()).map(legacy -> {
+      try {
+        Method factory = legacy.getReturnType().getMethod("from", legacy.getParameterTypes());
+        assertThat(factory.getReturnType()).isEqualTo(legacy.getReturnType());
+        assertThat(java.lang.reflect.Modifier.isStatic(factory.getModifiers())).isTrue();
+        return factory;
+      } catch (NoSuchMethodException exception) {
+        throw new AssertionError(exception);
+      }
+    });
   }
 
   static Stream<Arguments> invalidLists() {
@@ -104,11 +118,11 @@ class CatalogAdminResponseMappingTests {
     try {
       expected = map(FrozenCatalogAdminResponseMapping.class, view);
     } catch (InvocationTargetException legacyFailure) {
-      assertThatThrownBy(() -> map(CatalogAdminResponseMapping.class, view))
+      assertThatThrownBy(() -> from(view))
           .isInstanceOf(InvocationTargetException.class).hasCauseExactlyInstanceOf(legacyFailure.getCause().getClass());
       return;
     }
-    assertThat(map(CatalogAdminResponseMapping.class, view)).isEqualTo(expected);
+    assertThat(from(view)).isEqualTo(expected);
   }
 
   @ParameterizedTest

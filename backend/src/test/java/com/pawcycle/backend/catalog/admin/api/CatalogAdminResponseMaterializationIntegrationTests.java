@@ -116,7 +116,8 @@ class CatalogAdminResponseMaterializationIntegrationTests {
     for (Object view : views) {
       assertMaterialized(view);
       Object expected = FrozenCatalogAdminResponseMapping.class.getDeclaredMethod("response", view.getClass()).invoke(null, view);
-      Object actual = CatalogAdminResponseMapping.class.getDeclaredMethod("response", view.getClass()).invoke(null, view);
+      Object actual = FrozenCatalogAdminResponseMapping.class.getDeclaredMethod("response", view.getClass())
+          .getReturnType().getMethod("from", view.getClass()).invoke(null, view);
       assertThat(actual).isEqualTo(expected);
       assertThat(json.writeValueAsString(actual)).isEqualTo(json.writeValueAsString(expected));
     }
