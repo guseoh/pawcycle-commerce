@@ -52,6 +52,18 @@ class CatalogAdminCommandMappingTests {
             .mapToObj(pattern -> Arguments.of(contract.name() + ":" + pattern, contract, pattern)));
   }
 
+  private static Object emptyView(Class<?> type) throws Exception {
+    var components = type.getRecordComponents();
+    Object[] arguments = Arrays.stream(components).map(component -> {
+      if (component.getType() == int.class) return (Object) 0;
+      if (component.getType() == boolean.class) return (Object) false;
+      if (component.getType() == List.class) return (Object) List.of();
+      return null;
+    }).toArray();
+    return type.getDeclaredConstructor(Arrays.stream(components).map(RecordComponent::getType)
+        .toArray(Class<?>[]::new)).newInstance(arguments);
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("inputs")
   void mapperAndControllerPreserveEveryNullablePresencePattern(
@@ -88,7 +100,7 @@ class CatalogAdminCommandMappingTests {
     }
 
     AdminCatalogMutationService mutations = mock(AdminCatalogMutationService.class,
-        invocation -> mock(invocation.getMethod().getReturnType()));
+        invocation -> emptyView(invocation.getMethod().getReturnType()));
     AdminCatalogController controller = new AdminCatalogController(mock(AdminCatalogService.class), mutations);
     Method endpoint = Arrays.stream(AdminCatalogController.class.getDeclaredMethods())
         .filter(method -> Arrays.asList(method.getParameterTypes()).contains(requestType)).findFirst().orElseThrow();

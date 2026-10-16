@@ -1,4 +1,4 @@
-package com.pawcycle.backend.catalog.admin.persistence;
+package com.pawcycle.backend.catalog.admin.model;
 
 import java.time.Instant;
 import java.util.List;

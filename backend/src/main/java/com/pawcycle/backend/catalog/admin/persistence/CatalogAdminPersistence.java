@@ -1,32 +1,32 @@
 package com.pawcycle.backend.catalog.admin.persistence;
 
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandPatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.BrandView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.BrandView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryFacetAssignCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetDefinitionCreateCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetDefinitionListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetDefinitionListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetDefinitionPatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetDefinitionView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetDefinitionView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetOptionCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetOptionPatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetOptionView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetOptionView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImageCreateCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImagePatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupCreateCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionGroupListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionGroupListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupPatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionGroupView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionGroupView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValueCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValuePatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionValueView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionValueView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductFacetValuesCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ProductFacetValuesView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ProductFacetValuesView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuOptionValuesCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.SkuOptionValuesView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.SkuOptionValuesView;
 import org.springframework.stereotype.Repository;
 
 /** Compatibility facade preserving the existing application API over split JPA collaborators. */
