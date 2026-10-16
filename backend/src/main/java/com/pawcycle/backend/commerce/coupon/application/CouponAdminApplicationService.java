@@ -4,6 +4,7 @@ import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
+import com.pawcycle.backend.commerce.coupon.persistence.CouponWriteCommand;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -28,7 +29,10 @@ public class CouponAdminApplicationService {
 
   @Transactional
   public long create(long adminId, CouponRequest request) {
-    long couponId = coupons.create(request);
+    long couponId = coupons.create(new CouponWriteCommand(
+        request.name(), request.discountType(), request.discountValue(),
+        request.minimumOrderAmount(), request.maximumDiscountAmount(),
+        request.validFrom(), request.validUntil(), request.active()));
     audits.append(adminId, "COUPON_CREATE", "COUPON", couponId);
     return couponId;
   }
@@ -46,8 +50,8 @@ public class CouponAdminApplicationService {
     audits.append(adminId, "COUPON_UPDATE", "COUPON", couponId);
   }
 
-  private static CouponRequest merged(CouponView current, CouponPatchCommand request) {
-    return new CouponRequest(
+  private static CouponWriteCommand merged(CouponView current, CouponPatchCommand request) {
+    return new CouponWriteCommand(
         request.hasName() ? request.name() : current.name(),
         request.hasDiscountType() ? request.discountType() : current.discountType(),
         request.hasDiscountValue() ? request.discountValue() : current.discountValue(),

@@ -8,7 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
-import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
+import com.pawcycle.backend.commerce.coupon.persistence.CouponWriteCommand;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
 import java.math.BigDecimal;
@@ -52,7 +52,7 @@ class CouponAdminApplicationServiceTests {
     service.update(1L, 7L, patch);
 
     verify(coupons).findForUpdate(7L);
-    CouponRequest merged = updatedRequest();
+    CouponWriteCommand merged = updatedRequest();
     assertThat(merged.name()).isEqualTo("새 쿠폰");
     assertThat(merged.discountType()).isEqualTo("PERCENTAGE");
     assertThat(merged.discountValue()).isEqualByComparingTo("10");
@@ -69,7 +69,7 @@ class CouponAdminApplicationServiceTests {
 
       service.update(1L, 7L, namePatch("시간대 무관"));
 
-      CouponRequest merged = updatedRequest();
+      CouponWriteCommand merged = updatedRequest();
       assertThat(merged.validFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
       assertThat(merged.validUntil()).isEqualTo(LocalDateTime.of(2026, 9, 1, 0, 0));
     } finally {
@@ -118,7 +118,7 @@ class CouponAdminApplicationServiceTests {
 
     service.update(1L, 7L, patch);
 
-    CouponRequest merged = updatedRequest();
+    CouponWriteCommand merged = updatedRequest();
     assertThat(merged.name()).isEqualTo("전체 수정");
     assertThat(merged.discountType()).isEqualTo("FIXED_AMOUNT");
     assertThat(merged.validFrom()).isEqualTo(LocalDateTime.of(2026, 10, 1, 0, 0));
@@ -196,8 +196,8 @@ class CouponAdminApplicationServiceTests {
     verify(coupons).require(999L);
   }
 
-  private CouponRequest updatedRequest() {
-    ArgumentCaptor<CouponRequest> captor = ArgumentCaptor.forClass(CouponRequest.class);
+  private CouponWriteCommand updatedRequest() {
+    ArgumentCaptor<CouponWriteCommand> captor = ArgumentCaptor.forClass(CouponWriteCommand.class);
     verify(coupons).update(eq(7L), captor.capture());
     return captor.getValue();
   }

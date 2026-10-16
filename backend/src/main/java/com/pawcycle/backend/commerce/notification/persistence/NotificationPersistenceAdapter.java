@@ -14,6 +14,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class NotificationPersistenceAdapter {
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new NotificationTimestampJdbcType());
   private final EntityManager entities;
   private final Clock clock;
 
@@ -70,6 +72,6 @@ public class NotificationPersistenceAdapter {
   }
 
   private static BasicTypeImpl<Timestamp> timestampType() {
-    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new NotificationTimestampJdbcType());
+    return LEGACY_TIMESTAMP_TYPE;
   }
 }

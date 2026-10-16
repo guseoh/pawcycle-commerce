@@ -2,6 +2,8 @@ package com.pawcycle.backend.commerce.coupon.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pawcycle.backend.support.SecondaryReadFixtures;
+import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.concurrent.CountDownLatch;
@@ -9,27 +11,40 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @ActiveProfiles("test")
 class CouponPatchConcurrencyIntegrationTests {
   @Autowired private CouponAdminApplicationService service;
   @Autowired private JdbcTemplate jdbc;
+  @Autowired private EntityManager entities;
+  @Autowired private PlatformTransactionManager manager;
 
   private Long couponId;
+  private long adminId;
+
+  @BeforeEach
+  void admin() {
+    adminId = new TransactionTemplate(manager).execute(s -> new SecondaryReadFixtures(jdbc, entities).member());
+  }
 
   @AfterEach
   void tearDown() {
-    if (couponId == null) return;
-    jdbc.update(
-        "DELETE FROM admin_audit_logs WHERE target_type='COUPON' AND target_id=?", couponId);
-    jdbc.update("DELETE FROM member_coupons WHERE coupon_id=?", couponId);
-    jdbc.update("DELETE FROM coupons WHERE id=?", couponId);
+    if (couponId != null) {
+      jdbc.update(
+          "DELETE FROM admin_audit_logs WHERE target_type='COUPON' AND target_id=?", couponId);
+      jdbc.update("DELETE FROM member_coupons WHERE coupon_id=?", couponId);
+      jdbc.update("DELETE FROM coupons WHERE id=?", couponId);
+    }
+    jdbc.update("DELETE FROM members WHERE id=?", adminId);
   }
 
   @Test
@@ -74,7 +89,7 @@ class CouponPatchConcurrencyIntegrationTests {
       if (!start.await(10, TimeUnit.SECONDS)) {
         throw new IllegalStateException("concurrency start timeout");
       }
-      service.update(1L, couponId, patch);
+      service.update(adminId, couponId, patch);
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(exception);
