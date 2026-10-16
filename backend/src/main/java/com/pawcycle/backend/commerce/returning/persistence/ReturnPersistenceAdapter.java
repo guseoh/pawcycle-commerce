@@ -160,8 +160,11 @@ public class ReturnPersistenceAdapter {
         .setHibernateFlushMode(FlushMode.COMMIT);
   }
 
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new ReturnTimestampJdbcType());
+
   private static BasicTypeImpl<Timestamp> timestampType() {
-    return new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new ReturnTimestampJdbcType());
+    return LEGACY_TIMESTAMP_TYPE;
   }
 
   private Timestamp now() {
