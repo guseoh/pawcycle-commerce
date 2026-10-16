@@ -205,7 +205,12 @@ def daily_report(report, now):
         # Preserve the original AVAILABLE transition alert + GitHub Issue semantics.
         # OUT_OF_HOST_CAPACITY never triggers a capacity-available Discord alert.
         observed = now.strftime("%Y-%m-%d %H:%M:%S UTC")
-        sync_issue(GithubIssues(), status, count, observed, run_url(report["last_run"]))
+        current_run = ("https://github.com/" + REPO + "/actions/runs/" +
+                       os.environ.get("GITHUB_RUN_ID", "unknown"))
+        try:
+            sync_issue(GithubIssues(), status, count, observed, current_run)
+        except Exception as exc:
+            error = "TrackingIssue" + type(exc).__name__
 
     recent = str(report["success_24h"]) + " successful / " + str(report["total_24h"]) + " scheduled"
     fields = [
@@ -225,9 +230,7 @@ def daily_report(report, now):
         fields, run_url(report["last_run"]), now,
     )
     post_discord(payload)
-    if error:
-        raise RuntimeError("Daily OCI Capacity Report failed: " + error)
-    return status
+    return status, error
 
 
 def main():
@@ -245,9 +248,15 @@ def main():
         return
     # A daily run sends its heartbeat regardless of OUT_OF_HOST_CAPACITY.
     # Watch runs never use OCI keys and alert only on new health incidents.
+    probe_error = None
     if mode == "daily":
-        daily_report(report, now)
+        _, probe_error = daily_report(report, now)
+        if probe_error:
+            report["unhealthy"] = True
+            report["reasons"].append("Daily capacity check/alert failed (" + probe_error + ")")
     print("Health state: " + sync_health(report, now))
+    if probe_error:
+        raise RuntimeError("Daily capacity check/alert failed")
 
 
 if __name__ == "__main__":
