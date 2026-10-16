@@ -8,7 +8,10 @@ This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **n
 
 - Target region: `ap-tokyo-1`; availability domain: `nREs:AP-TOKYO-1-AD-1`.
 - Shape: `VM.Standard.A1.Flex`, exactly **2 OCPU / 12 GB**.
-- GitHub Actions executes each hour at minute 17 UTC, subject to scheduling delay or skipped runs.
+- Primary GitHub Actions capacity checks target **each hour at minute 17 UTC** (KST minute 17), subject to scheduling delays or skipped runs. An Actions `success` means the API query ran; it does **not** mean capacity was available.
+- A separate **OCI A1 Monitor Health** workflow inspects scheduled-run history every 2 hours at minute 43 UTC and on completed primary scheduled runs. If the last successful capacity check is older than **3 hours**, or the newest scheduled run failed/skipped, it sends **one Discord warning per incident** and creates/reopens an unassigned health-tracking Issue. Recovery closes that Issue without repeating warnings.
+- At **00:47 UTC (~09:47 KST)** each day, the health workflow makes one additional read-only Capacity Report request and sends a **Discord daily status** even when the shape is OUT_OF_HOST_CAPACITY. The status contains a fresh point-in-time OCI result, plus successful/total scheduled runs and failed/skipped counts from the last 24 hours. AVAILABLE uses the existing transition notification and Issue tracking; it is not re-alerted while status remains AVAILABLE.
+- The health watcher is also hosted on GitHub Actions. GitHub may delay/skip its schedules too, so this is not an external always-on availability guarantee. For outages of GitHub Actions itself, an off-platform heartbeat monitor would be required.
 - `OUT_OF_HOST_CAPACITY`: no Discord alert. If a tracking Issue exists, close it and clear assignments when status changes; stale assignments are also cleared on unchanged reports.
 - `AVAILABLE` transition: send one Discord embed, then create or reopen an unassigned GitHub Issue for status tracking. The Issue contains no owner mention, and any legacy owner assignment is removed.
 - Repeated AVAILABLE results are silent; a manually closed AVAILABLE Issue is not reopened until an unavailable observation has occurred. Failed Discord delivery leaves the previous Issue status intact so the next scheduled run can retry.
@@ -49,11 +52,24 @@ GitHub automatically supplies `GITHUB_TOKEN` with `issues: write` only in this w
 
 1. Once merged to **main**, open the [workflow page](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) and click **Run workflow → self_test**. The offline tests must pass with **no OCI credentials and no Discord message**.
 2. After the Secrets and OCI IAM policy are configured, click **Run workflow → check**. This makes **one** real report query; confirm a valid status in the run summary. If it detects a new AVAILABLE transition, it will send a real Discord alert.
+   - After deploying the health workflow, its **Run workflow → self_test** checks both monitor and health unit tests without credentials; **Run workflow → preview** inspects run history without an OCI call, Discord message or Issue write. There is no manual live-health-alert option.
 3. Only then visit https://github.com/guseoh/pawcycle-commerce/settings/variables/actions and create a repository variable **`OCI_A1_MONITOR_ENABLED`** with value **`true`**. Scheduled checks start then.
 4. Capacity alerts go to the channel configured by `DISCORD_WEBHOOK_URL`; GitHub Issues are unassigned tracking records without owner mentions. Repository watchers may still receive GitHub notifications according to their own settings.
 5. Occasionally check failed scheduled runs in Actions; scheduling isn't continuous or guaranteed.
 
-To disable immediately, set `OCI_A1_MONITOR_ENABLED` to `false` or remove the variable. No real VM creation is possible in this workflow.
+To disable both capacity and health checks immediately, set `OCI_A1_MONITOR_ENABLED` to `false` or remove the variable. The health workflow is gated by the same variable; its offline self-test and read-only preview remain available. No real VM creation is possible in either workflow.
+
+**Alert troubleshooting:** `OUT_OF_HOST_CAPACITY` never sends an urgent capacity notification. Use the daily Discord status and [capacity watch Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) to verify polling. For missed/failed checks, inspect [monitor health Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-monitor-health.yml). A daily Discord report is evidence of the daily job, not proof that all 24 hourly checks ran.
+
+## Monitor-health acceptance checks (after separate deployment approval)
+
+1. Review the new `OCI A1 Monitor Health` PR offline test results. Do not treat PR CI as a live OCI/Discord test.
+2. After merge, run its `workflow_dispatch → self_test`, then `preview` on `main`. Preview only reads scheduled run history and must not post to Discord or change an Issue.
+3. Once scheduled in production, confirm **one daily Discord status** appears around 09:47 KST, including the direct OCI Capacity Report status and the preceding 24-hour successful/total scheduled check counts. `OUT_OF_HOST_CAPACITY` is a normal capacity status, not a failed job.
+4. If the latest primary scheduled job fails or the last success becomes over 3 hours old, expect one *health-warning* Discord alert and an unassigned `[OCI A1 Monitor] Scheduled-check health alert` Issue. A later healthy observation should close that Issue without another warning.
+5. Validate the **AVAILABLE transition alert** only against a genuine OCI `AVAILABLE` report; never fake availability, create a VM, or emit a false production notification just to test Discord.
+
+The health workflow does not check `pawcycle-arm-01` automatically, and scheduled watchdog runs can themselves be delayed or skipped by GitHub Actions.
 
 ## 4. Before acting on an alert
 
@@ -64,6 +80,9 @@ Reopen the [OCI Console](https://cloud.oracle.com/) and confirm the latest Capac
 - `.github/workflows/oci-a1-capacity-watch.yml`
 - `.github/scripts/oci_a1_capacity_monitor.py`
 - `.github/scripts/test_oci_a1_capacity_monitor.py`
+- `.github/workflows/oci-a1-monitor-health.yml`
+- `.github/scripts/oci_a1_monitor_health.py`
+- `.github/scripts/test_oci_a1_monitor_health.py`
 - `docs/runbook/oci-a1-capacity-watch.md`
 
 Disable the repository variable, remove the workflow with a PR, and revoke the dedicated OCI monitor API key if no longer needed.
