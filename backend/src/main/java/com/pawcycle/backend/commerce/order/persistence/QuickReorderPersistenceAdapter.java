@@ -7,51 +7,53 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
+import jakarta.persistence.EntityManager;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.hibernate.query.NativeQuery;
+import org.hibernate.query.MutationQuery;
+import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
+import org.hibernate.type.internal.BasicTypeImpl;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
 public class QuickReorderPersistenceAdapter {
-  private final JdbcTemplate queries;
+  private final EntityManager entities;
   private final ObjectMapper objectMapper;
   private final Clock clock;
 
-  public QuickReorderPersistenceAdapter(JdbcTemplate queries, ObjectMapper objectMapper, Clock clock) {
-    this.queries = queries;
+  public QuickReorderPersistenceAdapter(EntityManager entities, ObjectMapper objectMapper, Clock clock) {
+    this.entities = entities;
     this.objectMapper = objectMapper;
     this.clock = clock;
   }
 
   public ReorderResult reorder(long memberId, long sourceOrderId, String idempotencyKey) {
     lockMember(memberId);
-    IdempotencyRow existing =
-        one(
-            "SELECT source_order_id AS sourceOrderId,response_json AS responseJson FROM quick_reorder_idempotency_results WHERE member_id=? AND idempotency_key=? FOR UPDATE",
-            (rs, rowNumber) -> new IdempotencyRow(rs.getLong("sourceOrderId"), rs.getString("responseJson")),
-            memberId,
-            idempotencyKey);
+    IdempotencyRow existing = one(query(
+        "SELECT source_order_id AS sourceOrderId,response_json AS responseJson FROM quick_reorder_idempotency_results WHERE member_id=?1 AND idempotency_key=?2 FOR UPDATE",
+        IdempotencyRow.class).addScalar("sourceOrderId", Long.class).addScalar("responseJson", String.class)
+        .setParameter(1, memberId).setParameter(2, idempotencyKey));
     if (existing != null) {
       if (existing.sourceOrderId() != sourceOrderId) {
         throw new CommerceException(409, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key가 다른 주문에 사용되었습니다.");
       }
       return storedResponse(existing.responseJson());
     }
-    if (queries.queryForObject(
-            "SELECT COUNT(*) FROM orders WHERE id=? AND member_id=?", Integer.class, sourceOrderId, memberId)
+    if (query("SELECT COUNT(*) FROM orders WHERE id=?1 AND member_id=?2", Integer.class)
+          .setParameter(1, sourceOrderId)
+          .setParameter(2, memberId).getSingleResult()
         != 1) {
       throw new CommerceException(404, "ORDER_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
     CartLock cart = lockCart(memberId);
-    List<SourceItem> sourceItems =
-        queries.query(
-            "SELECT item.sku_id AS skuId,item.quantity,sku.status AS skuStatus,product.display_status AS productStatus,category.active AS categoryActive,inventory.available_quantity AS availableQuantity FROM order_items item JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id LEFT JOIN inventories inventory ON inventory.sku_id=sku.id WHERE item.order_id=? ORDER BY item.id FOR UPDATE",
-            (rs, rowNumber) -> new SourceItem(
-                rs.getLong("skuId"), rs.getInt("quantity"), rs.getString("skuStatus"),
-                rs.getString("productStatus"), rs.getBoolean("categoryActive"),
-                rs.getObject("availableQuantity", Integer.class)),
-            sourceOrderId);
+    List<SourceItem> sourceItems = query(
+        "SELECT item.sku_id AS skuId,item.quantity,sku.status AS skuStatus,product.display_status AS productStatus,category.active AS categoryActive,inventory.available_quantity AS availableQuantity FROM order_items item JOIN skus sku ON sku.id=item.sku_id JOIN products product ON product.id=sku.product_id JOIN categories category ON category.id=product.category_id LEFT JOIN inventories inventory ON inventory.sku_id=sku.id WHERE item.order_id=?1 ORDER BY item.id FOR UPDATE",
+        SourceItem.class).addScalar("skuId", Long.class).addScalar("quantity", Integer.class)
+        .addScalar("skuStatus", String.class).addScalar("productStatus", String.class)
+        .addScalar("categoryActive", Boolean.class).addScalar("availableQuantity", Integer.class)
+        .setParameter(1, sourceOrderId).getResultList();
     List<ReorderItem> addedItems = new ArrayList<>();
     List<SkippedItem> skippedItems = new ArrayList<>();
     for (SourceItem sourceItem : sourceItems) {
@@ -63,14 +65,15 @@ public class QuickReorderPersistenceAdapter {
         continue;
       }
       int changed =
-          queries.update(
-              "UPDATE cart_items SET quantity=quantity+? WHERE cart_id=? AND sku_id=?",
-              quantity,
-              cart.id,
-              skuId);
+          mutation("UPDATE cart_items SET quantity=quantity+?1 WHERE cart_id=?2 AND sku_id=?3")
+          .setParameter(1, quantity)
+          .setParameter(2, cart.id)
+          .setParameter(3, skuId).executeUpdate();
       if (changed == 0) {
-        queries.update(
-            "INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,?)", cart.id, skuId, quantity);
+        mutation("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?1,?2,?3)")
+          .setParameter(1, cart.id)
+          .setParameter(2, skuId)
+          .setParameter(3, quantity).executeUpdate();
       }
       addedItems.add(new ReorderItem(skuId, quantity));
     }
@@ -82,14 +85,13 @@ public class QuickReorderPersistenceAdapter {
       json.put("addedItems", addedItems);
       json.put("skippedItems", skippedItems);
       json.put("cartVersion", resultCartVersion);
-      queries.update(
-          "INSERT INTO quick_reorder_idempotency_results(member_id,idempotency_key,source_order_id,response_json,cart_version,created_at) VALUES (?,?,?,?,?,?)",
-          memberId,
-          idempotencyKey,
-          sourceOrderId,
-          objectMapper.writeValueAsString(json),
-          resultCartVersion,
-          now());
+      mutation("INSERT INTO quick_reorder_idempotency_results(member_id,idempotency_key,source_order_id,response_json,cart_version,created_at) VALUES (?1,?2,?3,?4,?5,?6)")
+          .setParameter(1, memberId)
+          .setParameter(2, idempotencyKey)
+          .setParameter(3, sourceOrderId)
+          .setParameter(4, objectMapper.writeValueAsString(json))
+          .setParameter(5, resultCartVersion)
+          .setParameter(6, now(), timestampType()).executeUpdate();
     } catch (Exception exception) {
       throw new IllegalStateException("Quick Reorder 결과를 저장할 수 없습니다.", exception);
     }
@@ -132,30 +134,51 @@ public class QuickReorderPersistenceAdapter {
   }
 
   private void lockMember(long memberId) {
-    Long locked =
-        queries.query("SELECT id FROM members WHERE id=? FOR UPDATE", rs -> rs.next() ? rs.getLong(1) : null, memberId);
+    Long locked = one(query("SELECT id FROM members WHERE id=?1 FOR UPDATE", Long.class)
+        .setParameter(1, memberId));
     if (locked == null) throw new CommerceException(404, "MEMBER_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
   }
 
   private CartLock lockCart(long memberId) {
-    Long cartId =
-        queries.query("SELECT id FROM carts WHERE member_id=? FOR UPDATE", rs -> rs.next() ? rs.getLong(1) : null, memberId);
+    Long cartId = one(query("SELECT id FROM carts WHERE member_id=?1 FOR UPDATE", Long.class)
+        .setParameter(1, memberId));
     if (cartId == null) {
-      queries.update("INSERT INTO carts(member_id,created_at,updated_at) VALUES (?,?,?)", memberId, now(), now());
-      cartId = queries.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+      mutation("INSERT INTO carts(member_id,created_at,updated_at) VALUES (?1,?2,?3)")
+          .setParameter(1, memberId).setParameter(2, now(), timestampType())
+          .setParameter(3, now(), timestampType()).executeUpdate();
+      cartId = query("SELECT LAST_INSERT_ID()", Long.class).getSingleResult();
     }
-    return one("SELECT id,version FROM carts WHERE id=? FOR UPDATE",
-        (rs, rowNumber) -> new CartLock(rs.getLong("id"), rs.getLong("version")), cartId);
+    return one(query("SELECT id,version FROM carts WHERE id=?1 FOR UPDATE", CartLock.class)
+        .addScalar("id", Long.class).addScalar("version", Long.class).setParameter(1, cartId));
   }
 
   private long incrementCartVersion(long cartId) {
-    queries.update("UPDATE carts SET version=version+1,updated_at=? WHERE id=?", now(), cartId);
-    return queries.queryForObject("SELECT version FROM carts WHERE id=?", Long.class, cartId);
+    mutation("UPDATE carts SET version=version+1,updated_at=?1 WHERE id=?2")
+        .setParameter(1, now(), timestampType()).setParameter(2, cartId).executeUpdate();
+    return query("SELECT version FROM carts WHERE id=?1", Long.class).setParameter(1, cartId).getSingleResult();
   }
 
-  private <T> T one(String sql, RowMapper<T> mapper, Object... args) {
-    List<T> rows = queries.query(sql, mapper, args);
+  private static <T> T one(NativeQuery<T> query) {
+    List<T> rows = query.getResultList();
     return rows.isEmpty() ? null : rows.getFirst();
+  }
+
+  private <T> NativeQuery<T> query(String sql, Class<T> type) {
+    // Keep pending managed changes invisible until the caller's original explicit flush.
+    return entities.unwrap(Session.class).createNativeQuery(sql, type)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private MutationQuery mutation(String sql) {
+    return entities.unwrap(Session.class).createNativeMutationQuery(sql)
+        .setHibernateFlushMode(FlushMode.COMMIT);
+  }
+
+  private static final BasicTypeImpl<Timestamp> LEGACY_TIMESTAMP_TYPE =
+      new BasicTypeImpl<>(JdbcTimestampJavaType.INSTANCE, new QuickReorderTimestampJdbcType());
+
+  private static BasicTypeImpl<Timestamp> timestampType() {
+    return LEGACY_TIMESTAMP_TYPE;
   }
 
   private Timestamp now() {
@@ -172,10 +195,11 @@ public class QuickReorderPersistenceAdapter {
 
   public record SkippedItem(long skuId, int quantity, String reason) {}
 
-  private record CartLock(long id, long version) {}
+  // Hibernate native constructor projections require a public canonical constructor.
+  public record CartLock(long id, long version) {}
 
-  private record IdempotencyRow(long sourceOrderId, String responseJson) {}
+  public record IdempotencyRow(long sourceOrderId, String responseJson) {}
 
-  private record SourceItem(long skuId, int quantity, String skuStatus, String productStatus,
+  public record SourceItem(long skuId, int quantity, String skuStatus, String productStatus,
                             boolean categoryActive, Integer availableQuantity) {}
 }

@@ -56,11 +56,7 @@ class BackendArchitectureTests {
       }
     }
     assertThat(owners.stream().filter(BackendArchitectureTests::isolated).toList()).hasSize(9);
-    assertThat(owners.stream().filter(owner -> !isolated(owner)).toList()).containsExactlyInAnyOrder(
-        ROOT + "commerce.returning.persistence.ReturnPersistenceAdapter",
-        ROOT + "commerce.refund.persistence.RefundPersistenceAdapter",
-        ROOT + "commerce.order.persistence.QuickReorderPersistenceAdapter",
-        ROOT + "commerce.cancellation.persistence.CancellationPersistenceAdapter");
+    assertThat(owners.stream().filter(owner -> !isolated(owner)).toList()).isEmpty();
   }
 
   private static Set<String> violations(JavaClasses classes) {
