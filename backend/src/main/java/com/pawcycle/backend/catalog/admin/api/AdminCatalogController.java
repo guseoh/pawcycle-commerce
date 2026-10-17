@@ -29,14 +29,14 @@ public class AdminCatalogController {
 
   @GetMapping("/brands")
   BrandListResponse brands() {
-    return adminCatalogService.brands();
+    return BrandListResponse.from(adminCatalogService.brands());
   }
 
   @PostMapping("/brands")
   ResponseEntity<BrandResponse> createBrand(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody BrandCreateRequest request) {
-    BrandResponse brand = mutations.createBrand(principal.memberId(), request);
+    BrandResponse brand = BrandResponse.from(mutations.createBrand(principal.memberId(), command(request)));
     return ResponseEntity.created(URI.create("/api/admin/brands/" + brand.brandId())).body(brand);
   }
 
@@ -56,21 +56,21 @@ public class AdminCatalogController {
 
   @GetMapping("/categories")
   CategoryListResponse categories() {
-    return adminCatalogService.categories();
+    return CategoryListResponse.from(adminCatalogService.categories());
   }
 
   @PostMapping("/categories")
   ResponseEntity<CategoryResponse> createCategory(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody CategoryCreateRequest request) {
-    CategoryResponse category = mutations.createCategory(principal.memberId(), request);
+    CategoryResponse category = CategoryResponse.from(mutations.createCategory(principal.memberId(), command(request)));
     return ResponseEntity.created(URI.create("/api/admin/categories/" + category.categoryId()))
         .body(category);
   }
 
   @GetMapping("/categories/{categoryId}")
   CategoryResponse category(@PathVariable Long categoryId) {
-    return adminCatalogService.category(categoryId);
+    return CategoryResponse.from(adminCatalogService.category(categoryId));
   }
 
   @PatchMapping("/categories/{categoryId}")
@@ -78,27 +78,27 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long categoryId,
       @RequestBody CategoryPatchRequest request) {
-    CategoryResponse category = mutations.updateCategory(principal.memberId(), categoryId, request);
+    CategoryResponse category = CategoryResponse.from(mutations.updateCategory(principal.memberId(), categoryId, command(request)));
     return category;
   }
 
   @GetMapping("/products")
   ProductListResponse products() {
-    return adminCatalogService.products();
+    return ProductListResponse.from(adminCatalogService.products());
   }
 
   @PostMapping("/products")
   ResponseEntity<ProductResponse> createProduct(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody ProductCreateRequest request) {
-    ProductResponse product = mutations.createProduct(principal.memberId(), request);
+    ProductResponse product = ProductResponse.from(mutations.createProduct(principal.memberId(), command(request)));
     return ResponseEntity.created(URI.create("/api/admin/products/" + product.productId()))
         .body(product);
   }
 
   @GetMapping("/products/{productId}")
   ProductResponse product(@PathVariable Long productId) {
-    return adminCatalogService.product(productId);
+    return ProductResponse.from(adminCatalogService.product(productId));
   }
 
   @PatchMapping("/products/{productId}")
@@ -106,13 +106,13 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @RequestBody ProductPatchRequest request) {
-    ProductResponse product = mutations.updateProduct(principal.memberId(), productId, request);
+    ProductResponse product = ProductResponse.from(mutations.updateProduct(principal.memberId(), productId, command(request)));
     return product;
   }
 
   @GetMapping("/products/{productId}/skus")
   SkuListResponse skus(@PathVariable Long productId) {
-    return adminCatalogService.skus(productId);
+    return SkuListResponse.from(adminCatalogService.skus(productId));
   }
 
   @PostMapping("/products/{productId}/skus")
@@ -120,7 +120,7 @@ public class AdminCatalogController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable Long productId,
       @Valid @RequestBody SkuCreateRequest request) {
-    SkuResponse sku = mutations.createSku(principal.memberId(), productId, request);
+    SkuResponse sku = SkuResponse.from(mutations.createSku(principal.memberId(), productId, command(request)));
     return ResponseEntity.created(
             URI.create("/api/admin/products/" + productId + "/skus/" + sku.skuId()))
         .body(sku);
@@ -132,7 +132,7 @@ public class AdminCatalogController {
       @PathVariable Long productId,
       @PathVariable Long skuId,
       @RequestBody SkuPatchRequest request) {
-    SkuResponse sku = mutations.updateSku(principal.memberId(), productId, skuId, request);
+    SkuResponse sku = SkuResponse.from(mutations.updateSku(principal.memberId(), productId, skuId, command(request)));
     return sku;
   }
 

@@ -89,7 +89,8 @@ class CatalogFacetConcurrencyIntegrationTests {
             () -> {
               ProductPatchRequest patch = new ProductPatchRequest();
               patch.readCategoryId(targetCategoryId);
-              adminCatalogService.updateProduct(productId, patch);
+              adminCatalogService.updateProduct(productId, new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand(
+        patch.getCategoryId(), patch.isCategoryIdPresent(), patch.getBrandId(), patch.isBrandIdPresent(), patch.getName(), patch.isNamePresent(), patch.getShortDescription(), patch.isShortDescriptionPresent(), patch.getDescription(), patch.isDescriptionPresent(), patch.getPetType(), patch.isPetTypePresent(), patch.getThumbnailUrl(), patch.isThumbnailUrlPresent(), patch.getStatus(), patch.isStatusPresent()));
             },
             () -> expansionService.removeCategoryFacet(targetCategoryId, facetDefinitionId));
 

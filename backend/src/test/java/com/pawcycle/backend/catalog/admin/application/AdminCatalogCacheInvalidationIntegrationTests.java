@@ -10,8 +10,8 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuCreateCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogFacetPersistenceAdapter;
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
 import com.pawcycle.backend.catalog.brand.domain.Brand;
@@ -79,7 +79,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
         .when(productListCache)
         .invalidate();
 
-    service.createProduct(new ProductCreateRequest(1L, 1L, "상품", "설명", null, "DOG", null));
+    service.createProduct(new ProductCreateCommand(1L, 1L, "상품", "설명", null, "DOG", null));
 
     verify(productListCache).invalidate();
     assertThat(transactionManager.commitCompleted()).isTrue();
@@ -105,7 +105,7 @@ class AdminCatalogCacheInvalidationIntegrationTests {
 
     service.createSku(
         10L,
-        new SkuCreateRequest("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
+        new SkuCreateCommand("DOG-2KG", "2kg", new BigDecimal("19900.00"), null, true, 1, SkuStatus.ACTIVE));
 
     verify(productListCache).invalidate();
     assertThat(transactionManager.commitCompleted()).isTrue();

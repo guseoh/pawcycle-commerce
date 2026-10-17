@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogConflictException;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
@@ -332,7 +333,7 @@ class AdminCatalogApiIntegrationTests {
     long productId =
         adminCatalogService
             .createProduct(
-                new ProductCreateRequest(first.getId(), 1L, "Facet 상품", "설명", null, "DOG", null))
+                new ProductCreateCommand(first.getId(), 1L, "Facet 상품", "설명", null, "DOG", null))
             .productId();
     var definition =
         catalogExpansionAdminService.createFacetDefinition(
@@ -355,7 +356,8 @@ class AdminCatalogApiIntegrationTests {
 
     ProductPatchRequest categoryPatch = new ProductPatchRequest();
     categoryPatch.readCategoryId(second.getId());
-    assertThatThrownBy(() -> adminCatalogService.updateProduct(productId, categoryPatch))
+    assertThatThrownBy(() -> adminCatalogService.updateProduct(productId, new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand(
+        categoryPatch.getCategoryId(), categoryPatch.isCategoryIdPresent(), categoryPatch.getBrandId(), categoryPatch.isBrandIdPresent(), categoryPatch.getName(), categoryPatch.isNamePresent(), categoryPatch.getShortDescription(), categoryPatch.isShortDescriptionPresent(), categoryPatch.getDescription(), categoryPatch.isDescriptionPresent(), categoryPatch.getPetType(), categoryPatch.isPetTypePresent(), categoryPatch.getThumbnailUrl(), categoryPatch.isThumbnailUrlPresent(), categoryPatch.getStatus(), categoryPatch.isStatusPresent())))
         .isInstanceOfSatisfying(
             AdminCatalogConflictException.class,
             exception ->

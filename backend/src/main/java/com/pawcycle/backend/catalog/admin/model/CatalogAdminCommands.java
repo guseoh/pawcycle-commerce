@@ -1,8 +1,88 @@
 package com.pawcycle.backend.catalog.admin.model;
 
+import com.pawcycle.backend.catalog.product.domain.ProductStatus;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import java.math.BigDecimal;
+
 /** Typed catalog mutation inputs, independent of HTTP and persistence contracts. */
 public final class CatalogAdminCommands {
   private CatalogAdminCommands() {}
+
+  public record BrandCreateCommand(
+      String name,
+      String slug,
+      String logoUrl,
+      Boolean active,
+      Integer displayOrder) {}
+
+  public record CategoryCreateCommand(
+      String name,
+      String slug,
+      Integer displayOrder,
+      Boolean active,
+      Long parentId) {}
+
+  public record CategoryPatchCommand(
+      String name,
+      boolean namePresent,
+      String slug,
+      boolean slugPresent,
+      Integer displayOrder,
+      boolean displayOrderPresent,
+      Boolean active,
+      boolean activePresent,
+      Long parentId,
+      boolean parentIdPresent) {}
+
+  public record ProductCreateCommand(
+      Long categoryId,
+      Long brandId,
+      String name,
+      String shortDescription,
+      String description,
+      String petType,
+      String thumbnailUrl) {}
+
+  public record ProductPatchCommand(
+      Long categoryId,
+      boolean categoryIdPresent,
+      Long brandId,
+      boolean brandIdPresent,
+      String name,
+      boolean namePresent,
+      String shortDescription,
+      boolean shortDescriptionPresent,
+      String description,
+      boolean descriptionPresent,
+      String petType,
+      boolean petTypePresent,
+      String thumbnailUrl,
+      boolean thumbnailUrlPresent,
+      ProductStatus status,
+      boolean statusPresent) {}
+
+  public record SkuCreateCommand(
+      String skuCode,
+      String name,
+      BigDecimal price,
+      BigDecimal compareAtPrice,
+      Boolean subscribable,
+      Integer displayOrder,
+      SkuStatus status) {}
+
+  public record SkuPatchCommand(
+      String name,
+      boolean namePresent,
+      BigDecimal price,
+      boolean pricePresent,
+      BigDecimal compareAtPrice,
+      boolean compareAtPricePresent,
+      Boolean subscribable,
+      boolean subscribablePresent,
+      Integer displayOrder,
+      boolean displayOrderPresent,
+      SkuStatus status,
+      boolean statusPresent) {}
 
   public record BrandPatchCommand(
       String name,

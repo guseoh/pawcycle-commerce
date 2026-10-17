@@ -17,8 +17,106 @@ import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValue
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductFacetValuesCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuOptionValuesCommand;
 
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuPatchCommand;
+
 final class CatalogAdminCommandMapping {
   private CatalogAdminCommandMapping() {}
+
+  static BrandCreateCommand command(BrandCreateRequest value) {
+    return new BrandCreateCommand(
+        value.name(),
+        value.slug(),
+        value.logoUrl(),
+        value.active(),
+        value.displayOrder());
+  }
+
+  static CategoryCreateCommand command(CategoryCreateRequest value) {
+    return new CategoryCreateCommand(
+        value.name(),
+        value.slug(),
+        value.displayOrder(),
+        value.active(),
+        value.parentId());
+  }
+
+  static CategoryPatchCommand command(CategoryPatchRequest value) {
+    return new CategoryPatchCommand(
+        value.getName(),
+        value.isNamePresent(),
+        value.getSlug(),
+        value.isSlugPresent(),
+        value.getDisplayOrder(),
+        value.isDisplayOrderPresent(),
+        value.getActive(),
+        value.isActivePresent(),
+        value.getParentId(),
+        value.isParentIdPresent());
+  }
+
+  static ProductCreateCommand command(ProductCreateRequest value) {
+    return new ProductCreateCommand(
+        value.categoryId(),
+        value.brandId(),
+        value.name(),
+        value.shortDescription(),
+        value.description(),
+        value.petType(),
+        value.thumbnailUrl());
+  }
+
+  static ProductPatchCommand command(ProductPatchRequest value) {
+    return new ProductPatchCommand(
+        value.getCategoryId(),
+        value.isCategoryIdPresent(),
+        value.getBrandId(),
+        value.isBrandIdPresent(),
+        value.getName(),
+        value.isNamePresent(),
+        value.getShortDescription(),
+        value.isShortDescriptionPresent(),
+        value.getDescription(),
+        value.isDescriptionPresent(),
+        value.getPetType(),
+        value.isPetTypePresent(),
+        value.getThumbnailUrl(),
+        value.isThumbnailUrlPresent(),
+        value.getStatus(),
+        value.isStatusPresent());
+  }
+
+  static SkuCreateCommand command(SkuCreateRequest value) {
+    return new SkuCreateCommand(
+        value.skuCode(),
+        value.name(),
+        value.price(),
+        value.compareAtPrice(),
+        value.subscribable(),
+        value.displayOrder(),
+        value.status());
+  }
+
+  static SkuPatchCommand command(SkuPatchRequest value) {
+    return new SkuPatchCommand(
+        value.getName(),
+        value.isNamePresent(),
+        value.getPrice(),
+        value.isPricePresent(),
+        value.getCompareAtPrice(),
+        value.isCompareAtPricePresent(),
+        value.getSubscribable(),
+        value.isSubscribablePresent(),
+        value.getDisplayOrder(),
+        value.isDisplayOrderPresent(),
+        value.getStatus(),
+        value.isStatusPresent());
+  }
 
   static BrandPatchCommand command(BrandPatchRequest value) {
     return new BrandPatchCommand(

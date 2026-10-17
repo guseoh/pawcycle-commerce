@@ -1,20 +1,16 @@
 package com.pawcycle.backend.catalog.admin.application;
-import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryListResponse;
-import com.pawcycle.backend.catalog.admin.api.CategoryResponse;
-import com.pawcycle.backend.catalog.admin.api.BrandListResponse;
-import com.pawcycle.backend.catalog.admin.api.BrandResponse;
-import com.pawcycle.backend.catalog.admin.api.ProductListResponse;
-import com.pawcycle.backend.catalog.admin.api.ProductResponse;
-import com.pawcycle.backend.catalog.admin.api.SkuListResponse;
-import com.pawcycle.backend.catalog.admin.api.SkuResponse;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.BrandView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ProductView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.SkuView;
 
-import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.brand.domain.Brand;
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
 import com.pawcycle.backend.catalog.category.domain.Category;
@@ -52,16 +48,15 @@ public class AdminCatalogService {
   private final ProductListCacheInvalidator productListCacheInvalidator;
 
   @Transactional(readOnly = true)
-  public BrandListResponse brands() {
-    return new BrandListResponse(
-        brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
+  public List<BrandView> brands() {
+    return brandRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
             .map(this::brandView)
-            .toList());
+            .toList();
   }
 
   @Transactional
-  public BrandResponse createBrand(
-      com.pawcycle.backend.catalog.admin.api.BrandCreateRequest request) {
+  public BrandView createBrand(
+      BrandCreateCommand request) {
     if (brandRepository.existsBySlug(request.slug())) {
       throw new AdminCatalogConflictException("BRAND_SLUG_CONFLICT", "이미 사용 중인 브랜드 slug입니다.");
     }
@@ -80,20 +75,19 @@ public class AdminCatalogService {
   }
 
   @Transactional(readOnly = true)
-  public CategoryListResponse categories() {
-    return new CategoryListResponse(
-        categoryRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
+  public List<CategoryView> categories() {
+    return categoryRepository.findAllByOrderByDisplayOrderAscIdAsc().stream()
             .map(this::categoryView)
-            .toList());
+            .toList();
   }
 
   @Transactional(readOnly = true)
-  public CategoryResponse category(Long categoryId) {
+  public CategoryView category(Long categoryId) {
     return categoryView(requireCategory(categoryId));
   }
 
   @Transactional
-  public CategoryResponse createCategory(CategoryCreateRequest request) {
+  public CategoryView createCategory(CategoryCreateCommand request) {
     if (categoryRepository.existsBySlug(request.slug())) {
       throw slugConflict();
     }
@@ -112,23 +106,23 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public CategoryResponse updateCategory(Long categoryId, CategoryPatchRequest request) {
+  public CategoryView updateCategory(Long categoryId, CategoryPatchCommand request) {
     validate(request);
     Category category = requireCategory(categoryId);
-    if (request.isParentIdPresent()) {
+    if (request.parentIdPresent()) {
       category.updateParent(
-          request.getParentId() == null
+          request.parentId() == null
               ? null
-              : requireParentCategory(request.getParentId(), categoryId));
+              : requireParentCategory(request.parentId(), categoryId));
     }
-    if (request.isSlugPresent()
-        && categoryRepository.existsBySlugAndIdNot(request.getSlug(), categoryId)) {
+    if (request.slugPresent()
+        && categoryRepository.existsBySlugAndIdNot(request.slug(), categoryId)) {
       throw slugConflict();
     }
     category.update(
-        request.getName(), request.getSlug(), request.getDisplayOrder(), request.getActive());
+        request.name(), request.slug(), request.displayOrder(), request.active());
     try {
-      CategoryResponse view = categoryView(categoryRepository.saveAndFlush(category));
+      CategoryView view = categoryView(categoryRepository.saveAndFlush(category));
       productListCacheInvalidator.invalidateAfterCommit();
       return view;
     } catch (DataIntegrityViolationException exception) {
@@ -137,20 +131,19 @@ public class AdminCatalogService {
   }
 
   @Transactional(readOnly = true)
-  public ProductListResponse products() {
-    return new ProductListResponse(
-        productRepository.findAllWithCategoryOrderByIdAsc().stream()
+  public List<ProductView> products() {
+    return productRepository.findAllWithCategoryOrderByIdAsc().stream()
             .map(this::productView)
-            .toList());
+            .toList();
   }
 
   @Transactional(readOnly = true)
-  public ProductResponse product(Long productId) {
+  public ProductView product(Long productId) {
     return productView(requireProduct(productId));
   }
 
   @Transactional
-  public ProductResponse createProduct(ProductCreateRequest request) {
+  public ProductView createProduct(ProductCreateCommand request) {
     Category category = requireAssignableCategory(request.categoryId());
     if (request.brandId() == null) {
       throw new AdminCatalogValidationException(List.of(error("brandId", "필수 입력입니다.")));
@@ -172,60 +165,59 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public ProductResponse updateProduct(Long productId, ProductPatchRequest request) {
+  public ProductView updateProduct(Long productId, ProductPatchCommand request) {
     validate(request);
     Product product = requireProductForUpdate(productId);
     Category category =
-        request.isCategoryIdPresent() && request.getCategoryId() != null
-            ? requireAssignableCategory(request.getCategoryId())
+        request.categoryIdPresent() && request.categoryId() != null
+            ? requireAssignableCategory(request.categoryId())
             : null;
-    if (request.isCategoryIdPresent()
+    if (request.categoryIdPresent()
         && category != null
         && (product.getCategory() == null
             || !category.getId().equals(product.getCategory().getId()))) {
       requireFacetValuesCompatibleWithCategory(productId, category.getId());
     }
-    if (request.isBrandIdPresent()) {
-      if (request.getBrandId() == null) {
+    if (request.brandIdPresent()) {
+      if (request.brandId() == null) {
         throw new AdminCatalogValidationException(
             List.of(error("brandId", "Brand cannot be cleared.")));
       }
-      requireActiveBrand(request.getBrandId());
-      product.updateBrandId(request.getBrandId());
+      requireActiveBrand(request.brandId());
+      product.updateBrandId(request.brandId());
     }
     product.update(
         category,
-        request.isCategoryIdPresent(),
-        request.getName(),
-        request.getShortDescription(),
-        request.getDescription(),
-        request.isDescriptionPresent(),
-        request.getPetType(),
-        request.getThumbnailUrl(),
-        request.isThumbnailUrlPresent());
-    if (request.isStatusPresent()) {
-      if (!product.canTransitionTo(request.getStatus())) {
+        request.categoryIdPresent(),
+        request.name(),
+        request.shortDescription(),
+        request.description(),
+        request.descriptionPresent(),
+        request.petType(),
+        request.thumbnailUrl(),
+        request.thumbnailUrlPresent());
+    if (request.statusPresent()) {
+      if (!product.canTransitionTo(request.status())) {
         throw new AdminCatalogConflictException(
             "PRODUCT_STATUS_TRANSITION_CONFLICT", "허용되지 않은 상품 상태 전이입니다.");
       }
-      product.transitionTo(request.getStatus());
+      product.transitionTo(request.status());
     }
-    ProductResponse view = productView(productRepository.saveAndFlush(product));
+    ProductView view = productView(productRepository.saveAndFlush(product));
     productListCacheInvalidator.invalidateAfterCommit();
     return view;
   }
 
   @Transactional(readOnly = true)
-  public SkuListResponse skus(Long productId) {
+  public List<SkuView> skus(Long productId) {
     requireProduct(productId);
-    return new SkuListResponse(
-        skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(productId).stream()
+    return skuRepository.findAllByProductIdOrderByDisplayOrderAscIdAsc(productId).stream()
             .map(this::skuView)
-            .toList());
+            .toList();
   }
 
   @Transactional
-  public SkuResponse createSku(Long productId, SkuCreateRequest request) {
+  public SkuView createSku(Long productId, SkuCreateCommand request) {
     Product product = requireProduct(productId);
     if (request.compareAtPrice() != null
         && request.compareAtPrice().compareTo(request.price()) <= 0) {
@@ -255,7 +247,7 @@ public class AdminCatalogService {
   }
 
   @Transactional
-  public SkuResponse updateSku(Long productId, Long skuId, SkuPatchRequest request) {
+  public SkuView updateSku(Long productId, Long skuId, SkuPatchCommand request) {
     validate(request);
     requireProduct(productId);
     Sku sku =
@@ -263,21 +255,21 @@ public class AdminCatalogService {
             .findByIdAndProductId(skuId, productId)
             .orElseThrow(
                 () -> new AdminCatalogNotFoundException("SKU_NOT_FOUND", "SKU를 확인할 수 없습니다."));
-    BigDecimal nextPrice = request.isPricePresent() ? request.getPrice() : sku.getPrice();
+    BigDecimal nextPrice = request.pricePresent() ? request.price() : sku.getPrice();
     BigDecimal nextCompareAtPrice =
-        request.isCompareAtPricePresent() ? request.getCompareAtPrice() : sku.getCompareAtPrice();
+        request.compareAtPricePresent() ? request.compareAtPrice() : sku.getCompareAtPrice();
     if (nextCompareAtPrice != null && nextCompareAtPrice.compareTo(nextPrice) <= 0) {
       throw new AdminCatalogValidationException(List.of(error("compareAtPrice", "판매가보다 커야 합니다.")));
     }
     sku.update(
-        request.getName(),
-        request.getPrice(),
-        request.getCompareAtPrice(),
-        request.isCompareAtPricePresent(),
-        request.getSubscribable(),
-        request.getDisplayOrder(),
-        request.getStatus());
-    SkuResponse view = skuView(skuRepository.saveAndFlush(sku));
+        request.name(),
+        request.price(),
+        request.compareAtPrice(),
+        request.compareAtPricePresent(),
+        request.subscribable(),
+        request.displayOrder(),
+        request.status());
+    SkuView view = skuView(skuRepository.saveAndFlush(sku));
     productListCacheInvalidator.invalidateAfterCommit();
     return view;
   }
@@ -358,8 +350,8 @@ public class AdminCatalogService {
     return new AdminCatalogConflictException("SKU_CODE_CONFLICT", "이미 사용 중인 SKU 코드입니다.");
   }
 
-  private CategoryResponse categoryView(Category category) {
-    return new CategoryResponse(
+  private CategoryView categoryView(Category category) {
+    return new CategoryView(
         category.getId(),
         category.getParent() == null ? null : category.getParent().getId(),
         category.getName(),
@@ -368,8 +360,8 @@ public class AdminCatalogService {
         category.isActive());
   }
 
-  private BrandResponse brandView(Brand brand) {
-    return new BrandResponse(
+  private BrandView brandView(Brand brand) {
+    return new BrandView(
         brand.getId(),
         brand.getName(),
         brand.getSlug(),
@@ -378,8 +370,8 @@ public class AdminCatalogService {
         brand.getDisplayOrder());
   }
 
-  private ProductResponse productView(Product product) {
-    return new ProductResponse(
+  private ProductView productView(Product product) {
+    return new ProductView(
         product.getId(),
         product.getCategory() == null ? null : product.getCategory().getId(),
         product.getBrandId(),
@@ -391,8 +383,8 @@ public class AdminCatalogService {
         product.getStatus());
   }
 
-  private SkuResponse skuView(Sku sku) {
-    return new SkuResponse(
+  private SkuView skuView(Sku sku) {
+    return new SkuView(
         sku.getId(),
         sku.getProduct().getId(),
         sku.getSkuCode(),
@@ -404,84 +396,84 @@ public class AdminCatalogService {
         sku.getStatus());
   }
 
-  private void validate(CategoryPatchRequest request) {
+  private void validate(CategoryPatchCommand request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
-    if (!request.isNamePresent()
-        && !request.isSlugPresent()
-        && !request.isParentIdPresent()
-        && !request.isDisplayOrderPresent()
-        && !request.isActivePresent()) {
+    if (!request.namePresent()
+        && !request.slugPresent()
+        && !request.parentIdPresent()
+        && !request.displayOrderPresent()
+        && !request.activePresent()) {
       errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
     }
-    validateRequiredText(errors, "name", request.isNamePresent(), request.getName(), 100);
-    validateRequiredText(errors, "slug", request.isSlugPresent(), request.getSlug(), 100);
-    if (request.isSlugPresent()
-        && request.getSlug() != null
-        && !SLUG_PATTERN.matcher(request.getSlug()).matches()) {
+    validateRequiredText(errors, "name", request.namePresent(), request.name(), 100);
+    validateRequiredText(errors, "slug", request.slugPresent(), request.slug(), 100);
+    if (request.slugPresent()
+        && request.slug() != null
+        && !SLUG_PATTERN.matcher(request.slug()).matches()) {
       errors.add(error("slug", "slug 형식이 올바르지 않습니다."));
     }
     validateNonnegative(
-        errors, "displayOrder", request.isDisplayOrderPresent(), request.getDisplayOrder());
-    validateRequired(errors, "active", request.isActivePresent(), request.getActive());
+        errors, "displayOrder", request.displayOrderPresent(), request.displayOrder());
+    validateRequired(errors, "active", request.activePresent(), request.active());
     throwIfInvalid(errors);
   }
 
-  private void validate(ProductPatchRequest request) {
+  private void validate(ProductPatchCommand request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
-    if (!request.isCategoryIdPresent()
-        && !request.isBrandIdPresent()
-        && !request.isNamePresent()
-        && !request.isShortDescriptionPresent()
-        && !request.isDescriptionPresent()
-        && !request.isPetTypePresent()
-        && !request.isThumbnailUrlPresent()
-        && !request.isStatusPresent()) {
+    if (!request.categoryIdPresent()
+        && !request.brandIdPresent()
+        && !request.namePresent()
+        && !request.shortDescriptionPresent()
+        && !request.descriptionPresent()
+        && !request.petTypePresent()
+        && !request.thumbnailUrlPresent()
+        && !request.statusPresent()) {
       errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
     }
-    if (request.isCategoryIdPresent() && request.getCategoryId() == null) {
+    if (request.categoryIdPresent() && request.categoryId() == null) {
       errors.add(error("categoryId", "Category cannot be cleared."));
     }
-    if (request.isCategoryIdPresent()
-        && request.getCategoryId() != null
-        && request.getCategoryId() <= 0) {
+    if (request.categoryIdPresent()
+        && request.categoryId() != null
+        && request.categoryId() <= 0) {
       errors.add(error("categoryId", "0보다 커야 합니다."));
     }
-    validateRequiredText(errors, "name", request.isNamePresent(), request.getName(), 200);
+    validateRequiredText(errors, "name", request.namePresent(), request.name(), 200);
     validateRequiredText(
         errors,
         "shortDescription",
-        request.isShortDescriptionPresent(),
-        request.getShortDescription(),
+        request.shortDescriptionPresent(),
+        request.shortDescription(),
         500);
     validateNullableText(
-        errors, "description", request.isDescriptionPresent(), request.getDescription(), 2000);
-    validateRequiredText(errors, "petType", request.isPetTypePresent(), request.getPetType(), 20);
+        errors, "description", request.descriptionPresent(), request.description(), 2000);
+    validateRequiredText(errors, "petType", request.petTypePresent(), request.petType(), 20);
     validateNullableText(
-        errors, "thumbnailUrl", request.isThumbnailUrlPresent(), request.getThumbnailUrl(), 2048);
-    validateRequired(errors, "status", request.isStatusPresent(), request.getStatus());
+        errors, "thumbnailUrl", request.thumbnailUrlPresent(), request.thumbnailUrl(), 2048);
+    validateRequired(errors, "status", request.statusPresent(), request.status());
     throwIfInvalid(errors);
   }
 
-  private void validate(SkuPatchRequest request) {
+  private void validate(SkuPatchCommand request) {
     List<FieldErrorResponse> errors = new ArrayList<>();
-    if (!request.isNamePresent()
-        && !request.isPricePresent()
-        && !request.isCompareAtPricePresent()
-        && !request.isSubscribablePresent()
-        && !request.isDisplayOrderPresent()
-        && !request.isStatusPresent()) {
+    if (!request.namePresent()
+        && !request.pricePresent()
+        && !request.compareAtPricePresent()
+        && !request.subscribablePresent()
+        && !request.displayOrderPresent()
+        && !request.statusPresent()) {
       errors.add(error("request", "수정할 필드를 하나 이상 입력해 주세요."));
     }
-    validateRequiredText(errors, "name", request.isNamePresent(), request.getName(), 200);
-    validatePrice(errors, "price", request.isPricePresent(), request.getPrice());
-    if (request.isCompareAtPricePresent() && request.getCompareAtPrice() != null) {
-      validatePrice(errors, "compareAtPrice", true, request.getCompareAtPrice());
+    validateRequiredText(errors, "name", request.namePresent(), request.name(), 200);
+    validatePrice(errors, "price", request.pricePresent(), request.price());
+    if (request.compareAtPricePresent() && request.compareAtPrice() != null) {
+      validatePrice(errors, "compareAtPrice", true, request.compareAtPrice());
     }
     validateRequired(
-        errors, "subscribable", request.isSubscribablePresent(), request.getSubscribable());
+        errors, "subscribable", request.subscribablePresent(), request.subscribable());
     validateNonnegative(
-        errors, "displayOrder", request.isDisplayOrderPresent(), request.getDisplayOrder());
-    validateRequired(errors, "status", request.isStatusPresent(), request.getStatus());
+        errors, "displayOrder", request.displayOrderPresent(), request.displayOrder());
+    validateRequired(errors, "status", request.statusPresent(), request.status());
     throwIfInvalid(errors);
   }
 

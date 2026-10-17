@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogMutationService;
 import com.pawcycle.backend.catalog.admin.application.AdminCatalogService;
-import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -29,7 +28,8 @@ class CatalogAdminResponseMappingTests {
   private static final ObjectMapper JSON = new ObjectMapper();
 
   static Stream<Arguments> views() {
-    return Arrays.stream(CatalogAdminModels.class.getDeclaredClasses()).flatMap(type -> {
+    return Arrays.stream(FrozenCatalogAdminResponseMapping.class.getDeclaredMethods())
+        .map(method -> method.getParameterTypes()[0]).flatMap(type -> {
       int nullableFields = (int) Arrays.stream(type.getRecordComponents())
           .filter(component -> !component.getType().isPrimitive() && component.getType() != List.class).count();
       return IntStream.range(0, 1 << nullableFields).boxed().flatMap(pattern -> Stream.of(false, true)
@@ -96,7 +96,8 @@ class CatalogAdminResponseMappingTests {
   }
 
   static Stream<Arguments> invalidLists() {
-    return Arrays.stream(CatalogAdminModels.class.getDeclaredClasses())
+    return Arrays.stream(FrozenCatalogAdminResponseMapping.class.getDeclaredMethods())
+        .map(method -> method.getParameterTypes()[0])
         .filter(type -> Arrays.stream(type.getRecordComponents()).anyMatch(field -> field.getType() == List.class))
         .flatMap(type -> Stream.of(Arguments.of(type, false), Arguments.of(type, true)));
   }
