@@ -1,5 +1,8 @@
 package com.pawcycle.backend.catalog.admin.model;
 
+import com.pawcycle.backend.catalog.product.domain.ProductStatus;
+import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -16,6 +19,28 @@ public final class CatalogAdminModels {
 
   public record BrandView(
       Long brandId, String name, String slug, String logoUrl, boolean active, int displayOrder) {}
+
+  public record ProductView(
+    Long productId,
+    Long categoryId,
+    Long brandId,
+    String name,
+    String shortDescription,
+    String description,
+    String petType,
+    String thumbnailUrl,
+    ProductStatus status) {}
+
+  public record SkuView(
+    Long skuId,
+    Long productId,
+    String skuCode,
+    String name,
+    BigDecimal price,
+    BigDecimal compareAtPrice,
+    boolean subscribable,
+    int displayOrder,
+    SkuStatus status) {}
 
   public record ImageListView(List<ImageView> images) {}
 

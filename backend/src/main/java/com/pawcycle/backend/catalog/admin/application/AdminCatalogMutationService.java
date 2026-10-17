@@ -1,13 +1,18 @@
 package com.pawcycle.backend.catalog.admin.application;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuCreateCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuPatchCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ProductView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.SkuView;
 
 
-import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.BrandPatchCommand;
-import com.pawcycle.backend.catalog.admin.api.BrandResponse;
-import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryFacetAssignCommand;
-import com.pawcycle.backend.catalog.admin.api.CategoryPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryResponse;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionPatchCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.FacetDefinitionCreateCommand;
@@ -20,14 +25,8 @@ import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroup
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupPatchCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValueCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValuePatchCommand;
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductFacetValuesCommand;
-import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductResponse;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuOptionValuesCommand;
-import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuResponse;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.BrandView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetView;
@@ -89,13 +88,13 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public BrandResponse createBrand(long adminId, BrandCreateRequest request) {
+  public BrandView createBrand(long adminId, BrandCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_BRAND_CREATE",
         "BRAND",
         () -> adminCatalogService.createBrand(request),
-        BrandResponse::brandId);
+        BrandView::brandId);
   }
 
   @Transactional
@@ -109,18 +108,18 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public CategoryResponse createCategory(long adminId, CategoryCreateRequest request) {
+  public CategoryView createCategory(long adminId, CategoryCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_CATEGORY_CREATE",
         "CATEGORY",
         () -> adminCatalogService.createCategory(request),
-        CategoryResponse::categoryId);
+        CategoryView::categoryId);
   }
 
   @Transactional
-  public CategoryResponse updateCategory(
-      long adminId, Long categoryId, CategoryPatchRequest request) {
+  public CategoryView updateCategory(
+      long adminId, Long categoryId, CategoryPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_CATEGORY_UPDATE",
@@ -130,17 +129,17 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public ProductResponse createProduct(long adminId, ProductCreateRequest request) {
+  public ProductView createProduct(long adminId, ProductCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_PRODUCT_CREATE",
         "PRODUCT",
         () -> adminCatalogService.createProduct(request),
-        ProductResponse::productId);
+        ProductView::productId);
   }
 
   @Transactional
-  public ProductResponse updateProduct(long adminId, Long productId, ProductPatchRequest request) {
+  public ProductView updateProduct(long adminId, Long productId, ProductPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_PRODUCT_UPDATE",
@@ -150,17 +149,17 @@ public class AdminCatalogMutationService {
   }
 
   @Transactional
-  public SkuResponse createSku(long adminId, Long productId, SkuCreateRequest request) {
+  public SkuView createSku(long adminId, Long productId, SkuCreateCommand request) {
     return execute(
         adminId,
         "CATALOG_SKU_CREATE",
         "SKU",
         () -> adminCatalogService.createSku(productId, request),
-        SkuResponse::skuId);
+        SkuView::skuId);
   }
 
   @Transactional
-  public SkuResponse updateSku(long adminId, Long productId, Long skuId, SkuPatchRequest request) {
+  public SkuView updateSku(long adminId, Long productId, Long skuId, SkuPatchCommand request) {
     return execute(
         adminId,
         "CATALOG_SKU_UPDATE",

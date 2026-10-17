@@ -7,9 +7,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.ProductPatchRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuCreateCommand;
 import com.pawcycle.backend.catalog.admin.api.SkuPatchRequest;
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
@@ -69,14 +69,15 @@ class AdminCatalogCacheInvalidationTests {
     when(productRepository.saveAndFlush(any(Product.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    service.createProduct(new ProductCreateRequest(1L, 1L, "상품", "설명", null, "DOG", null));
+    service.createProduct(new ProductCreateCommand(1L, 1L, "상품", "설명", null, "DOG", null));
 
     Product product = mock(Product.class);
     when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));
     when(productRepository.saveAndFlush(product)).thenReturn(product);
     ProductPatchRequest patch = new ProductPatchRequest();
     patch.readName("수정 상품");
-    service.updateProduct(10L, patch);
+    service.updateProduct(10L, new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ProductPatchCommand(
+        patch.getCategoryId(), patch.isCategoryIdPresent(), patch.getBrandId(), patch.isBrandIdPresent(), patch.getName(), patch.isNamePresent(), patch.getShortDescription(), patch.isShortDescriptionPresent(), patch.getDescription(), patch.isDescriptionPresent(), patch.getPetType(), patch.isPetTypePresent(), patch.getThumbnailUrl(), patch.isThumbnailUrlPresent(), patch.getStatus(), patch.isStatusPresent()));
 
     verify(invalidator, times(2)).invalidateAfterCommit();
   }
@@ -94,7 +95,7 @@ class AdminCatalogCacheInvalidationTests {
 
     service.createSku(
         10L,
-        new SkuCreateRequest("DOG-2KG", "2kg", new BigDecimal("19900.00"), true, 1, SkuStatus.ACTIVE));
+        new SkuCreateCommand("DOG-2KG", "2kg", new BigDecimal("19900.00"), null, true, 1, SkuStatus.ACTIVE));
 
     clearInvocations(productRepository);
     Sku sku = mock(Sku.class);
@@ -103,7 +104,8 @@ class AdminCatalogCacheInvalidationTests {
     when(skuRepository.saveAndFlush(sku)).thenReturn(sku);
     SkuPatchRequest patch = new SkuPatchRequest();
     patch.readPrice(new BigDecimal("20900.00"));
-    service.updateSku(10L, 20L, patch);
+    service.updateSku(10L, 20L, new com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuPatchCommand(
+        patch.getName(), patch.isNamePresent(), patch.getPrice(), patch.isPricePresent(), patch.getCompareAtPrice(), patch.isCompareAtPricePresent(), patch.getSubscribable(), patch.isSubscribablePresent(), patch.getDisplayOrder(), patch.isDisplayOrderPresent(), patch.getStatus(), patch.isStatusPresent()));
 
     verify(invalidator, times(2)).invalidateAfterCommit();
   }
