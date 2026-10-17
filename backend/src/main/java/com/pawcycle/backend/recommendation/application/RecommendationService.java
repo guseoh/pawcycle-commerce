@@ -1,8 +1,8 @@
 package com.pawcycle.backend.recommendation.application;
 
-import com.pawcycle.backend.recommendation.api.RecommendationItem;
-import com.pawcycle.backend.recommendation.api.RecommendationItemCategory;
-import com.pawcycle.backend.recommendation.api.RecommendationResponse;
+import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
+import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
+import com.pawcycle.backend.recommendation.model.RecommendationView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
 import com.pawcycle.backend.recommendation.domain.RecommendationMemberSignals;
 import com.pawcycle.backend.recommendation.infrastructure.metrics.RecommendationMetrics;
@@ -56,7 +56,7 @@ public class RecommendationService {
     this.clock = clock;
   }
 
-  public RecommendationResponse recommend(long memberId, long petId) {
+  public RecommendationView recommend(long memberId, long petId) {
     String petType = repository.findOwnedPetType(memberId, petId);
     if (petType == null) throw new RecommendationPetNotFoundException();
     List<String> preferences = preferences(memberId, petId);
@@ -65,7 +65,7 @@ public class RecommendationService {
     List<RecommendationCandidate> initialCandidates =
         sortedCandidates(petType, preferences, excluded, signals);
     if (initialCandidates.isEmpty())
-      return new RecommendationResponse(UUID.randomUUID().toString(), List.of());
+      return new RecommendationView(UUID.randomUUID().toString(), List.of());
     boolean exploration = initialCandidates.size() > RESULT_LIMIT;
     int desired = exploration ? RESULT_LIMIT - 1 : Math.min(RESULT_LIMIT, initialCandidates.size());
     int aiInputSize =
@@ -87,11 +87,11 @@ public class RecommendationService {
         sortedCandidates(petType, preferences, excluded, signals);
     if (latestCandidates.isEmpty()) {
       metrics.fallback();
-      return new RecommendationResponse(UUID.randomUUID().toString(), List.of());
+      return new RecommendationView(UUID.randomUUID().toString(), List.of());
     }
     List<RecommendationCandidate> personalized =
         latestCandidates.subList(0, Math.min(desired, latestCandidates.size()));
-    List<RecommendationItem> result =
+    List<ItemView> result =
         mergeAiAndFallback(
             aiRecommendations,
             personalized,
@@ -112,7 +112,7 @@ public class RecommendationService {
                     fallbackReason(explorationCandidate, preferences),
                     "EXPLORATION"));
     }
-    return new RecommendationResponse(UUID.randomUUID().toString(), result);
+    return new RecommendationView(UUID.randomUUID().toString(), result);
   }
 
   private List<RecommendationCandidate> sortedCandidates(
@@ -202,7 +202,7 @@ public class RecommendationService {
     return (long) (capped ? RecommendationPolicy.cap(occurrences) : occurrences) * weight;
   }
 
-  private List<RecommendationItem> mergeAiAndFallback(
+  private List<ItemView> mergeAiAndFallback(
       List<RecommendationAiClient.AiRecommendation> aiRecommendations,
       List<RecommendationCandidate> personalized,
       List<RecommendationCandidate> general,
@@ -212,7 +212,7 @@ public class RecommendationService {
       String strategy) {
     Map<Long, RecommendationCandidate> eligible = new HashMap<>();
     personalized.forEach(candidate -> eligible.put(candidate.productId(), candidate));
-    List<RecommendationItem> result = new ArrayList<>();
+    List<ItemView> result = new ArrayList<>();
     Set<Long> selected = new HashSet<>();
     boolean fallbackUsed = providerFallback;
     for (RecommendationAiClient.AiRecommendation ai :
@@ -249,10 +249,10 @@ public class RecommendationService {
       long memberId,
       long petId,
       List<RecommendationCandidate> candidates,
-      List<RecommendationItem> selected) {
+      List<ItemView> selected) {
     Set<Long> ids =
         selected.stream()
-            .map(RecommendationItem::productId)
+            .map(ItemView::productId)
             .collect(java.util.stream.Collectors.toSet());
     List<RecommendationCandidate> choices =
         candidates.stream().filter(candidate -> !ids.contains(candidate.productId())).toList();
@@ -273,8 +273,8 @@ public class RecommendationService {
     return pool.get(index);
   }
 
-  private List<RecommendationItem> append(List<RecommendationItem> items, RecommendationItem item) {
-    List<RecommendationItem> result = new ArrayList<>(items);
+  private List<ItemView> append(List<ItemView> items, ItemView item) {
+    List<ItemView> result = new ArrayList<>(items);
     result.add(item);
     return List.copyOf(result);
   }
@@ -329,16 +329,16 @@ public class RecommendationService {
         : "반려동물 유형에 맞는 구매 가능 상품입니다.";
   }
 
-  private RecommendationItem toItem(
+  private ItemView toItem(
       RecommendationCandidate candidate, String reason, String strategy) {
-    RecommendationItemCategory category =
+    RecommendationCategory category =
         candidate.category() == null
             ? null
-            : new RecommendationItemCategory(
+            : new RecommendationCategory(
                 candidate.category().categoryId(),
                 candidate.category().name(),
                 candidate.category().slug());
-    return new RecommendationItem(
+    return new ItemView(
         candidate.productId(),
         candidate.name(),
         candidate.shortDescription(),

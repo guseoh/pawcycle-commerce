@@ -1,8 +1,8 @@
 package com.pawcycle.backend.recommendation.application;
 
-import com.pawcycle.backend.recommendation.api.RecommendationItem;
-import com.pawcycle.backend.recommendation.api.RecommendationItemCategory;
-import com.pawcycle.backend.recommendation.api.RecommendationResponse;
+import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
+import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
+import com.pawcycle.backend.recommendation.model.RecommendationView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
 import com.pawcycle.backend.recommendation.domain.RecommendationTrendScore;
 import com.pawcycle.backend.recommendation.persistence.RecommendationQueryAdapter;
@@ -29,7 +29,7 @@ public class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  public RecommendationResponse popular(String petType, int limit) {
+  public RecommendationView popular(String petType, int limit) {
     List<RecommendationCandidate> candidates =
         repository.findPurchasableCandidates(petType).stream()
             .sorted(
@@ -42,7 +42,7 @@ public class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  public RecommendationResponse trending(String petType, int limit) {
+  public RecommendationView trending(String petType, int limit) {
     LocalDate today = LocalDate.now(clock.withZone(SEOUL));
     List<RecommendationCandidate> candidates = repository.findPurchasableCandidates(petType);
     Map<Long, RecommendationTrendScore> scores =
@@ -78,7 +78,7 @@ public class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  public RecommendationResponse related(long productId, int limit) {
+  public RecommendationView related(long productId, int limit) {
     RecommendationCandidate source = source(productId);
     Comparator<RecommendationCandidate> relatedOrder =
         Comparator.comparingInt(
@@ -108,7 +108,7 @@ public class ProductRecommendationService {
   }
 
   @Transactional(readOnly = true)
-  public RecommendationResponse complementary(long productId, int limit) {
+  public RecommendationView complementary(long productId, int limit) {
     RecommendationCandidate source = source(productId);
     Map<Long, Long> coPurchase = repository.coPurchaseCounts(productId);
     Comparator<RecommendationCandidate> complementaryOrder =
@@ -147,23 +147,23 @@ public class ProductRecommendationService {
         candidate.productId(), new RecommendationTrendScore(0, 0));
   }
 
-  private RecommendationResponse response(
+  private RecommendationView response(
       List<RecommendationCandidate> candidates, String strategy) {
-    return new RecommendationResponse(
+    return new RecommendationView(
         java.util.UUID.randomUUID().toString(),
         candidates.stream().map(candidate -> item(candidate, strategy)).toList());
   }
 
-  private RecommendationItem item(
+  private ItemView item(
       RecommendationCandidate candidate, String strategy) {
-    RecommendationItemCategory category =
+    RecommendationCategory category =
         candidate.category() == null
             ? null
-            : new RecommendationItemCategory(
+            : new RecommendationCategory(
                 candidate.category().categoryId(),
                 candidate.category().name(),
                 candidate.category().slug());
-    return new RecommendationItem(
+    return new ItemView(
         candidate.productId(),
         candidate.name(),
         candidate.shortDescription(),

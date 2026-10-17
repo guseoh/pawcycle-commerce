@@ -1,13 +1,10 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
-import com.pawcycle.backend.catalog.engagement.api.AdminQuestionListResponse;
-import com.pawcycle.backend.catalog.engagement.api.AdminQuestionResponse;
-import com.pawcycle.backend.catalog.engagement.api.AdminReviewListResponse;
-import com.pawcycle.backend.catalog.engagement.api.AdminReviewResponse;
-import com.pawcycle.backend.catalog.engagement.api.QuestionListResponse;
-import com.pawcycle.backend.catalog.engagement.api.QuestionResponse;
-import com.pawcycle.backend.catalog.engagement.api.ReviewListResponse;
-import com.pawcycle.backend.catalog.engagement.api.ReviewResponse;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.ReviewView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.AdminReviewView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.QuestionView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.AdminQuestionView;
+import com.pawcycle.backend.catalog.engagement.model.PageView;
 import com.pawcycle.backend.catalog.engagement.persistence.ProductEngagementPersistence;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -42,29 +39,29 @@ public class ProductEngagementService {
   }
 
   @Transactional(readOnly = true)
-  public ReviewListResponse reviews(long productId, int page, int size) {
+  public PageView<ReviewView> reviews(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
     long total = persistence.countVisibleReviews(productId);
-    List<ReviewResponse> items =
+    List<ReviewView> items =
         persistence.findVisibleReviews(productId, input.size(), input.offset()).stream()
-            .map(ProductEngagementService::response)
+
             .toList();
-    return new ReviewListResponse(
+    return new PageView<>(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional(readOnly = true)
-  public ReviewResponse myReview(long productId, long memberId) {
+  public ReviewView myReview(long productId, long memberId) {
     requirePublicProduct(productId);
     return persistence.findMemberReview(productId, memberId).stream()
-        .map(ProductEngagementService::response)
+
         .findFirst()
         .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "작성한 리뷰를 확인할 수 없습니다."));
   }
 
   @Transactional
-  public ReviewResponse createReview(long productId, long memberId, ReviewCreateCommand request) {
+  public ReviewView createReview(long productId, long memberId, ReviewCreateCommand request) {
     requirePublicProduct(productId);
     if (!persistence.hasDeliveredPurchase(memberId, productId))
       throw error(403, "REVIEW_PURCHASE_REQUIRED", "배송 완료 상품만 리뷰를 작성할 수 있습니다.");
@@ -82,7 +79,7 @@ public class ProductEngagementService {
   }
 
   @Transactional
-  public ReviewResponse updateReview(long reviewId, long memberId, ReviewPatchCommand request) {
+  public ReviewView updateReview(long reviewId, long memberId, ReviewPatchCommand request) {
     if (!request.ratingPresent() && !request.contentPresent())
       throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
     ReviewMutationState current = lockOwnedReview(reviewId, memberId);
@@ -99,14 +96,14 @@ public class ProductEngagementService {
   }
 
   @Transactional(readOnly = true)
-  public AdminReviewListResponse adminReviews(Long productId, int page, int size) {
+  public PageView<AdminReviewView> adminReviews(Long productId, int page, int size) {
     PageInput input = page(page, size);
     long total = persistence.countReviews(productId);
-    List<AdminReviewResponse> items =
+    List<AdminReviewView> items =
         persistence.findAdminReviews(productId, input.size(), input.offset()).stream()
-            .map(ProductEngagementService::response)
+
             .toList();
-    return new AdminReviewListResponse(
+    return new PageView<>(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
@@ -120,20 +117,20 @@ public class ProductEngagementService {
   }
 
   @Transactional(readOnly = true)
-  public QuestionListResponse questions(long productId, int page, int size) {
+  public PageView<QuestionView> questions(long productId, int page, int size) {
     requirePublicProduct(productId);
     PageInput input = page(page, size);
     long total = persistence.countVisibleQuestions(productId);
-    List<QuestionResponse> items =
+    List<QuestionView> items =
         persistence.findVisibleQuestions(productId, input.size(), input.offset()).stream()
-            .map(ProductEngagementService::response)
+
             .toList();
-    return new QuestionListResponse(
+    return new PageView<>(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional
-  public QuestionResponse createQuestion(
+  public QuestionView createQuestion(
       long productId, long memberId, QuestionCreateCommand request) {
     requirePublicProduct(productId);
     Timestamp now = Timestamp.from(Instant.now(clock));
@@ -142,7 +139,7 @@ public class ProductEngagementService {
   }
 
   @Transactional
-  public QuestionResponse updateQuestion(
+  public QuestionView updateQuestion(
       long questionId, long memberId, QuestionPatchCommand request) {
     if (!request.contentPresent()) throw error(400, "VALIDATION_FAILED", "수정할 필드를 하나 이상 입력해 주세요.");
     QuestionMutationState current = lockOwnedQuestion(questionId, memberId);
@@ -160,19 +157,19 @@ public class ProductEngagementService {
   }
 
   @Transactional(readOnly = true)
-  public AdminQuestionListResponse adminQuestions(Long productId, int page, int size) {
+  public PageView<AdminQuestionView> adminQuestions(Long productId, int page, int size) {
     PageInput input = page(page, size);
     long total = persistence.countQuestions(productId);
-    List<AdminQuestionResponse> items =
+    List<AdminQuestionView> items =
         persistence.findAdminQuestions(productId, input.size(), input.offset()).stream()
-            .map(ProductEngagementService::response)
+
             .toList();
-    return new AdminQuestionListResponse(
+    return new PageView<>(
         items, input.page(), input.size(), total, totalPages(total, input.size()));
   }
 
   @Transactional
-  public AdminQuestionResponse answerQuestion(long questionId, String answer, long adminId) {
+  public AdminQuestionView answerQuestion(long questionId, String answer, long adminId) {
     QuestionMutationState current = lockQuestion(questionId);
     Timestamp now = Timestamp.from(Instant.now(clock));
     persistence.answerQuestion(questionId, answer, now);
@@ -222,21 +219,21 @@ public class ProductEngagementService {
     return new QuestionMutationState(state.memberId(), state.productId(), state.answered());
   }
 
-  private ReviewResponse review(long id, long productId, long memberId) {
+  private ReviewView review(long id, long productId, long memberId) {
     return java.util.Optional.ofNullable(persistence.findReview(id, productId, memberId))
-        .map(ProductEngagementService::response)
+
         .orElseThrow(() -> error(404, "REVIEW_NOT_FOUND", "리뷰를 확인할 수 없습니다."));
   }
 
-  private QuestionResponse question(long id, long productId) {
+  private QuestionView question(long id, long productId) {
     return java.util.Optional.ofNullable(persistence.findQuestion(id, productId))
-        .map(ProductEngagementService::response)
+
         .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
   }
 
-  private AdminQuestionResponse adminQuestion(long id) {
+  private AdminQuestionView adminQuestion(long id) {
     return java.util.Optional.ofNullable(persistence.findAdminQuestion(id))
-        .map(ProductEngagementService::response)
+
         .orElseThrow(() -> error(404, "PRODUCT_QUESTION_NOT_FOUND", "상품 문의를 확인할 수 없습니다."));
   }
 
@@ -281,48 +278,4 @@ public class ProductEngagementService {
 
   private record QuestionMutationState(long memberId, long productId, boolean answered) {}
 
-  private static ReviewResponse response(ProductEngagementPersistence.ReviewView view) {
-    if (view == null) return null;
-    return new ReviewResponse(
-        view.reviewId(), view.rating(), view.content(), view.createdAt(), view.updatedAt());
-  }
-
-  private static AdminReviewResponse response(ProductEngagementPersistence.AdminReviewView view) {
-    if (view == null) return null;
-    return new AdminReviewResponse(
-        view.reviewId(),
-        view.productId(),
-        view.memberId(),
-        view.rating(),
-        view.content(),
-        view.visible(),
-        view.createdAt(),
-        view.updatedAt());
-  }
-
-  private static QuestionResponse response(ProductEngagementPersistence.QuestionView view) {
-    if (view == null) return null;
-    return new QuestionResponse(
-        view.questionId(),
-        view.content(),
-        view.answer(),
-        view.answered(),
-        view.createdAt(),
-        view.updatedAt());
-  }
-
-  private static AdminQuestionResponse response(
-      ProductEngagementPersistence.AdminQuestionView view) {
-    if (view == null) return null;
-    return new AdminQuestionResponse(
-        view.questionId(),
-        view.productId(),
-        view.memberId(),
-        view.content(),
-        view.answer(),
-        view.answered(),
-        view.visible(),
-        view.createdAt(),
-        view.updatedAt());
-  }
 }

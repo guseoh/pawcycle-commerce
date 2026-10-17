@@ -1,7 +1,7 @@
 package com.pawcycle.backend.recommendation.application;
 
-import com.pawcycle.backend.recommendation.api.RecommendationItem;
-import com.pawcycle.backend.recommendation.api.RecommendationResponse;
+import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
+import com.pawcycle.backend.recommendation.model.RecommendationView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
 import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
 import com.pawcycle.backend.recommendation.infrastructure.metrics.RecommendationMetricsFixture;
@@ -65,10 +65,10 @@ class RecommendationServiceTests {
                 new RecommendationAiClient.AiRecommendation(1L, "중복입니다."),
                 new RecommendationAiClient.AiRecommendation(2L, "English reason")));
 
-    RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationView response = service.recommend(10L, 1L);
 
     assertThat(response.products())
-        .extracting(RecommendationItem::productId)
+        .extracting(ItemView::productId)
         .containsExactly(1L, 2L, 3L);
     assertThat(response.products()).noneMatch(item -> item.productId() == 4L);
     assertThat(response.products().get(0).reason()).isEqualTo("정기배송 카테고리와 잘 맞습니다.");
@@ -93,7 +93,7 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenThrow(new IllegalStateException("provider unavailable"));
 
-    RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationView response = service.recommend(10L, 1L);
 
     assertThat(response.products())
         .singleElement()
@@ -124,7 +124,7 @@ class RecommendationServiceTests {
     when(repository.findPurchasableCandidates("DOG")).thenReturn(candidates, candidates);
     when(ai.recommend(anyList(), anyList())).thenReturn(List.of());
 
-    RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationView response = service.recommend(10L, 1L);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<RecommendationCandidate>> captor = ArgumentCaptor.forClass(List.class);
@@ -134,7 +134,7 @@ class RecommendationServiceTests {
         .containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
     assertThat(response.products()).hasSize(10);
     assertThat(response.products())
-        .extracting(RecommendationItem::strategy)
+        .extracting(ItemView::strategy)
         .containsExactly(
             "PERSONALIZED",
             "PERSONALIZED",
@@ -149,14 +149,14 @@ class RecommendationServiceTests {
     List<Long> personalizedIds =
         response.products().stream()
             .filter(item -> item.strategy().equals("PERSONALIZED"))
-            .map(RecommendationItem::productId)
+            .map(ItemView::productId)
             .toList();
     assertThat(personalizedIds)
         .containsExactlyElementsOf(LongStream.rangeClosed(1, 9).boxed().toList());
     List<Long> explorationIds =
         response.products().stream()
             .filter(item -> item.strategy().equals("EXPLORATION"))
-            .map(RecommendationItem::productId)
+            .map(ItemView::productId)
             .toList();
     assertThat(explorationIds).singleElement().isIn(10L, 11L);
     assertThat(personalizedIds).doesNotContainAnyElementsOf(explorationIds);
@@ -175,10 +175,10 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenReturn(List.of(new RecommendationAiClient.AiRecommendation(1L, "이 상품을 추천합니다.")));
 
-    RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationView response = service.recommend(10L, 1L);
 
     assertThat(response.products())
-        .extracting(RecommendationItem::productId)
+        .extracting(ItemView::productId)
         .containsExactly(2L);
     assertThat(
             meters
@@ -200,11 +200,11 @@ class RecommendationServiceTests {
     when(ai.recommend(anyList(), anyList()))
         .thenReturn(List.of(new RecommendationAiClient.AiRecommendation(1L, "English only")));
 
-    RecommendationResponse response = service.recommend(10L, 1L);
+    RecommendationView response = service.recommend(10L, 1L);
 
     assertThat(response.products())
         .singleElement()
-        .extracting(RecommendationItem::reason)
+        .extracting(ItemView::reason)
         .isEqualTo("반려동물 유형에 맞는 구매 가능 상품입니다.");
     assertThat(
             meters

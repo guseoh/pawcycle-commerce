@@ -30,7 +30,7 @@ public class ProductQuestionController {
       @PathVariable long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.questions(productId, page, size);
+    return QuestionListResponse.from(service.questions(productId, page, size));
   }
 
   @PostMapping("/api/products/{productId}/questions")
@@ -38,8 +38,8 @@ public class ProductQuestionController {
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody QuestionCreateRequest request) {
-    QuestionResponse response = service.createQuestion(
-        productId, principal.memberId(), new QuestionCreateCommand(request.content()));
+    QuestionResponse response = QuestionResponse.from(service.createQuestion(
+        productId, principal.memberId(), new QuestionCreateCommand(request.content())));
     return ResponseEntity.created(URI.create("/api/product-questions/" + response.questionId())).body(response);
   }
 
@@ -48,10 +48,10 @@ public class ProductQuestionController {
       @PathVariable long questionId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestBody QuestionPatchRequest request) {
-    return service.updateQuestion(
+    return QuestionResponse.from(service.updateQuestion(
         questionId,
         principal.memberId(),
-        new QuestionPatchCommand(request.getContent(), request.isContentPresent()));
+        new QuestionPatchCommand(request.getContent(), request.isContentPresent())));
   }
 
   @DeleteMapping("/api/product-questions/{questionId}")
