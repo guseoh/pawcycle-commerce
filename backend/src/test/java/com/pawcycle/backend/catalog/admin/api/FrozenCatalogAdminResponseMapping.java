@@ -1,4 +1,4 @@
-package com.pawcycle.backend.catalog.admin.application;
+package com.pawcycle.backend.catalog.admin.api;
 
 import com.pawcycle.backend.catalog.admin.api.BrandResponse;
 import com.pawcycle.backend.catalog.admin.api.CategoryFacetListResponse;
@@ -16,29 +16,29 @@ import com.pawcycle.backend.catalog.admin.api.OptionGroupResponse;
 import com.pawcycle.backend.catalog.admin.api.OptionValueResponse;
 import com.pawcycle.backend.catalog.admin.api.ProductFacetValuesResponse;
 import com.pawcycle.backend.catalog.admin.api.SkuOptionValuesResponse;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.BrandView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryFacetView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.CategoryView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.DetailSectionView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetDefinitionListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetDefinitionView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.FacetOptionView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionGroupListView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionGroupView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.OptionValueView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ProductFacetValuesView;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.SkuOptionValuesView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.BrandView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryFacetView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.CategoryView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.DetailSectionListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.DetailSectionView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetDefinitionListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetDefinitionView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.FacetOptionView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionGroupListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionGroupView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.OptionValueView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ProductFacetValuesView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.SkuOptionValuesView;
 
-final class CatalogAdminMapping {
-  private CatalogAdminMapping() {}
+final class FrozenCatalogAdminResponseMapping {
+  private FrozenCatalogAdminResponseMapping() {}
 
   static CategoryFacetListResponse response(CategoryFacetListView value) {
     return new CategoryFacetListResponse(
-        value.categoryId(), value.facets().stream().map(CatalogAdminMapping::response).toList());
+        value.categoryId(), value.facets().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static CategoryFacetResponse response(CategoryFacetView value) {
@@ -68,7 +68,7 @@ final class CatalogAdminMapping {
 
   static ImageListResponse response(ImageListView value) {
     return new ImageListResponse(
-        value.images().stream().map(CatalogAdminMapping::response).toList());
+        value.images().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static ImageResponse response(ImageView value) {
@@ -83,7 +83,7 @@ final class CatalogAdminMapping {
 
   static OptionGroupListResponse response(OptionGroupListView value) {
     return new OptionGroupListResponse(
-        value.optionGroups().stream().map(CatalogAdminMapping::response).toList());
+        value.optionGroups().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static OptionGroupResponse response(OptionGroupView value) {
@@ -92,7 +92,7 @@ final class CatalogAdminMapping {
         value.productId(),
         value.name(),
         value.displayOrder(),
-        value.values().stream().map(CatalogAdminMapping::response).toList());
+        value.values().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static OptionValueResponse response(OptionValueView value) {
@@ -106,7 +106,7 @@ final class CatalogAdminMapping {
 
   static FacetDefinitionListResponse response(FacetDefinitionListView value) {
     return new FacetDefinitionListResponse(
-        value.facetDefinitions().stream().map(CatalogAdminMapping::response).toList());
+        value.facetDefinitions().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static FacetDefinitionResponse response(FacetDefinitionView value) {
@@ -114,7 +114,7 @@ final class CatalogAdminMapping {
         value.facetDefinitionId(),
         value.key(),
         value.name(),
-        value.options().stream().map(CatalogAdminMapping::response).toList());
+        value.options().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static FacetOptionResponse response(FacetOptionView value) {
@@ -128,7 +128,7 @@ final class CatalogAdminMapping {
 
   static DetailSectionListResponse response(DetailSectionListView value) {
     return new DetailSectionListResponse(
-        value.detailSections().stream().map(CatalogAdminMapping::response).toList());
+        value.detailSections().stream().map(FrozenCatalogAdminResponseMapping::response).toList());
   }
 
   static DetailSectionResponse response(DetailSectionView value) {

@@ -2,9 +2,9 @@ package com.pawcycle.backend.catalog.admin.persistence;
 
 import com.pawcycle.backend.catalog.admin.domain.ProductImageEntity;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImageCreateCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageListView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImagePatchCommand;
-import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminModels.ImageView;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageView;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
