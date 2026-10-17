@@ -1,7 +1,7 @@
 package com.pawcycle.backend.recommendation.application;
 
-import com.pawcycle.backend.recommendation.api.RecommendationItem;
-import com.pawcycle.backend.recommendation.api.RecommendationResponse;
+import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
+import com.pawcycle.backend.recommendation.model.RecommendationView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
 import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
 import com.pawcycle.backend.recommendation.domain.RecommendationTrendScore;
@@ -31,12 +31,12 @@ class ProductRecommendationServiceTests {
     when(repository.trendScores(anyList(), any(LocalDate.class)))
         .thenReturn(Map.of(1L, new RecommendationTrendScore(10, 0)));
 
-    RecommendationResponse response =
+    RecommendationView response =
         new ProductRecommendationService(repository, Clock.systemUTC())
             .trending("DOG", 10);
 
     assertThat(response.products())
-        .extracting(RecommendationItem::productId)
+        .extracting(ItemView::productId)
         .containsExactly(1L);
     verify(repository).trendScores(eq(List.of(1L, 2L)), any(LocalDate.class));
   }
@@ -54,9 +54,9 @@ class ProductRecommendationServiceTests {
         4L, new RecommendationTrendScore(1,5)));
     Clock clock = Clock.fixed(java.time.Instant.parse("2026-09-17T15:00:00Z"), java.time.ZoneOffset.UTC);
     var service = new ProductRecommendationService(repository, clock);
-    assertThat(service.trending("DOG", 10).products()).extracting(RecommendationItem::productId)
+    assertThat(service.trending("DOG", 10).products()).extracting(ItemView::productId)
         .containsExactly(2L,3L,1L);
-    assertThat(service.trending("DOG", 2).products()).extracting(RecommendationItem::productId)
+    assertThat(service.trending("DOG", 2).products()).extracting(ItemView::productId)
         .containsExactly(2L,3L);
     verify(repository, org.mockito.Mockito.times(2)).trendScores(List.of(5L,3L,1L,4L,2L), today);
   }
@@ -73,9 +73,9 @@ class ProductRecommendationServiceTests {
         .thenReturn(Map.of(2L,new RecommendationTrendScore(4,4), 3L,new RecommendationTrendScore(1,5)))
         .thenReturn(Map.of());
     var service = new ProductRecommendationService(repository, Clock.systemUTC());
-    assertThat(service.trending("DOG",2).products()).extracting(RecommendationItem::productId)
+    assertThat(service.trending("DOG",2).products()).extracting(ItemView::productId)
         .containsExactly(2L,3L);
-    assertThat(service.trending("DOG",10).products()).extracting(RecommendationItem::productId)
+    assertThat(service.trending("DOG",10).products()).extracting(ItemView::productId)
         .containsExactly(2L,3L,1L);
   }
 

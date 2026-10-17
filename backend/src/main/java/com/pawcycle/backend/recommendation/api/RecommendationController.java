@@ -21,6 +21,6 @@ class RecommendationController {
   @GetMapping
   RecommendationResponse products(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @RequestParam long petId) {
-    return service.recommend(principal.memberId(), petId);
+    return RecommendationResponse.from(service.recommend(principal.memberId(), petId));
   }
 }

@@ -5,14 +5,6 @@
 # T02: 14 RECLASSIFIED edges below were present at main 873f144 before layer names.
 # Normalized compiled dependency graph is identical: 817 classes / 7602 edges; NEW=0.
 api-persistence | com.pawcycle.backend.commerce.coupon.api.AdminCouponController -> com.pawcycle.backend.commerce.coupon.persistence.CouponView
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.AdminQuestionListResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.AdminQuestionResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.AdminReviewListResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.AdminReviewResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.QuestionListResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.QuestionResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.ReviewListResponse
-application-api | com.pawcycle.backend.catalog.engagement.application.ProductEngagementService -> com.pawcycle.backend.catalog.engagement.api.ReviewResponse
 application-api | com.pawcycle.backend.commerce.cart.application.CartApplicationService -> com.pawcycle.backend.commerce.cart.api.CartItemResponse
 application-api | com.pawcycle.backend.commerce.cart.application.CartApplicationService -> com.pawcycle.backend.commerce.cart.api.CartPricingResponse
 application-api | com.pawcycle.backend.commerce.cart.application.CartApplicationService -> com.pawcycle.backend.commerce.cart.api.CartResponse
@@ -67,12 +59,6 @@ application-api | com.pawcycle.backend.commerce.returning.application.ReturnServ
 # T03 RECLASSIFIED: 47 pre-existing edges gain application/api layer names (main 5c077b8).
 # Before/after compiled graph normalized for class, nested and array element packages: 817 classes / 7602 edges, NEW=0.
 application-api | com.pawcycle.backend.interaction.application.InteractionService -> com.pawcycle.backend.interaction.api.InteractionEventRequest
-application-api | com.pawcycle.backend.recommendation.application.ProductRecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationItem
-application-api | com.pawcycle.backend.recommendation.application.ProductRecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationItemCategory
-application-api | com.pawcycle.backend.recommendation.application.ProductRecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationResponse
-application-api | com.pawcycle.backend.recommendation.application.RecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationItem
-application-api | com.pawcycle.backend.recommendation.application.RecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationItemCategory
-application-api | com.pawcycle.backend.recommendation.application.RecommendationService -> com.pawcycle.backend.recommendation.api.RecommendationResponse
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.CreatePetRequest
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PageResponse
 application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PetResponse

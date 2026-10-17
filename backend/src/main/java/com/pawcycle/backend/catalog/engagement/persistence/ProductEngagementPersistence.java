@@ -1,5 +1,9 @@
 package com.pawcycle.backend.catalog.engagement.persistence;
 
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.ReviewView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.AdminReviewView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.QuestionView;
+import com.pawcycle.backend.catalog.engagement.model.ProductEngagementViews.AdminQuestionView;
 import com.pawcycle.backend.catalog.engagement.domain.ProductQuestionEntity;
 import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
 import jakarta.persistence.EntityManager;
@@ -365,39 +369,4 @@ public class ProductEngagementPersistence {
 
   public record QuestionMutationState(long memberId, long productId, boolean answered) {}
 
-  public record ReviewView(
-      Long reviewId,
-      int rating,
-      String content,
-      java.time.Instant createdAt,
-      java.time.Instant updatedAt) {}
-
-  public record AdminReviewView(
-      Long reviewId,
-      Long productId,
-      Long memberId,
-      int rating,
-      String content,
-      boolean visible,
-      java.time.Instant createdAt,
-      java.time.Instant updatedAt) {}
-
-  public record QuestionView(
-      Long questionId,
-      String content,
-      String answer,
-      boolean answered,
-      java.time.Instant createdAt,
-      java.time.Instant updatedAt) {}
-
-  public record AdminQuestionView(
-      Long questionId,
-      Long productId,
-      Long memberId,
-      String content,
-      String answer,
-      boolean answered,
-      boolean visible,
-      java.time.Instant createdAt,
-      java.time.Instant updatedAt) {}
 }
