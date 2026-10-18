@@ -121,12 +121,12 @@ class CommerceFacade {
 
   List<CommerceRowResponse> orders(long memberId) {
     return orderService.orders(memberId).stream()
-        .map(summary -> new CommerceRowResponse(summaryMap(summary)))
+        .map(summary -> new CommerceRowResponse(summaryMap(OrderSummaryResponse.from(summary))))
         .toList();
   }
 
   CommercePayload order(long memberId, long orderId) {
-    return CommercePayload.from(orderMap(orderService.order(memberId, orderId)));
+    return CommercePayload.from(orderMap(OrderResponse.from(orderService.order(memberId, orderId))));
   }
 
   CommercePayload reorder(long memberId, long sourceOrderId, String idempotencyKey) {

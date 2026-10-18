@@ -23,13 +23,13 @@ public class OrderController {
   @GetMapping
   public List<OrderSummaryResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return orderService.orders(principal.memberId());
+    return orderService.orders(principal.memberId()).stream().map(OrderSummaryResponse::from).toList();
   }
 
   @GetMapping("/{orderId}")
   public OrderResponse get(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long orderId) {
-    return orderService.order(principal.memberId(), orderId);
+    return OrderResponse.from(orderService.order(principal.memberId(), orderId));
   }
 
   @PostMapping("/{orderId}/reorder")
@@ -37,6 +37,6 @@ public class OrderController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long orderId,
       @RequestHeader("Idempotency-Key") String idempotencyKey) {
-    return orderService.reorder(principal.memberId(), orderId, idempotencyKey);
+    return OrderReorderResponse.from(orderService.reorder(principal.memberId(), orderId, idempotencyKey));
   }
 }

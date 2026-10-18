@@ -38,7 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = {"spring.jpa.open-in-view=false", "spring.jpa.properties.hibernate.generate_statistics=true"})
 @ActiveProfiles({"test", "local-integration"})
 class QuickReorderTypedMappingIntegrationTests {
   @Autowired private JdbcTemplate jdbc;
@@ -46,6 +46,8 @@ class QuickReorderTypedMappingIntegrationTests {
   @Autowired private PlatformTransactionManager manager;
   @Autowired private ObjectMapper json;
   @Autowired private OrderApplicationService orders;
+  @Autowired private jakarta.persistence.EntityManagerFactory emf;
+  @Autowired private QuickReorderPersistenceAdapter quickReorders;
   @Autowired private WebApplicationContext context;
 
   @Test
@@ -265,6 +267,28 @@ class QuickReorderTypedMappingIntegrationTests {
     assertThat(json.readTree(body)).isEqualTo(json.readTree(stored(f.member(), key)));
     mvc.perform(post("/api/orders/" + (f.order() + 1000000) + "/reorder")
         .with(authentication(auth)).with(csrf()).header("Idempotency-Key", key)).andExpect(status().isConflict());
+  }
+
+  @Test
+  void responseFactoryAfterCommitKeepsStoredLegacyJsonReplaySqlAndDetachedContract() {
+    Fixture f = fixture(true); String key = "boundary410-" + UUID.randomUUID();
+    var frozen = new com.pawcycle.backend.commerce.order.application.FrozenOrderApplicationService(
+        org.mockito.Mockito.mock(OrderPersistenceAdapter.class), quickReorders, manager, Clock.systemUTC(), 7);
+    var expected = frozen.reorder(f.member(), f.order(), key);
+    String storedJson = stored(f.member(), key); long previousVersion = version(f.member());
+    var stats = emf.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+    stats.clear(); var expectedReplay = frozen.reorder(f.member(), f.order(), key); long replaySql = stats.getPrepareStatementCount();
+    stats.clear(); var view = orders.reorder(f.member(), f.order(), key);
+    assertThat(stats.getPrepareStatementCount()).isEqualTo(replaySql).isEqualTo(2);
+    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.hasResource(emf)).isFalse(); stats.clear();
+    var dto = com.pawcycle.backend.commerce.order.api.OrderReorderResponse.from(view);
+    assertThat(dto).isEqualTo(expectedReplay).isEqualTo(expected);
+    assertThat(json.writeValueAsString(dto)).isEqualTo(json.writeValueAsString(expected));
+    assertThat(stats.getPrepareStatementCount()).isZero(); assertThat(stats.getEntityLoadCount()).isZero();
+    assertThat(stored(f.member(), key)).isEqualTo(storedJson);
+    assertThat(version(f.member())).isEqualTo(previousVersion);
+    System.out.println("REORDER_RESPONSE_SQL_PARITY replay=" + replaySql + " detached=0 entityLoads=0 storedJsonUnchanged=true");
   }
 
   private String concurrentReorder(Fixture f, String key, CountDownLatch ready, CountDownLatch start) throws Exception {

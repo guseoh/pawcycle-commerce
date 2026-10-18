@@ -18,11 +18,11 @@ public class AdminOrderController {
 
   @GetMapping
   public List<AdminOrderResponse> list() {
-    return orders.list();
+    return orders.list().stream().map(AdminOrderResponse::from).toList();
   }
 
   @GetMapping("/{id}")
   public AdminOrderResponse get(@PathVariable long id) {
-    return orders.get(id);
+    return AdminOrderResponse.from(orders.get(id));
   }
 }
