@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.cart.persistence;
 
+import com.pawcycle.backend.commerce.cart.model.CartItemView;
 import java.math.BigDecimal;
 
 record CartItemRow(

@@ -1,14 +1,12 @@
 package com.pawcycle.backend.commerce.cart.application;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
-import com.pawcycle.backend.commerce.cart.api.CartItemResponse;
-import com.pawcycle.backend.commerce.cart.api.CartPricingResponse;
-import com.pawcycle.backend.commerce.cart.api.CartResponse;
-import com.pawcycle.backend.commerce.cart.persistence.CartItemView;
+import com.pawcycle.backend.commerce.cart.model.CartItemView;
 import com.pawcycle.backend.commerce.cart.persistence.CartPersistenceAdapter;
-import com.pawcycle.backend.commerce.cart.persistence.CartView;
+import com.pawcycle.backend.commerce.cart.model.CartView;
+import com.pawcycle.backend.commerce.cart.model.CartPricingView;
+import com.pawcycle.backend.commerce.cart.model.CartResult;
 import java.math.BigDecimal;
-import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,16 +19,13 @@ public class CartApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public CartResponse get(long memberId) {
+  public CartResult get(long memberId) {
     CartView view = cart.view(memberId);
     BigDecimal original =
         view.items().stream()
             .map(CartItemView::lineAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-    return new CartResponse(
-        view.items().stream().map(CartApplicationService::item).toList(),
-        view.version(),
-        pricing(original));
+    return new CartResult(view, pricing(original));
   }
 
   @Transactional
@@ -51,23 +46,8 @@ public class CartApplicationService {
     cart.delete(memberId, skuId);
   }
 
-  private static CartItemResponse item(CartItemView item) {
-    return new CartItemResponse(
-        item.skuId(),
-        item.quantity(),
-        item.skuCode(),
-        item.skuName(),
-        item.price(),
-        item.unitPrice(),
-        item.lineAmount(),
-        item.productId(),
-        item.productName(),
-        item.availableQuantity(),
-        item.purchasable());
-  }
-
-  private static CartPricingResponse pricing(BigDecimal original) {
-    return new CartPricingResponse(
+  private static CartPricingView pricing(BigDecimal original) {
+    return new CartPricingView(
         original, original, BigDecimal.ZERO, BigDecimal.ZERO, original, original);
   }
 }

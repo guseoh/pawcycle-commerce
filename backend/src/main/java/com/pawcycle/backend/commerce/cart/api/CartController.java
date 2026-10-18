@@ -27,7 +27,7 @@ public class CartController {
 
   @GetMapping
   public CartResponse get(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return cart.get(principal.memberId());
+    return CartResponse.from(cart.get(principal.memberId()));
   }
 
   @PostMapping("/items")

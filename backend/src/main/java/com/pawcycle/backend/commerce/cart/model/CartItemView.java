@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.cart.persistence;
+package com.pawcycle.backend.commerce.cart.model;
 
 import java.math.BigDecimal;
 

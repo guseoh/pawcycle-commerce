@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.wishlist.persistence;
 
+import com.pawcycle.backend.commerce.wishlist.model.WishlistItemView;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import org.springframework.stereotype.Repository;

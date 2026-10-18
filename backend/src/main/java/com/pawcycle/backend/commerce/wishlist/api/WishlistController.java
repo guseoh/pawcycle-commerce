@@ -22,7 +22,7 @@ public class WishlistController {
 
   @GetMapping
   public WishlistResponse list(@AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return wishlist.list(principal.memberId());
+    return WishlistResponse.from(wishlist.list(principal.memberId()));
   }
 
   @PostMapping("/{productId}")

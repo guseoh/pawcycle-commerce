@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.wishlist.persistence;
+package com.pawcycle.backend.commerce.wishlist.model;
 
 import java.sql.Timestamp;
 
