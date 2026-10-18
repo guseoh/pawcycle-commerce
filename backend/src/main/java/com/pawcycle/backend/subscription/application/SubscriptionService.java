@@ -1,13 +1,11 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.PageResponse;
-import com.pawcycle.backend.subscription.api.PetResponse;
-import com.pawcycle.backend.subscription.api.PlanVersionResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
+import com.pawcycle.backend.subscription.model.PetUpdateCommand;
 import org.springframework.stereotype.Service;
 
 /**
@@ -35,27 +33,27 @@ public class SubscriptionService {
     this.reconciliation = reconciliation;
   }
 
-  public PetResponse createPet(long memberId, CreatePetRequest request) {
+  public SubscriptionReadModel.Pet createPet(long memberId, PetCreateCommand request) {
     return petPlans.createPet(memberId, request);
   }
 
-  public PetResponse updatePet(long memberId, long petId, com.pawcycle.backend.subscription.api.UpdatePetRequest request) {
+  public SubscriptionReadModel.Pet updatePet(long memberId, long petId, PetUpdateCommand request) {
     return petPlans.updatePet(memberId, petId, request);
   }
 
-  public PageResponse<PetResponse> pets(long memberId, int page, int size) {
+  public SubscriptionReadModel.Page<SubscriptionReadModel.Pet> pets(long memberId, int page, int size) {
     return petPlans.pets(memberId, page, size);
   }
 
-  public PetResponse pet(long memberId, long petId) {
+  public SubscriptionReadModel.Pet pet(long memberId, long petId) {
     return petPlans.pet(memberId, petId);
   }
 
-  public PageResponse<PlanVersionResponse> plans(long memberId, long petId, int page, int size) {
+  public SubscriptionReadModel.Page<SubscriptionReadModel.PlanVersion> plans(long memberId, long petId, int page, int size) {
     return petPlans.plans(memberId, petId, page, size);
   }
 
-  public PlanVersionResponse planVersion(long memberId, long petId, long versionId) {
+  public SubscriptionReadModel.PlanVersion planVersion(long memberId, long petId, long versionId) {
     return petPlans.planVersion(memberId, petId, versionId);
   }
 

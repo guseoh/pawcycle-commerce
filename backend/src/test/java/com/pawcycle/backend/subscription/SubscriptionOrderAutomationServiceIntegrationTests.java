@@ -21,7 +21,7 @@ import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.member.address.application.MemberAddressCommand;
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.support.TransactionalTestSql;
@@ -1045,7 +1045,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
 
   private long createSubscription(String key, long planVersionId, int cycle) {
     long petId =
-        subscriptions.createPet(member.getId(), new CreatePetRequest("반려동물-" + key, "DOG")).petId();
+        subscriptions.createPet(member.getId(), new PetCreateCommand("반려동물-" + key, "DOG")).petId();
     SubscriptionResult result =
         subscriptions.createSubscription(
             member.getId(),

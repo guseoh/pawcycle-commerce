@@ -13,6 +13,8 @@ import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionSummaryResponse;
 import com.pawcycle.backend.subscription.api.UpdatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
+import com.pawcycle.backend.subscription.model.PetUpdateCommand;
 import jakarta.validation.Valid;
 import java.net.URI;
 import org.springframework.http.ResponseEntity;
@@ -40,7 +42,8 @@ public class SubscriptionController {
   ResponseEntity<PetResponse> createPet(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody CreatePetRequest request) {
-    PetResponse response = service.createPet(principal.memberId(), request);
+    PetResponse response = PetResponse.from(service.createPet(principal.memberId(),
+        new PetCreateCommand(request.name(), request.petType())));
     return ResponseEntity.created(URI.create("/api/pets/" + response.petId())).body(response);
   }
 
@@ -49,13 +52,13 @@ public class SubscriptionController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.pets(principal.memberId(), page, size);
+    return PageResponse.from(service.pets(principal.memberId(), page, size), PetResponse::from);
   }
 
   @GetMapping("/pets/{petId}")
   PetResponse pet(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long petId) {
-    return service.pet(principal.memberId(), petId);
+    return PetResponse.from(service.pet(principal.memberId(), petId));
   }
 
   @org.springframework.web.bind.annotation.PatchMapping("/pets/{petId}")
@@ -63,7 +66,9 @@ public class SubscriptionController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long petId,
       @RequestBody UpdatePetRequest request) {
-    return service.updatePet(principal.memberId(), petId, request);
+    return PetResponse.from(service.updatePet(principal.memberId(), petId,
+        new PetUpdateCommand(request.getName(), request.isNamePresent(), request.getBreed(),
+            request.isBreedPresent(), request.getWeightKg(), request.isWeightKgPresent())));
   }
 
   @GetMapping("/subscription-plans")
@@ -72,7 +77,7 @@ public class SubscriptionController {
       @RequestParam long petId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.plans(principal.memberId(), petId, page, size);
+    return PageResponse.from(service.plans(principal.memberId(), petId, page, size), PlanVersionResponse::from);
   }
 
   @GetMapping("/subscription-plan-versions/{planVersionId}")
@@ -80,7 +85,7 @@ public class SubscriptionController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long planVersionId,
       @RequestParam long petId) {
-    return service.planVersion(principal.memberId(), petId, planVersionId);
+    return PlanVersionResponse.from(service.planVersion(principal.memberId(), petId, planVersionId));
   }
 
   @PostMapping("/subscriptions")

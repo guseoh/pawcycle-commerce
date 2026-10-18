@@ -32,19 +32,19 @@ class RepeatCommerceController {
   @GetMapping("/recommendations/reorder-timing")
   RepeatPurchaseResponse reorder(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return repeatPurchase.reorderTiming(principal.memberId());
+    return RepeatPurchaseResponse.from(repeatPurchase.reorderTiming(principal.memberId()));
   }
 
   @GetMapping("/subscriptions/{subscriptionId}/cycle-suggestion")
   SubscriptionCycleSuggestionResponse cycle(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long subscriptionId) {
-    return cycleSuggestion.cycleSuggestion(principal.memberId(), subscriptionId);
+    return SubscriptionCycleSuggestionResponse.from(cycleSuggestion.cycleSuggestion(principal.memberId(), subscriptionId));
   }
 
   @GetMapping("/orders/{orderId}/subscription-options")
   SubscriptionOptionsResponse options(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long orderId) {
-    return conversion.subscriptionOptions(principal.memberId(), orderId);
+    return SubscriptionOptionsResponse.from(conversion.subscriptionOptions(principal.memberId(), orderId));
   }
 }

@@ -19,7 +19,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.migration.LegacySubscriptionMigrationProcessor;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -205,7 +205,7 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @SuppressWarnings("unchecked")
   void listPagesKeepRelatedRowsOrderingAndMemberIsolationAfterBatchAssembly() {
-    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     jdbc.update(
         "INSERT INTO subscription_plans(name,target_pet_type,on_sale) VALUES (?,?,true)",
         "DOG multi",
@@ -328,7 +328,7 @@ class SubscriptionServiceIntegrationTests {
                 "v2-other-" + UUID.randomUUID() + "@example.test",
                 passwordEncoder.encode("test-password")));
     long otherPetId =
-        service.createPet(other.getId(), new CreatePetRequest("다른 회원", "DOG")).petId();
+        service.createPet(other.getId(), new PetCreateCommand("다른 회원", "DOG")).petId();
     service.createSubscription(
         other.getId(), "list-other", new CreateSubscriptionRequest(otherPetId, planVersionId, 4));
 
@@ -363,7 +363,7 @@ class SubscriptionServiceIntegrationTests {
 
   @Test
   void mysqlPersistsReplayAndRejectsMismatchedPayload() {
-    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     CreateSubscriptionRequest request = new CreateSubscriptionRequest(petId, planVersionId, 4);
     SubscriptionResult created =
         service.createSubscription(member.getId(), "create-replay-key", request);
@@ -425,7 +425,7 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void cleanupDeletesOnlyExpiredRowsWithinEachTableBatch() {
-    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     long subscriptionId =
         service
             .createSubscription(
@@ -530,7 +530,7 @@ class SubscriptionServiceIntegrationTests {
   @Test
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void cleanupRepairsRollbackEraSuccessRowsWithinEachTableBatchBeforeDeleting() {
-    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     long subscriptionId =
         service
             .createSubscription(
@@ -846,7 +846,7 @@ class SubscriptionServiceIntegrationTests {
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void cleanupNativeMutationsMatchFrozenJdbcTargetsOrderCountsAndMicroseconds(int batchSize) {
     long firstSubscription = cleanupSubscription();
-    long petId = service.createPet(member.getId(), new CreatePetRequest("parity", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("parity", "DOG")).petId();
     long secondSubscription = service.createSubscription(member.getId(), "parity-subscription",
         new CreateSubscriptionRequest(petId, planVersionId, 4)).body().subscriptionId();
     jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?",
@@ -930,7 +930,7 @@ class SubscriptionServiceIntegrationTests {
   private record CleanupStage(int affected, java.util.List<java.util.Map<String, Object>> rows) {}
 
   private long cleanupSubscription() {
-    long petId = service.createPet(member.getId(), new CreatePetRequest("보리", "DOG")).petId();
+    long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     long subscriptionId = service.createSubscription(
         member.getId(), "cleanup-boundary", new CreateSubscriptionRequest(petId, planVersionId, 4))
         .body().subscriptionId();
