@@ -4,7 +4,9 @@
 
 작업 ID `OPS-OCI-005B`, 등급 `고위험`, 실행 구분 `저장소 변경`의 지속 Runbook이다. 이 저장소 변경은 OCI·Production·Secret·Managed MySQL을 실행하지 않았으므로 Production Observability는 **Production Verified가 아니다**. Managed Observability, Alertmanager, centralized logging/Loki와 OpenTelemetry 전환은 범위 밖이다.
 
-현재 Production은 OCI `app01`의 Backend/Frontend/Nginx와 별도 OCI Managed MySQL이다. 초기 Observability는 같은 `app01`에서 다음 세 lifecycle을 별도 Compose project로 운영한다.
+현재 승인된 Production deployment target은 없으며 CD는 DEFER 상태다(`docs/architecture/production-operations-overview.md`). 따라서 아래의 OCI `app01` 구성과 실행 절차는 활성 운영 환경의 존재나 배포 승인을 의미하지 않는다.
+
+이 Runbook이 전제로 하는 구성은 `app01`의 Backend/Frontend/Nginx, 별도 OCI Managed MySQL, 그리고 같은 `app01`에 분리된 다음 세 Compose lifecycle이다. 대상과 접속·Secret·DB·복구 계약을 별도로 승인하고 실제 상태를 확인한 경우에만 적용한다.
 
 - Application: 기존 `backend`, `frontend`, `proxy` release project
 - Metrics proxy: `infra/production-metrics-proxy`의 `metrics-proxy` 하나
@@ -32,7 +34,7 @@ bash infra/production/test-production-compose.sh
 
 ## 실제 운영 실행 전 조건
 
-별도 고위험 실제 운영 승인이 있고, 승인된 merge SHA와 현재 `app01` 상태를 확인한 뒤에만 다음 절차를 준비한다. 이 Runbook은 `opc` SSH user가 실행하며 Docker/Compose와 root-owned runtime state를 읽을 때만 필요한 명령에 `sudo`를 붙인다.
+승인된 Production 대상·접속·Secret·DB·복구 계약과 별도 고위험 실제 운영 승인이 확인되고, 승인 merge SHA 및 실제 대상이 이 Runbook의 `app01` 전제와 일치한다는 읽기 전용 확인을 마친 뒤에만 다음 절차를 준비한다. 이 Runbook은 `opc` SSH user가 실행하며 Docker/Compose와 root-owned runtime state를 읽을 때만 필요한 명령에 `sudo`를 붙인다.
 
 - `pawcycle-production-app` network가 이미 존재하며 Application project가 소유한다. Observability project와 metrics-proxy project는 이 external network를 삭제하지 않는다.
 - Application Compose의 service set은 `backend`, `frontend`, `proxy`이고 database service는 없다. OCI Managed MySQL lifecycle은 이 Runbook의 대상이 아니다.
