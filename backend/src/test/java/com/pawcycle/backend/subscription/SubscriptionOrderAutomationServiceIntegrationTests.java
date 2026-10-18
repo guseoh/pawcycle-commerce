@@ -999,6 +999,16 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     for (int i = 0; i < frozen.size(); i++) {
       assertThat(lockFootprint(tx, jpa.get(i))).as("physical lock pair %s", i).isEqualTo(lockFootprint(tx, frozen.get(i)));
     }
+    // T09 diagnosis only: same fixture, reverse then forward order after the original pass.
+    // Do not normalize LOCK_DATA, change the assertion, or change rollback semantics.
+    for (int pass = 1; pass <= 2; pass++) {
+      for (int step = 0; step < frozen.size(); step++) {
+        int pair = pass == 1 ? frozen.size() - 1 - step : step;
+        assertThat(lockFootprint(tx, jpa.get(pair)))
+            .as("diagnostic T09 pass %s pair %s", pass, pair)
+            .isEqualTo(lockFootprint(tx, frozen.get(pair)));
+      }
+    }
   }
 
   private java.util.List<java.util.Map<String, Object>> lockFootprint(
