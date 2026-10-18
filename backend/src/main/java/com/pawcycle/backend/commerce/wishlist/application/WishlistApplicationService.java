@@ -5,9 +5,7 @@ import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.wishlist.domain.WishlistItemEntity;
 import com.pawcycle.backend.commerce.wishlist.domain.WishlistItemId;
 import com.pawcycle.backend.commerce.wishlist.persistence.WishlistItemRepository;
-import com.pawcycle.backend.commerce.wishlist.api.WishlistItemResponse;
-import com.pawcycle.backend.commerce.wishlist.api.WishlistResponse;
-import com.pawcycle.backend.commerce.wishlist.persistence.WishlistItemView;
+import com.pawcycle.backend.commerce.wishlist.model.WishlistItemView;
 import com.pawcycle.backend.commerce.wishlist.persistence.WishlistQueryRepository;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.time.Clock;
@@ -38,9 +36,8 @@ public class WishlistApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public WishlistResponse list(long memberId) {
-    return new WishlistResponse(
-        queries.findByMemberId(memberId).stream().map(WishlistApplicationService::response).toList());
+  public List<WishlistItemView> list(long memberId) {
+    return List.copyOf(queries.findByMemberId(memberId));
   }
 
   @Transactional
@@ -60,7 +57,4 @@ public class WishlistApplicationService {
     items.deleteById(new WishlistItemId(memberId, productId));
   }
 
-  private static WishlistItemResponse response(WishlistItemView item) {
-    return new WishlistItemResponse(item.productId(), item.productName(), item.createdAt());
-  }
 }

@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.cart.persistence;
 
+import com.pawcycle.backend.commerce.cart.model.CartView;
 import com.pawcycle.backend.commerce.cart.domain.CartEntity;
 import com.pawcycle.backend.commerce.cart.domain.CartItemEntity;
 import com.pawcycle.backend.commerce.cart.domain.CartItemId;

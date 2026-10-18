@@ -50,7 +50,7 @@ class CommerceFacade {
   }
 
   CommercePayload cart(long memberId) {
-    return CommercePayload.from(cartMap(cartService.get(memberId)));
+    return CommercePayload.from(cartMap(CartResponse.from(cartService.get(memberId))));
   }
 
   void addCartItem(long memberId, long skuId, int quantity) {

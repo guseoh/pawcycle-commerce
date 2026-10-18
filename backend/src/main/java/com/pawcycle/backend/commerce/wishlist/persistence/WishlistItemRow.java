@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.wishlist.persistence;
 
+import com.pawcycle.backend.commerce.wishlist.model.WishlistItemView;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
