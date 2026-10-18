@@ -8,13 +8,9 @@ import com.pawcycle.backend.subscription.persistence.projection.SubscriptionItem
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
 
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
-import com.pawcycle.backend.subscription.api.PageResponse;
-import com.pawcycle.backend.subscription.api.PetResponse;
-import com.pawcycle.backend.subscription.api.PlanItemResponse;
-import com.pawcycle.backend.subscription.api.PlanSaleResponse;
-import com.pawcycle.backend.subscription.api.PlanVersionResponse;
-import com.pawcycle.backend.subscription.api.UpdatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
+import com.pawcycle.backend.subscription.model.PetUpdateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
@@ -36,7 +32,7 @@ class PetPlanApplicationService {
   }
 
   @Transactional
-  PetResponse createPet(long memberId, CreatePetRequest request) {
+  Pet createPet(long memberId, PetCreateCommand request) {
     String name = requiredText(request.name(), "name", 50);
     String type = requiredText(request.petType(), "petType", 3);
     if (!List.of("DOG", "CAT").contains(type)) throw support.validation("petType");
@@ -44,39 +40,39 @@ class PetPlanApplicationService {
   }
 
   @Transactional
-  PetResponse updatePet(long memberId, long petId, UpdatePetRequest request) {
+  Pet updatePet(long memberId, long petId, PetUpdateCommand request) {
     store.findOwnedPet(memberId, petId);
     if (!request.hasChanges()) throw support.validation("request");
-    String name = request.isNamePresent() ? requiredText(request.getName(), "name", 50) : null;
+    String name = request.namePresent() ? requiredText(request.name(), "name", 50) : null;
     String breed =
-        request.isBreedPresent() ? nullableText(request.getBreed(), "breed", 80) : null;
+        request.breedPresent() ? nullableText(request.breed(), "breed", 80) : null;
     BigDecimal weight =
-        request.isWeightKgPresent() ? nullableWeight(request.getWeightKg()) : null;
+        request.weightKgPresent() ? nullableWeight(request.weightKg()) : null;
     store.updatePet(
         memberId,
         petId,
         name,
-        request.isNamePresent(),
+        request.namePresent(),
         breed,
-        request.isBreedPresent(),
+        request.breedPresent(),
         weight,
-        request.isWeightKgPresent());
+        request.weightKgPresent());
     return pet(store.findOwnedPet(memberId, petId));
   }
 
   @Transactional(readOnly = true)
-  PageResponse<PetResponse> pets(long memberId, int page, int size) {
+  Page<Pet> pets(long memberId, int page, int size) {
     PageProjection<PetProjection> result = store.findPets(memberId, page(page, size), size);
     return page(result, result.items().stream().map(this::pet).toList());
   }
 
   @Transactional(readOnly = true)
-  PetResponse pet(long memberId, long petId) {
+  Pet pet(long memberId, long petId) {
     return pet(store.findOwnedPet(memberId, petId));
   }
 
   @Transactional(readOnly = true)
-  PageResponse<PlanVersionResponse> plans(long memberId, long petId, int page, int size) {
+  Page<PlanVersion> plans(long memberId, long petId, int page, int size) {
     PetProjection pet = store.findOwnedPet(memberId, petId);
     PageProjection<PlanVersionProjection> result =
         store.findSalePlanVersions(pet.petType(), support.today(), page(page, size), size);
@@ -96,7 +92,7 @@ class PetPlanApplicationService {
   }
 
   @Transactional(readOnly = true)
-  PlanVersionResponse planVersion(long memberId, long petId, long versionId) {
+  PlanVersion planVersion(long memberId, long petId, long versionId) {
     PetProjection pet = store.findOwnedPet(memberId, petId);
     PlanVersionProjection version = store.findPlanVersion(versionId);
     validateAvailable(pet, version);
@@ -123,8 +119,8 @@ class PetPlanApplicationService {
     return page;
   }
 
-  private PetResponse pet(PetProjection pet) {
-    return new PetResponse(
+  private Pet pet(PetProjection pet) {
+    return new Pet(
         pet.id(), pet.name(), pet.petType(), pet.breed(), pet.weightKg(), pet.profileComplete());
   }
 
@@ -155,26 +151,26 @@ class PetPlanApplicationService {
     }
   }
 
-  private PlanVersionResponse plan(PlanVersionProjection version) {
+  private PlanVersion plan(PlanVersionProjection version) {
     return plan(version, store.findPlanItems(version.id()), store.findDeliveryCycles(version.id()));
   }
 
-  private PlanVersionResponse plan(
+  private PlanVersion plan(
       PlanVersionProjection version,
       List<SubscriptionItemProjection> items,
       List<Integer> cycles) {
-    return new PlanVersionResponse(
+    return new PlanVersion(
         version.planId(),
         version.planName(),
         version.targetPetType(),
         version.id(),
         version.packagePriceKrw(),
-        items.stream().map(item -> new PlanItemResponse(item.skuId(), item.quantity())).toList(),
+        items.stream().map(item -> new Item(item.skuId(), item.quantity())).toList(),
         cycles,
-        new PlanSaleResponse(version.onSale(), version.saleStartsOn(), version.saleEndsOn()));
+        new PlanSale(version.onSale(), version.saleStartsOn(), version.saleEndsOn()));
   }
 
-  private <T> PageResponse<T> page(PageProjection<?> value, List<T> items) {
-    return new PageResponse<>(value.page(), value.size(), value.total(), items);
+  private <T> Page<T> page(PageProjection<?> value, List<T> items) {
+    return new Page<>(value.page(), value.size(), value.total(), items);
   }
 }

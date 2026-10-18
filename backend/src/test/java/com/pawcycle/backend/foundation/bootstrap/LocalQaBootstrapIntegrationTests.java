@@ -13,7 +13,7 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import java.math.BigDecimal;
@@ -253,7 +253,7 @@ class LocalQaBootstrapIntegrationTests {
     long planVersionId = createPlan(sku);
     long petId =
         subscriptionService
-            .createPet(member.getId(), new CreatePetRequest("QA 반려동물", "DOG"))
+            .createPet(member.getId(), new PetCreateCommand("QA 반려동물", "DOG"))
             .petId();
     SubscriptionResult created =
         subscriptionService.createSubscription(

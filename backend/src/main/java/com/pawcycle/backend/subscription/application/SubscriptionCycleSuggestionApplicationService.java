@@ -1,7 +1,7 @@
 package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
-import com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse;
+import com.pawcycle.backend.subscription.model.RepeatCommerceReadModel.SubscriptionCycleSuggestion;
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +17,7 @@ public class SubscriptionCycleSuggestionApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public SubscriptionCycleSuggestionResponse cycleSuggestion(long memberId, long subscriptionId) {
+  public SubscriptionCycleSuggestion cycleSuggestion(long memberId, long subscriptionId) {
     RepeatCommerceQueryRepository.SubscriptionRow subscription =
         queries
             .findRuntimeSubscription(memberId, subscriptionId)
@@ -47,14 +47,14 @@ public class SubscriptionCycleSuggestionApplicationService {
     long versionId = queries.findSourcePlanVersionId(subscription.currentSnapshotId());
     List<Integer> allowed = queries.findAllowedDeliveryCycles(versionId);
     int chosen = chooseCycle(allowed, medianDays, subscription.deliveryCycleWeeks());
-    return new SubscriptionCycleSuggestionResponse(
+    return new SubscriptionCycleSuggestion(
         subscriptionId,
         subscription.deliveryCycleWeeks(),
         medianWeeks,
         allowed,
         chosen == subscription.deliveryCycleWeeks()
             ? null
-            : new SubscriptionCycleSuggestionResponse.Suggestion(chosen));
+            : new SubscriptionCycleSuggestion.Suggestion(chosen));
   }
 
   private static long median(List<Long> values) {

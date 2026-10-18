@@ -9,7 +9,7 @@ import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationS
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
@@ -979,7 +979,7 @@ class SubscriptionCommandIntegrationTests {
 
   private long createPet(String key, String petType) {
     return service
-                .createPet(member.getId(), new CreatePetRequest("반려동물-" + key, petType)).petId();
+                .createPet(member.getId(), new PetCreateCommand("반려동물-" + key, petType)).petId();
   }
 
   private long createAlternatePlanVersion(String key, List<Integer> cycles) {

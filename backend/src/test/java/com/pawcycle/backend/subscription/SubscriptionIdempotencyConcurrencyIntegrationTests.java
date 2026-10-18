@@ -13,7 +13,7 @@ import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
-import com.pawcycle.backend.subscription.api.CreatePetRequest;
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import java.math.BigDecimal;
@@ -173,7 +173,7 @@ class SubscriptionIdempotencyConcurrencyIntegrationTests {
         planId);
     long petId =
         service
-                    .createPet(member.getId(), new CreatePetRequest("동시성 반려동물", "DOG")).petId();
+                    .createPet(member.getId(), new PetCreateCommand("동시성 반려동물", "DOG")).petId();
     SubscriptionResult created =
         service.createSubscription(
             member.getId(),

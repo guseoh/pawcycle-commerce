@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
+import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -48,6 +49,11 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("test")
 class SubscriptionReadBoundaryIntegrationTests {
   @Autowired SubscriptionService service;
+  @Autowired PetPlanApplicationService petPlans;
+  @Autowired RepeatPurchaseApplicationService repeat;
+  @Autowired SubscriptionConversionApplicationService conversion;
+  @Autowired SubscriptionCycleSuggestionApplicationService cycle;
+  @Autowired com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository recurringQueries;
   @Autowired SubscriptionAggregatePersistence store;
   @Autowired EntityManager entities;
   @Autowired EntityManagerFactory emf;
@@ -81,7 +87,7 @@ class SubscriptionReadBoundaryIntegrationTests {
       jdbc.update("INSERT INTO plan_version_delivery_cycles(plan_version_id,delivery_cycle_weeks) VALUES (?,4),(?,8)", version, version);
       jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", version, plan);
     });
-    pet = service.createPet(member, new CreatePetRequest("pet", "DOG")).petId();
+    pet = service.createPet(member, new PetCreateCommand("pet", "DOG")).petId();
     subscription = service.createSubscription(member, "initial", request()).body().subscriptionId();
   }
 
@@ -89,6 +95,10 @@ class SubscriptionReadBoundaryIntegrationTests {
   void clean() {
     tx().executeWithoutResult(s -> {
       String own = "SELECT id FROM subscriptions WHERE member_id=" + member;
+      jdbc.update("DELETE FROM subscription_order_context WHERE order_id IN (SELECT id FROM orders WHERE member_id=?)", member);
+      jdbc.update("DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE member_id=?)", member);
+      jdbc.update("DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE member_id=?)", member);
+      jdbc.update("DELETE FROM orders WHERE member_id=?", member);
       jdbc.update("DELETE FROM pending_plan_changes WHERE subscription_id IN (" + own + ")");
       jdbc.update("DELETE FROM subscription_command_idempotency_results WHERE member_id=?", member);
       jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?", member);
@@ -224,6 +234,113 @@ class SubscriptionReadBoundaryIntegrationTests {
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key='rollback'", Integer.class, member)).isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=?", Integer.class, member, created[0])).isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subscription_command_history WHERE subscription_id=?", Integer.class, created[0])).isZero();
+  }
+
+  @Test
+  void petAndPlanFrozenSqlCountsDetachedJsonAndHttpContract() throws Exception {
+    var old = new FrozenPetPlanApplicationService(store, json, clock);
+    var stats = stats();
+    stats.clear(); var expectedPet = readTx().execute(s -> old.pet(member, pet)); long petSql = stats.getPrepareStatementCount();
+    stats.clear(); var petView = service.pet(member, pet); assertThat(stats.getPrepareStatementCount()).isEqualTo(petSql).isEqualTo(1);
+    stats.clear(); var expectedPage = readTx().execute(s -> old.pets(member, 0, 20)); long pageSql = stats.getPrepareStatementCount();
+    stats.clear(); var pets = service.pets(member, 0, 20); assertThat(stats.getPrepareStatementCount()).isEqualTo(pageSql).isEqualTo(2);
+    stats.clear(); var expectedPlans = readTx().execute(s -> old.plans(member, pet, 0, 20)); long plansSql = stats.getPrepareStatementCount();
+    stats.clear(); var plans = service.plans(member, pet, 0, 20); assertThat(stats.getPrepareStatementCount()).isEqualTo(plansSql).isEqualTo(5);
+    stats.clear(); var expectedVersion = readTx().execute(s -> old.planVersion(member, pet, version)); long versionSql = stats.getPrepareStatementCount();
+    stats.clear(); var planView = service.planVersion(member, pet, version); assertThat(stats.getPrepareStatementCount()).isEqualTo(versionSql).isEqualTo(4);
+    unbound(); stats.clear();
+    assertThat(json.writeValueAsString(PetResponse.from(petView))).isEqualTo(json.writeValueAsString(expectedPet));
+    assertThat(json.writeValueAsString(PageResponse.from(pets, PetResponse::from))).isEqualTo(json.writeValueAsString(expectedPage));
+    assertThat(json.writeValueAsString(PageResponse.from(plans, PlanVersionResponse::from))).isEqualTo(json.writeValueAsString(expectedPlans));
+    assertThat(json.writeValueAsString(PlanVersionResponse.from(planView))).isEqualTo(json.writeValueAsString(expectedVersion));
+    assertThat(stats.getPrepareStatementCount()).isZero(); assertThat(stats.getEntityLoadCount()).isZero();
+    String[] paths = {"/api/pets/" + pet, "/api/pets", "/api/subscription-plans?petId=" + pet, "/api/subscription-plan-versions/" + version + "?petId=" + pet};
+    Object[] expected = {expectedPet, expectedPage, expectedPlans, expectedVersion};
+    for (int i = 0; i < paths.length; i++) {
+      assertThat(http.perform(get(paths[i]).with(as(member))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
+          .isEqualTo(json.writeValueAsString(expected[i]));
+      http.perform(get(paths[i])).andExpect(status().isUnauthorized());
+    }
+    http.perform(get(paths[0]).with(as(other))).andExpect(status().isNotFound());
+    http.perform(get(paths[2]).with(as(other))).andExpect(status().isNotFound());
+    System.out.println("PET_PLAN_SQL_PARITY pet=" + petSql + " page=" + pageSql + " plans=" + plansSql + " version=" + versionSql + " detached=0 entityLoads=0");
+  }
+
+  @Test
+  void petCreateLocationPatchNullableColumnsValidationCsrfAndRollback() throws Exception {
+    var created = http.perform(post("/api/pets").with(as(member)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        .content("{\"name\":\"  new pet  \",\"petType\":\"DOG\"}")).andExpect(status().isCreated()).andReturn().getResponse();
+    long id = json.readTree(created.getContentAsString()).get("petId").asLong();
+    assertThat(created.getHeader("Location")).isEqualTo("/api/pets/" + id);
+    assertThat(created.getContentAsString()).isEqualTo(json.writeValueAsString(new PetResponse(id, "new pet", "DOG", null, null, false)));
+    String uri = "/api/pets/" + id;
+    http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(uri).with(as(member)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        .content("{\"breed\":\" breed \",\"weightKg\":12.3}")).andExpect(status().isOk());
+    var response = http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(uri).with(as(member)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        .content("{\"breed\":null,\"weightKg\":null}")).andExpect(status().isOk()).andReturn().getResponse();
+    assertThat(response.getContentAsString()).isEqualTo(json.writeValueAsString(new PetResponse(id, "new pet", "DOG", null, null, false)));
+    for (String body : List.of("{}", "{\"name\":null}", "{\"weightKg\":200.01}", "{\"weightKg\":1.001}"))
+      http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(uri).with(as(member)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
+    http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(uri).with(as(other)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isNotFound());
+    http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(uri).with(as(member)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+    http.perform(post("/api/pets").with(as(member)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\" \",\"petType\":\"DOG\"}")).andExpect(status().isBadRequest());
+    var before = service.pet(member, id); long[] rolledId = new long[1];
+    assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
+      service.updatePet(member, id, new com.pawcycle.backend.subscription.model.PetUpdateCommand("changed", true, "changed", true, new BigDecimal("99.00"), true));
+      rolledId[0] = service.createPet(member, new PetCreateCommand("rollback", "CAT")).petId();
+      throw new IllegalStateException("after pet write");
+    })).isInstanceOf(IllegalStateException.class).hasMessage("after pet write");
+    assertThat(service.pet(member, id)).isEqualTo(before);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pets WHERE id=?", Integer.class, rolledId[0])).isZero();
+  }
+
+  @Test
+  void recurringFrozenSqlAndDetachedJsonIncludingSuccessfulCycleMatchHttp() throws Exception {
+    long order = 0;
+    var f = new SecondaryReadFixtures(jdbc, entities);
+    LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+    for (int n = 0; n < 3; n++) {
+      int index = n;
+      long[] inserted = new long[1];
+      tx().executeWithoutResult(s -> {
+        inserted[0] = f.order(member, "ONE_TIME", "PAID", new BigDecimal("123.45"), java.sql.Timestamp.valueOf(today.minusDays(index * 10L).atTime(12, 0)));
+        f.payment(inserted[0], "NORMAL", "SUCCEEDED", 1);
+        f.item(inserted[0], entities.find(Sku.class, sku));
+      });
+      order = inserted[0];
+    }
+    long sourceOrder = order;
+    tx().executeWithoutResult(s -> {
+      for (int n = 0; n < 3; n++) {
+        long paid = f.order(member, "SUBSCRIPTION", "PAID", BigDecimal.ONE, java.sql.Timestamp.valueOf(today.atTime(12, 0)));
+        f.payment(paid, "BILLING", "SUCCEEDED", 1);
+        LocalDate date = today.minusDays(n * 21L);
+        store.insertScheduled(subscription, date);
+        long schedule = jdbc.queryForObject("SELECT id FROM subscription_schedules WHERE subscription_id=? AND scheduled_date=?", Long.class, subscription, date);
+        jdbc.update("INSERT INTO subscription_order_context(order_id,subscription_id,schedule_id,scheduled_date) VALUES (?,?,?,?)", paid, subscription, schedule, date);
+      }
+    });
+    var stats = stats();
+    stats.clear(); var oldRepeat = readTx().execute(s -> new FrozenRepeatPurchaseApplicationService(recurringQueries, clock).reorderTiming(member)); long repeatSql = stats.getPrepareStatementCount();
+    stats.clear(); var repeatView = repeat.reorderTiming(member); assertThat(stats.getPrepareStatementCount()).isEqualTo(repeatSql).isEqualTo(1);
+    stats.clear(); var oldOptions = readTx().execute(s -> new FrozenSubscriptionConversionApplicationService(recurringQueries, clock).subscriptionOptions(member, sourceOrder)); long optionsSql = stats.getPrepareStatementCount();
+    stats.clear(); var optionsView = conversion.subscriptionOptions(member, sourceOrder); assertThat(stats.getPrepareStatementCount()).isEqualTo(optionsSql).isEqualTo(6);
+    stats.clear(); var oldCycle = readTx().execute(s -> new FrozenSubscriptionCycleSuggestionApplicationService(recurringQueries).cycleSuggestion(member, subscription)); long cycleSql = stats.getPrepareStatementCount();
+    stats.clear(); var cycleView = cycle.cycleSuggestion(member, subscription); assertThat(stats.getPrepareStatementCount()).isEqualTo(cycleSql).isEqualTo(4);
+    unbound(); stats.clear();
+    assertThat(json.writeValueAsString(RepeatPurchaseResponse.from(repeatView))).isEqualTo(json.writeValueAsString(oldRepeat));
+    assertThat(json.writeValueAsString(SubscriptionOptionsResponse.from(optionsView))).isEqualTo(json.writeValueAsString(oldOptions));
+    assertThat(json.writeValueAsString(SubscriptionCycleSuggestionResponse.from(cycleView))).isEqualTo(json.writeValueAsString(oldCycle));
+    assertThat(stats.getPrepareStatementCount()).isZero(); assertThat(stats.getEntityLoadCount()).isZero();
+    String[] paths = {"/api/recommendations/reorder-timing", "/api/orders/" + sourceOrder + "/subscription-options", "/api/subscriptions/" + subscription + "/cycle-suggestion"};
+    Object[] expected = {oldRepeat, oldOptions, oldCycle};
+    for (int n = 0; n < paths.length; n++) {
+      assertThat(http.perform(get(paths[n]).with(as(member))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).isEqualTo(json.writeValueAsString(expected[n]));
+      http.perform(get(paths[n])).andExpect(status().isUnauthorized());
+    }
+    http.perform(get(paths[1]).with(as(other))).andExpect(status().isNotFound());
+    http.perform(get(paths[2]).with(as(other))).andExpect(status().isNotFound());
+    System.out.println("RECURRING_SQL_PARITY reorder=" + repeatSql + " options=" + optionsSql + " cycle=" + cycleSql + " detached=0 entityLoads=0");
   }
 
   private CreateSubscriptionRequest request() { return new CreateSubscriptionRequest(pet, version, 4); }

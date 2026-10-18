@@ -93,4 +93,11 @@ public final class SubscriptionReadModel {
       Snapshot currentSnapshot,
       LocalDate nextScheduledDate) {}
 
+  public record PlanVersion(
+      long planId, String planName, String targetPetType, long planVersionId,
+      long packagePriceKrw, List<Item> items, List<Integer> allowedDeliveryCycleWeeks,
+      PlanSale sale) {}
+
+  public record PlanSale(boolean onSale, LocalDate startsOn, LocalDate endsOn) {}
+
 }

@@ -1,6 +1,6 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.RepeatPurchaseResponse;
+import com.pawcycle.backend.subscription.model.RepeatCommerceReadModel.RepeatPurchase;
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -25,7 +25,7 @@ public class RepeatPurchaseApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public RepeatPurchaseResponse reorderTiming(long memberId) {
+  public RepeatPurchase reorderTiming(long memberId) {
     LocalDate today = LocalDate.now(clock.withZone(SEOUL));
     Map<Long, ProductDates> products = new LinkedHashMap<>();
     for (RepeatCommerceQueryRepository.PurchaseRow row : queries.findOneTimePurchaseDates(memberId)) {
@@ -33,7 +33,7 @@ public class RepeatPurchaseApplicationService {
           .dates()
           .add(row.purchasedDate());
     }
-    List<RepeatPurchaseResponse.Item> result = new ArrayList<>();
+    List<RepeatPurchase.Item> result = new ArrayList<>();
     for (ProductDates product : products.values()) {
       List<LocalDate> dates =
           product.dates().stream().sorted(Comparator.reverseOrder()).limit(5).toList();
@@ -48,7 +48,7 @@ public class RepeatPurchaseApplicationService {
       LocalDate expected = dates.getFirst().plusDays(median);
       if (expected.isAfter(today.plusDays(7))) continue;
       result.add(
-          new RepeatPurchaseResponse.Item(
+          new RepeatPurchase.Item(
               product.id(),
               product.name(),
               dates.getFirst(),
@@ -56,8 +56,8 @@ public class RepeatPurchaseApplicationService {
               expected.isBefore(today) ? "OVERDUE" : "DUE_SOON",
               dates.size()));
     }
-    result.sort(Comparator.comparing(RepeatPurchaseResponse.Item::expectedReorderDate));
-    return new RepeatPurchaseResponse(result.stream().limit(10).toList());
+    result.sort(Comparator.comparing(RepeatPurchase.Item::expectedReorderDate));
+    return new RepeatPurchase(result.stream().limit(10).toList());
   }
 
   private static long median(List<Long> values) {

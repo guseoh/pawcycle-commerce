@@ -129,7 +129,7 @@ class SubscriptionControllerTests {
   @Test
   void createPetBuildsCanonicalLocation() {
     CreatePetRequest request = new CreatePetRequest("보리", "DOG");
-    when(service.createPet(7L, request)).thenReturn(new PetResponse(17L, "보리", "DOG", null, null, false));
+    when(service.createPet(7L, new com.pawcycle.backend.subscription.model.PetCreateCommand("보리", "DOG"))).thenReturn(new com.pawcycle.backend.subscription.model.SubscriptionReadModel.Pet(17L, "보리", "DOG", null, null, false));
 
     ResponseEntity<PetResponse> response = controller.createPet(principal, request);
 

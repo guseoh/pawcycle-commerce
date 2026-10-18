@@ -31,7 +31,9 @@ class PetPlanApplicationServiceTests {
 
     UpdatePetRequest request = new UpdatePetRequest();
     request.readName("새 이름");
-    service.updatePet(10L, 7L, request);
+    service.updatePet(10L, 7L, new com.pawcycle.backend.subscription.model.PetUpdateCommand(
+        request.getName(), request.isNamePresent(), request.getBreed(), request.isBreedPresent(),
+        request.getWeightKg(), request.isWeightKgPresent()));
 
     verify(store).updatePet(10L, 7L, "새 이름", true, null, false, null, false);
   }

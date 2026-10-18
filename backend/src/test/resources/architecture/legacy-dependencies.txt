@@ -8,12 +8,6 @@ application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApp
 application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
 application-api | com.pawcycle.backend.commerce.inventory.application.InventoryAdminApplicationService -> com.pawcycle.backend.commerce.inventory.api.InventoryResponse
 application-api | com.pawcycle.backend.commerce.payment.application.PaymentApplicationService -> com.pawcycle.backend.commerce.payment.api.PaymentResponse
-application-api | com.pawcycle.backend.subscription.application.RepeatPurchaseApplicationService -> com.pawcycle.backend.subscription.api.RepeatPurchaseResponse
-application-api | com.pawcycle.backend.subscription.application.RepeatPurchaseApplicationService -> com.pawcycle.backend.subscription.api.RepeatPurchaseResponse$Item
-application-api | com.pawcycle.backend.subscription.application.SubscriptionConversionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionOptionsResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionConversionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionOptionsResponse$Option
-application-api | com.pawcycle.backend.subscription.application.SubscriptionCycleSuggestionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionCycleSuggestionApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse$Suggestion
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.catalog.maintenance.ProductionDemoCatalogImportCommand
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.member.maintenance.ProductionAuthSmokeMemberBootstrap
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence
@@ -36,25 +30,13 @@ application-api | com.pawcycle.backend.commerce.returning.application.ReturnServ
 # T03 RECLASSIFIED: 47 pre-existing edges gain application/api layer names (main 5c077b8).
 # Before/after compiled graph normalized for class, nested and array element packages: 817 classes / 7602 edges, NEW=0.
 application-api | com.pawcycle.backend.interaction.application.InteractionService -> com.pawcycle.backend.interaction.api.InteractionEventRequest
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.CreatePetRequest
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PageResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PetResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanItemResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanSaleResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.PlanVersionResponse
-application-api | com.pawcycle.backend.subscription.application.PetPlanApplicationService -> com.pawcycle.backend.subscription.api.UpdatePetRequest
 application-api | com.pawcycle.backend.subscription.application.SubscriptionApplicationSupport -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionCommandApplicationService -> com.pawcycle.backend.subscription.api.SubscriptionCommandRequest
 application-api | com.pawcycle.backend.subscription.application.SubscriptionCreationApplicationService -> com.pawcycle.backend.subscription.api.CreateSubscriptionRequest
 application-api | com.pawcycle.backend.subscription.application.SubscriptionOperationResult -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionResult -> com.pawcycle.backend.subscription.api.SubscriptionDetailResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.CreatePetRequest
 application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.CreateSubscriptionRequest
-application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.PageResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.PetResponse
-application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.PlanVersionResponse
 application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.SubscriptionCommandRequest
-application-api | com.pawcycle.backend.subscription.application.SubscriptionService -> com.pawcycle.backend.subscription.api.UpdatePetRequest
 # T03 RECLASSIFIED: persistence-api edges individually confirmed on main 5c077b8.
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.BrandCreateRequest
 persistence-api | com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence -> com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest
