@@ -2,7 +2,7 @@
 
 ## 범위와 안전 경계
 
-이 Runbook은 이미 별도 승인된 OCI Production host에서 현재 HTTPS 인증서를 자동 갱신하기 위한 저장소-backed 설치·점검 절차다. 이 저장소 변경과 아래 절차는 OCI, DNS, certificate account, secret, running container를 자동으로 변경하지 않는다. 사용자가 별도로 명시 승인하지 않은 실제 Production 실행은 이 작업에서 수행하지 않는다.
+현재 승인된 Production deployment target은 없으며 CD는 DEFER 상태다(`docs/architecture/production-operations-overview.md`). 이 Runbook은 향후 별도로 승인된 OCI host에서 기존 HTTPS 인증서와 실행 중인 proxy가 실제로 확인된 경우에만 사용할 수 있는 저장소-backed 설치·점검 절차다. 이 저장소 변경과 아래 절차는 OCI, DNS, certificate account, secret, running container를 자동으로 변경하지 않는다. 사용자가 별도로 명시 승인하지 않은 실제 Production 실행은 이 작업에서 수행하지 않는다.
 
 자동화는 `pawcycle-production` Compose project의 실행 중 `proxy` 하나만 읽고, 기존 named volume을 그대로 사용한다. Backend·Frontend를 시작·중지·재시작·recreate하지 않으며, 인증서 volume을 삭제하거나 생성하지 않는다.
 
@@ -11,7 +11,7 @@
 - Compose contract: `infra/production/compose.yaml`
 - Certbot webroot volume: `pawcycle-production-certbot-webroot` → `/var/www/certbot`
 - Let's Encrypt volume: `pawcycle-production-letsencrypt` → `/etc/letsencrypt`
-- Certificate lineage: `pawcycle.duckdns.org` (the already-live OCI lineage; do not rename or reissue it)
+- Certificate lineage: `pawcycle.duckdns.org` (기존 OCI HTTPS 구성의 lineage 참조; 현재 실재 여부는 preflight로 확인하며 임의 rename/reissue 금지)
 - Runtime HTTPS Nginx config: Compose가 `/etc/nginx/conf.d/default.conf`에 read-only mount한 승인 config. 인증서 경로와 hostname 계약은 `infra/production/nginx.https.conf`를 따른다.
 - Approved hostname state: `/opt/pawcycle/state/https-domain`, regular file, mode `600`; OCI adoption 전에는 파일이 없을 수 있으며 자동화가 추정·생성하지 않는다.
 - HTTPS enabled state: `/opt/pawcycle/state/https-enabled`, 내용 `enabled`, mode `600`; 두 파일은 명시적인 adoption 이후에만 보호된 runtime state로 취급한다.
@@ -36,7 +36,7 @@ sudo systemd-analyze verify \
 
 ## OCI adoption / migration preflight
 
-이 절차는 과거 `pawcycle-production` lineage나 과거 `https-domain`·`https-enabled` 파일을 복원하는 절차가 아니다. 현재 OCI에서 이미 확인된 `pawcycle.duckdns.org` HTTPS 상태를 저장소 계약에 명시적으로 채택하는 경계다. 아래 순서에서 하나라도 실패하면 중단하고 certificate, private key, volume, running container를 조작하지 않는다.
+이 절차는 과거 `pawcycle-production` lineage나 과거 `https-domain`·`https-enabled` 파일을 복원하는 절차가 아니다. 별도 승인된 대상에서 `pawcycle.duckdns.org`의 인증서·proxy·named volume 상태를 읽기 전용 preflight로 검증한 뒤에만 저장소 계약에 채택하는 경계다. 아래 순서에서 하나라도 실패하면 중단하고 certificate, private key, volume, running container를 조작하지 않는다.
 
 1. state directory가 이미 존재하는 regular directory이며 mode `700`인지 확인한다. 없으면 별도 운영 승인으로 directory만 준비하고, 파일 내용은 임의로 만들지 않는다.
 2. 설치된 wrapper로 read-only preflight를 실행한다. 이 명령은 두 state 파일이 없으면 이를 정상적인 미채택 상태로 보고, 현재 lineage의 SAN/유효성, runtime Nginx 경로, read-only mount, 두 named volume, running proxy, `nginx -t`를 확인한다. state 파일과 certificate를 만들거나 변경하지 않는다.
