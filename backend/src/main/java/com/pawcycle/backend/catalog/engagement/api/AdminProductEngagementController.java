@@ -25,7 +25,7 @@ public class AdminProductEngagementController {
       @RequestParam(required = false) Long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.adminReviews(productId, page, size);
+    return AdminReviewListResponse.from(service.adminReviews(productId, page, size));
   }
 
   @PatchMapping("/product-reviews/{reviewId}/visibility")
@@ -41,7 +41,7 @@ public class AdminProductEngagementController {
       @RequestParam(required = false) Long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.adminQuestions(productId, page, size);
+    return AdminQuestionListResponse.from(service.adminQuestions(productId, page, size));
   }
 
   @PutMapping("/product-questions/{questionId}/answer")
@@ -49,7 +49,7 @@ public class AdminProductEngagementController {
       @PathVariable long questionId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody QuestionAnswerRequest request) {
-    return service.answerQuestion(questionId, request.answer(), principal.memberId());
+    return AdminQuestionResponse.from(service.answerQuestion(questionId, request.answer(), principal.memberId()));
   }
 
   @PatchMapping("/product-questions/{questionId}/visibility")

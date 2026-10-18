@@ -22,26 +22,26 @@ class ProductRecommendationController {
   RecommendationResponse popular(
       @RequestParam(required = false) String petType,
       @RequestParam(defaultValue = "10") int limit) {
-    return service.popular(petType, limit10(limit));
+    return RecommendationResponse.from(service.popular(petType, limit10(limit)));
   }
 
   @GetMapping("/recommendations/trending")
   RecommendationResponse trending(
       @RequestParam(required = false) String petType,
       @RequestParam(defaultValue = "10") int limit) {
-    return service.trending(petType, limit10(limit));
+    return RecommendationResponse.from(service.trending(petType, limit10(limit)));
   }
 
   @GetMapping("/products/{productId}/related")
   RecommendationResponse related(
       @PathVariable long productId, @RequestParam(defaultValue = "4") int limit) {
-    return service.related(productId, limit6(limit));
+    return RecommendationResponse.from(service.related(productId, limit6(limit)));
   }
 
   @GetMapping("/products/{productId}/complementary")
   RecommendationResponse complementary(
       @PathVariable long productId, @RequestParam(defaultValue = "4") int limit) {
-    return service.complementary(productId, limit6(limit));
+    return RecommendationResponse.from(service.complementary(productId, limit6(limit)));
   }
 
   private int limit10(int value) {

@@ -30,14 +30,14 @@ public class ProductReviewController {
       @PathVariable long productId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.reviews(productId, page, size);
+    return ReviewListResponse.from(service.reviews(productId, page, size));
   }
 
   @GetMapping("/api/products/{productId}/reviews/me")
   ReviewResponse myReview(
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return service.myReview(productId, principal.memberId());
+    return ReviewResponse.from(service.myReview(productId, principal.memberId()));
   }
 
   @PostMapping("/api/products/{productId}/reviews")
@@ -45,10 +45,10 @@ public class ProductReviewController {
       @PathVariable long productId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody ReviewCreateRequest request) {
-    ReviewResponse response = service.createReview(
+    ReviewResponse response = ReviewResponse.from(service.createReview(
         productId,
         principal.memberId(),
-        new ReviewCreateCommand(request.rating(), request.content()));
+        new ReviewCreateCommand(request.rating(), request.content())));
     return ResponseEntity.created(URI.create("/api/reviews/" + response.reviewId())).body(response);
   }
 
@@ -57,14 +57,14 @@ public class ProductReviewController {
       @PathVariable long reviewId,
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestBody ReviewPatchRequest request) {
-    return service.updateReview(
+    return ReviewResponse.from(service.updateReview(
         reviewId,
         principal.memberId(),
         new ReviewPatchCommand(
             request.getRating(),
             request.isRatingPresent(),
             request.getContent(),
-            request.isContentPresent()));
+            request.isContentPresent())));
   }
 
   @DeleteMapping("/api/reviews/{reviewId}")
