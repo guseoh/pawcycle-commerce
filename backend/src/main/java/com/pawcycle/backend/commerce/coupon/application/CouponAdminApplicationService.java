@@ -1,9 +1,8 @@
 package com.pawcycle.backend.commerce.coupon.application;
 
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
-import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
-import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
+import com.pawcycle.backend.commerce.coupon.model.CouponView;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponWriteCommand;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
 import java.math.BigDecimal;
@@ -28,7 +27,7 @@ public class CouponAdminApplicationService {
   }
 
   @Transactional
-  public long create(long adminId, CouponRequest request) {
+  public long create(long adminId, CouponCreateCommand request) {
     long couponId = coupons.create(new CouponWriteCommand(
         request.name(), request.discountType(), request.discountValue(),
         request.minimumOrderAmount(), request.maximumDiscountAmount(),

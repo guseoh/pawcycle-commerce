@@ -53,7 +53,7 @@ class CouponWriteBoundaryIntegrationTests {
 
   @Test
   void generatedIdAuditDecimalNullAndSecondTruncationRemainTheDatabaseContract() {
-    long id = service.create(admin, request(prefix, "123.456", null));
+    long id = service.create(admin, command(prefix, "123.456", null));
     assertThat(id).isPositive();
     assertThat(jdbc.queryForObject("SELECT target_id FROM admin_audit_logs WHERE admin_id=? AND action='COUPON_CREATE'", Long.class, admin)).isEqualTo(id);
     assertThat(jdbc.queryForObject("SELECT discount_value FROM coupons WHERE id=?", BigDecimal.class, id)).isEqualByComparingTo("123.46");
@@ -61,13 +61,13 @@ class CouponWriteBoundaryIntegrationTests {
     long legacy = new TransactionTemplate(manager).execute(s -> frozen().create(request(prefix + "-legacy", "123.456", null)));
     assertThat(values(id)).isEqualTo(values(legacy));
     assertThat(jdbc.queryForObject("SELECT MICROSECOND(valid_from)+MICROSECOND(valid_until) FROM coupons WHERE id=?", Integer.class, id)).isZero();
-    long max = service.create(admin, request(prefix + "-max", "9999999999.99", null));
+    long max = service.create(admin, command(prefix + "-max", "9999999999.99", null));
     assertThat(jdbc.queryForObject("SELECT discount_value FROM coupons WHERE id=?", BigDecimal.class, max)).isEqualByComparingTo("9999999999.99");
   }
 
   @Test
   void lockedPatchPreservesAbsentFieldsAndClearsExplicitNull() {
-    long id = service.create(admin, request(prefix, "10", new BigDecimal("500")));
+    long id = service.create(admin, command(prefix, "10", new BigDecimal("500")));
     long legacy = new TransactionTemplate(manager).execute(s -> frozen().create(request(prefix + "-legacy", "10", new BigDecimal("500"))));
     new TransactionTemplate(manager).executeWithoutResult(s -> {
       var current = frozen().findForUpdate(legacy);
@@ -86,9 +86,9 @@ class CouponWriteBoundaryIntegrationTests {
 
   @Test
   void auditForeignKeyFailureRollsBackAlreadyFlushedCreateAndUpdate() {
-    assertThatThrownBy(() -> service.create(Long.MAX_VALUE, request(prefix + "-failed", "10", null))).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> service.create(Long.MAX_VALUE, command(prefix + "-failed", "10", null))).isInstanceOf(RuntimeException.class);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM coupons WHERE name=?", Integer.class, prefix + "-failed")).isZero();
-    long id = service.create(admin, request(prefix, "10", new BigDecimal("500")));
+    long id = service.create(admin, command(prefix, "10", new BigDecimal("500")));
     assertThatThrownBy(() -> service.update(Long.MAX_VALUE, id, patch(prefix + "-failed-update"))).isInstanceOf(RuntimeException.class);
     assertThat(jdbc.queryForObject("SELECT name FROM coupons WHERE id=?", String.class, id)).isEqualTo(prefix);
     assertThat(jdbc.queryForObject("SELECT maximum_discount_amount FROM coupons WHERE id=?", BigDecimal.class, id)).isEqualByComparingTo("500");
@@ -97,12 +97,18 @@ class CouponWriteBoundaryIntegrationTests {
 
   @Test
   void databasePrecisionAndMissingMemberFailureDoNotAppendAudit() {
-    assertThatThrownBy(() -> service.create(admin, request(prefix + "-overflow", "10000000000.00", null))).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> service.create(admin, command(prefix + "-overflow", "10000000000.00", null))).isInstanceOf(RuntimeException.class);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM coupons WHERE name=?", Integer.class, prefix + "-overflow")).isZero();
-    long id = service.create(admin, request(prefix, "10", null));
+    long id = service.create(admin, command(prefix, "10", null));
     assertThatThrownBy(() -> service.issue(admin, id, Long.MAX_VALUE)).isInstanceOf(com.pawcycle.backend.commerce.common.error.CommerceException.class);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM member_coupons WHERE coupon_id=?", Integer.class, id)).isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs WHERE admin_id=?", Integer.class, admin)).isOne();
+  }
+
+  private CouponCreateCommand command(String name, String amount, BigDecimal maximum) {
+    var request = request(name, amount, maximum);
+    return new CouponCreateCommand(request.name(), request.discountType(), request.discountValue(),
+        request.minimumOrderAmount(), request.maximumDiscountAmount(), request.validFrom(), request.validUntil(), request.active());
   }
 
   private CouponRequest request(String name, String amount, BigDecimal maximum) {

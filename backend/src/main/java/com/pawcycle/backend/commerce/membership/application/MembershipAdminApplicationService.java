@@ -2,9 +2,7 @@ package com.pawcycle.backend.commerce.membership.application;
 
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
-import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
-import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
-import com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.model.MembershipGradeView;
 import com.pawcycle.backend.commerce.membership.persistence.CreateMembershipGradeCommand;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipPersistenceAdapter;
 import com.pawcycle.backend.commerce.membership.persistence.MembershipQueryRepository;
@@ -31,14 +29,12 @@ public class MembershipAdminApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<MembershipGradeResponse> listGrades() {
-    return queries.findGrades().stream()
-        .map(MembershipAdminApplicationService::grade)
-        .toList();
+  public List<MembershipGradeView> listGrades() {
+    return List.copyOf(queries.findGrades());
   }
 
   @Transactional
-  public long createGrade(long adminId, MembershipGradeRequest request) {
+  public long createGrade(long adminId, MembershipGradeCreateCommand request) {
     long gradeId = membership.createGrade(new CreateMembershipGradeCommand(
         request.code(), request.name(), request.minimumPurchaseAmount(),
         request.displayOrder(), request.active(), request.benefitCouponId()));
@@ -52,14 +48,4 @@ public class MembershipAdminApplicationService {
     audits.append(adminId, "MEMBERSHIP_EVALUATE", "MEMBER", memberId);
   }
 
-  private static MembershipGradeResponse grade(MembershipGradeView view) {
-    return new MembershipGradeResponse(
-        view.gradeId(),
-        view.code(),
-        view.name(),
-        view.minimumPurchaseAmount(),
-        view.displayOrder(),
-        view.active(),
-        view.benefitCouponId());
-  }
 }

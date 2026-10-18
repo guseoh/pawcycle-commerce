@@ -12,6 +12,7 @@ import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.membership.application.MembershipGradeCreateCommand;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -155,7 +156,7 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
 
     String actualCode = code();
     int actualError = errorCode(() -> admin.createGrade(
-        Long.MAX_VALUE, new MembershipGradeRequest(actualCode, "audit rollback", BigDecimal.ZERO, 0, true, null)));
+        Long.MAX_VALUE, new MembershipGradeCreateCommand(actualCode, "audit rollback", BigDecimal.ZERO, 0, true, null)));
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM membership_grades WHERE code=?", Long.class, actualCode)).isZero();
     String frozenCode = code();
     int frozenError = errorCode(() -> {
@@ -219,7 +220,7 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
     assertThat(result.getResponse().getHeader("Location")).isEqualTo("/api/admin/membership-grades/" + id);
     assertThat(jdbc.queryForObject("SELECT minimum_purchase_amount FROM membership_grades WHERE id=?", BigDecimal.class, id)).isEqualByComparingTo("123.46");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs WHERE admin_id=? AND action='MEMBERSHIP_GRADE_CREATE' AND target_id=?", Long.class, member, id)).isEqualTo(1);
-    assertThatThrownBy(() -> admin.createGrade(member, request)).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> admin.createGrade(member, creation(request))).isInstanceOf(RuntimeException.class);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs WHERE admin_id=? AND action='MEMBERSHIP_GRADE_CREATE'", Long.class, member)).isEqualTo(1);
     rollback(() -> {
       var frozen = new LegacyMembershipPersistenceAdapter(jdbc, CLOCK);
@@ -356,6 +357,11 @@ class MembershipEvaluationWriteProtocolIntegrationTests {
         jdbc.queryForList("SELECT from_grade_id,to_grade_id,evaluated_purchase_amount,changed_at FROM membership_histories WHERE member_id=? ORDER BY id", member),
         jdbc.queryForList("SELECT coupon_id,status,issued_at FROM member_coupons WHERE member_id=? ORDER BY id", member));
   }
+  private static MembershipGradeCreateCommand creation(MembershipGradeRequest request) {
+    return new MembershipGradeCreateCommand(request.code(), request.name(), request.minimumPurchaseAmount(),
+        request.displayOrder(), request.active(), request.benefitCouponId());
+  }
+
   private static CreateMembershipGradeCommand command(MembershipGradeRequest r) {
     return new CreateMembershipGradeCommand(r.code(), r.name(), r.minimumPurchaseAmount(), r.displayOrder(), r.active(), r.benefitCouponId());
   }

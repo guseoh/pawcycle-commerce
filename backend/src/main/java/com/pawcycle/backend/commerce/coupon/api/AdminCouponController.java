@@ -4,6 +4,7 @@ import com.pawcycle.backend.commerce.coupon.api.CouponCreatedResponse;
 import com.pawcycle.backend.commerce.coupon.api.CouponIssueRequest;
 import com.pawcycle.backend.commerce.coupon.api.CouponRequest;
 import com.pawcycle.backend.commerce.coupon.application.CouponAdminApplicationService;
+import com.pawcycle.backend.commerce.coupon.application.CouponCreateCommand;
 import com.pawcycle.backend.commerce.coupon.application.CouponPatchCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
@@ -30,14 +31,17 @@ public class AdminCouponController {
 
   @GetMapping
   public List<CouponResponse> coupons() {
-    return coupons.list().stream().map(AdminCouponController::response).toList();
+    return coupons.list().stream().map(CouponResponse::from).toList();
   }
 
   @PostMapping
   public ResponseEntity<CouponCreatedResponse> create(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody CouponRequest request) {
-    long id = coupons.create(principal.memberId(), request);
+    long id = coupons.create(principal.memberId(), new CouponCreateCommand(
+        request.name(), request.discountType(), request.discountValue(),
+        request.minimumOrderAmount(), request.maximumDiscountAmount(),
+        request.validFrom(), request.validUntil(), request.active()));
     return ResponseEntity.created(URI.create("/api/admin/coupons/" + id))
         .body(new CouponCreatedResponse(id));
   }
@@ -80,17 +84,4 @@ public class AdminCouponController {
         request.hasActive());
   }
 
-  private static CouponResponse response(
-      com.pawcycle.backend.commerce.coupon.persistence.CouponView view) {
-    return new CouponResponse(
-        view.couponId(),
-        view.name(),
-        view.discountType(),
-        view.discountValue(),
-        view.minimumOrderAmount(),
-        view.maximumDiscountAmount(),
-        view.validFrom(),
-        view.validUntil(),
-        view.active());
-  }
 }

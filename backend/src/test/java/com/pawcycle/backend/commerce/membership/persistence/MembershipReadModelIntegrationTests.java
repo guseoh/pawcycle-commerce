@@ -1,12 +1,14 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
+import com.pawcycle.backend.commerce.membership.model.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.model.MembershipView;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
+import com.pawcycle.backend.commerce.membership.application.MembershipGradeCreateCommand;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeResponse;
 import com.pawcycle.backend.commerce.membership.api.MembershipResponse;
 import com.pawcycle.backend.commerce.membership.application.MemberBenefitApplicationService;
@@ -102,7 +104,7 @@ class MembershipReadModelIntegrationTests {
     jdbc.update("UPDATE membership_grades SET active=false WHERE code<>'BASIC'");
     long coupon = coupon();
     BigDecimal amount = new BigDecimal("987654321.00");
-    var request = new MembershipGradeRequest(code(), "T05 benefit", amount, 5, true, coupon);
+    var request = new MembershipGradeCreateCommand(code(), "T05 benefit", amount, 5, true, coupon);
     long grade = admin.createGrade(memberId, request);
     assertThat(queries.findGrades()).isEqualTo(legacy.findGrades());
     fixtures.order(memberId, "ONE_TIME", "PAID", amount, Timestamp.from(clock.instant()));
@@ -120,7 +122,7 @@ class MembershipReadModelIntegrationTests {
   private void assertApi(long member) throws Exception {
     MembershipView view = legacy.findForMember(member);
     var expected = new MembershipResponse(view.code(), view.name(), view.evaluatedPurchaseAmount(), view.evaluatedAt());
-    assertThat(benefits.membership(member)).isEqualTo(expected);
+    assertThat(MembershipResponse.from(benefits.membership(member))).isEqualTo(expected);
     String response = http.perform(get("/api/membership").with(principal(member))).andExpect(status().isOk())
         .andReturn().getResponse().getContentAsString();
     assertThat(json.readTree(response)).isEqualTo(json.readTree(json.writeValueAsString(expected)));

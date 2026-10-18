@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.coupon.persistence;
+package com.pawcycle.backend.commerce.coupon.model;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
