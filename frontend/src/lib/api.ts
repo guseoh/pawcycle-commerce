@@ -161,8 +161,8 @@ export const productApi = {
     });
     return requestJson<ProductListResponse>(`/api/products${query.size ? `?${query}` : ""}`);
   },
-  detail: (productId: string) =>
-    requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  detail: (productId: string, signal?: AbortSignal) =>
+    requestJson<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`, signal ? { signal } : undefined),
   reviews: (productId: string, page = 0, size = 20) =>
     requestJson<EngagementPage<ProductReview>>(`/api/products/${encodeURIComponent(productId)}/reviews?page=${page}&size=${size}`),
   myReview: (productId: string) =>

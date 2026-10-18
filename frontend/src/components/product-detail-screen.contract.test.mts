@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isProductOptionValueAvailable, selectProductSku } from "../lib/product-selection.ts";
+import { validateProductDraft } from "../lib/product-ui-state.ts";
 
 const source = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
 const trustSource = readFileSync(new URL("./product-trust-sections.tsx", import.meta.url), "utf8");
@@ -13,7 +14,7 @@ test("Sold-out SKU blocks Cart even without a quantity error and has text guidan
   assert.match(purchaseSource, /현재 품절 · 구매 불가/);
 });
 
-test("option controls expose only server-backed combinations and require explicit selection for a single purchasable SKU", () => {
+test("option controls expose only server-backed combinations; UI draft auto-selects only a sole purchasable SKU", () => {
   const groups = [
     { optionGroupId: 1, name: "색상", displayOrder: 1, values: [{ optionValueId: 11, value: "초록", displayOrder: 1 }, { optionValueId: 12, value: "노랑", displayOrder: 2 }] },
     { optionGroupId: 2, name: "용량", displayOrder: 2, values: [{ optionValueId: 21, value: "소", displayOrder: 1 }, { optionValueId: 22, value: "대", displayOrder: 2 }] },
@@ -25,6 +26,8 @@ test("option controls expose only server-backed combinations and require explici
   assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, null), null);
   assert.equal(selectProductSku([], [sku(201, [[0, 0]])], {}, 201)?.skuId, 201);
   assert.equal(selectProductSku([], [sku(202, [[0, 0]], false)], {}, null), null);
+  assert.equal(validateProductDraft({ productId: 1, optionGroups: [], skus: [sku(201, [])] }, null).skuId, 201);
+  assert.equal(validateProductDraft({ productId: 1, optionGroups: [], skus }, null).skuId, null);
 });
 
 test("canonical product detail does not invoke the legacy subscription endpoint", () => {

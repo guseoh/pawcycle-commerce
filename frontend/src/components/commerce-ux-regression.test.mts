@@ -131,7 +131,7 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
   assert.match(homeSource, /products\?petType=DOG/);
   assert.match(homeSource, /products\?petType=CAT/);
   assert.match(homeSource, /products\?category=\$\{encodeURIComponent\(category\.slug\)\}/);
-  assert.match(homeSource, /title="지금 많이 찾는 상품"/);
+  assert.match(homeSource, /title="함께 둘러볼 상품"/);
   assert.doesNotMatch(homeSource, /Trending|트렌딩|추천 상품 미리보기/);
   assert.match(homeSource, /buildLoginHref\("\/"\)/);
   assert.match(headerSource, /className="header-catalog"/);
@@ -139,7 +139,7 @@ test("카테고리 탐색은 공개 API authority와 인증 복구 경로를 사
   assert.match(headerSource, /useCatalogDiscovery/);
   assert.match(discoverySource, /catalogDiscoveryApi\.get\(\)/);
   assert.match(headerSource, /status !== "authenticated"/);
-  assert.match(headerSource, /buildLoginHref\(pathname\)/);
+  assert.match(headerSource, /buildLoginHref\(currentHref\)/);
   assert.match(shoppingStylesSource, /\.category-navigation-overlay/);
 });
 
@@ -205,11 +205,12 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(layoutSource, /\/subscriptions/);
   assert.match(homeSource, /function CompactDiscovery/);
   assert.match(homeSource, /function CompactDiscovery/);
-  assert.doesNotMatch(homeSource, /function RoutineValue|className="home-hero"/);
+  assert.doesNotMatch(homeSource, /function RoutineValue/);
+  assert.match(homeSource, /className="home-heading home-hero"/);
   assert.doesNotMatch(homeSource, /function QuickActions/);
   assert.match(homeSource, /kind: "personalized"/);
   assert.match(homeSource, /RecommendationSection/);
-  assert.match(homeSource, /className="home-repeat-band"/);
+  assert.match(homeSource, /title="함께 둘러볼 상품"/);
   assert.match(homeSource, /products\?subscribable=true/);
   assert.match(homeSource, /subscriptionApi\.pets\.list/);
   assert.match(homeSource, /auth\.status === "loading"/);
@@ -217,7 +218,7 @@ test("홈은 Commerce 진입 흐름과 인증별 상태를 유지한다", () => 
   assert.match(homeSource, /auth\.status === "authenticated"/);
   assert.match(homeSource, /auth\.status === "error"/);
   assert.match(homeSource, /aria-describedby="recommendation-help"/);
-  assert.match(readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8"), /alt=\{`\$\{name\} 상품 이미지`\}/);
+  assert.match(readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8"), /<CatalogImage src=\{item\.thumbnailUrl\} alt=""/);
   assert.match(globalStylesSource, /@media \(max-width: 767px\)/);
   assert.match(globalStylesSource, /@media \(max-width: 380px\)/);
   assert.match(globalStylesSource, /:focus-visible/);

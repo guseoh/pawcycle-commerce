@@ -4,7 +4,8 @@ const trustSections = {
   shipping: {
     eyebrow: "배송 정책",
     title: "배송 안내",
-    intro: "주문을 안심하고 기다릴 수 있도록 배송 기준을 한곳에 정리했어요.",
+    intro: "배송 흐름과 구매 전에 확인할 조건을 함께 안내합니다.",
+    missing: [["배송비·무료배송 조건", "정보 미제공"], ["출고 기준·예상 소요일", "정보 미제공"], ["배송 가능 지역·추가 비용", "정보 미제공"]],
     sections: [
       ["배송 시작", "주문 확인이 완료되면 배송 준비를 시작합니다. 배송 상태는 주문 상세와 알림에서 확인할 수 있어요."],
       ["배송지 확인", "주문하기 전에 선택한 배송지를 다시 확인합니다. 주문이 완료된 뒤에는 주문 상세에서 실제 배송지를 확인할 수 있어요."],
@@ -14,7 +15,8 @@ const trustSections = {
   returns: {
     eyebrow: "교환·반품 정책",
     title: "교환·반품 안내",
-    intro: "상품 상태와 주문 진행 단계에 따라 이용할 수 있는 절차가 달라질 수 있어요.",
+    intro: "이용 가능한 요청 절차와 확인이 필요한 반품 조건을 안내합니다.",
+    missing: [["교환·반품 가능 기간", "정보 미제공"], ["반품 배송비·부담 기준", "정보 미제공"], ["제외 상품·제한 조건", "정보 미제공"]],
     sections: [
       ["반품 요청", "배송 완료 후 반품을 요청할 수 있는 주문에는 주문 상세에 반품 요청 메뉴가 표시됩니다. 사유를 입력해 접수해 주세요."],
       ["주문 취소", "취소할 수 있는 주문에는 주문 상세에 주문 취소 버튼이 표시됩니다. 배송 준비가 진행된 뒤에는 취소가 제한될 수 있어요."],
@@ -25,7 +27,7 @@ const trustSections = {
 
 export function TrustPolicyPage({ kind }: { kind: keyof typeof trustSections }) {
   const page = trustSections[kind];
-  return <section className="trust-page"><header className="page-heading"><p className="eyebrow">{page.eyebrow}</p><h1>{page.title}</h1><p>{page.intro}</p></header><div className="trust-card-list">{page.sections.map(([title, body]) => <section className="section-card" key={title}><h2>{title}</h2><p>{body}</p></section>)}</div><div className="trust-next-links"><Link className="button button-secondary" href="/faq">자주 묻는 질문</Link><Link className="button button-primary" href="/support">고객지원으로 이동</Link></div></section>;
+  return <section className="trust-page"><header className="page-heading"><p className="eyebrow">{page.eyebrow}</p><h1>{page.title}</h1><p>{page.intro}</p></header><section className="policy-availability" aria-labelledby="policy-availability-title"><h2 id="policy-availability-title">구매 전 확인할 조건</h2><dl>{page.missing.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="field-help">아래 절차 안내만으로 비용·기간이 확정되는 것은 아닙니다. 필요한 조건이 제공되지 않았다면 주문 전에 확인해 주세요.</p></section><div className="trust-card-list">{page.sections.map(([title, body]) => <section className="section-card" key={title}><h2>{title}</h2><p>{body}</p></section>)}</div><div className="trust-next-links"><Link className="button button-secondary" href="/faq">자주 묻는 질문</Link><Link className="button button-primary" href="/support">고객지원으로 이동</Link></div></section>;
 }
 
 export function FaqPage() {
@@ -39,7 +41,7 @@ export function FaqPage() {
 }
 
 export function NoticePage() {
-  return <section className="trust-page"><header className="page-heading"><p className="eyebrow">Notice</p><h1>공지사항</h1><p>서비스 이용에 필요한 최신 안내를 확인하세요.</p></header><section className="section-card notice-list"><article><span className="tag">서비스 안내</span><h2>주문과 정기배송의 최신 상태를 상세 화면에서 확인해 주세요.</h2><p>가격, 재고, 배송일과 진행 상태가 바뀌면 주문 상세 또는 정기배송 상세에서 최신 내용을 확인할 수 있습니다.</p></article><article><span className="tag">결제 안내</span><h2>외부 결제 기능은 아직 제공하지 않습니다.</h2><p>현재는 주문을 준비하고 상태를 확인하는 흐름까지 이용할 수 있습니다. 외부 결제가 제공되기 전에는 실제 결제가 완료되지 않습니다.</p></article></section></section>;
+  return <section className="trust-page"><header className="page-heading"><p className="eyebrow">Notice</p><h1>공지사항</h1><p>서비스 이용에 필요한 최신 안내를 확인하세요.</p></header><section className="section-card notice-list"><article><span className="tag">서비스 안내</span><h2>주문과 정기배송의 최신 상태를 상세 화면에서 확인해 주세요.</h2><p>가격, 재고, 배송일과 진행 상태가 바뀌면 주문 상세 또는 정기배송 상세에서 최신 내용을 확인할 수 있습니다.</p></article><article><span className="tag">결제 안내</span><h2>주문 준비와 결제 완료는 다릅니다.</h2><p>주문 준비만으로 결제가 완료되지 않습니다. 결제 화면에 표시된 제공 상태와 주문 상세의 결제 상태를 확인해 주세요. 테스트 결제는 실제 결제가 아닙니다.</p></article></section></section>;
 }
 
 export function SupportPage() {

@@ -12,6 +12,7 @@ import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, cha
 import { loadProductResults } from "@/lib/catalog-products";
 import { useAuth } from "@/lib/auth-context";
 import { comparisonHref, toggleComparisonId } from "@/lib/comparison-selection";
+import { rememberCatalogReturn } from "@/lib/catalog-return";
 import { createInteractionEvent, interactionApi, type InteractionEvent } from "@/lib/interaction-api";
 
 type LoadState = { key: string; status: "success"; response: ProductListResponse } | { key: string; status: "error"; message: string };
@@ -49,9 +50,9 @@ function ProductsContent() {
 
   useEffect(() => {
     if (current?.status !== "success") return;
-    const raw = sessionStorage.getItem("pawcycle.catalog-return");
-    if (!raw) return;
     try {
+      const raw = sessionStorage.getItem("pawcycle.catalog-return");
+      if (!raw) return;
       const saved = JSON.parse(raw) as { query: string; productId: number; scrollY: number };
       if (saved.query !== query) return;
       sessionStorage.removeItem("pawcycle.catalog-return");
@@ -59,7 +60,7 @@ function ProductsContent() {
         window.scrollTo({ top: saved.scrollY });
         document.querySelector<HTMLElement>(`[data-product-id="${saved.productId}"] .catalog-title-link`)?.focus({ preventScroll: true });
       });
-    } catch { sessionStorage.removeItem("pawcycle.catalog-return"); }
+    } catch { /* Browsing storage is optional. */ }
   }, [current?.status, query]);
 
   const track = (events: Array<InteractionEvent | null>) => {
@@ -117,7 +118,7 @@ function ProductsContent() {
         {discovery.state.status === "error" ? <div className="inline-alert" role="alert"><p>{discovery.state.message} 검색과 기본 필터는 계속 사용할 수 있습니다.</p><button className="button button-secondary" onClick={discovery.retry}>탐색 정보 재시도</button></div> : null}
         <CatalogFilterForm key={`${query}|${filterGroup}`} group={filterGroup} filters={filters} metadata={metadata} onApply={(next) => { track([createInteractionEvent({ type: "FILTER", source: "catalog-filter", context: interactionContext(next) })]); router.push(catalogHref({ ...next, page: 0 })); setFilterOpen(false); filterButton.current?.focus(); }} />
       </CommerceOverlay> : null}
-      <section className="catalog-results" aria-label="상품 검색 결과" aria-busy={!current} onClickCapture={(event) => { const card = (event.target as HTMLElement).closest<HTMLElement>("[data-product-id]"); const link = (event.target as HTMLElement).closest("a[href^='/products/']"); if (!card || !link) return; sessionStorage.setItem("pawcycle.catalog-return", JSON.stringify({ query, productId: Number(card.dataset.productId), scrollY: window.scrollY })); }}>
+      <section className="catalog-results" aria-label="상품 검색 결과" aria-busy={!current} onClickCapture={(event) => { const card = (event.target as HTMLElement).closest<HTMLElement>("[data-product-id]"); const link = (event.target as HTMLElement).closest("a[href^='/products/']"); if (!card || !link) return; rememberCatalogReturn(catalogHref(filters)); try { sessionStorage.setItem("pawcycle.catalog-return", JSON.stringify({ query, productId: Number(card.dataset.productId), scrollY: window.scrollY })); } catch { /* Browsing storage is optional. */ } }}>
         <h2 className="sr-only">상품 목록</h2>
         {!current ? <CatalogSkeleton /> : null}
         {current?.status === "error" ? <ErrorState headingLevel={3} title="상품 목록을 불러오지 못했습니다." message={current.message} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
@@ -140,7 +141,7 @@ function CatalogFilterForm({ filters, metadata, onApply, group }: { filters: Pro
   const updateDraft = (next: ProductFilters) => { draftRef.current = next; setDraft(next); };
   const change = (patch: Partial<ProductFilters>) => updateDraft(changeCatalogFilters(draftRef.current, patch));
   const reset = () => updateDraft(group === "all" ? { q: draftRef.current.q, sort: draftRef.current.sort, size: draftRef.current.size, page: 0 } : changeCatalogFilters(draftRef.current, group === "pet" ? { petType: undefined } : group === "category" ? { category: undefined, subcategory: undefined, facet: undefined } : group === "brand" ? { brand: undefined } : group === "price" ? { minPrice: undefined, maxPrice: undefined } : { purchasable: undefined, subscribable: undefined }));
-  const apply = (form: HTMLFormElement) => { if (catalogPriceRangeError(draftRef.current)) return; const selectedFacets = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="facet"]:checked'), (input) => input.value); const next = changeCatalogFilters(draftRef.current, { facet: selectedFacets }); if (selectedFacets.length > 0) { window.location.assign(catalogHref(next)); return; } onApply(next); };
+  const apply = (form: HTMLFormElement) => { if (catalogPriceRangeError(draftRef.current)) return; const selectedFacets = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="facet"]:checked'), (input) => input.value); const next = changeCatalogFilters(draftRef.current, { facet: selectedFacets }); onApply(next); };
   return <form className="catalog-filter-form" onSubmit={(event) => { event.preventDefault(); apply(event.currentTarget); }}>
     <p className="field-help">적용 전 · 변경한 조건은 적용하기를 눌러야 반영됩니다.</p><div hidden={group !== "all" && group !== "pet"}><fieldset><legend>반려동물</legend><div className="catalog-toggle-row">{[{ value: "", label: "전체" }, { value: "DOG", label: "강아지" }, { value: "CAT", label: "고양이" }].map((item) => <button type="button" aria-pressed={(draft.petType ?? "") === item.value} key={item.value} onClick={() => change({ petType: item.value })}>{item.label}</button>)}</div></fieldset></div>
     <div hidden={group !== "all" && group !== "category"}><label className="form-field">카테고리<select className="input" value={draft.category ?? ""} disabled={!metadata} onChange={(event) => change({ category: event.target.value })}><option value="">전체 카테고리</option>{draft.category && !metadata?.categories.some((item) => item.slug === draft.category) ? <option value={draft.category}>현재 URL 카테고리</option> : null}{metadata?.categories.map((category) => <option key={category.categoryId} value={category.slug}>{category.name}</option>)}</select></label>

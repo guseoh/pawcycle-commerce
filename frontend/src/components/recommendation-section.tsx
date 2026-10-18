@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { useAuth } from "@/lib/auth-context";
 import { createInteractionEvent, interactionApi } from "@/lib/interaction-api";
-import type { RecommendationResponse } from "@/lib/recommendation-api";
+import type { RecommendationItem, RecommendationResponse } from "@/lib/recommendation-api";
 import { loadRecommendation, recommendationRequestKey, recommendationRequestPetId, type RecommendationRequest } from "@/lib/recommendation";
+import { RECOMMENDATION_VISIBLE_LIMIT } from "@/lib/recommendation-metadata";
 import { RecommendationGrid } from "./recommendation-card";
 
 function trackBestEffort(auth: ReturnType<typeof useAuth>, response: RecommendationResponse, source: string, petId?: number) {
@@ -18,23 +19,25 @@ function trackBestEffort(auth: ReturnType<typeof useAuth>, response: Recommendat
   void auth.executeWithCsrf((csrf) => interactionApi.send(events, csrf)).catch(() => undefined);
 }
 
-export function RecommendationSection({ id, title, description, request, source }: { id: string; title: string; description: string; request: RecommendationRequest; source: string }) {
+export function RecommendationSection({ id, title, description, request, source, sectionFilter }: { id: string; title: string; description: string; request: RecommendationRequest; source: string; sectionFilter?: (item: RecommendationItem) => boolean }) {
   const auth = useAuth();
   const authRef = useRef(auth);
   const requestRef = useRef(request);
+  const filterRef = useRef(sectionFilter);
   const requestKey = recommendationRequestKey(request);
   const [state, setState] = useState<{ status: "loading" } | { status: "success"; data: RecommendationResponse } | { status: "error"; message: string }>({ status: "loading" });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     authRef.current = auth;
     requestRef.current = request;
-  }, [auth, request]);
+    filterRef.current = sectionFilter;
+  }, [auth, request, sectionFilter]);
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
       setState({ status: "loading" });
-      void loadRecommendation(requestRef.current).then((data) => { if (active) { setState({ status: "success", data }); trackBestEffort(authRef.current, data, source, recommendationRequestPetId(requestRef.current)); } }).catch((error: unknown) => {
+      void loadRecommendation(requestRef.current).then((response) => { if (active) { const data = { ...response, products: response.products.filter((item) => filterRef.current?.(item) ?? true).slice(0, RECOMMENDATION_VISIBLE_LIMIT) }; setState({ status: "success", data }); trackBestEffort(authRef.current, data, source, recommendationRequestPetId(requestRef.current)); } }).catch((error: unknown) => {
         if (active) setState({ status: "error", message: error instanceof Error ? error.message : "추천을 불러오지 못했습니다." });
       });
     }, 0);

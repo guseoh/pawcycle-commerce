@@ -313,18 +313,18 @@ export function ProductTrustSections({ productId, trust, onTrustRefresh }: Produ
   const questionPages = questions?.totalPages ?? 0;
 
   return <div className="product-trust-stack">
-    <section className="section-card product-trust-summary" aria-labelledby="product-trust-title">
+    {trust.reviewCount > 0 || trust.questionCount > 0 ? <section className="section-card product-trust-summary" aria-labelledby="product-trust-title">
       <div className="section-title"><div><h2 id="product-trust-title">구매자 신뢰 정보</h2></div></div>
       <div className="snapshot-grid">
         <div className="snapshot-tile"><strong>{trust.averageRating === null ? "-" : `${trust.averageRating.toFixed(1)} / 5`}</strong><span>{trust.averageRating === null ? "아직 리뷰 없음" : "평균 평점"}</span></div>
         <div className="snapshot-tile"><strong>{trust.reviewCount}</strong><span>리뷰</span></div>
         <div className="snapshot-tile"><strong>{trust.questionCount}</strong><span>문의</span></div>
       </div>
-    </section>
+    </section> : null}
 
     <section className="section-card product-engagement-section" aria-labelledby="product-reviews-title">
       <div className="section-title"><div><h2 id="product-reviews-title">리뷰</h2></div><span className="count-badge">{trust.reviewCount}</span></div>
-      <ReviewSummaryPanel summary={reviewSummary} status={reviewSummaryStatus} error={reviewSummaryError} onRetry={() => setReviewSummaryRetry((value) => value + 1)} />
+      {trust.reviewCount > 0 ? <ReviewSummaryPanel summary={reviewSummary} status={reviewSummaryStatus} error={reviewSummaryError} onRetry={() => setReviewSummaryRetry((value) => value + 1)} /> : null}
       {reviewStatus === "loading" ? <p className="field-help" role="status">리뷰를 불러오고 있습니다.</p> : reviewStatus === "error" ? <div className="error-summary" role="alert"><p>{reviewError}</p><button className="button button-secondary" type="button" onClick={() => void loadReviews(reviewPage)}>다시 시도</button></div> : reviews?.items.length ? <ul className="engagement-list">{reviews.items.map((review) => <li key={review.reviewId}><div className="engagement-list-heading"><strong>{review.rating}점</strong><time dateTime={review.createdAt}>{formatDateTime(review.createdAt)}</time></div><p className="description">{review.content}</p></li>)}</ul> : <div className="empty-callout">아직 공개된 리뷰가 없습니다.</div>}
       <PageControls page={reviewPage} totalPages={reviewPages} onChange={setReviewPage} />
       {auth.status === "authenticated" ? <div className="product-engagement-form-wrap">

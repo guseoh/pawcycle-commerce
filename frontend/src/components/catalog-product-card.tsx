@@ -51,7 +51,7 @@ export function CatalogImage({ src, alt, className = "", eager = false }: { src:
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return src && failedSource !== src
     ? <img src={src} alt={alt} className={className} loading={eager ? "eager" : "lazy"} onError={() => setFailedSource(src)} />
-    : <span className={`image-placeholder ${className}`} role={alt ? "img" : undefined} aria-label={alt ? `${alt} — 상품 이미지를 준비 중입니다` : undefined} aria-hidden={alt ? undefined : true}><span>이미지 준비 중</span></span>;
+    : <span className={`image-placeholder ${className}`} role={alt ? "img" : undefined} aria-label={alt ? `${alt}: 상품 이미지를 준비 중입니다` : undefined} aria-hidden={alt ? undefined : true}><span>이미지 준비 중</span></span>;
 }
 
 export function CatalogPrice({ price, compareAtPrice, discountRate }: { price: number | null; compareAtPrice?: number | null; discountRate?: number | null }) {
@@ -155,14 +155,14 @@ export function CatalogProductCard({ product, compareSelected = false, onCompare
   return <article className="catalog-product-card" data-product-id={product.productId}>
     <Link className="catalog-image-link" href={href} aria-label={`${productName} 상품 상세 보기`}><div className="product-card-media"><CatalogImage src={product.thumbnailUrl} alt="" className="product-thumbnail" />{!product.purchasable ? <span className="catalog-sold-out">구매 불가</span> : null}</div></Link>
     <div className="catalog-wishlist-control"><CatalogWishlistButton productId={product.productId} productName={productName} /></div>
-    <div className="catalog-card-copy">
+    <div className="catalog-card-copy catalog-card-details">
       {product.brand ? <p className="catalog-brand" title={product.brand.name}>{product.brand.name}</p> : null}
       <h3><Link className="catalog-title-link" href={href}>{productName}</Link></h3>
-      <CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />
-      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating">★ {product.averageRating} <span aria-hidden="true">·</span> 리뷰 {product.reviewCount.toLocaleString()}개</p> : null}
+      <div className="catalog-price-block"><CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />{product.skuPriceSummary.skuPrices.length > 1 ? <span className="catalog-price-caption">옵션별 가격은 상세에서 확인</span> : null}</div>
+      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating"><span aria-hidden="true">★ </span><span className="sr-only">평점 </span>{product.averageRating}<span className="catalog-rating-count"> · 리뷰 {product.reviewCount.toLocaleString()}개</span></p> : null}
       <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}</div>
     </div>
     <div className="catalog-quick-purchase"><CatalogQuickPurchase product={product} productName={productName} href={href} /></div>
-    {onCompare ? <div className="catalog-card-actions"><label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} />비교에 담기</label></div> : null}
+    {onCompare ? <div className="catalog-card-actions"><label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} aria-label={`${productName} 비교에 담기`} />비교에 담기</label></div> : null}
   </article>;
 }
