@@ -19,7 +19,7 @@ export default function Home() {
       <header className="home-heading home-hero" aria-labelledby="home-title"><div className="home-heading-copy"><p className="eyebrow">사료부터 일상 소모품까지</p><h1 id="home-title">매일 필요한 것, 정기배송으로</h1><p>반복해서 쓰는 반려동물 용품을 먼저 둘러보세요.</p><div className="home-hero-actions"><Link className="button" href="/products?subscribable=true">정기배송 상품 보기</Link><Link className="text-link" href="/products">전체 상품 보기</Link></div></div><nav className="pet-navigation" aria-label="반려동물별 상품"><Link aria-current="page" href="/products">전체</Link><Link href="/products?petType=DOG">강아지</Link><Link href="/products?petType=CAT">고양이</Link></nav></header>
       <CompactDiscovery />
       <HomeCatalog />
-      
+
       <RecommendationSection id="home-popular-title" title="함께 둘러볼 상품" description="현재 추천 목록에서 새로운 상품을 찾아보세요." source="home-popular" request={{ kind: "popular", limit: 8 }} />
 
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
