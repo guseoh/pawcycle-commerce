@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.order.persistence;
+package com.pawcycle.backend.commerce.order.model;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;

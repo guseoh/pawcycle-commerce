@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
+import com.pawcycle.backend.commerce.order.model.OrderView;
+import com.pawcycle.backend.commerce.order.model.OrderReadModel.Summary;
 import jakarta.persistence.EntityManager;
-import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 
@@ -45,7 +45,7 @@ public class OrderPersistenceAdapter {
 
   private List<OrderView.Item> findItems(long orderId) {
     return queries.createQuery("""
-        select new com.pawcycle.backend.commerce.order.persistence.OrderView$Item(
+        select new com.pawcycle.backend.commerce.order.model.OrderView$Item(
             i.skuId, i.snapshotQuality, i.skuCodeSnapshot, i.productNameSnapshot, i.skuNameSnapshot,
             i.unitPrice, i.quantity, i.lineAmount)
         from CommerceOrderItemEntity i where i.orderId = :orderId order by i.id
@@ -55,7 +55,7 @@ public class OrderPersistenceAdapter {
 
   private OrderView.Payment findPayment(long orderId) {
     return queries.createQuery("""
-        select new com.pawcycle.backend.commerce.order.persistence.OrderView$Payment(
+        select new com.pawcycle.backend.commerce.order.model.OrderView$Payment(
             p.id, p.type, p.provider, p.status, p.amount, p.attemptNo, p.providerStatus)
         from PaymentEntity p where p.orderId = :orderId order by p.attemptNo desc
         """, OrderView.Payment.class)
@@ -95,19 +95,11 @@ public class OrderPersistenceAdapter {
 
   private List<OrderView.Refund> findRefunds(long orderId) {
     return queries.createQuery("""
-        select new com.pawcycle.backend.commerce.order.persistence.OrderView$Refund(
+        select new com.pawcycle.backend.commerce.order.model.OrderView$Refund(
             r.id, r.source, r.status, r.amount, r.attemptNo, r.reconciliationAttempts)
         from RefundEntity r where r.orderId = :orderId order by r.attemptNo
         """, OrderView.Refund.class)
         .setParameter("orderId", orderId).getResultList();
   }
 
-  public record Summary(
-      long orderId,
-      String orderNumber,
-      String source,
-      String status,
-      BigDecimal paymentAmount,
-      Timestamp createdAt,
-      Timestamp paidAt) {}
 }

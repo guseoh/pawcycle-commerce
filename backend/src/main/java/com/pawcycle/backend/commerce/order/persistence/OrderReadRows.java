@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
+import com.pawcycle.backend.commerce.order.model.OrderView;
+import com.pawcycle.backend.commerce.order.model.OrderReadModel;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -19,8 +21,8 @@ final class OrderReadRows {
   record Summary(
       long orderId, String orderNumber, String source, String status, BigDecimal paymentAmount,
       LocalDateTime createdAt, LocalDateTime paidAt) {
-    OrderPersistenceAdapter.Summary toView() {
-      return new OrderPersistenceAdapter.Summary(
+    OrderReadModel.Summary toView() {
+      return new OrderReadModel.Summary(
           orderId, orderNumber, source, status, paymentAmount, timestamp(createdAt), timestamp(paidAt));
     }
   }
