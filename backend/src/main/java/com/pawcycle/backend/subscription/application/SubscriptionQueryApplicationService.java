@@ -16,19 +16,19 @@ import com.pawcycle.backend.subscription.persistence.projection.SubscriptionSnap
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
 
-import com.pawcycle.backend.subscription.api.CommandHistoryResponse;
-import com.pawcycle.backend.subscription.api.NextDeliveryResponse;
-import com.pawcycle.backend.subscription.api.PageResponse;
-import com.pawcycle.backend.subscription.api.PendingChangeResponse;
-import com.pawcycle.backend.subscription.api.PetResponse;
-import com.pawcycle.backend.subscription.api.ScheduleResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionAddonResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionIssueResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionItemDetailResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionItemResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionSnapshotResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionSummaryResponse;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.History;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.NextDelivery;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Page;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.PendingChange;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Pet;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Schedule;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Addon;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Detail;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Issue;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.ItemDetail;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Item;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Snapshot;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel.Summary;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -52,7 +52,7 @@ class SubscriptionQueryApplicationService {
   }
 
   @Transactional(readOnly = true)
-  PageResponse<SubscriptionSummaryResponse> subscriptions(long memberId, int page, int size) {
+  Page<Summary> subscriptions(long memberId, int page, int size) {
     PageProjection<SubscriptionProjection> subscriptions =
         store.findSubscriptions(memberId, page(page, size), size);
     List<Long> subscriptionIds =
@@ -89,7 +89,7 @@ class SubscriptionQueryApplicationService {
   }
 
   @Transactional(readOnly = true)
-  SubscriptionOperationResult subscription(
+  Detail subscription(
       long memberId,
       long subscriptionId,
       int schedulePage,
@@ -98,13 +98,12 @@ class SubscriptionQueryApplicationService {
       int commandSize) {
     page(schedulePage, scheduleSize);
     page(commandPage, commandSize);
-    SubscriptionDetailResponse body =
+    Detail body =
         detail(memberId, subscriptionId, schedulePage, scheduleSize, commandPage, commandSize);
-    return new SubscriptionOperationResult(
-        200, body, null, "\"" + body.version() + "\"", false);
+    return body;
   }
 
-  SubscriptionDetailResponse detail(
+  Detail detail(
       long memberId,
       long subscriptionId,
       int schedulePage,
@@ -131,13 +130,13 @@ class SubscriptionQueryApplicationService {
         store.findScheduleViews(subscriptionId, checkedSchedulePage, scheduleSize);
     PageProjection<CommandHistoryProjection> history =
         store.findCommandHistory(subscriptionId, checkedCommandPage, commandSize);
-    SubscriptionSummaryResponse summary =
+    Summary summary =
         summary(
             subscription,
             pet,
             snapshot(current),
             store.findNextSchedule(subscriptionId, support.today()).orElse(null));
-    return new SubscriptionDetailResponse(
+    return new Detail(
         summary.subscriptionId(),
         summary.status(),
         summary.version(),
@@ -155,14 +154,14 @@ class SubscriptionQueryApplicationService {
         page(history, history.items().stream().map(this::history).toList()));
   }
 
-  private SubscriptionSummaryResponse summary(
+  private Summary summary(
       SubscriptionProjection subscription,
       PetProjection pet,
-      SubscriptionSnapshotResponse currentSnapshot,
+      Snapshot currentSnapshot,
       LocalDate nextScheduledDate) {
     if (subscription.petId() != null && pet == null)
       throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "PET_NOT_FOUND", "Pet을 찾을 수 없습니다.");
-    return new SubscriptionSummaryResponse(
+    return new Summary(
         subscription.id(),
         subscription.status(),
         subscription.version(),
@@ -171,8 +170,8 @@ class SubscriptionQueryApplicationService {
         "ACTIVE".equals(subscription.status()) ? nextScheduledDate : null);
   }
 
-  private PetResponse pet(PetProjection value) {
-    return new PetResponse(
+  private Pet pet(PetProjection value) {
+    return new Pet(
         value.id(),
         value.name(),
         value.petType(),
@@ -181,26 +180,26 @@ class SubscriptionQueryApplicationService {
         value.profileComplete());
   }
 
-  private SubscriptionSnapshotResponse snapshot(
+  private Snapshot snapshot(
       SubscriptionSnapshotBase value, List<SubscriptionItemProjection> items) {
     if (value == null) throw new IllegalStateException("Subscription snapshot을 찾을 수 없습니다.");
-    return new SubscriptionSnapshotResponse(
+    return new Snapshot(
         value.planVersionId(),
         value.packagePriceKrw(),
         value.deliveryCycleWeeks(),
         items.stream()
-            .map(item -> new SubscriptionItemResponse(item.skuId(), item.quantity()))
+            .map(item -> new Item(item.skuId(), item.quantity()))
             .toList());
   }
 
-  private SubscriptionSnapshotResponse snapshot(SubscriptionSnapshot value) {
+  private Snapshot snapshot(SubscriptionSnapshot value) {
     return snapshot(
         new SubscriptionSnapshotBase(
             value.id(), value.planVersionId(), value.packagePriceKrw(), value.deliveryCycleWeeks()),
         value.items());
   }
 
-  private NextDeliveryResponse nextDelivery(
+  private NextDelivery nextDelivery(
       NextDeliveryProjection schedule,
       SubscriptionSnapshot current,
       PendingSubscriptionChange pendingChange,
@@ -222,7 +221,7 @@ class SubscriptionQueryApplicationService {
         addOns.stream()
             .map(ScheduleAddonProjection::lineAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-    return new NextDeliveryResponse(
+    return new NextDelivery(
         schedule.id(),
         schedule.scheduledDate(),
         schedule.status(),
@@ -235,8 +234,8 @@ class SubscriptionQueryApplicationService {
         BigDecimal.valueOf(effective.packagePriceKrw()).add(addOnTotal));
   }
 
-  private SubscriptionAddonResponse addon(ScheduleAddonProjection addOn) {
-    return new SubscriptionAddonResponse(
+  private Addon addon(ScheduleAddonProjection addOn) {
+    return new Addon(
         addOn.skuId(),
         addOn.productId(),
         addOn.productName(),
@@ -246,9 +245,9 @@ class SubscriptionQueryApplicationService {
         addOn.lineAmount());
   }
 
-  private PendingChangeResponse pendingChange(
+  private PendingChange pendingChange(
       PendingSubscriptionChange change, SubscriptionSnapshot pending) {
-    return new PendingChangeResponse(
+    return new PendingChange(
         change.targetScheduleId(),
         change.targetScheduledDate(),
         pending.planVersionId(),
@@ -257,8 +256,8 @@ class SubscriptionQueryApplicationService {
         store.findSnapshotItemDetails(pending.id()).stream().map(this::itemDetail).toList());
   }
 
-  private SubscriptionItemDetailResponse itemDetail(SubscriptionItemDetailProjection item) {
-    return new SubscriptionItemDetailResponse(
+  private ItemDetail itemDetail(SubscriptionItemDetailProjection item) {
+    return new ItemDetail(
         item.skuId(),
         item.skuName(),
         item.productId(),
@@ -267,18 +266,18 @@ class SubscriptionQueryApplicationService {
         item.quantity());
   }
 
-  private SubscriptionIssueResponse issue(String holdReason) {
+  private Issue issue(String holdReason) {
     if (holdReason == null) return null;
     return switch (holdReason) {
       case "MISSING_SHIPPING_ADDRESS" ->
-          new SubscriptionIssueResponse("SHIPPING_ADDRESS_REQUIRED", "배송지를 등록해 주세요.");
+          new Issue("SHIPPING_ADDRESS_REQUIRED", "배송지를 등록해 주세요.");
       case "MISSING_BILLING_METHOD" ->
-          new SubscriptionIssueResponse("BILLING_METHOD_REQUIRED", "결제 수단을 등록해 주세요.");
+          new Issue("BILLING_METHOD_REQUIRED", "결제 수단을 등록해 주세요.");
       case "PAYMENT_RETRY_EXHAUSTED" ->
-          new SubscriptionIssueResponse(
+          new Issue(
               "PAYMENT_SUPPORT_REQUIRED", "결제를 완료하지 못했습니다. 고객 지원에 문의해 주세요.");
       case "PAYMENT_RETRY_STOCK_UNAVAILABLE", "ORDER_STOCK_UNAVAILABLE" ->
-          new SubscriptionIssueResponse(
+          new Issue(
               "STOCK_UNAVAILABLE", "재고를 확보하지 못해 배송이 보류되었습니다.");
       default -> throw new IllegalStateException("알 수 없는 Subscription issue입니다.");
     };
@@ -319,17 +318,17 @@ class SubscriptionQueryApplicationService {
     return actions;
   }
 
-  private ScheduleResponse schedule(ScheduleViewProjection value) {
-    return new ScheduleResponse(
+  private Schedule schedule(ScheduleViewProjection value) {
+    return new Schedule(
         value.id(), value.scheduledDate(), value.status(), value.effectiveSnapshotId());
   }
 
-  private CommandHistoryResponse history(CommandHistoryProjection value) {
-    return new CommandHistoryResponse(value.commandType(), "SUCCEEDED", value.occurredAt());
+  private History history(CommandHistoryProjection value) {
+    return new History(value.commandType(), "SUCCEEDED", value.occurredAt());
   }
 
-  private <T> PageResponse<T> page(PageProjection<?> value, List<T> items) {
-    return new PageResponse<>(value.page(), value.size(), value.total(), items);
+  private <T> Page<T> page(PageProjection<?> value, List<T> items) {
+    return new Page<>(value.page(), value.size(), value.total(), items);
   }
 
   private int page(int page, int size) {

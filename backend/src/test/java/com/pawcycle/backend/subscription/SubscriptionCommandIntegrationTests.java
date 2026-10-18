@@ -636,7 +636,7 @@ class SubscriptionCommandIntegrationTests {
         new SubscriptionCommandRequest(null, null, 8, null, null, null));
 
     SubscriptionDetailResponse detail =
-        service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+        SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
     var nextDelivery = detail.nextDelivery();
     var pendingChange = detail.pendingChange();
     assertThat(nextDelivery).isNotNull();
@@ -663,7 +663,7 @@ class SubscriptionCommandIntegrationTests {
             + " subscription_id=? AND status='SCHEDULED'",
         subscriptionId);
     SubscriptionDetailResponse heldDetail =
-        service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+        SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
     assertThat(heldDetail.issue()).isNotNull();
     assertThat(heldDetail.issue().code()).isEqualTo("BILLING_METHOD_REQUIRED");
     assertThat(heldDetail.issue().message()).doesNotContain("MISSING_BILLING_METHOD");
@@ -675,7 +675,7 @@ class SubscriptionCommandIntegrationTests {
             + " subscription_id=? AND status='HELD'",
         subscriptionId);
     SubscriptionDetailResponse shippingHeldDetail =
-        service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20).body();
+        SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
     assertThat(shippingHeldDetail.issue()).isNotNull();
     assertThat(shippingHeldDetail.issue().code()).isEqualTo("SHIPPING_ADDRESS_REQUIRED");
     assertThat(shippingHeldDetail.issue().message()).doesNotContain("MISSING_SHIPPING_ADDRESS");
@@ -884,9 +884,9 @@ class SubscriptionCommandIntegrationTests {
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void scheduleDtoIncludesNullableAndAppliedEffectiveSnapshotId() {
     long subscriptionId = createSubscription("schedule-dto");
-    SubscriptionResult initial =
-        service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
-    var initialSchedule = initial.body().schedules().items().getFirst();
+    SubscriptionDetailResponse initial =
+        SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
+    var initialSchedule = initial.schedules().items().getFirst();
     assertThat(initialSchedule.effectiveSnapshotId()).isNull();
 
     jdbc.update(
@@ -896,10 +896,10 @@ class SubscriptionCommandIntegrationTests {
 
     SubscriptionAutomationBatchResult processed = automation.processDueSchedules(10);
 
-    SubscriptionResult reconciled =
-        service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20);
+    SubscriptionDetailResponse reconciled =
+        SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
 
-    assertThat(reconciled.body().schedules().items())
+    assertThat(reconciled.schedules().items())
         .anySatisfy(item -> assertThat(item.effectiveSnapshotId()).isNotNull());
     assertThat(processed.ordersCreated()).isGreaterThanOrEqualTo(1);
     assertThat(

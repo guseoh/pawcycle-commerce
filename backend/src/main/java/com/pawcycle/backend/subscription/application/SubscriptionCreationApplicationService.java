@@ -57,7 +57,7 @@ class SubscriptionCreationApplicationService {
         store.createSnapshot(subscriptionId, versionId, cycle, version.packagePriceKrw());
     store.setCurrentSnapshot(subscriptionId, snapshotId);
     store.insertScheduled(subscriptionId, next);
-    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
+    var response = support.detailResponse(queries.detail(memberId, subscriptionId, 0, 20, 0, 20));
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(
             201, response, "/api/subscriptions/" + subscriptionId, "\"0\"", false);
