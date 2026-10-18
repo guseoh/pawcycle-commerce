@@ -3,6 +3,7 @@ package com.pawcycle.backend.commerce.membership.api;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeCreatedResponse;
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import com.pawcycle.backend.commerce.membership.application.MembershipAdminApplicationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipGradeCreateCommand;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -27,14 +28,16 @@ public class AdminMembershipController {
 
   @GetMapping("/membership-grades")
   public List<MembershipGradeResponse> grades() {
-    return membership.listGrades();
+    return membership.listGrades().stream().map(MembershipGradeResponse::from).toList();
   }
 
   @PostMapping("/membership-grades")
   public ResponseEntity<MembershipGradeCreatedResponse> createGrade(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody MembershipGradeRequest request) {
-    long id = membership.createGrade(principal.memberId(), request);
+    long id = membership.createGrade(principal.memberId(), new MembershipGradeCreateCommand(
+        request.code(), request.name(), request.minimumPurchaseAmount(),
+        request.displayOrder(), request.active(), request.benefitCouponId()));
     return ResponseEntity.created(URI.create("/api/admin/membership-grades/" + id))
         .body(new MembershipGradeCreatedResponse(id));
   }

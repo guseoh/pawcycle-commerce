@@ -19,6 +19,6 @@ public class MembershipController {
   @GetMapping
   public MembershipResponse get(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return memberBenefits.membership(principal.memberId());
+    return MembershipResponse.from(memberBenefits.membership(principal.memberId()));
   }
 }

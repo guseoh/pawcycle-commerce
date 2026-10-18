@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponWriteCommand;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter;
-import com.pawcycle.backend.commerce.coupon.persistence.CouponView;
+import com.pawcycle.backend.commerce.coupon.model.CouponView;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;

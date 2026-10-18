@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
+import com.pawcycle.backend.commerce.membership.model.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.model.MembershipView;
 // Frozen main e6f880dc9952c077f9d10fbff4d897c8c6b3baa5; test-only JDBC reference.
 
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;

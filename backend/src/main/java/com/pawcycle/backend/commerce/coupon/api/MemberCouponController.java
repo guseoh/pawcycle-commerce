@@ -20,6 +20,6 @@ public class MemberCouponController {
   @GetMapping
   public List<MemberCouponResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return memberBenefits.coupons(principal.memberId());
+    return memberBenefits.coupons(principal.memberId()).stream().map(MemberCouponResponse::from).toList();
   }
 }

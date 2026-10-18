@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.membership.persistence;
 
+import com.pawcycle.backend.commerce.membership.model.MembershipGradeView;
+import com.pawcycle.backend.commerce.membership.model.MembershipView;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -18,7 +20,7 @@ public class MembershipQueryRepository {
 
   public List<MembershipGradeView> findGrades() {
     return queries.createQuery("""
-        select new com.pawcycle.backend.commerce.membership.persistence.MembershipGradeView(
+        select new com.pawcycle.backend.commerce.membership.model.MembershipGradeView(
             g.id, g.code, g.name, g.minimumPurchaseAmount, g.displayOrder, g.active, g.benefitCouponId)
         from MembershipGradeEntity g order by g.displayOrder, g.id
         """, MembershipGradeView.class).getResultList();

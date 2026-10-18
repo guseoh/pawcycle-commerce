@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.coupon.persistence;
 
+import com.pawcycle.backend.commerce.coupon.model.MemberCouponView;
+import com.pawcycle.backend.commerce.coupon.model.CouponView;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.coupon.domain.CouponEntity;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponRepository;

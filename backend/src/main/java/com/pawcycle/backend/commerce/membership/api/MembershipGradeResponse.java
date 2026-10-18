@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.membership.api;
 
+import com.pawcycle.backend.commerce.membership.model.MembershipGradeView;
 import java.math.BigDecimal;
 
 public record MembershipGradeResponse(
@@ -9,4 +10,15 @@ public record MembershipGradeResponse(
     BigDecimal minimumPurchaseAmount,
     int displayOrder,
     boolean active,
-    Long benefitCouponId) {}
+    Long benefitCouponId) {
+  public static MembershipGradeResponse from(MembershipGradeView view) {
+    return new MembershipGradeResponse(
+        view.gradeId(),
+        view.code(),
+        view.name(),
+        view.minimumPurchaseAmount(),
+        view.displayOrder(),
+        view.active(),
+        view.benefitCouponId());
+  }
+}

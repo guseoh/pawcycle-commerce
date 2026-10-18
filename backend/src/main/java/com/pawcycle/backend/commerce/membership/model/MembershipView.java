@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.membership.persistence;
+package com.pawcycle.backend.commerce.membership.model;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
