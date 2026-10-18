@@ -108,7 +108,7 @@ class SubscriptionCommandApplicationService {
       throw new SubscriptionFailure(
           SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     store.insertCommandHistory(subscriptionId, normalized, expected, expected + 1);
-    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
+    var response = support.detailResponse(queries.detail(memberId, subscriptionId, 0, 20, 0, 20));
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
     reservations.updateCommandResponse(

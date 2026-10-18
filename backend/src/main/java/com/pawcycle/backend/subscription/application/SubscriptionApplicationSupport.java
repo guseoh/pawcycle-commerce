@@ -3,6 +3,7 @@ package com.pawcycle.backend.subscription.application;
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -45,6 +46,10 @@ final class SubscriptionApplicationSupport {
     } catch (Exception exception) {
       throw new IllegalStateException("요청 지문을 계산할 수 없습니다.", exception);
     }
+  }
+
+  SubscriptionDetailResponse detailResponse(SubscriptionReadModel.Detail detail) {
+    return SubscriptionDetailResponse.from(detail);
   }
 
   SubscriptionDetailResponse responseBody(String bodyJson) {

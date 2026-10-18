@@ -7,7 +7,7 @@ import com.pawcycle.backend.subscription.api.PetResponse;
 import com.pawcycle.backend.subscription.api.PlanVersionResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
-import com.pawcycle.backend.subscription.api.SubscriptionSummaryResponse;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import org.springframework.stereotype.Service;
 
 /**
@@ -64,20 +64,19 @@ public class SubscriptionService {
     return result(creations.create(memberId, key, request));
   }
 
-  public PageResponse<SubscriptionSummaryResponse> subscriptions(long memberId, int page, int size) {
+  public SubscriptionReadModel.Page<SubscriptionReadModel.Summary> subscriptions(long memberId, int page, int size) {
     return queries.subscriptions(memberId, page, size);
   }
 
-  public SubscriptionResult subscription(
+  public SubscriptionReadModel.Detail subscription(
       long memberId,
       long subscriptionId,
       int schedulePage,
       int scheduleSize,
       int commandPage,
       int commandSize) {
-    return result(
-        queries.subscription(
-            memberId, subscriptionId, schedulePage, scheduleSize, commandPage, commandSize));
+    return queries.subscription(
+        memberId, subscriptionId, schedulePage, scheduleSize, commandPage, commandSize);
   }
 
   public SubscriptionResult command(

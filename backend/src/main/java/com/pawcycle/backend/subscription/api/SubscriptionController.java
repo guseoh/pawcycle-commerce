@@ -96,7 +96,8 @@ public class SubscriptionController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
-    return service.subscriptions(principal.memberId(), page, size);
+    return PageResponse.from(
+        service.subscriptions(principal.memberId(), page, size), SubscriptionSummaryResponse::from);
   }
 
   @GetMapping("/subscriptions/{subscriptionId}")
@@ -107,14 +108,10 @@ public class SubscriptionController {
       @RequestParam(defaultValue = "20") int scheduleSize,
       @RequestParam(defaultValue = "0") int commandPage,
       @RequestParam(defaultValue = "20") int commandSize) {
-    return response(
-        service.subscription(
-            principal.memberId(),
-            subscriptionId,
-            schedulePage,
-            scheduleSize,
-            commandPage,
-            commandSize));
+    var view = service.subscription(
+        principal.memberId(), subscriptionId, schedulePage, scheduleSize, commandPage, commandSize);
+    return ResponseEntity.ok().header("ETag", "\"" + view.version() + "\"")
+        .body(SubscriptionDetailResponse.from(view));
   }
 
   @PostMapping("/subscriptions/{subscriptionId}/commands/{command}")

@@ -61,7 +61,7 @@ class SubscriptionQueryApplicationServiceTests {
                     7L, 2001L, 201L, "간식", "소형", 2, new BigDecimal("3000.55"))));
     when(store.scheduleAddonCount(7L)).thenReturn(1);
 
-    SubscriptionDetailResponse body = service.detail(10L, 1L, 0, 20, 0, 20);
+    SubscriptionDetailResponse body = SubscriptionDetailResponse.from(service.detail(10L, 1L, 0, 20, 0, 20));
 
     NextDeliveryResponse nextDelivery = body.nextDelivery();
     SubscriptionAddonResponse addOn = nextDelivery.addOns().getFirst();
@@ -110,7 +110,7 @@ class SubscriptionQueryApplicationServiceTests {
     when(store.findSnapshotItemDetails(5L)).thenReturn(List.of());
     when(store.findScheduleAddons(7L)).thenReturn(List.of());
 
-    SubscriptionDetailResponse body = service.detail(10L, 1L, 0, 20, 0, 20);
+    SubscriptionDetailResponse body = SubscriptionDetailResponse.from(service.detail(10L, 1L, 0, 20, 0, 20));
 
     assertThat(body.availableActions())
         .containsExactly(
@@ -156,7 +156,7 @@ class SubscriptionQueryApplicationServiceTests {
                     7L, 2001L, 201L, "간식", "소형", 1, new BigDecimal("3000.00"))));
     when(store.scheduleAddonCount(7L)).thenReturn(1);
 
-    SubscriptionDetailResponse body = service.detail(10L, 1L, 0, 20, 0, 20);
+    SubscriptionDetailResponse body = SubscriptionDetailResponse.from(service.detail(10L, 1L, 0, 20, 0, 20));
 
     assertThat(body.availableActions()).containsExactly("REMOVE_NEXT_DELIVERY_ADDON", "CANCEL");
     assertThat(body.issue().code()).isEqualTo("STOCK_UNAVAILABLE");
