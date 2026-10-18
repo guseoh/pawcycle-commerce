@@ -18,7 +18,7 @@ import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.commerce.cart.persistence.CartQueryRepository;
 import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.commerce.order.persistence.OrderPersistenceAdapter;
-import com.pawcycle.backend.commerce.order.persistence.OrderView;
+import com.pawcycle.backend.commerce.order.model.OrderView;
 import com.pawcycle.backend.commerce.order.persistence.QuickReorderPersistenceAdapter;
 import com.pawcycle.backend.commerce.wishlist.persistence.WishlistQueryRepository;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -47,10 +47,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = {"spring.jpa.open-in-view=false", "spring.jpa.properties.hibernate.generate_statistics=true"})
 @ActiveProfiles("test")
 class CustomerOrderReadModelIntegrationTests {
   @Autowired private OrderPersistenceAdapter orders;
+  @Autowired private com.pawcycle.backend.commerce.order.application.AdminOrderQueryService admin;
+  @Autowired private com.pawcycle.backend.commerce.order.persistence.AdminOrderPersistenceAdapter adminStore;
+  @Autowired private jakarta.persistence.EntityManagerFactory emf;
   @Autowired private OrderApplicationService service;
   @Autowired private CartQueryRepository carts;
   @Autowired private WishlistQueryRepository wishlists;
@@ -90,7 +93,7 @@ class CustomerOrderReadModelIntegrationTests {
     long newest = order(memberId, "SUBSCRIPTION", "PAID", true);
     assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
     assertThat(orders.findOrders(memberId)).isEqualTo(legacy.findOrders(memberId));
-    assertThat(orders.findOrders(memberId)).extracting(OrderPersistenceAdapter.Summary::orderId)
+    assertThat(orders.findOrders(memberId)).extracting(com.pawcycle.backend.commerce.order.model.OrderReadModel.Summary::orderId)
         .containsExactly(newest, oldest);
     assertThat(orders.findOrders(memberId).getFirst().paidAt()).isNotNull();
     assertThat(orders.findOrders(memberId).getLast().paidAt()).isNull();
@@ -207,6 +210,61 @@ class CustomerOrderReadModelIntegrationTests {
     assertThat(jdbc.queryForObject("SELECT version FROM carts WHERE member_id=?", Long.class, memberId)).isEqualTo(7);
   }
 
+  @Test
+  void frozenCustomerSqlCountAndDetachedExactJsonHaveNoEntityLoads() throws Exception {
+    long id = fullOrder();
+    var stats = emf.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+    var frozen = referenceService(orders);
+    stats.clear(); var expected = frozen.orders(memberId); long listSql = stats.getPrepareStatementCount();
+    stats.clear(); var list = service.orders(memberId);
+    assertThat(stats.getPrepareStatementCount()).isEqualTo(listSql).isEqualTo(1);
+    assertThat(stats.getEntityLoadCount()).isZero();
+    stats.clear(); var expectedDetail = frozen.order(memberId, id); long detailSql = stats.getPrepareStatementCount();
+    stats.clear(); var detail = service.order(memberId, id);
+    assertThat(stats.getPrepareStatementCount()).isEqualTo(detailSql).isEqualTo(7);
+    assertThat(stats.getEntityLoadCount()).isZero();
+    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    assertThat(TransactionSynchronizationManager.hasResource(emf)).isFalse(); stats.clear();
+    var listDto = list.stream().map(com.pawcycle.backend.commerce.order.api.OrderSummaryResponse::from).toList();
+    var dto = com.pawcycle.backend.commerce.order.api.OrderResponse.from(detail);
+    assertThat(json.writeValueAsString(listDto)).isEqualTo(json.writeValueAsString(expected));
+    assertThat(json.writeValueAsString(dto)).isEqualTo(json.writeValueAsString(expectedDetail));
+    assertThat(dto.createdAt().getNanos()).isEqualTo(123456000);
+    assertThat(stats.getPrepareStatementCount()).isZero(); assertThat(stats.getEntityLoadCount()).isZero();
+    assertThat(http.perform(get("/api/orders").with(member(memberId))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
+        .isEqualTo(json.writeValueAsString(expected));
+    assertThat(http.perform(get("/api/orders/" + id).with(member(memberId))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
+        .isEqualTo(json.writeValueAsString(expectedDetail));
+    http.perform(get("/api/orders/" + id)).andExpect(status().isUnauthorized());
+    System.out.println("ORDER_RESPONSE_SQL_PARITY list=" + listSql + " detail=" + detailSql + " detached=0 entityLoads=0");
+  }
+
+  @Test
+  void adminFrozenListDetailOrderingTimestampDetachedJsonAndAuthorizationMatch() throws Exception {
+    long oldest = order(memberId, "ONE_TIME", "CREATED", false);
+    long newest = order(otherId, "SUBSCRIPTION", "PAID", true);
+    var frozen = new com.pawcycle.backend.commerce.order.application.FrozenAdminOrderQueryService(adminStore);
+    var stats = emf.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+    stats.clear(); var expected = frozen.list(); long listSql = stats.getPrepareStatementCount();
+    stats.clear(); var list = admin.list(); assertThat(stats.getPrepareStatementCount()).isEqualTo(listSql).isEqualTo(1);
+    assertThat(list.stream().filter(v -> v.orderId() == oldest || v.orderId() == newest).map(v -> v.orderId()).toList()).containsExactly(newest, oldest);
+    stats.clear(); var expectedDetail = frozen.get(newest); long detailSql = stats.getPrepareStatementCount();
+    stats.clear(); var detail = admin.get(newest); assertThat(stats.getPrepareStatementCount()).isEqualTo(detailSql).isEqualTo(1);
+    assertThat(TransactionSynchronizationManager.hasResource(emf)).isFalse(); stats.clear();
+    var dto = com.pawcycle.backend.commerce.order.api.AdminOrderResponse.from(detail);
+    assertThat(json.writeValueAsString(dto)).isEqualTo(json.writeValueAsString(expectedDetail));
+    assertThat(dto.createdAt().getNanos()).isEqualTo(123456000);
+    assertThat(json.writeValueAsString(list.stream().map(com.pawcycle.backend.commerce.order.api.AdminOrderResponse::from).toList())).isEqualTo(json.writeValueAsString(expected));
+    assertThat(stats.getPrepareStatementCount()).isZero(); assertThat(stats.getEntityLoadCount()).isZero();
+    var auth = authentication(new UsernamePasswordAuthenticationToken(new AuthenticatedMemberPrincipal(memberId), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+    assertThat(http.perform(get("/api/admin/orders").with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).isEqualTo(json.writeValueAsString(expected));
+    assertThat(http.perform(get("/api/admin/orders/" + newest).with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).isEqualTo(json.writeValueAsString(expectedDetail));
+    http.perform(get("/api/admin/orders/" + Long.MAX_VALUE).with(auth)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("ORDER_NOT_FOUND"));
+    http.perform(get("/api/admin/orders")).andExpect(status().isUnauthorized());
+    http.perform(get("/api/admin/orders/" + newest).with(member(memberId))).andExpect(status().isForbidden());
+    System.out.println("ADMIN_ORDER_RESPONSE_SQL_PARITY list=" + listSql + " detail=" + detailSql + " detached=0 entityLoads=0");
+  }
+
   private void assertApiEqualsLegacy(long id) throws Exception {
     OrderPersistenceAdapter reference = mock(OrderPersistenceAdapter.class);
     when(reference.findOrder(memberId, id)).thenReturn(legacy.findOrder(memberId, id));
@@ -215,8 +273,8 @@ class CustomerOrderReadModelIntegrationTests {
     assertThat(json.readTree(response)).isEqualTo(json.readTree(json.writeValueAsString(referenceService(reference).order(memberId, id))));
   }
 
-  private OrderApplicationService referenceService(OrderPersistenceAdapter reference) {
-    return new OrderApplicationService(reference, mock(QuickReorderPersistenceAdapter.class), transactions, clock, 7);
+  private com.pawcycle.backend.commerce.order.application.FrozenOrderApplicationService referenceService(OrderPersistenceAdapter reference) {
+    return new com.pawcycle.backend.commerce.order.application.FrozenOrderApplicationService(reference, mock(QuickReorderPersistenceAdapter.class), transactions, clock, 7);
   }
 
   private RequestPostProcessor member(long id) {

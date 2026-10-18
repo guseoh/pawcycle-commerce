@@ -1,8 +1,8 @@
 package com.pawcycle.backend.commerce.order.persistence;
 
+import com.pawcycle.backend.commerce.order.model.OrderReadModel.AdminOrderView;
 import com.pawcycle.backend.commerce.order.domain.CommerceOrderEntity;
 import com.pawcycle.backend.commerce.order.persistence.CommerceOrderRepository;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -37,11 +37,4 @@ public class AdminOrderPersistenceAdapter {
         Timestamp.from(order.getCreatedAt().toInstant(ZoneOffset.UTC)));
   }
 
-  public record AdminOrderView(
-      long orderId,
-      String orderNumber,
-      long memberId,
-      String status,
-      BigDecimal paymentAmount,
-      Timestamp createdAt) {}
 }

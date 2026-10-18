@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce;
 
-import com.pawcycle.backend.commerce.order.persistence.OrderView;
-import com.pawcycle.backend.commerce.order.persistence.OrderPersistenceAdapter.Summary;
+import com.pawcycle.backend.commerce.order.model.OrderView;
+import com.pawcycle.backend.commerce.order.model.OrderReadModel.Summary;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
