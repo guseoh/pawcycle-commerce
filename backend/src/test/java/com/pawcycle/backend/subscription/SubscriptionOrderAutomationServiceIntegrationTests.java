@@ -999,15 +999,6 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     for (int i = 0; i < frozen.size(); i++) {
       assertThat(lockFootprint(tx, jpa.get(i))).as("physical lock pair %s", i).isEqualTo(lockFootprint(tx, frozen.get(i)));
     }
-    // T09 diagnosis only: reverse the execution order WITHIN each pair.
-    // Keep the original lock assertion, raw six-column footprint, fixture and rollback unchanged.
-    for (int pair = 0; pair < frozen.size(); pair++) {
-      var frozenFirst = lockFootprint(tx, frozen.get(pair));
-      var jpaSecond = lockFootprint(tx, jpa.get(pair));
-      assertThat(jpaSecond)
-          .as("diagnostic T09 legacy-first pair %s", pair)
-          .isEqualTo(frozenFirst);
-    }
   }
 
   private java.util.List<java.util.Map<String, Object>> lockFootprint(
