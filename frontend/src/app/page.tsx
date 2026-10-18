@@ -16,11 +16,11 @@ export default function Home() {
 
   return (
     <div className="home-stack shopping-home">
-      <header className="home-heading" aria-labelledby="home-title"><div className="home-heading-copy"><h1 id="home-title">함께 사는 일상,</h1><p>필요한 만큼, 편하게 고르세요.</p></div><nav className="pet-navigation" aria-label="반려동물별 상품"><Link aria-current="page" href="/products">전체</Link><Link href="/products?petType=DOG">강아지</Link><Link href="/products?petType=CAT">고양이</Link></nav></header>
+      <header className="home-heading home-hero" aria-labelledby="home-title"><div className="home-heading-copy"><p className="eyebrow">사료부터 일상 소모품까지</p><h1 id="home-title">매일 필요한 것, 정기배송으로</h1><p>반복해서 쓰는 반려동물 용품을 먼저 둘러보세요.</p><div className="home-hero-actions"><Link className="button" href="/products?subscribable=true">정기배송 상품 보기</Link><Link className="text-link" href="/products">전체 상품 보기</Link></div></div><nav className="pet-navigation" aria-label="반려동물별 상품"><Link aria-current="page" href="/products">전체</Link><Link href="/products?petType=DOG">강아지</Link><Link href="/products?petType=CAT">고양이</Link></nav></header>
       <CompactDiscovery />
       <HomeCatalog />
-      <section className="home-repeat-band" aria-labelledby="home-repeat-title"><div><p className="eyebrow">반복 구매</p><h2 id="home-repeat-title">자주 필요한 상품을 다시 찾는 부담을 줄여보세요.</h2><p>정기배송 가능한 상품을 둘러보고, 필요한 시점에 승인된 정기배송 흐름으로 이어갈 수 있어요.</p></div><Link className="button button-secondary" href="/products?subscribable=true">정기배송 가능한 상품 보기</Link></section>
-      <RecommendationSection id="home-popular-title" title="지금 많이 찾는 상품" description="많은 반려가족이 선택한 상품을 둘러보세요." source="home-popular" request={{ kind: "popular", limit: 8 }} />
+      
+      <RecommendationSection id="home-popular-title" title="함께 둘러볼 상품" description="현재 추천 목록에서 새로운 상품을 찾아보세요." source="home-popular" request={{ kind: "popular", limit: 8 }} />
 
       {auth.status === "loading" ? <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState> : null}
       {auth.status === "error" ? <ErrorState headingLevel={3} title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()}><Link className="button button-secondary" href={buildLoginHref("/")}>로그인</Link></ErrorState> : null}
