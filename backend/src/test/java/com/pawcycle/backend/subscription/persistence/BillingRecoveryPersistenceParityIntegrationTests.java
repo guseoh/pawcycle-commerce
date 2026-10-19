@@ -223,8 +223,13 @@ class BillingRecoveryPersistenceParityIntegrationTests {
 
   @ParameterizedTest
   @ValueSource(ints = {-2, -1, 1, 2, 5})
-  void cartAbsentItemAbsentCartDeleteDecrementVersionAndTimestampMatch(int quantity) {
-    var expected = rolledBack(() -> cartDigest(oldReconciliation, quantity));
+  void cartAbsentItemAbsentCartDeleteDecrementMatchWithApprovedVersionCorrection(int quantity) {
+    var expected = rolledBack(() -> {
+      cartDigest(oldReconciliation, quantity);
+      // API-011 corrects the legacy version omission; all other fields still match.
+      if (quantity > 0) jdbc.update("UPDATE carts SET version=version+1 WHERE id=?", cart);
+      return digest();
+    });
     assertThat(rolledBack(() -> cartDigest(reconciliation, quantity))).isEqualTo(expected);
   }
 
