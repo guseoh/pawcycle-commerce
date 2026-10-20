@@ -31,6 +31,8 @@ import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -219,6 +221,69 @@ class AdminCatalogApiIntegrationTests {
                 .content("{\"parentId\":%d}".formatted(secondId)))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("CATEGORY_PARENT_CONFLICT"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"SELF", "CHILD", "SECOND_LEVEL", "MISSING"})
+  void categoryHierarchyConflictsKeepParentFieldsAndAuditUnchanged(String scenario) throws Exception {
+    Category root = hierarchyCategory("rejected-root", null);
+    Category child = hierarchyCategory("rejected-child", root);
+    Category other = hierarchyCategory("rejected-other", null);
+    Category second = hierarchyCategory("rejected-second", other);
+    long parentId = switch (scenario) {
+      case "SELF" -> root.getId();
+      case "CHILD" -> child.getId();
+      case "SECOND_LEVEL" -> second.getId();
+      default -> Long.MAX_VALUE;
+    };
+    String code = switch (scenario) {
+      case "SELF", "CHILD" -> "CATEGORY_PARENT_CONFLICT";
+      case "SECOND_LEVEL" -> "CATEGORY_DEPTH_EXCEEDED";
+      default -> "CATEGORY_NOT_FOUND";
+    };
+    int audits = jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class);
+    mockMvc.perform(patch("/api/admin/categories/{categoryId}", root.getId())
+            .with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"name\":\"Rejected\",\"parentId\":%d}".formatted(parentId)))
+        .andExpect(status().is(scenario.equals("MISSING") ? 404 : 409))
+        .andExpect(jsonPath("$.code").value(code));
+    assertThat(jdbc.queryForObject("SELECT parent_id FROM categories WHERE id=?", Long.class, root.getId())).isNull();
+    assertThat(jdbc.queryForObject("SELECT name FROM categories WHERE id=?", String.class, root.getId())).isEqualTo("rejected-root");
+    assertThat(jdbc.queryForObject("SELECT parent_id FROM categories WHERE id=?", Long.class, child.getId())).isEqualTo(root.getId());
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class)).isEqualTo(audits);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"LEAF_MOVE", "PROMOTE", "ROOT_WITH_CHILDREN", "NORMAL_PATCH", "SAME_PARENT"})
+  void validCategoryMovesAndNonHierarchyPatchesKeepExistingContract(String scenario) throws Exception {
+    Category root = hierarchyCategory("valid-root", null);
+    Category child = hierarchyCategory("valid-child", root);
+    Category other = hierarchyCategory("valid-other", null);
+    boolean rootTarget = scenario.equals("ROOT_WITH_CHILDREN") || scenario.equals("NORMAL_PATCH");
+    long target = rootTarget ? root.getId() : child.getId();
+    Long expectedParent = switch (scenario) {
+      case "LEAF_MOVE" -> other.getId();
+      case "SAME_PARENT" -> root.getId();
+      default -> null;
+    };
+    String body = scenario.equals("NORMAL_PATCH") ? "{\"name\":\"Updated\"}"
+        : "{\"name\":\"Updated\",\"parentId\":%s}".formatted(expectedParent);
+    int audits = jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class);
+    mockMvc.perform(patch("/api/admin/categories/{categoryId}", target)
+            .with(role(MemberRole.ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.categoryId").value(target))
+        .andExpect(jsonPath("$.name").value("Updated"));
+    assertThat(jdbc.queryForObject("SELECT parent_id FROM categories WHERE id=?", Long.class, target)).isEqualTo(expectedParent);
+    if (rootTarget) {
+      assertThat(jdbc.queryForObject("SELECT parent_id FROM categories WHERE id=?", Long.class, child.getId())).isEqualTo(root.getId());
+    }
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class)).isEqualTo(audits + 1);
+  }
+
+  private Category hierarchyCategory(String slug, Category parent) {
+    Category category = new Category(slug, slug, 0, true);
+    category.updateParent(parent);
+    return categoryRepository.saveAndFlush(category);
   }
 
   @Test
