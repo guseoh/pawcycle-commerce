@@ -46,7 +46,12 @@ class OrderResponseBoundaryTests {
     var oldClock = new CountingClock(now); var newClock = new CountingClock(now);
     var expected = frozen(oldClock).order(7, 9);
     var model = service(newClock).order(7, 9); var actual = OrderResponse.from(model);
-    assertThat(json.writeValueAsString(actual)).isEqualTo(json.writeValueAsString(expected));
+    String actualJson = json.writeValueAsString(actual);
+    assertThat(actualJson).isEqualTo(json.writeValueAsString(expected));
+    var wire = json.readTree(actualJson);
+    assertThat(wire.has("returnRequest")).isTrue();
+    assertThat(wire.has("return")).isFalse();
+    assertThat(wire.get("returnRequest").isNull()).isEqualTo(!returned);
     assertThat(actual).isEqualTo(expected);
     assertThat(newClock.samples).isEqualTo(oldClock.samples);
     assertThat(actual.createdAt()).isSameAs(view.createdAt());
