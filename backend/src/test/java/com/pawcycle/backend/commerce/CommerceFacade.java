@@ -6,7 +6,7 @@ import com.pawcycle.backend.commerce.billing.application.BillingApplicationServi
 import com.pawcycle.backend.commerce.cart.application.CartApplicationService;
 import com.pawcycle.backend.commerce.cart.api.CartResponse;
 import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService;
-import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
+import com.pawcycle.backend.commerce.checkout.application.CheckoutResult;
 import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.commerce.order.api.OrderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderSummaryResponse;
@@ -197,7 +197,7 @@ class CommerceFacade {
         request.addressLine2());
   }
 
-  private static Map<String, Object> checkoutMap(CheckoutResponse response) {
+  private static Map<String, Object> checkoutMap(CheckoutResult response) {
     Map<String, Object> values = new LinkedHashMap<>();
     values.put("orderId", response.orderId());
     values.put("orderNumber", response.orderNumber());
