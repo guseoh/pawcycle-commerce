@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
 import com.pawcycle.backend.commerce.refund.persistence.RefundPersistenceAdapter;
-import com.pawcycle.backend.commerce.refund.api.RefundResponse;
+import com.pawcycle.backend.commerce.refund.application.RefundResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -87,7 +87,7 @@ class RefundServiceTests {
             mock(AdminAuditService.class),
             metrics);
 
-    RefundResponse result = service.reconcile(91L);
+    RefundResult result = service.reconcile(91L);
 
     assertThat(result).isNotNull();
     verify(provider).reconcile("refund-key");

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.commerce.cancellation.api.CancellationController;
 import com.pawcycle.backend.commerce.cancellation.api.CancellationResponse;
+import com.pawcycle.backend.commerce.cancellation.application.CancellationResult;
 import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.commerce.returnrequest.api.ReturnRequestController;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
@@ -25,7 +26,9 @@ class CommerceResourceStatusControllerTests {
     CancellationService service = mock(CancellationService.class);
     CancellationResponse expected =
         new CancellationResponse(11L, "REQUESTED", "사유", Timestamp.valueOf("2026-08-01 00:00:00"), null);
-    when(service.request(7L, 19L, "사유")).thenReturn(expected);
+    when(service.request(7L, 19L, "사유")).thenReturn(new CancellationResult(
+        expected.cancellationId(), expected.status(), expected.reason(),
+        expected.requestedAt(), expected.completedAt()));
 
     ResponseEntity<CancellationResponse> response =
         new CancellationController(service)

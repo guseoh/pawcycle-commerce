@@ -3,7 +3,6 @@ package com.pawcycle.backend.commerce.cancellation.application;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 
-import com.pawcycle.backend.commerce.cancellation.api.CancellationResponse;
 import com.pawcycle.backend.commerce.cancellation.persistence.CancellationPersistenceAdapter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -23,7 +22,7 @@ public class CancellationService {
     this.inventory = inventory;
   }
 
-  public CancellationResponse request(long memberId, long orderId, String reason) {
+  public CancellationResult request(long memberId, long orderId, String reason) {
     return transaction.execute(
         status -> {
           CancellationPersistenceAdapter.OrderLock order =
@@ -55,8 +54,8 @@ public class CancellationService {
         });
   }
 
-  private static CancellationResponse response(CancellationPersistenceAdapter.CancellationView view) {
-    return new CancellationResponse(
+  private static CancellationResult response(CancellationPersistenceAdapter.CancellationView view) {
+    return new CancellationResult(
         view.cancellationId(), view.status(), view.reason(), view.requestedAt(), view.completedAt());
   }
 }
