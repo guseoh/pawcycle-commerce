@@ -7,7 +7,6 @@ import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSectionFixturePersistence;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -88,8 +87,7 @@ class LocalCustomerCatalogV3FixtureDriftIntegrationTests {
         JdbcTemplate jdbcExecutor,
         DemoCatalogImportPersistence importer,
         CatalogAdminPersistence expansion,
-        ProductListCacheInvalidator cache,
-        Validator validator) {
+        ProductListCacheInvalidator cache) {
       var detail =
           new ProductDetailSectionFixturePersistence(
               jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
@@ -97,8 +95,7 @@ class LocalCustomerCatalogV3FixtureDriftIntegrationTests {
           jdbcExecutor,
           new LocalCommerceDemoFixtureService(importer, detail),
           expansion,
-          cache,
-          validator);
+          cache);
     }
   }
 }
