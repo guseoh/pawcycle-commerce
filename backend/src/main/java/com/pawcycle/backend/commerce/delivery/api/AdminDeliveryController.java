@@ -26,13 +26,13 @@ public class AdminDeliveryController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ShipmentRequest request) {
-    return deliveries.ship(principal.memberId(), id, request.carrierCode(), request.trackingNumber());
+    return DeliveryResponse.from(deliveries.ship(principal.memberId(), id, request.carrierCode(), request.trackingNumber()));
   }
 
   @PostMapping("/{id}/complete")
   public DeliveryResponse complete(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return deliveries.complete(principal.memberId(), id);
+    return DeliveryResponse.from(deliveries.complete(principal.memberId(), id));
   }
 
   @PostMapping("/{id}/fail")
@@ -40,6 +40,6 @@ public class AdminDeliveryController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReasonRequest request) {
-    return deliveries.fail(principal.memberId(), id, request.reason());
+    return DeliveryResponse.from(deliveries.fail(principal.memberId(), id, request.reason()));
   }
 }

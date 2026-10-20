@@ -5,7 +5,6 @@ import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 
-import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.commerce.returning.persistence.ReturnPersistenceAdapter;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -40,7 +39,7 @@ public class ReturnService {
     this.clock = clock;
   }
 
-  public ReturnResponse request(long memberId, long orderId, String reason) {
+  public ReturnResult request(long memberId, long orderId, String reason) {
     return transaction.execute(
         status -> {
           ReturnPersistenceAdapter.OrderLock order = returns.findOrderForUpdate(memberId, orderId);
@@ -63,15 +62,15 @@ public class ReturnService {
         });
   }
 
-  public ReturnResponse approve(long adminId, long id) {
+  public ReturnResult approve(long adminId, long id) {
     return decide(adminId, id, "APPROVED", null);
   }
 
-  public ReturnResponse reject(long adminId, long id, String reason) {
+  public ReturnResult reject(long adminId, long id, String reason) {
     return decide(adminId, id, "REJECTED", reason);
   }
 
-  private ReturnResponse decide(long adminId, long id, String state, String reason) {
+  private ReturnResult decide(long adminId, long id, String state, String reason) {
     return transaction.execute(
         status -> {
           ReturnPersistenceAdapter.ReturnDecision row = returns.findForDecision(id);
@@ -90,7 +89,7 @@ public class ReturnService {
         });
   }
 
-  public ReturnResponse receive(long adminId, long id, boolean restock) {
+  public ReturnResult receive(long adminId, long id, boolean restock) {
     return transaction.execute(
         status -> {
           ReturnPersistenceAdapter.ReceiveTarget row = returns.findForReceive(id);
@@ -110,8 +109,8 @@ public class ReturnService {
         });
   }
 
-  private static ReturnResponse response(ReturnPersistenceAdapter.ReturnView view) {
-    return new ReturnResponse(
+  private static ReturnResult response(ReturnPersistenceAdapter.ReturnView view) {
+    return new ReturnResult(
         view.returnId(),
         view.status(),
         view.reason(),

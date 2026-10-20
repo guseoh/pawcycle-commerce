@@ -23,7 +23,7 @@ public class PaymentController {
   public PaymentResponse confirm(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @Valid @RequestBody PaymentConfirmRequest request) {
-    return payment.confirm(
-        principal.memberId(), request.paymentKey(), request.providerOrderId(), request.amount());
+    return PaymentResponse.from(payment.confirm(
+        principal.memberId(), request.paymentKey(), request.providerOrderId(), request.amount()));
   }
 }

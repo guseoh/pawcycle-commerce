@@ -41,13 +41,13 @@ public class BillingController {
   @GetMapping("/payment-methods/toss/billing")
   public BillingMethodResponse billing(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return billingMethods.active(principal.memberId());
+    return BillingMethodResponse.from(billingMethods.active(principal.memberId()));
   }
 
   @PostMapping("/payment-methods/toss/billing/prepare")
   public BillingPreparationResponse prepare(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return billing.prepare(principal.memberId());
+    return BillingPreparationResponse.from(billing.prepare(principal.memberId()));
   }
 
   @PostMapping("/payment-methods/toss/billing/complete")

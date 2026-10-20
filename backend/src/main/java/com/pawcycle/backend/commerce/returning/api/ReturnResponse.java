@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.returning.api;
 
+import com.pawcycle.backend.commerce.returning.application.ReturnResult;
+
 import java.sql.Timestamp;
 
 public record ReturnResponse(
@@ -11,4 +13,8 @@ public record ReturnResponse(
     Timestamp requestedAt,
     Timestamp decidedAt,
     Timestamp receivedAt,
-    Timestamp completedAt) {}
+    Timestamp completedAt) {
+  public static ReturnResponse from(ReturnResult v) {
+    return new ReturnResponse(v.returnId(), v.status(), v.reason(), v.rejectionReason(), v.restock(), v.requestedAt(), v.decidedAt(), v.receivedAt(), v.completedAt());
+  }
+}

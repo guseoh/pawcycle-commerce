@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.billing.application;
 
-import com.pawcycle.backend.commerce.billing.api.BillingMethodResponse;
 import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodRepository;
 import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 
@@ -17,8 +16,8 @@ public class BillingMethodQueryService {
     this.provider = provider;
   }
 
-  public BillingMethodResponse active(long memberId) {
+  public BillingMethodResult active(long memberId) {
     long count = billingPaymentMethods.countByMemberIdAndStatus(memberId, "ACTIVE");
-    return new BillingMethodResponse("TOSS", provider.isConfigured(), count > 0);
+    return new BillingMethodResult("TOSS", provider.isConfigured(), count > 0);
   }
 }
