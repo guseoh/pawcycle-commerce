@@ -167,6 +167,7 @@ test("주문 상세는 서버 after-sales projection을 새로고침 후에도 �
   assert.match(apiSource, /refunds\?:/);
   assert.match(orderSource, /const refunds = order\?\.refunds \?\? \[\]/);
   assert.match(orderSource, /const availableActions = order\?\.availableActions \?\? \[\]/);
+  assert.match(orderSource, /setOrder\(await orderApi\.detail\(orderId\)\)/);
   assert.match(orderSource, /취소·반품·환불/);
   assert.match(orderSource, /order\.cancellation\.status/);
   assert.match(orderSource, /order\.return\.status/);

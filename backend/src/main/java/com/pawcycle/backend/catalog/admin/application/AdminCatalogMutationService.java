@@ -49,6 +49,7 @@ import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 /** Owns the transaction and audit unit for administrator catalog mutations. */
 @Service
@@ -107,7 +108,8 @@ public class AdminCatalogMutationService {
         ignored -> brandId);
   }
 
-  @Transactional
+  // The audit owner must set isolation too: a REQUIRED inner service joins this transaction.
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public CategoryView createCategory(long adminId, CategoryCreateCommand request) {
     return execute(
         adminId,
@@ -117,7 +119,7 @@ public class AdminCatalogMutationService {
         CategoryView::categoryId);
   }
 
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public CategoryView updateCategory(
       long adminId, Long categoryId, CategoryPatchCommand request) {
     return execute(

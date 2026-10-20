@@ -4,7 +4,6 @@ import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
 import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import jakarta.validation.Validator;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -22,10 +21,9 @@ public class LocalCustomerCatalogV3FixtureService {
       JdbcTemplate jdbc,
       LocalCommerceDemoFixtureService baseline,
       CatalogAdminPersistence expansion,
-      ProductListCacheInvalidator cache,
-      Validator validator) {
+      ProductListCacheInvalidator cache) {
     this.baseline = baseline;
-    this.supplement = new CustomerCatalogImportPersistence(jdbc, expansion, cache, validator);
+    this.supplement = new CustomerCatalogImportPersistence(jdbc, expansion, cache);
   }
 
   @Transactional
