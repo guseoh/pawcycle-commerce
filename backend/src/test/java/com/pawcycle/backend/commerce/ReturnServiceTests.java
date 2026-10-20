@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
-import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
+import com.pawcycle.backend.commerce.returning.application.ReturnResult;
 import com.pawcycle.backend.commerce.returning.persistence.ReturnPersistenceAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,7 +47,7 @@ class ReturnServiceTests {
             7,
             java.time.Clock.systemUTC());
 
-    ReturnResponse response = service.request(1L, 2L, "different");
+    ReturnResult response = service.request(1L, 2L, "different");
     assertThat(response.returnId()).isEqualTo(4L);
     assertThat(response.status()).isEqualTo("REQUESTED");
     assertThat(response.reason()).isEqualTo("different");

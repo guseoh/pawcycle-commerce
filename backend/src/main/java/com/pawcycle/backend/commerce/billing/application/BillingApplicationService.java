@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.billing.application;
 
-import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.billing.persistence.BillingPersistenceAdapter;
@@ -26,10 +25,10 @@ public class BillingApplicationService {
     this.provider = provider;
   }
 
-  public BillingPreparationResponse prepare(long memberId) {
+  public BillingPreparationResult prepare(long memberId) {
     String token = transaction.execute(status -> billing.createPreparation(memberId));
     log.info("Billing method preparation created");
-    return new BillingPreparationResponse(token);
+    return new BillingPreparationResult(token);
   }
 
   public void complete(long memberId, String prepareToken, String authKey) {

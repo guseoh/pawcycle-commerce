@@ -10,7 +10,6 @@ import com.pawcycle.backend.commerce.membership.application.MembershipEvaluation
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 
-import com.pawcycle.backend.commerce.payment.api.PaymentReconciliationResponse;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -56,11 +55,11 @@ public class PaymentReconciliationService {
     this.clock = clock;
   }
 
-  public PaymentReconciliationResponse reconcile(long id) {
+  public PaymentReconciliationResult reconcile(long id) {
     return reconcile(id, null);
   }
 
-  public PaymentReconciliationResponse reconcile(long id, Long adminId) {
+  public PaymentReconciliationResult reconcile(long id, Long adminId) {
     PaymentReconciliationPersistenceAdapter.ReconciliationWork work =
         transaction.execute(
             status -> {
@@ -135,9 +134,9 @@ public class PaymentReconciliationService {
     return false;
   }
 
-  private static PaymentReconciliationResponse response(PaymentReconciliationPersistenceAdapter.PaymentReconciliationView view) {
+  private static PaymentReconciliationResult response(PaymentReconciliationPersistenceAdapter.PaymentReconciliationView view) {
     if (view == null) throw notFound();
-    return new PaymentReconciliationResponse(view.paymentId(), view.orderId(), view.status(), view.attempts(), view.lastReconciledAt());
+    return new PaymentReconciliationResult(view.paymentId(), view.orderId(), view.status(), view.attempts(), view.lastReconciledAt());
   }
 
   private static CommerceException notFound() {

@@ -5,7 +5,6 @@ import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 
-import com.pawcycle.backend.commerce.delivery.api.DeliveryResponse;
 import com.pawcycle.backend.commerce.delivery.persistence.DeliveryPersistenceAdapter;
 import com.pawcycle.backend.commerce.delivery.persistence.DeliveryView;
 import io.micrometer.core.instrument.Timer;
@@ -39,11 +38,11 @@ public class DeliveryService {
     deliveries.createPreparing(orderId);
   }
 
-  public DeliveryResponse ship(long id, String carrier, String tracking) {
+  public DeliveryResult ship(long id, String carrier, String tracking) {
     return ship(null, id, carrier, tracking);
   }
 
-  public DeliveryResponse ship(Long adminId, long id, String carrier, String tracking) {
+  public DeliveryResult ship(Long adminId, long id, String carrier, String tracking) {
     Timer.Sample sample = metrics.timer();
     try {
       return transaction.execute(
@@ -64,23 +63,23 @@ public class DeliveryService {
     }
   }
 
-  public DeliveryResponse complete(long id) {
+  public DeliveryResult complete(long id) {
     return complete(null, id);
   }
 
-  public DeliveryResponse complete(Long adminId, long id) {
+  public DeliveryResult complete(Long adminId, long id) {
     return transition(adminId, id, "SHIPPED", "DELIVERED", null, "ORDER_DELIVERED", "DELIVERY_COMPLETE");
   }
 
-  public DeliveryResponse fail(long id, String reason) {
+  public DeliveryResult fail(long id, String reason) {
     return fail(null, id, reason);
   }
 
-  public DeliveryResponse fail(Long adminId, long id, String reason) {
+  public DeliveryResult fail(Long adminId, long id, String reason) {
     return transition(adminId, id, "SHIPPED", "FAILED", reason, null, "DELIVERY_FAIL");
   }
 
-  private DeliveryResponse transition(
+  private DeliveryResult transition(
       Long adminId,
       long id,
       String from,
@@ -118,12 +117,12 @@ public class DeliveryService {
     return row;
   }
 
-  private DeliveryResponse response(long id) {
+  private DeliveryResult response(long id) {
     DeliveryView view = deliveries.find(id);
     if (view == null) {
       throw new CommerceException(404, "DELIVERY_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
-    return new DeliveryResponse(
+    return new DeliveryResult(
         view.deliveryId(),
         view.orderId(),
         view.status(),

@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.checkout.application;
 
-import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
 import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +16,7 @@ public class CheckoutIdempotencyService {
         this.checkoutApplicationService = checkoutApplicationService;
     }
 
-    public CheckoutResponse checkout(
+    public CheckoutResult checkout(
             long memberId,
             String idempotencyKey,
             long addressId,
@@ -28,7 +27,7 @@ public class CheckoutIdempotencyService {
                 memberId, idempotencyKey, addressId, couponId, requestedCartVersion);
     }
 
-    public CheckoutResponse checkout(
+    public CheckoutResult checkout(
             long memberId,
             String idempotencyKey,
             long addressId,

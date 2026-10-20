@@ -7,7 +7,6 @@ import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.refund.infrastructure.toss.TossRefundAdapter;
 
-import com.pawcycle.backend.commerce.refund.api.RefundResponse;
 import com.pawcycle.backend.commerce.refund.persistence.RefundPersistenceAdapter;
 import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
@@ -42,11 +41,11 @@ public class RefundService {
     this.metrics = metrics;
   }
 
-  public RefundResponse process(long id) {
+  public RefundResult process(long id) {
     return process(id, null);
   }
 
-  public RefundResponse process(long id, Long adminId) {
+  public RefundResult process(long id, Long adminId) {
     RefundPersistenceAdapter.RefundWork work =
         transaction.execute(
             status -> {
@@ -75,11 +74,11 @@ public class RefundService {
     return complete(id, result, adminId, "REFUND_PROCESS");
   }
 
-  public RefundResponse retry(long id) {
+  public RefundResult retry(long id) {
     return retry(id, null);
   }
 
-  public RefundResponse retry(long id, Long adminId) {
+  public RefundResult retry(long id, Long adminId) {
     return transaction.execute(
         status -> {
           RefundPersistenceAdapter.RetryTarget row = refunds.findRetryTarget(id);
@@ -97,11 +96,11 @@ public class RefundService {
         });
   }
 
-  public RefundResponse reconcile(long id) {
+  public RefundResult reconcile(long id) {
     return reconcile(id, null);
   }
 
-  public RefundResponse reconcile(long id, Long adminId) {
+  public RefundResult reconcile(long id, Long adminId) {
     if (!provider.isConfigured()) throw unavailable();
     RefundPersistenceAdapter.ReconciliationWork work =
         transaction.execute(
@@ -129,7 +128,7 @@ public class RefundService {
     return complete(id, result, adminId, "REFUND_RECONCILE");
   }
 
-  private RefundResponse complete(
+  private RefundResult complete(
       long id, TossRefundAdapter.RefundResult result, Long adminId, String auditAction) {
     return transaction.execute(
         status -> {
@@ -166,8 +165,8 @@ public class RefundService {
         });
   }
 
-  private static RefundResponse response(RefundPersistenceAdapter.RefundView view) {
-    return new RefundResponse(
+  private static RefundResult response(RefundPersistenceAdapter.RefundView view) {
+    return new RefundResult(
         view.refundId(),
         view.orderId(),
         view.source(),
@@ -182,8 +181,8 @@ public class RefundService {
         view.completedAt());
   }
 
-  private static RefundResponse response(RefundPersistenceAdapter.RetryView view, long orderId) {
-    return new RefundResponse(view.refundId(), orderId, null, view.status(), null, view.attemptNo(), 0, null, null, null, null, null);
+  private static RefundResult response(RefundPersistenceAdapter.RetryView view, long orderId) {
+    return new RefundResult(view.refundId(), orderId, null, view.status(), null, view.attemptNo(), 0, null, null, null, null, null);
   }
 
   private static CommerceException unavailable() {

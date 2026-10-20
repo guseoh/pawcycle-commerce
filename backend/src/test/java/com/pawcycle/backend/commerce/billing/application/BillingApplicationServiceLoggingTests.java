@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
+import com.pawcycle.backend.commerce.billing.application.BillingPreparationResult;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.billing.persistence.BillingPersistenceAdapter;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class BillingApplicationServiceLoggingTests {
     BillingApplicationService service =
         new BillingApplicationService(billing, transactionManager, provider);
 
-    BillingPreparationResponse preparation = service.prepare(MEMBER_ID_SENTINEL);
+    BillingPreparationResult preparation = service.prepare(MEMBER_ID_SENTINEL);
     service.complete(MEMBER_ID_SENTINEL, PREPARE_TOKEN_SENTINEL, AUTH_KEY_SENTINEL);
 
     assertThat(preparation.prepareToken()).isEqualTo(PREPARE_TOKEN_SENTINEL);

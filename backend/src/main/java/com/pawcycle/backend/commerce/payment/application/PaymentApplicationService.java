@@ -6,7 +6,6 @@ import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
-import com.pawcycle.backend.commerce.payment.api.PaymentResponse;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceAdapter;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
@@ -39,7 +38,7 @@ public class PaymentApplicationService {
     this.membershipEvaluation = membershipEvaluation;
   }
 
-  public PaymentResponse confirm(
+  public PaymentResult confirm(
       long memberId, String paymentKey, String providerOrderId, BigDecimal amount) {
     if (!tossPaymentAdapter.isConfigured()) {
       throw new CommerceException(503, "PAYMENT_PROVIDER_UNAVAILABLE", "Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
@@ -66,7 +65,7 @@ public class PaymentApplicationService {
             });
 
     if ("SUCCEEDED".equals(work.status()) && "PAID".equals(work.orderStatus())) {
-      return new PaymentResponse(work.paymentId(), work.orderId(), "SUCCEEDED");
+      return new PaymentResult(work.paymentId(), work.orderId(), "SUCCEEDED");
     }
     TossPaymentAdapter.ConfirmResult result;
     try {
@@ -77,15 +76,15 @@ public class PaymentApplicationService {
     return transaction.execute(status -> finalizePayment(work.paymentId(), result.status(), paymentKey));
   }
 
-  private PaymentResponse finalizePayment(long paymentId, String providerResult, String paymentKey) {
+  private PaymentResult finalizePayment(long paymentId, String providerResult, String paymentKey) {
     PaymentPersistenceAdapter.PaymentState payment = payments.findForUpdate(paymentId);
     if (payment == null) throw notFound();
     if (!"PROCESSING".equals(payment.status())) {
-      return new PaymentResponse(payment.paymentId(), payment.orderId(), payment.status());
+      return new PaymentResult(payment.paymentId(), payment.orderId(), payment.status());
     }
     if ("UNKNOWN".equals(providerResult)) {
       payments.markUnknown(paymentId);
-      return new PaymentResponse(paymentId, payment.orderId(), "UNKNOWN");
+      return new PaymentResult(paymentId, payment.orderId(), "UNKNOWN");
     }
     if ("SUCCEEDED".equals(providerResult)) {
       for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
@@ -99,7 +98,7 @@ public class PaymentApplicationService {
           payments.findMemberId(payment.orderId()), "ORDER_PAID", "ORDER", payment.orderId());
       payments.consumeCart(payments.findMemberId(payment.orderId()), payment.orderId());
       membershipEvaluation.evaluate(payments.findMemberId(payment.orderId()));
-      return new PaymentResponse(paymentId, payment.orderId(), "SUCCEEDED");
+      return new PaymentResult(paymentId, payment.orderId(), "SUCCEEDED");
     }
     for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
       inventoryService.release(item.skuId(), item.quantity(), paymentId);
@@ -107,14 +106,14 @@ public class PaymentApplicationService {
     payments.markFailed(paymentId);
     payments.markOrderPaymentFailed(payment.orderId());
     payments.releaseReservedCoupon(payment.orderId());
-    return new PaymentResponse(paymentId, payment.orderId(), "FAILED");
+    return new PaymentResult(paymentId, payment.orderId(), "FAILED");
   }
 
-  private PaymentResponse markProviderUnknown(long paymentId) {
+  private PaymentResult markProviderUnknown(long paymentId) {
     PaymentPersistenceAdapter.PaymentState payment = payments.findForUpdate(paymentId);
     if (payment == null) throw notFound();
     if ("PROCESSING".equals(payment.status())) payments.markUnknown(paymentId);
-    return new PaymentResponse(paymentId, payment.orderId(), "UNKNOWN");
+    return new PaymentResult(paymentId, payment.orderId(), "UNKNOWN");
   }
 
   private static CommerceException notFound() {

@@ -3,8 +3,6 @@ package com.pawcycle.backend.commerce.checkout.application;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.cart.persistence.CartPersistenceAdapter;
-import com.pawcycle.backend.commerce.checkout.api.CheckoutPricingResponse;
-import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutAddress;
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutCartItem;
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutOrderPricing;
@@ -38,12 +36,12 @@ public class CheckoutApplicationService {
     this.inventory = inventory;
   }
 
-  public CheckoutResponse checkout(
+  public CheckoutResult checkout(
       long memberId, String idempotencyKey, long addressId, Long memberCouponId) {
     return checkout(memberId, idempotencyKey, addressId, memberCouponId, null);
   }
 
-  public CheckoutResponse checkout(
+  public CheckoutResult checkout(
       long memberId,
       String idempotencyKey,
       long addressId,
@@ -105,7 +103,7 @@ public class CheckoutApplicationService {
           if (memberCouponId != null) checkout.reserveCoupon(orderId, memberCouponId, memberId);
           checkout.saveIdempotency(memberId, idempotencyKey, orderId, paymentId, fingerprint);
           checkout.saveCartVersion(memberId, idempotencyKey, cartLock.version());
-          return new CheckoutResponse(
+          return new CheckoutResult(
               orderId,
               orderNumber,
               paymentId,
@@ -116,9 +114,9 @@ public class CheckoutApplicationService {
         });
   }
 
-  private CheckoutResponse response(CheckoutReplay replay) {
+  private CheckoutResult response(CheckoutReplay replay) {
     CheckoutOrderPricing order = checkout.findOrderPricing(replay.orderId());
-    return new CheckoutResponse(
+    return new CheckoutResult(
         replay.orderId(),
         replay.orderNumber(),
         replay.paymentId(),
@@ -161,9 +159,9 @@ public class CheckoutApplicationService {
     return names.getFirst() + (names.size() > 1 ? " 외 " + (names.size() - 1) + "건" : "");
   }
 
-  private static CheckoutPricingResponse pricing(
+  private static CheckoutPricing pricing(
       BigDecimal original, BigDecimal discount, BigDecimal shipping, BigDecimal payment) {
-    return new CheckoutPricingResponse(
+    return new CheckoutPricing(
         original, original.subtract(discount), discount, shipping, payment, payment);
   }
 

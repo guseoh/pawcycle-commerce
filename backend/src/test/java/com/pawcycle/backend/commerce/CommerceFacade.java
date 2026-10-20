@@ -6,12 +6,12 @@ import com.pawcycle.backend.commerce.billing.application.BillingApplicationServi
 import com.pawcycle.backend.commerce.cart.application.CartApplicationService;
 import com.pawcycle.backend.commerce.cart.api.CartResponse;
 import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService;
-import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
+import com.pawcycle.backend.commerce.checkout.application.CheckoutResult;
 import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.commerce.order.api.OrderResponse;
 import com.pawcycle.backend.commerce.order.api.OrderSummaryResponse;
 import com.pawcycle.backend.commerce.payment.application.PaymentApplicationService;
-import com.pawcycle.backend.commerce.payment.api.PaymentResponse;
+import com.pawcycle.backend.commerce.payment.application.PaymentResult;
 import com.pawcycle.backend.member.address.api.MemberAddressRequest;
 import com.pawcycle.backend.member.address.application.AddressView;
 import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
@@ -139,7 +139,7 @@ class CommerceFacade {
   }
 
   BillingPreparationResponse prepareBilling(long memberId) {
-    return billingService.prepare(memberId);
+    return BillingPreparationResponse.from(billingService.prepare(memberId));
   }
 
   void completeBilling(long memberId, String prepareToken, String authKey) {
@@ -197,7 +197,7 @@ class CommerceFacade {
         request.addressLine2());
   }
 
-  private static Map<String, Object> checkoutMap(CheckoutResponse response) {
+  private static Map<String, Object> checkoutMap(CheckoutResult response) {
     Map<String, Object> values = new LinkedHashMap<>();
     values.put("orderId", response.orderId());
     values.put("orderNumber", response.orderNumber());
@@ -215,7 +215,7 @@ class CommerceFacade {
     return values;
   }
 
-  private static Map<String, Object> paymentMap(PaymentResponse response) {
+  private static Map<String, Object> paymentMap(PaymentResult response) {
     return Map.of("paymentId", response.paymentId(), "orderId", response.orderId(), "status", response.status());
   }
 

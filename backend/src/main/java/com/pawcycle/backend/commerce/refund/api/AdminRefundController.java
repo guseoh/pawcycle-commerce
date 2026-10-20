@@ -20,18 +20,18 @@ public class AdminRefundController {
   @PostMapping("/{id}/process")
   public RefundResponse process(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return refunds.process(id, principal.memberId());
+    return RefundResponse.from(refunds.process(id, principal.memberId()));
   }
 
   @PostMapping("/{id}/retry")
   public RefundResponse retry(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return refunds.retry(id, principal.memberId());
+    return RefundResponse.from(refunds.retry(id, principal.memberId()));
   }
 
   @PostMapping("/{id}/reconcile")
   public RefundResponse reconcile(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return refunds.reconcile(id, principal.memberId());
+    return RefundResponse.from(refunds.reconcile(id, principal.memberId()));
   }
 }

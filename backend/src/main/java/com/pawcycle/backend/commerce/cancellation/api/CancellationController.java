@@ -27,6 +27,6 @@ public class CancellationController {
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {
     return ResponseEntity.ok(
-        cancellations.request(principal.memberId(), orderId, request.reason()));
+        CancellationResponse.from(cancellations.request(principal.memberId(), orderId, request.reason())));
   }
 }

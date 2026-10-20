@@ -12,7 +12,7 @@ import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.returning.application.ReturnService;
-import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
+import com.pawcycle.backend.commerce.returning.application.ReturnResult;
 import com.pawcycle.backend.commerce.returning.persistence.ReturnPersistenceAdapter;
 import com.pawcycle.backend.support.AfterSalesFixtures;
 import com.pawcycle.backend.support.AfterSalesFixtures.OrderFixture;
@@ -121,7 +121,7 @@ class AfterSalesConcurrencyIntegrationTests {
         () -> returns.request(o.member(), o.order(), "return"));
     assertThat(results).allSatisfy(r -> assertThat(r.error()).isNull());
     assertThat(results.get(0).value()).isEqualTo(results.get(1).value());
-    ReturnResponse response = (ReturnResponse) results.get(0).value();
+    ReturnResult response = (ReturnResult) results.get(0).value();
     assertThat(response.restock()).isNull();
     assertThat(response.decidedAt()).isNull();
     assertThat(response.receivedAt()).isNull();

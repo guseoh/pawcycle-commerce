@@ -2,6 +2,19 @@ package com.pawcycle.backend.commerce;
 
 import com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.http.MediaType;
+import tools.jackson.databind.ObjectMapper;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.member.address.api.MemberAddressRequest;
 
@@ -14,7 +27,7 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
-import com.pawcycle.backend.commerce.checkout.api.CheckoutResponse;
+import com.pawcycle.backend.commerce.checkout.application.CheckoutResult;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.support.TestSkuFactory;
@@ -38,6 +51,8 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles({"test", "local-integration"})
 class CheckoutIdempotencyIntegrationTests {
   private final CheckoutIdempotencyService checkout;
+  private final WebApplicationContext webContext;
+  private final ObjectMapper json;
   private final CommerceFacade commerce;
   private final JdbcTemplate jdbc;
   private final MemberRepository members;
@@ -52,6 +67,8 @@ class CheckoutIdempotencyIntegrationTests {
   @Autowired
   CheckoutIdempotencyIntegrationTests(
       CheckoutIdempotencyService checkout,
+      WebApplicationContext webContext,
+      ObjectMapper json,
       CommerceFacade commerce,
       JdbcTemplate jdbc,
       MemberRepository members,
@@ -60,6 +77,8 @@ class CheckoutIdempotencyIntegrationTests {
       SkuRepository skus,
       PasswordEncoder passwordEncoder) {
     this.checkout = checkout;
+    this.webContext = webContext;
+    this.json = json;
     this.commerce = commerce;
     this.jdbc = jdbc;
     this.members = members;
@@ -102,21 +121,76 @@ class CheckoutIdempotencyIntegrationTests {
   }
 
   @Test
+  void httpCheckoutAndReplayPreservePaymentPricingAndProviderGate() throws Exception {
+    commerce.addCartItem(member.getId(), sku.getId(), 1);
+    String key = "checkout-http-boundary-" + UUID.randomUUID();
+    var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(springSecurity()).build();
+    var auth = new UsernamePasswordAuthenticationToken(
+        new AuthenticatedMemberPrincipal(member.getId()), null,
+        List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    String payload = "{\"addressId\":" + addressId + ",\"cartVersion\":1}";
+    String first = mvc.perform(post("/api/checkout")
+            .with(authentication(auth)).with(csrf()).header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(payload))
+        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    var wire = json.readTree(first);
+    assertThat(wire.size()).isEqualTo(8);
+    assertThat(wire.get("orderId").asLong()).isPositive();
+    assertThat(wire.get("paymentId").asLong()).isPositive();
+    assertThat(wire.get("orderNumber").asText()).startsWith("O-");
+    assertThat(wire.get("providerOrderId").asText()).isNotBlank();
+    assertThat(wire.get("orderName").asText()).isEqualTo("Checkout product");
+    assertThat(wire.get("amount").decimalValue()).isEqualByComparingTo("1500");
+    assertThat(wire.get("tossTestEnabled").isBoolean()).isTrue();
+    var pricing = wire.get("pricing");
+    assertThat(pricing.size()).isEqualTo(6);
+    assertThat(pricing.get("originalAmount").decimalValue()).isEqualByComparingTo("1500");
+    assertThat(pricing.get("subtotalAmount").decimalValue()).isEqualByComparingTo("1500");
+    assertThat(pricing.get("discountAmount").decimalValue()).isEqualByComparingTo("0");
+    assertThat(pricing.get("shippingFee").decimalValue()).isEqualByComparingTo("0");
+    assertThat(pricing.get("finalAmount").decimalValue()).isEqualByComparingTo("1500");
+    assertThat(pricing.get("paymentAmount").decimalValue()).isEqualByComparingTo("1500");
+    String replay = mvc.perform(post("/api/checkout")
+            .with(authentication(auth)).with(csrf()).header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(payload))
+        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    // Creation and replay represent the same money amounts even when JDBC
+    // materialization produces a different BigDecimal scale (0 vs 0.0).
+    var replayWire = json.readTree(replay);
+    assertThat(replayWire.size()).isEqualTo(wire.size());
+    for (String field : List.of(
+        "orderId", "orderNumber", "paymentId", "providerOrderId", "orderName", "tossTestEnabled")) {
+      assertThat(replayWire.get(field)).as(field).isEqualTo(wire.get(field));
+    }
+    assertThat(replayWire.get("amount").decimalValue())
+        .isEqualByComparingTo(wire.get("amount").decimalValue());
+    for (String field : List.of(
+        "originalAmount", "subtotalAmount", "discountAmount",
+        "shippingFee", "finalAmount", "paymentAmount")) {
+      assertThat(replayWire.get("pricing").get(field).decimalValue())
+          .as(field)
+          .isEqualByComparingTo(wire.get("pricing").get(field).decimalValue());
+    }
+    assertThat(jdbc.queryForObject(
+        "SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId())).isEqualTo(1);
+  }
+
+  @Test
   void sameCheckoutRequestReplaysAfterCartChanges() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-replay-" + UUID.randomUUID();
-    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResult first = checkout.checkout(member.getId(), key, addressId, null, 1L);
 
     Sku secondSku = createSku("Replay second SKU");
     commerce.addCartItem(member.getId(), secondSku.getId(), 1);
     assertThat(cartVersion()).isEqualTo(2);
 
-    CheckoutResponse explicitReplay =
+    CheckoutResult explicitReplay =
         checkout.checkout(member.getId(), key, addressId, null, 1L);
-    CheckoutResponse transitionReplay =
+    CheckoutResult transitionReplay =
         checkout.checkout(member.getId(), key, addressId, null, null);
-    assertThat(explicitReplay.get("orderId")).isEqualTo(first.get("orderId"));
-    assertThat(transitionReplay.get("orderId")).isEqualTo(first.get("orderId"));
+    assertThat(explicitReplay.orderId()).isEqualTo(first.orderId());
+    assertThat(transitionReplay.orderId()).isEqualTo(first.orderId());
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId()))
@@ -140,19 +214,19 @@ class CheckoutIdempotencyIntegrationTests {
   void sameCheckoutRequestReplaysAfterSuccessfulPaymentConsumesCart() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-paid-replay-" + UUID.randomUUID();
-    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResult first = checkout.checkout(member.getId(), key, addressId, null, 1L);
     commerce.confirm(
         member.getId(),
         "payment-key",
-        (String) first.get("providerOrderId"),
-        new BigDecimal(first.get("amount").toString()));
+        (String) first.providerOrderId(),
+        new BigDecimal(first.amount().toString()));
     assertThat(cartVersion()).isEqualTo(2);
 
-    CheckoutResponse replay = checkout.checkout(member.getId(), key, addressId, null, 1L);
-    CheckoutResponse transitionReplay =
+    CheckoutResult replay = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResult transitionReplay =
         checkout.checkout(member.getId(), key, addressId, null, null);
-    assertThat(replay.get("orderId")).isEqualTo(first.get("orderId"));
-    assertThat(transitionReplay.get("orderId")).isEqualTo(first.get("orderId"));
+    assertThat(replay.orderId()).isEqualTo(first.orderId());
+    assertThat(transitionReplay.orderId()).isEqualTo(first.orderId());
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId()))
@@ -191,7 +265,7 @@ class CheckoutIdempotencyIntegrationTests {
   void legacyCheckoutWithoutStoredCartVersionFailsClosed() {
     commerce.addCartItem(member.getId(), sku.getId(), 1);
     String key = "checkout-legacy-version-" + UUID.randomUUID();
-    CheckoutResponse first = checkout.checkout(member.getId(), key, addressId, null, 1L);
+    CheckoutResult first = checkout.checkout(member.getId(), key, addressId, null, 1L);
     assertThat(
             jdbc.update(
                 "UPDATE checkout_idempotency_results SET request_cart_version=NULL WHERE"
@@ -208,7 +282,7 @@ class CheckoutIdempotencyIntegrationTests {
                     .isEqualTo("IDEMPOTENCY_KEY_CONFLICT"));
     assertThat(
             jdbc.queryForObject(
-                "SELECT COUNT(*) FROM orders WHERE id=?", Integer.class, first.get("orderId")))
+                "SELECT COUNT(*) FROM orders WHERE id=?", Integer.class, first.orderId()))
         .isEqualTo(1);
   }
 
@@ -220,15 +294,15 @@ class CheckoutIdempotencyIntegrationTests {
     CountDownLatch start = new CountDownLatch(1);
 
     try (var executor = Executors.newFixedThreadPool(2)) {
-      Future<CheckoutResponse> first = executor.submit(() -> checkoutTogether(key, ready, start));
-      Future<CheckoutResponse> second = executor.submit(() -> checkoutTogether(key, ready, start));
+      Future<CheckoutResult> first = executor.submit(() -> checkoutTogether(key, ready, start));
+      Future<CheckoutResult> second = executor.submit(() -> checkoutTogether(key, ready, start));
       assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
       start.countDown();
-      CheckoutResponse firstResponse = first.get(15, TimeUnit.SECONDS);
-      CheckoutResponse secondResponse = second.get(15, TimeUnit.SECONDS);
+      CheckoutResult firstResponse = first.get(15, TimeUnit.SECONDS);
+      CheckoutResult secondResponse = second.get(15, TimeUnit.SECONDS);
 
-      assertThat(firstResponse.get("orderId")).isEqualTo(secondResponse.get("orderId"));
-      assertThat(firstResponse.get("paymentId")).isEqualTo(secondResponse.get("paymentId"));
+      assertThat(firstResponse.orderId()).isEqualTo(secondResponse.orderId());
+      assertThat(firstResponse.paymentId()).isEqualTo(secondResponse.paymentId());
     }
 
     assertThat(count("orders", member.getId())).isEqualTo(1);
@@ -273,7 +347,7 @@ class CheckoutIdempotencyIntegrationTests {
     CountDownLatch start = new CountDownLatch(1);
 
     try (var executor = Executors.newFixedThreadPool(fixtures.size())) {
-      List<Future<CheckoutResponse>> results = new ArrayList<>();
+      List<Future<CheckoutResult>> results = new ArrayList<>();
       for (CheckoutFixture fixture : fixtures) {
         results.add(
             executor.submit(
@@ -288,7 +362,7 @@ class CheckoutIdempotencyIntegrationTests {
       }
       assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
       start.countDown();
-      for (Future<CheckoutResponse> result : results) {
+      for (Future<CheckoutResult> result : results) {
         assertThat(result.get(15, TimeUnit.SECONDS)).isNotNull();
       }
     }
@@ -329,13 +403,13 @@ class CheckoutIdempotencyIntegrationTests {
     CountDownLatch start = new CountDownLatch(1);
 
     try (var executor = Executors.newFixedThreadPool(fixtures.size())) {
-      List<Future<CheckoutResponse>> results = new ArrayList<>();
+      List<Future<CheckoutResult>> results = new ArrayList<>();
       for (CheckoutFixture fixture : fixtures) {
         results.add(executor.submit(() -> checkoutTogether(fixture, ready, start)));
       }
       assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
       start.countDown();
-      for (Future<CheckoutResponse> result : results) {
+      for (Future<CheckoutResult> result : results) {
         assertThat(result.get(20, TimeUnit.SECONDS)).isNotNull();
       }
     }
@@ -378,7 +452,7 @@ class CheckoutIdempotencyIntegrationTests {
         .containsEntry("version", (long) requestCount);
   }
 
-  private CheckoutResponse checkoutTogether(
+  private CheckoutResult checkoutTogether(
       String key, CountDownLatch ready, CountDownLatch start) throws InterruptedException {
     ready.countDown();
     if (!start.await(10, TimeUnit.SECONDS)) {
@@ -387,7 +461,7 @@ class CheckoutIdempotencyIntegrationTests {
     return checkout.checkout(member.getId(), key, addressId, null, 1L);
   }
 
-  private CheckoutResponse checkoutTogether(
+  private CheckoutResult checkoutTogether(
       CheckoutFixture fixture, CountDownLatch ready, CountDownLatch start)
       throws InterruptedException {
     ready.countDown();

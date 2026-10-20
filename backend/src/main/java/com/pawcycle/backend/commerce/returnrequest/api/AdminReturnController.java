@@ -25,7 +25,7 @@ public class AdminReturnController {
   @PostMapping("/{id}/approve")
   public ReturnResponse approve(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return returns.approve(principal.memberId(), id);
+    return ReturnResponse.from(returns.approve(principal.memberId(), id));
   }
 
   @PostMapping("/{id}/reject")
@@ -33,7 +33,7 @@ public class AdminReturnController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReasonRequest request) {
-    return returns.reject(principal.memberId(), id, request.reason());
+    return ReturnResponse.from(returns.reject(principal.memberId(), id, request.reason()));
   }
 
   @PostMapping("/{id}/receive")
@@ -41,6 +41,6 @@ public class AdminReturnController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @PathVariable long id,
       @Valid @RequestBody ReturnReceiptRequest request) {
-    return returns.receive(principal.memberId(), id, request.restock());
+    return ReturnResponse.from(returns.receive(principal.memberId(), id, request.restock()));
   }
 }

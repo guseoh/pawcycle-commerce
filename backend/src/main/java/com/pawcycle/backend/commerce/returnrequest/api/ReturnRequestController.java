@@ -28,6 +28,6 @@ public class ReturnRequestController {
       @PathVariable long orderId,
       @Valid @RequestBody ReasonRequest request) {
     return ResponseEntity.ok(
-        returns.request(principal.memberId(), orderId, request.reason()));
+        ReturnResponse.from(returns.request(principal.memberId(), orderId, request.reason())));
   }
 }
