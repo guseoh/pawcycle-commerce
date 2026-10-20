@@ -121,6 +121,8 @@ class RecommendationInteractionErrorContractIntegrationTests {
 
   @Test
   void successfulPersonalizedFallbackAndInteraction204ArePreserved() throws Exception {
+    // Isolate ranking from other suites' fixtures; the test transaction rolls this change back.
+    jdbc.update("UPDATE products SET display_status='DRAFT' WHERE display_status='PUBLIC' AND id<>?", productId);
     mvc.perform(get("/api/recommendations/products").param("petId", Long.toString(petId)).with(authenticated()))
         .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").isString())
         .andExpect(jsonPath("$.products[0].productId").value(productId))
