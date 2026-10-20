@@ -154,7 +154,23 @@ class CheckoutIdempotencyIntegrationTests {
             .with(authentication(auth)).with(csrf()).header("Idempotency-Key", key)
             .contentType(MediaType.APPLICATION_JSON).content(payload))
         .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-    assertThat(json.readTree(replay)).isEqualTo(wire);
+    // Creation and replay represent the same money amounts even when JDBC
+    // materialization produces a different BigDecimal scale (0 vs 0.0).
+    var replayWire = json.readTree(replay);
+    assertThat(replayWire.size()).isEqualTo(wire.size());
+    for (String field : List.of(
+        "orderId", "orderNumber", "paymentId", "providerOrderId", "orderName", "tossTestEnabled")) {
+      assertThat(replayWire.get(field)).as(field).isEqualTo(wire.get(field));
+    }
+    assertThat(replayWire.get("amount").decimalValue())
+        .isEqualByComparingTo(wire.get("amount").decimalValue());
+    for (String field : List.of(
+        "originalAmount", "subtotalAmount", "discountAmount",
+        "shippingFee", "finalAmount", "paymentAmount")) {
+      assertThat(replayWire.get("pricing").get(field).decimalValue())
+          .as(field)
+          .isEqualByComparingTo(wire.get("pricing").get(field).decimalValue());
+    }
     assertThat(jdbc.queryForObject(
         "SELECT COUNT(*) FROM orders WHERE member_id=?", Integer.class, member.getId())).isEqualTo(1);
   }
