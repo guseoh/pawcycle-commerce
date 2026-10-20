@@ -31,6 +31,7 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -86,18 +87,18 @@ public class AdminCatalogService {
     return categoryView(requireCategory(categoryId));
   }
 
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public CategoryView createCategory(CategoryCreateCommand request) {
     if (categoryRepository.existsBySlug(request.slug())) {
       throw slugConflict();
     }
+    // Preserve slug error precedence; acquire the parent lock before the child's FK insert.
+    Category parent = request.parentId() == null ? null : requireCategoryForUpdate(request.parentId());
+    if (parent != null) parent = requireParentCategory(request.parentId(), null);
     try {
-      Category category =
-          categoryRepository.saveAndFlush(
-              new Category(
-                  request.name(), request.slug(), request.displayOrder(), request.active()));
-      if (request.parentId() != null)
-        category.updateParent(requireParentCategory(request.parentId(), null));
+      Category category = new Category(request.name(), request.slug(), request.displayOrder(), request.active());
+      category.updateParent(parent);
+      categoryRepository.saveAndFlush(category);
       productListCacheInvalidator.invalidateAfterCommit();
       return categoryView(category);
     } catch (DataIntegrityViolationException exception) {
@@ -105,15 +106,22 @@ public class AdminCatalogService {
     }
   }
 
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public CategoryView updateCategory(Long categoryId, CategoryPatchCommand request) {
     validate(request);
-    Category category = requireCategory(categoryId);
+    Category category = lockCategoryAndParent(categoryId, request.parentIdPresent() ? request.parentId() : null);
     if (request.parentIdPresent()) {
-      category.updateParent(
+      Category parent =
           request.parentId() == null
               ? null
-              : requireParentCategory(request.parentId(), categoryId));
+              : requireParentCategory(request.parentId(), categoryId);
+      // READ_COMMITTED observes children committed while the row locks were awaited.
+      // Child creation/reparenting must lock this target as its new parent first.
+      if (parent != null && categoryRepository.existsByParentId(categoryId)) {
+        throw new AdminCatalogConflictException(
+            "CATEGORY_DEPTH_EXCEEDED", "카테고리는 최대 2 depth까지만 지원합니다.");
+      }
+      category.updateParent(parent);
     }
     if (request.slugPresent()
         && categoryRepository.existsBySlugAndIdNot(request.slug(), categoryId)) {
@@ -279,6 +287,19 @@ public class AdminCatalogService {
         .findById(categoryId)
         .orElseThrow(
             () -> new AdminCatalogNotFoundException("CATEGORY_NOT_FOUND", "카테고리를 확인할 수 없습니다."));
+  }
+
+  private Category requireCategoryForUpdate(Long categoryId) {
+    return categoryRepository.findByIdForUpdate(categoryId)
+        .orElseThrow(() -> new AdminCatalogNotFoundException("CATEGORY_NOT_FOUND", "카테고리를 확인할 수 없습니다."));
+  }
+
+  private Category lockCategoryAndParent(Long categoryId, Long parentId) {
+    // Separate PK lookups make acquisition order explicit, independent of query plans.
+    if (parentId != null && parentId < categoryId) requireCategoryForUpdate(parentId);
+    Category category = requireCategoryForUpdate(categoryId);
+    if (parentId != null && parentId > categoryId) requireCategoryForUpdate(parentId);
+    return category;
   }
 
   private Category requireAssignableCategory(Long categoryId) {
