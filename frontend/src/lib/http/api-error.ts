@@ -6,7 +6,7 @@ export interface FieldError {
 export interface ApiErrorBody {
   code: string;
   message: string;
-  fieldErrors: FieldError[];
+  fieldErrors?: FieldError[];
 }
 
 export class ApiError extends Error {
@@ -19,7 +19,7 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
     this.code = body.code;
-    this.fieldErrors = body.fieldErrors;
+    this.fieldErrors = body.fieldErrors ?? [];
   }
 }
 
@@ -28,11 +28,13 @@ export function isApiErrorBody(value: unknown): value is ApiErrorBody {
   const candidate = value as Partial<ApiErrorBody>;
   return typeof candidate.code === "string"
     && typeof candidate.message === "string"
-    && Array.isArray(candidate.fieldErrors)
-    && candidate.fieldErrors.every((fieldError) => (
-      fieldError !== null
-      && typeof fieldError === "object"
-      && typeof (fieldError as FieldError).field === "string"
-      && typeof (fieldError as FieldError).message === "string"
+    && (!("fieldErrors" in candidate) || (
+      Array.isArray(candidate.fieldErrors)
+      && candidate.fieldErrors.every((fieldError) => (
+        fieldError !== null
+        && typeof fieldError === "object"
+        && typeof (fieldError as FieldError).field === "string"
+        && typeof (fieldError as FieldError).message === "string"
+      ))
     ));
 }
