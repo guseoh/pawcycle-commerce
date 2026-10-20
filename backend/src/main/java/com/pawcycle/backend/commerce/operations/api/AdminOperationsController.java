@@ -17,6 +17,9 @@ public class AdminOperationsController {
 
   @GetMapping
   public List<OperationsPendingResponse> pending() {
-    return operations.pending();
+    return operations.pending().stream()
+        .map(row -> new OperationsPendingResponse(row.type(), row.referenceId(), row.createdAt(),
+            row.attemptNo(), row.availableActions()))
+        .toList();
   }
 }

@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.audit.application;
 
-import com.pawcycle.backend.commerce.audit.api.AdminAuditResponse;
 import com.pawcycle.backend.commerce.audit.persistence.AdminAuditPersistenceAdapter;
 import com.pawcycle.backend.commerce.audit.persistence.AdminAuditView;
 import java.util.List;
@@ -22,12 +21,12 @@ public class AdminAuditService {
   }
 
   @Transactional(readOnly = true)
-  public List<AdminAuditResponse> list() {
+  public List<AdminAuditEntry> list() {
     return audits.findAll().stream().map(AdminAuditService::response).toList();
   }
 
-  private static AdminAuditResponse response(AdminAuditView view) {
-    return new AdminAuditResponse(
+  private static AdminAuditEntry response(AdminAuditView view) {
+    return new AdminAuditEntry(
         view.auditLogId(),
         view.adminId(),
         view.action(),

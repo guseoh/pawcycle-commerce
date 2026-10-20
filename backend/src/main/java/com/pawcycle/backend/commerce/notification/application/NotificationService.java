@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.notification.application;
 
-import com.pawcycle.backend.commerce.notification.api.NotificationResponse;
 import com.pawcycle.backend.commerce.notification.persistence.NotificationPersistenceAdapter;
 import com.pawcycle.backend.commerce.notification.persistence.NotificationView;
 import java.util.List;
@@ -22,7 +21,7 @@ public class NotificationService {
   }
 
   @Transactional(readOnly = true)
-  public List<NotificationResponse> list(long memberId) {
+  public List<NotificationEntry> list(long memberId) {
     return notifications.findByMemberId(memberId).stream()
         .map(NotificationService::response)
         .toList();
@@ -38,8 +37,8 @@ public class NotificationService {
     notifications.markAllRead(memberId);
   }
 
-  private static NotificationResponse response(NotificationView view) {
-    return new NotificationResponse(
+  private static NotificationEntry response(NotificationView view) {
+    return new NotificationEntry(
         view.notificationId(),
         view.type(),
         view.referenceType(),

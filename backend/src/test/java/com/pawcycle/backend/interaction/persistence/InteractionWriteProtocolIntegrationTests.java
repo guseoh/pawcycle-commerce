@@ -8,7 +8,7 @@ import static com.pawcycle.backend.support.ReadQueryParity.compare;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.domain.ProductStatus;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import com.pawcycle.backend.interaction.api.InteractionEventRequest;
+import com.pawcycle.backend.interaction.application.InteractionEventCommand;
 import com.pawcycle.backend.interaction.application.InteractionService;
 import com.pawcycle.backend.interaction.persistence.InteractionEventPersistenceAdapter.InteractionRecord;
 import com.pawcycle.backend.support.AfterSalesFixtures;
@@ -98,13 +98,13 @@ class InteractionWriteProtocolIntegrationTests {
   }
 
   @Test void fiftyEventBatchAndLaterDatabaseFailureRollBackAllWrites() {
-    var batch = IntStream.range(0, 50).mapToObj(i -> new InteractionEventRequest(
+    var batch = IntStream.range(0, 50).mapToObj(i -> new InteractionEventCommand(
         UUID.randomUUID().toString(), "PRODUCT_VIEW", product, pet, null, null, null)).toList();
     service.record(member, batch);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Long.class, member)).isEqualTo(50);
     assertThatThrownBy(() -> tx().executeWithoutResult(status -> {
       assertThatCode(() -> service.record(other, batch.stream()
-          .map(e -> new InteractionEventRequest(e.eventId(), e.type(), e.productId(), null, null, null, null))
+          .map(e -> new InteractionEventCommand(e.eventId(), e.type(), e.productId(), null, null, null, null))
           .toList())).doesNotThrowAnyException();
       assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Long.class, other)).isEqualTo(50);
       adapter.insert(new InteractionRecord(other, UUID.randomUUID().toString(), "INVALID", null, null, null, null, null, FIRST));

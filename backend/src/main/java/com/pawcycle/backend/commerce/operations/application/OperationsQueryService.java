@@ -1,6 +1,5 @@
 package com.pawcycle.backend.commerce.operations.application;
 
-import com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -14,11 +13,11 @@ public class OperationsQueryService {
     this.queries = queries;
   }
 
-  public List<OperationsPendingResponse> pending() {
+  public List<OperationsPendingView> pending() {
     return queries.findPending().stream()
         .map(
             row ->
-                new OperationsPendingResponse(
+                new OperationsPendingView(
                     row.type(),
                     row.referenceId(),
                     row.createdAt(),

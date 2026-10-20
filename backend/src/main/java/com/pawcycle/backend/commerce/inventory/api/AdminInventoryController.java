@@ -25,7 +25,10 @@ public class AdminInventoryController {
 
   @GetMapping
   public List<InventoryResponse> inventories() {
-    return inventory.list();
+    return inventory.list().stream()
+        .map(row -> new InventoryResponse(row.skuId(), row.availableQuantity(),
+            row.reservedQuantity(), row.version(), row.skuCode()))
+        .toList();
   }
 
   @PostMapping("/{skuId}/adjustments")

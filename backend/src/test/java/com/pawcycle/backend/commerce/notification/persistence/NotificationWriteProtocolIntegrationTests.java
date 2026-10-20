@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
+import com.pawcycle.backend.commerce.notification.api.NotificationResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.support.AfterSalesFixtures;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
@@ -140,7 +141,18 @@ class NotificationWriteProtocolIntegrationTests {
     var auth = auth(o.member());
     String body = mvc.perform(get("/api/notifications").with(authentication(auth)))
         .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-    assertThat(json.readTree(body)).isEqualTo(json.readTree(json.writeValueAsString(views)));
+    // The application projection is not an HTTP DTO: compare the Controller's
+    // nullable-field JSON contract against the unchanged API response type.
+    var expectedResponses = views.stream()
+        .map(view -> new NotificationResponse(
+            view.notificationId(), view.type(), view.referenceType(), view.referenceId(),
+            view.readAt(), view.createdAt(), view.subscriptionId(), view.scheduledDate()))
+        .toList();
+    var response = json.readTree(body);
+    assertThat(response).isEqualTo(json.readTree(json.writeValueAsString(expectedResponses)));
+    assertThat(response.get(0).has("readAt")).isFalse();
+    assertThat(response.get(0).has("subscriptionId")).isFalse();
+    assertThat(response.get(1).has("subscriptionId")).isTrue();
     long id = views.getFirst().notificationId();
     mvc.perform(patch("/api/notifications/" + id + "/read").with(authentication(auth)).with(csrf())).andExpect(status().isNoContent());
     Timestamp firstRead = readAt(id);

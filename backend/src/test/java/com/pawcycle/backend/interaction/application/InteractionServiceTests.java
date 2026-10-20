@@ -1,6 +1,6 @@
 package com.pawcycle.backend.interaction.application;
 
-import com.pawcycle.backend.interaction.api.InteractionEventRequest;
+import com.pawcycle.backend.interaction.application.InteractionEventCommand;
 import com.pawcycle.backend.interaction.persistence.InteractionEventPersistenceAdapter;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,10 +30,10 @@ class InteractionServiceTests {
 
   @Test
   void batchOverFiftyIsRejectedBeforePersistence() {
-    List<InteractionEventRequest> events = new ArrayList<>();
+    List<InteractionEventCommand> events = new ArrayList<>();
     for (int index = 0; index < 51; index++) {
       events.add(
-          new InteractionEventRequest(
+          new InteractionEventCommand(
               UUID.randomUUID().toString(), "PRODUCT_VIEW", null, null, null, null, null));
     }
 
@@ -45,8 +45,8 @@ class InteractionServiceTests {
 
   @Test
   void rawSearchTextIsRejected() {
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(),
             "SEARCH",
             null,
@@ -65,8 +65,8 @@ class InteractionServiceTests {
   void petOwnershipIsValidatedBeforeEventInsert() {
     when(repository.petBelongsToMember(99L, 10L)).thenReturn(false);
     when(repository.productExists(1L)).thenReturn(true);
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(), "PRODUCT_VIEW", 1L, 99L, null, null, null);
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
@@ -77,8 +77,8 @@ class InteractionServiceTests {
 
   @Test
   void productViewRequiresProductId() {
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(), "PRODUCT_VIEW", null, null, null, null, null);
 
     assertThatThrownBy(() -> service.record(10L, List.of(event)))
@@ -89,8 +89,8 @@ class InteractionServiceTests {
 
   @Test
   void rawSearchTextInHasTextQueryIsRejected() {
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(),
             "FILTER",
             null,
@@ -107,8 +107,8 @@ class InteractionServiceTests {
 
   @Test
   void contextRejectsWrongScalarTypes() {
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(),
             "FILTER",
             null,
@@ -125,8 +125,8 @@ class InteractionServiceTests {
 
   @Test
   void recommendationEventsRequireProductAndRequestId() {
-    InteractionEventRequest event =
-        new InteractionEventRequest(
+    InteractionEventCommand event =
+        new InteractionEventCommand(
             UUID.randomUUID().toString(),
             "RECOMMENDATION_CLICK",
             1L,

@@ -1,6 +1,5 @@
 package com.pawcycle.backend.interaction.application;
 
-import com.pawcycle.backend.interaction.api.InteractionEventRequest;
 import com.pawcycle.backend.interaction.persistence.InteractionEventPersistenceAdapter;
 
 import java.math.BigDecimal;
@@ -46,10 +45,10 @@ public class InteractionService {
   }
 
   @Transactional
-  public void record(long memberId, List<InteractionEventRequest> events) {
+  public void record(long memberId, List<InteractionEventCommand> events) {
     if (events == null || events.isEmpty() || events.size() > 50) throw invalid("events");
     Instant now = clock.instant();
-    for (InteractionEventRequest event : events) {
+    for (InteractionEventCommand event : events) {
       if (event == null) throw invalid("event");
       String eventId = uuid(event.eventId(), "eventId");
       InteractionEventType type = eventType(event.type());

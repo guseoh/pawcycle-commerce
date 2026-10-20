@@ -17,6 +17,9 @@ public class AdminAuditController {
 
   @GetMapping
   public List<AdminAuditResponse> list() {
-    return audits.list();
+    return audits.list().stream()
+        .map(row -> new AdminAuditResponse(row.auditLogId(), row.adminId(), row.action(),
+            row.targetType(), row.targetId(), row.createdAt()))
+        .toList();
   }
 }

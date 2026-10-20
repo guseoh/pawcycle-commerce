@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.commerce.notification.api.NotificationResponse;
+import com.pawcycle.backend.commerce.notification.application.NotificationEntry;
 import com.pawcycle.backend.commerce.notification.persistence.NotificationPersistenceAdapter;
 import com.pawcycle.backend.commerce.notification.persistence.NotificationView;
 import java.sql.Timestamp;
@@ -25,7 +25,7 @@ class NotificationServiceTests {
                 new NotificationView(2L, "ORDER_PAID", "ORDER", 30L, null, createdAt, null, null),
                 new NotificationView(1L, "SUBSCRIPTION_DELIVERY_REMINDER", "SCHEDULE", 20L, null, createdAt, 10L, createdAt)));
 
-    List<NotificationResponse> result = new NotificationService(adapter).list(7L);
+    List<NotificationEntry> result = new NotificationService(adapter).list(7L);
 
     assertThat(result).hasSize(2);
     assertThat(result.get(1).subscriptionId()).isEqualTo(10L);
