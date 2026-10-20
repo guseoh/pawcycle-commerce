@@ -14,8 +14,6 @@ runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogIm
 
 # T02 RECLASSIFIED: existing root services/API records now have application/api packages.
 application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
-application-api | com.pawcycle.backend.commerce.delivery.application.DeliveryService -> com.pawcycle.backend.commerce.delivery.api.DeliveryResponse
-application-api | com.pawcycle.backend.commerce.returning.application.ReturnService -> com.pawcycle.backend.commerce.returning.api.ReturnResponse
 
 # T03 RECLASSIFIED: 47 pre-existing edges gain application/api layer names (main 5c077b8).
 # Before/after compiled graph normalized for class, nested and array element packages: 817 classes / 7602 edges, NEW=0.

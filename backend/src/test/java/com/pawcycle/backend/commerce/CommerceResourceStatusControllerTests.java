@@ -12,6 +12,7 @@ import com.pawcycle.backend.commerce.cancellation.api.CancellationController;
 import com.pawcycle.backend.commerce.cancellation.api.CancellationResponse;
 import com.pawcycle.backend.commerce.cancellation.application.CancellationResult;
 import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
+import com.pawcycle.backend.commerce.returning.application.ReturnResult;
 import com.pawcycle.backend.commerce.returnrequest.api.ReturnRequestController;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.sql.Timestamp;
@@ -44,7 +45,10 @@ class CommerceResourceStatusControllerTests {
     ReturnService service = mock(ReturnService.class);
     ReturnResponse expected =
         new ReturnResponse(13L, "REQUESTED", "사유", null, null, Timestamp.valueOf("2026-08-01 00:00:00"), null, null, null);
-    when(service.request(7L, 23L, "사유")).thenReturn(expected);
+    when(service.request(7L, 23L, "사유")).thenReturn(new ReturnResult(
+        expected.returnId(), expected.status(), expected.reason(), expected.rejectionReason(),
+        expected.restock(), expected.requestedAt(), expected.decidedAt(),
+        expected.receivedAt(), expected.completedAt()));
 
     ResponseEntity<ReturnResponse> response =
         new ReturnRequestController(service)
