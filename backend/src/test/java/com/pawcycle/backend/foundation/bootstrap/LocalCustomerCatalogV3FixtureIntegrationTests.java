@@ -12,7 +12,6 @@ import com.pawcycle.backend.catalog.maintenance.persistence.ProductDetailSection
 import com.pawcycle.backend.catalog.engagement.application.ProductEngagementService;
 import com.pawcycle.backend.catalog.engagement.application.ReviewCreateCommand;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -442,8 +441,7 @@ class LocalCustomerCatalogV3FixtureIntegrationTests {
         JdbcTemplate jdbcExecutor,
         DemoCatalogImportPersistence importer,
         CatalogAdminPersistence expansion,
-        ProductListCacheInvalidator cache,
-        Validator validator) {
+        ProductListCacheInvalidator cache) {
       var detail =
           new ProductDetailSectionFixturePersistence(
               jdbcExecutor, "classpath:catalog/demo-product-detail-sections.json");
@@ -451,8 +449,7 @@ class LocalCustomerCatalogV3FixtureIntegrationTests {
           jdbcExecutor,
           new LocalCommerceDemoFixtureService(importer, detail),
           expansion,
-          cache,
-          validator);
+          cache);
     }
   }
 }

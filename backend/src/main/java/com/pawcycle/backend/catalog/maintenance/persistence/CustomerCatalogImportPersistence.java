@@ -1,13 +1,7 @@
 package com.pawcycle.backend.catalog.maintenance.persistence;
 
-import com.pawcycle.backend.catalog.admin.api.BrandCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.CategoryCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.DetailSectionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.FacetDefinitionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.FacetOptionCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.ProductCreateRequest;
-import com.pawcycle.backend.catalog.admin.api.SkuCreateRequest;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.CategoryFacetAssignCommand;
+import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.DetailSectionCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImageCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionGroupCreateCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.OptionValueCreateCommand;
@@ -16,8 +10,6 @@ import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.SkuOptionVa
 import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.application.*;
 import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
-import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
-import jakarta.validation.Validator;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -56,7 +48,6 @@ public class CustomerCatalogImportPersistence {
   private final JdbcTemplate jdbc;
   private final CatalogAdminPersistence expansion;
   private final ProductListCacheInvalidator cache;
-  private final Validator validator;
   private final CustomerCatalogRealismCorrectionPersistence correction;
   private final ObjectMapper objectMapper;
   private final String manifestLocation;
@@ -66,14 +57,12 @@ public class CustomerCatalogImportPersistence {
       JdbcTemplate jdbc,
       CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
-      Validator validator,
       CustomerCatalogRealismCorrectionPersistence correction,
       @Value("${pawcycle.catalog.customer.manifest:" + DEFAULT_MANIFEST_LOCATION + "}")
           String manifestLocation) {
     this.jdbc = jdbc;
     this.expansion = expansion;
     this.cache = cache;
-    this.validator = validator;
     this.correction = correction;
     this.objectMapper = new ObjectMapper();
     this.manifestLocation = manifestLocation;
@@ -82,13 +71,11 @@ public class CustomerCatalogImportPersistence {
   public CustomerCatalogImportPersistence(
       JdbcTemplate jdbc,
       CatalogAdminPersistence expansion,
-      ProductListCacheInvalidator cache,
-      Validator validator) {
+      ProductListCacheInvalidator cache) {
     this(
         jdbc,
         expansion,
         cache,
-        validator,
         new CustomerCatalogRealismCorrectionPersistence(jdbc),
         DEFAULT_MANIFEST_LOCATION);
   }
@@ -97,13 +84,11 @@ public class CustomerCatalogImportPersistence {
       JdbcTemplate jdbc,
       CatalogAdminPersistence expansion,
       ProductListCacheInvalidator cache,
-      Validator validator,
       String manifestLocation) {
     this(
         jdbc,
         expansion,
         cache,
-        validator,
         new CustomerCatalogRealismCorrectionPersistence(jdbc),
         manifestLocation);
   }
@@ -451,7 +436,7 @@ public class CustomerCatalogImportPersistence {
   }
 
   private void ensureDetailSections(
-      ImportContext context, long productId, List<DetailSectionCreateRequest> expected) {
+      ImportContext context, long productId, List<DetailSectionCreateCommand> expected) {
     List<Map<String, Object>> actual =
         jdbc.queryForList(
             """
@@ -465,9 +450,9 @@ public class CustomerCatalogImportPersistence {
     if (actual.isEmpty()) {
       context.recordMissing("product_detail_sections", expected.size());
       if (context.writes()) {
-        for (DetailSectionCreateRequest section :
+        for (DetailSectionCreateCommand section :
             expected.stream()
-                .sorted(Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
+                .sorted(Comparator.comparingInt(DetailSectionCreateCommand::displayOrder))
                 .toList()) {
           Map<String, Object> row =
               fields(
@@ -490,7 +475,7 @@ public class CustomerCatalogImportPersistence {
     }
     List<Map<String, Object>> expectedRows =
         expected.stream()
-            .sorted(Comparator.comparingInt(DetailSectionCreateRequest::displayOrder))
+            .sorted(Comparator.comparingInt(DetailSectionCreateCommand::displayOrder))
             .map(
                 section ->
                     fields(
@@ -621,41 +606,47 @@ public class CustomerCatalogImportPersistence {
 
   private void validateManifest(Manifest manifest) {
     if (manifest == null
-        || manifest.version() != 3
+        || !Integer.valueOf(3).equals(manifest.version())
         || manifest.products() == null
         || manifest.products().isEmpty()) {
       throw conflict("manifest version/products");
     }
-    if (manifest.brands() == null || manifest.categories() == null || manifest.facets() == null) {
-      throw conflict("manifest required lists");
-    }
+    requiredItems(manifest.brands(), "brands");
+    requiredItems(manifest.categories(), "categories");
+    requiredItems(manifest.facets(), "facets");
+    requiredItems(manifest.products(), "products");
 
     Set<String> brandKeys = new HashSet<>();
     for (Brand brand : manifest.brands()) {
-      valid(new BrandCreateRequest(brand.name(), brand.slug(), null, true, brand.displayOrder()));
+      text(brand.name(), 150, true, "brand name");
+      slug(brand.slug(), "brand slug");
+      nonnegative(brand.displayOrder(), "brand order");
       if (!brandKeys.add(brand.slug())) throw conflict("duplicate brand");
     }
 
     Map<String, Set<String>> facets = new HashMap<>();
     for (Facet facet : manifest.facets()) {
-      valid(new FacetDefinitionCreateRequest(facet.key(), facet.name()));
+      slug(facet.key(), "facet key");
+      text(facet.name(), 100, true, "facet name");
+      requiredItems(facet.values(), "facet values");
       if (facet.values() == null
           || facet.values().isEmpty()
           || new HashSet<>(facet.values()).size() != facet.values().size()
           || facets.put(facet.key(), new HashSet<>(facet.values())) != null) {
         throw conflict("duplicate facet");
       }
-      for (String value : facet.values()) valid(new FacetOptionCreateRequest(value, 0));
+      for (String value : facet.values()) text(value, 100, true, "facet value");
     }
 
     Map<String, Category> categories = new HashMap<>();
     for (Category category : manifest.categories()) {
-      valid(
-          new CategoryCreateRequest(
-              category.name(), category.slug(), category.displayOrder(), true));
+      text(category.name(), 100, true, "category name");
+      slug(category.slug(), "category slug");
+      nonnegative(category.displayOrder(), "category order");
+      requiredItems(category.facets(), "category facets");
       if (BASELINE_ROOT_CATEGORIES.contains(category.slug())
           || categories.put(category.slug(), category) != null
-          || category.facets() == null
+          || new HashSet<>(category.facets()).size() != category.facets().size()
           || !facets.keySet().containsAll(category.facets())) {
         throw conflict("category definition");
       }
@@ -670,15 +661,15 @@ public class CustomerCatalogImportPersistence {
     Set<String> keys = new HashSet<>();
     Set<String> codes = new HashSet<>();
     for (Product product : manifest.products()) {
-      valid(
-          new ProductCreateRequest(
-              1L,
-              1L,
-              product.name(),
-              product.shortDescription(),
-              product.description(),
-              product.petType(),
-              product.thumbnailUrl()));
+      text(product.name(), 200, true, "product name");
+      text(product.shortDescription(), 500, true, "product short description");
+      text(product.description(), 2000, false, "product description");
+      text(product.petType(), 20, true, "product pet type");
+      text(product.thumbnailUrl(), 2048, false, "product thumbnail");
+      requiredItems(product.optionGroups(), "option groups");
+      requiredItems(product.skus(), "SKUs");
+      requiredItems(product.images(), "images");
+      requiredItems(product.detailSections(), "detail sections");
       if (product.catalogKey() == null
           || !product.catalogKey().matches("qa3-[a-z0-9-]+")
           || !keys.add(product.catalogKey())
@@ -697,27 +688,27 @@ public class CustomerCatalogImportPersistence {
 
       Set<String> groupNames = new HashSet<>();
       for (Group group : product.optionGroups()) {
-        valid(new OptionGroupCreateCommand(group.name(), 0));
+        text(group.name(), 100, true, "option group name");
+        requiredItems(group.values(), "option values");
         if (!groupNames.add(group.name())
             || group.values() == null
             || group.values().isEmpty()
             || new HashSet<>(group.values()).size() != group.values().size()) {
           throw conflict("option group");
         }
-        for (String value : group.values()) valid(new OptionValueCreateCommand(value, 0));
+        for (String value : group.values()) text(value, 100, true, "option value");
       }
 
       Set<List<String>> combinations = new HashSet<>();
       for (Sku sku : product.skus()) {
-        valid(
-            new SkuCreateRequest(
-                sku.skuCode(),
-                sku.name(),
-                sku.price(),
-                sku.compareAtPrice(),
-                sku.subscribable(),
-                0,
-                SkuStatus.ACTIVE));
+        text(sku.skuCode(), 100, true, "SKU code");
+        if (!sku.skuCode().matches("[A-Za-z0-9][A-Za-z0-9._-]*")) throw conflict("SKU code");
+        text(sku.name(), 200, true, "SKU name");
+        money(sku.price(), true, "SKU price");
+        money(sku.compareAtPrice(), false, "SKU compare-at price");
+        if (sku.subscribable() == null) throw conflict("SKU subscribable");
+        nonnegative(sku.initialInventory(), "SKU inventory");
+        requiredItems(sku.selectedOptions(), "SKU selected options");
         if (sku.skuCode() == null
             || !sku.skuCode().startsWith("QA3-")
             || !codes.add(sku.skuCode())
@@ -737,7 +728,11 @@ public class CustomerCatalogImportPersistence {
 
       Set<Integer> imageOrders = new HashSet<>();
       for (ImageCreateCommand image : product.images()) {
-        valid(image);
+        text(image.imageUrl(), 2048, true, "image URL");
+        text(image.altText(), 500, false, "image alt text");
+        nonnegative(image.displayOrder(), "image order");
+        if (!"MAIN".equals(image.imageType()) && !"DETAIL".equals(image.imageType()))
+          throw conflict("image type");
         if (!imageOrders.add(image.displayOrder())) throw conflict("image order");
       }
       if (product.images().stream().filter(image -> image.imageType().equals("MAIN")).count()
@@ -746,9 +741,11 @@ public class CustomerCatalogImportPersistence {
       }
 
       Set<Integer> sectionOrders = new HashSet<>();
-      for (DetailSectionCreateRequest section : product.detailSections()) {
-        valid(section);
-        if (!section.visible()
+      for (DetailSectionCreateCommand section : product.detailSections()) {
+        text(section.title(), 200, true, "detail title");
+        text(section.body(), 10000, true, "detail body");
+        nonnegative(section.displayOrder(), "detail order");
+        if (!Boolean.TRUE.equals(section.visible())
             || !sectionOrders.add(section.displayOrder())
             || section.body().contains("<")
             || section.body().contains(">")) {
@@ -768,9 +765,34 @@ public class CustomerCatalogImportPersistence {
     }
   }
 
-  private void valid(Object request) {
-    if (!validator.validate(request).isEmpty())
-      throw conflict("invalid " + request.getClass().getSimpleName());
+  // Import fields are not HTTP requests. Keep scalar checks here and protect their equivalence
+  // to the HTTP constraints with custom-manifest boundary tests, without annotating commands.
+  private static void text(String value, int maximum, boolean required, String field) {
+    if ((required && (value == null || value.isBlank()))
+        || (value != null && value.length() > maximum)) throw conflict("invalid " + field);
+  }
+
+  private static void slug(String value, String field) {
+    text(value, 100, true, field);
+    if (!value.matches("[a-z0-9]+(?:-[a-z0-9]+)*")) throw conflict("invalid " + field);
+  }
+
+  private static void nonnegative(Integer value, String field) {
+    if (value == null || value < 0) throw conflict("invalid " + field);
+  }
+
+  private static void money(BigDecimal value, boolean required, String field) {
+    if (value == null) {
+      if (required) throw conflict("invalid " + field);
+      return;
+    }
+    if (value.signum() < 0 || Math.max(value.scale(), 0) > 2
+        || value.precision() - value.scale() > 10) throw conflict("invalid " + field);
+  }
+
+  private static void requiredItems(List<?> items, String field) {
+    if (items == null || items.stream().anyMatch(Objects::isNull))
+      throw conflict("invalid " + field);
   }
 
   private static boolean equal(Object expected, Object actual) {
@@ -858,16 +880,16 @@ public class CustomerCatalogImportPersistence {
   }
 
   private record Manifest(
-      int version,
+      Integer version,
       List<Brand> brands,
       List<Category> categories,
       List<Facet> facets,
       List<Product> products) {}
 
-  private record Brand(String slug, String name, int displayOrder) {}
+  private record Brand(String slug, String name, Integer displayOrder) {}
 
   private record Category(
-      String slug, String name, String parentSlug, int displayOrder, List<String> facets) {}
+      String slug, String name, String parentSlug, Integer displayOrder, List<String> facets) {}
 
   private record Facet(String key, String name, List<String> values) {}
 
@@ -878,8 +900,8 @@ public class CustomerCatalogImportPersistence {
       String name,
       BigDecimal price,
       BigDecimal compareAtPrice,
-      boolean subscribable,
-      int initialInventory,
+      Boolean subscribable,
+      Integer initialInventory,
       List<String> selectedOptions) {}
 
   private record Product(
@@ -895,5 +917,5 @@ public class CustomerCatalogImportPersistence {
       List<Sku> skus,
       List<ImageCreateCommand> images,
       Map<String, String> facets,
-      List<DetailSectionCreateRequest> detailSections) {}
+      List<DetailSectionCreateCommand> detailSections) {}
 }
