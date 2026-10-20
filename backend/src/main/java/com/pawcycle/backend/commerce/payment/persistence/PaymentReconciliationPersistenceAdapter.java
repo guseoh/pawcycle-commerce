@@ -84,20 +84,22 @@ public class PaymentReconciliationPersistenceAdapter {
     Long cartId = locks.first("SELECT id FROM carts WHERE member_id=? FOR UPDATE", Long.class, memberId);
     if (cartId == null) return;
     var cartItem = new QCartItemEntity("cartItem");
+    boolean changed = false;
     for (OrderItem item : findOrderItems(orderId)) {
       Integer current = locks.first("SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=? FOR UPDATE",
           Integer.class, cartId, item.skuId());
       if (current == null) continue;
       var predicate = cartItem.id.cartId.eq(cartId).and(cartItem.id.skuId.eq(item.skuId()));
       if (current <= item.quantity()) {
-        writes.mutate(() -> queries.delete(cartItem).where(predicate).execute());
+        changed |= writes.mutate(() -> queries.delete(cartItem).where(predicate).execute()) > 0;
       } else {
-        writes.mutate(() -> queries.update(cartItem).set(cartItem.quantity, current - item.quantity()).where(predicate).execute());
+        changed |= writes.mutate(() -> queries.update(cartItem).set(cartItem.quantity, current - item.quantity()).where(predicate).execute()) > 0;
       }
     }
     var cart = new QCartEntity("cart");
-    writes.mutate(() -> queries.update(cart).set(cart.updatedAt, PaymentPersistenceQueries.jdbcTime(now()))
-        .where(cart.id.eq(cartId)).execute());
+    var update = queries.update(cart).set(cart.updatedAt, PaymentPersistenceQueries.jdbcTime(now()));
+    if (changed) update.set(cart.version, cart.version.add(1));
+    writes.mutate(() -> update.where(cart.id.eq(cartId)).execute());
   }
 
   public PaymentReconciliationView find(long paymentId) {

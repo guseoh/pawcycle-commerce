@@ -12,6 +12,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.catalog.product.domain.Product;
+import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService;
+import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
+import com.pawcycle.backend.member.address.application.MemberAddressCommand;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
 import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
@@ -46,6 +50,8 @@ class PaymentReconciliationIntegrationTests {
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
   @Autowired private PlatformTransactionManager manager;
+  @Autowired private CheckoutApplicationService checkout;
+  @Autowired private MemberAddressApplicationService addresses;
   @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingProcessor processor;
   @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingService retries;
   @MockitoBean private TossPaymentAdapter provider;
@@ -212,7 +218,7 @@ class PaymentReconciliationIntegrationTests {
     assertThat(integer("SELECT COUNT(*) FROM deliveries WHERE order_id=? AND status='PREPARING'", f.order())).isEqualTo(1);
     assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isEqualTo(1);
     assertThat(integer("SELECT COUNT(*) FROM notifications WHERE member_id=? AND type='ORDER_PAID' AND reference_id=?", f.member(), f.order())).isEqualTo(1);
-    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(7);
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
     assertThat(jdbc.queryForObject("SELECT status FROM member_coupons WHERE id=?", String.class, f.coupon())).isEqualTo("USED");
     assertThat(jdbc.queryForObject("SELECT updated_at FROM carts WHERE id=?", java.sql.Timestamp.class, f.cart())).isAfter(SecondaryReadFixtures.stamp());
   }
@@ -224,7 +230,7 @@ class PaymentReconciliationIntegrationTests {
     succeed();
     assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
     assertThat(integer("SELECT COUNT(*) FROM cart_items WHERE cart_id=?", f.cart())).isZero();
-    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(7);
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
   }
 
   @ParameterizedTest
@@ -236,6 +242,68 @@ class PaymentReconciliationIntegrationTests {
     assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
     assertThat(integer("SELECT COUNT(*) FROM carts WHERE member_id=?", f.member())).isEqualTo(noCart ? 0 : 1);
     assertThat(integer("SELECT COUNT(*) FROM cart_items WHERE cart_id=?", f.cart())).isZero();
+    if (!noCart) {
+      assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(7);
+    }
+  }
+
+  @Test
+  void multipleChangedItemsIncrementCartVersionOnlyOnce() {
+    Fixture f = fixture(5);
+    long secondSku = new TransactionTemplate(manager).execute(status -> {
+      var fixtures = new SecondaryReadFixtures(jdbc, entities);
+      long productId = jdbc.queryForObject("SELECT product_id FROM skus WHERE id=?", Long.class, f.sku());
+      var sku = fixtures.sku(entities.find(Product.class, productId), SkuStatus.ACTIVE, 10);
+      fixtures.item(f.order(), sku);
+      jdbc.update("UPDATE inventories SET reserved_quantity=1 WHERE sku_id=?", sku.getId());
+      jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,1)", f.cart(), sku.getId());
+      return sku.getId();
+    });
+    succeed();
+    assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
+    assertThat(quantity(f)).isEqualTo(3);
+    assertThat(integer("SELECT COUNT(*) FROM cart_items WHERE cart_id=? AND sku_id=?", f.cart(), secondSku)).isZero();
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=? AND type='DEDUCT'", f.payment())).isEqualTo(2);
+  }
+
+  @Test
+  void reconciledCartRejectsFreshStaleCheckoutButReplaysOriginalIdentityFirst() {
+    Fixture f = fixture(5);
+    jdbc.update("UPDATE categories SET active=true WHERE id=(SELECT category_id FROM products WHERE id=(SELECT product_id FROM skus WHERE id=?))", f.sku());
+    long address = addresses.create(f.member(), new MemberAddressCommand(
+        "Fixture", "Fixture recipient", "010-0000-0000", "06236", "Fixture address", null));
+    String key = "reconcile-replay-" + f.payment();
+    var original = checkout.checkout(f.member(), key, address, null, 7L);
+    String fingerprint = jdbc.queryForObject("SELECT request_fingerprint FROM checkout_idempotency_results WHERE member_id=? AND idempotency_key=?",
+        String.class, f.member(), key);
+    jdbc.update("UPDATE payments SET status='UNKNOWN' WHERE id=?", original.paymentId());
+    succeed();
+    assertThat(service.reconcile(original.paymentId()).status()).isEqualTo("SUCCEEDED");
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
+
+    assertThatThrownBy(() -> checkout.checkout(f.member(), key + "-fresh", address, null, 7L))
+        .isInstanceOfSatisfying(CommerceException.class, e -> {
+          assertThat(e.status()).isEqualTo(409);
+          assertThat(e.code()).isEqualTo("CART_CHANGED");
+        });
+    assertThat(checkout.checkout(f.member(), key, address, null, 7L)).usingRecursiveComparison()
+        .withComparatorForType(BigDecimal::compareTo, BigDecimal.class).isEqualTo(original);
+    assertThat(checkout.checkout(f.member(), key, address, null, null)).usingRecursiveComparison()
+        .withComparatorForType(BigDecimal::compareTo, BigDecimal.class).isEqualTo(original);
+    assertThatThrownBy(() -> checkout.checkout(f.member(), key, address, null, 8L))
+        .isInstanceOfSatisfying(CommerceException.class, e -> assertThat(e.code()).isEqualTo("IDEMPOTENCY_KEY_CONFLICT"));
+    assertThatThrownBy(() -> checkout.checkout(f.member(), key, address + 1, null, 7L))
+        .isInstanceOfSatisfying(CommerceException.class, e -> assertThat(e.code()).isEqualTo("IDEMPOTENCY_KEY_CONFLICT"));
+    assertThatThrownBy(() -> checkout.checkout(f.member(), key, address, f.coupon(), 7L))
+        .isInstanceOfSatisfying(CommerceException.class, e -> assertThat(e.code()).isEqualTo("IDEMPOTENCY_KEY_CONFLICT"));
+    assertThat(integer("SELECT COUNT(*) FROM orders WHERE member_id=?", f.member())).isEqualTo(2);
+    assertThat(integer("SELECT COUNT(*) FROM payments WHERE order_id IN (SELECT id FROM orders WHERE member_id=?)", f.member())).isEqualTo(2);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=?", original.paymentId())).isEqualTo(2);
+    assertThat(integer("SELECT reserved_quantity FROM inventories WHERE sku_id=?", f.sku())).isEqualTo(2);
+    assertThat(jdbc.queryForObject("SELECT request_fingerprint FROM checkout_idempotency_results WHERE member_id=? AND idempotency_key=?",
+        String.class, f.member(), key)).isEqualTo(fingerprint);
+    assertThat(integer("SELECT request_cart_version FROM checkout_idempotency_results WHERE member_id=? AND idempotency_key=?", f.member(), key)).isEqualTo(7);
   }
 
   @ParameterizedTest
@@ -352,11 +420,16 @@ class PaymentReconciliationIntegrationTests {
       assertThat(second.get(15, TimeUnit.SECONDS).status()).isEqualTo("SUCCEEDED");
     }
     assertThat(quantity(f)).isEqualTo(3);
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
+    assertThat(jdbc.queryForObject("SELECT status FROM member_coupons WHERE id=?", String.class, f.coupon())).isEqualTo("USED");
+    assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isEqualTo(1);
     assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(2);
     assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=?", f.payment())).isEqualTo(1);
     assertThat(integer("SELECT COUNT(*) FROM deliveries WHERE order_id=?", f.order())).isEqualTo(1);
     assertThat(integer("SELECT COUNT(*) FROM notifications WHERE member_id=? AND reference_id=? AND type='ORDER_PAID'", f.member(), f.order())).isEqualTo(1);
     assertError(f, 409, "PAYMENT_RECONCILIATION_NOT_ALLOWED");
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
+    assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(2);
   }
 
   private void succeed() {
