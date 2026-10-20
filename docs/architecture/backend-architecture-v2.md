@@ -1705,3 +1705,39 @@ and T10 record/index/gap competing-write observer (1) all execute and pass the J
 with failure/error/skip 0. Related task metadata/classifier/physical-lock Harness regressions pass 78.
 Architecture baseline stays at 204, NEW/RESOLVED 0. Whole Seoul suite and external independent review
 are unexecuted; latest PR HEAD CI is dynamic evidence in Draft PR #370, not a Production verification.
+
+
+## R2-06 Architecture V2 closure — current state (2026-10-21, in progress)
+
+This section records the current verified repository baseline without rewriting the
+historical T01–T11 inventories above. **Closure is not yet approved or verified**;
+the remaining audit is tracked by [R2-06 #436](https://github.com/guseoh/pawcycle-commerce/issues/436).
+
+| Check | Current repository evidence | Closure status |
+| --- | --- | --- |
+| Reference \`main\` | \`a3e05739b3981c3b959d52cdbc6966dcc5bc497d\` | Audit starting SHA; refresh before final review |
+| Frozen layer edges | \`application-api=0\`, \`persistence-api=0\`, \`runtime-maintenance=5\` | First two resolved; final five intentional KEEP |
+| Direct runtime \`JdbcTemplate\` | Non-isolated 0; isolated maintenance/bootstrap/migration/performance owners 9 | Existing \`BackendArchitectureTests\` / \`MaintenanceJdbcIsolationTests\` guard; latest PR evidence |
+| Production \`*PersistenceAdapter.java\` | 21 files in \`main\`; no direct \`JdbcTemplate\` import in these 21 | Per-adapter callers/transaction/SQL/KEEP decision evidence **PENDING** |
+| Customer order read | Frozen integration test asserts list 1 SQL, detail 7 SQL, entity loads 0 and exact legacy HTTP JSON | Test exists; **new final-main MySQL execution PENDING** |
+| Raw DB result leakage | Typed boundary claimed for earlier bounded T12 work | End-to-end return/signature/consumer audit and any necessary focused guard **PENDING** |
+| Architecture canonical document | Historical T01–T11 metrics remain unchanged | This section separates current state; detailed closure verdict **PENDING** |
+
+Existing full Backend/MySQL and Physical Lock evidence belongs to merged PRs
+[#431](https://github.com/guseoh/pawcycle-commerce/pull/431),
+[#433](https://github.com/guseoh/pawcycle-commerce/pull/433) and
+[#435](https://github.com/guseoh/pawcycle-commerce/pull/435), each for its
+respective tested head. Their success is **not** a substitute for proving the
+R2-06 adapter/raw-result inventory or for a new final integration test.
+
+### Required completion checks
+
+Confirm all 21 adapters with concrete callers, typed outputs, transaction owner,
+native/JPQL rationale, associated tests and KEEP/MERGE/SPLIT/RESTRUCTURE verdict.
+Audit DB \`Map\` / \`Object[]\` / \`Tuple\` escape from persistence to
+application/API separately from provider JSON, event context and isolated import
+data. Confirm the frozen order read against disposable MySQL and preserve the
+intentional five maintenance entry-point edges. Keep #371/#339 open until these
+checks and a reviewed R2-06 PR meet the stated gate. F07 payment recovery #417
+is a separate unresolved risk. No Production or operational DB execution is
+authorized by this section.
