@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
-import com.pawcycle.backend.commerce.operations.api.OperationsPendingResponse;
+import com.pawcycle.backend.commerce.operations.application.OperationsPendingView;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository;
 import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepository.PendingRow;
 import org.junit.jupiter.api.Test;
@@ -33,10 +33,10 @@ class OperationsQueryServiceTests {
             row("REFUND_UNKNOWN", 9L, now, 1));
     when(queries.findPending()).thenReturn(rows);
 
-    List<OperationsPendingResponse> result = new OperationsQueryService(queries).pending();
+    List<OperationsPendingView> result = new OperationsQueryService(queries).pending();
 
     assertThat(result)
-        .extracting(OperationsPendingResponse::availableActions)
+        .extracting(OperationsPendingView::availableActions)
         .containsExactly(
             List.of("SHIP_DELIVERY"),
             List.of("COMPLETE_DELIVERY", "FAIL_DELIVERY"),

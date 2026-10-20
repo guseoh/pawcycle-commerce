@@ -3,7 +3,6 @@ package com.pawcycle.backend.commerce.inventory.application;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
-import com.pawcycle.backend.commerce.inventory.api.InventoryResponse;
 import com.pawcycle.backend.commerce.inventory.persistence.InventoryRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -32,11 +31,11 @@ public class InventoryAdminApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<InventoryResponse> list() {
+  public List<InventoryAdminView> list() {
     return inventories.findAdminProjections().stream()
         .map(
             row ->
-                new InventoryResponse(
+                new InventoryAdminView(
                     row.getSkuId(),
                     row.getAvailableQuantity(),
                     row.getReservedQuantity(),

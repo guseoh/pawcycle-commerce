@@ -1,6 +1,8 @@
 package com.pawcycle.backend.interaction.api;
 
+import com.pawcycle.backend.interaction.application.InteractionEventCommand;
 import com.pawcycle.backend.interaction.application.InteractionService;
+import java.util.List;
 
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +23,14 @@ public class InteractionController {
   ResponseEntity<Void> record(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestBody InteractionBatchRequest request) {
-    service.record(principal.memberId(), request == null ? null : request.events());
+    List<InteractionEventCommand> events = request == null || request.events() == null
+        ? null
+        : request.events().stream()
+            .map(event -> event == null ? null : new InteractionEventCommand(
+                event.eventId(), event.type(), event.productId(), event.petId(),
+                event.source(), event.recommendationRequestId(), event.context()))
+            .toList();
+    service.record(principal.memberId(), events);
     return ResponseEntity.noContent().build();
   }
 }

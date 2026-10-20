@@ -23,7 +23,10 @@ public class NotificationController {
   @GetMapping
   public List<NotificationResponse> list(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal) {
-    return notifications.list(principal.memberId());
+    return notifications.list(principal.memberId()).stream()
+        .map(row -> new NotificationResponse(row.notificationId(), row.type(), row.referenceType(),
+            row.referenceId(), row.readAt(), row.createdAt(), row.subscriptionId(), row.scheduledDate()))
+        .toList();
   }
 
   @PatchMapping("/{id}/read")
