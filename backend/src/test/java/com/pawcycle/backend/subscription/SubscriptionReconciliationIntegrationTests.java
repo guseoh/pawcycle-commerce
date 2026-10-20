@@ -20,8 +20,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.support.TransactionalTestSql;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -152,7 +152,7 @@ class SubscriptionReconciliationIntegrationTests {
         "change-plan",
         "pending-due",
         "\"0\"",
-        new SubscriptionCommandRequest(null, planVersionId, null, null, null, null));
+        new SubscriptionCommand(null, planVersionId, null, null, null, null));
     long originalSnapshotId =
         jdbc.queryForObject(
             "SELECT current_snapshot_id FROM subscriptions WHERE id=?", Long.class, subscriptionId);
@@ -282,7 +282,7 @@ class SubscriptionReconciliationIntegrationTests {
         service.createSubscription(
             member.getId(),
             idempotencyKey,
-            new CreateSubscriptionRequest(petId, planVersionId, 4));
+            new SubscriptionCreateCommand(petId, planVersionId, 4));
     return result.body().subscriptionId();
   }
 

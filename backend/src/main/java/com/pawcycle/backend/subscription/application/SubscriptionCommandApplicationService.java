@@ -13,7 +13,7 @@ import com.pawcycle.backend.subscription.persistence.projection.SubscriptionSnap
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
 
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence;
 import com.pawcycle.backend.subscription.persistence.SubscriptionSchedulePersistence;
 import java.time.LocalDate;
@@ -60,7 +60,7 @@ class SubscriptionCommandApplicationService {
       String command,
       String key,
       String ifMatch,
-      SubscriptionCommandRequest request) {
+      SubscriptionCommand request) {
     String normalized = command.toUpperCase(Locale.ROOT).replace('-', '_');
     if (!List.of(
             "CHANGE_PLAN",
@@ -108,7 +108,7 @@ class SubscriptionCommandApplicationService {
       throw new SubscriptionFailure(
           SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     store.insertCommandHistory(subscriptionId, normalized, expected, expected + 1);
-    var response = support.detailResponse(queries.detail(memberId, subscriptionId, 0, 20, 0, 20));
+    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
     reservations.updateCommandResponse(
@@ -144,7 +144,7 @@ class SubscriptionCommandApplicationService {
   }
 
   private void changePlan(
-      long memberId, SubscriptionProjection subscription, SubscriptionCommandRequest request) {
+      long memberId, SubscriptionProjection subscription, SubscriptionCommand request) {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     long petId =
         subscription.petId() == null
@@ -169,7 +169,7 @@ class SubscriptionCommandApplicationService {
   }
 
   private void changeDeliveryCycle(
-      SubscriptionProjection subscription, SubscriptionCommandRequest request) {
+      SubscriptionProjection subscription, SubscriptionCommand request) {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     int cycle = support.requiredInt(request.deliveryCycleWeeks(), "deliveryCycleWeeks");
     if (!List.of(2, 4, 8).contains(cycle))
@@ -186,7 +186,7 @@ class SubscriptionCommandApplicationService {
   }
 
   private void rescheduleNext(
-      SubscriptionProjection subscription, SubscriptionCommandRequest request) {
+      SubscriptionProjection subscription, SubscriptionCommand request) {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     LocalDate requestedDate = support.requiredDate(request.scheduledDate(), "scheduledDate");
     if (!requestedDate.isAfter(support.today()))
@@ -251,7 +251,7 @@ class SubscriptionCommandApplicationService {
   }
 
   private void setNextDeliveryAddon(
-      SubscriptionProjection subscription, SubscriptionCommandRequest request) {
+      SubscriptionProjection subscription, SubscriptionCommand request) {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     long skuId = support.requiredLong(request.skuId(), "skuId");
     int quantity = support.requiredInt(request.quantity(), "quantity");
@@ -272,7 +272,7 @@ class SubscriptionCommandApplicationService {
   }
 
   private void removeNextDeliveryAddon(
-      SubscriptionProjection subscription, SubscriptionCommandRequest request) {
+      SubscriptionProjection subscription, SubscriptionCommand request) {
     if (!"ACTIVE".equals(subscription.status())) throw support.state();
     long skuId = support.requiredLong(request.skuId(), "skuId");
     ScheduleProjection schedule = store.lockNextScheduled(subscription.id());

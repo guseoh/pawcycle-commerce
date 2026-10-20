@@ -20,7 +20,7 @@ import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
 import com.pawcycle.backend.subscription.migration.LegacySubscriptionMigrationProcessor;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -282,7 +282,7 @@ class SubscriptionServiceIntegrationTests {
             .createSubscription(
                 member.getId(),
                 "list-first",
-                new CreateSubscriptionRequest(petId, planVersionId, 4))
+                new SubscriptionCreateCommand(petId, planVersionId, 4))
             .body()
             .subscriptionId();
     long secondSubscriptionId =
@@ -290,7 +290,7 @@ class SubscriptionServiceIntegrationTests {
             .createSubscription(
                 member.getId(),
                 "list-second",
-                new CreateSubscriptionRequest(petId, multiVersionId, 2))
+                new SubscriptionCreateCommand(petId, multiVersionId, 2))
             .body()
             .subscriptionId();
     Sku secondSku =
@@ -330,7 +330,7 @@ class SubscriptionServiceIntegrationTests {
     long otherPetId =
         service.createPet(other.getId(), new PetCreateCommand("다른 회원", "DOG")).petId();
     service.createSubscription(
-        other.getId(), "list-other", new CreateSubscriptionRequest(otherPetId, planVersionId, 4));
+        other.getId(), "list-other", new SubscriptionCreateCommand(otherPetId, planVersionId, 4));
 
     var subscriptions = service.subscriptions(member.getId(), 0, 100).items();
     assertThat(subscriptions)
@@ -364,7 +364,7 @@ class SubscriptionServiceIntegrationTests {
   @Test
   void mysqlPersistsReplayAndRejectsMismatchedPayload() {
     long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
-    CreateSubscriptionRequest request = new CreateSubscriptionRequest(petId, planVersionId, 4);
+    SubscriptionCreateCommand request = new SubscriptionCreateCommand(petId, planVersionId, 4);
     SubscriptionResult created =
         service.createSubscription(member.getId(), "create-replay-key", request);
     LocalDateTime completedAt =
@@ -386,7 +386,7 @@ class SubscriptionServiceIntegrationTests {
         service.createSubscription(
             member.getId(),
             "create-replay-key",
-            new CreateSubscriptionRequest(petId, planVersionId, 4));
+            new SubscriptionCreateCommand(petId, planVersionId, 4));
 
     assertThat(created.status()).isEqualTo(201);
     assertThat(completedAt).isNotNull();
@@ -417,7 +417,7 @@ class SubscriptionServiceIntegrationTests {
                 service.createSubscription(
                     member.getId(),
                     "create-replay-key",
-                    new CreateSubscriptionRequest(petId, planVersionId, 2)))
+                    new SubscriptionCreateCommand(petId, planVersionId, 2)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IDEMPOTENCY_KEY_REUSED");
   }
@@ -431,7 +431,7 @@ class SubscriptionServiceIntegrationTests {
             .createSubscription(
                 member.getId(),
                 "cleanup-subscription",
-                new CreateSubscriptionRequest(petId, planVersionId, 4))
+                new SubscriptionCreateCommand(petId, planVersionId, 4))
             .body()
             .subscriptionId();
     jdbc.update(
@@ -536,7 +536,7 @@ class SubscriptionServiceIntegrationTests {
             .createSubscription(
                 member.getId(),
                 "repair-subscription",
-                new CreateSubscriptionRequest(petId, planVersionId, 4))
+                new SubscriptionCreateCommand(petId, planVersionId, 4))
             .body()
             .subscriptionId();
     jdbc.update(
@@ -848,7 +848,7 @@ class SubscriptionServiceIntegrationTests {
     long firstSubscription = cleanupSubscription();
     long petId = service.createPet(member.getId(), new PetCreateCommand("parity", "DOG")).petId();
     long secondSubscription = service.createSubscription(member.getId(), "parity-subscription",
-        new CreateSubscriptionRequest(petId, planVersionId, 4)).body().subscriptionId();
+        new SubscriptionCreateCommand(petId, planVersionId, 4)).body().subscriptionId();
     jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=?",
         member.getId());
     LocalDateTime now = LocalDateTime.of(2026, 8, 9, 0, 0, 0, 123456000);
@@ -932,7 +932,7 @@ class SubscriptionServiceIntegrationTests {
   private long cleanupSubscription() {
     long petId = service.createPet(member.getId(), new PetCreateCommand("보리", "DOG")).petId();
     long subscriptionId = service.createSubscription(
-        member.getId(), "cleanup-boundary", new CreateSubscriptionRequest(petId, planVersionId, 4))
+        member.getId(), "cleanup-boundary", new SubscriptionCreateCommand(petId, planVersionId, 4))
         .body().subscriptionId();
     jdbc.update("DELETE FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?",
         member.getId(), "cleanup-boundary");

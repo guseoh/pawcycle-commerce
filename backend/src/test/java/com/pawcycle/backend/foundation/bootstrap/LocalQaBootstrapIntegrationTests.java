@@ -14,8 +14,8 @@ import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -259,7 +259,7 @@ class LocalQaBootstrapIntegrationTests {
         subscriptionService.createSubscription(
             member.getId(),
             "qa-subscription-reset",
-            new CreateSubscriptionRequest(petId, planVersionId, 4));
+            new SubscriptionCreateCommand(petId, planVersionId, 4));
     long subscriptionId = created.body().subscriptionId();
     subscriptionService.command(
         member.getId(),
@@ -267,7 +267,7 @@ class LocalQaBootstrapIntegrationTests {
         "change-plan",
         "qa-subscription-change",
         "\"0\"",
-        new SubscriptionCommandRequest(null, planVersionId, null, null, null, null));
+        new SubscriptionCommand(null, planVersionId, null, null, null, null));
 
     bootstrapService.bootstrap(email, password, true);
 

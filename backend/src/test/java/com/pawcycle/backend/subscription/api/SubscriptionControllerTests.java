@@ -80,7 +80,7 @@ class SubscriptionControllerTests {
             "pause",
             "replay-key",
             "\"99\"",
-            SubscriptionCommandRequest.empty()))
+            SubscriptionCommandRequest.empty().toCommand()))
         .thenReturn(replay);
 
     ResponseEntity<SubscriptionDetailResponse> response =
@@ -102,7 +102,7 @@ class SubscriptionControllerTests {
             "pause",
             "replay-key",
             "\"99\"",
-            SubscriptionCommandRequest.empty());
+            SubscriptionCommandRequest.empty().toCommand());
   }
 
   @Test
@@ -115,7 +115,7 @@ class SubscriptionControllerTests {
             "\"0\"",
             false);
     CreateSubscriptionRequest request = new CreateSubscriptionRequest(3L, 4L, 4);
-    when(service.createSubscription(7L, "create-key", request)).thenReturn(created);
+    when(service.createSubscription(7L, "create-key", request.toCommand())).thenReturn(created);
 
     ResponseEntity<SubscriptionDetailResponse> response =
         controller.createSubscription(principal, "create-key", request);
@@ -124,6 +124,7 @@ class SubscriptionControllerTests {
     assertThat(response.getHeaders().getFirst("Location")).isEqualTo("/api/subscriptions/11");
     assertThat(response.getHeaders().getFirst("ETag")).isEqualTo("\"0\"");
     assertThat(response.getHeaders().getFirst("Idempotency-Replayed")).isNull();
+    assertThat(response.getBody()).isEqualTo(SubscriptionDetailResponse.from(created.body()));
   }
 
   @Test
@@ -137,8 +138,20 @@ class SubscriptionControllerTests {
     assertThat(response.getHeaders().getFirst("Location")).isEqualTo("/api/pets/17");
   }
 
-  private static SubscriptionDetailResponse detail(long id, String status, long version) {
-    return new SubscriptionDetailResponse(
+  @Test
+  void nullableStoredReplayBodyKeepsHeadersAndNoBody() {
+    var request = SubscriptionCommandRequest.empty();
+    when(service.command(7L, 11L, "pause", "null-replay", "\"99\"", request.toCommand()))
+        .thenReturn(new SubscriptionResult(200, null, null, "\"1\"", true));
+    var response = controller.command(principal, 11L, "pause", "null-replay", "\"99\"", request);
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getBody()).isNull();
+    assertThat(response.getHeaders().getFirst("ETag")).isEqualTo("\"1\"");
+    assertThat(response.getHeaders().getFirst("Idempotency-Replayed")).isEqualTo("true");
+  }
+
+  private static com.pawcycle.backend.subscription.model.SubscriptionReadModel.Detail detail(long id, String status, long version) {
+    return new com.pawcycle.backend.subscription.model.SubscriptionReadModel.Detail(
         id,
         status,
         version,
@@ -150,7 +163,7 @@ class SubscriptionControllerTests {
         null,
         null,
         List.of(),
-        new PageResponse<>(0, 20, 0, List.of()),
-        new PageResponse<>(0, 20, 0, List.of()));
+        new com.pawcycle.backend.subscription.model.SubscriptionReadModel.Page<>(0, 20, 0, List.of()),
+        new com.pawcycle.backend.subscription.model.SubscriptionReadModel.Page<>(0, 20, 0, List.of()));
   }
 }

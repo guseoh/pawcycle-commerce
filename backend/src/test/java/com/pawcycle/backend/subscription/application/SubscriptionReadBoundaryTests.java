@@ -53,6 +53,12 @@ class SubscriptionReadBoundaryTests {
     assertThat(calls(store)).containsExactlyElementsOf(calls);
     assertThat(JSON.writeValueAsString(SubscriptionDetailResponse.from(view))).isEqualTo(JSON.writeValueAsString(expected.body()));
     assertThat(SubscriptionDetailResponse.from(view)).isEqualTo(expected.body());
+    // The existing neutral model must preserve the durable response schema before it can replace the DTO.
+    String legacyJson = JSON.writeValueAsString(expected.body());
+    assertThat(JSON.writeValueAsString(view)).isEqualTo(legacyJson);
+    var restored = JSON.readValue(legacyJson, SubscriptionReadModel.Detail.class);
+    assertThat(JSON.writeValueAsString(restored)).isEqualTo(legacyJson);
+    assertThat(JSON.writeValueAsString(SubscriptionDetailResponse.from(restored))).isEqualTo(legacyJson);
     verify(store).findNextSchedule(1, LocalDate.of(2026, 8, time.contains("14:59") ? 28 : 29));
   }
 
@@ -122,8 +128,9 @@ class SubscriptionReadBoundaryTests {
     var view = new SubscriptionQueryApplicationService(store, JSON, CLOCK).detail(7, 1, 1, 2, 2, 3);
     var support = new SubscriptionApplicationSupport(JSON, CLOCK);
     String legacyJson = JSON.writeValueAsString(frozen);
-    assertThat(support.detailResponse(view)).isExactlyInstanceOf(SubscriptionDetailResponse.class).isEqualTo(frozen);
-    assertThat(support.bodyJson(support.detailResponse(view))).isEqualTo(legacyJson);
+    assertThat(SubscriptionDetailResponse.from(view)).isEqualTo(frozen);
+    assertThat(support.bodyJson(view)).isEqualTo(legacyJson);
+    assertThat(support.responseBody(legacyJson)).isExactlyInstanceOf(SubscriptionReadModel.Detail.class);
     assertThat(support.bodyJson(support.responseBody(legacyJson))).isEqualTo(legacyJson);
     assertThat(legacyJson).contains("3703.8800", "20000", "2026-08-28T23:59:59.123456+09:00");
     assertThatThrownBy(() -> support.responseBody("{invalid"))
@@ -133,6 +140,17 @@ class SubscriptionReadBoundaryTests {
   private static List<String> calls(SubscriptionAggregatePersistence store) {
     return mockingDetails(store).getInvocations().stream()
         .map(call -> call.getMethod().getName() + Arrays.deepToString(call.getArguments())).toList();
+  }
+
+  @Test
+  void pinnedPreRefactorStoredJsonKeepsNullsPagesAndHistoryWhenDecodedAndMapped() {
+    String legacy = "{\"subscriptionId\":1,\"status\":\"PAUSED\",\"version\":17,\"pet\":null,\"currentSnapshot\":null,\"nextScheduledDate\":null,\"pendingSnapshot\":null,\"nextDelivery\":null,\"pendingChange\":null,\"issue\":null,\"availableActions\":[\"RESUME\",\"CANCEL\"],\"schedules\":{\"page\":2,\"size\":3,\"totalElements\":9,\"items\":[{\"scheduleId\":7,\"scheduledDate\":null,\"status\":\"SKIPPED\",\"effectiveSnapshotId\":null},null]},\"commandHistory\":{\"page\":1,\"size\":2,\"totalElements\":4,\"items\":[{\"commandType\":\"PAUSE\",\"result\":\"SUCCEEDED\",\"occurredAt\":\"2026-10-20T10:00:00.123456+09:00\"},null]}}";
+    var support = new SubscriptionApplicationSupport(JSON, CLOCK);
+    var restored = support.responseBody(legacy);
+    assertThat(support.bodyJson(restored)).isEqualTo(legacy);
+    assertThat(JSON.writeValueAsString(SubscriptionDetailResponse.from(restored))).isEqualTo(legacy);
+    assertThat(JSON.writeValueAsString(JSON.readValue(legacy, SubscriptionDetailResponse.class))).isEqualTo(legacy);
+    assertThat(support.responseBody("null")).isNull();
   }
 
   private static SubscriptionAggregatePersistence detailStore(String status, String reason, Long effective) {

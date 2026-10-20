@@ -15,7 +15,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence;
 import com.pawcycle.backend.subscription.persistence.SubscriptionSchedulePersistence;
 import java.time.Clock;
@@ -70,7 +70,7 @@ class SubscriptionCommandStateTests {
                       command,
                       "held-" + command,
                       "\"0\"",
-                      SubscriptionCommandRequest.empty()))
+                      SubscriptionCommand.empty()))
           .isInstanceOf(SubscriptionFailure.class)
           .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_COMMAND_NOT_ALLOWED");
       verify(store, never()).lockNextScheduled(1L);

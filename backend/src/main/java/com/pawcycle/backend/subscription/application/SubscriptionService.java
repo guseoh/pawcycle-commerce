@@ -1,8 +1,7 @@
 package com.pawcycle.backend.subscription.application;
 
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
 import com.pawcycle.backend.subscription.model.PetUpdateCommand;
@@ -58,7 +57,7 @@ public class SubscriptionService {
   }
 
   public SubscriptionResult createSubscription(
-      long memberId, String key, CreateSubscriptionRequest request) {
+      long memberId, String key, SubscriptionCreateCommand request) {
     return result(creations.create(memberId, key, request));
   }
 
@@ -83,7 +82,7 @@ public class SubscriptionService {
       String command,
       String key,
       String ifMatch,
-      SubscriptionCommandRequest request) {
+      SubscriptionCommand request) {
     return result(commands.command(memberId, subscriptionId, command, key, ifMatch, request));
   }
 

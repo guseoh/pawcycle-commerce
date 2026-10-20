@@ -22,8 +22,8 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.member.address.application.MemberAddressCommand;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.support.TransactionalTestSql;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
@@ -315,7 +315,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "set-next-delivery-addon",
         "decimal-addon",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, null, null, secondSku.getId(), 2));
+        new SubscriptionCommand(null, null, null, null, secondSku.getId(), 2));
     long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
 
     SubscriptionAutomationBatchResult result = automation.processDueSchedules(10);
@@ -374,7 +374,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "set-next-delivery-addon",
         "held-addon",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, null, null, secondSku.getId(), 1));
+        new SubscriptionCommand(null, null, null, null, secondSku.getId(), 1));
     long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
     jdbc.update("UPDATE inventories SET available_quantity=0 WHERE sku_id=?", secondSku.getId());
 
@@ -391,7 +391,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "remove-next-delivery-addon",
         "held-addon-remove",
         "\"1\"",
-        new SubscriptionCommandRequest(null, null, null, null, secondSku.getId(), null));
+        new SubscriptionCommand(null, null, null, null, secondSku.getId(), null));
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM subscription_schedule_addons WHERE schedule_id=?",
@@ -419,7 +419,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "pause",
         "pause-before-due",
         "\"0\"",
-        SubscriptionCommandRequest.empty());
+        SubscriptionCommand.empty());
     jdbc.update(
         "UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND"
             + " status='HELD'",
@@ -432,7 +432,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "cancel",
         "cancel-before-due",
         "\"0\"",
-        SubscriptionCommandRequest.empty());
+        SubscriptionCommand.empty());
     jdbc.update(
         "UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND"
             + " status='CANCELED'",
@@ -461,7 +461,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "change-plan",
         "pending-before-failure",
         "\"0\"",
-        new SubscriptionCommandRequest(null, alternatePlanVersionId, null, null, null, null));
+        new SubscriptionCommand(null, alternatePlanVersionId, null, null, null, null));
     long failedScheduleId = moveOnlyUnprocessedSchedule(failedSubscriptionId, TODAY);
     long originalSnapshotId = currentSnapshotId(failedSubscriptionId);
     long pendingSnapshotId =
@@ -561,7 +561,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "change-delivery-cycle",
         "cycle-promotion",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, 4, null, null, null));
+        new SubscriptionCommand(null, null, 4, null, null, null));
     assertThat(
             jdbc.queryForObject(
                 "SELECT delivery_cycle_weeks FROM subscriptions WHERE id=?",
@@ -715,7 +715,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
                       "reschedule-next",
                       "reschedule-race",
                       "\"0\"",
-                      new SubscriptionCommandRequest(null, null, null, requestedDate, null, null));
+                      new SubscriptionCommand(null, null, null, requestedDate, null, null));
                   return "SUCCESS";
                 } catch (SubscriptionFailure exception) {
                   return exception.code();
@@ -757,10 +757,10 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     for (String command : List.of("change-plan", "skip-next", "pause", "cancel")) {
       long subscriptionId = createSubscription("race-" + command, basePlanVersionId, 2);
       moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
-      SubscriptionCommandRequest body =
+      SubscriptionCommand body =
           "change-plan".equals(command)
-              ? new SubscriptionCommandRequest(null, alternatePlanVersionId, null, null, null, null)
-              : SubscriptionCommandRequest.empty();
+              ? new SubscriptionCommand(null, alternatePlanVersionId, null, null, null, null)
+              : SubscriptionCommand.empty();
       ExecutorService executor = Executors.newFixedThreadPool(2);
       CountDownLatch ready = new CountDownLatch(2);
       CountDownLatch start = new CountDownLatch(1);
@@ -823,7 +823,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         "pause",
         "pause-for-resume",
         "\"0\"",
-        SubscriptionCommandRequest.empty());
+        SubscriptionCommand.empty());
     jdbc.update(
         "UPDATE subscription_schedules SET scheduled_date=? WHERE subscription_id=? AND"
             + " status='HELD'",
@@ -842,7 +842,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
                     "resume",
                     "resume-race",
                     "\"1\"",
-                    SubscriptionCommandRequest.empty());
+                    SubscriptionCommand.empty());
               });
       Future<SubscriptionAutomationBatchResult> batch =
           executor.submit(
@@ -945,7 +945,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     long subscriptionId = createSubscription("lock-footprints", basePlanVersionId, 2);
     long scheduleId = moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
     subscriptions.command(member.getId(), subscriptionId, "change-plan", "footprint", "\"0\"",
-        new SubscriptionCommandRequest(null, alternatePlanVersionId, null, null, null, null));
+        new SubscriptionCommand(null, alternatePlanVersionId, null, null, null, null));
     var em = applicationContext.getBean(jakarta.persistence.EntityManager.class);
     var old = new com.pawcycle.backend.subscription.persistence.LegacySubscriptionOrderReference(nativeJdbc, em);
     var oldAggregate = com.pawcycle.backend.subscription.persistence.LegacySubscriptionCommandQueryReference.from(nativeJdbc, applicationContext);
@@ -1050,7 +1050,7 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
         subscriptions.createSubscription(
             member.getId(),
             "create-" + key,
-            new CreateSubscriptionRequest(petId, planVersionId, cycle));
+            new SubscriptionCreateCommand(petId, planVersionId, cycle));
     return result.body().subscriptionId();
   }
 

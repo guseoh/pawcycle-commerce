@@ -7,7 +7,7 @@ import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotenc
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
 
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
 import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyReservationPersistence;
 import java.time.LocalDate;
 import org.springframework.stereotype.Service;
@@ -34,7 +34,7 @@ class SubscriptionCreationApplicationService {
 
   @Transactional
   SubscriptionOperationResult create(
-      long memberId, String key, CreateSubscriptionRequest request) {
+      long memberId, String key, SubscriptionCreateCommand request) {
     support.validateKey(key);
     String fingerprint = support.fingerprint(request);
     if (!reservations.reserveCreation(memberId, key, fingerprint)) {
@@ -57,7 +57,7 @@ class SubscriptionCreationApplicationService {
         store.createSnapshot(subscriptionId, versionId, cycle, version.packagePriceKrw());
     store.setCurrentSnapshot(subscriptionId, snapshotId);
     store.insertScheduled(subscriptionId, next);
-    var response = support.detailResponse(queries.detail(memberId, subscriptionId, 0, 20, 0, 20));
+    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(
             201, response, "/api/subscriptions/" + subscriptionId, "\"0\"", false);

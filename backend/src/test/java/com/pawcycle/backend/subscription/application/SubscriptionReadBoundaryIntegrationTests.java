@@ -88,7 +88,7 @@ class SubscriptionReadBoundaryIntegrationTests {
       jdbc.update("UPDATE subscription_plans SET current_plan_version_id=? WHERE id=?", version, plan);
     });
     pet = service.createPet(member, new PetCreateCommand("pet", "DOG")).petId();
-    subscription = service.createSubscription(member, "initial", request()).body().subscriptionId();
+    subscription = service.createSubscription(member, "initial", request().toCommand()).body().subscriptionId();
   }
 
   @AfterEach
@@ -190,6 +190,9 @@ class SubscriptionReadBoundaryIntegrationTests {
     assertThat(created.getHeader("ETag")).isEqualTo("\"0\"");
     assertThat(created.getHeader("Location")).isEqualTo("/api/subscriptions/" + id);
     assertThat(creationJson("wire-create")).isEqualTo(databaseJson(oldJson));
+    // Seed the pre-refactor API DTO JSON and API-request fingerprint, independently of the new result type.
+    jdbc.update("UPDATE subscription_creation_idempotency_results SET response_body=?,payload_fingerprint=? WHERE member_id=? AND idempotency_key='wire-create'",
+        oldJson, legacyFingerprint(request()), member);
     var replay = http.perform(post("/api/subscriptions").with(as(member)).with(csrf()).header("Idempotency-Key", "wire-create")
         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request()))).andExpect(status().isCreated()).andReturn().getResponse();
     assertThat(replay.getContentAsString()).isEqualTo(oldJson);
@@ -205,7 +208,9 @@ class SubscriptionReadBoundaryIntegrationTests {
     assertThat(command.getContentAsString()).isEqualTo(oldCommandJson);
     assertThat(command.getHeader("ETag")).isEqualTo("\"1\"");
     assertThat(commandJson(id, "wire-command")).isEqualTo(databaseJson(oldCommandJson));
-    service.command(member, id, "pause", "later", "\"1\"", SubscriptionCommandRequest.empty());
+    jdbc.update("UPDATE subscription_command_idempotency_results SET response_body=?,payload_fingerprint=? WHERE member_id=? AND subscription_id=? AND command_type='CHANGE_DELIVERY_CYCLE' AND idempotency_key='wire-command'",
+        oldCommandJson, legacyFingerprint(change), member, id);
+    service.command(member, id, "pause", "later", "\"1\"", SubscriptionCommandRequest.empty().toCommand());
     var stale = http.perform(post("/api/subscriptions/" + id + "/commands/change-delivery-cycle").with(as(member)).with(csrf())
         .header("Idempotency-Key", "wire-command").header("If-Match", "\"999\"").contentType(MediaType.APPLICATION_JSON)
         .content(json.writeValueAsString(change))).andExpect(status().isOk()).andReturn().getResponse();
@@ -221,11 +226,11 @@ class SubscriptionReadBoundaryIntegrationTests {
   void responseJsonReservationsAndMutationRollbackTogetherAfterCompletion() {
     long[] created = new long[1];
     assertThatThrownBy(() -> tx().executeWithoutResult(s -> {
-      var result = service.createSubscription(member, "rollback", request()); created[0] = result.body().subscriptionId();
-      assertThat(result.body()).isExactlyInstanceOf(SubscriptionDetailResponse.class);
+      var result = service.createSubscription(member, "rollback", request().toCommand()); created[0] = result.body().subscriptionId();
+      assertThat(result.body()).isExactlyInstanceOf(com.pawcycle.backend.subscription.model.SubscriptionReadModel.Detail.class);
       assertThat(creationJson("rollback")).isEqualTo(databaseJson(json.writeValueAsString(result.body())));
-      var command = service.command(member, created[0], "pause", "rollback-command", "\"0\"", SubscriptionCommandRequest.empty());
-      assertThat(command.body()).isExactlyInstanceOf(SubscriptionDetailResponse.class);
+      var command = service.command(member, created[0], "pause", "rollback-command", "\"0\"", SubscriptionCommandRequest.empty().toCommand());
+      assertThat(command.body()).isExactlyInstanceOf(com.pawcycle.backend.subscription.model.SubscriptionReadModel.Detail.class);
       assertThat(jdbc.queryForObject("SELECT response_body FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND idempotency_key='rollback-command'", String.class, member, created[0]))
           .isEqualTo(databaseJson(json.writeValueAsString(command.body())));
       throw new IllegalStateException("after stored DTO JSON");
@@ -344,6 +349,9 @@ class SubscriptionReadBoundaryIntegrationTests {
   }
 
   private CreateSubscriptionRequest request() { return new CreateSubscriptionRequest(pet, version, 4); }
+  private String legacyFingerprint(Object apiRequest) throws Exception {
+    return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(apiRequest)));
+  }
   private String creationJson(String key) { return jdbc.queryForObject("SELECT response_body FROM subscription_creation_idempotency_results WHERE member_id=? AND idempotency_key=?", String.class, member, key); }
   private String commandJson(long id, String key) { return jdbc.queryForObject("SELECT response_body FROM subscription_command_idempotency_results WHERE member_id=? AND subscription_id=? AND command_type='CHANGE_DELIVERY_CYCLE' AND idempotency_key=?", String.class, member, id, key); }
   // MySQL JSON columns canonicalize key order/number representation in the frozen implementation too.
