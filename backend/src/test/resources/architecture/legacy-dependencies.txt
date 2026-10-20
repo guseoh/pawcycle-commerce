@@ -6,7 +6,6 @@
 # Normalized compiled dependency graph is identical: 817 classes / 7602 edges; NEW=0.
 application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService -> com.pawcycle.backend.commerce.checkout.api.CheckoutPricingResponse
 application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
-application-api | com.pawcycle.backend.commerce.payment.application.PaymentApplicationService -> com.pawcycle.backend.commerce.payment.api.PaymentResponse
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.catalog.maintenance.ProductionDemoCatalogImportCommand
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.member.maintenance.ProductionAuthSmokeMemberBootstrap
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence
@@ -14,12 +13,9 @@ runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogIm
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence
 
 # T02 RECLASSIFIED: existing root services/API records now have application/api packages.
-application-api | com.pawcycle.backend.commerce.billing.application.BillingApplicationService -> com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse
-application-api | com.pawcycle.backend.commerce.billing.application.BillingMethodQueryService -> com.pawcycle.backend.commerce.billing.api.BillingMethodResponse
 application-api | com.pawcycle.backend.commerce.cancellation.application.CancellationService -> com.pawcycle.backend.commerce.cancellation.api.CancellationResponse
 application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
 application-api | com.pawcycle.backend.commerce.delivery.application.DeliveryService -> com.pawcycle.backend.commerce.delivery.api.DeliveryResponse
-application-api | com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService -> com.pawcycle.backend.commerce.payment.api.PaymentReconciliationResponse
 application-api | com.pawcycle.backend.commerce.refund.application.RefundService -> com.pawcycle.backend.commerce.refund.api.RefundResponse
 application-api | com.pawcycle.backend.commerce.returning.application.ReturnService -> com.pawcycle.backend.commerce.returning.api.ReturnResponse
 

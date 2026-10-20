@@ -25,7 +25,7 @@ public class AdminPaymentController {
   @PostMapping("/{id}/reconcile")
   public PaymentReconciliationResponse reconcile(
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal, @PathVariable long id) {
-    return payments.reconcile(id, principal.memberId());
+    return PaymentReconciliationResponse.from(payments.reconcile(id, principal.memberId()));
   }
 
   @PostMapping("/{id}/retry-billing")
