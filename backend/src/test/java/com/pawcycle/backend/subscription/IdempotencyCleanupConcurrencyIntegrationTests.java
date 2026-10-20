@@ -16,7 +16,7 @@ import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -270,7 +270,7 @@ class IdempotencyCleanupConcurrencyIntegrationTests {
     long petId =
         service
                     .createPet(member.getId(), new PetCreateCommand("동시성 반려동물", "DOG")).petId();
-    CreateSubscriptionRequest request = new CreateSubscriptionRequest(petId, planVersionId, 4);
+    SubscriptionCreateCommand request = new SubscriptionCreateCommand(petId, planVersionId, 4);
     String key = prefix + "-" + UUID.randomUUID();
     SubscriptionResult created =
         service.createSubscription(member.getId(), key, request);
@@ -321,7 +321,7 @@ class IdempotencyCleanupConcurrencyIntegrationTests {
   }
 
   private record Fixture(
-      long memberId, String key, CreateSubscriptionRequest request, long subscriptionId) {}
+      long memberId, String key, SubscriptionCreateCommand request, long subscriptionId) {}
 
   private record ReplayObservation(
       SubscriptionResult result, LocalDateTime completedAt) {}

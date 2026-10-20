@@ -93,7 +93,7 @@ public class SubscriptionController {
       @AuthenticationPrincipal AuthenticatedMemberPrincipal principal,
       @RequestHeader(value = "Idempotency-Key", required = false) String key,
       @Valid @RequestBody CreateSubscriptionRequest request) {
-    return response(service.createSubscription(principal.memberId(), key, request));
+    return response(service.createSubscription(principal.memberId(), key, request.toCommand()));
   }
 
   @GetMapping("/subscriptions")
@@ -135,7 +135,7 @@ public class SubscriptionController {
             command,
             key,
             ifMatch,
-            request == null ? SubscriptionCommandRequest.empty() : request));
+            (request == null ? SubscriptionCommandRequest.empty() : request).toCommand()));
   }
 
   private ResponseEntity<SubscriptionDetailResponse> response(SubscriptionResult result) {
@@ -143,7 +143,7 @@ public class SubscriptionController {
     if (result.location() != null) response.header("Location", result.location());
     if (result.etag() != null) response.header("ETag", result.etag());
     if (result.replay()) response.header("Idempotency-Replayed", "true");
-    return response.body(result.body());
+    return response.body(result.body() == null ? null : SubscriptionDetailResponse.from(result.body()));
   }
 
   private void validateIfMatchSyntax(String value) {

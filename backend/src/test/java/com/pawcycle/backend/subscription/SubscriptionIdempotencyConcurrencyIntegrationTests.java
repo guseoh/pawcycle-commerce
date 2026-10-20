@@ -14,8 +14,8 @@ import com.pawcycle.backend.catalog.sku.persistence.SkuRepository;
 import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -178,7 +178,7 @@ class SubscriptionIdempotencyConcurrencyIntegrationTests {
         service.createSubscription(
             member.getId(),
             "concurrent-create",
-            new CreateSubscriptionRequest(petId, planVersionId, 4));
+            new SubscriptionCreateCommand(petId, planVersionId, 4));
     long subscriptionId = created.body().subscriptionId();
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -194,7 +194,7 @@ class SubscriptionIdempotencyConcurrencyIntegrationTests {
                     "pause",
                     "concurrent-pause",
                     "\"0\"",
-                    SubscriptionCommandRequest.empty());
+                    SubscriptionCommand.empty());
               });
       Future<SubscriptionResult> second =
           executor.submit(
@@ -206,7 +206,7 @@ class SubscriptionIdempotencyConcurrencyIntegrationTests {
                     "pause",
                     "concurrent-pause",
                     "\"0\"",
-                    SubscriptionCommandRequest.empty());
+                    SubscriptionCommand.empty());
               });
       start.countDown();
 

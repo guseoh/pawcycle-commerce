@@ -10,8 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pawcycle.backend.subscription.model.PetCreateCommand;
-import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
-import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
+import com.pawcycle.backend.subscription.model.SubscriptionCommand;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
@@ -264,7 +264,7 @@ class SubscriptionCommandIntegrationTests {
     assertThatThrownBy(
             () ->
                 service.command(
-                    member.getId(), subscriptionId, "pause", "missing-if-match", null, SubscriptionCommandRequest.empty()))
+                    member.getId(), subscriptionId, "pause", "missing-if-match", null, SubscriptionCommand.empty()))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IF_MATCH_REQUIRED");
   }
@@ -276,7 +276,7 @@ class SubscriptionCommandIntegrationTests {
     assertThatThrownBy(
             () ->
                 service.command(
-                    member.getId(), subscriptionId, "pause", "invalid-if-match", "0", SubscriptionCommandRequest.empty()))
+                    member.getId(), subscriptionId, "pause", "invalid-if-match", "0", SubscriptionCommand.empty()))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "IF_MATCH_INVALID");
   }
@@ -288,7 +288,7 @@ class SubscriptionCommandIntegrationTests {
     assertThatThrownBy(
             () ->
                 service.command(
-                    member.getId(), subscriptionId, "pause", "stale-if-match", "\"1\"", SubscriptionCommandRequest.empty()))
+                    member.getId(), subscriptionId, "pause", "stale-if-match", "\"1\"", SubscriptionCommand.empty()))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
   }
@@ -297,8 +297,8 @@ class SubscriptionCommandIntegrationTests {
   void changePlanKeepsCurrentCycleAndCreatesPendingSnapshot() {
     long subscriptionId = createSubscription("change-plan");
 
-    SubscriptionCommandRequest commandBody =
-        new SubscriptionCommandRequest(null, planVersionId, null, null, null, null);
+    SubscriptionCommand commandBody =
+        new SubscriptionCommand(null, planVersionId, null, null, null, null);
     SubscriptionResult result =
         service.command(
             member.getId(), subscriptionId, "change-plan", "change-plan", "\"0\"", commandBody);
@@ -383,14 +383,14 @@ class SubscriptionCommandIntegrationTests {
         "change-plan",
         "plan-first-plan",
         "\"0\"",
-        new SubscriptionCommandRequest(null, alternateVersionId, null, null, null, null));
+        new SubscriptionCommand(null, alternateVersionId, null, null, null, null));
     service.command(
         member.getId(),
         planFirst,
         "change-delivery-cycle",
         "plan-first-cycle",
         "\"1\"",
-        new SubscriptionCommandRequest(null, null, 8, null, null, null));
+        new SubscriptionCommand(null, null, 8, null, null, null));
 
     assertPendingSnapshot(planFirst, alternateVersionId, 8);
     assertThat(
@@ -407,14 +407,14 @@ class SubscriptionCommandIntegrationTests {
         "change-delivery-cycle",
         "cycle-first-cycle",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, 8, null, null, null));
+        new SubscriptionCommand(null, null, 8, null, null, null));
     service.command(
         member.getId(),
         cycleFirst,
         "change-plan",
         "cycle-first-plan",
         "\"1\"",
-        new SubscriptionCommandRequest(null, alternateVersionId, null, null, null, null));
+        new SubscriptionCommand(null, alternateVersionId, null, null, null, null));
 
     assertPendingSnapshot(cycleFirst, alternateVersionId, 8);
     assertThat(
@@ -440,7 +440,7 @@ class SubscriptionCommandIntegrationTests {
         "change-plan",
         "pending-plan",
         "\"0\"",
-        new SubscriptionCommandRequest(null, fourWeekOnlyVersionId, null, null, null, null));
+        new SubscriptionCommand(null, fourWeekOnlyVersionId, null, null, null, null));
 
     assertThatThrownBy(
             () ->
@@ -450,7 +450,7 @@ class SubscriptionCommandIntegrationTests {
                     "change-delivery-cycle",
                     "unsupported-pending-cycle",
                     "\"1\"",
-                    new SubscriptionCommandRequest(null, null, 8, null, null, null)))
+                    new SubscriptionCommand(null, null, 8, null, null, null)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "DELIVERY_CYCLE_NOT_ALLOWED");
   }
@@ -468,7 +468,7 @@ class SubscriptionCommandIntegrationTests {
         "change-delivery-cycle",
         "cycle-before-state",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, 8, null, null, null));
+        new SubscriptionCommand(null, null, 8, null, null, null));
     long originalTarget =
         jdbc.queryForObject(
             "SELECT target_schedule_id FROM pending_plan_changes WHERE subscription_id=?",
@@ -476,16 +476,16 @@ class SubscriptionCommandIntegrationTests {
             subscriptionId);
 
     service.command(
-        member.getId(), subscriptionId, "skip-next", "skip-with-cycle", "\"1\"", SubscriptionCommandRequest.empty());
+        member.getId(), subscriptionId, "skip-next", "skip-with-cycle", "\"1\"", SubscriptionCommand.empty());
     long skippedTarget =
         jdbc.queryForObject(
             "SELECT target_schedule_id FROM pending_plan_changes WHERE subscription_id=?",
             Long.class,
             subscriptionId);
     assertThat(skippedTarget).isNotEqualTo(originalTarget);
-    service.command(member.getId(), subscriptionId, "pause", "pause-with-cycle", "\"2\"", SubscriptionCommandRequest.empty());
+    service.command(member.getId(), subscriptionId, "pause", "pause-with-cycle", "\"2\"", SubscriptionCommand.empty());
     service.command(
-        member.getId(), subscriptionId, "resume", "resume-with-cycle", "\"3\"", SubscriptionCommandRequest.empty());
+        member.getId(), subscriptionId, "resume", "resume-with-cycle", "\"3\"", SubscriptionCommand.empty());
 
     assertPendingSnapshot(subscriptionId, planVersionId, 8);
     assertThat(
@@ -502,7 +502,7 @@ class SubscriptionCommandIntegrationTests {
         .isEqualTo(4);
 
     service.command(
-        member.getId(), subscriptionId, "cancel", "cancel-with-cycle", "\"4\"", SubscriptionCommandRequest.empty());
+        member.getId(), subscriptionId, "cancel", "cancel-with-cycle", "\"4\"", SubscriptionCommand.empty());
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM pending_plan_changes WHERE subscription_id=?",
@@ -520,8 +520,8 @@ class SubscriptionCommandIntegrationTests {
             Long.class,
             subscriptionId);
     LocalDate requestedDate = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(10);
-    SubscriptionCommandRequest body =
-        new SubscriptionCommandRequest(null, null, null, requestedDate, null, null);
+    SubscriptionCommand body =
+        new SubscriptionCommand(null, null, null, requestedDate, null, null);
 
     SubscriptionResult first =
         service.command(
@@ -553,7 +553,7 @@ class SubscriptionCommandIntegrationTests {
                     "reschedule-next",
                     "stale-reschedule",
                     "\"0\"",
-                    new SubscriptionCommandRequest(
+                    new SubscriptionCommand(
                         null, null, null, requestedDate.plusDays(1), null, null)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SUBSCRIPTION_VERSION_MISMATCH");
@@ -579,7 +579,7 @@ class SubscriptionCommandIntegrationTests {
                     "reschedule-next",
                     "today-reschedule",
                     "\"0\"",
-                    new SubscriptionCommandRequest(null, null, null, today, null, null)))
+                    new SubscriptionCommand(null, null, null, today, null, null)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_NOT_FUTURE");
     assertThatThrownBy(
@@ -590,7 +590,7 @@ class SubscriptionCommandIntegrationTests {
                     "reschedule-next",
                     "duplicate-reschedule",
                     "\"0\"",
-                    new SubscriptionCommandRequest(null, null, null, existingDate, null, null)))
+                    new SubscriptionCommand(null, null, null, existingDate, null, null)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "SCHEDULE_DATE_CONFLICT");
     assertThatThrownBy(
@@ -601,7 +601,7 @@ class SubscriptionCommandIntegrationTests {
                     "reschedule-next",
                     "invalid-calendar-reschedule",
                     "\"0\"",
-                    SubscriptionCommandRequest.empty()))
+                    SubscriptionCommand.empty()))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
     assertThatThrownBy(
@@ -612,7 +612,7 @@ class SubscriptionCommandIntegrationTests {
                     "reschedule-next",
                     "non-string-reschedule",
                     "\"0\"",
-                    SubscriptionCommandRequest.empty()))
+                    SubscriptionCommand.empty()))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
   }
@@ -633,7 +633,7 @@ class SubscriptionCommandIntegrationTests {
         "change-delivery-cycle",
         "detail-pending",
         "\"0\"",
-        new SubscriptionCommandRequest(null, null, 8, null, null, null));
+        new SubscriptionCommand(null, null, 8, null, null, null));
 
     SubscriptionDetailResponse detail =
         SubscriptionDetailResponse.from(service.subscription(member.getId(), subscriptionId, 0, 20, 0, 20));
@@ -689,7 +689,7 @@ class SubscriptionCommandIntegrationTests {
 
     SubscriptionResult result =
         service.command(
-            member.getId(), subscriptionId, "skip-next", "skip-next", "\"0\"", SubscriptionCommandRequest.empty());
+            member.getId(), subscriptionId, "skip-next", "skip-next", "\"0\"", SubscriptionCommand.empty());
 
     assertThat(result.etag()).isEqualTo("\"1\"");
     assertThat(
@@ -716,12 +716,12 @@ class SubscriptionCommandIntegrationTests {
   void skipPauseAndResumeAvoidScheduleDateCollision() {
     long subscriptionId = createSubscription("skip-pause-resume");
     service.command(
-        member.getId(), subscriptionId, "skip-next", "skip-before-pause", "\"0\"", SubscriptionCommandRequest.empty());
-    service.command(member.getId(), subscriptionId, "pause", "pause-after-skip", "\"1\"", SubscriptionCommandRequest.empty());
+        member.getId(), subscriptionId, "skip-next", "skip-before-pause", "\"0\"", SubscriptionCommand.empty());
+    service.command(member.getId(), subscriptionId, "pause", "pause-after-skip", "\"1\"", SubscriptionCommand.empty());
 
     SubscriptionResult resumed =
         service.command(
-            member.getId(), subscriptionId, "resume", "resume-after-skip", "\"2\"", SubscriptionCommandRequest.empty());
+            member.getId(), subscriptionId, "resume", "resume-after-skip", "\"2\"", SubscriptionCommand.empty());
 
     assertThat(resumed.body().status()).isEqualTo("ACTIVE");
     assertThat(resumed.body().version()).isEqualTo(3L);
@@ -753,9 +753,9 @@ class SubscriptionCommandIntegrationTests {
     long subscriptionId = createSubscription("pause-resume");
 
     SubscriptionResult paused =
-        service.command(member.getId(), subscriptionId, "pause", "pause-replay", "\"0\"", SubscriptionCommandRequest.empty());
+        service.command(member.getId(), subscriptionId, "pause", "pause-replay", "\"0\"", SubscriptionCommand.empty());
     SubscriptionResult replay =
-        service.command(member.getId(), subscriptionId, "pause", "pause-replay", null, SubscriptionCommandRequest.empty());
+        service.command(member.getId(), subscriptionId, "pause", "pause-replay", null, SubscriptionCommand.empty());
 
     assertThat(paused.etag()).isEqualTo("\"1\"");
     assertThat(paused.body().status()).isEqualTo("PAUSED");
@@ -772,7 +772,7 @@ class SubscriptionCommandIntegrationTests {
 
     SubscriptionResult resumed =
         service.command(
-            member.getId(), subscriptionId, "resume", "resume-after-pause", "\"1\"", SubscriptionCommandRequest.empty());
+            member.getId(), subscriptionId, "resume", "resume-after-pause", "\"1\"", SubscriptionCommand.empty());
 
     assertThat(resumed.etag()).isEqualTo("\"2\"");
     assertThat(resumed.body().status()).isEqualTo("ACTIVE");
@@ -796,7 +796,7 @@ class SubscriptionCommandIntegrationTests {
 
     SubscriptionResult paused =
         service.command(
-                    member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", SubscriptionCommandRequest.empty());
+                    member.getId(), subscriptionId, "pause", "overdue-pause", "\"0\"", SubscriptionCommand.empty());
     assertThat(paused.body().status()).isEqualTo("PAUSED");
     assertThat(paused.body().version()).isEqualTo(1L);
     assertThat(
@@ -834,10 +834,10 @@ class SubscriptionCommandIntegrationTests {
         "change-plan",
         "change-before-cancel",
         "\"0\"",
-        new SubscriptionCommandRequest(null, planVersionId, null, null, null, null));
+        new SubscriptionCommand(null, planVersionId, null, null, null, null));
 
     SubscriptionResult canceled =
-    service.command(member.getId(), subscriptionId, "cancel", "cancel", "\"1\"", SubscriptionCommandRequest.empty());
+    service.command(member.getId(), subscriptionId, "cancel", "cancel", "\"1\"", SubscriptionCommand.empty());
 
     assertThat(canceled.etag()).isEqualTo("\"2\"");
     assertThat(canceled.body().status()).isEqualTo("CANCELED");
@@ -866,7 +866,7 @@ class SubscriptionCommandIntegrationTests {
       Locale.setDefault(Locale.forLanguageTag("tr-TR"));
       SubscriptionResult result =
           service.command(
-              member.getId(), subscriptionId, "skip-next", "locale-skip", "\"0\"", SubscriptionCommandRequest.empty());
+              member.getId(), subscriptionId, "skip-next", "locale-skip", "\"0\"", SubscriptionCommand.empty());
       assertThat(result.etag()).isEqualTo("\"1\"");
       assertThat(
               jdbc.queryForObject(
@@ -944,7 +944,7 @@ class SubscriptionCommandIntegrationTests {
                 service.createSubscription(
                     member.getId(),
                     "invalid-pet-id",
-                    new CreateSubscriptionRequest(-1L, planVersionId, 4)))
+                    new SubscriptionCreateCommand(-1L, planVersionId, 4)))
         .isInstanceOf(SubscriptionFailure.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
     assertThat(
@@ -959,7 +959,7 @@ class SubscriptionCommandIntegrationTests {
   @Test
   void idempotencyKeysAreCaseSensitive() {
     long petId = createPet("case-key", "DOG");
-    CreateSubscriptionRequest body = new CreateSubscriptionRequest(petId, planVersionId, 4);
+    SubscriptionCreateCommand body = new SubscriptionCreateCommand(petId, planVersionId, 4);
     SubscriptionResult upper =
         service.createSubscription(member.getId(), "CaseKey", body);
     SubscriptionResult lower =
@@ -973,7 +973,7 @@ class SubscriptionCommandIntegrationTests {
         service.createSubscription(
             member.getId(),
             "create-" + key,
-            new CreateSubscriptionRequest(petId, planVersionId, 4));
+            new SubscriptionCreateCommand(petId, planVersionId, 4));
     return created.body().subscriptionId();
   }
 

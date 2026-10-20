@@ -2,7 +2,6 @@ package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 
-import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
 import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
@@ -48,13 +47,10 @@ final class SubscriptionApplicationSupport {
     }
   }
 
-  SubscriptionDetailResponse detailResponse(SubscriptionReadModel.Detail detail) {
-    return SubscriptionDetailResponse.from(detail);
-  }
-
-  SubscriptionDetailResponse responseBody(String bodyJson) {
+  SubscriptionReadModel.Detail responseBody(String bodyJson) {
     try {
-      return json.readValue(bodyJson, SubscriptionDetailResponse.class);
+      // The existing model preserves the legacy stored API JSON schema; boundary tests pin its bytes.
+      return json.readValue(bodyJson, SubscriptionReadModel.Detail.class);
     } catch (Exception exception) {
       throw new IllegalStateException("저장된 멱등 결과를 읽을 수 없습니다.", exception);
     }

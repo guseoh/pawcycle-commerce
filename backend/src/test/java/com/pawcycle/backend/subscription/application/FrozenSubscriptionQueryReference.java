@@ -85,7 +85,9 @@ class FrozenSubscriptionQueryReference {
             .toList());
   }
 
-  SubscriptionOperationResult subscription(
+  record LegacyResult(int status, SubscriptionDetailResponse body, String location, String etag, boolean replay) {}
+
+  LegacyResult subscription(
       long memberId,
       long subscriptionId,
       int schedulePage,
@@ -96,7 +98,7 @@ class FrozenSubscriptionQueryReference {
     page(commandPage, commandSize);
     SubscriptionDetailResponse body =
         detail(memberId, subscriptionId, schedulePage, scheduleSize, commandPage, commandSize);
-    return new SubscriptionOperationResult(
+    return new LegacyResult(
         200, body, null, "\"" + body.version() + "\"", false);
   }
 

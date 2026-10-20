@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.api;
 
+import com.pawcycle.backend.subscription.model.SubscriptionCreateCommand;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -8,4 +9,8 @@ import jakarta.validation.constraints.Positive;
 public record CreateSubscriptionRequest(
     @NotNull @Positive Long petId,
     @NotNull @Positive Long planVersionId,
-    @NotNull @Min(1) @Max(8) @AllowedDeliveryCycle Integer deliveryCycleWeeks) {}
+    @NotNull @Min(1) @Max(8) @AllowedDeliveryCycle Integer deliveryCycleWeeks) {
+  public SubscriptionCreateCommand toCommand() {
+    return new SubscriptionCreateCommand(petId, planVersionId, deliveryCycleWeeks);
+  }
+}
