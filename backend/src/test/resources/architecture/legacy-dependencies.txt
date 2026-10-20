@@ -4,8 +4,6 @@
 # Delete resolved edges. Adding exceptions requires reviewed task evidence; tests never write this file.
 # T02: 14 RECLASSIFIED edges below were present at main 873f144 before layer names.
 # Normalized compiled dependency graph is identical: 817 classes / 7602 edges; NEW=0.
-application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService -> com.pawcycle.backend.commerce.checkout.api.CheckoutPricingResponse
-application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.catalog.maintenance.ProductionDemoCatalogImportCommand
 runtime-maintenance | com.pawcycle.backend.PawcycleBackendApplication -> com.pawcycle.backend.member.maintenance.ProductionAuthSmokeMemberBootstrap
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence
@@ -13,7 +11,6 @@ runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogIm
 runtime-maintenance | com.pawcycle.backend.catalog.application.CustomerCatalogImportService -> com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence
 
 # T02 RECLASSIFIED: existing root services/API records now have application/api packages.
-application-api | com.pawcycle.backend.commerce.checkout.application.CheckoutIdempotencyService -> com.pawcycle.backend.commerce.checkout.api.CheckoutResponse
 
 # T03 RECLASSIFIED: 47 pre-existing edges gain application/api layer names (main 5c077b8).
 # Before/after compiled graph normalized for class, nested and array element packages: 817 classes / 7602 edges, NEW=0.
