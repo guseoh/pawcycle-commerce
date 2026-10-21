@@ -10,7 +10,6 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ReviewSummaryService {
@@ -42,18 +41,18 @@ public class ReviewSummaryService {
     this.clock = clock;
   }
 
-  @Transactional
   public ReviewSummaryResponse summary(long productId) {
     if (products.findPublicById(productId).isEmpty() || !queries.hasActiveBrand(productId))
       throw new ProductNotFoundException();
-    List<ReviewRow> reviews = queries.latestReviews(productId).stream().map(this::toReviewRow).toList();
-    long count = queries.visibleReviewCount(productId);
-    BigDecimal average = queries.visibleAverageRating(productId);
+    var snapshot = queries.snapshot(productId);
+    long count = snapshot.count();
+    BigDecimal average = snapshot.average();
     if (count < 3) return new ReviewSummaryResponse("INSUFFICIENT_REVIEWS", null, count, average);
+    List<ReviewRow> reviews = snapshot.latestReviews().stream().map(this::toReviewRow).toList();
     List<ReviewRow> sourceReviews =
-        queries.allReviews(productId).stream().map(this::toReviewRow).toList();
+        snapshot.sourceReviews().stream().map(this::toReviewRow).toList();
     String fingerprint = fingerprint(sourceReviews);
-    var cached = queries.cachedSummary(productId).orElse(null);
+    var cached = snapshot.cached().orElse(null);
     if (cached != null && fingerprint.equals(cached.sourceFingerprint()))
       return new ReviewSummaryResponse("AVAILABLE", cached.summary(), count, average);
     String generated;
@@ -68,7 +67,11 @@ public class ReviewSummaryService {
     }
     if (!validAiText(generated))
       return new ReviewSummaryResponse("UNAVAILABLE", null, count, average);
-    queries.saveSummary(productId, fingerprint, generated.trim(), Timestamp.from(clock.instant()));
+    // Recheck the complete visible review set in a short locking transaction after AI I/O.
+    if (!queries.saveSummaryIfCurrent(
+        productId, snapshot.sourceReviews(), fingerprint, generated.trim(), Timestamp.from(clock.instant()))) {
+      return new ReviewSummaryResponse("UNAVAILABLE", null, count, average);
+    }
     return new ReviewSummaryResponse("AVAILABLE", generated.trim(), count, average);
   }
 

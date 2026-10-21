@@ -3,9 +3,10 @@ package com.pawcycle.backend.catalog.product.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.IntStream;
 import com.pawcycle.backend.catalog.product.persistence.ProductComparisonQueryRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductComparisonService {
@@ -29,7 +30,6 @@ public class ProductComparisonService {
     this.ai = ai;
   }
 
-  @Transactional(readOnly = true)
   public ProductComparisonResponse compare(List<Long> productIds) {
     if (productIds == null
         || productIds.size() < 2
@@ -37,7 +37,13 @@ public class ProductComparisonService {
         || productIds.stream().anyMatch(java.util.Objects::isNull)
         || productIds.stream().distinct().count() != productIds.size())
       throw new ProductComparisonException(400, "VALIDATION_FAILED", "상품은 서로 다른 2~3개를 선택해야 합니다.");
-    List<ProductComparisonFacts> facts = productIds.stream().map(this::facts).toList();
+    // Keep one consistent read transaction across all selected products, then release it
+    // before invoking the external AI client.
+    var snapshots = queries.findSnapshots(productIds);
+    List<ProductComparisonFacts> facts =
+        IntStream.range(0, productIds.size())
+            .mapToObj(index -> facts(productIds.get(index), snapshots.get(index)))
+            .toList();
     String summary = null;
     String status = "UNAVAILABLE";
     try {
@@ -51,13 +57,12 @@ public class ProductComparisonService {
     return new ProductComparisonResponse(facts, status, summary);
   }
 
-  private ProductComparisonFacts facts(long productId) {
-    ProductComparisonQueryRepository.RawFacts row =
-        queries
-            .findFacts(productId)
-            .orElseThrow(
-                () -> new ProductComparisonException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
-    List<String> facets = queries.findFacets(productId);
+  private ProductComparisonFacts facts(
+      long productId, Optional<ProductComparisonQueryRepository.RawSnapshot> candidate) {
+    var snapshot = candidate.orElseThrow(
+        () -> new ProductComparisonException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+    ProductComparisonQueryRepository.RawFacts row = snapshot.facts();
+    List<String> facets = snapshot.facets();
     BigDecimal price = row.price(), compareAt = row.compareAtPrice();
     Integer discount =
         price == null || compareAt == null

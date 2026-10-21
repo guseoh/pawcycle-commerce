@@ -21,6 +21,16 @@ public class ProductComparisonQueryRepository {
   }
 
   @Transactional(readOnly = true)
+  public List<Optional<RawSnapshot>> findSnapshots(List<Long> productIds) {
+    return productIds.stream().map(this::findSnapshot).toList();
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<RawSnapshot> findSnapshot(long productId) {
+    return findFacts(productId).map(facts -> new RawSnapshot(facts, findFacets(productId)));
+  }
+
+  @Transactional(readOnly = true)
   public Optional<RawFacts> findFacts(long productId) {
     List<Tuple> rows =
         entityManager
@@ -96,6 +106,8 @@ public class ProductComparisonQueryRepository {
         ? null
         : number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());
   }
+
+  public record RawSnapshot(RawFacts facts, List<String> facets) {}
 
   public record RawFacts(
       long productId,
