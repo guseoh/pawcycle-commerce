@@ -1,6 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,12 +26,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @SpringBootTest
 @ActiveProfiles("test")
 class ReviewSummaryTransactionBoundaryIntegrationTests {
   @Autowired JdbcTemplate jdbc;
+  @Autowired PlatformTransactionManager transactionManager;
   @Autowired ReviewSummaryService reviewSummaries;
   @Autowired ReviewSummaryQueryRepository queries;
   @Autowired ProductComparisonService comparisons;
@@ -150,6 +156,60 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
             .get()
             .extracting(ReviewSummaryQueryRepository.CachedSummary::summary)
             .isEqualTo(newer.summary());
+      } finally {
+        release.countDown();
+      }
+    }
+  }
+
+  @Test
+  void currentReadHoldsProductReviewIndexRangeUntilCommit() throws Exception {
+    var original = queries.snapshot(productId);
+    CountDownLatch rangeLocked = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch insertStarted = new CountDownLatch(1);
+    Timestamp time = Timestamp.from(Instant.parse("2026-10-21T00:03:00Z"));
+
+    try (var workers = Executors.newFixedThreadPool(2)) {
+      var guard = workers.submit(() -> {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        return transaction.execute(status -> {
+          boolean accepted = queries.saveSummaryIfCurrent(
+              productId,
+              original.sourceReviews(),
+              "a".repeat(64),
+              "변경 전 리뷰 내용",
+              time);
+          rangeLocked.countDown();
+          try {
+            if (!release.await(10, TimeUnit.SECONDS))
+              throw new IllegalStateException("guard release timeout");
+          } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+          }
+          return accepted;
+        });
+      });
+      try {
+        assertThat(rangeLocked.await(10, TimeUnit.SECONDS)).isTrue();
+        var concurrentInsert = workers.submit(() -> {
+          insertStarted.countDown();
+          return jdbc.update(
+              """
+              INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)
+              VALUES (?,?,5,?,true,?,?)
+              """,
+              productId, memberIds.get(3), "경합 중 삽입한 리뷰", time, time);
+        });
+        assertThat(insertStarted.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThatThrownBy(() -> concurrentInsert.get(300, TimeUnit.MILLISECONDS))
+            .isInstanceOf(TimeoutException.class);
+        release.countDown();
+        assertThat(guard.get(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(concurrentInsert.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+        assertThat(queries.snapshot(productId).sourceReviews()).hasSize(4);
       } finally {
         release.countDown();
       }

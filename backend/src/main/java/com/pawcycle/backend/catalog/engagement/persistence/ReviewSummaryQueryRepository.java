@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
@@ -82,7 +83,7 @@ public class ReviewSummaryQueryRepository {
         LocalDateTime.ofInstant(generatedAt.toInstant(), ZoneOffset.UTC));
   }
 
-  @Transactional
+  @Transactional(isolation = Isolation.REPEATABLE_READ)
   public boolean saveSummaryIfCurrent(
       long productId,
       List<ReviewRow> expectedVisibleReviews,
@@ -92,7 +93,7 @@ public class ReviewSummaryQueryRepository {
     // Use a current, locking SQL read rather than managed ReviewEntity instances:
     // OpenEntityManagerInView may still hold pre-AI entity values in its first-level cache.
     // The product_id index range includes hidden reviews and protects concurrent inserts
-    // through InnoDB next-key locks under the configured REPEATABLE READ isolation.
+    // through InnoDB next-key locks at this method's explicit REPEATABLE READ isolation.
     List<Tuple> rows =
         entityManager
             .createNativeQuery(
