@@ -34,6 +34,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -138,7 +139,69 @@ class CustomerCatalogInvalidManifestIntegrationTests {
     var before = snapshot();
     new TransactionTemplate(transactionManager).execute(status -> service.validate());
     assertThat(snapshot()).isEqualTo(before);
+    // service and supplement are constructed directly, so their annotations are not proxies.
+    // This explicit outer transaction owns baseline -> supplement -> correction, including
+    // proxied REQUIRED delegates and afterCommit registrations on the shared DataSource.
+    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+      status.setRollbackOnly();
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      var result = service.apply();
+      assertThat(result.baseline().operation()).isEqualTo(DemoCatalogImportOperation.APPLY);
+      assertThat(result.supplement().operation()).isEqualTo(CustomerCatalogImportOperation.APPLY);
+      assertThat(result.correction().operation()).isEqualTo(CustomerCatalogRealismOperation.APPLY);
+      var applied = snapshot();
+      assertThat(applied).isNotEqualTo(before);
+      assertThat(applied.get("inventories")).containsAll(before.get("inventories"));
+      assertThat(jdbc.queryForObject("SELECT name FROM brands WHERE slug='pawcycle-demo-catalog'", String.class))
+          .isEqualTo("PawCycle");
+      assertPersistedBoundary(pointer, value);
+      verify(cache, never()).invalidate();
+    });
+    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    assertThat(snapshot()).isEqualTo(before);
     verify(cache, never()).invalidate();
+  }
+
+  private void assertPersistedBoundary(String pointer, Object expected) {
+    JsonNode manifest = mapper.readTree(directory.resolve("custom-manifest.json").toFile());
+    String[] parts = pointer.substring(1).split("/");
+    String field = parts[parts.length - 1];
+    Map<String, Object> row;
+    switch (parts[0]) {
+      case "brands", "categories" -> row = jdbc.queryForMap(
+          "SELECT * FROM " + parts[0] + " WHERE slug=?", manifest.at("/" + parts[0] + "/0/slug").asString());
+      case "facets" -> {
+        String key = manifest.at("/facets/0/key").asString();
+        if (parts.length == 3) row = jdbc.queryForMap("SELECT * FROM facet_definitions WHERE `key`=?", key);
+        else {
+          row = jdbc.queryForMap("SELECT o.* FROM facet_options o JOIN facet_definitions d ON d.id=o.facet_definition_id WHERE d.`key`=? AND o.display_order=0", key);
+          field = "value";
+        }
+      }
+      case "products" -> {
+        String key = manifest.at("/products/0/catalogKey").asString();
+        if (parts.length == 3) row = jdbc.queryForMap("SELECT * FROM products WHERE catalog_key=?", key);
+        else row = switch (parts[2]) {
+          case "skus" -> jdbc.queryForMap("SELECT * FROM skus WHERE sku_code=?", manifest.at("/products/0/skus/0/skuCode").asString());
+          case "images" -> jdbc.queryForMap("SELECT i.* FROM product_images i JOIN products p ON p.id=i.product_id WHERE p.catalog_key=? AND i.image_type=? AND i.display_order=?",
+              key, manifest.at("/products/0/images/0/imageType").asString(), manifest.at("/products/0/images/0/displayOrder").asInt());
+          case "detailSections" -> jdbc.queryForMap("SELECT d.* FROM product_detail_sections d JOIN products p ON p.id=d.product_id WHERE p.catalog_key=? AND d.display_order=?",
+              key, manifest.at("/products/0/detailSections/0/displayOrder").asInt());
+          case "optionGroups" -> {
+            if (parts.length == 5) yield jdbc.queryForMap("SELECT g.* FROM product_option_groups g JOIN products p ON p.id=g.product_id WHERE p.catalog_key=? AND g.display_order=0", key);
+            field = "value";
+            yield jdbc.queryForMap("SELECT v.* FROM product_option_values v JOIN product_option_groups g ON g.id=v.option_group_id JOIN products p ON p.id=g.product_id WHERE p.catalog_key=? AND g.display_order=0 AND v.display_order=0", key);
+          }
+          default -> throw new AssertionError("Unmapped persisted boundary: " + pointer);
+        };
+      }
+      default -> throw new AssertionError("Unmapped persisted boundary: " + pointer);
+    }
+    String column = field.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(java.util.Locale.ROOT);
+    Object actual = row.get(column);
+    assertThat(row).as(pointer).containsKey(column);
+    if (expected instanceof BigDecimal decimal) assertThat(new BigDecimal(actual.toString())).as(pointer).isEqualByComparingTo(decimal);
+    else assertThat(actual).as(pointer).isEqualTo(expected);
   }
 
   static Stream<Arguments> malformedStructuresAndRelations() {
@@ -223,7 +286,12 @@ class CustomerCatalogInvalidManifestIntegrationTests {
     if (previous.isString() && value instanceof String replacement
         && !pointer.endsWith("Slug") && !pointer.endsWith("catalogKey") && !pointer.endsWith("skuCode")
         && !pointer.endsWith("parentSlug") && !pointer.endsWith("imageType")) {
-      replaceReferences(manifest, previous.asString(), replacement);
+      // Shared stock-photo URLs are content, not cross-product foreign keys. Keep a
+      // product's thumbnail/MAIN image coherent without rewriting unrelated correction targets.
+      JsonNode referenceScope = pointer.startsWith("/products/")
+              && (pointer.endsWith("/thumbnailUrl") || pointer.endsWith("/imageUrl"))
+          ? manifest.at("/products/" + pointer.split("/")[2]) : manifest;
+      replaceReferences(referenceScope, previous.asString(), replacement);
     }
     Path file = directory.resolve("custom-manifest.json");
     Files.writeString(file, mapper.writeValueAsString(manifest));
@@ -276,8 +344,9 @@ class CustomerCatalogInvalidManifestIntegrationTests {
     for (String table : List.of("brands", "categories", "products", "skus", "inventories",
         "product_images", "product_option_groups", "product_option_values", "sku_option_values",
         "facet_definitions", "facet_options", "category_facets", "product_facet_values",
-        "product_detail_sections", "admin_audit_logs")) {
-      result.put(table, jdbc.queryForList("SELECT * FROM " + table));
+        "product_detail_sections", "admin_audit_logs", "subscription_plans", "plan_versions",
+        "plan_items", "plan_version_delivery_cycles")) {
+      result.put(table, jdbc.queryForList("SELECT * FROM " + table + " ORDER BY 1,2"));
     }
     return result;
   }
