@@ -27,11 +27,14 @@ import com.pawcycle.backend.member.domain.MemberRole;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
+import java.util.stream.Stream;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -549,6 +552,78 @@ class AdminCatalogApiIntegrationTests {
                 .content("{}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.fieldErrors[0].field").value("request"));
+  }
+
+  static Stream<Arguments> corePatchValidationCases() {
+    String category = "/api/admin/categories/" + Long.MAX_VALUE;
+    String product = "/api/admin/products/" + Long.MAX_VALUE;
+    String sku = product + "/skus/" + Long.MAX_VALUE;
+    return Stream.concat(
+        Stream.of(category, product, sku).map(path -> Arguments.of(path, "{}",
+            """
+            [{"field":"request","message":"수정할 필드를 하나 이상 입력해 주세요."}]
+            """)),
+        Stream.of(
+            Arguments.of(category,
+                """
+                {"name":null,"slug":" ","displayOrder":-1,"active":null}
+                """,
+                """
+                [{"field":"name","message":"필수 입력입니다."},
+                 {"field":"slug","message":"필수 입력입니다."},
+                 {"field":"slug","message":"slug 형식이 올바르지 않습니다."},
+                 {"field":"displayOrder","message":"0 이상이어야 합니다."},
+                 {"field":"active","message":"필수 입력입니다."}]
+                """),
+            Arguments.of(product,
+                """
+                {"categoryId":null,"brandId":null,"name":" ","shortDescription":null,
+                 "description":"%s","petType":"%s","thumbnailUrl":"%s","status":null}
+                """.formatted("a".repeat(2001), "a".repeat(21), "a".repeat(2049)),
+                """
+                [{"field":"categoryId","message":"Category cannot be cleared."},
+                 {"field":"name","message":"필수 입력입니다."},
+                 {"field":"shortDescription","message":"필수 입력입니다."},
+                 {"field":"description","message":"길이가 허용 범위를 초과했습니다."},
+                 {"field":"petType","message":"길이가 허용 범위를 초과했습니다."},
+                 {"field":"thumbnailUrl","message":"길이가 허용 범위를 초과했습니다."},
+                 {"field":"status","message":"필수 입력입니다."}]
+                """),
+            Arguments.of(sku,
+                """
+                {"name":null,"price":-1,"compareAtPrice":1.001,
+                 "subscribable":null,"displayOrder":null,"status":null}
+                """,
+                """
+                [{"field":"name","message":"필수 입력입니다."},
+                 {"field":"price","message":"0 이상이며 정수 10자리, 소수 2자리 이하여야 합니다."},
+                 {"field":"compareAtPrice","message":"0 이상이며 정수 10자리, 소수 2자리 이하여야 합니다."},
+                 {"field":"subscribable","message":"필수 입력입니다."},
+                 {"field":"displayOrder","message":"필수 입력입니다."},
+                 {"field":"status","message":"필수 입력입니다."}]
+                """)));
+  }
+
+  @ParameterizedTest(name = "{index}: {0}")
+  @MethodSource("corePatchValidationCases")
+  void corePatchErrorsKeepExactMessagesAndOrderBeforeLookup(
+      String path, String body, String expectedErrors) throws Exception {
+    int audits = jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class);
+    MvcResult result = mockMvc.perform(patch(path).with(role(MemberRole.ADMIN)).with(csrf())
+            .contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest()).andReturn();
+    assertThat(json(result)).isEqualTo(objectMapper.readTree("""
+        {"code":"VALIDATION_FAILED","message":"요청 값이 올바르지 않습니다.","fieldErrors":%s}
+        """.formatted(expectedErrors)));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_logs", Integer.class)).isEqualTo(audits);
+  }
+
+  @Test
+  void productBrandClearKeepsNotFoundPrecedence() throws Exception {
+    patchProduct(Long.MAX_VALUE, "{\"brandId\":null}")
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
+        .andExpect(jsonPath("$.fieldErrors").isEmpty());
   }
 
   @Test
