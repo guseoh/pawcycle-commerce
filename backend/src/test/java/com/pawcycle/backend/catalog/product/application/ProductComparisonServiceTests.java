@@ -47,6 +47,7 @@ class ProductComparisonServiceTests {
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
     for (long id : List.of(1L, 2L, 3L)) stubFacts(repository, id);
     when(repository.findSnapshot(org.mockito.ArgumentMatchers.anyLong())).thenCallRealMethod();
+    when(repository.findSnapshots(org.mockito.ArgumentMatchers.anyList())).thenCallRealMethod();
     when(ai.compare(anyList())).thenReturn("세 상품은 가격과 구성에서 차이가 있습니다.");
 
     ProductComparisonResponse response =
@@ -73,6 +74,7 @@ class ProductComparisonServiceTests {
     stubFacts(repository, 1L);
     stubFacts(repository, 2L);
     when(repository.findSnapshot(org.mockito.ArgumentMatchers.anyLong())).thenCallRealMethod();
+    when(repository.findSnapshots(org.mockito.ArgumentMatchers.anyList())).thenCallRealMethod();
     when(ai.compare(anyList())).thenReturn("질병 치료를 보장합니다.");
 
     ProductComparisonResponse response =
@@ -95,6 +97,7 @@ class ProductComparisonServiceTests {
     when(repository.findFacets(1L)).thenReturn(List.of("size:small"));
     when(repository.findFacets(2L)).thenReturn(List.of("size:small"));
     when(repository.findSnapshot(org.mockito.ArgumentMatchers.anyLong())).thenCallRealMethod();
+    when(repository.findSnapshots(org.mockito.ArgumentMatchers.anyList())).thenCallRealMethod();
     when(ai.compare(anyList())).thenThrow(new IllegalStateException("provider unavailable"));
 
     ProductComparisonResponse response =
