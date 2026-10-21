@@ -31,6 +31,7 @@ class ReviewSummaryServiceTests {
     when(queries.latestReviews(1L)).thenReturn(List.of());
     when(queries.visibleReviewCount(1L)).thenReturn(2L);
     when(queries.visibleAverageRating(1L)).thenReturn(new BigDecimal("4.50"));
+    when(queries.snapshot(1L)).thenCallRealMethod();
 
     ReviewSummaryResponse response =
         new ReviewSummaryService(
@@ -93,8 +94,9 @@ class ReviewSummaryServiceTests {
         assertThat(response.status()).isEqualTo("UNAVAILABLE");
       } else {
         assertThat(response.status()).isEqualTo("AVAILABLE");
-        verify(queries).saveSummary(
+        verify(queries).saveSummaryIfCurrent(
             eq(1L),
+            org.mockito.ArgumentMatchers.anyList(),
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(Timestamp.class));
@@ -136,6 +138,28 @@ class ReviewSummaryServiceTests {
     verify(ai).summarize(org.mockito.ArgumentMatchers.anyList());
   }
 
+  @Test
+  void changedSnapshotAfterAiDoesNotReturnStaleSummary() {
+    ReviewSummaryQueryRepository queries = mock(ReviewSummaryQueryRepository.class);
+    ProductRepository products = mock(ProductRepository.class);
+    ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
+    List<ReviewSummaryService.ReviewRow> rows = reviews(3);
+    stubSummary(queries, products, rows, rows, Optional.empty());
+    when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn("이전 데이터의 요약입니다.");
+    when(queries.saveSummaryIfCurrent(
+            eq(1L),
+            org.mockito.ArgumentMatchers.anyList(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(Timestamp.class)))
+        .thenReturn(false);
+
+    ReviewSummaryResponse response =
+        new ReviewSummaryService(queries, products, ai, Clock.systemUTC()).summary(1L);
+    assertThat(response.status()).isEqualTo("UNAVAILABLE");
+    assertThat(response.summary()).isNull();
+  }
+
   private void stubSummary(
       ReviewSummaryQueryRepository queries,
       ProductRepository products,
@@ -149,6 +173,14 @@ class ReviewSummaryServiceTests {
     when(queries.visibleReviewCount(1L)).thenReturn((long) all.size());
     when(queries.visibleAverageRating(1L)).thenReturn(new BigDecimal("4.50"));
     when(queries.cachedSummary(1L)).thenReturn(cache);
+    when(queries.snapshot(1L)).thenCallRealMethod();
+    when(queries.saveSummaryIfCurrent(
+            eq(1L),
+            org.mockito.ArgumentMatchers.anyList(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(Timestamp.class)))
+        .thenReturn(true);
   }
 
   private List<ReviewSummaryService.ReviewRow> reviews(int count) {
