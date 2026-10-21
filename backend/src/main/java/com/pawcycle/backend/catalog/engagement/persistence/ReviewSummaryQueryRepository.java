@@ -2,6 +2,8 @@ package com.pawcycle.backend.catalog.engagement.persistence;
 
 import com.pawcycle.backend.catalog.brand.persistence.BrandRepository;
 import com.pawcycle.backend.catalog.engagement.domain.ReviewEntity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Tuple;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -17,14 +19,17 @@ public class ReviewSummaryQueryRepository {
   private final ReviewRepository reviews;
   private final ProductReviewSummaryRepository summaries;
   private final BrandRepository brands;
+  private final EntityManager entityManager;
 
   public ReviewSummaryQueryRepository(
       ReviewRepository reviews,
       ProductReviewSummaryRepository summaries,
-      BrandRepository brands) {
+      BrandRepository brands,
+      EntityManager entityManager) {
     this.reviews = reviews;
     this.summaries = summaries;
     this.brands = brands;
+    this.entityManager = entityManager;
   }
 
   @Transactional(readOnly = true)
@@ -84,12 +89,31 @@ public class ReviewSummaryQueryRepository {
       String fingerprint,
       String summary,
       Timestamp generatedAt) {
-    // Lock the entire product review range (including hidden rows) to serialize writes and
-    // prevent an obsolete AI response from overwriting a summary based on newer reviews.
+    // Use a current, locking SQL read rather than managed ReviewEntity instances:
+    // OpenEntityManagerInView may still hold pre-AI entity values in its first-level cache.
+    // The product_id index range includes hidden reviews and protects concurrent inserts
+    // through InnoDB next-key locks under the configured REPEATABLE READ isolation.
+    List<Tuple> rows =
+        entityManager
+            .createNativeQuery(
+                """
+                SELECT id, rating, content, updated_at, visible
+                FROM reviews FORCE INDEX (ix_reviews_product_visible_created)
+                WHERE product_id = :productId FOR UPDATE
+                """,
+                Tuple.class)
+            .setParameter("productId", productId)
+            .getResultList();
     List<ReviewRow> currentVisibleReviews =
-        reviews.findByProductIdForUpdate(productId).stream()
-            .filter(ReviewEntity::isVisible)
-            .map(this::toRow)
+        rows.stream()
+            .filter(row -> booleanValue(row.get("visible")))
+            .map(
+                row ->
+                    new ReviewRow(
+                        ((Number) row.get("id")).longValue(),
+                        ((Number) row.get("rating")).intValue(),
+                        (String) row.get("content"),
+                        timestampValue(row.get("updated_at"))))
             .sorted(Comparator.comparingLong(ReviewRow::id))
             .toList();
     if (!currentVisibleReviews.equals(expectedVisibleReviews)) return false;
@@ -112,6 +136,21 @@ public class ReviewSummaryQueryRepository {
         review.getRating(),
         review.getContent(),
         Timestamp.from(review.getUpdatedAt().toInstant(ZoneOffset.UTC)));
+  }
+
+  private static boolean booleanValue(Object raw) {
+    return raw instanceof Boolean value ? value : ((Number) raw).intValue() != 0;
+  }
+
+  private static Timestamp timestampValue(Object raw) {
+    LocalDateTime utc =
+        raw instanceof LocalDateTime value
+            ? value
+            : raw instanceof Timestamp value
+                ? value.toLocalDateTime()
+                : null;
+    if (utc == null) throw new IllegalStateException("Unexpected review timestamp type");
+    return Timestamp.from(utc.toInstant(ZoneOffset.UTC));
   }
 
   public record ReviewRow(long id, int rating, String content, Timestamp updatedAt) {}
