@@ -85,7 +85,7 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
             call -> {
               assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
               assertThat((List<?>) call.getArgument(0)).hasSize(3);
-              return "공개 리뷰를 요약한 내용입니다.";
+              return "공개 리뷰에 긍정적인 반응이 많습니다.";
             });
     var summary = reviewSummaries.summary(productId);
     assertThat(summary.status()).isEqualTo("AVAILABLE");
@@ -119,9 +119,9 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
                 entered.countDown();
                 if (!release.await(10, TimeUnit.SECONDS))
                   throw new IllegalStateException("AI latch timeout");
-                return "이전 리뷰에 대한 요약입니다.";
+                return "이전 리뷰에 대한 내용입니다.";
               }
-              return "변경된 리뷰를 반영한 요약입니다.";
+              return "변경된 리뷰 내용을 반영했습니다.";
             });
 
     try (var workers = Executors.newFixedThreadPool(2)) {
@@ -140,7 +140,7 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
 
         var newer = reviewSummaries.summary(productId);
         assertThat(newer.status()).isEqualTo("AVAILABLE");
-        assertThat(newer.summary()).isEqualTo("변경된 리뷰를 반영한 요약입니다.");
+        assertThat(newer.summary()).isEqualTo("변경된 리뷰 내용을 반영했습니다.");
 
         release.countDown();
         var stale = oldRequest.get(10, TimeUnit.SECONDS);

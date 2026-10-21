@@ -145,7 +145,7 @@ class ReviewSummaryServiceTests {
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     List<ReviewSummaryService.ReviewRow> rows = reviews(3);
     stubSummary(queries, products, rows, rows, Optional.empty());
-    when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn("이전 데이터의 요약입니다.");
+    when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn("이전 데이터에 대한 내용입니다.");
     when(queries.saveSummaryIfCurrent(
             eq(1L),
             org.mockito.ArgumentMatchers.anyList(),
