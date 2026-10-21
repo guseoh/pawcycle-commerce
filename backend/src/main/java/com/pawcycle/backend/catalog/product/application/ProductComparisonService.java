@@ -5,7 +5,6 @@ import java.math.RoundingMode;
 import java.util.List;
 import com.pawcycle.backend.catalog.product.persistence.ProductComparisonQueryRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductComparisonService {
@@ -29,7 +28,6 @@ public class ProductComparisonService {
     this.ai = ai;
   }
 
-  @Transactional(readOnly = true)
   public ProductComparisonResponse compare(List<Long> productIds) {
     if (productIds == null
         || productIds.size() < 2
@@ -52,12 +50,13 @@ public class ProductComparisonService {
   }
 
   private ProductComparisonFacts facts(long productId) {
-    ProductComparisonQueryRepository.RawFacts row =
+    var snapshot =
         queries
-            .findFacts(productId)
+            .findSnapshot(productId)
             .orElseThrow(
                 () -> new ProductComparisonException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
-    List<String> facets = queries.findFacets(productId);
+    ProductComparisonQueryRepository.RawFacts row = snapshot.facts();
+    List<String> facets = snapshot.facets();
     BigDecimal price = row.price(), compareAt = row.compareAtPrice();
     Integer discount =
         price == null || compareAt == null

@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -24,6 +25,15 @@ public class ReviewSummaryQueryRepository {
     this.reviews = reviews;
     this.summaries = summaries;
     this.brands = brands;
+  }
+
+  @Transactional(readOnly = true)
+  public SummarySnapshot snapshot(long productId) {
+    long count = visibleReviewCount(productId);
+    BigDecimal average = visibleAverageRating(productId);
+    if (count < 3) return new SummarySnapshot(List.of(), count, average, List.of(), Optional.empty());
+    return new SummarySnapshot(
+        latestReviews(productId), count, average, allReviews(productId), cachedSummary(productId));
   }
 
   @Transactional(readOnly = true)
@@ -67,6 +77,30 @@ public class ReviewSummaryQueryRepository {
         LocalDateTime.ofInstant(generatedAt.toInstant(), ZoneOffset.UTC));
   }
 
+  @Transactional
+  public boolean saveSummaryIfCurrent(
+      long productId,
+      List<ReviewRow> expectedVisibleReviews,
+      String fingerprint,
+      String summary,
+      Timestamp generatedAt) {
+    // Lock the entire product review range (including hidden rows) to serialize writes and
+    // prevent an obsolete AI response from overwriting a summary based on newer reviews.
+    List<ReviewRow> currentVisibleReviews =
+        reviews.findByProductIdForUpdate(productId).stream()
+            .filter(ReviewEntity::isVisible)
+            .map(this::toRow)
+            .sorted(Comparator.comparingLong(ReviewRow::id))
+            .toList();
+    if (!currentVisibleReviews.equals(expectedVisibleReviews)) return false;
+    summaries.upsert(
+        productId,
+        fingerprint,
+        summary,
+        LocalDateTime.ofInstant(generatedAt.toInstant(), ZoneOffset.UTC));
+    return true;
+  }
+
   @Transactional(readOnly = true)
   public boolean hasActiveBrand(long productId) {
     return brands.hasActiveBrandForProduct(productId);
@@ -83,4 +117,11 @@ public class ReviewSummaryQueryRepository {
   public record ReviewRow(long id, int rating, String content, Timestamp updatedAt) {}
 
   public record CachedSummary(String sourceFingerprint, String summary) {}
+
+  public record SummarySnapshot(
+      List<ReviewRow> latestReviews,
+      long count,
+      BigDecimal average,
+      List<ReviewRow> sourceReviews,
+      Optional<CachedSummary> cached) {}
 }

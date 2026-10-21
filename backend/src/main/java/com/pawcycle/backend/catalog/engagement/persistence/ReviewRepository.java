@@ -17,6 +17,10 @@ public interface ReviewRepository extends JpaRepository<ReviewEntity, Long> {
 
   List<ReviewEntity> findByProductIdAndVisibleTrueOrderByIdAsc(Long productId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select r from ReviewEntity r where r.productId = :productId")
+  List<ReviewEntity> findByProductIdForUpdate(@Param("productId") Long productId);
+
   List<ReviewEntity> findByProductIdAndVisibleTrueOrderByCreatedAtDescIdDesc(
       Long productId, Pageable pageable);
 
