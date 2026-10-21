@@ -1705,3 +1705,183 @@ and T10 record/index/gap competing-write observer (1) all execute and pass the J
 with failure/error/skip 0. Related task metadata/classifier/physical-lock Harness regressions pass 78.
 Architecture baseline stays at 204, NEW/RESOLVED 0. Whole Seoul suite and external independent review
 are unexecuted; latest PR HEAD CI is dynamic evidence in Draft PR #370, not a Production verification.
+
+
+## R2-06 Architecture V2 closure — current state (2026-10-21)
+
+Tracking: [#436](https://github.com/guseoh/pawcycle-commerce/issues/436),
+`BACKEND-REFACTOR-R2-006`. Audited main:
+`a3e05739b3981c3b959d52cdbc6966dcc5bc497d`. This completes the initial draft
+at `3ee3106`; T01–T11 inventories above remain historical evidence. R2-06
+changes tests and this section only; production code, SQL, HTTP, schema,
+transaction ownership, locking, flush and cache-after-commit hooks are unchanged.
+
+### All 21 Adapter decisions
+
+**KEEP 21; MERGE 0 / SPLIT 0 / RESTRUCTURE 0.** Paths below are under
+`backend/src/main/java/com/pawcycle/backend/`; every row names a production
+`*PersistenceAdapter.java`. Public methods exclude constructors/record accessors;
+methods without an output designation return void. Test classes are under
+`backend/src/test/java` and identify existing protection, not individual local reruns.
+REQUIRED adapter annotations join an enclosing use-case transaction; none uses
+REQUIRES_NEW. AdminOrder read mapping and expiry selection deliberately own small
+read transactions. Changing them merely to normalize annotations has no demonstrated benefit.
+
+| Adapter | Public methods and typed results; actual callers | JPA/native choice, transaction/lock boundary | Protection; KEEP benefit / restructuring cost |
+| --- | --- | --- | --- |
+| `catalog/admin/persistence/CatalogFacetPersistenceAdapter` | `hasIncompatibleProductValues → boolean`; AdminCatalogService | Repository JPQL count; read-only REQUIRED joins product mutation after product lock. | CatalogFacetConcurrencyIntegrationTests, AdminCatalogCacheInvalidationIntegrationTests. Small compatibility-query owner; merge spreads query responsibility, split adds delegation only. |
+| `commerce/audit/persistence/AdminAuditPersistenceAdapter` | `append`; `findAll → List<AdminAuditView>`; AdminAuditService | JPA saveAndFlush/ordered view mapping; REQUIRED joins use-case write/read. No independent audit commit. | CouponWriteBoundaryIntegrationTests, AfterSalesConcurrencyIntegrationTests audit failures. Common append/read owner; splitting obscures atomic audit rollback. |
+| `commerce/cart/persistence/CartPersistenceAdapter` | `view → CartView`; `lockForAdd/lockExisting → CartLock`; `add/update/delete`; `isPurchasable → boolean`; CartApplicationService, CheckoutApplicationService | JPA entities + typed JPQL queries; caller annotation/template owns Member → Cart lock/create → item writes → content version. Missing Cart behavior is operation-specific. | CommercePurchaseIntegrationTests version/stale checkout; CheckoutIdempotencyIntegrationTests. Cohesive Cart protocol; splitting locks/writes increases coordination risk. |
+| `commerce/coupon/persistence/CouponPersistenceAdapter` | `create → long`; `update/require/issue`; `find/findForUpdate → CouponView`; `findAll → List<CouponView>`; `findForMember → List<MemberCouponView>`; CouponAdminApplicationService, MemberBenefitApplicationService | JPA identity/save/flush, scoped repositories; REQUIRED joins application transaction. Coupon lock before patch/audit; second truncation retained. | CouponWriteBoundaryIntegrationTests, CouponPatchConcurrencyIntegrationTests. Shared typed coupon boundary; splitting duplicates mapping and transaction coordination. |
+| `commerce/checkout/persistence/CheckoutExpirationPersistenceAdapter` | `findDuePaymentIds → List<Long>`; `findForUpdate → ExpirationTarget`; `findOrderItems → List<CheckoutCartItem>`; `releaseCoupon/markExpired`; CheckoutExpirationService/Processor | JPA repositories; selection read transaction, Processor owns each expiry transaction. Payment → Order locks, READY/PAYMENT_PENDING gate, release/expiry together. | CheckoutExpirationTransactionIntegrationTests adds controlled same-candidate/different-connection expiry and late markExpired rollback, with exact stock/version/movement/coupon/payment/order checks. KEEP; merging creation mixes transaction lifetimes. |
+| `commerce/checkout/persistence/CheckoutPersistenceAdapter` | `findReplay → CheckoutReplay`; `findAddress → CheckoutAddress`; `findCartItems → List<CheckoutCartItem>`; `isPurchasable → boolean`; `findCouponRule → CouponRule`; `createOrder/createPayment → long`; `providerOrderId → String`; `createOrderItem/reserveCoupon/saveIdempotency/saveCartVersion`; `findOrderPricing → CheckoutOrderPricing`; `findProductNames → List<String>`; CheckoutApplicationService | JPA/JPQL/identity and conditional repository writes; application template owns Member/Cart → items → ordered SKUs → member coupon/coupon → order/reservation/idempotency. Internal SKU Map converted before return. | CheckoutIdempotencyIntegrationTests, CheckoutCouponClockIntegrationTests, CommercePurchaseIntegrationTests. Coherent snapshot/replay creation; rewrite adds fingerprint/version/rollback risk without closure benefit. |
+| `commerce/order/persistence/AdminOrderPersistenceAdapter` | `findAll → List<AdminOrderView>`; `find → AdminOrderView`; AdminOrderQueryService | Repository read + scalar view mapping inside adapter read-only transaction; service has no enclosing transaction. No write locks. | CustomerOrderReadModelIntegrationTests admin frozen test. Small admin projection differs from customer detail; merge adds coupling, moving transaction is unnecessary behavior change. |
+| `commerce/order/persistence/OrderPersistenceAdapter` | `findOrders → List<OrderReadModel.Summary>`; `findOrder → OrderView`; OrderApplicationService | Typed JPQL constructor projections, row-to-UTC Timestamp mapping; service reads without an encompassing transaction or managed entity graph. | CustomerOrderReadModelIntegrationTests, OrderResponseBoundaryTests. Frozen list 1/detail 7 SQL, detached JSON; graph-loading/merging admin or command logic risks this contract. |
+| `commerce/order/persistence/QuickReorderPersistenceAdapter` | `reorder → ReorderResult` (typed added/skipped items/version); OrderApplicationService; QuickReorderResultCodec consumes records | Application template: native Member → idempotency → owned order check → Cart lock/create → ordered source item locks → item/version → stored JSON. Native typed projection/LAST_INSERT_ID/COMMIT flush retain protocol. | QuickReorderTypedMappingIntegrationTests, QuickReorderRollbackIntegrationTests, codec tests. Atomic replay/Cart protocol; split distributes statement order and persisted JSON responsibility. |
+| `commerce/delivery/persistence/DeliveryPersistenceAdapter` | `createPreparing/ship/transition`; `findForUpdate → DeliveryLock`; `memberId → long`; `find → DeliveryView`; DeliveryService | JPA transitions/locking; repository native dedup upsert. REQUIRED joins DeliveryService template or Payment completion. Delivery lock before transition/notification/audit. | DeliveryTransactionIntegrationTests adds ship/complete/fail success plus late notification/audit rollback. Existing payment/reconciliation, cancellation and HTTP authorization tests remain. KEEP; check-then-insert rewrite introduces race. |
+| `commerce/billing/persistence/BillingPersistenceAdapter` | `createPreparation → String`; `claim → ClaimedPreparation`; `register`; BillingApplicationService | Application claim commit → Provider outside transaction → register transaction. JPA conditional claim/locked preparation, revoke/identity/flush/delete; native joined hold release excludes ordered schedules. | BillingPreparationProtocolIntegrationTests concurrent claim/provider visibility/unique failure/register rollback. Keep multi-phase ownership; merge risks external-call transaction/retry contract. |
+| `commerce/cancellation/persistence/CancellationPersistenceAdapter` | `findOrderForUpdate → OrderLock`; `findExisting/find → CancellationView`; `findDeliveryForUpdate → DeliveryLock`; `hasReturnForUpdate/hasSuccessfulPayment → boolean`; `create → long`; `cancelDelivery/createRefund`; `findOrderItems → List<OrderItem>`; CancellationService | Template owns native Order → existing cancellation → Delivery → successful Payment → Return absence locks. Typed records/LAST_INSERT_ID/refund INSERT SELECT; inventory restoration joins transaction. Legacy Timestamp/COMMIT flush retained. | AfterSalesJdbcParityIntegrationTests, AfterSalesConcurrencyIntegrationTests. One compensation protocol; split/rewrite risks missing-row/index locks and snapshot refund amount. |
+| `commerce/membership/persistence/MembershipEvaluationPersistenceAdapter` | `memberExists → boolean`; `paidAmountLastYear → BigDecimal`; `findGrade → EvaluationGrade`; `findMembershipForUpdate → CurrentMembership`; `saveMembership/recordChange`; MembershipEvaluationService | Service transaction joins payment/admin caller. Typed native 365-day aggregate, grade tie order, membership PK/missing-row and second write lock; atomic history/coupon, COMMIT flush. | MembershipEvaluationWriteProtocolIntegrationTests cutoff/physical locks/deadlock/audit and coupon rollback. Keep evaluated-amount history protocol; partial entity mapping lacks history amount and adds flush/lock risk. |
+| `commerce/membership/persistence/MembershipPersistenceAdapter` | `createGrade → long`; MembershipAdminApplicationService | JPA IDENTITY persist without blanket flush; application transaction includes audit. | Same protocol suite generated ID/null/decimal/duplicate/audit rollback. Already small JPA owner; merge into evaluation joins different responsibilities. |
+| `commerce/payment/persistence/PaymentPersistenceAdapter` | `findByProviderOrderIdForUpdate → PaymentWork`; `findForUpdate → PaymentState`; `findOrderItems → List<OrderItem>`; `findMemberId → long`; `markProcessing/markSucceeded/markFailed/markUnknown/markOrderPaid/markOrderPaymentFailed/useReservedCoupon/releaseReservedCoupon/consumeCart`; PaymentApplicationService | JPA scoped Payment lock/entity transitions. Application start → Provider confirm outside → completion. Inventory/coupon/delivery/Cart share completion; Cart ensure-exists → Cart/item locks; content version once. | CommercePurchaseIntegrationTests, PaymentCartConcurrencyIntegrationTests, CheckoutIdempotencyIntegrationTests. Normal confirm differs from reconciliation; merge entangles gate/missing Cart semantics. F07 excluded. |
+| `commerce/payment/persistence/PaymentReconciliationPersistenceAdapter` | `findForStart → ReconciliationWork`; `findForCompletion → ReconciliationTarget`; `findOrderItems → List<OrderItem>`; `find → PaymentReconciliationView`; `incrementAttempts/markSucceeded/markFailed/markOrderPaid/markOrderPaymentFailed/markOrderActionRequired/useReservedCoupon/releaseReservedCoupon/consumeCart`; PaymentReconciliationService | Start lock/attempt commit → Provider Query outside → completion Payment/Order lock and gate recheck. PaymentNativeLocks + PaymentPersistenceQueries/Querydsl preserve native footprint, field writes/flush/clear/wall-clock. Cart → items; no missing Cart create; version once. | PaymentReconciliationIntegrationTests, BillingRecoveryPersistenceParityIntegrationTests, required physical locks. Keep recovery protocol distinct; merge risks gate/attempt/partial commit. NORMAL/PROCESSING policy unchanged. |
+| `commerce/refund/persistence/RefundPersistenceAdapter` | `findReadyForUpdate → RefundWork`; `findRetryTarget → RetryTarget`; `findRetry/createRetry → RetryView`; `findForReconciliation → ReconciliationWork`; `findForCompletion → CompletionTarget`; `find → RefundView`; `markProcessing/incrementReconciliationAttempts/complete/releaseCoupon/completeCancellation/completeReturn`; RefundService | Application start/retry/reconcile/completion templates; Provider refund/query between transactions. Native source/attempt locks/unique retry INSERT SELECT/LAST_INSERT_ID/Order-joined completion; Timestamp/COMMIT flush retained. | RefundRecoveryIntegrationTests, frozen JDBC parity, concurrency suite. Cohesive attempt/completion owner; split risks duplicate compensation/provider ownership. |
+| `commerce/returning/persistence/ReturnPersistenceAdapter` | `findOrderForUpdate → OrderLock`; `findByOrderForUpdate/find → ReturnView`; `hasCancellationForUpdate → boolean`; `findDeliveryForUpdate → DeliveryView`; `create → long`; `findForDecision → ReturnDecision`; `findForReceive → ReceiveTarget`; `decide/receive/createRefund`; `findOrderItems → List<OrderItem>`; ReturnService | Application request/decision/receive templates. Native Order → existing Return → cancellation absence → Delivery; decision Return/Order lock, receive Return then inventory. Nullable restock/time; notification/audit/refund rollback together. | AfterSalesConcurrencyIntegrationTests request/decision/receive races and audit rollback; JDBC parity. Different eligibility/receipt lifecycle from cancellation; merge obscures lock/compensation differences. |
+| `commerce/notification/persistence/NotificationPersistenceAdapter` | `create/markRead/markAllRead`; `findByMemberId → List<NotificationView>`; NotificationService | Service write/read-only transaction or enclosing payment/return/delivery. Native dedup preserves createdAt; COALESCE preserves first read; scoped row count; typed nullable schedule join. | NotificationWriteProtocolIntegrationTests dedup/race/read-once/rollback. Already typed atomic responsibility; entity rewrite adds mapping/flush rules without demonstrated simplification. |
+| `interaction/persistence/InteractionEventPersistenceAdapter` | `petBelongsToMember/productExists → boolean`; `insert(InteractionRecord)`; InteractionService | Service owns batch transaction. JPQL ownership/existence; native atomic INSERT ON DUPLICATE KEY no-op; COMMIT flush/Timestamp binding. Context is input JSON. | InteractionWriteProtocolIntegrationTests duplicate/race/batch rollback. One ingestion owner; entity check/insert weakens atomicity. |
+| `subscription/persistence/SubscriptionShippingPersistenceAdapter` | `update(ShippingAddress)/releaseAddressHolds`; MemberAddressApplicationService | Caller transaction/explicit address-member flush. Native ownership/future schedule checks, atomic snapshot upsert/conditional joined hold release exclude ordered schedules. No new lock/transaction. | SubscriptionShippingWriteProtocolIntegrationTests errors/nulls/physical footprint/competing upserts/caller rollback. Owns subscription tables touched by address use case; merge crosses table responsibility, rewrite changes bulk visibility. |
+
+The eight class-local `createNativeQuery` owners are Billing, Cancellation,
+MembershipEvaluation, Notification, QuickReorder, Refund, Return and SubscriptionShipping.
+Interaction additionally uses a native mutation; PaymentReconciliation delegates
+native locking to PaymentNativeLocks. Repository native upserts/conditional writes
+also sit behind JPA adapters (including Cart/Delivery). Counting imports or only
+`createNativeQuery` would miss these paths. KEEP means retaining exact atomic,
+lock, identity and Timestamp semantics, not claiming Native SQL zero or new
+performance improvement. No measured benefit supports a merge/split/rewrite here.
+
+### Raw DB result audit and focused guard
+
+Source signatures, record components, mapping and Application/API consumers were
+checked beyond the 21 adapters. **No raw DB result escape found.**
+
+- ProductDiscoveryQueryRepository/ProductComparisonQueryRepository consume JPA
+  Tuple privately and return ProductListView, ProductDetailSkuRow,
+  ProductDetailSupplement or scalar `RawFacts`. RawFacts is typed despite its name.
+- Querydsl read/reconciliation tuples become named records inside persistence.
+  SubscriptionNativeSql's private `Object[]` is a bind array, not a result boundary.
+- Checkout's SKU Map is internal. Recommendation's `Map<Long,Long/RecommendationTrendScore>`
+  and subscription's ID-to-projection/List/LocalDate maps are typed indexes.
+  Operations returns typed PendingRow; Order returns typed snapshot views.
+- QuickReorderResultCodec maps are private legacy replay JSON handling. Provider
+  request JSON and Interaction context are payloads, not DB column maps. Isolated
+  import/bootstrap/migration maps remain within their audited tool workflows.
+
+New `PersistenceResultBoundaryTests` inspects compiled Application/API calls to
+non-isolated handwritten persistence methods: Object, untyped Map/Iterable,
+Object arrays, JPA/Querydsl Tuple and nested generic record leaks are rejected;
+typed index maps/pages are allowed. Positive/negative fixtures exercise the rule.
+Inherited framework CRUD declarations are entity generics, not handwritten SQL
+results; visibility bridges resolve to the original generic method. Generic
+record accessors are checked via concrete results at producing methods.
+Local SQL mapping, input JSON and isolated tooling are outside this result rule.
+This is a return-shape guard, not whole-program taint analysis: reflection,
+indirect dispatch and future non-record DTO internals still require review.
+
+### Current guards and intentional exceptions
+
+| Criterion | Current value | Enforcement |
+| --- | --- | --- |
+| Application → API / Persistence → API | **0 / 0** | BackendArchitectureTests compiled exact baseline; no relaxed rule/exception |
+| Application direct EntityManager/JdbcTemplate; API storage/Entity; Querydsl escape; normalized runtime root types | **0** | Same dependency/topology guard |
+| Ordinary Runtime direct JdbcTemplate | **0** | directRuntimeJdbcOwnersRemainWithinTheT12Remainder |
+| Isolated JDBC owners | **9 KEEP** | Count guard plus MaintenanceJdbcIsolationTests exact owners/callers/profile/freeze gates |
+| Runtime → Maintenance | **5 KEEP** | Exact frozen edges below; CLI/configuration protection unchanged |
+| Raw DB result escape | **0 found** | Source/consumer audit plus new return-shape guard |
+
+Nine owners: CustomerCatalogImportPersistence, CustomerCatalogRealismCorrectionPersistence,
+DemoCatalogImportPersistence, ProductDetailSectionFixturePersistence,
+LocalCustomerCatalogV3FixtureService, LocalQaBootstrapService,
+LocalQaSubscriptionFixtureService, LegacySubscriptionMigrationProcessor,
+SubscriptionBurstMeasurementService. The exact callers, measurement default/
+Production/mixed-profile exclusions and migration write-freeze rejection are
+protected by MaintenanceJdbcIsolationTests; existing CLI/bootstrap tests protect
+explicit opt-in execution. This does not grant permission to execute those tools.
+
+Five edges KEEP: PawcycleBackendApplication → ProductionDemoCatalogImportCommand /
+ProductionAuthSmokeMemberBootstrap (operator entry points); CustomerCatalogImportService →
+CustomerCatalogImportPersistence / CustomerCatalogRealismCorrectionPersistence /
+DemoCatalogImportPersistence (three import delegates). They are visible, named
+exceptions, not normal customer request execution. None was renamed or removed
+to make an empty baseline.
+
+### Verification and Closure recommendation
+
+Fresh local disposable MySQL **8.4.11**, loopback `127.0.0.1:13309`, dedicated
+`pawcycle_r206` tmpfs schema: `./gradlew test --tests '*CustomerOrderReadModelIntegrationTests'
+--tests '*BackendArchitectureTests' --tests '*MaintenanceJdbcIsolationTests'`:
+**15 PASS / 0 FAIL / 0 SKIP** (8 order, 4 architecture, 3 isolation).
+The required frozen customer test reports list **1 SQL**, detail **7 SQL**,
+detached serialization **0 SQL**, Entity Load **0**; exact JSON/HTTP and microsecond
+Timestamp parity pass. Admin reports **1/1 SQL**, detached **0**, Entity Load **0**.
+These are fresh results, distinct from merged PR #431/#433/#435 evidence.
+
+Return guard: first focused run **2 PASS / 1 FAIL**, caused by generic erasure
+(Spring Data inherited methods, visibility bridges and record accessors), not
+raw DB rows escaping production. One focused correction resolves original
+handwritten declarations and checks concrete record results at their producers;
+a visibility-bridge fixture protects this behavior. Retry **3 PASS / 0 FAIL /
+0 SKIP**. The earlier failure is retained in this record.
+
+The initial audit **STOP / DEFER** was caused by missing direct expiry and delivery
+transaction evidence, not a reproduced production defect. The user explicitly
+authorized this bounded test-only correction; that earlier STOP is retained here
+as history rather than a continuing verification gap.
+
+- CheckoutExpirationTransactionIntegrationTests: **2 PASS**. Both workers finish
+  the real due-candidate read before either processes it; two live MySQL connection
+  IDs are asserted at the Payment lock. Results are one success/one no-op, with
+  one release/movement per SKU, one coupon release and one completion. Stock,
+  reservation, version, movement values and exact FAILED/EXPIRED/CHECKOUT_EXPIRED
+  payment plus EXPIRED order contract are checked. A second test flushes real
+  stock/movement/coupon changes, invokes markExpired, flushes both expired states,
+  then throws. New post-transaction reads exactly match original inventory,
+  movement, coupon, Payment and Order snapshots. Per-Payment transaction/lock
+  order is unchanged; the overdue fixture is removed from selection afterward.
+- DeliveryTransactionIntegrationTests: **8 PASS** after one focused test correction.
+  Ship (FAILED → SHIPPED, clearing failure fields), complete and fail success are
+  checked. Five failure cases throw after real notification insertion (ship,
+  complete) or real audit insertion (all three transitions), after flushing and
+  asserting the changed state. New transactions compare every delivery column,
+  stored notification and audit against their original snapshots. Fail intentionally
+  creates no notification. Metrics counters/timers are outside these DB assertions.
+- First new run: **2 PASS / 8 FAIL / 0 SKIP**. All eight failures came from tests
+  expecting queryForMap DATETIME values to be Timestamp; MySQL returns LocalDateTime.
+  Explicit typed JDBC Timestamp reads corrected only the test assumptions.
+  Failed Delivery suite retried once: **8 PASS / 0 FAIL / 0 SKIP**. Assertions and
+  production binding/clock/transaction behavior were not weakened or changed.
+
+Fresh full Backend execution on a clean `pawcycle_r206_full` schema with the CI
+lock-observer property enabled: `./gradlew test --init-script build/r2-06-lock-ci.init.gradle`
+**4,423 PASS / 0 FAIL / 0 ERROR / 4 SKIP** (4,427 discovered; 174 suites).
+Architecture 4 + isolation 3 + new result guard 3 all pass, as do the 10 new
+transaction regressions and all 8 frozen order read cases. Required physical lock
+verifier reports **1 + 3 + 1 = 5 PASS**, none missing/skipped. The four skips are
+existing opt-in BillingLockWorkDiagnosis methods: deletedRecordReadViewLifetime,
+unpinnedSeparateAndSameTransactionComparisons, seoulBReleasedViewLegacyFirstPairs,
+seoulBUnpinnedLegacyFirstPairs; they are not counted as passes. Full method names
+and execution identities remain in JUnit/PR evidence. No existing suite was skipped
+because of this correction. Customer order still reports list 1/detail 7 SQL,
+detached 0 SQL and Entity Load 0; admin read remains 1/1.
+`./gradlew build -x test` and `git diff --check`: **PASS**. PR CI and metadata are dynamic final-HEAD evidence recorded in the R2-06 PR;
+previous merged PRs are not substituted. Classification is Backend + Harness;
+Frontend and Production have no changed behavior and are NOT_RUN/SKIP per classifier.
+**Closure recommendation: DEFER actual #339/#371 closure pending final-HEAD CI and independent review.** The two approved verification gaps are resolved and no production defect was found. Final PR evidence supplies CI status; successful gates make this ready for independent closure review, not permission to merge or close Issues.
+
+Residual risks: intentional maintenance reachability needs continuing fail-closed
+guards; vendor-specific lock/time/identity SQL must retain frozen MySQL regressions
+when changed. F07 payment recovery [#417](https://github.com/guseoh/pawcycle-commerce/issues/417)
+and R3 work remain separate, neither implemented nor asserted safe here.
+No Production verification or new performance benchmark ran. Revert R2-06's
+test/document commits to restore the prior audit state; no data/schema/runtime
+rollback is needed. Historical T01–T11 records remain intact.
