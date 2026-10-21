@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.recommendation.application.RecommendationAiClient;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -121,17 +122,42 @@ class RecommendationInteractionErrorContractIntegrationTests {
 
   @Test
   void successfulPersonalizedFallbackAndInteraction204ArePreserved() throws Exception {
-    // Isolate ranking from other suites' fixtures; the test transaction rolls this change back.
-    jdbc.update("UPDATE products SET display_status='DRAFT' WHERE display_status='PUBLIC' AND id<>?", productId);
-    mvc.perform(get("/api/recommendations/products").param("petId", Long.toString(petId)).with(authenticated()))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").isString())
-        .andExpect(jsonPath("$.products[0].productId").value(productId))
-        .andExpect(jsonPath("$.products[0].strategy").value("PERSONALIZED"));
-    mvc.perform(get("/api/recommendations/popular")).andExpect(status().isOk())
-        .andExpect(jsonPath("$.products[0].productId").value(productId));
+    var publicProducts = jdbc.queryForList("SELECT id FROM products WHERE display_status='PUBLIC' ORDER BY id", Long.class);
+    assertRecommendation(mvc.perform(get("/api/recommendations/products")
+        .param("petId", Long.toString(petId)).with(authenticated())), "PERSONALIZED", publicProducts);
+    assertRecommendation(mvc.perform(get("/api/recommendations/popular")), "POPULAR", publicProducts);
+    assertThat(jdbc.queryForList("SELECT id FROM products WHERE display_status='PUBLIC' ORDER BY id", Long.class))
+        .isEqualTo(publicProducts);
     var result = events(event(productId, petId)).andExpect(status().isNoContent()).andReturn();
     assertThat(result.getResponse().getContentAsByteArray()).isEmpty();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM interaction_events WHERE member_id=?", Integer.class, memberId)).isEqualTo(1);
+    assertThat(jdbc.queryForMap("SELECT product_id,pet_id,event_type FROM interaction_events WHERE member_id=?", memberId))
+        .containsEntry("product_id", productId).containsEntry("pet_id", petId).containsEntry("event_type", "PRODUCT_VIEW");
+  }
+
+  private void assertRecommendation(ResultActions result, String strategy, List<Long> publicProducts) throws Exception {
+    var response = result.andExpect(status().isOk())
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.products").isArray())
+        .andExpect(jsonPath("$.products").isNotEmpty()).andReturn();
+    var payload = json.readTree(response.getResponse().getContentAsByteArray());
+    List<Long> productIds = new ArrayList<>();
+    List<String> strategies = new ArrayList<>();
+    for (var product : payload.get("products")) {
+      assertThat(product.get("productId").isIntegralNumber()).isTrue();
+      long id = product.get("productId").asLong();
+      assertThat(id).isPositive();
+      productIds.add(id);
+      assertThat(product.get("name").isString()).isTrue();
+      assertThat(product.get("category").isObject()).isTrue();
+      assertThat(product.get("reason").isString()).isTrue();
+      strategies.add(product.get("strategy").asString());
+    }
+    assertThat(productIds).doesNotHaveDuplicates().isSubsetOf(publicProducts);
+    // API-012 permits exploration alongside personalized fallback results.
+    List<String> allowedStrategies = strategy.equals("PERSONALIZED")
+        ? List.of("PERSONALIZED", "EXPLORATION") : List.of(strategy);
+    assertThat(strategies).contains(strategy).isSubsetOf(allowedStrategies);
   }
 
   private void frameworkError(ResultActions result) throws Exception {

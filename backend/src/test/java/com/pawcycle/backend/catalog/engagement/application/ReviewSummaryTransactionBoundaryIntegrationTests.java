@@ -1,13 +1,14 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.engagement.persistence.ReviewSummaryQueryRepository;
 import com.pawcycle.backend.catalog.product.application.ProductComparisonAiClient;
 import com.pawcycle.backend.catalog.product.application.ProductComparisonService;
+import com.pawcycle.backend.support.MysqlLockObservation;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,8 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -164,10 +165,15 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
 
   @Test
   void currentReadHoldsProductReviewIndexRangeUntilCommit() throws Exception {
+    // This regression requires physical evidence even outside the optional diagnostic suites.
+    // Convert the shared helper's privilege-abort into a failing assertion, never a silent SKIP.
+    assertThatCode(() -> MysqlLockObservation.requireAccess(jdbc)).doesNotThrowAnyException();
     var original = queries.snapshot(productId);
     CountDownLatch rangeLocked = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     CountDownLatch insertStarted = new CountDownLatch(1);
+    AtomicLong guardConnection = new AtomicLong();
+    AtomicLong insertConnection = new AtomicLong();
     Timestamp time = Timestamp.from(Instant.parse("2026-10-21T00:03:00Z"));
 
     try (var workers = Executors.newFixedThreadPool(2)) {
@@ -175,6 +181,8 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
         transaction.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         return transaction.execute(status -> {
+          guardConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+          assertThat(jdbc.queryForObject("SELECT @@transaction_isolation", String.class)).isEqualTo("REPEATABLE-READ");
           boolean accepted = queries.saveSummaryIfCurrent(
               productId,
               original.sourceReviews(),
@@ -195,17 +203,21 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
       try {
         assertThat(rangeLocked.await(10, TimeUnit.SECONDS)).isTrue();
         var concurrentInsert = workers.submit(() -> {
-          insertStarted.countDown();
-          return jdbc.update(
+          return new TransactionTemplate(transactionManager).execute(status -> {
+            insertConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+            insertStarted.countDown();
+            return jdbc.update(
               """
               INSERT INTO reviews(product_id,member_id,rating,content,visible,created_at,updated_at)
               VALUES (?,?,5,?,true,?,?)
               """,
               productId, memberIds.get(3), "경합 중 삽입한 리뷰", time, time);
+          });
         });
         assertThat(insertStarted.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThatThrownBy(() -> concurrentInsert.get(300, TimeUnit.MILLISECONDS))
-            .isInstanceOf(TimeoutException.class);
+        assertThat(insertConnection.get()).isPositive().isNotEqualTo(guardConnection.get());
+        awaitReviewInsertWait(insertConnection.get(), guardConnection.get());
+        assertThat(concurrentInsert.isDone()).isFalse();
         release.countDown();
         assertThat(guard.get(10, TimeUnit.SECONDS)).isTrue();
         assertThat(concurrentInsert.get(10, TimeUnit.SECONDS)).isEqualTo(1);
@@ -214,6 +226,28 @@ class ReviewSummaryTransactionBoundaryIntegrationTests {
         release.countDown();
       }
     }
+  }
+
+  private void awaitReviewInsertWait(long waiting, long blocking) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    do {
+      long waits = jdbc.queryForObject("""
+          SELECT COUNT(*) FROM performance_schema.data_lock_waits w
+          JOIN performance_schema.data_locks requested
+            ON requested.ENGINE=w.ENGINE AND requested.ENGINE_LOCK_ID=w.REQUESTING_ENGINE_LOCK_ID
+          JOIN performance_schema.data_locks held
+            ON held.ENGINE=w.ENGINE AND held.ENGINE_LOCK_ID=w.BLOCKING_ENGINE_LOCK_ID
+          JOIN performance_schema.threads requester ON requester.THREAD_ID=requested.THREAD_ID
+          JOIN performance_schema.threads blocker ON blocker.THREAD_ID=held.THREAD_ID
+          WHERE requester.PROCESSLIST_ID=? AND blocker.PROCESSLIST_ID=?
+            AND requested.OBJECT_SCHEMA=DATABASE() AND held.OBJECT_SCHEMA=DATABASE()
+            AND requested.OBJECT_NAME='reviews' AND held.OBJECT_NAME='reviews'
+            AND requested.LOCK_STATUS='WAITING' AND held.LOCK_STATUS='GRANTED'
+          """, Long.class, waiting, blocking);
+      if (waits > 0) return;
+      Thread.sleep(20);
+    } while (System.nanoTime() < deadline);
+    throw new AssertionError("No physical reviews INSERT wait for requester=" + waiting + " blocker=" + blocking);
   }
 
   @Test
