@@ -20,6 +20,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice(basePackages = {
   "com.pawcycle.backend.commerce",
   "com.pawcycle.backend.catalog.admin.api",
+  "com.pawcycle.backend.catalog.product.api",
   "com.pawcycle.backend.catalog.engagement.api",
   "com.pawcycle.backend.member.address.api",
   "com.pawcycle.backend.recommendation.api",

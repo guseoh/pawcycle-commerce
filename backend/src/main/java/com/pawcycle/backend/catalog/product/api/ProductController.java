@@ -46,34 +46,22 @@ public class ProductController {
             && maxPrice == null
             && subscribable == null
             && purchasable == null;
-    ProductListView response =
-        extendedFiltersAbsent
-            ? productQueryService.findProducts(q, petType, category, page, size, sort)
-            : productQueryService.findProducts(
-                q,
-                petType,
-                category,
-                subcategory,
-                brand,
-                facet,
-                minPrice,
-                maxPrice,
-                subscribable,
-                purchasable,
-                page,
-                size,
-                sort);
-    // Keeps the pre-pagination controller seam usable for older isolated tests/mocks; the real
-    // service never returns null.
-    return response == null ? productQueryService.findProducts(q, petType, category) : response;
-  }
-
-  /** Compatibility seam for existing controller tests and direct in-process callers. */
-  ProductListView products(
-      String q, String petType, String category, int page, int size, ProductSort sort) {
-    ProductListView response =
-        productQueryService.findProducts(q, petType, category, page, size, sort);
-    return response == null ? productQueryService.findProducts(q, petType, category) : response;
+    return extendedFiltersAbsent
+        ? productQueryService.findProducts(q, petType, category, page, size, sort)
+        : productQueryService.findProducts(
+            q,
+            petType,
+            category,
+            subcategory,
+            brand,
+            facet,
+            minPrice,
+            maxPrice,
+            subscribable,
+            purchasable,
+            page,
+            size,
+            sort);
   }
 
   @GetMapping("/{productId}")

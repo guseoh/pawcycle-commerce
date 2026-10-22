@@ -2,14 +2,20 @@ package com.pawcycle.backend.catalog.product.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.category.persistence.CategoryRepository;
+import com.pawcycle.backend.catalog.product.application.ProductDetailUnavailableException;
+import com.pawcycle.backend.catalog.product.application.ProductListUnavailableException;
+import com.pawcycle.backend.catalog.product.application.ProductQueryService;
+import com.pawcycle.backend.catalog.product.application.ProductSort;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
@@ -25,10 +31,15 @@ import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -47,6 +58,7 @@ class ProductApiIntegrationTests {
   private final EntityManager entityManager;
   private final Statistics statistics;
   private MockMvc mockMvc;
+  @MockitoSpyBean private ProductQueryService productQueryService;
 
   @Autowired
   ProductApiIntegrationTests(
@@ -306,6 +318,141 @@ class ProductApiIntegrationTests {
         .perform(get("/api/products").param("q", "모래").param("petType", "DOG"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items").isEmpty());
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "/api/products, sort, invalid",
+    "/api/products, page, invalid",
+    "/api/products, size, invalid",
+    "/api/products, minPrice, invalid",
+    "/api/products, maxPrice, invalid",
+    "/api/products, subscribable, invalid",
+    "/api/products, purchasable, invalid",
+    "/api/products/compare, productId, invalid"
+  })
+  void malformedPublicParametersUseCommonValidationContract(
+      String path, String parameter, String value) throws Exception {
+    mockMvc
+        .perform(get(path).param(parameter, value))
+        .andExpect(status().isBadRequest())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(content().json("""
+            {
+              "code": "VALIDATION_FAILED",
+              "message": "요청 값을 확인해 주세요.",
+              "fieldErrors": [
+                {"field": "%s", "message": "요청 값의 형식이 올바르지 않습니다."}
+              ]
+            }
+            """.formatted(parameter), JsonCompareMode.STRICT));
+  }
+
+  @Test
+  void missingComparisonParameterUsesCommonValidationContract() throws Exception {
+    mockMvc
+        .perform(get("/api/products/compare"))
+        .andExpect(status().isBadRequest())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(content().json("""
+            {
+              "code": "VALIDATION_FAILED",
+              "message": "요청 값을 확인해 주세요.",
+              "fieldErrors": [
+                {"field": "productId", "message": "요청 파라미터가 필요합니다."}
+              ]
+            }
+            """, JsonCompareMode.STRICT));
+  }
+
+  @Test
+  void nonNumericDetailIdKeepsProductNotFoundContract() throws Exception {
+    mockMvc
+        .perform(get("/api/products/not-a-number"))
+        .andExpect(status().isNotFound())
+        .andExpect(content().json("""
+            {
+              "code": "PRODUCT_NOT_FOUND",
+              "message": "상품을 확인할 수 없습니다.",
+              "fieldErrors": []
+            }
+            """, JsonCompareMode.STRICT));
+  }
+
+  @Test
+  void comparisonDomainErrorsKeepTheirMessagesAndStatuses() throws Exception {
+    mockMvc
+        .perform(get("/api/products/compare").param("productId", "1", "1"))
+        .andExpect(status().isBadRequest())
+        .andExpect(content().json("""
+            {
+              "code": "VALIDATION_FAILED",
+              "message": "상품은 서로 다른 2~3개를 선택해야 합니다.",
+              "fieldErrors": []
+            }
+            """, JsonCompareMode.STRICT));
+    mockMvc
+        .perform(get("/api/products/compare")
+            .param("productId", Long.toString(Long.MAX_VALUE), Long.toString(Long.MAX_VALUE - 1)))
+        .andExpect(status().isNotFound())
+        .andExpect(content().json("""
+            {
+              "code": "PRODUCT_NOT_FOUND",
+              "message": "상품을 확인할 수 없습니다.",
+              "fieldErrors": []
+            }
+            """, JsonCompareMode.STRICT));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "page, -1, 'page는 0 이상, size는 1~100이어야 합니다.'",
+    "size, 0, 'page는 0 이상, size는 1~100이어야 합니다.'",
+    "minPrice, -1, 가격 범위가 올바르지 않습니다.",
+    "facet, broken, facet은 key:value 형식이어야 합니다."
+  })
+  void domainValidationKeepsExistingMessage(
+      String parameter, String value, String message) throws Exception {
+    mockMvc
+        .perform(get("/api/products").param(parameter, value))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value(message))
+        .andExpect(jsonPath("$.fieldErrors").isEmpty());
+  }
+
+  @Test
+  void unexpectedListFailureKeepsSafe500WithAllAdviceActive() throws Exception {
+    doThrow(new ProductListUnavailableException(new IllegalStateException("products table")))
+        .when(productQueryService).findProducts(null, null, null, 0, 20, ProductSort.NEWEST);
+
+    mockMvc
+        .perform(get("/api/products"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(content().json("""
+            {
+              "code": "PRODUCT_LIST_UNAVAILABLE",
+              "message": "상품 목록을 불러오지 못했습니다.",
+              "fieldErrors": []
+            }
+            """, JsonCompareMode.STRICT));
+  }
+
+  @Test
+  void unexpectedDetailFailureKeepsSafe500WithAllAdviceActive() throws Exception {
+    doThrow(new ProductDetailUnavailableException(new IllegalStateException("price column")))
+        .when(productQueryService).findProduct(Long.MAX_VALUE);
+
+    mockMvc
+        .perform(get("/api/products/{productId}", Long.MAX_VALUE))
+        .andExpect(status().isInternalServerError())
+        .andExpect(content().json("""
+            {
+              "code": "PRODUCT_DETAIL_UNAVAILABLE",
+              "message": "상품 정보를 불러오지 못했습니다.",
+              "fieldErrors": []
+            }
+            """, JsonCompareMode.STRICT));
   }
 
   private Product saveProduct(
