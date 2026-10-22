@@ -24,17 +24,22 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
+@Import(PaymentProviderQuerySafetyIntegrationTests.TransactionalCaller.class)
 @ActiveProfiles({"test", "local-integration"})
 class PaymentProviderQuerySafetyIntegrationTests {
   @Autowired PaymentReconciliationService service;
+  @Autowired TransactionalCaller transactionalCaller;
   @Autowired JdbcTemplate jdbc;
   @Autowired EntityManager entities;
   @Autowired PlatformTransactionManager manager;
@@ -70,6 +75,18 @@ class PaymentProviderQuerySafetyIntegrationTests {
     });
     assertThat(state(f)).isEqualTo(before);
     assertThat(fake.lastMethod).isEqualTo("GET");
+    assertThat(fake.requests.get()).isEqualTo(1);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void reconciliationSuspendsAmbientTransactionForBothEntryPoints(boolean withAdmin) {
+    Fixture f = fixture("UNKNOWN");
+    fake.respond(200, TossPaymentQuerySafetyTests.FakeServer.payment(
+        f.orderIdentity(), "key-1", "123.45", "IN_PROGRESS"));
+    var before = state(f);
+    transactionalCaller.reconcile(f, withAdmin);
+    assertBusinessStateUnchanged(f, before);
     assertThat(fake.requests.get()).isEqualTo(1);
   }
 
@@ -181,5 +198,22 @@ class PaymentProviderQuerySafetyIntegrationTests {
     state.put("notifications", jdbc.queryForList("SELECT * FROM notifications WHERE member_id=? ORDER BY id", f.member()));
     return state;
   }
+  static class TransactionalCaller {
+    private final PaymentReconciliationService service;
+
+    TransactionalCaller(PaymentReconciliationService service) {
+      this.service = service;
+    }
+
+    @Transactional
+    public void reconcile(Fixture f, boolean withAdmin) {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      var result = withAdmin ? service.reconcile(f.payment(), f.member()) : service.reconcile(f.payment());
+      assertThat(result.status()).isEqualTo("UNKNOWN");
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+    }
+  }
+
   private record Fixture(long member, long order, long payment, long sku, long cart, String orderIdentity) {}
 }

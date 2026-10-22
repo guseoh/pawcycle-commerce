@@ -377,7 +377,14 @@ class PaymentReconciliationIntegrationTests {
       assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
       return new TossBillingAdapter.ChargeResult("SUCCEEDED", "BILLING_DONE");
     });
-    assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
+    new TransactionTemplate(manager).executeWithoutResult(tx -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      tx.setRollbackOnly();
+    });
+    assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("SUCCEEDED");
+    assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(1);
     assertThat(quantity(f)).isEqualTo(5);
     assertThat(jdbc.queryForObject("SELECT provider_status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("BILLING_DONE");
     verifyNoInteractions(provider);

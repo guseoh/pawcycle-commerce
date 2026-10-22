@@ -57,10 +57,13 @@ public class PaymentReconciliationService {
     this.clock = clock;
   }
 
+  // Suspend callers so Provider I/O stays outside the separate start/completion transactions.
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public PaymentReconciliationResult reconcile(long id) {
     return reconcile(id, null);
   }
 
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public PaymentReconciliationResult reconcile(long id, Long adminId) {
     PaymentReconciliationPersistenceAdapter.ReconciliationWork work =
         transaction.execute(
