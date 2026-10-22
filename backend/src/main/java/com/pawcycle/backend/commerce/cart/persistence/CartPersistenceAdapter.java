@@ -11,6 +11,7 @@ import com.pawcycle.backend.member.domain.Member;
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -114,7 +115,7 @@ public class CartPersistenceAdapter {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.now(clock);
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 
   public record CartLock(long id, long version) {}

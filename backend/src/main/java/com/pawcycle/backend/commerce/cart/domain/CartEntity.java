@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.type.descriptor.jdbc.LocalDateTimeJdbcType;
 
 @Entity
 @Table(name = "carts")
@@ -21,9 +23,11 @@ public class CartEntity {
   @Column(nullable = false)
   private long version;
 
+  @JdbcType(LocalDateTimeJdbcType.class)
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 
+  @JdbcType(LocalDateTimeJdbcType.class)
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
 

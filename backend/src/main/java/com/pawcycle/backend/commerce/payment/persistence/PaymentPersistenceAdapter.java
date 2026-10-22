@@ -123,7 +123,7 @@ public class PaymentPersistenceAdapter {
 
   private CartEntity lockCart(long memberId) {
     LocalDateTime now = now();
-    carts.ensureExists(memberId, now);
+    carts.ensureExists(memberId, now.toString());
     return carts.findByMemberIdForUpdate(memberId).orElseThrow();
   }
 

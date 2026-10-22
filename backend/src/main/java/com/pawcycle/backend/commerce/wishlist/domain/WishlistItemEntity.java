@@ -15,12 +15,15 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.type.descriptor.jdbc.LocalDateTimeJdbcType;
 
 @Entity
 @Table(name = "wishlist_items")
 public class WishlistItemEntity {
   @EmbeddedId private WishlistItemId id;
 
+  @JdbcType(LocalDateTimeJdbcType.class)
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 
