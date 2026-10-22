@@ -15,6 +15,8 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Service
 public class PaymentReconciliationService {
@@ -82,7 +84,7 @@ public class PaymentReconciliationService {
         TossBillingAdapter.ChargeResult result = billingProvider.queryCharge(work.providerOrderId());
         observed = new ProviderResult(result.status(), result.providerStatus());
       } else {
-        TossPaymentAdapter.ConfirmResult result = paymentProvider.queryPayment(work.providerOrderId());
+        ProviderObservation result = queryOnly(id);
         observed = new ProviderResult(result.status(), result.providerStatus());
       }
     } catch (RuntimeException exception) {
@@ -97,6 +99,28 @@ public class PaymentReconciliationService {
     }
     return response(payments.find(id));
   }
+
+  /** Internal query-only boundary; no public HTTP recovery command or local finalization. */
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  public ProviderObservation queryOnly(long paymentId) {
+    var target = payments.findQueryTarget(paymentId);
+    if (target == null) throw notFound();
+    if (!"NORMAL".equals(target.type()))
+      throw new CommerceException(409, "PAYMENT_RECONCILIATION_NOT_ALLOWED", "NORMAL 결제 조회만 지원합니다.");
+    if (!paymentProvider.isConfigured())
+      throw new CommerceException(503, "PAYMENT_PROVIDER_UNAVAILABLE", "Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
+    if (target.providerOrderId() == null || target.providerOrderId().isBlank()
+        || target.paymentKey() == null || target.paymentKey().isBlank() || target.amount() == null)
+      return new ProviderObservation("UNKNOWN", "IDENTITY_MISSING");
+    try {
+      var result = paymentProvider.queryPayment(target.providerOrderId(), target.paymentKey(), target.amount());
+      return new ProviderObservation(result.status(), result.providerStatus());
+    } catch (RuntimeException exception) {
+      return new ProviderObservation("UNKNOWN", "NO_RESPONSE");
+    }
+  }
+
+  public record ProviderObservation(String status, String providerStatus) {}
 
   private boolean complete(long paymentId, Long adminId, ProviderResult observed) {
     PaymentReconciliationPersistenceAdapter.ReconciliationTarget payment = payments.findForCompletion(paymentId);

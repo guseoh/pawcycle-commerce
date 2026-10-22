@@ -20,7 +20,7 @@ class TossSandboxPaymentAdapter implements TossPaymentAdapter {
   }
 
   @Override
-  public ConfirmResult queryPayment(String providerOrderId) {
+  public ConfirmResult queryPayment(String providerOrderId, String paymentKey, BigDecimal amount) {
     return providerOrderId.contains("unknown")
         ? new ConfirmResult("UNKNOWN", "NO_RESPONSE")
         : new ConfirmResult("SUCCEEDED", "DONE");

@@ -21,3 +21,12 @@
 ## Provider와 운영 경계
 
 Sandbox capability는 `local-integration`에서만 노출한다. Production/AWS/운영 DB/Secret/Toss live 호출은 이 계약과 구현 범위 밖이다. Notifications는 DB in-app 전용이며 Email, SMS, Kafka, Outbox를 포함하지 않는다.
+
+
+### Provider 조회 안전 경계 (PAYMENT-RECOVERY-F07 Phase 1)
+
+- NORMAL Provider 조회는 저장된 `provider_order_id`, `payment_key`, `amount`와 조회 응답의 `orderId`, `paymentKey`, `totalAmount`가 모두 일치할 때만 최종 상태로 분류한다. 금액은 숫자이며 소수 자릿수와 무관하게 같은 금액이어야 한다. 식별자 누락·형식 오류·불일치는 미확정이다.
+- 조회 HTTP 4xx/5xx, timeout, 미발견, 파싱 오류는 `UNKNOWN`이다. 동일 결제의 `DONE`은 성공, `ABORTED`/`EXPIRED`는 명시적 실패이며 `CANCELED`/`PARTIAL_CANCELED`, 진행 중 및 알 수 없는 상태는 미확정으로 유지한다. 이는 [Toss Payment 객체·조회 명세](https://docs.tosspayments.com/reference)의 상태와 식별자를 기준으로 한다. POST confirm의 기존 명시적 거절 계약은 유지한다.
+- 내부 `PaymentReconciliationService.queryOnly`는 트랜잭션을 중지한 상태에서 조회하고 분류만 반환한다. Payment·Order·Inventory·Cart·Coupon·Delivery 및 reconciliation attempts를 변경하지 않는다. 새 공개 HTTP API나 관리자 복구 명령을 추가하지 않는다.
+- 기존 NORMAL/UNKNOWN 대사는 위의 검증된 조회를 사용하며 조회 오류로 실패 완료·예약 해제를 수행하지 않는다. 기존 attempts 한도·UNKNOWN 알림/상태 정책과 Billing 대사는 유지한다. NORMAL/PROCESSING 대사 Gate는 그대로 닫혀 있으며 query-only의 성공 관측은 로컬 완료 권한이 아니다.
+- 후속 로컬 복구에는 active worker 중지/소유권·fencing, 동일 identity 재검증, 완료 효과 중복 방지, commit ACK 유실·rollback 및 예약 해제 정책에 대한 별도 승인이 필요하다. 실제 Provider·Production 실행은 검증하지 않았다.
