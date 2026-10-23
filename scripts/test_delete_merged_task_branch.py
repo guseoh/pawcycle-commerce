@@ -85,6 +85,30 @@ class BranchCleanupTest(unittest.TestCase):
         self.assertIn("HEAD changed", cleanup(api, event(), REPOSITORY))
         self.assertEqual(api.deletes, [])
 
+    def test_ref_deleted_before_cleanup_is_idempotent(self):
+        class MissingRefAPI(FakeAPI):
+            def get(self, path):
+                if path.startswith("git/ref/heads/"):
+                    self.gets.append(path)
+                    return None
+                return super().get(path)
+
+        api = MissingRefAPI()
+        self.assertIn("already missing", cleanup(api, event(), REPOSITORY))
+        self.assertEqual(api.deletes, [])
+
+    def test_head_changed_during_checks_never_deleted(self):
+        class RacingRefAPI(FakeAPI):
+            def get(self, path):
+                result = super().get(path)
+                if path.startswith("git/ref/heads/") and self.gets.count(path) == 2:
+                    result["object"]["sha"] = "b" * 40
+                return result
+
+        api = RacingRefAPI()
+        self.assertIn("HEAD changed", cleanup(api, event(), REPOSITORY))
+        self.assertEqual(api.deletes, [])
+
     def test_protected_branch_never_deleted(self):
         api = FakeAPI(protected=True)
         self.assertIn("protected", cleanup(api, event(), REPOSITORY))
