@@ -115,6 +115,8 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_classifier_and_workflow_changes_run_all_groups(self) -> None:
         for path in (
             "scripts/classify-validation-changes.py",
+            "scripts/classify-production-image-changes.py",
+            "scripts/test_release_workflows.py",
             "scripts/test_validate_conventions_workflow.py",
             ".github/workflows/validate-conventions.yml",
             ".github/workflows/publish-production-images.yml",
@@ -315,7 +317,9 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("paths:", header)
         self.assertIn("name: Classify production image changes", self.publish_workflow)
         self.assertIn('git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA"', self.publish_workflow)
-        self.assertIn("grep -Eq '^(backend/|frontend/|infra/production/)'", self.publish_workflow)
+        self.assertIn('python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"', self.publish_workflow)
+        self.assertIn('if ! changed_paths="$(git diff', self.publish_workflow)
+        self.assertIn('if [ "$EVENT_NAME" = "workflow_dispatch" ]', self.publish_workflow)
         publish_block = self.publish_workflow[self.publish_workflow.index("\n  publish:\n") :]
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)

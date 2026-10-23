@@ -56,13 +56,18 @@ jobs:
               ;;
           esac
 
-          changed_paths="$(git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA")"
-          printf '%s\n' "$changed_paths"
-          if printf '%s\n' "$changed_paths" | grep -Eq '^(backend/|frontend/|infra/production/)'; then
+          # Missing/invalid comparison bases and diff errors fail safe: publish.
+          if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          if ! changed_paths="$(git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA")"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$changed_paths"
+          printf '%s\n' "$changed_paths" \
+            | python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish production images

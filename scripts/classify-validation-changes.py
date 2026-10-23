@@ -11,6 +11,8 @@ from pathlib import PurePosixPath
 GROUPS = ("harness", "backend", "frontend", "production")
 ALL_COMPONENT_FILES = {
     "scripts/classify-validation-changes.py",
+    "scripts/classify-production-image-changes.py",
+    "scripts/test_release_workflows.py",
     "scripts/test_validate_conventions_workflow.py",
 }
 HARNESS_FILES = {
