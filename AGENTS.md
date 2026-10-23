@@ -69,7 +69,7 @@ Skill은 공통 정책의 복사본이 아니다. 지속 안전 규칙은 이 �
 
 ## GitHub와 Git 쓰기 안전
 
-`main`에 직접 제품·문서 작업을 작성하지 않는다. 일반 file write의 direct `main` write는 허용하지 않는다. 새 저장소 작업은 최신 `main`에서 명시적인 task branch를 사용한다. branch 이름 관례는 `CONTRIBUTING.md`를 따른다.
+`main`에 직접 제품·문서 작업을 작성하지 않는다. 일반 file write의 direct `main` write는 허용하지 않는다. 장기 유지 브랜치는 `main`(검증된 기준)과 `dev`(개발 통합) 두 개다. 새 저장소 작업은 최신 `dev`에서 명시적인 임시 task branch를 만들고 PR을 `dev`로 보낸다. `dev`도 작업 코드의 직접 쓰기 대상이 아니며 승인된 PR 병합으로 통합한다. `dev → main` 반영은 별도 PR의 최신 CI·리뷰 및 사용자 병합 승인 뒤 수행한다. `dev`로 병합된 임시 브랜치만 안전 조건 확인 후 자동 삭제하며, `main`·`dev`는 자동 삭제하지 않는다. branch 이름 관례는 `CONTRIBUTING.md`를 따른다.
 
 GitHub 파일 쓰기 또는 ref 변경 Tool을 호출하기 직전에 다음을 확인한다.
 

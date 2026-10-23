@@ -6,7 +6,9 @@
 
 ## Task branch
 
-저장소 작업은 최신 `main`에서 별도 task branch를 만든다.
+상시 유지 브랜치는 `main`(안정 버전)과 `dev`(개발 통합) 두 개다. 저장소 변경은 최신 `dev`에서 별도 임시 task branch를 생성하고, **임시 branch → `dev` PR**로 독립 검증·리뷰·승인 병합한다. 여러 작업은 서로 다른 임시 브랜치/PR에서 병렬 수행한다. 통합 `dev`를 `main`에 반영할 때는 **`dev → main` 별도 PR**로 검증하고 사용자의 병합 승인을 받는다. `main`과 `dev`에 작업 파일을 직접 수정하지 않는다.
+
+**병합 후 정리:** `dev`로 병합되고, 같은 저장소의 PR HEAD SHA가 그대로이며, 브랜치가 보호되지 않고 다른 열린 PR이 참조하지 않는 **임시 브랜치만** `.github/workflows/delete-merged-task-branch.yml`로 자동 삭제한다. 단순 종료(미병합)·Draft·열린 PR에는 적용하지 않는다. `dev → main` PR에서는 `dev`를 절대 자동 삭제하지 않으며 `main`도 유지한다. 삭제 자동화가 실패하거나 실행되지 않았다면 브랜치 상태와 검증 로그를 확인해 필요한 경우 별도 조치한다. GitHub 저장소의 전역 **Automatically delete head branches** 옵션은 `dev`까지 삭제할 수 있으므로 사용하지 않는다.
 
 역할이 하나로 명확할 때는 다음 prefix를 권장한다.
 
