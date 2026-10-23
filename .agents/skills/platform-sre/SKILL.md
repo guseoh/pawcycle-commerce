@@ -11,7 +11,7 @@ description: >-
 ## 실행 절차
 
 1. **목표와 실행 구분 확인**
-   - 기존 근거의 직접 분석, 설계, 저장소 준비, 실제 운영 실행 중 요청 목적을 정한다. 공통 권한은 AGENTS/Lean Harness를 따른다.
+   - `docs/runbook/lean-harness.md`의 `Read / Analyze`, `Design / Plan`, `Repository Change`(저장소 변경), `Operations Execution` 중 요청 목적을 정한다. 공통 권한은 루트 AGENTS와 해당 실행 구분을 따른다.
    - 분석 요청이 실제 부하·장애 주입·운영 변경을 포함하는지 구분한다.
 
 2. **직접 증거 수집과 원인 분석**

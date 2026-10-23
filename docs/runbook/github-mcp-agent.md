@@ -92,7 +92,8 @@ Workflow rerun/cancel/dispatch는 기본 쓰기 범위가 아니다.
 
 - rerun: transient/flaky 근거 또는 원인 수정 뒤 필요한 경우
 - dispatch: 사용자 요청 또는 승인된 결과물에 대상 workflow 실행이 명확히 포함된 경우에 한정
-- Production deploy/restore/cutover workflow: 별도 실제 운영 실행 승인 없이는 dispatch 금지
+- 운영 승인 여부는 Workflow 이름이 아니라 실제 영향으로 판단한다. Release·migration·infrastructure apply·복구를 포함해 Production·Cloud·운영 DB·Secret·비용 자원·실제 부하에 영향을 주는 Workflow는 `docs/runbook/lean-harness.md`의 `Operations Execution` 및 루트 `AGENTS.md` 승인 경계를 적용하며, 별도 운영 승인 없이는 실행하지 않는다.
+- GHCR 이미지 게시를 실제 Production 배포와 동일시하지 않는다. 외부 Artifact 게시의 승인 범위·비용·Release side effect는 별도로 확인하며, 배포가 없다는 이유로 게시 승인이 있다고 해석하지 않는다.
 
 CI가 반복 실패하면 같은 payload를 계속 돌리지 않고 최초 공통 원인을 분석한다.
 
