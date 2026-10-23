@@ -47,6 +47,12 @@ def is_skill_document(path: str) -> bool:
         and parts[:2] == (".agents", "skills")
         and parts[2] in ROLE_COMPONENTS.keys() | SUPPORT_SKILLS
         and PurePosixPath(path).suffix == ".md"
+        and (
+            parts[3:] == ("SKILL.md",)
+            or (parts[2] == "ui-ux-pro-max" and parts[3:] == ("PAWCYCLE.md",))
+            or (parts[3] == "references" and len(parts) >= 5
+                and not {"data", "scripts"}.intersection(parts[4:-1]))
+        )
     )
 
 

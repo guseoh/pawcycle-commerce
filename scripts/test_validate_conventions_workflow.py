@@ -147,6 +147,10 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_skill_code_data_and_unregistered_skills_fail_closed(self) -> None:
         for path in (
             ".agents/skills/backend-engineer/scripts/check.py",
+            ".agents/skills/ui-ux-pro-max/data/rules.md",
+            ".agents/skills/backend-engineer/scripts/README.md",
+            ".agents/skills/backend-engineer/unknown.md",
+            ".agents/skills/backend-engineer/references/scripts/README.md",
             ".agents/skills/ui-ux-pro-max/scripts/search.py",
             ".agents/skills/ui-ux-pro-max/data/styles.csv",
             ".agents/skills/tech-lead/agents/openai.yaml",
