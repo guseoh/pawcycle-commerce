@@ -59,6 +59,22 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
 
+    def test_diff_guard_and_manual_publish_fail_safe(self) -> None:
+        self.assertIn('''if [ "$EVENT_NAME" = "workflow_dispatch" ]; then''', self.publish)
+        self.assertIn('''''|0000000000000000000000000000000000000000)''', self.publish)
+        self.assertIn('''if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]''', self.publish)
+        self.assertIn('''if ! changed_paths="$(git diff''', self.publish)
+        self.assertIn('''echo "publish=true" >> "$GITHUB_OUTPUT"''', self.publish)
+
+    def test_release_readiness_keeps_exact_sha_image_pair(self) -> None:
+        readiness = (WORKFLOWS_DIR / "production-release-readiness.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('''-backend:${TARGET_SHA}''', readiness)
+        self.assertIn('''-frontend:${TARGET_SHA}''', readiness)
+        self.assertIn('''git merge-base --is-ancestor "$TARGET_SHA" HEAD''', readiness)
+        self.assertIn('''There is no active Production deployment target.''', readiness)
+
     def test_production_deploy_workflow_is_retired(self) -> None:
         self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
 
