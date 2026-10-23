@@ -34,6 +34,27 @@ ROLE_COMPONENTS = {
     "tech-lead": ("harness",),
 }
 
+SUPPORT_SKILLS = {
+    "codex-delta-prompt", "ci-failure-triage", "pr-readiness-review",
+    "github-mcp-readonly", "ui-ux-pro-max",
+}
+
+
+def is_skill_document(path: str) -> bool:
+    parts = PurePosixPath(path).parts
+    return (
+        len(parts) >= 4
+        and parts[:2] == (".agents", "skills")
+        and parts[2] in ROLE_COMPONENTS.keys() | SUPPORT_SKILLS
+        and PurePosixPath(path).suffix == ".md"
+        and (
+            parts[3:] == ("SKILL.md",)
+            or (parts[2] == "ui-ux-pro-max" and parts[3:] == ("PAWCYCLE.md",))
+            or (parts[3] == "references" and len(parts) >= 5
+                and not {"data", "scripts"}.intersection(parts[4:-1]))
+        )
+    )
+
 
 def normalized(path: str) -> str:
     value = PurePosixPath(path.strip().replace("\\", "/")).as_posix()
@@ -42,7 +63,7 @@ def normalized(path: str) -> str:
 
 def role_components(path: str) -> tuple[str, ...] | None:
     for role, components in ROLE_COMPONENTS.items():
-        if path == f"docs/roles/{role}.md" or path.startswith(f".agents/skills/{role}/"):
+        if path == f"docs/roles/{role}.md":
             return components
     path_role = {
         "backend/AGENTS.md": "backend-engineer",
@@ -83,6 +104,15 @@ def classify(paths: list[str]) -> dict[str, bool]:
         if components:
             for component in components:
                 result[component] = True
+        elif is_skill_document(path):
+            result["harness"] = True
+        elif path.startswith(("qa/", "infra/performance/")):
+            if PurePosixPath(path).suffix == ".md":
+                result["harness"] = True
+            else:
+                # Workloads, executable fixtures, instrumentation and new formats
+                # retain all gates; dedicated contract workflows remain additive.
+                return {group: True for group in GROUPS}
         elif path.startswith("infra/local-integration/"):
             return {group: True for group in GROUPS}
         elif is_backend_http_contract(path):

@@ -19,6 +19,14 @@ PawCycle Commerce의 AI Harness는 문서를 많이 만드는 체계가 아니�
 
 GitHub branch, PR, HEAD, CI, review, Production 상태는 장기 문서나 과거 대화로 추정하지 않고 작업 시점에 다시 확인한다.
 
+## 요청과 실행 권한
+
+요청을 `Read / Analyze`, `Design / Plan`, `Repository Change`, `Operations Execution`으로 구분한다. 유형별 결과와 운영 경계는 `docs/runbook/lean-harness.md`의 실행 구분을 따른다.
+
+`검토`, `분석`, `방향성`, `설계`, `남은 작업 확인`은 저장소나 외부 상태의 쓰기 승인이 아니다. Issue 생성·종료, PR Ready 전환·병합, Workflow dispatch와 새로운 외부 기록 생성은 사용자 요청 또는 이미 승인된 결과물에 명확히 포함된 경우에만 수행한다. 문서·설계를 작성해 달라는 요청도 저장 위치가 지정되지 않았다면 GitHub 파일이나 Issue 생성으로 확대하지 않는다.
+
+승인된 Repository Change에 commit/push/Draft PR이 포함되어 있으면 해당 범위에서 진행하며 단계마다 형식적인 재승인을 요구하지 않는다. 새 제품 결정이나 실제 운영 실행이 필요하면 별도 승인 경계를 적용한다.
+
 ## 공통 안전 경계
 
 - 승인된 사용자 목적을 하나의 coherent work unit으로 다룬다. 파일 수나 역할 수만으로 작업을 쪼개지 않는다.
@@ -45,6 +53,12 @@ GitHub branch, PR, HEAD, CI, review, Production 상태는 장기 문서나 과�
 
 Skill 이름을 사용자가 명시하면 해당 Skill을 우선한다. 이름을 명시하지 않아도 요청 의도가 다음 workflow와 일치하면 해당 Skill을 사용한다.
 
+요청 목적에 필요한 Skill만 읽고 활성화한다. 역할의 지속 책임은 Role, 반복 방법은 Skill, 공통 제약은 AGENTS/Lean Harness가 소유한다.
+
+- 코드 이해·리버스 엔지니어링 → `tech-lead` + `backend-engineer` 중 필요한 판단·추적 절차
+- 운영·장애·성능 직접 분석 → `platform-sre` + 필요한 전문 역할
+- 승인된 코드 변경 → 해당 역할 Skill; Codex 구현 전달이 필요할 때만 `codex-delta-prompt`
+- UI 디자인 시스템 탐색 → `ux-designer`, 필요할 때만 `ui-ux-pro-max`의 `PAWCYCLE.md`를 확인하고 검색 보조 사용
 - PR 병합 전 최종 검토, merge readiness 판단 → `.agents/skills/pr-readiness-review/SKILL.md`
 - Codex 실행 Prompt, Delta Prompt, 리뷰 후 후속 수정 Prompt 생성 → `.agents/skills/codex-delta-prompt/SKILL.md`
 - PR/branch CI 실패 원인 분석과 최소 후속 수정 범위 판단 → `.agents/skills/ci-failure-triage/SKILL.md`
@@ -102,9 +116,9 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 
 `<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호다. `.github/workflows/request-coderabbit-review.yml`은 native auto-review 대상이 아닌 저장소에서 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, Ready 상태이며 최신 HEAD review가 없는 PR에 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. Draft PR에는 reminder를 남기지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder를 만들지 않고 CodeRabbit native review에 맡긴다.
 
-실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 사용자가 현재 대화에서 PR 검토 진행을 명시적으로 위임한 경우 ChatGPT는 연결된 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청할 수 있다. Codex와 repository automation은 이 명령을 발행하지 않는다. 자동 reminder, passing CodeRabbit status 또는 request comment만으로 review 완료를 주장하지 않고 실제 review submission과 `commit_id`를 확인한다.
+실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 독립 검토(`검토해줘`, `PR 검토 진행`)는 기본 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 해당 CodeRabbit 외부 리뷰 요청까지 명시적으로 위임했거나 이미 승인된 실행 범위에 포함한 경우에만 ChatGPT는 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청할 수 있다. Codex와 repository automation은 이 명령을 발행하지 않는다. 자동 reminder, passing CodeRabbit status 또는 request comment만으로 review 완료를 주장하지 않고 실제 review submission과 `commit_id`를 확인한다.
 
-외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다.
+외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. PCC_V9_02 §11의 필수 reviewer evidence·PR별 명시적 예외 Gate 등 별도 승인된 정책의 원본·적용 범위를 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 필수 Gate나 예외를 임의로 완화하지 않는다.
 
 고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
 

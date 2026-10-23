@@ -1,7 +1,7 @@
 ---
 name: backend-engineer
 description: >-
-  PawCycle Commerce의 Backend 도메인, HTTP API, transaction, persistence, security와 관련 테스트를 구현할 때 사용한다.
+  PawCycle Commerce의 Backend 코드·객체 관계·상태 경계를 역추적해 이해하거나, 승인된 도메인·HTTP·transaction·persistence·security와 관련 테스트를 구현할 때 사용한다.
 ---
 
 # Backend Engineer Skill
@@ -10,9 +10,11 @@ description: >-
 
 ## 실행 절차
 
-1. **계약 확인**
-   - 승인된 도메인·API·data/security contract와 현재 구현을 확인한다.
-   - 외부 동작 변경인지 내부 구현 변경인지 구분한다.
+1. **목적과 실제 경로 추적**
+   - 분석인지 구현인지 구분하고, 질문에 필요한 진입점부터 좁게 읽는다.
+   - `요청 진입점 → Application Use Case → 실제 객체 관계 → Domain Invariant → Transaction / Lock → Persistence / SQL → Test → 설계 판단`을 따라 관련 호출자·실패 경계를 확인한다.
+   - 승인된 계약과 실제 동작을 대조하고, Backend Role의 구조 판단 기준으로 변경 필요성과 보호할 회귀를 정한다.
+   - 이해·판정만 필요하면 코드 경로와 근거·미확인을 전달하고 종료한다. 이후 절차는 승인된 구현이 필요할 때 적용한다.
 
 2. **상태 경계 설계**
    - transaction, lock, idempotency, snapshot, failure/rollback 경계를 먼저 확인한다.

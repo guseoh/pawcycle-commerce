@@ -19,6 +19,10 @@
 - Persistence 세부사항은 Repository·query/persistence adapter 내부에 둔다.
 - JPA를 관계형 persistence의 기본 경계로 사용하되, locking·CAS·복잡한 projection처럼 의미가 더 명확한 SQL은 제한적으로 허용한다.
 
+## 구조 판단
+
+분석·리버스 엔지니어링의 추적 방법은 `backend-engineer` Skill을 따른다. 기존 API·DB·상태 전이·Lock 순서·멱등성·실패 rollback을 구조 개선의 보호 조건으로 둔다. 실제 코드 관계와 회귀 근거를 확인하기 전에 이상적인 계층 구조를 강제하지 않는다.
+
 ## 제품·데이터 안전
 
 - 가격, 할인, 재고, 결제, 구독 정책을 임의로 만들거나 바꾸지 않는다.

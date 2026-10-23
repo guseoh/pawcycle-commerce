@@ -6,7 +6,7 @@ description: >-
 
 # GitHub MCP Read-only Skill
 
-상세 Tool/보안 계약은 `docs/runbook/github-mcp-agent.md`가 권위 원본이다. 이 Skill은 **최소 읽기 evidence path**만 정의한다.
+상세 Tool/보안 계약은 `docs/runbook/github-mcp-agent.md`가 권위 원본이다. 이 Skill은 **최소 읽기 evidence path**만 정의한다. 읽기·분석 요청의 결과는 사실·판단·미확인 보고이며, 새 외부 기록이나 쓰기로 자동 이어지지 않는다.
 
 ## 사용하는 경우
 

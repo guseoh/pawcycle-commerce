@@ -14,8 +14,10 @@ description: >-
    - 현재 사용자 지시와 최신 `main`의 승인 원본을 확인한다.
    - PR·HEAD·CI·review 같은 동적 상태가 필요하면 `docs/runbook/github-mcp-agent.md`의 최소 evidence path로 다시 읽는다.
 
-2. **작업 정의**
-   - 문제, 사용자 목적, 포함·제외 범위, 작업 등급과 실행 구분을 정한다.
+2. **변경 필요성과 작업 방식 판단**
+   - 현재 구현·계약·측정 evidence에서 실제 Delta를 확인한다. 기술 도입·구조 변경은 이점과 비용을 비교해 KEEP / DEFER / REJECT를 판정한다.
+   - 직접 분석·설계로 목적을 달성하면 근거와 미확인을 보고하고 종료한다. Codex 구현 전달이나 저장소 결과물을 기본값으로 만들지 않는다.
+   - 구현이 필요하면 문제, 사용자 목적, 포함·제외 범위, 작업 등급과 실행 구분을 정한다.
    - 하나의 목적을 파일 수나 역할 수만으로 쪼개지 않는다.
    - 구현을 막는 승인 결정만 사용자에게 남긴다.
 
@@ -23,7 +25,7 @@ description: >-
    - Acceptance Criteria, 관련 test, 중단 조건과 rollback/revert 경계를 정한다.
    - 고위험이면 데이터·transaction·보안·운영 실패 모드를 명시한다.
 
-4. **AI 실행 전달**
+4. **AI 실행 전달 — Codex 구현이 필요한 경우만**
    - 상세 분석과 실행 Prompt를 구분한다.
    - 최종 Prompt에는 현재 작업의 Delta, AC, 검증, 중단 조건만 남긴다.
    - AGENTS/Runbook의 공통 규칙을 Prompt에 다시 복사하지 않는다.

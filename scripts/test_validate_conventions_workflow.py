@@ -135,6 +135,73 @@ class ChangeClassifierTest(unittest.TestCase):
             frontend=True,
         )
 
+    def test_registered_skill_documents_are_harness_only(self) -> None:
+        for skill in (*CLASSIFIER.ROLE_COMPONENTS, "codex-delta-prompt", "ci-failure-triage",
+                      "pr-readiness-review", "github-mcp-readonly", "ui-ux-pro-max"):
+            for document in ("SKILL.md", "references/analysis.md"):
+                with self.subTest(skill=skill, document=document):
+                    self.assert_groups([f".agents/skills/{skill}/{document}"], harness=True)
+        self.assert_groups([".agents/skills/ui-ux-pro-max/PAWCYCLE.md"], harness=True)
+        self.assert_groups([".\\.agents\\skills\\tech-lead\\SKILL.md"], harness=True)
+
+    def test_skill_code_data_and_unregistered_skills_fail_closed(self) -> None:
+        for path in (
+            ".agents/skills/backend-engineer/scripts/check.py",
+            ".agents/skills/ui-ux-pro-max/data/rules.md",
+            ".agents/skills/backend-engineer/scripts/README.md",
+            ".agents/skills/backend-engineer/unknown.md",
+            ".agents/skills/backend-engineer/references/scripts/README.md",
+            ".agents/skills/ui-ux-pro-max/scripts/search.py",
+            ".agents/skills/ui-ux-pro-max/data/styles.csv",
+            ".agents/skills/tech-lead/agents/openai.yaml",
+            ".agents/skills/new-unregistered/SKILL.md",
+        ):
+            with self.subTest(path=path):
+                self.assert_groups([path], **dict.fromkeys(CLASSIFIER.GROUPS, True))
+
+    def test_qa_evidence_and_executable_inputs_have_different_impact(self) -> None:
+        self.assert_groups(["qa/MVP4-QA-004/RESULT.md"], harness=True)
+        for path in (
+            "qa/MVP4-QA-004/verify-final-product-interactions.ps1",
+            "qa/MVP4-QA-004/seed-final-product-fixtures.sql",
+            "qa/MVP4-QA-004/compose.final-product-qa.yaml",
+            "qa/new-fixture.json",
+        ):
+            with self.subTest(path=path):
+                self.assert_groups([path], **dict.fromkeys(CLASSIFIER.GROUPS, True))
+
+    def test_performance_docs_do_not_hide_workload_or_runtime_inputs(self) -> None:
+        self.assert_groups(["infra/performance/phase9/README.md"], harness=True)
+        for path in (
+            "infra/performance/k6/api-products.js",
+            "infra/performance/k6/lib/isolated-capacity.js",
+            "infra/performance/k6/run-production-capacity.sh",
+            "infra/performance/phase9/run-products-jfr-diagnostic.ps1",
+            "infra/performance/catalog-isolated/compose.yaml",
+            "infra/performance/catalog-isolated/runtime.env.example",
+            "infra/performance/catalog-isolated/collect-stage-evidence.py",
+            "infra/performance/new-input.json",
+        ):
+            with self.subTest(path=path):
+                self.assert_groups([path], **dict.fromkeys(CLASSIFIER.GROUPS, True))
+
+    def test_document_and_runtime_changes_keep_the_union_of_required_lanes(self) -> None:
+        self.assert_groups([
+            ".agents/skills/pr-readiness-review/SKILL.md", "backend/src/Main.java",
+        ], harness=True, backend=True)
+        self.assert_groups([
+            "infra/performance/catalog-scale.md",
+            "backend/src/main/java/com/pawcycle/backend/catalog/product/api/ProductController.java",
+        ], harness=True, backend=True, frontend=True)
+        self.assert_groups([
+            "qa/MVP4-QA-004/RESULT.md", "infra/production/deploy.sh",
+        ], harness=True, production=True)
+        for unsafe in ("unknown.config", "qa/new-fixture.json", ".agents/skills/ui-ux-pro-max/scripts/search.py"):
+            with self.subTest(unsafe=unsafe):
+                self.assert_groups([
+                    ".agents/skills/tech-lead/SKILL.md", unsafe,
+                ], **dict.fromkeys(CLASSIFIER.GROUPS, True))
+
 
 class WorkflowContractTest(unittest.TestCase):
     @classmethod

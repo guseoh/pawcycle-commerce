@@ -39,10 +39,14 @@ Harness의 목적은 문서와 체크리스트를 늘리는 것이 아니라 다
 
 ## 4. 실행 구분
 
-- `저장소 변경`: 코드·설정·문서·Runbook·test를 준비하고 검증한다. Production·Cloud·운영 DB·Secret·비용 리소스를 실행하지 않는다.
-- `실제 운영 실행`: Production·Cloud·운영 DB·Secret·비용 또는 실제 restore/cutover/recovery를 수행한다.
+| 실행 유형 | 목적과 기본 결과 | 실행 경계 |
+| --- | --- | --- |
+| `Read / Analyze` | 코드·Issue·PR·CI·허용된 운영 근거의 조사, 원인 분석·판정 | 기본적으로 외부 상태를 변경하지 않는다. 분석만으로 완료할 수 있다. |
+| `Design / Plan` | 설계·대안·기술 판단·필요한 실행 Prompt | 대화 내 결과가 기본이다. 문서 작성·저장 위치가 승인된 경우에만 그 범위에 기록한다. |
+| `Repository Change` (`저장소 변경`) | 승인된 코드·테스트·설정·문서 변경과 검증 | 명시적 Task Branch를 사용한다. commit/push/Draft PR 등 결과물의 권한은 루트 AGENTS를 따른다. |
+| `Operations Execution` (`실제 운영 실행`) | Production·Cloud·운영 DB·Secret·비용 자원, 실제 부하·장애 주입·restore/cutover/recovery | 항상 고위험이며 대상·실행·중단·복구 경계에 대한 별도 명시 승인이 필요하다. |
 
-실제 운영 실행은 항상 고위험이며 별도 명시적 사용자 승인이 필요하다. 저장소 준비 승인은 실제 운영 실행 승인으로 확장되지 않는다.
+직접 운영 분석·성능 측정 근거의 해석·리버스 엔지니어링도 독립적인 결과다. 기존 근거를 읽는 분석과 실제 부하·장애 주입은 구분한다. 저장소 준비 승인은 실제 운영 실행 승인으로 확장되지 않는다. 외부 기록과 상태 변경의 권한은 루트 `AGENTS.md`가 소유한다.
 
 ## 5. 작업 ID
 
@@ -152,15 +156,19 @@ CI는 **변경이 영향을 줄 수 있는 동작**을 검증한다.
 - Frontend 변경 → Frontend
 - Backend 외부 HTTP contract → Backend + Frontend
 - Production runtime/contract → Production
-- Harness 문서·역할·Prompt 규칙 → Harness
+- Harness 문서·역할·등록된 Skill의 Markdown 문서 → Harness
+- `qa/**`, `infra/performance/**`의 Markdown 근거·설명 → Harness
+- QA 실행·fixture·Compose와 성능 workload·계측·실행 입력 → 보수적으로 전체 영향 lane 유지; 기존 전용 contract workflow가 해당 경로를 다루면 함께 확인
 - classifier/workflow 자체처럼 lane 선택 의미를 바꾸는 변경 → 전체 영향 lane
 - 미분류 경로 → fail-safe 전체
+
+등록되지 않은 Skill, Skill 실행 코드·데이터, QA/성능의 새 형식 등 판단되지 않은 입력은 fail-safe 전체 검증을 유지한다. 전체 lane 선택이 실제 성능 부하 실행이나 모든 QA 스크립트 검증을 대신하지는 않는다. 변경한 실행 입력의 전용 contract·syntax 검사와 측정 필요성을 별도로 판단한다.
 
 PR metadata 오류는 최종 merge gate를 막을 수 있지만, 관련 제품 test 실행 자체를 불필요하게 직렬 차단하지 않는 방향으로 구성한다.
 
 ## 10. Spec ≠ Prompt
 
-상세 분석과 최종 AI 실행 Prompt는 같은 산출물이 아니다.
+상세 분석과 최종 AI 실행 Prompt는 같은 산출물이 아니다. 아래 Spec → Delta → Prompt 흐름은 Codex 구현을 수행하거나 전달하는 경우에만 적용한다. Read / Analyze 또는 Design / Plan으로 목적을 달성했다면 실행 Prompt·Task Branch·PR 없이 분석이나 판단으로 종료할 수 있다.
 
 ### 상세 분석 / 작업 명세
 

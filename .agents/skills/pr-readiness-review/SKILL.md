@@ -20,7 +20,7 @@ description: >-
 4. 여러 후보가 있으면 현재 Task ID, branch, 최근 작업 맥락과 head SHA를 이용해 좁힌다.
 5. 그래도 동률인 후보가 남으면 임의 선택하지 않고 후보를 명시한다.
 
-handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는 사용자 승인으로 해석하지 않는다.
+handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는 사용자 승인으로 해석하지 않는다. 이 Skill 활성화나 검토 요청 자체는 쓰기 권한을 부여하지 않는다. 외부 동작은 루트 AGENTS의 승인 경계를 따른다.
 
 ## 실행 절차
 
@@ -38,9 +38,9 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
    - `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit review command를 GitHub Actions bot으로 대신 실행하지 않는다. native auto-review 대상이 아니고 Ready + handoff marker + 최신 HEAD review 없음 조건이면 **HEAD당 한 번의 manual-review reminder**만 남긴다.
    - Draft PR에는 reminder를 만들지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder 없이 native review에 맡긴다.
    - 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지 확인한다. reminder comment나 passing CodeRabbit status만으로 review 완료를 주장하지 않는다.
-   - native auto-review 대상이 아니고 최신 HEAD review가 필요한 경우, 사용자가 현재 요청이나 대화에서 PR 검토 진행을 명시적으로 위임했다면 ChatGPT는 연결된 **user-authenticated GitHub identity**로 `@coderabbitai review`를 최신 HEAD에 한 번 요청할 수 있다. 위임이 없으면 임의로 명령을 실행하지 않고 manual review 필요 상태를 보고한다.
+   - native auto-review 대상이 아니고 최신 HEAD review가 필요한 경우, 일반 PR 검토는 Read / Analyze로 수행한다. 사용자가 해당 CodeRabbit 외부 리뷰 요청까지 명시적으로 위임했거나 이미 승인된 실행 범위에 포함한 경우에만 ChatGPT는 연결된 **user-authenticated GitHub identity**로 최신 HEAD를 재확인하고 `@coderabbitai review`를 한 번 요청할 수 있다. 위임이 없으면 임의로 명령을 실행하지 않고 manual review 필요 상태를 보고한다.
    - Codex와 repository automation은 `@coderabbitai review`를 호출하지 않는다.
-   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토와 테스트로 보완한다.
+   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토와 테스트로 보완한다. 필수 reviewer evidence와 승인된 예외의 적용 여부는 루트 AGENTS의 리뷰 정책에 따라 확인하며, 근거가 없으면 미충족·Drift를 보고한다.
    - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 대조한다.
    - reviewer 지적은 그대로 수용하지 않고 현재 계약·코드·테스트와 대조한다.
 
@@ -54,7 +54,7 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
    - 오래된 run 번호, stale HEAD, 이미 해결된 finding을 현재 evidence처럼 남기지 않는다.
 
 6. **최종 판정**
-   - `READY`: blocker 없음 + 필수 검증 완료 + 남은 위험이 수용 가능하고 명시됨.
+   - `READY`: blocker 없음 + 필수 검증·요구되는 review evidence(또는 승인 정책에 따른 명시적 예외 근거) 완료 + 남은 위험이 수용 가능하고 명시됨.
    - `CHANGES REQUIRED`: 코드·계약·검증·review blocker 또는 불명확한 안전 경계가 남음.
    - 실제 운영 검증을 수행하지 않았다면 `Production Verified`를 사용하지 않는다.
 
