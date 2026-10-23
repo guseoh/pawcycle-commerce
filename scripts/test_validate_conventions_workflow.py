@@ -312,6 +312,11 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('git merge-base "$BASE_SHA" "$HEAD_SHA"', self.workflow)
         self.assertIn('git diff --no-renames --name-only "$merge_base..$HEAD_SHA"', self.workflow)
 
+
+    def test_harness_executes_coderabbit_handoff_regressions(self) -> None:
+        self.assertIn("scripts.test_request_coderabbit_review", self.workflow)
+        self.assertIn("scripts/test_request_coderabbit_review.py", self.workflow)
+
     def test_production_image_publish_uses_job_level_runtime_diff_gate(self) -> None:
         header = self.publish_workflow.split("permissions:", 1)[0]
         self.assertNotIn("paths:", header)

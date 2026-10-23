@@ -21,7 +21,16 @@ HANDOFF_MARKER = "<!-- pawcycle-ai-handoff: review-ready -->"
 REMINDER_MARKER_RE = re.compile(r"<!-- pawcycle-coderabbit-manual-review-needed:([0-9a-f]{40}) -->")
 NATIVE_AUTO_REVIEW_STAR_THRESHOLD = 10
 BOT_LOGIN = "github-actions[bot]"
-CODERABBIT_LOGIN_PREFIX = "coderabbitai"
+CODERABBIT_LOGIN = "coderabbitai[bot]"
+SUMMARY_MARKER = "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"
+RECENT_START = "<!-- recent_review_start -->"
+RECENT_END = "<!-- recent_review_end -->"
+SUMMARY_RANGE_RE = re.compile(
+    r"Reviewing files that changed from the base of the PR and between "
+    r"([0-9a-f]{40}) and ([0-9a-f]{40})\."
+)
+SUMMARY_COVERAGE_RE = re.compile(r"<!-- final_review_risk_coverage:(\{[^\n]+\}) -->")
+NO_ACTIONABLE = "No actionable comments were generated in the recent review."
 
 
 @dataclass(frozen=True)
@@ -30,17 +39,89 @@ class ReviewHandoffDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class ReviewEvidence:
+    """Review execution evidence, never an automatic merge-readiness decision."""
+
+    performed: bool
+    source: str = "none"
+    findings_status: str = "unverified"
+
+
 def is_coderabbit_login(login: str) -> bool:
-    return (login or "").lower().startswith(CODERABBIT_LOGIN_PREFIX)
+    return (login or "").lower() == CODERABBIT_LOGIN
 
 
 def has_current_coderabbit_review(reviews: list[dict[str, Any]], head_sha: str) -> bool:
-    for review in reviews:
-        login = str(((review.get("user") or {}).get("login") or ""))
-        state = str(review.get("state") or "").upper()
-        if is_coderabbit_login(login) and review.get("commit_id") == head_sha and state != "PENDING":
-            return True
-    return False
+    return any(
+        is_coderabbit_login(str(((review.get("user") or {}).get("login") or "")))
+        and review.get("commit_id") == head_sha
+        and str(review.get("state") or "").upper() in {"APPROVED", "COMMENTED", "CHANGES_REQUESTED"}
+        for review in reviews
+    )
+
+
+def completed_summary_evidence(
+    comment: dict[str, Any], head_sha: str
+) -> ReviewEvidence | None:
+    """Accept only a CodeRabbit-bot summary with verified current-HEAD coverage."""
+    author = comment.get("user") or {}
+    if not is_coderabbit_login(str(author.get("login") or "")):
+        return None
+    if author.get("type") not in (None, "Bot"):
+        return None
+    body = str(comment.get("body") or "")
+    if (
+        body.count(SUMMARY_MARKER) != 1
+        or body.count(RECENT_START) != 1
+        or body.count(RECENT_END) != 1
+        or "<!-- This is an auto-generated comment: skip review by coderabbit.ai -->" in body
+    ):
+        return None
+
+    start = body.find(RECENT_START) + len(RECENT_START)
+    end = body.find(RECENT_END)
+    if end <= start:
+        return None
+    recent = body[start:end]
+    ranges = SUMMARY_RANGE_RE.findall(recent)
+    if len(ranges) != 1 or ranges[0][1] != head_sha:
+        return None
+
+    markers = SUMMARY_COVERAGE_RE.findall(body)
+    if len(markers) != 1:
+        return None
+    try:
+        coverage = json.loads(markers[0])
+    except (TypeError, ValueError):
+        return None
+    if (
+        not isinstance(coverage, dict)
+        or coverage.get("kind") != "reviewed"
+        or coverage.get("sourceCommitId") != head_sha
+        or coverage.get("coveredCommitId") != head_sha
+    ):
+        return None
+
+    findings_status = (
+        "none_reported_in_recent_review"
+        if NO_ACTIONABLE in recent
+        else "triage_required"
+    )
+    return ReviewEvidence(True, "summary", findings_status)
+
+
+def current_review_evidence(
+    reviews: list[dict[str, Any]], comments: list[dict[str, Any]], head_sha: str
+) -> ReviewEvidence:
+    """Submission takes precedence; both sources require separate findings triage."""
+    if has_current_coderabbit_review(reviews, head_sha):
+        return ReviewEvidence(True, "submission", "triage_required")
+    for comment in comments:
+        evidence = completed_summary_evidence(comment, head_sha)
+        if evidence is not None:
+            return evidence
+    return ReviewEvidence(False)
 
 
 def has_current_manual_review_reminder(comments: list[dict[str, Any]], head_sha: str) -> bool:
@@ -86,8 +167,12 @@ def evaluate_review_handoff(
     if not head_sha:
         return ReviewHandoffDecision(remind=False, reason="pull request head SHA is missing")
 
-    if has_current_coderabbit_review(reviews, head_sha):
-        return ReviewHandoffDecision(remind=False, reason="latest HEAD already has a CodeRabbit review")
+    evidence = current_review_evidence(reviews, recent_repository_comments, head_sha)
+    if evidence.performed:
+        return ReviewHandoffDecision(
+            remind=False,
+            reason=f"latest HEAD already has verified CodeRabbit {evidence.source} evidence; findings require separate triage",
+        )
 
     if has_current_manual_review_reminder(recent_repository_comments, head_sha):
         return ReviewHandoffDecision(remind=False, reason="latest HEAD already has a manual-review reminder")
@@ -157,6 +242,24 @@ def candidate_pull_requests(api: GitHubApi, repository: str, event: dict[str, An
     return pulls
 
 
+def pull_request_comments(
+    api: GitHubApi, repository: str, number: int
+) -> list[dict[str, Any]]:
+    """Scope evidence/reminders to this PR, including edited comments and pagination."""
+    all_comments: list[dict[str, Any]] = []
+    for page in range(1, 21):
+        comments = api.get(
+            f"/repos/{repository}/issues/{number}/comments?per_page=100&page={page}"
+        )
+        if not isinstance(comments, list):
+            raise RuntimeError(f"PR #{number} comments response is not a list")
+        all_comments.extend(comments)
+        if len(comments) < 100:
+            return all_comments
+    # Never silently assume review completion or post a duplicate reminder.
+    raise RuntimeError(f"PR #{number} comments exceed safe pagination limit")
+
+
 def main() -> int:
     token = os.environ.get("GITHUB_TOKEN")
     repository = os.environ.get("GITHUB_REPOSITORY")
@@ -168,10 +271,6 @@ def main() -> int:
     event = load_event()
     repo_metadata = api.get(f"/repos/{repository}")
     stars = int(repo_metadata.get("stargazers_count") or 0)
-    comments = api.get(f"/repos/{repository}/issues/comments?sort=created&direction=desc&per_page=100")
-    if not isinstance(comments, list):
-        raise RuntimeError("GitHub repository comment response is not a list")
-
     reminded = False
     for pr in candidate_pull_requests(api, repository, event):
         number = int(pr.get("number") or 0)
@@ -181,6 +280,7 @@ def main() -> int:
         if not isinstance(reviews, list):
             raise RuntimeError(f"GitHub review response for PR #{number} is not a list")
 
+        comments = pull_request_comments(api, repository, number)
         decision = evaluate_review_handoff(
             pr,
             repository=repository,
