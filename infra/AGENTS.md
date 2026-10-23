@@ -10,6 +10,10 @@
 - performance workload와 측정 harness
 - deploy, rollback, backup/restore 등 반복 운영 절차
 
+## 직접 분석
+
+승인된 read-only Tool이나 전달받은 재현 가능한 실행 산출물로 운영·성능 근거를 분석할 수 있다. 증거 수집·조건 연결 방법은 `platform-sre` Skill, 원인 판정 책임은 해당 Role을 따른다. 새로운 부하·장애 주입·운영 변경은 분석 요청의 권한으로 확대하지 않는다.
+
 ## 측정 우선
 
 성능 문제는 다음 흐름을 기본으로 한다.

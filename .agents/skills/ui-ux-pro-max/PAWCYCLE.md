@@ -6,7 +6,7 @@
 
 ## 권위와 범위
 
-- 이 Skill은 기존 `ux-designer` Skill을 대체하지 않는다.
+- 이 Skill은 기존 `ux-designer` Skill을 대체하지 않는다. 디자인 시스템 탐색·비교가 실제로 필요할 때만 선택한다. 단순 문구 수정이나 작은 UI 결함에 광범위한 디자인 검색을 필수화하지 않는다.
 - PawCycle의 사용자 승인 Design Contract, 제품 요구사항, API 계약, `AGENTS.md`, 역할 Skill이 항상 우선한다.
 - 이 Skill의 검색 결과와 제안은 디자인 검토를 돕는 참고 자료이며 승인이나 제품 결정을 대신하지 않는다.
 - 충돌 시 승인된 PawCycle 문서와 사용자의 현재 지시를 따른다.

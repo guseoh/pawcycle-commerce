@@ -44,7 +44,9 @@ Aggregate failure보다 최초 원인을 우선한다. 같은 payload를 원인 
 
 ## 조건부 저장소 쓰기
 
-승인된 task의 branch 작업, Draft PR, PR 본문 수정, 해결된 review thread 정리와 사용자가 특정 PR에 위임한 merge는 조건부로 수행할 수 있다.
+루트 `AGENTS.md`의 요청·실행 권한을 먼저 확인한다. 읽기·검토·설계만 승인된 작업은 read evidence와 판단으로 종료하며, 이를 새로운 GitHub 기록이나 상태 변경의 승인으로 해석하지 않는다.
+
+branch 작업, commit/push, Draft PR·본문 수정, review thread resolve 등은 승인된 결과물 범위에 포함된 경우에만 수행한다. 포함된 저장소 결과물의 각 단계에 형식적인 재승인을 요구하지 않으며, 새로운 권한·제품 결정·운영 실행이 필요하면 별도로 판단한다.
 
 ### File write preflight
 
@@ -65,9 +67,9 @@ branch 생성·이동은 기존 SHA와 목적을 확인한 경우에만 수행�
 
 ### PR write
 
-- Draft PR 생성과 title/body 수정은 승인된 task scope에서 허용
+- Draft PR 생성과 title/body 수정은 해당 결과물이 승인된 task scope에 포함된 경우에 허용
 - Ready 전환은 사용자 지시 또는 승인된 작업 절차가 있을 때만 수행
-- review thread는 최신 HEAD에서 실제 문제가 해결됐음을 확인한 뒤 resolve
+- review thread resolve가 승인된 범위에 포함되면 최신 HEAD에서 실제 문제가 해결됐음을 확인한 뒤 수행
 - 외부 reviewer 미실행을 `review 완료`로 표현하지 않음
 
 ### Merge
@@ -89,7 +91,7 @@ branch 생성·이동은 기존 SHA와 목적을 확인한 경우에만 수행�
 Workflow rerun/cancel/dispatch는 기본 쓰기 범위가 아니다.
 
 - rerun: transient/flaky 근거 또는 원인 수정 뒤 필요한 경우
-- dispatch: 사용자 승인된 저장소/운영 workflow에 한정
+- dispatch: 사용자 요청 또는 승인된 결과물에 대상 workflow 실행이 명확히 포함된 경우에 한정
 - Production deploy/restore/cutover workflow: 별도 실제 운영 실행 승인 없이는 dispatch 금지
 
 CI가 반복 실패하면 같은 payload를 계속 돌리지 않고 최초 공통 원인을 분석한다.

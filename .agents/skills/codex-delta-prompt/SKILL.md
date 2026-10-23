@@ -6,7 +6,7 @@ description: >-
 
 # Codex Delta Prompt Skill
 
-이 Skill은 **상세 작업 명세를 실행용 Prompt로 경량화하는 절차**만 정의한다. 공통 안전 규칙과 작업 등급·실행 구분은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따른다.
+이 Skill은 **Codex 구현이 필요한 경우 상세 작업 명세를 실행용 Prompt로 경량화하는 절차**만 정의한다. 직접 분석·설계로 끝나는 요청을 구현 Prompt나 PR 작업으로 전환하지 않는다. 공통 안전 규칙과 작업 등급·실행 구분은 루트 `AGENTS.md`와 `docs/runbook/lean-harness.md`를 따른다.
 
 ## 핵심 원칙
 
