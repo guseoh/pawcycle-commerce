@@ -4,6 +4,7 @@ import {
   buildAddressLoginHref,
   buildLoginHref,
   formatIsoLocalDate,
+  formatDateTime,
   formatPetType,
   formatScheduleStatus,
   formatSubscriptionStatus,
@@ -132,4 +133,11 @@ test("구독 입력은 수량 경계와 서버 제공 선택지를 검증한다"
       deliveryCycleWeeks: "배송 주기는 제공된 선택지 중에서 선택해 주세요.",
     },
   );
+});
+
+test("Wishlist timestamps use the approved Seoul display zone", () => {
+  assert.equal(formatDateTime("2026-10-22T07:00:00.123Z", "Asia/Seoul"), "2026. 10. 22. 오후 4:00");
+  assert.equal(formatDateTime("2026-10-21T15:00:00.123Z", "Asia/Seoul"), "2026. 10. 22. 오전 12:00");
+  assert.equal(formatDateTime(null, "Asia/Seoul"), "-");
+  assert.equal(formatDateTime("invalid", "Asia/Seoul"), "invalid");
 });

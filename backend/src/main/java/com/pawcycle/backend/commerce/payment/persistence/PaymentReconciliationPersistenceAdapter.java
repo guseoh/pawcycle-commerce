@@ -106,7 +106,7 @@ public class PaymentReconciliationPersistenceAdapter {
       }
     }
     var cart = new QCartEntity("cart");
-    var update = queries.update(cart).set(cart.updatedAt, PaymentPersistenceQueries.jdbcTime(now()));
+    var update = queries.update(cart).set(cart.updatedAt, java.time.LocalDateTime.ofInstant(clock.instant(), java.time.ZoneOffset.UTC));
     if (changed) update.set(cart.version, cart.version.add(1));
     writes.mutate(() -> update.where(cart.id.eq(cartId)).execute());
   }

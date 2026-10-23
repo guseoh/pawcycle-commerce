@@ -10,6 +10,7 @@ import com.pawcycle.backend.commerce.wishlist.persistence.WishlistQueryRepositor
 import com.pawcycle.backend.member.persistence.MemberRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,7 +50,7 @@ public class WishlistApplicationService {
       throw new CommerceException(404, "PRODUCT_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.");
     }
     WishlistItemId id = new WishlistItemId(memberId, productId);
-    if (!items.existsById(id)) items.save(new WishlistItemEntity(id, LocalDateTime.now(clock)));
+    if (!items.existsById(id)) items.save(new WishlistItemEntity(id, LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)));
   }
 
   @Transactional

@@ -62,3 +62,11 @@ Toss Test Browser 연동은 `local-integration`에서 명시적 opt-in으로만 
 - 배송지 snapshot은 주문의 주소 snapshot과 독립적이다. 회원 주소 변경은 기존 구독 snapshot이나 생성된 주문을 변경하지 않는다.
 - Billing retry는 같은 Order에 `attempt_no`별 최대 한 Payment만 허용한다. 동일 실패 Payment의 중복 retry 요청은 이미 생성된 다음 attempt를 재사용한다.
 - `UNKNOWN` 결제는 reservation과 쿠폰을 유지하며 재시도 결제로 변환하지 않는다. reconciliation은 최대 10회이며 10회 이후 호출은 상태를 더 증가시키지 않는다. 실제 reconciliation scheduler 실행은 이 작업 범위 밖이다.
+
+## Wishlist·Cart 시간 경계 (TIME-004)
+
+신규 Wishlist `created_at`과 Cart `created_at`/`updated_at`은 UTC Instant의 DATETIME(6) 표현을 저장한다. Wishlist 조회·DTO는 이 값을 UTC로 해석하고 기존 HTTP Timestamp 형식(밀리초)을 유지한다. Wishlist 화면의 저장 시각은 Asia/Seoul로 표시한다. 정렬은 저장값 `createdAt DESC, productId DESC`를 유지한다.
+
+기존 행도 같은 UTC 해석을 적용한다. 이로 인해 기존 JVM/바인딩에 따라 반환·표시하던 시각이 달라질 수 있으며 이는 승인된 계약 변경이다. 과거 행에는 기록 경로·시간대 표식이 없으므로 실제 생성 Instant를 복구했다는 의미가 아니다. 기존 행의 값을 변환하거나 시각으로 출처를 추정하지 않는다. 혼재 행의 정렬·기간 집계에는 기존 표현의 오차가 남을 수 있다.
+
+저장 데이터·Schema 변경은 없다. 코드 revert는 이전 읽기/쓰기 해석을 되돌릴 뿐이며, 이미 UTC로 작성된 행과 기존 행의 실제 시각을 자동 복원하지 못한다. 혼합 버전 실행·운영 적용·데이터 보정은 별도 승인 및 검증 대상이다.

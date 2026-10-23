@@ -459,7 +459,7 @@ class RecommendationJpaQueryRepository {
             + ") GROUP BY activity.product_id";
     Map<Long, RecommendationTrendScore> result = new HashMap<>();
     List<Object> arguments =
-        new ArrayList<>(List.of(recentStart, today, previousStart, recentStart));
+        new ArrayList<>(List.of(utcDayStart(recentStart), utcDayStart(today), utcDayStart(previousStart), utcDayStart(recentStart)));
     arguments.addAll(productIds);
     for (TrendRow row : nativeQuery(sql, TrendRow.class, arguments.toArray())
         .addScalar("productId", Long.class).addScalar("recentScore", Long.class)
@@ -467,6 +467,13 @@ class RecommendationJpaQueryRepository {
       result.put(row.productId(), new RecommendationTrendScore(row.recentScore(), row.previousScore()));
     }
     return result;
+  }
+
+  // Activity DATETIME values are UTC; the trend windows are Seoul calendar days.
+  private static String utcDayStart(LocalDate day) {
+    return day.atStartOfDay(java.time.ZoneId.of("Asia/Seoul"))
+        .withZoneSameInstant(java.time.ZoneOffset.UTC).toLocalDateTime()
+        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
   }
 
   List<String> subscriptionCategorySlugs(long memberId, long petId) {

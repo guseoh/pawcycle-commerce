@@ -46,7 +46,7 @@ Pet 응답에는 기존 필드에 `breed`, `weightKg`, `profileComplete`를 추�
 | `/api/products/{productId}/related` | 4 / 6 | `RELATED` |
 | `/api/products/{productId}/complementary` | 4 / 6 | `COMPLEMENTARY` |
 
-모든 응답은 기존 recommendation product display fields를 포함하며 `requestId`와 `products[].strategy`를 추가한다. Popular는 최근 30일 paid buyer/cart/wishlist/recommendation click/product view의 distinct member 신호를 사용하고, Trending은 최근 7일 가중치와 직전 7일 가중치의 delta를 사용한다. Related는 Category→Brand→Facet overlap→Popularity, Complementary는 성공한 `ONE_TIME` paid order의 실제 co-purchase를 우선하며, 데이터가 부족하면 다른 Category·같은 Pet Type·Popularity로 fallback한다. source Product를 결과에 포함하지 않는다.
+모든 응답은 기존 recommendation product display fields를 포함하며 `requestId`와 `products[].strategy`를 추가한다. Popular는 최근 30일 paid buyer/cart/wishlist/recommendation click/product view의 distinct member 신호를 사용하고, Trending은 Asia/Seoul 달력 날짜 기준 [오늘-7일, 오늘)과 [오늘-14일, 오늘-7일)의 가중치 delta를 사용하며 UTC 저장값과 비교할 때 각 서울 자정의 UTC 경계를 사용한다. Popular의 30일은 UTC 기준 rolling window(하한 포함)다. 기존 Wishlist·Cart 행의 출처 불명 시간 표현은 소급 보정하지 않으므로 혼재 데이터의 과거 기간 집계 오차는 남을 수 있다. Related는 Category→Brand→Facet overlap→Popularity, Complementary는 성공한 `ONE_TIME` paid order의 실제 co-purchase를 우선하며, 데이터가 부족하면 다른 Category·같은 Pet Type·Popularity로 fallback한다. source Product를 결과에 포함하지 않는다.
 
 ## Repeat Commerce
 
