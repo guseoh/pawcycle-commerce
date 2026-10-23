@@ -203,7 +203,7 @@ class PaymentReconciliationIntegrationTests {
   void successConsumesExistingCartQuantityAfterProviderQueryOutsideTransaction() {
     Fixture f = fixture(5);
     when(provider.isConfigured()).thenReturn(true);
-    when(provider.queryPayment(anyString())).thenAnswer(invocation -> {
+    when(provider.queryPayment(anyString(), any(), any())).thenAnswer(invocation -> {
       assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
       assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(1);
       return new TossPaymentAdapter.ConfirmResult("SUCCEEDED", "DONE");
@@ -277,7 +277,8 @@ class PaymentReconciliationIntegrationTests {
     var original = checkout.checkout(f.member(), key, address, null, 7L);
     String fingerprint = jdbc.queryForObject("SELECT request_fingerprint FROM checkout_idempotency_results WHERE member_id=? AND idempotency_key=?",
         String.class, f.member(), key);
-    jdbc.update("UPDATE payments SET status='UNKNOWN' WHERE id=?", original.paymentId());
+    // A real NORMAL/UNKNOWN confirmation has already recorded its payment key in PROCESSING.
+    jdbc.update("UPDATE payments SET status='UNKNOWN',payment_key=? WHERE id=?", "fixture-key-" + original.paymentId(), original.paymentId());
     succeed();
     assertThat(service.reconcile(original.paymentId()).status()).isEqualTo("SUCCEEDED");
     assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
@@ -335,8 +336,8 @@ class PaymentReconciliationIntegrationTests {
     jdbc.update("UPDATE payments SET reconciliation_attempts=9 WHERE id=?", f.payment());
     jdbc.update("UPDATE members SET role='ADMIN' WHERE id=?", f.member());
     when(provider.isConfigured()).thenReturn(true);
-    if (timeout) when(provider.queryPayment(anyString())).thenThrow(new IllegalStateException("fixture timeout"));
-    else when(provider.queryPayment(anyString())).thenReturn(new TossPaymentAdapter.ConfirmResult("UNKNOWN", "IN_PROGRESS"));
+    if (timeout) when(provider.queryPayment(anyString(), any(), any())).thenThrow(new IllegalStateException("fixture timeout"));
+    else when(provider.queryPayment(anyString(), any(), any())).thenReturn(new TossPaymentAdapter.ConfirmResult("UNKNOWN", "IN_PROGRESS"));
     assertThat(service.reconcile(f.payment(), f.member()).status()).isEqualTo("UNKNOWN");
     assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(10);
     assertThat(jdbc.queryForObject("SELECT status FROM orders WHERE id=?", String.class, f.order())).isEqualTo("PAYMENT_ACTION_REQUIRED");
@@ -351,7 +352,7 @@ class PaymentReconciliationIntegrationTests {
   void normalFailureReleasesReservationAndCouponAndPreservesProviderFailureStatus() {
     Fixture f = fixture(5);
     when(provider.isConfigured()).thenReturn(true);
-    when(provider.queryPayment(anyString())).thenReturn(new TossPaymentAdapter.ConfirmResult("FAILED", "DECLINED_DYNAMIC"));
+    when(provider.queryPayment(anyString(), any(), any())).thenReturn(new TossPaymentAdapter.ConfirmResult("FAILED", "DECLINED_DYNAMIC"));
     assertThat(service.reconcile(f.payment()).status()).isEqualTo("FAILED");
     assertThat(jdbc.queryForObject("SELECT failure_code FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("RECONCILED_FAILED");
     assertThat(jdbc.queryForObject("SELECT provider_status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("DECLINED_DYNAMIC");
@@ -376,7 +377,14 @@ class PaymentReconciliationIntegrationTests {
       assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
       return new TossBillingAdapter.ChargeResult("SUCCEEDED", "BILLING_DONE");
     });
-    assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
+    new TransactionTemplate(manager).executeWithoutResult(tx -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      assertThat(service.reconcile(f.payment()).status()).isEqualTo("SUCCEEDED");
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+      tx.setRollbackOnly();
+    });
+    assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("SUCCEEDED");
+    assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(1);
     assertThat(quantity(f)).isEqualTo(5);
     assertThat(jdbc.queryForObject("SELECT provider_status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("BILLING_DONE");
     verifyNoInteractions(provider);
@@ -407,7 +415,7 @@ class PaymentReconciliationIntegrationTests {
     Fixture f = fixture(5);
     CountDownLatch queried = new CountDownLatch(2);
     when(provider.isConfigured()).thenReturn(true);
-    when(provider.queryPayment(anyString())).thenAnswer(invocation -> {
+    when(provider.queryPayment(anyString(), any(), any())).thenAnswer(invocation -> {
       assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
       queried.countDown();
       assertThat(queried.await(10, TimeUnit.SECONDS)).isTrue();
@@ -434,7 +442,7 @@ class PaymentReconciliationIntegrationTests {
 
   private void succeed() {
     when(provider.isConfigured()).thenReturn(true);
-    when(provider.queryPayment(anyString())).thenReturn(new TossPaymentAdapter.ConfirmResult("SUCCEEDED", "DONE"));
+    when(provider.queryPayment(anyString(), any(), any())).thenReturn(new TossPaymentAdapter.ConfirmResult("SUCCEEDED", "DONE"));
   }
 
   private int quantity(Fixture f) { return integer("SELECT quantity FROM cart_items WHERE cart_id=? AND sku_id=?", f.cart(), f.sku()); }
@@ -458,6 +466,7 @@ class PaymentReconciliationIntegrationTests {
       jdbc.update("UPDATE order_items SET quantity=2 WHERE order_id=?", order);
       jdbc.update("UPDATE inventories SET reserved_quantity=2 WHERE sku_id=?", sku.getId());
       long payment = fixtures.payment(order, "NORMAL", "UNKNOWN", 1);
+      jdbc.update("UPDATE payments SET payment_key=? WHERE id=?", "fixture-key-" + payment, payment);
       jdbc.update("INSERT INTO carts(member_id,version,created_at,updated_at) VALUES (?,7,?,?)", member, SecondaryReadFixtures.stamp(), SecondaryReadFixtures.stamp());
       long cart = fixtures.lastId();
       if (cartQuantity != null) jdbc.update("INSERT INTO cart_items(cart_id,sku_id,quantity) VALUES (?,?,?)", cart, sku.getId(), cartQuantity);

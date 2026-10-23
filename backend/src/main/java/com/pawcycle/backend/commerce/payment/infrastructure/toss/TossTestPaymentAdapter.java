@@ -18,6 +18,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
 
 /** Explicitly opt-in Toss Test adapter. It is never available outside local-integration. */
 @Component
@@ -72,8 +74,38 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
   }
 
   @Override
-  public ConfirmResult queryPayment(String providerOrderId) {
-    return request("/v1/payments/orders/" + encodePath(providerOrderId), null);
+  public ConfirmResult queryPayment(String providerOrderId, String paymentKey, BigDecimal amount) {
+    if (providerOrderId == null || providerOrderId.isBlank()
+        || paymentKey == null || paymentKey.isBlank() || amount == null)
+      return new ConfirmResult("UNKNOWN", "IDENTITY_MISSING");
+    try {
+      HttpRequest query = HttpRequest.newBuilder()
+          .uri(URI.create(baseUrl + "/v1/payments/orders/" + encodePath(providerOrderId)))
+          .timeout(REQUEST_TIMEOUT).header("Authorization", "Basic " + basicAuth())
+          .header("Accept", "application/json").GET().build();
+      HttpResponse<String> response = httpClient.send(query, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() < 200 || response.statusCode() >= 300)
+        return new ConfirmResult("UNKNOWN", "QUERY_HTTP_" + response.statusCode());
+      JsonNode body = objectMapper.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+          .readTree(response.body());
+      if (!body.path("orderId").isTextual() || !body.path("paymentKey").isTextual()
+          || !body.path("totalAmount").isNumber() || !body.path("status").isTextual()
+          || !providerOrderId.equals(body.path("orderId").asText())
+          || !paymentKey.equals(body.path("paymentKey").asText())
+          || amount.compareTo(body.path("totalAmount").decimalValue()) != 0)
+        return new ConfirmResult("UNKNOWN", "IDENTITY_MISMATCH");
+      String providerStatus = body.path("status").asText();
+      return new ConfirmResult(switch (providerStatus) {
+        case "DONE" -> "SUCCEEDED";
+        case "ABORTED", "EXPIRED" -> "FAILED";
+        default -> "UNKNOWN";
+      }, providerStatus);
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      return new ConfirmResult("UNKNOWN", "QUERY_UNAVAILABLE");
+    } catch (IOException | RuntimeException exception) {
+      return new ConfirmResult("UNKNOWN", "QUERY_UNAVAILABLE");
+    }
   }
 
   private ConfirmResult request(String path, Map<String, Object> body) {

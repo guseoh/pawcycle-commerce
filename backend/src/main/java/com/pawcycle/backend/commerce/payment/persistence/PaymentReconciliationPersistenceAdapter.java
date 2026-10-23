@@ -32,6 +32,15 @@ public class PaymentReconciliationPersistenceAdapter {
         ReconciliationWork.class, paymentId);
   }
 
+  /** Non-locking identity projection: observation never claims or completes a payment. */
+  public QueryTarget findQueryTarget(long paymentId) {
+    var payment = new QPaymentEntity("payment");
+    var row = queries.select(payment.type, payment.providerOrderId, payment.paymentKey, payment.amount)
+        .from(payment).where(payment.id.eq(paymentId)).fetchOne();
+    return row == null ? null : new QueryTarget(row.get(payment.type), row.get(payment.providerOrderId),
+        row.get(payment.paymentKey), row.get(payment.amount));
+  }
+
   public void incrementAttempts(long paymentId, int attempts) {
     writes.reconciliation(attempts, now(), paymentId);
   }
@@ -118,6 +127,7 @@ public class PaymentReconciliationPersistenceAdapter {
     return Timestamp.from(clock.instant());
   }
 
+  public record QueryTarget(String type, String providerOrderId, String paymentKey, BigDecimal amount) {}
   public record ReconciliationWork(long paymentId, String type, String status, String providerOrderId, int attempts) {}
   public record ReconciliationTarget(long paymentId, long orderId, String type, String status, int attempts, long memberId, String source) {}
   public record OrderItem(long skuId, int quantity) {}

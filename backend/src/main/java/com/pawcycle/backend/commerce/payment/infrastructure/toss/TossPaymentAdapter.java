@@ -16,7 +16,7 @@ public interface TossPaymentAdapter {
 
   ConfirmResult confirm(String paymentKey, String providerOrderId, BigDecimal amount);
 
-  default ConfirmResult queryPayment(String providerOrderId) {
+  default ConfirmResult queryPayment(String providerOrderId, String paymentKey, BigDecimal amount) {
     throw new CommerceException(
         503, "PAYMENT_PROVIDER_UNAVAILABLE", "Toss 결제 Provider가 현재 환경에 구성되지 않았습니다.");
   }
