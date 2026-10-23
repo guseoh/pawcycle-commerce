@@ -112,6 +112,8 @@ jobs:
             scripts/classify-validation-changes.py \
             scripts/classify-production-image-changes.py \
             scripts/test_release_workflows.py \
+            scripts/delete_merged_task_branch.py \
+            scripts/test_delete_merged_task_branch.py \
             scripts/test_request_coderabbit_review.py \
             scripts/run-agent-benchmark.py \
             scripts/validate-agent-benchmark.py \
@@ -133,6 +135,7 @@ jobs:
             scripts.test_validate_conventions_workflow \
             scripts.test_request_coderabbit_review \
             scripts.test_release_workflows \
+            scripts.test_delete_merged_task_branch \
             scripts.test_verify_mysql_physical_lock_junit \
             scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
