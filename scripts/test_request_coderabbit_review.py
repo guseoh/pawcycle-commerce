@@ -176,7 +176,7 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
         for state in ("PENDING", "DISMISSED"):
             with self.subTest(state=state):
                 reviews = [{"user": {"login": "coderabbitai[bot]"}, "commit_id": HEAD, "state": state}]
-                self.assertFalse(self.decide(reviews=reviews).remind is False)
+                self.assertTrue(self.decide(reviews=reviews).remind)
 
     def test_stale_and_mismatched_summary_coverage_rejected(self) -> None:
         old_head = "c" * 40
@@ -246,7 +246,7 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
 
             def get(self, path: str) -> list[dict]:
                 self.paths.append(path)
-                if "page=1" in path:
+                if path.endswith("&page=1"):
                     return [{} for _ in range(100)]
                 return [completed_summary()]
 
