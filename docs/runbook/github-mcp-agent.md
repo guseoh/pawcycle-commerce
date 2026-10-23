@@ -86,6 +86,12 @@ branch 생성·이동은 기존 SHA와 목적을 확인한 경우에만 수행�
 
 자동 merge 정책으로 확대하지 않는다.
 
+## 병합 후 임시 브랜치 자동 정리
+
+개발 작업은 최신 `dev`에서 생성한 임시 task branch의 PR을 `dev`로 병합한다. `dev → main`은 독립된 사용자 승인/CI/Review Gate를 거친다. PR 병합 승인은 작업 브랜치 정리에 한해 `.github/workflows/delete-merged-task-branch.yml`의 후속 자동 삭제를 포함하지만, **다른 브랜치 삭제·미병합 PR 삭제·운영 실행 승인으로 확대하지 않는다**.
+
+자동 정리는 `dev`에 병합된 같은 저장소의 PR에서만 실행한다. `main`과 `dev`는 제외하고 PR HEAD SHA와 현재 ref의 일치, 브랜치 보호 여부, 다른 열린 PR의 head/base 참조를 확인한다. SHA가 변했거나 확인에 실패하면 삭제하지 않는다. 이미 삭제된 브랜치는 안전하게 넘어간다. 임시 브랜치 삭제 실패는 병합 성공/검증 판정을 뒤집지는 않지만 정리 미완료로 따로 보고한다. 자동 정리는 별도의 사용자 PR 병합 승인이나 CI/Review Gate를 대신하지 않는다. GitHub 전역 auto-delete 설정은 `dev → main`에서 `dev` 삭제 위험이 있으므로 활성화하지 않는다.
+
 ## Workflow action
 
 Workflow rerun/cancel/dispatch는 기본 쓰기 범위가 아니다.
