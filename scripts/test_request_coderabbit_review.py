@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import unittest
 
 from scripts.request_coderabbit_review import (
     BOT_LOGIN,
     HANDOFF_MARKER,
+    completed_summary_evidence,
+    current_review_evidence,
     evaluate_review_handoff,
+    pull_request_comments,
     manual_review_reminder,
 )
 
@@ -39,6 +43,37 @@ def reminder_comment_payload(sha: str = HEAD, login: str = BOT_LOGIN) -> dict:
         "user": {"login": login},
         "body": manual_review_reminder(sha),
     }
+
+
+
+
+def completed_summary(
+    head_sha: str = HEAD,
+    *,
+    base_sha: str = "b" * 40,
+    covered_sha: str | None = None,
+    source_sha: str | None = None,
+    user: str = "coderabbitai[bot]",
+    message: str = "No actionable comments were generated in the recent review.",
+    kind: str = "reviewed",
+) -> dict:
+    coverage = {
+        "sourceCommitId": source_sha or head_sha,
+        "coveredCommitId": covered_sha or head_sha,
+        "kind": kind,
+    }
+    body = (
+        "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\n"
+        "<!-- recent_review_start -->\n"
+        + message + "\n"
+        + "Reviewing files that changed from the base of the PR and between "
+        + base_sha + " and " + head_sha + ".\n"
+        + "<!-- recent_review_end -->\n"
+        + "<!-- final_review_risk_coverage:"
+        + json.dumps(coverage, separators=(",", ":"))
+        + " -->"
+    )
+    return {"user": {"login": user, "type": "Bot"}, "body": body}
 
 
 def pull_request_target_types(workflow: str) -> list[str]:
@@ -113,6 +148,113 @@ class CodeRabbitReviewRequestTest(unittest.TestCase):
     def test_only_github_actions_reminder_marker_suppresses_duplicate(self) -> None:
         decision = self.decide(comments=[reminder_comment_payload(login="random-user")])
         self.assertTrue(decision.remind)
+
+
+    def test_current_head_completed_summary_suppresses_reminder(self) -> None:
+        summary = completed_summary()
+        evidence = current_review_evidence([], [summary], HEAD)
+        self.assertTrue(evidence.performed)
+        self.assertEqual(evidence.source, "summary")
+        self.assertEqual(evidence.findings_status, "none_reported_in_recent_review")
+        self.assertFalse(self.decide(comments=[summary]).remind)
+
+    def test_summary_findings_and_review_execution_are_separate(self) -> None:
+        summary = completed_summary(message="2 actionable comments were generated in the recent review.")
+        evidence = current_review_evidence([], [summary], HEAD)
+        self.assertTrue(evidence.performed)
+        self.assertEqual(evidence.findings_status, "triage_required")
+        self.assertFalse(self.decide(comments=[summary]).remind)
+
+    def test_formal_review_precedes_summary_but_still_requires_triage(self) -> None:
+        summary = completed_summary()
+        reviews = [{"user": {"login": "coderabbitai[bot]"}, "commit_id": HEAD, "state": "COMMENTED"}]
+        evidence = current_review_evidence(reviews, [summary], HEAD)
+        self.assertEqual(evidence.source, "submission")
+        self.assertEqual(evidence.findings_status, "triage_required")
+
+    def test_pending_and_dismissed_submissions_are_not_valid_evidence(self) -> None:
+        for state in ("PENDING", "DISMISSED"):
+            with self.subTest(state=state):
+                reviews = [{"user": {"login": "coderabbitai[bot]"}, "commit_id": HEAD, "state": state}]
+                self.assertTrue(self.decide(reviews=reviews).remind)
+
+    def test_stale_and_mismatched_summary_coverage_rejected(self) -> None:
+        old_head = "c" * 40
+        for summary in (
+            completed_summary(head_sha=old_head),
+            completed_summary(covered_sha=old_head),
+            completed_summary(source_sha=old_head),
+            completed_summary(kind="skipped"),
+        ):
+            with self.subTest(body=summary["body"][-125:]):
+                self.assertIsNone(completed_summary_evidence(summary, HEAD))
+                self.assertTrue(self.decide(comments=[summary]).remind)
+
+    def test_spoofed_or_non_bot_author_rejected(self) -> None:
+        for summary in (
+            completed_summary(user="guseoh"),
+            completed_summary(user="coderabbitai-copy[bot]"),
+            {**completed_summary(), "user": {"login": "coderabbitai[bot]", "type": "User"}},
+        ):
+            self.assertTrue(self.decide(comments=[summary]).remind)
+
+    def test_incomplete_skip_command_and_walkthrough_do_not_count(self) -> None:
+        for body in (
+            "Review finished.",
+            "<!-- This is an auto-generated comment: skip review by coderabbit.ai -->\n"
+            + "<!-- recent_review_start -->\nSkipped\n<!-- recent_review_end -->",
+            "<!-- walkthrough_start -->\nWalkthrough only\n<!-- walkthrough_end -->",
+            "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\n"
+            + "<!-- recent_review_start -->\nNo actionable comments\n<!-- recent_review_end -->",
+        ):
+            self.assertTrue(self.decide(comments=[{
+                "user": {"login": "coderabbitai[bot]", "type": "Bot"}, "body": body,
+            }]).remind)
+
+    def test_edited_summary_is_checked_at_current_body_not_historical_head(self) -> None:
+        old_sha = "c" * 40
+        edited = completed_summary(head_sha=old_sha)
+        self.assertFalse(self.decide(
+            review_ready_pr(head_sha=old_sha), comments=[edited]
+        ).remind)
+        edited["body"] = completed_summary()["body"]
+        self.assertTrue(self.decide(
+            review_ready_pr(head_sha=old_sha), comments=[edited]
+        ).remind)
+        self.assertFalse(self.decide(comments=[edited]).remind)
+
+    def test_incremental_summary_must_end_at_current_head(self) -> None:
+        self.assertFalse(self.decide(comments=[
+            completed_summary(base_sha="d" * 40)
+        ]).remind)
+        self.assertTrue(self.decide(comments=[
+            completed_summary(head_sha="d" * 40, base_sha=HEAD)
+        ]).remind)
+
+    def test_draft_duplicate_and_summary_do_not_generate_reminders(self) -> None:
+        self.assertFalse(self.decide(review_ready_pr(draft=True), comments=[
+            completed_summary()
+        ]).remind)
+        self.assertFalse(self.decide(comments=[
+            completed_summary(), reminder_comment_payload()
+        ]).remind)
+
+    def test_comments_are_scoped_to_pr_and_pages_are_not_silently_truncated(self) -> None:
+        class FakeApi:
+            def __init__(self) -> None:
+                self.paths: list[str] = []
+
+            def get(self, path: str) -> list[dict]:
+                self.paths.append(path)
+                if path.endswith("&page=1"):
+                    return [{} for _ in range(100)]
+                return [completed_summary()]
+
+        api = FakeApi()
+        comments = pull_request_comments(api, "guseoh/pawcycle-commerce", 395)
+        self.assertEqual(len(comments), 101)
+        self.assertTrue(all("/issues/395/comments?" in path for path in api.paths))
+        self.assertEqual(len(api.paths), 2)
 
     def test_reminder_does_not_issue_coderabbit_command_as_bot(self) -> None:
         body = manual_review_reminder(HEAD)
