@@ -1,0 +1,37 @@
+name: Delete merged task branch
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [dev]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: delete-merged-task-branch-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete merged task head safely
+    if: >-
+      github.repository == 'guseoh/pawcycle-commerce' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != 'main' &&
+      github.event.pull_request.head.ref != 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted dev branch after merge
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Delete only unchanged, unprotected, unused merged task branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/delete_merged_task_branch.py
