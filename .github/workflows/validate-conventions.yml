@@ -110,6 +110,8 @@ jobs:
             scripts/test_verify_mysql_physical_lock_junit.py \
             scripts/validate-pr-body-encoding.py \
             scripts/classify-validation-changes.py \
+            scripts/classify-production-image-changes.py \
+            scripts/test_release_workflows.py \
             scripts/run-agent-benchmark.py \
             scripts/validate-agent-benchmark.py \
             scripts/render-agent-benchmark-charts.py \
@@ -128,6 +130,7 @@ jobs:
             scripts.test_validate_task_artifacts \
             scripts.test_validate_pr_body_encoding \
             scripts.test_validate_conventions_workflow \
+            scripts.test_release_workflows \
             scripts.test_verify_mysql_physical_lock_junit \
             scripts.test_agent_benchmark_tools \
             scripts.test_discord_context \
