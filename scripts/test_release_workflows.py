@@ -73,7 +73,35 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn('''-backend:${TARGET_SHA}''', readiness)
         self.assertIn('''-frontend:${TARGET_SHA}''', readiness)
         self.assertIn('''git merge-base --is-ancestor "$TARGET_SHA" HEAD''', readiness)
-        self.assertIn('''There is no active Production deployment target.''', readiness)
+        self.assertIn('"refs/heads/main"', readiness)
+        self.assertIn('^[0-9a-f]{40}$', readiness)
+        self.assertIn('git cat-file -e "${TARGET_SHA}^{commit}"', readiness)
+        self.assertEqual(readiness.count("docker buildx imagetools inspect"), 2)
+
+    def test_current_target_does_not_imply_delivery_or_verification(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "production_contracts", ROOT / "infra/production/validate-production-contracts.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        readiness = self.workflows["production-release-readiness.yml"]
+        architecture = module.ARCHITECTURE.read_text(encoding="utf-8")
+        module.validate_current_status_contract(readiness, architecture)
+        mutations = (
+            (readiness, architecture.replace("**OCI app01**", "**없음**")),
+            (readiness, architecture.replace("CD: **DEFER**", "CD: **ACTIVE**")),
+            (readiness, architecture.replace("무중단 배포: **DEFER**", "무중단 배포: **ACTIVE**")),
+            (readiness, architecture.replace("Production Verified가 아니다", "Production Verified")),
+            (readiness.replace("No OCI Application Deploy workflow", "OCI Application Deploy workflow"), architecture),
+            (readiness.replace("full CI success, deployment approval, or deployment success", "deployment success"), architecture),
+            (readiness.replace("separate approval and recovery gates", "no approval"), architecture),
+            (readiness + "There is no active Production deployment target.", architecture),
+        )
+        for index, (changed_readiness, changed_architecture) in enumerate(mutations):
+            with self.subTest(mutation=index):
+                with self.assertRaises(SystemExit):
+                    module.validate_current_status_contract(changed_readiness, changed_architecture)
+
 
     def test_production_deploy_workflow_is_retired(self) -> None:
         self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
