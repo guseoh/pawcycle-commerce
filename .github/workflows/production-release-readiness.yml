@@ -79,7 +79,8 @@ jobs:
             echo "- Backend image: ready"
             echo "- Frontend image: ready"
             echo
-            echo "Readiness verification is not a deployment success signal."
-            echo "There is no active Production deployment target."
-            echo "CD and zero-downtime deployment remain DEFER until a replacement target and runbook are separately approved."
+            echo "Readiness verifies image existence only; it does not establish full CI success, deployment approval, or deployment success."
+            echo "OCI app01 is the existing single-host Production target with manual deployment."
+            echo "No OCI Application Deploy workflow or verified Rollback system is implemented."
+            echo "CD and zero-downtime deployment remain DEFER; operational changes require separate approval and recovery gates."
           } >> "$GITHUB_STEP_SUMMARY"

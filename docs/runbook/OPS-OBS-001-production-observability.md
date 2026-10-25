@@ -4,7 +4,7 @@
 
 작업 ID `OPS-OCI-005B`, 등급 `고위험`, 실행 구분 `저장소 변경`의 지속 Runbook이다. 이 저장소 변경은 OCI·Production·Secret·Managed MySQL을 실행하지 않았으므로 Production Observability는 **Production Verified가 아니다**. Managed Observability, Alertmanager, centralized logging/Loki와 OpenTelemetry 전환은 범위 밖이다.
 
-현재 승인된 Production deployment target은 없으며 CD는 DEFER 상태다(`docs/architecture/production-operations-overview.md`). 따라서 아래의 OCI `app01` 구성과 실행 절차는 활성 운영 환경의 존재나 배포 승인을 의미하지 않는다.
+현재 Production 대상은 OCI `app01`이며 단일 서버·수동 배포 상태다(`docs/architecture/production-operations-overview.md`). CD·무중단 배포는 DEFER다. 운영 대상의 존재와 조사 시점의 정상 응답은 전체 Production Verified나 아래 절차의 실행 승인을 의미하지 않는다.
 
 이 Runbook이 전제로 하는 구성은 `app01`의 Backend/Frontend/Nginx, 별도 OCI Managed MySQL, 그리고 같은 `app01`에 분리된 다음 세 Compose lifecycle이다. 대상과 접속·Secret·DB·복구 계약을 별도로 승인하고 실제 상태를 확인한 경우에만 적용한다.
 
@@ -12,7 +12,7 @@
 - Metrics proxy: `infra/production-metrics-proxy`의 `metrics-proxy` 하나
 - Observability: `infra/production-observability`의 Prometheus와 Grafana
 
-Metrics proxy와 Observability는 Application release를 recreate·wait·stop하지 않는다. Prometheus는 Application Docker `app` network에서 `metrics-proxy:9464`를 scrape하며 metrics-proxy host port는 없다. Prometheus와 Grafana는 별도 internal `observability` network를 공유하고, Grafana는 Application `app` network에 직접 연결하지 않는다. Prometheus와 Grafana UI만 `127.0.0.1`에 publish한다.
+Metrics proxy와 Observability는 Application release를 recreate·wait·stop하지 않는다. Prometheus는 Application Docker `app` network에서 `metrics-proxy:9464`를 scrape하며 metrics-proxy host port는 없다. Prometheus와 Grafana는 별도 일반 Docker `bridge`인 `observability` network를 공유하고, Grafana는 Application `app` network에 직접 연결하지 않는다. Prometheus와 Grafana UI만 `127.0.0.1`에 publish한다.
 
 별도 Observability Compute는 **Deferred — Evidence Triggered**다. 실제 적용 후 CPU·memory·disk·application HTTP latency/error-rate overhead가 측정되거나 monitoring failure-domain 분리가 필요할 때 별도 결정으로 재검토한다.
 

@@ -230,6 +230,30 @@ def validate_release_lock_contract() -> None:
         )
 
 
+def validate_current_status_contract(readiness: str, architecture: str) -> None:
+    # Existing target, delivery capability and verification scope are independent.
+    for marker in (
+        "OCI app01 is the existing single-host Production target with manual deployment.",
+        "No OCI Application Deploy workflow or verified Rollback system is implemented.",
+        "CD and zero-downtime deployment remain DEFER",
+        "image existence only; it does not establish full CI success, deployment approval, or deployment success",
+        "operational changes require separate approval and recovery gates",
+    ):
+        require(marker in readiness, f"readiness boundary is missing: {marker}")
+    for marker in (
+        "Production deployment target: **OCI app01**",
+        "배포 방식: **단일 서버·수동 배포**",
+        "CD: **DEFER**",
+        "무중단 배포: **DEFER**",
+        "Production Verified가 아니다",
+    ):
+        require(marker in architecture, f"current Production status marker is missing: {marker}")
+    require("There is no active Production deployment target." not in readiness,
+            "readiness must not deny the existing OCI target")
+    require("Production deployment target: **없음**" not in architecture,
+            "architecture must not deny the existing OCI target")
+
+
 def main() -> None:
     validate_observability_contract()
     validate_release_lock_contract()
@@ -250,18 +274,10 @@ def main() -> None:
     require("branches: [main]" in publish or "branches:\n      - main" in publish, "production images must remain main-bound")
     require("production-deploy.yml" not in publish, "image publication must not dispatch a retired deployment workflow")
 
-    readiness = (WORKFLOWS / "production-release-readiness.yml").read_text(encoding="utf-8")
-    require("There is no active Production deployment target." in readiness, "readiness workflow must state that no Production target is active")
-    require("zero-downtime deployment remain DEFER" in readiness, "readiness workflow must keep zero-downtime deployment deferred")
-
-    architecture = ARCHITECTURE.read_text(encoding="utf-8")
-    for marker in (
-        "Production deployment target: **없음**",
-        "CD: **DEFER**",
-        "무중단 배포: **DEFER**",
-        "Production Verified가 아니다",
-    ):
-        require(marker in architecture, f"current Production status marker is missing: {marker}")
+    validate_current_status_contract(
+        (WORKFLOWS / "production-release-readiness.yml").read_text(encoding="utf-8"),
+        ARCHITECTURE.read_text(encoding="utf-8"),
+    )
 
     print("Production contract validation passed")
 

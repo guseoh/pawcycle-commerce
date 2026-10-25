@@ -2,7 +2,7 @@
 
 ## 범위와 안전 경계
 
-현재 승인된 Production deployment target은 없으며 CD는 DEFER 상태다(`docs/architecture/production-operations-overview.md`). 이 Runbook은 향후 별도로 승인된 OCI host에서 기존 HTTPS 인증서와 실행 중인 proxy가 실제로 확인된 경우에만 사용할 수 있는 저장소-backed 설치·점검 절차다. 이 저장소 변경과 아래 절차는 OCI, DNS, certificate account, secret, running container를 자동으로 변경하지 않는다. 사용자가 별도로 명시 승인하지 않은 실제 Production 실행은 이 작업에서 수행하지 않는다.
+현재 Production 대상은 OCI `app01`이며 단일 서버·수동 배포 상태이고 CD·무중단 배포는 DEFER다(`docs/architecture/production-operations-overview.md`). 이 Runbook은 실행 대상과 작업을 별도로 승인받은 OCI host에서 기존 HTTPS 인증서와 실행 중인 proxy가 실제로 확인된 경우에만 사용할 수 있는 저장소-backed 설치·점검 절차다. 이 저장소 변경과 아래 절차는 OCI, DNS, certificate account, secret, running container를 자동으로 변경하지 않는다. 사용자가 별도로 명시 승인하지 않은 실제 Production 실행은 이 작업에서 수행하지 않는다.
 
 자동화는 `pawcycle-production` Compose project의 실행 중 `proxy` 하나만 읽고, 기존 named volume을 그대로 사용한다. Backend·Frontend를 시작·중지·재시작·recreate하지 않으며, 인증서 volume을 삭제하거나 생성하지 않는다.
 

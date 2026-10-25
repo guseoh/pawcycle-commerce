@@ -4,32 +4,39 @@
 
 이 문서는 현재 `main`에서 유효한 Production 운영 경계를 설명한다. 과거 AWS 운영 구조의 실행 절차를 재현하기 위한 문서가 아니다.
 
-- Production deployment target: **없음**
+- Production deployment target: **OCI app01**
 - CD: **DEFER**
 - 무중단 배포: **DEFER**
-- OCI: 승인된 후속 방향이지만 아직 active Production target이 아니며 **Production Verified가 아니다**.
+- 배포 방식: **단일 서버·수동 배포**. OCI Application 자동 배포와 검증된 Rollback 체계는 없다.
+- 현재 운영 사실의 확인은 전체 운영 기능의 검증을 의미하지 않으며 **Production Verified가 아니다**.
 
 AWS 리소스 종료 이후 EC2/SSM/RDS/S3/CloudWatch 기반 실행 경로와 해당 공급자 전용 검증·Runbook은 active contract에서 제거했다. 새로운 Cloud/Production 실행은 별도의 고위험 작업으로 설계·승인·적용 전후 검증을 거쳐야 한다.
 
 ## 현재 유지하는 공급자 중립 자산
 
-`main`에는 새 배포 target을 미리 확정하지 않고 재사용 가능한 저장소 자산만 유지한다.
+OCI `app01`의 Backend/Frontend/Nginx와 별도 Managed MySQL topology는 `docs/adr/ARCH-012-production-observability-boundary.md`를 따른다. Application Compose는 DB lifecycle을 소유하지 않는다. 다음 자산의 존재는 실제 운영 실행 승인을 대신하지 않는다.
 
 | 영역 | 현재 의미 |
 | --- | --- |
 | `.github/workflows/publish-production-images.yml` | `main`의 runtime 변경 시 Backend/Frontend GHCR image를 commit SHA 기준으로 build·publish하는 공급자 중립 경로 |
-| `.github/workflows/production-release-readiness.yml` | 특정 SHA의 GHCR image 존재 여부를 확인하는 readiness 도구. 배포 성공이나 실행 승인을 의미하지 않음 |
+| `.github/workflows/production-release-readiness.yml` | 특정 SHA의 GHCR image 존재 여부를 확인하는 readiness 도구. CI 전체 성공·배포 승인·배포 성공을 의미하지 않음 |
 | `infra/production/backend.Dockerfile`, `frontend.Dockerfile` | 배포 대상과 독립적인 application image build 계약 |
-| `infra/production/compose.yaml` | container topology를 보존하는 저장소 계약. 현재 실제 Production host에 적용 중이라는 뜻이 아님 |
-| Nginx·auth smoke·진단·관측 관련 자산 | 새 target 설계 시 재평가할 수 있는 공급자 중립 참고·검증 자산 |
+| `infra/production/compose.yaml` | 현재 OCI Application topology의 저장소 계약. 파일 존재만으로 운영 적용·검증을 보장하지 않음 |
+| Nginx·auth smoke·진단·관측 관련 자산 | 개별 승인·적용 전후 확인이 필요한 운영·검증 자산 |
 
 GitHub Actions에는 현재 Cloud provider에 application을 활성화하는 Production Deploy workflow가 없다. GHCR image publication 또는 readiness 성공은 Production 배포, 서비스 활성화, Production Verified를 의미하지 않는다.
 
-## 다음 Production target 경계
+## 확인 사실과 검증 한계
 
-OCI는 현재 승인된 후속 배포 방향이다. 하지만 OCI Compute, network, database, secret, ingress, backup/restore와 실제 application activation 계약은 각 단계의 현재 제약을 확인한 뒤 별도로 결정한다. AWS에서 사용했던 구조를 이름만 OCI로 바꾸어 이식하지 않는다.
+2026-10-25 A07 읽기 전용 조사에서 Application 컨테이너 healthy, `/`·`/products`·`/api/products` GET 200, Backend metric 수집, Prometheus/Grafana health 응답, 제공 인증서와 디스크 인증서 일치 및 갱신 timer 활성 상태를 확인했다. 이는 조사 시점의 제한된 관측이며 지속적인 가용성이나 갱신·복구 성공을 보장하지 않는다.
 
-새 target을 활성화하려면 최소한 다음이 다시 정의되어야 한다.
+OCI Application Rollback, 인증서 갱신 중단 복구, DB backup/PITR/restore, Cloud 접근 제어, 전체 알림 연결과 로그인·주문 등 업무 흐름은 이 조사로 검증하지 않았다. Managed MySQL topology와 외부 DB 연결 경계는 확인했으나 OCI DB resource identity·권한·복구 설정은 별도 확인이 필요하다.
+
+## 후속 운영 실행 경계
+
+현재 OCI 운영 대상의 존재는 새로운 배포·복구·Cloud 변경 승인을 의미하지 않는다. CD·블루/그린 등 무중단 배포는 DEFER이며, 기존 AWS 실행 경로를 재활성화하지 않는다.
+
+후속 운영 변경은 최소한 다음의 적용 범위·현재 상태·미검증 항목을 확인하고 필요한 계약을 별도 승인해야 한다.
 
 1. 실제 target과 network/ingress 경계
 2. runtime secret 전달 방식
