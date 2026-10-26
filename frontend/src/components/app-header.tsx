@@ -223,7 +223,7 @@ export function AppHeader() {
       <div className="header-search-shell" ref={searchShell}>
         <form className="header-search" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
           <label className="sr-only" htmlFor="header-search">상품 검색</label>
-          <input id="header-search" name="q" type="search" value={searchDraft} onFocus={() => { setMenuOpen(false); setCategoryOpen(false); setSearchOpen(true); }} onChange={(event) => { setSearchDraft(event.target.value); setSearchOpen(true); }} placeholder="상품명, 브랜드, 필요한 물품을 검색하세요" aria-expanded={searchOpen} aria-controls="header-search-discovery" />
+          <input id="header-search" name="q" type="search" value={searchDraft} onFocus={() => { setMenuOpen(false); setCategoryOpen(false); setSearchOpen(true); }} onClick={() => { setMenuOpen(false); setCategoryOpen(false); setSearchOpen(true); }} onChange={(event) => { setSearchDraft(event.target.value); setSearchOpen(true); }} placeholder="상품명·브랜드 검색" aria-expanded={searchOpen} aria-controls="header-search-discovery" />
           {searchDraft ? <button className="search-clear" type="button" aria-label="검색어 지우기" onClick={() => { setSearchDraft(""); setSearchOpen(true); document.getElementById("header-search")?.focus(); }}>×</button> : null}
           <button type="submit">검색</button>
         </form>

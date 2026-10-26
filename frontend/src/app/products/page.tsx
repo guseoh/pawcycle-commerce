@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState, CatalogSkeleton } from "@/components/async-state";
 import { CommerceOverlay } from "@/components/commerce-overlay";
 import { formatPetType } from "@/lib/frontend-utils";
-import { CatalogProductCard } from "@/components/catalog-product-card";
+import { CatalogImage, CatalogProductCard } from "@/components/catalog-product-card";
 import { useCatalogDiscovery } from "@/components/catalog-discovery";
 import { ApiError, type CatalogDiscovery, type ProductFilters, type ProductListResponse, type ProductSort } from "@/lib/api";
 import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, interactionContext, parseCatalogFilters, PRODUCT_SORTS } from "@/lib/catalog-filters";
@@ -99,7 +99,7 @@ function ProductsContent() {
   }
 
   return <div className="catalog-page">
-    <header className="page-heading"><h1 tabIndex={-1} id="catalog-results-title">{filters.q ? `‘${filters.q}’ 검색 결과` : "전체 상품"}</h1><p>필요한 물품을 편하게 찾아보세요.</p></header>
+    <header className="page-heading"><h1 tabIndex={-1} id="catalog-results-title">{filters.q ? `‘${filters.q}’ 검색 결과` : filters.subscribable === true ? "정기배송 상품" : "전체 상품"}</h1><p>{filters.subscribable === true ? "정기배송 가능한 상품을 모았어요. 옵션별 가능 여부와 이용 조건은 상품 상세에서 확인해 주세요." : "필요한 물품을 편하게 찾아보세요."}</p></header>
     <div className="catalog-toolbar">
       <p aria-live="polite" aria-atomic="true">{current?.status === "success" ? `총 ${current.response.totalElements.toLocaleString()}개 상품` : current?.status === "error" ? "목록을 불러오지 못했습니다" : "상품을 찾고 있습니다…"}</p>
       <div className="button-row">
@@ -129,7 +129,7 @@ function ProductsContent() {
       </section>
     </div>
     {compareMode && compareMessage ? <p className="compare-selection-message" role="status">{compareMessage}</p> : null}
-    {compareMode && compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><div><strong>상품 비교 {compareIds.length}/3</strong><span>{compareIds.map((id) => compareNames[id] ?? `상품 #${id}`).join(" · ")}</span></div><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareMessage(null); }}>전체 해제</button>{compareIds.map((id) => <button className="compare-remove" key={id} type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button>)}<button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
+    {compareMode && compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><strong>상품 비교 {compareIds.length}/3</strong><ul className="compare-selection-list">{compareIds.map((id) => <li key={id}>{products.find(product => product.productId === id)?.thumbnailUrl ? <CatalogImage src={products.find(product => product.productId === id)?.thumbnailUrl ?? null} alt="" className="compare-selection-image" /> : null}<span>{compareNames[id] ?? `상품 #${id}`}</span><button className="compare-remove" type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button></li>)}</ul><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareMessage(null); }}>전체 해제</button><button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
   </div>;
 }
 

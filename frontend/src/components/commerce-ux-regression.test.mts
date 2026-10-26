@@ -19,6 +19,7 @@ const discoverySource = readFileSync(new URL("./catalog-discovery.ts", import.me
 const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const shoppingStylesSource = readFileSync(new URL("../app/shopping.css", import.meta.url), "utf8");
+const catalogStylesSource = readFileSync(new URL("../app/ui-ux.css", import.meta.url), "utf8");
 const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
 const purchasePanelSource = readFileSync(new URL("./product-purchase-panel.tsx", import.meta.url), "utf8");
 const recommendationSource = readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8");
@@ -237,7 +238,8 @@ test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이
   assert.match(productsSource, /className="pagination-row"/);
   assert.match(productsSource, /const \[compareMode, setCompareMode\]/);
   assert.doesNotMatch(productsSource, /userFacingCatalogLabel/);
-  assert.match(shoppingStylesSource, /\.catalog-product-card \.product-card-media \{ position: relative; display: grid; aspect-ratio: 1/);
+  assert.match(catalogStylesSource, /\.catalog-product-card \.product-card-media\s*\{[^}]*aspect-ratio:\s*1/);
+  assert.match(catalogStylesSource, /\.product-card-media > \.product-thumbnail\s*\{[^}]*object-fit:contain/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
 });
 
