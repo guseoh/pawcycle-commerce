@@ -5,6 +5,10 @@
 
 **Fixture Verified / Real Auth Unverified.** G6-00 실제 인증 환경은 Blocked다. 아래 결과는 loopback 합성 API와 실제 Chrome 렌더링에만 해당한다. 실제 주문·결제·주소·프로필·구독의 서버 통합 성공을 뜻하지 않는다.
 
+## 목적
+
+Issue #468의 G6-01~G6-07에서 승인한 고객 데스크톱 UI·접근성 Delta를 구현하고, 기존 Commerce 계약을 보존하는지 합성 Fixture와 회귀 테스트로 검증한다. Backend/API/DB·제품 정책·실제 인증 및 결제·업무 상태 변경은 범위에서 제외한다.
+
 ## Task 결과
 
 | Task | 구현 | 관련 검증 |
