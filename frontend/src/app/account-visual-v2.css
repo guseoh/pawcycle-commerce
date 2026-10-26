@@ -152,10 +152,10 @@
     padding:18px 0;
     border-bottom:1px solid var(--line);
   }
-  .wishlist-row h2 { margin:0 0 4px; font-size:16px; line-height:24px; }
+  .wishlist-row h2 { overflow-wrap:anywhere; margin:0 0 4px; font-size:16px; line-height:24px; }
   .wishlist-row p { margin:0; color:var(--muted); font-size:12px; }
   .wishlist-row .button-row { justify-content:flex-end; }
-  .wishlist-row .button { min-height:40px; padding:7px 12px; font-size:13px; }
+  .wishlist-row .button { min-height:44px; padding:7px 12px; font-size:13px; }
 
   .state-panel-auth { max-width:720px; margin-inline:auto; background:var(--surface); border-radius:12px; }
   .checkout-block-reason { padding:16px; margin:16px 0; background:var(--surface); border-radius:8px; }
@@ -217,7 +217,7 @@
   .address-row address > span { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
   .address-row.default-address { padding-left:14px; border-left:3px solid var(--brand); }
   .address-row .button-row { justify-content:flex-end; }
-  .address-row .button { min-height:38px; padding:6px 11px; font-size:12px; }
+  .address-row .button { min-height:44px; padding:6px 11px; font-size:12px; }
   .address-dialog {
     width:min(620px,calc(100% - 32px));
     max-height:min(760px,calc(100dvh - 48px));
@@ -265,7 +265,7 @@
   .notification-panel .history-list > li > div a { color:var(--ink); text-decoration:none; }
   .notification-panel .history-list > li > div a:hover { color:var(--brand); }
   .notification-panel .history-list > li > div span { color:var(--muted); font-size:12px; }
-  .notification-panel .history-list .button { min-height:38px; padding:6px 11px; font-size:12px; }
+  .notification-panel .history-list .button { min-height:44px; padding:6px 11px; font-size:12px; }
 
   /* Pet: profiles are the default view; create/edit controls disclose on demand. */
   .pet-profile-screen > .section-card {

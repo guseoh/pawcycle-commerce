@@ -5,6 +5,19 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6-07: wishlist actions remain identifiable and empty notifications offer no write action", () => {
+  const wishlist = source("../app/wishlist/page.tsx");
+  const my = source("../app/my/page.tsx");
+  const notifications = source("./notification-screen.tsx");
+  assert.match(wishlist, /aria-label=\{`\$\{item\.productName\} 상품 보기`\}>상품 보기<\/Link>/);
+  assert.doesNotMatch(wishlist + my, /위시리스트|위시에서 제거/);
+  assert.match(wishlist, /undoTimerRef/);
+  assert.match(wishlist, /onClick=\{\(\) => void undo\(\)\}/);
+  assert.match(notifications, /items\.length > 0 \? <button[^>]*onClick=\{\(\) => void readAll\(\)\}/);
+  assert.match(notifications, /disabled=\{pending !== null \|\| unreadCount === 0\}/);
+  assert.match(notifications, /notificationApi\.markRead\(id, csrf\)/);
+});
+
 test("G6-06: cart and Checkout display server line amounts and keep explicit quantity application", () => {
   const cart = source("../app/cart/page.tsx");
   const checkout = source("../app/checkout/page.tsx");
