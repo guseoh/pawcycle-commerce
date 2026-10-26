@@ -5,6 +5,16 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6-05: order actions follow status and keep the server action boundary", () => {
+  const order = source("./commerce-order-detail.tsx");
+  assert.ok(order.indexOf('className="section-card order-actions"') > order.indexOf('className="section-card order-overview"'));
+  assert.ok(order.indexOf('className="section-card order-actions"') < order.indexOf('aria-labelledby="order-items-title"'));
+  assert.match(order, /availableActions\.includes\("REQUEST_CANCELLATION"\)/);
+  assert.match(order, /availableActions\.includes\("REQUEST_RETURN"\)/);
+  assert.match(order, /onClick=\{\(\) => void quickReorder\(\)\}/);
+  assert.equal((order.match(/onClick=\{\(\) => openRequest\(/g) ?? []).length, 2);
+});
+
 test("G6-04: plan names and selection state identify the explicit selection", () => {
   const start = source("./subscription-start.tsx");
   assert.doesNotMatch(start, /상세 선택/);
