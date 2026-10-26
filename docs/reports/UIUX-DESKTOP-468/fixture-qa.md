@@ -1,6 +1,7 @@
 # G6 Frontend fixture verification
 
-2026-10-26 · UIUX-DESKTOP-468 · Repository Change · 일반  
+2026-10-26 · UIUX-DESKTOP-468 · Repository Change · 일반
+
 기준 main `3ea52d399c26ece4c3063666a756a2ec5658e3cd` · Issue #468 / #465
 
 **Fixture Verified / Real Auth Unverified.** G6-00 실제 인증 환경은 Blocked다. 아래 결과는 loopback 합성 API와 실제 Chrome 렌더링에만 해당한다. 실제 주문·결제·주소·프로필·구독의 서버 통합 성공을 뜻하지 않는다.
