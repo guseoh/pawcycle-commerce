@@ -5,6 +5,20 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6-06: cart and Checkout display server line amounts and keep explicit quantity application", () => {
+  const cart = source("../app/cart/page.tsx");
+  const checkout = source("../app/checkout/page.tsx");
+  assert.match(cart, /className="cart-line-amount"/);
+  assert.match(checkout, /className="checkout-line-amount"/);
+  for (const page of [cart, checkout]) {
+    assert.match(page, /formatPrice\(item\.lineAmount\)/);
+    assert.match(page, /formatPrice\(item\.unitPrice \?\? item\.price\)/);
+  }
+  assert.match(cart, /onChange=\{\(event\) => updateDraft\(item\.skuId, event\.target\.value, item\.availableQuantity\)\}/);
+  assert.match(cart, /onClick=\{\(\) => void applyQuantity\(item\)\}/);
+  assert.equal((cart.match(/cartApi\.update\(/g) ?? []).length, 1);
+});
+
 test("G6-05: order actions follow status and keep the server action boundary", () => {
   const order = source("./commerce-order-detail.tsx");
   assert.ok(order.indexOf('className="section-card order-actions"') > order.indexOf('className="section-card order-overview"'));
