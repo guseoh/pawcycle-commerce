@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -11,6 +11,7 @@ import { subscriptionApi, type Pet } from "@/lib/subscription-api";
 
 export function PetProfileScreen() {
   const auth = useAuth();
+  const restoreEditFocus = useRef<number | null>(null);
   const [pets, setPets] = useState<Pet[] | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -47,7 +48,14 @@ export function PetProfileScreen() {
     setMessage(null);
   }
 
+  function finishEdit(petId: number) {
+    restoreEditFocus.current = petId;
+    setEditingId(null);
+    setDraft(null);
+  }
+
   function beginEdit(pet: Pet) {
+    restoreEditFocus.current = null;
     setCreateOpen(false);
     setEditingId(pet.petId);
     setDraft(petDraft(pet));
@@ -79,12 +87,12 @@ export function PetProfileScreen() {
     const weightError = petWeightError(draft.weightKg);
     if (weightError) { setMessageKind("error"); setMessage(weightError); return; }
     const changes = petPatch(pet, draft);
-    if (Object.keys(changes).length === 0) { setMessageKind("success"); setMessage("변경된 내용이 없습니다."); setEditingId(null); setDraft(null); return; }
+    if (Object.keys(changes).length === 0) { setMessageKind("success"); setMessage("변경된 내용이 없습니다."); finishEdit(pet.petId); return; }
     if (!draft.name.trim()) { setMessageKind("error"); setMessage("반려동물 이름을 입력해 주세요."); return; }
     setSavingId(pet.petId); setMessage(null);
     try {
       const updated = (await auth.executeWithCsrf((csrf) => subscriptionApi.pets.patch(pet.petId, changes, csrf))).body;
-      setPets((current) => current?.map((item) => item.petId === updated.petId ? updated : item) ?? current); setEditingId(null); setDraft(null); setMessageKind("success"); setMessage("반려동물 프로필을 수정했습니다.");
+      setPets((current) => current?.map((item) => item.petId === updated.petId ? updated : item) ?? current); finishEdit(pet.petId); setMessageKind("success"); setMessage("반려동물 프로필을 수정했습니다.");
     } catch (error) {
       if (error instanceof ApiError && error.code === "PET_NOT_FOUND") { await load(); setMessage("반려동물을 찾을 수 없어 목록을 새로 확인했습니다."); }
       else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
@@ -101,12 +109,14 @@ export function PetProfileScreen() {
   if (!pets) return <LoadingState>반려동물 프로필을 불러오고 있습니다.</LoadingState>;
 
   return <section className="pet-profile-screen"><header className="page-heading"><p className="eyebrow">Pet profile</p><h1>반려동물 프로필</h1><p>등록한 반려동물의 기본 정보를 확인하고 필요한 부분만 수정할 수 있어요.</p></header>{message ? <p className={messageKind === "error" ? "error-summary" : "notice-success"} role={messageKind === "error" ? "alert" : "status"}>{message}</p> : null}
-    <section className="section-card" aria-labelledby="pet-list-title"><div className="section-title pet-list-heading"><div><h2 id="pet-list-title">등록된 반려동물</h2><span className="count-badge">{pets.length}마리</span></div><button className="button button-primary" type="button" aria-expanded={createOpen} aria-controls="pet-create-panel" onClick={() => createOpen ? setCreateOpen(false) : beginCreate()}>{createOpen ? "등록 닫기" : "+ 반려동물 등록"}</button></div>{pets.length ? <div className="pet-profile-grid">{pets.map((pet) => <PetCard key={pet.petId} pet={pet} editing={editingId === pet.petId} draft={editingId === pet.petId ? draft : null} weightError={editingId === pet.petId && draft ? petWeightError(draft.weightKg) : null} busy={savingId === pet.petId} onEdit={() => beginEdit(pet)} onCancel={() => { setEditingId(null); setDraft(null); }} onDraft={updateDraft} onSave={() => void savePet(pet)} />)}</div> : <div className="empty-callout"><strong>등록된 반려동물이 없습니다.</strong><span>첫 프로필을 등록하면 반려동물별 정보를 관리할 수 있어요.</span><button type="button" className="button button-primary" onClick={beginCreate}>첫 반려동물 등록</button></div>}</section>
+    <section className="section-card" aria-labelledby="pet-list-title"><div className="section-title pet-list-heading"><div><h2 id="pet-list-title">등록된 반려동물</h2><span className="count-badge">{pets.length}마리</span></div><button className="button button-primary" type="button" aria-expanded={createOpen} aria-controls="pet-create-panel" onClick={() => createOpen ? setCreateOpen(false) : beginCreate()}>{createOpen ? "등록 닫기" : "+ 반려동물 등록"}</button></div>{pets.length ? <div className="pet-profile-grid">{pets.map((pet) => <PetCard key={pet.petId} pet={pet} editing={editingId === pet.petId} draft={editingId === pet.petId ? draft : null} weightError={editingId === pet.petId && draft ? petWeightError(draft.weightKg) : null} busy={savingId === pet.petId} onEdit={() => beginEdit(pet)} onCancel={() => finishEdit(pet.petId)} editTriggerRef={(node) => { if (node && restoreEditFocus.current === pet.petId) { node.focus(); restoreEditFocus.current = null; } }} onDraft={updateDraft} onSave={() => void savePet(pet)} />)}</div> : <div className="empty-callout"><strong>등록된 반려동물이 없습니다.</strong><span>첫 프로필을 등록하면 반려동물별 정보를 관리할 수 있어요.</span><button type="button" className="button button-primary" onClick={beginCreate}>첫 반려동물 등록</button></div>}</section>
     {createOpen ? <section id="pet-create-panel" className="section-card pet-create-panel" aria-labelledby="pet-create-title"><div className="section-title"><div><p className="eyebrow">New pet</p><h2 id="pet-create-title">반려동물 등록</h2></div></div><form className="pet-create-form" onSubmit={createPet}><label className="form-field" htmlFor="new-pet-name">이름<input id="new-pet-name" className="input" value={createName} maxLength={50} onChange={(event) => setCreateName(event.target.value)} disabled={creating} /></label><fieldset className="form-section"><legend>종</legend><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "DOG"} onChange={() => setCreateType("DOG")} disabled={creating} />개</label><label className="cycle-option"><input type="radio" name="new-pet-type" checked={createType === "CAT"} onChange={() => setCreateType("CAT")} disabled={creating} />고양이</label></fieldset><div className="button-row"><button className="button button-secondary" type="button" disabled={creating} onClick={() => setCreateOpen(false)}>취소</button><button className="button button-primary" type="submit" disabled={creating}>{creating ? "등록 중" : "반려동물 등록"}</button></div></form></section> : null}
   </section>;
 }
 
-function PetCard({ pet, editing, draft, weightError, busy, onEdit, onCancel, onDraft, onSave }: { pet: Pet; editing: boolean; draft: PetDraft | null; weightError: string | null; busy: boolean; onEdit: () => void; onCancel: () => void; onDraft: (patch: Partial<PetDraft>) => void; onSave: () => void }) {
-  if (!editing || !draft) return <article className="pet-profile-card"><div className="section-title"><h3>{pet.name}</h3><span className="status-badge">{pet.profileComplete ? "프로필 작성 완료" : "프로필 정보 보완 필요"}</span></div><dl className="detail-list"><dt>종</dt><dd>{formatPetType(pet.petType)}</dd><dt>품종</dt><dd>{pet.breed ?? "미입력"}</dd><dt>몸무게</dt><dd>{pet.weightKg === null ? "미입력" : `${pet.weightKg}kg`}</dd></dl><button className="button button-secondary" type="button" onClick={onEdit}>프로필 수정</button></article>;
-  return <article className="pet-profile-card" aria-labelledby={`pet-edit-${pet.petId}`}><h3 id={`pet-edit-${pet.petId}`}>{pet.name} 프로필 수정</h3><div className="pet-edit-form"><label className="form-field">이름<input className="input" value={draft.name} maxLength={50} onChange={(event) => onDraft({ name: event.target.value })} disabled={busy} /></label><label className="form-field">종<input className="input" value={formatPetType(pet.petType)} readOnly /></label><label className="form-field">품종<input className="input" value={draft.breed} maxLength={80} onChange={(event) => onDraft({ breed: event.target.value })} disabled={busy} /></label><label className="form-field">몸무게(kg)<input className="input" type="number" min="0.01" max="200" step="0.01" value={draft.weightKg} onChange={(event) => onDraft({ weightKg: event.target.value })} disabled={busy} /></label>{weightError ? <p className="field-error" role="alert">{weightError}</p> : null}</div><div className="button-row"><button className="button button-primary" type="button" onClick={onSave} disabled={busy}>{busy ? "저장 중" : "변경 저장"}</button><button className="button button-secondary" type="button" onClick={onCancel} disabled={busy}>취소</button></div></article>;
+function PetCard({ pet, editing, draft, weightError, busy, onEdit, onCancel, onDraft, onSave, editTriggerRef }: { pet: Pet; editing: boolean; draft: PetDraft | null; weightError: string | null; busy: boolean; onEdit: () => void; onCancel: () => void; onDraft: (patch: Partial<PetDraft>) => void; onSave: () => void; editTriggerRef: (node: HTMLButtonElement | null) => void }) {
+  const editNameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (editing) editNameRef.current?.focus(); }, [editing]);
+  if (!editing || !draft) return <article className="pet-profile-card"><div className="section-title"><h3>{pet.name}</h3><span className="status-badge">{pet.profileComplete ? "프로필 작성 완료" : "프로필 정보 보완 필요"}</span></div><dl className="detail-list"><dt>종</dt><dd>{formatPetType(pet.petType)}</dd><dt>품종</dt><dd>{pet.breed ?? "미입력"}</dd><dt>몸무게</dt><dd>{pet.weightKg === null ? "미입력" : `${pet.weightKg}kg`}</dd></dl><button className="button button-secondary" type="button" ref={editTriggerRef} aria-label={`${pet.name} 프로필 수정`} onClick={onEdit}>프로필 수정</button></article>;
+  return <article className="pet-profile-card" aria-labelledby={`pet-edit-${pet.petId}`}><h3 id={`pet-edit-${pet.petId}`}>{pet.name} 프로필 수정</h3><div className="pet-edit-form"><label className="form-field">이름 (필수)<input ref={editNameRef} className="input" value={draft.name} maxLength={50} onChange={(event) => onDraft({ name: event.target.value })} disabled={busy} /></label><label className="form-field">종 (변경 불가)<input className="input" value={formatPetType(pet.petType)} readOnly /></label><label className="form-field">품종 (선택)<input className="input" value={draft.breed} maxLength={80} onChange={(event) => onDraft({ breed: event.target.value })} disabled={busy} /></label><label className="form-field">몸무게(kg, 선택)<input className="input" type="number" min="0.01" max="200" step="0.01" value={draft.weightKg} onChange={(event) => onDraft({ weightKg: event.target.value })} disabled={busy} /></label>{weightError ? <p className="field-error" role="alert">{weightError}</p> : null}</div><div className="button-row"><button className="button button-primary" type="button" onClick={onSave} disabled={busy}>{busy ? "저장 중" : "변경 저장"}</button><button className="button button-secondary" type="button" onClick={onCancel} disabled={busy}>취소</button></div></article>;
 }
