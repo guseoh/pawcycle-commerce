@@ -123,6 +123,7 @@ function CatalogQuickPurchase({ product, productName, href }: { product: Product
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"success" | "error">("success");
   const singleSku = product.skuPriceSummary.skuPrices.length === 1 ? product.skuPriceSummary.skuPrices[0] : null;
 
   if (!product.purchasable) return null;
@@ -134,14 +135,16 @@ function CatalogQuickPurchase({ product, productName, href }: { product: Product
       if (busy) return;
       setBusy(true); setMessage(null);
       void auth.executeWithCsrf((csrf) => cartApi.add(singleSku.skuId, 1, csrf)).then(() => {
+        setMessageKind("success");
         setMessage(`${productName} 1개를 장바구니에 담았어요.`);
         notifyCommerceChanged();
       }).catch((error: unknown) => {
         if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+        setMessageKind("error");
         setMessage(error instanceof ApiError ? error.message : "장바구니에 담지 못했어요.");
       }).finally(() => setBusy(false));
     }}>{busy ? "담는 중…" : "바로 담기"}</button>
-    {message ? <span className="catalog-card-message" role="status">{message}</span> : null}
+    {message ? <span className="catalog-card-message" data-state={messageKind} role={messageKind === "error" ? "alert" : "status"}>{message}</span> : null}
   </>;
 }
 

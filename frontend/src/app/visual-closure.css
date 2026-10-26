@@ -3,7 +3,7 @@
  */
 
 .customer-theme {
-  --vc-header-height: 76px;
+  --vc-header-height: var(--desktop-header-height);
   --vc-soft-canvas: #faf9fb;
   --vc-soft-line: #ebe7ef;
   --vc-shadow-sm: 0 6px 20px rgb(36 28 46 / 7%);
@@ -19,8 +19,7 @@
     backdrop-filter: blur(10px);
   }
 
-  .header-primary,
-  .compact-header {
+  .header-primary {
     min-height: var(--vc-header-height);
     gap: 18px;
   }
@@ -184,14 +183,8 @@
 
   .catalog-products-grid { gap: 44px 24px; }
   .catalog-product-card { gap: 0; }
-  .catalog-product-card .product-card-media {
-    border: 1px solid var(--vc-soft-line);
-    background: var(--vc-soft-canvas);
-    transition: border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out;
-  }
   .catalog-product-card:hover .product-card-media {
     border-color: #cfc6d6;
-    box-shadow: var(--vc-shadow-sm);
   }
   .catalog-product-card:focus-within .product-card-media { border-color: var(--brand); }
   .catalog-wishlist-control button,
@@ -204,38 +197,8 @@
     background: var(--brand);
     border-color: var(--brand);
   }
-  .catalog-card-copy { padding-top: 13px; gap: 5px; }
-  .catalog-brand {
-    color: #746d7a;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .catalog-card-copy h3 {
-    min-height: 44px;
-    font-size: 15px;
-    line-height: 22px;
-    font-weight: 600;
-    letter-spacing: -.01em;
-  }
   .catalog-title-link:hover { color: var(--ink); text-decoration-thickness: 1px; }
-  .catalog-price { margin-top: 7px; gap: 4px 7px; }
-  .catalog-price strong { font-size: 22px; line-height: 28px; font-weight: 750; }
-  .catalog-price del { color: #8b8490; }
-  .catalog-discount { color: var(--sale); font-weight: 700; }
-  .catalog-rating {
-    min-height: 18px;
-    margin: 4px 0 2px;
-    color: #746d7a;
-    font-size: 12px;
-  }
   .catalog-rating-empty { opacity: 1; color: #9a939f; }
-  .catalog-card-copy .tag {
-    min-height: 25px;
-    border-color: transparent;
-    background: var(--selected-soft);
-    color: var(--brand);
-    font-weight: 650;
-  }
   .catalog-card-actions { padding-top: 6px; }
   .compare-toggle {
     width: fit-content;
@@ -280,12 +243,6 @@
   }
   .product-detail-layout > .product-summary { align-self: start; }
   .product-summary { padding-top: 2px; }
-  .product-summary h1 {
-    margin: 12px 0 8px;
-    font-size: 30px;
-    line-height: 39px;
-    font-weight: 750;
-  }
   .product-summary-description { margin-bottom: 10px; color: var(--muted); }
   .product-summary .catalog-rating {
     display: inline-flex;
@@ -320,13 +277,6 @@
     background: white;
     box-shadow: 0 8px 30px rgb(36 28 46 / 5%);
   }
-  .purchase-panel > h2 {
-    margin-bottom: 20px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--vc-soft-line);
-    font-size: 20px;
-    line-height: 28px;
-  }
   .purchase-panel .product-option-group { margin-bottom: 20px; }
   .purchase-panel .product-option-group legend { margin-bottom: 10px; }
   .purchase-panel .catalog-toggle-row button {
@@ -341,16 +291,8 @@
     background: var(--selected-soft);
     box-shadow: inset 0 0 0 1px var(--brand);
   }
-  .selection-summary {
-    margin: 4px 0 18px;
-    padding: 16px;
-    border: 1px solid var(--vc-soft-line);
-    border-radius: 10px;
-    background: var(--vc-soft-canvas);
-  }
   .selection-summary > p:last-child { margin-bottom: 0; color: var(--muted); }
   .selection-summary .catalog-price { margin-top: 0; }
-  .selection-summary .catalog-price strong { font-size: 24px; }
   .selection-availability { margin-top: 8px; }
   .subscription-callout {
     margin: 0 0 18px;
@@ -396,31 +338,6 @@
   }
   .product-purchase-trust a:hover { border-color: var(--brand); color: var(--ink); }
   .product-purchase-trust span { color: var(--muted); font-size: 12px; line-height: 18px; }
-
-  .product-info-nav {
-    position: sticky;
-    top: var(--vc-header-height);
-    z-index: 18;
-    display: flex;
-    gap: 4px;
-    margin: 64px 0 8px;
-    padding: 8px 0;
-    overflow-x: auto;
-    border-top: 1px solid var(--vc-soft-line);
-    border-bottom: 1px solid var(--vc-soft-line);
-    background: rgb(255 255 255 / 97%);
-    scrollbar-width: thin;
-  }
-  .product-info-nav a {
-    flex: 0 0 auto;
-    min-height: 42px;
-    padding: 9px 14px;
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 650;
-    text-decoration: none;
-  }
   .product-info-nav a:hover { color: var(--brand); background: var(--surface); }
   .product-information { max-width: 960px; margin-inline: auto; }
   .product-info-section { padding-block: 40px; }

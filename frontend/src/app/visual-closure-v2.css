@@ -4,12 +4,12 @@
  */
 
 @scope (.customer-theme) {
-  .page-shell { width:min(1320px,calc(100% - 64px)); padding-top:40px; }
+  .page-shell { padding-top:40px; }
   .page-heading { margin-bottom:28px; }
   .page-heading > p { max-width:680px; }
 
   /* Search behaves like a discovery surface rather than a bare text field. */
-  .header-search-shell { position:relative; min-width:0; }
+  .header-search-shell { position:relative; flex:1 1 400px; min-width:0; }
   .header-search-shell .header-search { width:100%; }
   .search-discovery-panel {
     position:absolute;
@@ -63,18 +63,8 @@
 
   /* PLP cards prioritize purchase decisions. */
   .catalog-product-card { display:flex; flex-direction:column; min-width:0; }
-  .catalog-card-copy { display:flex; flex-direction:column; align-items:flex-start; flex:1 1 auto; }
-  .catalog-card-copy h3 { min-height:48px; margin-bottom:6px; font-size:15px; line-height:22px; font-weight:650; }
   .catalog-card-copy .catalog-brand { margin-bottom:4px; color:var(--muted); font-size:12px; line-height:18px; }
-  .catalog-price { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; margin-top:4px; }
-  .catalog-price strong { font-size:20px; line-height:28px; letter-spacing:-.02em; }
-  .catalog-price del { color:var(--muted); font-size:12px; }
-  .catalog-discount { order:-1; color:var(--sale); font-size:14px; font-weight:750; }
-  .catalog-rating { margin:7px 0 0; color:var(--muted); font-size:12px; line-height:18px; }
-  .catalog-card-copy .card-meta { margin-top:8px; }
-  .catalog-card-copy .tag { border:0; padding:0; background:transparent; color:var(--brand); font-size:12px; font-weight:650; }
   .catalog-quick-purchase { display:grid; gap:6px; margin-top:14px; }
-  .catalog-quick-purchase .button { width:100%; min-height:40px; padding:8px 12px; font-size:13px; }
   .catalog-quick-purchase .catalog-card-message { min-height:18px; color:var(--success); font-size:12px; line-height:18px; }
   .catalog-card-actions { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
   .compare-toggle { color:var(--muted); font-size:12px; font-weight:500; }
@@ -93,22 +83,16 @@
   .product-detail-layout .product-summary { grid-area:summary; padding:0 0 22px; border-bottom:1px solid var(--line); }
   .product-detail-layout .product-purchase-stack { grid-area:purchase; position:sticky; top:112px; padding-top:22px; }
   .product-summary .card-meta { margin:8px 0 12px; }
-  .product-summary h1 { margin-bottom:8px; font-size:30px; line-height:38px; }
   .product-summary-description { margin-bottom:10px; }
   .product-summary .catalog-rating { display:inline-flex; min-height:32px; align-items:center; margin:0 0 10px; color:var(--brand); text-decoration:none; }
   .product-summary .purchase-price { margin:4px 0 6px; }
   .product-summary .purchase-price .catalog-price strong { font-size:30px; line-height:38px; }
   .product-subscription-note { display:inline-flex; margin:8px 0 0; color:var(--brand); font-size:13px; font-weight:700; }
-  .purchase-panel > h2 { margin-bottom:16px; font-size:18px; line-height:26px; }
-  .selection-summary { margin:14px 0; padding:14px 0; border-block:1px solid var(--line); background:transparent; }
-  .selection-summary .catalog-price strong { font-size:18px; }
   .subscription-callout { margin:12px 0; padding:12px 14px; border-left:3px solid var(--brand); border-radius:0; background:var(--surface); }
   .purchase-actions .button-primary { flex:2 1 180px; }
   .purchase-actions .button-secondary { flex:1 1 120px; }
   .product-purchase-trust { margin-top:16px; border-top:1px solid var(--line); }
   .product-purchase-trust a { padding:13px 0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; }
-  .product-info-nav { position:sticky; top:72px; z-index:18; margin-top:48px; padding:0; border-block:1px solid var(--line); background:rgb(255 255 255 / 96%); backdrop-filter:blur(8px); }
-  .product-info-nav a { min-height:48px; padding:12px 16px; font-size:13px; font-weight:650; }
   .product-information { gap:0; }
   .product-information .product-info-section { padding:36px 0; }
   .product-information .product-info-section > h2,.product-information .product-info-section > div > h2 { margin-bottom:14px; }
