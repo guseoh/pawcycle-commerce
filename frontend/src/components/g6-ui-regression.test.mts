@@ -5,6 +5,26 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6-04: plan names and selection state identify the explicit selection", () => {
+  const start = source("./subscription-start.tsx");
+  assert.doesNotMatch(start, /상세 선택/);
+  assert.match(start, /aria-label=\{`\$\{plan\.planName\}/);
+  assert.match(start, /aria-pressed=\{selectedPlan\?\.planVersionId === plan\.planVersionId\}/);
+  assert.match(start, /onClick=\{\(\) => void selectPlan\(plan\)\}/);
+});
+
+test("G6-04: current, next and pending facts stay separate without inferred dates", () => {
+  const detail = source("./subscription-detail.tsx");
+  const comparison = detail.slice(detail.indexOf('<section className="subscription-state-comparison"'), detail.indexOf('<div className="subscription-main">'));
+  assert.ok(comparison.indexOf("subscription.currentSnapshot") < comparison.indexOf("subscription.nextDelivery"));
+  assert.ok(comparison.indexOf("subscription.nextDelivery") < comparison.indexOf("subscription.pendingChange"));
+  assert.match(comparison, /formatIsoLocalDate\(subscription\.pendingChange\.appliesOn\)/);
+  assert.match(comparison, /예정된 다음 주문 회차가 없습니다/);
+  assert.match(comparison, /적용 예정인 변경이 없습니다/);
+  assert.match(detail, /hasAction\("RESCHEDULE_NEXT"\)/);
+  assert.match(detail, /command\(subscription\.subscriptionId, command, body, csrf, etag, commandKey\.key\)/);
+});
+
 test("G6-03: anonymous notices stay neutral while failures remain alerts", () => {
   const states = source("./async-state.tsx");
   const neutral = states.slice(states.indexOf("export function AuthRequiredState"), states.indexOf("export function ErrorState"));

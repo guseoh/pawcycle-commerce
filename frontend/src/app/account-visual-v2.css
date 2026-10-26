@@ -161,6 +161,18 @@
   .checkout-block-reason { padding:16px; margin:16px 0; background:var(--surface); border-radius:8px; }
   .checkout-block-reason p { margin:0 0 8px; }
 
+  .subscription-detail > .subscription-state-comparison { grid-column:1/-1; }
+  .subscription-state-comparison > h2 { margin:0 0 20px; font-size:22px; }
+  .subscription-state-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
+  .subscription-state-grid > section { min-width:0; padding:20px; border:1px solid var(--line); border-radius:12px; }
+  .subscription-state-grid h3 { margin:0 0 16px; font-size:18px; }
+  .subscription-state-grid .detail-list { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:8px 16px; }
+  .subscription-state-grid dt { font-size:14px; color:var(--muted); }
+  .subscription-state-grid dd { margin:0; overflow-wrap:anywhere; }
+  .pending-items summary { cursor:pointer; padding-block:12px; min-height:44px; }
+  .subscription-plan-options .product-card { padding:16px; gap:12px; }
+  @media (max-width:1023px) { .subscription-state-grid { grid-template-columns:minmax(0,1fr); } }
+
   /* Account facts: keep each server label next to its value. */
   .subscription-row { display:grid; grid-template-columns:minmax(0,1fr) auto; min-width:0; }
   .subscription-row-main { min-width:0; }
