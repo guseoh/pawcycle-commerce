@@ -199,7 +199,7 @@
     .comparison-table a { display:inline-flex; min-height:44px; align-items:center; }
 
     /* G3: keep the selected SKU price next to quantity and the purchase action. */
-    .shopping-detail .product-detail-layout { column-gap:48px; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .shopping-detail .product-detail-layout { column-gap:48px; grid-template-columns:minmax(0,1fr) minmax(416px,.85fr); }
     .shopping-detail .product-detail-layout > .product-purchase-stack { position:static; }
     .product-summary .purchase-price { color:var(--ink); font-size:24px; line-height:32px; font-weight:700; }
     .purchase-panel { padding:20px; border-radius:12px; box-shadow:none; }
@@ -246,6 +246,25 @@
     .notice-list article { padding:24px; border:1px solid var(--line); border-radius:12px; }
     .notice-list h2 { max-width:760px; margin:16px 0 12px; font-size:22px; line-height:32px; }
     .notice-list p { color:var(--muted); }
+  }
+}
+@media (min-width:1024px) and (max-width:1279px) {
+  @scope (.customer-theme) {
+    /* R1's 1024px catalog remains three columns, preserving usable card width. */
+    .catalog-products-grid,.recommendation-grid,
+    .shopping-home .recommendation-section[data-source="home-popular"] .recommendation-grid {
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+    .shopping-detail .catalog-gallery .product-gallery { max-width:440px; }
+  }
+}
+@media (min-width:1440px) {
+  @scope (.customer-theme) {
+    /* Restore R1's gallery-led proportions and a >=448px purchase area. */
+    .shopping-detail .product-detail-layout {
+      grid-template-columns:minmax(0,1.35fr) minmax(448px,.85fr);
+    }
+    .shopping-detail .catalog-gallery .product-gallery { max-width:672px; }
   }
 }
 @media (max-width:1023px) {

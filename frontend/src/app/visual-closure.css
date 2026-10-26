@@ -23,7 +23,6 @@
     min-height: var(--vc-header-height);
     gap: 18px;
   }
-  .compact-header { min-height:var(--compact-header-height); }
 
   .brand { gap: 8px; }
   .brand strong {

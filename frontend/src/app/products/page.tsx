@@ -30,6 +30,7 @@ function ProductsContent() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [compareNames, setCompareNames] = useState<Record<number, string>>({});
+  const [compareThumbnails, setCompareThumbnails] = useState<Record<number, string | null>>({});
   const [compareMessage, setCompareMessage] = useState<string | null>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
 
@@ -89,12 +90,16 @@ function ProductsContent() {
     setCompareMessage(null);
     setCompareIds(result.ids);
     setCompareNames((names) => result.reason === "removed" ? Object.fromEntries(Object.entries(names).filter(([id]) => Number(id) !== productId)) : { ...names, [productId]: name });
+    setCompareThumbnails((thumbnails) => result.reason === "removed"
+      ? Object.fromEntries(Object.entries(thumbnails).filter(([id]) => Number(id) !== productId))
+      : { ...thumbnails, [productId]: products.find((product) => product.productId === productId)?.thumbnailUrl ?? null });
   }
 
   function closeCompareMode() {
     setCompareMode(false);
     setCompareIds([]);
     setCompareNames({});
+    setCompareThumbnails({});
     setCompareMessage(null);
   }
 
@@ -129,7 +134,7 @@ function ProductsContent() {
       </section>
     </div>
     {compareMode && compareMessage ? <p className="compare-selection-message" role="status">{compareMessage}</p> : null}
-    {compareMode && compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><strong>상품 비교 {compareIds.length}/3</strong><ul className="compare-selection-list">{compareIds.map((id) => <li key={id}>{products.find(product => product.productId === id)?.thumbnailUrl ? <CatalogImage src={products.find(product => product.productId === id)?.thumbnailUrl ?? null} alt="" className="compare-selection-image" /> : null}<span>{compareNames[id] ?? `상품 #${id}`}</span><button className="compare-remove" type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button></li>)}</ul><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareMessage(null); }}>전체 해제</button><button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
+    {compareMode && compareIds.length > 0 ? <aside className="compare-tray" aria-label="상품 비교 선택"><strong>상품 비교 {compareIds.length}/3</strong><ul className="compare-selection-list">{compareIds.map((id) => <li key={id}>{compareThumbnails[id] ? <CatalogImage src={compareThumbnails[id]} alt="" className="compare-selection-image" /> : null}<span>{compareNames[id] ?? `상품 #${id}`}</span><button className="compare-remove" type="button" onClick={() => toggleCompare(id, compareNames[id] ?? `상품 #${id}`)} aria-label={`${compareNames[id] ?? `상품 #${id}`} 비교에서 제거`}>×</button></li>)}</ul><div className="button-row"><button className="button button-secondary" type="button" onClick={() => { setCompareIds([]); setCompareNames({}); setCompareThumbnails({}); setCompareMessage(null); }}>전체 해제</button><button className="button button-primary" type="button" disabled={compareIds.length < 2} onClick={() => router.push(comparisonHref(compareIds))}>비교하기</button></div></aside> : null}
   </div>;
 }
 

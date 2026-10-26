@@ -20,6 +20,7 @@ const headerSource = readFileSync(new URL("./app-header.tsx", import.meta.url), 
 const globalStylesSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const shoppingStylesSource = readFileSync(new URL("../app/shopping.css", import.meta.url), "utf8");
 const catalogStylesSource = readFileSync(new URL("../app/ui-ux.css", import.meta.url), "utf8");
+const closureStylesSource = readFileSync(new URL("../app/visual-closure.css", import.meta.url), "utf8");
 const productDetailSource = readFileSync(new URL("./product-detail-screen.tsx", import.meta.url), "utf8");
 const purchasePanelSource = readFileSync(new URL("./product-purchase-panel.tsx", import.meta.url), "utf8");
 const recommendationSource = readFileSync(new URL("./recommendation-card.tsx", import.meta.url), "utf8");
@@ -241,6 +242,24 @@ test("카탈로그 카드는 실제 상품 링크와 일관된 이미지·페이
   assert.match(catalogStylesSource, /\.catalog-product-card \.product-card-media\s*\{[^}]*aspect-ratio:\s*1/);
   assert.match(catalogStylesSource, /\.product-card-media > \.product-thumbnail\s*\{[^}]*object-fit:contain/);
   assert.match(globalStylesSource, /\.pagination-row \{ display: flex/);
+});
+
+test("데스크톱 헤더·목록·PDP는 승인된 R1 폭·열 수를 유지한다", () => {
+  assert.match(shoppingStylesSource, /\.header-primary,\.compact-header\s*\{[^}]*min-height:88px/);
+  assert.doesNotMatch(closureStylesSource, /\.compact-header\s*\{\s*min-height:var\(--compact-header-height\)/);
+  assert.match(catalogStylesSource, /@media \(min-width:1024px\) and \(max-width:1279px\)/);
+  assert.match(catalogStylesSource, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(catalogStylesSource, /@media \(min-width:1440px\)/);
+  assert.match(catalogStylesSource, /max-width:672px/);
+  assert.match(catalogStylesSource, /minmax\(448px,\.85fr\)/);
+});
+
+test("비교 선택 썸네일은 페이지 이동 뒤에도 선택 당시 값을 보존한다", () => {
+  assert.match(productsSource, /const \[compareThumbnails, setCompareThumbnails\]/);
+  assert.match(productsSource, /setCompareThumbnails\(\(thumbnails\) => result\.reason === "removed"/);
+  assert.match(productsSource, /src=\{compareThumbnails\[id\]\}/);
+  assert.doesNotMatch(productsSource, /src=\{products\.find\(product => product\.productId === id\)/);
+  assert.match(productsSource, /setCompareIds\(\[\]\); setCompareNames\(\{\}\); setCompareThumbnails\(\{\}\)/);
 });
 
 test("카탈로그·추천·PDP는 반복 상태 소음을 줄이고 서버 사실을 우선 표시한다", () => {
