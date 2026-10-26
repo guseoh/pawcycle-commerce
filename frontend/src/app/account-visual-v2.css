@@ -157,6 +157,10 @@
   .wishlist-row .button-row { justify-content:flex-end; }
   .wishlist-row .button { min-height:40px; padding:7px 12px; font-size:13px; }
 
+  .state-panel-auth { max-width:720px; margin-inline:auto; background:var(--surface); border-radius:12px; }
+  .checkout-block-reason { padding:16px; margin:16px 0; background:var(--surface); border-radius:8px; }
+  .checkout-block-reason p { margin:0 0 8px; }
+
   /* Account facts: keep each server label next to its value. */
   .subscription-row { display:grid; grid-template-columns:minmax(0,1fr) auto; min-width:0; }
   .subscription-row-main { min-width:0; }

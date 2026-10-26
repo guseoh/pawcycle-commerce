@@ -5,6 +5,28 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6-03: anonymous notices stay neutral while failures remain alerts", () => {
+  const states = source("./async-state.tsx");
+  const neutral = states.slice(states.indexOf("export function AuthRequiredState"), states.indexOf("export function ErrorState"));
+  assert.doesNotMatch(neutral, /role="alert"|state-panel-error/);
+  assert.match(states.slice(states.indexOf("export function ErrorState")), /role="alert"/);
+  for (const file of ["../app/my/page.tsx", "../app/checkout/page.tsx", "../app/cart/page.tsx", "../app/addresses/page.tsx", "./pet-profile-screen.tsx"]) {
+    const page = source(file);
+    assert.match(page, /auth\.status === "anonymous"\) return <AuthRequiredState/);
+    assert.match(page, /auth\.status === "error"\) return <ErrorState/);
+    assert.match(page, /build(?:Address)?LoginHref\(/);
+  }
+});
+
+test("G6-03: Checkout explains distinct blockers beside the unchanged explicit action", () => {
+  const checkout = source("../app/checkout/page.tsx");
+  assert.match(checkout, /const checkoutBlockReason = !cart\.length/);
+  assert.match(checkout, /: !addressId \? "주문할 배송지를 선택해 주세요\."/);
+  assert.match(checkout, /aria-describedby=\{checkoutBlockReason \? "checkout-block-reason" : undefined\}/);
+  assert.match(checkout, /disabled=\{!cart\.length \|\| !addressId \|\| unavailable\.length > 0 \|\| busy\}/);
+  assert.equal((checkout.match(/checkoutApi\.create\(/g) ?? []).length, 1);
+});
+
 test("G6-02: subscription and billing facts preserve server values and pagination", () => {
   const list = source("./subscription-list.tsx");
   const billing = source("../app/billing-methods/page.tsx");

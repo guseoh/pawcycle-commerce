@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CommerceOverlay } from "./commerce-overlay";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { orderApi, type OrderDetail } from "@/lib/order-api";
@@ -183,7 +183,7 @@ export function CommerceOrderDetail({ orderId }: { orderId: string }) {
   const refunds = order?.refunds ?? [];
   const availableActions = order?.availableActions ?? [];
 
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="주문 상세를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref(`/orders/${orderId}`)}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="주문 상세를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref(`/orders/${orderId}`)}>로그인</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (!order && !message) return <LoadingState>주문을 불러오고 있습니다.</LoadingState>;
   if (!order) return <ErrorState title="주문을 불러오지 못했습니다." message={message ?? "다시 시도해 주세요."} onRetry={() => void load()}><Link className="button button-secondary" href="/orders">주문 내역으로</Link></ErrorState>;

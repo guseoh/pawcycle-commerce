@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPetType } from "@/lib/frontend-utils";
@@ -101,7 +101,7 @@ export function PetProfileScreen() {
     } finally { setSavingId(null); }
   }
 
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="반려동물 프로필을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/pets")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="반려동물 프로필을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/pets")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   const loadState = petProfileLoadState(auth.status, pets, loadingError);
   if (loadState === "error") return <ErrorState title="반려동물 프로필을 불러오지 못했습니다." message={loadingError!} onRetry={() => { setLoadingError(null); setPets(null); setRetry((value) => value + 1); }} />;

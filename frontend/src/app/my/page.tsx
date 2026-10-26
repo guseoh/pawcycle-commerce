@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { LogoutControl } from "@/components/logout-control";
 import { ApiError } from "@/lib/api";
 import { orderApi, type OrderSummary } from "@/lib/order-api";
@@ -59,7 +59,7 @@ export default function MyPage() {
     return () => window.clearTimeout(timer);
   }, [loadSnapshot, retry]);
 
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="내 정보를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/my")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="내 정보를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/my")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "loading") return <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "로그인 상태를 확인할 수 없습니다."} onRetry={() => void auth.refresh()} />;
   const shoppingLinks = [["/subscriptions", "정기배송", "다음 배송과 구독 변경을 관리해요"], ["/orders", "주문", "주문과 배송 상태를 확인해요"], ["/wishlist", "위시리스트", "나중에 볼 상품을 모아뒀어요"], ["/cart", "장바구니", "장바구니 전체 상품과 금액을 확인해요"]] as const;

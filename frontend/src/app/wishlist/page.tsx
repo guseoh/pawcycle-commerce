@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { wishlistApi, type WishlistItem } from "@/lib/wishlist-api";
@@ -10,7 +10,7 @@ import { buildLoginHref, formatDateTime, notifyCommerceChanged } from "@/lib/fro
 
 export default function WishlistPage() {
   const auth = useAuth();
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요해요." message="위시리스트는 로그인한 계정에 상품을 저장하는 기능이에요. 로그인 후 다시 저장해 주세요."><Link className="button button-primary" href={buildLoginHref("/wishlist")}>로그인하기</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요해요." message="위시리스트는 로그인한 계정에 상품을 저장하는 기능이에요. 로그인 후 다시 저장해 주세요."><Link className="button button-primary" href={buildLoginHref("/wishlist")}>로그인하기</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (auth.status !== "authenticated" || auth.memberId === null) return <LoadingState>위시리스트를 불러오고 있습니다.</LoadingState>;
   return <WishlistForMember key={auth.memberId} />;
