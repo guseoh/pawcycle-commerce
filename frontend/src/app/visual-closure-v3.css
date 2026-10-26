@@ -47,7 +47,6 @@
 
   /* Keep the purchase action easy to hit; an empty action area should not reserve space. */
   .catalog-quick-purchase:empty { display:none; }
-  .catalog-quick-purchase .button { min-height:44px; }
 
   /* Protected-page login gates should read as a compact next step, not a decorative card. */
   .state-panel-error:has(a[href^="/login"]) {
