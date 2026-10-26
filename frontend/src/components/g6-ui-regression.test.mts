@@ -5,6 +5,17 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const accountCss = source("../app/account-visual-v2.css");
 
+test("G6 fixture stays loopback-only and fails closed for unconfigured API requests", () => {
+  const fixture = source("../../scripts/visual-fixture.mjs");
+  assert.match(fixture, /server\.listen\(3006,'127\.0\.0\.1'/);
+  const apiStart = fixture.indexOf("if(path.startsWith('/api/'))");
+  const failClosed = fixture.indexOf("return json({code:'QA_ENDPOINT_NOT_CONFIGURED'");
+  const proxyStart = fixture.indexOf("const proxy=http.request");
+  assert.ok(apiStart < failClosed && failClosed < proxyStart);
+  assert.match(fixture, /QA_MUTATION_BLOCKED/);
+  assert.match(fixture, /for\(const key of \['name','breed','weightKg'\]\)/);
+});
+
 test("G6-07: wishlist actions remain identifiable and empty notifications offer no write action", () => {
   const wishlist = source("../app/wishlist/page.tsx");
   const my = source("../app/my/page.tsx");
@@ -107,6 +118,9 @@ test("G6-01: address actions remain outside the scrolling fields and failures st
   assert.match(accountCss, /\.address-dialog-actions\s*\{[^}]*flex:none/);
   assert.match(address, /onCancel=.*closeForm\(\)/);
   assert.match(address, /formOpener\.current\?\.focus\(\)/);
+  assert.match(address, /event\.shiftKey && document\.activeElement === first/);
+  assert.match(address, /!event\.shiftKey && document\.activeElement === last/);
+  assert.match(address, /if \(formOpen && error\) dialogRef\.current\?\.querySelector<HTMLElement>/);
 });
 
 test("G6-01: pet edit focus enters the input and returns only on explicit completion", () => {
