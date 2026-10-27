@@ -418,6 +418,45 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refused, "cached main is stale"):
                 self.host.initial()
 
+    def test_rendered_compose_boundaries_and_read_only_nginx_validation(self):
+        self.host.backend_env = self.root / "backend.env"
+        self.host.automation = {}
+        networks = {name: {"name": release.PROJECT + "-" + name, "internal": name == "app"}
+                    for name in ("app", "edge", "database-egress")}
+        config = {"networks": networks,
+                  "volumes": {name: {"name": release.PROJECT + "-" + name}
+                              for name in ("letsencrypt", "certbot-webroot")},
+                  "services": {
+                      role: {"image": self.target[role]["repository"] + ":" + self.target["sha"],
+                             "networks": {name.removeprefix(release.PROJECT + "-"): {} for name in release.NETWORKS[role]}}
+                      for role in ("backend", "frontend")}}
+        config["services"]["proxy"] = {"image": release.PROXY, "networks": {"app": {}, "edge": {}},
+                                         "volumes": [{"read_only": True}] * 3,
+                                         "ports": [{"target": 80}, {"target": 443}]}
+        commands = []
+        def docker(*args, **kwargs):
+            commands.append(args)
+            return release.encoded(config) if args[0] == "compose" else b""
+        with patch.object(self.host, "sources", return_value=(b"compose", b"nginx")), \
+                patch.object(self.host, "docker", side_effect=docker):
+            self.host.validate_config(self.target)
+            self.assertEqual("run", commands[1][0])
+            self.assertIn("none", commands[1])
+            self.assertIn("never", commands[1])
+            self.assertIn("--read-only", commands[1])
+            for mutate in (
+                lambda c: c["services"].update(mysql={}),
+                lambda c: c["services"]["backend"].update(ports=[{"target": 8080}]),
+                lambda c: c["networks"]["edge"].update(internal=True),
+                lambda c: c["volumes"]["letsencrypt"].update(name="unrelated-volume"),
+                lambda c: c["services"]["proxy"].update(ports=[{"target": 8081}]),
+            ):
+                original = copy.deepcopy(config)
+                mutate(config)
+                with self.assertRaises(release.Refused):
+                    self.host.validate_config(self.target)
+                config = original
+
 
 if __name__ == "__main__":
     unittest.main()
