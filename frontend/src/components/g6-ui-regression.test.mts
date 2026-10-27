@@ -22,6 +22,8 @@ test("G6-07: wishlist actions remain identifiable and empty notifications offer 
   const notifications = source("./notification-screen.tsx");
   assert.match(wishlist, /aria-label=\{`\$\{item\.productName\} 상품 보기`\}>상품 보기<\/Link>/);
   assert.doesNotMatch(wishlist + my, /위시리스트|위시에서 제거/);
+  assert.match(wishlist, /찜한 상품은 로그인한 계정/);
+  assert.doesNotMatch(wishlist, /찜한 상품(?:는|를)/);
   assert.match(wishlist, /undoTimerRef/);
   assert.match(wishlist, /onClick=\{\(\) => void undo\(\)\}/);
   assert.match(notifications, /items\.length > 0 \? <button[^>]*onClick=\{\(\) => void readAll\(\)\}/);

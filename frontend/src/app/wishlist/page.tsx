@@ -10,9 +10,9 @@ import { buildLoginHref, formatDateTime, notifyCommerceChanged } from "@/lib/fro
 
 export default function WishlistPage() {
   const auth = useAuth();
-  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요해요." message="찜한 상품는 로그인한 계정에 상품을 저장하는 기능이에요. 로그인 후 다시 저장해 주세요."><Link className="button button-primary" href={buildLoginHref("/wishlist")}>로그인하기</Link></AuthRequiredState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요해요." message="찜한 상품은 로그인한 계정에 상품을 저장하는 기능이에요. 로그인 후 다시 저장해 주세요."><Link className="button button-primary" href={buildLoginHref("/wishlist")}>로그인하기</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
-  if (auth.status !== "authenticated" || auth.memberId === null) return <LoadingState>찜한 상품를 불러오고 있습니다.</LoadingState>;
+  if (auth.status !== "authenticated" || auth.memberId === null) return <LoadingState>찜한 상품을 불러오고 있습니다.</LoadingState>;
   return <WishlistForMember key={auth.memberId} />;
 }
 
@@ -38,7 +38,7 @@ function WishlistForMember() {
     }).catch((reason: unknown) => {
       if (!activeRef.current || request !== requestRef.current) return;
       if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { markAnonymous(); return; }
-      setItems(null); setListError(reason instanceof ApiError ? reason.message : "찜한 상품를 불러오지 못했습니다.");
+      setItems(null); setListError(reason instanceof ApiError ? reason.message : "찜한 상품을 불러오지 못했습니다.");
     });
   }, [markAnonymous]);
 
@@ -86,8 +86,8 @@ function WishlistForMember() {
     } finally { setBusy(null); }
   }
 
-  if (items === null && !listError) return <LoadingState>찜한 상품를 불러오고 있습니다.</LoadingState>;
-  if (listError) return <ErrorState title="찜한 상품를 불러오지 못했습니다." message={listError} onRetry={load} />;
+  if (items === null && !listError) return <LoadingState>찜한 상품을 불러오고 있습니다.</LoadingState>;
+  if (listError) return <ErrorState title="찜한 상품을 불러오지 못했습니다." message={listError} onRetry={load} />;
   return <section className="wishlist-page"><header className="page-heading"><p className="eyebrow">Wishlist</p><h1 id="wishlist-title" tabIndex={-1}>찜한 상품</h1><p>저장한 상품 {items?.length ?? 0}개를 확인하고 상품 상세로 이동할 수 있어요.</p></header>
     {removeBlockedMessage ? <p className="field-help" role="status">{removeBlockedMessage}</p> : null}
     {items?.length ? <ul className="wishlist-list">{items.map((item) => <li className="wishlist-row" key={item.productId}><div><h2>{item.productName}</h2><p>저장한 시점 <time dateTime={item.createdAt}>{formatDateTime(item.createdAt, "Asia/Seoul")}</time></p>{itemErrors[item.productId] ? <p className="field-error" role="alert">{itemErrors[item.productId]} <button type="button" onClick={() => void remove(item)}>다시 시도</button></p> : null}</div><div className="button-row"><Link className="button button-secondary" href={`/products/${item.productId}`} aria-label={`${item.productName} 상품 보기`}>상품 보기</Link><button className="button button-danger wishlist-remove" type="button" disabled={busy !== null || removed !== null} aria-label={`${item.productName} 찜한 상품에서 제거`} onClick={() => void remove(item)}>{busy === item.productId ? "제거 중" : "찜 해제"}</button></div></li>)}</ul> : <div className="empty-callout"><strong>저장한 상품이 없어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
