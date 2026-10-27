@@ -115,7 +115,9 @@ assert certificate.not_valid_after_utc > datetime.datetime.now(datetime.timezone
 NETWORK_NAME="pawcycle-nginx-test-${RANDOM}-$$"
 BACKEND_CONTAINER="pawcycle-nginx-backend-${RANDOM}-$$"
 FRONTEND_CONTAINER="pawcycle-nginx-frontend-${RANDOM}-$$"
-docker network create "$NETWORK_NAME" >/dev/null
+# Explicit addresses below require an explicitly configured subnet (Engine 28).
+# A private disposable /24 avoids reusing either old service address.
+docker network create --subnet "172.30.$(( RANDOM % 200 + 20 )).0/24" "$NETWORK_NAME" >/dev/null
 docker run --detach --name "$BACKEND_CONTAINER" \
   --network "$NETWORK_NAME" \
   --network-alias backend \
