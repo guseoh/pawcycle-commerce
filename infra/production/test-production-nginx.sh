@@ -8,8 +8,15 @@ CONTAINER_NAME=""
 BACKEND_CONTAINER=""
 FRONTEND_CONTAINER=""
 NETWORK_NAME=""
+REPLACEMENT_BACKEND=""
+REPLACEMENT_FRONTEND=""
 
 cleanup() {
+  for replacement in "$REPLACEMENT_BACKEND" "$REPLACEMENT_FRONTEND"; do
+    if [[ -n "$replacement" ]]; then
+      docker rm --force "$replacement" >/dev/null 2>&1 || true
+    fi
+  done
   if [[ -n "$CONTAINER_NAME" ]]; then
     docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
@@ -260,4 +267,39 @@ backend_login_count="$(docker logs "$BACKEND_CONTAINER" 2>&1 | grep -c 'POST /ap
 expected_backend_login_count=$((public_success_count + internal_success_count))
 [[ "$backend_login_count" == "$expected_backend_login_count" ]]
 
-printf 'AUTH-005 Nginx hostname, certificate, edge security, and login rate-limit tests passed\n'
+# Keep the original processes alive but remove their DNS aliases/IPs. Explicit
+# different IPs make this a DNS regression, not an accidental address reuse.
+old_backend_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$BACKEND_CONTAINER")"
+old_frontend_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$FRONTEND_CONTAINER")"
+new_backend_ip="${old_backend_ip%.*}.200"
+new_frontend_ip="${old_frontend_ip%.*}.201"
+[[ "$new_backend_ip" != "$old_backend_ip" && "$new_frontend_ip" != "$old_frontend_ip" ]]
+docker network disconnect "$NETWORK_NAME" "$BACKEND_CONTAINER"
+docker network disconnect "$NETWORK_NAME" "$FRONTEND_CONTAINER"
+sed 's/"source":"backend"/"source":"backend-replaced"/' "$BACKEND_CONFIG" > "$TEST_ROOT/backend-replaced.conf"
+sed 's/mock frontend/frontend-replaced/' "$FRONTEND_CONFIG" > "$TEST_ROOT/frontend-replaced.conf"
+REPLACEMENT_BACKEND="${BACKEND_CONTAINER}-replacement"
+REPLACEMENT_FRONTEND="${FRONTEND_CONTAINER}-replacement"
+docker run --detach --name "$REPLACEMENT_BACKEND" --network "$NETWORK_NAME" \
+  --ip "$new_backend_ip" --network-alias backend \
+  --volume "$TEST_ROOT/backend-replaced.conf:/etc/nginx/conf.d/default.conf:ro" "$PROXY_IMAGE" >/dev/null
+docker run --detach --name "$REPLACEMENT_FRONTEND" --network "$NETWORK_NAME" \
+  --ip "$new_frontend_ip" --network-alias frontend \
+  --volume "$TEST_ROOT/frontend-replaced.conf:/etc/nginx/conf.d/default.conf:ro" "$PROXY_IMAGE" >/dev/null
+resolved=false
+for (( attempt = 0; attempt < 30; attempt++ )); do
+  backend_body="$(curl --silent --max-time 2 "http://127.0.0.1:$INTERNAL_PORT/api/products" || true)"
+  frontend_body="$(curl --silent --max-time 2 "http://127.0.0.1:$INTERNAL_PORT/products" || true)"
+  if [[ "$backend_body" == '{"source":"backend-replaced"}' && "$frontend_body" == frontend-replaced ]]; then
+    resolved=true
+    break
+  fi
+  sleep 1
+done
+[[ "$resolved" == true ]]
+[[ "$(curl --silent --show-error --insecure --max-time 5 \
+  --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" "https://$TEST_DOMAIN:$HTTPS_PORT/api/products")" \
+  == '{"source":"backend-replaced"}' ]]
+docker exec "$CONTAINER_NAME" nginx -t >/dev/null
+
+printf 'Nginx hostname, TLS, security, rate-limit and changed-IP DNS regressions passed\n'

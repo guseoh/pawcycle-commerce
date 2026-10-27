@@ -75,6 +75,22 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"ERROR: {message}")
 
 
+def validate_oci_release_contract() -> None:
+    nginx = (PRODUCTION / "nginx.https.conf").read_text(encoding="utf-8")
+    for marker in ("resolver 127.0.0.11 valid=5s ipv6=off;", "server backend:8080 resolve;",
+                   "server frontend:3000 resolve;", "zone pawcycle_application_backend",
+                   "zone pawcycle_application_frontend", "listen 8081;", "limit_req zone=login_per_ip",
+                   "ssl_reject_handshake on;", "location ^~ /.well-known/acme-challenge/"):
+        require(marker in nginx, f"Application DNS/security contract missing: {marker}")
+    require("proxy_pass http://backend:" not in nginx and "proxy_pass http://frontend:" not in nginx,
+            "Application still has static DNS proxy_pass")
+    for name in ("oci-release.py", "test-oci-release.py"):
+        require((PRODUCTION / name).is_file(), f"OCI release asset missing: {name}")
+    for workflow in WORKFLOWS.glob("*.yml"):
+        require(not re.search(r"python(?:3)?\s+infra/production/oci-release\.py\b", workflow.read_text(encoding="utf-8")),
+                "OCI operation must not be wired into a workflow in this stage")
+
+
 def active_text_files(root: Path):
     for path in root.rglob("*"):
         if (
@@ -180,6 +196,7 @@ def validate_observability_contract() -> None:
 
 
 def validate_release_lock_contract() -> None:
+    validate_oci_release_contract()
     secure_state = 'validate_secure_root_directory "$STATE_DIR" "state directory"'
     guard = 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"'
     open_lock = 'exec 9>>"$DEPLOY_LOCK_FILE"'

@@ -4,13 +4,13 @@
 
 ## 현재 Production 상태
 
-- Production deployment target: **없음**
+- Production deployment target: **OCI app01**
 - CD: **DEFER**
 - 무중단 배포: **DEFER**
-- OCI는 승인된 후속 배포 방향이지만, 실제 OCI 리소스 생성·배포·검증이 끝나기 전까지 active Production target 또는 Production Verified로 취급하지 않는다.
+- OCI app01은 단일 서버·수동 배포 상태다. Release/Rollback 저장소 기반과 격리 검증은 실제 운영 적용 또는 Production Verified를 의미하지 않는다.
 - 종료된 AWS Production의 EC2/SSM/RDS/S3/CloudWatch 실행 Runbook은 active Runbook에서 제거했다.
 
-현재 남아 있는 Production 관련 문서는 공급자 중립적인 검증·관측 절차 또는 과거 운영 참고 자료다. Runbook 파일이 존재한다는 사실만으로 실제 Production 실행이 승인되거나 현재 환경에 그대로 적용 가능하다고 해석하지 않는다.
+현재 Production 경계는 `docs/architecture/production-operations-overview.md`를 따른다. Runbook 파일이 존재한다는 사실만으로 실제 Production 실행이 승인되거나 현재 환경에 그대로 적용 가능하다고 해석하지 않는다.
 
 AWS에서 수행했던 운영 과정과 검증 결과는 `docs/reports/**`, `docs/learning/**`, 관련 ADR, Git 및 PR 이력에 보존한다. 이 기록은 향후 회고·포트폴리오·기술 글 작성의 근거이며, 현재 실행 절차로 재사용하지 않는다.
 
@@ -29,6 +29,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 대표적으로 계속 유지하는 문서:
 
 - `OPS-OCI-004-production-https-renewal.md`
+- `OPS-OCI-CD-02-release-recovery.md`: 승인된 OCI Release/Preflight/Rollback, 보호 상태와 중단 복구 경계
 - `SUB-AUTO-001-subscription-automation.md`
 - `MVP4-DATA-002-demo-catalog-import.md`
 - `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약

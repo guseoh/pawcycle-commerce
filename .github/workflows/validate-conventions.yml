@@ -362,7 +362,9 @@ jobs:
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
+          python -m py_compile infra/production/oci-release.py infra/production/test-oci-release.py
           python infra/production/validate-production-contracts.py
+          sudo "$(command -v python)" infra/production/test-oci-release.py
           bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-https-renewal.sh
