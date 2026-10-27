@@ -2,6 +2,7 @@
 """Disposable Linux/root tests; no Production paths, registry pull or DB access."""
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -35,6 +36,14 @@ def approval(action, target, current=None):
             "compatible_with": [current] if current else [], "rollback_safe": True,
             "baseline_verified": True, "capacity_evidence": "isolated-budget",
             "reserve_bytes": release.GIB, "rollback_extra_bytes": release.GIB}
+
+
+def local_image_record(target, role):
+    image = target[role]
+    return {"Id": image["config_digest"], "Os": "linux", "Architecture": "amd64", "Size": 100,
+            "RepoDigests": [image["repository"] + "@" + image["digest"]],
+            "Config": {"Labels": {"org.opencontainers.image.revision": target["sha"],
+                                  "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}}
 
 
 class FakeHost(release.Host):
@@ -150,6 +159,58 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual([], self.host.calls)
         self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
 
+    def test_rollback_uses_saved_evidence_and_local_images_without_registry(self):
+        self.adopt()
+        self.activate()
+        def inspect_local(*args, **kwargs):
+            self.assertEqual(("image", "inspect"), args[:2])
+            role = "backend" if "-backend@" in args[2] else "frontend"
+            return release.encoded([local_image_record(self.a, role)])
+        with patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
+                patch.object(self.host, "docker", side_effect=inspect_local), \
+                patch.object(self.host, "image", side_effect=lambda target, role: release.Host.image(self.host, target, role)):
+            self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+        self.assertEqual(self.a, self.host.live)
+        self.assertTrue(self.host.recovery_used_local_images)
+        self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
+        self.assertFalse((self.host.state / "release-state-transition").exists())
+
+    def test_rollback_rejects_missing_or_tampered_local_image_without_registry(self):
+        self.adopt()
+        self.activate()
+        for reason in ("missing", "Id", "Architecture", "RepoDigests"):
+            local = local_image_record(self.a, "backend")
+            if reason != "missing":
+                local[reason] = [] if reason == "RepoDigests" else "tampered"
+            with self.subTest(reason=reason), \
+                    patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
+                    patch.object(self.host, "docker", side_effect=release.Refused("local image missing") if reason == "missing" else None,
+                                 return_value=release.encoded([local])), \
+                    patch.object(self.host, "image", side_effect=lambda target, role: release.Host.image(self.host, target, role)):
+                with self.assertRaisesRegex(release.Refused, "local"):
+                    self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+                self.assertEqual(self.b, self.host.live)
+                self.assertEqual([self.b["sha"]], self.host.calls)
+
+    def test_rollback_requires_stored_approval_evidence(self):
+        self.adopt()
+        self.activate()
+        state = self.engine.read_state()
+        del state["previous"]["approval_sha256"]
+        release.atomic(self.host.state / "oci-release-state.json", release.encoded(state))
+        with patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")):
+            with self.assertRaisesRegex(release.Refused, "stored rollback approval"):
+                self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+        self.assertEqual([self.b["sha"]], self.host.calls)
+
+    def test_normal_release_keeps_remote_registry_gate(self):
+        self.adopt()
+        with patch.object(self.host, "registry", side_effect=release.Refused("Registry unavailable")) as registry:
+            with self.assertRaisesRegex(release.Refused, "Registry unavailable"):
+                self.activate()
+            registry.assert_called_once_with(self.b)
+        self.assertEqual([], self.host.calls)
+
     def test_preflight_refuses_missing_evidence_and_tampering_before_effect(self):
         self.adopt()
         for key, value in (("db_compatibility_evidence", ""), ("expected_current", "c" * 40),
@@ -209,6 +270,50 @@ class LifecycleTests(unittest.TestCase):
             self.assertTrue(self.host.recovery_used_local_images)
             self.assertEqual("failed-release-restored", self.engine.read_state()["result"])
             self.assertFalse((self.host.state / "release-state-transition").exists())
+
+    def test_partial_replacement_decode_io_and_state_errors_restore_verified_current(self):
+        self.adopt()
+        for failure in (ValueError("invalid state"), OSError("I/O error"),
+                        json.JSONDecodeError("invalid JSON", "{", 1), KeyError("state"), TypeError("state")):
+            with self.subTest(error=type(failure).__name__):
+                self.host.failures = [failure]
+                with self.assertRaisesRegex(release.Refused, "previous verified release restored"):
+                    self.activate()
+                self.assertEqual(self.a, self.host.live)
+                self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
+                self.assertEqual("failed-release-restored", self.engine.read_state()["result"])
+                self.assertFalse((self.host.state / "release-state-transition").exists())
+
+    def test_post_activation_state_error_also_restores(self):
+        self.adopt()
+        with patch.object(self.host, "siblings", side_effect=[{}, ValueError("decode failure"), {}]):
+            with self.assertRaisesRegex(release.Refused, "previous verified release restored"):
+                self.activate()
+        self.assertEqual(self.a, self.host.live)
+
+    def test_decode_io_errors_during_recovery_keep_manual_gate(self):
+        self.adopt()
+        for recovery_failure in (ValueError("recovery parse failure"), OSError("recovery I/O failure")):
+            with self.subTest(error=type(recovery_failure).__name__):
+                self.host.failures = [ValueError("partial replacement"), recovery_failure]
+                with self.assertRaisesRegex(release.Refused, "transition retained"):
+                    self.activate()
+                marker = self.host.state / "release-state-transition"
+                self.assertEqual("recovery-required", release.load(marker)["phase"])
+                self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
+                with self.assertRaisesRegex(release.Refused, "incomplete transition"):
+                    self.activate()
+                # Reset only this disposable test scenario; no CLI unlock exists.
+                marker.unlink()
+                self.host.live = self.a
+
+    def test_forced_exit_during_recovery_keeps_transition(self):
+        self.adopt()
+        self.host.failures = [OSError("partial replacement"), SystemExit(137)]
+        with self.assertRaises(SystemExit):
+            self.activate()
+        self.assertEqual("restoring", release.load(self.host.state / "release-state-transition")["phase"])
+        self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
 
     def test_recovery_failure_retains_marker_and_never_claims_success(self):
         self.adopt()
@@ -347,6 +452,9 @@ class BoundaryTests(unittest.TestCase):
         with patch.object(self.host, "docker", return_value=release.encoded([correct])):
             with self.assertRaises(release.Refused):
                 self.host.image(self.target, "backend")
+        with patch.object(self.host, "docker", side_effect=release.Refused("local image missing")):
+            with self.assertRaisesRegex(release.Refused, "local image missing"):
+                self.host.image(self.target, "backend")
 
     def test_peak_budget_does_not_assume_4_9gb_or_reclaim_cache(self):
         self.host.backend_env = self.root
@@ -369,7 +477,8 @@ class BoundaryTests(unittest.TestCase):
 
     def test_sources_verify_separate_commits_actual_bytes_and_migration_tree(self):
         self.host.main = "9" * 40
-        compose, nginx = b"source compose\n", b"server __PAWCYCLE_DOMAIN__;\n"
+        compose = b"source compose\n"
+        nginx = Path(__file__).with_name("nginx.https.conf").read_bytes()
         self.target["compose_sha256"] = release.digest(compose)
         self.target["nginx_sha256"] = release.digest(nginx.replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
         outputs = [b"", b"", b"", compose, nginx, self.target["migration_tree"].encode()]
@@ -379,6 +488,37 @@ class BoundaryTests(unittest.TestCase):
         with patch.object(self.host, "git", side_effect=outputs):
             with self.assertRaisesRegex(release.Refused, "provenance"):
                 self.host.sources(self.target)
+
+    def test_historical_c09302a8_nginx_is_rejected_even_with_correct_source_hash(self):
+        self.host.main = "9" * 40
+        historical = Path(__file__).with_name("fixtures") / "nginx-c09302a8.conf"
+        nginx = historical.read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(nginx)).encode() + b"\0" + nginx).hexdigest()
+        self.assertEqual("418cf824323778884f8e03fb222be8416cb9379b", blob)
+        self.target["nginx_source_sha"] = "c09302a82d541f0c351d0f619f30232c7adaca51"
+        self.target["compose_sha256"] = release.digest(b"compose")
+        self.target["nginx_sha256"] = release.digest(nginx.replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
+        with patch.object(self.host, "git", side_effect=[b"", b"", b"", b"compose", nginx]):
+            with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+                self.host.sources(self.target)
+
+    def test_nginx_contract_rejects_security_routing_and_dns_regressions(self):
+        current = Path(__file__).with_name("nginx.https.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        release.validate_nginx_contract(current)
+        release.validate_nginx_contract(b"# source metadata\n" + current.replace(b"    ", b"\t"))
+        for directive in (b"add_header Strict-Transport-Security", b"add_header X-Content-Type-Options",
+                          b"add_header X-Frame-Options", b"add_header X-XSS-Protection", b"add_header Referrer-Policy",
+                          b"limit_req_zone", b"limit_req zone=login_per_ip", b"location ^~ /.well-known/acme-challenge/",
+                          b"listen 8081;", b"resolver 127.0.0.11", b"server backend:8080 resolve;",
+                          b"server frontend:3000 resolve;", b"zone pawcycle_application_backend"):
+            with self.subTest(directive=directive):
+                altered = current.replace(directive, b"# disabled " + directive)
+                with self.assertRaises(release.Refused):
+                    release.validate_nginx_contract(altered)
+        for extra in (b"\nserver { listen 443 ssl; }\n", b"\ninclude weakened.conf;\n"):
+            with self.assertRaises(release.Refused):
+                release.validate_nginx_contract(current + extra)
 
     def test_smoke_refuses_redirect_chain_even_if_final_response_is_200(self):
         def docker(*args, **kwargs):

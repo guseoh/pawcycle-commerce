@@ -35,6 +35,10 @@ NETWORKS = {
 VOLUMES = {"pawcycle-production-letsencrypt": "/etc/letsencrypt",
            "pawcycle-production-certbot-webroot": "/var/www/certbot"}
 GIB = 1024 ** 3
+# Versioned allowlist for the approved Application Nginx contract. Source SHA
+# remains independent; only comments and whitespace outside strings may differ.
+NGINX_CONTRACT_SHA256 = "dfb93f4ff2133519a14512241e8bb5818087629f785619743816ea1ee9560865"
+NGINX_TOKEN = re.compile(r'''\s+|\#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{};]|[^\s{};\#"'\\]+''')
 
 
 class Refused(Exception):
@@ -56,6 +60,27 @@ def encoded(value):
 
 def identity(value):
     return digest(encoded(value))
+
+
+def nginx_contract_fingerprint(config):
+    text = config.decode("utf-8")
+    tokens, cursor = [], 0
+    for match in NGINX_TOKEN.finditer(text):
+        require(match.start() == cursor, "unsupported Nginx contract syntax")
+        cursor = match.end()
+        token = match.group()
+        if not token.isspace() and not token.startswith("#"):
+            tokens.append(token)
+    require(cursor == len(text), "incomplete Nginx contract syntax")
+    return hashlib.sha256(json.dumps(tokens, separators=(",", ":")).encode()).hexdigest()
+
+
+def validate_nginx_contract(config):
+    # A hash supplied by the release operator proves provenance, not policy.
+    # Pin the entire reviewed directive/token structure so added directives,
+    # nested header overrides or commented-out security checks cannot pass.
+    require(nginx_contract_fingerprint(config) == NGINX_CONTRACT_SHA256,
+            "Nginx configuration violates approved security/DNS contract")
 
 
 def validate_manifest(manifest):
@@ -225,6 +250,7 @@ class Host:
         nginx = template.replace(b"__PAWCYCLE_DOMAIN__", DOMAIN.encode())
         require(digest(compose) == manifest["compose_sha256"] and
                 digest(nginx) == manifest["nginx_sha256"], "Compose/Nginx provenance mismatch")
+        validate_nginx_contract(nginx)
         # Migration equality is necessary, never a substitute for approved
         # application/data compatibility evidence.
         migration = self.git("rev-parse", manifest["sha"] + ":backend/src/main/resources/db/migration").decode().strip()
@@ -565,11 +591,20 @@ class Release:
                 require(state and state.get("previous") and state["previous"]["verified"] is True,
                         "verified previous release is unavailable")
                 require(manifest == state["previous"]["manifest"], "rollback target is not verified previous")
+                previous = state["previous"]
+                require(previous.get("evidence") and previous.get("compatibility_evidence") and
+                        DIGEST.fullmatch(previous.get("approval_sha256", "")) and
+                        previous["runtime_env_sha256"] == host.env_hash and
+                        previous["db_epoch"] == state["current"]["db_epoch"],
+                        "stored rollback approval/runtime/DB evidence is missing or incompatible")
                 for role in ("backend", "frontend"):
                     host.image(manifest, role)
             self.approval(action, manifest, state, approval)
             host.sources(manifest)
-            compressed = host.registry(manifest)
+            # Only the exact previously verified record can bypass Registry.
+            # Its local digest/config ID/platform and saved evidence were
+            # checked above; no layers will be pulled on this path.
+            compressed = 0 if action == "rollback" else host.registry(manifest)
             if action == "adopt":
                 require(state is None, "baseline is already adopted")
                 # Existing legacy current may be absent, but disagreement is
@@ -607,14 +642,14 @@ class Release:
                 try:
                     host.activate(manifest, pull=action != "rollback")
                     require(host.siblings() == siblings, "sibling project identity changed")
-                except (Refused, KeyboardInterrupt):
+                except (Exception, KeyboardInterrupt):
                     self.journal("restoring", target=manifest["sha"], previous=approval["expected_current"])
                     # Never downgrade schema or restore DB. Equality + explicit
                     # compatibility evidence was checked before mutation.
                     try:
                         host.activate(state["current"]["manifest"], pull=False)
                         require(host.siblings() == siblings, "sibling project identity changed during recovery")
-                    except (Refused, KeyboardInterrupt):
+                    except (Exception, KeyboardInterrupt):
                         self.journal("recovery-required", target=manifest["sha"], previous=approval["expected_current"])
                         raise Refused("activation and code recovery failed; transition retained") from None
                     state["result"] = "failed-release-restored"

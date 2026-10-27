@@ -41,8 +41,10 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 
 - `sha`, `compose_source_sha`, `nginx_source_sha`는 각각 정확한 40자리 lowercase commit이며 조회 시점 main의 조상이어야 한다. `git ls-remote`와 cached `origin/main`이 다르면 source를 별도로 갱신한 뒤 다시 판단한다. 신규 activate는 current의 후손만 가능하고 의도된 이전 버전 복귀는 rollback action을 쓴다.
 - Compose는 `git show <compose_source_sha>:infra/production/compose.yaml` 원문 hash다. Nginx는 `nginx.https.conf`의 `__PAWCYCLE_DOMAIN__`을 기존 승인 hostname으로 치환한 **실제 적용 bytes hash**다. 두 source SHA를 이미지 SHA와 별도로 기록한다. 개행도 hash에 포함한다.
+- Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·로그인 rate limit·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다.
 - `migration_tree`는 release SHA의 `backend/src/main/resources/db/migration` Git tree ID다. source path가 없거나 current와 다르면 이 단계에서 거부한다. 동일 tree는 애플리케이션·데이터 호환성의 보증이 아니므로 별도 pair compatibility evidence도 필수다.
 - Registry의 `repo:<sha>` raw manifest digest, index의 유일한 `linux/amd64` child/config digest, remote config의 OS/arch와 OCI revision/source를 독립 확인한다. 각 local image도 config ID·RepoDigests·OS/arch·OCI labels·측정 크기를 확인하고 실행 컨테이너 ID와 대조한다. 서로 다른 revision, 미존재·변조 digest, index platform 불명확은 거부한다.
+- 명시적인 `rollback`만 Registry 검증을 생략한다. 보호된 previous record와 정확히 같은 manifest, 저장된 정상 검증·승인/호환 근거·runtime hash/DB epoch, 보존된 local Digest/config ID/platform/OCI labels를 확인하고 `pull=False`로 복귀한다. Registry 접근 불가만으로 이 경로를 막지 않지만 local 이미지 누락·변조는 거부한다. 새 rollback 승인과 main/source·설정·잠금·디스크·DB Gate는 유지하며, Git main 조회를 포함한 모든 네트워크 의존성을 제거했다는 뜻은 아니다. 일반 adopt/preflight/activate의 원격 Registry 검증은 유지한다.
 - 기존 Compose의 `repo:<RELEASE_SHA>` 구문은 유지한다. pull은 `repo@digest`로만 수행한 뒤 검증된 local image에 SHA tag를 붙이고 `up --pull never`를 쓴다. Registry tag 변경을 up 시 재조회하지 않으며 실행 후 image ID를 다시 확인한다.
 
 approval은 operator/Tech Lead가 승인한 근거를 가리키는 별도 root `600` JSON이다. 이 파일은 암호학적 서명이나 GitHub approval 연동이 아니다. root 권한으로 작성된 명시적 운영 승인 입력이라는 신뢰 경계이며 CI가 생성하거나 자동 승인하지 않는다.
@@ -105,8 +107,8 @@ Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 sh
 
 `oci-release-state.json` 하나가 current/previous·검증 결과·source/image identity·runtime hash·DB epoch의 권위 원본이다. 각 파일 쓰기는 mode `600` temporary → fsync → atomic replace → directory fsync다. 기존 `current-sha`, `previous-sha`, `<sha>.images`는 호환 projection이며 이 파일들의 묶음을 atomic하다고 주장하지 않는다. 쓰기 전 `release-state-transition`을 내구 기록하고 projection과 결과 기록 완료 후에만 제거한다. 기존 진단은 이 marker를 보고 배포 중으로 판단하고, catalog/auth 도구는 같은 deploy lock에 막힌다.
 
-- activation의 catch 가능한 health/Nginx/부분 실패·SIGINT/SIGTERM은 사전 승인된 동일 migration/runtime/DB epoch의 기존 정상 current로 이미지·source를 복귀하고 smoke를 다시 확인한다. 복귀는 보존된 local image를 사용하고 Registry pull에 의존하지 않는다. 실패 exit code는 유지하며 `failed-release-restored`를 기록한다.
-- 복귀도 실패하면 marker를 `recovery-required`로 남기고 current를 성공으로 갱신하지 않는다. SIGKILL/host crash/예상하지 못한 IO 오류도 marker가 남아 후속 activation을 막는다.
+- activation과 직후 검증 구간의 일반 예외(JSON parsing, I/O, 상태 해석 오류 포함) 및 SIGINT/SIGTERM은 사전 승인된 동일 migration/runtime/DB epoch의 기존 정상 current로 이미지·source 복귀를 시도하고 smoke를 다시 확인한다. 복귀는 보존된 local image를 사용하고 Registry pull에 의존하지 않는다. 실패 exit code는 유지하며 `failed-release-restored`를 기록한다.
+- 복귀 중 일반 예외도 marker를 `recovery-required`로 남기고 current를 성공으로 갱신하지 않는다. SystemExit/SIGKILL/host crash 같은 강제 종료는 자동 복귀 처리로 삼키지 않으며, 남은 marker가 후속 activation을 막는다. marker 자체의 I/O 기록 실패도 기존 marker를 제거하지 않고 수동 Recovery로 넘긴다.
 - state commit 중 disk-full 또는 projection write 중단 시 DB나 앱을 추정하여 되돌리지 않는다. `oci-release-state.json`과 실제 runtime을 먼저 대조한다.
 - `recover-state --execute-approved`는 새 만료 approval이 있고 **권위 state의 current가 실제 live smoke/config/image와 일치할 때만** 호환 projection을 다시 기록하고 marker를 해제한다. 다른 target이 실제로 실행 중이거나 JSON이 torn/invalid하면 거부한다. 수동 Incident/Recovery 승인이 필요하며 강제 unlock·임의 state 삭제 기능은 없다.
 - DB tree/epoch·runtime hash·호환 근거가 없거나 다르면 rollback action도 거부한다. schema downgrade, Flyway repair/clean, DB Restore는 구현하지 않는다.
