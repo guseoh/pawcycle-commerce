@@ -14,6 +14,8 @@ HTTPS adoption state(`https-domain`, `https-enabled`)와 reload-pending 부재�
 
 ## 입력과 출처
 
+최초 전환의 Bootstrap·Adopt 승인·DB/Capacity/Recovery 순서는 [OPS-OCI-CD-004](OPS-OCI-CD-004-first-transition.md)를 따른다. containerd Descriptor/Index와 Config ID를 구분하며 검증된 Registry graph를 보호 state에 보존해 local-only 복귀에도 재검증한다. 실행 컨테이너는 검증된 Local ID와 비교한다.
+
 manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 실제 Registry/source 검증을 통과하지 않는다. 승인 운영자는 검증된 값으로 별도 보호 파일을 준비한다. `unpacked_bytes`는 layer 압축 크기가 아니라 독립적으로 측정·승인된 보수적인 풀린 image 크기 상한이다.
 
 ```json

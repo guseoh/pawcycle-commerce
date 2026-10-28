@@ -35,6 +35,10 @@ NETWORKS = {
 VOLUMES = {"pawcycle-production-letsencrypt": "/etc/letsencrypt",
            "pawcycle-production-certbot-webroot": "/var/www/certbot"}
 GIB = 1024 ** 3
+IMAGE_MEDIA_TYPES = {"application/vnd.oci.image.manifest.v1+json",
+                     "application/vnd.docker.distribution.manifest.v2+json"}
+INDEX_MEDIA_TYPES = {"application/vnd.oci.image.index.v1+json",
+                     "application/vnd.docker.distribution.manifest.list.v2+json"}
 # Versioned allowlist for the approved Application Nginx contract. Source SHA
 # remains independent; only comments and whitespace outside strings may differ.
 NGINX_CONTRACT_SHA256 = "dfb93f4ff2133519a14512241e8bb5818087629f785619743816ea1ee9560865"
@@ -60,6 +64,29 @@ def encoded(value):
 
 def identity(value):
     return digest(encoded(value))
+
+
+def image_graph(image, documents):
+    """Recheck content-addressed Registry evidence, including offline recovery."""
+    raw = documents[0].encode()
+    require(digest(raw) == image["digest"], "registry tag/digest mismatch")
+    top = json.loads(raw)
+    selected = image["digest"]
+    if top.get("mediaType") in INDEX_MEDIA_TYPES:
+        matches = [entry for entry in top["manifests"]
+                   if entry.get("platform", {}).get("os") == "linux" and
+                   entry.get("platform", {}).get("architecture") == "amd64"]
+        require(len(matches) == 1 and len(documents) == 2, "ambiguous or missing platform evidence")
+        selected = matches[0]["digest"]
+        raw = documents[1].encode()
+        require(digest(raw) == selected and len(raw) == matches[0]["size"] and
+                matches[0]["mediaType"] in IMAGE_MEDIA_TYPES, "platform manifest was tampered")
+    else:
+        require(len(documents) == 1, "unexpected platform evidence")
+    document = json.loads(raw)
+    require(document.get("mediaType") in IMAGE_MEDIA_TYPES and
+            document["config"]["digest"] == image["config_digest"], "registry config digest mismatch")
+    return top, document, selected
 
 
 def nginx_contract_fingerprint(config):
@@ -179,6 +206,7 @@ class Host:
     def __init__(self, repository, state, runtime, renewal_lock):
         self.repository, self.state, self.runtime = map(Path, (repository, state, runtime))
         self.renewal_lock = Path(renewal_lock)
+        self.registry_manifests = {}
 
     def command(self, *args, env=None, timeout=120):
         # Ignore caller Docker/Compose targeting and config overrides. Keep only
@@ -268,6 +296,7 @@ class Host:
             raw = self.docker("buildx", "imagetools", "inspect", ref, "--raw")
             require(digest(raw) == image["digest"], "registry tag/digest mismatch")
             document = json.loads(raw)
+            documents = [raw.decode()]
             selected_ref = image["repository"] + "@" + image["digest"]
             if "manifests" in document:
                 matches = [entry for entry in document["manifests"]
@@ -280,8 +309,9 @@ class Host:
                                   image["repository"] + "@" + child_digest, "--raw")
                 require(digest(raw) == child_digest, "platform manifest was tampered")
                 document = json.loads(raw)
+                documents.append(raw.decode())
                 selected_ref = image["repository"] + "@" + child_digest
-            require(document["config"]["digest"] == image["config_digest"], "registry image ID mismatch")
+            image_graph(image, documents)
             # Buildx fetches the digest-addressed config without pulling layers.
             remote = json.loads(self.docker("buildx", "imagetools", "inspect", selected_ref,
                                            "--format", "{{json .Image}}"))
@@ -296,19 +326,43 @@ class Host:
             require(size > 0 and type(image["unpacked_bytes"]) is int and
                     image["unpacked_bytes"] >= size, "unpacked size evidence is missing or too small")
             compressed += size
+            self.registry_manifests.setdefault(identity(manifest), {})[role] = documents
         return compressed
 
-    def image(self, manifest, role):
+    def local_image(self, manifest, role):
         image = manifest[role]
         ref = image["repository"] + "@" + image["digest"]
         local = json.loads(self.docker("image", "inspect", ref))[0]
         labels = local["Config"].get("Labels") or {}
-        require(local["Id"] == image["config_digest"] and
-                local["Os"] == "linux" and local["Architecture"] == "amd64" and
+        descriptor = local.get("Descriptor")
+        if descriptor is not None:
+            documents = self.registry_manifests.get(identity(manifest), {}).get(role)
+            require(documents, "verified local descriptor graph is unavailable")
+            top, _, selected = image_graph(image, documents)
+            require(descriptor.get("digest") == image["digest"] == local["Id"] and
+                    descriptor.get("mediaType") == top["mediaType"] and
+                    descriptor.get("size") == len(documents[0].encode()), "local image descriptor mismatch")
+            platform = json.loads(self.docker("image", "inspect", "--platform", "linux/amd64", ref))[0]
+            require(platform["Id"] == selected and
+                    platform.get("Descriptor", {}).get("digest") == selected and
+                    platform["Descriptor"].get("mediaType") in IMAGE_MEDIA_TYPES and
+                    platform["Descriptor"].get("size") == len(documents[-1].encode()) and
+                    ref in platform["RepoDigests"] and
+                    platform["Os"] == "linux" and platform["Architecture"] == "amd64" and
+                    platform["Config"] == local["Config"] and platform["Size"] == local["Size"],
+                    "local platform manifest mismatch")
+        else:
+            require(local["Id"] == image["config_digest"], "local config ID mismatch")
+        require(local["Os"] == "linux" and local["Architecture"] == "amd64" and
                 labels.get("org.opencontainers.image.revision") == manifest["sha"] and
                 labels.get("org.opencontainers.image.source") == ORIGIN.removesuffix(".git") and
                 ref in local["RepoDigests"], "local image identity/platform/provenance mismatch")
-        require(local["Size"] <= image["unpacked_bytes"], "unpacked size exceeds approved budget")
+        require(type(local["Size"]) is int and 0 < local["Size"] <= image["unpacked_bytes"],
+                "unpacked size exceeds approved budget")
+        return local
+
+    def image(self, manifest, role):
+        local = self.local_image(manifest, role)
         return local["Size"]
 
     def capacity(self, candidate, current, approval, compressed, *, rollback=False):
@@ -388,8 +442,8 @@ class Host:
     def runtime_check(self, manifest):
         containers = self.containers()
         for role in ("backend", "frontend"):
-            self.image(manifest, role)
-            require(containers[role]["Image"] == manifest[role]["config_digest"], "running image ID mismatch")
+            local = self.local_image(manifest, role)
+            require(containers[role]["Image"] == local["Id"], "running image ID mismatch")
         proxy = containers["proxy"]
         require(proxy["Config"]["Image"] == PROXY, "proxy image mismatch")
         require(set(proxy["HostConfig"].get("PortBindings") or {}) == {"80/tcp", "443/tcp"},
@@ -583,6 +637,9 @@ class Release:
         host.initial()
         with locked(self.state / "deploy.lock", create=execute), locked(host.renewal_lock, create=execute):
             state = self.read_state()
+            for saved in ((state["current"], state.get("previous")) if state else ()):
+                if saved:
+                    host.registry_manifests[identity(saved["manifest"])] = saved.get("registry_manifests", {})
             marker = self.state / "release-state-transition"
             if action == "status":
                 return {"adopted": state is not None, "recovery_required": marker.exists() or marker.is_symlink()}
@@ -647,7 +704,8 @@ class Release:
             record = {"manifest": manifest, "verified": True, "runtime_env_sha256": host.env_hash,
                       "db_epoch": approval["db_epoch"], "evidence": approval["evidence"],
                       "compatibility_evidence": approval["db_compatibility_evidence"],
-                      "approval_sha256": identity(approval)}
+                      "approval_sha256": identity(approval),
+                      "registry_manifests": host.registry_manifests.get(identity(manifest), {})}
             # Registry/config checks may be slow; never start a transition with
             # approval that expired while those read-only checks were running.
             if action == "activate" and self.activation_guard:
