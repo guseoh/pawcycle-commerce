@@ -49,7 +49,11 @@ Host는 current·target·epoch·runtime·시간·근거를 바인딩해 확인�
 
 긴급 차단은 root `600`의 `/opt/pawcycle/state/oci-cd-disabled` 설치 또는 sentinel 제거/정책 OFF/timer 중지다. Activation 직전 정책·kill switch를 다시 확인한다. 이미 시작한 Activation은 CLI가 smoke 또는 허용된 복귀를 마칠 수 있으며 즉시 프로세스 kill로 안전한 중단을 보장하지 않는다.
 
-Activation 호출 전 내구 `oci-cd-attempt`를 기록한다. 실패·interrupt·commit 불확실성은 disabled/attempt를 남기며 자동 retry하지 않는다. 성공한 smoke·state commit 뒤에만 attempt를 제거한다. preflight의 CI pending/일시 lock/용량 block은 적용 없이 다음 timer에서 재평가한다. 광범위 prune·volume 삭제·DB restore/downgrade는 없다. 기존 CLI는 검증된 정상 current로만 local image 복귀하며 실패하면 transition을 보존한다. 인증서·Managed MySQL·sibling project 경계는 바꾸지 않는다.
+Release의 deploy/renewal lock 안에서 최종 Guard와 만료 승인 검사까지 통과한 뒤, 첫 transition 기록 전에 내구 `oci-cd-attempt`를 기록한다. Guard의 main 진행·후보 교체·CI 일시 실패·중단은 attempt를 만들지 않으며 다음 timer에서 재평가한다. attempt 기록 이후 실패·interrupt·commit 불확실성은 disabled/attempt를 남기며 자동 retry하지 않는다. 성공한 smoke·state commit 뒤에만 attempt를 제거한다. 광범위 prune·volume 삭제·DB restore/downgrade는 없다. 기존 CLI는 검증된 정상 current로만 local image 복귀하며 실패하면 transition을 보존한다. 인증서·Managed MySQL·sibling project 경계는 바꾸지 않는다.
+
+`stop_on`의 gate-failure/db-runtime-drift는 해당 시도의 적용 중단을 뜻하며 `blocked`로 다음 timer에서 재평가한다. 정책 OFF·운영자 kill switch도 `blocked`지만 명시적 disable은 계속 존중한다. activation-failure/transition은 durable attempt 또는 transition이 남은 `failed-disabled`이며 수동 Recovery가 필요하다. Guard 중 운영자 kill이 설정돼도 새로운 attempt를 생성하지 않는다. attempt 쓰기 직후 transition 이전의 crash는 변경 여부를 추정해 자동 해제하지 않는다.
+
+Fetch는 `--refmap=`으로 기본 `remote.origin.fetch` mapping을 비활성화해 `cd-main`만 갱신한다. Fetch 전에 읽은 `origin/main` SHA를 보존하고, FF 검사 뒤 그 SHA를 expected-old로 명시적 `update-ref` CAS에 전달한다. Fetch 중/직후 경쟁 변경도 덮어쓰지 않는다. 실제 disposable bare 저장소 회귀가 초기 Fetch·정상 FF·non-FF 거부·Fetch 중 경쟁·CAS 직전 경쟁을 검증한다.
 
 수동 Recovery 전에는 CD kill switch를 유지한다. 운영자는 현재 실제 image/config/smoke·권위 state·transition을 독립 조사하고 기존 Runbook의 별도 승인된 recover-state/rollback을 수행한다. 원인·검증이 끝난 뒤 새 운영 승인으로 attempt/disabled 해제 여부를 결정한다. 자동 해제·stale lock 강제 해제 기능은 없다. 저장소 복구는 일반 revert PR이다.
 

@@ -185,12 +185,14 @@ class ControllerTests(unittest.TestCase):
             with r.locked(path, create=True):
                 self.blocked()
 
-    def test_main_advancing_during_preflight_latches_attempt(self):
+    def test_main_advancing_during_preflight_can_retry_without_latch(self):
         with patch.object(self.host, "validate_config", side_effect=lambda _: setattr(self.host, "main", "c" * 40)):
             result = self.run_cd()
-        self.assertEqual("failed-disabled", result["result"])
+        self.assertEqual("blocked", result["result"])
         self.assertEqual([], self.host.calls)
-        self.assertTrue(result["disabled"])
+        self.assertFalse(result["disabled"])
+        self.host.main = "b" * 40
+        self.assertEqual("activate-verified", self.run_cd()["result"])
 
     def test_kill_during_final_observation_blocks_before_application_mutation(self):
         original = self.host.compatibility
@@ -202,8 +204,37 @@ class ControllerTests(unittest.TestCase):
             return original(*args)
         with patch.object(self.host, "compatibility", side_effect=observe):
             result = self.run_cd()
-        self.assertEqual("failed-disabled", result["result"])
+        self.assertEqual("blocked", result["result"])
         self.assertEqual([], self.host.calls)
+        self.assertTrue(result["disabled"])  # operator kill remains authoritative
+
+    def test_final_guard_ci_candidate_and_interrupt_are_retryable(self):
+        for error in (r.Refused("CI pending"), r.Refused("candidate superseded"), KeyboardInterrupt()):
+            with patch.object(self.host, "ci", side_effect=[None, error]):
+                result = self.run_cd()
+            self.assertEqual("blocked", result["result"])
+            self.assertFalse(result["disabled"])
+            self.assertEqual([], self.host.calls)
+        self.assertEqual("activate-verified", self.run_cd()["result"])
+
+    def test_attempt_is_durable_before_transition_and_interruption_latches(self):
+        original = r.Release.journal
+        def journal(engine, phase, **kwargs):
+            self.assertTrue((self.host.state / "oci-cd-attempt").exists())
+            if phase == "activating":
+                raise KeyboardInterrupt()
+            return original(engine, phase, **kwargs)
+        with patch.object(r.Release, "journal", journal):
+            self.assertEqual("failed-disabled", self.run_cd()["result"])
+        self.assertEqual([], self.host.calls)
+        self.assertTrue((self.host.state / "oci-cd-attempt").exists())
+
+    def test_commit_uncertainty_keeps_attempt_and_transition(self):
+        with patch.object(r.Release, "commit", side_effect=OSError("isolated disk failure")):
+            self.assertEqual("failed-disabled", self.run_cd()["result"])
+        self.assertEqual(["b" * 40], self.host.calls)
+        self.assertTrue((self.host.state / "oci-cd-attempt").exists())
+        self.assertTrue((self.host.state / "release-state-transition").exists())
 
     def test_health_failure_recovers_only_current_and_disables_retry(self):
         self.host.failures = [ValueError("fake smoke failed")]
@@ -222,7 +253,8 @@ class ControllerTests(unittest.TestCase):
 
     def test_incomplete_transition_and_unverified_baseline_block(self):
         r.atomic(self.host.state / "release-state-transition", b"{}\n")
-        self.blocked()
+        self.assertEqual("failed-disabled", self.run_cd()["result"])
+        self.assertEqual([], self.host.calls)
         (self.host.state / "release-state-transition").unlink()
         (self.host.state / "oci-release-state.json").unlink()
         self.blocked()
@@ -236,6 +268,65 @@ class ControllerTests(unittest.TestCase):
         policy["observer_sha256"] = "sha256:" + "0" * 64
         with self.assertRaises(r.Refused):
             cd.CDHost.compatibility(self.host, "a" * 40, "b" * 40, policy)
+
+
+class BareFetchTests(unittest.TestCase):
+    def test_real_fetch_mapping_ff_initial_competition_nonff_and_cas(self):
+        for mode in ("initial", "ff", "during-fetch", "before-cas", "non-ff"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                remote, local = root / "remote.git", root / "local.git"
+                def git(path, *args, data=None):
+                    env = dict(os.environ, GIT_AUTHOR_NAME="isolated", GIT_COMMITTER_NAME="isolated",
+                               GIT_AUTHOR_EMAIL="isolated@example.invalid", GIT_COMMITTER_EMAIL="isolated@example.invalid")
+                    return subprocess.check_output(["git", "-C", str(path), *args], input=data, env=env,
+                                                   stderr=subprocess.DEVNULL).decode().strip()
+                for path in (remote, local):
+                    subprocess.check_call(["git", "init", "--bare", "-q", str(path)])
+                tree = git(remote, "mktree", data=b"")
+                a = git(remote, "commit-tree", tree, data=b"a\n")
+                b = git(remote, "commit-tree", tree, "-p", a, data=b"b\n")
+                c = git(remote, "commit-tree", tree, data=b"unrelated\n")
+                git(remote, "update-ref", "refs/heads/main", a)
+                git(local, "remote", "add", "origin", r.ORIGIN)
+                # Default remote mapping reproduces the reported opportunistic
+                # origin/main update unless refresh supplies an empty refmap.
+                git(local, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+                host = cd.CDHost(local, root, root, root)
+                original_command = host.command
+                seen = []
+                phase = [None]
+                def command(*args, **kwargs):
+                    if "fetch" in args:
+                        args = (args[0], "-c", "url." + remote.as_uri() + ".insteadOf=" + r.ORIGIN, *args[1:])
+                        result = original_command(*args, **kwargs)
+                        seen.append(git(local, "for-each-ref", "--format=%(objectname)", "refs/remotes/origin/main"))
+                        if phase[0] == "during-fetch":
+                            git(local, "update-ref", "refs/remotes/origin/main", b)
+                        return result
+                    if "update-ref" in args and phase[0] == "before-cas":
+                        git(local, "update-ref", "refs/remotes/origin/main", b)
+                    return original_command(*args, **kwargs)
+                with patch.object(host, "command", side_effect=command), patch.object(host, "initial"), \
+                        patch.dict(os.environ, {}, clear=True):
+                    host.refresh()
+                    self.assertEqual([""], seen)
+                    self.assertEqual(a, git(local, "rev-parse", "refs/remotes/origin/main"))
+                    if mode == "initial":
+                        continue
+                    git(remote, "update-ref", "refs/heads/main", c if mode == "non-ff" else b)
+                    phase[0] = mode
+                    if mode == "ff":
+                        host.refresh()
+                        self.assertEqual(a, seen[-1])
+                        self.assertEqual(b, git(local, "rev-parse", "refs/remotes/origin/main"))
+                    else:
+                        with self.assertRaises(r.Refused):
+                            host.refresh()
+                        self.assertEqual(a if mode == "non-ff" else b,
+                                         git(local, "rev-parse", "refs/remotes/origin/main"))
+                        if mode != "non-ff":
+                            self.assertEqual(a, seen[-1])
 
 
 class EvidenceTests(unittest.TestCase):
@@ -321,10 +412,11 @@ class EvidenceTests(unittest.TestCase):
                 with self.assertRaises(r.Refused):
                     host.refresh()
             command.assert_not_called()
-            with patch.object(host, "git", side_effect=[b"true", r.ORIGIN.encode(), b"a" * 40, b"", b""]):
+            with patch.object(host, "git", side_effect=[b"true", r.ORIGIN.encode(), b"", b"a" * 40, b""]):
                 host.refresh()
             args = command.call_args.args
             self.assertIn("refs/heads/main:refs/heads/cd-main", args)
+            self.assertIn("--refmap=", args)
             self.assertNotIn("--force", args)
             self.assertNotIn("checkout", args)
 

@@ -68,19 +68,20 @@ class CDHost(release.Host):
         for name in ("config", "HEAD", "objects", "refs"):
             release.protected(self.repository / name, directory=name in ("objects", "refs"))
         require(self.git("remote", "get-url", "origin").decode().strip() == release.ORIGIN, "wrong Git origin")
+        refs = self.git("for-each-ref", "--format=%(objectname)", "refs/remotes/origin/main").decode().splitlines()
+        require(len(refs) <= 1, "ambiguous cached main")
+        old = refs[0] if refs else "0" * 40
+        require(release.SHA.fullmatch(old), "invalid cached main")
         # No checkout/reset/chown, executable-source update or force ref update.
         # Git's ref lock/atomic object writes reject concurrent/stale updates.
         self.command("git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=",
-                     "-C", str(self.repository), "fetch", "--no-tags", "--no-recurse-submodules",
+                     "-C", str(self.repository), "fetch", "--refmap=", "--no-tags", "--no-recurse-submodules",
                      "origin", "refs/heads/main:refs/heads/cd-main",
                      env={"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"})
         # Fetch enforces fast-forward on refs/heads (remote-tracking namespaces
         # alone do not enforce that). Publish the cached ref with a CAS update.
         new = self.git("rev-parse", "refs/heads/cd-main").decode().strip()
         require(release.SHA.fullmatch(new), "invalid fetched main")
-        refs = self.git("for-each-ref", "--format=%(objectname)", "refs/remotes/origin/main").decode().splitlines()
-        require(len(refs) <= 1, "ambiguous cached main")
-        old = refs[0] if refs else "0" * 40
         if refs:
             require(release.SHA.fullmatch(old), "invalid cached main")
             self.git("merge-base", "--is-ancestor", old, new)
@@ -238,18 +239,22 @@ class Controller:
             self.evidence(state["current"], manifest, p)
             require(self.policy() == p, "policy/kill switch changed during final evidence check")
 
-        engine = release.Release(h, activation_guard=guard)
+        def start():
+            # Under both Release locks, after guard and final approval, before
+            # the first durable transition or application mutation. A failed
+            # write is conservative: any surviving attempt still fences retry.
+            release.atomic(h.state / "oci-cd-attempt", release.encoded({"reason": "attempt-in-progress", "sha": sha}))
+
+        engine = release.Release(h, activation_guard=guard, activation_start=start)
         engine.run("preflight", manifest, approval)
         approval["action"] = "activate"
-        # Durable attempt fences crash/retry even when the release marker was
-        # not written yet. Clearing requires separate operator investigation.
-        release.atomic(h.state / "oci-cd-attempt", release.encoded({"reason": "attempt-in-progress", "sha": sha}))
         try:
             engine.run("activate", manifest, approval, execute=True)
         except BaseException:
-            release.atomic(h.state / "oci-cd-disabled", release.encoded({"reason": "activation-failed", "sha": sha}))
+            if (h.state / "oci-cd-attempt").exists() or (h.state / "release-state-transition").exists():
+                release.atomic(h.state / "oci-cd-disabled", release.encoded({"reason": "activation-failed", "sha": sha}))
             raise
-        (h.state / "oci-cd-attempt").unlink()
+        (h.state / "oci-cd-attempt").unlink(missing_ok=True)
         release.sync_directory(h.state)
         return "activate-verified"
 
@@ -266,11 +271,14 @@ class Controller:
                 result = self.reconcile()
             event = {"result": result, "gate": None}
         except (Exception, KeyboardInterrupt) as error:
-            event = {"result": "blocked" if not (h.state / "oci-cd-attempt").exists() else "failed-disabled",
+            unsafe = any((h.state / name).exists() or (h.state / name).is_symlink()
+                         for name in ("oci-cd-attempt", "release-state-transition"))
+            event = {"result": "failed-disabled" if unsafe else "blocked",
                      "gate": str(error) if isinstance(error, release.Refused) else "invalid input, unavailable evidence or interrupted"}
         event.update(sha=self.target, previous=getattr(self, "previous", None), started_unix=self.started,
-                     ended_unix=int(time.time()), disabled=(h.state / "oci-cd-disabled").exists() or
-                     (h.state / "oci-cd-attempt").exists())
+                     ended_unix=int(time.time()), disabled=any(
+                         (h.state / name).exists() or (h.state / name).is_symlink()
+                         for name in ("oci-cd-disabled", "oci-cd-attempt", "release-state-transition")))
         # stdout is systemd's journal notification channel. No webhook/credential
         # is invented. Suppress unchanged timer blocks while persisting result.
         try:
