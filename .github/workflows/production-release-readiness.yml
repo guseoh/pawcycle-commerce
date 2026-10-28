@@ -81,6 +81,6 @@ jobs:
             echo
             echo "Readiness verifies image existence only; it does not establish full CI success, deployment approval, or deployment success."
             echo "OCI app01 is the existing single-host Production target with manual deployment."
-            echo "No OCI Application Deploy workflow or verified Rollback system is implemented."
-            echo "CD and zero-downtime deployment remain DEFER; operational changes require separate approval and recovery gates."
+            echo "Host Pull CD and Release/Recovery are repository implementations; Production activation remains OFF."
+            echo "Zero-downtime deployment remains DEFER; operational changes require separate approval and recovery gates."
           } >> "$GITHUB_STEP_SUMMARY"

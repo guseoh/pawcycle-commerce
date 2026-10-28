@@ -7,7 +7,7 @@
 - Production deployment target: **OCI app01**
 - CD: **DEFER**
 - 무중단 배포: **DEFER**
-- 배포 방식: **단일 서버·수동 배포**. OCI Application 자동 배포와 검증된 Rollback 체계는 없다.
+- 배포 방식: **단일 서버·수동 배포**. Release/Recovery CLI와 Host Pull CD는 저장소 구현이며, 실제 설치·정책 승인·자동 실행은 OFF다.
 - 현재 운영 사실의 확인은 전체 운영 기능의 검증을 의미하지 않으며 **Production Verified가 아니다**.
 
 AWS 리소스 종료 이후 EC2/SSM/RDS/S3/CloudWatch 기반 실행 경로와 해당 공급자 전용 검증·Runbook은 active contract에서 제거했다. 새로운 Cloud/Production 실행은 별도의 고위험 작업으로 설계·승인·적용 전후 검증을 거쳐야 한다.
@@ -22,6 +22,7 @@ OCI `app01`의 Backend/Frontend/Nginx와 별도 Managed MySQL topology는 `docs/
 | `.github/workflows/production-release-readiness.yml` | 특정 SHA의 GHCR image 존재 여부를 확인하는 readiness 도구. CI 전체 성공·배포 승인·배포 성공을 의미하지 않음 |
 | `infra/production/backend.Dockerfile`, `frontend.Dockerfile` | 배포 대상과 독립적인 application image build 계약 |
 | `infra/production/compose.yaml` | 현재 OCI Application topology의 저장소 계약. 파일 존재만으로 운영 적용·검증을 보장하지 않음 |
+| `infra/production/oci-cd.py`, `systemd/pawcycle-oci-cd.*` | 정확한 main SHA의 CI·GHCR을 재검증하는 outbound Host Pull. 사전 정책·정상 baseline·DB 호환 검증기·G0 승인 없이는 실행 불가 |
 | Nginx·auth smoke·진단·관측 관련 자산 | 개별 승인·적용 전후 확인이 필요한 운영·검증 자산 |
 
 GitHub Actions에는 현재 Cloud provider에 application을 활성화하는 Production Deploy workflow가 없다. GHCR image publication 또는 readiness 성공은 Production 배포, 서비스 활성화, Production Verified를 의미하지 않는다.
@@ -34,7 +35,7 @@ OCI Application Rollback, 인증서 갱신 중단 복구, DB backup/PITR/restore
 
 ## 후속 운영 실행 경계
 
-현재 OCI 운영 대상의 존재는 새로운 배포·복구·Cloud 변경 승인을 의미하지 않는다. CD·블루/그린 등 무중단 배포는 DEFER이며, 기존 AWS 실행 경로를 재활성화하지 않는다.
+현재 OCI 운영 대상의 존재는 새로운 배포·복구·Cloud 변경 승인을 의미하지 않는다. CD 운영 활성화와 블루/그린 등 무중단 배포는 DEFER이며, 기존 AWS 실행 경로를 재활성화하지 않는다. 저장소 CD 계약과 남은 G0는 [Host Pull Runbook](../runbook/OPS-OCI-CD-003-host-pull.md)을 따른다.
 
 후속 운영 변경은 최소한 다음의 적용 범위·현재 상태·미검증 항목을 확인하고 필요한 계약을 별도 승인해야 한다.
 

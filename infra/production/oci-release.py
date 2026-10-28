@@ -512,8 +512,10 @@ class Host:
 
 
 class Release:
-    def __init__(self, host):
+    def __init__(self, host, activation_guard=None, activation_start=None):
         self.host, self.state = host, host.state
+        self.activation_guard = activation_guard
+        self.activation_start = activation_start
 
     def read_state(self):
         path = self.state / "oci-release-state.json"
@@ -648,7 +650,11 @@ class Release:
                       "approval_sha256": identity(approval)}
             # Registry/config checks may be slow; never start a transition with
             # approval that expired while those read-only checks were running.
+            if action == "activate" and self.activation_guard:
+                self.activation_guard()
             self.approval(action, manifest, state, approval)
+            if action == "activate" and self.activation_start:
+                self.activation_start()
             self.journal("activating", target=manifest["sha"], previous=approval["expected_current"])
             if action != "adopt":
                 siblings = host.siblings()

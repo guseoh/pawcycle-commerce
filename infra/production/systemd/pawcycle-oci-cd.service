@@ -1,0 +1,24 @@
+[Unit]
+Description=PawCycle approved outbound OCI release reconciliation
+After=network-online.target docker.service
+Wants=network-online.target
+ConditionPathExists=/etc/pawcycle/oci-cd-enabled
+ConditionPathExists=/etc/pawcycle/oci-cd-policy.json
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /opt/pawcycle/cd-controller/oci-cd.py --execute-policy --repository /opt/pawcycle/cd-source.git
+TimeoutStartSec=30min
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pawcycle-oci-cd
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/pawcycle/state /opt/pawcycle/cd-source.git /run/lock
+# The existing release engine binds validation files into the host Docker daemon.
+# PrivateTmp would hide those files from that daemon.
+PrivateTmp=false

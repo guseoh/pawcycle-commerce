@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import re
 
 NON_IMAGE_FILES = frozenset({
     "AGENTS.md", "README.md", "CONTRIBUTING.md", ".coderabbit.yaml",
@@ -18,20 +19,48 @@ NON_IMAGE_PREFIXES = (
     "infra/local-integration/", "backend/src/test/",
 )
 PUBLISH_WORKFLOW = ".github/workflows/publish-production-images.yml"
+BUILD_FILES = frozenset({PUBLISH_WORKFLOW, ".dockerignore",
+    "infra/production/backend.Dockerfile", "infra/production/frontend.Dockerfile",
+    "infra/production/backend.Dockerfile.dockerignore", "infra/production/frontend.Dockerfile.dockerignore"})
+RUNTIME_FILES = frozenset({"infra/production/compose.yaml", "infra/production/nginx.https.conf"})
+
+
+def classify(paths: list[str]) -> dict:
+    """Build/deploy intent is independent of permission to auto-activate.
+
+    Risk flags require a policy-approved semantic verifier; no path is SAFE.
+    Unknown inputs still build, but never qualify for automatic deployment.
+    """
+    publish, deploy, risks = False, False, set()
+    for path in filter(None, (p.strip() for p in paths)):
+        if path in NON_IMAGE_FILES or path.startswith(NON_IMAGE_PREFIXES):
+            continue
+        if path.startswith("frontend/src/") and re.search(r"\.(?:test|spec)\.[cm]?[jt]sx?$", path):
+            continue
+        if path in BUILD_FILES or path.startswith(("backend/", "frontend/")):
+            publish = deploy = True
+            risks.add("application")
+            if re.search(r"migration|(?:^|/)(?:db|auth|security|payment|inventory|subscription|commerce)(?:/|\.)", path, re.I):
+                risks.add("sensitive")
+        elif path in RUNTIME_FILES:
+            deploy = True
+            risks.add("runtime")
+        elif path.startswith(".github/workflows/") or (
+                path.startswith("infra/production/") and
+                (path.endswith((".py", ".sh", ".service", ".timer")) or
+                 path == "infra/production/oci-cd-policy.example.json")):
+            # Release tools, tests and systemd are installed separately, never
+            # copied into application images or executed from fetched source.
+            continue
+        else:
+            publish = deploy = True
+            risks.add("unknown")
+    return {"publish": publish, "deploy": deploy, "risks": sorted(risks)}
 
 
 def should_publish(paths: list[str]) -> bool:
     """Publish when a changed path may affect an image or is unclassified."""
-    for raw in paths:
-        path = raw.strip()
-        if not path:
-            continue
-        if path in NON_IMAGE_FILES or path.startswith(NON_IMAGE_PREFIXES):
-            continue
-        if path.startswith(".github/workflows/") and path != PUBLISH_WORKFLOW:
-            continue
-        return True
-    return False
+    return classify(paths)["publish"]
 
 
 def main() -> None:

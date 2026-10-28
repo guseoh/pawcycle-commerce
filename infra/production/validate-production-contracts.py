@@ -84,11 +84,21 @@ def validate_oci_release_contract() -> None:
         require(marker in nginx, f"Application DNS/security contract missing: {marker}")
     require("proxy_pass http://backend:" not in nginx and "proxy_pass http://frontend:" not in nginx,
             "Application still has static DNS proxy_pass")
-    for name in ("oci-release.py", "test-oci-release.py"):
+    for name in ("oci-release.py", "test-oci-release.py", "oci-cd.py", "test-oci-cd.py"):
         require((PRODUCTION / name).is_file(), f"OCI release asset missing: {name}")
     for workflow in WORKFLOWS.glob("*.yml"):
         require(not re.search(r"python(?:3)?\s+infra/production/oci-release\.py\b", workflow.read_text(encoding="utf-8")),
-                "OCI operation must not be wired into a workflow in this stage")
+                "CI must not execute the Production release CLI")
+        require(not re.search(r"python(?:3)?\s+infra/production/oci-cd\.py\b", workflow.read_text(encoding="utf-8")),
+                "CI must not execute the Production CD controller")
+    import json
+    policy = json.loads((PRODUCTION / "oci-cd-policy.example.json").read_text(encoding="utf-8"))
+    require(policy["enabled"] is False and not policy["approval_evidence"] and policy["expires_unix"] == 0,
+            "repository policy must remain unapproved and OFF")
+    service = (PRODUCTION / "systemd/pawcycle-oci-cd.service").read_text(encoding="utf-8")
+    require("ConditionPathExists=/etc/pawcycle/oci-cd-enabled" in service and
+            "--execute-policy" in service and "StandardOutput=journal" in service,
+            "host activation must require separate enablement and journal notification")
 
 
 def active_text_files(root: Path):
@@ -251,8 +261,8 @@ def validate_current_status_contract(readiness: str, architecture: str) -> None:
     # Existing target, delivery capability and verification scope are independent.
     for marker in (
         "OCI app01 is the existing single-host Production target with manual deployment.",
-        "No OCI Application Deploy workflow or verified Rollback system is implemented.",
-        "CD and zero-downtime deployment remain DEFER",
+        "Host Pull CD and Release/Recovery are repository implementations; Production activation remains OFF.",
+        "Zero-downtime deployment remains DEFER",
         "image existence only; it does not establish full CI success, deployment approval, or deployment success",
         "operational changes require separate approval and recovery gates",
     ):
