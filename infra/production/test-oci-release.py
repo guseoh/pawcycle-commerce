@@ -17,6 +17,20 @@ SPEC = importlib.util.spec_from_file_location("oci_release", Path(__file__).with
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
 
+CLASSIC_STORE = {"OSType": "linux", "Driver": "overlay2", "DriverStatus": [["Backing Filesystem", "extfs"]]}
+CONTAINERD_STORE = {"OSType": "linux", "Driver": "overlayfs",
+                    "DriverStatus": [["driver-type", "io.containerd.snapshotter.v1"]]}
+
+
+def local_inspector(local, platform=None, info=CLASSIC_STORE):
+    def docker(*args, **kwargs):
+        if args == ("info", "--format", "{{json .}}"):
+            return release.encoded(info)
+        if args[:2] != ("image", "inspect"):
+            raise AssertionError("unexpected command in local-only image verification")
+        return release.encoded([platform if "--platform" in args else local])
+    return docker
+
 
 def manifest(char):
     return {
@@ -163,6 +177,8 @@ class LifecycleTests(unittest.TestCase):
         self.adopt()
         self.activate()
         def inspect_local(*args, **kwargs):
+            if args[0] == "info":
+                return release.encoded(CLASSIC_STORE)
             self.assertEqual(("image", "inspect"), args[:2])
             role = "backend" if "-backend@" in args[2] else "frontend"
             return release.encoded([local_image_record(self.a, role)])
@@ -185,8 +201,8 @@ class LifecycleTests(unittest.TestCase):
             with self.subTest(reason=reason), \
                     patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
                     patch.object(self.host, "capacity", side_effect=AssertionError("image rejection must precede capacity")), \
-                    patch.object(self.host, "docker", side_effect=release.Refused("local image missing") if reason == "missing" else None,
-                                 return_value=release.encoded([local])), \
+                    patch.object(self.host, "docker", side_effect=release.Refused("local image missing") if reason == "missing"
+                                 else local_inspector(local)), \
                     patch.object(self.host, "image", side_effect=lambda target, role: release.Host.image(self.host, target, role)):
                 with self.assertRaisesRegex(release.Refused, "local"):
                     self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
@@ -483,13 +499,20 @@ class BoundaryTests(unittest.TestCase):
             with self.subTest(indexed=indexed):
                 local, platform = self.descriptor_fixture(indexed)
                 self.assertNotEqual(local["Id"], self.target["backend"]["config_digest"])
-                with patch.object(self.host, "docker", side_effect=[release.encoded([local]),
-                                                                    release.encoded([platform])]) as docker:
+                with patch.object(self.host, "docker", side_effect=local_inspector(local, platform, CONTAINERD_STORE)) as docker:
                     self.assertEqual(100, self.host.image(self.target, "backend"))
                 self.assertEqual(("image", "inspect", "--platform", "linux/amd64"), docker.call_args.args[:4])
 
     def test_containerd_rejects_descriptor_mapping_config_and_local_tampering(self):
-        for field in ("Id", "Descriptor", "RepoDigests", "platform", "graph", "config", "missing"):
+        gates = {"Id": "local image descriptor mismatch", "Descriptor": "local image descriptor mismatch",
+                 "descriptor_media_type": "local image descriptor mismatch", "descriptor_size": "local image descriptor mismatch",
+                 "RepoDigests": "local image identity/platform/provenance mismatch",
+                 "platform": "local platform manifest mismatch", "platform_descriptor_size": "local platform manifest mismatch",
+                 "platform_size": "local platform manifest mismatch", "platform_config": "local platform manifest mismatch",
+                 "platform_repo_digests": "local platform manifest mismatch",
+                 "graph": "platform manifest was tampered", "config": "registry config digest mismatch",
+                 "missing": "verified local descriptor graph is unavailable"}
+        for field, gate in gates.items():
             with self.subTest(field=field):
                 local, platform = self.descriptor_fixture()
                 documents = self.host.registry_manifests[release.identity(self.target)]["backend"]
@@ -497,10 +520,22 @@ class BoundaryTests(unittest.TestCase):
                     local["Id"] = self.target["backend"]["config_digest"]
                 elif field == "Descriptor":
                     local["Descriptor"]["digest"] = "sha256:" + "0" * 64
+                elif field == "descriptor_media_type":
+                    local["Descriptor"]["mediaType"] = "application/vnd.example.invalid+json"
+                elif field == "descriptor_size":
+                    local["Descriptor"]["size"] += 1
                 elif field == "RepoDigests":
                     local["RepoDigests"] = []
                 elif field == "platform":
                     platform["Id"] = "sha256:" + "0" * 64
+                elif field == "platform_descriptor_size":
+                    platform["Descriptor"]["size"] += 1
+                elif field == "platform_size":
+                    platform["Size"] += 1
+                elif field == "platform_config":
+                    platform["Config"] = {"Labels": {}}
+                elif field == "platform_repo_digests":
+                    platform["RepoDigests"] = []
                 elif field == "graph":
                     documents[1] += " "
                 elif field == "config":
@@ -508,9 +543,8 @@ class BoundaryTests(unittest.TestCase):
                     self.host.registry_manifests[release.identity(self.target)] = {"backend": documents}
                 else:
                     self.host.registry_manifests.clear()
-                with patch.object(self.host, "docker", side_effect=[release.encoded([local]),
-                                                                    release.encoded([platform])]):
-                    with self.assertRaises(release.Refused):
+                with patch.object(self.host, "docker", side_effect=local_inspector(local, platform, CONTAINERD_STORE)):
+                    with self.assertRaisesRegex(release.Refused, gate):
                         self.host.image(self.target, "backend")
 
     def test_running_container_uses_verified_local_id(self):
@@ -523,6 +557,49 @@ class BoundaryTests(unittest.TestCase):
                 message = "proxy image mismatch" if running == local["Id"] else "running image ID mismatch"
                 with self.assertRaisesRegex(release.Refused, message):
                     self.host.runtime_check(self.target)
+
+    def test_containerd_missing_descriptor_never_falls_back_to_config_id(self):
+        for descriptor in ("absent", None, {}):
+            with self.subTest(descriptor=descriptor):
+                local = local_image_record(self.target, "backend")
+                if descriptor != "absent":
+                    local["Descriptor"] = descriptor
+                with patch.object(self.host, "docker", side_effect=local_inspector(local, info=CONTAINERD_STORE)):
+                    with self.assertRaisesRegex(release.Refused, "containerd image descriptor is missing"):
+                        self.host.image(self.target, "backend")
+
+    def test_running_container_also_requires_engine_store_and_descriptor(self):
+        local = local_image_record(self.target, "backend")
+        containers = {"backend": {"Image": local["Id"]}}
+        with patch.object(self.host, "containers", return_value=containers), \
+                patch.object(self.host, "docker", side_effect=local_inspector(local, info=CONTAINERD_STORE)):
+            with self.assertRaisesRegex(release.Refused, "containerd image descriptor is missing"):
+                self.host.runtime_check(self.target)
+
+    def test_unknown_malformed_and_contradictory_engine_store_is_refused(self):
+        cases = [({}, "image store information is incomplete"),
+                 ({**CLASSIC_STORE, "DriverStatus": None}, "image store information is incomplete"),
+                 ({**CLASSIC_STORE, "DriverStatus": [["driver-type"]]}, "image store information is incomplete"),
+                 ({**CONTAINERD_STORE, "DriverStatus": CONTAINERD_STORE["DriverStatus"] * 2},
+                  "image store information is ambiguous"),
+                 ({**CLASSIC_STORE, "OSType": "windows"}, "unsupported image store platform"),
+                 ({**CLASSIC_STORE, "Driver": "unknown"}, "unsupported or contradictory image store information"),
+                 ({**CONTAINERD_STORE, "DriverStatus": []}, "unsupported or contradictory image store information"),
+                 ({**CLASSIC_STORE, "DriverStatus": CONTAINERD_STORE["DriverStatus"]},
+                  "unsupported or contradictory image store information"),
+                 ({**CONTAINERD_STORE, "DriverStatus": [["driver-type", "unknown"]]},
+                  "unsupported or contradictory image store information")]
+        for info, gate in cases:
+            with self.subTest(info=info), patch.object(self.host, "docker", side_effect=local_inspector(
+                    local_image_record(self.target, "backend"), info=info)):
+                with self.assertRaisesRegex(release.Refused, gate):
+                    self.host.image(self.target, "backend")
+        for descriptor in (None, {"digest": self.target["backend"]["config_digest"]}):
+            local = local_image_record(self.target, "backend")
+            local["Descriptor"] = descriptor
+            with self.subTest(classic_descriptor=descriptor), patch.object(self.host, "docker", side_effect=local_inspector(local)):
+                with self.assertRaisesRegex(release.Refused, "classic image store returned a descriptor"):
+                    self.host.image(self.target, "backend")
 
     def test_containerd_rollback_reloads_saved_graph_without_registry(self):
         local, platform = self.descriptor_fixture()
@@ -538,7 +615,19 @@ class BoundaryTests(unittest.TestCase):
             candidate = manifest("b")
             engine.run("activate", candidate, approval("activate", candidate, self.target["sha"]), True)
         host.registry_manifests.clear()  # Simulate a new CLI process.
+        for info, gate in ((CONTAINERD_STORE, "containerd image descriptor is missing"),
+                           ({**CLASSIC_STORE, "Driver": "unknown"}, "unsupported or contradictory image store information")):
+            with self.subTest(rollback_store=info), \
+                    patch.object(host, "registry", side_effect=AssertionError("no Registry on rollback")), \
+                    patch.object(host, "docker", side_effect=local_inspector(
+                        local_image_record(self.target, "backend"), info=info)), \
+                    patch.object(host, "image", side_effect=lambda target, role: release.Host.image(host, target, role)):
+                with self.assertRaisesRegex(release.Refused, gate):
+                    engine.run("rollback", self.target, approval("rollback", self.target, candidate["sha"]), True)
+                self.assertEqual(candidate, host.live)
         def inspect(*args, **kwargs):
+            if args[0] == "info":
+                return release.encoded(CONTAINERD_STORE)
             self.assertEqual(("image", "inspect"), args[:2])
             role = "backend" if "-backend@" in args[-1] else "frontend"
             record = copy.deepcopy(platform if "--platform" in args else local)
@@ -588,16 +677,17 @@ class BoundaryTests(unittest.TestCase):
                    "RepoDigests": [image["repository"] + "@" + image["digest"]],
                    "Config": {"Labels": {"org.opencontainers.image.revision": self.target["sha"],
                                          "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}}
-        with patch.object(self.host, "docker", return_value=release.encoded([correct])):
+        with patch.object(self.host, "docker", side_effect=local_inspector(correct)):
             self.assertEqual(100, self.host.image(self.target, "backend"))
         for key, value in (("Id", "wrong"), ("Architecture", "arm64"), ("RepoDigests", [])):
             altered = copy.deepcopy(correct)
             altered[key] = value
-            with patch.object(self.host, "docker", return_value=release.encoded([altered])):
-                with self.assertRaises(release.Refused):
+            with patch.object(self.host, "docker", side_effect=local_inspector(altered)):
+                gate = "local config ID mismatch" if key == "Id" else "local image identity/platform/provenance mismatch"
+                with self.assertRaisesRegex(release.Refused, gate):
                     self.host.image(self.target, "backend")
         correct["Config"]["Labels"]["org.opencontainers.image.revision"] = "b" * 40
-        with patch.object(self.host, "docker", return_value=release.encoded([correct])):
+        with patch.object(self.host, "docker", side_effect=local_inspector(correct)):
             with self.assertRaises(release.Refused):
                 self.host.image(self.target, "backend")
         with patch.object(self.host, "docker", side_effect=release.Refused("local image missing")):

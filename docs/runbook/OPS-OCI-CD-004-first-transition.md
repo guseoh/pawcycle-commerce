@@ -9,7 +9,7 @@
 
 Registry의 승인 Digest는 단일 Manifest 또는 Index다. Index이면 유일한 linux/amd64 child의 Digest·size·mediaType과 실제 bytes를 대조하고 child의 Config Digest를 검증한다.
 원격 Config의 platform/revision/source, local RepoDigests·platform·labels·size Gate를 유지한다.
-기존 Docker Store는 Local ID = Config Digest를 요구한다. containerd는 Docker가 제공한 Descriptor의 Digest = 승인 Digest = Local ID와 mediaType/size를 요구하고, platform을 지정한 local inspect의 Manifest ID를 검증된 child와 대조한다.
+Store는 같은 Engine의 `docker info`로 독립 판별한다. 지원하는 기존 Docker Store는 `OSType=linux`, `Driver=overlay2`, 유효하고 중복 없는 `DriverStatus`에 `driver-type` 항목이 없는 경우로 한정하며, 이때만 Local ID = Config Digest를 요구한다. containerd는 `Driver=overlayfs`와 `driver-type=io.containerd.snapshotter.v1`을 함께 요구한다([Docker 공식 식별 방법](https://docs.docker.com/engine/storage/containerd/)). Store 미확인·정보 누락/모순·legacy 응답의 Descriptor 존재는 STOP한다. containerd는 Docker가 제공한 Descriptor의 Digest = 승인 Digest = Local ID와 mediaType/size를 요구하고, platform을 지정한 local inspect의 Manifest ID를 검증된 child와 대조한다. containerd Descriptor 누락은 Config ID로 fallback하지 않고 거부한다.
 실행 컨테이너의 Image는 이 검증을 통과한 실제 Local ID와 비교한다. 식별자가 다르다는 사실만으로 허용하지 않는다.
 
 Registry 원문 Index/Manifest만 `oci-release-state.json`의 각 record `registry_manifests`에 보존한다. Secret/Config 내용/layer는 보존하지 않는다.

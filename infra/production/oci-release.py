@@ -329,13 +329,32 @@ class Host:
             self.registry_manifests.setdefault(identity(manifest), {})[role] = documents
         return compressed
 
+    def image_store(self):
+        # Query the same explicitly targeted Engine, independently of image
+        # inspect fields. Missing Descriptor is never evidence of a legacy store.
+        info = json.loads(self.docker("info", "--format", "{{json .}}"))
+        status = info.get("DriverStatus") if isinstance(info, dict) else None
+        require(isinstance(status, list) and all(isinstance(row, list) and len(row) == 2 and
+                all(isinstance(value, str) for value in row) for row in status),
+                "image store information is incomplete")
+        require(len({row[0] for row in status}) == len(status), "image store information is ambiguous")
+        details = dict(status)
+        require(info.get("OSType") == "linux", "unsupported image store platform")
+        if info.get("Driver") == "overlayfs" and details.get("driver-type") == "io.containerd.snapshotter.v1":
+            return "containerd"
+        if info.get("Driver") == "overlay2" and "driver-type" not in details:
+            return "classic"
+        raise Refused("unsupported or contradictory image store information")
+
     def local_image(self, manifest, role):
         image = manifest[role]
         ref = image["repository"] + "@" + image["digest"]
         local = json.loads(self.docker("image", "inspect", ref))[0]
+        store = self.image_store()
         labels = local["Config"].get("Labels") or {}
         descriptor = local.get("Descriptor")
-        if descriptor is not None:
+        if store == "containerd":
+            require(isinstance(descriptor, dict) and descriptor, "containerd image descriptor is missing")
             documents = self.registry_manifests.get(identity(manifest), {}).get(role)
             require(documents, "verified local descriptor graph is unavailable")
             top, _, selected = image_graph(image, documents)
@@ -352,6 +371,7 @@ class Host:
                     platform["Config"] == local["Config"] and platform["Size"] == local["Size"],
                     "local platform manifest mismatch")
         else:
+            require("Descriptor" not in local, "classic image store returned a descriptor")
             require(local["Id"] == image["config_digest"], "local config ID mismatch")
         require(local["Os"] == "linux" and local["Architecture"] == "amd64" and
                 labels.get("org.opencontainers.image.revision") == manifest["sha"] and
