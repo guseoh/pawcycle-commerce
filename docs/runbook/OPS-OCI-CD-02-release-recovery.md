@@ -14,6 +14,8 @@ HTTPS adoption state(`https-domain`, `https-enabled`)와 reload-pending 부재�
 
 ## 입력과 출처
 
+최초 전환의 Bootstrap·Adopt 승인·DB/Capacity/Recovery 순서는 [OPS-OCI-CD-004](OPS-OCI-CD-004-first-transition.md)를 따른다. containerd Descriptor/Index와 Config ID를 구분하며 검증된 Registry graph를 보호 state에 보존해 local-only 복귀에도 재검증한다. 실행 컨테이너는 검증된 Local ID와 비교한다.
+
 manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 실제 Registry/source 검증을 통과하지 않는다. 승인 운영자는 검증된 값으로 별도 보호 파일을 준비한다. `unpacked_bytes`는 layer 압축 크기가 아니라 독립적으로 측정·승인된 보수적인 풀린 image 크기 상한이다.
 
 ```json
@@ -43,8 +45,8 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 - Compose는 `git show <compose_source_sha>:infra/production/compose.yaml` 원문 hash다. Nginx는 `nginx.https.conf`의 `__PAWCYCLE_DOMAIN__`을 기존 승인 hostname으로 치환한 **실제 적용 bytes hash**다. 두 source SHA를 이미지 SHA와 별도로 기록한다. 개행도 hash에 포함한다.
 - Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·로그인 rate limit·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다.
 - `migration_tree`는 release SHA의 `backend/src/main/resources/db/migration` Git tree ID다. source path가 없거나 current와 다르면 이 단계에서 거부한다. 동일 tree는 애플리케이션·데이터 호환성의 보증이 아니므로 별도 pair compatibility evidence도 필수다.
-- Registry의 `repo:<sha>` raw manifest digest, index의 유일한 `linux/amd64` child/config digest, remote config의 OS/arch와 OCI revision/source를 독립 확인한다. 각 local image도 config ID·RepoDigests·OS/arch·OCI labels·측정 크기를 확인하고 실행 컨테이너 ID와 대조한다. 서로 다른 revision, 미존재·변조 digest, index platform 불명확은 거부한다.
-- 명시적인 `rollback`만 Registry 검증을 생략한다. 보호된 previous record와 정확히 같은 manifest, 저장된 정상 검증·승인/호환 근거·runtime hash/DB epoch, 보존된 local Digest/config ID/platform/OCI labels를 확인하고 `pull=False`로 복귀한다. Registry 접근 불가만으로 이 경로를 막지 않지만 local 이미지 누락·변조는 거부한다. 새 rollback 승인과 main/source·설정·잠금·디스크·DB Gate는 유지하며, Git main 조회를 포함한 모든 네트워크 의존성을 제거했다는 뜻은 아니다. 일반 adopt/preflight/activate의 원격 Registry 검증은 유지한다.
+- Registry의 `repo:<sha>` raw manifest digest, index의 유일한 `linux/amd64` child/config digest, remote config의 OS/arch와 OCI revision/source를 독립 확인한다. 각 local image도 Store별 Local ID(Config ID 또는 검증된 Descriptor ID)·RepoDigests·OS/arch·OCI labels·측정 크기를 확인하고 실행 컨테이너 Image와 대조한다. 서로 다른 revision, 미존재·변조 digest, index platform 불명확은 거부한다.
+- 명시적인 `rollback`만 Registry 조회를 생략한다. 보호된 previous record와 정확히 같은 manifest, 저장된 정상 검증·승인/호환 근거·runtime hash/DB epoch, 보존된 local identity/platform/OCI labels를 확인하고 `pull=False`로 복귀한다. Descriptor Store는 저장된 Index/Manifest bytes의 Digest와 Config 연결도 재검증한다. Registry 접근 불가만으로 이 경로를 막지 않지만 local 이미지 누락·변조·필요한 graph 근거 부재는 거부한다. 새 rollback 승인과 main/source·설정·잠금·디스크·DB Gate는 유지하며, Git main 조회를 포함한 모든 네트워크 의존성을 제거했다는 뜻은 아니다. 일반 adopt/preflight/activate의 원격 Registry 검증은 유지한다.
 - 기존 Compose의 `repo:<RELEASE_SHA>` 구문은 유지한다. pull은 `repo@digest`로만 수행한 뒤 검증된 local image에 SHA tag를 붙이고 `up --pull never`를 쓴다. Registry tag 변경을 up 시 재조회하지 않으며 실행 후 image ID를 다시 확인한다.
 
 수동 CLI의 approval은 operator/Tech Lead가 승인한 근거를 가리키는 별도 root `600` JSON이다. 이 파일은 암호학적 서명이나 GitHub approval 연동이 아니다. root 권한으로 작성된 명시적 운영 승인 입력이라는 신뢰 경계이며 CI가 생성하거나 자동 승인하지 않는다. Host Pull은 별도 승인·설치된 root 정책과 독립 호환 검증기의 짧은 수명 근거에서 같은 입력을 메모리로 생성한다. adopt/rollback/recover-state는 이 자동 권한에 포함되지 않는다.

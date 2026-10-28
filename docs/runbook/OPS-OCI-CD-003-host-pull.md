@@ -14,6 +14,8 @@ Registry tag의 raw digest·linux/amd64 child/config ID·OCI revision/source를 
 
 ## 설치 주체와 최초 정책
 
+최초 운영 전환의 순서·승인 입력·STOP·복구 조건은 [OPS-OCI-CD-004](OPS-OCI-CD-004-first-transition.md)를 따른다. 이 도구 변경 PR은 새 앱 배포 후보나 최초 활성화 승인을 생성하지 않는다.
+
 설치 명령을 자동 실행하는 workflow/script는 없다. 별도 승인된 운영자는 다음을 **실측·검토 후** 준비해야 한다. 이 목록은 설치 승인 자체가 아니다.
 
 - `/opt/pawcycle/cd-controller/`: 검토된 `oci-cd.py`, `oci-release.py`, `scripts/classify-production-image-changes.py`를 같은 directory에 root 소유로 설치. ancestor에 group/other write·symlink 금지. 최초 정책 `controller_sha256`에 세 파일 bytes digest를 기록한다. timer는 `python3 -I`로 설치본만 실행한다. fetched main의 Python·shell·PR code를 실행하거나 설치본으로 복사하지 않는다. 새 controller 배포는 별도 운영 변경이다.
