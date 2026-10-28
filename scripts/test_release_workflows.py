@@ -106,6 +106,13 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_production_deploy_workflow_is_retired(self) -> None:
         self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
 
+    def test_oci_release_tests_are_ci_only_and_activation_is_not_wired(self) -> None:
+        validation = self.workflows["validate-conventions.yml"]
+        self.assertIn("infra/production/test-oci-release.py", validation)
+        for name, workflow in self.workflows.items():
+            with self.subTest(workflow=name):
+                self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-release\.py\b")
+
     def test_no_workflow_dispatches_retired_production_deploy(self) -> None:
         for workflow_name, workflow in self.workflows.items():
             for pattern in AUTO_DISPATCH_PATTERNS:

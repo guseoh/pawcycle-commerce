@@ -16,6 +16,7 @@
 - Approved hostname state: `/opt/pawcycle/state/https-domain`, regular file, mode `600`; OCI adoption 전에는 파일이 없을 수 있으며 자동화가 추정·생성하지 않는다.
 - HTTPS enabled state: `/opt/pawcycle/state/https-enabled`, 내용 `enabled`, mode `600`; 두 파일은 명시적인 adoption 이후에만 보호된 runtime state로 취급한다.
 - Reload-pending state: `/opt/pawcycle/state/https-reload-pending`, regular file, mode `600`, 내용 `pending`; 실제 갱신 후 validation·`nginx -t`·reload 중단 시 남고, 다음 non-dry renewal에서 재시도 후 성공 시에만 제거한다.
+- OCI Release 도구는 기존 `deploy.lock`을 잡은 뒤 위 renewal lock도 잡고 완료까지 유지한다. 갱신은 기존 renewal lock 하나만 사용하므로 서로 기다리지 않고 nonblocking 실패한다. Release는 reload-pending 또는 불완전 transition이 있으면 중단한다. 잠금 파일 삭제·교체로 우회하지 않는다(`OPS-OCI-CD-02-release-recovery.md`).
 - Certbot image: `certbot/certbot:v5.8.0@sha256:398c47284a6d6782825be71685f677ef3a1e65b8b5c278a8b1e99f6da84b4eb9`; 실행은 `--pull never`이고 image presence는 별도 preflight다.
 - Renewal checks: 매일 03:00·15:00, `Persistent=true`
 
