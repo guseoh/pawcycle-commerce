@@ -84,7 +84,11 @@ Preflight도 action이 `preflight`인 승인 근거를 받아 현재 DB 호환 �
 
 preflight는 Registry/source 읽기와 임시 config 렌더링·현재 runtime smoke를 수행한다. 후보 Nginx는 기존 인증서 volume을 read-only로 연결한 임시 `--network none --pull never` 컨테이너에서 `nginx -t`로 검사하고 제거한다. image pull, 기존 앱 컨테이너 recreate, persistent release state 생성은 하지 않는다. source/config 검증, 기존 runtime image와 경계 확인, 이전 current의 local image 보존 확인이 activation보다 먼저다.
 
-필요 여유 bytes = **양쪽 압축 layer 합 × 2 + 양쪽 unpacked 상한 합 + log/temp reserve + rollback 추가 필요량**이다. 기존 retained image는 이미 사용 중인 disk에 포함되며 두 image의 존재와 측정 크기도 검증·보고한다. reserve는 최소 1 GiB이고 추가 rollback 공간은 승인 근거에 따라 산정한다. 공유 layer·reclaimable image/cache를 빼거나 4.9 GB를 충분하다고 가정하지 않는다. DockerRootDir, state, runtime이 서로 다른 filesystem이면 이 구현은 거부한다. 서로 다른 FS의 budget은 후속 별도 설계가 필요하다. pull 중 실제 ENOSPC도 실패로 취급하며 prune이나 볼륨 삭제로 우회하지 않는다.
+신규 activate·adopt·preflight의 필요 여유 bytes = **양쪽 압축 layer 합 × 2 + 양쪽 unpacked 상한 합 + log/temp reserve + rollback 추가 필요량**이다. 이 보수적인 계산은 유지한다.
+
+명시적 rollback의 필요 여유 bytes = **승인된 reserve_bytes + rollback_extra_bytes**다. current와 target 이미지의 local Digest/config ID/platform·크기를 확인하며, 이미 `df` 사용량에 포함된 target 이미지의 unpacked 상한을 신규 필요량으로 다시 더하지 않는다. Pull이 없는 정확한 verified previous 복귀만 이 계산을 사용한다. reserve의 기존 최소 1 GiB는 유지한다. `rollback_extra_bytes`는 양수이며 `capacity_evidence`가 가리키는 승인된 측정/상한 근거에 따라 해당 source/state와 컨테이너 재생성의 실제 추가 쓰기 peak를 포함해야 한다. config snapshot·atomic state/transition 임시 쓰기, Docker container metadata·writable layer·로그와 validation 임시파일 등을 포함하고, 코드가 임의의 고정 overhead를 대신 넣지 않는다. 0·누락·근거 부재는 공간이 많아도 거부한다. 측정 근거의 확보·승인은 별도 운영 Gate이며 이 도구가 자동으로 입증하지 않는다.
+
+공유 layer·reclaimable image/cache를 여유 공간에 더하거나 4.9 GB를 충분하다고 가정하지 않는다. 실제 filesystem의 available bytes가 해당 실행의 요구량보다 작으면 mutation 전에 거부한다. DockerRootDir, state, runtime이 서로 다른 filesystem이면 이 구현은 거부한다. 서로 다른 FS의 budget은 후속 별도 설계가 필요하다. 실행 중 실제 ENOSPC도 실패로 취급하며 prune이나 볼륨 삭제로 우회하지 않는다.
 
 기존 정상 current의 image/config/network/volume/health, 내부 8081 `/products`·`/api/products`의 직접 2xx와 외부 인증서 검증 HTTPS 2xx, metrics-proxy identity/health/수집 endpoint를 확인한다. redirect chain을 최종 200으로 성공 처리하지 않는다. 업무 로그인·결제·전체 metric 수집은 이 smoke의 보증 범위가 아니다.
 

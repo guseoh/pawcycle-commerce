@@ -311,20 +311,32 @@ class Host:
         require(local["Size"] <= image["unpacked_bytes"], "unpacked size exceeds approved budget")
         return local["Size"]
 
-    def capacity(self, candidate, current, approval, compressed):
+    def capacity(self, candidate, current, approval, compressed, *, rollback=False):
         retained = sum(self.image(current, role) for role in ("backend", "frontend"))
-        require(type(approval["reserve_bytes"]) is int and approval["reserve_bytes"] >= GIB and
-                type(approval["rollback_extra_bytes"]) is int and approval["rollback_extra_bytes"] >= 0 and
+        reserve, extra = approval.get("reserve_bytes"), approval.get("rollback_extra_bytes")
+        require(type(reserve) is int and reserve >= GIB and type(extra) is int and extra >= 0 and
                 approval.get("capacity_evidence"), "capacity evidence is missing")
-        needed = (2 * compressed + sum(candidate[role]["unpacked_bytes"] for role in ("backend", "frontend")) +
-                  approval["reserve_bytes"] + approval["rollback_extra_bytes"])
+        if rollback:
+            require(approval.get("action") == "rollback" and compressed == 0 and extra > 0,
+                    "rollback needs approved positive additional-write capacity evidence")
+            # Both image sets are already charged to actual disk usage. Verify
+            # the target again, but budget only measured state/config/container
+            # write overhead plus the unchanged reserve; no pull or unpack.
+            for role in ("backend", "frontend"):
+                self.image(candidate, role)
+            needed = reserve + extra
+        else:
+            needed = (2 * compressed + sum(candidate[role]["unpacked_bytes"] for role in ("backend", "frontend")) +
+                      reserve + extra)
         info = json.loads(self.docker("info", "--format", "{{json .}}"))
         root = Path(info["DockerRootDir"])
         require(info["OSType"] == "linux" and os.uname().machine == "x86_64", "unsupported host platform")
         require(root.stat().st_dev == self.state.stat().st_dev == self.backend_env.stat().st_dev,
                 "separate filesystems need a separately reviewed capacity contract")
         usage = os.statvfs(root)
-        require(usage.f_bavail * usage.f_frsize >= needed, "insufficient pull/unpack/retention/reserve space")
+        require(usage.f_bavail * usage.f_frsize >= needed,
+                "insufficient rollback reserve/additional-write space" if rollback else
+                "insufficient pull/unpack/retention/reserve space")
         return {"required_free_bytes": needed, "retained_image_bytes": retained}
 
     def paths(self, manifest):
@@ -624,7 +636,8 @@ class Release:
             host.validate_config(manifest)
             require(digest(read_private(host.backend_env)) == host.env_hash,
                     "runtime bundle changed during preflight")
-            capacity = host.capacity(manifest, state["current"]["manifest"] if state else manifest, approval, compressed)
+            capacity = host.capacity(manifest, state["current"]["manifest"] if state else manifest, approval, compressed,
+                                     rollback=action == "rollback")
             if action == "preflight":
                 return {"result": "preflight-passed", **capacity}
             if state and manifest == state["current"]["manifest"]:

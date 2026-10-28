@@ -73,7 +73,7 @@ class FakeHost(release.Host):
             raise release.Refused("registry mismatch")
         return 100
 
-    def capacity(self, *args):
+    def capacity(self, *args, **kwargs):
         if self.reject == "disk":
             raise release.Refused("insufficient disk")
         return {"required_free_bytes": 10 * release.GIB, "retained_image_bytes": 4 * release.GIB}
@@ -184,11 +184,53 @@ class LifecycleTests(unittest.TestCase):
                 local[reason] = [] if reason == "RepoDigests" else "tampered"
             with self.subTest(reason=reason), \
                     patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
+                    patch.object(self.host, "capacity", side_effect=AssertionError("image rejection must precede capacity")), \
                     patch.object(self.host, "docker", side_effect=release.Refused("local image missing") if reason == "missing" else None,
                                  return_value=release.encoded([local])), \
                     patch.object(self.host, "image", side_effect=lambda target, role: release.Host.image(self.host, target, role)):
                 with self.assertRaisesRegex(release.Refused, "local"):
                     self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+                self.assertEqual(self.b, self.host.live)
+                self.assertEqual([self.b["sha"]], self.host.calls)
+
+    def test_rollback_uses_real_write_budget_without_new_image_unpack_or_registry(self):
+        self.adopt()
+        self.activate()
+        evidence = approval("rollback", self.a, self.b["sha"])
+        actual_extra = 128 * 1024 ** 2
+        evidence["rollback_extra_bytes"] = actual_extra
+        free = evidence["reserve_bytes"] + actual_extra
+        usage = type("Usage", (), {"f_bavail": free, "f_frsize": 1})()
+        info = release.encoded({"DockerRootDir": str(self.host.state), "OSType": "linux"})
+        with patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
+                patch.object(self.host, "docker", return_value=info), \
+                patch.object(release.os, "statvfs", return_value=usage), \
+                patch.object(self.host, "capacity", side_effect=lambda *a, **kw: release.Host.capacity(self.host, *a, **kw)):
+            usage.f_bavail = free - 1
+            with self.assertRaisesRegex(release.Refused, "insufficient"):
+                self.engine.run("rollback", self.a, evidence, True)
+            self.assertEqual(self.b, self.host.live)
+            self.assertFalse((self.host.state / "release-state-transition").exists())
+            usage.f_bavail = free
+            result = self.engine.run("rollback", self.a, evidence, True)
+        self.assertEqual(free, result["required_free_bytes"])
+        self.assertLess(free, sum(self.a[role]["unpacked_bytes"] for role in ("backend", "frontend")))
+        self.assertEqual(self.a, self.host.live)
+        self.assertTrue(self.host.recovery_used_local_images)
+        self.engine.check_projections(self.engine.read_state())
+
+    def test_rollback_still_refuses_missing_release_approval_and_db_compatibility(self):
+        self.adopt()
+        self.activate()
+        for key, value in (("db_compatibility_evidence", ""), ("db_epoch", "different"),
+                           ("rollback_safe", False), ("evidence", "")):
+            with self.subTest(key=key), \
+                    patch.object(self.host, "registry", side_effect=AssertionError("Registry unavailable")), \
+                    patch.object(self.host, "capacity", side_effect=AssertionError("approval must precede capacity")):
+                evidence = approval("rollback", self.a, self.b["sha"])
+                evidence[key] = value
+                with self.assertRaises(release.Refused):
+                    self.engine.run("rollback", self.a, evidence, True)
                 self.assertEqual(self.b, self.host.live)
                 self.assertEqual([self.b["sha"]], self.host.calls)
 
@@ -242,7 +284,7 @@ class LifecycleTests(unittest.TestCase):
     def test_approval_expiring_during_preflight_cannot_start_transition(self):
         self.adopt()
         evidence = approval("activate", self.b, self.a["sha"])
-        def expire(*args):
+        def expire(*args, **kwargs):
             evidence["expires_unix"] = 0
             return {}
         with patch.object(self.host, "capacity", side_effect=expire):
@@ -469,6 +511,34 @@ class BoundaryTests(unittest.TestCase):
             result = self.host.capacity(self.target, self.target, evidence, release.GIB)
             self.assertEqual(8 * release.GIB, result["required_free_bytes"])
             self.assertEqual(2 * release.GIB, result["retained_image_bytes"])
+
+    def test_rollback_capacity_requires_measured_extra_and_keeps_approved_reserve(self):
+        self.host.backend_env = self.root
+        evidence = approval("rollback", self.target)
+        usage = type("Usage", (), {"f_bavail": 20 * release.GIB, "f_frsize": 1})()
+        with patch.object(self.host, "image", return_value=release.GIB) as images, \
+                patch.object(self.host, "docker", return_value=release.encoded({"DockerRootDir": str(self.root), "OSType": "linux"})), \
+                patch.object(release.os, "statvfs", return_value=usage):
+            for extra in (128 * 1024 ** 2, 512 * 1024 ** 2):
+                evidence["rollback_extra_bytes"] = extra
+                result = self.host.capacity(self.target, self.target, evidence, 0, rollback=True)
+                self.assertEqual(evidence["reserve_bytes"] + extra, result["required_free_bytes"])
+            self.assertEqual(8, images.call_count)  # current and target, both roles on each check
+            for key, value in (("rollback_extra_bytes", 0), ("rollback_extra_bytes", -1),
+                               ("rollback_extra_bytes", None), ("capacity_evidence", ""), ("reserve_bytes", 0)):
+                with self.subTest(key=key, value=value):
+                    invalid = {**evidence, key: value}
+                    with self.assertRaises(release.Refused):
+                        self.host.capacity(self.target, self.target, invalid, 0, rollback=True)
+            for key in ("rollback_extra_bytes", "capacity_evidence"):
+                invalid = dict(evidence)
+                del invalid[key]
+                with self.assertRaises(release.Refused):
+                    self.host.capacity(self.target, self.target, invalid, 0, rollback=True)
+            with self.assertRaises(release.Refused):
+                self.host.capacity(self.target, self.target, evidence, release.GIB, rollback=True)
+            with self.assertRaises(release.Refused):
+                self.host.capacity(self.target, self.target, {**evidence, "action": "preflight"}, 0, rollback=True)
 
     def test_subprocess_failures_never_print_raw_values(self):
         with self.assertRaises(release.Refused) as error:
