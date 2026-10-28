@@ -1,11 +1,13 @@
 name: Repository Validation
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
-  group: repository-validation-code-${{ github.event.pull_request.number }}
+  group: repository-validation-code-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -15,6 +17,7 @@ permissions:
 jobs:
   conventions:
     name: Commit and PR conventions
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
@@ -82,9 +85,22 @@ jobs:
       - name: Classify pull request diff
         id: paths
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          # Exact squash/main SHA gets every application lane. PR metadata
+          # remains independent, and docs-only pushes retain narrow validation.
+          if [ "$EVENT_NAME" = "push" ]; then
+            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              BASE_SHA="$(git rev-parse "$HEAD_SHA^")"
+            fi
+            git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/main-paths"
+            if python scripts/classify-production-image-changes.py < "$RUNNER_TEMP/main-paths" | grep -q 'publish=true'; then
+              printf 'harness=true\nbackend=true\nfrontend=true\nproduction=true\n' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           git diff --no-renames --name-only "$merge_base..$HEAD_SHA" \
             | python scripts/classify-validation-changes.py \
@@ -365,6 +381,7 @@ jobs:
           python -m py_compile infra/production/oci-release.py infra/production/test-oci-release.py
           python infra/production/validate-production-contracts.py
           sudo "$(command -v python)" infra/production/test-oci-release.py
+          sudo "$(command -v python)" infra/production/test-oci-cd.py
           bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-https-renewal.sh
@@ -394,6 +411,7 @@ jobs:
       - name: Aggregate component results
         env:
           CONVENTIONS_RESULT: ${{ needs.conventions.result }}
+          EVENT_NAME: ${{ github.event_name }}
           CLASSIFY_RESULT: ${{ needs.classify.result }}
           HARNESS_ENABLED: ${{ needs.classify.outputs.harness }}
           HARNESS_RESULT: ${{ needs.harness.result }}
@@ -431,7 +449,9 @@ jobs:
             fi
           }
 
-          require_success conventions "$CONVENTIONS_RESULT"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            require_success conventions "$CONVENTIONS_RESULT"
+          fi
           require_success classify "$CLASSIFY_RESULT"
           require_component_result harness "$HARNESS_ENABLED" "$HARNESS_RESULT"
           require_component_result backend "$BACKEND_ENABLED" "$BACKEND_RESULT"

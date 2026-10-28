@@ -1,6 +1,6 @@
 # OPS-OCI-CD-02 — OCI application Release/Recovery
 
-작업 등급 고위험 / 저장소 변경. 상위 #470, 구현 #471. 이 단계는 Linux의 `oci-release.py`와 fake/격리 회귀를 제공한다. app01 적용, 운영 baseline 채택, 배포·Rollback, DB SQL/Restore, Secret/Cloud 변경과 CD 연결은 별도 운영 승인 대상이다. CD·무중단 배포는 DEFER이며 Production Verified가 아니다.
+작업 등급 고위험 / 저장소 변경. 상위 #470, 구현 #471. 이 단계는 Linux의 `oci-release.py`와 fake/격리 회귀를 제공한다. app01 적용, 운영 baseline 채택, 배포·Rollback, DB SQL/Restore, Secret/Cloud 변경은 별도 운영 승인 대상이다. #473의 [Host Pull CD](OPS-OCI-CD-003-host-pull.md)는 이 엔진을 재사용하는 저장소 구현이며 실제 설치·활성화는 OFF다. 무중단 배포는 DEFER이며 Production Verified가 아니다.
 
 ## 실행 전 경계
 
@@ -47,7 +47,7 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 - 명시적인 `rollback`만 Registry 검증을 생략한다. 보호된 previous record와 정확히 같은 manifest, 저장된 정상 검증·승인/호환 근거·runtime hash/DB epoch, 보존된 local Digest/config ID/platform/OCI labels를 확인하고 `pull=False`로 복귀한다. Registry 접근 불가만으로 이 경로를 막지 않지만 local 이미지 누락·변조는 거부한다. 새 rollback 승인과 main/source·설정·잠금·디스크·DB Gate는 유지하며, Git main 조회를 포함한 모든 네트워크 의존성을 제거했다는 뜻은 아니다. 일반 adopt/preflight/activate의 원격 Registry 검증은 유지한다.
 - 기존 Compose의 `repo:<RELEASE_SHA>` 구문은 유지한다. pull은 `repo@digest`로만 수행한 뒤 검증된 local image에 SHA tag를 붙이고 `up --pull never`를 쓴다. Registry tag 변경을 up 시 재조회하지 않으며 실행 후 image ID를 다시 확인한다.
 
-approval은 operator/Tech Lead가 승인한 근거를 가리키는 별도 root `600` JSON이다. 이 파일은 암호학적 서명이나 GitHub approval 연동이 아니다. root 권한으로 작성된 명시적 운영 승인 입력이라는 신뢰 경계이며 CI가 생성하거나 자동 승인하지 않는다.
+수동 CLI의 approval은 operator/Tech Lead가 승인한 근거를 가리키는 별도 root `600` JSON이다. 이 파일은 암호학적 서명이나 GitHub approval 연동이 아니다. root 권한으로 작성된 명시적 운영 승인 입력이라는 신뢰 경계이며 CI가 생성하거나 자동 승인하지 않는다. Host Pull은 별도 승인·설치된 root 정책과 독립 호환 검증기의 짧은 수명 근거에서 같은 입력을 메모리로 생성한다. adopt/rollback/recover-state는 이 자동 권한에 포함되지 않는다.
 
 ```json
 {

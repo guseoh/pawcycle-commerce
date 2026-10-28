@@ -214,7 +214,7 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_code_and_metadata_events_and_concurrency_are_separate(self) -> None:
         self.assertNotIn("edited", self.workflow.split("concurrency:", 1)[0])
-        self.assertIn("repository-validation-code-${{ github.event.pull_request.number }}", self.workflow)
+        self.assertIn("repository-validation-code-${{ github.event.pull_request.number || github.sha }}", self.workflow)
         self.assertIn("types: [edited]", self.metadata_workflow)
         self.assertIn("repository-validation-metadata-${{ github.event.pull_request.number }}", self.metadata_workflow)
         code_group = re.search(r"(?m)^\s*group:\s*(.+?)\s*$", self.workflow)

@@ -92,7 +92,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
             (readiness, architecture.replace("CD: **DEFER**", "CD: **ACTIVE**")),
             (readiness, architecture.replace("무중단 배포: **DEFER**", "무중단 배포: **ACTIVE**")),
             (readiness, architecture.replace("Production Verified가 아니다", "Production Verified")),
-            (readiness.replace("No OCI Application Deploy workflow", "OCI Application Deploy workflow"), architecture),
+            (readiness.replace("Production activation remains OFF", "Production activation ACTIVE"), architecture),
             (readiness.replace("full CI success, deployment approval, or deployment success", "deployment success"), architecture),
             (readiness.replace("separate approval and recovery gates", "no approval"), architecture),
             (readiness + "There is no active Production deployment target.", architecture),
@@ -106,12 +106,21 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_production_deploy_workflow_is_retired(self) -> None:
         self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
 
-    def test_oci_release_tests_are_ci_only_and_activation_is_not_wired(self) -> None:
+    def test_unapproved_ci_cannot_activate_host_cd(self) -> None:
         validation = self.workflows["validate-conventions.yml"]
         self.assertIn("infra/production/test-oci-release.py", validation)
+        self.assertIn("infra/production/test-oci-cd.py", validation)
+        self.assertIn("branches: [main]", validation)
+        self.assertIn("github.event_name == 'pull_request'", validation)
+        self.assertIn("harness=true\\nbackend=true\\nfrontend=true\\nproduction=true", validation)
         for name, workflow in self.workflows.items():
             with self.subTest(workflow=name):
                 self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-release\.py\b")
+                self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-cd\.py\b")
+        import json
+        policy = json.loads((ROOT / "infra/production/oci-cd-policy.example.json").read_text())
+        self.assertFalse(policy["enabled"])
+        self.assertIsNone(policy["approval_evidence"])
 
     def test_no_workflow_dispatches_retired_production_deploy(self) -> None:
         for workflow_name, workflow in self.workflows.items():
@@ -128,6 +137,16 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
 
 class ImagePublishClassifierTest(unittest.TestCase):
+    def test_build_deploy_and_policy_risk_are_separate(self) -> None:
+        for path in ("infra/production/oci-release.py", "infra/production/oci-cd.py",
+                     "infra/production/test-oci-cd.py", "infra/production/systemd/pawcycle-oci-cd.service"):
+            self.assertEqual({"publish": False, "deploy": False, "risks": []}, CLASSIFIER.classify([path]))
+        self.assertEqual({"publish": False, "deploy": True, "risks": ["runtime"]},
+                         CLASSIFIER.classify(["infra/production/compose.yaml"]))
+        self.assertIn("unknown", CLASSIFIER.classify(["infra/production/new-config.yaml"])["risks"])
+        self.assertIn("sensitive", CLASSIFIER.classify(["backend/src/main/resources/db/migration/V99.sql"])["risks"])
+        self.assertIn("application", CLASSIFIER.classify(["frontend/src/app/page.tsx"])["risks"])
+
     def test_non_image_changes_skip_both_images(self) -> None:
         paths = [
             "backend/src/test/java/ExampleTest.java",
@@ -135,6 +154,7 @@ class ImagePublishClassifierTest(unittest.TestCase):
             "frontend/AGENTS.md",
             "frontend/README.md",
             "frontend/scripts/run-tests.mjs",
+            "frontend/src/lib/commerce-api.test.mts",
             "docs/runbook/release.md",
             "scripts/test_release_workflows.py",
             ".agents/skills/platform-sre/SKILL.md",
