@@ -2,6 +2,9 @@
 
 set -Eeuo pipefail
 
+# Lock ownership tests use disposable root-owned fixtures, like Release tests.
+if (( EUID != 0 )); then exec sudo bash "$0" "$@"; fi
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 TEST_ROOT="$(mktemp -d)"
 FAKE_BIN="$TEST_ROOT/bin"
@@ -206,7 +209,40 @@ run_action() {
       bash "$script" "$@" 2>&1
   )" || status=$?
   [[ "$status" == "$expected_status" ]] || fail "unexpected status $status: $output"
+  LAST_OUTPUT="$output"
 }
+
+# Exercise the real shared flock and inode contract before adoption fixtures.
+umask 0022
+run_action 1 renew --dry-run
+[[ "$(stat -c '%u:%a:%h' "$LOCK_FILE")" == 0:600:1 ]] || fail 'lock creation did not override umask'
+printf 'preserved\n' > "$LOCK_FILE"
+lock_inode="$(stat -c '%d:%i' "$LOCK_FILE")"
+run_action 1 renew --dry-run
+[[ "$(stat -c '%d:%i' "$LOCK_FILE")" == "$lock_inode" && "$(<"$LOCK_FILE")" == preserved ]] \
+  || fail 'existing lock inode or bytes changed'
+exec 8<>"$LOCK_FILE"
+flock -n 8
+run_action 1 adopt --confirm-adopt
+[[ "$LAST_OUTPUT" == *'another certificate renewal is already running'* ]] || fail 'external flock was ignored'
+exec 8>&-
+for unsafe in permissions owner hardlink symlink; do
+  case "$unsafe" in
+    permissions) chmod 644 "$LOCK_FILE" ;;
+    owner) chown 65534 "$LOCK_FILE" ;;
+    hardlink) ln "$LOCK_FILE" "$TEST_ROOT/alias" ;;
+    symlink) mv "$LOCK_FILE" "$TEST_ROOT/target"; ln -s "$TEST_ROOT/target" "$LOCK_FILE" ;;
+  esac
+  run_action 1 adopt --confirm-adopt
+  [[ "$LAST_OUTPUT" == *'renewal lock'*'unsafe'* ]] || fail "unsafe $unsafe lock was accepted"
+  case "$unsafe" in
+    permissions) chmod 600 "$LOCK_FILE" ;;
+    owner) chown 0 "$LOCK_FILE" ;;
+    hardlink) rm "$TEST_ROOT/alias" ;;
+    symlink) rm "$LOCK_FILE"; mv "$TEST_ROOT/target" "$LOCK_FILE" ;;
+  esac
+done
+[[ "$(stat -c '%d:%i' "$LOCK_FILE")" == "$lock_inode" ]] || fail 'lock inode was replaced'
 
 run_action 1 renew preflight
 run_action 1 renew renew

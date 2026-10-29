@@ -19,6 +19,8 @@ Docker의 Descriptor/platform 동작 근거: [Moby containerd inspect 구현](ht
 
 ## Task 2: Nginx Bootstrap
 
+opc 기반 기존 Source/Runtime·Compose Label·renewal lock이 root 보호 계약을 충족하지 못하면 먼저 [G0-T2A 신뢰 경계 정렬](G0-T2A-trust-boundary-alignment.md)의 승인·STOP 조건을 따른다. Proxy-only 교체로 Backend/Frontend Label 경로가 정렬되지는 않는다.
+
 ### 승인 전 Preflight
 
 - 전달된 2026-10-28 G0는 구형 정적 proxy_pass와 Release state/타이머 부재를 보고한다. 이는 시점 자료이며 현재 Host의 Source/Hash·정상성·승인을 대신하지 않는다. 실제 mount 경로는 inspect로 재확인한다.
