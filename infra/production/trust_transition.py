@@ -232,6 +232,8 @@ class Transition:
         raw = self.system('show', SERVICE, '-pActiveState', '-pMainPID').decode()
         require('ActiveState=inactive' in raw.splitlines() and 'MainPID=0' in raw.splitlines(),
                 'RENEWAL_BUSY')
+        require(SERVICE.encode() not in self.system('list-jobs', '--no-legend', '--no-pager'),
+                'RENEWAL_BUSY')
 
     def unit_contract(self):
         import re
@@ -311,8 +313,6 @@ class Transition:
         volumes = sorted(({k: v[k] for k in ('Name', 'Driver', 'Mountpoint')} for v in volumes),
                          key=lambda v: v['Name'])
         return resolved.read_bytes(), adoption, volumes
-        require(SERVICE.encode() not in self.system('list-jobs', '--no-legend', '--no-pager'),
-                'RENEWAL_BUSY')
 
     def validate_packet(self):
         keys = {'schema', 'id', 'source_sha', 'main_sha', 'compose_sha256', 'renewal_sha256',
