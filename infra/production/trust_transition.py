@@ -245,17 +245,35 @@ class Transition:
             installed = protected(self.path('/etc/systemd/system/'+unit), 0o644)
             staged = protected(self.staging/'infra/production/systemd'/unit)
             require(installed.read_bytes() == staged.read_bytes(), 'UNIT_BYTES')
-            raw = self.system('show', unit, '-pDropInPaths', '-pFragmentPath',
-                              '-pExecStart', '-pEnvironment', '-pEnvironmentFiles',
-                              '-pUser', '-pGroup', '-pType').decode()
-            fields = dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
+            properties = ['DropInPaths', 'FragmentPath']
+            if unit == SERVICE:
+                properties += ['ExecStart', 'User', 'Group', 'Type']
+            raw = self.system('show', unit, '--all',
+                              *['-p'+key for key in properties]).decode()
+            fields = {}
+            for line in raw.splitlines():
+                key, separator, value = line.partition('=')
+                require(separator and key in properties and key not in fields,
+                        'UNIT_OBSERVATION')
+                fields[key] = value
+            require(set(fields) == set(properties), 'UNIT_OBSERVATION')
             require(fields.get('DropInPaths') == '' and
                     fields.get('FragmentPath') == str(installed), 'UNIT_OVERRIDE')
             if unit == SERVICE:
                 require(fields.get('User') == fields.get('Group') == 'root'
-                        and fields.get('Type') == 'oneshot'
-                        and fields.get('Environment') == fields.get('EnvironmentFiles') == '',
+                        and fields.get('Type') == 'oneshot',
                         'UNIT_OVERRIDE')
+                # systemctl's EnvironmentFiles array printer emits no line for
+                # an empty array, even with --all (systemd 255). Absence is not
+                # evidence of emptiness. Require both typed D-Bus properties.
+                object_path = '/org/freedesktop/systemd1/unit/' + ''.join(
+                    char if char.isascii() and char.isalnum() else '_'+format(ord(char), '02x')
+                    for char in SERVICE)
+                empty = self.run(['/usr/bin/busctl', '--system', 'get-property',
+                                  'org.freedesktop.systemd1', object_path,
+                                  'org.freedesktop.systemd1.Service',
+                                  'Environment', 'EnvironmentFiles'])
+                require(empty == b'as 0\na(sb) 0\n', 'UNIT_OVERRIDE')
                 execute = fields.get('ExecStart', '')
                 require(re.findall(r'\bpath=([^ ;}]+)', execute) == [str(self.installed)]
                         and [s.strip() for s in re.findall(r'argv\[\]=([^;}]+)', execute)]
@@ -359,7 +377,7 @@ class Transition:
         require(stat.S_ISDIR(state_info.st_mode) and state_info.st_uid == state_info.st_gid == 0
                 and stat.S_IMODE(state_info.st_mode) == 0o700, 'STATE_IDENTITY')
         acl_free(self.state)
-        for binary in ('docker', 'git', 'systemctl', 'openssl'):
+        for binary in ('docker', 'git', 'systemctl', 'busctl', 'openssl'):
             protected(self.path('/usr/bin/'+binary).resolve(strict=True))
         require(not os.path.lexists(self.journal) and not os.path.lexists(self.journal.with_suffix('.new'))
                 and not os.path.lexists(self.runtime/'current')
