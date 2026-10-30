@@ -282,6 +282,8 @@ class FakeRunner:
         self.started = False
         self.renewal_active = False
         self.queued_before_start = False
+        self.unit_reply = None
+        self.environment_reply = b'as 0\na(sb) 0\n'
 
     def check(self):
         if self.fail == 'window':
@@ -289,14 +291,23 @@ class FakeRunner:
 
     def __call__(self, argv, env=None):
         self.calls.append(argv)
+        if argv[0] == '/usr/bin/busctl':
+            if isinstance(self.environment_reply, Exception):
+                raise self.environment_reply
+            return self.environment_reply
         if argv[0] == '/usr/bin/systemctl':
             if argv[1] == 'show-environment':
                 return b''
-            if '-pExecStart' in argv:
+            if '-pFragmentPath' in argv:
+                if self.unit_reply is not None:
+                    if isinstance(self.unit_reply, Exception):
+                        raise self.unit_reply
+                    return self.unit_reply
+                assert '--all' in argv
                 unit = argv[2]
                 raw = 'DropInPaths=\nFragmentPath='+str(self.host.path('/etc/systemd/system/'+unit))+'\n'
                 if unit == transition.SERVICE:
-                    raw += ('User=root\nGroup=root\nType=oneshot\nEnvironment=\nEnvironmentFiles=\n'
+                    raw += ('User=root\nGroup=root\nType=oneshot\n'
                             'ExecStart={ path='+str(self.host.installed)+' ; argv[]='+str(self.host.installed)+' ; }\n')
                 return raw.encode()
             if argv[1:3] == ['stop', transition.TIMER]:
@@ -394,7 +405,7 @@ class SupervisedIntegration(unittest.TestCase):
         for path in [h.control, h.state, h.runtime, h.staging, h.staging/'.git',
                      h.installed.parent, h.renewal.parent, h.base/'source/repo/infra/production']:
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for name in ('docker', 'git', 'openssl', 'systemctl'):
+        for name in ('docker', 'git', 'openssl', 'systemctl', 'busctl'):
             self.write(h.path('/usr/bin/'+name), b'fixture-not-executable', 0o755)
         here = Path(__file__).parent
         self.write(h.staging/transition.COMPOSE, (here/'compose.yaml').read_bytes(), 0o644)
@@ -676,6 +687,68 @@ class SupervisedIntegration(unittest.TestCase):
             self.host.apply()
         self.assertEqual(self.runner.timer, 'active')
         self.assertFalse(self.host.journal.exists())
+
+    def test_typed_empty_environment_allows_normal_unit_without_show_environment_lines(self):
+        self.host.validate_packet()
+        call = next(c for c in self.runner.calls if c[0] == '/usr/bin/busctl')
+        self.assertEqual(call[1:], ['--system', 'get-property', 'org.freedesktop.systemd1',
+                         '/org/freedesktop/systemd1/unit/pawcycle_2dproduction_2dhttps_2drenew_2eservice',
+                         'org.freedesktop.systemd1.Service', 'Environment', 'EnvironmentFiles'])
+        self.assertFalse(self.host.journal.exists())
+
+    def test_environment_overrides_and_incomplete_typed_observations_fail_closed(self):
+        for reply in (b'as 1 "FIXTURE=value"\na(sb) 0\n',
+                      b'as 0\na(sb) 1 "/fixture.env" false\n',
+                      b'as 0\na(sb) 1 "/fixture.env" true\n',
+                      b'', b'as 0\n', b'a(sb) 0\n', b'as 0\nas 0\n',
+                      b'as 0\na(sb) 0\nas 0\n', b'invalid\n', b'\xff'):
+            with self.subTest(reply=reply):
+                self.runner.environment_reply = reply
+                with self.assertRaisesRegex(Refused, '^UNIT_OVERRIDE$'):
+                    self.host.apply()
+                self.assertEqual(self.runner.timer, 'active')
+                self.assertFalse(self.host.journal.exists())
+                self.stopped()
+
+    def test_missing_duplicate_malformed_unit_properties_fail_closed(self):
+        original = self.host.system
+        raw = original('show', transition.SERVICE, '--all', '-pFragmentPath', '-pExecStart')
+        for reply in (b'', raw.replace(b'DropInPaths=\n', b''),
+                      raw.replace(b'Type=oneshot\n', b''),
+                      raw+b'DropInPaths=\n', raw+b'invalid\n'):
+            with self.subTest(reply=reply):
+                self.runner.unit_reply = reply
+                with self.assertRaisesRegex(Refused, '^UNIT_OBSERVATION$'):
+                    self.host.apply()
+                self.assertFalse(self.host.journal.exists())
+                self.assertEqual(self.runner.timer, 'active')
+
+    def test_environment_observation_command_failure_and_timeout_prevent_mutation(self):
+        for target in ('unit_reply', 'environment_reply'):
+            for reason in ('COMMAND_FAILED', 'COMMAND_TIMEOUT'):
+                with self.subTest(target=target, reason=reason):
+                    setattr(self.runner, target, Refused(reason))
+                    with self.assertRaisesRegex(Refused, '^'+reason+'$'):
+                        self.host.apply()
+                    self.runner.unit_reply = None
+                    self.runner.environment_reply = b'as 0\na(sb) 0\n'
+                    self.assertFalse(self.host.journal.exists())
+                    self.assertEqual(self.runner.timer, 'active')
+                    self.stopped()
+
+    def test_environment_override_race_at_postflight_is_incident_without_timer_restart(self):
+        original = self.host.postflight
+        def drift():
+            self.runner.environment_reply = b'as 1 "FIXTURE=drift"\na(sb) 0\n'
+            original()
+        with patch.object(self.host, 'postflight', side_effect=drift):
+            with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+                self.host.apply()
+        self.assertEqual(self.runner.timer, 'inactive')
+        self.assertFalse((self.host.runtime/'current').exists())
+        self.assertEqual(self.host.fds, [])
+        self.assertEqual(json.loads(self.host.journal.read_bytes())['phase'], 'incident')
+        self.assertNotIn(['/usr/bin/systemctl', 'start', transition.TIMER], self.runner.calls)
 
     def test_real_supervisor_lock_contention(self):
         fd = os.open(self.host.renewal, os.O_RDWR)

@@ -234,3 +234,26 @@ python3 infra/production/test-trust-boundary-transition.py -v
 기존15개 rehearsal에 실제 Supervisor/parser/verifier의 Source/Env/Docker 합성 통합 검증을 연결한다. deploy→renewal 경합·FD 해제, owner/ACL·inode drift·symlink/hardlink, CLOEXEC, fchmod0600 inode/bytes 보존, 부분 fsync 실패, subprocess timeout·SIGTERM·잔존 child 회수, quote/escape/중복/누락/unknown·DB 의미·override·effective env 불일치·Secret redaction, marker/current 중단·Incident 재시도 거부를 검증한다. 실제 Docker Compose CLI의 `config`는 daemon/Container 생성 없이 합성 Env에서 실행한다. 구버전 exec9>의 truncate 위험도 합성 Lock에서만 재현한다. 신규 fixture는 기존 Production Contract CI contracts lane에 연결한다.
 
 범위 한계: 합성 Docker metadata와 실제 Compose config는 실행 Production Backend/JVM·외부 설정·DB 의미나 실제 갱신을 입증하지 않는다. fsync 오류 주입·프로세스 중단도 전원 단절 durability 증거가 아니다. `recover`는 read-only journal 판정으로 crash 이후 mutation을 자동 복구하지 않는다. 담당자가 실제 phase·Lock/script/current/timer를 재관측하고 별도 Incident/복구 승인을 받아야 하며, root 경계를 약화시키거나 구버전script를 재활성화하지 않는다. 기존 Release47/CD22/Renewal/Catalog/Auth/Production Contract 및 PR stdin validation 결과와 최신 HEAD CI는 PR에 기록한다.
+
+## 12. OPS-G0-T2A-003 — Unit 관측 교정과 운영 인수인계
+
+`SERVICE_ENV_OVERRIDE: FAIL`만으로 실제 Override가 존재한다고 판단하지 않는다. [systemctl 공식 문서](https://www.freedesktop.org/software/systemd/man/255/systemctl.html)는 기본 출력의 빈 속성 생략과 `--all`을 설명하지만, [systemd 255 EnvironmentFiles printer](https://github.com/systemd/systemd/blob/v255/src/systemctl/systemctl-show.c#L1168-L1184)는 배열 항목마다 출력하므로 빈 배열은 `--all`에서도 행이 없다. 로컬 WSL systemd 255.4에서 기존 systemd-journald.service를 읽기만 한 재현 결과는 기본/`--all` 모두 `Environment=` 존재·`EnvironmentFiles` 행 부재, D-Bus의 두 속성은 각각 `as 0` / `a(sb) 0`이었다. 이는 Repository의 오거부 재현이며 OCI의 실제 Unit 설정에 대한 증거가 아니다.
+
+Supervisor는 일반 Unit 속성을 `show --all`로 읽고 필수 속성 누락·중복·잘못된 행을 거부한다. Service의 Environment/EnvironmentFiles는 systemd에 포함된 `/usr/bin/busctl --system get-property`로 고정 Service object/interface에서 함께 읽어 정확한 두 typed empty array만 허용한다. `busctl` binary와 resolve된 경로에도 기존 root 보호 검사를 적용한다. 별도 package 설치나 D-Bus mutation은 수행하지 않는다. binary 부재·권한/명령 실패·timeout·누락·타입/출력 오류·실제 항목 존재는 모두 STOP이다. EnvironmentFile의 ignore_errors=true도 허용하지 않는다. 원시 출력은 비공개 메모리에만 유지하고 Packet/terminal/PR에는 값·파일 경로·Secret을 출력하지 않는다.
+
+읽기 전용 진단은 승인된 운영자가 설치된 **동일 SHA의** `Transition.unit_contract()`를 private capture로 실행하거나 준비된 Packet으로 §8.2 preflight를 실행하고 고정 PASS/FAIL만 남긴다. 초안의 `quiescence_confirmed=false`를 검사 통과 목적으로 true로 바꾸지 않는다. 초안은 승인 Packet이 아니며 `validate_packet()`에서 QUIESCENCE 거부되는 것이 정상이다. Unit 단독 검사 PASS도 전체 preflight 또는 Apply 승인으로 해석하지 않는다. 기존 외부 Packet 생성 도구의 bytes·설치 버전은 이 저장소에서 관측하지 않았으므로 별도 검토 대상이다.
+
+### Artifact와 Packet 재준비
+
+- 이번 PR HEAD는 검토·CI 대상이다. **운영 Source SHA는 아직 확정되지 않았다.** 병합 승인 후 실행 직전 `refs/heads/main`의 정확한40자리 SHA와 그 SHA의 Repository Validation 성공을 재확인해 `source_sha=main_sha`로 고정한다. 시작 baseline `2e6432895524159f9a6eaac0ca7e75e9d9153941`이나 미병합 PR HEAD를 새 운영 Source로 사용하지 않는다. main이 다시 이동하면 실행 입력·CI·Packet을 재확인한다. 기존 실행 image의 `release_sha`는 이 Source 교정 때문에 바꾸지 않는다.
+- 별도 Root Artifact provisioning 승인을 받아 `/var/lib/pawcycle-transition/source/<승인 SHA>`의 독립 checkout을 새로 준비한다. 정확한 origin/HEAD/main·clean tree/fsck·모든 ancestor/ACL/owner/mode/single-link 및 공개 bytes를 확인한다. tool directory의 `trust_transition.py`와 `production_env.py`도 그 SHA의 bytes로 함께 검증하고 공개 hash를 다시 고정한다. busctl의 존재·root 보호·읽기 권한을 확인한다. 자동 설치/교체, opc checkout 승격, unit 변경/daemon-reload는 하지 않는다.
+- 기존 SHA artifact, 실패한 초안, 설치 도구의 이전 bytes/metadata는 private evidence로 보존한다. 기존 artifact를 새 SHA 이름으로 덮어쓰거나 이름만 변경하지 않는다. 미완성 Source/bundle/current/journal/`.new`/`renewal.old`/임시 script가 있으면 실제 phase와 identity를 관측해 STOP하고 별도 Incident 판단으로 넘긴다. 재시도를 위해 자동 삭제하지 않는다. 정상0600 renewal lock을0644로 되돌리거나 inode를 교체하지 않는다.
+- Source/tool bytes·설치 script identity·공개 hash가 바뀌거나 작업 창/인증서/파일 identity/snapshot/timer/승인 범위가 달라지면 초안을 새로 작성한다. `snapshot` 전체, allowlist의9항목 identity, env/deploy/renewal/설치 script identity, 공개 cert notAfter, 최대1시간 창·복구 여유·종료 후 최소86400초 인증서 여유를 새로 관측한다. env값/hash는 기록하지 않는다. 이전 PASS를 새 Artifact/Packet에 이월하지 않는다. Quiescence의 writer/manual/sudo/자동화 재진입 배제와 담당자·Abort 시각을 실제 확인하고 **사용자의 별도 운영 승인 후에만** 승인 reference 및 true를 활성 Packet에 반영한다. 이번 Repository 작업은 approval.json 생성·활성화를 수행하지 않는다.
+
+### 남은 운영 Gate와 STOP/Recovery
+
+순서는 새 Artifact/초안 관측 → 읽기 전용 준비 확인 → **별도 운영 승인** → 활성 Packet의 전체 Preflight 재확인 → Apply → 두 FD 아래 Postflight → 역순 Lock 해제 → 안전한 갱신기 Gate와 Timer 복귀·durable complete 확인이다. Preflight PASS 이후에도 Apply는 같은 입력을 재검증한다. Unit 관측은 원자적인 운영 차단 장치가 아니며 Quiescence가 필수다. 중간 Override는 Postflight에서 Incident로 거부하며 임의 privileged 재진입을 완전히 배제했다는 주장은 하지 않는다.
+
+관측 불완전·실제 Override·경합·identity/runtime/source drift·기한/인증서 여유 부족이면 다음 단계 금지다. mutation 전에는 기존 서비스/Timer를 유지한다. mutation 이후에는 Incident로 인계하며 current disconnect나 FD 해제만으로 복구 성공을 선언하지 않는다. Timer start 응답 유실·재관측 실패는 §8.2의 유한 stop/관측 인계이며 이미 시작된 renewal을 강제 종료하지 않는다. read-only recover는 자동 복구가 아니다. DB migration/restore·인증서/volume 복구로 확대하지 않는다.
+
+G0-T2A 완료 뒤 **별도 Nginx Bootstrap 승인·검증·Proxy-only Recovery**, 그 뒤 **별도 Release Adopt Gate**를 따른다. Source 설치나 bundle/current 전환은 실행 컨테이너 env 변경·DB 호환성·rollback 가능성을 입증하지 않는다. OCI Unit/ACL/Source/snapshot/인증서/Quiescence, 실제 Compose/effective env·JVM 설정, Nginx fingerprint, DB epoch/Flyway·baseline/capacity와 복구 입력은 실행 시점 미확인이면 계속 STOP이다. Production CD 활성화/실제 배포는 별도 승인 전 OFF를 유지한다. 이 작업은 Production Verified가 아니다.
