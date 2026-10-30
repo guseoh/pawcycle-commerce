@@ -174,7 +174,7 @@ class Controller:
                 time.time() < p["expires_unix"], "policy absent, OFF, expired or unapproved")
         require(p["stop_on"] == ["gate-failure", "activation-failure", "transition", "db-runtime-drift"] and
                 p["notifications"] == "journal", "stop/notification policy is incomplete")
-        for name in ("oci-cd.py", "oci-release.py", "classify-production-image-changes.py"):
+        for name in ("oci-cd.py", "oci-release.py", "production_env.py", "classify-production-image-changes.py"):
             installed = HERE / name
             release.protected(installed)
             require(release.digest(installed.read_bytes()) == p["controller_sha256"][name], "installed controller drift")

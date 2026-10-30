@@ -18,6 +18,7 @@ import stat
 import subprocess
 import tempfile
 import time
+from production_env import parse as parse_canonical, projection, serialize, Refused as EnvRefused
 
 SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -249,8 +250,15 @@ class Host:
                 "runtime bundle escapes protected directory")
         protected(bundle, directory=True, mode=0o700)
         self.backend_env = protected(bundle / "backend.env", mode=0o600)
-        read_private(bundle / ".complete")
+        completion = read_private(bundle / ".complete")
         self.env_hash = digest(self.backend_env.read_bytes())
+        if completion == b'g0-t2a-canonical-v1\n':
+            try:
+                canonical = parse_canonical(self.backend_env.read_bytes())
+            except EnvRefused:
+                raise Refused('canonical runtime contract mismatch') from None
+            require(read_private(bundle / 'release.env') == serialize(projection(canonical, 'release')),
+                    'canonical release projection mismatch')
         # Inspect injection shape, never source shell code or echo values.
         entries = {}
         for line in self.backend_env.read_text().splitlines():

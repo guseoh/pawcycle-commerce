@@ -75,6 +75,7 @@ class ControllerTests(unittest.TestCase):
         self.code = self.root / "installed"
         self.code.mkdir(mode=0o700)
         for name, path in (("oci-cd.py", HERE / "oci-cd.py"), ("oci-release.py", HERE / "oci-release.py"),
+                           ("production_env.py", HERE / "production_env.py"),
                            ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
             shutil.copyfile(path, self.code / name)
             (self.code / name).chmod(0o600)

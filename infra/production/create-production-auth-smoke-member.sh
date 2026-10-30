@@ -308,8 +308,11 @@ RUNTIME_CURRENT="$(readlink -f -- "$RUNTIME_DIR/current" 2>/dev/null || true)"
   || die "runtime bundle permissions are invalid"
 BACKEND_ENV_FILE="$RUNTIME_CURRENT/backend.env"
 COMPLETE_FILE="$RUNTIME_CURRENT/.complete"
-validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
 validate_protected_file "$COMPLETE_FILE" "runtime completion marker"
+if [[ -f "$COMPLETE_FILE" && "$(<"$COMPLETE_FILE")" == 'g0-t2a-canonical-v1' ]]; then
+  BACKEND_ENV_FILE="$RUNTIME_CURRENT/auth.env"
+fi
+validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
 validate_backend_env_contract || die "Backend runtime contract is incomplete"
 
 git cat-file -e "${RELEASE_SHA}^{commit}" 2>/dev/null || die "approved release commit is unavailable"

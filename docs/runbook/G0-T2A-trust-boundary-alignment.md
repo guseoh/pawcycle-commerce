@@ -23,7 +23,7 @@ Release Source는 보호된 ancestor 아래 새 root-owned 검증 checkout으로
 
 - Release `initial()`은 root Source/state/runtime, HTTPS adoption/pending, `runtime/current → .bundle.*`, env/.complete의 root 0600을 요구한다. `runtime_check()`는 세 서비스의 config_files 파일과 Proxy 실제 bind를 각각 검사한다. proxy nginx bytes가 승인값이어도 opc Compose 경로를 무시하지 않는다.
 - 갱신기는 Source나 backend.env를 소비하지 않고 실행 Proxy identity·mount·인증서 named volumes·HTTPS state를 검사한다. renewal.lock만 획득한다. Release는 deploy.lock 다음 renewal.lock을 nonblocking으로 획득한다. 순서를 바꾸거나 lock을 복제하지 않는다.
-- catalog/auth 도구는 같은 state/deploy.lock을 사용하고 `--runtime-dir`의 bundle을 읽는다. catalog는 datasource host/port/SSL까지 요구하는 9-key 계약, auth 도구는 6-key와 다른 직렬화 제한이 있다. 하나의 env를 두 도구가 모두 수용한다고 가정하지 않는다. 실제 사용할 도구별 env validation을 별도 통과시키며 실패 시 별도 최소 계약 정렬 Delta 전 STOP한다.
+- catalog/auth 도구는 같은 state/deploy.lock을 사용한다. `g0-t2a-canonical-v1` marker bundle은 Canonical9-key `backend.env`에서 검증된 `catalog.env`9-key, `auth.env`6-key, `release.env`6-key를 읽는다. 공통 `production_env.py`가 unknown/missing/중복 key와 의미 차이를 거부하며 값은 추가·추론하지 않는다. 기존 legacy bundle/running-container 경로는 그대로 유지한다. Catalog/Auth의 기존 streamer는 automation batch/delay를 제거하고 enabled=false를 강제하는 계약을 유지한다.
 - 진단의 `PAWCYCLE_STATE_DIR`/`--state-dir`, 운영자 cron·sudo·unit·작업 디렉터리·Source 업데이트 주체와 관측성 identity 경로 의존성도 목록화한다. sibling observability/metrics-proxy 컨테이너와 인증서 volumes는 전환 대상이 아니다.
 
 ## 3. Runtime Bundle 설치·검증 계약
@@ -31,9 +31,9 @@ Release Source는 보호된 ancestor 아래 새 root-owned 검증 checkout으로
 현재 `runtime/backend.env`를 source/echo하거나 환경변수 내용·raw inspect·secret hash를 Chat/PR/로그에 출력하지 않는다. 값과 byte hash는 비공개 프로세스 메모리 안에서만 대조하고 evidence에는 PASS/FAIL만 남긴다.
 
 1. 승인된 작업 창에 env 작성자를 중지/직렬화하고 원본 regular/no-symlink/single-link·opc 0600, inode·size·mtime를 확인한다. 부모가 opc이면 읽는 동안에도 교체될 수 있으므로 열린 FD의 fstat와 재검증 및 쓰기 중단 근거가 필요하다. 변경이 감지되면 Abort한다.
-2. root 보호 runtime 안에 새 `.bundle.<unique>` directory 0700을 만들고 원본 bytes를 새 regular `backend.env` root 0600으로 복사한다. 원본을 이동·chown·hardlink하지 않는다. 원본과 사본의 byte hash·길이를 비공개 비교하고 원본 안정성도 재확인한다. 파싱/복사 실패는 values를 출력하지 않는다.
+2. root 보호 runtime 안에 새 `.bundle.g0-t2a-<packet id>` directory 0700을 만들고 원본 bytes를 새 regular `backend.env` root 0600으로 복사한다. 원본을 이동·chown·hardlink하지 않는다. 원본/사본은 비공개 bytes 비교하고, 세 Consumer projection을 추가한 뒤 원본 안정성을 재확인한다. 파싱/복사 실패는 values를 출력하지 않는다.
 3. Release의 필수 datasource URL/username/password와 automation enabled(boolean)/batch/fixed-delay(양의 정수), 중복 key·누락·빈 값·인용 및 실제 Compose env_file 파싱을 검증한다. datasource host/port/SSL은 사용하는 도구 계약과 대조한다. 기존 실행 컨테이너의 effective env와 semantic 동등성도 비공개 비교한다. shell eval/source는 금지다. 단순 hash 일치는 실제 주입값 검증을 대신하지 않는다.
-4. 검증 결과·원본/사본 bytes 일치 판정·검증기 버전·승인 reference를 root 보호 evidence에 결합한다. **모든 검증 성공 후에만** `.complete` root 0600 regular single-link를 생성한다. CLI는 marker 내용의 의미를 입증하지 않고 파일 보호만 검사하므로 marker는 승인된 검증 절차의 완료 증거다. 빈 marker를 미리 touch하여 통과시키지 않는다.
+4. 검증 결과·원본/사본 bytes 일치 판정·검증기 버전·승인 reference를 root 보호 Packet/journal에 결합한다. **모든 검증 성공 후에만** `g0-t2a-canonical-v1` 한 줄의 `.complete` root0600을 생성한다. Release는 Canonical과 release projection 일치도 확인한다. marker를 미리 touch하거나 비공개 env hash를 evidence에 쓰지 않는다.
 5. env·marker 파일을 fsync하고 bundle directory를 fsync한다. 같은 runtime directory 안의 임시 symlink를 완료된 bundle로 연결한 뒤 rename으로 `current`를 원자 전환하고 runtime directory를 fsync한다. 최종 `current` resolve가 runtime 바로 아래 완료 bundle인지 확인한다. 기존 current가 없었던 사실과 기존 파일·bundle은 보존한다.
 6. 이 연결은 이미 실행 중인 Backend의 env를 바꾸지 않는다. 설치 후 보호 경계·hash·marker/필수 key와 기존 서비스 identity/health를 재확인한다. 동등성 검증과 Source/Label/Nginx가 미완료면 Adopt는 계속 STOP이다.
 
@@ -124,7 +124,34 @@ chmod 0700 -- /opt/pawcycle/runtime
 
 **정규 순서:** Quiescence → 최소 경로 보호 → deploy 획득 → renewal 획득 → Source 준비·검증 → renewal FD 0600·script 설치 → bundle 검증·전환 → postflight → renewal/deploy 역순 해제 → timer 복귀. §5와 §8~10 모두 이 순서를 따른다. Source 설치·env 복사는 두 Lock 획득 전에 금지한다.
 
-운영 감독 호출의 입력은 비공개 승인 Packet의 절대 경로/승인 식별자, UTC 작업 종료 시각, 단조시계 기준 전체 잔여시간, 단계별 timeout, 고정된 Source origin/SHA, 기존 Lock의 device:inode·UID:GID·mode·nlink이다. stdin에는 Secret을 받지 않고 env를 argv/envp로 전달하지 않는다. 검토된 root Python과 표준 라이브러리만 사용하며 shell=True/eval/source, opc executable과 config 로딩을 금지한다. 현재 이 호출을 제공하는 Production executable은 **없다**. 아래 계약을 구현·검토한 도구의 정확한 절대 경로/버전/hash와 격리 증거가 Packet에 없으면 **§8.1의 timer 중지·metadata 변경부터 Apply STOP**이다. fixture 실행을 그 도구로 대체하지 않는다.
+운영 도구는 `trust_transition.py`와 `production_env.py` 두 파일이다. 검토된 root 보호 tool directory에 함께 설치한 정확한 bytes/hash를 별도 승인한다. Python은 -B로 bytecode 쓰기를 막고 core dump를 비활성화한다. stdin을 사용하지 않고 FD로 Secret을 읽으며 출력은 고정 PASS/FAIL code뿐이다. 아래는 **저장소 준비 결과의 호출 계약**이며 이번 Task에서 Production에 실행하지 않는다.
+
+```bash
+/usr/bin/env -i PATH=/usr/bin:/bin LANG=C /usr/bin/python3 -E -s -B /var/lib/pawcycle-transition/tools/trust_transition.py preflight --packet /var/lib/pawcycle-transition/approval.json
+# 독립 운영 승인 후에만:
+/usr/bin/env -i PATH=/usr/bin:/bin LANG=C /usr/bin/python3 -E -s -B /var/lib/pawcycle-transition/tools/trust_transition.py apply --packet /var/lib/pawcycle-transition/approval.json
+# crash/incident의 읽기 전용 journal 판정; 자동 복구/재시도 아님:
+/usr/bin/env -i PATH=/usr/bin:/bin LANG=C /usr/bin/python3 -E -s -B /var/lib/pawcycle-transition/tools/trust_transition.py recover --packet /var/lib/pawcycle-transition/approval.json
+```
+
+`preflight`는 파일/Timer/Lock을 변경하지 않으며 Packet·현재 identity·Canonical syntax·열린 writer·인증서·runtime 기준을 확인한다. Source 설치/Root 경계 전환 후에만 가능한 전체 Compose/effective-env 검증까지 성공했다는 뜻은 아니다. `apply`는 재검증 후 고정 순서로 한 번만 진행한다. `recover`는 journal complete만 `PASS:RECOVERY_RECORD_ONLY`로 읽고, 다른 phase는 exit4 `FAIL:INCIDENT`를 반환한다. 실제 복구 성공을 주장하지 않는다.
+
+Packet은 `/var/lib/pawcycle-transition`0700 바로 아래 root:root0600 단일 regular file(최대64KiB)이다. JSON schema=1의 정확한 필드만 허용하며 중복 JSON key·Secret·env값·민감 hash를 넣지 않는다. 필수 입력은 다음과 같다. 예시 값/실측 Packet은 저장소에 보관하지 않는다.
+
+| 필드 | 입력·검증 계약 |
+| --- | --- |
+| `id`, `approval_reference`, `schema` | id는 1~48자리 lowercase 영숫자/hyphen; 승인 reference는 비어 있지 않은 독립 운영 승인 근거. 단순 id/파일 존재만 승인으로 간주하지 않음 |
+| `source_sha`, `main_sha`, `release_sha` | 40자리 lowercase SHA. Source SHA=main SHA, 독립 artifact의 origin은 고정 guseoh/pawcycle-commerce.git. 기존 image tag의 release SHA는 별도 고정 |
+| `compose_sha256`, `renewal_sha256`, `installed_sha256`, `nginx_sha256`, `tool_hashes` | 64자리 lowercase **공개 코드/설정 bytes** hash. tool_hashes는 두 도구 파일명만 허용. env hash 금지 |
+| `not_before_unix`, `expires_unix`, `recovery_seconds`, `command_timeout_seconds` | Unix 작업 창 최대1시간, 남은 작업시간에서 복구 여유(최소30초)를 뺀 단조시계 deadline. 명령 timeout1~120초. 만료/부족이면 STOP |
+| `certificate_not_after_unix`, `minimum_certificate_seconds` | 실제 공개 cert.pem을 OpenSSL로 확인해 expiry 완전 일치. 작업 종료 후 최소86400초 이상 인증서 여유. 다른 정책이면 새 승인 필요 |
+| `quiescence_confirmed`, `timer` | 모든 opc/sudo/manual deploy/env writer/sibling 운영자의 중단·재진입 배제 승인이 true. timer는 기존 active/enabled만 이번 전환에서 지원. service inactive/MainPID0/job 없음, env/Compose/Nginx 열린 writable FD·mapping 없음. root privileged 재진입 배제는 운영 책임이며 기술적으로 추정하지 않음 |
+| `changes` | `allowed_changes()`의 정확한8개 경로를 key로 사용: base, runtime, source, source/repo, source/repo/infra, source/repo/infra/production, 그 Compose 파일, runtime/nginx-https.conf. 값은 `[dev,inode,uid,gid,st_mode,nlink,size,mtime_ns,ctime_ns]`. 추가/누락·ACL·symlink·drift 거부. root 소유로 개별 FD fchown/fchmod만 수행 |
+| `env_identity`, `deploy_identity`, `renewal_identity`, `installed_identity` | 위와 같은9항목. 원본 env0600·단일 regular file, deploy root0600, renewal root0644, 설치 script root0755. 원본 env owner/bytes 유지. Lock 삭제·생성·truncate 금지 |
+| `snapshot` | preflight의 private `snapshot()` 형태로 모든 컨테이너 ID/image/ref/StartedAt/status/health/restarts·Mounts·project/service/config_files·network ID/endpoint ID를 고정. 세 앱은 Healthy이며 기존 Label 정확한 경로 유지. DB/sibling 포함 전체 snapshot 비교 |
+| `backend_image`, `frontend_image`, `compose_version`, `exclusions` | 기존 image repository·정확한 Compose version. 비교 제외는 [] 또는 승인된 [HOSTNAME]만 가능. credential/profile/Auth/automation 제외 불가 |
+
+사전 입력은 CD enable sentinel 부재, Release State/transition/pending 부재, 기존 current·target bundle·새 Root Source·journal/미완성 journal 부재를 요구한다. 갱신 unit은 승인 Source의 unit bytes 및 loaded FragmentPath/ExecStart/User/Group/oneshot와 일치하고 drop-in/Environment/EnvironmentFiles가 없어야 한다. manager 환경의 State/Lock 경로·shell 주입 override도 거부한다. 모든 권한 변경은 위 allowlist 내부이며 tool/Packet/staging 준비는 별도 승인된 root artifact provisioning이다. 이 조건과 실제 운영 승인·중단/복구 담당자가 없으면 **timer 중지·metadata 변경부터 Apply STOP**이다.
 
 1. 보호된 ancestor와 Packet identity를 확인한 기존 Lock만 `os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)`로 연다. O_CREAT/O_TRUNC 금지. deploy0600 → renewal0644 순서로 FD fstat와 path lstat의 regular·root UID/GID·nlink1·device:inode·mode를 대조한다. 열기 전/후 drift, unsafe ancestor/ACL, bytes 변화는 STOP이다.
 2. 각각 `fcntl.flock(fd, LOCK_EX | LOCK_NB)` 후 identity를 다시 대조한다. renewal 획득 실패 시 이미 연 FD를 역순 close하고 Source/권한 변경 없이 Abort한다. 대기 retry·다른 Lock 경로 사용 금지. 외부 자식에게 FD를 넘기지 않으며 subprocess는 close_fds=True, pass_fds=(), shell=False, capture_output=True를 사용한다.
@@ -132,22 +159,15 @@ chmod 0700 -- /opt/pawcycle/runtime
 4. SIGINT/SIGTERM은 다음 단계 금지로 전환하고, 실행 자식의 종료를 확인한 뒤 같은 FD 아래 복구·검증하고 finally에서 renewal→deploy close한다. fsync 실패 등 부분 변경은 원복 성공으로 숨기지 않는다. SIGKILL/crash는 kernel FD 해제만 보장하므로 timer는 계속 중지, phase와 실제 current/Lock/script를 새 preflight에서 재관측한다. 자동 재개·timer 재시작 금지.
 5. 정상 해제 조건은 postflight PASS와 복원 가능한 상태의 기록이다. 실패 해제 조건은 후속 mutation 차단·자식 종료·관측된 부분 상태 및 복구/Incident 인계 기록이다. 두 경우 모두 close는 finally로 수행한다. Lock 파일은 unlink/rename/truncate하지 않는다. 실패 상태에서 kernel 해제를 복구 성공으로 해석하지 않는다.
 
-단계 결과는 `PASS:<고정 단계명>` 또는 `FAIL:<고정 reason code>`만 반환한다. exit0은 정의된 모든 검증 성공, exit2는 입력/identity/의미/경합 거부, exit3은 timeout/중단, exit4는 부분 변경·I/O·복구 불명확이다. raw stdout/stderr·exception·env/hash 출력은 금지한다. 이 exit 계약은 향후 감독 도구의 요구 계약이며 구현 완료 주장이 아니다.
+최종 출력은 `PASS:PREFLIGHT`, `PASS:TRANSITION`, `PASS:RECOVERY_RECORD_ONLY` 또는 `FAIL:<고정 reason code>` 한 줄이다. exit0은 해당 명령 검사 성공, exit2는 mutation 전 입력/identity/의미 거부, exit3은 mutation 전 timeout/중단, exit4는 INTERNAL/INCIDENT다. Apply mutation 이후 모든 실패·중단은 exit4 Incident로 수렴하고 timer를 자동 재개하지 않는다. journal은 root0600 atomic/fsync phase 기록뿐이며 raw stdout/stderr·exception·env/hash를 담지 않는다.
 
 ### 8.3 두 FD 아래 Source 준비·검증 → 권한 정렬·script 설치
 
-정확한 origin은 `https://github.com/guseoh/pawcycle-commerce.git`이다. 이번 설계 기준 main은 `a3a8a6f5726b79993f19ffea3ca21e394887c440`(#476), 직전 #475는 `fe75e966`이다. **운영 승인 SHA는 실행 직전 main·CI·계약을 다시 확인해 40자리로 고정**한다. main이 바뀌면 이 문서의 SHA로 자동 진행하지 않는다.
+정확한 origin은 `https://github.com/guseoh/pawcycle-commerce.git`이다. **운영 승인 SHA는 이 Task의 PR 병합 후 실행 직전 main·CI·계약을 다시 확인해 40자리로 고정**한다. Supervisor는 승인된 source_sha=main_sha와 실제 ls-remote main의 완전 일치를 요구한다. 이전 #476/#477 SHA로 자동 진행하지 않는다.
 
-승인 후 **두 Lock을 유지한 감독 프로세스의 bounded subprocess로만**, root-owned 새 빈 directory를 생성하여 root의 검토된 Git binary와 깨끗한 HOME/config/template 환경에서 clone한다. 기존 opc checkout, Git config/include, hooks, alternate object store, worktree, executable을 재사용하지 않는다. 아래는 감독 내부 argv의 참고 예시이며 shell에서 따로 실행하지 않는다. `CLEAN_HOME`, `ROOT_SOURCE`, `APPROVED_SHA`는 보호된 정확한 승인 경로/값이어야 한다.
+사전 승인 artifact는 `/var/lib/pawcycle-transition/source/<source_sha>`의 독립 root checkout이다. operator가 깨끗한 config/template/hook 환경으로 별도 확보한 입력이며 기존 opc `.git`를 복사/chown한 것이 아니어야 한다. Supervisor는 **두 Lock을 유지한 상태에서만** 이 입력의 모든 ancestor/file/ACL·single-link/root 소유를 확인하고 `/opt/pawcycle/root-source/<source_sha>`로 새 copytree를 생성·fsync한다. 기존 opc checkout을 Git executable/metadata 신뢰 Source로 사용하지 않는다. 운영 Source 설치 전 기존 target 부재를 요구하며 재귀 chown을 하지 않는다. artifact provisioning 자체도 이 저장소 작업의 운영 승인이 아니다.
 
-```bash
-env -i PATH=/usr/bin:/bin HOME="$CLEAN_HOME" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -c core.hooksPath=/dev/null clone --no-checkout --template= https://github.com/guseoh/pawcycle-commerce.git "$ROOT_SOURCE"
-env -i PATH=/usr/bin:/bin HOME="$CLEAN_HOME" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$ROOT_SOURCE" -c core.hooksPath=/dev/null checkout --detach "$APPROVED_SHA"
-```
-
-clone 인증정보는 출력하지 않는다. Source는 새로 생성하고 기존 checkout은 chown하지 않는다.
-
-읽기 전용 검증: origin 완전 일치, `rev-parse HEAD`와 승인 SHA 일치, `merge-base --is-ancestor "$APPROVED_SHA" refs/remotes/origin/main` 성공, `status --porcelain` 공백, `fsck --full` 성공을 확인한다. 독립 Git object의 Compose/Nginx/renewal script/migration tree와 작업 tree bytes를 비교하고 symlink/submodule/alternate를 거부한다. Source·`.git`·ancestor의 UID/GID와 비쓰기 경계를 확인한다. 기존 Label 파일은 승인 Compose bytes와 일치해야 한다. 내용 수정이 필요하거나 Label inode/문자열 보존이 불가능하면 STOP하고 Backend/Frontend recreate 별도 승인 Delta로 넘긴다.
+Source 검증: origin 완전 일치, `rev-parse HEAD`=승인 SHA, 승인 main 조상, `status --porcelain` 공백, `fsck --full`, remote main 완전 일치를 확인한다. Compose/renewal script는 승인 Git object bytes 및 Packet hash와 대조한다. `.git`/Source tree의 root 소유·비쓰기·single-link·ACL/symlink 거부를 확인한다. 기존 Label Compose bytes는 새 Source와 같아야 하며 기존 Nginx는 독립 승인 hash와 비교한다. label path/inode/bytes 보존 불가면 STOP하고 Backend/Frontend recreate Delta로 넘긴다. Source/clone를 명분으로 DB migration이나 서비스 재생성을 하지 않는다.
 
 Source 실패 시 미완성 Source는 격리·보존하고 script/env/current는 건드리지 않는다. Lock 획득부터 Source 완료까지 경로/FD identity와 bytes가 동일해야 한다. 작업 창을 늘리거나 Lock을 놓았다 재획득하여 이어서 적용하지 않는다. 재시작은 새 Packet/preflight로 돌아간다.
 
@@ -163,24 +183,24 @@ Source 검증 성공 후 §8.2에서 이미 연 두 FD를 재검증하고 **rene
 
 ## 9. Bundle 실행 Packet과 중단 복구 (Task 4)
 
-§3 조작도 승인 후 변경이다. 실제 parser/Compose/effective-env 검사를 수행할 비공개 read-only verifier는 이번 PR에서 구현하지 않는다. 따라서 아래 계약과 fixture가 있어도 **bundle Apply STOP**이다. 단순 copy, synthetic fixture PASS, Release 실행을 검증으로 대체하지 않는다. verifier의 검토된 executable/버전/hash·실패 경로 증거와 아래 항목의 PASS가 Packet에 결합되기 전에는 `.complete` 생성·current 연결을 금지한다.
+§3 조작도 승인 후 변경이다. 실제 verifier는 `production_env.py`의 `stable_read/parse/projection/verify_effective`와 `Transition.verify_bundle()`이다. Supervisor 내부에서만 호출하여 Secret FD를 subprocess에 상속하지 않는다. 원본/후보 root 보호 경로를 FD로 열고 동일 bytes·identity를 검증한 뒤 실제 Compose JSON·image Config.Env·실행 Backend Config.Env를 메모리 비교한다. 전부 성공한 경우에만 Supervisor가 marker/current를 만든다. CLI PASS를 조작하여 외부에서 marker를 만드는 기능은 없다.
 
-비공개 verifier의 호출 입력은 보호된 원본/후보 env의 읽기 FD, 승인 Source/Compose·실행 binary 버전, 보간 입력 reference, 기대 Backend container/image identity, 필수 consumer 집합, 비교 제외 key의 승인 목록과 전체 deadline이다. 원시 env/값/hash는 argv/envp/stdin으로 전달하지 않는다. 비공개 root 프로세스 메모리에서만 처리하고 callback이나 subprocess 예외도 값이 아닌 고정 reason code로 변환한다. subprocess stdout/stderr는 capture한 뒤 파싱하고 버리며 core dump·debug logging을 비활성화한 검토된 환경이 필요하다.
+비공개 verifier의 입력은 보호된 원본/후보 env의 읽기 FD, 승인 Source/Compose·실행 binary 버전, 보간 입력 reference, 기대 Backend container/image identity, 비교 제외 key와 deadline이다. Secret·원시 env dump/hash는 argv/envp/stdin으로 전달하지 않는다. Compose에는 경로/image reference와 검증된 비밀이 아닌 automation3-key만 보간 envp로 전달한다. credentials는 보호된 env_file로만 읽는다. 비공개 root 메모리에서 비교하고 subprocess stdout/stderr·예외는 고정 code로 대체한다. core dump/debug logging을 비활성화한 환경이 필요하다.
 
 | 검사 | 정확한 성공 조건 / 실패 계약 |
 | --- | --- |
-| Parser | strict UTF-8, BOM/NUL/CR·중복/빈 key·빈 값·잘못된 quote/escape·지원하지 않는 개행/보간 거부. shell dotenv를 재구현하거나 source/eval하지 않는다. 승인 SHA의 Release parser, Catalog `decode_backend_env_value`/9-key validator, Auth 6-key validator 각각의 해석과 소비값을 독립 비교한다. 도구 실행 entrypoint는 DB/Container 작업을 하므로 검증 목적으로 실행하지 않는다. parser-only 추출이 없으면 STOP |
-| consumer 호환성 | Release의 필수6-key는 Catalog unknown-key 금지9-key·Auth unknown-key 금지6-key와 같지 않다. Catalog/Auth 동시 요구 시 현 계약은 하나의 env로 모두 만족할 수 없으므로 FAIL:CONSUMER_CONTRACT. key를 더하거나 제거해 통과시키지 않는다. consumer 제외는 명시적 승인과 별도 계약 정렬 Delta 없이 수행하지 않는다 |
-| Compose 해석 | 고정된 실제 Docker Compose binary/version으로 승인 Compose, `--env-file /dev/null`, project, `RELEASE_SHA`, image·Nginx·backend.env 경로 및 automation 보간을 동일하게 고정한다. `config --format json`만 사용하고 stdout/stderr를 비공개 capture한다. Compose가 실제 후보 FD의 bytes를 읽었는지 전후 identity/bytes 비교가 필요하며 경로 교체 가능성이 있으면 FAIL:SOURCE_DRIFT. Compose parser와 Release/Catalog/Auth의 의미 차이는 FAIL:PARSER_MISMATCH |
-| effective env | 후보 image Config.Env → env_file → Compose environment 우선순위로 예상 전체 map을 만든다. 실행 Backend Config.Env의 중복 key를 거부하고 전체 key 집합/값을 비교한다. datasource URL/host/port/SSL/credential, profile, automation, Auth/session 관련 key는 제외 불가. 나머지 image 기본 key도 기본적으로 비교하며 제외하려면 key별 비의미성 승인 근거가 필요하다. 이전/이후 container ID/image/StartedAt·원본 env 안정성이 같아야 PASS. 실행 중 JVM 내부 override·외부 설정의 의미까지 증명할 수 없으면 FAIL:EFFECTIVE_ENV_UNPROVEN |
-| 결과·예외 | stdout은 `PASS:BUNDLE_CHECK` 한 줄 또는 `FAIL:<고정 코드>` 한 줄만 허용. exit0은 모든 필수 검사 성공, exit2는 계약/파싱/의미/identity 실패, exit3은 timeout/중단, exit4는 I/O·예외/도구 실패. permission denied, invalid JSON/encoding, subprocess nonzero, 결과 누락, 지원하지 않는 Compose 버전/문법, 예외는 모두 FAIL이며 raw exception/환경 dump/hash 출력 금지 |
-| marker | exit0과 정확한 PASS 한 줄, 모든 필수 consumer 결과, 원본/사본 bytes 일치, root metadata/identity, 두 Lock/작업 창 유효성, 실제 Backend 불변이 한 Packet에 결합되어야 생성 가능. PASS 문자열만 주입하거나 fixture callback 성공으로 marker를 생성하지 않는다 |
+| Parser | 정확히 Catalog9-key의 single-quoted UTF-8 한 줄씩. BOM/NUL/CR·중복/빈 key·빈 값·comment·blank line·unknown/missing·잘못된 quote/escape·multiline 거부. escape는 apostrophe의 `\'`만 허용한다. 단순 unquoted 원본/다른 형식은 ENV_QUOTE로 STOP하며 자동 직렬화하지 않는다. datasource host/명시적 port와 jdbc:mysql URL host/port 일치, SSL mode allowlist/URL sslMode 일치, boolean 및 양의 정수 automation을 검증한다. source/eval 및 DB/Container 작업 entrypoint 실행 금지 |
+| consumer 호환성 | Canonical9-key 원본 bytes는 backend.env로 그대로 보존한다. 공통 검증 map에서 Release/Auth6-key와 Catalog9-key를 serialize하여 root0600 개별 projection을 만든다. 없는 값 생성·추론/unknown 키 허용 없음. 새 marker의 Consumer만 해당 projection을 사용한다. 기존 Catalog/Auth validator와 실행 streamer의 enabled=false 및 batch/delay 제외는 유지한다. 기존 legacy bundle 허용 범위는 확대하지 않는다 |
+| Compose 해석 | 고정된 실제 Docker Compose binary/version으로 승인 Compose, `--env-file /dev/null`, project, `RELEASE_SHA`, image·Nginx·backend.env 경로 및 automation 보간을 동일하게 고정한다. `config --format json`만 사용하고 stdout/stderr를 비공개 capture한다. 전후 후보 FD/경로 identity·bytes 비교 실패는 ENV_DRIFT, Canonical 해석과 Compose의 차이는 ENV_OVERRIDE로 거부한다 |
+| effective env | image Config.Env → env_file → Compose environment 우선순위로 전체 map을 만든다. 실행 Backend Config.Env 중복 key를 거부하고 전체 key 집합/값을 비교한다. 제외는 Packet 승인 HOSTNAME만 가능하며 datasource/profile/Auth/automation은 제외 불가. container ID/image/StartedAt와 원본 안정성이 같아야 성공한다. 이 검사는 Config.Env 동등성까지이며 실행 JVM 내부 override·외부 설정/DB 의미는 별도 운영 검증 Gate다 |
+| 결과·예외 | library 성공은 예외 없는 반환이며 별도 stdout/stderr가 없다. ENV_KEYS/ENV_QUOTE/ENV_ESCAPE/ENV_DATABASE/ENV_AUTOMATION/ENV_DRIFT/ENV_OVERRIDE/ENV_EFFECTIVE/ENV_EXCLUSION/COMPOSE_VERSION 등 고정 Refused만 반환한다. unexpected 예외도 CLI에서는 INTERNAL 또는 mutation 이후 INCIDENT로만 출력한다. invalid JSON/encoding, permission denied, subprocess nonzero/timeout, 누락/불일치는 전부 실패이며 raw exception/환경 dump/hash 출력 금지 |
+| marker | verifier 성공, Consumer projection bytes 일치, 원본/사본 bytes 일치, root metadata/identity, 두 Lock/작업 창 유효성, 실제 Backend 불변 이후에만 생성한다. PASS 문자열/fixture callback은 운영 코드의 입력이 아니다. `.complete`와 current 생성 전 실패는 둘 다 생성하지 않는다 |
 
-이 표는 안전한 verifier의 요구 계약이며 구현 완료/실환경 검증 주장이 아니다. Packet에 다음 입출력·성공/실패 증거를 첨부한다.
+이 표는 구현된 검사 범위이며 실환경 의미 검증의 성공 주장이 아니다. 실제 Env가 이 형식/비교 범위와 다르면 APPLY STOP이다. Packet에 다음 입출력·성공/실패 증거를 첨부한다.
 
 1. 원본을 O_RDONLY|O_NOFOLLOW로 열어 fstat/lstat 대조. writer 중단, regular/nlink=1/0600/승인 UID:GID 확인. 복사 전후 device:inode/size/mtime_ns/ctime_ns 및 재독 bytes 일치. 변경·short read·I/O error는 STOP. 원본 chmod/chown 금지.
 2. runtime 바로 아래 unique bundle 0700 생성, env를 O_EXCL|O_NOFOLLOW/0600으로 생성. 원본/사본 bytes를 메모리 비교하고 PASS만 기록. Secret·민감 hash·parse exception의 값을 출력하지 않는다.
-3. Release 6-key, Catalog 9-key, Auth 6-key와 각각의 decoder를 독립 검증한다. Catalog는 unknown key·comment·blank를 허용하지 않으므로 Release 수용만으로 통과시키지 않는다. Auth의 개행·인용·escape 제약도 대조한다. key 추가/수정으로 통과시키지 않고 계약 Delta에서 STOP한다.
+3. Canonical9-key와 Release6/Catalog9/Auth6 projection 의미를 독립 검증한다. Auth의 개행·인용·escape 제약도 대조한다. 원본 key 추가/수정으로 통과시키지 않고 STOP한다.
 4. 승인 Compose를 실제 version/`--env-file /dev/null`/project/보간 입력으로 `config --format json` 파싱한다. stdout/stderr는 비공개 프로세스에서 capture하고 로그/화면에 출력하지 않는다. Backend Config.Env도 capture하여 중복key·누락·추가 override를 포함한 datasource/profile/automation/Auth 및 동작에 영향을 주는 모든 key의 effective 값을 비교한다. image ENV/Compose environment override/env_file 우선순위를 반영하고 무관 key 제외 근거도 승인한다. source/eval 금지. Compose parser와 Release의 단순 quote 처리에 의미 차이가 있으면 STOP한다.
 5. 비교 종료까지 Backend container ID/image/StartedAt 동일성을 확인한다. PASS를 bundle ID·Source SHA·validator 버전·승인 reference에 결합한다. env fsync 후 모든 검증 성공 시에만 `.complete`를 O_EXCL/0600으로 생성·fsync하고 bundle directory를 fsync한다.
 6. 같은 filesystem의 runtime 안에 unique temporary symlink를 생성한다. current의 원래 상태가 Packet과 같은지 재확인하고 rename/replace로 전환한 뒤 runtime directory를 fsync한다. 선행 writer 가능성이 있으면 TOCTOU를 허용하지 않고 STOP한다. bundle/current를 재resolve하고 metadata/marker를 검증한다.
@@ -197,7 +217,7 @@ Source 검증 성공 후 §8.2에서 이미 연 두 FD를 재검증하고 **rene
 
 Abort는 다음 단계를 중단하고 CD OFF/Adopt STOP을 유지한다. metadata 복원은 Packet의 개별 경로/원래 숫자 UID:GID/mode/ACL로 자식부터 부모 순서로 수행한다. state가 root여도 부모를 opc로 돌리면 rename/교체가 가능해 Root State 신뢰 경계가 사라진다. 이 경우 Root CLI/Host Pull/catalog/auth 재개를 금지하고 별도 신뢰 재확립 승인까지 CD OFF를 유지한다. root 보호 유지를 우선하고 opc writer 재개 요청만으로 owner를 자동 복원하지 않는다. 복원 불가/Health 저하는 blocker이며 DB/volume/인증서 변경으로 확대하지 않는다.
 
-G0-T2A 종료는 Source/Label/Lock/bundle 증거, timer 복귀, 기존 서비스/sibling 불변, blocker 제로를 독립 확인한 뒤 판정한다. 이전 별도 승인 읽기 전용 관측은 현재 Apply의 실측 Packet을 대신하지 않는다. 이번 Correction에서는 Production에 접속하지 않으며 운영 감독 도구·비공개 env verifier·소비자 계약 정렬·실환경 검증이 미완료이므로 운영 readiness는 미승인이다.
+G0-T2A 종료는 Source/Label/Lock/bundle 증거, timer 복귀, 기존 서비스/sibling 불변, blocker 제로를 독립 확인한 뒤 판정한다. OPS-G0-T2A-002는 도구와 projection 계약을 저장소에서 구현하지만 Production에 접속하지 않는다. 이전 읽기 전용 관측은 현재 Packet을 대신하지 않는다. 실제 Canonical Env·effective env·Root artifact·작업 창/승인·cert 여유·quiescence가 모두 충족되기 전 운영 readiness는 미승인이다. Host Pull 설치에는 이제 `production_env.py`도 controller SHA allowlist에 포함해야 하며 기존 정책으로 암묵 활성화하지 않는다.
 
 다음 Nginx Bootstrap은 OPS-OCI-CD-004의 독립 승인이 필요하다. 승인 SHA/설정hash, Proxy-only 대상 identity와 중단시간, nginx 검증, image/mount/network/volume 유지, 옛 Proxy 복귀 입력, 직접HTTPS/TLS 및 Backend/Frontend/sibling 불변 검증을 준비한다. Label 보호 불가라면 먼저 Backend/Frontend recreate Delta 승인이 필요하다. Bootstrap·Release Adopt·Host Pull 활성화는 각각 별도 Gate이며 이 Task 종료나 CI Green에서 자동 진행하지 않는다.
 
@@ -209,6 +229,6 @@ G0-T2A 종료는 Source/Label/Lock/bundle 증거, timer 복귀, 기존 서비스
 python3 infra/production/test-trust-boundary-transition.py -v
 ```
 
-fixture는 deploy→renewal 경합, 두번째 Lock 실패 시 첫 FD 해제, UID/GID·inode drift·symlink/hardlink 거부, FD CLOEXEC, fchmod0600의 inode/bytes 보존, fsync 부분 실패, Source subprocess timeout, 감독 프로세스 종료 시 kernel 해제를 검증한다. 구버전 `exec 9>`를 합성 Lock에만 실행하여 flock 거부 전에 bytes가 사라짐을 재현한다. 합성 env 검사 callback FAIL/예외는 marker를 만들지 않으며, marker 전/후·rename 후 fsync 전 중단과 최초 current 부재 복구를 검증한다.
+기존15개 rehearsal에 실제 Supervisor/parser/verifier의 Source/Env/Docker 합성 통합 검증을 연결한다. deploy→renewal 경합·FD 해제, owner/ACL·inode drift·symlink/hardlink, CLOEXEC, fchmod0600 inode/bytes 보존, 부분 fsync 실패, subprocess timeout·SIGTERM·잔존 child 회수, quote/escape/중복/누락/unknown·DB 의미·override·effective env 불일치·Secret redaction, marker/current 중단·Incident 재시도 거부를 검증한다. 실제 Docker Compose CLI의 `config`는 daemon/Container 생성 없이 합성 Env에서 실행한다. 구버전 exec9>의 truncate 위험도 합성 Lock에서만 재현한다. 신규 fixture는 기존 Production Contract CI contracts lane에 연결한다.
 
-범위 한계: callback은 실제 parser/Compose/Backend 비교기가 아니다. mock fsync 오류·프로세스 종료는 전원 단절 durability 증거가 아니다. 기존 root ancestor/ACL 보호, 자식 process group 회수, 실제 구버전 전체 script/인증서 갱신 복원, 모든 단계에서의 운영 signal handling도 이 fixture의 PASS로 입증하지 않는다. 이 한계는 §8.2/§9 Apply STOP을 해제하지 않는다. 기존 Release47/CD22/Renewal/Production Contract 및 PR stdin validation 결과와 최신 HEAD CI는 PR에 별도로 기록한다.
+범위 한계: 합성 Docker metadata와 실제 Compose config는 실행 Production Backend/JVM·외부 설정·DB 의미나 실제 갱신을 입증하지 않는다. fsync 오류 주입·프로세스 중단도 전원 단절 durability 증거가 아니다. `recover`는 read-only journal 판정으로 crash 이후 mutation을 자동 복구하지 않는다. 담당자가 실제 phase·Lock/script/current/timer를 재관측하고 별도 Incident/복구 승인을 받아야 하며, root 경계를 약화시키거나 구버전script를 재활성화하지 않는다. 기존 Release47/CD22/Renewal/Catalog/Auth/Production Contract 및 PR stdin validation 결과와 최신 HEAD CI는 PR에 기록한다.
