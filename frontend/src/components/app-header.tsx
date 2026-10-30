@@ -236,7 +236,7 @@ export function AppHeader() {
       </div>
       <nav className="header-actions" aria-label="계정과 장바구니">
         {status === "authenticated" ? <Link aria-current={pathname === "/my" ? "page" : undefined} href="/my">내 정보</Link> : status === "loading" ? <span role="status">계정 확인 중</span> : <Link href={buildLoginHref(currentHref)}>로그인</Link>}
-        <Link className="header-wishlist" href={status === "authenticated" ? "/wishlist" : buildLoginHref("/wishlist")} aria-label={status === "authenticated" ? `찜한 상품 ${wishlistCount}개` : "찜한 상품, 로그인 필요"}>찜</Link>
+        <Link className="header-wishlist" href={status === "authenticated" ? "/wishlist" : buildLoginHref("/wishlist")} aria-label={status === "authenticated" ? `찜한 상품 ${wishlistCount}개` : "찜한 상품, 로그인 필요"}>찜한 상품</Link>
         <Link aria-current={pathname === "/cart" ? "page" : undefined} href={status === "authenticated" ? "/cart" : buildLoginHref("/cart")} aria-label={status !== "authenticated" ? "장바구니, 로그인 필요" : cartCount === null ? badgeFailed ? "장바구니, 개수 확인 실패" : "장바구니, 개수 확인 중" : `장바구니 ${cartCount}개`}>장바구니 {status === "authenticated" && !badgeFailed ? <span className="nav-badge" aria-hidden="true">{cartCount === null ? "–" : cartCount > 99 ? "99+" : cartCount}</span> : null}</Link>
       </nav>
     </div>

@@ -9,21 +9,43 @@ const plans=[{planId:1,planName:'데일리 사료 플랜',targetPetType:'DOG',pl
 const snapshot={planVersionId:11,packagePriceKrw:32000,deliveryCycleWeeks:4,items:[{skuId:101,quantity:1}]};
 const subscriptionItems=[{skuId:101,skuName:'2.5kg',productId:1,productName:names[0],thumbnailUrl:products[0].thumbnailUrl,quantity:1}];
 const addresses=[{addressId:1,name:'집 · QA 예시',recipientName:'테스트 수령인',recipientPhone:'010-0000-0000',postalCode:'00000',addressLine1:'가상 배송지 (실제 주소 아님)',addressLine2:'로컬 검증 전용',isDefault:true}];
-let state={auth:true,cart:true,status:'ACTIVE',error:false,delay:0};
+let state={auth:true,cart:true,status:'ACTIVE',error:false,delay:0,apiError:false,authError:false,empty:false,long:false,noActions:false,noAddress:false,unavailable:false,notifications:false,billing:'unconfigured'};
+const longText = value => state.long ? `${value} · 긴 한글 English QA 텍스트의 줄바꿈과 액션 가시성을 확인하는 합성 표본 `.repeat(3) : value;
+function displaySample(value) {
+ if (Array.isArray(value)) return value.map(displaySample);
+ if (!value || typeof value !== 'object') return value;
+ return Object.fromEntries(Object.entries(value).map(([key,item])=>[key, typeof item === 'string' && ['name','productName','productNameSnapshot','planName','skuName','orderNumber','addressLine1'].includes(key) ? longText(item) : displaySample(item)]));
+}
 const wishlistedIds=new Set([1,2]);
 let cartItems=products.slice(0,2).map((p,i)=>({skuId:101+i,quantity:1,skuCode:`QA-${i}`,skuName:'기본 규격',price:p.representativePrice,unitPrice:p.representativePrice,lineAmount:p.representativePrice,productId:p.productId,productName:p.name,availableQuantity:p.purchasable?10:0,purchasable:p.purchasable}));
-function cart(){const items=state.cart?cartItems:[];const amount=items.reduce((sum,item)=>sum+item.lineAmount,0);return {items,pricing:{originalAmount:amount,subtotalAmount:amount,discountAmount:0,shippingFee:items.length?3000:0,finalAmount:amount+(items.length?3000:0),paymentAmount:amount+(items.length?3000:0)},version:1};}
+function cart(){const items=state.cart&&!state.empty?cartItems.map(item=>state.unavailable?{...item,purchasable:false,availableQuantity:0}:item):[];const amount=items.reduce((sum,item)=>sum+item.lineAmount,0);return {items,pricing:{originalAmount:amount,subtotalAmount:amount,discountAmount:0,shippingFee:items.length?3000:0,finalAmount:amount+(items.length?3000:0),paymentAmount:amount+(items.length?3000:0)},version:1};}
 function subscription(){return {subscriptionId:1,pet:pets[0],status:state.status,version:1,currentSnapshot:snapshot,pendingSnapshot:{...snapshot,deliveryCycleWeeks:8},nextScheduledDate:state.status==='ACTIVE'?'2026-09-10':null,nextDelivery:state.status==='ACTIVE'?{scheduleId:1,scheduledDate:'2026-09-10',status:'SCHEDULED',...snapshot,deliveryCycleWeeks:8,items:subscriptionItems,addOns:[],addOnTotalKrw:0,orderTotalKrw:32000}:null,pendingChange:state.status==='ACTIVE'?{appliesOn:'2026-09-10',...snapshot,deliveryCycleWeeks:8,items:subscriptionItems}:null,issue:null,availableActions:state.status==='CANCELED'?[]:state.status==='PAUSED'?['RESUME','CANCEL','UPDATE_SHIPPING_ADDRESS']:['SKIP_NEXT','PAUSE','CANCEL','RESCHEDULE_NEXT','CHANGE_PLAN','CHANGE_DELIVERY_CYCLE','UPDATE_SHIPPING_ADDRESS'],schedules:page([{scheduleId:1,scheduledDate:'2026-09-10',status:'SCHEDULED',effectiveSnapshotId:1}]),commandHistory:page([{commandType:'CHANGE_DELIVERY_CYCLE',result:'SUCCESS',occurredAt:'2026-08-30T09:00:00+09:00'}])};}
 const order={orderId:1,orderNumber:'QA-20260830-000001',source:'CART',status:'PAID',originalAmount:62000,discountAmount:0,shippingFee:3000,paymentAmount:65000,...addresses[0],createdAt:'2026-08-30T09:00:00+09:00',paidAt:'2026-08-30T09:01:00+09:00',items:cartItems.map(i=>({...i,productNameSnapshot:i.productName,skuNameSnapshot:i.skuName})),payment:{paymentId:1,type:'ONE_TIME',provider:'TOSS',status:'SUCCEEDED',amount:65000,attemptNo:1},delivery:{deliveryId:1,status:'PREPARING'},cancellation:null,return:null,refunds:[],availableActions:['REQUEST_CANCELLATION','REQUEST_RETURN']};
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1:3006'); const path=url.pathname;
- const json=(body,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','ETag':'"1"'});res.end(JSON.stringify(body));};
- if(path==='/__fixture'){for(const [k,v]of url.searchParams) {if(k==='auth')state.auth=v!=='anonymous';if(k==='cart')state.cart=v!=='empty';if(k==='status')state.status=v;if(k==='error')state.error=v==='true';if(k==='delay')state.delay=Math.min(5000,Math.max(0,Number(v)||0));}res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(`<h1>FE-006 로컬 fixture 전용</h1><p>서버/API/결제 통합 검증이 아닌 합성 응답을 사용한 UI 검증입니다.</p>${['/','/products','/products?q=no-result','/products/1','/cart','/checkout','/login','/orders/1','/subscriptions/new','/subscriptions/1','/my','/wishlist','/compare?productId=1&productId=2','/pets','/addresses','/billing-methods','/notifications','/support'].map(p=>`<p><a href="${p}">${p}</a></p>`).join('')}<a href="/__fixture?auth=anonymous">비로그인</a> · <a href="/__fixture?auth=member">로그인 fixture</a> · <a href="/__fixture?cart=empty">빈 장바구니</a> · <a href="/__fixture?cart=full">채운 장바구니</a> · <a href="/__fixture?status=PAUSED">일시정지</a> · <a href="/__fixture?status=ACTIVE">진행 중</a>`);return;}
+ const json=(body,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','ETag':'"1"'});res.end(JSON.stringify(displaySample(body)));};
+ if(path==='/__fixture'){for(const [k,v]of url.searchParams) {if(k==='auth')state.auth=v!=='anonymous';if(k==='cart')state.cart=v!=='empty';if(k==='status')state.status=v;if(k==='error')state.error=v==='true';if(k==='delay')state.delay=Math.min(5000,Math.max(0,Number(v)||0));if(['apiError','authError','empty','long','noActions','noAddress','unavailable','notifications'].includes(k))state[k]=v==='true';if(k==='billing')state.billing=v;}res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});res.end(`<h1>FE-006 로컬 fixture 전용</h1><p>서버/API/결제 통합 검증이 아닌 합성 응답을 사용한 UI 검증입니다.</p>${['/','/products','/products?q=no-result','/products/1','/cart','/checkout','/login','/orders/1','/subscriptions/new','/subscriptions/1','/my','/wishlist','/compare?productId=1&productId=2','/pets','/addresses','/billing-methods','/notifications','/support'].map(p=>`<p><a href="${p}">${p}</a></p>`).join('')}<a href="/__fixture?auth=anonymous">비로그인</a> · <a href="/__fixture?auth=member">로그인 fixture</a> · <a href="/__fixture?cart=empty">빈 장바구니</a> · <a href="/__fixture?cart=full">채운 장바구니</a> · <a href="/__fixture?status=PAUSED">일시정지</a> · <a href="/__fixture?status=ACTIVE">진행 중</a>`);return;}
  if(path.startsWith('/__fixture-image/')){const i=Number(path.split('/').at(-1));const color=['#b72434','#e1b40c','#258475','#1f589b','#29282c'][i%5];res.writeHead(200,{'Content-Type':'image/svg+xml'});res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="${i===1?240:i===3?600:400}" height="400" viewBox="0 0 400 400"><rect width="400" height="400" fill="#f3f0f7"/><rect x="${i%2?100:80}" y="55" width="${i%2?200:240}" height="290" rx="12" fill="${color}"/><rect x="110" y="140" width="180" height="125" fill="white"/><text x="200" y="185" text-anchor="middle" font-family="sans-serif" font-size="21" fill="#241c2e">CATALOG QA</text><text x="200" y="225" text-anchor="middle" font-family="sans-serif" font-size="14">Fixture only · ${i+1}</text></svg>`);return;}
  if(path.startsWith('/api/')){
-  if(state.delay && req.method==='GET' && (path==='/api/products'||/^\/api\/products\/\d+$/.test(path)))await new Promise(resolve=>setTimeout(resolve,state.delay));
+  if(state.delay && req.method==='GET')await new Promise(resolve=>setTimeout(resolve,state.delay));
+  if(state.authError && path==='/api/auth/me')return json({code:'QA_AUTH_ERROR',message:'합성 인증 조회 오류',fieldErrors:[]},503);
+  if(state.apiError && req.method==='GET' && !path.startsWith('/api/auth/'))return json({code:'QA_QUERY_ERROR',message:'합성 데이터 조회 오류',fieldErrors:[]},503);
+  if(state.empty && req.method==='GET') {
+   if(['/api/orders','/api/addresses','/api/notifications'].includes(path))return json([]);
+   if(['/api/pets','/api/subscriptions','/api/subscription-plans'].includes(path))return json(page([]));
+   if(path==='/api/wishlist')return json({items:[]});
+  }
   if(path==='/api/auth/me')return state.auth?json({memberId:1}):json({code:'AUTH_REQUIRED',message:'로그인이 필요합니다.',fieldErrors:[]},401);
   if(path==='/api/auth/csrf')return json({token:'local-fixture-not-a-secret'});
+  if(req.method==='PATCH' && /^\/api\/pets\/\d+$/.test(path)){
+   if(req.headers['x-csrf-token']!=='local-fixture-not-a-secret')return json({code:'CSRF_INVALID',message:'합성 CSRF 오류',fieldErrors:[]},403);
+   const pet=pets.find(item=>item.petId===Number(path.split('/').at(-1)));
+   if(!pet)return json({code:'PET_NOT_FOUND',message:'합성 프로필 없음',fieldErrors:[]},404);
+   let raw='';for await(const chunk of req)raw+=chunk;
+   const patch=JSON.parse(raw);
+   for(const key of ['name','breed','weightKg'])if(Object.hasOwn(patch,key))pet[key]=patch[key];
+   return json(pet);
+  }
   if(req.method!=='GET') {if(path==='/api/auth/login'){state.auth=true;return json({memberId:1});} if(path==='/api/interactions')return json({}); if(path.startsWith('/api/wishlist/')){if(req.headers['x-csrf-token']!=='local-fixture-not-a-secret')return json({code:'CSRF_INVALID',message:'로컬 CSRF 검증 실패',fieldErrors:[]},403);const id=Number(path.split('/').at(-1));if(req.method==='DELETE')wishlistedIds.delete(id);else wishlistedIds.add(id);return json({});} if(path==='/api/cart/items'){if(req.headers['x-csrf-token']!=='local-fixture-not-a-secret')return json({code:'CSRF_INVALID',message:'로컬 CSRF 검증 실패',fieldErrors:[]},403);let body='';for await(const chunk of req)body+=chunk;const item=JSON.parse(body);const existing=cartItems.find(i=>i.skuId===item.skuId);if(!existing)return json({code:'QA_MUTATION_BLOCKED',message:'이 fixture에 없는 SKU입니다.',fieldErrors:[]},409);existing.quantity+=item.quantity;existing.lineAmount=existing.quantity*existing.unitPrice;return json({});} if(path.startsWith('/api/cart/items/')){const id=Number(path.split('/').at(-1));if(req.method==='DELETE')cartItems=cartItems.filter(i=>i.skuId!==id);else{let body='';for await(const chunk of req)body+=chunk;const qty=JSON.parse(body).quantity;cartItems=cartItems.map(i=>i.skuId===id?{...i,quantity:qty,lineAmount:qty*i.unitPrice}:i);}return json({});} return json({code:'QA_MUTATION_BLOCKED',message:'로컬 visual fixture에서는 이 변경을 실행하지 않습니다.',fieldErrors:[]},409);}
   if(state.error && (path==='/api/products'||path.startsWith('/api/recommendations')))return json({code:'QA_ERROR',message:'로컬 조회 실패 예시',fieldErrors:[]},503);
   if(path==='/api/catalog/discovery')return json({categories,brands:products.map(p=>p.brand),categoryFacets:[]});
@@ -36,11 +58,11 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/api/recommendations/reorder-timing')return json({items:[]});
   if(path.startsWith('/api/recommendations')||path.endsWith('/related')||path.endsWith('/complementary'))return json({requestId:'qa-local',products:path.includes('popular')?products.slice(0,4).map(p=>({...p,reason:'로컬 fixture 상품',strategy:'POPULAR'})):[]});
   if(path==='/api/cart')return json(cart());
-  if(path==='/api/addresses')return json(addresses);
+  if(path==='/api/addresses')return json(state.noAddress?[]:addresses);
   if(path==='/api/coupons')return json([]);
   if(path==='/api/wishlist')return json({items:products.filter(p=>wishlistedIds.has(p.productId)).map(p=>({productId:p.productId,productName:p.name,createdAt:'2026-08-30T09:00:00+09:00'}))});
   if(path==='/api/orders')return json([order]);
-  if(path==='/api/orders/1')return json(order);
+  if(path==='/api/orders/1')return json({...order,availableActions:state.noActions?[]:order.availableActions});
   if(path.endsWith('/subscription-options'))return json({orderId:1,options:plans.map(p=>({...p,matchingProductIds:[1],compatibleOwnedPetIds:[1]}))});
   if(path==='/api/pets')return json(page(pets));
   if(path==='/api/subscription-plans')return json(page(plans));
@@ -48,8 +70,8 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/api/subscriptions')return json(page([subscription()]));
   if(path.endsWith('/cycle-suggestion'))return json({subscriptionId:1,currentDeliveryCycleWeeks:4,medianSuccessfulIntervalWeeks:4,allowedDeliveryCycleWeeks:[2,4,8],suggestion:null});
   if(path==='/api/subscriptions/1')return json(subscription());
-  if(path==='/api/payment-methods/toss/billing')return json({provider:'TOSS',configured:false,registered:false});
-  if(path==='/api/notifications')return json([]);
+  if(path==='/api/payment-methods/toss/billing')return json({provider:'TOSS',configured:state.billing!=='unconfigured',registered:state.billing==='registered'});
+  if(path==='/api/notifications')return json(state.notifications?[{notificationId:1,type:'ORDER_PAID',referenceType:'ORDER',referenceId:1,readAt:null,createdAt:'2026-08-30T09:00:00+09:00'}]:[]);
   return json({code:'QA_ENDPOINT_NOT_CONFIGURED',message:'이 fixture에 없는 조회입니다.',fieldErrors:[]},404);
  }
  const proxy=http.request({hostname:'127.0.0.1',port:3007,path:req.url,method:req.method,headers:{...req.headers,host:'localhost:3006'}},up=>{res.writeHead(up.statusCode,up.headers);up.pipe(res);});proxy.on('error',()=>{res.writeHead(502);res.end('Start Next on port 3007 first.');});req.pipe(proxy);

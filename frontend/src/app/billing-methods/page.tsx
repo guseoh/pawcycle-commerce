@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { billingApi, type BillingMethodStatus } from "@/lib/billing-api";
@@ -10,7 +10,7 @@ import { buildLoginHref } from "@/lib/frontend-utils";
 
 export default function BillingMethodsPage() {
   const auth = useAuth();
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="결제수단을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/billing-methods")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="결제수단을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/billing-methods")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (auth.status !== "authenticated" || auth.memberId === null) return <LoadingState>결제수단 정보를 불러오고 있습니다.</LoadingState>;
   return <BillingMethodForMember key={auth.memberId} />;
@@ -65,5 +65,5 @@ function BillingMethodForMember() {
 
   if (status === null && !error) return <LoadingState>결제수단 정보를 불러오고 있습니다.</LoadingState>;
   if (status === null) return <ErrorState title="결제수단 정보를 불러오지 못했습니다." message={error ?? "다시 시도해 주세요."} onRetry={load} />;
-  return <section><header className="page-heading"><p className="eyebrow">결제수단</p><h1>결제수단 상태</h1><p>등록 상태를 확인하고 필요한 경우 등록을 시작할 수 있어요.</p></header><section className="section-card"><div className="billing-status-card"><div className="status-tile"><strong>등록 상태</strong><span>{status.registered ? "등록된 결제수단이 있어요." : "등록된 결제수단이 없어요."}</span></div><div className="status-tile"><strong>서비스 상태</strong><span>{status.configured ? "등록을 시작할 수 있어요." : "현재 등록을 시작할 수 없어요."}</span></div></div>{error ? <p className="field-error" role="alert">{error}</p> : null}<button className="button button-primary" type="button" disabled={busy || prepared || !status.configured} onClick={() => void prepare()}>{busy ? "준비 중" : "결제수단 등록 준비"}</button>{prepared ? <div className="provider-block"><strong>등록 준비가 완료되었습니다.</strong><p>현재 결제수단 등록을 완료할 수 없습니다. 결제수단 등록 기능이 제공되기 전까지는 이 화면에서 등록을 진행할 수 없어요.</p></div> : null}</section></section>;
+  return <section><header className="page-heading"><p className="eyebrow">결제수단</p><h1>결제수단 상태</h1><p>등록 상태를 확인하고 필요한 경우 등록을 시작할 수 있어요.</p></header><section className="section-card"><dl className="billing-status-card"><div className="status-tile"><dt>등록 상태</dt><dd>{status.registered ? "등록된 결제수단이 있어요." : "등록된 결제수단이 없어요."}</dd></div><div className="status-tile"><dt>서비스 상태</dt><dd>{status.configured ? "등록을 시작할 수 있어요." : "현재 등록을 시작할 수 없어요."}</dd></div></dl>{!status.configured ? <p id="billing-unavailable" className="field-help">현재는 결제수단 등록을 시작할 수 없습니다.</p> : null}{error ? <p className="field-error" role="alert">{error}</p> : null}<button className="button button-primary" type="button" aria-describedby={!status.configured ? "billing-unavailable" : undefined} disabled={busy || prepared || !status.configured} onClick={() => void prepare()}>{busy ? "준비 중" : "결제수단 등록 준비"}</button>{prepared ? <div className="provider-block"><strong>등록 준비가 완료되었습니다.</strong><p>현재 결제수단 등록을 완료할 수 없습니다. 결제수단 등록 기능이 제공되기 전까지는 이 화면에서 등록을 진행할 수 없어요.</p></div> : null}</section></section>;
 }

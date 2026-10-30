@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CommerceOverlay } from "@/components/commerce-overlay";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { cartApi, type CartItem, type PricingBreakdown } from "@/lib/cart-api";
@@ -100,7 +100,7 @@ export default function CartPage() {
   const hasUnappliedQuantity = items?.some(item => (draft[item.skuId] ?? String(item.quantity)) !== String(item.quantity)) ?? false;
   const unavailableItems = items?.filter((item) => !item.purchasable) ?? [];
 
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="장바구니를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/cart")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="장바구니를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/cart")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (items === null && !loadError) return <LoadingState>장바구니를 불러오고 있습니다.</LoadingState>;
   if (loadError) return <ErrorState title="장바구니를 불러오지 못했습니다." message={loadError} onRetry={load} />;
@@ -120,7 +120,7 @@ export default function CartPage() {
               : "현재 구매할 수 없는 상품입니다."
             : `재고 ${item.availableQuantity.toLocaleString()}개 · 구매 가능`;
           return <li className="cart-item" key={item.skuId}>
-            <div className="cart-item-main"><Link href={`/products/${item.productId}`}><strong>{item.productName}</strong></Link><span className="cart-sku">{item.skuName} · 옵션 단가 {formatPrice(item.unitPrice ?? item.price)}</span><span className={`cart-availability${item.purchasable ? " is-available" : " is-unavailable"}`}>{stockMessage}</span><strong className="cart-price">상품 금액 {formatPrice(item.lineAmount)}</strong></div>
+            <div className="cart-item-main"><Link href={`/products/${item.productId}`}><strong>{item.productName}</strong></Link><span className="cart-sku">{item.skuName}</span><span className="cart-unit-price">옵션 단가 {formatPrice(item.unitPrice ?? item.price)}</span><span className={`cart-availability${item.purchasable ? " is-available" : " is-unavailable"}`}>{stockMessage}</span><div className="cart-line-amount"><span>상품 금액</span><strong className="cart-price">{formatPrice(item.lineAmount)}</strong></div></div>
             <div className="cart-item-controls"><label htmlFor={`cart-quantity-${item.skuId}`}>수량<input id={`cart-quantity-${item.skuId}`} className="input" type="number" min="1" max={item.availableQuantity > 0 ? item.availableQuantity : undefined} inputMode="numeric" aria-describedby={quantityErrors[item.skuId] || itemErrors[item.skuId] ? `cart-quantity-error-${item.skuId}` : undefined} aria-invalid={quantityErrors[item.skuId] || itemErrors[item.skuId] ? "true" : undefined} value={draft[item.skuId] ?? String(item.quantity)} disabled={busy === item.skuId} onChange={(event) => updateDraft(item.skuId, event.target.value, item.availableQuantity)} /></label>{quantityErrors[item.skuId] || itemErrors[item.skuId] ? <p id={`cart-quantity-error-${item.skuId}`} className="field-error" role="alert">{quantityErrors[item.skuId] ?? itemErrors[item.skuId]?.message} {itemErrors[item.skuId] ? <button type="button" onClick={() => void (itemErrors[item.skuId].operation === "delete" ? remove(item) : applyQuantity(item))}>다시 시도</button> : null}</p> : null}<div className="button-row"><button className="button button-secondary" type="button" disabled={busy !== null || quantityErrors[item.skuId] !== undefined} onClick={() => void applyQuantity(item)}>{busy === item.skuId ? "계산 중" : "수량 적용"}</button><button className="button button-danger" type="button" disabled={busy !== null} aria-label={`${item.productName} 삭제`} onClick={() => setDeleteCandidate(item)}>삭제</button></div></div>
           </li>;
         })}</ul> : <div className="empty-callout"><strong>장바구니가 비어 있어요.</strong><Link href="/products">상품 둘러보기</Link></div>}
