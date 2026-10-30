@@ -167,6 +167,7 @@ def prepare_case(
     mode: str,
     lock_mode: int | None = None,
     state_owner_uid: int | None = None,
+    canonical: bool = False,
 ) -> tuple[list[str], dict[str, str], Path, Path]:
     runtime = root / "runtime"
     state = root / "state"
@@ -187,6 +188,15 @@ def prepare_case(
     )
     complete = bundle / ".complete"
     complete.write_text("fixture complete\n", encoding="utf-8")
+    if canonical:
+        projection = bundle / 'auth.env'
+        projection.write_bytes(backend_env.read_bytes())
+        projection.chmod(0o600)
+        backend_env.write_bytes(
+            b"PAWCYCLE_DATASOURCE_HOST='external-db.example.test'\n"
+            b"PAWCYCLE_DATASOURCE_PORT='3306'\n"
+            b"PAWCYCLE_DATASOURCE_SSL_MODE='REQUIRED'\n" + projection.read_bytes())
+        complete.write_text('g0-t2a-canonical-v1\n', encoding='utf-8')
     sha = subprocess.check_output(
         ["git", "-c", f"safe.directory={ROOT}", "rev-parse", "HEAD"],
         cwd=ROOT,
@@ -261,6 +271,7 @@ def run_case(
     lock_mode: int | None = None,
     state_owner_uid: int | None = None,
     expect_prompt: bool = True,
+    canonical: bool = False,
 ) -> tuple[int, str, str, str]:
     with tempfile.TemporaryDirectory(prefix="ops020-pty-") as temporary:
         command, environment, log, marker = prepare_case(
@@ -268,6 +279,7 @@ def run_case(
             mode,
             lock_mode=lock_mode,
             state_owner_uid=state_owner_uid,
+            canonical=canonical,
         )
         process, master, slave = start_pty(command, environment)
         transcript = bytearray()
@@ -399,6 +411,11 @@ def main() -> None:
     require(transcript.count(PASS) == 1, "success did not emit exactly one PASS")
     require("stdin-contract-ok" in marker, "credentials were not delivered only through stdin")
     require("runtime-env-contract-ok" in marker, "runtime env was not streamed safely")
+    assert_run_contract(arguments)
+
+    status, transcript, arguments, marker = run_case('success', canonical=True)
+    require(status == 0, 'canonical Auth projection failed')
+    require('runtime-env-contract-ok' in marker, 'canonical Auth env was not projected safely')
     assert_run_contract(arguments)
 
     status, transcript, arguments, marker = run_case("failure")

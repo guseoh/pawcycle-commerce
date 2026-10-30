@@ -382,6 +382,7 @@ jobs:
           python infra/production/validate-production-contracts.py
           sudo "$(command -v python)" infra/production/test-oci-release.py
           sudo "$(command -v python)" infra/production/test-oci-cd.py
+          sudo "$(command -v python)" infra/production/test-trust-boundary-transition.py -v
           bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-production-nginx.sh
           bash infra/production/test-production-https-renewal.sh
