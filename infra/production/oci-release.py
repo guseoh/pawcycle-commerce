@@ -28,6 +28,9 @@ DOMAIN = "pawcycle.duckdns.org"
 COMPOSE = "infra/production/compose.yaml"
 NGINX = "infra/production/nginx.https.conf"
 PROXY = "nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1"
+# The pinned image's nginx worker is 101:101. Pre-own each compiled-in temp
+# directory: nginx -t otherwise tries chown as a root master without CAP_CHOWN.
+NGINX_TEMP_DIRECTORIES = ("client_temp", "proxy_temp", "fastcgi_temp", "uwsgi_temp", "scgi_temp")
 NETWORKS = {
     "backend": {"pawcycle-production-app", "pawcycle-production-database-egress"},
     "frontend": {"pawcycle-production-app"},
@@ -512,7 +515,10 @@ class Host:
                                            "--file", str(compose), "config", "--format", "json", env=env))
             self.docker("run", "--rm", "--pull", "never", "--network", "none", "--read-only",
                         "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-                        "--tmpfs", "/var/cache/nginx:size=16m", "--tmpfs", "/var/run:size=1m",
+                        "--tmpfs", "/var/cache/nginx:size=16m,mode=0755",
+                        *[arg for name in NGINX_TEMP_DIRECTORIES for arg in
+                          ("--tmpfs", "/var/cache/nginx/" + name + ":size=1m,uid=101,gid=101,mode=0700")],
+                        "--tmpfs", "/var/run:size=1m,mode=0755",
                         "--mount", "type=bind,src=" + str(nginx) + ",dst=/etc/nginx/conf.d/default.conf,readonly",
                         "--mount", "type=volume,src=pawcycle-production-letsencrypt,dst=/etc/letsencrypt,readonly,volume-nocopy",
                         "--mount", "type=volume,src=pawcycle-production-certbot-webroot,dst=/var/www/certbot,readonly,volume-nocopy",
