@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -331,6 +332,33 @@ class BareFetchTests(unittest.TestCase):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_installed_service_starts_isolated_without_importing_cwd_or_pythonpath(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installed, untrusted = root / "installed", root / "untrusted"
+            installed.mkdir()
+            untrusted.mkdir()
+            service = (HERE / "systemd/pawcycle-oci-cd.service").read_text()
+            self.assertIn("ExecStart=/usr/bin/python3 -I ", service)
+            for name, source in (("oci-cd.py", HERE / "oci-cd.py"),
+                                 ("oci-release.py", HERE / "oci-release.py"),
+                                 ("production_env.py", HERE / "production_env.py"),
+                                 ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
+                shutil.copyfile(source, installed / name)
+            (untrusted / "production_env.py").write_text("raise RuntimeError('untrusted helper imported')\n")
+            env = dict(os.environ, PYTHONPATH=str(untrusted))
+            for name in ("oci-cd.py", "oci-release.py"):
+                result = subprocess.run([sys.executable, "-I", str(installed / name), "--help"],
+                                        cwd=untrusted, env=env, capture_output=True, timeout=15)
+                self.assertEqual(0, result.returncode, result.stderr.decode())
+                self.assertIn(b"usage:", result.stdout)
+            # A missing installed helper must fail closed, never use cwd/env.
+            (installed / "production_env.py").unlink()
+            result = subprocess.run([sys.executable, "-I", str(installed / "oci-cd.py"), "--help"],
+                                    cwd=untrusted, env=env, capture_output=True, timeout=15)
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn(b"untrusted helper imported", result.stderr)
+
     def test_manifest_discovery_binds_pair_and_revalidates_registry(self):
         sha = "a" * 40
         host = cd.CDHost("/unused", "/unused", "/unused", "/unused")

@@ -9,6 +9,7 @@ import argparse
 import contextlib
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,13 @@ import stat
 import subprocess
 import tempfile
 import time
-from production_env import parse as parse_canonical, projection, serialize, Refused as EnvRefused
+
+# systemd uses python -I: neither the script directory nor PYTHONPATH is an
+# import source. Load only the reviewed helper beside this installed CLI.
+_env_spec = importlib.util.spec_from_file_location("production_env", Path(__file__).resolve().with_name("production_env.py"))
+_env = importlib.util.module_from_spec(_env_spec)
+_env_spec.loader.exec_module(_env)
+parse_canonical, projection, serialize, EnvRefused = _env.parse, _env.projection, _env.serialize, _env.Refused
 
 SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
