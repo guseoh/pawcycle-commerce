@@ -483,6 +483,13 @@ class SupervisedIntegration(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.host.installed.stat().st_mode), 0o755)
         self.assertEqual(stat.S_IMODE((self.host.bundle/'backend.env').stat().st_mode), 0o600)
 
+    def test_no_queued_renewal_job_allows_read_only_preflight(self):
+        self.host.validate_packet()
+        self.assertEqual(self.runner.timer, 'active')
+        self.assertNotIn(['/usr/bin/systemctl', 'stop', transition.TIMER], self.runner.calls)
+        self.assertFalse(self.host.journal.exists())
+        self.stopped()
+
     def test_queued_renewal_job_stops_before_timer_mutation(self):
         self.runner.queued_before_start = True
         with self.assertRaisesRegex(Refused, '^RENEWAL_BUSY$'):
