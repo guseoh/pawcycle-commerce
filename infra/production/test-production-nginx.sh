@@ -98,6 +98,14 @@ validate_config() {
 validate_config "$SCRIPT_DIR/nginx.conf"
 validate_config "$HTTPS_CONFIG"
 
+# Exercise the Release CLI's stricter, capability-free nginx -t on root-owned
+# disposable fixtures, generated certificates and unique test volumes.
+if (( EUID == 0 )); then
+  python3 "$SCRIPT_DIR/test-oci-release-nginx.py"
+else
+  sudo "$(command -v python3)" "$SCRIPT_DIR/test-oci-release-nginx.py"
+fi
+
 docker run --rm --platform linux/amd64 \
   --entrypoint python \
   --env EXPECTED_DOMAIN="$TEST_DOMAIN" \

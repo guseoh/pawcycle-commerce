@@ -850,6 +850,16 @@ class BoundaryTests(unittest.TestCase):
             self.assertIn("none", commands[1])
             self.assertIn("never", commands[1])
             self.assertIn("--read-only", commands[1])
+            self.assertEqual(commands[1][commands[1].index("--cap-drop") + 1], "ALL")
+            self.assertIn("no-new-privileges:true", commands[1])
+            self.assertNotIn("--cap-add", commands[1])
+            self.assertNotIn("--privileged", commands[1])
+            for name in ("client_temp", "proxy_temp", "fastcgi_temp", "uwsgi_temp", "scgi_temp"):
+                mount = "/var/cache/nginx/" + name + ":size=1m,uid=101,gid=101,mode=0700"
+                self.assertEqual(commands[1].count(mount), 1)
+                position = commands[1].index(mount)
+                self.assertGreater(position, 0)
+                self.assertEqual(commands[1][position - 1], "--tmpfs")
             for mutate in (
                 lambda c: c["services"].update(mysql={}),
                 lambda c: c["services"]["backend"].update(ports=[{"target": 8080}]),
