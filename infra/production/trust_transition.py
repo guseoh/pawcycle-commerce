@@ -83,6 +83,45 @@ class Runner:
     def check(self):
         require(time.monotonic() < self.deadline, 'WINDOW_EXPIRED')
 
+    @staticmethod
+    def reap(proc):
+        """One finite cleanup budget, including pipe drain and parent wait.
+
+        A descendant may escape the group while retaining a pipe. Never wait
+        for that pipe forever or kill a guessed PID outside the known group.
+        """
+        deadline = time.monotonic()+2
+        eof = False
+        try:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.communicate(timeout=min(0.5, max(0, deadline-time.monotonic())))
+                eof = True
+            except subprocess.TimeoutExpired:
+                pass
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            if not eof:
+                try:
+                    proc.communicate(timeout=max(0, deadline-time.monotonic()))
+                    eof = True
+                except subprocess.TimeoutExpired:
+                    pass
+            if proc.poll() is None:
+                proc.wait(timeout=max(0, deadline-time.monotonic()))
+            try:
+                os.killpg(proc.pid, 0)
+            except ProcessLookupError:
+                return eof and proc.poll() is not None
+            return False
+        except BaseException:
+            return False
+        finally:
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None:
+                    stream.close()
+
     def __call__(self, argv, env=None):
         self.check()
         clean = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'HOME': '/root',
@@ -105,15 +144,13 @@ class Runner:
             self.check()
             return out
         except BaseException as exc:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGTERM)
-            try:
-                proc.communicate(timeout=2)
-            except subprocess.TimeoutExpired:
-                pass
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            proc.communicate()
+            certain = self.reap(proc)
+            if not certain:
+                # CHILD_REMAINS already denotes this uncertainty; preserve its
+                # existing reason code, never turn it into a successful return.
+                if isinstance(exc, Refused) and str(exc) == 'CHILD_REMAINS':
+                    raise
+                raise Refused('PROCESS_UNCERTAIN') from None
             if isinstance(exc, subprocess.TimeoutExpired):
                 raise Refused('COMMAND_TIMEOUT') from None
             raise
@@ -140,6 +177,7 @@ class Transition:
         self.switched = False
         self.phase = 'preflight'
         self.timer_stopped = False
+        self.timer_restore_attempted = False
         self.original = None
         self.invariant_before = None
         remaining = max(0, packet.get('expires_unix', 0)-time.time())
@@ -374,11 +412,13 @@ class Transition:
         finally:
             os.close(fd)
 
-    def journal_phase(self, phase, code=None):
+    def journal_phase(self, phase, code=None, timer_handoff=None):
         self.phase = phase
         temporary = self.journal.with_suffix('.new')
-        write_new(temporary, json.dumps({'id': self.p['id'], 'phase': phase,
-                                        'code': code, 'bundle': str(self.bundle)}).encode())
+        record = {'id': self.p['id'], 'phase': phase, 'code': code, 'bundle': str(self.bundle)}
+        if timer_handoff is not None:
+            record['timer_handoff'] = timer_handoff
+        write_new(temporary, json.dumps(record).encode())
         os.replace(temporary, self.journal)
         sync_dir(self.control)
 
@@ -608,6 +648,54 @@ class Transition:
         while self.fds:
             os.close(self.fds.pop())
 
+    def recovery_runner(self):
+        seconds = min(self.p['recovery_seconds'], self.p['expires_unix']-time.time())
+        require(seconds > 0, 'WINDOW_EXPIRED')
+        return Runner(time.monotonic()+seconds, self.p['command_timeout_seconds'])
+
+    def timer_incident_handoff(self):
+        """Contain future triggers, observe; never kill an already running renew.
+
+        start may have taken effect even when its acknowledgement was lost.
+        Failed observations stay unknown, never fabricate an inactive timer.
+        """
+        result = {'stop': 'unknown', 'timer': 'unknown', 'enabled': 'unknown',
+                  'renewal': 'unknown', 'queued': 'unknown'}
+        try:
+            run = self.recovery_runner()
+        except BaseException:
+            return result
+        try:
+            run(['/usr/bin/systemctl', 'stop', TIMER])
+            result['stop'] = 'acknowledged'
+        except BaseException:
+            pass
+        # Each observation shares the same finite recovery Runner deadline.
+        try:
+            raw = run(['/usr/bin/systemctl', 'show', TIMER, '-pActiveState', '-pUnitFileState'])
+            fields = dict(line.split('=', 1) for line in raw.decode().splitlines() if '=' in line)
+            if fields.get('ActiveState') in ('active', 'inactive', 'failed', 'activating', 'deactivating'):
+                result['timer'] = fields['ActiveState']
+            if fields.get('UnitFileState') in ('enabled', 'disabled', 'masked', 'static'):
+                result['enabled'] = fields['UnitFileState']
+        except BaseException:
+            pass
+        try:
+            raw = run(['/usr/bin/systemctl', 'show', SERVICE, '-pActiveState', '-pMainPID'])
+            fields = dict(line.split('=', 1) for line in raw.decode().splitlines() if '=' in line)
+            if fields.get('ActiveState') == 'inactive' and fields.get('MainPID') == '0':
+                result['renewal'] = 'idle'
+            elif fields.get('ActiveState') in ('active', 'activating', 'deactivating'):
+                result['renewal'] = 'possibly-running'
+        except BaseException:
+            pass
+        try:
+            jobs = run(['/usr/bin/systemctl', 'list-jobs', '--no-legend', '--no-pager'])
+            result['queued'] = 'yes' if SERVICE.encode() in jobs else 'no'
+        except BaseException:
+            pass
+        return result
+
     def apply(self):
         self.validate_packet()
         self.journal_phase('quiescence')
@@ -629,10 +717,14 @@ class Transition:
             self.journal_phase('postflight')
             self.release()
             # Restoring timer may run renewal immediately; never restore old script.
+            self.journal_phase('timer-restoring')
+            self.timer_restore_attempted = True
             self.system('start', TIMER)
             require(self.unit_state() == self.p['timer'], 'TIMER_RESTORE')
             self.journal_phase('complete')
-        except BaseException:
+            self.timer_stopped = False
+        except BaseException as exc:
+            handoff = self.timer_incident_handoff() if self.timer_restore_attempted else None
             # A known in-process initial-current transition can be disconnected.
             # On crash, recover is read-only and requires incident authorization.
             if self.switched and len(self.fds) == 2:
@@ -644,7 +736,8 @@ class Transition:
                 except BaseException:
                     pass  # Journal remains incident; never claim restoration.
             with contextlib.suppress(BaseException):
-                self.journal_phase('incident', 'INCIDENT')
+                self.journal_phase('incident', str(exc) if isinstance(exc, Refused) else 'INTERNAL',
+                                   timer_handoff=handoff)
             raise Refused('INCIDENT') from None
         finally:
             self.release()
@@ -690,7 +783,12 @@ def main():
         if sys.argv[1] == 'recover':
             protected(operation.journal, 0o600)
             state = json.loads(operation.journal.read_bytes())
-            require(state['phase'] == 'complete' and state['id'] == p['id'], 'INCIDENT')
+            require(state['phase'] == 'complete' and state['id'] == p['id']
+                    and not os.path.lexists(operation.journal.with_suffix('.new')), 'INCIDENT')
+            try:
+                require(operation.unit_state() == p['timer'], 'INCIDENT')
+            except BaseException:
+                raise Refused('INCIDENT') from None
             print('PASS:RECOVERY_RECORD_ONLY')
         elif sys.argv[1] == 'preflight':
             operation.validate_packet()
@@ -702,7 +800,7 @@ def main():
     except Refused as exc:
         code = str(exc)
         print('FAIL:'+code)
-        return 4 if code == 'INCIDENT' else 3 if code in (
+        return 4 if code in ('INCIDENT', 'PROCESS_UNCERTAIN', 'CHILD_REMAINS') else 3 if code in (
             'INTERRUPTED', 'COMMAND_TIMEOUT', 'WINDOW_EXPIRED') else 2
     except BaseException:
         print('FAIL:INTERNAL')

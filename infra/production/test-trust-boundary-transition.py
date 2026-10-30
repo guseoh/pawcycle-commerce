@@ -279,6 +279,8 @@ class FakeRunner:
         self.timer = 'active'
         self.fail = None
         self.resolved = None
+        self.started = False
+        self.renewal_active = False
 
     def check(self):
         if self.fail == 'window':
@@ -297,15 +299,24 @@ class FakeRunner:
                             'ExecStart={ path='+str(self.host.installed)+' ; argv[]='+str(self.host.installed)+' ; }\n')
                 return raw.encode()
             if argv[1:3] == ['stop', transition.TIMER]:
+                if self.started and self.fail == 'stop-after-start':
+                    raise Refused('COMMAND_TIMEOUT')
                 self.timer = 'inactive'
                 return b''
             if argv[1:3] == ['start', transition.TIMER]:
                 self.timer = 'active'
+                self.started = True
+                if self.fail == 'start-ack-lost':
+                    raise Refused('COMMAND_TIMEOUT')
                 return b''
             if argv[1] == 'list-jobs':
-                return b''
+                return transition.SERVICE.encode() if self.started and self.renewal_active else b''
             if argv[2] == transition.TIMER:
+                if self.started and self.fail == 'timer-observation':
+                    raise Refused('COMMAND_TIMEOUT')
                 return ('ActiveState='+self.timer+'\nUnitFileState=enabled\n').encode()
+            if self.started and self.renewal_active:
+                return b'ActiveState=active\nMainPID=123\n'
             return b'ActiveState=inactive\nMainPID=0\n'
         if argv[0] == '/usr/bin/git':
             if self.fail == 'git-timeout':
@@ -347,6 +358,9 @@ class FakeRunner:
 
 
 class FixtureTransition(transition.Transition):
+    def recovery_runner(self):
+        return self.run
+
     def no_writer(self):
         # Production /proc scan is separately tested; synthetic root is private.
         pass
@@ -511,6 +525,130 @@ class SupervisedIntegration(unittest.TestCase):
             self.host.apply()
         self.assertEqual(self.runner.timer, 'active')
         self.assertFalse(self.host.journal.exists())
+
+    def test_timer_start_then_state_failure_stops_timer_and_records_handoff(self):
+        original = self.host.unit_state
+        count = 0
+        def fail_after_start():
+            nonlocal count
+            count += 1
+            if count > 1:
+                raise RuntimeError('fixture-private-error')
+            return original()
+        with patch.object(self.host, 'unit_state', side_effect=fail_after_start):
+            with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+                self.host.apply()
+        self.assertEqual(self.runner.timer, 'inactive')
+        record = json.loads(self.host.journal.read_bytes())
+        self.assertEqual(record['phase'], 'incident')
+        self.assertEqual(record['timer_handoff']['timer'], 'inactive')
+        self.assertEqual(self.host.fds, [])
+        self.assertTrue((self.host.runtime/'current').is_symlink())
+
+    def test_timer_start_then_complete_journal_failure_stops_timer(self):
+        original = self.host.journal_phase
+        def fail_complete(phase, *args, **kwargs):
+            if phase == 'complete':
+                raise OSError('fixture journal fsync')
+            return original(phase, *args, **kwargs)
+        with patch.object(self.host, 'journal_phase', side_effect=fail_complete):
+            with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+                self.host.apply()
+        self.assertEqual(self.runner.timer, 'inactive')
+        self.assertEqual(json.loads(self.host.journal.read_bytes())['phase'], 'incident')
+
+    def fail_timer_completion(self):
+        original = self.host.journal_phase
+        def fail_complete(phase, *args, **kwargs):
+            original(phase, *args, **kwargs)
+            if phase == 'complete':
+                raise OSError('fixture directory fsync after replace')
+        with patch.object(self.host, 'journal_phase', side_effect=fail_complete):
+            with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+                self.host.apply()
+        return json.loads(self.host.journal.read_bytes())
+
+    def test_timer_stop_failure_records_active_incident_without_success(self):
+        self.runner.fail = 'stop-after-start'
+        record = self.fail_timer_completion()
+        self.assertEqual(record['phase'], 'incident')
+        self.assertEqual(record['timer_handoff']['timer'], 'active')
+        self.assertEqual(record['timer_handoff']['stop'], 'unknown')
+        self.assertEqual(self.host.fds, [])
+        self.assertTrue((self.host.runtime/'current').is_symlink())
+
+    def test_immediate_renewal_observed_not_killed_or_rolled_back(self):
+        self.runner.renewal_active = True
+        record = self.fail_timer_completion()
+        self.assertEqual(record['timer_handoff']['timer'], 'inactive')
+        self.assertEqual(record['timer_handoff']['renewal'], 'possibly-running')
+        self.assertEqual(record['timer_handoff']['queued'], 'yes')
+        self.assertNotIn(['/usr/bin/systemctl', 'stop', transition.SERVICE], self.runner.calls)
+        self.assertTrue((self.host.runtime/'current').is_symlink())
+        self.assertEqual(self.host.renewal.read_bytes(), b'renewal-sentinel')
+
+    def test_normal_timer_restore_with_immediate_renewal_preserves_contract(self):
+        self.runner.renewal_active = True
+        self.host.apply()
+        self.assertEqual(self.runner.timer, 'active')
+        self.assertFalse(self.host.timer_stopped)
+        self.assertEqual(json.loads(self.host.journal.read_bytes())['phase'], 'complete')
+        self.assertEqual(self.host.fds, [])
+        self.assertNotIn(['/usr/bin/systemctl', 'stop', transition.SERVICE], self.runner.calls)
+
+    def test_unknown_timer_observation_never_fabricates_inactive(self):
+        self.runner.fail = 'timer-observation'
+        with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+            self.host.apply()
+        record = json.loads(self.host.journal.read_bytes())
+        self.assertEqual(record['timer_handoff']['timer'], 'unknown')
+        self.assertEqual(record['timer_handoff']['stop'], 'acknowledged')
+
+    def test_lost_start_acknowledgement_is_contained(self):
+        self.runner.fail = 'start-ack-lost'
+        with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+            self.host.apply()
+        self.assertEqual(self.runner.timer, 'inactive')
+        self.assertEqual(json.loads(self.host.journal.read_bytes())['phase'], 'incident')
+
+    def test_supervisor_escaped_child_pipe_has_finite_incident_boundary(self):
+        pidfile = self.root/'escaped-child.pid'
+        child_code = ('import os,sys,time;'
+                      'open(sys.argv[1],"w").write(str(os.getpid()));time.sleep(30)')
+        parent_code = ('import subprocess,sys;subprocess.Popen([sys.executable,"-c",'
+                       +repr(child_code)+',sys.argv[1]],start_new_session=True)')
+        def escaped():
+            transition.Runner(time.monotonic()+5, 0.1)(
+                [sys.executable, '-c', parent_code, str(pidfile)])
+        started = time.monotonic()
+        try:
+            with patch.object(self.host, 'prepare_source', side_effect=escaped):
+                with self.assertRaisesRegex(Refused, '^INCIDENT$'):
+                    self.host.apply()
+            self.assertLess(time.monotonic()-started, 6)
+            self.assertEqual(self.host.fds, [])
+            self.assertEqual(json.loads(self.host.journal.read_bytes())['code'], 'PROCESS_UNCERTAIN')
+            self.assertEqual(self.runner.timer, 'inactive')
+            self.stopped()
+        finally:
+            if pidfile.exists():
+                with __import__('contextlib').suppress(ProcessLookupError):
+                    os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+    def test_runner_never_uses_unbounded_communicate_after_timeout(self):
+        from unittest.mock import Mock
+        proc = Mock(pid=123456789)
+        proc.stdout, proc.stderr = io.BytesIO(), io.BytesIO()
+        proc.poll.return_value = 0
+        def blocked(timeout=None):
+            self.assertIsNotNone(timeout, 'unbounded pipe wait')
+            raise subprocess.TimeoutExpired('fixture', timeout)
+        proc.communicate.side_effect = blocked
+        with patch.object(transition.subprocess, 'Popen', return_value=proc):
+            with patch.object(transition.os, 'killpg', side_effect=ProcessLookupError):
+                with self.assertRaisesRegex(Refused, '^PROCESS_UNCERTAIN$'):
+                    transition.Runner(time.monotonic()+5, 0.05)(['fixture'])
+        self.assertTrue(proc.stdout.closed and proc.stderr.closed)
 
     def test_unit_drift_prevents_timer_stop(self):
         self.write(self.host.path('/etc/systemd/system/'+transition.SERVICE),
