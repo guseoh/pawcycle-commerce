@@ -281,6 +281,7 @@ class FakeRunner:
         self.resolved = None
         self.started = False
         self.renewal_active = False
+        self.queued_before_start = False
 
     def check(self):
         if self.fail == 'window':
@@ -310,7 +311,9 @@ class FakeRunner:
                     raise Refused('COMMAND_TIMEOUT')
                 return b''
             if argv[1] == 'list-jobs':
-                return transition.SERVICE.encode() if self.started and self.renewal_active else b''
+                return transition.SERVICE.encode() if (
+                    self.queued_before_start or (self.started and self.renewal_active)
+                ) else b''
             if argv[2] == transition.TIMER:
                 if self.started and self.fail == 'timer-observation':
                     raise Refused('COMMAND_TIMEOUT')
@@ -479,6 +482,22 @@ class SupervisedIntegration(unittest.TestCase):
             os.umask(previous)
         self.assertEqual(stat.S_IMODE(self.host.installed.stat().st_mode), 0o755)
         self.assertEqual(stat.S_IMODE((self.host.bundle/'backend.env').stat().st_mode), 0o600)
+
+    def test_no_queued_renewal_job_allows_read_only_preflight(self):
+        self.host.validate_packet()
+        self.assertEqual(self.runner.timer, 'active')
+        self.assertNotIn(['/usr/bin/systemctl', 'stop', transition.TIMER], self.runner.calls)
+        self.assertFalse(self.host.journal.exists())
+        self.stopped()
+
+    def test_queued_renewal_job_stops_before_timer_mutation(self):
+        self.runner.queued_before_start = True
+        with self.assertRaisesRegex(Refused, '^RENEWAL_BUSY$'):
+            self.host.apply()
+        self.assertEqual(self.runner.timer, 'active')
+        self.assertNotIn(['/usr/bin/systemctl', 'stop', transition.TIMER], self.runner.calls)
+        self.assertFalse(self.host.journal.exists())
+        self.stopped()
 
     def test_invalid_canonical_stops_before_timer(self):
         self.write(self.host.runtime/'backend.env', b'UNKNOWN=not-secret\n', 0o600)
