@@ -3,7 +3,7 @@ body { margin: 0; }
 /* A/R1 customer authority; administration retains its isolated legacy presentation. */
 .customer-theme {
  --canvas:#fff; --surface:#f3f0f7; --elevated:#fff; --brand:#4b286d; --brand-hover:#3c1f58; --brand-pressed:#301847; --brand-dark:#3c1f58;
- --accent:#f3b88f; --accent-soft:#fbede3; --ink:#241c2e; --muted:#68616f; --line:#ded8e4; --border-control:#887d92; --focus:#4b286d;
+ --accent:#f3b88f; --accent-soft:#fbede4; --ink:#241c2e; --muted:#68616f; --line:#ded8e4; --border-control:#887d92; --focus:#4b286d;
  --success:#146b45; --success-soft:#eaf6ee; --warning:#805000; --warning-soft:#fff3d6; --danger:#b42336; --danger-soft:#fff0f2; --sale:#955000; --sale-soft:#fff2d8;
  --selected-soft:#efe8f5; --disabled-surface:#e9e5ed; --disabled-text:#68616f; --surface-soft:var(--surface); --text:var(--ink); --text-strong:var(--ink); --text-muted:var(--muted);
  --content-width:1280px; --desktop-header-height:88px; --compact-header-height:64px;
