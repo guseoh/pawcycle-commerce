@@ -317,6 +317,7 @@ class AutomaticControllerTests(unittest.TestCase):
         self.assertFalse(self.source.proof.exists())
         self.assertEqual("activate-verified", self.run_cd()["result"])
         self.assertEqual([self.source.target], self.host.calls)
+        self.assertEqual([(self.source.target, True, True)], self.host.modes)
         state = r.Release(self.host).read_state()
         self.assertEqual(self.source.target, state["current"]["manifest"]["sha"])
         self.assertEqual(self.source.baseline, state["current"]["manifest"]["backend"]["source_sha"])
@@ -334,6 +335,7 @@ class AutomaticControllerTests(unittest.TestCase):
         self.host.main = self.source.commit()
         self.assertEqual("activate-verified", self.run_cd()["result"])
         self.assertEqual([self.source.target, target], self.host.calls)
+        self.assertTrue(all(frontend_only for _, _, frontend_only in self.host.modes))
         self.assertEqual("no-candidate", self.run_cd()["result"])
 
     def test_auto_ci_registry_capacity_db_policy_and_backend_reject_with_zero_deploys(self):
@@ -359,6 +361,8 @@ class AutomaticControllerTests(unittest.TestCase):
         self.host.failures = [ValueError("isolated smoke failure")]
         self.assertEqual("failed-disabled", self.run_cd()["result"])
         self.assertEqual([self.source.target, self.source.baseline], self.host.calls)
+        self.assertEqual([(self.source.target, True, True),
+                          (self.source.baseline, False, True)], self.host.modes)
         self.assertTrue(self.host.recovery_used_local_images)
         self.run_cd()
         self.assertEqual(2, len(self.host.calls))
