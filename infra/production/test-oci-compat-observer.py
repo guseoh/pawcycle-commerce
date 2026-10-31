@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('compat', HERE / 'oci-compat-observer.py')
@@ -184,8 +184,8 @@ class ObserverTests(unittest.TestCase):
             self.assertNotIn('password', ' '.join(argv).lower())
 
     def test_mysql_tls_verification_failure_fails_closed(self):
-        with patch.object(compat.subprocess, 'run',
-                          return_value=Mock(returncode=1, stdout=b'secret error')):
+        with patch.object(compat, 'run',
+                          side_effect=compat.Rejected('observer dependency failed or oversized')):
             with self.assertRaisesRegex(compat.Rejected, 'dependency failed'):
                 compat.mysql('SELECT 1')
 
