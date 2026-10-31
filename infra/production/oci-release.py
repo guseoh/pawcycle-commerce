@@ -597,7 +597,9 @@ class Host:
             code = self.command("curl", "--silent", "--show-error", "--max-time", "15", "--output", "/dev/null",
                                 "--write-out", "%{http_code}", "https://" + DOMAIN + path)
             require(re.fullmatch(rb"2\d\d", code), "external HTTPS smoke was not direct 2xx")
-        self.command("bash", str(self.repository / "infra/production/verify-observability-application-identity.sh"), "snapshot")
+        # runtime_check already validates all three service identities, image
+        # provenance, networks and Compose/mount boundaries. Do not execute a
+        # duplicate checkout script: the controller source is a bare mirror.
         ids = self.docker("ps", "-q", "--filter", "label=com.docker.compose.project=pawcycle-production-metrics-proxy",
                           "--filter", "label=com.docker.compose.service=metrics-proxy").decode().split()
         require(len(ids) == 1, "metrics proxy identity missing")

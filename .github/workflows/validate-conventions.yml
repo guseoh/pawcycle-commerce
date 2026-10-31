@@ -89,14 +89,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          # Exact squash/main SHA gets every application lane. PR metadata
-          # remains independent, and docs-only pushes retain narrow validation.
+          # PR and exact main SHA use the same component classifier.
           if [ "$EVENT_NAME" = "push" ]; then
             if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-              BASE_SHA="$(git rev-parse "$HEAD_SHA^")"
-            fi
-            git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/main-paths"
-            if python scripts/classify-production-image-changes.py < "$RUNNER_TEMP/main-paths" | grep -q 'publish=true'; then
+              # Unknown push base cannot justify skipping any component.
               printf 'harness=true\nbackend=true\nfrontend=true\nproduction=true\n' >> "$GITHUB_OUTPUT"
               exit 0
             fi
