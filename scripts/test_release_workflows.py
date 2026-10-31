@@ -49,7 +49,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("paths:", header)
         self.assertIn("name: Classify production image changes", self.publish)
         self.assertIn('git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA"', self.publish)
-        self.assertIn('python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"', self.publish)
+        self.assertIn('python scripts/classify-production-image-changes.py --components >> "$GITHUB_OUTPUT"', self.publish)
         self.assertIn('if ! changed_paths="$(git diff', self.publish)
         self.assertIn('if [ "$EVENT_NAME" = "workflow_dispatch" ]', self.publish)
         self.assertIn('org.opencontainers.image.revision=', self.publish)
@@ -64,7 +64,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn('''''|0000000000000000000000000000000000000000)''', self.publish)
         self.assertIn('''if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]''', self.publish)
         self.assertIn('''if ! changed_paths="$(git diff''', self.publish)
-        self.assertIn('''echo "publish=true" >> "$GITHUB_OUTPUT"''', self.publish)
+        self.assertIn("publish=true\\nbackend=true\\nfrontend=true", self.publish)
 
     def test_release_readiness_keeps_exact_sha_image_pair(self) -> None:
         readiness = (WORKFLOWS_DIR / "production-release-readiness.yml").read_text(
@@ -112,7 +112,8 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("infra/production/test-oci-cd.py", validation)
         self.assertIn("branches: [main]", validation)
         self.assertIn("github.event_name == 'pull_request'", validation)
-        self.assertIn("harness=true\\nbackend=true\\nfrontend=true\\nproduction=true", validation)
+        self.assertIn("python scripts/classify-validation-changes.py", validation)
+        self.assertNotIn("grep -q 'publish=true'", validation)
         for name, workflow in self.workflows.items():
             with self.subTest(workflow=name):
                 self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-release\.py\b")
@@ -137,6 +138,32 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
 
 class ImagePublishClassifierTest(unittest.TestCase):
+    def test_frontend_only_omits_backend_but_shared_and_unknown_keep_pair(self) -> None:
+        for paths, expected in (
+            (["backend/src/main/java/App.java"], {"backend": True, "frontend": False}),
+            (["backend/build.gradle"], {"backend": True, "frontend": False}),
+            (["infra/production/backend.Dockerfile"], {"backend": True, "frontend": False}),
+            (["infra/production/frontend.Dockerfile"], {"backend": False, "frontend": True}),
+            (["frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
+            (["frontend/public/logo.svg"], {"backend": False, "frontend": True}),
+            (["docs/note.md", "frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
+            (["frontend/src/app/globals.css", "backend/build.gradle"], {"backend": True, "frontend": True}),
+            ([".dockerignore"], {"backend": True, "frontend": True}),
+            (["unknown.config"], {"backend": True, "frontend": True}),
+            (["docs/note.md"], {"backend": False, "frontend": False}),
+        ):
+            with self.subTest(paths=paths):
+                self.assertEqual(expected, CLASSIFIER.image_components(paths))
+
+    def test_application_scope_excludes_migration_config_and_unclassified_inputs(self) -> None:
+        for path in ("backend/src/main/resources/db/migration/V99.sql", "backend/src/main/resources/application.yml",
+                     "backend/src/main/java/data-repair/Fix.java", "infra/production/nginx.https.conf", "unknown.toml"):
+            self.assertEqual([path], CLASSIFIER.application_blockers([path]))
+        self.assertEqual([], CLASSIFIER.application_blockers([
+            "backend/src/main/java/com/pawcycle/backend/commerce/OrderService.java",
+            "frontend/src/components/app-header.tsx", "backend/build.gradle", "docs/note.md",
+            "backend/src/test/resources/fixtures.sql", "docs/query.sql", "scripts/backfill.sql"]))
+
     def test_build_deploy_and_policy_risk_are_separate(self) -> None:
         for path in ("infra/production/oci-release.py", "infra/production/oci-cd.py",
                      "infra/production/test-oci-cd.py", "infra/production/systemd/pawcycle-oci-cd.service"):

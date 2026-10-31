@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.paths.outputs.publish }}
+      backend: ${{ steps.paths.outputs.backend }}
+      frontend: ${{ steps.paths.outputs.frontend }}
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -37,7 +39,7 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            printf 'publish=true\nbackend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -51,23 +53,23 @@ jobs:
 
           case "$BEFORE_SHA" in
             ''|0000000000000000000000000000000000000000)
-              echo "publish=true" >> "$GITHUB_OUTPUT"
+              printf 'publish=true\nbackend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
               exit 0
               ;;
           esac
 
           # Missing/invalid comparison bases and diff errors fail safe: publish.
           if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            printf 'publish=true\nbackend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if ! changed_paths="$(git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA")"; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            printf 'publish=true\nbackend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           printf '%s\n' "$changed_paths"
           printf '%s\n' "$changed_paths" \
-            | python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"
+            | python scripts/classify-production-image-changes.py --components >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish production images
@@ -104,6 +106,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Backend image
+        if: needs.classify.outputs.backend == 'true'
         id: backend
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
@@ -119,6 +122,7 @@ jobs:
           sbom: false
 
       - name: Build and push Frontend image
+        if: needs.classify.outputs.frontend == 'true'
         id: frontend
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
@@ -137,14 +141,16 @@ jobs:
         env:
           BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
           FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          BACKEND_REQUIRED: ${{ needs.classify.outputs.backend }}
+          FRONTEND_REQUIRED: ${{ needs.classify.outputs.frontend }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
-          test -n "$BACKEND_DIGEST"
-          test -n "$FRONTEND_DIGEST"
+          if [ "$BACKEND_REQUIRED" = "true" ]; then test -n "$BACKEND_DIGEST"; fi
+          if [ "$FRONTEND_REQUIRED" = "true" ]; then test -n "$FRONTEND_DIGEST"; fi
           {
             echo '## Production image release'
             echo
             echo "- commit SHA: \`$RELEASE_SHA\`"
-            echo "- Backend digest: \`$BACKEND_DIGEST\`"
-            echo "- Frontend digest: \`$FRONTEND_DIGEST\`"
+            echo "- Backend digest: \`${BACKEND_DIGEST:-unchanged; no image published}\`"
+            echo "- Frontend digest: \`${FRONTEND_DIGEST:-unchanged; no image published}\`"
           } >> "$GITHUB_STEP_SUMMARY"

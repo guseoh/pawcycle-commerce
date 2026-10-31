@@ -63,8 +63,48 @@ def should_publish(paths: list[str]) -> bool:
     return classify(paths)["publish"]
 
 
+def image_components(paths: list[str]) -> dict[str, bool]:
+    """Select independent images; shared/unclassified build inputs select both."""
+    result = {"backend": False, "frontend": False}
+    for path in paths:
+        if not classify([path])["publish"]:
+            continue
+        for role in result:
+            own = path.startswith(role + "/") or path in {
+                "infra/production/" + role + ".Dockerfile",
+                "infra/production/" + role + ".Dockerfile.dockerignore",
+            }
+            other = "frontend" if role == "backend" else "backend"
+            foreign = path.startswith(other + "/") or path in {
+                "infra/production/" + other + ".Dockerfile",
+                "infra/production/" + other + ".Dockerfile.dockerignore",
+            }
+            result[role] |= own or not foreign
+    return result
+
+
+def application_blockers(paths: list[str]) -> list[str]:
+    """Mechanical exclusions, not a proof that arbitrary data writes reverse.
+
+    Non-obvious destructive code changes must use the manual-deploy commit
+    trailer during review. Neither mechanism grants migration permission.
+    """
+    return [p for p in paths if classify([p])["deploy"] and (
+        set(classify([p])["risks"]) & {"runtime", "unknown"}
+        or p == PUBLISH_WORKFLOW
+        or p.startswith(("backend/src/main/resources/", "backend/.env", "frontend/.env"))
+        or p.lower().endswith(".sql")
+        or re.search(r"(?:^|/)(?:migration|migrations|backfill|data-repair|data-fix)(?:/|\.)", p, re.I)
+    )]
+
+
 def main() -> None:
-    print("publish=" + ("true" if should_publish(sys.stdin.read().splitlines()) else "false"))
+    paths = sys.stdin.read().splitlines()
+    result = {"publish": should_publish(paths)}
+    if "--components" in sys.argv[1:]:
+        result.update(image_components(paths))
+    for name, enabled in result.items():
+        print(name + "=" + ("true" if enabled else "false"))
 
 
 if __name__ == "__main__":

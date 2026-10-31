@@ -1,5 +1,7 @@
 # OPS-OCI-CD-006 — 제한적 Frontend 자동 배포
 
+이 문서는 legacy `frontend-cosmetic-v1` 모드의 제한을 설명한다. 일반 Frontend·Backend 자동 배포는 [application-v1](OPS-OCI-CD-003-host-pull.md)을 따르며 아래 CSS/Observer 제한을 적용하지 않는다.
+
 고위험 / Repository Change. **Production OFF / 운영 미실행**. 이 문서는 최초 운영 승인을 위한 절차이며 설치·Adopt·Timer·Production/Cloud/DB/Secret 변경 승인이 아니다. [Host Pull](OPS-OCI-CD-003-host-pull.md), [최초 전환](OPS-OCI-CD-004-first-transition.md), [Release/Recovery](OPS-OCI-CD-02-release-recovery.md)의 기존 Gate를 유지한다.
 
 ## 최초 자동 허용 범위
@@ -13,7 +15,7 @@
 
 이 증거는 domain E2E를 실행했다고 표시하지 않는다. 승인된 source의 동작 부분이 불변인 제한적 변환을 입증한다. live MySQL identity/Flyway epoch·migration tree·Runtime hash를 계속 독립 관측하며 DB 행·credential은 기록하지 않는다. 기존 정상 current·local image 복귀·HTTPS smoke·sibling 경계도 유지한다.
 
-기존 GHCR workflow는 두 이미지를 같은 SHA로 발행하지만 자동 경로는 **검증된 current Backend artifact를 그대로 보존**한다. Backend의 repository/digest/config digest/budget과 최초 image source SHA를 current에서 복사하며 재빌드된 target Backend를 자동 승인하지 않는다. Manifest의 선택적 `backend.source_sha`로 원본 tag/revision을 Registry·local image에서 계속 검증하고, 원본 source가 target main의 조상이며 Backend/build 입력이 동일함도 Release 엔진이 확인한다. Frontend만 target SHA 이미지를 사용한다. 이 opt-in 자동 경로는 기존 Backend 이미지의 검증만 수행하며 Backend를 새 SHA로 retag/pull/Compose up하지 않는다. Nginx 설정 Fingerprint가 동일하므로 Proxy도 Compose up하지 않는다. Frontend만 `--no-deps`로 교체하고, 전후 Backend·Proxy 컨테이너 ID/StartedAt이 다르면 실패 처리한다. 자동 실패 복귀 역시 Frontend만 적용하며 보존 서비스의 변경이 관측되면 수동 Recovery 마커를 유지한다. 기존 수동 Release/rollback은 종전의 전체 서비스 동작을 유지한다. 수동 manifest의 기본 동일 SHA 계약은 유지된다.
+GHCR workflow는 Frontend-only input이면 Frontend만 target SHA로 발행한다. 수동 기준선 정렬의 동일 SHA pair는 명시적 publish dispatch로 준비한다. 자동 경로는 **검증된 current Backend artifact를 그대로 보존**한다. Backend의 repository/digest/config digest/budget과 최초 image source SHA를 current에서 복사하며 재빌드된 target Backend를 자동 승인하지 않는다. Manifest의 선택적 `backend.source_sha`로 원본 tag/revision을 Registry·local image에서 계속 검증하고, 원본 source가 target main의 조상이며 Backend/build 입력이 동일함도 Release 엔진이 확인한다. Frontend만 target SHA 이미지를 사용한다. 이 opt-in 자동 경로는 기존 Backend 이미지의 검증만 수행하며 Backend를 새 SHA로 retag/pull/Compose up하지 않는다. Nginx 설정 Fingerprint가 동일하므로 Proxy도 Compose up하지 않는다. Frontend만 `--no-deps`로 교체하고, 전후 Backend·Proxy 컨테이너 ID/StartedAt이 다르면 실패 처리한다. 자동 실패 복귀 역시 Frontend만 적용하며 보존 서비스의 변경이 관측되면 수동 Recovery 마커를 유지한다. 기존 수동 Release/rollback은 종전의 전체 서비스 동작을 유지한다. 수동 manifest의 기본 동일 SHA 계약은 유지된다.
 
 ## 정책과 증거
 
@@ -35,7 +37,7 @@ Controller는 보호된 정책 경로를 설치 Observer의 `--auto-policy`로 �
 
 1. CD를 OFF로 유지한 상태에서 실제 Production SHA·이미지 graph·정상 HTTPS/인증서·Runtime·live DB epoch·migration·sibling·disk peak/복귀 budget·lock 상태를 독립 확인한다. 이 저장소 작업에서는 실제 Production SHA를 조회하거나 추정하지 않았다.
 2. 실제 current→최신 main의 누적 diff와 main 중간 이력을 확인한다. 자동 범위 밖이면 **최초 1회 감독형 기준선 정렬**이 선행돼야 한다. 전체 누적 변경의 CI·양방향 호환·DB 불변·capacity·복구를 별도로 승인하고 기존 수동 Release 절차로 정확한 main 이미지를 배포·HTTPS 검증한다. 기존 권위 state가 있으면 수동 activate를 사용하며, Adopt로 SHA를 덮어쓰거나 현재 컨테이너를 최신 main으로 재표기하지 않는다. 필요한 Backend/DB 호환 증거를 만들 수 없으면 여기서 STOP한다. 최초 state가 없는 경우만 OPS-OCI-CD-004의 승인된 Adopt를 따른다. 도구/docs-only main에 이미지나 전체 CI 근거가 없으면 기존 readiness/publish 절차의 별도 승인된 exact-SHA 근거 준비가 필요하며, 없는 이미지를 배포했다고 간주하지 않는다.
-3. 검증된 실제 정상 main SHA를 `automatic_baseline_sha`로 고정한다. 설치본 Controller/Release/classifier/환경 parser와 Observer bytes를 검토·hash 고정하고 보호된 정책·Runtime·read-only MySQL TLS 입력을 준비한다. 기존 수동 pair-proof 파일을 자동용 가짜 PASS로 대체하지 않는다. 향후 source의 설치본 자동 갱신도 하지 않는다.
+3. 검증된 실제 정상 main SHA를 `automatic_baseline_sha`로 고정한다. 설치본 Controller/Release/두 classifier/환경 parser와 Observer bytes를 검토·hash 고정하고 보호된 정책·Runtime·read-only MySQL TLS 입력을 준비한다. 기존 수동 pair-proof 파일을 자동용 가짜 PASS로 대체하지 않는다. 향후 source의 설치본 자동 갱신도 하지 않는다.
 4. 제한 범위·만료·capacity·journal 알림·중단/Recovery를 포함한 최초 정책과 설치·sentinel·Timer 활성화를 명시적으로 승인한다. Kill Switch 동작을 확인한 뒤 승인된 운영자가 활성화한다. 현재와 baseline이 같으면 첫 tick은 no-candidate다.
 5. 별도 검토/병합된 허용 색상 변경 하나로 main push의 exact SHA CI와 GHCR 성공을 기다린다. `oci-cd-result.json`/journal의 `activate-verified`, 권위 current SHA·실제 컨테이너 image ID와 provenance, 외부 HTTPS의 변경된 CSS bytes/화면·기존 앱 smoke·sibling 불변을 독립 확인한다. 이것이 최초 운영 성공 기준이며 PR/CI Green만으로 Production Verified라고 하지 않는다.
 

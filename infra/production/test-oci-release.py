@@ -74,7 +74,8 @@ class FakeHost(release.Host):
         self.live = manifest("a")
         self.calls, self.failures = [], []
         self.modes = []
-        self.service_ids = {"backend": ("backend-id", "backend-start"),
+        self.service_calls = []
+        self.service_ids = {"frontend": ("frontend-id", "frontend-start"), "backend": ("backend-id", "backend-start"),
                             "proxy": ("proxy-id", "proxy-start")}
         self.mutate_backend_during_frontend = False
         self.reject = None
@@ -118,9 +119,16 @@ class FakeHost(release.Host):
         return {role: {"Id": identity[0], "State": {"StartedAt": identity[1]}}
                 for role, identity in self.service_ids.items()}
 
-    def activate(self, target, pull=True, frontend_only=False):
+    def activate(self, target, pull=True, frontend_only=False, services=None):
         self.calls.append(target["sha"])
         self.modes.append((target["sha"], pull, frontend_only))
+        if services is not None:
+            self.service_calls.append((tuple(services), pull))
+            for role in services:
+                self.service_ids[role] = (role + target["sha"], role + target["sha"])
+            drift = getattr(self, "unselected_drift", None)
+            if pull and drift:
+                self.service_ids[drift] = ("unexpected", "unexpected")
         if self.mutate_backend_during_frontend and frontend_only and pull:
             self.service_ids["backend"] = ("unexpected-recreated-backend", "new-start")
         if not pull:
@@ -194,6 +202,67 @@ class LifecycleTests(unittest.TestCase):
         self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
         self.assertEqual(self.a, self.host.live)
         self.assertTrue(self.host.recovery_used_local_images)
+
+    def test_application_release_and_local_rollback_track_each_service(self):
+        self.adopt()
+        engine = release.Release(self.host, application_only=True)
+        for index, selected in enumerate((("frontend",), ("backend",), ("backend", "frontend"))):
+            with self.subTest(selected=selected):
+                previous = engine.read_state()["current"]["manifest"]
+                target = manifest(chr(ord("b") + index))
+                for role in {"backend", "frontend"} - set(selected):
+                    target[role] = {**previous[role], "source_sha": release.image_sha(previous, role)}
+                ids = copy.deepcopy(self.host.service_ids)
+                permission = approval("activate", target, previous["sha"])
+                for field in ("db_epoch", "db_compatibility_evidence", "compatible_with", "rollback_safe"):
+                    permission.pop(field)
+                engine.run("activate", target, permission, True)
+                self.assertEqual((selected, True), self.host.service_calls[-1])
+                for role in {"backend", "frontend", "proxy"} - set(selected):
+                    self.assertEqual(ids[role], self.host.service_ids[role])
+                self.assertIsNone(engine.read_state()["current"]["compatibility_evidence"])
+        previous = engine.read_state()["previous"]["manifest"]
+        engine.run("rollback", previous, approval("rollback", previous, target["sha"]), True)
+        self.assertEqual((selected, False), self.host.service_calls[-1])
+        self.assertEqual(previous, engine.read_state()["current"]["manifest"])
+
+    def test_application_failure_restores_only_selected_service_and_fences_drift(self):
+        self.adopt()
+        self.b["frontend"] = {**self.a["frontend"], "source_sha": self.a["sha"]}
+        engine = release.Release(self.host, application_only=True)
+        ids = copy.deepcopy(self.host.service_ids)
+        self.host.failures = [ValueError("unhealthy")]
+        with self.assertRaisesRegex(release.Refused, "previous verified release restored"):
+            engine.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertEqual([(("backend",), True), (("backend",), False)], self.host.service_calls)
+        for role in ("frontend", "proxy"):
+            self.assertEqual(ids[role], self.host.service_ids[role])
+        self.host.unselected_drift = "proxy"
+        with self.assertRaisesRegex(release.Refused, "recovery failed"):
+            engine.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertTrue((self.host.state / "release-state-transition").exists())
+
+    def test_application_mode_cannot_change_migration_or_runtime(self):
+        self.adopt()
+        engine = release.Release(self.host, application_only=True)
+        for key in ("migration_tree", "compose_sha256", "nginx_sha256"):
+            changed = copy.deepcopy(self.b)
+            changed[key] = ("2" * 40 if key == "migration_tree" else "sha256:" + "2" * 64)
+            with self.assertRaisesRegex(release.Refused, "migration/runtime"):
+                engine.run("activate", changed, approval("activate", changed, self.a["sha"]), True)
+        self.assertEqual([], self.host.calls)
+
+    def test_application_adopt_needs_no_db_attestation_but_requires_baseline_approval(self):
+        engine = release.Release(self.host, application_only=True)
+        permission = approval("adopt", self.a)
+        for key in ("db_epoch", "db_compatibility_evidence", "compatible_with", "rollback_safe"):
+            permission.pop(key)
+        permission["baseline_verified"] = False
+        with self.assertRaisesRegex(release.Refused, "initial application baseline"):
+            engine.run("adopt", self.a, permission, True)
+        permission["baseline_verified"] = True
+        self.assertEqual("adopted", engine.run("adopt", self.a, permission, True)["result"])
+        self.assertIsNone(engine.read_state()["current"]["db_epoch"])
 
     def test_frontend_only_release_preserves_backend_and_proxy(self):
         self.b["backend"] = {**self.a["backend"], "source_sha": self.a["sha"]}
@@ -576,6 +645,8 @@ class BoundaryTests(unittest.TestCase):
             release.validate_manifest(self.target)
         self.target["backend"]["source_sha"] = "b" * 40
         self.target["frontend"]["source_sha"] = "b" * 40
+        release.validate_manifest(self.target)
+        self.target["frontend"]["source_sha"] = "invalid"
         with self.assertRaises(release.Refused):
             release.validate_manifest(self.target)
 
@@ -880,9 +951,8 @@ class BoundaryTests(unittest.TestCase):
         with patch.object(self.host, "git", side_effect=outputs + [b"", b""]) as git:
             self.host.sources(self.target)
             self.assertEqual(("merge-base", "--is-ancestor", "b" * 40, self.target["sha"]), git.call_args_list[-2].args)
-            self.assertIn("backend/", git.call_args.args)
-            self.assertIn(".github/workflows/publish-production-images.yml", git.call_args.args)
-        for tail in ([release.Refused("not ancestor")], [b"", release.Refused("Backend inputs changed")]):
+            self.assertEqual(("diff", "--no-renames", "--name-only", "b" * 40, self.target["sha"]), git.call_args.args)
+        for tail in ([release.Refused("not ancestor")], [b"", b"backend/src/Main.java\n"]):
             with patch.object(self.host, "git", side_effect=outputs + tail):
                 with self.assertRaises(release.Refused):
                     self.host.sources(self.target)
@@ -927,6 +997,28 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refused, "direct 2xx"):
                 self.host.smoke(self.target)
 
+    def test_smoke_uses_runtime_identity_without_executing_checkout_code(self):
+        commands = []
+        def docker(*args, **kwargs):
+            if args[0] == "ps":
+                return b"metrics-id\n"
+            if args[0] == "inspect":
+                return json.dumps([{"State": {"Health": {"Status": "healthy"}}}]).encode()
+            if "sh" in args:
+                return b"HTTP/1.1 200 OK\n"
+            return b""
+        def command(*args, **kwargs):
+            commands.append(args)
+            self.assertEqual("curl", args[0])
+            return b"200"
+        with patch.object(self.host, "runtime_check") as identity, \
+                patch.object(self.host, "docker", side_effect=docker) as calls, \
+                patch.object(self.host, "command", side_effect=command):
+            self.host.smoke(self.target)
+        identity.assert_called_once_with(self.target)
+        self.assertEqual(2, len(commands))
+        self.assertTrue(any("http://127.0.0.1:9464/actuator/prometheus" in call.args for call in calls.call_args_list))
+
     def test_safe_default_cli_cannot_activate_without_inputs(self):
         result = subprocess.run(["python3", str(Path(__file__).with_name("oci-release.py")),
                                  "activate", "--repository", str(self.root)], capture_output=True)
@@ -948,6 +1040,27 @@ class BoundaryTests(unittest.TestCase):
             self.assertIn("--no-deps", call)
             self.assertIn("never", call)
             self.assertNotIn("down", call)
+
+    def test_real_host_selective_apply_and_recovery_never_invoke_proxy(self):
+        for services in (("frontend",), ("backend",), ("backend", "frontend")):
+            for pull in (True, False):
+                with self.subTest(services=services, pull=pull):
+                    target = copy.deepcopy(self.target)
+                    target["frontend"]["source_sha"] = "b" * 40
+                    commands = []
+                    with patch.object(self.host, "docker", side_effect=lambda *a, **k: commands.append(a) or b""), \
+                            patch.object(self.host, "image", return_value=100), \
+                            patch.object(self.host, "materialize"), patch.object(self.host, "smoke"), \
+                            patch.object(self.host, "compose") as compose:
+                        self.host.activate(target, pull=pull, services=services)
+                    self.assertEqual(1, compose.call_count)
+                    self.assertEqual(services, compose.call_args.args[-len(services):])
+                    self.assertNotIn("proxy", compose.call_args.args[1:])
+                    tagged = [a for a in commands if a[0] == "tag"]
+                    self.assertEqual(len(services), len(tagged))
+                    for role in services:
+                        self.assertTrue(any(a[-1] == target[role]["repository"] + ":" + release.image_sha(target, role) for a in tagged))
+                    self.assertEqual(len(services) if pull else 0, len([a for a in commands if a[0] == "pull"]))
 
     def test_main_preflight_refuses_stale_cached_main(self):
         self.host.runtime.mkdir(exist_ok=True)

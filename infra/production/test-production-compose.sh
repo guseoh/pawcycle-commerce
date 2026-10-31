@@ -407,6 +407,43 @@ activate_and_check() {
   fi
 }
 
+# Reuse the already built A/B images and existing HTTPS topology. No extra
+# builds or projects: exercise independent tags and preserve unselected IDs.
+validate_selective_application_rollouts() {
+  local spec backend_sha frontend_sha service id_before id_after
+  local -a selected
+  for spec in "$SHA_A $SHA_B frontend" "$SHA_B $SHA_B backend" "$SHA_A $SHA_A backend frontend"; do
+    backend_sha="${spec%% *}"
+    frontend_sha="${spec#* }"
+    frontend_sha="${frontend_sha%% *}"
+    read -r -a selected <<< "${spec#* * }"
+    local -A before=()
+    for service in backend frontend proxy mysql; do
+      id_before="$(compose ps --quiet "$service")"
+      before[$service]="$(docker inspect --format '{{.Id}}|{{.State.StartedAt}}' "$id_before")"
+    done
+    BACKEND_RELEASE_SHA="$backend_sha" FRONTEND_RELEASE_SHA="$frontend_sha" \
+      compose up --detach --no-deps --pull never --wait --wait-timeout 180 "${selected[@]}"
+    for service in backend frontend proxy mysql; do
+      id_after="$(compose ps --quiet "$service")"
+      if [[ " ${selected[*]} " != *" $service "* ]]; then
+        [[ "${before[$service]}" == "$(docker inspect --format '{{.Id}}|{{.State.StartedAt}}' "$id_after")" ]] \
+          || die "unselected $service restarted"
+      else
+        [[ "${before[$service]}" != "$(docker inspect --format '{{.Id}}|{{.State.StartedAt}}' "$id_after")" ]] \
+          || die "selected $service was not replaced"
+      fi
+    done
+    [[ "$(docker inspect --format '{{.Config.Image}}' "$(compose ps --quiet backend)")" == "$BACKEND_IMAGE:$backend_sha" ]]
+    [[ "$(docker inspect --format '{{.Config.Image}}' "$(compose ps --quiet frontend)")" == "$FRONTEND_IMAGE:$frontend_sha" ]]
+    for path in /products /api/products; do
+      curl --cacert "$CERTIFICATE_SOURCE/fullchain.pem" --fail --silent --show-error \
+        --retry 6 --retry-delay 2 --retry-all-errors \
+        --resolve "$HTTPS_DOMAIN:$HTTPS_PORT:127.0.0.1" "https://$HTTPS_DOMAIN:$HTTPS_PORT$path" >/dev/null
+    done
+  done
+}
+
 validate_active_production_contract
 validate_test_overlay_contract
 build_release "$SHA_A"
@@ -450,6 +487,7 @@ NGINX_CONFIG="$TEMP_DIR/nginx.https.conf"
 sed "s/__PAWCYCLE_DOMAIN__/$HTTPS_DOMAIN/g" "$SCRIPT_DIR/nginx.https.conf" > "$NGINX_CONFIG"
 HTTPS_MODE=true
 activate_and_check "$SHA_A"
+validate_selective_application_rollouts
 
 ACTIVE_SHA="$SHA_A" compose down --remove-orphans
 docker volume inspect "$CERTBOT_WEBROOT_VOLUME" --format '{{.Name}}' | grep -qx "$CERTBOT_WEBROOT_VOLUME"

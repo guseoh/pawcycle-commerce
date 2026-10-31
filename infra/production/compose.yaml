@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}:${RELEASE_SHA:?RELEASE_SHA is required}
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}:${BACKEND_RELEASE_SHA:-${RELEASE_SHA:?RELEASE_SHA is required}}
     env_file:
       - ${PAWCYCLE_BACKEND_ENV_FILE:?PAWCYCLE_BACKEND_ENV_FILE is required}
     environment:
@@ -49,7 +49,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}:${RELEASE_SHA:?RELEASE_SHA is required}
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}:${FRONTEND_RELEASE_SHA:-${RELEASE_SHA:?RELEASE_SHA is required}}
     environment:
       NODE_ENV: production
     expose:

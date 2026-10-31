@@ -52,12 +52,20 @@ class FakeCDHost(fixture.FakeHost):
     def paths(self, base, head):
         return self.changed
 
-    def ci(self, sha):
+    def ci(self, sha, services=()):
         r.require(not self.ci_failure, "exact SHA CI unavailable")
+        return {"backend", "frontend"}
 
-    def manifest(self, sha, policy, current=None):
+    def application_scope(self, current):
+        r.require(not cd.classifier.application_blockers(self.changed), "manual deployment required")
+
+    def manifest(self, sha, policy, current=None, published=None):
         result = copy.deepcopy(self.b)
-        if current is not None:
+        if policy.get("compatibility_mode") == cd.APP_MODE:
+            for role, changed in cd.classifier.image_components(self.changed).items():
+                result[role] = ({**result[role], "source_sha": sha} if changed else
+                                {**current[role], "source_sha": r.image_sha(current, role)})
+        elif current is not None:
             result["backend"] = {**current["backend"], "source_sha": r.image_sha(current, "backend")}
         return result
 
@@ -80,7 +88,8 @@ class ControllerTests(unittest.TestCase):
         self.code.mkdir(mode=0o700)
         for name, path in (("oci-cd.py", HERE / "oci-cd.py"), ("oci-release.py", HERE / "oci-release.py"),
                            ("production_env.py", HERE / "production_env.py"),
-                           ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
+                           ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py"),
+                           ("classify-validation-changes.py", HERE.parents[1] / "scripts/classify-validation-changes.py")):
             shutil.copyfile(path, self.code / name)
             (self.code / name).chmod(0o600)
         self.policy_path = self.root / "policy.json"
@@ -116,6 +125,53 @@ class ControllerTests(unittest.TestCase):
     def blocked(self):
         self.assertEqual("blocked", self.run_cd()["result"])
         self.assertEqual([], self.host.calls)
+
+    def application_policy(self):
+        self.policy.update(compatibility_mode=cd.APP_MODE, allowed_risks=["application", "sensitive"])
+        self.policy.pop("db_epoch")
+        self.save()
+
+    def test_application_frontend_backend_and_both_without_observer(self):
+        self.application_policy()
+        for index, selected in enumerate((("frontend",), ("backend",), ("backend", "frontend"))):
+            with self.subTest(selected=selected):
+                previous = r.Release(self.host).read_state()["current"]["manifest"]
+                self.host.b = fixture.manifest(chr(ord("b") + index))
+                self.host.next_candidate = self.host.main = self.host.b["sha"]
+                self.host.changed = [role + "/src/main/App.java" for role in selected]
+                ids = copy.deepcopy(self.host.service_ids)
+                with patch.object(self.host, "compatibility", side_effect=AssertionError("Observer must not run")):
+                    self.assertEqual("activate-verified", self.run_cd()["result"])
+                self.assertEqual((selected, True), self.host.service_calls[-1])
+                current = r.Release(self.host).read_state()["current"]["manifest"]
+                for role in {"backend", "frontend"} - set(selected):
+                    self.assertEqual(previous[role]["digest"], current[role]["digest"])
+                    self.assertEqual(r.image_sha(previous, role), r.image_sha(current, role))
+                for role in {"backend", "frontend", "proxy"} - set(selected):
+                    self.assertEqual(ids[role], self.host.service_ids[role])
+        self.host.next_candidate = None
+        self.assertEqual("no-candidate", self.run_cd()["result"])
+
+    def test_application_db_config_and_ci_blocks_have_zero_deployments(self):
+        self.application_policy()
+        for path in ("backend/src/main/resources/db/migration/V99.sql", "backend/src/main/resources/application-production.yml",
+                     "infra/production/compose.yaml", "unknown.toml"):
+            self.host.changed = [path]
+            self.blocked()
+        self.host.changed = ["backend/src/main/java/App.java"]
+        self.host.ci_failure = True
+        self.blocked()
+
+    def test_application_failure_keeps_attempt_disabled_and_current(self):
+        self.application_policy()
+        self.host.changed = ["backend/src/main/java/App.java"]
+        self.host.failures = [ValueError("unhealthy")]
+        with patch.object(self.host, "compatibility", side_effect=AssertionError("Observer must not run")):
+            self.assertEqual("failed-disabled", self.run_cd()["result"])
+        self.assertTrue((self.host.state / "oci-cd-attempt").exists())
+        self.assertTrue((self.host.state / "oci-cd-disabled").exists())
+        self.assertEqual("a" * 40, r.Release(self.host).read_state()["current"]["manifest"]["sha"])
+        self.assertEqual([(("backend",), True), (("backend",), False)], self.host.service_calls)
 
     def test_success_and_docs_only_duplicate_are_idempotent(self):
         self.assertEqual("activate-verified", self.run_cd()["result"])
@@ -453,6 +509,53 @@ class EvidenceTests(unittest.TestCase):
             next_target = host.manifest("d" * 40, policy, target)
         self.assertEqual(target["backend"], next_target["backend"])
 
+    def test_application_manifest_uses_independent_sources_and_preserves_unchanged_service(self):
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        current, target_sha = fixture.manifest("a"), "d" * 40
+        raw = r.encoded({"config": {"digest": "sha256:" + "c" * 64}})
+        policy = {"compatibility_mode": cd.APP_MODE, "unpacked_bytes": {"backend": r.GIB, "frontend": r.GIB}}
+        with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                patch.object(host, "paths", return_value=["backend/src/main/java/App.java"]), \
+                patch.object(host, "docker", return_value=raw) as docker:
+            target = host.manifest(target_sha, policy, current, published={"backend"})
+        self.assertEqual({**current["frontend"], "source_sha": current["sha"]}, target["frontend"])
+        self.assertEqual(target_sha, target["backend"]["source_sha"])
+        self.assertEqual(1, docker.call_count)
+        with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                patch.object(host, "paths", return_value=["backend/src/main/java/App.java", "frontend/src/app/page.tsx"]), \
+                patch.object(host, "component_commit", return_value="b" * 40), \
+                patch.object(host, "ci", return_value={"frontend"}) as ci, \
+                patch.object(host, "docker", return_value=raw) as docker:
+            target = host.manifest(target_sha, policy, current, published={"backend"})
+        self.assertEqual("b" * 40, target["frontend"]["source_sha"])
+        self.assertEqual(target_sha, target["backend"]["source_sha"])
+        ci.assert_called_once_with("b" * 40, services=("frontend",))
+        self.assertTrue(any("-frontend:" + "b" * 40 in call.args[3] for call in docker.call_args_list))
+
+    def test_exact_service_build_step_cannot_be_skipped_or_missing(self):
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        sha = "a" * 40
+        outcome = "success"
+        def pages(endpoint, key):
+            if key == "workflow_runs":
+                return [{"event": "push", "head_sha": sha, "head_branch": "main",
+                         "path": ".github/workflows/" + endpoint.split("/")[2],
+                         "head_repository": {"full_name": cd.REPO}, "run_number": 3,
+                         "run_attempt": 2, "id": 1, "status": "completed", "conclusion": "success"}]
+            return [{"name": name, "head_sha": sha, "status": "completed", "conclusion": "success",
+                     "steps": [{"name": "Build and push Frontend image", "status": "completed", "conclusion": outcome}]}
+                    for name in cd.JOBS | {"Frontend validation", "Publish production images"}]
+        with patch.object(host, "pages", side_effect=pages), \
+                patch.object(host, "git", return_value=b"b" * 40), \
+                patch.object(host, "paths", return_value=[cd.CSS_PATH]):
+            self.assertEqual({"frontend"}, host.ci(sha, services=("frontend",)))
+            for outcome in ("skipped", "failure", "cancelled"):
+                with self.assertRaisesRegex(r.Refused, "service image build"):
+                    host.ci(sha, services=("frontend",))
+            outcome = "success"
+            with self.assertRaises(r.Refused):
+                host.ci(sha, services=("backend",))
+
     def test_installed_service_starts_isolated_without_importing_cwd_or_pythonpath(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -464,7 +567,8 @@ class EvidenceTests(unittest.TestCase):
             for name, source in (("oci-cd.py", HERE / "oci-cd.py"),
                                  ("oci-release.py", HERE / "oci-release.py"),
                                  ("production_env.py", HERE / "production_env.py"),
-                                 ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
+                                 ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py"),
+                                 ("classify-validation-changes.py", HERE.parents[1] / "scripts/classify-validation-changes.py")):
                 shutil.copyfile(source, installed / name)
             (untrusted / "production_env.py").write_text("raise RuntimeError('untrusted helper imported')\n")
             env = dict(os.environ, PYTHONPATH=str(untrusted))
@@ -492,7 +596,7 @@ class EvidenceTests(unittest.TestCase):
         for role in ("backend", "frontend"):
             self.assertEqual(r.digest(raw), target[role]["digest"])
             self.assertEqual(document["config"]["digest"], target[role]["config_digest"])
-        registry.assert_called_once_with(target)
+        registry.assert_not_called()
         index = r.encoded({"manifests": [{"digest": "sha256:" + "d" * 64,
                                           "platform": {"os": "linux", "architecture": "amd64"}}]})
         with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
@@ -512,11 +616,39 @@ class EvidenceTests(unittest.TestCase):
                          "head_repository": {"full_name": cd.REPO}, "run_number": 1, "run_attempt": 1,
                          "id": 1, "status": "completed", "conclusion": failure.get("conclusion", "success")}]
             return [{"name": name, "head_sha": sha, "status": "completed", "conclusion": "success"}
-                    for name in cd.JOBS | {"Publish production images"} if name != failure.get("missing")]
-        with patch.object(host, "pages", side_effect=pages):
+                    for name in cd.JOBS | set().union(*cd.COMPONENT_JOBS.values()) | {"Publish production images"}
+                    if name != failure.get("missing")]
+        with patch.object(host, "pages", side_effect=pages), \
+                patch.object(host, "git", return_value=b"b" * 40), \
+                patch.object(host, "paths", return_value=["unknown.config"]):
             host.ci(sha)
             for entry in ({"event": "pull_request"}, {"sha": "b" * 40}, {"conclusion": "failure"},
                           {"missing": "Backend and MySQL validation"}, {"missing": "Publish production images"}):
+                failure.clear()
+                failure.update(entry)
+                with self.assertRaises(r.Refused):
+                    host.ci(sha)
+
+    def test_frontend_ci_requires_success_but_not_unrelated_lanes(self):
+        sha = "a" * 40
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        failure = {}
+        def pages(endpoint, key):
+            if key == "workflow_runs":
+                return [{"event": "push", "head_sha": sha, "head_branch": "main",
+                         "path": ".github/workflows/" + endpoint.split("/")[2],
+                         "head_repository": {"full_name": cd.REPO}, "run_number": 2,
+                         "run_attempt": 2, "id": 1, "status": "completed", "conclusion": "success"}]
+            return [{"name": name, "head_sha": sha, "status": "completed",
+                     "conclusion": failure.get("conclusion", "success") if name == "Frontend validation" else "success"}
+                    for name in cd.JOBS | {"Frontend validation", "Publish production images"}
+                    if name != failure.get("missing")]
+        with patch.object(host, "pages", side_effect=pages), \
+                patch.object(host, "git", return_value=b"b" * 40), \
+                patch.object(host, "paths", return_value=[cd.CSS_PATH]):
+            host.ci(sha)
+            for entry in ({"missing": "Frontend validation"}, {"conclusion": "skipped"},
+                          {"conclusion": "failure"}, {"missing": "Application validation"}):
                 failure.clear()
                 failure.update(entry)
                 with self.assertRaises(r.Refused):
@@ -544,11 +676,34 @@ class EvidenceTests(unittest.TestCase):
             host = cd.CDHost(root, root, root, root)
             host.main = tip
             self.assertEqual(second, host.candidate(baseline))
+            self.assertEqual(first, host.component_commit(baseline, second, "frontend"))
+            self.assertEqual(second, host.component_commit(baseline, second, "backend"))
+            host.application_scope(baseline)
             self.assertEqual(second, host.candidate(first))
             self.assertIsNone(host.candidate(second))
             host.main = first
             with self.assertRaises(r.Refused):
                 host.candidate(second)
+
+    def test_application_history_blocks_reverted_migration_and_manual_trailer(self):
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        host.main = "d" * 40
+        def git(*args):
+            if args[0] == "rev-list":
+                return ("c" * 40 + "\n" + "b" * 40).encode()
+            if args[0] == "rev-parse":
+                return b"a" * 40
+            if args[0] == "log":
+                return b"feat: data cleanup\n\nPawCycle-Deploy: manual\n"
+            return b""
+        with patch.object(host, "git", side_effect=git), \
+                patch.object(host, "paths", return_value=["backend/src/main/resources/db/migration/V99.sql"]):
+            with self.assertRaisesRegex(r.Refused, "manual migration"):
+                host.application_scope("a" * 40)
+        with patch.object(host, "git", side_effect=git), \
+                patch.object(host, "paths", return_value=["backend/src/main/java/Worker.java"]):
+            with self.assertRaisesRegex(r.Refused, "commit requires manual"):
+                host.application_scope("a" * 40)
 
     def test_source_refresh_requires_bare_correct_origin_and_never_checks_out(self):
         host = cd.CDHost("/unused", "/unused", "/unused", "/unused")

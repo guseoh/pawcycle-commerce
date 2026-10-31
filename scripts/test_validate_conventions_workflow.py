@@ -97,6 +97,11 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_frontend_only(self) -> None:
         self.assert_groups(["frontend/src/page.tsx"], frontend=True)
 
+    def test_service_build_inputs_select_service_and_production(self) -> None:
+        for role in ("backend", "frontend"):
+            for suffix in (".Dockerfile", ".Dockerfile.dockerignore"):
+                self.assert_groups(["infra/production/" + role + suffix], **{role: True, "production": True})
+
     def test_production_only(self) -> None:
         self.assert_groups(["infra/production/deploy.sh"], production=True)
 
@@ -312,6 +317,13 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('git merge-base "$BASE_SHA" "$HEAD_SHA"', self.workflow)
         self.assertIn('git diff --no-renames --name-only "$merge_base..$HEAD_SHA"', self.workflow)
 
+    def test_main_push_reuses_component_classifier_and_unknown_base_fails_safe(self) -> None:
+        classify = self.workflow.split("\n  classify:\n", 1)[1].split("\n  harness:\n", 1)[0]
+        self.assertIn("python scripts/classify-validation-changes.py", classify)
+        self.assertNotIn("grep -q 'publish=true'", classify)
+        self.assertIn('if ! git cat-file -e "${BASE_SHA}^{commit}"', classify)
+        self.assertNotIn('BASE_SHA="$(git rev-parse "$HEAD_SHA^")"', classify)
+
 
     def test_harness_executes_coderabbit_handoff_regressions(self) -> None:
         self.assertIn("scripts.test_request_coderabbit_review", self.workflow)
@@ -322,7 +334,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("paths:", header)
         self.assertIn("name: Classify production image changes", self.publish_workflow)
         self.assertIn('git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA"', self.publish_workflow)
-        self.assertIn('python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"', self.publish_workflow)
+        self.assertIn('python scripts/classify-production-image-changes.py --components >> "$GITHUB_OUTPUT"', self.publish_workflow)
         self.assertIn('if ! changed_paths="$(git diff', self.publish_workflow)
         self.assertIn('if [ "$EVENT_NAME" = "workflow_dispatch" ]', self.publish_workflow)
         publish_block = self.publish_workflow[self.publish_workflow.index("\n  publish:\n") :]

@@ -2,6 +2,12 @@
 
 작업 등급 고위험 / 저장소 변경. 상위 #470, 구현 #471. 이 단계는 Linux의 `oci-release.py`와 fake/격리 회귀를 제공한다. app01 적용, 운영 baseline 채택, 배포·Rollback, DB SQL/Restore, Secret/Cloud 변경은 별도 운영 승인 대상이다. #473의 [Host Pull CD](OPS-OCI-CD-003-host-pull.md)는 이 엔진을 재사용하는 저장소 구현이며 실제 설치·활성화는 OFF다. 무중단 배포는 DEFER이며 Production Verified가 아니다.
 
+## application-v1의 서비스별 경계
+
+일반 앱 배포는 [Host Pull application-v1](OPS-OCI-CD-003-host-pull.md)의 범위/이력 Gate를 따른다. `oci-release.py --application-only`는 기존 만료 approval·manifest identity·Lock·Health·capacity·원자 state/복귀를 재사용하되 DB Observer/epoch·pair proof를 요구하지 않는다. `adopt`도 이 flag와 독립 정상성 근거·`baseline_verified=true`의 별도 승인이 필요하다. 실제 DB를 검증했다는 필드를 만들지 않는다. 기존 flag 없는 수동/legacy 계약은 유지한다.
+
+양쪽 앱 모두 선택적 `source_sha`를 가질 수 있다. `sha`와 다르면 main 조상·동일 서비스 build input을 확인하고 원래 tag/revision/Digest를 검증한다. Compose에는 서비스별 release SHA를 주입한다. 일반 앱 activate/rollback은 artifact가 달라진 앱만 up하며 Proxy와 미변경 앱은 그대로 둔다. Runtime/Compose/Nginx/migration tree 변경은 이 flag로 허용하지 않는다. 이전 정상 local image 복귀는 DB 쓰기나 데이터 downgrade를 되돌리지 않는다.
+
 ## 실행 전 경계
 
 명령은 root, host-local `/var/run/docker.sock`, 정확한 `guseoh/pawcycle-commerce` source repository만 사용한다. 외부 Docker context/Compose 환경 override는 전달하지 않는다. 승인된 source checkout은 root 소유이며 경로 ancestor의 group/other write와 symlink를 거절한다. 현재 opc 소유 source를 임의 chown하거나 runtime을 재구성하지 않는다. 운영 source 준비와 baseline 채택은 별도 승인 후 진행한다.

@@ -9,7 +9,7 @@ FROM node:24.18.0-alpine3.23 AS build
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY frontend ./
-RUN npm run build
+RUN mkdir -p public && npm run build
 
 FROM node:24.18.0-alpine3.23
 
@@ -18,6 +18,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/next.config.ts ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
+COPY --from=build --chown=node:node /app/public ./public
 
 USER node
 EXPOSE 3000
