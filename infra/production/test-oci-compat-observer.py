@@ -157,7 +157,7 @@ class ObserverTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.changed.append(path)
                 self.attest['changed_paths_sha256'] = compat.digest(
-                    ('\\n'.join(sorted(self.changed)) + '\\n').encode())
+                    ('\n'.join(sorted(self.changed)) + '\n').encode())
                 self.save_proof()
                 with self.assertRaisesRegex(compat.Rejected, 'separate observer'):
                     compat.observe(self.current, self.target, self.now)
