@@ -25,26 +25,14 @@ MYSQL_OPTIONS = Path('/etc/pawcycle/oci-compat-mysql.cnf')
 PROOF = Path('/etc/pawcycle/oci-compat-proof.json')
 ARTIFACT_DIR = ROOT / 'compat-evidence'
 REQUIRED = ('frontend_api', 'authentication', 'orders', 'billing', 'inventory', 'subscription')
-# This observer can approve a reviewed frontend source-only pair, not arbitrary
-# image/build or Backend changes. Other pairs need a separately reviewed observer.
-IMAGE_BUILD_INPUTS = frozenset({
-    '.dockerignore', '.github/workflows/publish-production-images.yml',
-    'infra/production/backend.Dockerfile', 'infra/production/frontend.Dockerfile',
-    'infra/production/backend.Dockerfile.dockerignore',
-    'infra/production/frontend.Dockerfile.dockerignore',
-})
-RUNTIME_INPUTS = frozenset({
-    'infra/production/compose.yaml', 'infra/production/nginx.https.conf',
-})
+# This narrow observer covers only frontend source/assets. Any extra file
+# (including CI, release tools, docs, or build inputs) needs separate review.
+FRONTEND_SOURCE_PREFIXES = ('frontend/src/', 'frontend/public/')
 
 
 def frontend_only_scope(changed):
-    return all(
-        path not in IMAGE_BUILD_INPUTS and path not in RUNTIME_INPUTS
-        and not path.startswith('backend/')
-        and (not path.startswith('frontend/') or
-             path.startswith(('frontend/src/', 'frontend/public/')))
-        for path in changed
+    return bool(changed) and all(
+        path.startswith(FRONTEND_SOURCE_PREFIXES) for path in changed
     )
 
 
@@ -93,10 +81,12 @@ def git(*arguments):
 
 
 def mysql(statement):
-    # Use only the dedicated options file; HOME excludes root's .mylogin.cnf.
-    # Credential file is provided separately by the operator; no password in argv,
-    # shell, inherited environment or output. File must enforce TLS verification.
+    # The protected options file supplies host, credentials and a trusted CA.
+    # Enforce TCP and both CA + server-hostname verification at invocation time.
+    # A missing/invalid CA, hostname mismatch or unsupported MySQL client fails
+    # closed; never fall back to PREFERRED, a socket or plaintext transport.
     result = run(['/usr/bin/mysql', '--defaults-file=' + str(MYSQL_OPTIONS),
+                  '--protocol=TCP', '--ssl-mode=VERIFY_IDENTITY',
                   '--connect-timeout=5', '--batch', '--raw', '--skip-column-names',
                   '--skip-auto-rehash', '--execute=' + statement], seconds=15)
     return result.decode('utf-8').strip().splitlines()
