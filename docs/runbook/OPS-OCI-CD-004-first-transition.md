@@ -88,7 +88,7 @@ transition/attempt 또는 commit 불확실성이 있으면 CD OFF/kill switch를
 
 ## Task 5: Host Pull 최초 활성화 준비
 
-1. 병합 후 승인한 commit에서 `oci-cd.py`, 수정된 `oci-release.py`, `classify-production-image-changes.py` 각각 bytes SHA-256을 계산하고 설치본과 정책 `controller_sha256`을 대조한다. 이 문서의 작업 전 hash를 설치 승인으로 쓰지 않는다. fetched source 실행/자동 controller 갱신은 금지다.
+1. 병합 후 승인한 commit에서 `oci-cd.py`, 수정된 `oci-release.py`, `production_env.py`, `classify-production-image-changes.py` 각각 bytes SHA-256을 계산하고 설치본과 정책 `controller_sha256`을 대조한다. 네 파일을 같은 보호 directory에 설치하고 `python3 -I` 시작 검증을 통과해야 한다. 이 문서의 작업 전 hash를 설치 승인으로 쓰지 않는다. fetched source 실행/자동 controller 갱신은 금지다.
 2. root-owned 전용 bare source·정확한 origin·non-force FF/CAS, Host GitHub/GHCR outbound read·Docker socket 접근을 독립 검증한다. credential·Public SSH·비용 변경은 별도 승인이다.
 3. 승인된 정상 baseline, Task 4의 실제 observer·DB epoch/runtime/migration·capacity/복귀 budget, 정확한 Compose/Nginx hash를 root `600` 최초 정책에 결합한다. 예제 OFF/0/null 값으로 설치하지 않는다.
 4. exact main 후보 SHA의 push/main/workflow/latest attempt 및 **각 필수 job** 성공과 동일 SHA 양쪽 이미지 증거를 확인한다. 과거 후보에 새 CD의 exact-SHA CI가 없으면 STOP한다. PR CI·readiness dispatch·image 존재·후속 docs-only CI로 대체하지 않는다.
