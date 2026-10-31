@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('compat', HERE / 'oci-compat-observer.py')
@@ -133,11 +133,11 @@ class ObserverTests(unittest.TestCase):
             with self.assertRaises(compat.Rejected):
                 compat.observe(self.current, self.target, self.now)
 
-    def test_frontend_only_scope_blocks_unreviewed_image_inputs(self):
+    def test_frontend_only_scope_rejects_all_other_paths(self):
         self.assertTrue(compat.frontend_only_scope([
             'frontend/src/app/page.tsx', 'frontend/public/logo.svg',
-            'docs/runbook/OPS-OCI-CD-003-host-pull.md',
         ]))
+        self.assertFalse(compat.frontend_only_scope([]))
         denied = [
             'backend/src/main/java/Changed.java',
             'backend/src/test/java/ChangedTest.java',
@@ -148,10 +148,17 @@ class ObserverTests(unittest.TestCase):
             'frontend/scripts/build-helper.js',
             '.dockerignore',
             '.github/workflows/publish-production-images.yml',
+            '.github/workflows/validate-conventions.yml',
+            '.github/workflows/request-coderabbit-review.yml',
             'infra/production/backend.Dockerfile',
             'infra/production/frontend.Dockerfile.dockerignore',
             'infra/production/compose.yaml',
             'infra/production/nginx.https.conf',
+            'infra/production/oci-cd.py',
+            'scripts/classify-production-image-changes.py',
+            'docs/runbook/OPS-OCI-CD-003-host-pull.md',
+            'qa/fixture.json',
+            'unknown/new-file.txt',
         ]
         for path in denied:
             with self.subTest(path=path):
@@ -163,14 +170,24 @@ class ObserverTests(unittest.TestCase):
                     compat.observe(self.current, self.target, self.now)
                 self.changed.pop()
 
-    def test_mysql_command_has_no_secret_arguments(self):
+    def test_mysql_requires_tcp_and_verified_tls_identity(self):
         with patch.object(compat, 'run', return_value=b'v1\n') as executed:
             self.assertEqual(['v1'], compat.mysql('SELECT 1'))
             argv = executed.call_args[0][0]
             self.assertEqual('/usr/bin/mysql', argv[0])
             self.assertTrue(argv[1].startswith('--defaults-file='))
+            self.assertIn('--protocol=TCP', argv)
+            self.assertIn('--ssl-mode=VERIFY_IDENTITY', argv)
             self.assertEqual('--execute=SELECT 1', argv[-1])
+            self.assertLess(argv.index('--ssl-mode=VERIFY_IDENTITY'),
+                            len(argv) - 1)
             self.assertNotIn('password', ' '.join(argv).lower())
+
+    def test_mysql_tls_verification_failure_fails_closed(self):
+        with patch.object(compat.subprocess, 'run',
+                          return_value=Mock(returncode=1, stdout=b'secret error')):
+            with self.assertRaisesRegex(compat.Rejected, 'dependency failed'):
+                compat.mysql('SELECT 1')
 
 
 if __name__ == '__main__':
