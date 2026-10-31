@@ -89,7 +89,7 @@ def application_blockers(paths: list[str]) -> list[str]:
     Non-obvious destructive code changes must use the manual-deploy commit
     trailer during review. Neither mechanism grants migration permission.
     """
-    return [p for p in paths if (
+    return [p for p in paths if classify([p])["deploy"] and (
         set(classify([p])["risks"]) & {"runtime", "unknown"}
         or p == PUBLISH_WORKFLOW
         or p.startswith(("backend/src/main/resources/", "backend/.env", "frontend/.env"))

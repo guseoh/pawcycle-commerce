@@ -160,7 +160,8 @@ class ImagePublishClassifierTest(unittest.TestCase):
             self.assertEqual([path], CLASSIFIER.application_blockers([path]))
         self.assertEqual([], CLASSIFIER.application_blockers([
             "backend/src/main/java/com/pawcycle/backend/commerce/OrderService.java",
-            "frontend/src/components/app-header.tsx", "backend/build.gradle", "docs/note.md"]))
+            "frontend/src/components/app-header.tsx", "backend/build.gradle", "docs/note.md",
+            "backend/src/test/resources/fixtures.sql", "docs/query.sql", "scripts/backfill.sql"]))
 
     def test_build_deploy_and_policy_risk_are_separate(self) -> None:
         for path in ("infra/production/oci-release.py", "infra/production/oci-cd.py",
