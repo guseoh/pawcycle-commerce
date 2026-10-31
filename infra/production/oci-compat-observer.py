@@ -25,6 +25,27 @@ MYSQL_OPTIONS = Path('/etc/pawcycle/oci-compat-mysql.cnf')
 PROOF = Path('/etc/pawcycle/oci-compat-proof.json')
 ARTIFACT_DIR = ROOT / 'compat-evidence'
 REQUIRED = ('frontend_api', 'authentication', 'orders', 'billing', 'inventory', 'subscription')
+# This observer can approve a reviewed frontend source-only pair, not arbitrary
+# image/build or Backend changes. Other pairs need a separately reviewed observer.
+IMAGE_BUILD_INPUTS = frozenset({
+    '.dockerignore', '.github/workflows/publish-production-images.yml',
+    'infra/production/backend.Dockerfile', 'infra/production/frontend.Dockerfile',
+    'infra/production/backend.Dockerfile.dockerignore',
+    'infra/production/frontend.Dockerfile.dockerignore',
+})
+RUNTIME_INPUTS = frozenset({
+    'infra/production/compose.yaml', 'infra/production/nginx.https.conf',
+})
+
+
+def frontend_only_scope(changed):
+    return all(
+        path not in IMAGE_BUILD_INPUTS and path not in RUNTIME_INPUTS
+        and not path.startswith('backend/')
+        and (not path.startswith('frontend/') or
+             path.startswith(('frontend/src/', 'frontend/public/')))
+        for path in changed
+    )
 
 
 class Rejected(Exception):
@@ -170,9 +191,8 @@ def observe(current, target, now=None):
     changed = sorted(x.decode('utf-8') for x in paths if x)
     check(digest(('\n'.join(changed) + '\n').encode()) == attest['changed_paths_sha256'],
           'release pair changed after semantic review')
-    check(not any(p.startswith(('backend/src/main/', 'backend/build.gradle',
-                                'infra/production/compose.yaml', 'infra/production/nginx.https.conf'))
-                  for p in changed), 'backend/schema/runtime change requires separate observer')
+    check(frontend_only_scope(changed),
+          'backend/build/runtime change requires separate observer')
     names = git('ls-tree', '-r', '--name-only', current + ':backend/src/main/resources/db/migration').splitlines()
     expected = set(names)
     check(expected and all(VERSION.fullmatch(n) for n in expected), 'migration file set invalid')
