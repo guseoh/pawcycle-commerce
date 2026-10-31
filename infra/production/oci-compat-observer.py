@@ -85,11 +85,12 @@ def git(*arguments):
 
 def mysql(statement):
     # The protected options file supplies host, credentials and a trusted CA.
-    # Enforce TCP and both CA + server-hostname verification at invocation time.
-    # A missing/invalid CA, hostname mismatch or unsupported MySQL client fails
-    # closed; never fall back to PREFERRED, a socket or plaintext transport.
+    # OCI service-defined certificates need not match the private endpoint name.
+    # Require TCP, encryption and CA validation; endpoint/NSG restrictions and
+    # the independently approved CA remain operator-controlled trust inputs.
+    # Missing/invalid CA or unsupported verification fails without fallback.
     result = run(['/usr/bin/mysql', '--defaults-file=' + str(MYSQL_OPTIONS),
-                  '--protocol=TCP', '--ssl-mode=VERIFY_IDENTITY',
+                  '--protocol=TCP', '--ssl-mode=VERIFY_CA',
                   '--connect-timeout=5', '--batch', '--raw', '--skip-column-names',
                   '--skip-auto-rehash', '--execute=' + statement], seconds=15)
     return result.decode('utf-8').strip().splitlines()
