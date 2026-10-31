@@ -80,7 +80,8 @@ class ControllerTests(unittest.TestCase):
         self.code.mkdir(mode=0o700)
         for name, path in (("oci-cd.py", HERE / "oci-cd.py"), ("oci-release.py", HERE / "oci-release.py"),
                            ("production_env.py", HERE / "production_env.py"),
-                           ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
+                           ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py"),
+                           ("classify-validation-changes.py", HERE.parents[1] / "scripts/classify-validation-changes.py")):
             shutil.copyfile(path, self.code / name)
             (self.code / name).chmod(0o600)
         self.policy_path = self.root / "policy.json"
@@ -464,7 +465,8 @@ class EvidenceTests(unittest.TestCase):
             for name, source in (("oci-cd.py", HERE / "oci-cd.py"),
                                  ("oci-release.py", HERE / "oci-release.py"),
                                  ("production_env.py", HERE / "production_env.py"),
-                                 ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py")):
+                                 ("classify-production-image-changes.py", HERE.parents[1] / "scripts/classify-production-image-changes.py"),
+                                 ("classify-validation-changes.py", HERE.parents[1] / "scripts/classify-validation-changes.py")):
                 shutil.copyfile(source, installed / name)
             (untrusted / "production_env.py").write_text("raise RuntimeError('untrusted helper imported')\n")
             env = dict(os.environ, PYTHONPATH=str(untrusted))
@@ -512,11 +514,39 @@ class EvidenceTests(unittest.TestCase):
                          "head_repository": {"full_name": cd.REPO}, "run_number": 1, "run_attempt": 1,
                          "id": 1, "status": "completed", "conclusion": failure.get("conclusion", "success")}]
             return [{"name": name, "head_sha": sha, "status": "completed", "conclusion": "success"}
-                    for name in cd.JOBS | {"Publish production images"} if name != failure.get("missing")]
-        with patch.object(host, "pages", side_effect=pages):
+                    for name in cd.JOBS | set().union(*cd.COMPONENT_JOBS.values()) | {"Publish production images"}
+                    if name != failure.get("missing")]
+        with patch.object(host, "pages", side_effect=pages), \
+                patch.object(host, "git", return_value=b"b" * 40), \
+                patch.object(host, "paths", return_value=["unknown.config"]):
             host.ci(sha)
             for entry in ({"event": "pull_request"}, {"sha": "b" * 40}, {"conclusion": "failure"},
                           {"missing": "Backend and MySQL validation"}, {"missing": "Publish production images"}):
+                failure.clear()
+                failure.update(entry)
+                with self.assertRaises(r.Refused):
+                    host.ci(sha)
+
+    def test_frontend_ci_requires_success_but_not_unrelated_lanes(self):
+        sha = "a" * 40
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        failure = {}
+        def pages(endpoint, key):
+            if key == "workflow_runs":
+                return [{"event": "push", "head_sha": sha, "head_branch": "main",
+                         "path": ".github/workflows/" + endpoint.split("/")[2],
+                         "head_repository": {"full_name": cd.REPO}, "run_number": 2,
+                         "run_attempt": 2, "id": 1, "status": "completed", "conclusion": "success"}]
+            return [{"name": name, "head_sha": sha, "status": "completed",
+                     "conclusion": failure.get("conclusion", "success") if name == "Frontend validation" else "success"}
+                    for name in cd.JOBS | {"Frontend validation", "Publish production images"}
+                    if name != failure.get("missing")]
+        with patch.object(host, "pages", side_effect=pages), \
+                patch.object(host, "git", return_value=b"b" * 40), \
+                patch.object(host, "paths", return_value=[cd.CSS_PATH]):
+            host.ci(sha)
+            for entry in ({"missing": "Frontend validation"}, {"conclusion": "skipped"},
+                          {"conclusion": "failure"}, {"missing": "Application validation"}):
                 failure.clear()
                 failure.update(entry)
                 with self.assertRaises(r.Refused):

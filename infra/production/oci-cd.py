@@ -29,12 +29,20 @@ release = module("oci_release", HERE / "oci-release.py")
 classifier = module("image_classifier", HERE / "classify-production-image-changes.py"
                     if (HERE / "classify-production-image-changes.py").exists()
                     else HERE.parents[1] / "scripts/classify-production-image-changes.py")
+validation = module("validation_classifier", HERE / "classify-validation-changes.py"
+                    if (HERE / "classify-validation-changes.py").exists()
+                    else HERE.parents[1] / "scripts/classify-validation-changes.py")
 require = release.require
 REPO = "guseoh/pawcycle-commerce"
 ENABLED_PATH = Path("/etc/pawcycle/oci-cd-enabled")
-JOBS = {"Classify validation changes", "Harness validation", "Backend and MySQL validation",
-        "Frontend validation", "Application validation",
-        *{"Production contract validation (" + lane + ")" for lane in ("contracts", "compose", "auth-lifecycle")}}
+COMPONENT_JOBS = {
+    "harness": {"Harness validation"},
+    "backend": {"Backend and MySQL validation"},
+    "frontend": {"Frontend validation"},
+    "production": {"Production contract validation (" + lane + ")"
+                   for lane in ("contracts", "compose", "auth-lifecycle")},
+}
+JOBS = {"Classify validation changes", "Application validation"}
 AUTO_MODE = "frontend-cosmetic-v1"
 CSS_PATH = "frontend/src/app/globals.css"
 
@@ -106,7 +114,15 @@ class CDHost(release.Host):
         return None
 
     def ci(self, sha):
-        for workflow, jobs in (("validate-conventions.yml", JOBS),
+        # Installed classifier only. A batch push may run a wider union, but
+        # every lane required by this exact main edge must succeed itself.
+        parent = self.git("rev-parse", sha + "^").decode().strip()
+        require(release.SHA.fullmatch(parent), "invalid CI comparison base")
+        jobs = set(JOBS)
+        for component, enabled in validation.classify(self.paths(parent, sha)).items():
+            if enabled:
+                jobs.update(COMPONENT_JOBS[component])
+        for workflow, jobs in (("validate-conventions.yml", jobs),
                                ("publish-production-images.yml", {"Publish production images"})):
             runs = self.pages("actions/workflows/" + workflow + "/runs?head_sha=" + sha, "workflow_runs")
             runs = [run for run in runs if run.get("event") == "push" and
@@ -181,7 +197,8 @@ class Controller:
                 time.time() < p["expires_unix"], "policy absent, OFF, expired or unapproved")
         require(p["stop_on"] == ["gate-failure", "activation-failure", "transition", "db-runtime-drift"] and
                 p["notifications"] == "journal", "stop/notification policy is incomplete")
-        for name in ("oci-cd.py", "oci-release.py", "production_env.py", "classify-production-image-changes.py"):
+        for name in ("oci-cd.py", "oci-release.py", "production_env.py", "classify-production-image-changes.py",
+                     "classify-validation-changes.py"):
             installed = HERE / name
             release.protected(installed)
             require(release.digest(installed.read_bytes()) == p["controller_sha256"][name], "installed controller drift")
