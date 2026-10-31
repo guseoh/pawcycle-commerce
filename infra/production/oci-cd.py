@@ -272,7 +272,8 @@ class Controller:
             # write is conservative: any surviving attempt still fences retry.
             release.atomic(h.state / "oci-cd-attempt", release.encoded({"reason": "attempt-in-progress", "sha": sha}))
 
-        engine = release.Release(h, activation_guard=guard, activation_start=start)
+        engine = release.Release(h, activation_guard=guard, activation_start=start,
+                                 frontend_only=p.get("compatibility_mode") == AUTO_MODE)
         engine.run("preflight", manifest, approval)
         approval["action"] = "activate"
         try:
