@@ -125,6 +125,14 @@ class ObserverTests(unittest.TestCase):
             with self.assertRaises(compat.Rejected):
                 compat.observe(self.current, self.target, self.now)
 
+    def test_live_db_drift_during_pair_check_is_blocked(self):
+        with patch.object(compat, 'live_snapshot', side_effect=[
+            (self.snapshot, set(self.names), 2),
+            (compat.digest(b'changed flyway state'), set(self.names), 2),
+        ]):
+            with self.assertRaises(compat.Rejected):
+                compat.observe(self.current, self.target, self.now)
+
     def test_mysql_command_has_no_secret_arguments(self):
         with patch.object(compat, 'run', return_value=b'v1\n') as executed:
             self.assertEqual(['v1'], compat.mysql('SELECT 1'))
