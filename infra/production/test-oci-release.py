@@ -73,6 +73,10 @@ class FakeHost(release.Host):
         self.env_hash = release.digest(self.backend_env.read_bytes())
         self.live = manifest("a")
         self.calls, self.failures = [], []
+        self.modes = []
+        self.service_ids = {"backend": ("backend-id", "backend-start"),
+                            "proxy": ("proxy-id", "proxy-start")}
+        self.mutate_backend_during_frontend = False
         self.reject = None
 
     def initial(self):
@@ -110,8 +114,15 @@ class FakeHost(release.Host):
     def siblings(self):
         return {"metrics": "unchanged", "performance": "unchanged"}
 
-    def activate(self, target, pull=True):
+    def containers(self):
+        return {role: {"Id": identity[0], "State": {"StartedAt": identity[1]}}
+                for role, identity in self.service_ids.items()}
+
+    def activate(self, target, pull=True, frontend_only=False):
         self.calls.append(target["sha"])
+        self.modes.append((target["sha"], pull, frontend_only))
+        if self.mutate_backend_during_frontend and frontend_only and pull:
+            self.service_ids["backend"] = ("unexpected-recreated-backend", "new-start")
         if not pull:
             self.recovery_used_local_images = True
         self.live = target
@@ -183,6 +194,67 @@ class LifecycleTests(unittest.TestCase):
         self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
         self.assertEqual(self.a, self.host.live)
         self.assertTrue(self.host.recovery_used_local_images)
+
+    def test_frontend_only_release_preserves_backend_and_proxy(self):
+        self.b["backend"] = {**self.a["backend"], "source_sha": self.a["sha"]}
+        self.adopt()
+        ids = copy.deepcopy(self.host.service_ids)
+        isolated = release.Release(self.host, frontend_only=True)
+        result = isolated.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertEqual("activate-verified", result["result"])
+        self.assertEqual(ids, self.host.service_ids)
+        self.assertEqual([(self.b["sha"], True, True)], self.host.modes)
+        self.assertEqual(self.a["backend"]["digest"], isolated.read_state()["current"]["manifest"]["backend"]["digest"])
+
+    def test_frontend_only_failure_restores_frontend_without_restarting_other_services(self):
+        self.b["backend"] = {**self.a["backend"], "source_sha": self.a["sha"]}
+        self.adopt()
+        self.host.failures = [ValueError("isolated frontend smoke failed")]
+        ids = copy.deepcopy(self.host.service_ids)
+        isolated = release.Release(self.host, frontend_only=True)
+        with self.assertRaisesRegex(release.Refused, "previous verified release restored"):
+            isolated.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertEqual(ids, self.host.service_ids)
+        self.assertEqual([(self.b["sha"], True, True), (self.a["sha"], False, True)], self.host.modes)
+        self.assertEqual(self.a, isolated.read_state()["current"]["manifest"])
+
+    def test_frontend_only_unexpected_backend_recreation_requires_manual_recovery(self):
+        self.b["backend"] = {**self.a["backend"], "source_sha": self.a["sha"]}
+        self.adopt()
+        self.host.mutate_backend_during_frontend = True
+        isolated = release.Release(self.host, frontend_only=True)
+        with self.assertRaisesRegex(release.Refused, "recovery failed"):
+            isolated.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertTrue((self.host.state / "release-state-transition").exists())
+        self.assertEqual([True, True], [m[2] for m in self.host.modes])
+        self.assertEqual(self.a, isolated.read_state()["current"]["manifest"])
+
+    def test_frontend_only_requires_retained_backend_and_same_runtime(self):
+        self.adopt()
+        isolated = release.Release(self.host, frontend_only=True)
+        for candidate in (self.b,
+                          {**self.b, "backend": {**self.a["backend"], "source_sha": self.a["sha"]},
+                           "nginx_sha256": "sha256:" + "0" * 64}):
+            with self.assertRaisesRegex(release.Refused, "frontend-only mode cannot change"):
+                isolated.run("activate", candidate, approval("activate", candidate, self.a["sha"]), True)
+        self.assertEqual([], self.host.calls)
+
+    def test_real_host_frontend_only_invokes_compose_for_frontend_alone(self):
+        commands = []
+        tagged = []
+        self.host.image = lambda target, role: tagged.append(role) or 100
+        with patch.object(self.host, "docker", side_effect=lambda *args, **kw: commands.append(args) or b""), \\
+                patch.object(self.host, "materialize"), \\
+                patch.object(self.host, "compose") as compose, \\
+                patch.object(self.host, "smoke"):
+            release.Host.activate(self.host, self.b, frontend_only=True)
+            self.assertEqual(1, compose.call_count)
+            self.assertEqual("frontend", compose.call_args.args[-1])
+            self.assertNotIn("backend", compose.call_args.args[-2:])
+            self.assertNotIn("proxy", compose.call_args.args[-2:])
+        self.assertEqual(["backend", "frontend"], tagged)
+        self.assertTrue(all("frontend" in " ".join(x) or x[0] not in ("pull", "tag") for x in commands))
+        self.assertEqual(2, len(commands))  # Frontend pull and tag only.
 
     def test_rollback_uses_saved_evidence_and_local_images_without_registry(self):
         self.adopt()
