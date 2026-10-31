@@ -55,8 +55,11 @@ class FakeCDHost(fixture.FakeHost):
     def ci(self, sha):
         r.require(not self.ci_failure, "exact SHA CI unavailable")
 
-    def manifest(self, sha, policy):
-        return self.b
+    def manifest(self, sha, policy, current=None):
+        result = copy.deepcopy(self.b)
+        if current is not None:
+            result["backend"] = {**current["backend"], "source_sha": r.image_sha(current, "backend")}
+        return result
 
     def compatibility(self, current, target, policy):
         return {"current": current, "target": target, "db_epoch": "isolated-epoch",
@@ -309,9 +312,6 @@ class AutomaticControllerTests(unittest.TestCase):
         self.host.live = copy.deepcopy(state["current"]["manifest"])
         r.atomic(self.host.state / "oci-release-state.json", r.encoded(state))
         r.Release(self.host).projections(state)
-        self.payload_drift = False
-        self.host.backend_payload = lambda manifest: "sha256:" + (
-            "d" if self.payload_drift and manifest["sha"] == self.host.b["sha"] else "c") * 64
 
     def test_real_git_and_observer_to_release_without_manual_pair_proof(self):
         self.assertFalse(self.source.proof.exists())
@@ -319,6 +319,9 @@ class AutomaticControllerTests(unittest.TestCase):
         self.assertEqual([self.source.target], self.host.calls)
         state = r.Release(self.host).read_state()
         self.assertEqual(self.source.target, state["current"]["manifest"]["sha"])
+        self.assertEqual(self.source.baseline, state["current"]["manifest"]["backend"]["source_sha"])
+        self.assertEqual(state["previous"]["manifest"]["backend"]["digest"],
+                         state["current"]["manifest"]["backend"]["digest"])
         self.assertIn(cd.AUTO_MODE, state["current"]["compatibility_evidence"])
         self.assertIn("/backend/sha256:", state["current"]["compatibility_evidence"])
         self.assertEqual("no-candidate", self.run_cd()["result"])
@@ -333,7 +336,7 @@ class AutomaticControllerTests(unittest.TestCase):
         self.assertEqual([self.source.target, target], self.host.calls)
         self.assertEqual("no-candidate", self.run_cd()["result"])
 
-    def test_auto_ci_registry_capacity_db_policy_and_payload_reject_with_zero_deploys(self):
+    def test_auto_ci_registry_capacity_db_policy_and_backend_reject_with_zero_deploys(self):
         self.host.ci_failure = True
         self.blocked()
         self.host.ci_failure = False
@@ -341,9 +344,8 @@ class AutomaticControllerTests(unittest.TestCase):
             self.host.reject = reject
             self.blocked()
         self.host.reject = None
-        self.payload_drift = True
-        self.blocked()
-        self.payload_drift = False
+        with patch.object(self.host, "manifest", return_value=self.host.b):
+            self.blocked()  # A newly built Backend cannot enter automatic approval.
         original = self.policy["db_epoch"]
         self.policy["db_epoch"] = "sha256:" + "0" * 64
         self.save()
@@ -430,33 +432,22 @@ class BareFetchTests(unittest.TestCase):
 
 
 class EvidenceTests(unittest.TestCase):
-    def test_backend_payload_requires_identical_layers_and_runtime_config(self):
+    def test_automatic_manifest_reuses_backend_and_only_discovers_target_frontend(self):
         host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
-        a, b = fixture.manifest("a"), fixture.manifest("b")
-        original = {"architecture": "amd64", "os": "linux", "created": "old",
-                    "history": [{"created": "old"}],
-                    "rootfs": {"type": "layers", "diff_ids": ["sha256:" + "1" * 64]},
-                    "config": {"User": "pawcycle", "Entrypoint": ["java", "-jar", "/app/app.jar"],
-                               "Labels": {"org.opencontainers.image.revision": a["sha"],
-                                          "org.opencontainers.image.source": r.ORIGIN.removesuffix(".git")}}}
-        newer = copy.deepcopy(original)
-        newer.update(created="new", history=[{"created": "new"}])
-        newer["config"]["Labels"]["org.opencontainers.image.revision"] = b["sha"]
-        def payload(manifest, doc):
-            with patch.object(host, "docker", return_value=r.encoded(doc)):
-                return host.backend_payload(manifest)
-        self.assertEqual(payload(a, original), payload(b, newer))
-        for key, value in (("User", "root"), ("Entrypoint", ["unreviewed"]), ("Env", ["CHANGED=1"])):
-            changed = copy.deepcopy(newer)
-            changed["config"][key] = value
-            self.assertNotEqual(payload(a, original), payload(b, changed))
-        changed = copy.deepcopy(newer)
-        changed["rootfs"]["diff_ids"] = ["sha256:" + "2" * 64]
-        self.assertNotEqual(payload(a, original), payload(b, changed))
-        for changed in ({}, {**newer, "rootfs": {"type": "layers", "diff_ids": []}},
-                        {**newer, "architecture": "arm64"}):
-            with self.assertRaises((r.Refused, KeyError)):
-                payload(b, changed)
+        a, sha = fixture.manifest("a"), "b" * 40
+        raw = r.encoded({"config": {"digest": "sha256:" + "c" * 64}})
+        policy = {"compatibility_mode": cd.AUTO_MODE, "unpacked_bytes": {"frontend": r.GIB}}
+        with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                patch.object(host, "docker", return_value=raw) as docker, patch.object(host, "registry"):
+            target = host.manifest(sha, policy, a)
+        self.assertEqual({**a["backend"], "source_sha": a["sha"]}, target["backend"])
+        docker.assert_called_once_with("buildx", "imagetools", "inspect",
+                                       "ghcr.io/guseoh/pawcycle-commerce-frontend:" + sha, "--raw")
+        # A second automatic release keeps the original Backend source, not the previous Frontend SHA.
+        with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                patch.object(host, "docker", return_value=raw), patch.object(host, "registry"):
+            next_target = host.manifest("d" * 40, policy, target)
+        self.assertEqual(target["backend"], next_target["backend"])
 
     def test_installed_service_starts_isolated_without_importing_cwd_or_pythonpath(self):
         with tempfile.TemporaryDirectory() as directory:

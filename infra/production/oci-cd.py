@@ -124,13 +124,17 @@ class CDHost(release.Host):
                         selected[0].get("status") == "completed" and selected[0].get("conclusion") == "success",
                         "required exact SHA job missing, skipped or failed")
 
-    def manifest(self, sha, policy):
+    def manifest(self, sha, policy, current=None):
         result = {"sha": sha, "compose_source_sha": sha, "nginx_source_sha": sha,
                   "compose_sha256": release.digest(self.git("show", sha + ":" + release.COMPOSE)),
                   "nginx_sha256": release.digest(self.git("show", sha + ":" + release.NGINX).replace(
                       b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())),
                   "migration_tree": self.git("rev-parse", sha + ":backend/src/main/resources/db/migration").decode().strip()}
         for role in ("backend", "frontend"):
+            if role == "backend" and policy.get("compatibility_mode") == AUTO_MODE:
+                require(current is not None, "verified Backend baseline required")
+                result[role] = {**current[role], "source_sha": release.image_sha(current, role)}
+                continue
             repository = "ghcr.io/" + REPO + "-" + role
             raw = self.docker("buildx", "imagetools", "inspect", repository + ":" + sha, "--raw")
             image_digest = release.digest(raw)
@@ -148,26 +152,6 @@ class CDHost(release.Host):
         release.validate_manifest(result)
         self.registry(result)  # independently refetch digest/config/platform/revision/source
         return result
-
-    def backend_payload(self, manifest):
-        image = manifest["backend"]
-        ref = image["repository"] + "@" + image["digest"]
-        document = json.loads(self.docker("buildx", "imagetools", "inspect", ref,
-                                          "--format", "{{json .Image}}"))
-        if "architecture" not in document:
-            require(set(document) == {"linux/amd64"}, "ambiguous backend payload")
-            document = document["linux/amd64"]
-        require(document["os"] == "linux" and document["architecture"] == "amd64" and
-                document["rootfs"]["type"] == "layers" and document["rootfs"]["diff_ids"] and
-                all(release.DIGEST.fullmatch(d) for d in document["rootfs"]["diff_ids"]) and
-                document["config"]["Labels"]["org.opencontainers.image.revision"] == manifest["sha"],
-                "backend payload identity unavailable")
-        # Only build metadata may differ. Layers, entrypoint, env, user and
-        # every other runtime config byte must match the known healthy image.
-        for key in ("created", "history"):
-            document.pop(key, None)
-        document["config"]["Labels"].pop("org.opencontainers.image.revision")
-        return release.identity(document)
 
     def compatibility(self, current, target, policy, policy_path=None):
         observer = Path(policy["compatibility_observer"])
@@ -238,11 +222,12 @@ class Controller:
                     observed["baseline"] == p["automatic_baseline_sha"] and
                     observed["policy_sha256"] == release.identity(p) and
                     release.DIGEST.fullmatch(observed["history_sha256"]), "automatic source evidence mismatch")
-            # Source equality alone cannot authorize an unexpectedly different
-            # Backend binary produced by mutable base images/build inputs.
-            payload = h.backend_payload(current["manifest"])
-            require(payload == h.backend_payload(manifest), "rebuilt backend payload changed; supervised alignment required")
-            proof["evidence"] += "/backend/" + payload
+            # Never auto-authorize a rebuilt Backend binary. Keep the exact
+            # known healthy digest/config/budget and its original source SHA.
+            expected = {**current["manifest"]["backend"],
+                        "source_sha": release.image_sha(current["manifest"], "backend")}
+            require(manifest["backend"] == expected, "automatic Backend artifact must remain current")
+            proof["evidence"] += "/backend/" + release.identity(expected)
         return proof
 
     def reconcile(self):
@@ -264,7 +249,8 @@ class Controller:
         require(all(any(path.startswith(prefix) for prefix in p["allowed_prefixes"])
                     for path in paths if classifier.classify([path])["deploy"]), "candidate outside approved path scope")
         h.ci(sha)
-        manifest = h.manifest(sha, p)
+        manifest = (h.manifest(sha, p, state["current"]["manifest"]) if p.get("compatibility_mode") == AUTO_MODE
+                    else h.manifest(sha, p))
         proof = self.evidence(state["current"], manifest, p)
         approval = {"action": "preflight", "manifest_sha256": release.identity(manifest), "expected_current": current,
                     "evidence": p["approval_evidence"], "db_compatibility_evidence": proof["evidence"],

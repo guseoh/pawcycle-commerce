@@ -56,7 +56,7 @@ def local_image_record(target, role):
     image = target[role]
     return {"Id": image["config_digest"], "Os": "linux", "Architecture": "amd64", "Size": 100,
             "RepoDigests": [image["repository"] + "@" + image["digest"]],
-            "Config": {"Labels": {"org.opencontainers.image.revision": target["sha"],
+            "Config": {"Labels": {"org.opencontainers.image.revision": release.image_sha(target, role),
                                   "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}}
 
 
@@ -172,6 +172,17 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual("preflight-passed", result["result"])
         self.assertEqual([], self.host.calls)
         self.assertEqual(self.a, self.engine.read_state()["current"]["manifest"])
+
+    def test_retained_backend_state_survives_activation_and_explicit_rollback(self):
+        self.b["backend"] = {**self.a["backend"], "source_sha": self.a["sha"]}
+        self.adopt()
+        self.activate()
+        current = self.engine.read_state()["current"]["manifest"]
+        self.assertEqual(self.a["backend"]["digest"], current["backend"]["digest"])
+        self.assertEqual(self.a["sha"], release.image_sha(current, "backend"))
+        self.engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+        self.assertEqual(self.a, self.host.live)
+        self.assertTrue(self.host.recovery_used_local_images)
 
     def test_rollback_uses_saved_evidence_and_local_images_without_registry(self):
         self.adopt()
@@ -465,6 +476,37 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaises(release.Refused):
                 release.validate_manifest(altered)
 
+    def test_retained_backend_preserves_original_registry_and_local_provenance(self):
+        self.target["backend"]["source_sha"] = "b" * 40
+        release.validate_manifest(self.target)
+        _, child = self.registry_fixture()
+        for role in ("backend", "frontend"):
+            self.target[role]["digest"] = release.digest(child)
+        def remote(sha):
+            return release.encoded({"architecture": "amd64", "os": "linux", "config": {"Labels": {
+                "org.opencontainers.image.revision": sha,
+                "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}})
+        with patch.object(self.host, "docker", side_effect=[child, remote("b" * 40), child, remote("a" * 40)]) as docker:
+            self.assertEqual(200, self.host.registry(self.target))
+            self.assertIn("ghcr.io/guseoh/pawcycle-commerce-backend:" + "b" * 40, docker.call_args_list[0].args)
+        with patch.object(self.host, "docker", side_effect=[child, remote("a" * 40)]):
+            with self.assertRaisesRegex(release.Refused, "revision/source"):
+                self.host.registry(self.target)
+        local = local_image_record(self.target, "backend")
+        with patch.object(self.host, "docker", side_effect=local_inspector(local)):
+            self.assertEqual(100, self.host.image(self.target, "backend"))
+        local["Config"]["Labels"]["org.opencontainers.image.revision"] = "a" * 40
+        with patch.object(self.host, "docker", side_effect=local_inspector(local)):
+            with self.assertRaises(release.Refused):
+                self.host.image(self.target, "backend")
+        self.target["backend"]["source_sha"] = "invalid"
+        with self.assertRaises(release.Refused):
+            release.validate_manifest(self.target)
+        self.target["backend"]["source_sha"] = "b" * 40
+        self.target["frontend"]["source_sha"] = "b" * 40
+        with self.assertRaises(release.Refused):
+            release.validate_manifest(self.target)
+
     def registry_fixture(self, platform="amd64"):
         child = release.encoded({"mediaType": "application/vnd.oci.image.manifest.v1+json",
                                  "config": {"digest": self.target["backend"]["config_digest"]},
@@ -754,6 +796,24 @@ class BoundaryTests(unittest.TestCase):
         with patch.object(self.host, "git", side_effect=outputs):
             with self.assertRaisesRegex(release.Refused, "provenance"):
                 self.host.sources(self.target)
+
+    def test_retained_backend_requires_ancestor_and_unchanged_backend_inputs(self):
+        self.host.main = "9" * 40
+        self.target["backend"]["source_sha"] = "b" * 40
+        compose = b"compose\n"
+        nginx = Path(__file__).with_name("nginx.https.conf").read_bytes()
+        self.target["compose_sha256"] = release.digest(compose)
+        self.target["nginx_sha256"] = release.digest(nginx.replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
+        outputs = [b"", b"", b"", compose, nginx, self.target["migration_tree"].encode()]
+        with patch.object(self.host, "git", side_effect=outputs + [b"", b""]) as git:
+            self.host.sources(self.target)
+            self.assertEqual(("merge-base", "--is-ancestor", "b" * 40, self.target["sha"]), git.call_args_list[-2].args)
+            self.assertIn("backend/", git.call_args.args)
+            self.assertIn(".github/workflows/publish-production-images.yml", git.call_args.args)
+        for tail in ([release.Refused("not ancestor")], [b"", release.Refused("Backend inputs changed")]):
+            with patch.object(self.host, "git", side_effect=outputs + tail):
+                with self.assertRaises(release.Refused):
+                    self.host.sources(self.target)
 
     def test_historical_c09302a8_nginx_is_rejected_even_with_correct_source_hash(self):
         self.host.main = "9" * 40
