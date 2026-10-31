@@ -181,6 +181,10 @@ def observe(current, target, now=None):
           attest['db_snapshot_sha256'] == snapshot and attest['db_epoch'] == snapshot,
           'live DB/Flyway baseline changed')
     checks = proof_artifact(attest, current, target)
+    # Detect Flyway/DB identity changes while checking the separately reviewed pair.
+    final_snapshot, final_scripts, final_count = live_snapshot()
+    check((final_snapshot, final_scripts, final_count) == (snapshot, actual, count),
+          'live DB changed during compatibility observation')
     return {'current': current, 'target': target, 'db_epoch': snapshot,
             'runtime_env_sha256': runtime_hash,
             'application_data_compatible': True, 'rollback_safe': True,
