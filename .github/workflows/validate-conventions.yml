@@ -379,9 +379,11 @@ jobs:
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
           python -m py_compile infra/production/oci-release.py infra/production/test-oci-release.py
+          python -m py_compile infra/production/oci-compat-observer.py infra/production/test-oci-compat-observer.py
           python infra/production/validate-production-contracts.py
           sudo "$(command -v python)" infra/production/test-oci-release.py
           sudo "$(command -v python)" infra/production/test-oci-cd.py
+          sudo "$(command -v python)" infra/production/test-oci-compat-observer.py
           sudo "$(command -v python)" infra/production/test-trust-boundary-transition.py -v
           bash infra/production/test-demo-catalog-import.sh
           bash infra/production/test-production-nginx.sh
