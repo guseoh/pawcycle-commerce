@@ -49,7 +49,7 @@ class FakeCDHost(fixture.FakeHost):
     def candidate(self, current):
         return self.next_candidate
 
-    def paths(self, base, head):
+    def changed_paths(self, base, head):
         return self.changed
 
     def ci(self, sha, services=()):
@@ -356,7 +356,7 @@ class AutomaticControllerTests(unittest.TestCase):
         self.host.main = self.source.target
         self.host.git = lambda *args: self.source.git_cmd(self.source.mirror, *args).encode()
         self.host.candidate = lambda current: cd.CDHost.candidate(self.host, current)
-        self.host.paths = lambda *args: cd.CDHost.paths(self.host, *args)
+        self.host.changed_paths = lambda *args: cd.CDHost.changed_paths(self.host, *args)
         self.host.compatibility = lambda current, target, policy, path: self.observer.observe(
             current, target, auto_policy=path)
         self.host.b["sha"] = self.source.target
@@ -492,6 +492,33 @@ class BareFetchTests(unittest.TestCase):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_real_cdhost_activates_and_restores_using_release_snapshot_paths(self):
+        # Keep the actual CDHost -> Host dispatch and snapshot/Compose code.
+        # FakeHost.activate bypasses those methods and hid the name collision.
+        for selected in (("frontend",), ("backend",), ("backend", "frontend")):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                host = cd.CDHost(root, root, root, root / "renewal.lock")
+                host.backend_env, host.automation = root / "backend.env", {}
+                compose, nginx = b"reviewed-compose\n", b"reviewed-nginx\n"
+                target, previous = fixture.manifest("b"), fixture.manifest("a")
+                for manifest in (target, previous):
+                    manifest.update(compose_sha256=r.digest(compose), nginx_sha256=r.digest(nginx))
+                with patch.object(host, "sources", return_value=(compose, nginx)), \
+                        patch.object(host, "image"), patch.object(host, "smoke"), \
+                        patch.object(host, "docker", return_value=b"") as docker:
+                    for manifest in (target, previous):
+                        host.activate(manifest, pull=False, services=selected)
+                        snapshot, compose_path, nginx_path = host.paths(manifest)
+                        self.assertEqual(root / ("oci-" + r.identity(manifest).split(":")[1]), snapshot)
+                        self.assertEqual(compose, r.read_private(compose_path))
+                        self.assertEqual(nginx, r.read_private(nginx_path))
+                        args = docker.call_args.args
+                        self.assertIn(str(compose_path), args)
+                        self.assertEqual(("up", "-d", "--no-deps", "--pull", "never", "--wait",
+                                          "--wait-timeout", "180", *selected), args[args.index("up"):])
+                    self.assertFalse(any(call.args[0] == "pull" for call in docker.call_args_list))
+
     def test_automatic_manifest_reuses_backend_and_only_discovers_target_frontend(self):
         host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
         a, sha = fixture.manifest("a"), "b" * 40
@@ -515,14 +542,14 @@ class EvidenceTests(unittest.TestCase):
         raw = r.encoded({"config": {"digest": "sha256:" + "c" * 64}})
         policy = {"compatibility_mode": cd.APP_MODE, "unpacked_bytes": {"backend": r.GIB, "frontend": r.GIB}}
         with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
-                patch.object(host, "paths", return_value=["backend/src/main/java/App.java"]), \
+                patch.object(host, "changed_paths", return_value=["backend/src/main/java/App.java"]), \
                 patch.object(host, "docker", return_value=raw) as docker:
             target = host.manifest(target_sha, policy, current, published={"backend"})
         self.assertEqual({**current["frontend"], "source_sha": current["sha"]}, target["frontend"])
         self.assertEqual(target_sha, target["backend"]["source_sha"])
         self.assertEqual(1, docker.call_count)
         with patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
-                patch.object(host, "paths", return_value=["backend/src/main/java/App.java", "frontend/src/app/page.tsx"]), \
+                patch.object(host, "changed_paths", return_value=["backend/src/main/java/App.java", "frontend/src/app/page.tsx"]), \
                 patch.object(host, "component_commit", return_value="b" * 40), \
                 patch.object(host, "ci", return_value={"frontend"}) as ci, \
                 patch.object(host, "docker", return_value=raw) as docker:
@@ -547,7 +574,7 @@ class EvidenceTests(unittest.TestCase):
                     for name in cd.JOBS | {"Frontend validation", "Publish production images"}]
         with patch.object(host, "pages", side_effect=pages), \
                 patch.object(host, "git", return_value=b"b" * 40), \
-                patch.object(host, "paths", return_value=[cd.CSS_PATH]):
+                patch.object(host, "changed_paths", return_value=[cd.CSS_PATH]):
             self.assertEqual({"frontend"}, host.ci(sha, services=("frontend",)))
             for outcome in ("skipped", "failure", "cancelled"):
                 with self.assertRaisesRegex(r.Refused, "service image build"):
@@ -620,7 +647,7 @@ class EvidenceTests(unittest.TestCase):
                     if name != failure.get("missing")]
         with patch.object(host, "pages", side_effect=pages), \
                 patch.object(host, "git", return_value=b"b" * 40), \
-                patch.object(host, "paths", return_value=["unknown.config"]):
+                patch.object(host, "changed_paths", return_value=["unknown.config"]):
             host.ci(sha)
             for entry in ({"event": "pull_request"}, {"sha": "b" * 40}, {"conclusion": "failure"},
                           {"missing": "Backend and MySQL validation"}, {"missing": "Publish production images"}):
@@ -645,7 +672,7 @@ class EvidenceTests(unittest.TestCase):
                     if name != failure.get("missing")]
         with patch.object(host, "pages", side_effect=pages), \
                 patch.object(host, "git", return_value=b"b" * 40), \
-                patch.object(host, "paths", return_value=[cd.CSS_PATH]):
+                patch.object(host, "changed_paths", return_value=[cd.CSS_PATH]):
             host.ci(sha)
             for entry in ({"missing": "Frontend validation"}, {"conclusion": "skipped"},
                           {"conclusion": "failure"}, {"missing": "Application validation"}):
@@ -697,11 +724,11 @@ class EvidenceTests(unittest.TestCase):
                 return b"feat: data cleanup\n\nPawCycle-Deploy: manual\n"
             return b""
         with patch.object(host, "git", side_effect=git), \
-                patch.object(host, "paths", return_value=["backend/src/main/resources/db/migration/V99.sql"]):
+                patch.object(host, "changed_paths", return_value=["backend/src/main/resources/db/migration/V99.sql"]):
             with self.assertRaisesRegex(r.Refused, "manual migration"):
                 host.application_scope("a" * 40)
         with patch.object(host, "git", side_effect=git), \
-                patch.object(host, "paths", return_value=["backend/src/main/java/Worker.java"]):
+                patch.object(host, "changed_paths", return_value=["backend/src/main/java/Worker.java"]):
             with self.assertRaisesRegex(r.Refused, "commit requires manual"):
                 host.application_scope("a" * 40)
 

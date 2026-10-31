@@ -100,7 +100,7 @@ class CDHost(release.Host):
         self.git("update-ref", "--no-deref", "refs/remotes/origin/main", new, old)
         self.initial()
 
-    def paths(self, base, head):
+    def changed_paths(self, base, head):
         return self.git("diff", "--no-renames", "--name-only", base, head).decode().splitlines()
 
     def candidate(self, current):
@@ -111,7 +111,7 @@ class CDHost(release.Host):
         for sha in history:
             require(release.SHA.fullmatch(sha), "invalid history SHA")
             parent = self.git("rev-parse", sha + "^").decode().strip()
-            if classifier.classify(self.paths(parent, sha))["deploy"]:
+            if classifier.classify(self.changed_paths(parent, sha))["deploy"]:
                 return sha
         return None
 
@@ -121,7 +121,7 @@ class CDHost(release.Host):
         parent = self.git("rev-parse", sha + "^").decode().strip()
         require(release.SHA.fullmatch(parent), "invalid CI comparison base")
         jobs = set(JOBS)
-        for component, enabled in validation.classify(self.paths(parent, sha)).items():
+        for component, enabled in validation.classify(self.changed_paths(parent, sha)).items():
             if enabled:
                 jobs.update(COMPONENT_JOBS[component])
         for service in services:
@@ -158,14 +158,14 @@ class CDHost(release.Host):
         self.git("merge-base", "--is-ancestor", current, self.main)
         for sha in self.git("rev-list", "--first-parent", current + ".." + self.main).decode().splitlines():
             parent = self.git("rev-parse", sha + "^").decode().strip()
-            require(not classifier.application_blockers(self.paths(parent, sha)), "manual migration/runtime/data deployment required")
+            require(not classifier.application_blockers(self.changed_paths(parent, sha)), "manual migration/runtime/data deployment required")
             message = self.git("log", "-1", "--format=%B", sha).decode()
             require(not re.search(r"(?im)^PawCycle-Deploy:\s*manual\s*$", message), "commit requires manual deployment")
 
     def component_commit(self, current, target, role):
         for sha in self.git("rev-list", "--first-parent", current + ".." + target).decode().splitlines():
             parent = self.git("rev-parse", sha + "^").decode().strip()
-            if classifier.image_components(self.paths(parent, sha))[role]:
+            if classifier.image_components(self.changed_paths(parent, sha))[role]:
                 return sha
         raise release.Refused("changed service source commit unavailable")
 
@@ -176,7 +176,7 @@ class CDHost(release.Host):
                       b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())),
                   "migration_tree": self.git("rev-parse", sha + ":backend/src/main/resources/db/migration").decode().strip()}
         application = policy.get("compatibility_mode") == APP_MODE
-        changed = classifier.image_components(self.paths(current["sha"], sha)) if application else {}
+        changed = classifier.image_components(self.changed_paths(current["sha"], sha)) if application else {}
         for role in ("backend", "frontend"):
             if (application and not changed[role]) or (role == "backend" and policy.get("compatibility_mode") == AUTO_MODE):
                 require(current is not None, "verified Backend baseline required")
@@ -303,7 +303,7 @@ class Controller:
         if self.target is None:
             return "no-candidate"
         sha, tip = self.target, h.main
-        paths = h.paths(current, sha)
+        paths = h.changed_paths(current, sha)
         intent = classifier.classify(paths)
         require(set(intent["risks"]) <= set(p["allowed_risks"]), "candidate outside approved risk scope")
         require(all(any(path.startswith(prefix) for prefix in p["allowed_prefixes"])
