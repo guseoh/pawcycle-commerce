@@ -72,9 +72,10 @@ def git(*arguments):
 
 
 def mysql(statement):
+    # Use only the dedicated options file; do not merge root's ~/.my.cnf.
     # Credential file is provided separately by the operator; no password in argv,
     # shell, inherited environment or output. File must enforce TLS verification.
-    result = run(['/usr/bin/mysql', '--defaults-extra-file=' + str(MYSQL_OPTIONS),
+    result = run(['/usr/bin/mysql', '--defaults-file=' + str(MYSQL_OPTIONS),
                   '--connect-timeout=5', '--batch', '--raw', '--skip-column-names',
                   '--skip-auto-rehash', '--execute=' + statement], seconds=15)
     return result.decode('utf-8').strip().splitlines()
