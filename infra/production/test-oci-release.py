@@ -243,9 +243,9 @@ class LifecycleTests(unittest.TestCase):
         commands = []
         tagged = []
         self.host.image = lambda target, role: tagged.append(role) or 100
-        with patch.object(self.host, "docker", side_effect=lambda *args, **kw: commands.append(args) or b""), \\
-                patch.object(self.host, "materialize"), \\
-                patch.object(self.host, "compose") as compose, \\
+        with patch.object(self.host, "docker", side_effect=lambda *args, **kw: commands.append(args) or b""), \
+                patch.object(self.host, "materialize"), \
+                patch.object(self.host, "compose") as compose, \
                 patch.object(self.host, "smoke"):
             release.Host.activate(self.host, self.b, frontend_only=True)
             self.assertEqual(1, compose.call_count)
