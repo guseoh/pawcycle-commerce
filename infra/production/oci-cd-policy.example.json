@@ -7,6 +7,8 @@
   "expires_unix": 0,
   "allowed_prefixes": [],
   "allowed_risks": [],
+  "compatibility_mode": "manual-pair-v1",
+  "automatic_baseline_sha": null,
   "controller_sha256": {},
   "runtime_env_sha256": null,
   "db_epoch": null,
