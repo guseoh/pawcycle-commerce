@@ -133,6 +133,36 @@ class ObserverTests(unittest.TestCase):
             with self.assertRaises(compat.Rejected):
                 compat.observe(self.current, self.target, self.now)
 
+    def test_frontend_only_scope_blocks_unreviewed_image_inputs(self):
+        self.assertTrue(compat.frontend_only_scope([
+            'frontend/src/app/page.tsx', 'frontend/public/logo.svg',
+            'docs/runbook/OPS-OCI-CD-003-host-pull.md',
+        ]))
+        denied = [
+            'backend/src/main/java/Changed.java',
+            'backend/src/test/java/ChangedTest.java',
+            'backend/gradle.properties',
+            'frontend/package.json',
+            'frontend/package-lock.json',
+            'frontend/next.config.ts',
+            'frontend/scripts/build-helper.js',
+            '.dockerignore',
+            '.github/workflows/publish-production-images.yml',
+            'infra/production/backend.Dockerfile',
+            'infra/production/frontend.Dockerfile.dockerignore',
+            'infra/production/compose.yaml',
+            'infra/production/nginx.https.conf',
+        ]
+        for path in denied:
+            with self.subTest(path=path):
+                self.changed.append(path)
+                self.attest['changed_paths_sha256'] = compat.digest(
+                    ('\\n'.join(sorted(self.changed)) + '\\n').encode())
+                self.save_proof()
+                with self.assertRaisesRegex(compat.Rejected, 'separate observer'):
+                    compat.observe(self.current, self.target, self.now)
+                self.changed.pop()
+
     def test_mysql_command_has_no_secret_arguments(self):
         with patch.object(compat, 'run', return_value=b'v1\n') as executed:
             self.assertEqual(['v1'], compat.mysql('SELECT 1'))
