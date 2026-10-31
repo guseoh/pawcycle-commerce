@@ -88,10 +88,10 @@ transition/attempt 또는 commit 불확실성이 있으면 CD OFF/kill switch를
 
 ## Task 5: Host Pull 최초 활성화 준비
 
-1. 병합 후 승인한 commit에서 `oci-cd.py`, 수정된 `oci-release.py`, `production_env.py`, `classify-production-image-changes.py` 각각 bytes SHA-256을 계산하고 설치본과 정책 `controller_sha256`을 대조한다. 네 파일을 같은 보호 directory에 설치하고 `python3 -I` 시작 검증을 통과해야 한다. 이 문서의 작업 전 hash를 설치 승인으로 쓰지 않는다. fetched source 실행/자동 controller 갱신은 금지다.
+1. 병합 후 승인한 commit에서 `oci-cd.py`, 수정된 `oci-release.py`, `production_env.py`, `classify-production-image-changes.py`, `classify-validation-changes.py` 각각 bytes SHA-256을 계산하고 설치본과 정책 `controller_sha256`을 대조한다. 다섯 파일을 같은 보호 directory에 설치하고 `python3 -I` 시작 검증을 통과해야 한다. 이 문서의 작업 전 hash를 설치 승인으로 쓰지 않는다. fetched source 실행/자동 controller 갱신은 금지다.
 2. root-owned 전용 bare source·정확한 origin·non-force FF/CAS, Host GitHub/GHCR outbound read·Docker socket 접근을 독립 검증한다. credential·Public SSH·비용 변경은 별도 승인이다.
 3. 승인된 정상 baseline, Task 4의 실제 observer·DB epoch/runtime/migration·capacity/복귀 budget, 정확한 Compose/Nginx hash를 root `600` 최초 정책에 결합한다. 예제 OFF/0/null 값으로 설치하지 않는다.
-4. exact main 후보 SHA의 push/main/workflow/latest attempt 및 **각 필수 job** 성공과 동일 SHA 양쪽 이미지 증거를 확인한다. 과거 후보에 새 CD의 exact-SHA CI가 없으면 STOP한다. PR CI·readiness dispatch·image 존재·후속 docs-only CI로 대체하지 않는다.
+4. exact main 후보 SHA의 push/main/workflow/latest attempt 및 **각 필수 job** 성공과 해당 배포 모드의 이미지 증거(수동 정렬은 동일 SHA pair, frontend-cosmetic-v1은 검증된 current Backend+target Frontend)를 확인한다. 과거 후보에 새 CD의 exact-SHA CI가 없으면 STOP한다. PR CI·readiness dispatch·image 존재·후속 docs-only CI로 대체하지 않는다.
 5. 최초 정책 설치, sentinel 설치, systemd unit/timer 설치·enable/start는 각각 명시적 운영 승인 범위에 묶어야 한다. 활성화 전 kill switch·만료/정책 OFF 차단과 journal 수신 주체·연락/대응시간을 검증한다. journal 생성만으로 운영자 수신을 주장하지 않는다. 외부 push는 현재 미연결이며 필요 여부/수신 경계 미확정은 blocker다.
 6. 정책상 허용된 새 main **애플리케이션 변경**을 별도 PR로 검토·승인하고 첫 E2E 대상으로 삼는다. current→후보 전체 diff의 위험·양방향 호환과 모든 Gate가 통과해야 한다. 이 도구/Runbook PR만으로 새 앱 배포 후보를 만들거나 과거 후보를 허용하지 않는다.
 7. 활성화 후 정확한 target/current/previous SHA·image IDs·health·내외부 HTTPS·sibling 보존·성공/차단/실패 알림 수신, 실패 시 검증된 current 복귀와 state/transition/attempt를 관측한다. 실패 주입·실제 rollback은 별도 승인한다. 기대 기한 내 성공하지 않으면 kill switch와 수동 Recovery 경계를 적용한다.

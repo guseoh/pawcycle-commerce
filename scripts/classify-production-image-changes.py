@@ -63,8 +63,28 @@ def should_publish(paths: list[str]) -> bool:
     return classify(paths)["publish"]
 
 
+def image_components(paths: list[str]) -> dict[str, bool]:
+    """Only a frontend-only image delta can omit the Backend build.
+
+    Other releases retain the existing exact-SHA pair. Unknown/shared inputs
+    fail safe to both images; this does not grant deployment permission.
+    """
+    inputs = [path for path in paths if classify([path])["publish"]]
+    frontend_only = bool(inputs) and all(
+        path.startswith("frontend/") or path in {
+            "infra/production/frontend.Dockerfile",
+            "infra/production/frontend.Dockerfile.dockerignore",
+        } for path in inputs)
+    return {"backend": bool(inputs) and not frontend_only, "frontend": bool(inputs)}
+
+
 def main() -> None:
-    print("publish=" + ("true" if should_publish(sys.stdin.read().splitlines()) else "false"))
+    paths = sys.stdin.read().splitlines()
+    result = {"publish": should_publish(paths)}
+    if "--components" in sys.argv[1:]:
+        result.update(image_components(paths))
+    for name, enabled in result.items():
+        print(name + "=" + ("true" if enabled else "false"))
 
 
 if __name__ == "__main__":

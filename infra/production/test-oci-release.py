@@ -927,6 +927,28 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refused, "direct 2xx"):
                 self.host.smoke(self.target)
 
+    def test_smoke_uses_runtime_identity_without_executing_checkout_code(self):
+        commands = []
+        def docker(*args, **kwargs):
+            if args[0] == "ps":
+                return b"metrics-id\n"
+            if args[0] == "inspect":
+                return json.dumps([{"State": {"Health": {"Status": "healthy"}}}]).encode()
+            if "sh" in args:
+                return b"HTTP/1.1 200 OK\n"
+            return b""
+        def command(*args, **kwargs):
+            commands.append(args)
+            self.assertEqual("curl", args[0])
+            return b"200"
+        with patch.object(self.host, "runtime_check") as identity, \
+                patch.object(self.host, "docker", side_effect=docker) as calls, \
+                patch.object(self.host, "command", side_effect=command):
+            self.host.smoke(self.target)
+        identity.assert_called_once_with(self.target)
+        self.assertEqual(2, len(commands))
+        self.assertTrue(any("http://127.0.0.1:9464/actuator/prometheus" in call.args for call in calls.call_args_list))
+
     def test_safe_default_cli_cannot_activate_without_inputs(self):
         result = subprocess.run(["python3", str(Path(__file__).with_name("oci-release.py")),
                                  "activate", "--repository", str(self.root)], capture_output=True)
