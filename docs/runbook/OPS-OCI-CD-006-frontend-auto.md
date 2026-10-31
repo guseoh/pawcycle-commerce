@@ -1,5 +1,7 @@
 # OPS-OCI-CD-006 — 제한적 Frontend 자동 배포
 
+이 문서는 legacy `frontend-cosmetic-v1` 모드의 제한을 설명한다. 일반 Frontend·Backend 자동 배포는 [application-v1](OPS-OCI-CD-003-host-pull.md)을 따르며 아래 CSS/Observer 제한을 적용하지 않는다.
+
 고위험 / Repository Change. **Production OFF / 운영 미실행**. 이 문서는 최초 운영 승인을 위한 절차이며 설치·Adopt·Timer·Production/Cloud/DB/Secret 변경 승인이 아니다. [Host Pull](OPS-OCI-CD-003-host-pull.md), [최초 전환](OPS-OCI-CD-004-first-transition.md), [Release/Recovery](OPS-OCI-CD-02-release-recovery.md)의 기존 Gate를 유지한다.
 
 ## 최초 자동 허용 범위

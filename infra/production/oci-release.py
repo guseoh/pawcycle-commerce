@@ -135,7 +135,7 @@ def validate_manifest(manifest):
     for role in ("backend", "frontend"):
         image = manifest[role]
         fields = {"repository", "digest", "config_digest", "unpacked_bytes"}
-        require(set(image) == fields or role == "backend" and set(image) == fields | {"source_sha"},
+        require(set(image) == fields or set(image) == fields | {"source_sha"},
                 "unexpected image fields")
         require(isinstance(image_sha(manifest, role), str) and SHA.fullmatch(image_sha(manifest, role)),
                 "invalid image source SHA")
@@ -309,15 +309,19 @@ class Host:
         # application/data compatibility evidence.
         migration = self.git("rev-parse", manifest["sha"] + ":backend/src/main/resources/db/migration").decode().strip()
         require(migration == manifest["migration_tree"], "migration provenance mismatch")
-        if "source_sha" in manifest["backend"]:
-            source = image_sha(manifest, "backend")
+        for role in ("backend", "frontend"):
+            source = image_sha(manifest, role)
+            if source == manifest["sha"]:
+                continue
             self.git("merge-base", "--is-ancestor", source, manifest["sha"])
-            # Reusing a reviewed Backend artifact does not authorize a change
-            # to any Backend source/build input, even with a manual manifest.
-            self.git("diff", "--quiet", "--no-ext-diff", source, manifest["sha"], "--", "backend/",
-                     ".dockerignore", "infra/production/backend.Dockerfile",
-                     "infra/production/backend.Dockerfile.dockerignore",
-                     ".github/workflows/publish-production-images.yml")
+            paths = self.git("diff", "--no-renames", "--name-only", source, manifest["sha"]).decode().splitlines()
+            classifier_path = Path(__file__).resolve().with_name("classify-production-image-changes.py")
+            if not classifier_path.exists():
+                classifier_path = Path(__file__).resolve().parents[2] / "scripts/classify-production-image-changes.py"
+            spec = importlib.util.spec_from_file_location("release_image_classifier", classifier_path)
+            classifier = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(classifier)
+            require(not classifier.image_components(paths)[role], "retained service build inputs changed")
         return compose, nginx
 
     def registry(self, manifest):
@@ -473,6 +477,7 @@ class Host:
                "PAWCYCLE_BACKEND_ENV_FILE": str(self.backend_env), **self.automation}
         # Digest references avoid tag races between validation and Compose up.
         env.update({role.upper() + "_IMAGE": manifest[role]["repository"] for role in ("backend", "frontend")})
+        env.update({role.upper() + "_RELEASE_SHA": image_sha(manifest, role) for role in ("backend", "frontend")})
         return self.docker("compose", "--env-file", "/dev/null", "--project-name", PROJECT,
                            "--file", str(compose), *args, env=env, timeout=300)
 
@@ -534,7 +539,8 @@ class Host:
             atomic(nginx, nginx_bytes)
             env = {"RELEASE_SHA": manifest["sha"], "PAWCYCLE_NGINX_CONFIG": str(nginx),
                    "PAWCYCLE_BACKEND_ENV_FILE": str(self.backend_env), **self.automation,
-                   **{role.upper() + "_IMAGE": manifest[role]["repository"] for role in ("backend", "frontend")}}
+                   **{role.upper() + "_IMAGE": manifest[role]["repository"] for role in ("backend", "frontend")},
+                   **{role.upper() + "_RELEASE_SHA": image_sha(manifest, role) for role in ("backend", "frontend")}}
             config = json.loads(self.docker("compose", "--env-file", "/dev/null", "--project-name", PROJECT,
                                            "--file", str(compose), "config", "--format", "json", env=env))
             self.docker("run", "--rm", "--pull", "never", "--network", "none", "--read-only",
@@ -558,7 +564,7 @@ class Host:
             require(volume["name"] == PROJECT + "-" + key, "Compose certificate volume mismatch")
         for role in ("backend", "frontend"):
             service = config["services"][role]
-            require(service["image"] == manifest[role]["repository"] + ":" + manifest["sha"] and
+            require(service["image"] == manifest[role]["repository"] + ":" + image_sha(manifest, role) and
                     not service.get("volumes") and not service.get("ports") and
                     {config["networks"][key]["name"] for key in service["networks"]} == NETWORKS[role],
                     "Compose application boundary mismatch")
@@ -607,34 +613,36 @@ class Host:
         require(metrics["State"].get("Health", {}).get("Status") == "healthy", "metrics proxy unhealthy")
         self.docker("exec", ids[0], "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9464/actuator/prometheus")
 
-    def activate(self, manifest, pull=True, frontend_only=False):
-        # In the bounded automatic mode the verified Backend artifact and
-        # Nginx config remain unchanged. Do not retag/pull/recreate either.
-        # Compose --no-deps is intentional: only Frontend is reconciled.
-        if frontend_only:
-            self.image(manifest, "backend")
-        for role in (("frontend",) if frontend_only else ("backend", "frontend")):
+    def activate(self, manifest, pull=True, frontend_only=False, services=None):
+        # Explicit service selection reconciles only changed apps. The legacy
+        # cosmetic flag selects Frontend; the default manual path includes Proxy.
+        selected = tuple(services) if services is not None else (("frontend",) if frontend_only else ("backend", "frontend"))
+        require(set(selected) <= {"backend", "frontend"} and len(selected) == len(set(selected)), "invalid service selection")
+        for role in {"backend", "frontend"} - set(selected):
+            self.image(manifest, role)
+        for role in selected:
             image = manifest[role]
             ref = image["repository"] + "@" + image["digest"]
             if pull:
                 self.docker("pull", "--platform", "linux/amd64", ref, timeout=600)
             self.image(manifest, role)
-            self.docker("tag", ref, image["repository"] + ":" + manifest["sha"])
+            self.docker("tag", ref, image["repository"] + ":" + image_sha(manifest, role))
         self.materialize(manifest)
-        services = ("frontend",) if frontend_only else ("backend", "frontend")
-        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", *services)
-        if not frontend_only:
+        if selected:
+            self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", *selected)
+        if not frontend_only and services is None:
             # Manual releases still reconcile the release-specific Nginx bind.
             self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "90", "proxy")
         self.smoke(manifest)
 
 
 class Release:
-    def __init__(self, host, activation_guard=None, activation_start=None, frontend_only=False):
+    def __init__(self, host, activation_guard=None, activation_start=None, frontend_only=False, application_only=False):
         self.host, self.state = host, host.state
         self.activation_guard = activation_guard
         self.activation_start = activation_start
         self.frontend_only = frontend_only
+        self.application_only = application_only
 
     def read_state(self):
         path = self.state / "oci-release-state.json"
@@ -681,11 +689,25 @@ class Release:
     def approval(self, action, manifest, state, approval):
         current = state["current"]["manifest"]["sha"] if state else None
         require(approval["action"] == action and approval["manifest_sha256"] == identity(manifest) and
-                approval["expected_current"] == current and approval.get("evidence") and
-                approval.get("db_compatibility_evidence") and approval.get("db_epoch"),
+                approval["expected_current"] == current and approval.get("evidence"),
                 "approval/evidence is absent or stale")
         require(approval["expires_unix"] > time.time() and approval["expires_unix"] <= time.time() + 86400,
                 "approval expired or validity exceeds one day")
+        if self.application_only:
+            if action == "adopt":
+                require(state is None and approval.get("baseline_verified") is True,
+                        "initial application baseline needs separate approval and evidence")
+                return
+            require(state is not None and action in ("preflight", "activate", "rollback", "recover-state"),
+                    "application release needs an adopted baseline")
+            baseline = state["current"]
+            require(baseline["runtime_env_sha256"] == self.host.env_hash and all(
+                baseline["manifest"][key] == manifest[key]
+                for key in ("migration_tree", "compose_sha256", "nginx_sha256")),
+                "application release cannot change migration/runtime config")
+            return
+        require(approval.get("db_compatibility_evidence") and approval.get("db_epoch"),
+                "DB compatibility evidence is absent")
         if state:
             baseline = state["current"]
             require(baseline["runtime_env_sha256"] == self.host.env_hash and
@@ -728,10 +750,10 @@ class Release:
                         "verified previous release is unavailable")
                 require(manifest == state["previous"]["manifest"], "rollback target is not verified previous")
                 previous = state["previous"]
-                require(previous.get("evidence") and previous.get("compatibility_evidence") and
+                require(previous.get("evidence") and (self.application_only or previous.get("compatibility_evidence")) and
                         DIGEST.fullmatch(previous.get("approval_sha256", "")) and
                         previous["runtime_env_sha256"] == host.env_hash and
-                        previous["db_epoch"] == state["current"]["db_epoch"],
+                        (self.application_only or previous["db_epoch"] == state["current"]["db_epoch"]),
                         "stored rollback approval/runtime/DB evidence is missing or incompatible")
                 for role in ("backend", "frontend"):
                     host.image(manifest, role)
@@ -777,8 +799,9 @@ class Release:
             if state and manifest == state["current"]["manifest"]:
                 return {"result": "already-current"}
             record = {"manifest": manifest, "verified": True, "runtime_env_sha256": host.env_hash,
-                      "db_epoch": approval["db_epoch"], "evidence": approval["evidence"],
-                      "compatibility_evidence": approval["db_compatibility_evidence"],
+                      "db_epoch": None if self.application_only else approval["db_epoch"], "evidence": approval["evidence"],
+                      "compatibility_evidence": None if self.application_only else approval["db_compatibility_evidence"],
+                      "deployment_mode": "application-v1" if self.application_only else "manual-pair-v1",
                       "approval_sha256": identity(approval),
                       "registry_manifests": host.registry_manifests.get(identity(manifest), {})}
             # Registry/config checks may be slow; never start a transition with
@@ -792,19 +815,25 @@ class Release:
             if action != "adopt":
                 siblings = host.siblings()
                 frontend_only = self.frontend_only and action == "activate"
+                options = {"frontend_only": True} if frontend_only else {}
+                if self.application_only:
+                    selected = tuple(role for role in ("backend", "frontend") if any(
+                        manifest[role][key] != state["current"]["manifest"][role][key]
+                        for key in ("repository", "digest", "config_digest")))
+                    options = {"services": selected}
                 preserved = None
-                if frontend_only:
+                if frontend_only or self.application_only:
                     live = host.containers()
                     preserved = {role: (live[role]["Id"], live[role]["State"]["StartedAt"])
-                                 for role in ("backend", "proxy")}
+                                 for role in (("backend", "proxy") if frontend_only else
+                                              tuple({"backend", "frontend", "proxy"} - set(selected)))}
 
                 def require_preserved():
                     if preserved is not None:
                         live = host.containers()
                         require(all((live[role]["Id"], live[role]["State"]["StartedAt"]) == preserved[role]
                                     for role in preserved),
-                                "Backend or proxy container restarted during frontend-only release")
-                options = {"frontend_only": True} if frontend_only else {}
+                                "unselected service container restarted")
                 try:
                     host.activate(manifest, pull=action != "rollback", **options)
                     require_preserved()
@@ -840,6 +869,7 @@ def main():
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--approval", type=Path)
     parser.add_argument("--execute-approved", action="store_true")
+    parser.add_argument("--application-only", action="store_true", help="no migration/runtime changes; reconcile changed apps only")
     args = parser.parse_args()
     if args.action != "status":
         if not args.approval:
@@ -852,7 +882,7 @@ def main():
         signal.signal(signal.SIGTERM, interrupted)
         host = Host(args.repository, args.state_dir, args.runtime_dir,
                     "/run/lock/pawcycle-production-https-renewal.lock")
-        result = Release(host).run(args.action, load(args.manifest) if args.manifest else None,
+        result = Release(host, application_only=args.application_only).run(args.action, load(args.manifest) if args.manifest else None,
                                    load(args.approval) if args.approval else None, args.execute_approved)
         print(json.dumps(result, sort_keys=True))
     except (Refused, OSError, ValueError, KeyError, TypeError, KeyboardInterrupt) as error:

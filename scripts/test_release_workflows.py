@@ -140,6 +140,10 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 class ImagePublishClassifierTest(unittest.TestCase):
     def test_frontend_only_omits_backend_but_shared_and_unknown_keep_pair(self) -> None:
         for paths, expected in (
+            (["backend/src/main/java/App.java"], {"backend": True, "frontend": False}),
+            (["backend/build.gradle"], {"backend": True, "frontend": False}),
+            (["infra/production/backend.Dockerfile"], {"backend": True, "frontend": False}),
+            (["infra/production/frontend.Dockerfile"], {"backend": False, "frontend": True}),
             (["frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
             (["docs/note.md", "frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
             (["frontend/src/app/globals.css", "backend/build.gradle"], {"backend": True, "frontend": True}),
@@ -149,6 +153,14 @@ class ImagePublishClassifierTest(unittest.TestCase):
         ):
             with self.subTest(paths=paths):
                 self.assertEqual(expected, CLASSIFIER.image_components(paths))
+
+    def test_application_scope_excludes_migration_config_and_unclassified_inputs(self) -> None:
+        for path in ("backend/src/main/resources/db/migration/V99.sql", "backend/src/main/resources/application.yml",
+                     "backend/src/main/java/data-repair/Fix.java", "infra/production/nginx.https.conf", "unknown.toml"):
+            self.assertEqual([path], CLASSIFIER.application_blockers([path]))
+        self.assertEqual([], CLASSIFIER.application_blockers([
+            "backend/src/main/java/com/pawcycle/backend/commerce/OrderService.java",
+            "frontend/src/components/app-header.tsx", "backend/build.gradle", "docs/note.md"]))
 
     def test_build_deploy_and_policy_risk_are_separate(self) -> None:
         for path in ("infra/production/oci-release.py", "infra/production/oci-cd.py",

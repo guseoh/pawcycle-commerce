@@ -64,18 +64,38 @@ def should_publish(paths: list[str]) -> bool:
 
 
 def image_components(paths: list[str]) -> dict[str, bool]:
-    """Only a frontend-only image delta can omit the Backend build.
+    """Select independent images; shared/unclassified build inputs select both."""
+    result = {"backend": False, "frontend": False}
+    for path in paths:
+        if not classify([path])["publish"]:
+            continue
+        for role in result:
+            own = path.startswith(role + "/") or path in {
+                "infra/production/" + role + ".Dockerfile",
+                "infra/production/" + role + ".Dockerfile.dockerignore",
+            }
+            other = "frontend" if role == "backend" else "backend"
+            foreign = path.startswith(other + "/") or path in {
+                "infra/production/" + other + ".Dockerfile",
+                "infra/production/" + other + ".Dockerfile.dockerignore",
+            }
+            result[role] |= own or not foreign
+    return result
 
-    Other releases retain the existing exact-SHA pair. Unknown/shared inputs
-    fail safe to both images; this does not grant deployment permission.
+
+def application_blockers(paths: list[str]) -> list[str]:
+    """Mechanical exclusions, not a proof that arbitrary data writes reverse.
+
+    Non-obvious destructive code changes must use the manual-deploy commit
+    trailer during review. Neither mechanism grants migration permission.
     """
-    inputs = [path for path in paths if classify([path])["publish"]]
-    frontend_only = bool(inputs) and all(
-        path.startswith("frontend/") or path in {
-            "infra/production/frontend.Dockerfile",
-            "infra/production/frontend.Dockerfile.dockerignore",
-        } for path in inputs)
-    return {"backend": bool(inputs) and not frontend_only, "frontend": bool(inputs)}
+    return [p for p in paths if (
+        set(classify([p])["risks"]) & {"runtime", "unknown"}
+        or p == PUBLISH_WORKFLOW
+        or p.startswith(("backend/src/main/resources/", "backend/.env", "frontend/.env"))
+        or p.lower().endswith(".sql")
+        or re.search(r"(?:^|/)(?:migration|migrations|backfill|data-repair|data-fix)(?:/|\.)", p, re.I)
+    )]
 
 
 def main() -> None:

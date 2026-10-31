@@ -5,6 +5,16 @@
 이 문서는 운영 실행 승인이 아니다. 실제 Host 접속·파일 쓰기·reload/recreate·adopt·DB 접근·정책/systemd 설치·timer 시작을 수행하지 않는다.
 각 실행 직전 현재 상태를 다시 관측하고 승인한다. 저장소 PR 병합은 운영 승인이 아니다.
 
+## application-v1 최초 전환 — 별도 운영 승인
+
+일반 Frontend/Backend 자동 배포는 [application-v1](OPS-OCI-CD-003-host-pull.md)을 사용한다. 아래 legacy Observer·live DB epoch·pair proof·TLS 준비는 이 모드의 선행 Gate가 아니다. DB/Secret/NSG/인증서는 변경하지 않는다.
+
+1. 기존 정상 운영 SHA·image graph·Runtime·Compose/Nginx·외부 HTTPS·sibling과 실제 복귀 용량만 실행 직전 재확인한다. 현재 실행 bytes를 최신 main으로 재표기하지 않는다.
+2. 변경된 Compose의 서비스별 SHA 입력과 설치본 다섯 파일을 검토·hash 고정한다. 기존 권위 state가 없는 호스트는 승인된 기존 수동 배포로 정확한 main 기준선을 먼저 정렬·Health 검증한 뒤, 그 실제 버전을 `adopt --application-only --execute-approved`로 채택할 수 있다. 이 최초 수동 정렬의 서비스 영향·중단·복구는 운영 Packet에 따로 명시한다. 이미 state가 있거나 config fingerprint가 다르면 Adopt 덮어쓰기 대신 별도 감독형 변경을 계획한다.
+3. root 정책의 `compatibility_mode=application-v1`, app/build 입력 prefix·risk, Runtime/migration tree/Compose/Nginx hash와 기존 capacity budget을 고정한다. 예제는 OFF/미승인 상태다. `db_epoch`, `compatibility_observer`, `observer_sha256`, `automatic_baseline_sha`는 이 모드에서 사용하지 않는다. CA/DB 계정을 만들 필요도 없다.
+4. Controller/정책/전용 bare mirror·sentinel·기존 service/timer 설치, kill switch 확인, journal 대응 담당과 최초 enable을 하나의 승인 Packet에 묶는다. 정상 current와 main이 정렬되면 첫 tick `no-candidate`를 확인한다.
+5. 별도 승인된 main PR로 Frontend-only, Backend-only, 양쪽 변경의 exact CI/image/service SHA·Digest·activate-verified·HTTPS·미선택 컨테이너/Proxy·DB/운영 리소스 불변과 local 복귀 가능 상태를 실제 확인한다. 저장소 격리 CI는 이 운영 E2E를 대신하지 않는다. #488은 기존 색상 변경 후보이며 자동 병합하지 않는다.
+
 ## Task 1: 이미지 식별자 Correction
 
 Registry의 승인 Digest는 단일 Manifest 또는 Index다. Index이면 유일한 linux/amd64 child의 Digest·size·mediaType과 실제 bytes를 대조하고 child의 Config Digest를 검증한다.

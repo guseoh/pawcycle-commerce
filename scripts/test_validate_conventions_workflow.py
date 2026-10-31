@@ -97,6 +97,11 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_frontend_only(self) -> None:
         self.assert_groups(["frontend/src/page.tsx"], frontend=True)
 
+    def test_service_build_inputs_select_service_and_production(self) -> None:
+        for role in ("backend", "frontend"):
+            for suffix in (".Dockerfile", ".Dockerfile.dockerignore"):
+                self.assert_groups(["infra/production/" + role + suffix], **{role: True, "production": True})
+
     def test_production_only(self) -> None:
         self.assert_groups(["infra/production/deploy.sh"], production=True)
 

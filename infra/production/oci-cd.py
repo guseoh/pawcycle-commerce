@@ -2,13 +2,14 @@
 """Outbound-only OCI CD controller. Install reviewed code separately; default OFF.
 
 Never imports fetched source, GitHub artifacts, PR code or environment secrets.
-The root policy and independently approved compatibility observer are live G0
-inputs, not repository approvals. Manual recovery remains oci-release's gate.
+The root policy enables ordinary application releases separately from legacy
+observer modes. Manual recovery remains oci-release's gate.
 """
 import argparse
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import sys
@@ -44,6 +45,7 @@ COMPONENT_JOBS = {
 }
 JOBS = {"Classify validation changes", "Application validation"}
 AUTO_MODE = "frontend-cosmetic-v1"
+APP_MODE = "application-v1"
 CSS_PATH = "frontend/src/app/globals.css"
 
 
@@ -113,7 +115,7 @@ class CDHost(release.Host):
                 return sha
         return None
 
-    def ci(self, sha):
+    def ci(self, sha, services=()):
         # Installed classifier only. A batch push may run a wider union, but
         # every lane required by this exact main edge must succeed itself.
         parent = self.git("rev-parse", sha + "^").decode().strip()
@@ -122,6 +124,10 @@ class CDHost(release.Host):
         for component, enabled in validation.classify(self.paths(parent, sha)).items():
             if enabled:
                 jobs.update(COMPONENT_JOBS[component])
+        for service in services:
+            require(service in ("backend", "frontend"), "invalid CI service")
+            jobs.update(COMPONENT_JOBS[service])
+        published = set()
         for workflow, jobs in (("validate-conventions.yml", jobs),
                                ("publish-production-images.yml", {"Publish production images"})):
             runs = self.pages("actions/workflows/" + workflow + "/runs?head_sha=" + sha, "workflow_runs")
@@ -139,20 +145,49 @@ class CDHost(release.Host):
                 require(len(selected) == 1 and selected[0].get("head_sha") == sha and
                         selected[0].get("status") == "completed" and selected[0].get("conclusion") == "success",
                         "required exact SHA job missing, skipped or failed")
+            if workflow == "publish-production-images.yml":
+                steps = next(j for j in checks if j["name"] == "Publish production images").get("steps", [])
+                for role in ("backend", "frontend"):
+                    selected = [step for step in steps if step["name"] == "Build and push " + role.capitalize() + " image"]
+                    if len(selected) == 1 and selected[0].get("status") == "completed" and selected[0].get("conclusion") == "success":
+                        published.add(role)
+                require(set(services) <= published, "required service image build missing, skipped or failed")
+        return published
 
-    def manifest(self, sha, policy, current=None):
+    def application_scope(self, current):
+        self.git("merge-base", "--is-ancestor", current, self.main)
+        for sha in self.git("rev-list", "--first-parent", current + ".." + self.main).decode().splitlines():
+            parent = self.git("rev-parse", sha + "^").decode().strip()
+            require(not classifier.application_blockers(self.paths(parent, sha)), "manual migration/runtime/data deployment required")
+            message = self.git("log", "-1", "--format=%B", sha).decode()
+            require(not re.search(r"(?im)^PawCycle-Deploy:\s*manual\s*$", message), "commit requires manual deployment")
+
+    def component_commit(self, current, target, role):
+        for sha in self.git("rev-list", "--first-parent", current + ".." + target).decode().splitlines():
+            parent = self.git("rev-parse", sha + "^").decode().strip()
+            if classifier.image_components(self.paths(parent, sha))[role]:
+                return sha
+        raise release.Refused("changed service source commit unavailable")
+
+    def manifest(self, sha, policy, current=None, published=None):
         result = {"sha": sha, "compose_source_sha": sha, "nginx_source_sha": sha,
                   "compose_sha256": release.digest(self.git("show", sha + ":" + release.COMPOSE)),
                   "nginx_sha256": release.digest(self.git("show", sha + ":" + release.NGINX).replace(
                       b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())),
                   "migration_tree": self.git("rev-parse", sha + ":backend/src/main/resources/db/migration").decode().strip()}
+        application = policy.get("compatibility_mode") == APP_MODE
+        changed = classifier.image_components(self.paths(current["sha"], sha)) if application else {}
         for role in ("backend", "frontend"):
-            if role == "backend" and policy.get("compatibility_mode") == AUTO_MODE:
+            if (application and not changed[role]) or (role == "backend" and policy.get("compatibility_mode") == AUTO_MODE):
                 require(current is not None, "verified Backend baseline required")
                 result[role] = {**current[role], "source_sha": release.image_sha(current, role)}
                 continue
+            source = sha
+            if application and role not in (published or set()):
+                source = self.component_commit(current["sha"], sha, role)
+                self.ci(source, services=(role,))
             repository = "ghcr.io/" + REPO + "-" + role
-            raw = self.docker("buildx", "imagetools", "inspect", repository + ":" + sha, "--raw")
+            raw = self.docker("buildx", "imagetools", "inspect", repository + ":" + source, "--raw")
             image_digest = release.digest(raw)
             document = json.loads(raw)
             if "manifests" in document:
@@ -164,9 +199,10 @@ class CDHost(release.Host):
                 document = json.loads(child)
             result[role] = {"repository": repository, "digest": image_digest,
                             "config_digest": document["config"]["digest"],
-                            "unpacked_bytes": policy["unpacked_bytes"][role]}
+                            "unpacked_bytes": policy["unpacked_bytes"][role],
+                            **({"source_sha": source} if application else {})}
         release.validate_manifest(result)
-        self.registry(result)  # independently refetch digest/config/platform/revision/source
+        # The Release engine owns full registry/config/provenance verification.
         return result
 
     def compatibility(self, current, target, policy, policy_path=None):
@@ -206,7 +242,7 @@ class Controller:
                 ".." not in prefix and "*" not in prefix for prefix in p["allowed_prefixes"]), "unbounded policy scope")
         require(set(p["allowed_risks"]) <= {"application", "sensitive"}, "unknown/runtime change cannot auto-activate")
         mode = p.get("compatibility_mode", "manual-pair-v1")
-        require(mode in ("manual-pair-v1", AUTO_MODE), "unknown compatibility mode")
+        require(mode in ("manual-pair-v1", AUTO_MODE, APP_MODE), "unknown compatibility mode")
         if mode == AUTO_MODE:
             require(p["allowed_prefixes"] == [CSS_PATH] and p["allowed_risks"] == ["application"] and
                     release.SHA.fullmatch(p.get("automatic_baseline_sha", "")), "unbounded cosmetic policy")
@@ -217,8 +253,15 @@ class Controller:
 
     def evidence(self, current, manifest, p):
         h, sha = self.host, manifest["sha"]
-        require(current["verified"] is True and current.get("evidence") and current.get("compatibility_evidence") and
+        require(current["verified"] is True and current.get("evidence") and
+                (p.get("compatibility_mode") == APP_MODE or current.get("compatibility_evidence")) and
                 release.DIGEST.fullmatch(current.get("approval_sha256", "")), "previous normal baseline is unverified")
+        if p.get("compatibility_mode") == APP_MODE:
+            require(h.env_hash == p["runtime_env_sha256"] == current["runtime_env_sha256"], "runtime drift")
+            for key in ("migration_tree", "compose_sha256", "nginx_sha256"):
+                require(manifest[key] == current["manifest"][key] == p[key], "migration/runtime config drift")
+            h.application_scope(current["manifest"]["sha"])
+            return None
         require(h.env_hash == p["runtime_env_sha256"] == current["runtime_env_sha256"] and
                 current["db_epoch"] == p["db_epoch"] and
                 manifest["migration_tree"] == p["migration_tree"] == current["manifest"]["migration_tree"], "DB/migration/runtime drift")
@@ -265,21 +308,36 @@ class Controller:
         require(set(intent["risks"]) <= set(p["allowed_risks"]), "candidate outside approved risk scope")
         require(all(any(path.startswith(prefix) for prefix in p["allowed_prefixes"])
                     for path in paths if classifier.classify([path])["deploy"]), "candidate outside approved path scope")
-        h.ci(sha)
-        manifest = (h.manifest(sha, p, state["current"]["manifest"]) if p.get("compatibility_mode") == AUTO_MODE
-                    else h.manifest(sha, p))
+        application = p.get("compatibility_mode") == APP_MODE
+        published = h.ci(sha)
+        if application:
+            manifest = h.manifest(sha, p, state["current"]["manifest"], published=published)
+        else:
+            manifest = (h.manifest(sha, p, state["current"]["manifest"]) if p.get("compatibility_mode") == AUTO_MODE
+                        else h.manifest(sha, p))
         proof = self.evidence(state["current"], manifest, p)
-        approval = {"action": "preflight", "manifest_sha256": release.identity(manifest), "expected_current": current,
-                    "evidence": p["approval_evidence"], "db_compatibility_evidence": proof["evidence"],
-                    "db_epoch": p["db_epoch"], "compatible_with": [current], "rollback_safe": True,
-                    "expires_unix": min(int(time.time()) + 120, proof["expires_unix"], p["expires_unix"]),
+        approval = {"action": "activate", "manifest_sha256": release.identity(manifest), "expected_current": current,
+                    "evidence": p["approval_evidence"],
+                    "expires_unix": min(int(time.time()) + 120, p["expires_unix"]),
                     **{key: p[key] for key in ("capacity_evidence", "reserve_bytes", "rollback_extra_bytes")}}
+        if not application:
+            approval.update(db_compatibility_evidence=proof["evidence"], db_epoch=p["db_epoch"],
+                            compatible_with=[current], rollback_safe=True,
+                            expires_unix=min(approval["expires_unix"], proof["expires_unix"]))
 
         def guard():
             require(self.policy() == p, "policy changed during checks")
             h.initial()
             require(h.main == tip and h.candidate(current) == sha, "main advanced; candidate superseded")
-            h.ci(sha)
+            if application:
+                sources = {sha: []}
+                for role in ("backend", "frontend"):
+                    if manifest[role]["digest"] != state["current"]["manifest"][role]["digest"]:
+                        sources.setdefault(release.image_sha(manifest, role), []).append(role)
+                for source, roles in sources.items():
+                    h.ci(source, services=roles)
+            else:
+                h.ci(sha)
             self.evidence(state["current"], manifest, p)
             require(self.policy() == p, "policy/kill switch changed during final evidence check")
 
@@ -290,9 +348,11 @@ class Controller:
             release.atomic(h.state / "oci-cd-attempt", release.encoded({"reason": "attempt-in-progress", "sha": sha}))
 
         engine = release.Release(h, activation_guard=guard, activation_start=start,
-                                 frontend_only=p.get("compatibility_mode") == AUTO_MODE)
-        engine.run("preflight", manifest, approval)
-        approval["action"] = "activate"
+                                 frontend_only=p.get("compatibility_mode") == AUTO_MODE,
+                                 application_only=application)
+        # activate performs the complete preflight under the existing locks.
+        # A separate Controller preflight would repeat the same checks.
+
         try:
             engine.run("activate", manifest, approval, execute=True)
         except BaseException:
