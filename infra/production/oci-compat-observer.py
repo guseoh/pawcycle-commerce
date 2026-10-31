@@ -55,7 +55,7 @@ def trusted(path, mode=0o600, directory=False):
 
 
 def run(argv, seconds=25):
-    env = {'PATH': '/usr/bin:/bin', 'HOME': '/root', 'LANG': 'C',
+    env = {'PATH': '/usr/bin:/bin', 'HOME': '/nonexistent', 'LANG': 'C',
            'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1'}
     try:
         proc = subprocess.run(argv, env=env, stdout=subprocess.PIPE,
@@ -72,7 +72,7 @@ def git(*arguments):
 
 
 def mysql(statement):
-    # Use only the dedicated options file; do not merge root's ~/.my.cnf.
+    # Use only the dedicated options file; HOME excludes root's .mylogin.cnf.
     # Credential file is provided separately by the operator; no password in argv,
     # shell, inherited environment or output. File must enforce TLS verification.
     result = run(['/usr/bin/mysql', '--defaults-file=' + str(MYSQL_OPTIONS),
