@@ -13,7 +13,7 @@
 
 이 증거는 domain E2E를 실행했다고 표시하지 않는다. 승인된 source의 동작 부분이 불변인 제한적 변환을 입증한다. live MySQL identity/Flyway epoch·migration tree·Runtime hash를 계속 독립 관측하며 DB 행·credential은 기록하지 않는다. 기존 정상 current·local image 복귀·HTTPS smoke·sibling 경계도 유지한다.
 
-기존 GHCR workflow는 두 이미지를 같은 SHA로 발행하지만 자동 경로는 **검증된 current Backend artifact를 그대로 보존**한다. Backend의 repository/digest/config digest/budget과 최초 image source SHA를 current에서 복사하며 재빌드된 target Backend를 자동 승인하지 않는다. Manifest의 선택적 `backend.source_sha`로 원본 tag/revision을 Registry·local image에서 계속 검증하고, 원본 source가 target main의 조상이며 Backend/build 입력이 동일함도 Release 엔진이 확인한다. Frontend만 target SHA 이미지를 사용한다. 기존 엔진이 두 앱 서비스를 처리하므로 Backend 서비스 재생성이 없다고 보장하지는 않는다. 수동 manifest의 기본 동일 SHA 계약은 유지된다.
+기존 GHCR workflow는 두 이미지를 같은 SHA로 발행하지만 자동 경로는 **검증된 current Backend artifact를 그대로 보존**한다. Backend의 repository/digest/config digest/budget과 최초 image source SHA를 current에서 복사하며 재빌드된 target Backend를 자동 승인하지 않는다. Manifest의 선택적 `backend.source_sha`로 원본 tag/revision을 Registry·local image에서 계속 검증하고, 원본 source가 target main의 조상이며 Backend/build 입력이 동일함도 Release 엔진이 확인한다. Frontend만 target SHA 이미지를 사용한다. 이 opt-in 자동 경로는 기존 Backend 이미지의 검증만 수행하며 Backend를 새 SHA로 retag/pull/Compose up하지 않는다. Nginx 설정 Fingerprint가 동일하므로 Proxy도 Compose up하지 않는다. Frontend만 `--no-deps`로 교체하고, 전후 Backend·Proxy 컨테이너 ID/StartedAt이 다르면 실패 처리한다. 자동 실패 복귀 역시 Frontend만 적용하며 보존 서비스의 변경이 관측되면 수동 Recovery 마커를 유지한다. 기존 수동 Release/rollback은 종전의 전체 서비스 동작을 유지한다. 수동 manifest의 기본 동일 SHA 계약은 유지된다.
 
 ## 정책과 증거
 
