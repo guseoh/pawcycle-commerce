@@ -145,6 +145,7 @@ class ImagePublishClassifierTest(unittest.TestCase):
             (["infra/production/backend.Dockerfile"], {"backend": True, "frontend": False}),
             (["infra/production/frontend.Dockerfile"], {"backend": False, "frontend": True}),
             (["frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
+            (["frontend/public/logo.svg"], {"backend": False, "frontend": True}),
             (["docs/note.md", "frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
             (["frontend/src/app/globals.css", "backend/build.gradle"], {"backend": True, "frontend": True}),
             ([".dockerignore"], {"backend": True, "frontend": True}),
