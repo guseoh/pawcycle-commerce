@@ -130,7 +130,7 @@ class ObserverTests(unittest.TestCase):
             self.assertEqual(['v1'], compat.mysql('SELECT 1'))
             argv = executed.call_args[0][0]
             self.assertEqual('/usr/bin/mysql', argv[0])
-            self.assertTrue(argv[1].startswith('--defaults-extra-file='))
+            self.assertTrue(argv[1].startswith('--defaults-file='))
             self.assertEqual('--execute=SELECT 1', argv[-1])
             self.assertNotIn('password', ' '.join(argv).lower())
 
