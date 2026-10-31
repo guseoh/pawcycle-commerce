@@ -121,6 +121,10 @@ def validate_nginx_contract(config):
             "Nginx configuration violates approved security/DNS contract")
 
 
+def image_sha(manifest, role):
+    return manifest[role].get("source_sha", manifest["sha"])
+
+
 def validate_manifest(manifest):
     require(set(manifest) == {"sha", "backend", "frontend", "compose_source_sha", "compose_sha256",
                               "nginx_source_sha", "nginx_sha256", "migration_tree"}, "unexpected manifest fields")
@@ -130,7 +134,11 @@ def validate_manifest(manifest):
         require(isinstance(manifest[key], str) and DIGEST.fullmatch(manifest[key]), "invalid source digest")
     for role in ("backend", "frontend"):
         image = manifest[role]
-        require(set(image) == {"repository", "digest", "config_digest", "unpacked_bytes"}, "unexpected image fields")
+        fields = {"repository", "digest", "config_digest", "unpacked_bytes"}
+        require(set(image) == fields or role == "backend" and set(image) == fields | {"source_sha"},
+                "unexpected image fields")
+        require(isinstance(image_sha(manifest, role), str) and SHA.fullmatch(image_sha(manifest, role)),
+                "invalid image source SHA")
         require(image["repository"] == "ghcr.io/guseoh/pawcycle-commerce-" + role and
                 isinstance(image["digest"], str) and DIGEST.fullmatch(image["digest"]) and
                 isinstance(image["config_digest"], str) and DIGEST.fullmatch(image["config_digest"]) and
@@ -301,6 +309,15 @@ class Host:
         # application/data compatibility evidence.
         migration = self.git("rev-parse", manifest["sha"] + ":backend/src/main/resources/db/migration").decode().strip()
         require(migration == manifest["migration_tree"], "migration provenance mismatch")
+        if "source_sha" in manifest["backend"]:
+            source = image_sha(manifest, "backend")
+            self.git("merge-base", "--is-ancestor", source, manifest["sha"])
+            # Reusing a reviewed Backend artifact does not authorize a change
+            # to any Backend source/build input, even with a manual manifest.
+            self.git("diff", "--quiet", "--no-ext-diff", source, manifest["sha"], "--", "backend/",
+                     ".dockerignore", "infra/production/backend.Dockerfile",
+                     "infra/production/backend.Dockerfile.dockerignore",
+                     ".github/workflows/publish-production-images.yml")
         return compose, nginx
 
     def registry(self, manifest):
@@ -310,7 +327,7 @@ class Host:
             require(image["repository"] == "ghcr.io/guseoh/pawcycle-commerce-" + role and
                     DIGEST.fullmatch(image["digest"]) and DIGEST.fullmatch(image["config_digest"]),
                     "invalid image pair or digest")
-            ref = image["repository"] + ":" + manifest["sha"]
+            ref = image["repository"] + ":" + image_sha(manifest, role)
             raw = self.docker("buildx", "imagetools", "inspect", ref, "--raw")
             require(digest(raw) == image["digest"], "registry tag/digest mismatch")
             document = json.loads(raw)
@@ -337,7 +354,7 @@ class Host:
                 remote = remote.get("linux/amd64", {})
             labels = remote.get("config", {}).get("Labels", {})
             require(remote.get("os") == "linux" and remote.get("architecture") == "amd64" and
-                    labels.get("org.opencontainers.image.revision") == manifest["sha"] and
+                    labels.get("org.opencontainers.image.revision") == image_sha(manifest, role) and
                     labels.get("org.opencontainers.image.source") == ORIGIN.removesuffix(".git"),
                     "registry platform/revision/source mismatch")
             size = sum(layer["size"] for layer in document["layers"])
@@ -392,7 +409,7 @@ class Host:
             require("Descriptor" not in local, "classic image store returned a descriptor")
             require(local["Id"] == image["config_digest"], "local config ID mismatch")
         require(local["Os"] == "linux" and local["Architecture"] == "amd64" and
-                labels.get("org.opencontainers.image.revision") == manifest["sha"] and
+                labels.get("org.opencontainers.image.revision") == image_sha(manifest, role) and
                 labels.get("org.opencontainers.image.source") == ORIGIN.removesuffix(".git") and
                 ref in local["RepoDigests"], "local image identity/platform/provenance mismatch")
         require(type(local["Size"]) is int and 0 < local["Size"] <= image["unpacked_bytes"],
@@ -588,10 +605,13 @@ class Host:
         require(metrics["State"].get("Health", {}).get("Status") == "healthy", "metrics proxy unhealthy")
         self.docker("exec", ids[0], "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9464/actuator/prometheus")
 
-    def activate(self, manifest, pull=True):
-        # Pull immutable refs, then pin the legacy SHA tags locally. With
-        # --pull never, Compose cannot resolve a moving registry tag at up time.
-        for role in ("backend", "frontend"):
+    def activate(self, manifest, pull=True, frontend_only=False):
+        # In the bounded automatic mode the verified Backend artifact and
+        # Nginx config remain unchanged. Do not retag/pull/recreate either.
+        # Compose --no-deps is intentional: only Frontend is reconciled.
+        if frontend_only:
+            self.image(manifest, "backend")
+        for role in (("frontend",) if frontend_only else ("backend", "frontend")):
             image = manifest[role]
             ref = image["repository"] + "@" + image["digest"]
             if pull:
@@ -599,18 +619,20 @@ class Host:
             self.image(manifest, role)
             self.docker("tag", ref, image["repository"] + ":" + manifest["sha"])
         self.materialize(manifest)
-        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", "backend", "frontend")
-        # Source path is release-specific; proxy recreation updates only its
-        # read-only config bind, preserving both named certificate volumes.
-        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "90", "proxy")
+        services = ("frontend",) if frontend_only else ("backend", "frontend")
+        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", *services)
+        if not frontend_only:
+            # Manual releases still reconcile the release-specific Nginx bind.
+            self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "90", "proxy")
         self.smoke(manifest)
 
 
 class Release:
-    def __init__(self, host, activation_guard=None, activation_start=None):
+    def __init__(self, host, activation_guard=None, activation_start=None, frontend_only=False):
         self.host, self.state = host, host.state
         self.activation_guard = activation_guard
         self.activation_start = activation_start
+        self.frontend_only = frontend_only
 
     def read_state(self):
         path = self.state / "oci-release-state.json"
@@ -712,6 +734,16 @@ class Release:
                 for role in ("backend", "frontend"):
                     host.image(manifest, role)
             self.approval(action, manifest, state, approval)
+            if self.frontend_only:
+                require(action in ("preflight", "activate") and state is not None,
+                        "frontend-only mode needs a verified current release")
+                current_manifest = state["current"]["manifest"]
+                retained_backend = {**current_manifest["backend"],
+                                    "source_sha": image_sha(current_manifest, "backend")}
+                require(manifest["backend"] == retained_backend and
+                        manifest["compose_sha256"] == current_manifest["compose_sha256"] and
+                        manifest["nginx_sha256"] == current_manifest["nginx_sha256"],
+                        "frontend-only mode cannot change Backend or runtime config")
             host.sources(manifest)
             # Only the exact previously verified record can bypass Registry.
             # Its local digest/config ID/platform and saved evidence were
@@ -757,15 +789,31 @@ class Release:
             self.journal("activating", target=manifest["sha"], previous=approval["expected_current"])
             if action != "adopt":
                 siblings = host.siblings()
+                frontend_only = self.frontend_only and action == "activate"
+                preserved = None
+                if frontend_only:
+                    live = host.containers()
+                    preserved = {role: (live[role]["Id"], live[role]["State"]["StartedAt"])
+                                 for role in ("backend", "proxy")}
+
+                def require_preserved():
+                    if preserved is not None:
+                        live = host.containers()
+                        require(all((live[role]["Id"], live[role]["State"]["StartedAt"]) == preserved[role]
+                                    for role in preserved),
+                                "Backend or proxy container restarted during frontend-only release")
+                options = {"frontend_only": True} if frontend_only else {}
                 try:
-                    host.activate(manifest, pull=action != "rollback")
+                    host.activate(manifest, pull=action != "rollback", **options)
+                    require_preserved()
                     require(host.siblings() == siblings, "sibling project identity changed")
                 except (Exception, KeyboardInterrupt):
                     self.journal("restoring", target=manifest["sha"], previous=approval["expected_current"])
                     # Never downgrade schema or restore DB. Equality + explicit
                     # compatibility evidence was checked before mutation.
                     try:
-                        host.activate(state["current"]["manifest"], pull=False)
+                        host.activate(state["current"]["manifest"], pull=False, **options)
+                        require_preserved()
                         require(host.siblings() == siblings, "sibling project identity changed during recovery")
                     except (Exception, KeyboardInterrupt):
                         self.journal("recovery-required", target=manifest["sha"], previous=approval["expected_current"])

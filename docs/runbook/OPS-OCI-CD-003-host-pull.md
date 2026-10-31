@@ -26,6 +26,8 @@ Registry tag의 raw digest·linux/amd64 child/config ID·OCI revision/source를 
 
 ## DB·애플리케이션 호환 검증기: 미해결 G0 입력
 
+[OPS-OCI-CD-006](OPS-OCI-CD-006-frontend-auto.md)은 기존 수동 호환 경로를 유지하면서, 최초 승인된 장식용 CSS literal 변환과 검증된 기존 Backend digest 보존만 자동 증명하는 opt-in 모드를 추가한다. 일반 Frontend/Backend 코드의 의미상 호환을 자동 승인하지 않으며 최초 설치·baseline 정렬·운영 검증은 여전히 G0다.
+
 이 저장소는 live DB 관측 방법을 추측하거나 호환 승인값을 만들어 주지 않는다. `compatibility_observer`는 정책에 경로·bytes SHA-256을 고정한 별도 root-owned `700` executable이다. current/target SHA를 argv로 받고 제한된 시간에 JSON을 출력한다. source/Artifact가 제공한 command나 URL을 실행하지 않는다. 운영자가 설치하는 검증기와 그 종속 실행환경은 신뢰 경계에 포함되며 보호·검토가 필요하다.
 
 검증기는 실제 DB identity/epoch, runtime baseline, 해당 앱 쌍의 forward/reverse 데이터 의미와 실패 복귀 안전성을 독립 확인해야 한다. 자동 허용 범위별 구체적인 불변식·관측 방법을 최초 정책에서 승인해야 한다. 경로 allowlist·동일 migration tree·CI green만으로 true를 출력하는 검증기는 이 계약을 충족하지 않는다. 결과 계약은 다음과 같다(실제 승인 evidence 예제가 아님).

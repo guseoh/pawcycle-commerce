@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import time
 import unittest
@@ -188,6 +189,158 @@ class ObserverTests(unittest.TestCase):
                           side_effect=compat.Rejected('observer dependency failed or oversized')):
             with self.assertRaisesRegex(compat.Rejected, 'dependency failed'):
                 compat.mysql('SELECT 1')
+
+
+class AutomaticObserverTests(unittest.TestCase):
+    # Reuse only the disposable runtime/DB fixture, not manual-pair test cases.
+    write_artifact = ObserverTests.write_artifact
+    save_proof = ObserverTests.save_proof
+    fake_git = ObserverTests.fake_git
+    fake_run = ObserverTests.fake_run
+
+    def setUp(self):
+        ObserverTests.setUp(self)
+        self.source = self.root / 'source'
+        self.source.mkdir()
+        self.git_cmd(self.source, 'init', '-q')
+        self.git_cmd(self.source, 'config', 'user.email', 'isolated@example.invalid')
+        self.git_cmd(self.source, 'config', 'user.name', 'isolated')
+        self.css = b'.customer-theme { --accent:#f3b88f; --accent-soft:#fbede3; color:var(--accent); }\n'
+        for name in self.names:
+            self.write('backend/src/main/resources/db/migration/' + name, b'SELECT 1;\n')
+        self.write(compat.CSS_PATH, self.css)
+        self.write('frontend/src/app/page.tsx', b'unchanged business logic\n')
+        self.baseline = self.commit()
+        self.mirror = self.root / 'mirror'
+        self.git_cmd(self.root, 'clone', '--bare', '-q', str(self.source), str(self.mirror))
+        self.git_cmd(self.mirror, 'remote', 'set-url', 'origin', 'https://github.com/guseoh/pawcycle-commerce.git')
+        self.current = self.baseline
+        self.write(compat.CSS_PATH, self.css.replace(b'#f3b88f', b'#f2b88f'))
+        self.target = self.commit()
+        self.policy = {'format': 1, 'enabled': True, 'target': 'oci-app01',
+                       'repository': 'https://github.com/guseoh/pawcycle-commerce.git',
+                       'approval_evidence': 'isolated/initial-scope', 'expires_unix': self.now + 300,
+                       'compatibility_mode': compat.AUTO_MODE, 'automatic_baseline_sha': self.baseline,
+                       'allowed_prefixes': [compat.CSS_PATH], 'allowed_risks': ['application'],
+                       'runtime_env_sha256': self.attest['runtime_env_sha256'], 'db_epoch': self.snapshot,
+                       'migration_tree': self.git_cmd(self.mirror, 'rev-parse', self.baseline + ':backend/src/main/resources/db/migration')}
+        self.auto_path = self.root / 'auto-policy.json'
+        self.save_auto()
+        for p in (patch.object(compat, 'git', side_effect=lambda *args: self.git_cmd(self.mirror, *args)),
+                  patch.object(compat, 'run', side_effect=self.real_git_run)):
+            p.start()
+            self.addCleanup(p.stop)
+        # Automatic mode must succeed with no manual proof or pair artifact.
+        self.proof.unlink()
+        self.artifact_path.unlink()
+
+    def git_cmd(self, path, *args):
+        return subprocess.check_output(['git', '-C', str(path), *args], stderr=subprocess.DEVNULL).decode().strip()
+
+    def real_git_run(self, argv, **kwargs):
+        self.assertEqual('/usr/bin/git', argv[0])
+        result = subprocess.run(argv, capture_output=True, timeout=10)
+        compat.check(result.returncode == 0 and len(result.stdout) <= 131072, 'isolated Git refused')
+        return result.stdout
+
+    def write(self, path, data):
+        target = self.source / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    def commit(self):
+        self.git_cmd(self.source, 'add', '.')
+        self.git_cmd(self.source, 'commit', '-qm', 'isolated')
+        sha = self.git_cmd(self.source, 'rev-parse', 'HEAD')
+        if hasattr(self, 'mirror'):
+            self.git_cmd(self.mirror, 'fetch', '-q', str(self.source), 'HEAD')
+            self.git_cmd(self.mirror, 'update-ref', 'refs/remotes/origin/main', sha)
+        return sha
+
+    def save_auto(self):
+        self.auto_path.write_text(json.dumps(self.policy))
+
+    def observe(self):
+        return compat.observe(self.current, self.target, self.now, auto_policy=self.auto_path)
+
+    def test_automatic_color_proof_without_manual_artifacts_and_with_docs_tail(self):
+        self.write('docs/note.md', b'documentation only\n')
+        tip = self.commit()
+        proof = self.observe()
+        self.assertEqual(tip, proof['observations']['main'])
+        self.assertEqual(self.snapshot, proof['db_epoch'])
+        self.assertEqual(compat.AUTO_MODE, proof['observations']['mode'])
+        self.assertTrue(proof['rollback_safe'])
+        self.assertTrue(proof['application_data_compatible'])
+
+    def test_css_injection_layout_and_cumulative_budget_block(self):
+        for data in (self.css + b'button { display:none }',
+                     self.css.replace(b'#f3b88f', b'url(https://example.invalid)'),
+                     self.css.replace(b'--accent:', b'--other:'),
+                     self.css.replace(b'#f3b88f', b'#00b88f'),
+                     self.css + b'/* extra */'):
+            with self.subTest(data=data):
+                with self.assertRaises(compat.Rejected):
+                    compat.cosmetic_css(self.css, data)
+        # A series of individually small changes cannot move the baseline.
+        self.write(compat.CSS_PATH, self.css.replace(b'#f3b88f', b'#e3b88f'))
+        self.target = self.commit()
+        self.observe()
+        self.current = self.target
+        self.write(compat.CSS_PATH, self.css.replace(b'#f3b88f', b'#e2b88f'))
+        self.target = self.commit()
+        with self.assertRaisesRegex(compat.Rejected, 'budget'):
+            self.observe()
+
+    def test_unsafe_intermediate_reverted_change_and_non_deploy_tail_block(self):
+        self.write('backend/build.gradle', b'unsafe intermediate\n')
+        self.commit()
+        (self.source / 'backend/build.gradle').unlink()
+        self.commit()
+        self.write(compat.CSS_PATH, self.css.replace(b'#f3b88f', b'#f1b88f'))
+        self.target = self.commit()
+        with self.assertRaisesRegex(compat.Rejected, 'baseline alignment'):
+            self.observe()
+
+    def test_every_non_cosmetic_area_blocks_even_when_classifier_ignores_it(self):
+        paths = ['frontend/src/app/page.tsx', 'frontend/public/logo.svg', 'frontend/package.json',
+                 'backend/src/main/java/Changed.java', 'backend/src/test/Changed.java',
+                 'backend/src/main/resources/db/migration/V3__new.sql', '.github/workflows/ci.yml',
+                 'infra/production/oci-release.py', 'scripts/classify-production-image-changes.py', 'unknown.txt']
+        for path in paths:
+            with self.subTest(path=path):
+                case = AutomaticObserverTests()
+                try:
+                    case.setUp()
+                    case.write(path, b'unsafe\n')
+                    case.commit()
+                    with self.assertRaises(compat.Rejected):
+                        case.observe()
+                finally:
+                    case.doCleanups()
+
+    def test_policy_db_runtime_and_history_identity_block(self):
+        for field, value in [('enabled', False), ('expires_unix', self.now),
+                             ('runtime_env_sha256', compat.digest(b'drift')),
+                             ('db_epoch', compat.digest(b'drift')), ('migration_tree', 'f'*40),
+                             ('automatic_baseline_sha', 'f'*40), ('allowed_prefixes', ['frontend/'])]:
+            with self.subTest(field=field):
+                old = self.policy[field]
+                self.policy[field] = value
+                self.save_auto()
+                with self.assertRaises(compat.Rejected):
+                    self.observe()
+                self.policy[field] = old
+                self.save_auto()
+        self.current, self.target = self.target, self.current
+        with self.assertRaises(compat.Rejected):
+            self.observe()
+
+    def test_superseded_target_is_not_deployed_in_reverse(self):
+        self.write(compat.CSS_PATH, self.css.replace(b'#f3b88f', b'#f1b88f'))
+        self.commit()
+        with self.assertRaisesRegex(compat.Rejected, 'superseded'):
+            self.observe()
 
 
 if __name__ == '__main__':

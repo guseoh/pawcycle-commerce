@@ -74,6 +74,8 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 
 ## Preflight와 용량
 
+[OPS-OCI-CD-006](OPS-OCI-CD-006-frontend-auto.md)의 제한적 자동 경로는 current Backend artifact를 보존한다. 이 경우만 manifest의 `backend.source_sha`에 원본 image SHA를 명시하며 Registry tag/revision과 local revision은 그 SHA에 결합한다. Release SHA 및 Frontend image는 target SHA다. 원본 Backend SHA의 조상 관계와 Backend/build 입력 불변도 검증한다. source_sha 생략 시 기존의 양쪽 이미지 동일 Release SHA 계약은 그대로다. Compose용 로컬 SHA alias는 기존 `--pull never` 절차를 사용하며 immutable digest/config 검사를 대신하지 않는다. Frontend의 별도 source_sha는 허용하지 않는다.
+
 아래는 **별도 운영 승인을 받은 경우에만** 사용할 command 형태다. 파일은 운영자가 보호된 절대 경로로 준비해야 한다.
 
 ```bash
