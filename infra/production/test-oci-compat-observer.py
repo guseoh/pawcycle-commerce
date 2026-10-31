@@ -171,24 +171,40 @@ class ObserverTests(unittest.TestCase):
                     compat.observe(self.current, self.target, self.now)
                 self.changed.pop()
 
-    def test_mysql_requires_tcp_and_verified_tls_identity(self):
+    def test_mysql_requires_tcp_and_ca_verified_tls(self):
         with patch.object(compat, 'run', return_value=b'v1\n') as executed:
             self.assertEqual(['v1'], compat.mysql('SELECT 1'))
             argv = executed.call_args[0][0]
             self.assertEqual('/usr/bin/mysql', argv[0])
             self.assertTrue(argv[1].startswith('--defaults-file='))
             self.assertIn('--protocol=TCP', argv)
-            self.assertIn('--ssl-mode=VERIFY_IDENTITY', argv)
+            self.assertIn('--ssl-mode=VERIFY_CA', argv)
+            self.assertEqual(['--ssl-mode=VERIFY_CA'],
+                             [part for part in argv if part.startswith('--ssl-mode=')])
             self.assertEqual('--execute=SELECT 1', argv[-1])
-            self.assertLess(argv.index('--ssl-mode=VERIFY_IDENTITY'),
+            self.assertLess(argv.index('--ssl-mode=VERIFY_CA'),
                             len(argv) - 1)
             self.assertNotIn('password', ' '.join(argv).lower())
 
     def test_mysql_tls_verification_failure_fails_closed(self):
         with patch.object(compat, 'run',
-                          side_effect=compat.Rejected('observer dependency failed or oversized')):
+                          side_effect=compat.Rejected('observer dependency failed or oversized')) as executed:
             with self.assertRaisesRegex(compat.Rejected, 'dependency failed'):
                 compat.mysql('SELECT 1')
+            self.assertEqual(1, executed.call_count)
+
+
+class TLSDependencyTests(unittest.TestCase):
+    def test_client_verification_failure_is_sanitized_without_weaker_retry(self):
+        failed = subprocess.CompletedProcess([], 1, b'private mysql output', b'private client error')
+        with patch.object(compat.subprocess, 'run', return_value=failed) as executed:
+            with self.assertRaisesRegex(compat.Rejected, '^observer dependency failed or oversized$'):
+                compat.mysql('SELECT 1')
+        self.assertEqual(1, executed.call_count)
+        argv = executed.call_args.args[0]
+        self.assertIn('--ssl-mode=VERIFY_CA', argv)
+        self.assertIn('--protocol=TCP', argv)
+        self.assertEqual(subprocess.DEVNULL, executed.call_args.kwargs['stderr'])
 
 
 class AutomaticObserverTests(unittest.TestCase):
