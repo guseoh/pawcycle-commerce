@@ -35,6 +35,8 @@ ENABLED_PATH = Path("/etc/pawcycle/oci-cd-enabled")
 JOBS = {"Classify validation changes", "Harness validation", "Backend and MySQL validation",
         "Frontend validation", "Application validation",
         *{"Production contract validation (" + lane + ")" for lane in ("contracts", "compose", "auth-lifecycle")}}
+AUTO_MODE = "frontend-cosmetic-v1"
+CSS_PATH = "frontend/src/app/globals.css"
 
 
 class CDHost(release.Host):
@@ -147,14 +149,35 @@ class CDHost(release.Host):
         self.registry(result)  # independently refetch digest/config/platform/revision/source
         return result
 
-    def compatibility(self, current, target, policy):
+    def backend_payload(self, manifest):
+        image = manifest["backend"]
+        ref = image["repository"] + "@" + image["digest"]
+        document = json.loads(self.docker("buildx", "imagetools", "inspect", ref,
+                                          "--format", "{{json .Image}}"))
+        if "architecture" not in document:
+            require(set(document) == {"linux/amd64"}, "ambiguous backend payload")
+            document = document["linux/amd64"]
+        require(document["os"] == "linux" and document["architecture"] == "amd64" and
+                document["rootfs"]["type"] == "layers" and document["rootfs"]["diff_ids"] and
+                all(release.DIGEST.fullmatch(d) for d in document["rootfs"]["diff_ids"]) and
+                document["config"]["Labels"]["org.opencontainers.image.revision"] == manifest["sha"],
+                "backend payload identity unavailable")
+        # Only build metadata may differ. Layers, entrypoint, env, user and
+        # every other runtime config byte must match the known healthy image.
+        for key in ("created", "history"):
+            document.pop(key, None)
+        document["config"]["Labels"].pop("org.opencontainers.image.revision")
+        return release.identity(document)
+
+    def compatibility(self, current, target, policy, policy_path=None):
         observer = Path(policy["compatibility_observer"])
         release.protected(observer, mode=0o700)
         require(release.digest(observer.read_bytes()) == policy["observer_sha256"], "observer identity mismatch")
         # Operator-installed observer gets non-secret identities over stdin-free
         # argv; its output is never printed. It must independently observe live
         # DB epoch and evaluate application/data compatibility in both directions.
-        return json.loads(self.command(str(observer), current, target, timeout=60))
+        extra = ("--auto-policy", str(policy_path)) if policy.get("compatibility_mode") == AUTO_MODE else ()
+        return json.loads(self.command(str(observer), current, target, *extra, timeout=60))
 
 
 class Controller:
@@ -181,6 +204,11 @@ class Controller:
         require(p["allowed_prefixes"] and all(prefix.startswith(("backend/", "frontend/", "infra/production/")) and
                 ".." not in prefix and "*" not in prefix for prefix in p["allowed_prefixes"]), "unbounded policy scope")
         require(set(p["allowed_risks"]) <= {"application", "sensitive"}, "unknown/runtime change cannot auto-activate")
+        mode = p.get("compatibility_mode", "manual-pair-v1")
+        require(mode in ("manual-pair-v1", AUTO_MODE), "unknown compatibility mode")
+        if mode == AUTO_MODE:
+            require(p["allowed_prefixes"] == [CSS_PATH] and p["allowed_risks"] == ["application"] and
+                    release.SHA.fullmatch(p.get("automatic_baseline_sha", "")), "unbounded cosmetic policy")
         require(p["capacity_evidence"] and type(p["reserve_bytes"]) is int and p["reserve_bytes"] >= release.GIB and
                 type(p["rollback_extra_bytes"]) is int and p["rollback_extra_bytes"] > 0,
                 "approved capacity/rollback write evidence missing")
@@ -195,13 +223,26 @@ class Controller:
                 manifest["migration_tree"] == p["migration_tree"] == current["manifest"]["migration_tree"], "DB/migration/runtime drift")
         for key in ("compose_sha256", "nginx_sha256"):
             require(manifest[key] == current["manifest"][key] == p[key], "runtime config drift")
-        proof = h.compatibility(current["manifest"]["sha"], sha, p)
+        automatic = p.get("compatibility_mode") == AUTO_MODE
+        proof = (h.compatibility(current["manifest"]["sha"], sha, p, self.policy_path) if automatic else
+                 h.compatibility(current["manifest"]["sha"], sha, p))
         require(proof["current"] == current["manifest"]["sha"] and proof["target"] == sha and
                 proof["db_epoch"] == p["db_epoch"] and proof["runtime_env_sha256"] == h.env_hash and
                 proof["application_data_compatible"] is True and proof["rollback_safe"] is True and
                 proof["evidence"] and proof["observations"] and
                 time.time() - 120 <= proof["checked_unix"] <= time.time() < proof["expires_unix"] <= proof["checked_unix"] + 120,
                 "live DB/application/data compatibility evidence missing or stale")
+        if automatic:
+            observed = proof["observations"]
+            require(observed["mode"] == AUTO_MODE and observed["main"] == h.main and
+                    observed["baseline"] == p["automatic_baseline_sha"] and
+                    observed["policy_sha256"] == release.identity(p) and
+                    release.DIGEST.fullmatch(observed["history_sha256"]), "automatic source evidence mismatch")
+            # Source equality alone cannot authorize an unexpectedly different
+            # Backend binary produced by mutable base images/build inputs.
+            payload = h.backend_payload(current["manifest"])
+            require(payload == h.backend_payload(manifest), "rebuilt backend payload changed; supervised alignment required")
+            proof["evidence"] += "/backend/" + payload
         return proof
 
     def reconcile(self):

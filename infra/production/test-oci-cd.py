@@ -270,6 +270,104 @@ class ControllerTests(unittest.TestCase):
         policy["observer_sha256"] = "sha256:" + "0" * 64
         with self.assertRaises(r.Refused):
             cd.CDHost.compatibility(self.host, "a" * 40, "b" * 40, policy)
+        policy.update(observer_sha256=r.digest(observer.read_bytes()), compatibility_mode=cd.AUTO_MODE)
+        with patch.object(self.host, "command", return_value=b"{}") as command:
+            cd.CDHost.compatibility(self.host, "a" * 40, "b" * 40, policy, self.policy_path)
+            command.assert_called_once_with(str(observer), "a" * 40, "b" * 40,
+                                            "--auto-policy", str(self.policy_path), timeout=60)
+
+
+class AutomaticControllerTests(unittest.TestCase):
+    save = ControllerTests.save
+    run_cd = ControllerTests.run_cd
+    blocked = ControllerTests.blocked
+
+    def setUp(self):
+        ControllerTests.setUp(self)
+        self.addCleanup(lambda: ControllerTests.tearDown(self))
+        self.observer_tests = module("auto_observer_fixture", HERE / "test-oci-compat-observer.py")
+        self.observer = self.observer_tests.compat
+        self.source = self.observer_tests.AutomaticObserverTests()
+        self.addCleanup(self.source.doCleanups)
+        self.source.setUp()
+        self.policy.update(self.source.policy)
+        self.policy["runtime_env_sha256"] = self.host.env_hash
+        (self.source.bundle / "backend.env").write_bytes(self.host.backend_env.read_bytes())
+        self.save()
+        self.host.main = self.source.target
+        self.host.git = lambda *args: self.source.git_cmd(self.source.mirror, *args).encode()
+        self.host.candidate = lambda current: cd.CDHost.candidate(self.host, current)
+        self.host.paths = lambda *args: cd.CDHost.paths(self.host, *args)
+        self.host.compatibility = lambda current, target, policy, path: self.observer.observe(
+            current, target, auto_policy=path)
+        self.host.b["sha"] = self.source.target
+        self.host.b["migration_tree"] = self.policy["migration_tree"]
+        state = r.Release(self.host).read_state()
+        state["current"]["manifest"]["sha"] = self.source.baseline
+        state["current"]["manifest"]["migration_tree"] = self.policy["migration_tree"]
+        state["current"]["db_epoch"] = self.policy["db_epoch"]
+        self.host.live = copy.deepcopy(state["current"]["manifest"])
+        r.atomic(self.host.state / "oci-release-state.json", r.encoded(state))
+        r.Release(self.host).projections(state)
+        self.payload_drift = False
+        self.host.backend_payload = lambda manifest: "sha256:" + (
+            "d" if self.payload_drift and manifest["sha"] == self.host.b["sha"] else "c") * 64
+
+    def test_real_git_and_observer_to_release_without_manual_pair_proof(self):
+        self.assertFalse(self.source.proof.exists())
+        self.assertEqual("activate-verified", self.run_cd()["result"])
+        self.assertEqual([self.source.target], self.host.calls)
+        state = r.Release(self.host).read_state()
+        self.assertEqual(self.source.target, state["current"]["manifest"]["sha"])
+        self.assertIn(cd.AUTO_MODE, state["current"]["compatibility_evidence"])
+        self.assertIn("/backend/sha256:", state["current"]["compatibility_evidence"])
+        self.assertEqual("no-candidate", self.run_cd()["result"])
+        # A second merge advances once, then docs-only and duplicate ticks do not deploy.
+        self.source.write(self.observer.CSS_PATH, self.source.css.replace(b'#f3b88f', b'#f1b88f'))
+        target = self.source.commit()
+        self.host.b = copy.deepcopy(self.host.b)
+        self.host.b["sha"] = target
+        self.source.write('docs/after.md', b'no release\n')
+        self.host.main = self.source.commit()
+        self.assertEqual("activate-verified", self.run_cd()["result"])
+        self.assertEqual([self.source.target, target], self.host.calls)
+        self.assertEqual("no-candidate", self.run_cd()["result"])
+
+    def test_auto_ci_registry_capacity_db_policy_and_payload_reject_with_zero_deploys(self):
+        self.host.ci_failure = True
+        self.blocked()
+        self.host.ci_failure = False
+        for reject in ("registry", "disk"):
+            self.host.reject = reject
+            self.blocked()
+        self.host.reject = None
+        self.payload_drift = True
+        self.blocked()
+        self.payload_drift = False
+        original = self.policy["db_epoch"]
+        self.policy["db_epoch"] = "sha256:" + "0" * 64
+        self.save()
+        self.blocked()
+        self.policy["db_epoch"] = original
+        self.policy["expires_unix"] = 0
+        self.save()
+        self.blocked()
+
+    def test_auto_failure_restores_verified_current_and_requires_manual_recovery(self):
+        self.host.failures = [ValueError("isolated smoke failure")]
+        self.assertEqual("failed-disabled", self.run_cd()["result"])
+        self.assertEqual([self.source.target, self.source.baseline], self.host.calls)
+        self.assertTrue(self.host.recovery_used_local_images)
+        self.run_cd()
+        self.assertEqual(2, len(self.host.calls))
+
+    def test_auto_locks_and_unsafe_tail_stop_before_deployment(self):
+        for path in (self.host.state / "oci-cd.lock", self.host.state / "deploy.lock", self.host.renewal_lock):
+            with r.locked(path, create=True):
+                self.blocked()
+        self.source.write('infra/production/oci-release.py', b'changed tool\n')
+        self.host.main = self.source.commit()
+        self.blocked()
 
 
 class BareFetchTests(unittest.TestCase):
@@ -332,6 +430,34 @@ class BareFetchTests(unittest.TestCase):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_backend_payload_requires_identical_layers_and_runtime_config(self):
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        a, b = fixture.manifest("a"), fixture.manifest("b")
+        original = {"architecture": "amd64", "os": "linux", "created": "old",
+                    "history": [{"created": "old"}],
+                    "rootfs": {"type": "layers", "diff_ids": ["sha256:" + "1" * 64]},
+                    "config": {"User": "pawcycle", "Entrypoint": ["java", "-jar", "/app/app.jar"],
+                               "Labels": {"org.opencontainers.image.revision": a["sha"],
+                                          "org.opencontainers.image.source": r.ORIGIN.removesuffix(".git")}}}
+        newer = copy.deepcopy(original)
+        newer.update(created="new", history=[{"created": "new"}])
+        newer["config"]["Labels"]["org.opencontainers.image.revision"] = b["sha"]
+        def payload(manifest, doc):
+            with patch.object(host, "docker", return_value=r.encoded(doc)):
+                return host.backend_payload(manifest)
+        self.assertEqual(payload(a, original), payload(b, newer))
+        for key, value in (("User", "root"), ("Entrypoint", ["unreviewed"]), ("Env", ["CHANGED=1"])):
+            changed = copy.deepcopy(newer)
+            changed["config"][key] = value
+            self.assertNotEqual(payload(a, original), payload(b, changed))
+        changed = copy.deepcopy(newer)
+        changed["rootfs"]["diff_ids"] = ["sha256:" + "2" * 64]
+        self.assertNotEqual(payload(a, original), payload(b, changed))
+        for changed in ({}, {**newer, "rootfs": {"type": "layers", "diff_ids": []}},
+                        {**newer, "architecture": "arm64"}):
+            with self.assertRaises((r.Refused, KeyError)):
+                payload(b, changed)
+
     def test_installed_service_starts_isolated_without_importing_cwd_or_pythonpath(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

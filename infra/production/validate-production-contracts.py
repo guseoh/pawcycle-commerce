@@ -95,6 +95,8 @@ def validate_oci_release_contract() -> None:
     policy = json.loads((PRODUCTION / "oci-cd-policy.example.json").read_text(encoding="utf-8"))
     require(policy["enabled"] is False and not policy["approval_evidence"] and policy["expires_unix"] == 0,
             "repository policy must remain unapproved and OFF")
+    require(policy["compatibility_mode"] == "manual-pair-v1" and policy["automatic_baseline_sha"] is None,
+            "cosmetic mode and its operational baseline must require explicit approval")
     service = (PRODUCTION / "systemd/pawcycle-oci-cd.service").read_text(encoding="utf-8")
     require("ConditionPathExists=/etc/pawcycle/oci-cd-enabled" in service and
             "--execute-policy" in service and "StandardOutput=journal" in service,
