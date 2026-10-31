@@ -605,10 +605,13 @@ class Host:
         require(metrics["State"].get("Health", {}).get("Status") == "healthy", "metrics proxy unhealthy")
         self.docker("exec", ids[0], "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9464/actuator/prometheus")
 
-    def activate(self, manifest, pull=True):
-        # Pull immutable refs, then pin the legacy SHA tags locally. With
-        # --pull never, Compose cannot resolve a moving registry tag at up time.
-        for role in ("backend", "frontend"):
+    def activate(self, manifest, pull=True, frontend_only=False):
+        # In the bounded automatic mode the verified Backend artifact and
+        # Nginx config remain unchanged. Do not retag/pull/recreate either.
+        # Compose --no-deps is intentional: only Frontend is reconciled.
+        if frontend_only:
+            self.image(manifest, "backend")
+        for role in (("frontend",) if frontend_only else ("backend", "frontend")):
             image = manifest[role]
             ref = image["repository"] + "@" + image["digest"]
             if pull:
@@ -616,18 +619,20 @@ class Host:
             self.image(manifest, role)
             self.docker("tag", ref, image["repository"] + ":" + manifest["sha"])
         self.materialize(manifest)
-        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", "backend", "frontend")
-        # Source path is release-specific; proxy recreation updates only its
-        # read-only config bind, preserving both named certificate volumes.
-        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "90", "proxy")
+        services = ("frontend",) if frontend_only else ("backend", "frontend")
+        self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "180", *services)
+        if not frontend_only:
+            # Manual releases still reconcile the release-specific Nginx bind.
+            self.compose(manifest, "up", "-d", "--no-deps", "--pull", "never", "--wait", "--wait-timeout", "90", "proxy")
         self.smoke(manifest)
 
 
 class Release:
-    def __init__(self, host, activation_guard=None, activation_start=None):
+    def __init__(self, host, activation_guard=None, activation_start=None, frontend_only=False):
         self.host, self.state = host, host.state
         self.activation_guard = activation_guard
         self.activation_start = activation_start
+        self.frontend_only = frontend_only
 
     def read_state(self):
         path = self.state / "oci-release-state.json"
@@ -729,6 +734,16 @@ class Release:
                 for role in ("backend", "frontend"):
                     host.image(manifest, role)
             self.approval(action, manifest, state, approval)
+            if self.frontend_only:
+                require(action in ("preflight", "activate") and state is not None,
+                        "frontend-only mode needs a verified current release")
+                current_manifest = state["current"]["manifest"]
+                retained_backend = {**current_manifest["backend"],
+                                    "source_sha": image_sha(current_manifest, "backend")}
+                require(manifest["backend"] == retained_backend and
+                        manifest["compose_sha256"] == current_manifest["compose_sha256"] and
+                        manifest["nginx_sha256"] == current_manifest["nginx_sha256"],
+                        "frontend-only mode cannot change Backend or runtime config")
             host.sources(manifest)
             # Only the exact previously verified record can bypass Registry.
             # Its local digest/config ID/platform and saved evidence were
@@ -774,15 +789,31 @@ class Release:
             self.journal("activating", target=manifest["sha"], previous=approval["expected_current"])
             if action != "adopt":
                 siblings = host.siblings()
+                frontend_only = self.frontend_only and action == "activate"
+                preserved = None
+                if frontend_only:
+                    live = host.containers()
+                    preserved = {role: (live[role]["Id"], live[role]["State"]["StartedAt"])
+                                 for role in ("backend", "proxy")}
+
+                def require_preserved():
+                    if preserved is not None:
+                        live = host.containers()
+                        require(all((live[role]["Id"], live[role]["State"]["StartedAt"]) == preserved[role]
+                                    for role in preserved),
+                                "Backend or proxy container restarted during frontend-only release")
+                options = {"frontend_only": True} if frontend_only else {}
                 try:
-                    host.activate(manifest, pull=action != "rollback")
+                    host.activate(manifest, pull=action != "rollback", **options)
+                    require_preserved()
                     require(host.siblings() == siblings, "sibling project identity changed")
                 except (Exception, KeyboardInterrupt):
                     self.journal("restoring", target=manifest["sha"], previous=approval["expected_current"])
                     # Never downgrade schema or restore DB. Equality + explicit
                     # compatibility evidence was checked before mutation.
                     try:
-                        host.activate(state["current"]["manifest"], pull=False)
+                        host.activate(state["current"]["manifest"], pull=False, **options)
+                        require_preserved()
                         require(host.siblings() == siblings, "sibling project identity changed during recovery")
                     except (Exception, KeyboardInterrupt):
                         self.journal("recovery-required", target=manifest["sha"], previous=approval["expected_current"])
