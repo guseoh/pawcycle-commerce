@@ -4,6 +4,8 @@
 
 ## 구현
 
+OPS-OCI-CD-006의 별도 opt-in [제한적 색상 변환 모드](OPS-OCI-CD-006-frontend-auto.md)는 root 정책 아래 기계적으로 동작 불변을 입증한 경우에만 pair-proof를 대신한다. 아래의 기본 수동 모드는 변경되지 않으며 자동 검증 실패에 대한 fallback이나 범위 확대 수단이 아니다.
+
 infra/production/oci-compat-observer.py는 설치된 Python 3.9 표준 라이브러리, /usr/bin/mysql 및 /usr/bin/git만 사용한다. 고정 SQL SELECT를 통해 실제 MySQL server UUID·schema·version과 Flyway의 성공 이력, migration filename·checksum을 수집하고 비민감 SHA-256 fingerprint로 묶는다. 데이터 행·credential·mysql 원시 출력을 외부 로그로 내보내지 않는다. 별도의 root 보호 Runtime bundle·Git mirror에서 정확한 SHA 쌍과 migration tree, 변경 파일 hash를 대조한다. 이 제한형 Observer의 자동 허용 변경 경로는 `frontend/src/`·`frontend/public/`뿐이다. Backend, 빌드 입력, CI Workflow, Release 도구, Compose/Nginx, 문서와 미분류 경로가 함께 바뀌면 별도 검증기로 차단한다.
 
 **양방향 앱/데이터 호환은 MySQL/Flyway snapshot만으로 증명되지 않는다.** 실제 격리 MySQL 8.4에서 current→target→current를 검증한 리뷰된 evidence artifact와 운영자가 검증·승인한 exact-pair proof를 요구한다. Observer는 두 파일의 root 보호·hash·만료·SHA 쌍, 인증·주문·결제·재고·정기배송·Frontend API 불변식의 PASS 또는 근거 있는 제외와 실제 live DB snapshot을 재확인해야만 Controller의 JSON 계약을 출력한다. 이런 증거 파일이 없거나 실패하면 종료 코드 1로 차단한다.
