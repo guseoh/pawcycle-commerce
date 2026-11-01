@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { paymentApi, type TossConfirmResult } from "@/lib/payment-api";
@@ -76,7 +76,7 @@ function SuccessContent() {
   if (status === "loading") return <LoadingState>결제를 확인하고 있습니다.</LoadingState>;
   if (status === "anonymous") {
     if (!hasCallback) return <ErrorState title="결제 확인 정보를 찾을 수 없습니다." message="주문 내역에서 결제 상태를 확인해 주세요."><Link className="button button-secondary" href="/orders">주문 내역 확인</Link></ErrorState>;
-    return <ErrorState title="로그인이 필요합니다." message="결제 확인을 이어서 처리하려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/checkout/success")}>로그인 후 결제 확인</Link></ErrorState>;
+    return <AuthRequiredState title="로그인이 필요합니다." message="결제 확인을 이어서 처리하려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/checkout/success")}>로그인 후 결제 확인</Link></AuthRequiredState>;
   }
   if (status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   if (state.status === "loading") return <LoadingState>결제를 확인하고 있습니다.</LoadingState>;
