@@ -310,3 +310,15 @@
     .pet-create-panel { padding:18px; }
   }
 }
+
+@media (min-width:1024px) {
+ @scope (.customer-theme) {
+  .snapshot-tile .inline-alert { display:grid; padding:12px; font-size:14px; }
+  .snapshot-tile > a { min-height:44px; display:flex; align-items:center; }
+  .order-row .button { min-height:44px; }
+  .subscription-detail .subscription-actions { border-top:1px solid var(--line); }
+  .subscription-actions > .button-row { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .subscription-actions .button-danger { margin-left:auto; }
+  .subscription-review { border-radius:8px; }
+ }
+}

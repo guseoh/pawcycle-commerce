@@ -53,3 +53,7 @@ export function ErrorState({
     </section>
   );
 }
+
+export function AuthRequiredState({ title, message, children }: Pick<ErrorStateProps, "title" | "message" | "children">) {
+  return <section className="state-panel auth-required-state"><h1>{title}</h1><p>{message}</p><div className="button-row">{children}</div></section>;
+}

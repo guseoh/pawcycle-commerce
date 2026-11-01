@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { ErrorState, LoadingState } from "@/components/async-state";
+import { useEffect, useState } from "react";
+import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
 import { LogoutControl } from "@/components/logout-control";
 import { ApiError } from "@/lib/api";
 import { orderApi, type OrderSummary } from "@/lib/order-api";
@@ -12,6 +12,8 @@ import { reorderApi, reorderTimingItems, type ReorderTimingItem } from "@/lib/re
 import { cartApi } from "@/lib/cart-api";
 import { notificationApi } from "@/lib/notification-api";
 import { subscriptionApi, type SubscriptionSummary } from "@/lib/subscription-api";
+
+import { runSummaryRequests } from "@/lib/summary-requests";
 
 type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
 
@@ -27,44 +29,55 @@ async function loadAllSubscriptions(): Promise<SubscriptionSummary[]> {
   return subscriptions;
 }
 
-function CommerceSnapshotPanel({ snapshot, error, onRetry }: { snapshot: CommerceSnapshot | null; error: string | null; onRetry: () => void }) {
-  if (error) return <section className="my-snapshot-section" aria-labelledby="commerce-snapshot-title"><div className="inline-alert" role="alert"><strong>일부 쇼핑 정보를 불러오지 못했습니다.</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={onRetry}>다시 시도</button></div></section>;
-  if (!snapshot) return <section className="my-snapshot-section"><LoadingState>내 Commerce 요약을 불러오고 있습니다.</LoadingState></section>;
-  const latestOrder = snapshot.orders[0];
-  const activeSubscriptions = snapshot.subscriptions.filter((item) => item.status === "ACTIVE");
-  const nextSubscription = activeSubscriptions
-    .filter((item) => item.nextScheduledDate)
-    .sort((left, right) => left.nextScheduledDate!.localeCompare(right.nextScheduledDate!))[0];
-  return <section className="section-card my-commerce-snapshot" aria-labelledby="commerce-snapshot-title"><div className="section-title"><div><p className="eyebrow">My Commerce</p><h2 id="commerce-snapshot-title">최근 활동</h2></div><Link className="text-link" href="/orders">전체 주문 보기</Link></div><div className="snapshot-grid"><Link className="snapshot-tile" href="/orders"><strong>{snapshot.orders.length}건</strong><span>주문 내역</span></Link><Link className="snapshot-tile" href="/subscriptions"><strong>{activeSubscriptions.length}개</strong><span>이용 중인 정기배송</span></Link><Link className="snapshot-tile" href="/cart"><strong>{snapshot.cartQuantity}개</strong><span>장바구니 상품</span></Link><Link className="snapshot-tile" href="/notifications"><strong>{snapshot.unreadNotifications}건</strong><span>읽지 않은 알림</span></Link></div>{latestOrder ? <div className="snapshot-detail"><span>최근 주문</span><Link href={`/orders/${latestOrder.orderId}`}><strong>주문 {latestOrder.orderNumber}</strong><span>{formatOrderStatus(latestOrder.status)} · {formatPrice(latestOrder.paymentAmount)} · {formatDateTime(latestOrder.createdAt)}</span></Link></div> : <div className="empty-callout"><span>아직 주문이 없습니다.</span><Link href="/products">상품 둘러보기 →</Link></div>}{nextSubscription ? <div className="snapshot-detail"><span>다음 정기배송</span><Link href={`/subscriptions/${nextSubscription.subscriptionId}`}><strong>{nextSubscription.pet?.name ?? "정기배송"}</strong><span>{formatIsoLocalDate(nextSubscription.nextScheduledDate!)} · {formatPrice(nextSubscription.currentSnapshot.packagePriceKrw)}</span></Link></div> : null}</section>;
+type SummaryKey = keyof CommerceSnapshot;
+const summaryLabels: Record<SummaryKey, string> = { orders: "주문 내역", subscriptions: "이용 중인 정기배송", cartQuantity: "장바구니 상품", unreadNotifications: "읽지 않은 알림" };
+const summaryLinks: Record<SummaryKey, string> = { orders: "/orders", subscriptions: "/subscriptions", cartQuantity: "/cart", unreadNotifications: "/notifications" };
+
+function CommerceSnapshotPanel() {
+  const { markAnonymous } = useAuth();
+  const [pending, setPending] = useState(true);
+  const [snapshot, setSnapshot] = useState<Partial<CommerceSnapshot>>({});
+  const [errors, setErrors] = useState<Partial<Record<SummaryKey, string>>>({});
+  const [attempts, setAttempts] = useState<Record<SummaryKey, number>>({ orders: 0, subscriptions: 0, cartQuantity: 0, unreadNotifications: 0 });
+  const [retries, setRetries] = useState<SummaryKey[]>(Object.keys(summaryLabels) as SummaryKey[]);
+  useEffect(() => {
+    const loaders = {
+      orders: () => orderApi.list(),
+      subscriptions: loadAllSubscriptions,
+      cartQuantity: async () => (await cartApi.get()).items.reduce((total, item) => total + item.quantity, 0),
+      unreadNotifications: async () => (await notificationApi.list()).filter(item => !item.readAt).length,
+    };
+    const requests = runSummaryRequests<CommerceSnapshot>(loaders, retries, {
+      value: (key, value) => { setSnapshot(current => ({ ...current, [key]: value })); setErrors(current => ({ ...current, [key]: undefined })); },
+      error: key => setErrors(current => ({ ...current, [key]: "정보를 불러오지 못했습니다." })),
+      expired: () => { setSnapshot({}); setErrors({}); setPending(false); markAnonymous(); },
+      settled: () => setPending(false),
+      isAuthRequired: reason => reason instanceof ApiError && reason.code === "AUTH_REQUIRED",
+    });
+    return requests.cancel;
+  }, [attempts, retries, markAnonymous]);
+  const latestOrder = snapshot.orders?.[0];
+  const nextSubscription = snapshot.subscriptions?.filter(item => item.status === "ACTIVE" && item.nextScheduledDate).sort((left, right) => left.nextScheduledDate!.localeCompare(right.nextScheduledDate!))[0];
+  return <section className="my-snapshot-section"><div className="my-commerce-snapshot" aria-labelledby="commerce-snapshot-title">
+    <h2 id="commerce-snapshot-title">최근 활동</h2>
+    <div className="snapshot-grid">{(Object.keys(summaryLabels) as SummaryKey[]).map(key => {
+      const value = snapshot[key];
+      const count = key === "orders" ? snapshot.orders?.length : key === "subscriptions" ? snapshot.subscriptions?.filter(item => item.status === "ACTIVE").length : value;
+      return <div className="snapshot-tile" key={key}><Link href={summaryLinks[key]}>{summaryLabels[key]}</Link>{errors[key] ? <div className="inline-alert" role="alert"><p className="field-error">{errors[key]}</p><button type="button" className="button button-secondary" disabled={pending} onClick={() => { setPending(true); setErrors(current => ({ ...current, [key]: undefined })); setRetries([key]); setAttempts(current => ({ ...current, [key]: current[key] + 1 })); }}>다시 시도</button></div> : count === undefined ? <span role="status">확인 중</span> : <strong>{String(count)}{key === "orders" || key === "unreadNotifications" ? "건" : "개"}</strong>}</div>;
+    })}</div>
+    {latestOrder ? <div className="snapshot-detail"><span>최근 주문</span><Link href={`/orders/${latestOrder.orderId}`}><strong>{latestOrder.orderNumber}</strong><span>{formatOrderStatus(latestOrder.status)} · {formatPrice(latestOrder.paymentAmount)} · {formatDateTime(latestOrder.createdAt)}</span></Link></div> : null}
+    {nextSubscription ? <div className="snapshot-detail"><span>다음 주문 예정</span><Link href={`/subscriptions/${nextSubscription.subscriptionId}`}><strong>{nextSubscription.pet?.name ?? "정기배송"}</strong><span>{formatIsoLocalDate(nextSubscription.nextScheduledDate!)} · {formatPrice(nextSubscription.currentSnapshot.packagePriceKrw)}</span></Link></div> : null}
+  </div></section>;
 }
 
 export default function MyPage() {
   const auth = useAuth();
-  const [snapshot, setSnapshot] = useState<CommerceSnapshot | null>(null);
-  const [snapshotError, setSnapshotError] = useState<string | null>(null);
-  const [retry, setRetry] = useState(0);
-  const loadSnapshot = useCallback(async () => {
-    if (auth.status !== "authenticated") return;
-    try {
-      const [orders, subscriptions, cart, notifications] = await Promise.all([orderApi.list(), loadAllSubscriptions(), cartApi.get(), notificationApi.list()]);
-      setSnapshot({ orders, subscriptions, cartQuantity: cart.items.reduce((total, item) => total + item.quantity, 0), unreadNotifications: notifications.filter((item) => !item.readAt).length });
-      setSnapshotError(null);
-    } catch (reason) {
-      if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
-      setSnapshotError(reason instanceof ApiError ? reason.message : "내 Commerce 요약을 불러오지 못했습니다.");
-    }
-  }, [auth]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadSnapshot(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadSnapshot, retry]);
-
-  if (auth.status === "anonymous") return <ErrorState title="로그인이 필요합니다." message="내 정보를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/my")}>로그인</Link></ErrorState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="내 정보를 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/my")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "loading") return <LoadingState>회원 정보를 확인하고 있습니다.</LoadingState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "로그인 상태를 확인할 수 없습니다."} onRetry={() => void auth.refresh()} />;
   const shoppingLinks = [["/subscriptions", "정기배송", "다음 배송과 구독 변경을 관리해요"], ["/orders", "주문", "주문과 배송 상태를 확인해요"], ["/wishlist", "위시리스트", "나중에 볼 상품을 모아뒀어요"], ["/cart", "장바구니", "장바구니 전체 상품과 금액을 확인해요"]] as const;
   const accountLinks = [["/addresses", "배송지", "배송지와 기본 주소를 관리해요"], ["/billing-methods", "결제수단", "등록 상태를 확인해요"], ["/pets", "반려동물 프로필", "반려동물 정보를 확인하고 수정해요"], ["/notifications", "알림", "주문과 배송 소식을 확인해요"]] as const;
-  return <section className="my-dashboard"><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel snapshot={snapshot} error={snapshotError} onRetry={() => { setSnapshotError(null); setSnapshot(null); setRetry((value) => value + 1); }} /><ReorderTimingSection /><ManagementSection id="my-shopping-title" title="내 쇼핑" links={shoppingLinks} /><ManagementSection id="my-account-title" title="계정 / 관리" links={accountLinks} /><section className="account-section" aria-labelledby="support-title"><div><p className="eyebrow">지원</p><h2 id="support-title">도움이 필요하신가요?</h2><p>배송, 반품, 주문과 정기배송에 관한 안내를 확인할 수 있어요.</p></div><Link className="button button-secondary" href="/support">고객지원</Link></section><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
+  return <section className="my-dashboard"><header className="page-heading"><p className="eyebrow">내 정보</p><h1>반려생활을 한곳에서 관리하세요.</h1><p>최근 주문, 정기배송, 장바구니 상태를 한눈에 확인할 수 있어요.</p></header><CommerceSnapshotPanel key={auth.memberId} /><ReorderTimingSection /><ManagementSection id="my-shopping-title" title="내 쇼핑" links={shoppingLinks} /><ManagementSection id="my-account-title" title="계정 / 관리" links={accountLinks} /><section className="account-section" aria-labelledby="support-title"><div><p className="eyebrow">지원</p><h2 id="support-title">도움이 필요하신가요?</h2><p>배송, 반품, 주문과 정기배송에 관한 안내를 확인할 수 있어요.</p></div><Link className="button button-secondary" href="/support">고객지원</Link></section><section className="account-section" aria-labelledby="account-title"><div><p className="eyebrow">계정</p><h2 id="account-title">로그인 상태 관리</h2><p>로그아웃하면 현재 회원 상태와 보호 화면 접근 정보가 정리됩니다.</p></div><LogoutControl /></section></section>;
 }
 
 function ManagementSection({ id, title, links }: { id: string; title: string; links: readonly (readonly [string, string, string])[] }) {
