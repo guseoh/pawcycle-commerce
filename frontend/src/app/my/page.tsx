@@ -13,6 +13,8 @@ import { cartApi } from "@/lib/cart-api";
 import { notificationApi } from "@/lib/notification-api";
 import { subscriptionApi, type SubscriptionSummary } from "@/lib/subscription-api";
 
+import { runSummaryRequests } from "@/lib/summary-requests";
+
 type CommerceSnapshot = { orders: OrderSummary[]; subscriptions: SubscriptionSummary[]; cartQuantity: number; unreadNotifications: number };
 
 async function loadAllSubscriptions(): Promise<SubscriptionSummary[]> {
@@ -39,21 +41,20 @@ function CommerceSnapshotPanel() {
   const [attempts, setAttempts] = useState<Record<SummaryKey, number>>({ orders: 0, subscriptions: 0, cartQuantity: 0, unreadNotifications: 0 });
   const [retries, setRetries] = useState<SummaryKey[]>(Object.keys(summaryLabels) as SummaryKey[]);
   useEffect(() => {
-    let active = true;
     const loaders = {
       orders: () => orderApi.list(),
       subscriptions: loadAllSubscriptions,
       cartQuantity: async () => (await cartApi.get()).items.reduce((total, item) => total + item.quantity, 0),
       unreadNotifications: async () => (await notificationApi.list()).filter(item => !item.readAt).length,
     };
-    void Promise.all(retries.map(key => loaders[key]().then(value => {
-        if (active) setSnapshot(current => ({ ...current, [key]: value }));
-      }).catch((reason: unknown) => {
-        if (!active) return;
-        if (reason instanceof ApiError && reason.code === "AUTH_REQUIRED") { markAnonymous(); return; }
-        setErrors(current => ({ ...current, [key]: "정보를 불러오지 못했습니다." }));
-      }))).then(() => { if (active) setPending(false); });
-    return () => { active = false; };
+    const requests = runSummaryRequests<CommerceSnapshot>(loaders, retries, {
+      value: (key, value) => { setSnapshot(current => ({ ...current, [key]: value })); setErrors(current => ({ ...current, [key]: undefined })); },
+      error: key => setErrors(current => ({ ...current, [key]: "정보를 불러오지 못했습니다." })),
+      expired: () => { setSnapshot({}); setErrors({}); setPending(false); markAnonymous(); },
+      settled: () => setPending(false),
+      isAuthRequired: reason => reason instanceof ApiError && reason.code === "AUTH_REQUIRED",
+    });
+    return requests.cancel;
   }, [attempts, retries, markAnonymous]);
   const latestOrder = snapshot.orders?.[0];
   const nextSubscription = snapshot.subscriptions?.filter(item => item.status === "ACTIVE" && item.nextScheduledDate).sort((left, right) => left.nextScheduledDate!.localeCompare(right.nextScheduledDate!))[0];

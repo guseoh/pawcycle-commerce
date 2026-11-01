@@ -2,7 +2,11 @@
 
 2026-11-01 · 일반 · 저장소 변경 · 기준 main c55e0a57f1efa09a604c78f517db527196781137
 
-## Task 결과
+## 목적
+
+기존 Commerce 계약을 유지하며 Desktop 정보 위계와 오류 복구를 개선하고, PR #492의 형식·Checkout 행동 문구·My 요약 회귀를 보완한다.
+
+## 결과
 
 | Task | 결과 |
 | --- | --- |
@@ -43,9 +47,31 @@
 
 [주소 저장 오류](address-save-error-1440.jpg) · [My 부분 실패](my-partial-failure-1440.jpg) · [구독 생성](after-subscriptions-new-1440.jpg) · [구독 상세](after-subscriptions-1-1440.jpg)
 
-## 한계 및 복구
+## 위험·제한
 
 - 모바일/Tablet 시각 검증, 실제 인증·CSRF·Toss 결제·구독 command 통합, 412/UNKNOWN 실서버 상태, screen reader/forced-colors/200% zoom은 미실행.
 - 실제 상품 이미지/운영 카탈로그, SKU 이름 보강, 판매자/정책 콘텐츠, Backend 계약은 제외.
 - 별도 Admin 작업은 ADMIN-RETURN-013. 이 변경은 병합·배포 승인이 아님.
 - 복구: 이 고객 UI commit을 되돌리는 일반 revert PR. Production 실행 없음.
+
+## 최종 Correction
+
+- C1: Validator를 변경하지 않고 PR 필수 label과 보고서 목적/결과/위험 구획을 보완.
+- C2: 두 Checkout CTA를 ‘주문 생성 및 결제 준비’로 통일. 기존 method/body/header/Cart version·멱등키 유지.
+- My 요청 lifetime을 작은 helper로 추출. 주문 단독 실패/실패 항목 재시도/인증 만료 정보 제거/해제 후 지연 응답 무시의 회귀 4개 추가.
+- UI 구조·CSS·모바일 전용 디자인 변경 없음. 이번 correction 브라우저 재검증은 미실행이며 기존 캡처는 최초 구현 HEAD 근거다.
+
+CodeRabbit 리뷰: 사용자 승인에 따른 PR별 예외. 리뷰 미실행. 필수 CI 및 ChatGPT 독립 검토는 유지.
+
+## 병합 순서와 Fixture
+
+Admin #493을 먼저 검토한다. 두 브랜치의 visual-fixture.mjs 수정은 독립 유지한다. 이후 #492에 main을 일반 merge할 때 My 부분 오류와 Admin 입고 기록을 모두 보존하고 관련 회귀·Validator·Frontend gate를 다시 수행한다. rebase/force push/PR 직접 병합은 수행하지 않는다.
+
+## Correction 검증 결과
+
+- 기존 Task artifact Validator: 수정된 실제 PR 본문을 UTF-8 stdin으로 입력하여 PASS. Validator 수정 없음.
+- npm run lint: PASS (0 errors, 기존 6 warnings). npm run typecheck: PASS.
+- npm test: 187/187 PASS. npm run build: PASS.
+- 이번 correction의 브라우저/실서버/Production 검증은 미실행. 최초 구현 캡처와 검증 기록은 당시 HEAD 근거로 보존. 최신 CI 상태는 PR에서 확인.
+
+공유 fixture의 git merge-file 3-way 사전 검사에서 충돌 구획 2곳을 확인했다. 실제 브랜치/working tree merge는 수행하지 않았다. 일반 merge 시 summaryError·My 주문 요약 오류 분기와 receiptRequests·Admin 조회/입고 기록 분기를 모두 유지해야 한다.
