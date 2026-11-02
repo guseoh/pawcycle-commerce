@@ -20,3 +20,10 @@ test("a tall overlay is scroll bounded and an offscreen left anchor is clamped",
   assert.equal(position.left, 16);
   assert.equal(position.maxHeight, 480);
 });
+
+test("a tall upward overlay is bounded by the space above in a short desktop viewport", () => {
+  const position = desktopOverlayPosition({ left: 700, top: 500, bottom: 544 }, { width: 320, height: 900 }, { width: 1024, height: 768 });
+  assert.equal(position.top, 16);
+  assert.equal(position.maxHeight, 476);
+  assert.equal(position.left, 688);
+});
