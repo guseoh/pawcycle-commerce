@@ -37,6 +37,9 @@ class SystemdTests(unittest.TestCase):
             service = re.sub(r"^ExecStart=.*$", "ExecStart=" + sys.executable + " " + str(directory / "tick.py"), service, flags=re.M)
             service = service.replace("pawcycle-a1.timer", prefix + ".timer")
             timer = (root / "infra/oci-a1/pawcycle-a1.timer").read_text().replace("pawcycle-a1.service", prefix + ".service")
+            # CI hosts have already passed OnBootSec; avoid racing the explicit
+            # manual service start/assertion with an immediate boot activation.
+            timer = timer.replace("OnBootSec=60s", "OnActiveSec=1h")
             service_path, timer_path = (unit_dir / (prefix + suffix) for suffix in (".service", ".timer"))
             def run(*args, check=True):
                 return subprocess.run(args, check=check, capture_output=True, text=True, timeout=20)
