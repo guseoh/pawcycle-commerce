@@ -65,8 +65,10 @@
   .category-navigation-overlay { left:50%; transform:translateX(-50%); width:min(1000px,calc(100vw - 64px)); border-radius:2px; padding:20px 24px; }
   .desktop-category-browser { display:grid; grid-template-columns:220px minmax(0,1fr); gap:32px; min-height:240px; }
   .category-parents { background:var(--surface); padding:12px; display:grid; align-content:start; }
-  .category-parents button { display:flex; justify-content:space-between; min-height:44px; padding:10px 12px; background:transparent; border:0; border-radius:0; text-align:left; }
-  .category-parents button[aria-pressed=true] { color:var(--brand); background:var(--selected-soft); }
+  .category-navigation-overlay:has(.single-level) { width:min(360px,calc(100vw - 64px)); }
+  .desktop-category-browser.single-level { grid-template-columns:minmax(0,1fr); min-height:0; }
+  .category-parents button, .category-parents a { display:flex; justify-content:space-between; min-height:44px; padding:10px 12px; background:transparent; border:0; border-radius:0; text-align:left; }
+  .category-parents button[aria-pressed=true], .category-parents a[aria-current=page] { color:var(--brand); background:var(--selected-soft); }
   .category-children h2 { font-size:20px; line-height:28px; margin:0; }
   .category-children .section-title { padding-bottom:16px; border-bottom:1px solid var(--line); }
   .category-children .section-title a { font-size:14px; min-height:44px; display:flex; align-items:center; }
