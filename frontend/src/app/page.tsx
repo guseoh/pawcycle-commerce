@@ -16,9 +16,10 @@ export default function Home() {
 
   return (
     <div className="home-stack shopping-home">
-      <header className="home-heading home-hero" aria-labelledby="home-title"><div className="home-heading-copy"><p className="eyebrow">사료부터 일상 소모품까지</p><h1 id="home-title">매일 필요한 것, 정기배송으로</h1><p>반복해서 쓰는 반려동물 용품을 먼저 둘러보세요.</p><div className="home-hero-actions"><Link className="button" href="/products?subscribable=true">정기배송 상품 보기</Link><Link className="text-link" href="/products">전체 상품 보기</Link></div></div><nav className="pet-navigation" aria-label="반려동물별 상품"><Link aria-current="page" href="/products">전체</Link><Link href="/products?petType=DOG">강아지</Link><Link href="/products?petType=CAT">고양이</Link></nav></header>
+      <header className="home-heading home-hero" aria-labelledby="home-title"><div className="home-heading-copy"><p className="eyebrow">사료부터 일상 소모품까지</p><h1 id="home-title">늘 필요한 것을 더 쉽게 찾도록</h1><p>반복해서 쓰는 반려동물 용품을 먼저 둘러보세요.</p><div className="home-hero-actions"><Link className="button" href="/products?subscribable=true">정기배송 상품 보기</Link><Link className="text-link" href="/products">전체 상품 보기</Link></div></div><nav className="pet-navigation" aria-label="반려동물별 상품"><Link aria-current="page" href="/products">전체</Link><Link href="/products?petType=DOG">강아지</Link><Link href="/products?petType=CAT">고양이</Link></nav></header>
       <CompactDiscovery />
       <HomeCatalog />
+      <section className="home-repeat-entry"><div><h2>반복 구매가 필요한 상품이라면</h2><p>정기배송 가능 상품과 옵션별 이용 조건을 확인하세요.</p></div><Link className="text-link" href="/products?subscribable=true">정기배송 상품 보기 →</Link></section>
 
       <RecommendationSection id="home-popular-title" title="함께 둘러볼 상품" description="현재 추천 목록에서 새로운 상품을 찾아보세요." source="home-popular" request={{ kind: "popular", limit: 8 }} />
 
@@ -33,7 +34,7 @@ export default function Home() {
 function CompactDiscovery() {
   const { state, retry } = useCatalogDiscovery();
   return <section className="home-discovery" aria-labelledby="home-discovery-title">
-    <div className="section-title"><div><p className="eyebrow">Shop by category</p><h2 id="home-discovery-title">필요한 것부터, 가볍게</h2></div><Link className="text-link" href="/products">전체 상품 →</Link></div>
+    <div className="section-title"><div><p className="eyebrow">Shop by category</p><h2 id="home-discovery-title">카테고리별 찾기</h2></div><Link className="text-link" href="/products">전체 상품 →</Link></div>
     {state.status === "loading" ? <p className="discovery-status" role="status">카테고리와 브랜드를 불러오는 중입니다.</p> : null}
     {state.status === "error" ? <ErrorState headingLevel={3} title="탐색 정보를 불러오지 못했습니다." message={state.message} onRetry={retry}><Link href="/products">상품 검색으로 이동</Link></ErrorState> : null}
     {state.status === "success" ? <>

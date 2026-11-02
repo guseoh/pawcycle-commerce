@@ -162,10 +162,11 @@ export function CatalogProductCard({ product, compareSelected = false, onCompare
       {product.brand ? <p className="catalog-brand" title={product.brand.name}>{product.brand.name}</p> : null}
       <h3><Link className="catalog-title-link" href={href}>{productName}</Link></h3>
       <div className="catalog-price-block"><CatalogPrice price={product.representativePrice} compareAtPrice={product.compareAtPrice} discountRate={product.discountRate} />{product.skuPriceSummary.skuPrices.length > 1 ? <span className="catalog-price-caption">옵션별 가격은 상세에서 확인</span> : null}</div>
-      {product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating"><span aria-hidden="true">★ </span><span className="sr-only">평점 </span>{product.averageRating}<span className="catalog-rating-count"> · 리뷰 {product.reviewCount.toLocaleString()}개</span></p> : null}
-      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}</div>
+      <div className="catalog-card-facts">{product.reviewCount > 0 && product.averageRating != null ? <p className="catalog-rating"><span aria-hidden="true">★ </span><span className="sr-only">평점 </span>{product.averageRating}<span className="catalog-rating-count"> · 리뷰 {product.reviewCount.toLocaleString()}개</span></p> : null}
+      <div className="card-meta">{product.hasSubscribableSku ? <span className="tag">정기배송 가능</span> : null}</div></div>
     </div>
-    <div className="catalog-quick-purchase"><CatalogQuickPurchase product={product} productName={productName} href={href} /></div>
+    <footer className="catalog-card-utilities"><div className="catalog-quick-purchase"><CatalogQuickPurchase product={product} productName={productName} href={href} /></div>
     {onCompare ? <div className="catalog-card-actions"><label className="compare-toggle"><input type="checkbox" checked={compareSelected} onChange={onCompare} aria-label={`${productName} 비교에 담기`} />비교에 담기</label></div> : null}
+    </footer>
   </article>;
 }
