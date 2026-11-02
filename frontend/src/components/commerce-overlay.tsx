@@ -15,6 +15,15 @@ export function CommerceOverlay({ children, label, className, onClose, responsiv
     const modal = !responsive || media.matches;
     const previous = document.body.style.overflow;
     if (modal) { dialog.showModal(); document.body.style.overflow = "hidden"; } else dialog.show();
+    // Desktop filters follow their trigger rather than the catalog's origin.
+    if (!modal && trigger) {
+      const anchor = trigger.getBoundingClientRect();
+      const width = dialog.getBoundingClientRect().width;
+      dialog.style.position = "fixed";
+      dialog.style.left = `${Math.max(16, Math.min(anchor.left, window.innerWidth - width - 16))}px`;
+      dialog.style.top = `${anchor.bottom + 8}px`;
+      dialog.style.maxHeight = `${Math.max(120, window.innerHeight - anchor.bottom - 24)}px`;
+    }
     const pointer = (event: PointerEvent) => {
       const target = event.target as Node;
       if (target === dialog || (!modal && !dialog.contains(target) && target !== trigger)) closeRef.current();
@@ -33,7 +42,9 @@ export function CommerceOverlay({ children, label, className, onClose, responsiv
     document.addEventListener("keydown", key);
     document.addEventListener("focusin", focus);
     media.addEventListener("change", resize);
+    if (!modal) { window.addEventListener("resize", resize); window.addEventListener("scroll", resize); }
     return () => {
+      window.removeEventListener("resize", resize); window.removeEventListener("scroll", resize);
       document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); document.removeEventListener("focusin", focus); media.removeEventListener("change", resize);
       const focusWasInside = dialog.contains(document.activeElement);
       dialog.close(); document.body.style.overflow = previous;

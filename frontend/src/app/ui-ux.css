@@ -190,6 +190,15 @@
     .catalog-toolbar .catalog-sort { flex:none; width:168px; }
     .catalog-filter-triggers { display:flex; flex-wrap:wrap; gap:8px; margin:0; }
     .catalog-filter-triggers button,.catalog-filter-chips button { min-height:44px; }
+  .catalog-filter-triggers button { background:transparent; border-color:transparent; border-radius:4px; padding:8px 10px; }
+  .catalog-filter-panel { width:320px; padding:16px; border-radius:8px; }
+  .catalog-filter-heading { padding-bottom:8px; }
+  .catalog-filter-heading h2 { font-size:16px; line-height:24px; }
+  .catalog-filter-form { padding-top:12px; }
+  .catalog-filter-form .field-help { margin:0 0 12px; font-size:12px; line-height:18px; }
+  .catalog-filter-form .button-secondary { border-color:transparent; }
+  .catalog-filter-form fieldset { margin-bottom:12px; }
+
     .compare-tray { flex-wrap:wrap; gap:16px; max-height:40dvh; overflow:auto; }
     .compare-selection-list { flex:1 1 480px; display:flex; flex-wrap:wrap; gap:8px; margin:0; padding:0; list-style:none; }
     .compare-selection-list li { flex:1 1 140px; display:flex; align-items:center; gap:8px; min-width:0; padding:8px; border:1px solid var(--line); border-radius:8px; }
