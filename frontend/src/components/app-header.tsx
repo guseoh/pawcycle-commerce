@@ -11,6 +11,7 @@ import { useCatalogDiscovery } from "./catalog-discovery";
 import { buildLoginHref } from "@/lib/frontend-utils";
 import { interactionContext, parseCatalogFilters } from "@/lib/catalog-filters";
 import { createInteractionEvent, interactionApi } from "@/lib/interaction-api";
+import { categoryNavigationIndex } from "@/lib/category-navigation";
 
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
 const RECENT_SEARCHES_KEY = "pawcycle.recent-searches";
@@ -248,7 +249,7 @@ export function AppHeader() {
         <nav className="category-parents" aria-label="상위 카테고리" onKeyDown={event => {
           const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
           const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-          const next = event.key === "ArrowDown" ? (index + 1) % buttons.length : event.key === "ArrowUp" ? (index - 1 + buttons.length) % buttons.length : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : -1;
+          const next = categoryNavigationIndex(event.key, index, buttons.length);
           if (next < 0) return;
           event.preventDefault(); buttons[next]?.click(); buttons[next]?.focus();
         }}>{categories.map(category => <button key={category.categoryId} type="button" aria-pressed={category.categoryId === desktopCategory.categoryId} aria-controls="category-children" onClick={() => setDesktopCategoryId(category.categoryId)}>{category.name}<span aria-hidden="true">→</span></button>)}</nav>
