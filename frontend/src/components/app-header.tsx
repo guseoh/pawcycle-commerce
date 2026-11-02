@@ -57,6 +57,7 @@ export function AppHeader() {
   const [searchDraft, setSearchDraft] = useState("");
   const [activeCategory, setActiveCategory] = useState("");
   const [categoryExpanded, setCategoryExpanded] = useState<Record<number, boolean>>({});
+  const [desktopCategoryId, setDesktopCategoryId] = useState<number | null>(null);
   const [cartCount, setCartCount] = useState<number | null>(null);
   const [badgeFailed, setBadgeFailed] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -206,6 +207,8 @@ export function AppHeader() {
   };
   const categories = discovery.state.status === "success" ? discovery.state.data.categories : [];
   const brands = discovery.state.status === "success" ? discovery.state.data.brands : [];
+  const desktopCategory = categories.find(category => category.categoryId === desktopCategoryId)
+    ?? categories.find(category => category.slug === activeCategory) ?? categories[0];
   const currentHref = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
   const subscriptionDiscoveryActive = pathname === "/products" && searchParams.get("subscribable") === "true";
   const categoryGroups = <>
@@ -240,7 +243,20 @@ export function AppHeader() {
         <Link aria-current={pathname === "/cart" ? "page" : undefined} href={status === "authenticated" ? "/cart" : buildLoginHref("/cart")} aria-label={status !== "authenticated" ? "장바구니, 로그인 필요" : cartCount === null ? badgeFailed ? "장바구니, 개수 확인 실패" : "장바구니, 개수 확인 중" : `장바구니 ${cartCount}개`}>장바구니 {status === "authenticated" && !badgeFailed ? <span className="nav-badge" aria-hidden="true">{cartCount === null ? "–" : cartCount > 99 ? "99+" : cartCount}</span> : null}</Link>
       </nav>
     </div>
-    {categoryOpen ? <div id="category-navigation" ref={categoryPanel} className="category-navigation-overlay" role="dialog" aria-label="상품 카테고리"><div className="navigation-overlay-heading"><strong>카테고리</strong><button type="button" className="icon-button" aria-label="카테고리 닫기" onClick={() => { closeNavigation(); if (window.innerWidth > 1023) categoryButton.current?.focus(); }}>닫기</button></div>{categoryGroups}</div> : null}
+    {categoryOpen ? <div id="category-navigation" ref={categoryPanel} className="category-navigation-overlay" role="dialog" aria-label="상품 카테고리"><div className="navigation-overlay-heading"><strong>카테고리</strong><button type="button" className="icon-button" aria-label="카테고리 닫기" onClick={() => { closeNavigation(); if (window.innerWidth > 1023) categoryButton.current?.focus(); }}>닫기</button></div>
+      {discovery.state.status !== "success" || !desktopCategory ? categoryGroups : <div className="desktop-category-browser">
+        <nav className="category-parents" aria-label="상위 카테고리" onKeyDown={event => {
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+          const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const next = event.key === "ArrowDown" ? (index + 1) % buttons.length : event.key === "ArrowUp" ? (index - 1 + buttons.length) % buttons.length : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : -1;
+          if (next < 0) return;
+          event.preventDefault(); buttons[next]?.click(); buttons[next]?.focus();
+        }}>{categories.map(category => <button key={category.categoryId} type="button" aria-pressed={category.categoryId === desktopCategory.categoryId} aria-controls="category-children" onClick={() => setDesktopCategoryId(category.categoryId)}>{category.name}<span aria-hidden="true">→</span></button>)}</nav>
+        <section id="category-children" className="category-children" aria-labelledby="category-child-title"><div className="section-title"><h2 id="category-child-title">{desktopCategory.name}</h2><Link onClick={closeNavigation} href={`/products?category=${encodeURIComponent(desktopCategory.slug)}`}>{desktopCategory.name} 전체 보기 →</Link></div>
+          {desktopCategory.children.length ? <nav aria-label={`${desktopCategory.name} 하위 분류`}>{desktopCategory.children.map(child => <Link key={child.categoryId} onClick={closeNavigation} aria-current={searchParams.get("subcategory") === child.slug ? "page" : undefined} href={`/products?category=${encodeURIComponent(desktopCategory.slug)}&subcategory=${encodeURIComponent(child.slug)}`}>{child.name}</Link>)}</nav> : <p className="field-help">등록된 하위 분류가 없습니다. 전체 상품을 확인해 주세요.</p>}
+        </section>
+      </div>}
+    </div> : null}
     {menuOpen ? <div className="navigation-backdrop"><div id="mobile-navigation" ref={menuPanel} className="mobile-navigation-drawer" role="dialog" aria-modal="true" aria-label="전체 메뉴"><div className="navigation-overlay-heading"><strong>전체 메뉴</strong><button type="button" className="icon-button" onClick={() => closeMobileMenu(true)}>닫기</button></div><nav aria-label="모바일 주요 메뉴">{status === "authenticated" ? <Link onClick={closeNavigation} href="/my">내 계정</Link> : status !== "loading" ? <Link onClick={closeNavigation} href={buildLoginHref(currentHref)}>로그인</Link> : <span role="status">계정 확인 중</span>}<Link onClick={closeNavigation} href="/products">상품</Link><Link onClick={closeNavigation} href="/products?subscribable=true">정기배송 상품</Link><Link onClick={closeNavigation} href="/orders">주문</Link><Link onClick={closeNavigation} href="/subscriptions">내 정기배송</Link><Link onClick={closeNavigation} href={status === "authenticated" ? "/wishlist" : buildLoginHref("/wishlist")}>찜한 상품</Link><Link onClick={closeNavigation} href="/my">내 정보</Link>{[["/pets", "반려동물"], ["/addresses", "배송지"], ["/billing-methods", "결제수단"], ["/notifications", "알림"]].map(([href, label]) => <Link key={href} onClick={closeNavigation} href={href}>{label}</Link>)}<Link onClick={closeNavigation} href="/support">고객지원</Link></nav><section aria-labelledby="mobile-category-title"><h2 id="mobile-category-title">카테고리</h2>{categoryGroups}</section></div></div> : null}
   </header>;
 }

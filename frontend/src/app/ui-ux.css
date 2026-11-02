@@ -164,9 +164,10 @@
   @scope (.customer-theme) {
     /* G1: flexible single masthead and purposeful navigation groups. */
     .header-catalog { flex:none; }
-    .header-search { min-width:0; }
+    .header-primary { min-height:76px; }
+    .header-search { min-width:0; background:transparent; border:0; border-bottom:1px solid var(--border-control); border-radius:0; height:44px; }
     .header-actions { flex:none; }
-    .category-navigation-overlay { width:min(760px,calc(100vw - 64px)); max-height:calc(100dvh - 120px); }
+    .category-navigation-overlay { width:min(1000px,calc(100vw - 64px)); max-height:calc(100dvh - 120px); }
     .category-groups { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 24px; }
     .category-groups summary { color:var(--brand); }
     .category-groups a { padding:8px 4px; font-size:14px; text-decoration:none; }
