@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { desktopOverlayPosition } from "@/lib/overlay-position";
 
 /** Native dialog supplies modal inertness, keyboard containment and focus restoration. */
 export function CommerceOverlay({ children, label, className, onClose, responsive = false, id }: { children: React.ReactNode; label: string; className: string; onClose: () => void; responsive?: boolean; id?: string }) {
@@ -18,11 +19,12 @@ export function CommerceOverlay({ children, label, className, onClose, responsiv
     // Desktop filters follow their trigger rather than the catalog's origin.
     if (!modal && trigger) {
       const anchor = trigger.getBoundingClientRect();
-      const width = dialog.getBoundingClientRect().width;
+      const panel = dialog.getBoundingClientRect();
+      const position = desktopOverlayPosition(anchor, panel, { width: window.innerWidth, height: window.innerHeight });
       dialog.style.position = "fixed";
-      dialog.style.left = `${Math.max(16, Math.min(anchor.left, window.innerWidth - width - 16))}px`;
-      dialog.style.top = `${anchor.bottom + 8}px`;
-      dialog.style.maxHeight = `${Math.max(120, window.innerHeight - anchor.bottom - 24)}px`;
+      dialog.style.left = `${position.left}px`;
+      dialog.style.top = `${position.top}px`;
+      dialog.style.maxHeight = `${position.maxHeight}px`;
     }
     const pointer = (event: PointerEvent) => {
       const target = event.target as Node;
