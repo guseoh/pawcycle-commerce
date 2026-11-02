@@ -176,6 +176,20 @@
     .footer-navigation summary { font-size:16px; font-weight:700; }
     .footer-navigation a:hover { color:var(--brand); text-decoration:underline; }
 
+    .catalog-product-card .product-card-media { border:0; border-radius:0; background:#f7f6f5; }
+    .catalog-product-card .catalog-wishlist-control :is(a,button) { border:0; border-radius:0; box-shadow:none; }
+    .catalog-card-facts { display:flex; flex-direction:column; gap:4px; }
+    .catalog-card-facts .card-meta { order:-1; min-height:0; }
+    .catalog-card-copy .card-meta .tag { border:0; padding:0; background:transparent; font-weight:400; color:var(--muted); }
+    .catalog-card-utilities { margin-top:auto; padding-top:4px; }
+    .catalog-card-utilities .catalog-quick-purchase { margin-top:0; }
+    .catalog-card-utilities .catalog-quick-purchase .button { width:auto; min-height:44px; padding:8px 0; border:0; border-radius:0; background:transparent; justify-content:flex-start; text-decoration:underline; text-underline-offset:5px; font-weight:500; }
+    .catalog-card-utilities .catalog-quick-purchase .button:disabled { color:var(--disabled-text); text-decoration:none; }
+    .catalog-products-grid[data-layout=balanced] { grid-template-columns:repeat(3,minmax(0,1fr)); max-width:1048px; }
+    .home-repeat-entry { display:flex; align-items:center; justify-content:space-between; gap:24px; border-block:1px solid var(--line); padding:24px 0; }
+    .home-repeat-entry h2 { font-size:20px; margin-bottom:8px; }
+    .home-repeat-entry p { margin:0; color:var(--muted); font-size:14px; }
+
     /* G2/G4: one open product grid, fixed name slots and unclipped server prices. */
     .catalog-products-grid,.recommendation-grid,
     .shopping-home .recommendation-section[data-source="home-popular"] .recommendation-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:40px 24px; }
@@ -283,7 +297,7 @@
 }
 @media (min-width:1440px) {
   @scope (.customer-theme) {
-    .catalog-products-grid { grid-template-columns:repeat(5,minmax(0,1fr)); gap:32px 20px; }
+    .catalog-products-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:40px 24px; }
     .catalog-page .catalog-card-copy .catalog-price strong { font-size:22px; line-height:30px; }
     /* Restore R1's gallery-led proportions and a >=448px purchase area. */
     .shopping-detail .product-detail-layout {
