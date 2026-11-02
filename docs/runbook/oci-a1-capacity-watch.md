@@ -2,6 +2,8 @@
 
 Task ID: `OCI-A1-001`
 
+For the separate, disabled-by-default 60-second worker and its own activation/IAM gates, see [OCI A1 Auto Provisioner](oci-a1-auto-provisioner.md). The hourly workflows described here remain report-only.
+
 This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **never** launches VMs, retries instance creation, creates capacity reservations, or changes running resources. Monitoring is **disabled by default** until the owner enables it.
 
 ## Target and behavior

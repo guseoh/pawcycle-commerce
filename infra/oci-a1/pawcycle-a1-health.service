@@ -1,0 +1,19 @@
+[Unit]
+Description=PawCycle OCI A1 stale tick watchdog (no OCI calls)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pawcycle-a1
+Group=pawcycle-a1
+StateDirectory=pawcycle-a1
+StateDirectoryMode=0700
+UMask=0077
+EnvironmentFile=/etc/pawcycle-a1/worker.env
+ExecStart=/opt/pawcycle-a1/venv/bin/python /opt/pawcycle-a1/scripts/oci_a1_provisioner.py --config /etc/pawcycle-a1/provisioner.json --state-dir /var/lib/pawcycle-a1 --health
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pawcycle-a1
