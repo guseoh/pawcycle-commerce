@@ -37,6 +37,13 @@ body { margin: 0; }
  .compare-toggle input[type=checkbox]:checked { background:var(--brand); border-color:var(--brand); }
  .compare-toggle input[type=checkbox]:checked::after { transform:rotate(-45deg) scale(1); }
  .compare-toggle:has(input:focus-visible) { outline:3px solid var(--focus); outline-offset:2px; }
+ @media (min-width:1024px) {
+  input:not([type=checkbox],[type=radio]),select,textarea { font-weight:400; }
+  input::placeholder,textarea::placeholder { color:var(--muted); opacity:1; }
+  input[type=number] { font-variant-numeric:tabular-nums; }
+  .button-ghost:not(:disabled):hover { background:var(--surface); }
+  .field-help,.field-error { overflow-wrap:anywhere; }
+ }
  .form-field { display:grid; gap:8px; margin-bottom:16px; font-size:14px; font-weight:600; } .field-label { font-size:14px; font-weight:600; } .field-help,.field-error { font-size:14px; line-height:22px; font-weight:400; margin:8px 0; } .field-error { color:var(--danger); }
  fieldset { border:0; padding:0; margin:0 0 24px; } legend { font-weight:600; margin-bottom:8px; } .form-section { display:grid; gap:12px; }
  .form-grid,.address-form-grid,.management-grid,.radio-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
