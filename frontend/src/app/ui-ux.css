@@ -214,15 +214,15 @@
     .shopping-detail .product-detail-layout { column-gap:48px; grid-template-columns:minmax(0,1fr) minmax(416px,.85fr); }
     .shopping-detail .product-detail-layout > .product-purchase-stack { position:static; }
     .product-summary .purchase-price { color:var(--ink); font-size:24px; line-height:32px; font-weight:700; }
+    .product-summary .purchase-price .catalog-price strong { font-size:32px; line-height:40px; }
     .desktop-purchase-panel .purchase-panel { padding:20px 0; border:0; border-top:1px solid var(--line); border-radius:0; box-shadow:none; }
     .purchase-panel .wishlist-login-notice { padding:8px 0; border:0; border-radius:0; background:transparent; }
     .purchase-panel .wishlist-login-notice p { font-size:14px; line-height:22px; }
-    .purchase-panel .subscription-callout { padding:12px 0 12px 12px; border-radius:0; background:transparent; }
+    .purchase-panel .subscription-callout { margin:12px 0 0; padding:12px 0 12px 12px; border-radius:0; background:transparent; }
     .purchase-panel > h2 { padding-bottom:0; border:0; margin-bottom:16px; }
     .purchase-panel .product-option-group { margin-bottom:16px; }
     .purchase-panel .selection-summary { padding:12px 0; border:0; border-block:1px solid var(--line); border-radius:0; background:transparent; }
     .selection-summary .catalog-price strong { font-size:24px; line-height:30px; }
-    .purchase-panel .subscription-callout { margin:12px 0 0; }
     .gallery-thumbnails button { width:64px; height:64px; }
     .shopping-detail [id^="product-"] { scroll-margin-top:160px; }
 
