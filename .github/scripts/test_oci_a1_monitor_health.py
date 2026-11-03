@@ -119,6 +119,36 @@ class HealthTests(TestCase):
         api.return_value = {"workflow_runs": [run(5), run(1), run(3)]}
         self.assertEqual(health.scheduled_runs()[0]["created_at"], run(1)["created_at"])
 
+    @patch.object(health, "github_request")
+    def test_five_minute_runs_paginate_full_day(self, api):
+        # 12 scheduled observations/hour: a 24h summary needs three API pages.
+        first = [run(i / 12) for i in range(100)]
+        second = [run(i / 12) for i in range(100, 200)]
+        third = [run(i / 12) for i in range(200, 288)]
+        api.side_effect = [
+            {"workflow_runs": first},
+            {"workflow_runs": second},
+            {"workflow_runs": third},
+        ]
+        runs = health.scheduled_runs(NOW)
+        self.assertEqual(len(runs), 288)
+        self.assertEqual(health.evaluate(runs, NOW)["success_24h"], 288)
+        self.assertEqual(api.call_count, 3)
+        self.assertIn("page=3", api.call_args.args[1])
+
+    @patch.object(health, "github_request")
+    def test_pagination_stops_after_past_day(self, api):
+        first = [run(i / 12) for i in range(100)]
+        second = [run(25)]  # Outside the 24-hour report window.
+        api.side_effect = [
+            {"workflow_runs": first},
+            {"workflow_runs": second},
+        ]
+        runs = health.scheduled_runs(NOW)
+        self.assertEqual(len(runs), 101)
+        self.assertEqual(health.evaluate(runs, NOW)["total_24h"], 100)
+        self.assertEqual(api.call_count, 2)
+
     @patch.object(health, "post_discord")
     def test_daily_unavailable_sends_daily_summary_only(self, send):
         import oci_a1_capacity_monitor as monitor
