@@ -82,6 +82,7 @@ class OciApi:
     def capacity(self, c):
         self.connect(c)
         models = self.sdk.core.models
+        # OCI Capacity Report requires the tenancy root, not the VM target compartment.
         details = models.CreateComputeCapacityReportDetails(
             compartment_id=c["tenancy_id"], availability_domain=AD,
             shape_availabilities=[models.CreateCapacityReportShapeAvailabilityDetails(
