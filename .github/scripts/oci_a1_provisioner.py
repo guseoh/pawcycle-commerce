@@ -276,7 +276,9 @@ class Worker:
                 else:
                     self.halt(s, "oci_access_quota_or_configuration")
             except GateError as exc:
-                if str(exc) == "approval_expired_or_too_long" and self.now() >= c.get("approval_expires_at", 0):
+                if self.now() >= CAMPAIGN_END_UTC:
+                    self.halt(s, "campaign_ended")
+                elif str(exc) == "approval_expired_or_too_long" and self.now() >= c.get("approval_expires_at", 0):
                     s["mode"] = "approval_expired"
                     self.store.save(s)
                 else:
