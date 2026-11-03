@@ -2,7 +2,7 @@
 
 Task ID: `OCI-A1-001`
 
-For the separate, disabled-by-default 60-second worker and its own activation/IAM gates, see [OCI A1 Auto Provisioner](oci-a1-auto-provisioner.md). The hourly workflows described here remain report-only.
+This is the **monitor-and-notify only** operating mode. The separate [OCI A1 Auto Provisioner](oci-a1-auto-provisioner.md) is **not activated**; no VM is created automatically and no provisioner IAM or systemd timer is needed for this workflow.
 
 This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **never** launches VMs, retries instance creation, creates capacity reservations, or changes running resources. Monitoring is **disabled by default** until the owner enables it.
 
@@ -10,9 +10,9 @@ This monitor uses a **Compute Capacity Report**, not Compute VM creation. It **n
 
 - Target region: `ap-tokyo-1`; availability domain: `nREs:AP-TOKYO-1-AD-1`.
 - Shape: `VM.Standard.A1.Flex`, exactly **2 OCPU / 12 GB**.
-- Primary GitHub Actions capacity checks target **each hour at minute 17 UTC** (KST minute 17), subject to scheduling delays or skipped runs. An Actions `success` means the API query ran; it does **not** mean capacity was available.
-- A separate **OCI A1 Monitor Health** workflow inspects scheduled-run history every 2 hours at minute 43 UTC and on completed primary scheduled runs. If the last successful capacity check is older than **3 hours**, or the newest scheduled run failed/skipped, it sends **one Discord warning per incident** and creates/reopens an unassigned health-tracking Issue. Recovery closes that Issue without repeating warnings.
-- At **00:47 UTC (~09:47 KST)** each day, the health workflow makes one additional read-only Capacity Report request and sends a **Discord daily status** even when the shape is OUT_OF_HOST_CAPACITY. The status contains a fresh point-in-time OCI result, plus successful/total scheduled runs and failed/skipped counts from the last 24 hours. AVAILABLE uses the existing transition notification and Issue tracking; it is not re-alerted while status remains AVAILABLE.
+- Primary GitHub Actions capacity checks target **every five minutes** (UTC minutes 03, 08, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58), subject to scheduling delays or skipped runs. An Actions `success` means the API query ran; it does **not** mean capacity was available.
+- A separate **OCI A1 Monitor Health** workflow inspects scheduled-run history every 2 hours at minute 43 UTC; it does not start a new health job after every five-minute poll. If the last successful capacity check is older than **3 hours**, or the newest scheduled run failed/skipped, it sends **one Discord warning per incident** and creates/reopens an unassigned health-tracking Issue. Recovery closes that Issue without repeating warnings.
+- At **00:47 UTC (~09:47 KST)** each day, the health workflow makes one additional read-only Capacity Report request and sends a **Discord daily status** even when the shape is OUT_OF_HOST_CAPACITY. The status contains a fresh point-in-time OCI result, plus successful/total scheduled runs and failed/skipped counts from the last 24 hours. The workflow paginates run history beyond the GitHub API's first 100 results. AVAILABLE uses the existing transition notification and Issue tracking; it is not re-alerted while status remains AVAILABLE.
 - The health watcher is also hosted on GitHub Actions. GitHub may delay/skip its schedules too, so this is not an external always-on availability guarantee. For outages of GitHub Actions itself, an off-platform heartbeat monitor would be required.
 - `OUT_OF_HOST_CAPACITY`: no Discord alert. If a tracking Issue exists, close it and clear assignments when status changes; stale assignments are also cleared on unchanged reports.
 - `AVAILABLE` transition: send one Discord embed, then create or reopen an unassigned GitHub Issue for status tracking. The Issue contains no owner mention, and any legacy owner assignment is removed.
@@ -50,7 +50,7 @@ Open https://github.com/guseoh/pawcycle-commerce/settings/secrets/actions and cr
 
 GitHub automatically supplies `GITHUB_TOKEN` with `issues: write` only in this workflow. Do not use the temporary OCI Cloud Shell security-token session for unattended Actions.
 
-## 3. Validate before enabling hourly checks
+## 3. Validate before enabling five-minute checks
 
 1. Once merged to **main**, open the [workflow page](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) and click **Run workflow → self_test**. The offline tests must pass with **no OCI credentials and no Discord message**.
 2. After the Secrets and OCI IAM policy are configured, click **Run workflow → check**. This makes **one** real report query; confirm a valid status in the run summary. If it detects a new AVAILABLE transition, it will send a real Discord alert.
@@ -61,7 +61,7 @@ GitHub automatically supplies `GITHUB_TOKEN` with `issues: write` only in this w
 
 To disable both capacity and health checks immediately, set `OCI_A1_MONITOR_ENABLED` to `false` or remove the variable. The health workflow is gated by the same variable; its offline self-test and read-only preview remain available. No real VM creation is possible in either workflow.
 
-**Alert troubleshooting:** `OUT_OF_HOST_CAPACITY` never sends an urgent capacity notification. Use the daily Discord status and [capacity watch Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) to verify polling. For missed/failed checks, inspect [monitor health Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-monitor-health.yml). A daily Discord report is evidence of the daily job, not proof that all 24 hourly checks ran.
+**Alert troubleshooting:** `OUT_OF_HOST_CAPACITY` never sends an urgent capacity notification. Use the daily Discord status and [capacity watch Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml) to verify polling. For missed/failed checks, inspect [monitor health Actions history](https://github.com/guseoh/pawcycle-commerce/actions/workflows/oci-a1-monitor-health.yml). A daily Discord report is evidence of the daily job, not proof that every five-minute scheduled check ran.
 
 ## Monitor-health acceptance checks (after separate deployment approval)
 
@@ -72,6 +72,8 @@ To disable both capacity and health checks immediately, set `OCI_A1_MONITOR_ENAB
 5. Validate the **AVAILABLE transition alert** only against a genuine OCI `AVAILABLE` report; never fake availability, create a VM, or emit a false production notification just to test Discord.
 
 The health workflow does not check `pawcycle-arm-01` automatically, and scheduled watchdog runs can themselves be delayed or skipped by GitHub Actions.
+
+**Operations choice (2026-11-03):** Use report-only monitoring and manually create A1 after receiving a genuine AVAILABLE alert. Do **not** create a new provisioner IAM user, register its key, initialize its state, or enable its systemd timer. The staged `/etc/pawcycle-a1/provisioner.json` remains `DISABLED` on `app01`; its staged installation is not needed for this GitHub Actions monitor. GitHub Actions is a best-effort 5-minute scheduler, not a guaranteed instant notification service. Standard GitHub-hosted runners in this public repository have no runner-minute charge; OCI API rate limits and GitHub scheduling limitations still apply.
 
 ## 4. Before acting on an alert
 
