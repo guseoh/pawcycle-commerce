@@ -8,9 +8,6 @@ on:
       - ".github/scripts/test_oci_a1_monitor_health.py"
       - ".github/scripts/oci_a1_capacity_monitor.py"
       - "docs/runbook/oci-a1-capacity-watch.md"
-  workflow_run:
-    workflows: ["OCI Tokyo A1 Capacity Watch"]
-    types: [completed]
   schedule:
     # Independent 2-hour watchdog: catches stale or failed capacity checks.
     - cron: "43 */2 * * *"
@@ -54,8 +51,6 @@ jobs:
   health:
     if: >-
       (github.event_name == 'schedule' && vars.OCI_A1_MONITOR_ENABLED == 'true') ||
-      (github.event_name == 'workflow_run' && vars.OCI_A1_MONITOR_ENABLED == 'true' &&
-       github.event.workflow_run.event == 'schedule' && github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'workflow_dispatch' && inputs.mode == 'preview')
     runs-on: ubuntu-latest
     timeout-minutes: 10
