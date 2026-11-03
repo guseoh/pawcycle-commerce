@@ -205,19 +205,34 @@ class WorkerTests(unittest.TestCase):
         self.w.tick(self.c)
         self.assertEqual(self.api.launches, [token])
 
-    def test_429_backoff_and_recovery_reuses_token(self):
+    def test_429_after_launch_keeps_pending_and_only_reconciles(self):
         self.api.error = worker.ApiError("throttled")
+        self.api.matches = []
         self.w.tick(self.c)
-        self.assertEqual(self.store.load()["next_at"], 1060)
+        s = self.store.load()
+        self.assertEqual(s["phase"], "pending")
+        self.assertEqual(s["next_at"], 1060)
+        self.assertEqual(self.api.launches, [s["token"]])
         self.assertEqual(self.w.tick(self.c), "backoff")
         self.clock += 60
         self.w.tick(self.c)
-        self.assertEqual(self.store.load()["next_at"], 1180)
-        self.clock += 120
-        self.api.error = None
+        self.assertEqual(self.store.load()["next_at"], 1120)
+        self.assertEqual(len(self.api.launches), 1)
+        self.clock += 60
+        self.api.matches = [("fake-instance", "RUNNING")]
         self.w.tick(self.c)
         self.assertEqual(self.store.load()["mode"], "provisioned")
-        self.assertEqual(len(set(self.api.launches)), 1)
+        self.assertEqual(len(self.api.launches), 1)
+
+    def test_429_unresolved_never_relaunches_after_timeout(self):
+        self.api.error = worker.ApiError("throttled")
+        self.api.matches = []
+        self.w.tick(self.c)
+        token = self.store.load()["token"]
+        self.clock += 901
+        self.w.tick(self.c)
+        self.assertEqual(self.store.load()["mode"], "halted")
+        self.assertEqual(self.api.launches, [token])
 
     def test_5xx_reconciles_and_retry_budget_is_bounded(self):
         self.api.error = worker.ApiError("transient")
