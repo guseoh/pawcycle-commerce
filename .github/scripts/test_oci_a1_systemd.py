@@ -51,9 +51,12 @@ class SystemdTests(unittest.TestCase):
                 timer_path.write_text(timer)
                 health_service.write_text("[Service]\\nType=oneshot\\nExecStart=/usr/bin/true\\n".replace("\\n", "\n"))
                 health_timer.write_text(
-                    "[Timer]\\nOnActiveSec=1h\\nUnit=" + prefix + "-health.service\\n".replace("\\n", "\n"))
+                    "[Timer]\\nOnActiveSec=1h\\nUnit=" + prefix + "-health.service\\n")
                 run("systemctl", "daemon-reload")
-                run("systemd-analyze", "verify", str(service_path), str(timer_path), str(health_service), str(health_timer))
+                verification = run("systemd-analyze", "verify", str(service_path), str(timer_path),
+                                   str(health_service), str(health_timer), check=False)
+                if verification.returncode:
+                    self.fail("systemd unit verify failed: " + verification.stderr)
                 run("systemctl", "start", prefix + ".timer", prefix + "-health.timer")
                 self.assertEqual(run("systemctl", "is-active", prefix + ".timer").stdout.strip(), "active")
                 self.assertEqual(run("systemctl", "is-active", prefix + "-health.timer").stdout.strip(), "active")
@@ -61,7 +64,9 @@ class SystemdTests(unittest.TestCase):
                 if result.returncode:
                     self.fail(run("journalctl", "-u", prefix + ".service", "--no-pager", "-n", "25").stdout)
                 for _ in range(20):
-                    if run("systemctl", "is-active", prefix + ".timer", check=False).stdout.strip() == "inactive":
+                    main_stopped = run("systemctl", "is-active", prefix + ".timer", check=False).stdout.strip() == "inactive"
+                    health_stopped = run("systemctl", "is-active", prefix + "-health.timer", check=False).stdout.strip() == "inactive"
+                    if main_stopped and health_stopped:
                         break
                     time.sleep(0.1)
                 self.assertEqual(run("systemctl", "is-active", prefix + ".timer", check=False).stdout.strip(), "inactive")
