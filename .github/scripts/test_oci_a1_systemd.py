@@ -36,20 +36,27 @@ class SystemdTests(unittest.TestCase):
             service = service.replace("WorkingDirectory=/opt/pawcycle-a1", "WorkingDirectory=" + temp)
             service = re.sub(r"^ExecStart=.*$", "ExecStart=" + sys.executable + " " + str(directory / "tick.py"), service, flags=re.M)
             service = service.replace("pawcycle-a1.timer", prefix + ".timer")
+            service = service.replace("pawcycle-a1-health.timer", prefix + "-health.timer")
             timer = (root / "infra/oci-a1/pawcycle-a1.timer").read_text().replace("pawcycle-a1.service", prefix + ".service")
             # CI hosts have already passed OnBootSec; avoid racing the explicit
             # manual service start/assertion with an immediate boot activation.
             timer = timer.replace("OnBootSec=60s", "OnActiveSec=1h")
             service_path, timer_path = (unit_dir / (prefix + suffix) for suffix in (".service", ".timer"))
+            health_service = unit_dir / (prefix + "-health.service")
+            health_timer = unit_dir / (prefix + "-health.timer")
             def run(*args, check=True):
                 return subprocess.run(args, check=check, capture_output=True, text=True, timeout=20)
             try:
                 service_path.write_text(service)
                 timer_path.write_text(timer)
+                health_service.write_text("[Service]\\nType=oneshot\\nExecStart=/usr/bin/true\\n".replace("\\n", "\n"))
+                health_timer.write_text(
+                    "[Timer]\\nOnActiveSec=1h\\nUnit=" + prefix + "-health.service\\n".replace("\\n", "\n"))
                 run("systemctl", "daemon-reload")
-                run("systemd-analyze", "verify", str(service_path), str(timer_path))
-                run("systemctl", "start", prefix + ".timer")
+                run("systemd-analyze", "verify", str(service_path), str(timer_path), str(health_service), str(health_timer))
+                run("systemctl", "start", prefix + ".timer", prefix + "-health.timer")
                 self.assertEqual(run("systemctl", "is-active", prefix + ".timer").stdout.strip(), "active")
+                self.assertEqual(run("systemctl", "is-active", prefix + "-health.timer").stdout.strip(), "active")
                 result = run("systemctl", "start", prefix + ".service", check=False)
                 if result.returncode:
                     self.fail(run("journalctl", "-u", prefix + ".service", "--no-pager", "-n", "25").stdout)
@@ -58,11 +65,14 @@ class SystemdTests(unittest.TestCase):
                         break
                     time.sleep(0.1)
                 self.assertEqual(run("systemctl", "is-active", prefix + ".timer", check=False).stdout.strip(), "inactive")
+                self.assertEqual(run("systemctl", "is-active", prefix + "-health.timer", check=False).stdout.strip(), "inactive")
                 self.assertEqual((directory / "STOP").read_text().strip(), "provisioned")
             finally:
-                run("systemctl", "stop", prefix + ".timer", prefix + ".service", check=False)
+                run("systemctl", "stop", prefix + ".timer", prefix + ".service", prefix + "-health.timer", check=False)
                 service_path.unlink(missing_ok=True)
                 timer_path.unlink(missing_ok=True)
+                health_service.unlink(missing_ok=True)
+                health_timer.unlink(missing_ok=True)
                 run("systemctl", "daemon-reload")
 
 
