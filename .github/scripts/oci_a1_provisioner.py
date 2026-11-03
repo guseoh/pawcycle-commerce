@@ -104,7 +104,7 @@ class Store:
         # Missing/corrupt state is NEVER interpreted as permission to initialize.
         s = json.loads(self.path.read_text(encoding="utf-8"))
         require(s.get("version") == 1 and s.get("mode") in
-                ("DISABLED", "dry-run", "enabled", "provisioned", "halted"), "invalid_state")
+                ("DISABLED", "dry-run", "enabled", "approval_expired", "provisioned", "halted"), "invalid_state")
         require(s.get("phase") in ("ready", "pending", "tracking", "done"), "invalid_state")
         require(bool(s.get("token")) and bool(s.get("config_sha256")), "invalid_state")
         require((s["phase"] != "done" or s["mode"] == "provisioned") and
@@ -138,13 +138,27 @@ class Store:
         require(not self.path.exists() and not (self.directory / "STOP").exists(), "state_already_exists")
         self.save(dict(version=1, mode="DISABLED", phase="ready", token=str(uuid.uuid4()),
                        config_sha256=config_digest(c), failures=0, next_at=0, last_ok=0,
-                       initialized_at=time.time()))
+                       initialized_at=time.time(), approved_expiry=c.get("approval_expires_at", 0)))
 
 
 class Worker:
     def __init__(self, api, store, notify, now=time.time, host=None):
         self.api, self.store, self.notify, self.now = api, store, notify, now
         self.host = host
+
+    def reapprove(self, c):
+        with self.store.lock() as acquired:
+            require(acquired, "locked")
+            s = self.store.load()
+            require(s["mode"] not in ("halted", "provisioned"), "terminal_state")
+            require(not (self.store.directory / "STOP").exists(), "stop_latch_present")
+            validate_config(c, self.now(), self.host)
+            require(s["config_sha256"] == config_digest(c), "config_changed")
+            require(c["approval_expires_at"] > s.get("approved_expiry", 0), "approval_not_extended")
+            s["approved_expiry"] = c["approval_expires_at"]
+            s.pop("notified_approval_expiring", None)
+            s["mode"] = "DISABLED"
+            self.store.save(s)
 
     def alert(self, s, event):
         key = "notified_" + event
@@ -179,12 +193,31 @@ class Worker:
             if s["mode"] in ("provisioned", "halted"):
                 self.alert(s, s["mode"])
                 return s["mode"]
+            if s["mode"] == "approval_expired":
+                return "approval_expired"
             if c.get("mode", "DISABLED") == "DISABLED":
                 s["mode"] = "DISABLED"
                 self.store.save(s)
                 return "DISABLED"
             now = self.now()
             try:
+                expires = c.get("approval_expires_at", 0)
+                require(isinstance(expires, (int, float)) and math.isfinite(expires), "invalid_approval")
+                # Legacy states are bound to their first observed approval; future
+                # changes require the explicit reapproval command.
+                if "approved_expiry" not in s:
+                    s["approved_expiry"] = expires
+                    self.store.save(s)
+                if expires != s["approved_expiry"]:
+                    s["mode"] = "approval_expired"
+                    self.store.save(s)
+                    return "approval_expired"
+                if now >= expires:
+                    s["mode"] = "approval_expired"
+                    self.store.save(s)
+                    return "approval_expired"
+                if expires - now <= 3600:
+                    self.alert(s, "approval_expiring")
                 validate_config(c, now, self.host)
                 require(s["config_sha256"] == config_digest(c), "config_changed")
                 require(not (self.store.directory / "STOP").exists(), "stop_latch_present")
@@ -206,6 +239,7 @@ class Worker:
                             s.update(phase="pending", requested_at=now)
                             self.store.save(s)
                             try:
+                                validate_config(c, self.now(), self.host)
                                 instance_id = self.api.launch(c, s["token"])
                             except ApiError as exc:
                                 if exc.kind in ("capacity", "throttled"):
@@ -228,7 +262,11 @@ class Worker:
                 else:
                     self.halt(s, "oci_access_quota_or_configuration")
             except GateError as exc:
-                self.halt(s, str(exc))
+                if str(exc) == "approval_expired_or_too_long" and self.now() >= c.get("approval_expires_at", 0):
+                    s["mode"] = "approval_expired"
+                    self.store.save(s)
+                else:
+                    self.halt(s, str(exc))
             except Exception:
                 self.halt(s, "unexpected_failure")
             return s["mode"]
@@ -255,6 +293,7 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--initialize", action="store_true")
+    parser.add_argument("--reapprove", action="store_true", help="Explicitly approve an unchanged plan")
     parser.add_argument("--health", action="store_true", help="Local stale-run watchdog; no OCI calls")
     parser.add_argument("--network-fingerprint", action="store_true", help="Read-only network approval hash")
     args = parser.parse_args()
@@ -267,7 +306,7 @@ def main():
                 if not acquired:
                     return 0
                 s = store.load()
-                if c.get("mode") == "enabled" and s["mode"] not in ("provisioned", "halted"):
+                if c.get("mode") == "enabled" and s["mode"] not in ("provisioned", "halted", "approval_expired"):
                     stale = time.time() - (s.get("last_ok") or s["initialized_at"]) > 180
                     if stale and not s.get("notified_stale"):
                         notify_discord("stale")
@@ -283,6 +322,11 @@ def main():
                 store.initialize(c)
             print("DISABLED: initialized; no OCI calls")
             return 0
+        if args.reapprove:
+            host = hashlib.sha256(Path("/etc/machine-id").read_bytes().strip()).hexdigest()
+            Worker(None, store, None, host=host).reapprove(c)
+            print("approval recorded; next tick reconciles pending requests first")
+            return 0
         # Disabled/terminal ticks do not need OCI credentials or an SDK.
         from oci_a1_provisioner_api import OciApi, notify_discord
         if args.network_fingerprint:
@@ -297,7 +341,7 @@ def main():
         return 0
     except Exception:
         # Missing state/config, disk full, SDK import failure etc. latch STOP too.
-        if not args.health:
+        if not (args.health or args.reapprove or args.network_fingerprint):
             try:
                 store.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
                 (store.directory / "STOP").touch()

@@ -83,6 +83,60 @@ class WorkerTests(unittest.TestCase):
         self.notify.assert_not_called()
         self.assertEqual(self.store.load()["last_ok"], 1000)
 
+    def test_expiry_warning_once_and_expired_state_preserved(self):
+        self.api.status = "OUT_OF_HOST_CAPACITY"
+        self.clock = 6400
+        self.w.tick(self.c)
+        self.w.tick(self.c)
+        self.notify.assert_called_once_with("approval_expiring")
+        token = self.store.load()["token"]
+        self.clock = 10000
+        self.assertEqual(self.w.tick(self.c), "approval_expired")
+        s = self.store.load()
+        self.assertEqual((s["token"], s["phase"]), (token, "ready"))
+        self.clock = 9000  # A backwards clock adjustment cannot resume approval.
+        self.assertEqual(self.w.tick(self.c), "approval_expired")
+        self.assertEqual(self.api.launches, [])
+
+    def test_reapproval_requires_explicit_command_and_preserves_pending(self):
+        self.api.error = worker.ApiError("uncertain")
+        self.api.matches = []
+        self.w.tick(self.c)
+        previous = self.store.load()
+        self.clock = 10000
+        self.assertEqual(self.w.tick(self.c), "approval_expired")
+        self.c["approval_expires_at"] = 15000
+        self.assertEqual(self.w.tick(self.c), "approval_expired")
+        self.w.reapprove(self.c)
+        s = self.store.load()
+        self.assertEqual((s["token"], s["phase"], s["requested_at"]),
+                         (previous["token"], "pending", previous["requested_at"]))
+        self.api.matches = [("fake-instance", "RUNNING")]
+        self.w.tick(self.c)
+        self.assertEqual(self.store.load()["mode"], "provisioned")
+        self.assertEqual(len(self.api.launches), 1)
+
+    def test_reapproval_does_not_accept_changed_gate(self):
+        self.c["approval_expires_at"] = 15000
+        self.c["free_image_confirmed"] = False
+        with self.assertRaises(worker.GateError):
+            self.w.reapprove(self.c)
+        self.assertEqual(self.store.load()["approved_expiry"], 10000)
+
+    def test_tracking_expiry_reapproval_never_relaunches(self):
+        self.api.matches = [("fake-instance", "PROVISIONING")]
+        self.w.tick(self.c)
+        original = self.store.load()
+        self.clock = 10000
+        self.w.tick(self.c)
+        self.c["approval_expires_at"] = 15000
+        self.w.reapprove(self.c)
+        self.assertEqual(self.store.load()["instance_id"], original["instance_id"])
+        self.api.matches = [("fake-instance", "RUNNING")]
+        self.w.tick(self.c)
+        self.assertEqual(self.store.load()["mode"], "provisioned")
+        self.assertEqual(len(self.api.launches), 1)
+
     def test_disabled_no_api_even_with_placeholder_config(self):
         self.c = {"mode": "DISABLED"}
         self.assertEqual(self.w.tick(self.c), "DISABLED")
@@ -293,7 +347,15 @@ class AdapterTests(unittest.TestCase):
         self.api.preflight(self.c)
         self.clients["compute"].list_instances.assert_any_call(compartment_id=self.c["tenancy_id"])
         self.clients["compute"].list_instances.assert_any_call(compartment_id=self.c["compartment_id"])
-        self.assertEqual(self.clients["limits"].get_resource_availability.call_count, 9)
+        self.assertEqual(self.clients["limits"].get_resource_availability.call_count, 5)
+        from unittest.mock import call
+        self.assertEqual(self.clients["limits"].get_resource_availability.call_args_list, [
+            call("compute", "standard-a1-core-count", self.c["compartment_id"], availability_domain=worker.AD),
+            call("compute", "standard-a1-core-count", self.c["tenancy_id"], availability_domain=worker.AD),
+            call("compute", "standard-a1-memory-count", self.c["compartment_id"], availability_domain=worker.AD),
+            call("compute", "standard-a1-memory-count", self.c["tenancy_id"], availability_domain=worker.AD),
+            call("block-storage", "total-storage-gb", self.c["compartment_id"], availability_domain=worker.AD),
+        ])
 
     def test_existing_stopped_vm_different_name_blocks(self):
         self.clients["compute"].list_instances.return_value = response([
@@ -323,8 +385,28 @@ class AdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(worker.GateError, "not_home_region"):
             self.api.preflight(self.c)
 
+    def test_limits_unsupported_or_unauthorized_fail_closed(self):
+        for status in (403, 404):
+            with self.subTest(status=status):
+                self.clients["limits"].get_resource_availability.side_effect = self.sdk.exceptions.ServiceError(
+                    status, "Unavailable", {}, "hidden")
+                with self.assertRaises(worker.ApiError) as caught:
+                    self.api.preflight(self.c)
+                self.assertEqual(caught.exception.kind, "fatal")
+                self.clients["compute"].launch_instance.assert_not_called()
+
     def test_tenancy_compute_usage_from_non_vm_consumer_blocks(self):
         self.clients["limits"].get_resource_availability.return_value.data.used = 1
+        with self.assertRaisesRegex(worker.GateError, "free_compute_exceeded"):
+            self.api.preflight(self.c)
+
+    def test_other_ad_compute_usage_blocks_free_budget(self):
+        self.clients["identity"].list_availability_domains.return_value = response(
+            [NS(name=worker.AD), NS(name="other-ad")])
+        def availability(service, name, compartment, **kwargs):
+            used = 1 if compartment == self.c["tenancy_id"] and kwargs["availability_domain"] == "other-ad" else 0
+            return response(self.sdk.limits.models.ResourceAvailability(available=200, used=used))
+        self.clients["limits"].get_resource_availability.side_effect = availability
         with self.assertRaisesRegex(worker.GateError, "free_compute_exceeded"):
             self.api.preflight(self.c)
 

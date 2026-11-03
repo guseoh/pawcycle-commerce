@@ -116,8 +116,6 @@ class OciApi:
         for service, name, needed, ad in (
                 ("compute", "standard-a1-core-count", 2, AD),
                 ("compute", "standard-a1-memory-count", 12, AD),
-                ("compute", "standard-a1-core-regional-count", 2, None),
-                ("compute", "standard-a1-memory-regional-count", 12, None),
                 ("block-storage", "total-storage-gb", 50, AD)):
             available = self.call("limits", "get_resource_availability", service, name,
                                   c["compartment_id"], **({"availability_domain": ad} if ad else {})).data
@@ -126,13 +124,16 @@ class OciApi:
                 values.append(available.fractional_availability)
             require(all(isinstance(x, (int, float)) and x >= needed for x in values), "quota_insufficient")
             if service == "compute":
-                total = self.call("limits", "get_resource_availability", service, name,
-                                  c["tenancy_id"], **({"availability_domain": ad} if ad else {})).data
                 budget = c["free_memory_gb"] if "memory" in name else c["free_ocpus"]
                 # Also cover A1 consumers such as Container Instances, not just VMs.
-                used = total.fractional_usage if total.fractional_usage is not None else total.used
-                require(isinstance(used, (int, float)) and used >= 0 and used + needed <= budget,
-                        "free_compute_exceeded_or_unknown")
+                usage = 0
+                for domain in ads:
+                    total = self.call("limits", "get_resource_availability", service, name,
+                                      c["tenancy_id"], availability_domain=domain.name).data
+                    used = total.fractional_usage if total.fractional_usage is not None else total.used
+                    require(isinstance(used, (int, float)) and used >= 0, "free_compute_exceeded_or_unknown")
+                    usage += used
+                require(usage + needed <= budget, "free_compute_exceeded_or_unknown")
         image = self.call("compute", "get_image", c["image_id"]).data
         require(image.lifecycle_state == "AVAILABLE" and image.compartment_id is None
                 and image.operating_system in ("Canonical Ubuntu", "Oracle Linux")
@@ -207,7 +208,7 @@ class OciApi:
 
 def notify_discord(event):
     # An allowlisted event is the entire notification. No instance/SDK payloads.
-    require(event in ("provisioned", "halted", "stale"), "invalid_notification")
+    require(event in ("provisioned", "halted", "stale", "approval_expiring"), "invalid_notification")
     url = os.environ.get("DISCORD_WEBHOOK_URL", "")
     require(url.startswith("https://discord.com/api/webhooks/"), "invalid_webhook")
     payload = json.dumps({"username": "PawCycle A1 Provisioner", "allowed_mentions": {"parse": []},
