@@ -57,11 +57,14 @@ Keep the existing report-only user/key unchanged. Create a separate dedicated pr
 | Scope | Required permissions / resource types |
 | --- | --- |
 | Tenancy read inventory | inspect compartments; inspect region-subscriptions/availability-domains; read instances and volumes/boot-volumes across every relevant compartment; read resource-availability through `resource-availability` |
-| Approved compartment | manage `compute-capacity-reports` for COMPUTE_CAPACITY_REPORT_CREATE; INSTANCE_CREATE through a permission-filtered instances policy; INSTANCE_READ/INSPECT for tracking |
+| Root tenancy (Capacity Report only) | `COMPUTE_CAPACITY_REPORT_CREATE` against the root tenancy compartment for read-only host capacity reporting; review the dedicated identity policy scope without broad `manage` grants |
+| Approved instance compartment | INSTANCE_CREATE through a permission-filtered instances policy; INSTANCE_READ/INSPECT for tracking |
 | Approved image | INSTANCE_IMAGE_READ through read instance-images; use only a reviewed free platform image |
 | Approved existing subnet | VNIC_CREATE/VNIC_ATTACH and SUBNET_ATTACH, with VNIC_READ/INSPECT for required use; restrict to approved compartment/subnet where IAM supports it |
 | Approved existing NSGs, if any | NETWORK_SECURITY_GROUP_UPDATE_MEMBERS and VNIC_ASSOCIATE_NETWORK_SECURITY_GROUP; inspection/read for fingerprinting |
 | Existing network reads | read virtual-network-family resources needed for GetSubnet/GetRouteTable/GetSecurityList/GetNetworkSecurityGroup/ListNetworkSecurityGroupSecurityRules; no create/update/delete of rules/routes |
+
+Oracle requires the root tenancy compartment ID in `CreateComputeCapacityReportDetails.compartment_id`. The selected `pawcycle-prod` compartment remains the target for `LaunchInstance`, instance inventory, and resource-availability checks; the Capacity Report request is not a VM creation and does not change the launch target. Validate the report-only permissions against the root-scope API and keep the existing monitor identity separate.
 
 Consult Oracle's [operation-to-permission table](https://docs.oracle.com/en-us/iaas/Content/Identity/policyreference/corepolicyreference_topic-Permissions_Required_for_Each_API_Operation.htm), [core policy reference](https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm) and [Limits policies](https://docs.oracle.com/en-us/iaas/Content/General/service-limits/overview.htm). Draft statements should use `where request.permission = 'INSTANCE_CREATE'` (plus separately scoped read grants), rather than unrestricted manage. Review the LaunchInstance boot-volume side effects and account-specific permission dependencies against those official tables. Read-only dry-run cannot prove INSTANCE_CREATE is granted; authorize it through policy review, not a trial VM. Missing permissions halt; do not broaden grants to make a test pass. No policy is created or changed by this PR.
 

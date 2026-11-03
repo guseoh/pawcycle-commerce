@@ -571,6 +571,14 @@ class AdapterTests(unittest.TestCase):
                 instance_shape=worker.SHAPE, availability_status="AVAILABLE", available_count=1,
                 instance_shape_config=m.CapacityReportInstanceShapeConfig(ocpus=2, memory_in_gbs=12))]))
         self.assertEqual(self.api.capacity(self.c), "AVAILABLE")
+        details = self.clients["compute"].create_compute_capacity_report.call_args.args[0]
+        self.assertEqual(details.compartment_id, self.c["tenancy_id"])
+        self.assertNotEqual(details.compartment_id, self.c["compartment_id"])
+        self.assertEqual(details.availability_domain, worker.AD)
+        self.assertEqual(len(details.shape_availabilities), 1)
+        self.assertEqual(details.shape_availabilities[0].instance_shape, worker.SHAPE)
+        self.assertEqual(details.shape_availabilities[0].instance_shape_config.ocpus, 2)
+        self.assertEqual(details.shape_availabilities[0].instance_shape_config.memory_in_gbs, 12)
 
     def test_exception_classification_does_not_expose_payload(self):
         for status, code, message, expected in ((500, "InternalError", "Out of host capacity.", "capacity"),
