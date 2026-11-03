@@ -129,3 +129,18 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 - `Production Verified`: 실제 운영 적용 전후와 필요한 복구 증거까지 확보
 
 실제 운영을 실행하지 않은 작업에 `Production Verified`를 사용하지 않는다.
+
+## LLM Wiki — 전체 작업 기록 정책 (2026-11-03)
+
+공통 AI 지식 저장소는 [cs/Wiki](https://github.com/guseoh/cs/tree/main/Wiki)입니다. 이 프로젝트는 [중앙 캡처 정책](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)의 `full` 모드를 따릅니다. 프로젝트 내부 `docs/adr/**`, Runbook, QA, PR 및 코드는 원본 근거이고, Wiki는 AI 간 장기 맥락을 재사용하기 위한 보조 인덱스입니다.
+
+- **매 작업 종료 시 자동 평가:** 사용자가 매번 "Wiki에 기록"이라고 말하지 않아도 설계·구현·작은 UI 수정·테스트·실패 원인·CI·운영 조사 등 완료한 작업 단위를 간결한 Journal 후보로 정리합니다. 파일별 변경 로그나 전체 대화 복사는 만들지 않습니다. 아무 작업도 이루어지지 않았다면 기록하지 않습니다.
+- **중요한 결정은 별도 Decision:** 아키텍처, 트랜잭션, DB·API, 보안·비용·복구, 운영 승인 경계 등의 최종 선택에는 배경, 비교 대안, 트레이드오프, 근거 PR/ADR를 포함합니다. 아직 승인이 없는 안은 반드시 `proposed`로 구분합니다.
+- **완료 상태를 분리:** 조사·설계 완료, 코드 변경, CI 성공, 승인, 실제 OCI 운영 적용, `Production Verified`는 각각 다른 사실입니다. 기존 Lean Harness의 승인·검증·복구 Gate를 Wiki 기록 때문에 완화할 수 없습니다.
+- **자동 이력과 중복 제거:** 공개 병합 PR의 metadata-only Journal은 중앙 Wiki의 GitHub Actions가 수집합니다. 동일 PR 번호·commit 또는 작업과 연결되는 별도 세션 이력은 중복 생성하지 않고 근거를 연결합니다.
+- **저장 경계:** 공개 가능한 내용만 기록합니다. 계정·가격·키·Webhook·사용자 정보·원시 운영 데이터·비공개 대화는 `guseoh/cs` 공개 저장소로 내보내지 않습니다. 현재 작업의 GitHub 권한과 승인 범위가 허용하면 중앙 Wiki의 **검토 PR**로 반영하고, 접근 권한 또는 공개 승인이 부족하면 짧은 미반영 변경안을 결과에 남깁니다. Wiki 제출은 코드 변경·새 제품 결정·PR 병합·운영 실행 승인과 별개입니다.
+- **작업 시작 검색:** 과거 결정을 알아야 하는 작업은 중앙 `Wiki/index.md` → `projects/pawcycle.md` → 관련 Decision만 조회합니다. 오래된 Wiki 내용보다 현재 작업 시점의 실제 저장소·운영 증거를 우선합니다.
+
+Wiki 제출 여부를 작업 결과에 명시해 `기록 완료`, `검토 PR 생성`, `권한 또는 공개 범위 때문에 미반영`을 구분합니다. 자동 수집 대상이 아닌 작업은 미기록 가능성을 감추지 않습니다.
+
+기록 형식과 작성 절차는 중앙 [Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md) 및 [handoff 계약](https://github.com/guseoh/cs/blob/main/Wiki/handoff.md)을 따릅니다. 이 지침만으로 모든 AI 클라이언트가 대화를 자동 읽거나 GitHub 쓰기 권한을 얻지는 않습니다.
