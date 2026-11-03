@@ -141,4 +141,6 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 - **저장 경계:** 공개 가능한 내용만 기록합니다. 계정·가격·키·Webhook·사용자 정보·원시 운영 데이터·비공개 대화는 `guseoh/cs` 공개 저장소로 내보내지 않습니다. 현재 작업의 GitHub 권한과 승인 범위가 허용하면 중앙 Wiki의 **검토 PR**로 반영하고, 접근 권한 또는 공개 승인이 부족하면 짧은 미반영 변경안을 결과에 남깁니다. Wiki 제출은 코드 변경·새 제품 결정·PR 병합·운영 실행 승인과 별개입니다.
 - **작업 시작 검색:** 과거 결정을 알아야 하는 작업은 중앙 `Wiki/index.md` → `projects/pawcycle.md` → 관련 Decision만 조회합니다. 오래된 Wiki 내용보다 현재 작업 시점의 실제 저장소·운영 증거를 우선합니다.
 
+Wiki 제출 여부를 작업 결과에 명시해 `기록 완료`, `검토 PR 생성`, `권한 또는 공개 범위 때문에 미반영`을 구분합니다. 자동 수집 대상이 아닌 작업은 미기록 가능성을 감추지 않습니다.
+
 기록 형식과 작성 절차는 중앙 [Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md) 및 [handoff 계약](https://github.com/guseoh/cs/blob/main/Wiki/handoff.md)을 따릅니다. 이 지침만으로 모든 AI 클라이언트가 대화를 자동 읽거나 GitHub 쓰기 권한을 얻지는 않습니다.
