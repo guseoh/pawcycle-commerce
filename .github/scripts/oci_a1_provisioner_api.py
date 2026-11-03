@@ -128,11 +128,12 @@ class OciApi:
                 # Also cover A1 consumers such as Container Instances, not just VMs.
                 usage = 0
                 for domain in ads:
-                    total = self.call("limits", "get_resource_availability", service, name,
-                                      c["tenancy_id"], availability_domain=domain.name).data
-                    used = total.fractional_usage if total.fractional_usage is not None else total.used
-                    require(isinstance(used, (int, float)) and used >= 0, "free_compute_exceeded_or_unknown")
-                    usage += used
+                    for compartment in compartments:
+                        total = self.call("limits", "get_resource_availability", service, name,
+                                          compartment, availability_domain=domain.name).data
+                        used = total.fractional_usage if total.fractional_usage is not None else total.used
+                        require(isinstance(used, (int, float)) and used >= 0, "free_compute_exceeded_or_unknown")
+                        usage += used
                 require(usage + needed <= budget, "free_compute_exceeded_or_unknown")
         image = self.call("compute", "get_image", c["image_id"]).data
         require(image.lifecycle_state == "AVAILABLE" and image.compartment_id is None

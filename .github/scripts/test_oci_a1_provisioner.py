@@ -367,13 +367,15 @@ class AdapterTests(unittest.TestCase):
         self.api.preflight(self.c)
         self.clients["compute"].list_instances.assert_any_call(compartment_id=self.c["tenancy_id"])
         self.clients["compute"].list_instances.assert_any_call(compartment_id=self.c["compartment_id"])
-        self.assertEqual(self.clients["limits"].get_resource_availability.call_count, 5)
+        self.assertEqual(self.clients["limits"].get_resource_availability.call_count, 7)
         from unittest.mock import call
         self.assertEqual(self.clients["limits"].get_resource_availability.call_args_list, [
             call("compute", "standard-a1-core-count", self.c["compartment_id"], availability_domain=worker.AD),
             call("compute", "standard-a1-core-count", self.c["tenancy_id"], availability_domain=worker.AD),
+            call("compute", "standard-a1-core-count", self.c["compartment_id"], availability_domain=worker.AD),
             call("compute", "standard-a1-memory-count", self.c["compartment_id"], availability_domain=worker.AD),
             call("compute", "standard-a1-memory-count", self.c["tenancy_id"], availability_domain=worker.AD),
+            call("compute", "standard-a1-memory-count", self.c["compartment_id"], availability_domain=worker.AD),
             call("block-storage", "total-storage-gb", self.c["compartment_id"], availability_domain=worker.AD),
         ])
 
@@ -425,6 +427,14 @@ class AdapterTests(unittest.TestCase):
             [NS(name=worker.AD), NS(name="other-ad")])
         def availability(service, name, compartment, **kwargs):
             used = 1 if compartment == self.c["tenancy_id"] and kwargs["availability_domain"] == "other-ad" else 0
+            return response(self.sdk.limits.models.ResourceAvailability(available=200, used=used))
+        self.clients["limits"].get_resource_availability.side_effect = availability
+        with self.assertRaisesRegex(worker.GateError, "free_compute_exceeded"):
+            self.api.preflight(self.c)
+
+    def test_child_compartment_compute_usage_blocks_free_budget(self):
+        def availability(service, name, compartment, **kwargs):
+            used = 1 if compartment == self.c["compartment_id"] else 0
             return response(self.sdk.limits.models.ResourceAvailability(available=200, used=used))
         self.clients["limits"].get_resource_availability.side_effect = availability
         with self.assertRaisesRegex(worker.GateError, "free_compute_exceeded"):
