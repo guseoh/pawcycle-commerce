@@ -123,6 +123,15 @@ class WorkerTests(unittest.TestCase):
             self.w.reapprove(self.c)
         self.assertEqual(self.store.load()["approved_expiry"], 10000)
 
+    def test_legacy_state_requires_explicit_reapproval(self):
+        state = self.store.load()
+        del state["approved_expiry"]
+        self.store.save(state)
+        self.assertEqual(self.w.tick(self.c), "approval_expired")
+        self.assertEqual(self.api.launches, [])
+        self.w.reapprove(self.c)
+        self.assertEqual(self.store.load()["approved_expiry"], 10000)
+
     def test_tracking_expiry_reapproval_never_relaunches(self):
         self.api.matches = [("fake-instance", "PROVISIONING")]
         self.w.tick(self.c)

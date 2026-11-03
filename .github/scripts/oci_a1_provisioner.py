@@ -203,11 +203,11 @@ class Worker:
             try:
                 expires = c.get("approval_expires_at", 0)
                 require(isinstance(expires, (int, float)) and math.isfinite(expires), "invalid_approval")
-                # Legacy states are bound to their first observed approval; future
-                # changes require the explicit reapproval command.
+                # A legacy state has no durable approval binding: never infer one.
                 if "approved_expiry" not in s:
-                    s["approved_expiry"] = expires
+                    s["mode"] = "approval_expired"
                     self.store.save(s)
+                    return "approval_expired"
                 if expires != s["approved_expiry"]:
                     s["mode"] = "approval_expired"
                     self.store.save(s)
