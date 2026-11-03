@@ -146,6 +146,17 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.store.load()["mode"], "provisioned")
         self.assertEqual(len(self.api.launches), 1)
 
+    def test_dry_run_does_not_halt_unresolved_request(self):
+        self.api.error = worker.ApiError("uncertain")
+        self.w.tick(self.c)
+        before = self.store.load()
+        self.c["mode"] = "dry-run"
+        self.assertEqual(self.w.tick(self.c), "pending_requires_reconciliation")
+        after = self.store.load()
+        self.assertEqual((after["mode"], after["phase"], after["token"]),
+                         (before["mode"], before["phase"], before["token"]))
+        self.assertFalse((self.store.directory / "STOP").exists())
+
     def test_disabled_no_api_even_with_placeholder_config(self):
         self.c = {"mode": "DISABLED"}
         self.assertEqual(self.w.tick(self.c), "DISABLED")

@@ -222,7 +222,8 @@ class Worker:
                 require(s["config_sha256"] == config_digest(c), "config_changed")
                 require(not (self.store.directory / "STOP").exists(), "stop_latch_present")
                 # A dry-run must never resume an earlier real launch transaction.
-                require(c["mode"] != "dry-run" or s["phase"] == "ready", "pending_requires_reconciliation")
+                if c["mode"] == "dry-run" and s["phase"] != "ready":
+                    return "pending_requires_reconciliation"
                 s["mode"] = c["mode"]
                 if now < s["next_at"]:
                     return "backoff"
