@@ -55,7 +55,7 @@ description: >-
    - marker가 있는 PR은 `.github/workflows/request-coderabbit-review.yml`이 review-ready handoff 상태를 평가한다. native auto-review 대상이 아니고 최신 HEAD review가 없으면 workflow는 **manual-review reminder만** 남기며 CodeRabbit 명령을 직접 실행하지 않는다.
    - Codex Prompt에는 `@coderabbitai review` 호출을 넣지 않는다. 실제 manual review 요청은 review 단계에서 사용자 인증 GitHub identity로 수행한다.
    - Codex 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 다시 ChatGPT에 복사해야 하는 계약으로 만들지는 않는다.
-   
+
 8. **작업 종료 Wiki Capture 연결**
    - 구현 완료 또는 검증 중단 후 `docs/runbook/lean-harness.md` §16에 따라 확인된 변경·중요한 결정·검증과 실패·미완료 사항을 **짧은 Wiki 후보**로 평가하도록 Codex Prompt에 한 줄로 지시한다. 공통 Wiki 정책·스키마·원문을 Prompt에 복사하지 않는다.
    - PR, commit, Task ID를 근거로 사용하고 동일 사실을 중복 기록하지 않는다. 제품 작업 결과 보고에는 실제 Wiki 상태(검토 PR/자동 수집 대상/미반영/대상 없음)를 구별한다.
