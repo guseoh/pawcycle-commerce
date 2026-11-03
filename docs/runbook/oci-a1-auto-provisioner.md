@@ -21,8 +21,9 @@ The default configuration and initialized state are `DISABLED`. Each CLI call pe
 | OUT_OF_HOST_CAPACITY report | No launch or alert; next 60-second tick |
 | AVAILABLE | Fresh preflight, then launch once if enabled; availability alone is not success |
 | Definitive capacity rejection from launch | Return to polling, retaining the token |
-| HTTP 429 | Same-token retry after 60/120/240/480 seconds; fifth transient failure halts |
+| HTTP 429 before launch (capacity/preflight reads) | Back off 60/120/240/480 seconds; fifth transient failure halts |
 | Read-side 5xx/transport error | Bounded exponential backoff (maximum 900 seconds) |
+| Launch HTTP 429 | Treat as potentially accepted; retain pending intent, back off and reconcile only; **no automatic relaunch** |
 | Launch 5xx/timeout/lost response | Persist pending intent; back off and reconcile tagged instances; **never automatically launch again** |
 | Pending request absent from inventory | Recheck after 60 seconds; after 15 minutes halt for manual investigation, retaining token |
 | Known instance PROVISIONING/STARTING | Track by ID and tags; after 30 minutes halt |
