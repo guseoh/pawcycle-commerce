@@ -49,9 +49,10 @@ class SystemdTests(unittest.TestCase):
             try:
                 service_path.write_text(service)
                 timer_path.write_text(timer)
-                health_service.write_text("[Service]\\nType=oneshot\\nExecStart=/usr/bin/true\\n".replace("\\n", "\n"))
-                health_timer.write_text(
-                    "[Timer]\\nOnActiveSec=1h\\nUnit=" + prefix + "-health.service\\n")
+                health_service.write_text(os.linesep.join(
+                    ["[Service]", "Type=oneshot", "ExecStart=/usr/bin/true", ""]))
+                health_timer.write_text(os.linesep.join(
+                    ["[Timer]", "OnActiveSec=1h", "Unit=" + prefix + "-health.service", ""]))
                 run("systemctl", "daemon-reload")
                 verification = run("systemd-analyze", "verify", str(service_path), str(timer_path),
                                    str(health_service), str(health_timer), check=False)
