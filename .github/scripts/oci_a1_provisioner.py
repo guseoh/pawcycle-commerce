@@ -243,8 +243,11 @@ class Worker:
                                 validate_config(c, self.now(), self.host)
                                 instance_id = self.api.launch(c, s["token"])
                             except ApiError as exc:
-                                if exc.kind in ("capacity", "throttled"):
-                                    s["phase"] = "ready"  # definite rejection only
+                                # A 429 after LaunchInstance may be ambiguous: retain
+                                # the durable intent and reconcile instead of relaunching.
+                                # Only a known capacity rejection returns to polling.
+                                if exc.kind == "capacity":
+                                    s["phase"] = "ready"
                                 raise
                             require(bool(instance_id), "missing_launch_identity")
                             s.update(phase="tracking", instance_id=instance_id)
