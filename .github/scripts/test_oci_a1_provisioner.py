@@ -98,6 +98,54 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.w.tick(self.c), "approval_expired")
         self.assertEqual(self.api.launches, [])
 
+    def test_campaign_cutoff_halts_even_approval_expired_without_oci_calls(self):
+        self.clock = worker.CAMPAIGN_END_UTC
+        state = self.store.load()
+        state["mode"] = "approval_expired"
+        self.store.save(state)
+        token = state["token"]
+        self.assertEqual(self.w.tick(self.c), "halted")
+        result = self.store.load()
+        self.assertEqual((result["mode"], result["reason"], result["token"], result["phase"]),
+                         ("halted", "campaign_ended", token, "ready"))
+        self.assertTrue((self.store.directory / "STOP").exists())
+        self.assertEqual(self.api.capacity_calls, 0)
+        self.assertEqual(self.api.launches, [])
+
+    def test_campaign_cutoff_preserves_pending_request(self):
+        state = self.store.load()
+        state.update(mode="enabled", phase="pending",
+                     requested_at=worker.CAMPAIGN_END_UTC - 100)
+        self.store.save(state)
+        self.clock = worker.CAMPAIGN_END_UTC
+        self.assertEqual(self.w.tick(self.c), "halted")
+        result = self.store.load()
+        self.assertEqual((result["token"], result["phase"], result["requested_at"]),
+                         (state["token"], "pending", state["requested_at"]))
+        self.assertEqual(self.api.capacity_calls, 0)
+        self.assertEqual(self.api.launches, [])
+
+    def test_campaign_cutoff_crossed_during_preflight_blocks_launch(self):
+        self.c["approval_expires_at"] = worker.CAMPAIGN_END_UTC
+        state = self.store.load()
+        state["approved_expiry"] = worker.CAMPAIGN_END_UTC
+        self.store.save(state)
+        self.clock = worker.CAMPAIGN_END_UTC - 60
+        def cross_cutoff(_):
+            self.clock = worker.CAMPAIGN_END_UTC
+        self.api.preflight = Mock(side_effect=cross_cutoff)
+        self.assertEqual(self.w.tick(self.c), "halted")
+        self.assertEqual(self.store.load()["reason"], "campaign_ended")
+        self.assertEqual(self.api.launches, [])
+        self.assertTrue((self.store.directory / "STOP").exists())
+
+    def test_campaign_cutoff_blocks_manual_reapproval(self):
+        self.clock = worker.CAMPAIGN_END_UTC
+        self.c["approval_expires_at"] = self.clock + 1200
+        with self.assertRaisesRegex(worker.GateError, "campaign_ended"):
+            self.w.reapprove(self.c)
+        self.assertEqual(self.api.launches, [])
+
     def test_reapproval_requires_explicit_command_and_preserves_pending(self):
         self.api.error = worker.ApiError("uncertain")
         self.api.matches = []
