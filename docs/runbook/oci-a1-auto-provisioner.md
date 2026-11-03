@@ -10,6 +10,10 @@ The [hourly read-only Capacity Watch and Discord Health workflow](oci-a1-capacit
 
 Only one designated machine is allowed: its `/etc/machine-id` SHA-256 must match the protected configuration, and the operator must attest that all other executors are fenced. Do not clone that machine ID. This is a single-executor deployment, not a distributed lock. The provisioning identity must not be used by another launcher. On host replacement, fence/revoke the old executor **first**, preserve state and STOP, and inspect OCI before approving a new machine binding. Without that fencing, activation is prohibited.
 
+## No-cost execution boundary
+
+The Python worker and systemd units have no separate license fee, but the **60-second timer requires a continuously running Linux host**. The existing E5 host may be reclaimed; installing this worker there does not provide monitoring after E5 shutdown. GitHub Actions' public-repository standard runners are free for the existing CI/hourly watcher, but they do not run this 60-second systemd worker. A genuinely no-additional-charge always-on executor is **not yet demonstrated**; do not enable billing/PAYG, provision a paid host, or assert an all-free deployment based on this repository alone. OCI Always Free A1 compute and its boot volume require home-region eligibility and remaining quota, independently of the API monitor.
+
 ## State, failures and cost gates
 
 The default configuration and initialized state are `DISABLED`. Each CLI call performs one tick. Protected configuration selects `dry-run` (all read-only preflight checks, even if unavailable) or `enabled`. Durable terminal modes are `provisioned` and `halted`; configuration cannot clear them. Missing/corrupt state fails closed. Initialization is explicit, refuses existing state/STOP, and makes no OCI call.
