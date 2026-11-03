@@ -2,6 +2,7 @@
 """One fail-closed tick; no OCI dependency in the state machine or persistence."""
 import argparse
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -12,6 +13,9 @@ import time
 import uuid
 
 from oci_a1_capacity_monitor import REGION, AD, SHAPE
+
+# Stop after 2026-11-07 KST inclusive; no new OCI actions on November 8 KST.
+CAMPAIGN_END_UTC = datetime(2026, 11, 7, 15, 0, tzinfo=timezone.utc).timestamp()
 
 
 class GateError(Exception):
@@ -152,6 +156,7 @@ class Worker:
             s = self.store.load()
             require(s["mode"] not in ("halted", "provisioned"), "terminal_state")
             require(not (self.store.directory / "STOP").exists(), "stop_latch_present")
+            require(self.now() < CAMPAIGN_END_UTC, "campaign_ended")
             validate_config(c, self.now(), self.host)
             require(s["config_sha256"] == config_digest(c), "config_changed")
             require(c["approval_expires_at"] > s.get("approved_expiry", 0), "approval_not_extended")
@@ -193,6 +198,9 @@ class Worker:
             if s["mode"] in ("provisioned", "halted"):
                 self.alert(s, s["mode"])
                 return s["mode"]
+            if self.now() >= CAMPAIGN_END_UTC:
+                self.halt(s, "campaign_ended")
+                return "halted"
             if s["mode"] == "approval_expired":
                 return "approval_expired"
             if c.get("mode", "DISABLED") == "DISABLED":
@@ -236,11 +244,13 @@ class Worker:
                         self.api.preflight(c)
                         if c["mode"] == "enabled":
                             validate_config(c, self.now(), self.host)
+                            require(self.now() < CAMPAIGN_END_UTC, "campaign_ended")
                             # fsync intent before the only potentially ambiguous call.
                             s.update(phase="pending", requested_at=now)
                             self.store.save(s)
                             try:
                                 validate_config(c, self.now(), self.host)
+                                require(self.now() < CAMPAIGN_END_UTC, "campaign_ended")
                                 instance_id = self.api.launch(c, s["token"])
                             except ApiError as exc:
                                 # A 429 after LaunchInstance may be ambiguous: retain
