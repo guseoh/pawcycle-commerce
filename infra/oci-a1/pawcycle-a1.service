@@ -14,7 +14,7 @@ EnvironmentFile=/etc/pawcycle-a1/worker.env
 WorkingDirectory=/opt/pawcycle-a1
 ExecStart=/opt/pawcycle-a1/venv/bin/python /opt/pawcycle-a1/scripts/oci_a1_provisioner.py --config /etc/pawcycle-a1/provisioner.json --state-dir /var/lib/pawcycle-a1
 # Runs even after failure. Only this fixed local timer can be stopped as root.
-ExecStopPost=+/bin/sh -c 'if test -f /var/lib/pawcycle-a1/STOP; then /usr/bin/systemctl stop --no-block pawcycle-a1.timer; fi'
+ExecStopPost=+/bin/sh -c 'if test -f /var/lib/pawcycle-a1/STOP; then /usr/bin/systemctl stop --no-block pawcycle-a1.timer; /usr/bin/systemctl stop --no-block pawcycle-a1-health.timer >/dev/null 2>&1 || true; fi'
 TimeoutStartSec=50min
 NoNewPrivileges=true
 PrivateTmp=true
