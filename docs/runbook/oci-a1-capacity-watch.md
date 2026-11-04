@@ -91,127 +91,68 @@ Reopen the [OCI Console](https://cloud.oracle.com/) and confirm the latest Capac
 
 Disable the repository variable, remove the workflow with a PR, and revoke the dedicated OCI monitor API key if no longer needed.
 
-## Cloudflare Cron + independent missing-check alarms — staged, NOT deployed
+## Cloudflare Free Cron dispatcher — short-lived, not deployed
 
-Task: `OCI-A1-CRON-001`. This is repository-only preparation on Draft PR #502.
-It does **not** create a VM, enable the Auto Provisioner, update OCI, alter the
-existing GitHub schedules, activate a Cloudflare Worker, create Healthchecks
-checks or handle credentials. Every Cloud/Secret/live-check/cutover step still
-requires explicit owner approval. Keep Always Free; never upgrade to PAYG to
-support this task.
+Task ID: `OCI-A1-CRON-001`. As of 2026-11-04 this is **repository-only**
+preparation. It does not change the running OCI environment, create VMs,
+enable Auto Provisioner, turn on paid cloud resources, or deploy Cloudflare.
+The expected temporary use window is until approximately **November 6–7,
+2026**, at which point the operator decides to stop or extend monitoring.
 
-### Why separate the signals?
+### Architecture and responsibility
 
-The GitHub Actions `schedule` event has been delayed or absent even after
-setting a five-minute cron. A successful `workflow_dispatch` HTTP 204 only
-means GitHub accepted a request, NOT that a runner executed the OCI API query.
-Cloudflare Cron alone cannot detect its own complete stoppage. Two independently
-watched Healthchecks.io checks are a **proposed free-tier failure-detection
-integration**, distinct from Discord capacity notifications:
+- Cloudflare Workers Free: `*/5 * * * *` triggers a dedicated scheduler
+  with no HTTP handler, routes, public URL or KV/D1/DO binding. Its checked-in
+  default is `ENABLED=false`.
+- Cloudflare sends a fixed `main` / `workflow_dispatch(mode=check)` to
+  the existing GitHub Actions Capacity Watch. OCI credentials, Python report
+  logic, genuine `AVAILABLE` transition and GitHub Issue tracking **stay
+  inside GitHub**.
+- Existing Discord notifications remain the sole real-time capacity alert
+  channel. Existing two-hour GitHub health watchdog and daily status report
+  remain unchanged. **Healthchecks.io and Slack are NOT required** for this
+  short-term configuration. Slack may replace Discord later only after
+  separately approved notification-contract and delivery tests.
+- HTTP 204 from GitHub is only dispatch acceptance. It does not prove the
+  job ran or OCI was queried. A `success` on an OCI monitor job does not
+  imply A1 capacity was `AVAILABLE`.
 
-| Check name (suggested) | Origin of success signal | Health criterion |
-| --- | --- | --- |
-| `pawcycle-a1-dispatcher` | Cloudflare Worker after successful history processing and dispatch **or** justified skip for busy/recent check | Worker cron and dispatch control path actually ran |
-| `pawcycle-a1-oci-check` | GitHub Actions `monitor` job **after** Python OCI Capacity Report and existing Issue/Discord processing succeed | Actual main-branch live-check path completed |
+The Worker reads up to 100 recent `main` workflow runs, accepts only
+`schedule` and exact-title `OCI A1 capacity check` dispatches, and
+suppresses a new dispatch if a check is queued/running or was created in
+the last five minutes. It compares against the **actual invocation time**,
+not the potentially delayed `scheduledTime`. It rejects malformed/future
+timestamps and GitHub API/network failures. If no completed successful
+check was created in the last ten minutes, it emits `stale_check` in
+Cloudflare Cron status/logs after attempting a dispatch if idle. A
+`stale_check` is a failure signal, **not an automatic Discord warning**.
+GitHub concurrency serializes overlapping runs, but exactly-once
+delivery is not guaranteed. Do not retry ambiguous POSTs automatically.
 
-Set **each check's Simple period to 5 minutes and grace to an initial 10
-minutes**, then measure delay and adjust only with evidence. Trigger-delivery
-timing is not guaranteed. `OUT_OF_HOST_CAPACITY` counts as a **successful
-API check**, not A1 availability. `AVAILABLE` is sent only through the
-existing Python alert transition logic. Never fake a real production
-`AVAILABLE` response.
+### Free-tier and credential preflight
 
-Healthchecks.io Hobbyist Free currently supports 20 monitored jobs with 100
-recent log entries per job; 5-minute pings retain about 8 hours of history
-there. Collect **24-hour evidence from GitHub runs and Cloudflare metrics**,
-not by treating Healthchecks retained pings as a full-day ledger. External
-alert delivery (email or other supported free destination) is unverified
-until an operator actually tests the configured destination.
+Cloudflare account observations (2026-11-04): Workers Free, Dark Todo
+Production and Preview, and two configured Dark Todo Production Cron
+triggers. An additional PawCycle Cron would be three of five free triggers,
+subject to later account changes. Dark Todo had 292 Worker invocations
+in a 24-hour metric window and zero errors; these aggregate numbers
+**do not prove 288 successful individual Cron executions**. PawCycle Worker
+CPU under Free's 10ms limit must be measured independently.
 
-### Current free-tier evidence (2026-11-04, read only)
+Create a **short-lived fine-grained GitHub PAT** with only
+`guseoh/pawcycle-commerce` selected and Actions read/write + mandatory
+Metadata read; classic `repo` scope is unnecessary. Actions write can
+dispatch other workflows in that same repository — fixed target code is
+not a token-scoped security guarantee. Record rotation and revoke at
+the end of this temporary campaign.
 
-- Cloudflare dashboard confirms Workers Free, two existing Dark Todo Workers
-  (Production and Preview), and two active Production Cron triggers.
-  Adding one PawCycle Cron would use **3 of 5** free triggers, assuming no
-  intervening changes.
-- Dark Todo had 292 Worker invocations and zero Worker errors during a
-  recent 24-hour dashboard window, but the Cron Events listing only showed
-  entries through 2026-10-30 KST. Workers Observability was disabled.
-  These aggregate invocations do **not** prove 288 individual Cron successes
-  or that the PawCycle integration will satisfy the Free 10ms CPU limit.
-- Cloudflare Free and Healthchecks Hobbyist usage, enabled triggers, errors,
-  credentials and actual alert delivery must be rechecked at rollout.
+After separate authorization for Cloudflare Secrets, set
+`GITHUB_DISPATCH_TOKEN` as an encrypted Worker secret. Never commit,
+paste or log token, OCI private key, Discord webhook or secret values.
+The Worker must not send the GitHub Authorization header to any other
+host. Use no extra notification service and incur no paid-plan upgrade.
 
-### Identity, secrets, and trust boundaries
-
-1. Generate a short-lived **fine-grained GitHub PAT** scoped to repository
-   `guseoh/pawcycle-commerce` only, with Actions read/write and mandatory
-   Metadata read. Dispatch permission applies to Actions broadly within the
-   selected repository, **not to one workflow**. Record owner, rotation date,
-   and revocation procedure outside source control. Alternatively, design a
-   short-lived GitHub App token broker in a separate approved change.
-2. After explicit operator approval, create **two** separate free
-   Healthchecks.io checks and attach an independently reachable alert
-   destination. Configure the schedule and grace above. Copy each generated
-   unique UUID Ping URL **only into the designated secrets**; do not paste it
-   in Issues, PRs, chat, Wiki, logs or shell command arguments. A Ping URL
-   grants the capability to mark a check healthy and must be treated as
-   confidential. The implementation accepts only canonical
-   `https://hc-ping.com/<uuid>` URLs and never follows redirects.
-3. Cloudflare Worker encrypted secrets: `GITHUB_DISPATCH_TOKEN` and
-   `HEALTHCHECKS_SCHEDULER_PING_URL`. The first is never sent to Healthchecks.
-   `ENABLED=false` is the checked-in source default: no external calls
-   while disabled. With `ENABLED=true`, **both** secrets are mandatory.
-4. GitHub Actions repository secret: `HEALTHCHECKS_OCI_PING_URL`.
-   It is intentionally **optional until the operator provisions the check**
-   so existing GitHub schedule jobs cannot break from an unconfigured
-   external monitor. The live job prints a non-sensitive *unconfigured*
-   warning; that is NOT independent monitoring. Once configured, an invalid
-   URL or non-OK response causes the live monitor job to fail. OCI API keys
-   and the Discord webhook remain exclusively in GitHub Actions.
-5. No D1, KV, Durable Object, Cloudflare paid plan, storage, VM or new
-   webhook endpoint is required. The Worker has no HTTP handler, public
-   route or preview URL. Keep `workers_dev=false` and `preview_urls=false`.
-
-### Execution semantics
-
-Worker `*/5 * * * *` reads up to 100 recent `main` workflow runs, filtered
-to scheduled checks and exact `OCI A1 capacity check` dispatches. It
-suppresses duplicate dispatch when a check is in progress/queued/pending
-or another check was **created** in the last five minutes. Time comparisons
-use the Worker **actual invocation time** (`Date.now()`), not the
-original `scheduledTime` of a delayed event. Any future run timestamp beyond
-a minute of clock skew fails closed. GitHub's existing `concurrency` group
-serializes overlapping jobs without cancellation; history visibility
-delays still permit additional serial checks. Never assume exactly-once
-dispatch or retry an ambiguous GitHub POST automatically.
-
-Worker sends its scheduler success heartbeat **only after** the GitHub
-history and dispatch/skip path succeed. On a known failure, it attempts
-a Healthchecks `/fail` ping and fails the Cron event; if the Worker does not
-run or the failure ping cannot be delivered, the missing-success alarm
-provides the other detection path. HTTP 200 with a "not found" or "rate
-limited" body is **not** treated as a valid Healthchecks acknowledgment.
-No GitHub Authorization header is transmitted with the heartbeat.
-
-An Actions `monitor` job sends its OCI success ping **only after**
-`oci_a1_capacity_monitor.py` completes with exit status zero. No
-`pull_request` self-test, `self_test` dispatch, or pure GitHub 204
-can send a successful OCI ping. A manual `mode=check` is a real OCI
-probe and may signal success; the **separate Cloudflare dispatcher check**
-still detects a halted Worker. A failed OCI query, Discord transition or
-Issue update must not send a success ping. The daily health workflow is
-retained but is not counted as a primary five-minute heartbeat.
-
-A Worker run can succeed when GitHub accepted a dispatch **even while the
-OCI check is still queued**. That is intentional: only the second
-independent check can certify the actual OCI execution. Existing GitHub
-2-hour/3-hour health alarms remain a fallback and are not a substitute
-for the independent outage detector.
-
-### Offline tests (no live credentials or Cloud calls)
-
-From the repository root:
+### Offline checks
 
 ```sh
 node --test infra/oci-capacity-cron/worker.test.mjs
@@ -220,53 +161,50 @@ npm exec --yes --package=wrangler@4.157.0 -- wrangler deploy --dry-run --config 
 ```
 
 On PowerShell set `$env:GITHUB_REPOSITORY = 'guseoh/pawcycle-commerce'`
-before the Python command. The PR offline lanes run the Node and Python
-tests without tokens. Wrangler dry-run **only bundles locally**. CI Green,
-mock success and a successful production deployment of another Worker do
-not demonstrate this system's live execution.
+before running Python. These offline checks do not provision OCI
+resources or send Discord alerts. Dry-run is a local bundle only.
 
-### Rollout / stop / recovery (each requires explicit operational approval)
+### Rollout, evidence, and cutoff (separate operational approval required)
 
-1. Confirm latest merged `main` SHA, PR review, required CI, GitHub workflow
-   permissions, original schedules and Cloudflare free-tier capacity. Record
-   rollback versions and test procedure with no secret values.
-2. Create/verify both Healthchecks checks, set free notification channels,
-   and establish private Ping URLs and secret rotation. The operator must
-   confirm the correct external account; new third-party account enrollment
-   is separate from committing this PR.
-3. Deploy the separate Cloudflare Worker with `ENABLED=false` and no public
-   route, add approved secrets interactively, and verify **zero dispatches**.
-4. After **explicit live monitoring approval**, enable the Worker in a
-   reviewed deployment configuration, retain existing GitHub schedules, and
-   wait for Cron propagation. Observe at least 60 minutes / 12 expected
-   Cloudflare slots. For each slot capture dispatch/skip, main Actions
-   run creation, actual OCI job completion, and heartbeat successes.
-   Duplicate-check suppression can legitimately yield fewer than 12 GitHub
-   runs; record reasoning rather than claiming every slot created a job.
-5. Validate both independent check alarms and recovery on **isolated test
-   targets**; do not disable production credentials or forge OCI AVAILABLE
-   reports. Each newly created Healthchecks check must receive its first
-   **verified success ping** before it can be treated as an active dead-man
-   detector; an unpinged check is not readiness evidence. Initial
-   continuous-evidence target is 24 hours (288 nominal
-   5-minute slots). Measure actual completed OCI checks and maximum gap;
-   repeated gaps over 15 minutes fail the stability gate.
-6. Only after observation and **separate cutover approval** may a follow-up
-   PR remove the original capacity watch `schedule` stanza. Keep
-   `workflow_dispatch`, health/daily schedules and
-   `OCI_A1_MONITOR_ENABLED` intact. Disabling this shared variable
-   suppresses the existing daily status, not Worker dispatches.
-7. Stop on invalid/expired GitHub token, excessive CPU or API usage,
-   repeated queued runs, stale OCI heartbeat, alert delivery failure,
-   duplicate AVAILABLE notifications, or an unapproved cost condition.
-   Disable the separate Worker (`ENABLED=false`) or remove its Cron and
-   confirm dispatches stop after propagation. Keep or restore the original
-   GitHub capacity schedule through a reviewed PR. Disable/pause the two
-   external checks **only when intentionally stopping** the system, so a
-   stopped system does not masquerade as healthy. Never cancel an in-flight
-   OCI report while it may be updating transition state.
+1. Recheck the approved `main`, required CI, review blockers,
+   Cloudflare Free/active Cron limits, PAT permission/expiry, existing
+   GitHub schedule and latest actual OCI check. Record rollback settings
+   without recording secret values.
+2. Deploy Worker with **`ENABLED=false`**, no public HTTP route, and
+   verify it cannot dispatch. Register the dedicated token as a Secret.
+3. With explicit live-monitoring approval, enable the dedicated Worker
+   while keeping the existing GitHub capacity schedule unchanged.
+   Cloudflare Cron propagation is not instantaneous. Monitor the first
+   60 minutes and correlate Cloudflare tick timestamps, GitHub dispatch
+   runs and `OCI A1: status=...` output. Do not count skipped ticks as
+   successful OCI queries. Verify no repeated `AVAILABLE` alerts.
+4. For the remaining ~2–3 days, periodically inspect the actual
+   **completed OCI check timestamps and maximum gaps** rather than
+   assuming every five-minute slot ran. The existing GitHub watchdog
+   itself may be delayed or omitted. A complete Cloudflare/ GitHub
+   outage may go unnoticed until an operator checks manually.
+5. Stop on repeated >15-minute completed-check gaps, rate-limit/auth
+   errors, a growing queue, repeated AVAILABLE alerts, unexpected
+   Free-tier CPU limits or any unapproved cost. Keep the report-only,
+   manual VM creation policy.
+6. At the **November 6 or 7 cutoff**, disable the dedicated Worker/
+   Cron and confirm no new dispatches. Revoke its GitHub token and
+   preserve sanitized evidence. The original GitHub schedule stays
+   unchanged in this PR; stop/continuation of that original schedule
+   is a separate explicit decision. Do not disable
+   `OCI_A1_MONITOR_ENABLED` merely to stop the Worker because it also
+   affects the existing health/daily reports.
 
-No Worker deployment, Healthchecks signup, secret registration, heartbeat
-delivery, OCI live call, alert drill or schedule cutover was performed by
-this repository change. Their statuses remain **NOT_RUN** until independently
-verified against the exact rollout.
+### Stop and rollback
+
+Cloudflare: set `ENABLED=false` through an approved deployment or
+remove its Cron trigger, confirm dispatches stop after propagation.
+GitHub: retain the existing schedule and its monitor secrets.
+If a later cutover removes GitHub schedule in a separately approved PR,
+restore it using a reviewed PR. No Auto Provisioner, OCI Compute
+or paid resource creation is a rollback action.
+
+**Not yet verified:** live Worker deployment, new dispatch and OCI
+execution, Discord actual delivery after this change, sustained
+five-minute coverage, Cloudflare CPU use or manual cutoff. CI Green
+cannot be reported as Production Verified.
