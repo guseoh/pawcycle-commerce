@@ -69,6 +69,12 @@ class HeartbeatTests(unittest.TestCase):
         self.assertNotIn(VALID, str(ctx.exception))
         self.assertNotIn("my-private-credential", str(ctx.exception))
 
+    def test_unexpected_exception_is_redacted(self):
+        opener = FakeOpener(error=ValueError("private-healthcheck-url-and-token"))
+        with self.assertRaisesRegex(RuntimeError, "^OCI heartbeat transport failed$") as ctx:
+            heartbeat.report_success(VALID, opener)
+        self.assertNotIn("private-healthcheck-url-and-token", str(ctx.exception))
+
     def test_redirect_handler_rejects_redirects(self):
         req = heartbeat.Request(VALID)
         handler = heartbeat.BlockRedirect()

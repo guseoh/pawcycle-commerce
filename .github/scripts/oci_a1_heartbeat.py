@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import re
-from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 PING_URL_RE = re.compile(
@@ -31,8 +30,11 @@ def report_success(url: str, opener=None) -> None:
         with opener.open(request, timeout=8) as response:
             if response.status != 200 or response.read(64).strip() != b"OK":
                 raise RuntimeError("OCI heartbeat endpoint rejected success")
-    except (HTTPError, URLError, TimeoutError, OSError):
-        # Never forward the URL, request, response body or exception into Actions logs.
+    except Exception as exc:
+        # Never forward a URL or exception text into Actions logs, even for
+        # unexpected opener/runtime exceptions outside urllib's normal types.
+        if isinstance(exc, RuntimeError) and str(exc) == "OCI heartbeat endpoint rejected success":
+            raise
         raise RuntimeError("OCI heartbeat transport failed") from None
 
 
