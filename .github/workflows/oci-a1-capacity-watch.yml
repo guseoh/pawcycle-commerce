@@ -7,6 +7,8 @@ on:
       - ".github/workflows/oci-a1-capacity-watch.yml"
       - ".github/scripts/oci_a1_capacity_monitor.py"
       - ".github/scripts/test_oci_a1_capacity_monitor.py"
+      - ".github/scripts/oci_a1_heartbeat.py"
+      - ".github/scripts/test_oci_a1_heartbeat.py"
       - "docs/runbook/oci-a1-capacity-watch.md"
       - "infra/oci-capacity-cron/**"
   schedule:
@@ -55,7 +57,7 @@ jobs:
         run: node --test infra/oci-capacity-cron/worker.test.mjs
 
       - name: Offline tests (no OCI calls, no credentials)
-        run: python -m unittest discover -s .github/scripts -p 'test_oci_a1_capacity_monitor.py' -v
+        run: python -m unittest discover -s .github/scripts -p 'test_oci_a1*.py' -v
 
   monitor:
     if: (github.event_name == 'schedule' && vars.OCI_A1_MONITOR_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'check')
@@ -88,3 +90,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python .github/scripts/oci_a1_capacity_monitor.py
+
+      - name: Heartbeat only after successful OCI capacity check and tracking
+        if: success()
+        env:
+          HEALTHCHECKS_OCI_PING_URL: ${{ secrets.HEALTHCHECKS_OCI_PING_URL }}
+        run: python .github/scripts/oci_a1_heartbeat.py
