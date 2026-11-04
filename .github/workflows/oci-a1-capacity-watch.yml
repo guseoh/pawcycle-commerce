@@ -1,4 +1,5 @@
 name: OCI Tokyo A1 Capacity Watch
+run-name: OCI A1 capacity ${{ (github.event_name == 'schedule' || inputs.mode == 'check') && 'check' || 'self_test' }}
 
 on:
   pull_request:
@@ -6,7 +7,10 @@ on:
       - ".github/workflows/oci-a1-capacity-watch.yml"
       - ".github/scripts/oci_a1_capacity_monitor.py"
       - ".github/scripts/test_oci_a1_capacity_monitor.py"
+      - ".github/scripts/oci_a1_heartbeat.py"
+      - ".github/scripts/test_oci_a1_heartbeat.py"
       - "docs/runbook/oci-a1-capacity-watch.md"
+      - "infra/oci-capacity-cron/**"
   schedule:
     # GitHub Actions minimum interval is five minutes; avoid :00 peak load.
     - cron: "3-59/5 * * * *"
@@ -44,8 +48,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Configure Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: "22"
+
+      - name: Offline scheduler tests (no network or credentials)
+        run: node --test infra/oci-capacity-cron/worker.test.mjs
+
       - name: Offline tests (no OCI calls, no credentials)
-        run: python -m unittest discover -s .github/scripts -p 'test_oci_a1_capacity_monitor.py' -v
+        run: python -m unittest discover -s .github/scripts -p 'test_oci_a1*.py' -v
 
   monitor:
     if: (github.event_name == 'schedule' && vars.OCI_A1_MONITOR_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'check')
@@ -78,3 +90,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python .github/scripts/oci_a1_capacity_monitor.py
+
+      - name: Heartbeat only after successful OCI capacity check and tracking
+        if: success()
+        env:
+          HEALTHCHECKS_OCI_PING_URL: ${{ secrets.HEALTHCHECKS_OCI_PING_URL }}
+        run: python .github/scripts/oci_a1_heartbeat.py
