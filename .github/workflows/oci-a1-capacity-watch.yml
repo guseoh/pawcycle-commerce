@@ -1,4 +1,5 @@
 name: OCI Tokyo A1 Capacity Watch
+run-name: OCI A1 capacity ${{ (github.event_name == 'schedule' || inputs.mode == 'check') && 'check' || 'self_test' }}
 
 on:
   pull_request:
@@ -7,6 +8,7 @@ on:
       - ".github/scripts/oci_a1_capacity_monitor.py"
       - ".github/scripts/test_oci_a1_capacity_monitor.py"
       - "docs/runbook/oci-a1-capacity-watch.md"
+      - "infra/oci-capacity-cron/**"
   schedule:
     # GitHub Actions minimum interval is five minutes; avoid :00 peak load.
     - cron: "3-59/5 * * * *"
@@ -43,6 +45,14 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+
+      - name: Configure Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: "22"
+
+      - name: Offline scheduler tests (no network or credentials)
+        run: node --test infra/oci-capacity-cron/worker.test.mjs
 
       - name: Offline tests (no OCI calls, no credentials)
         run: python -m unittest discover -s .github/scripts -p 'test_oci_a1_capacity_monitor.py' -v
