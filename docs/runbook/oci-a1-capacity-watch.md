@@ -245,7 +245,10 @@ not demonstrate this system's live execution.
    runs; record reasoning rather than claiming every slot created a job.
 5. Validate both independent check alarms and recovery on **isolated test
    targets**; do not disable production credentials or forge OCI AVAILABLE
-   reports. Initial continuous-evidence target is 24 hours (288 nominal
+   reports. Each newly created Healthchecks check must receive its first
+   **verified success ping** before it can be treated as an active dead-man
+   detector; an unpinged check is not readiness evidence. Initial
+   continuous-evidence target is 24 hours (288 nominal
    5-minute slots). Measure actual completed OCI checks and maximum gap;
    repeated gaps over 15 minutes fail the stability gate.
 6. Only after observation and **separate cutover approval** may a follow-up
