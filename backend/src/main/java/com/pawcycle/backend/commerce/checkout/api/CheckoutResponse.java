@@ -35,19 +35,4 @@ public record CheckoutResponse(
         pricing,
         enabled);
   }
-
-  /** Transitional accessor for legacy test fixtures; HTTP serialization remains typed. */
-  public Object get(String key) {
-    return switch (key) {
-      case "orderId" -> orderId;
-      case "orderNumber" -> orderNumber;
-      case "paymentId" -> paymentId;
-      case "providerOrderId" -> providerOrderId;
-      case "orderName" -> orderName;
-      case "amount" -> amount;
-      case "pricing" -> pricing;
-      case "tossTestEnabled" -> tossTestEnabled;
-      default -> null;
-    };
-  }
 }
