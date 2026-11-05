@@ -37,7 +37,8 @@ test('fixed repository, workflow, main and check; timeout and no redirects', asy
   assert.equal(f.calls.length, 2);
   assert.equal(f.calls[1].url, 'https://api.github.com/repos/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml/dispatches');
   assert.deepEqual(JSON.parse(f.calls[1].body), { ref: 'main', inputs: { mode: 'check' } });
-  assert.equal(f.calls[1].redirect, 'error');
+  assert.equal(f.calls[0].redirect, 'manual');
+  assert.equal(f.calls[1].redirect, 'manual');
   assert.ok(f.calls[1].signal instanceof AbortSignal);
   assert.deepEqual(f.logs.map(x => x.status), ['dispatched', 'healthy']);
 });
@@ -72,7 +73,7 @@ test('ten minutes exactly is healthy; failed runs never renew health', async () 
   const failed = fake([run(6, { conclusion: 'failure' })]);
   await assert.rejects(tick(event, env, failed.request, failed.log), /stale_check/);
 });
-for (const code of [401, 403, 404, 422, 429, 500]) {
+for (const code of [301, 302, 303, 307, 308, 401, 403, 404, 422, 429, 500]) {
   test(`dispatch ${code} fails without response-body logs or retry`, async () => {
     const f = fake([run(6)], code);
     await assert.rejects(tick(event, env, f.request, f.log), new RegExp(`dispatch_http_${code}`));
@@ -81,6 +82,21 @@ for (const code of [401, 403, 404, 422, 429, 500]) {
     assert.ok(!JSON.stringify(f.logs).includes(env.GITHUB_DISPATCH_TOKEN));
   });
 }
+for (const code of [301, 302, 303, 307, 308]) {
+  test(`history redirect ${code} stops before dispatch without following Location`, async () => {
+    const calls = [], logs = [];
+    const request = async (url, options) => {
+      calls.push({ url, ...options });
+      return new Response(null, { status: code, headers: { Location: 'https://example.invalid/' } });
+    };
+    await assert.rejects(tick(event, env, request, value => logs.push(value)),
+      new RegExp(`history_http_${code}`));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].redirect, 'manual');
+    assert.ok(!logs.join('').includes(env.GITHUB_DISPATCH_TOKEN));
+  });
+}
+
 test('history failure is fail closed', async () => {
   const f = fake([], 204, 403);
   await assert.rejects(tick(event, env, f.request, f.log), /history_http_403/);

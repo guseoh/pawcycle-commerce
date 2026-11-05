@@ -29,7 +29,8 @@ export async function tick(event, env, request = fetch, log = console.log, clock
     };
     const api = async (url, options = {}) => {
       try {
-        return await request(url, { ...options, headers, redirect: 'error',
+        // Workers supports manual, not error; callers reject every unexpected status.
+        return await request(url, { ...options, headers, redirect: 'manual',
           signal: AbortSignal.timeout(15000) });
       } catch {
         // Never log exception messages, response bodies, request headers or secrets.
