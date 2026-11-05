@@ -5,7 +5,6 @@ import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImageCreate
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageListView;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminCommands.ImagePatchCommand;
 import com.pawcycle.backend.catalog.admin.model.CatalogAdminModels.ImageView;
-import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,15 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductImageAdminPersistence {
   private final ProductRepository products;
   private final ProductImageRepository images;
-  private final ProductListCacheInvalidator cacheInvalidator;
 
   public ProductImageAdminPersistence(
       ProductRepository products,
-      ProductImageRepository images,
-      ProductListCacheInvalidator cacheInvalidator) {
+      ProductImageRepository images) {
     this.products = products;
     this.images = images;
-    this.cacheInvalidator = cacheInvalidator;
   }
 
   @Transactional(readOnly = true)
@@ -48,7 +44,6 @@ public class ProductImageAdminPersistence {
       ProductImageEntity image =
           images.saveAndFlush(
               new ProductImageEntity(product, imageUrl, altText, displayOrder, imageType));
-      cacheInvalidator.invalidateAfterCommit();
       return toView(image);
     } catch (DataIntegrityViolationException exception) {
       throw CatalogAdminValidation.conflict(
@@ -83,7 +78,6 @@ public class ProductImageAdminPersistence {
     try {
       current.update(imageUrl, altText, displayOrder, imageType);
       images.flush();
-      cacheInvalidator.invalidateAfterCommit();
       return toView(current);
     } catch (DataIntegrityViolationException exception) {
       throw CatalogAdminValidation.conflict(
@@ -96,7 +90,6 @@ public class ProductImageAdminPersistence {
     ProductImageEntity current = requireImage(productId, imageId);
     images.delete(current);
     images.flush();
-    cacheInvalidator.invalidateAfterCommit();
   }
 
   private Product requireProduct(long productId) {
