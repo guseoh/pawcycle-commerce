@@ -1,7 +1,8 @@
 package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
-import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationService;
+import com.pawcycle.backend.subscription.domain.PlanSalePolicy;
+import com.pawcycle.backend.subscription.domain.DeliverySchedulePolicy;
 import com.pawcycle.backend.subscription.persistence.projection.AddonSkuProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PendingSubscriptionChange;
 import com.pawcycle.backend.subscription.persistence.projection.PetProjection;
@@ -214,7 +215,7 @@ class SubscriptionCommandApplicationService {
     store.markSkipped(schedule.id());
     store.deleteDeliveryReminder(schedule.id());
     LocalDate date =
-        SubscriptionOrderAutomationService.firstFutureDate(
+        DeliverySchedulePolicy.firstFutureDate(
             schedule.scheduledDate(), subscription.deliveryCycleWeeks(), support.today());
     long next = store.insertScheduledAndReturnId(subscription.id(), date);
     store.moveScheduleAddons(schedule.id(), next);
@@ -286,13 +287,8 @@ class SubscriptionCommandApplicationService {
     if (!pet.petType().equals(version.targetPetType()))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
     LocalDate today = support.today();
-    if (version.currentPlanVersionId() == null
-        || version.currentPlanVersionId() != version.id()
-        || version.planName() == null
-        || !version.onSale()
-        || version.migrationOnly()
-        || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
-        || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
+    if (!PlanSalePolicy.available(version.id(), version.currentPlanVersionId(), version.planName(),
+        version.onSale(), version.migrationOnly(), version.saleStartsOn(), version.saleEndsOn(), today))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
     if (!store.deliveryCycleAllowed(versionId, cycle))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");

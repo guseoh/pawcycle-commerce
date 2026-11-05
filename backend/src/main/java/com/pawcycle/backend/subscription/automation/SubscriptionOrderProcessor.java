@@ -367,11 +367,8 @@ public class SubscriptionOrderProcessor {
 
   static LocalDate firstFutureDate(
       LocalDate scheduledDate, int deliveryCycleWeeks, LocalDate today) {
-    LocalDate next = scheduledDate;
-    do {
-      next = next.plusWeeks(deliveryCycleWeeks);
-    } while (!next.isAfter(today));
-    return next;
+    return com.pawcycle.backend.subscription.domain.DeliverySchedulePolicy.firstFutureDate(
+        scheduledDate, deliveryCycleWeeks, today);
   }
 
   private SnapshotRow snapshot(long subscriptionId, long snapshotId) {
