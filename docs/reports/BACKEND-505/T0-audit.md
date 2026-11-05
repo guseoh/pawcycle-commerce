@@ -1,4 +1,4 @@
-# BACKEND-505-T0: implementation boundary audit
+# BACKEND-QUALITY-000 (T0): implementation boundary audit
 
 Baseline: main `1d7425a6d8beed0b73a6d1560a3146947cb5dd8c` (2026-11-05 KST).
 Execution: repository change; audit only, no runtime change. Parent: #505.
@@ -57,3 +57,4 @@ benefit, Production verification, merge readiness or policy approval is claimed.
 Wiki candidate: journal/lesson on preserving HTTP prevalidation versus durable
 replay ordering and distinguishing bulk writes from entity guards. No external
 Wiki write is included in #505; retain candidate here for the final handoff.
+
