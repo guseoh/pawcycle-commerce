@@ -57,4 +57,3 @@ benefit, Production verification, merge readiness or policy approval is claimed.
 Wiki candidate: journal/lesson on preserving HTTP prevalidation versus durable
 replay ordering and distinguishing bulk writes from entity guards. No external
 Wiki write is included in #505; retain candidate here for the final handoff.
-
