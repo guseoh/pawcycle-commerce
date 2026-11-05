@@ -1,7 +1,7 @@
 package com.pawcycle.backend.commerce.billing.application;
 
 import com.pawcycle.backend.commerce.billing.persistence.BillingPaymentMethodRepository;
-import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
 import org.springframework.stereotype.Service;
 
