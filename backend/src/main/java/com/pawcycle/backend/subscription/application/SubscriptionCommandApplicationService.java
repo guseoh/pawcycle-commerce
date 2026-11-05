@@ -18,7 +18,8 @@ import com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyRese
 import com.pawcycle.backend.subscription.persistence.SubscriptionSchedulePersistence;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
+import com.pawcycle.backend.subscription.domain.SubscriptionCommandType;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,19 +62,8 @@ class SubscriptionCommandApplicationService {
       String key,
       String ifMatch,
       SubscriptionCommand request) {
-    String normalized = command.toUpperCase(Locale.ROOT).replace('-', '_');
-    if (!List.of(
-            "CHANGE_PLAN",
-            "CHANGE_DELIVERY_CYCLE",
-            "RESCHEDULE_NEXT",
-            "SKIP_NEXT",
-            "PAUSE",
-            "RESUME",
-            "CANCEL",
-            "SET_NEXT_DELIVERY_ADDON",
-            "REMOVE_NEXT_DELIVERY_ADDON")
-        .contains(normalized))
-      throw new SubscriptionFailure(SubscriptionFailure.Kind.NOT_FOUND, "SUBSCRIPTION_NOT_FOUND", "Subscription을 찾을 수 없습니다.");
+    SubscriptionCommandType commandType = SubscriptionCommandType.fromExternalValue(command);
+    String normalized = commandType.name();
     support.validateKey(key);
     String fingerprint = support.fingerprint(request);
     SubscriptionProjection subscription =
@@ -92,27 +82,27 @@ class SubscriptionCommandApplicationService {
       throw new SubscriptionFailure(
           SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     rejectHeldScheduleMutation(subscription, normalized);
-    switch (normalized) {
-      case "CHANGE_PLAN" -> changePlan(memberId, subscription, request);
-      case "CHANGE_DELIVERY_CYCLE" -> changeDeliveryCycle(subscription, request);
-      case "RESCHEDULE_NEXT" -> rescheduleNext(subscription, request);
-      case "SKIP_NEXT" -> skip(subscription);
-      case "PAUSE" -> pause(subscription);
-      case "RESUME" -> resume(subscription);
-      case "CANCEL" -> cancel(subscription);
-      case "SET_NEXT_DELIVERY_ADDON" -> setNextDeliveryAddon(subscription, request);
-      case "REMOVE_NEXT_DELIVERY_ADDON" -> removeNextDeliveryAddon(subscription, request);
+    switch (commandType) {
+      case CHANGE_PLAN -> changePlan(memberId, subscription, request);
+      case CHANGE_DELIVERY_CYCLE -> changeDeliveryCycle(subscription, request);
+      case RESCHEDULE_NEXT -> rescheduleNext(subscription, request);
+      case SKIP_NEXT -> skip(subscription);
+      case PAUSE -> pause(subscription);
+      case RESUME -> resume(subscription);
+      case CANCEL -> cancel(subscription);
+      case SET_NEXT_DELIVERY_ADDON -> setNextDeliveryAddon(subscription, request);
+      case REMOVE_NEXT_DELIVERY_ADDON -> removeNextDeliveryAddon(subscription, request);
       default -> throw new IllegalStateException();
     }
     if (!store.incrementVersion(subscriptionId, expected))
       throw new SubscriptionFailure(
           SubscriptionFailure.Kind.PRECONDITION_FAILED, "SUBSCRIPTION_VERSION_MISMATCH", "Subscription version이 일치하지 않습니다.");
     store.insertCommandHistory(subscriptionId, normalized, expected, expected + 1);
-    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
+    SubscriptionReadModel.Detail response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(200, response, null, "\"" + (expected + 1) + "\"", false);
     reservations.updateCommandResponse(
-        memberId, subscriptionId, normalized, key, result, support.bodyJson(response));
+        memberId, subscriptionId, normalized, key, result.status(), result.location(), result.etag(), support.bodyJson(response));
     return result;
   }
 
@@ -136,7 +126,7 @@ class SubscriptionCommandApplicationService {
       String fingerprint) {
     if (!fingerprint.equals(stored.fingerprint()))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
-    var body = support.responseBody(stored.bodyJson());
+    SubscriptionReadModel.Detail body = support.responseBody(stored.bodyJson());
     reservations.updateStoredCommandBody(
         memberId, subscriptionId, command, key, support.bodyJson(body));
     return new SubscriptionOperationResult(

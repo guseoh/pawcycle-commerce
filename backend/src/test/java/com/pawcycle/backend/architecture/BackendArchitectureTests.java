@@ -84,6 +84,10 @@ class BackendArchitectureTests {
   static Set<String> rules(String origin, String target, boolean targetEntity) {
     Set<String> result = new TreeSet<>();
     boolean internal = target.startsWith(ROOT);
+    if (origin.equals(ROOT + "subscription.persistence.SubscriptionIdempotencyReservationPersistence")
+        && target.equals(ROOT + "subscription.application.SubscriptionOperationResult")) {
+      result.add("subscription-replay-storage");
+    }
     if (inLayer(origin, "application")) {
       if (target.equals("org.springframework.jdbc.core.JdbcTemplate")
           || target.equals("jakarta.persistence.EntityManager")) result.add("application-sql");
