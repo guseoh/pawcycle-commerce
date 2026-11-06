@@ -631,6 +631,66 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(r.Refused):
                 host.manifest(sha, {"unpacked_bytes": {"backend": r.GIB, "frontend": r.GIB}})
 
+    def test_host_pull_index_matches_release_native_platform(self):
+        sha = "a" * 40
+        host = cd.CDHost("/unused", "/unused", "/unused", "/unused")
+        policy = {"unpacked_bytes": {"backend": r.GIB, "frontend": r.GIB}}
+        media = "application/vnd.oci.image.manifest.v1+json"
+        children = {
+            arch: r.encoded({"mediaType": media, "config": {"digest": "sha256:" + char * 64},
+                             "layers": [{"size": 100}]})
+            for arch, char in (("amd64", "c"), ("arm64", "d"))
+        }
+
+        def index_for(*architectures):
+            return r.encoded({"mediaType": "application/vnd.oci.image.index.v1+json",
+                              "manifests": [
+                                  {"platform": {"os": "linux", "architecture": arch},
+                                   "digest": r.digest(children[arch]), "size": len(children[arch]),
+                                   "mediaType": media}
+                                  for arch in architectures]})
+
+        for host_arch, available in (("arm64", ("arm64",)),
+                                     ("arm64", ("amd64", "arm64")),
+                                     ("amd64", ("amd64", "arm64"))):
+            with self.subTest(host_arch=host_arch, available=available):
+                index = index_for(*available)
+                child = children[host_arch]
+                with patch.object(r, "host_architecture", return_value=host_arch), \
+                        patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                        patch.object(host, "docker", side_effect=[index, child, index, child]) as docker:
+                    target = host.manifest(sha, policy)
+                self.assertEqual(4, docker.call_count)
+                self.assertEqual(r.digest(index), target["backend"]["digest"])
+                for role in ("backend", "frontend"):
+                    self.assertEqual(r.digest(index), target[role]["digest"])
+                    self.assertEqual("sha256:" + ("d" if host_arch == "arm64" else "c") * 64,
+                                     target[role]["config_digest"])
+                    self.assertEqual(r.digest(child),
+                                     r.image_graph(target[role], [index.decode(), child.decode()],
+                                                   host_arch)[2])
+                    self.assertEqual("ghcr.io/guseoh/pawcycle-commerce-" + role + "@" + r.digest(child),
+                                     docker.call_args_list[2 * (0 if role == "backend" else 1) + 1].args[3])
+
+        # Missing or duplicated host platform must fail before fetching a child.
+        for host_arch, available in (("arm64", ("amd64",)),
+                                     ("amd64", ("arm64",)),
+                                     ("arm64", ("arm64", "arm64"))):
+            with self.subTest(rejected_host=host_arch, available=available):
+                with patch.object(r, "host_architecture", return_value=host_arch), \
+                        patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                        patch.object(host, "docker", return_value=index_for(*available)) as docker:
+                    with self.assertRaisesRegex(r.Refused, "ambiguous platform"):
+                        host.manifest(sha, policy)
+                docker.assert_called_once()
+
+        # Content-addressed child digest remains fail-closed on the chosen architecture.
+        with patch.object(r, "host_architecture", return_value="arm64"), \
+                patch.object(host, "git", side_effect=[b"compose", b"nginx", b"1" * 40]), \
+                patch.object(host, "docker", side_effect=[index_for("amd64", "arm64"), b"altered child"]):
+            with self.assertRaisesRegex(r.Refused, "altered child manifest"):
+                host.manifest(sha, policy)
+
     def test_exact_main_sha_and_latest_attempt_jobs(self):
         sha = "a" * 40
         host = cd.CDHost("/unused", "/unused", "/unused", "/unused")

@@ -77,7 +77,14 @@ def identity(value):
     return digest(encoded(value))
 
 
-def image_graph(image, documents):
+def host_architecture():
+    # Release targets the native Linux host; caller platform overrides are ignored.
+    machine = os.uname().machine
+    require(machine in ("x86_64", "aarch64"), "unsupported host platform")
+    return {"x86_64": "amd64", "aarch64": "arm64"}[machine]
+
+
+def image_graph(image, documents, architecture):
     """Recheck content-addressed Registry evidence, including offline recovery."""
     raw = documents[0].encode()
     require(digest(raw) == image["digest"], "registry tag/digest mismatch")
@@ -86,7 +93,7 @@ def image_graph(image, documents):
     if top.get("mediaType") in INDEX_MEDIA_TYPES:
         matches = [entry for entry in top["manifests"]
                    if entry.get("platform", {}).get("os") == "linux" and
-                   entry.get("platform", {}).get("architecture") == "amd64"]
+                   entry.get("platform", {}).get("architecture") == architecture]
         require(len(matches) == 1 and len(documents) == 2, "ambiguous or missing platform evidence")
         selected = matches[0]["digest"]
         raw = documents[1].encode()
@@ -325,6 +332,7 @@ class Host:
         return compose, nginx
 
     def registry(self, manifest):
+        architecture = host_architecture()
         compressed = 0
         for role in ("backend", "frontend"):
             image = manifest[role]
@@ -340,8 +348,8 @@ class Host:
             if "manifests" in document:
                 matches = [entry for entry in document["manifests"]
                            if entry.get("platform", {}).get("os") == "linux" and
-                           entry.get("platform", {}).get("architecture") == "amd64"]
-                require(len(matches) == 1, "registry linux/amd64 platform is ambiguous or missing")
+                           entry.get("platform", {}).get("architecture") == architecture]
+                require(len(matches) == 1, "registry platform is ambiguous or missing")
                 child_digest = matches[0]["digest"]
                 require(DIGEST.fullmatch(child_digest), "invalid platform digest")
                 raw = self.docker("buildx", "imagetools", "inspect",
@@ -350,14 +358,14 @@ class Host:
                 document = json.loads(raw)
                 documents.append(raw.decode())
                 selected_ref = image["repository"] + "@" + child_digest
-            image_graph(image, documents)
+            image_graph(image, documents, architecture)
             # Buildx fetches the digest-addressed config without pulling layers.
             remote = json.loads(self.docker("buildx", "imagetools", "inspect", selected_ref,
                                            "--format", "{{json .Image}}"))
             if "architecture" not in remote:
-                remote = remote.get("linux/amd64", {})
+                remote = remote.get("linux/" + architecture, {})
             labels = remote.get("config", {}).get("Labels", {})
-            require(remote.get("os") == "linux" and remote.get("architecture") == "amd64" and
+            require(remote.get("os") == "linux" and remote.get("architecture") == architecture and
                     labels.get("org.opencontainers.image.revision") == image_sha(manifest, role) and
                     labels.get("org.opencontainers.image.source") == ORIGIN.removesuffix(".git"),
                     "registry platform/revision/source mismatch")
@@ -386,6 +394,7 @@ class Host:
         raise Refused("unsupported or contradictory image store information")
 
     def local_image(self, manifest, role):
+        architecture = host_architecture()
         image = manifest[role]
         ref = image["repository"] + "@" + image["digest"]
         local = json.loads(self.docker("image", "inspect", ref))[0]
@@ -396,23 +405,23 @@ class Host:
             require(isinstance(descriptor, dict) and descriptor, "containerd image descriptor is missing")
             documents = self.registry_manifests.get(identity(manifest), {}).get(role)
             require(documents, "verified local descriptor graph is unavailable")
-            top, _, selected = image_graph(image, documents)
+            top, _, selected = image_graph(image, documents, architecture)
             require(descriptor.get("digest") == image["digest"] == local["Id"] and
                     descriptor.get("mediaType") == top["mediaType"] and
                     descriptor.get("size") == len(documents[0].encode()), "local image descriptor mismatch")
-            platform = json.loads(self.docker("image", "inspect", "--platform", "linux/amd64", ref))[0]
+            platform = json.loads(self.docker("image", "inspect", "--platform", "linux/" + architecture, ref))[0]
             require(platform["Id"] == selected and
                     platform.get("Descriptor", {}).get("digest") == selected and
                     platform["Descriptor"].get("mediaType") in IMAGE_MEDIA_TYPES and
                     platform["Descriptor"].get("size") == len(documents[-1].encode()) and
                     ref in platform["RepoDigests"] and
-                    platform["Os"] == "linux" and platform["Architecture"] == "amd64" and
+                    platform["Os"] == "linux" and platform["Architecture"] == architecture and
                     platform["Config"] == local["Config"] and platform["Size"] == local["Size"],
                     "local platform manifest mismatch")
         else:
             require("Descriptor" not in local, "classic image store returned a descriptor")
             require(local["Id"] == image["config_digest"], "local config ID mismatch")
-        require(local["Os"] == "linux" and local["Architecture"] == "amd64" and
+        require(local["Os"] == "linux" and local["Architecture"] == architecture and
                 labels.get("org.opencontainers.image.revision") == image_sha(manifest, role) and
                 labels.get("org.opencontainers.image.source") == ORIGIN.removesuffix(".git") and
                 ref in local["RepoDigests"], "local image identity/platform/provenance mismatch")
@@ -443,7 +452,8 @@ class Host:
                       reserve + extra)
         info = json.loads(self.docker("info", "--format", "{{json .}}"))
         root = Path(info["DockerRootDir"])
-        require(info["OSType"] == "linux" and os.uname().machine == "x86_64", "unsupported host platform")
+        require(info["OSType"] == "linux", "unsupported host platform")
+        host_architecture()
         require(root.stat().st_dev == self.state.stat().st_dev == self.backend_env.stat().st_dev,
                 "separate filesystems need a separately reviewed capacity contract")
         usage = os.statvfs(root)
@@ -614,6 +624,7 @@ class Host:
         self.docker("exec", ids[0], "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9464/actuator/prometheus")
 
     def activate(self, manifest, pull=True, frontend_only=False, services=None):
+        architecture = host_architecture()
         # Explicit service selection reconciles only changed apps. The legacy
         # cosmetic flag selects Frontend; the default manual path includes Proxy.
         selected = tuple(services) if services is not None else (("frontend",) if frontend_only else ("backend", "frontend"))
@@ -624,7 +635,7 @@ class Host:
             image = manifest[role]
             ref = image["repository"] + "@" + image["digest"]
             if pull:
-                self.docker("pull", "--platform", "linux/amd64", ref, timeout=600)
+                self.docker("pull", "--platform", "linux/" + architecture, ref, timeout=600)
             self.image(manifest, role)
             self.docker("tag", ref, image["repository"] + ":" + image_sha(manifest, role))
         self.materialize(manifest)

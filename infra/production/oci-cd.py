@@ -175,6 +175,7 @@ class CDHost(release.Host):
                   "nginx_sha256": release.digest(self.git("show", sha + ":" + release.NGINX).replace(
                       b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())),
                   "migration_tree": self.git("rev-parse", sha + ":backend/src/main/resources/db/migration").decode().strip()}
+        architecture = release.host_architecture()
         application = policy.get("compatibility_mode") == APP_MODE
         changed = classifier.image_components(self.changed_paths(current["sha"], sha)) if application else {}
         for role in ("backend", "frontend"):
@@ -192,7 +193,7 @@ class CDHost(release.Host):
             document = json.loads(raw)
             if "manifests" in document:
                 matches = [m for m in document["manifests"] if m.get("platform", {}).get("os") == "linux" and
-                           m.get("platform", {}).get("architecture") == "amd64"]
+                           m.get("platform", {}).get("architecture") == architecture]
                 require(len(matches) == 1 and release.DIGEST.fullmatch(matches[0]["digest"]), "ambiguous platform")
                 child = self.docker("buildx", "imagetools", "inspect", repository + "@" + matches[0]["digest"], "--raw")
                 require(release.digest(child) == matches[0]["digest"], "altered child manifest")
