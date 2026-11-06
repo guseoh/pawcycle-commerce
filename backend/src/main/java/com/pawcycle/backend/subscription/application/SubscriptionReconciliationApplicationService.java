@@ -1,7 +1,7 @@
 package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.automation.SubscriptionMetrics;
-import com.pawcycle.backend.subscription.automation.SubscriptionOrderAutomationService;
+import com.pawcycle.backend.subscription.domain.DeliverySchedulePolicy;
 import com.pawcycle.backend.subscription.persistence.projection.ScheduleProjection;
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionAggregatePersistence;
@@ -78,7 +78,7 @@ public class SubscriptionReconciliationApplicationService {
                   .ifPresent(
                       processed -> {
                         java.time.LocalDate next =
-                            SubscriptionOrderAutomationService.firstFutureDate(
+                            DeliverySchedulePolicy.firstFutureDate(
                                 processed.scheduledDate(), processed.deliveryCycleWeeks(), today);
                         if (!store.scheduleExists(subscription.id(), next))
                           store.insertScheduled(subscription.id(), next);
