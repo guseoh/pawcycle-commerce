@@ -186,11 +186,24 @@ class ImagePublishClassifierTest(unittest.TestCase):
             "scripts/test_release_workflows.py",
             ".agents/skills/platform-sre/SKILL.md",
             ".github/workflows/validate-conventions.yml",
+            "infra/oci-capacity-cron/worker.mjs",
+            "infra/oci-capacity-cron/worker.test.mjs",
+            "infra/oci-capacity-cron/wrangler.jsonc",
             "infra/performance/k6/test.js",
         ]
         for path in paths:
             with self.subTest(path=path):
                 self.assertFalse(CLASSIFIER.should_publish([path]))
+
+    def test_a1_monitor_code_never_publishes_or_deploys_images(self) -> None:
+        paths = ["infra/oci-capacity-cron/worker.mjs",
+                 "infra/oci-capacity-cron/worker.test.mjs",
+                 "infra/oci-capacity-cron/wrangler.jsonc",
+                 "docs/runbook/oci-a1-capacity-watch.md"]
+        self.assertEqual({"publish": False, "deploy": False, "risks": []},
+                         CLASSIFIER.classify(paths))
+        self.assertEqual({"backend": False, "frontend": False},
+                         CLASSIFIER.image_components(paths))
 
     def test_backend_and_frontend_image_inputs_require_pair(self) -> None:
         paths = [
