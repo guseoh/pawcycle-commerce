@@ -77,7 +77,7 @@ docker exec -e PAWCYCLE_ISOLATED_DOCKER=1 -e PYTHONDONTWRITEBYTECODE=1 pawcycle-
 
 ### 후속 Correction — 2026-11-06
 
-- Correction `4db685942c220a44252c7939eb87fe659cc97b9f`: 운영 Release 엔진의 네트워크·Health Gate를 변경하지 않고 격리 DinD Compose fixture에 `app`(internal), `edge`, `database-egress` 네트워크, 역할별 연결, Proxy Healthcheck를 추가했다.
+- 이전 Draft PR #512의 Correction commit `4db685942c220a44252c7939eb87fe659cc97b9f`: 운영 Release 엔진의 네트워크·Health Gate를 변경하지 않고 격리 DinD Compose fixture에 `app`(internal), `edge`, `database-egress` 네트워크, 역할별 연결, Proxy Healthcheck를 추가했다.
 - Fixture 검증은 실제 nested Docker network의 `Internal` 속성과 Compose network 이름·격리 플래그·Healthcheck를 대조한다. 바깥 DinD의 `--network none` 실행 경계는 유지한다.
 - **수정 후 실제 Docker lifecycle 재실행은 미완료**다. 마지막 실행 증거는 위의 `adopt` 실패이며, 다음 Gate에서 이미지의 `repo@digest` 조회 등 추가 실패 가능성도 미확인이다. `adopt/activate/rollback/recover-state` PASS로 판정하지 않는다.
 
