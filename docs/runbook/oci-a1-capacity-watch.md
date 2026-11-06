@@ -206,6 +206,12 @@ resources or send Discord alerts. Dry-run is a local bundle only.
    60 minutes and correlate Cloudflare tick timestamps, GitHub dispatch
    runs and `OCI A1: status=...` output. Do not count skipped ticks as
    successful OCI queries. Verify no repeated `AVAILABLE` alerts.
+   **Cadence acceptance:** for this 60-minute window, retain actual Worker tick,
+   `skipped` reason, GitHub run creation/completion and OCI result timestamps.
+   Compare successive successful checks with their planned 5-minute slots;
+   identify any gap over 7 minutes, rather than equating accepted dispatch
+   or Workflow SUCCESS with reliable polling. If gaps persist or the worker
+   is disabled/expired, leave the fix unverified and STOP before renewal.
 4. For the remaining ~2–3 days, periodically inspect the actual
    **completed OCI check timestamps and maximum gaps** rather than
    assuming every five-minute slot ran. The existing GitHub watchdog
