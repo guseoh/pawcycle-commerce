@@ -599,8 +599,24 @@ class LifecycleTests(unittest.TestCase):
                         self.fail("unsafe lock acquired")
 
 
+class HostArchitectureTests(unittest.TestCase):
+    def test_supported_native_machines_and_unsupported_host(self):
+        for machine, expected in (("x86_64", "amd64"), ("aarch64", "arm64")):
+            with self.subTest(machine=machine), patch.object(release.os, "uname") as uname:
+                uname.return_value.machine = machine
+                self.assertEqual(expected, release.host_architecture())
+        with patch.object(release.os, "uname") as uname:
+            uname.return_value.machine = "riscv64"
+            with self.assertRaisesRegex(release.Refused, "unsupported host platform"):
+                release.host_architecture()
+
+
 class BoundaryTests(unittest.TestCase):
     def setUp(self):
+        # Existing fixtures describe amd64, regardless of the runner's CPU.
+        self.arch_patch = patch.object(release, "host_architecture", return_value="amd64")
+        self.arch_patch.start()
+        self.addCleanup(self.arch_patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.host = release.Host(self.root, self.root, self.root, self.root / "renewal.lock")
@@ -608,6 +624,99 @@ class BoundaryTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_arm64_registry_and_offline_descriptor_graph_fail_closed(self):
+        index, child = self.registry_fixture("arm64")
+        remote = release.encoded({"architecture": "arm64", "os": "linux", "config": {"Labels": {
+            "org.opencontainers.image.revision": self.target["sha"],
+            "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}})
+        with patch.object(release, "host_architecture", return_value="arm64"):
+            with patch.object(self.host, "docker", side_effect=[index, child, remote, index, child, remote]):
+                self.assertEqual(200, self.host.registry(self.target))
+            documents = self.host.registry_manifests[release.identity(self.target)]["backend"]
+            local = local_image_record(self.target, "backend")
+            local["Architecture"] = "arm64"
+            local["Id"] = self.target["backend"]["digest"]
+            local["Descriptor"] = {"digest": local["Id"], "size": len(index),
+                                   "mediaType": json.loads(index)["mediaType"]}
+            platform = copy.deepcopy(local)
+            platform["Id"] = release.digest(child)
+            platform["Descriptor"].update(digest=platform["Id"], size=len(child),
+                                          mediaType=json.loads(child)["mediaType"])
+            with patch.object(self.host, "docker", side_effect=local_inspector(local, platform, CONTAINERD_STORE)) as docker:
+                self.assertEqual(100, self.host.image(self.target, "backend"))
+                self.assertEqual(("image", "inspect", "--platform", "linux/arm64"), docker.call_args.args[:4])
+            # Saved evidence is also used without registry access on rollback.
+            documents[1] += " "
+            with patch.object(self.host, "docker", side_effect=local_inspector(local, platform, CONTAINERD_STORE)):
+                with self.assertRaisesRegex(release.Refused, "platform manifest was tampered"):
+                    self.host.image(self.target, "backend")
+            documents[1] = child.decode()
+            platform["Architecture"] = "amd64"
+            with patch.object(self.host, "docker", side_effect=local_inspector(local, platform, CONTAINERD_STORE)):
+                with self.assertRaisesRegex(release.Refused, "local platform manifest mismatch"):
+                    self.host.image(self.target, "backend")
+            local.pop("Descriptor")
+            local["Id"] = self.target["backend"]["config_digest"]
+            with patch.object(self.host, "docker", side_effect=local_inspector(local)):
+                self.assertEqual(100, self.host.image(self.target, "backend"))
+            local["Architecture"] = "amd64"
+            with patch.object(self.host, "docker", side_effect=local_inspector(local)):
+                with self.assertRaisesRegex(release.Refused, "identity/platform/provenance"):
+                    self.host.image(self.target, "backend")
+            for bad in (index + b" ",):
+                with patch.object(self.host, "docker", return_value=bad):
+                    with self.assertRaises(release.Refused):
+                        self.host.registry(self.target)
+            with patch.object(self.host, "docker", side_effect=[index, child + b" "]):
+                with self.assertRaises(release.Refused):
+                    self.host.registry(self.target)
+            wrong_remote = json.loads(remote)
+            wrong_remote["architecture"] = "amd64"
+            with patch.object(self.host, "docker", side_effect=[index, child, release.encoded(wrong_remote)]):
+                with self.assertRaisesRegex(release.Refused, "platform/revision/source"):
+                    self.host.registry(self.target)
+            duplicate = json.loads(index)
+            duplicate["manifests"].append(copy.deepcopy(duplicate["manifests"][0]))
+            duplicate = release.encoded(duplicate)
+            self.target["backend"]["digest"] = release.digest(duplicate)
+            with patch.object(self.host, "docker", return_value=duplicate):
+                with self.assertRaisesRegex(release.Refused, "ambiguous or missing"):
+                    self.host.registry(self.target)
+
+    def test_arm64_pull_and_local_only_recovery(self):
+        with patch.object(release, "host_architecture", return_value="arm64"), \
+                patch.object(self.host, "docker") as docker, \
+                patch.object(self.host, "image", return_value=100), \
+                patch.object(self.host, "materialize"), patch.object(self.host, "compose"), \
+                patch.object(self.host, "smoke"):
+            self.host.activate(self.target, services=("backend",))
+            self.assertTrue(any(call.args[:3] == ("pull", "--platform", "linux/arm64")
+                                for call in docker.call_args_list))
+            docker.reset_mock()
+            self.host.activate(self.target, pull=False, services=("backend",))
+            self.assertFalse(any(call.args[0] == "pull" for call in docker.call_args_list))
+
+    def test_arm64_capacity_preserves_pull_and_rollback_reserves(self):
+        with patch.object(release, "host_architecture", return_value="arm64"):
+            self.test_peak_budget_does_not_assume_4_9gb_or_reclaim_cache()
+            self.test_rollback_capacity_requires_measured_extra_and_keeps_approved_reserve()
+
+    def test_arm64_single_manifest_and_wrapped_remote_config(self):
+        _, child = self.registry_fixture("arm64")
+        for role in ("backend", "frontend"):
+            self.target[role]["digest"] = release.digest(child)
+        remote = release.encoded({"linux/arm64": {"architecture": "arm64", "os": "linux", "config": {"Labels": {
+            "org.opencontainers.image.revision": self.target["sha"],
+            "org.opencontainers.image.source": release.ORIGIN.removesuffix(".git")}}}})
+        with patch.object(release, "host_architecture", return_value="arm64"), \
+                patch.object(self.host, "docker", side_effect=[child, remote, child, remote]):
+            self.assertEqual(200, self.host.registry(self.target))
+        self.target["backend"]["config_digest"] = "sha256:" + "0" * 64
+        with patch.object(release, "host_architecture", return_value="arm64"), \
+                patch.object(self.host, "docker", return_value=child):
+            with self.assertRaisesRegex(release.Refused, "config digest"):
+                self.host.registry(self.target)
 
     def test_manifest_schema_rejects_mixed_repository_missing_digest_and_wrong_sha(self):
         for change in (lambda m: m.update(sha="main"), lambda m: m["frontend"].update(repository="other"),
@@ -663,13 +772,14 @@ class BoundaryTests(unittest.TestCase):
             self.target[role]["digest"] = release.digest(index)
         return index, child
 
-    def descriptor_fixture(self, indexed=True):
-        index, child = self.registry_fixture()
+    def descriptor_fixture(self, indexed=True, architecture="amd64"):
+        index, child = self.registry_fixture(architecture)
         documents = [index.decode(), child.decode()] if indexed else [child.decode()]
         if not indexed:
             self.target["backend"]["digest"] = release.digest(child)
         self.host.registry_manifests[release.identity(self.target)] = {"backend": documents}
         local = local_image_record(self.target, "backend")
+        local["Architecture"] = architecture
         local["Id"] = self.target["backend"]["digest"]
         local["Descriptor"] = {"digest": local["Id"], "size": len(documents[0].encode()),
                                "mediaType": json.loads(documents[0])["mediaType"]}
@@ -786,8 +896,12 @@ class BoundaryTests(unittest.TestCase):
                 with self.assertRaisesRegex(release.Refused, "classic image store returned a descriptor"):
                     self.host.image(self.target, "backend")
 
-    def test_containerd_rollback_reloads_saved_graph_without_registry(self):
-        local, platform = self.descriptor_fixture()
+    def test_arm64_containerd_rollback_reloads_saved_graph_without_registry(self):
+        with patch.object(release, "host_architecture", return_value="arm64"):
+            self.test_containerd_rollback_reloads_saved_graph_without_registry(architecture="arm64")
+
+    def test_containerd_rollback_reloads_saved_graph_without_registry(self, architecture="amd64"):
+        local, platform = self.descriptor_fixture(architecture=architecture)
         documents = copy.deepcopy(self.host.registry_manifests[release.identity(self.target)]["backend"])
         host = FakeHost(self.root)
         host.live = self.target
