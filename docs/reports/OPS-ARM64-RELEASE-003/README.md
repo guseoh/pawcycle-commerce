@@ -83,6 +83,13 @@ docker exec -e PAWCYCLE_ISOLATED_DOCKER=1 -e PYTHONDONTWRITEBYTECODE=1 pawcycle-
 - **후속 재실행 PASS (사용자 제공 터미널 로그):** 격리 DinD `pawcycle-arm64-release-003-ci`에서 `python3 /src/infra/production/test-oci-release-docker.py` 실행. `test_original_image_platform_digest_config_and_missing_provenance ... ok`, `test_real_compose_release_rollback_fail_closed_and_recovery ... ok`, 최종 `Ran 2 tests in 170.840s / OK`. 두 원본 ARM64 이미지 digest/config는 위 표와 일치하며 필수 provenance 라벨 누락은 예상대로 거부됐다.
 - 이번 lifecycle 시험은 synthetic revision/source labels 및 sleep/health fixture를 통해 **실제 Docker 전환과 state/recovery 경계**를 검증한 것이다. 실제 앱 HTTP, GitHub Container Registry 전송, Cloud/DB/HTTPS, native A1 호스트를 검증한 것은 아니다. 이 결과는 사용자 제공 로그에 근거하며 ChatGPT가 Docker 데몬에서 독립 재실행한 것은 아니다.
 
+## Host Pull P2 Correction — 2026-11-06
+
+- PR #513 독립 검토에서 `CDHost.manifest()`가 `amd64` Index Child를 고정 선택하여 ARM64-only 인덱스를 거부하거나 multi-arch 인덱스에서 amd64 Config Digest를 생성하는 계약 불일치가 확인됐다. 이 문제는 수동 Release 엔진의 기존 ARM64 검증으로 가려지지 않는다.
+- `infra/production/oci-cd.py`는 `release.host_architecture()`를 호출해 Release와 동일한 native host 선택을 재사용한다. Manifest Index 선택만 최소 수정했으며 `oci-release.py`의 Registry/local/provenance/rollback Gate는 변경하지 않았다.
+- `test-oci-cd.py`에 `CDHost.manifest()` 직접 호출 기반 회귀를 추가했다: ARM64-only 정상, mixed-arch에서 ARM64/amd64 각각의 Child·Config Digest 선택, 호스트 플랫폼 부재·중복 거부, 변조된 Child Digest 거부. Runbook에도 Host Pull ↔ Release 계약을 명시했다.
+- **이 Correction의 최신 HEAD CI 결과는 별도 확인이 필요하다.** 앞서 통과한 Docker lifecycle 2/2는 이전 HEAD에서 사용자 제공 터미널 로그로 확인됐으며, 이번 변경 후 재실행한 결과로 오인하지 않는다. Host Pull의 실제 GHCR/A1 네이티브 실행 및 Production은 여전히 미검증이다.
+
 ## Frontend 메모리 판단 유보
 
 사용자가 전달한 선행 로컬 실험 결과는 **256MiB OOM, 512MiB HTTP 30/30 PASS**다. 이번 작업에서 메모리 실험을 다시 실행하거나 원시 OOM/HTTP 로그를 독립 검증하지 않았다. 따라서 선행 관측으로 기록하며 이번 실행의 PASS 집계에는 포함하지 않는다.
