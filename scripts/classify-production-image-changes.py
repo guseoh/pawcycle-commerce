@@ -16,7 +16,7 @@ NON_IMAGE_FILES = frozenset({
 NON_IMAGE_PREFIXES = (
     "docs/", ".agents/", ".githooks/", ".github/scripts/",
     ".github/fixtures/", "scripts/", "qa/", "infra/performance/",
-    "infra/local-integration/", "backend/src/test/",
+    "infra/local-integration/", "infra/oci-capacity-cron/", "backend/src/test/",
 )
 PUBLISH_WORKFLOW = ".github/workflows/publish-production-images.yml"
 BUILD_FILES = frozenset({PUBLISH_WORKFLOW, ".dockerignore",
