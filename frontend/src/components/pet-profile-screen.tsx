@@ -24,14 +24,16 @@ export function PetProfileScreen() {
   const [createType, setCreateType] = useState<Pet["petType"]>("DOG");
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"success" | "error">("error");
+  const [authExpired, setAuthExpired] = useState(false);
 
   const load = useCallback(async () => {
     if (auth.status !== "authenticated") return;
+    setAuthExpired(false);
     setLoadingError(null);
     try {
       setPets((await subscriptionApi.pets.list()).body.items);
     } catch (error) {
-      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { auth.markAnonymous(); return; }
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { setAuthExpired(true); auth.markAnonymous(); return; }
       setLoadingError(error instanceof ApiError ? error.message : "반려동물 목록을 불러오지 못했습니다.");
     }
   }, [auth]);
@@ -77,7 +79,7 @@ export function PetProfileScreen() {
       setMessageKind("success");
       setMessage("반려동물 프로필을 등록했습니다.");
     } catch (error) {
-      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+      if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { setAuthExpired(true); auth.markAnonymous(); }
       else { setMessageKind("error"); setMessage(error instanceof ApiError ? error.message : "반려동물을 등록하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요."); }
     } finally { setCreating(false); }
   }
@@ -95,13 +97,13 @@ export function PetProfileScreen() {
       setPets((current) => current?.map((item) => item.petId === updated.petId ? updated : item) ?? current); finishEdit(pet.petId); setMessageKind("success"); setMessage("반려동물 프로필을 수정했습니다.");
     } catch (error) {
       if (error instanceof ApiError && error.code === "PET_NOT_FOUND") { await load(); setMessage("반려동물을 찾을 수 없어 목록을 새로 확인했습니다."); }
-      else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") auth.markAnonymous();
+      else if (error instanceof ApiError && error.code === "AUTH_REQUIRED") { setAuthExpired(true); auth.markAnonymous(); }
       else setMessage(error instanceof ApiError ? error.message : "반려동물 프로필을 저장하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요.");
       setMessageKind("error");
     } finally { setSavingId(null); }
   }
 
-  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="반려동물 프로필을 보려면 로그인해 주세요."><Link className="button button-primary" href={buildLoginHref("/pets")}>로그인</Link></AuthRequiredState>;
+  if (auth.status === "anonymous") return <AuthRequiredState title="로그인이 필요합니다." message="반려동물 프로필을 보려면 로그인해 주세요." announce={authExpired}><Link className="button button-primary" href={buildLoginHref("/pets")}>로그인</Link></AuthRequiredState>;
   if (auth.status === "error") return <ErrorState title="로그인 상태를 확인할 수 없습니다." message={auth.errorMessage ?? "다시 시도해 주세요."} onRetry={() => void auth.refresh()} />;
   const loadState = petProfileLoadState(auth.status, pets, loadingError);
   if (loadState === "error") return <ErrorState title="반려동물 프로필을 불러오지 못했습니다." message={loadingError!} onRetry={() => { setLoadingError(null); setPets(null); setRetry((value) => value + 1); }} />;

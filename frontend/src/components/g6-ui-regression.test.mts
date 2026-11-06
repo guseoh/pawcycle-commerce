@@ -11,6 +11,7 @@ test("G6 fixture stays loopback-only and fails closed for unconfigured API reque
   const apiStart = fixture.indexOf("if(path.startsWith('/api/'))");
   const failClosed = fixture.indexOf("return json({code:'QA_ENDPOINT_NOT_CONFIGURED'");
   const proxyStart = fixture.indexOf("const proxy=http.request");
+  assert.ok(apiStart >= 0 && failClosed >= 0 && proxyStart >= 0);
   assert.ok(apiStart < failClosed && failClosed < proxyStart);
   assert.match(fixture, /QA_MUTATION_BLOCKED/);
   assert.match(fixture, /for\(const key of \['name','breed','weightKg'\]\)/);
@@ -133,4 +134,18 @@ test("G6-01: pet edit focus enters the input and returns only on explicit comple
   assert.match(pet, /onCancel=\{\(\) => finishEdit\(pet\.petId\)\}/);
   assert.equal((pet.match(/finishEdit\(pet\.petId\)/g) ?? []).length, 3);
   assert.match(pet, /subscriptionApi\.pets\.patch\(pet\.petId, changes, csrf\)/);
+});
+
+test("G6 fixture keeps editable pet names canonical under long-text QA", () => {
+  const fixture = source("../../scripts/visual-fixture.mjs");
+  assert.match(fixture, /if\(path===\x27\/api\/pets\x27\)return json\(page\(pets\),200,\{raw:true\}\)/);
+  assert.match(fixture, /return json\(pet,200,\{raw:true\}\)/);
+});
+
+test("G6 authentication expiry is announced only after an authenticated pet request fails", () => {
+  const authState = source("./async-state.tsx");
+  const petScreen = source("./pet-profile-screen.tsx");
+  assert.match(authState, /role=\{announce \? "alert" : undefined\}/);
+  assert.match(petScreen, /announce=\{authExpired\}/);
+  assert.match(petScreen, /setAuthExpired\(true\); auth\.markAnonymous\(\)/);
 });

@@ -51,7 +51,7 @@
    .cart-item { align-items:start; padding:20px 0; }
    .cart-item-controls { display:grid; grid-template-columns:88px auto; gap:8px 12px; align-items:end; max-width:none; min-width:0; }
    .cart-item-controls .input { margin:8px 0 0; }
-   .cart-item-controls .button-row { flex-wrap:nowrap; }
+   .cart-item-controls .button-row { grid-column:2; grid-row:1; flex-wrap:nowrap; }
    .cart-item-controls .field-error { grid-column:1/-1; margin:0; }
    .checkout-item-list li { flex-wrap:nowrap; gap:24px; }
  }
