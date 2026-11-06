@@ -56,6 +56,30 @@ test('recent schedule suppresses dispatch during dual scheduler rollout', async 
   assert.equal(f.calls.length, 1);
   assert.equal(f.logs[0].reason, 'recent_check');
 });
+test('GitHub dispatch creation lag does not skip the next five-minute Cron slot', async () => {
+  // A run registered 30 seconds after the previous tick is 4m30s old on the next tick.
+  const f = fake([run(4.5)]);
+  await tick(event, env, f.request, f.log);
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.logs[0].status, 'dispatched');
+});
+
+test('creation-lag allowance retains a four-minute minimum gap', async () => {
+  for (const ageMinutes of [0.5, 2, 3.99]) {
+    const f = fake([run(ageMinutes)]);
+    await tick(event, env, f.request, f.log);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.logs[0].reason, 'recent_check');
+  }
+});
+
+test('creation-lag allowance does not override active-check guard', async () => {
+  const f = fake([run(4.5, { status: 'in_progress', conclusion: null }), run(8)]);
+  await tick(event, env, f.request, f.log);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.logs[0].reason, 'active_check');
+});
+
 test('self_test, legacy manual and branch runs cannot mask stale checks', async () => {
   const f = fake([run(1, { display_title: 'OCI A1 capacity self_test' }),
     run(1, { display_title: 'OCI Tokyo A1 Capacity Watch' }), run(1, { head_branch: 'ops/test' })]);
