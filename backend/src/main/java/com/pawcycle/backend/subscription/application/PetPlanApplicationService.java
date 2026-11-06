@@ -1,6 +1,7 @@
 package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
+import com.pawcycle.backend.subscription.domain.PlanSalePolicy;
 import com.pawcycle.backend.subscription.persistence.projection.PageProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PetProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PlanVersionProjection;
@@ -103,13 +104,8 @@ class PetPlanApplicationService {
     LocalDate today = support.today();
     if (!pet.petType().equals(version.targetPetType()))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
-    if (version.currentPlanVersionId() == null
-        || version.currentPlanVersionId() != version.id()
-        || version.planName() == null
-        || !version.onSale()
-        || version.migrationOnly()
-        || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
-        || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
+    if (!PlanSalePolicy.available(version.id(), version.currentPlanVersionId(), version.planName(),
+        version.onSale(), version.migrationOnly(), version.saleStartsOn(), version.saleEndsOn(), today))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
   }
 
