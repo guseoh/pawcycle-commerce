@@ -2,6 +2,10 @@
 const WORKFLOW = 'https://api.github.com/repos/guseoh/pawcycle-commerce/actions/workflows/oci-a1-capacity-watch.yml';
 const CHECK_NAME = 'OCI A1 capacity check';
 const INTERVAL = 5 * 60 * 1000;
+// GitHub registers workflow_dispatch runs seconds after their originating Cron tick.
+// Account for up to one minute of creation latency; keep a four-minute minimum
+// spacing guard and preserve the in-progress job exclusion.
+const CREATION_LAG_ALLOWANCE = 60 * 1000;
 const STALE_AFTER = 10 * 60 * 1000;
 const CLOCK_SKEW = 60 * 1000;
 
@@ -54,7 +58,7 @@ export async function tick(event, env, request = fetch, log = console.log, clock
     const stale = !lastGood || observedTime - Date.parse(lastGood.created_at) > STALE_AFTER;
     // Covers queued/pending/waiting/requested runs too. Never cancel an active OCI check.
     const busy = runs.some(run => run.status !== 'completed');
-    const recent = runs.some(run => observedTime - Date.parse(run.created_at) < INTERVAL);
+    const recent = runs.some(run => observedTime - Date.parse(run.created_at) < INTERVAL - CREATION_LAG_ALLOWANCE);
     if (busy || recent) {
       emit('skipped', { reason: busy ? 'active_check' : 'recent_check' });
     } else {
