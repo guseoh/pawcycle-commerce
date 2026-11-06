@@ -11,7 +11,7 @@ amd64 Release/Rollback 계약을 유지하면서 ARM64 플랫폼 검증을 최�
 
 ## 입력 비교와 변경
 
-`C:/Users/guseo/Downloads/pawcycle-arm64-unverified-changes.zip`의 실제 존재와 두 Python 파일을 확인했다. ZIP SHA-256은 `37a18d1844d21f5a28b1c958ca9238361aa045377ae476b3f616510526680d99`다. ZIP README는 미검증 초안의 설명으로만 취급했다.
+`pawcycle-arm64-unverified-changes.zip`의 실제 존재와 두 Python 파일을 확인했다. ZIP SHA-256은 `37a18d1844d21f5a28b1c958ca9238361aa045377ae476b3f616510526680d99`다. ZIP README는 미검증 초안의 설명으로만 취급했다.
 
 `oci-release.py`, `test-oci-release.py`는 최신 main과 기존 `codex/ops-oci-a1-002` worktree에서 각각 byte-identical이었다. ZIP은 같은 main 기반의 순수 추가 Delta로, 엔진 36개 및 테스트 101개 추가/삭제 line이었다. 기존 ARM64 구현과 충돌하거나 중복되는 hunk는 없었다. ZIP을 추출해 덮어쓰지 않고 검토한 hunk만 반영했다.
 
@@ -57,7 +57,7 @@ amd64 Release/Rollback 계약을 유지하면서 ARM64 플랫폼 검증을 최�
 
 첫 실행은 inspect의 optional null 필드 비교와 nested overlay-on-overlay mount 오류로 실패했다. config 비교를 보정하고 `/isolated`에 전용 Docker volume을 제공해 각각 수정했다. 한 번 재실행한 결과 원본 이미지 검증은 통과했고, lifecycle은 `adopt → Host.containers → runtime network boundary mismatch`에서 실패했다. fixture의 `network_mode: none`과 실제 `Host.containers`의 운영 네트워크 이름 계약이 충돌했다. 이 Gate를 우회하거나 실패를 PASS로 표시하지 않았다. 지정된 1회 보정/재검증 예산에 따라 추가 반복은 중단했다.
 
-다음 조치: 이 외부 연결 없는 nested daemon **내부에만** 기존 network 이름/경계를 재현하고 fixture Compose의 네트워크 선언을 맞춘 뒤 재검증한다. 현재 opt-in lifecycle test는 알려진 fixture 실패를 재현한다. 이후 actual adopt/activate/rollback, 변조 시 무변경, 교체 후 health 실패 시 local-only 복귀, 복구 실패 marker 유지, manual recover-state와 proxy 보존을 모두 확인해야 한다. Registry transport, source/main, DB·HTTPS는 이 fixture의 adapter/mock 경계이므로 이후에도 별도 검증이 필요하다. sleep/health fixture 컨테이너를 실제 application HTTP 검증으로 주장하지 않는다.
+다음 조치: 이 외부 연결 없는 nested daemon **내부에만** 기존 network 이름/경계를 재현하고 fixture Compose의 네트워크 선언을 맞춘 뒤 재검증한다. 이 실패는 당시 버전에서 얻은 실행 근거이며, 후속 Correction의 통과를 증명하지 않는다. 이후 actual adopt/activate/rollback, 변조 시 무변경, 교체 후 health 실패 시 local-only 복귀, 복구 실패 marker 유지, manual recover-state와 proxy 보존을 모두 확인해야 한다. Registry transport, source/main, DB·HTTPS는 이 fixture의 adapter/mock 경계이므로 이후에도 별도 검증이 필요하다. sleep/health fixture 컨테이너를 실제 application HTTP 검증으로 주장하지 않는다.
 
 재현 준비(저장소 밖 실행이 아닌, 이 독립 worktree에서만 수행):
 
@@ -74,6 +74,12 @@ docker exec -e PAWCYCLE_ISOLATED_DOCKER=1 -e PYTHONDONTWRITEBYTECODE=1 pawcycle-
 ```
 
 실행 dind 기반 digest: `docker:28-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac` (Engine 28.5.2/containerd store). 패키지 설치와 test image build만 네트워크를 사용했고 검증 daemon은 network none이었다. 원본 image archive와 일회성 test image/volume은 Git에 포함하지 않는다.
+
+### 후속 Correction — 2026-11-06
+
+- Correction `4db685942c220a44252c7939eb87fe659cc97b9f`: 운영 Release 엔진의 네트워크·Health Gate를 변경하지 않고 격리 DinD Compose fixture에 `app`(internal), `edge`, `database-egress` 네트워크, 역할별 연결, Proxy Healthcheck를 추가했다.
+- Fixture 검증은 실제 nested Docker network의 `Internal` 속성과 Compose network 이름·격리 플래그·Healthcheck를 대조한다. 바깥 DinD의 `--network none` 실행 경계는 유지한다.
+- **수정 후 실제 Docker lifecycle 재실행은 미완료**다. 마지막 실행 증거는 위의 `adopt` 실패이며, 다음 Gate에서 이미지의 `repo@digest` 조회 등 추가 실패 가능성도 미확인이다. `adopt/activate/rollback/recover-state` PASS로 판정하지 않는다.
 
 ## Frontend 메모리 판단 유보
 
