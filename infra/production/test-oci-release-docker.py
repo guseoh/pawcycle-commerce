@@ -63,7 +63,7 @@ COMPOSE = b'''services:
   backend:
     image: ${BACKEND_IMAGE}:${BACKEND_RELEASE_SHA}
     platform: linux/arm64
-    network_mode: none
+    networks: [app, database-egress]
     entrypoint: [/bin/sh, -c, 'while :; do sleep 3600; done']
     healthcheck:
       test: [CMD, /bin/sh, -c, 'kill -0 1']
@@ -73,7 +73,7 @@ COMPOSE = b'''services:
   frontend:
     image: ${FRONTEND_IMAGE}:${FRONTEND_RELEASE_SHA}
     platform: linux/arm64
-    network_mode: none
+    networks: [app]
     entrypoint: [/bin/sh, -c, 'while :; do sleep 3600; done']
     healthcheck:
       test: [CMD, /bin/sh, -c, 'kill -0 1']
@@ -83,8 +83,24 @@ COMPOSE = b'''services:
   proxy:
     image: pawcycle-frontend:arm64-local
     platform: linux/arm64
-    network_mode: none
+    networks: [app, edge]
     entrypoint: [/bin/sh, -c, 'while :; do sleep 3600; done']
+    healthcheck:
+      test: [CMD, /bin/sh, -c, 'kill -0 1']
+      interval: 1s
+      timeout: 1s
+      retries: 3
+
+networks:
+  app:
+    name: pawcycle-production-app
+    internal: true
+  edge:
+    name: pawcycle-production-edge
+    internal: false
+  database-egress:
+    name: pawcycle-production-database-egress
+    internal: false
 '''
 
 
@@ -125,9 +141,24 @@ class DockerHost(tests.FakeHost):
         self.materialize(target)
         config = json.loads(self.compose(target, "config", "--format", "json"))
         release.require(set(config["services"]) == set((*ROLES, "proxy")), "fixture services changed")
-        release.require(all(item["network_mode"] == "none" and not item.get("ports") and
-                            not item.get("volumes") for item in config["services"].values()),
-                        "fixture isolation changed")
+        expected = {"backend": {"app", "database-egress"}, "frontend": {"app"},
+                    "proxy": {"app", "edge"}}
+        release.require(set(config["networks"]) == {"app", "edge", "database-egress"},
+                        "fixture network set changed")
+        for name in config["networks"]:
+            network = config["networks"][name]
+            release.require(network["name"] == release.PROJECT + "-" + name and
+                            bool(network.get("internal")) == (name == "app"),
+                            "fixture network isolation changed")
+            actual = json.loads(self.docker("network", "inspect", network["name"]))[0]
+            release.require(bool(actual["Internal"]) == (name == "app"),
+                            "fixture runtime network isolation changed")
+        for role, networks in expected.items():
+            service = config["services"][role]
+            release.require(set(service.get("networks", {})) == networks and
+                            not service.get("network_mode") and not service.get("ports") and
+                            not service.get("volumes") and service.get("healthcheck"),
+                            "fixture service boundary changed")
 
     def siblings(self):
         return self.containers()["proxy"]["Id"]
