@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
+
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 
 import java.math.BigDecimal;

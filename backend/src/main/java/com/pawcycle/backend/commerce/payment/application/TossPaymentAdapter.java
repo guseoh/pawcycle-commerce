@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.payment.infrastructure.toss;
+package com.pawcycle.backend.commerce.payment.application;
 
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 

@@ -17,7 +17,7 @@ import com.pawcycle.backend.commerce.checkout.application.CheckoutApplicationSer
 import com.pawcycle.backend.member.address.application.MemberAddressApplicationService;
 import com.pawcycle.backend.member.address.application.MemberAddressCommand;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
-import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
+
 import java.math.BigDecimal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;

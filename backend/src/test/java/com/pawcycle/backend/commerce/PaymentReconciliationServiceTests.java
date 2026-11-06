@@ -8,7 +8,7 @@ import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
-import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

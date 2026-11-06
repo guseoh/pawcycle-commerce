@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
