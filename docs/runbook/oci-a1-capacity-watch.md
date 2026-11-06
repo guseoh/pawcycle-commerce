@@ -119,9 +119,15 @@ The expected temporary use window is until approximately **November 6–7,
 
 The Worker reads up to 100 recent `main` workflow runs, accepts only
 `schedule` and exact-title `OCI A1 capacity check` dispatches, and
-suppresses a new dispatch if a check is queued/running or was created in
-the last five minutes. It compares against the **actual invocation time**,
-not the potentially delayed `scheduledTime`. It rejects malformed/future
+suppresses a new dispatch if a check is queued/running or its GitHub run
+record was created less than **four minutes** ago. GitHub may register an
+accepted dispatch roughly 30 seconds after its originating five-minute Cron
+tick, so a strict five-minute check on `created_at` can systematically skip
+every other slot. A one-minute registration-lag allowance permits the next
+five-minute Cron tick while retaining the busy-check guard and a four-minute
+minimum age. It compares against the **actual invocation time**,
+not the potentially delayed `scheduledTime`. This is best-effort timing, not
+exactly-once execution or guaranteed five-minute cadence. It rejects malformed/future
 timestamps and GitHub API/network failures. If no completed successful
 check was created in the last ten minutes, it emits `stale_check` in
 Cloudflare Cron status/logs after attempting a dispatch if idle. A
@@ -163,6 +169,28 @@ npm exec --yes --package=wrangler@4.157.0 -- wrangler deploy --dry-run --config 
 On PowerShell set `$env:GITHUB_REPOSITORY = 'guseoh/pawcycle-commerce'`
 before running Python. These offline checks do not provision OCI
 resources or send Discord alerts. Dry-run is a local bundle only.
+
+### 2026-11-07 cadence correction evidence (repository-only)
+
+- The 2026-11-06 GitHub run history contains a repeated ~10-minute
+  `workflow_dispatch` pattern despite the Worker declaring `*/5`.
+  The strict five-minute `created_at` cooldown can explain alternating
+  skipped Cron ticks; this is a code-based cause hypothesis, not a verified
+  Cloudflare runtime trace.
+- The last inspected dispatched capacity check (2026-11-06 14:50 UTC)
+  returned `OUT_OF_HOST_CAPACITY`. The observed daily Discord status send
+  returned HTTP 204. An actual `AVAILABLE` transition notification was
+  not observed.
+- This correction changes only the Worker cooldown plus offline tests.
+  **It has not been deployed to Cloudflare**. The current Worker enabled
+  state, token expiry, Free-tier Cron status and reasons for an hours-long
+  absence of dispatches are **not verified** by GitHub Actions logs.
+  Check actual Worker deployed version/ENABLED/trigger/tail logs without
+  exposing tokens before approving any rollout.
+- The temporary Cloudflare campaign's November 6–7 cutoff is not silently
+  extended. Re-activation beyond the approved window needs a fresh explicit
+  operations decision. Until then the existing GitHub monitor and daily
+  health reporting continue independently, subject to their schedule delays.
 
 ### Rollout, evidence, and cutoff (separate operational approval required)
 
