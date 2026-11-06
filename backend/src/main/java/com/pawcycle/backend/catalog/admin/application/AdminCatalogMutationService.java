@@ -46,6 +46,7 @@ import com.pawcycle.backend.catalog.admin.persistence.CatalogAdminPersistence;
 import com.pawcycle.backend.catalog.admin.persistence.ProductDetailSectionPersistence;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import java.util.function.Supplier;
+import com.pawcycle.backend.catalog.product.application.ProductListCacheInvalidator;
 import java.util.function.ToLongFunction;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,7 @@ import org.springframework.transaction.annotation.Isolation;
 @Service
 public class AdminCatalogMutationService {
   private final AdminAuditService audits;
+  private final ProductListCacheInvalidator imageCache;
 
   private final AdminCatalogService adminCatalogService;
   private final CatalogAdminPersistence catalogExpansionAdminService;
@@ -64,11 +66,13 @@ public class AdminCatalogMutationService {
       AdminAuditService audits,
       AdminCatalogService adminCatalogService,
       CatalogAdminPersistence catalogExpansionAdminService,
-      ProductDetailSectionPersistence productDetailSectionService) {
+      ProductDetailSectionPersistence productDetailSectionService,
+      ProductListCacheInvalidator imageCache) {
     this.adminCatalogService = adminCatalogService;
     this.catalogExpansionAdminService = catalogExpansionAdminService;
     this.productDetailSectionService = productDetailSectionService;
     this.audits = audits;
+    this.imageCache = imageCache;
   }
 
   private <T> T execute(
@@ -176,7 +180,11 @@ public class AdminCatalogMutationService {
         adminId,
         "CATALOG_PRODUCT_IMAGE_CREATE",
         "PRODUCT_IMAGE",
-        () -> catalogExpansionAdminService.createImage(productId, request),
+        () -> {
+          ImageView image = catalogExpansionAdminService.createImage(productId, request);
+          imageCache.invalidateAfterCommit();
+          return image;
+        },
         ImageView::imageId);
   }
 
@@ -187,8 +195,11 @@ public class AdminCatalogMutationService {
         adminId,
         "CATALOG_PRODUCT_IMAGE_UPDATE",
         "PRODUCT_IMAGE",
-        () ->
-            catalogExpansionAdminService.updateImage(productId, imageId, request),
+        () -> {
+          ImageView image = catalogExpansionAdminService.updateImage(productId, imageId, request);
+          imageCache.invalidateAfterCommit();
+          return image;
+        },
         ignored -> imageId);
   }
 
@@ -199,7 +210,10 @@ public class AdminCatalogMutationService {
         "CATALOG_PRODUCT_IMAGE_DELETE",
         "PRODUCT_IMAGE",
         imageId,
-        () -> catalogExpansionAdminService.deleteImage(productId, imageId));
+        () -> {
+          catalogExpansionAdminService.deleteImage(productId, imageId);
+          imageCache.invalidateAfterCommit();
+        });
   }
 
   @Transactional
