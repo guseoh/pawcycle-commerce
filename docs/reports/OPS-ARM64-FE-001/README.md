@@ -1,7 +1,9 @@
 # OPS-ARM64-FE-001 — Frontend ARM64 memory/cgroup comparison
 
 - 날짜: 2026-11-07 KST (사용자 테스트 출력의 UTC 측정 시작은 2026-11-06)
-- 작업 등급: 고위험 / 저장소 변경 후보 검증
+- 작업 등급: 고위험
+- 실행 구분: 저장소 변경
+- 상태: 사용자 실측에 근거한 운영 설정 후보
 - 근거 수준: **사용자 제공 Docker Desktop PowerShell 출력**. ChatGPT가 Docker 엔진에서 직접 실행하거나 원본 로그·이미지 digest를 독립 검증한 결과가 아님.
 - 범위: 동일 로컬 `pawcycle-frontend:arm64-local`의 Linux ARM64 에뮬레이션, `--network none`, `--cpus 0.35`, `--pids-limit 128`, `--read-only`, 동일 tmpfs, swap 비활성. 실제 OCI A1, GHCR, 운영 Backend/DB/HTTPS 아님.
 
