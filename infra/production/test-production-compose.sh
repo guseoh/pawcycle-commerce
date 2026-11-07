@@ -200,6 +200,12 @@ assert set(config.get("networks", {})) == {"edge", "app", "database-egress"}
 assert not services["backend"].get("depends_on")
 assert set(services["backend"].get("networks", {})) == {"app", "database-egress"}
 assert set(services["frontend"].get("networks", {})) == {"app"}
+assert int(services["frontend"]["mem_limit"]) == 768 * 1024 * 1024, "Frontend limit must be 768MiB"
+assert services["frontend"]["healthcheck"]["test"] == [
+    "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/products"
+], "Frontend healthcheck must avoid per-check Node startup"
+assert services["frontend"]["read_only"] is True
+assert services["frontend"]["pids_limit"] == 128
 assert set(services["proxy"].get("networks", {})) == {"edge", "app"}
 
 database_egress_members = {
