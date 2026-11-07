@@ -59,6 +59,28 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
 
+    def test_production_images_publish_native_amd64_and_arm64(self) -> None:
+        # QEMU must be available before the Buildx builder is initialized.
+        qemu = "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1"
+        buildx = "docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435"
+        self.assertEqual(1, self.publish.count(qemu))
+        self.assertLess(self.publish.index(qemu), self.publish.index(buildx))
+        self.assertEqual(2, self.publish.count("platforms: linux/amd64,linux/arm64"))
+        self.assertEqual(2, self.publish.count("org.opencontainers.image.source=https://github.com/${{ github.repository }}"))
+        self.assertEqual(2, self.publish.count("org.opencontainers.image.revision=${{ github.sha }}"))
+        self.assertEqual(2, self.publish.count("provenance: false"))
+        self.assertEqual(2, self.publish.count("sbom: false"))
+        self.assertIn("if: github.ref == 'refs/heads/main'", self.publish)
+        self.assertIn("if: needs.classify.outputs.publish == 'true'", self.publish)
+        self.assertNotIn("production-deploy.yml", self.publish)
+        for role in ("Backend", "Frontend"):
+            block = self.publish.split(f"      - name: Build and push {role} image", 1)[1]
+            block = block.split("      - name:", 1)[0]
+            self.assertIn("platforms: linux/amd64,linux/arm64", block)
+            self.assertIn("push: true", block)
+            self.assertIn("org.opencontainers.image.source=", block)
+            self.assertIn("org.opencontainers.image.revision=", block)
+
     def test_diff_guard_and_manual_publish_fail_safe(self) -> None:
         self.assertIn('''if [ "$EVENT_NAME" = "workflow_dispatch" ]; then''', self.publish)
         self.assertIn('''''|0000000000000000000000000000000000000000)''', self.publish)
