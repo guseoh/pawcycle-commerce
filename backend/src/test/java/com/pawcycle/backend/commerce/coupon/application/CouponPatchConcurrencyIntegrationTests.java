@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;

@@ -9,7 +9,6 @@ import com.pawcycle.backend.commerce.refund.infrastructure.toss.TossRefundAdapte
 
 import com.pawcycle.backend.commerce.refund.persistence.RefundPersistenceAdapter;
 import io.micrometer.core.instrument.Timer;
-import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 

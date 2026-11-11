@@ -6,7 +6,6 @@ import java.util.List;
 import com.pawcycle.backend.commerce.payment.domain.QPaymentEntity;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentNativeLocks;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceQueries;
-import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import com.pawcycle.backend.commerce.payment.domain.PaymentEntity;

@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.application.CatalogManifestImportException;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportService;
-import com.pawcycle.backend.catalog.maintenance.persistence.CustomerCatalogImportPersistence;
 import com.pawcycle.backend.catalog.maintenance.persistence.DemoCatalogImportPersistence;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportOperation;
 import com.pawcycle.backend.catalog.application.CustomerCatalogImportResult;

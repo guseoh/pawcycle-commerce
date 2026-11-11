@@ -5,7 +5,6 @@ All paths and Docker runtime metadata are synthetic. The real Compose config
 parser is read-only and does not use a daemon. No SSH or Production execution.
 """
 import fcntl
-import copy
 import hashlib
 import importlib.util
 import io

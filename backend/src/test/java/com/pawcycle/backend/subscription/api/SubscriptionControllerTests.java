@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import com.pawcycle.backend.subscription.api.CreateSubscriptionRequest;
 import com.pawcycle.backend.subscription.api.CreatePetRequest;
-import com.pawcycle.backend.subscription.api.PageResponse;
 import com.pawcycle.backend.subscription.api.PetResponse;
 import com.pawcycle.backend.subscription.api.SubscriptionCommandRequest;
 import com.pawcycle.backend.subscription.api.SubscriptionDetailResponse;
