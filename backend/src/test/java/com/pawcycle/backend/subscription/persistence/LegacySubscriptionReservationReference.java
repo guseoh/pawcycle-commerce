@@ -3,7 +3,6 @@ package com.pawcycle.backend.subscription.persistence;
 import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotencyResult;
 import com.pawcycle.backend.subscription.application.SubscriptionOperationResult;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
 
 public class LegacySubscriptionReservationReference {
   private final JdbcTemplate jdbc;

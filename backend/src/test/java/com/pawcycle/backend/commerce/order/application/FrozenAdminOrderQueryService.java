@@ -5,7 +5,6 @@ import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.order.api.AdminOrderResponse;
 import com.pawcycle.backend.commerce.order.persistence.AdminOrderPersistenceAdapter;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
 public class FrozenAdminOrderQueryService {
   private final AdminOrderPersistenceAdapter orders;

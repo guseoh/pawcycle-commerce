@@ -6,10 +6,8 @@ import com.pawcycle.backend.commerce.membership.model.MembershipView;
 
 import com.pawcycle.backend.commerce.membership.api.MembershipGradeRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
-import org.springframework.stereotype.Repository;
 
 final class LegacyMembershipPersistenceAdapter {
   private final JdbcTemplate queries;

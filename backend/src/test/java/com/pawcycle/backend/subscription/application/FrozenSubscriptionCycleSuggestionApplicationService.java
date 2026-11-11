@@ -5,7 +5,6 @@ import com.pawcycle.backend.subscription.api.SubscriptionCycleSuggestionResponse
 import com.pawcycle.backend.subscription.persistence.RepeatCommerceQueryRepository;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 public class FrozenSubscriptionCycleSuggestionApplicationService {

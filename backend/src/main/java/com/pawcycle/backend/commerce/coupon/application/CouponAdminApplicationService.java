@@ -5,7 +5,6 @@ import com.pawcycle.backend.commerce.coupon.persistence.CouponPersistenceAdapter
 import com.pawcycle.backend.commerce.coupon.model.CouponView;
 import com.pawcycle.backend.commerce.coupon.persistence.CouponWriteCommand;
 import com.pawcycle.backend.common.error.FieldErrorResponse;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;

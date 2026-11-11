@@ -2,11 +2,9 @@
 package com.pawcycle.backend.subscription.persistence;
 
 import com.pawcycle.backend.subscription.persistence.SubscriptionBillingPersistence.*;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
 
 class LegacySubscriptionBillingPersistence {
   private final JdbcTemplate jdbc;

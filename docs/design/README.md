@@ -15,6 +15,8 @@
 
 백엔드 정책, API 계약(API Contract), 제품 범위는 이 디렉터리에서 변경하지 않는다.
 
+[MVP4-UX-005 승인본](MVP4-UX-005/README.md)은 A/R1을 구현 방향으로 기록한다. R0 및 B/C 시안과 [정적 시안 생성 스크립트](MVP4-UX-005/render-high-fidelity.py)는 당시 검토 자료로 보존한다. R0 문서에서 참조한 코드는 [당시 Commerce API client](https://github.com/guseoh/pawcycle-commerce/blob/0cc9c270472ce33ee74f0fa1b5ade72cbf442eb7/frontend/src/lib/commerce-final-api.ts)에서 확인할 수 있다.
+
 ## 최소 디자인 문서 구조
 
 ```markdown

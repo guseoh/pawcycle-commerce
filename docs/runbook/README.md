@@ -14,6 +14,8 @@
 
 AWS에서 수행했던 운영 과정과 검증 결과는 `docs/reports/**`, `docs/learning/**`, 관련 ADR, Git 및 PR 이력에 보존한다. 이 기록은 향후 회고·포트폴리오·기술 글 작성의 근거이며, 현재 실행 절차로 재사용하지 않는다.
 
+[OPS-029 보고서](../reports/OPS-029/tl-report.md)에서 참조한 [OPS-010 단일 Release Runbook](https://github.com/guseoh/pawcycle-commerce/blob/9d37697be05aad8bf94cb3bd6aa877516b96dd88/docs/runbook/OPS-010-production-single-release.md)은 당시 실행 절차의 기록이다.
+
 ## Harness / Collaboration
 
 - `lean-harness.md`: 작업 등급, 실행 구분, 최소 PR evidence, 조건부 산출물, AI Prompt, Review와 feedback loop의 권위 원본

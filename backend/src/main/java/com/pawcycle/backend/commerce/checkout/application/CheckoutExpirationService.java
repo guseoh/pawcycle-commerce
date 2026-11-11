@@ -1,7 +1,6 @@
 package com.pawcycle.backend.commerce.checkout.application;
 
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPersistenceAdapter;
-import java.util.List;
 import org.springframework.stereotype.Service;
 
 /** Selects only expired READY payments; each candidate is committed independently. */

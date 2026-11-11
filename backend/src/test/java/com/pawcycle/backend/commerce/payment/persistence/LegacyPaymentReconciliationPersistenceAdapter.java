@@ -3,11 +3,9 @@ package com.pawcycle.backend.commerce.payment.persistence;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter.*;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
-import org.springframework.stereotype.Repository;
 
 public class LegacyPaymentReconciliationPersistenceAdapter {
   private final JdbcTemplate queries;
