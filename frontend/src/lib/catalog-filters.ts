@@ -2,7 +2,7 @@ import type { CatalogDiscovery, ProductFilters, ProductSort } from "./api.ts";
 import type { InteractionContext } from "./interaction-api.ts";
 
 export const PRODUCT_SORTS: { value: ProductSort; label: string }[] = [
-  { value: "RECOMMENDED", label: "추천순" }, { value: "NEWEST", label: "최신순" },
+  { value: "NEWEST", label: "최신순" },
   { value: "PRICE_ASC", label: "낮은 가격순" }, { value: "PRICE_DESC", label: "높은 가격순" },
   { value: "RATING", label: "평점순" }, { value: "REVIEW_COUNT", label: "리뷰 많은 순" },
 ];
@@ -13,7 +13,7 @@ export function catalogPriceRangeError({ minPrice, maxPrice }: Pick<ProductFilte
 }
 
 export function parseCatalogFilters(query: URLSearchParams): ProductFilters {
-  const filters: ProductFilters = { page: 0, size: 12, sort: "RECOMMENDED" };
+  const filters: ProductFilters = { page: 0, size: 12, sort: "NEWEST" };
   for (const key of ["q", "petType", "category", "subcategory", "brand"] as const) {
     const value = query.get(key)?.trim();
     if (value) filters[key] = value;
@@ -32,7 +32,9 @@ export function parseCatalogFilters(query: URLSearchParams): ProductFilters {
     if (value === "true" || value === "false") filters[key] = value === "true";
   }
   const sort = query.get("sort");
-  if (PRODUCT_SORTS.some((item) => item.value === sort)) filters.sort = sort as ProductSort;
+  // Existing RECOMMENDED URLs use the same backend order as NEWEST.
+  const matchingSort = PRODUCT_SORTS.find((item) => item.value === sort);
+  if (matchingSort) filters.sort = matchingSort.value;
   return filters;
 }
 

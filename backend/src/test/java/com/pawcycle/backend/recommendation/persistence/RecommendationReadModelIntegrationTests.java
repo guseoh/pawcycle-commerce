@@ -1,6 +1,7 @@
 package com.pawcycle.backend.recommendation.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import com.pawcycle.backend.catalog.admin.domain.FacetDefinitionEntity;
 import com.pawcycle.backend.catalog.admin.domain.FacetOptionEntity;
@@ -10,7 +11,10 @@ import com.pawcycle.backend.catalog.category.domain.Category;
 import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.sku.domain.Sku;
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.recommendation.application.ProductRecommendationService;
+import com.pawcycle.backend.recommendation.application.RecommendationException;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
+import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -32,6 +36,7 @@ class RecommendationReadModelIntegrationTests {
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
   @Autowired private RecommendationQueryAdapter queries;
+  @Autowired private ProductRecommendationService recommendations;
   private LegacyRecommendationQueryAdapter legacy;
   private SecondaryReadFixtures fixtures;
   private long memberId;
@@ -75,6 +80,42 @@ class RecommendationReadModelIntegrationTests {
           .doesNotContainAnyElementsOf(excluded);
     }
     assertThat(queries.findPurchasableCandidates("DOG")).extracting(RecommendationCandidate::productId).contains(first.getId()).doesNotContain(second.getId());
+  }
+
+  @Test
+  void publicSoldOutProductIsARecommendationSourceButNeverACandidate() {
+    Product soldOut = fixtures.product(firstCategory, brand, "DOG", "PUBLIC");
+    fixtures.sku(soldOut, SkuStatus.ACTIVE, 0);
+    entities.flush();
+
+    for (var view : List.of(
+        recommendations.related(soldOut.getId(), 6),
+        recommendations.complementary(soldOut.getId(), 6))) {
+      assertThat(view.products()).extracting(ItemView::productId)
+          .contains(first.getId()).doesNotContain(soldOut.getId(), second.getId());
+    }
+    assertThat(recommendations.related(first.getId(), 6).products())
+        .extracting(ItemView::productId).doesNotContain(first.getId(), soldOut.getId());
+  }
+
+  @Test
+  void recommendationSourceKeepsPublicVisibilityAndNotFoundBoundaries() {
+    Product draft = fixtures.product(firstCategory, brand, "DOG", "DRAFT");
+    Product inactiveCategory = fixtures.product(fixtures.category(false), brand, "DOG", "PUBLIC");
+    Product inactiveBrand = fixtures.product(firstCategory, fixtures.brand(false), "DOG", "PUBLIC");
+    for (Product hidden : List.of(draft, inactiveCategory, inactiveBrand)) {
+      fixtures.sku(hidden, SkuStatus.ACTIVE, 10);
+    }
+    entities.flush();
+
+    for (long id : List.of(draft.getId(), inactiveCategory.getId(), inactiveBrand.getId(), Long.MAX_VALUE)) {
+      assertThatExceptionOfType(RecommendationException.class)
+          .isThrownBy(() -> recommendations.related(id, 6))
+          .satisfies(error -> {
+            assertThat(error.status()).isEqualTo(404);
+            assertThat(error.code()).isEqualTo("PRODUCT_NOT_FOUND");
+          });
+    }
   }
 
   @Test

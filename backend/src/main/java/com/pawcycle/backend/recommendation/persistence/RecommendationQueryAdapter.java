@@ -6,6 +6,7 @@ import com.pawcycle.backend.recommendation.domain.RecommendationTrendScore;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -55,6 +56,10 @@ public class RecommendationQueryAdapter {
 
   public List<String> wishlistCategorySlugs(long memberId) {
     return portable.wishlistCategorySlugs(memberId);
+  }
+
+  public Optional<RecommendationCandidate> findPublicSource(long productId) {
+    return portable.findPublicSource(productId);
   }
 
   public List<RecommendationCandidate> findPurchasableCandidates(String petType) {

@@ -19,9 +19,21 @@ import java.time.LocalDate;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ProductRecommendationServiceTests {
+  @Test
+  void publicSourceWithNoEligibleCandidatesReturnsAnEmptyRecommendation() {
+    RecommendationQueryAdapter repository = mock(RecommendationQueryAdapter.class);
+    when(repository.findPublicSource(1L)).thenReturn(Optional.of(candidate(1L)));
+    when(repository.findPurchasableCandidates("DOG")).thenReturn(List.of());
+    var service = new ProductRecommendationService(repository, Clock.systemUTC());
+
+    assertThat(service.related(1L, 6).products()).isEmpty();
+    assertThat(service.complementary(1L, 6).products()).isEmpty();
+  }
+
   @Test
   void trendingUsesOneBatchScoreLookupAndToleratesCandidatesWithoutActivity() {
     RecommendationQueryAdapter repository = mock(RecommendationQueryAdapter.class);
