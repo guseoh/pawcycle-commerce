@@ -10,7 +10,10 @@ indent_style = space
 [*.{yml,yaml,json,md}]
 indent_size = 2
 
-[*.{java,kt,kts}]
+[*.java]
+indent_size = 2
+
+[*.{kt,kts}]
 indent_size = 4
 
 [*.{js,jsx,ts,tsx}]
