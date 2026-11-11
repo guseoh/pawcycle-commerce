@@ -1,4 +1,4 @@
-package com.pawcycle.backend.commerce.returnrequest.api;
+package com.pawcycle.backend.commerce.returning.api;
 
 import jakarta.validation.constraints.NotNull;
 
