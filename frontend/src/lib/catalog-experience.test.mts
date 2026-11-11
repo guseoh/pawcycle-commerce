@@ -98,14 +98,22 @@ test("Malformed URL numbers are safe and unknown metadata remains removable", ()
   assert.equal(filters.size, 12);
   assert.equal(filters.minPrice, undefined);
   assert.equal(filters.maxPrice, undefined);
-  assert.equal(filters.sort, "RECOMMENDED");
+  assert.equal(filters.sort, "NEWEST");
   assert.equal(filters.category, "removed");
   assert.deepEqual(filters.facet, ["unknown:value"]);
 });
 
-test("All six server sort values survive URL parsing and serialization", () => {
-  assert.deepEqual(PRODUCT_SORTS.map((item) => item.value), ["RECOMMENDED", "NEWEST", "PRICE_ASC", "PRICE_DESC", "RATING", "REVIEW_COUNT"]);
+test("The catalog exposes only distinct sort options and round-trips them through URLs", () => {
+  assert.deepEqual(PRODUCT_SORTS.map((item) => item.value), ["NEWEST", "PRICE_ASC", "PRICE_DESC", "RATING", "REVIEW_COUNT"]);
   for (const { value } of PRODUCT_SORTS) assert.equal(parseCatalogFilters(new URLSearchParams(catalogQuery({ sort: value }))).sort, value);
+});
+
+test("Legacy recommended URLs select newest and keep their filters and page", () => {
+  const filters = parseCatalogFilters(new URLSearchParams("sort=RECOMMENDED&category=food&page=2"));
+  assert.equal(filters.sort, "NEWEST");
+  assert.equal(filters.category, "food");
+  assert.equal(filters.page, 2);
+  assert.equal(new URLSearchParams(catalogQuery(filters)).get("sort"), "NEWEST");
 });
 
 test("Back/forward URL parsing restores state rather than merging stale drafts", () => {
