@@ -1,7 +1,6 @@
 package com.pawcycle.backend.subscription.persistence;
 
 import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotencyResult;
-import com.pawcycle.backend.subscription.application.SubscriptionOperationResult;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -62,17 +61,19 @@ public class SubscriptionIdempotencyReservationPersistence {
       long memberId,
       String key,
       long subscriptionId,
-      SubscriptionOperationResult result,
+      int responseStatus,
+      String location,
+      String etag,
       String bodyJson) {
     nativeSql.update(
         "UPDATE subscription_creation_idempotency_results SET"
             + " subscription_id=?,response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6))"
             + " WHERE member_id=? AND idempotency_key=?",
         subscriptionId,
-        result.status(),
+        responseStatus,
         bodyJson,
-        result.location(),
-        result.etag(),
+        location,
+        etag,
         memberId,
         key);
   }
@@ -95,16 +96,18 @@ public class SubscriptionIdempotencyReservationPersistence {
       long subscriptionId,
       String command,
       String key,
-      SubscriptionOperationResult result,
+      int responseStatus,
+      String location,
+      String etag,
       String bodyJson) {
     nativeSql.update(
         "UPDATE subscription_command_idempotency_results SET"
             + " response_status=?,response_body=?,location_header=?,etag_header=?,completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6))"
             + " WHERE member_id=? AND subscription_id=? AND command_type=? AND idempotency_key=?",
-        result.status(),
+        responseStatus,
         bodyJson,
-        result.location(),
-        result.etag(),
+        location,
+        etag,
         memberId,
         subscriptionId,
         command,

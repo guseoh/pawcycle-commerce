@@ -20,12 +20,14 @@ import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.JPAExpressions;
+import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.time.LocalDate;
 import com.pawcycle.backend.recommendation.domain.RecommendationMemberSignals;
@@ -63,35 +65,51 @@ class RecommendationJpaQueryRepository {
     return result;
   }
 
+  Optional<RecommendationCandidate> findPublicSource(long productId) {
+    var product = new QProduct("product");
+    CandidateRow row = publicCandidateRows(product).where(product.id.eq(productId)).fetchOne();
+    return Optional.ofNullable(row)
+        .map(source -> source.toCandidate(facetsByProduct(List.of(productId)).getOrDefault(productId, List.of())));
+  }
+
   List<RecommendationCandidate> findPurchasableCandidates(String petType) {
     var product = new QProduct("product");
-    var category = new QCategory("category");
-    var brand = new QBrand("brand");
     var sku = new QSku("sku");
     var inventory = new QInventoryEntity("inventory");
-    var eligible = new BooleanBuilder(product.status.eq(ProductStatus.PUBLIC))
-        .and(category.active.isTrue()).and(brand.active.isTrue())
-        .and(JPAExpressions.selectOne().from(sku).join(inventory).on(inventory.skuId.eq(sku.id))
-            .where(sku.product.id.eq(product.id), sku.status.eq(SkuStatus.ACTIVE), inventory.availableQuantity.gt(0)).exists());
+    var eligible = new BooleanBuilder(JPAExpressions.selectOne()
+        .from(sku).join(inventory).on(inventory.skuId.eq(sku.id))
+        .where(sku.product.id.eq(product.id), sku.status.eq(SkuStatus.ACTIVE), inventory.availableQuantity.gt(0))
+        .exists());
     if (petType != null && !petType.isBlank()) eligible.and(product.petType.eq(petType));
-    List<CandidateRow> rows = queries.select(Projections.constructor(CandidateRow.class,
+    List<CandidateRow> rows = publicCandidateRows(product).where(eligible).orderBy(product.id.asc()).fetch();
+    if (rows.isEmpty()) return List.of();
+    Map<Long, List<String>> facets = facetsByProduct(rows.stream().map(CandidateRow::productId).toList());
+    return rows.stream().map(row -> row.toCandidate(facets.getOrDefault(row.productId(), List.of()))).toList();
+  }
+
+  private JPAQuery<CandidateRow> publicCandidateRows(QProduct product) {
+    var category = new QCategory("category");
+    var brand = new QBrand("brand");
+    return queries.select(Projections.constructor(CandidateRow.class,
             product.id, product.name, product.shortDescription, product.thumbnailUrl, product.petType,
             category.id, category.name, category.slug, brand.id, brand.name, brand.slug))
         .from(product).join(product.category, category).join(brand).on(brand.id.eq(product.brandId))
-        .where(eligible).orderBy(product.id.asc()).fetch();
-    if (rows.isEmpty()) return List.of();
+        .where(product.status.eq(ProductStatus.PUBLIC), category.active.isTrue(), brand.active.isTrue());
+  }
+
+  private Map<Long, List<String>> facetsByProduct(List<Long> productIds) {
     var value = new QProductFacetValueEntity("value");
     var option = new QFacetOptionEntity("option");
     var definition = new QFacetDefinitionEntity("definition");
     List<FacetRow> facetRows = queries.select(Projections.constructor(FacetRow.class,
             value.product.id, definition.key, option.value))
         .from(value).join(value.facetOption, option).join(option.facetDefinition, definition)
-        .where(value.product.id.in(rows.stream().map(CandidateRow::productId).toList()))
+        .where(value.product.id.in(productIds))
         .orderBy(value.product.id.asc(), definition.id.asc(), option.displayOrder.asc(), option.id.asc()).fetch();
     Map<Long, List<String>> facets = new HashMap<>();
     for (FacetRow facet : facetRows) facets.computeIfAbsent(facet.productId(), ignored -> new ArrayList<>())
         .add(facet.key() + ":" + facet.value());
-    return rows.stream().map(row -> row.toCandidate(facets.getOrDefault(row.productId(), List.of()))).toList();
+    return facets;
   }
 
   List<String> purchaseCategorySlugs(long memberId) {

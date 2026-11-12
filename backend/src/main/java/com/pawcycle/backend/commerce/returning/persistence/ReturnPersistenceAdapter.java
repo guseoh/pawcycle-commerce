@@ -9,7 +9,6 @@ import org.hibernate.type.descriptor.java.JdbcTimestampJavaType;
 import org.hibernate.type.internal.BasicTypeImpl;
 import java.sql.Timestamp;
 import java.time.Clock;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;

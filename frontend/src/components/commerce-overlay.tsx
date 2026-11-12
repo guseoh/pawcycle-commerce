@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { desktopOverlayPosition } from "@/lib/overlay-position";
 
 /** Native dialog supplies modal inertness, keyboard containment and focus restoration. */
 export function CommerceOverlay({ children, label, className, onClose, responsive = false, id }: { children: React.ReactNode; label: string; className: string; onClose: () => void; responsive?: boolean; id?: string }) {
@@ -15,6 +16,16 @@ export function CommerceOverlay({ children, label, className, onClose, responsiv
     const modal = !responsive || media.matches;
     const previous = document.body.style.overflow;
     if (modal) { dialog.showModal(); document.body.style.overflow = "hidden"; } else dialog.show();
+    // Desktop filters follow their trigger rather than the catalog's origin.
+    if (!modal && trigger) {
+      const anchor = trigger.getBoundingClientRect();
+      const panel = dialog.getBoundingClientRect();
+      const position = desktopOverlayPosition(anchor, panel, { width: window.innerWidth, height: window.innerHeight });
+      dialog.style.position = "fixed";
+      dialog.style.left = `${position.left}px`;
+      dialog.style.top = `${position.top}px`;
+      dialog.style.maxHeight = `${position.maxHeight}px`;
+    }
     const pointer = (event: PointerEvent) => {
       const target = event.target as Node;
       if (target === dialog || (!modal && !dialog.contains(target) && target !== trigger)) closeRef.current();
@@ -33,7 +44,9 @@ export function CommerceOverlay({ children, label, className, onClose, responsiv
     document.addEventListener("keydown", key);
     document.addEventListener("focusin", focus);
     media.addEventListener("change", resize);
+    if (!modal) { window.addEventListener("resize", resize); window.addEventListener("scroll", resize); }
     return () => {
+      window.removeEventListener("resize", resize); window.removeEventListener("scroll", resize);
       document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); document.removeEventListener("focusin", focus); media.removeEventListener("change", resize);
       const focusWasInside = dialog.contains(document.activeElement);
       dialog.close(); document.body.style.overflow = previous;

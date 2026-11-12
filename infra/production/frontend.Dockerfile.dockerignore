@@ -3,6 +3,8 @@
 frontend/*
 !frontend/src/
 !frontend/src/**
+!frontend/public/
+!frontend/public/**
 !frontend/eslint.config.mjs
 !frontend/next-env.d.ts
 !frontend/next.config.ts

@@ -13,7 +13,7 @@ import com.pawcycle.backend.commerce.cancellation.api.CancellationResponse;
 import com.pawcycle.backend.commerce.cancellation.application.CancellationResult;
 import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.commerce.returning.application.ReturnResult;
-import com.pawcycle.backend.commerce.returnrequest.api.ReturnRequestController;
+import com.pawcycle.backend.commerce.returning.api.ReturnRequestController;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import java.sql.Timestamp;
 import org.junit.jupiter.api.Test;

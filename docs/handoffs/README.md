@@ -19,3 +19,8 @@ docs/handoffs/<작업 ID>/<source-role>-to-<target-role>.md
 새 인수인계는 `docs/handoffs/handoff-template.md`를 기준으로 작성한다.
 
 역할 브랜치, commit·push, 보고서 필수 규칙은 루트 `AGENTS.md`를 기준으로 한다.
+
+## 완료된 인수인계
+
+- [FOUNDATION-001](FOUNDATION-001/tl-to-be-fe-sre.md)은 초기 애플리케이션 구성 시점의 기록이다. 현재 개발 환경은 [로컬 개발 Runbook](../runbook/FOUNDATION-001-local-development.md)을 따른다.
+- [OPS-001](OPS-001/sre-to-tl.md)은 최초 Discord 연동 확인을 위한 기록이다. 현재 알림 절차는 [협업 자동화 Runbook](../runbook/collaboration-automation.md)을 따른다.

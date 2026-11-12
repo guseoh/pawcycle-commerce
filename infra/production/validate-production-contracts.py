@@ -75,6 +75,34 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"ERROR: {message}")
 
 
+def validate_oci_release_contract() -> None:
+    nginx = (PRODUCTION / "nginx.https.conf").read_text(encoding="utf-8")
+    for marker in ("resolver 127.0.0.11 valid=5s ipv6=off;", "server backend:8080 resolve;",
+                   "server frontend:3000 resolve;", "zone pawcycle_application_backend",
+                   "zone pawcycle_application_frontend", "listen 8081;", "limit_req zone=login_per_ip",
+                   "ssl_reject_handshake on;", "location ^~ /.well-known/acme-challenge/"):
+        require(marker in nginx, f"Application DNS/security contract missing: {marker}")
+    require("proxy_pass http://backend:" not in nginx and "proxy_pass http://frontend:" not in nginx,
+            "Application still has static DNS proxy_pass")
+    for name in ("oci-release.py", "test-oci-release.py", "oci-cd.py", "test-oci-cd.py"):
+        require((PRODUCTION / name).is_file(), f"OCI release asset missing: {name}")
+    for workflow in WORKFLOWS.glob("*.yml"):
+        require(not re.search(r"python(?:3)?\s+infra/production/oci-release\.py\b", workflow.read_text(encoding="utf-8")),
+                "CI must not execute the Production release CLI")
+        require(not re.search(r"python(?:3)?\s+infra/production/oci-cd\.py\b", workflow.read_text(encoding="utf-8")),
+                "CI must not execute the Production CD controller")
+    import json
+    policy = json.loads((PRODUCTION / "oci-cd-policy.example.json").read_text(encoding="utf-8"))
+    require(policy["enabled"] is False and not policy["approval_evidence"] and policy["expires_unix"] == 0,
+            "repository policy must remain unapproved and OFF")
+    require(policy["compatibility_mode"] == "application-v1" and policy["automatic_baseline_sha"] is None,
+            "application policy must remain OFF and cosmetic baseline unset")
+    service = (PRODUCTION / "systemd/pawcycle-oci-cd.service").read_text(encoding="utf-8")
+    require("ConditionPathExists=/etc/pawcycle/oci-cd-enabled" in service and
+            "--execute-policy" in service and "StandardOutput=journal" in service,
+            "host activation must require separate enablement and journal notification")
+
+
 def active_text_files(root: Path):
     for path in root.rglob("*"):
         if (
@@ -180,6 +208,7 @@ def validate_observability_contract() -> None:
 
 
 def validate_release_lock_contract() -> None:
+    validate_oci_release_contract()
     secure_state = 'validate_secure_root_directory "$STATE_DIR" "state directory"'
     guard = 'validate_protected_file "$DEPLOY_LOCK_FILE" "production release lock"'
     open_lock = 'exec 9>>"$DEPLOY_LOCK_FILE"'
@@ -234,8 +263,8 @@ def validate_current_status_contract(readiness: str, architecture: str) -> None:
     # Existing target, delivery capability and verification scope are independent.
     for marker in (
         "OCI app01 is the existing single-host Production target with manual deployment.",
-        "No OCI Application Deploy workflow or verified Rollback system is implemented.",
-        "CD and zero-downtime deployment remain DEFER",
+        "Host Pull CD and Release/Recovery are repository implementations; Production activation remains OFF.",
+        "Zero-downtime deployment remains DEFER",
         "image existence only; it does not establish full CI success, deployment approval, or deployment success",
         "operational changes require separate approval and recovery gates",
     ):

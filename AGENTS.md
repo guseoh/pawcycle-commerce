@@ -129,3 +129,15 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 - `Production Verified`: 실제 운영 적용 전후와 필요한 복구 증거까지 확보
 
 실제 운영을 실행하지 않은 작업에 `Production Verified`를 사용하지 않는다.
+
+## LLM Wiki — 지속 기록 경계 (WIKI-CAPTURE-002)
+
+PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용합니다. **매 작업 종료 시 기록 후보를 자동 평가**하지만, Wiki 기록은 승인된 작업 범위와 권위 원본을 대체하지 않습니다. 작업 시작 시 과거 선택이 영향을 주는 경우 `Wiki/index.md` → `projects/pawcycle.md` → 관련 Decision을 선택적으로 조회합니다.
+
+- 구현·UI·테스트·설계·실패·운영 조사 등 완료된 의미 있는 작업은 **짧은 Journal 후보**로, 확정된 중요한 기술·아키텍처·운영 결정은 **별도 Decision 후보**로 구분합니다. 아직 승인되지 않은 설계는 `proposed`입니다. 무변경 탐색·잡담·전체 채팅 전문은 남기지 않습니다.
+- 제품 계약·아키텍처·안전·운영·복구에 관한 **권위 원본은 이 저장소의 코드, ADR, Runbook 및 검증 evidence**입니다. 중앙 Wiki는 해당 원본에 대한 인덱스와 요약이며, 같은 내용을 여러 보고서로 중복 작성하지 않습니다.
+- 공개 병합 PR은 중앙 Wiki의 별도 GitHub Actions가 메타데이터만 수집합니다. 작업 종료 후 작성하는 이력은 PR 번호·commit·Task ID를 참조하여 중복을 억제합니다. PR 병합, CI 성공과 실제 Production 검증은 각각 구분합니다.
+- Wiki 기록을 평가한다는 상시 규칙은 다른 저장소의 Issue/PR 생성, 새 제품 결정, 배포, OCI 변경 또는 작업 범위를 벗어난 쓰기 권한을 자동으로 부여하지 않습니다. 공개 가능한 정보이고 **현재 승인된 쓰기 범위와 GitHub 권한**이 있을 때만 검토용 PR을 생성합니다. 불가능하면 미반영 후보 또는 이미 수집되는 PR 근거를 명확히 보고합니다.
+- `guseoh/cs`는 공개 저장소입니다. Secret, 내부 계정, 운영 원시값, 개인정보, 비공개 기록과 대화 전문을 게시하지 않습니다. 기록이 불가능해도 제품 작업의 성공 여부와 혼동하지 않습니다.
+
+**실행 시점·결과 구분·실패 처리**는 [Lean Harness §16](docs/runbook/lean-harness.md), **메타데이터·관계 규격**은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md) 및 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따릅니다. 이 파일만으로 타 AI 클라이언트의 대화를 자동 수집하거나 권한을 획득하지는 않습니다.

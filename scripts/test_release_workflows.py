@@ -49,7 +49,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("paths:", header)
         self.assertIn("name: Classify production image changes", self.publish)
         self.assertIn('git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA"', self.publish)
-        self.assertIn('python scripts/classify-production-image-changes.py >> "$GITHUB_OUTPUT"', self.publish)
+        self.assertIn('python scripts/classify-production-image-changes.py --components >> "$GITHUB_OUTPUT"', self.publish)
         self.assertIn('if ! changed_paths="$(git diff', self.publish)
         self.assertIn('if [ "$EVENT_NAME" = "workflow_dispatch" ]', self.publish)
         self.assertIn('org.opencontainers.image.revision=', self.publish)
@@ -59,12 +59,34 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: classify", publish_block)
         self.assertIn("if: needs.classify.outputs.publish == 'true'", publish_block)
 
+    def test_production_images_publish_native_amd64_and_arm64(self) -> None:
+        # QEMU must be available before the Buildx builder is initialized.
+        qemu = "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1"
+        buildx = "docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435"
+        self.assertEqual(1, self.publish.count(qemu))
+        self.assertLess(self.publish.index(qemu), self.publish.index(buildx))
+        self.assertEqual(2, self.publish.count("platforms: linux/amd64,linux/arm64"))
+        self.assertEqual(2, self.publish.count("org.opencontainers.image.source=https://github.com/${{ github.repository }}"))
+        self.assertEqual(2, self.publish.count("org.opencontainers.image.revision=${{ github.sha }}"))
+        self.assertEqual(2, self.publish.count("provenance: false"))
+        self.assertEqual(2, self.publish.count("sbom: false"))
+        self.assertIn("if: github.ref == 'refs/heads/main'", self.publish)
+        self.assertIn("if: needs.classify.outputs.publish == 'true'", self.publish)
+        self.assertNotIn("production-deploy.yml", self.publish)
+        for role in ("Backend", "Frontend"):
+            block = self.publish.split(f"      - name: Build and push {role} image", 1)[1]
+            block = block.split("      - name:", 1)[0]
+            self.assertIn("platforms: linux/amd64,linux/arm64", block)
+            self.assertIn("push: true", block)
+            self.assertIn("org.opencontainers.image.source=", block)
+            self.assertIn("org.opencontainers.image.revision=", block)
+
     def test_diff_guard_and_manual_publish_fail_safe(self) -> None:
         self.assertIn('''if [ "$EVENT_NAME" = "workflow_dispatch" ]; then''', self.publish)
         self.assertIn('''''|0000000000000000000000000000000000000000)''', self.publish)
         self.assertIn('''if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]''', self.publish)
         self.assertIn('''if ! changed_paths="$(git diff''', self.publish)
-        self.assertIn('''echo "publish=true" >> "$GITHUB_OUTPUT"''', self.publish)
+        self.assertIn("publish=true\\nbackend=true\\nfrontend=true", self.publish)
 
     def test_release_readiness_keeps_exact_sha_image_pair(self) -> None:
         readiness = (WORKFLOWS_DIR / "production-release-readiness.yml").read_text(
@@ -92,7 +114,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
             (readiness, architecture.replace("CD: **DEFER**", "CD: **ACTIVE**")),
             (readiness, architecture.replace("무중단 배포: **DEFER**", "무중단 배포: **ACTIVE**")),
             (readiness, architecture.replace("Production Verified가 아니다", "Production Verified")),
-            (readiness.replace("No OCI Application Deploy workflow", "OCI Application Deploy workflow"), architecture),
+            (readiness.replace("Production activation remains OFF", "Production activation ACTIVE"), architecture),
             (readiness.replace("full CI success, deployment approval, or deployment success", "deployment success"), architecture),
             (readiness.replace("separate approval and recovery gates", "no approval"), architecture),
             (readiness + "There is no active Production deployment target.", architecture),
@@ -105,6 +127,23 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
     def test_production_deploy_workflow_is_retired(self) -> None:
         self.assertFalse(PRODUCTION_DEPLOY_WORKFLOW.exists())
+
+    def test_unapproved_ci_cannot_activate_host_cd(self) -> None:
+        validation = self.workflows["validate-conventions.yml"]
+        self.assertIn("infra/production/test-oci-release.py", validation)
+        self.assertIn("infra/production/test-oci-cd.py", validation)
+        self.assertIn("branches: [main]", validation)
+        self.assertIn("github.event_name == 'pull_request'", validation)
+        self.assertIn("python scripts/classify-validation-changes.py", validation)
+        self.assertNotIn("grep -q 'publish=true'", validation)
+        for name, workflow in self.workflows.items():
+            with self.subTest(workflow=name):
+                self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-release\.py\b")
+                self.assertNotRegex(workflow, r"python(?:3)?\s+infra/production/oci-cd\.py\b")
+        import json
+        policy = json.loads((ROOT / "infra/production/oci-cd-policy.example.json").read_text())
+        self.assertFalse(policy["enabled"])
+        self.assertIsNone(policy["approval_evidence"])
 
     def test_no_workflow_dispatches_retired_production_deploy(self) -> None:
         for workflow_name, workflow in self.workflows.items():
@@ -121,6 +160,42 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
 
 class ImagePublishClassifierTest(unittest.TestCase):
+    def test_frontend_only_omits_backend_but_shared_and_unknown_keep_pair(self) -> None:
+        for paths, expected in (
+            (["backend/src/main/java/App.java"], {"backend": True, "frontend": False}),
+            (["backend/build.gradle"], {"backend": True, "frontend": False}),
+            (["infra/production/backend.Dockerfile"], {"backend": True, "frontend": False}),
+            (["infra/production/frontend.Dockerfile"], {"backend": False, "frontend": True}),
+            (["frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
+            (["frontend/public/logo.svg"], {"backend": False, "frontend": True}),
+            (["docs/note.md", "frontend/src/app/globals.css"], {"backend": False, "frontend": True}),
+            (["frontend/src/app/globals.css", "backend/build.gradle"], {"backend": True, "frontend": True}),
+            ([".dockerignore"], {"backend": True, "frontend": True}),
+            (["unknown.config"], {"backend": True, "frontend": True}),
+            (["docs/note.md"], {"backend": False, "frontend": False}),
+        ):
+            with self.subTest(paths=paths):
+                self.assertEqual(expected, CLASSIFIER.image_components(paths))
+
+    def test_application_scope_excludes_migration_config_and_unclassified_inputs(self) -> None:
+        for path in ("backend/src/main/resources/db/migration/V99.sql", "backend/src/main/resources/application.yml",
+                     "backend/src/main/java/data-repair/Fix.java", "infra/production/nginx.https.conf", "unknown.toml"):
+            self.assertEqual([path], CLASSIFIER.application_blockers([path]))
+        self.assertEqual([], CLASSIFIER.application_blockers([
+            "backend/src/main/java/com/pawcycle/backend/commerce/OrderService.java",
+            "frontend/src/components/app-header.tsx", "backend/build.gradle", "docs/note.md",
+            "backend/src/test/resources/fixtures.sql", "docs/query.sql", "scripts/backfill.sql"]))
+
+    def test_build_deploy_and_policy_risk_are_separate(self) -> None:
+        for path in ("infra/production/oci-release.py", "infra/production/oci-cd.py",
+                     "infra/production/test-oci-cd.py", "infra/production/systemd/pawcycle-oci-cd.service"):
+            self.assertEqual({"publish": False, "deploy": False, "risks": []}, CLASSIFIER.classify([path]))
+        self.assertEqual({"publish": False, "deploy": True, "risks": ["runtime"]},
+                         CLASSIFIER.classify(["infra/production/compose.yaml"]))
+        self.assertIn("unknown", CLASSIFIER.classify(["infra/production/new-config.yaml"])["risks"])
+        self.assertIn("sensitive", CLASSIFIER.classify(["backend/src/main/resources/db/migration/V99.sql"])["risks"])
+        self.assertIn("application", CLASSIFIER.classify(["frontend/src/app/page.tsx"])["risks"])
+
     def test_non_image_changes_skip_both_images(self) -> None:
         paths = [
             "backend/src/test/java/ExampleTest.java",
@@ -128,15 +203,29 @@ class ImagePublishClassifierTest(unittest.TestCase):
             "frontend/AGENTS.md",
             "frontend/README.md",
             "frontend/scripts/run-tests.mjs",
+            "frontend/src/lib/commerce-api.test.mts",
             "docs/runbook/release.md",
             "scripts/test_release_workflows.py",
             ".agents/skills/platform-sre/SKILL.md",
             ".github/workflows/validate-conventions.yml",
+            "infra/oci-capacity-cron/worker.mjs",
+            "infra/oci-capacity-cron/worker.test.mjs",
+            "infra/oci-capacity-cron/wrangler.jsonc",
             "infra/performance/k6/test.js",
         ]
         for path in paths:
             with self.subTest(path=path):
                 self.assertFalse(CLASSIFIER.should_publish([path]))
+
+    def test_a1_monitor_code_never_publishes_or_deploys_images(self) -> None:
+        paths = ["infra/oci-capacity-cron/worker.mjs",
+                 "infra/oci-capacity-cron/worker.test.mjs",
+                 "infra/oci-capacity-cron/wrangler.jsonc",
+                 "docs/runbook/oci-a1-capacity-watch.md"]
+        self.assertEqual({"publish": False, "deploy": False, "risks": []},
+                         CLASSIFIER.classify(paths))
+        self.assertEqual({"backend": False, "frontend": False},
+                         CLASSIFIER.image_components(paths))
 
     def test_backend_and_frontend_image_inputs_require_pair(self) -> None:
         paths = [

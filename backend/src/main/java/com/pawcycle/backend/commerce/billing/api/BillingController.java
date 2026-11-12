@@ -5,7 +5,7 @@ import com.pawcycle.backend.commerce.billing.application.BillingMethodQueryServi
 import com.pawcycle.backend.commerce.billing.api.BillingMethodResponse;
 import com.pawcycle.backend.commerce.billing.api.BillingPreparationResponse;
 import com.pawcycle.backend.commerce.billing.api.PaymentCapabilitiesResponse;
-import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.billing.application.BillingApplicationService;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;

@@ -1,5 +1,5 @@
 import type { BrandInput, CategoryInput, Category, ProductInput, Brand, SkuInput, ImageInput, OptionGroupInput, OptionValueInput, FacetInput, DetailInput } from "@/lib/admin-catalog-api";
-import { categoryHierarchy, categoryParents, productBrandChoices, productCategoryChoices, type CatalogField } from "@/lib/admin-catalog-forms";
+import { categoryParents, productBrandChoices, productCategoryChoices, type CatalogField } from "@/lib/admin-catalog-forms";
 
 export const brandInitial: BrandInput = { name: "", slug: "", logoUrl: null, active: true, displayOrder: 0 };
 export const brandFields: CatalogField<BrandInput>[] = [

@@ -1,7 +1,6 @@
 package com.pawcycle.backend.commerce.refund.persistence;
 
 import org.springframework.jdbc.core.JdbcTemplate;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.UUID;

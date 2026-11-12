@@ -18,6 +18,8 @@ def run(hours_ago, conclusion="success", status="completed"):
     stamp = (NOW - timedelta(hours=hours_ago)).isoformat()
     return {
         "id": int(hours_ago * 10 + 1),
+        "event": "schedule",
+        "head_branch": "main",
         "created_at": stamp,
         "conclusion": conclusion,
         "status": status,
@@ -118,6 +120,66 @@ class HealthTests(TestCase):
     def test_sched_runs_sorted_by_latest_created_at(self, api):
         api.return_value = {"workflow_runs": [run(5), run(1), run(3)]}
         self.assertEqual(health.scheduled_runs()[0]["created_at"], run(1)["created_at"])
+
+    @patch.object(health, "github_request")
+    def test_live_dispatch_counted_but_self_test_and_branches_excluded(self, api):
+        live = dict(run(1), event="workflow_dispatch", display_title="OCI A1 capacity check")
+        offline = dict(live, display_title="OCI A1 capacity self_test")
+        other = dict(live, head_branch="ops/test")
+        legacy_manual = dict(live, display_title="OCI Tokyo A1 Capacity Watch")
+        api.return_value = {"workflow_runs": [live, offline, other, legacy_manual, run(2)]}
+        self.assertEqual(len(health.scheduled_runs(NOW)), 2)
+        self.assertIn("branch=main", api.call_args.args[1])
+
+    @patch.object(health, "github_request")
+    def test_dual_scheduler_full_day_includes_both_sources(self, api):
+        observations = [dict(run(i / 24), **(
+            {"event": "workflow_dispatch", "display_title": "OCI A1 capacity check"}
+            if i % 2 else {}
+        )) for i in range(576)]
+        api.side_effect = [{"workflow_runs": observations[i:i + 100]}
+                           for i in range(0, 576, 100)]
+        self.assertEqual(len(health.scheduled_runs(NOW)), 576)
+        self.assertEqual(api.call_count, 6)
+
+    @patch.object(health, "github_request")
+    def test_excluded_runs_cannot_hide_truncated_history(self, api):
+        api.return_value = {"workflow_runs": [dict(
+            run(1), event="workflow_dispatch", display_title="OCI A1 capacity self_test"
+        ) for _ in range(100)]}
+        with self.assertRaisesRegex(RuntimeError, "pagination limit"):
+            health.scheduled_runs(NOW)
+        self.assertEqual(api.call_count, 10)
+
+    @patch.object(health, "github_request")
+    def test_five_minute_runs_paginate_full_day(self, api):
+        # 12 scheduled observations/hour: a 24h summary needs three API pages.
+        first = [run(i / 12) for i in range(100)]
+        second = [run(i / 12) for i in range(100, 200)]
+        third = [run(i / 12) for i in range(200, 288)]
+        api.side_effect = [
+            {"workflow_runs": first},
+            {"workflow_runs": second},
+            {"workflow_runs": third},
+        ]
+        runs = health.scheduled_runs(NOW)
+        self.assertEqual(len(runs), 288)
+        self.assertEqual(health.evaluate(runs, NOW)["success_24h"], 288)
+        self.assertEqual(api.call_count, 3)
+        self.assertIn("page=3", api.call_args.args[1])
+
+    @patch.object(health, "github_request")
+    def test_pagination_stops_after_past_day(self, api):
+        first = [run(i / 12) for i in range(100)]
+        second = [run(25)]  # Outside the 24-hour report window.
+        api.side_effect = [
+            {"workflow_runs": first},
+            {"workflow_runs": second},
+        ]
+        runs = health.scheduled_runs(NOW)
+        self.assertEqual(len(runs), 101)
+        self.assertEqual(health.evaluate(runs, NOW)["total_24h"], 100)
+        self.assertEqual(api.call_count, 2)
 
     @patch.object(health, "post_discord")
     def test_daily_unavailable_sends_daily_summary_only(self, send):

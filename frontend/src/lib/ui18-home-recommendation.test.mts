@@ -60,9 +60,11 @@ test("aborted generations ignore inflight results and skip queued requests; fail
   assert.deepEqual([...(await failureTolerant([1, 2, 3], new AbortController().signal)).keys()], [1, 3]);
 });
 
-test("home and card wiring retains server filtering, member CSRF quickadd and labelled comparison", async () => {
+test("home browsing retains subscription entry, member CSRF quickadd and comparison", async () => {
   const home = await readFile(new URL("../components/home-catalog.tsx", import.meta.url), "utf8");
-  assert.match(home, /subscribable: true, page: 0, size: 8/);
+  assert.match(home, /productApi\.list\(\{ page: 0, size: 8/);
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /href="\/products\?subscribable=true"/);
   const card = await readFile(new URL("../components/catalog-product-card.tsx", import.meta.url), "utf8");
   assert.match(card, /aria-label=\{`\$\{productName\} 비교에 담기`\}/);
   assert.match(card, /auth.executeWithCsrf\(\(csrf\) => cartApi.add\(singleSku.skuId, 1, csrf\)\)/);

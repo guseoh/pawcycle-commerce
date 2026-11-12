@@ -350,3 +350,28 @@
     .pet-create-panel { padding:18px; }
   }
 }
+
+@media (min-width:1024px) {
+ @scope (.customer-theme) {
+  .my-dashboard { gap:24px; }
+  .my-dashboard .snapshot-grid { background:var(--surface); border-top:1px solid var(--line); }
+  .my-dashboard .snapshot-tile { background:transparent; padding:16px; }
+  .my-dashboard .snapshot-tile:hover { background:var(--selected-soft); }
+  .my-dashboard .snapshot-tile strong { font-size:28px; line-height:36px; }
+  .my-dashboard .management-card { padding:18px 0; }
+  .snapshot-detail > span { font-weight:500; font-size:14px; }
+  .subscription-detail .next-delivery-band { background:var(--surface); color:var(--ink); border-left:3px solid var(--brand); border-radius:0 8px 8px 0; }
+  .subscription-detail .next-delivery-band h2 { color:var(--brand); }
+  .subscription-detail .next-delivery-band dt { color:var(--muted); }
+  .subscription-detail .next-delivery-band dd { color:var(--ink); }
+  .subscription-detail .next-delivery-band .next-date { font-size:32px; line-height:40px; }
+  .subscription-actions .command-panel { padding-block:20px; }
+  .snapshot-tile .inline-alert { display:grid; padding:12px; font-size:14px; }
+  .snapshot-tile > a { min-height:44px; display:flex; align-items:center; }
+  .order-row .button { min-height:44px; }
+  .subscription-detail .subscription-actions { border-top:1px solid var(--line); }
+  .subscription-actions > .button-row { padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .subscription-actions .button-danger { margin-left:auto; }
+  .subscription-review { border-radius:8px; }
+ }
+}

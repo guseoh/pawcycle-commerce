@@ -7,7 +7,6 @@ import com.pawcycle.backend.commerce.operations.persistence.OperationsQueryRepos
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
 
 final class LegacyOperationsQueryRepository {
   private final JdbcTemplate jdbc;

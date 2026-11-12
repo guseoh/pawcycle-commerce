@@ -5,7 +5,7 @@ import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
-import com.pawcycle.backend.commerce.payment.infrastructure.toss.TossPaymentAdapter;
+import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceAdapter;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Service;

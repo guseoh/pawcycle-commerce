@@ -56,6 +56,12 @@ description: >-
    - Codex Prompt에는 `@coderabbitai review` 호출을 넣지 않는다. 실제 manual review 요청은 review 단계에서 사용자 인증 GitHub identity로 수행한다.
    - Codex 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 다시 ChatGPT에 복사해야 하는 계약으로 만들지는 않는다.
 
+8. **작업 종료 Wiki Capture 연결**
+   - 구현 완료 또는 검증 중단 후 `docs/runbook/lean-harness.md` §16에 따라 확인된 변경·중요한 결정·검증과 실패·미완료 사항을 **짧은 Wiki 후보**로 평가하도록 Codex Prompt에 한 줄로 지시한다. 공통 Wiki 정책·스키마·원문을 Prompt에 복사하지 않는다.
+   - PR, commit, Task ID를 근거로 사용하고 동일 사실을 중복 기록하지 않는다. 제품 작업 결과 보고에는 실제 Wiki 상태(검토 PR/자동 수집 대상/미반영/대상 없음)를 구별한다.
+   - 중앙 Wiki에 대한 쓰기는 **현재 승인과 도구 권한이 허용할 때의 별도 검토 PR**이다. 일반적인 코드 작업 승인만으로 타 저장소 Issue/PR 생성이 허용된 것으로 간주하지 않으며, Wiki가 열리지 않으면 제품 PR 생성과 검증을 막지 않는다.
+   - 이 기록 handoff는 `<!-- pawcycle-ai-handoff: review-ready -->` 리뷰 시작 marker와 별개다. Wiki 기록을 이유로 marker를 추가하거나 제품 PR의 merge 승인/실제 Production 검증을 주장하지 않는다.
+
 ## 후속 수정 모드
 
 리뷰나 CI finding 이후에는 원래 Prompt 전체를 다시 보내지 않는다. 다음만 남긴다.

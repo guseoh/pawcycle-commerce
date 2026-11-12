@@ -10,7 +10,7 @@ import com.pawcycle.backend.commerce.checkout.persistence.CheckoutPersistenceAda
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutReplay;
 import com.pawcycle.backend.commerce.checkout.persistence.CouponRule;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import com.pawcycle.backend.commerce.checkout.domain.CheckoutPricingPolicy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
@@ -135,19 +135,8 @@ public class CheckoutApplicationService {
     if (coupon == null) {
       throw new CommerceException(409, "COUPON_UNAVAILABLE", "사용할 수 없는 쿠폰입니다.");
     }
-    if (original.compareTo(coupon.minimumOrderAmount()) < 0) {
-      throw new CommerceException(409, "COUPON_MINIMUM_ORDER", "최소 주문 금액을 충족하지 않습니다.");
-    }
-    BigDecimal discount =
-        "PERCENTAGE".equals(coupon.discountType())
-            ? original
-                .multiply(coupon.discountValue())
-                .divide(BigDecimal.valueOf(100), 0, RoundingMode.DOWN)
-            : coupon.discountValue();
-    if (coupon.maximumDiscountAmount() != null) {
-      discount = discount.min(coupon.maximumDiscountAmount());
-    }
-    return discount.min(original);
+    return CheckoutPricingPolicy.discount(original, coupon.minimumOrderAmount(),
+        coupon.discountType(), coupon.discountValue(), coupon.maximumDiscountAmount());
   }
 
   private static String orderName(List<CheckoutCartItem> items) {

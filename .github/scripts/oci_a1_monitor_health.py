@@ -53,14 +53,33 @@ def github_request(method: str, path: str, payload=None):
     return json.loads(raw) if raw else None
 
 
-def scheduled_runs():
-    result = github_request(
-        "GET",
-        "/actions/workflows/" + MONITOR_WORKFLOW + "/runs?event=schedule&per_page=100",
-    )
-    runs = result.get("workflow_runs", [])
-    if not isinstance(runs, list):
-        raise ValueError("Unexpected GitHub workflow run response")
+def scheduled_runs(now=None):
+    """Collect main schedule + identified live dispatch checks; exclude self-tests."""
+    now = now or datetime.now(timezone.utc)
+    runs = []
+    for page in range(1, 11):
+        result = github_request(
+            "GET",
+            "/actions/workflows/" + MONITOR_WORKFLOW +
+            "/runs?branch=main&per_page=100&page=" + str(page),
+        )
+        batch = result.get("workflow_runs", [])
+        if not isinstance(batch, list):
+            raise ValueError("Unexpected GitHub workflow run response")
+        runs.extend(item for item in batch if item.get("head_branch") == "main" and (
+            item.get("event") == "schedule" or (
+                item.get("event") == "workflow_dispatch"
+                and item.get("display_title") == "OCI A1 capacity check"
+            )
+        ))
+        if len(batch) < 100 or (
+            batch and min(utc_time(item["created_at"]) for item in batch) < now - REPORT_WINDOW
+        ):
+            break
+    else:
+        # Never report incomplete 24-hour statistics as complete.
+        if batch and min(utc_time(item["created_at"]) for item in batch) >= now - REPORT_WINDOW:
+            raise RuntimeError("Scheduled-run history exceeds pagination limit")
     return sorted(runs, key=lambda item: utc_time(item["created_at"]), reverse=True)
 
 
@@ -238,7 +257,7 @@ def main():
     if mode not in ("preview", "watch", "daily"):
         raise ValueError("Invalid OCI_A1_HEALTH_MODE")
     now = datetime.now(timezone.utc)
-    report = evaluate(scheduled_runs(), now)
+    report = evaluate(scheduled_runs(now), now)
     print("Scheduled capacity checks (24h): {} successful / {} total; unhealthy={}".format(
         report["success_24h"], report["total_24h"], report["unhealthy"]))
     if report["reasons"]:

@@ -59,7 +59,7 @@ test("G6-05: order actions follow status and keep the server action boundary", (
 test("G6-04: plan names and selection state identify the explicit selection", () => {
   const start = source("./subscription-start.tsx");
   assert.doesNotMatch(start, /상세 선택/);
-  assert.match(start, /aria-label=\{`\$\{plan\.planName\}/);
+  assert.match(start, /aria-label=\{`\$\{selectedPlan\?\.planVersionId === plan\.planVersionId \? "선택됨" : "이 플랜 선택"\} \$\{plan\.planName\}`\}/);
   assert.match(start, /aria-pressed=\{selectedPlan\?\.planVersionId === plan\.planVersionId\}/);
   assert.match(start, /onClick=\{\(\) => void selectPlan\(plan\)\}/);
 });
@@ -123,7 +123,7 @@ test("G6-01: address actions remain outside the scrolling fields and failures st
   assert.match(address, /formOpener\.current\?\.focus\(\)/);
   assert.match(address, /event\.shiftKey && document\.activeElement === first/);
   assert.match(address, /!event\.shiftKey && document\.activeElement === last/);
-  assert.match(address, /if \(formOpen && error\) dialogRef\.current\?\.querySelector<HTMLElement>/);
+  assert.match(address, /if \(formOpen && error\) saveErrorRef\.current\?\.focus\(\)/);
 });
 
 test("G6-01: pet edit focus enters the input and returns only on explicit completion", () => {

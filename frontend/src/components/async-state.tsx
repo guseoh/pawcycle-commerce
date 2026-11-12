@@ -25,7 +25,7 @@ interface ErrorStateProps {
 export function AuthRequiredState({ title = "로그인이 필요합니다.", message, children, announce = false }: {
   title?: string;
   message: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   announce?: boolean;
 }) {
   const titleId = useId();

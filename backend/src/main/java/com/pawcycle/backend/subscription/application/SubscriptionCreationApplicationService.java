@@ -1,6 +1,8 @@
 package com.pawcycle.backend.subscription.application;
 
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
+import com.pawcycle.backend.subscription.domain.PlanSalePolicy;
+import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import com.pawcycle.backend.subscription.persistence.projection.PetProjection;
 import com.pawcycle.backend.subscription.persistence.projection.PlanVersionProjection;
 import com.pawcycle.backend.subscription.persistence.projection.StoredIdempotencyResult;
@@ -57,11 +59,11 @@ class SubscriptionCreationApplicationService {
         store.createSnapshot(subscriptionId, versionId, cycle, version.packagePriceKrw());
     store.setCurrentSnapshot(subscriptionId, snapshotId);
     store.insertScheduled(subscriptionId, next);
-    var response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
+    SubscriptionReadModel.Detail response = queries.detail(memberId, subscriptionId, 0, 20, 0, 20);
     SubscriptionOperationResult result =
         new SubscriptionOperationResult(
             201, response, "/api/subscriptions/" + subscriptionId, "\"0\"", false);
-    reservations.updateCreationResponse(memberId, key, subscriptionId, result, support.bodyJson(response));
+    reservations.updateCreationResponse(memberId, key, subscriptionId, result.status(), result.location(), result.etag(), support.bodyJson(response));
     return result;
   }
 
@@ -72,7 +74,7 @@ class SubscriptionCreationApplicationService {
       String fingerprint) {
     if (!fingerprint.equals(stored.fingerprint()))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "동일 key에 다른 요청 본문을 사용할 수 없습니다.");
-    var body = support.responseBody(stored.bodyJson());
+    SubscriptionReadModel.Detail body = support.responseBody(stored.bodyJson());
     reservations.updateStoredCreationBody(memberId, key, support.bodyJson(body));
     return new SubscriptionOperationResult(
         stored.status(), body, stored.location(), stored.etag(), true);
@@ -84,13 +86,8 @@ class SubscriptionCreationApplicationService {
     if (!pet.petType().equals(version.targetPetType()))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_PET_TYPE_MISMATCH", "Pet 종과 Plan이 호환되지 않습니다.");
     LocalDate today = support.today();
-    if (version.currentPlanVersionId() == null
-        || version.currentPlanVersionId() != version.id()
-        || version.planName() == null
-        || !version.onSale()
-        || version.migrationOnly()
-        || (version.saleStartsOn() != null && version.saleStartsOn().isAfter(today))
-        || (version.saleEndsOn() != null && version.saleEndsOn().isBefore(today)))
+    if (!PlanSalePolicy.available(version.id(), version.currentPlanVersionId(), version.planName(),
+        version.onSale(), version.migrationOnly(), version.saleStartsOn(), version.saleEndsOn(), today))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "PLAN_NOT_AVAILABLE", "판매 가능한 PlanVersion이 아닙니다.");
     if (!store.deliveryCycleAllowed(versionId, cycle))
       throw new SubscriptionFailure(SubscriptionFailure.Kind.CONFLICT, "DELIVERY_CYCLE_NOT_ALLOWED", "허용되지 않은 배송 주기입니다.");

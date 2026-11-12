@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll approved main candidates (installation and enablement require G0)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=20s
+Unit=pawcycle-oci-cd.service
+
+[Install]
+WantedBy=timers.target

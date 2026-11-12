@@ -279,11 +279,24 @@ class SubscriptionCommandPersistenceParityIntegrationTests {
   }
 
   private Object call(Object target, String method, Object... arguments) throws Exception {
+    // Adapt the new storage-only signature while leaving the frozen SQL reference unchanged.
+    java.util.List<Object> adapted = new java.util.ArrayList<>();
+    for (Object argument : arguments) {
+      if (target instanceof SubscriptionIdempotencyReservationPersistence
+          && argument instanceof SubscriptionOperationResult response) {
+        adapted.add(response.status());
+        adapted.add(response.location());
+        adapted.add(response.etag());
+      } else {
+        adapted.add(argument);
+      }
+    }
+    Object[] supplied = adapted.toArray();
     var matches = java.util.Arrays.stream(target.getClass().getMethods())
-        .filter(value -> value.getName().equals(method) && value.getParameterCount() == arguments.length)
-        .filter(value -> java.util.stream.IntStream.range(0, arguments.length)
+        .filter(value -> value.getName().equals(method) && value.getParameterCount() == supplied.length)
+        .filter(value -> java.util.stream.IntStream.range(0, supplied.length)
             .allMatch(i -> org.springframework.util.ClassUtils.isAssignableValue(
-                value.getParameterTypes()[i], arguments[i])))
+                value.getParameterTypes()[i], supplied[i])))
         .toList();
     if (matches.size() != 1) {
       throw new IllegalStateException(
@@ -291,7 +304,7 @@ class SubscriptionCommandPersistenceParityIntegrationTests {
     }
     var found = matches.getFirst();
     try {
-      return found.invoke(target, arguments);
+      return found.invoke(target, supplied);
     } catch (InvocationTargetException failure) {
       if (failure.getCause() instanceof Exception cause) throw cause;
       throw failure;

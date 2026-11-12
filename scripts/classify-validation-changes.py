@@ -117,6 +117,11 @@ def classify(paths: list[str]) -> dict[str, bool]:
                 return {group: True for group in GROUPS}
         elif path.startswith("infra/local-integration/"):
             return {group: True for group in GROUPS}
+        elif path in {"infra/production/" + role + suffix
+                      for role in ("backend", "frontend")
+                      for suffix in (".Dockerfile", ".Dockerfile.dockerignore")}:
+            result["production"] = True
+            result["backend" if "/backend." in path else "frontend"] = True
         elif is_backend_http_contract(path):
             result["backend"] = True
             result["frontend"] = True

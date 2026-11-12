@@ -3,7 +3,6 @@ import test from "node:test";
 import { catalogDiscoveryApi, productApi, type CatalogDiscovery, type ProductDetail, type ProductOptionGroup, type ProductSku, type ProductSummary } from "./api.ts";
 import { catalogHref, catalogMetadata, catalogPriceRangeError, catalogQuery, changeCatalogFilters, parseCatalogFilters, PRODUCT_SORTS, toggleCatalogFacet } from "./catalog-filters.ts";
 import { productQuantityError, selectProductSku } from "./product-selection.ts";
-import { reviewCollectionCopy } from "./review-collection-copy.ts";
 import { loadProductResults } from "./catalog-products.ts";
 import { currentProductWishlist, loadProductWishlist, type ProductWishlistState } from "./product-wishlist.ts";
 import { cartApi } from "./cart-api.ts";
@@ -99,14 +98,22 @@ test("Malformed URL numbers are safe and unknown metadata remains removable", ()
   assert.equal(filters.size, 12);
   assert.equal(filters.minPrice, undefined);
   assert.equal(filters.maxPrice, undefined);
-  assert.equal(filters.sort, "RECOMMENDED");
+  assert.equal(filters.sort, "NEWEST");
   assert.equal(filters.category, "removed");
   assert.deepEqual(filters.facet, ["unknown:value"]);
 });
 
-test("All six server sort values survive URL parsing and serialization", () => {
-  assert.deepEqual(PRODUCT_SORTS.map((item) => item.value), ["RECOMMENDED", "NEWEST", "PRICE_ASC", "PRICE_DESC", "RATING", "REVIEW_COUNT"]);
+test("The catalog exposes only distinct sort options and round-trips them through URLs", () => {
+  assert.deepEqual(PRODUCT_SORTS.map((item) => item.value), ["NEWEST", "PRICE_ASC", "PRICE_DESC", "RATING", "REVIEW_COUNT"]);
   for (const { value } of PRODUCT_SORTS) assert.equal(parseCatalogFilters(new URLSearchParams(catalogQuery({ sort: value }))).sort, value);
+});
+
+test("Legacy recommended URLs select newest and keep their filters and page", () => {
+  const filters = parseCatalogFilters(new URLSearchParams("sort=RECOMMENDED&category=food&page=2"));
+  assert.equal(filters.sort, "NEWEST");
+  assert.equal(filters.category, "food");
+  assert.equal(filters.page, 2);
+  assert.equal(new URLSearchParams(catalogQuery(filters)).get("sort"), "NEWEST");
 });
 
 test("Back/forward URL parsing restores state rather than merging stale drafts", () => {
@@ -187,22 +194,6 @@ test("Quantity errors do not replace option selection or sold-out guidance", () 
   for (const selected of [null, soldOut, skus[1]]) {
     for (const value of ["1", "0", "1.5", "7"]) assert.equal(productQuantityError(value, selected), null);
   }
-});
-
-test("Review collection copy leaves the empty product state unchanged", () => {
-  assert.equal(reviewCollectionCopy([]), null);
-});
-
-test("Review collection copy is neutral when every product has zero reviews", () => {
-  assert.deepEqual(reviewCollectionCopy([{ reviewCount: 0 }, { reviewCount: 0 }]), {
-    title: "첫 리뷰를 기다리는 상품", description: "아직 리뷰가 쌓이지 않은 상품을 먼저 만나보세요.",
-  });
-});
-
-test("Review collection copy reflects some or all products with server reviews", () => {
-  for (const counts of [[0, 1], [1, 9]]) assert.deepEqual(reviewCollectionCopy(counts.map((reviewCount) => ({ reviewCount }))), {
-    title: "많이 이야기하는 상품", description: "다른 반려가족의 리뷰가 쌓인 상품을 만나보세요.",
-  });
 });
 
 for (const { label, filters, valid } of [

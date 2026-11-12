@@ -1,8 +1,7 @@
-package com.pawcycle.backend.commerce.returnrequest.api;
+package com.pawcycle.backend.commerce.returning.api;
 
 import com.pawcycle.backend.commerce.common.api.ReasonRequest;
 import com.pawcycle.backend.commerce.returning.application.ReturnService;
-import com.pawcycle.backend.commerce.returning.api.ReturnResponse;
 import com.pawcycle.backend.member.application.AuthenticatedMemberPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;

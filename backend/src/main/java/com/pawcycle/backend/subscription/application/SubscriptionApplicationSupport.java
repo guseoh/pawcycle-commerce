@@ -4,7 +4,6 @@ import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 
 import com.pawcycle.backend.subscription.model.SubscriptionReadModel;
 import java.math.BigDecimal;
-import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -12,11 +11,11 @@ import tools.jackson.databind.ObjectMapper;
 
 final class SubscriptionApplicationSupport {
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-  private final ObjectMapper json;
+  private final SubscriptionIdempotencyCodec codec;
   private final Clock clock;
 
   SubscriptionApplicationSupport(ObjectMapper json, Clock clock) {
-    this.json = json;
+    this.codec = new SubscriptionIdempotencyCodec(json);
     this.clock = clock;
   }
 
@@ -36,33 +35,11 @@ final class SubscriptionApplicationSupport {
     }
   }
 
-  String fingerprint(Object request) {
-    try {
-      byte[] bytes = MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(request));
-      StringBuilder out = new StringBuilder(64);
-      for (byte value : bytes) out.append(String.format("%02x", value));
-      return out.toString();
-    } catch (Exception exception) {
-      throw new IllegalStateException("요청 지문을 계산할 수 없습니다.", exception);
-    }
-  }
+  String fingerprint(Object request) { return codec.fingerprint(request); }
 
-  SubscriptionReadModel.Detail responseBody(String bodyJson) {
-    try {
-      // The existing model preserves the legacy stored API JSON schema; boundary tests pin its bytes.
-      return json.readValue(bodyJson, SubscriptionReadModel.Detail.class);
-    } catch (Exception exception) {
-      throw new IllegalStateException("저장된 멱등 결과를 읽을 수 없습니다.", exception);
-    }
-  }
+  SubscriptionReadModel.Detail responseBody(String bodyJson) { return codec.responseBody(bodyJson); }
 
-  String bodyJson(Object body) {
-    try {
-      return json.writeValueAsString(body);
-    } catch (Exception exception) {
-      throw new IllegalStateException("응답을 저장할 수 없습니다.", exception);
-    }
-  }
+  String bodyJson(Object body) { return codec.bodyJson(body); }
 
   long requiredLong(Number value, String field) {
     if (value == null) throw validation(field);

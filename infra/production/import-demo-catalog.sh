@@ -254,6 +254,12 @@ case "$IDENTITY_MODE" in
     [[ "$RUNTIME_CURRENT" == "$RUNTIME_DIR"/.bundle.* && -d "$RUNTIME_CURRENT" ]] || die "runtime bundle target is unavailable or unsafe"
     [[ "$(stat -c '%a' "$RUNTIME_CURRENT" 2>/dev/null)" == "700" ]] || die "runtime bundle permissions are invalid"
     BACKEND_ENV_FILE="$RUNTIME_CURRENT/backend.env"
+    if [[ -f "$RUNTIME_CURRENT/.complete" ]]; then
+      validate_protected_file "$RUNTIME_CURRENT/.complete" "runtime completion marker"
+      if [[ "$(<"$RUNTIME_CURRENT/.complete")" == 'g0-t2a-canonical-v1' ]]; then
+        BACKEND_ENV_FILE="$RUNTIME_CURRENT/catalog.env"
+      fi
+    fi
     validate_protected_file "$BACKEND_ENV_FILE" "Backend runtime file"
 
     BACKEND_DIGEST_LINE="$(grep -E '^BACKEND_DIGEST=ghcr\.io/.+@sha256:[0-9a-f]{64}$' "$IMAGE_STATE_FILE" 2>/dev/null || true)"

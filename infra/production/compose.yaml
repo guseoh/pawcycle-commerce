@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}:${RELEASE_SHA:?RELEASE_SHA is required}
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}:${BACKEND_RELEASE_SHA:-${RELEASE_SHA:?RELEASE_SHA is required}}
     env_file:
       - ${PAWCYCLE_BACKEND_ENV_FILE:?PAWCYCLE_BACKEND_ENV_FILE is required}
     environment:
@@ -49,7 +49,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}:${RELEASE_SHA:?RELEASE_SHA is required}
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}:${FRONTEND_RELEASE_SHA:-${RELEASE_SHA:?RELEASE_SHA is required}}
     environment:
       NODE_ENV: production
     expose:
@@ -57,9 +57,11 @@ services:
     healthcheck:
       test:
         - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:3000/products').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:3000/products
       interval: 10s
       timeout: 5s
       retries: 12
@@ -74,7 +76,7 @@ services:
       - no-new-privileges:true
     networks:
       - app
-    mem_limit: 256m
+    mem_limit: 768m
     cpus: 0.35
     pids_limit: 128
     logging: *default-logging

@@ -134,9 +134,7 @@ public class ProductRecommendationService {
   }
 
   private RecommendationCandidate source(long productId) {
-    return repository.findPurchasableCandidates(null).stream()
-        .filter(candidate -> candidate.productId() == productId)
-        .findFirst()
+    return repository.findPublicSource(productId)
         .orElseThrow(
             () -> new RecommendationException(404, "PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
   }

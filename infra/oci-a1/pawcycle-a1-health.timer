@@ -1,0 +1,11 @@
+[Unit]
+Description=Check A1 worker heartbeat every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=1s
+Unit=pawcycle-a1-health.service
+
+[Install]
+WantedBy=timers.target

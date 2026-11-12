@@ -39,6 +39,7 @@ function AddressesForMember({ returnTo }: { returnTo: string | null }) {
   const [busy, setBusy] = useState(false);
   const activeRef = useRef(false);
   const requestRef = useRef(0);
+  const saveErrorRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formOpener = useRef<HTMLElement | null>(null);
 
@@ -53,7 +54,7 @@ function AddressesForMember({ returnTo }: { returnTo: string | null }) {
   }, [formOpen]);
 
   useEffect(() => {
-    if (formOpen && error) dialogRef.current?.querySelector<HTMLElement>('[role="alert"]')?.focus();
+    if (formOpen && error) saveErrorRef.current?.focus();
   }, [formOpen, error]);
 
   function openForm(address?: Address, opener?: HTMLElement) {
@@ -102,7 +103,7 @@ function AddressesForMember({ returnTo }: { returnTo: string | null }) {
       if (returnTo) router.push(returnTo);
       else load();
     } catch (reason) {
-      if (activeRef.current) setError(reason instanceof ApiError ? reason.message : "배송지를 저장하지 못했습니다.");
+      if (activeRef.current) { setError(reason instanceof ApiError ? reason.message : "배송지를 저장하지 못했습니다."); }
     } finally {
       if (activeRef.current) setBusy(false);
     }
@@ -116,5 +117,5 @@ function AddressesForMember({ returnTo }: { returnTo: string | null }) {
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    }} onCancel={(event) => { event.preventDefault(); closeForm(); }}><div className="navigation-overlay-heading"><h2 id="address-dialog-title">{editId === null ? "배송지 추가" : "배송지 수정"}</h2><button className="icon-button" type="button" disabled={busy} onClick={closeForm}>닫기</button></div><form className="address-dialog-form" onSubmit={submit}><div className="address-dialog-body form-section">{error ? <p className="field-error" tabIndex={-1} role="alert">{error}</p> : null}{([["name", "배송지 이름", true], ["recipientName", "받는 분", true], ["recipientPhone", "연락처", true], ["postalCode", "우편번호", true], ["addressLine1", "주소", true], ["addressLine2", "상세 주소", false]] as const).map(([field, label, required]) => <label className="form-field" key={field}>{label}{required ? " (필수)" : " (선택)"}<input className="input" disabled={busy} required={required} autoComplete={field === "recipientName" ? "name" : field === "recipientPhone" ? "tel" : field === "postalCode" ? "postal-code" : field === "addressLine1" ? "address-line1" : field === "addressLine2" ? "address-line2" : undefined} value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}</div><div className="button-row address-dialog-actions"><button className="button button-secondary" type="button" disabled={busy} onClick={closeForm}>취소</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "저장 중" : "저장"}</button></div></form></dialog> : null}</section>;
+    }} onCancel={(event) => { event.preventDefault(); closeForm(); }}><div className="navigation-overlay-heading"><h2 id="address-dialog-title">{editId === null ? "배송지 추가" : "배송지 수정"}</h2><button className="icon-button" type="button" disabled={busy} onClick={closeForm}>닫기</button></div><form className="address-dialog-form" onSubmit={submit}><div className="address-dialog-body form-section">{error ? <div ref={saveErrorRef} className="error-summary" tabIndex={-1} role="alert">{error}</div> : null}{([["name", "배송지 이름", true], ["recipientName", "받는 분", true], ["recipientPhone", "연락처", true], ["postalCode", "우편번호", true], ["addressLine1", "주소", true], ["addressLine2", "상세 주소", false]] as const).map(([field, label, required]) => <label className="form-field" key={field}>{label}{required ? " (필수)" : " (선택)"}<input className="input" disabled={busy} required={required} autoComplete={field === "recipientName" ? "name" : field === "recipientPhone" ? "tel" : field === "postalCode" ? "postal-code" : field === "addressLine1" ? "address-line1" : field === "addressLine2" ? "address-line2" : undefined} value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}</div><div className="button-row address-dialog-actions"><button className="button button-secondary" type="button" disabled={busy} onClick={closeForm}>취소</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "저장 중" : "저장"}</button></div></form></dialog> : null}</section>;
 }

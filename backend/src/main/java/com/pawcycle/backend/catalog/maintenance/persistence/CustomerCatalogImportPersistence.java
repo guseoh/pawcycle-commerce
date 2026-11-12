@@ -386,7 +386,10 @@ public class CustomerCatalogImportPersistence {
       if (context.writes()) {
         expected.stream()
             .sorted(Comparator.comparingInt(ImageCreateCommand::displayOrder))
-            .forEach(image -> expansion.createImage(productId, image));
+            .forEach(image -> {
+              expansion.createImage(productId, image);
+              cache.invalidateAfterCommit();
+            });
       }
       return;
     }

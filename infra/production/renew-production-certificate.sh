@@ -289,8 +289,34 @@ prepare_commands() {
 
 acquire_lock() {
   command -v flock >/dev/null 2>&1 || die "flock is unavailable"
-  exec 9>"$LOCK_FILE" || die "renewal lock cannot be opened"
+  [[ "$EUID" == 0 ]] || die "renewal lock requires root"
+  [[ "$LOCK_FILE" == /* && "$LOCK_FILE" != */../* && "$LOCK_FILE" != */./* ]] \
+    || die "renewal lock path is unsafe"
+  local parent="${LOCK_FILE%/*}" mode before after
+  while :; do
+    [[ -d "$parent" && ! -L "$parent" && "$(stat -c '%u' "$parent")" == 0 ]] \
+      || die "renewal lock parent is unsafe"
+    mode="$(stat -c '%a' "$parent")"
+    (( (8#$mode & 0022) == 0 || (8#$mode & 01000) != 0 )) \
+      || die "renewal lock parent is writable"
+    [[ "$parent" != / ]] || break
+    parent="${parent%/*}"
+    [[ -n "$parent" ]] || parent=/
+  done
+  # Exclusive creation under 077 works even with systemd UMask=0022. Never
+  # truncate, chmod, unlink or replace an existing shared lock inode.
+  if [[ ! -e "$LOCK_FILE" && ! -L "$LOCK_FILE" ]]; then
+    (umask 077; set -o noclobber; : > "$LOCK_FILE") 2>/dev/null || true
+  fi
+  [[ -f "$LOCK_FILE" && ! -L "$LOCK_FILE" ]] || die "renewal lock type is unsafe"
+  before="$(stat -c '%d:%i:%u:%a:%h' "$LOCK_FILE")"
+  [[ "$before" == *:0:600:1 ]] || die "renewal lock ownership/permissions/links are unsafe"
+  exec 9<>"$LOCK_FILE" || die "renewal lock cannot be opened"
+  after="$(stat -Lc '%d:%i:%u:%a:%h' "/proc/$$/fd/9")"
+  [[ "$before" == "$after" ]] || die "renewal lock changed during acquisition"
   flock -n 9 || die "another certificate renewal is already running"
+  [[ ! -L "$LOCK_FILE" && "$(stat -c '%d:%i:%u:%a:%h' "$LOCK_FILE")" == "$after" ]] \
+    || die "renewal lock changed during acquisition"
 }
 
 run_preflight() {

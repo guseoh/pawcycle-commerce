@@ -257,3 +257,24 @@ Harness 변경은 실제 반복 문제 또는 재현 가능한 실패를 근거�
 - 실제 운영 실행은 승인 Runbook의 rollback/recovery를 따른다.
 - reset, rebase, force push, history rewrite로 복구하지 않는다.
 - 과거 정상 산출물과 역사 문서는 현재 규칙에 맞추기 위해 소급 수정하지 않는다.
+
+## 16. LLM Wiki Capture — 작업 종료의 경량 맥락 보존
+
+PawCycle의 `full` 캡처 정책은 이 Harness의 **작업 종료 단계**로 적용한다. 이 단계는 `Read / Analyze`, `Design / Plan`, `Repository Change`, `Operations Execution`의 권한·작업 등급을 바꾸지 않는다. 이 정책으로 저장소 밖의 쓰기 또는 운영 실행을 새로 승인받은 것으로 간주하지 않는다. 공통 기록 규격은 [중앙 Wiki capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)와 [Wiki handoff](https://github.com/guseoh/cs/blob/main/Wiki/handoff.md)를 참조한다.
+
+### 종료 시점과 입력
+
+작업을 **실제로 마치거나**, 검증·승인·권한 문제로 중단했을 때, 사용자가 매번 "Wiki에 기록"이라고 지시하지 않아도 다음을 간결하게 평가한다. 이 평가는 별도 설계 문서나 PR 생성을 요구하지 않으며, **진행 중인 AI 대화를 감시한다는 뜻도 아니다**.
+
+1. **확인된 사건:** 무엇을 설계/구현/검증/조사했는지, 근거가 되는 Task ID·PR·commit·CI·ADR와 실제 검증 범위를 확인한다. 코드가 없는 설계도 기록할 수 있으나 `proposed`와 `accepted`를 혼동하지 않는다.
+2. **분류:** 사소한 수정, 테스트 실패/재검증, 조사 결과도 의미 있는 완료 단위면 한두 문장의 `Wiki/journal/pawcycle/YYYY-MM.md` 후보로 분류한다. 장기 판단이 변경된 경우에만 별도 Decision 후보로 기록하고, 재사용 가능한 실패 분석은 Lesson 후보로 분리한다.
+3. **중복과 출처:** `repo#PR`, commit SHA, Task ID와 기존 Wiki ID를 확인한다. 중앙 Actions가 수집하는 공개 병합 PR의 단순 활동 정보는 다시 복제하지 않고 필요하면 근거 링크와 추가 판단만 남긴다.
+4. **정확성·공개성:** Repo/CI/PR evidence에서 확인되지 않은 배포 결과는 `unverified`로 유지한다. Production 적용은 별도 승인과 사후 검증 근거 없이 성공으로 기록하지 않는다. 공개 Wiki로 반출할 수 없는 사실은 **게시하지 않는다**.
+5. **저장 또는 전달:** 현재 요청·승인된 작업 산출물·도구 권한이 중앙 저장소에 검토 PR을 작성할 수 있는 범위라면 **review PR만 제출**한다. 읽기/설계 요청만으로 외부 Issue/PR 쓰기를 확대하지 않는다. 권한/공개성/검증이 부족하면 기록 후보를 내부적으로 정리하고 필요한 경우 간단한 미반영 사유를 최종 결과에 남긴다. 중앙 Wiki의 자동 GitHub PR 수집과 이 절차는 서로 보완하지만 동일한 동작이 아니다.
+
+### 산출물 및 완료 기준
+
+- **Journal은 가벼운 원천 사건 이력**으로서 `docs/reports`, `docs/handoffs`, `docs/adr`의 작성 조건을 변경하지 않는다. PR 하나로 충분한 변경에 별도 보고서를 추가하지 않는다. 승인되지 않은 새 기술 선택을 Decision의 `accepted`로 승격하지 않는다.
+- 결과 보고에서 Wiki 상태는 `review PR 제출`, `기존 PR 자동 수집 대상`, `미반영(권한/공개/근거 제한)`, `기록 대상 없음` 등으로 사실에 맞게 구분한다. **PR을 생성한 것과 Wiki main에 기록이 확정된 것은 별개**다.
+- Wiki 기록 실패 또는 검토 PR 생성 실패는 이미 통과한 **제품 코드 검증/실제 운영 검증을 소급해서 실패로 만들지 않는다**. 실패 이유를 명시하되 무한 재시도·승인 우회·다른 저장소 직접 main write는 하지 않는다.
+- 위 절차는 공통 정책의 한 번뿐인 정의이며 역할·Skill·Codex Prompt에 장문 복제하지 않는다. 반복되는 누락/중복/오분류는 §14 Feedback Loop에서 evidence를 검토하고 필요한 경우 Wiki parser, test 또는 CI guardrail로 개선한다.
