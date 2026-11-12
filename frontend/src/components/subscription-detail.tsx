@@ -100,11 +100,24 @@ export function SubscriptionDetail({ subscriptionId, created, replayed, basePath
     {created ? <div className="notice-success" role="status">구독이 생성되었습니다. {replayed ? "이전 성공 결과를 다시 표시했습니다." : ""}</div> : null}
     {message ? <div className={messageKind === "error" ? "error-summary" : "notice-success"} ref={errorRef} tabIndex={-1} role={messageKind === "error" ? "alert" : "status"}>{message}</div> : null}
     <header className="subscription-overview page-heading"><div><h1>내 정기배송</h1><p>{subscription.pet?.name ?? "반려동물"}의 반복 구매 일정</p></div><span className="status-badge">{formatSubscriptionStatus(subscription.status)}</span></header>
+    <section className="subscription-state-comparison" aria-labelledby="subscription-state-title">
+      <h2 id="subscription-state-title">현재 구성과 적용 예정 비교</h2>
+      <div className="subscription-state-grid">
+        <section aria-labelledby="subscription-current-title"><h3 id="subscription-current-title">현재 구성</h3>
+          <dl className="detail-list"><dt>현재 주기</dt><dd>{subscription.currentSnapshot.deliveryCycleWeeks}주마다</dd><dt>패키지 금액</dt><dd>{formatPrice(subscription.currentSnapshot.packagePriceKrw)}</dd></dl>
+          <p className="field-help">{subscription.currentSnapshot.items.map((item,index) => `구성 ${index + 1} · ${item.quantity}개`).join(" · ")}</p>
+        </section>
+        <section aria-labelledby="subscription-next-title"><h3 id="subscription-next-title">다음 주문 회차</h3>
+          {subscription.nextDelivery ? <dl className="detail-list"><dt>주문 예정일</dt><dd>{formatIsoLocalDate(subscription.nextDelivery.scheduledDate)}</dd><dt>회차 주기</dt><dd>{subscription.nextDelivery.deliveryCycleWeeks}주마다</dd><dt>기본 금액</dt><dd>{formatPrice(subscription.nextDelivery.packagePriceKrw)}</dd></dl> : <p className="field-help">예정된 다음 주문 회차가 없습니다.</p>}
+        </section>
+        <section aria-labelledby="subscription-pending-title"><h3 id="subscription-pending-title">적용 예정 변경</h3>
+          {subscription.pendingChange ? <><dl className="detail-list"><dt>적용일</dt><dd>{formatIsoLocalDate(subscription.pendingChange.appliesOn)}</dd><dt>변경 주기</dt><dd>{subscription.pendingChange.deliveryCycleWeeks}주마다</dd><dt>패키지 금액</dt><dd>{formatPrice(subscription.pendingChange.packagePriceKrw)}</dd></dl><details className="pending-items"><summary>적용 예정 상품 구성</summary><ItemList items={subscription.pendingChange.items} /></details></> : <p className="field-help">적용 예정인 변경이 없습니다.</p>}
+        </section>
+      </div>
+    </section>
     <div className="subscription-main">
     <DeliverySection subscription={subscription} pending={pending !== null} onRemove={(skuId) => requestCommand("remove-next-delivery-addon", { skuId })} onSet={(body) => requestCommand("set-next-delivery-addon", body)} />
-    {subscription.pendingChange ? <section className="section-card subscription-pending"><h2>적용 예정 변경</h2><dl className="detail-list"><dt>적용일</dt><dd>{formatIsoLocalDate(subscription.pendingChange.appliesOn)}</dd><dt>변경 금액</dt><dd>{formatPrice(subscription.pendingChange.packagePriceKrw)}</dd><dt>변경 주기</dt><dd>{subscription.pendingChange.deliveryCycleWeeks}주마다</dd></dl><ItemList items={subscription.pendingChange.items} /></section> : null}
     {subscription.issue && subscription.issue.code !== "SHIPPING_ADDRESS_REQUIRED" ? <section className="section-card issue-card"><p className="eyebrow">조치 필요</p><h2>{subscriptionIssueCopy(subscription.issue.code)}</h2><p>{subscription.issue.message}</p>{subscription.issue.code === "BILLING_METHOD_REQUIRED" && hasAction("REGISTER_BILLING_METHOD") ? <Link className="button button-primary" href="/billing-methods">결제수단 등록 상태 확인</Link> : null}{subscription.issue.code === "PAYMENT_SUPPORT_REQUIRED" ? <p className="field-help">결제 상태 확인은 고객지원에서 이어서 진행합니다. 이 화면에서는 결제를 재시도하지 않습니다.</p> : null}{subscription.issue.code === "STOCK_UNAVAILABLE" ? <p className="field-help">재고가 확보되면 서버가 다음 배송을 다시 판단합니다. 임의 대체나 자동 재시도는 제공하지 않습니다.</p> : null}</section> : null}
-    <section className="section-card"><h2>현재 플랜</h2><dl className="detail-list"><dt>패키지 금액</dt><dd>{formatPrice(subscription.currentSnapshot.packagePriceKrw)}</dd><dt>현재 주기</dt><dd>{subscription.currentSnapshot.deliveryCycleWeeks}주마다</dd></dl><p className="field-help">{subscription.currentSnapshot.items.map((item,index) => `구성 ${index + 1} · ${item.quantity}개`).join(" · ")}</p></section>
     <section className="section-card"><h2>배송 일정과 변경 이력</h2><h3>일정</h3><ul className="history-list">{subscription.schedules.items.map(item => <li key={item.scheduleId}><strong>{formatIsoLocalDate(item.scheduledDate)}</strong><span>{formatScheduleStatus(item.status)}</span></li>)}</ul><h3>변경 이력</h3><ul className="history-list">{subscription.commandHistory.items.map((item,index) => <li key={`${item.occurredAt}-${index}`}><strong>{LABEL[item.commandType.toLowerCase().replaceAll("_","-") as Command] ?? "구독 변경"}</strong><span>{formatIsoLocalDate(item.occurredAt.slice(0,10))} · {item.result === "SUCCEEDED" || item.result === "SUCCESS" ? "반영됨" : "처리 기록"}</span></li>)}</ul></section>
     </div><aside className="subscription-rail">
     <section className="section-card subscription-actions"><div className="section-title"><div><h2>구독 관리</h2><p>현재 상태를 확인하고 필요한 항목만 변경하세요.</p></div></div>

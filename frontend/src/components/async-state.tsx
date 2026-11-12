@@ -22,6 +22,21 @@ interface ErrorStateProps {
   children?: React.ReactNode;
 }
 
+export function AuthRequiredState({ title = "로그인이 필요합니다.", message, children, announce = false }: {
+  title?: string;
+  message: string;
+  children?: React.ReactNode;
+  announce?: boolean;
+}) {
+  const titleId = useId();
+  return <section className="state-panel state-panel-auth" role={announce ? "alert" : undefined} aria-atomic={announce ? true : undefined} aria-labelledby={titleId}>
+    <p className="eyebrow">로그인 안내</p>
+    <h1 id={titleId}>{title}</h1>
+    <p>{message}</p>
+    <div className="button-row">{children}</div>
+  </section>;
+}
+
 export function ErrorState({
   headingLevel = 1,
   title,
@@ -52,8 +67,4 @@ export function ErrorState({
       </div>
     </section>
   );
-}
-
-export function AuthRequiredState({ title, message, children }: Pick<ErrorStateProps, "title" | "message" | "children">) {
-  return <section className="state-panel auth-required-state"><h1>{title}</h1><p>{message}</p><div className="button-row">{children}</div></section>;
 }

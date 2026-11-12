@@ -152,10 +152,44 @@
     padding:18px 0;
     border-bottom:1px solid var(--line);
   }
-  .wishlist-row h2 { margin:0 0 4px; font-size:16px; line-height:24px; }
+  .wishlist-row h2 { overflow-wrap:anywhere; margin:0 0 4px; font-size:16px; line-height:24px; }
   .wishlist-row p { margin:0; color:var(--muted); font-size:12px; }
   .wishlist-row .button-row { justify-content:flex-end; }
-  .wishlist-row .button { min-height:40px; padding:7px 12px; font-size:13px; }
+  .wishlist-row .button { min-height:44px; padding:7px 12px; font-size:13px; }
+
+  .state-panel-auth { max-width:720px; margin-inline:auto; background:var(--surface); border-radius:12px; }
+  .checkout-block-reason { padding:16px; margin:16px 0; background:var(--surface); border-radius:8px; }
+  .checkout-block-reason p { margin:0 0 8px; }
+
+  .subscription-detail > .subscription-state-comparison { grid-column:1/-1; }
+  .subscription-state-comparison > h2 { margin:0 0 20px; font-size:22px; }
+  .subscription-state-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
+  .subscription-state-grid > section { min-width:0; padding:20px; border:1px solid var(--line); border-radius:12px; }
+  .subscription-state-grid h3 { margin:0 0 16px; font-size:18px; }
+  .subscription-state-grid .detail-list { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:8px 16px; }
+  .subscription-state-grid dt { font-size:14px; color:var(--muted); }
+  .subscription-state-grid dd { margin:0; overflow-wrap:anywhere; }
+  .pending-items summary { cursor:pointer; padding-block:12px; min-height:44px; }
+  .subscription-plan-options .product-card { padding:16px; gap:12px; }
+  @media (max-width:1023px) { .subscription-state-grid { grid-template-columns:minmax(0,1fr); } }
+
+  /* Account facts: keep each server label next to its value. */
+  .subscription-row { display:grid; grid-template-columns:minmax(0,1fr) auto; min-width:0; }
+  .subscription-row-main { min-width:0; }
+  .subscription-row-main h3 { margin:8px 0 0; overflow-wrap:anywhere; }
+  .subscription-row-fact { display:grid; gap:6px; min-width:0; margin:0; }
+  .subscription-row-fact dt,.billing-status-card dt { color:var(--muted); font-size:14px; }
+  .subscription-row-fact dd,.billing-status-card dd { margin:0; font-weight:600; overflow-wrap:anywhere; }
+  .subscription-pagination { align-items:center; margin-top:20px; }
+  .subscription-pagination[data-single-page="true"] .button:disabled { background:transparent; border-color:transparent; }
+  .billing-status-card { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin:0 0 24px; }
+  .billing-status-card .status-tile { display:grid; align-content:start; gap:8px; min-width:0; padding:20px; background:var(--surface); border-radius:12px; }
+  @media (min-width:1024px) {
+    .subscription-row { grid-template-columns:minmax(120px,1fr) minmax(0,1fr) minmax(0,1.25fr) auto; }
+  }
+  @media (max-width:560px) {
+    .subscription-row,.billing-status-card { grid-template-columns:minmax(0,1fr); }
+  }
 
   /* Address: emphasize the default destination and keep editing in the dialog. */
   .saved-addresses { margin-top:4px; }
@@ -183,14 +217,20 @@
   .address-row address > span { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
   .address-row.default-address { padding-left:14px; border-left:3px solid var(--brand); }
   .address-row .button-row { justify-content:flex-end; }
-  .address-row .button { min-height:38px; padding:6px 11px; font-size:12px; }
+  .address-row .button { min-height:44px; padding:6px 11px; font-size:12px; }
   .address-dialog {
     width:min(620px,calc(100% - 32px));
     max-height:min(760px,calc(100dvh - 48px));
     padding:24px;
+    overflow:hidden;
     border:1px solid var(--line);
     border-radius:12px;
   }
+  .address-dialog[open] { display:flex; flex-direction:column; }
+  .address-dialog > .navigation-overlay-heading { flex:none; }
+  .address-dialog-form { display:flex; flex-direction:column; min-height:0; }
+  .address-dialog-body { min-height:0; overflow-y:auto; padding:4px 8px 12px 4px; }
+  .address-dialog-actions { flex:none; justify-content:flex-end; padding-top:16px; border-top:1px solid var(--line); }
   .address-dialog::backdrop { background:rgb(36 28 46 / 42%); }
 
   /* Notifications: unread state and follow-up action should be obvious. */
@@ -225,7 +265,7 @@
   .notification-panel .history-list > li > div a { color:var(--ink); text-decoration:none; }
   .notification-panel .history-list > li > div a:hover { color:var(--brand); }
   .notification-panel .history-list > li > div span { color:var(--muted); font-size:12px; }
-  .notification-panel .history-list .button { min-height:38px; padding:6px 11px; font-size:12px; }
+  .notification-panel .history-list .button { min-height:44px; padding:6px 11px; font-size:12px; }
 
   /* Pet: profiles are the default view; create/edit controls disclose on demand. */
   .pet-profile-screen > .section-card {
