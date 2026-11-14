@@ -31,6 +31,11 @@ GitHub Actions에는 현재 Cloud provider에 application을 활성화하는 Pro
 
 2026-10-25 A07 읽기 전용 조사에서 Application 컨테이너 healthy, `/`·`/products`·`/api/products` GET 200, Backend metric 수집, Prometheus/Grafana health 응답, 제공 인증서와 디스크 인증서 일치 및 갱신 timer 활성 상태를 확인했다. 이는 조사 시점의 제한된 관측이며 지속적인 가용성이나 갱신·복구 성공을 보장하지 않는다.
 
+ARM64 전환 준비의 저장소·로컬 근거는 다음 보고서에 있다. 둘 다 Production Verified가 아니며, 실제 OCI A1·GHCR·운영 환경 검증은 별개다.
+
+- [OPS-ARM64-RELEASE-003](../reports/OPS-ARM64-RELEASE-003/README.md): amd64 Release/Rollback 계약을 유지한 ARM64 플랫폼 검증 Delta와 격리 Docker lifecycle 결과(사용자 제공 실행 로그)
+- [OPS-ARM64-FE-001](../reports/OPS-ARM64-FE-001/README.md): 로컬 ARM64 에뮬레이션에서 Frontend 메모리 한도·Healthcheck 조건별 OOM 비교(사용자 제공 출력)
+
 OCI Application Rollback, 인증서 갱신 중단 복구, DB backup/PITR/restore, Cloud 접근 제어, 전체 알림 연결과 로그인·주문 등 업무 흐름은 이 조사로 검증하지 않았다. Managed MySQL topology와 외부 DB 연결 경계는 확인했으나 OCI DB resource identity·권한·복구 설정은 별도 확인이 필요하다.
 
 ## 후속 운영 실행 경계

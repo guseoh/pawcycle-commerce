@@ -1885,3 +1885,13 @@ and R3 work remain separate, neither implemented nor asserted safe here.
 No Production verification or new performance benchmark ran. Revert R2-06's
 test/document commits to restore the prior audit state; no data/schema/runtime
 rollback is needed. Historical T01–T11 records remain intact.
+
+## V2 종료 이후 구현 경계 감사 (#505)
+
+Architecture V2 종료 뒤 남은 Delta를 감사한 기록이다. 결정과 보존 경계는 각 보고서가 원본이며, 이 절은 색인만 제공한다.
+
+- [T0 구현 경계 감사](../reports/BACKEND-505/T0-audit.md): 완료 범위 제외와 T1~T5 잔여 Delta, 보존해야 할 실행 경로
+- [T3 결제 경계](../reports/BACKEND-505/T3-payment.md): 결제 상태 변경 주체 전수 조사와 범용 finalizer 기각
+- [T5 잔여 구조 판단](../reports/BACKEND-505/T5-evaluation.md): 미사용 accessor 제거와 조합·핸들러·팩토리 보류·기각 판단
+
+#417 NORMAL PROCESSING 복구는 이 감사의 범위 밖이다.
