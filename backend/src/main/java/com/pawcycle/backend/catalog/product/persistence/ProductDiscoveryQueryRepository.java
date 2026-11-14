@@ -373,7 +373,7 @@ public class ProductDiscoveryQueryRepository {
       List<QueryParameter> parameters) {
     StringBuilder where = new StringBuilder(" WHERE p.display_status='PUBLIC' AND c.active=true AND b.active=true");
     if (q != null && !q.isBlank()) {
-      String needle = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+      String needle = "%" + escapeLikeLiteral(q.trim().toLowerCase(Locale.ROOT)) + "%";
       String q1 = add(parameters, needle);
       String q2 = add(parameters, needle);
       String q3 = add(parameters, needle);
@@ -402,6 +402,14 @@ public class ProductDiscoveryQueryRepository {
       where.append(" AND EXISTS (SELECT 1 FROM product_facet_values pfv JOIN facet_options fo ON fo.id=pfv.facet_option_id JOIN facet_definitions fd ON fd.id=fo.facet_definition_id WHERE pfv.product_id=p.id AND fd.`key`=:").append(add(parameters, pair[0].trim())).append(" AND fo.value=:").append(add(parameters, pair[1].trim())).append(")");
     }
     return where.toString();
+  }
+
+  /**
+   * Treats the search keyword as literal text. MySQL LIKE uses backslash as the default escape
+   * character, so the measured SQL shape stays unchanged and only the bound value is escaped.
+   */
+  static String escapeLikeLiteral(String value) {
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
 
   private String add(List<QueryParameter> parameters, Object value) {
