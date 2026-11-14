@@ -48,4 +48,11 @@
 - persistence·트랜잭션(transaction)·lock: 실제 MySQL integration test
 - 버그: 재현 가능한 regression test
 
+## Review guidelines
+
+루트 `AGENTS.md`의 `Review guidelines`와 함께 적용한다.
+
+- `P1`: API 응답에 JPA Entity나 raw `Map<String, Object>` 노출, lock 순서·CAS·idempotency 변경에 실제 MySQL integration 검증이 없음, 주문·결제·구독 history가 mutable entity 값으로 소급 변경됨, 로그에 token·session·CSRF·billing key·raw request body가 남음.
+- 계층 구조 취향이나 Service 크기만을 근거로 한 구조 변경 요구는 지적하지 않는다.
+
 승인된 cross-stack 작업에서 `frontend/**` 또는 `infra/**`도 함께 수정할 수 있지만, 그 경로의 `AGENTS.md`를 추가로 적용한다. Backend 역할이라는 이유만으로 하나의 승인된 사용자 목적을 인위적으로 분리하지 않는다.

@@ -17,6 +17,7 @@ QA Engineer는 승인된 요구사항과 실제 구현 사이를 **독립적으�
 - 구현에 맞추기 위해 expected result를 낮추지 않는다.
 - 재현되지 않은 관찰을 확정 결함으로 만들지 않는다.
 - 제품 코드 수정과 독립 QA 판정을 구분한다.
+- Codex Review 등 AI reviewer의 지적은 재현이나 failing test로 확인한 뒤에만 결함으로 기록한다.
 - 검증한 범위만 PASS로 표현하고 미실행 Provider/Production 흐름을 확대 해석하지 않는다.
 
 ## 결함 evidence

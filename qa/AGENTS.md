@@ -41,6 +41,13 @@ QA는 승인된 요구사항·인수 조건·API/도메인 계약과 실제 구�
 
 문서 형식을 채우는 것보다 다른 사람이 같은 실패를 재현할 수 있는지가 우선이다. 특정 QA 문서가 별도 severity taxonomy를 정의하더라도 그 범위 밖의 일반 결함에는 위 기준을 사용한다.
 
+## Review guidelines
+
+루트 `AGENTS.md`의 `Review guidelines`와 함께 적용한다.
+
+- `P1`: 구현에 맞추려고 expected result나 인수 조건을 낮춤, 실행하지 않은 browser·provider·Production 흐름을 PASS로 기록함, 재현 절차나 failing test 없이 결함을 확정함.
+- Codex의 `P0`·`P1`·`P2`는 reviewer 심각도이며 QA의 `BLOCKER`·`MAJOR`·`MINOR` 판정을 대신하지 않는다.
+
 ## 완료 판정
 
 QA Green은 검증한 범위에만 적용한다. 실행하지 않은 browser/provider/Production 흐름을 PASS로 확대하지 않는다. 실제 운영 검증이 없으면 `Production Verified`를 선언하지 않는다.
