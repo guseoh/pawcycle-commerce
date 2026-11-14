@@ -38,7 +38,7 @@ PawCycle에서 우선순위가 높은 보호는 다음이다.
 - `pull_request_target`/`workflow_run`에서 신뢰되지 않은 PR head 코드를 Secret과 함께 실행하지 않음
 - `DISCORD_WEBHOOK_URL` Secret 존재 여부
 
-병합 PR Markdown을 만들기 위해 GitHub Actions에 `contents: write`를 주는 자동화는 사용하지 않는다. 과거 `docs/learning/pull-requests/**` 기록은 보존하지만 새 병합 기록의 권위 원본은 GitHub PR이다.
+병합 PR Markdown을 만들기 위해 GitHub Actions에 `contents: write`를 주는 자동화는 사용하지 않는다. 과거 `docs/learning/pull-requests/**` 기록은 [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)로 옮겨 보존하지만 새 병합 기록의 권위 원본은 GitHub PR이다.
 
 Production image publish는 모든 `main` push를 관찰할 수 있지만 실제 image build/push는 checkout된 commit diff에서 다음 runtime 변경이 확인된 경우에만 진행해야 한다.
 

@@ -13,7 +13,7 @@ PawCycle Commerce는 Commerce/Subscription 제품을 구현한 뒤 데이터 정
 - OCI: 승인된 후속 배포 방향이지만 아직 active Production target 또는 Production Verified 상태가 아님
 - AWS: 실제 운영 리소스는 종료했으며, active AWS 실행 경로·전용 검증·실행 Runbook은 저장소에서 retire
 
-AWS에서 수행했던 배포·관측·backup/restore·장애 대응·RDS 전환 준비 과정은 삭제하지 않는다. 당시의 실행 결과와 판단은 `docs/reports/**`, `docs/learning/**`, `docs/adr/**`, Git 및 Pull Request 이력에 역사적 evidence로 보존한다.
+AWS에서 수행했던 배포·관측·backup/restore·장애 대응·RDS 전환 준비 과정은 삭제하지 않는다. 당시의 실행 결과와 판단은 `docs/reports/**`, `docs/adr/**`, Git 및 Pull Request 이력에 역사적 evidence로 보존한다. PR별 학습 노트(`docs/learning/**`)는 2026-11-14에 [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)로 옮겼으며 원본은 Git 이력에 남아 있다.
 
 ## 프로젝트 핵심 축
 
@@ -157,5 +157,5 @@ OCI 배포 재구축은 별도의 Calendar/Operations constraint로 관리한다
 - 운영 현재 상태: `docs/architecture/production-operations-overview.md`
 - Runbook index: `docs/runbook/README.md`
 - 실행·검증 evidence: `docs/reports/**`
-- PR별 학습·변경 기록: `docs/learning/**`
+- PR별 학습·변경 기록(2026-09 이전): [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)
 - Architecture Decision Record: `docs/adr/**`
