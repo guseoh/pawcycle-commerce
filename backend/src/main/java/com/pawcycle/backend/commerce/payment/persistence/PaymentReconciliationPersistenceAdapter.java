@@ -32,6 +32,31 @@ public class PaymentReconciliationPersistenceAdapter {
         ReconciliationWork.class, paymentId);
   }
 
+  /**
+   * Eligibility facts for recovering an isolated NORMAL/PROCESSING payment (#417 Phase 2a).
+   * The locking variant takes the payment row and then its order row, the same order as normal
+   * finalization (payment lock first, order update after).
+   */
+  public RecoveryCandidate findRecoveryCandidate(long paymentId, Timestamp expiredBefore, boolean forUpdate) {
+    String sql = """
+        SELECT payment.id,payment.order_id,payment.type,payment.status,orders.status AS order_status,
+               orders.member_id,payment.provider_order_id,payment.payment_key,payment.amount,
+               CAST(CASE WHEN payment.expires_at <= ? THEN 1 ELSE 0 END AS SIGNED) AS expired_long_enough,
+               (SELECT COUNT(*) FROM order_items item WHERE item.order_id=payment.order_id) AS order_item_count,
+               (SELECT COUNT(*) FROM inventory_movements movement
+                 WHERE movement.payment_id=payment.id AND movement.type='RESERVE') AS reserve_count,
+               (SELECT COUNT(*) FROM inventory_movements movement
+                 WHERE movement.payment_id=payment.id AND movement.type IN ('DEDUCT','RELEASE')) AS settled_count
+        FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=?
+        """ + (forUpdate ? " FOR UPDATE" : "");
+    return locks.first(sql, RecoveryCandidate.class, expiredBefore, paymentId);
+  }
+
+  public boolean isAdmin(long memberId) {
+    Long count = locks.first("SELECT COUNT(*) FROM members WHERE id=? AND role='ADMIN'", Long.class, memberId);
+    return count != null && count > 0;
+  }
+
   /** Non-locking identity projection: observation never claims or completes a payment. */
   public QueryTarget findQueryTarget(long paymentId) {
     var payment = new QPaymentEntity("payment");
@@ -127,6 +152,20 @@ public class PaymentReconciliationPersistenceAdapter {
     return Timestamp.from(clock.instant());
   }
 
+  public record RecoveryCandidate(
+      Long paymentId,
+      Long orderId,
+      String type,
+      String status,
+      String orderStatus,
+      Long memberId,
+      String providerOrderId,
+      String paymentKey,
+      BigDecimal amount,
+      Long expiredLongEnough,
+      Long orderItemCount,
+      Long reserveCount,
+      Long settledCount) {}
   public record QueryTarget(String type, String providerOrderId, String paymentKey, BigDecimal amount) {}
   public record ReconciliationWork(long paymentId, String type, String status, String providerOrderId, int attempts) {}
   public record ReconciliationTarget(long paymentId, long orderId, String type, String status, int attempts, long memberId, String source) {}

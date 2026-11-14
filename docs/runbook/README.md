@@ -33,6 +33,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 - `OPS-OCI-004-production-https-renewal.md`
 - `OPS-OCI-CD-02-release-recovery.md`: 승인된 OCI Release/Preflight/Rollback, 보호 상태와 중단 복구 경계
 - `SUB-AUTO-001-subscription-automation.md`
+- `PAYMENT-RECOVERY-001-processing-success.md`: 고립된 NORMAL/PROCESSING 결제의 성공 확정 유지보수 명령(#417 Phase 2a). 운영 실행은 별도 승인
 - `MVP4-DATA-002-demo-catalog-import.md`
 - `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약
 - 관측·진단·성능 측정 관련 Runbook

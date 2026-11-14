@@ -87,17 +87,7 @@ public class PaymentApplicationService {
       return new PaymentResult(paymentId, payment.orderId(), "UNKNOWN");
     }
     if ("SUCCEEDED".equals(providerResult)) {
-      for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
-        inventoryService.deduct(item.skuId(), item.quantity(), paymentId);
-      }
-      payments.markSucceeded(paymentId, paymentKey);
-      payments.markOrderPaid(payment.orderId());
-      deliveryService.createPreparing(payment.orderId());
-      payments.useReservedCoupon(payment.orderId());
-      notificationService.create(
-          payments.findMemberId(payment.orderId()), "ORDER_PAID", "ORDER", payment.orderId());
-      payments.consumeCart(payments.findMemberId(payment.orderId()), payment.orderId());
-      membershipEvaluation.evaluate(payments.findMemberId(payment.orderId()));
+      applyNormalSuccess(paymentId, payment.orderId(), paymentKey);
       return new PaymentResult(paymentId, payment.orderId(), "SUCCEEDED");
     }
     for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(payment.orderId())) {
@@ -107,6 +97,25 @@ public class PaymentApplicationService {
     payments.markOrderPaymentFailed(payment.orderId());
     payments.releaseReservedCoupon(payment.orderId());
     return new PaymentResult(paymentId, payment.orderId(), "FAILED");
+  }
+
+  /**
+   * Success effects of a NORMAL payment, in the established order. The caller must hold the
+   * payment row lock inside a transaction and must have checked that the payment is PROCESSING.
+   * Shared by normal confirmation and the PROCESSING recovery command (#417) so both apply the
+   * same effects exactly once.
+   */
+  void applyNormalSuccess(long paymentId, long orderId, String paymentKey) {
+    for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(orderId)) {
+      inventoryService.deduct(item.skuId(), item.quantity(), paymentId);
+    }
+    payments.markSucceeded(paymentId, paymentKey);
+    payments.markOrderPaid(orderId);
+    deliveryService.createPreparing(orderId);
+    payments.useReservedCoupon(orderId);
+    notificationService.create(payments.findMemberId(orderId), "ORDER_PAID", "ORDER", orderId);
+    payments.consumeCart(payments.findMemberId(orderId), orderId);
+    membershipEvaluation.evaluate(payments.findMemberId(orderId));
   }
 
   private PaymentResult markProviderUnknown(long paymentId) {
