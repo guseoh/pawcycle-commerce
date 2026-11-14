@@ -46,6 +46,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'com.tngtech.archunit:archunit:1.5.0'
 	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -56,6 +57,15 @@ tasks.named('test') {
 	// Cached Spring contexts retain their Hikari pools until eviction or JVM shutdown.
 	// Bound test-only retention so distinct integration fixtures fit the MySQL service cap.
 	systemProperty 'spring.test.context.cache.maxSize', '8'
+	// Re-run the endpoint index check whenever the committed index changes.
+	inputs.file(rootProject.file('../docs/api/current-endpoints.md'))
+		.withPropertyName('apiEndpointIndex')
+		.withPathSensitivity(PathSensitivity.RELATIVE)
+	// Regenerates docs/api/current-endpoints.md only when explicitly requested.
+	systemProperty 'pawcycle.api-index.update',
+		providers.systemProperty('pawcycle.api-index.update').getOrElse('false')
+	// Spring REST Docs writes verified request/response snippets here.
+	outputs.dir layout.buildDirectory.dir('generated-snippets')
 }
 
 // Avoid static Q-type initialization cycles in bidirectional JPA associations.
