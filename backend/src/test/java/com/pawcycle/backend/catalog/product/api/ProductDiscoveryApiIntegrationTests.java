@@ -98,6 +98,48 @@ class ProductDiscoveryApiIntegrationTests {
   }
 
   @Test
+  void searchKeywordWildcardsMatchLiterally() throws Exception {
+    Category category =
+        categoryRepository.saveAndFlush(
+            new Category("Treat " + UUID.randomUUID(), "treat-" + UUID.randomUUID(), 0, true));
+    Product percent =
+        productRepository.save(
+            new Product(category, "100% Natural Treat", "single protein", null, "DOG", null, "PUBLIC"));
+    Product underscore =
+        productRepository.save(
+            new Product(category, "chew_bone mini", "dental", null, "DOG", null, "PUBLIC"));
+    productRepository.save(
+        new Product(category, "1000 Natural Treat", "mixed", null, "DOG", null, "PUBLIC"));
+    productRepository.save(
+        new Product(category, "chewXbone mini", "dental", null, "DOG", null, "PUBLIC"));
+    entityManager.flush();
+    entityManager.clear();
+
+    mockMvc
+        .perform(get("/api/products").param("q", "100%").param("category", category.getSlug()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(percent.getId()));
+
+    mockMvc
+        .perform(get("/api/products").param("q", "chew_bone").param("category", category.getSlug()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(underscore.getId()));
+
+    mockMvc
+        .perform(get("/api/products").param("q", "%").param("category", category.getSlug()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].productId").value(percent.getId()));
+
+    mockMvc
+        .perform(get("/api/products").param("q", "\\").param("category", category.getSlug()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
+  }
+
+  @Test
   void demoCatalogSupportsPaginationSearchSortAndOutOfStockDetail() throws Exception {
     fixtureService.bootstrap();
 
