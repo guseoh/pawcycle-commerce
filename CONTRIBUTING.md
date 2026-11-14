@@ -24,6 +24,15 @@
 
 GitHub file write Tool에서는 branch 인자를 생략하지 않는다. 일반 작업의 direct `main` write는 금지하며 PR merge를 사용한다.
 
+## 병합 후 branch 정리
+
+PR이 병합되면 그 작업의 task branch를 원격과 로컬에서 모두 정리한다.
+
+- 원격: 이 저장소는 병합 시 branch 자동 삭제가 켜져 있다. 원격 branch가 실제로 지워졌는지만 확인한다.
+- 로컬: squash 병합 뒤에는 Git이 로컬 branch를 병합된 것으로 인식하지 못해 `git branch -d`가 거부된다. 로컬 branch tip이 병합된 PR의 최종 head SHA와 같은지 확인한 뒤 `git branch -D`로 삭제한다. 다르면 PR에 들어가지 않은 commit이 있다는 뜻이므로 삭제하지 않고 내용을 확인한다.
+- 같은 작업에서 다른 저장소(예: 중앙 Wiki `guseoh/cs`)에 만든 branch도 같은 방식으로 확인해 삭제한다. 그 저장소에 자동 삭제가 꺼져 있으면 원격 branch도 직접 지운다.
+- 열린 PR의 branch, 병합되지 않은 branch, 다른 작업이 만든 branch는 정리 대상이 아니다.
+
 ## Commit / PR 제목
 
 Conventional Commit 형태를 사용한다.
