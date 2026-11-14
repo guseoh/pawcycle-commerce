@@ -38,8 +38,4 @@ public class CategoryFacetEntity {
     this.id = new CategoryFacetId(category.getId(), facetDefinition.getId());
     this.displayOrder = displayOrder;
   }
-
-  public void updateDisplayOrder(int displayOrder) {
-    this.displayOrder = displayOrder;
-  }
 }
