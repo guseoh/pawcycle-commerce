@@ -12,7 +12,7 @@
 
 현재 Production 경계는 `docs/architecture/production-operations-overview.md`를 따른다. Runbook 파일이 존재한다는 사실만으로 실제 Production 실행이 승인되거나 현재 환경에 그대로 적용 가능하다고 해석하지 않는다.
 
-AWS에서 수행했던 운영 과정과 검증 결과는 `docs/reports/**`, `docs/learning/**`, 관련 ADR, Git 및 PR 이력에 보존한다. 이 기록은 향후 회고·포트폴리오·기술 글 작성의 근거이며, 현재 실행 절차로 재사용하지 않는다.
+AWS에서 수행했던 운영 과정과 검증 결과는 `docs/reports/**`, 관련 ADR, Git 및 PR 이력에 보존한다. PR별 학습 노트는 [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)로 옮겼다. 이 기록은 향후 회고·포트폴리오·기술 글 작성의 근거이며, 현재 실행 절차로 재사용하지 않는다.
 
 [OPS-029 보고서](../reports/OPS-029/tl-report.md)에서 참조한 [OPS-010 단일 Release Runbook](https://github.com/guseoh/pawcycle-commerce/blob/9d37697be05aad8bf94cb3bd6aa877516b96dd88/docs/runbook/OPS-010-production-single-release.md)은 당시 실행 절차의 기록이다.
 

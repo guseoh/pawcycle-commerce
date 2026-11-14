@@ -54,7 +54,7 @@ OCI Application Rollback, 인증서 갱신 중단 복구, DB backup/PITR/restore
 AWS에서 EC2/EBS, SSM, RDS 전환 준비, S3 논리 backup·격리 restore, CloudWatch/SNS alert, HTTPS, release·rollback 등을 구축하거나 검증했던 사실은 삭제하지 않는다. 원래 시점의 사실과 결과는 다음 위치에서 확인한다.
 
 - `docs/reports/**`: 실행·측정·검증 결과
-- `docs/learning/**`: PR별 작업 맥락과 학습 기록
+- [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8): PR별 작업 맥락과 학습 기록(2026-11-14 이동)
 - `docs/adr/**`: 당시 기술·운영 결정과 trade-off
 - Git commit / Pull Request history: 실제 변경 이력
 

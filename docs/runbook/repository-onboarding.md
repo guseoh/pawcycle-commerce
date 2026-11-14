@@ -61,7 +61,7 @@ Discord는 보조 알림 채널이며 CI·Review·병합 판정을 대신하지 
 
 ## 병합 PR evidence
 
-과거 `docs/learning/pull-requests/**`는 역사 자료로 유지한다.
+과거 `docs/learning/pull-requests/**`는 [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)로 옮겨 역사 자료로 유지한다.
 
 새 병합 PR은 GitHub Pull Request 자체를 권위 evidence로 사용한다. 병합 직후 bot이 `main`에 별도 Markdown commit을 추가하는 자동화는 사용하지 않는다.
 

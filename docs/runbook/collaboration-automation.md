@@ -74,7 +74,7 @@ Discord는 GitHub 상태를 알리는 보조 채널이다.
 
 GitHub Pull Request 자체를 병합 이력과 리뷰·CI evidence의 권위 원본으로 사용한다.
 
-과거 `docs/learning/pull-requests/**` 기록은 역사 자료로 보존하지만, **병합 직후 GitHub Actions가 새 Markdown을 만들고 `main`에 직접 commit/push하는 자동화와 전용 exporter/fixture/validator는 retire한다.**
+과거 `docs/learning/pull-requests/**` 기록은 [cs Vault `Project/pawCycle/PR학습노트`](https://github.com/guseoh/cs/tree/main/Project/pawCycle/PR%ED%95%99%EC%8A%B5%EB%85%B8%ED%8A%B8)로 옮겨 역사 자료로 보존하며, **병합 직후 GitHub Actions가 새 Markdown을 만들고 `main`에 직접 commit/push하는 자동화와 전용 exporter/fixture/validator는 retire한다.**
 
 이유는 다음과 같다.
 
