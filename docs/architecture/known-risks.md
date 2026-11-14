@@ -15,6 +15,7 @@
 | R6 | 재고 | 여러 SKU를 담은 장바구니를 동시에 결제할 때의 잠금 순서와 초과 판매 | `CheckoutInventoryConcurrencyIntegrationTests`(CONSISTENCY-001): 재고 10개에 30명 동시 결제 → 10건 성공·20건 재고 부족, 음수·초과 판매 없음. SKU 2개를 반대 순서로 담은 20건 동시 결제 → 모두 성공, 데드락 없음. Checkout은 SKU 행을 `IN` 조회 한 번으로 잠근 뒤 예약한다 | **검증됨(결함 재현 안 됨)** | — |
 | R7 | AI 입력 | 리뷰 요약은 사용자가 쓴 리뷰를 LLM 입력으로 쓴다. 프롬프트 인젝션 방어와 출력 검증 테스트가 없다. 기능 플래그는 기본 꺼짐이다 | `ReviewSummaryService`, `application.properties` | 미검증 | 8단계(활성화 전) |
 | R9 | 데이터 보존 | 구독 멱등성 결과의 30일 보존·삭제 로직은 있지만 런타임 trigger가 없어 실제로는 삭제되지 않고 쌓인다. 정리 대상 건수 지표만 있다 | [OPS-IDEMP-001 보고서](../reports/OPS-IDEMP-001/be-report.md) "Scheduler trigger … 구현하지 않았다", `SubscriptionMetrics` | 확인됨(의도된 보류) | 2단계(관측과 함께 실행 방식 결정) |
+| R10 | 결제 연동 | 운영 profile의 결제·환불·정기결제 어댑터는 모두 Unavailable(fail-closed)이라 운영에서 결제가 꺼져 있다. Toss 테스트 어댑터는 결제 승인·조회에만 있고, 환불·정기결제에는 없다. 테스트 환경 E2E는 아직 실행된 적이 없다(#228 Product Complete NO) | `TossUnavailablePaymentAdapter`·`TossUnavailableRefundAdapter`·`TossUnavailableBillingAdapter`(`!local-integration`), [PAYMENT-TOSS-TEST-001](../runbook/PAYMENT-TOSS-TEST-001-local-test-environment.md) | 확인됨. 테스트 환경 검증 절차 준비됨, 실행 대기(키 필요) | 1단계 이후 결제 연동 |
 | R8 | 운영 문서 | README는 운영 대상이 "없음", Runbook 색인과 운영 개요는 "OCI app01"이다. 실제 운영 상태를 확인해야 정리할 수 있다 | `README.md`, `docs/runbook/README.md`, [운영 개요](production-operations-overview.md) | 보류(사용자 결정) | 0단계 후속 |
 
 ## 해결된 항목

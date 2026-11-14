@@ -33,6 +33,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 - `OPS-OCI-004-production-https-renewal.md`
 - `OPS-OCI-CD-02-release-recovery.md`: 승인된 OCI Release/Preflight/Rollback, 보호 상태와 중단 복구 경계
 - `SUB-AUTO-001-subscription-automation.md`
+- `PAYMENT-TOSS-TEST-001-local-test-environment.md`: 로컬 통합 환경에서 Toss 테스트 키로 결제 승인·조회를 검증하는 절차. 키 사용 실행은 별도 승인
 - `PAYMENT-RECOVERY-001-processing-success.md`: 고립된 NORMAL/PROCESSING 결제의 성공 확정 유지보수 명령(#417 Phase 2a). 운영 실행은 별도 승인
 - `MVP4-DATA-002-demo-catalog-import.md`
 - `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약
