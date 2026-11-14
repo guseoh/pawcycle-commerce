@@ -82,7 +82,7 @@ Confirm:   [트랜잭션 1] READY → PROCESSING
 | `CHANGE_PLAN`, `CHANGE_DELIVERY_CYCLE`, `RESCHEDULE_NEXT` | 명령별 검사 | 플랜·주기·다음 날짜 변경 |
 | `SET_NEXT_DELIVERY_ADDON`, `REMOVE_NEXT_DELIVERY_ADDON` | `ACTIVE` | 다음 회차 애드온(수량 1~10) |
 
-- 동시성: 명령은 `If-Match` 버전 검사와 멱등성 replay를 거친 뒤 `lockOwnedSubscription`으로 구독 행을 잠그고, 한 트랜잭션에서 전이·이력·응답 저장을 끝낸다. 비관적 잠금은 원 설계(ARCH-007)와 다르며, 이 차이는 [ADR 색인](../adr/README.md)에 "확인 필요"로 기록돼 있다.
+- 동시성: 명령은 `If-Match` 버전 검사와 멱등성 replay를 거친 뒤 `lockOwnedSubscription`으로 구독 행을 잠그고, 한 트랜잭션에서 전이·이력·응답 저장을 끝낸다. 행 잠금은 원 설계(ARCH-007)와 다르지만, 첫 구현(#87)부터 쓰였고 ARCH-011에서 승인됐다([ADR 색인](../adr/README.md)).
 - 자동 주문: `SubscriptionOrderAutomationTrigger` → `SubscriptionOrderProcessor`가 기한이 된 회차마다 `REQUIRES_NEW` 트랜잭션으로 주문을 하나씩 만든다(ARCH-008). 회차 정합성은 `ScheduleReconciliationTrigger`가 맞춘다.
 - 코드: `subscription/application/SubscriptionCommandApplicationService`, `subscription/automation/*`
 
