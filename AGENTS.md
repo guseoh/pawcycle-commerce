@@ -114,11 +114,11 @@ CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR me
 
 CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
 
-`<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호다. `.github/workflows/request-coderabbit-review.yml`은 native auto-review 대상이 아닌 저장소에서 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, Ready 상태이며 최신 HEAD review가 없는 PR에 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. Draft PR에는 reminder를 남기지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder를 만들지 않고 CodeRabbit native review에 맡긴다.
+`<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호이며 merge-ready나 승인을 뜻하지 않는다. `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, native auto-review 대상이 아닌 저장소의 Ready PR에 최신 HEAD review가 없으면 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. native auto-review 대상 여부는 저장소 stargazer 수가 `scripts/request_coderabbit_review.py`의 `NATIVE_AUTO_REVIEW_STAR_THRESHOLD`(현재 10) 이상인지로 판정한다.
 
-실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 독립 검토(`검토해줘`, `PR 검토 진행`)는 기본 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 해당 CodeRabbit 외부 리뷰 요청까지 명시적으로 위임했거나 이미 승인된 실행 범위에 포함한 경우에만 ChatGPT는 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청할 수 있다. Codex와 repository automation은 이 명령을 발행하지 않는다. 자동 reminder, passing CodeRabbit status 또는 request comment만으로 review 완료를 주장하지 않는다. 최신 HEAD의 정식 review submission과 `commit_id`, 또는 신뢰 가능한 CodeRabbit 봇이 작성한 완료 요약의 실제 리뷰 범위·HEAD coverage를 확인한다. 완료 요약은 review 수행 증거일 뿐이며 finding 해결이나 병합 승인을 의미하지 않는다.
+실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 검토 요청은 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 그 요청까지 명시적으로 위임했거나 승인된 실행 범위에 포함한 경우에만 ChatGPT가 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다. Codex와 repository automation은 이 명령을 발행하지 않는다. reminder, passing status, request comment만으로 review 완료를 주장하지 않으며, Draft·reminder 처리와 최신 HEAD review evidence 확인 절차는 `pr-readiness-review` Skill을 따른다.
 
-외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. PCC_V9_02 §11의 필수 reviewer evidence·PR별 명시적 예외 Gate 등 별도 승인된 정책의 원본·적용 범위를 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 필수 Gate나 예외를 임의로 완화하지 않는다.
+외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. 필수 reviewer evidence나 PR별 예외 Gate를 정한 승인 원본을 저장소에서 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 Gate나 예외를 임의로 완화하지 않는다.
 
 고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
 
@@ -132,12 +132,6 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 
 ## LLM Wiki — 지속 기록 경계 (WIKI-CAPTURE-002)
 
-PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용합니다. **매 작업 종료 시 기록 후보를 자동 평가**하지만, Wiki 기록은 승인된 작업 범위와 권위 원본을 대체하지 않습니다. 작업 시작 시 과거 선택이 영향을 주는 경우 `Wiki/index.md` → `projects/pawcycle.md` → 관련 Decision을 선택적으로 조회합니다.
+PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용한다. **매 작업 종료 시 기록 후보를 평가**하지만, Wiki 기록은 승인된 작업 범위와 이 저장소의 권위 원본을 대체하지 않으며 다른 저장소의 Issue/PR 생성이나 범위 밖 쓰기 권한을 자동으로 부여하지 않는다.
 
-- 구현·UI·테스트·설계·실패·운영 조사 등 완료된 의미 있는 작업은 **짧은 Journal 후보**로, 확정된 중요한 기술·아키텍처·운영 결정은 **별도 Decision 후보**로 구분합니다. 아직 승인되지 않은 설계는 `proposed`입니다. 무변경 탐색·잡담·전체 채팅 전문은 남기지 않습니다.
-- 제품 계약·아키텍처·안전·운영·복구에 관한 **권위 원본은 이 저장소의 코드, ADR, Runbook 및 검증 evidence**입니다. 중앙 Wiki는 해당 원본에 대한 인덱스와 요약이며, 같은 내용을 여러 보고서로 중복 작성하지 않습니다.
-- 공개 병합 PR은 중앙 Wiki의 별도 GitHub Actions가 메타데이터만 수집합니다. 작업 종료 후 작성하는 이력은 PR 번호·commit·Task ID를 참조하여 중복을 억제합니다. PR 병합, CI 성공과 실제 Production 검증은 각각 구분합니다.
-- Wiki 기록을 평가한다는 상시 규칙은 다른 저장소의 Issue/PR 생성, 새 제품 결정, 배포, OCI 변경 또는 작업 범위를 벗어난 쓰기 권한을 자동으로 부여하지 않습니다. 공개 가능한 정보이고 **현재 승인된 쓰기 범위와 GitHub 권한**이 있을 때만 검토용 PR을 생성합니다. 불가능하면 미반영 후보 또는 이미 수집되는 PR 근거를 명확히 보고합니다.
-- `guseoh/cs`는 공개 저장소입니다. Secret, 내부 계정, 운영 원시값, 개인정보, 비공개 기록과 대화 전문을 게시하지 않습니다. 기록이 불가능해도 제품 작업의 성공 여부와 혼동하지 않습니다.
-
-**실행 시점·결과 구분·실패 처리**는 [Lean Harness §16](docs/runbook/lean-harness.md), **메타데이터·관계 규격**은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md) 및 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따릅니다. 이 파일만으로 타 AI 클라이언트의 대화를 자동 수집하거나 권한을 획득하지는 않습니다.
+작업 시작 시 조회, 기록 분류, 공개성, 저장·실패 처리는 [Lean Harness §16](docs/runbook/lean-harness.md)이 권위 원본이다. 메타데이터·관계 규격은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)와 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따른다.

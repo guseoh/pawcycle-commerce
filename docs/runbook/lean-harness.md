@@ -3,7 +3,7 @@
 ## 1. 목적과 권위
 
 - 상태: Approved
-- 기준: PCC_V9
+- 기준: PCC_V9 (저장소 밖 기준 문서의 버전 표시다. 저장소 안에서는 이 문서와 루트 `AGENTS.md`가 권위 원본이며, PCC 원문을 근거로 이 문서에 없는 필수 Gate를 추가로 요구하지 않는다.)
 
 이 문서는 PawCycle의 **작업 등급, 저장소 변경과 실제 운영 실행 구분, 최소 PR evidence, 조건부 산출물, AI Prompt, 검증과 feedback loop**의 권위 원본이다.
 
@@ -225,15 +225,7 @@ CodeRabbit, Codex Review, ChatGPT와 사람 리뷰는 defect-discovery input이�
 
 ## 13. GitHub Tool 쓰기
 
-구체적인 branch write precondition은 루트 `AGENTS.md`와 `docs/runbook/github-mcp-agent.md`를 따른다.
-
-핵심은 다음과 같다.
-
-- write 전 repository와 target branch를 다시 확인
-- file write에서 branch 생략 금지
-- 일반 작업의 direct `main` write 금지
-- expected SHA/file SHA로 stale write 방지
-- 특정 PR merge는 사용자가 명시 위임하고 최신 CI/review/head를 다시 확인한 경우에만 수행
+GitHub·Git 쓰기 안전 경계(direct `main` write 금지, branch 명시, stale write 방지, 위임된 PR merge 조건)는 루트 `AGENTS.md`가 권위 원본이고, Tool별 preflight 절차는 `docs/runbook/github-mcp-agent.md`를 따른다. 이 문서에는 반복하지 않는다.
 
 ## 14. Harness Feedback Loop
 
@@ -262,6 +254,10 @@ Harness 변경은 실제 반복 문제 또는 재현 가능한 실패를 근거�
 
 PawCycle의 `full` 캡처 정책은 이 Harness의 **작업 종료 단계**로 적용한다. 이 단계는 `Read / Analyze`, `Design / Plan`, `Repository Change`, `Operations Execution`의 권한·작업 등급을 바꾸지 않는다. 이 정책으로 저장소 밖의 쓰기 또는 운영 실행을 새로 승인받은 것으로 간주하지 않는다. 공통 기록 규격은 [중앙 Wiki capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)와 [Wiki handoff](https://github.com/guseoh/cs/blob/main/Wiki/handoff.md)를 참조한다.
 
+### 시작 시 조회
+
+과거 선택이 현재 작업에 영향을 주는 경우에만 `Wiki/index.md` → `projects/pawcycle.md` → 관련 Decision 순으로 선택적으로 조회한다. 제품 계약·아키텍처·안전·운영·복구의 권위 원본은 이 저장소의 코드, ADR, Runbook과 검증 evidence이며, 중앙 Wiki는 그 원본의 인덱스와 요약이다.
+
 ### 종료 시점과 입력
 
 작업을 **실제로 마치거나**, 검증·승인·권한 문제로 중단했을 때, 사용자가 매번 "Wiki에 기록"이라고 지시하지 않아도 다음을 간결하게 평가한다. 이 평가는 별도 설계 문서나 PR 생성을 요구하지 않으며, **진행 중인 AI 대화를 감시한다는 뜻도 아니다**.
@@ -269,7 +265,7 @@ PawCycle의 `full` 캡처 정책은 이 Harness의 **작업 종료 단계**로 �
 1. **확인된 사건:** 무엇을 설계/구현/검증/조사했는지, 근거가 되는 Task ID·PR·commit·CI·ADR와 실제 검증 범위를 확인한다. 코드가 없는 설계도 기록할 수 있으나 `proposed`와 `accepted`를 혼동하지 않는다.
 2. **분류:** 사소한 수정, 테스트 실패/재검증, 조사 결과도 의미 있는 완료 단위면 한두 문장의 `Wiki/journal/pawcycle/YYYY-MM.md` 후보로 분류한다. 장기 판단이 변경된 경우에만 별도 Decision 후보로 기록하고, 재사용 가능한 실패 분석은 Lesson 후보로 분리한다.
 3. **중복과 출처:** `repo#PR`, commit SHA, Task ID와 기존 Wiki ID를 확인한다. 중앙 Actions가 수집하는 공개 병합 PR의 단순 활동 정보는 다시 복제하지 않고 필요하면 근거 링크와 추가 판단만 남긴다.
-4. **정확성·공개성:** Repo/CI/PR evidence에서 확인되지 않은 배포 결과는 `unverified`로 유지한다. Production 적용은 별도 승인과 사후 검증 근거 없이 성공으로 기록하지 않는다. 공개 Wiki로 반출할 수 없는 사실은 **게시하지 않는다**.
+4. **정확성·공개성:** Repo/CI/PR evidence에서 확인되지 않은 배포 결과는 `unverified`로 유지한다. Production 적용은 별도 승인과 사후 검증 근거 없이 성공으로 기록하지 않는다. `guseoh/cs`는 공개 저장소이므로 Secret, 내부 계정, 운영 원시값, 개인정보, 비공개 기록과 대화 전문처럼 공개 Wiki로 반출할 수 없는 사실은 **게시하지 않는다**.
 5. **저장 또는 전달:** 현재 요청·승인된 작업 산출물·도구 권한이 중앙 저장소에 검토 PR을 작성할 수 있는 범위라면 **review PR만 제출**한다. 읽기/설계 요청만으로 외부 Issue/PR 쓰기를 확대하지 않는다. 권한/공개성/검증이 부족하면 기록 후보를 내부적으로 정리하고 필요한 경우 간단한 미반영 사유를 최종 결과에 남긴다. 중앙 Wiki의 자동 GitHub PR 수집과 이 절차는 서로 보완하지만 동일한 동작이 아니다.
 
 ### 산출물 및 완료 기준

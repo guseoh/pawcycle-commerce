@@ -22,7 +22,7 @@
 
 여러 영역을 가로지르는 coherent work unit은 목적을 잘 드러내는 별도 branch 이름을 사용할 수 있다. branch 이름 자체보다 **명시적인 non-main target과 승인된 범위**가 우선이다.
 
-GitHub file write Tool에서는 branch 인자를 생략하지 않는다. 일반 작업의 direct `main` write는 금지하며 PR merge를 사용한다.
+`main` 변경은 PR merge로만 한다. GitHub·Git 쓰기 안전 경계는 루트 `AGENTS.md`를 따른다.
 
 ## 병합 후 branch 정리
 
