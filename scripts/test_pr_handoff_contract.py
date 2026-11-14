@@ -36,6 +36,23 @@ class PrHandoffContractTest(unittest.TestCase):
         self.assertIn("user-authenticated GitHub", agent)
         self.assertIn("Codex와 repository automation은 이 명령을 발행하지 않는다", agent)
 
+    def test_codex_review_guidelines_exist_once_per_agent_file(self) -> None:
+        # Codex Review reads the `Review guidelines` heading from the AGENTS.md closest to each changed file.
+        for relative in ("AGENTS.md", "backend/AGENTS.md", "frontend/AGENTS.md", "infra/AGENTS.md", "qa/AGENTS.md"):
+            with self.subTest(path=relative):
+                agent = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertEqual(agent.count("\n## Review guidelines\n"), 1)
+        root = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("`@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다", root)
+        self.assertIn("병합 blocker로 다룬다", root)
+
+    def test_readiness_skill_gates_codex_findings_on_latest_head(self) -> None:
+        skill = (ROOT / ".agents" / "skills" / "pr-readiness-review" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`Codex Review 미실행`", skill)
+        self.assertIn("최신 HEAD에 대한 Codex `P0`·`P1` finding", skill)
+        prompt_skill = (ROOT / ".agents" / "skills" / "codex-delta-prompt" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`@codex review` 호출을 넣지 않는다", prompt_skill)
+
 
 if __name__ == "__main__":
     unittest.main()

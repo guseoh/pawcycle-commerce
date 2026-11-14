@@ -37,4 +37,11 @@ semantic HTML, keyboard, focus, label, error announcement, contrast, reduced mot
 - 중요한 UI interaction: focused flow test
 - 최종 Frontend gate: lint, typecheck, test, build
 
+## Review guidelines
+
+루트 `AGENTS.md`의 `Review guidelines`와 함께 적용한다.
+
+- `P1`: API adapter의 method·path·body·status나 CSRF·Idempotency-Key·If-Match·ETag 처리가 승인된 계약과 다름, 인증 복귀 뒤 mutation 자동 재실행, 가격·재고·구독 가능 여부를 client에서 독자 판정, 새 사용자 흐름에 error·loading 상태가 없음, keyboard로 도달할 수 없는 주요 조작.
+- 시각적 취향과 디자인 계약에 없는 개선 제안은 `P2` 이하로만 남긴다.
+
 승인된 cross-stack 작업에서 `backend/**` 또는 `infra/**`도 함께 수정할 수 있지만, 그 경로의 `AGENTS.md`를 추가로 적용한다. Frontend 역할이라는 이유만으로 하나의 승인된 사용자 목적을 인위적으로 분리하지 않는다.

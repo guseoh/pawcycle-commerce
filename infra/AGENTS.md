@@ -46,4 +46,11 @@
 - performance: reproducible workload + evidence completeness
 - 실제 운영 실행: 승인된 Runbook의 적용 전후와 독립 확인
 
+## Review guidelines
+
+루트 `AGENTS.md`의 `Review guidelines`와 함께 적용한다.
+
+- `P0`: workflow·script가 승인 gate 없이 Production·Cloud·운영 DB·Secret·비용 자원을 변경함, Secret이나 운영 식별값이 저장소·로그에 노출됨.
+- `P1`: deploy·recovery 경로가 fail-closed가 아님, rollback·중단 조건이 없는 운영 mutation, 측정 조건이 다른 결과를 before/after 개선으로 주장함, release workflow가 runtime 변경 판정 없이 publish함.
+
 승인된 cross-stack 작업에서 application code 수정이 필요한 경우 해당 경로의 `AGENTS.md`도 함께 적용한다. 운영 지표를 맞추기 위한 임의의 제품 동작 변경은 허용하지 않는다.

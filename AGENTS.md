@@ -120,7 +120,21 @@ CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. 필수 reviewer evidence나 PR별 예외 Gate를 정한 승인 원본을 저장소에서 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 Gate나 예외를 임의로 완화하지 않는다.
 
+Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@codex review` 요청으로 실행되며, 각 변경 파일에 가장 가까운 `AGENTS.md`의 `Review guidelines`를 따른다. `@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다. 사용자가 위임한 경우에만 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청하고, 구현 중인 Codex와 repository automation은 발행하지 않는다. Codex 자동 리뷰 설정의 변경은 사용자 결정이다. Codex Review는 보조 reviewer evidence이며 CodeRabbit evidence나 독립 검토를 대체하지 않는다. 최신 HEAD에 대한 `P0`·`P1` finding은 수정하거나, 무효 근거를 남기거나, 사용자가 명시적으로 수용하기 전까지 병합 blocker로 다룬다.
+
 고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
+
+## Review guidelines
+
+이 절은 Codex Review 등 자동 PR reviewer가 따르는 지침이다. 경로별 `AGENTS.md`의 `Review guidelines`가 있으면 이 절과 함께 적용한다.
+
+- 리뷰 제목·본문·수정 제안은 한국어로 쓰고, 코드 식별자·파일 경로·API path·Task ID·commit SHA는 원문을 유지한다.
+- 심각도는 `P0`·`P1`·`P2`로 표기한다. 각 finding에 파일·라인, 실패 시나리오, 근거가 된 계약·테스트·문서를 함께 적는다.
+- `P0`: Secret·credential·개인정보 노출, 인증·인가 우회, 주문·결제·재고·구독 데이터 손상이나 중복 처리, 승인 없는 Production·Cloud·운영 DB·비용 자원 실행, 문서·metadata 변경이 release·deploy를 시작하는 경우.
+- `P1`: transaction·lock·idempotency·snapshot 의미 변경에 동시성·실패 경계 검증이 없음, 외부 HTTP 계약 변경에 consumer·canonical 문서 반영이 없음, 서버 권위 정책의 client 복제, 버그 수정에 regression test가 없음, CI classifier가 필요한 lane을 놓침, 실패·미실행 검증을 PR 본문에서 성공으로 표현함.
+- `P2`: 위 경계를 깨지 않는 correctness·유지보수성 문제. 의미 있는 경우에만 남긴다.
+- 지적하지 않는다: 포맷·명명 취향, 한국어 문장 종결, 선택적 PR 소제목, `docs/runbook/lean-harness.md` 조건상 필요 없는 보고서·ADR·Handoff 누락, 측정 근거 없는 cache·async·retry 같은 성능 제안, 승인 범위 밖 리팩터링 권유.
+- 추측으로 결함을 확정하지 않는다. 최신 HEAD의 코드와 이 저장소의 계약·테스트로 확인되지 않으면 질문 형태로 남긴다.
 
 ## 완료 상태
 

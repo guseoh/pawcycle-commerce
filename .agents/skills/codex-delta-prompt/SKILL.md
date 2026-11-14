@@ -53,7 +53,7 @@ description: >-
    - 승인된 작업이 commit/push/Draft PR 생성까지 포함하면 Codex가 구현과 정의된 검증을 마친 뒤 PR 본문 마지막에 `<!-- pawcycle-ai-handoff: review-ready -->`를 추가하도록 최종 Prompt에 넣는다.
    - 이 marker는 **독립 검토를 시작할 수 있다는 handoff 신호**일 뿐 `Verified`, merge-ready 또는 사용자 승인 의미가 아니다.
    - marker가 있는 PR은 `.github/workflows/request-coderabbit-review.yml`이 review-ready handoff 상태를 평가한다. native auto-review 대상이 아니고 최신 HEAD review가 없으면 workflow는 **manual-review reminder만** 남기며 CodeRabbit 명령을 직접 실행하지 않는다.
-   - Codex Prompt에는 `@coderabbitai review` 호출을 넣지 않는다. 실제 manual review 요청은 review 단계에서 사용자 인증 GitHub identity로 수행한다.
+   - Codex Prompt에는 `@coderabbitai review`나 `@codex review` 호출을 넣지 않는다. 구현 Codex가 자기 PR의 Codex Review를 요청하거나 finding을 스스로 resolve하지 않게 한다. 실제 manual review 요청은 review 단계에서 사용자 인증 GitHub identity로 수행한다.
    - Codex 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 다시 ChatGPT에 복사해야 하는 계약으로 만들지는 않는다.
 
 8. **작업 종료 Wiki Capture 연결**
@@ -66,7 +66,7 @@ description: >-
 
 리뷰나 CI finding 이후에는 원래 Prompt 전체를 다시 보내지 않는다. 다음만 남긴다.
 
-- 현재 HEAD와 유효 finding
+- 현재 HEAD와 유효 finding (Codex Review finding은 `P0`·`P1`·`P2` 등급과 원래 review `commit_id`를 함께 남긴다)
 - 왜 finding이 유효한지
 - 필요한 동작 변화
 - 보호할 기존 계약

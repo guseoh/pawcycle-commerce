@@ -34,6 +34,7 @@ description: >-
 5. **리뷰와 판정**
    - diff, CI, 실제 test evidence와 reviewer finding을 최신 HEAD에 대조한다.
    - 외부 AI review가 미실행이면 그 한계를 기록하고 작업 위험에 맞는 독립 검토로 보완한다.
+   - Codex Review의 `P0`·`P1` finding을 판정하는 절차는 `pr-readiness-review` Skill을 따르며, 사용자 수용 없이 blocker를 해제하지 않는다.
    - `Implemented / Verified / Production Verified`를 실제 증거 수준에 맞게 구분한다.
 
 ## 중단 조건
