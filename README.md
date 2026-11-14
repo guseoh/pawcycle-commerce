@@ -154,6 +154,9 @@ OCI 배포 재구축은 별도의 Calendar/Operations constraint로 관리한다
 
 ## 문서
 
+- 시스템 개요(현재 상태 문서 지도): `docs/architecture/system-overview.md`
+- 상태 전이: `docs/domain/state-machines.md` · 데이터 스키마: `docs/data/current-schema.md` · 제공 기능: `docs/product/current-scope.md`
+- 알려진 고위험 결함·검증 공백: `docs/architecture/known-risks.md` · ADR 실제 상태: `docs/adr/README.md`
 - 운영 현재 상태: `docs/architecture/production-operations-overview.md`
 - Runbook index: `docs/runbook/README.md`
 - 실행·검증 evidence: `docs/reports/**`
