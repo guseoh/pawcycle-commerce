@@ -16,7 +16,8 @@ import org.springframework.core.env.Environment;
  * background payment or subscription trigger is active in the same process.
  *
  * <p>Exit codes: 0 RECOVERED or ALREADY_FINALIZED, 3 stopped or refused without state change,
- * 2 invalid input or unsafe process.
+ * 2 invalid input or unsafe process, 4 unexpected failure (the finalize transaction rolled back or
+ * its commit outcome must be re-read).
  */
 public final class ProcessingPaymentRecoveryCommand implements ApplicationRunner {
   static final String PREFIX = "pawcycle.maintenance.recover-processing-payment.";
@@ -65,8 +66,15 @@ public final class ProcessingPaymentRecoveryCommand implements ApplicationRunner
       out.println("RESULT=REFUSED_INVALID_INPUT required=payment-id,operator-member-id,reason");
       return 2;
     }
-    Outcome outcome = recovery.recover(paymentId, operator);
-    out.println("RESULT=" + outcome.name() + " paymentId=" + paymentId + " operatorMemberId=" + operator);
+    String context = " paymentId=" + paymentId + " operatorMemberId=" + operator + " reason=\"" + reason.strip() + "\"";
+    Outcome outcome;
+    try {
+      outcome = recovery.recover(paymentId, operator);
+    } catch (RuntimeException failure) {
+      out.println("RESULT=FAILED_EXCEPTION type=" + failure.getClass().getSimpleName() + context);
+      return 4;
+    }
+    out.println("RESULT=" + outcome.name() + context);
     return outcome == Outcome.RECOVERED || outcome == Outcome.ALREADY_FINALIZED ? 0 : 3;
   }
 

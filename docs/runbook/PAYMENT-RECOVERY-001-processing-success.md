@@ -23,7 +23,8 @@
 - `provider_order_id`, `payment_key`, `amount`가 모두 있다.
 - 결제창 만료 시각(`expires_at`)으로부터 10분 이상 지났다. `expires_at`이 비어 있으면 대상이 아니다.
 - 주문 항목마다 `RESERVE` 이동이 있고, `DEDUCT`·`RELEASE` 이동은 없다.
-- 같은 프로세스 안에 결제 만료·정기결제·구독 주문 생성·회차 보정 스케줄러가 켜져 있지 않다. 켜져 있으면 `REFUSED_BACKGROUND_TRIGGER_ACTIVE`로 끝난다.
+- 같은 프로세스 안에 결제 만료·정기결제·구독 주문 생성·회차 보정 스케줄러가 켜져 있지 않다. 켜져 있으면 `REFUSED_BACKGROUND_TRIGGER_ACTIVE`로 끝난다. 결제 만료 스케줄러는 설정이 없으면 기본으로 켜지므로, 아래 실행 예시의 `enabled=false` 설정을 빠뜨리면 이 결과가 나온다.
+- 이 명령을 켜면(`recover-processing-payment.enabled=true`) 그 프로세스에서는 `@Scheduled` 작업 전체(배송 알림·지표 포함)가 꺼진다.
 
 ## 권고 (강제하지 않음)
 
@@ -47,7 +48,9 @@ java -jar backend.jar \
   --pawcycle.maintenance.recover-processing-payment.reason="<조사 메모. 개인정보·결제 키를 쓰지 않는다>"
 ```
 
-`reason`은 명령 입력 검증용이며 DB에는 저장하지 않는다. 조사 기록은 Issue나 운영 기록에 따로 남긴다.
+`reason`은 결과 줄에 그대로 출력되고, DB에는 저장하지 않는다. 출력된 결과 줄을 조사 기록(Issue나 운영 기록)에 남긴다.
+
+출력 예: `RESULT=RECOVERED paymentId=123 operatorMemberId=7 reason="#417 조사"`
 
 ## 결과 해석
 
@@ -61,13 +64,14 @@ java -jar backend.jar \
 | `STOPPED_PROVIDER_OTHER` | 3 | 예상하지 못한 분류 | 조사 |
 | `REFUSED_*` | 3 | 시작 조건 불충족 | 사유에 맞게 조사 |
 | `REFUSED_INVALID_INPUT`, `REFUSED_BACKGROUND_TRIGGER_ACTIVE` | 2 | 입력 또는 프로세스 설정 오류 | 명령을 고쳐 다시 실행 |
+| `FAILED_EXCEPTION type=...` | 4 | 예상하지 못한 예외(잠금 대기 초과, DB 연결 끊김 등) | 결제 상태를 다시 조회해 판정한다. 확정 트랜잭션은 롤백됐거나 커밋 여부를 다시 읽어야 한다 |
 
 같은 결제에 명령을 다시 실행해도 안전하다. 이미 `SUCCEEDED`이면 `REFUSED_NOT_PROCESSING`으로 끝나고 효과가 중복되지 않는다.
 
 ## 중단 조건
 
 - `STOPPED_*`가 나오면 같은 결제에 반복 실행하지 않는다. 결제사 상태가 바뀌었다는 근거가 생기면 그때 다시 실행한다.
-- 명령이 예외로 끝나면 확정 트랜잭션 전체가 롤백된다. 결제 상태를 다시 조회해 `PROCESSING`인지 확인한다. 연결이 끊겨 커밋 여부가 불확실해도 상태를 다시 읽어 판정하고, 필요하면 다시 실행한다.
+- 명령이 `FAILED_EXCEPTION`(종료 코드 4)으로 끝나면 확정 트랜잭션 전체가 롤백된다. 결제 상태를 다시 조회해 `PROCESSING`인지 확인한다. 연결이 끊겨 커밋 여부가 불확실해도 상태를 다시 읽어 판정하고, 필요하면 다시 실행한다.
 
 ## 보존할 증거
 
@@ -83,4 +87,4 @@ java -jar backend.jar \
 
 - 결제사에서 실패로 끝난 고립 결제는 이 명령으로 처리되지 않는다. `PROCESSING`과 재고 예약이 그대로 남는다.
 - 결제사 응답 해석은 Phase 1의 조회 분류(`TossTestPaymentAdapter.queryPayment`)와 가짜 결제사 테스트에 기대고 있다. 실제 Toss 테스트 환경 검증은 별도 승인 대상이다.
-- 검증 근거: `ProcessingPaymentRecoveryIntegrationTests`(일회용 MySQL, 가짜 결제사), `ProcessingPaymentRecoveryCommandTests`.
+- 검증 근거: `ProcessingPaymentRecoveryIntegrationTests`(일회용 MySQL, 가짜 결제사), `ProcessingPaymentRecoveryCommandTests`, `ProcessingPaymentRecoveryWiringTests`, `PawcycleBackendApplicationRoutingTests`. 실행 jar로 위 명령을 로컬 일회용 MySQL에 실행해 결과 줄과 종료 코드가 나오는 것도 확인했다.

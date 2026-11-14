@@ -64,7 +64,7 @@ public class ProcessingPaymentRecoveryService {
     Outcome refusal = eligibility(before);
     if (refusal != null) return refusal;
 
-    if (!reconciliationProviderConfigured()) return Outcome.REFUSED_PROVIDER_UNAVAILABLE;
+    if (!provider.isConfigured()) return Outcome.REFUSED_PROVIDER_UNAVAILABLE;
     PaymentReconciliationService.ProviderObservation observation;
     try {
       observation = reconciliation.queryOnly(paymentId);
@@ -84,10 +84,6 @@ public class ProcessingPaymentRecoveryService {
           audits.append(operatorMemberId, AUDIT_ACTION, "PAYMENT", paymentId);
           return Outcome.RECOVERED;
         });
-  }
-
-  private boolean reconciliationProviderConfigured() {
-    return provider.isConfigured();
   }
 
   private static Outcome eligibility(RecoveryCandidate candidate) {
@@ -137,10 +133,6 @@ public class ProcessingPaymentRecoveryService {
       if ("UNKNOWN".equals(observedStatus)) return STOPPED_PROVIDER_UNKNOWN;
       if ("FAILED".equals(observedStatus)) return STOPPED_PROVIDER_FAILED;
       return STOPPED_PROVIDER_OTHER;
-    }
-
-    public boolean changedState() {
-      return this == RECOVERED;
     }
   }
 }

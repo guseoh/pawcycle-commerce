@@ -34,8 +34,9 @@ public class PaymentReconciliationPersistenceAdapter {
 
   /**
    * Eligibility facts for recovering an isolated NORMAL/PROCESSING payment (#417 Phase 2a).
-   * The locking variant takes the payment row and then its order row, the same order as normal
-   * finalization (payment lock first, order update after).
+   * The locking variant locks only the payment row ({@code FOR UPDATE OF payment}); the order row is
+   * locked later by the order update, keeping the normal finalization order payment -> inventory ->
+   * order.
    */
   public RecoveryCandidate findRecoveryCandidate(long paymentId, Timestamp expiredBefore, boolean forUpdate) {
     String sql = """
@@ -48,7 +49,7 @@ public class PaymentReconciliationPersistenceAdapter {
                (SELECT COUNT(*) FROM inventory_movements movement
                  WHERE movement.payment_id=payment.id AND movement.type IN ('DEDUCT','RELEASE')) AS settled_count
         FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=?
-        """ + (forUpdate ? " FOR UPDATE" : "");
+        """ + (forUpdate ? " FOR UPDATE OF payment" : "");
     return locks.first(sql, RecoveryCandidate.class, expiredBefore, paymentId);
   }
 

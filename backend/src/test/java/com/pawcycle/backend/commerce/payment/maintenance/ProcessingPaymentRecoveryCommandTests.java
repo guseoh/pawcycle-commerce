@@ -29,7 +29,7 @@ class ProcessingPaymentRecoveryCommandTests {
     when(context.getBeanNamesForType(any(Class.class))).thenReturn(new String[0]);
     when(recovery.recover(11L, 7L)).thenReturn(Outcome.RECOVERED);
     assertThat(command(valid()).execute()).isZero();
-    assertThat(printed()).contains("RESULT=RECOVERED paymentId=11 operatorMemberId=7");
+    assertThat(printed()).contains("RESULT=RECOVERED paymentId=11 operatorMemberId=7 reason=\"investigation note\"");
 
     when(recovery.recover(11L, 7L)).thenReturn(Outcome.STOPPED_PROVIDER_UNKNOWN);
     assertThat(command(valid()).execute()).isEqualTo(3);
@@ -58,6 +58,16 @@ class ProcessingPaymentRecoveryCommandTests {
     MockEnvironment environment = valid().withProperty(ProcessingPaymentRecoveryCommand.PREFIX + "payment-id", "0");
     assertThat(command(environment).execute()).isEqualTo(2);
     verify(recovery, never()).recover(anyLong(), anyLong());
+  }
+
+  @Test
+  void unexpectedFailureStillPrintsResultAndUsesExitCodeFour() {
+    when(context.getBeanNamesForType(any(Class.class))).thenReturn(new String[0]);
+    when(recovery.recover(11L, 7L)).thenThrow(new IllegalStateException("lock wait timeout"));
+    assertThat(command(valid()).execute()).isEqualTo(4);
+    assertThat(printed())
+        .contains("RESULT=FAILED_EXCEPTION type=IllegalStateException")
+        .contains("reason=\"investigation note\"");
   }
 
   @Test
