@@ -24,3 +24,4 @@ docs/handoffs/<작업 ID>/<source-role>-to-<target-role>.md
 
 - [FOUNDATION-001](FOUNDATION-001/tl-to-be-fe-sre.md)은 초기 애플리케이션 구성 시점의 기록이다. 현재 개발 환경은 [로컬 개발 Runbook](../runbook/FOUNDATION-001-local-development.md)을 따른다.
 - [OPS-001](OPS-001/sre-to-tl.md)은 최초 Discord 연동 확인을 위한 기록이다. 현재 알림 절차는 [협업 자동화 Runbook](../runbook/collaboration-automation.md)을 따른다.
+- [OPS-007](OPS-007/sre-to-tl.md)은 단일 Discord 협업 알림 workflow와 보고서형 embed 구조를 Tech Lead에게 넘긴 기록이다. 실행 결과는 [OPS-007 보고서](../reports/OPS-007/sre-report.md)에 있고, 현재 알림 절차는 [협업 자동화 Runbook](../runbook/collaboration-automation.md)을 따른다.
