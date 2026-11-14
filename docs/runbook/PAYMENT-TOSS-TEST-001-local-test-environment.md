@@ -53,10 +53,30 @@ pwsh infra/local-integration/toss-test/verify-toss-test.ps1 -OrderNumber <주문
 | S1 | 정상 승인 | 결제위젯에서 테스트 결제를 완료한다 | `Paid` | 결과 화면 SUCCEEDED, 쿠폰을 썼다면 `Coupon=USED`, 장바구니에서 결제한 수량이 빠짐 |
 | S2 | 결제창 취소 | 결제창을 연 뒤 사용자가 닫거나 취소한다 | 직후 `Pending` | `/checkout/fail` 화면. 결제 대기 만료 시간(Checkout 후 30분)이 지나 만료 스케줄러가 돈 뒤 `Expired` |
 | S3 | 새로고침 재사용 | S1의 결과 화면(`/checkout/success?...`)을 새로고침하거나 같은 주소로 다시 연다 | `Paid` 그대로 | `Movements=DEDUCT,RESERVE`, `Deliveries=1` 유지(효과 중복 없음) |
-| S4 | 금액 불일치 거부 | 새 주문을 결제위젯에서 승인 직전까지 진행한 뒤, 결과 주소의 `paymentKey`·`orderId`로 다른 금액을 넣어 confirm API를 직접 호출한다(로그인 세션·CSRF 필요) | `Pending` | 응답 `409 PAYMENT_CONFIRM_CONFLICT`. Toss 승인 요청이 나가기 전에 거부된다. 이후 정상 금액으로 결제를 마치면 `Paid` |
+| S4 | 금액 불일치 거부 | 아래 "S4 절차"를 따른다 | 불일치 요청 뒤 `Pending`, 정상 금액 요청 뒤 `Paid` | 불일치 요청 응답 `409 PAYMENT_CONFIRM_CONFLICT`. 이때 결제가 `READY` 그대로여야 Toss 승인 요청 전에 거부된 것이다 |
 | S5 | 고립 `PROCESSING` 리허설(선택) | 결제 승인 버튼을 누른 직후 `docker compose kill backend`로 backend를 멈추고 다시 띄운다 | 결과에 따라 다름 | 아래 "S5 판정" 참고 |
 
 화면에서 결제위젯은 서버의 Checkout 금액을 기준으로 승인 요청을 보낸다. 결과 주소의 `amount`를 바꾸는 것만으로는 화면 단계에서 막히므로, S4는 API를 직접 호출해 backend의 금액 대조를 확인한다.
+
+### S4 절차
+
+결제 성공 화면(`/checkout/success`)은 열리자마자 정상 금액으로 confirm을 보내고 주소의 쿼리도 지운다. 그래서 그대로 두면 다른 금액을 보내기 전에 이미 `Paid`가 되고, 그 뒤의 409는 금액 불일치가 아니라 "이미 완료된 결제" 때문에 난 것과 구분되지 않는다. 자동 confirm을 먼저 막아야 한다.
+
+1. 브라우저 개발자 도구 Network 탭에서 `*/api/payments/toss/confirm` 요청을 차단(Block request URL)한다.
+2. 새 주문으로 결제위젯에서 결제를 진행한다. 성공 화면으로 돌아오면 confirm 요청이 차단돼 오류가 보인다. `-Expect Pending`으로 결제가 아직 `READY`인지 확인한다.
+3. 차단된 요청의 payload에서 `paymentKey`, `providerOrderId`, `amount`를 확인한다. 이 값은 증거로 남기지 않는다.
+4. 차단을 해제한다. 같은 브라우저 탭(로그인 세션 유지)의 콘솔에서 CSRF 토큰을 받은 뒤, **금액을 1원 바꿔** confirm을 직접 호출한다.
+
+   ```js
+   const csrf = (await (await fetch('/api/auth/csrf')).json()).token;
+   const confirm = (amount) => fetch('/api/payments/toss/confirm', { method: 'POST',
+     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+     body: JSON.stringify({ paymentKey: '<3의 값>', providerOrderId: '<3의 값>', amount }) });
+   (await confirm(<정상 금액 + 1>)).status   // 409 기대
+   ```
+
+   응답이 409이고 `-Expect Pending`이 그대로 통과하면, backend가 Toss를 호출하기 전에 금액 불일치를 거부한 것이다.
+5. 곧바로 정상 금액으로 다시 호출한다(`confirm(<정상 금액>)`). Toss는 결제 인증 뒤 승인 가능한 시간이 제한돼 있으므로 바로 진행한다. 결과가 `SUCCEEDED`이면 `-Expect Paid`로 확인한다.
 
 ### S5 판정
 

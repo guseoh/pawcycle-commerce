@@ -28,11 +28,12 @@ function Test-TossTestKeys {
 function Get-ExpectedState {
     param([string]$Name)
     switch ($Name) {
-        "Paid"       { @{ Payment = "SUCCEEDED";  Order = "PAID";            Movements = "DEDUCT,RESERVE";  Deliveries = 1 } }
-        "Failed"     { @{ Payment = "FAILED";     Order = "PAYMENT_FAILED";  Movements = "RELEASE,RESERVE"; Deliveries = 0 } }
-        "Expired"    { @{ Payment = "FAILED";     Order = "EXPIRED";         Movements = "RELEASE,RESERVE"; Deliveries = 0 } }
-        "Pending"    { @{ Payment = "READY";      Order = "PAYMENT_PENDING"; Movements = "RESERVE";         Deliveries = 0 } }
-        "Processing" { @{ Payment = "PROCESSING"; Order = "PAYMENT_PENDING"; Movements = "RESERVE";         Deliveries = 0 } }
+        # Settle: per order item, the movement type that must equal the item quantity besides RESERVE.
+        "Paid"       { @{ Payment = "SUCCEEDED";  Order = "PAID";            Settle = "DEDUCT";  Deliveries = 1 } }
+        "Failed"     { @{ Payment = "FAILED";     Order = "PAYMENT_FAILED";  Settle = "RELEASE"; Deliveries = 0 } }
+        "Expired"    { @{ Payment = "FAILED";     Order = "EXPIRED";         Settle = "RELEASE"; Deliveries = 0 } }
+        "Pending"    { @{ Payment = "READY";      Order = "PAYMENT_PENDING"; Settle = "NONE";    Deliveries = 0 } }
+        "Processing" { @{ Payment = "PROCESSING"; Order = "PAYMENT_PENDING"; Settle = "NONE";    Deliveries = 0 } }
     }
 }
 
@@ -65,7 +66,9 @@ if ([string]::IsNullOrWhiteSpace($OrderNumber) -or [string]::IsNullOrWhiteSpace(
 if ($OrderNumber -notmatch '^[A-Za-z0-9-]{1,80}$') { throw "OrderNumber has unexpected characters." }
 
 if ([string]::IsNullOrWhiteSpace($Container)) {
-    $Container = (docker compose -f (Join-Path $PSScriptRoot "..\compose.yaml") ps -q mysql)
+    $envFile = Join-Path $PSScriptRoot "..\.env.local"
+    if (-not (Test-Path $envFile)) { throw "infra/local-integration/.env.local is required (same file used to start the stack)." }
+    $Container = (docker compose --env-file $envFile -f (Join-Path $PSScriptRoot "..\compose.yaml") ps -q mysql)
     if ([string]::IsNullOrWhiteSpace($Container)) { throw "local-integration mysql container is not running." }
 }
 
@@ -86,8 +89,33 @@ $actual = [ordered]@{
 }
 $expected = Get-ExpectedState $Expect
 
+# Every order item must have RESERVE equal to its quantity, the expected settlement movement equal
+# to its quantity, and no movement of the other settlement type.
+$deduct = if ($expected.Settle -eq "DEDUCT") { "oi.quantity" } else { "0" }
+$release = if ($expected.Settle -eq "RELEASE") { "oi.quantity" } else { "0" }
+$itemRows = @(Invoke-LocalSql $Container @"
+SELECT oi.sku_id, oi.quantity,
+  COALESCE(SUM(CASE WHEN m.type='RESERVE' THEN m.quantity END),0),
+  COALESCE(SUM(CASE WHEN m.type='DEDUCT' THEN m.quantity END),0),
+  COALESCE(SUM(CASE WHEN m.type='RELEASE' THEN m.quantity END),0),
+  CASE WHEN COALESCE(SUM(CASE WHEN m.type='RESERVE' THEN m.quantity END),0)=oi.quantity
+        AND COALESCE(SUM(CASE WHEN m.type='DEDUCT' THEN m.quantity END),0)=$deduct
+        AND COALESCE(SUM(CASE WHEN m.type='RELEASE' THEN m.quantity END),0)=$release
+       THEN 'OK' ELSE 'MISMATCH' END
+FROM orders o JOIN order_items oi ON oi.order_id=o.id
+LEFT JOIN inventory_movements m ON m.payment_id=$($actual.PaymentId) AND m.sku_id=oi.sku_id
+WHERE o.order_number='$OrderNumber'
+GROUP BY oi.id, oi.sku_id, oi.quantity ORDER BY oi.sku_id;
+"@ | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
 $failures = @()
-foreach ($key in "Payment", "Order", "Movements", "Deliveries") {
+if ($itemRows.Count -eq 0) { $failures += "order has no items" }
+foreach ($item in $itemRows) {
+    $c = $item -split "`t"
+    Write-Output ("Item sku={0} quantity={1} reserve={2} deduct={3} release={4} -> {5}" -f $c[0], $c[1], $c[2], $c[3], $c[4], $c[5])
+    if ($c[5] -ne "OK") { $failures += "item sku=$($c[0]) movements do not match '$Expect'" }
+}
+foreach ($key in "Payment", "Order", "Deliveries") {
     if ("$($actual[$key])" -ne "$($expected[$key])") {
         $failures += "$key expected=$($expected[$key]) actual=$($actual[$key])"
     }
