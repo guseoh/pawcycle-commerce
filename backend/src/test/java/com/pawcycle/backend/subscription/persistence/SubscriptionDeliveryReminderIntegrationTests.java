@@ -158,6 +158,49 @@ class SubscriptionDeliveryReminderIntegrationTests {
     assertThat(notifications.list(member)).containsExactly(original);
   }
 
+  /**
+   * Characterization (CONSISTENCY-001, known-risks R2): two scheduler instances running the reminder
+   * job at once must not create duplicate reminders. A lock conflict that rolls back one run is
+   * tolerated because the next fixed-delay tick repeats the idempotent work.
+   */
+  @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  void twoConcurrentProcessorRunsCreateExactlyOneReminderPerSchedule() throws Exception {
+    List<Long> targets = new TransactionTemplate(manager).execute(status -> {
+      List<Long> created = new java.util.ArrayList<>();
+      for (int i = 0; i < 20; i++)
+        created.add(schedule(member, "ACTIVE", true, "SCHEDULED", TODAY.plusDays(1 + i % 3)));
+      return created;
+    });
+    var start = new java.util.concurrent.CountDownLatch(1);
+    var failures = new java.util.concurrent.ConcurrentLinkedQueue<Throwable>();
+    var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var runs = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+      for (int i = 0; i < 2; i++)
+        runs.add(executor.submit(() -> {
+          try {
+            start.await();
+            new TransactionTemplate(manager).executeWithoutResult(status -> processor().process());
+          } catch (Throwable failure) {
+            failures.add(failure);
+          }
+          return null;
+        }));
+      start.countDown();
+      for (var run : runs) run.get(60, java.util.concurrent.TimeUnit.SECONDS);
+    } finally {
+      executor.shutdownNow();
+    }
+    assertThat(failures)
+        .as("only lock conflicts are tolerated")
+        .allMatch(failure -> failure instanceof org.springframework.dao.PessimisticLockingFailureException);
+    var reminders = jdbc.queryForList(
+        "SELECT reference_id FROM notifications WHERE member_id=? AND type='SUBSCRIPTION_DELIVERY_REMINDER'",
+        Long.class, member);
+    assertThat(reminders).containsExactlyInAnyOrderElementsOf(targets);
+  }
+
   private long schedule(long owner, String status, boolean managed, String state, LocalDate date) {
     jdbc.update("INSERT INTO subscriptions(member_id,sku_id,quantity,delivery_cycle_weeks,created_date,next_order_date,status,runtime_managed) VALUES (?,?,1,2,?,?,?,?)", owner, sku, TODAY.minusDays(1), date, status, managed);
     long subscription = f.lastId();
