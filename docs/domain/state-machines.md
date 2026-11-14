@@ -26,7 +26,7 @@ Confirm:   [트랜잭션 1] READY → PROCESSING
 
 - 코드: `commerce/payment/application/PaymentApplicationService`, `commerce/checkout/application/CheckoutExpirationProcessor`(스케줄러 `CheckoutExpirationTrigger`)
 - **대사(reconciliation):** `UNKNOWN`과 정기결제의 `PROCESSING`만 대상으로 한다. 결제사 조회는 트랜잭션 밖에서 하고, 완료 트랜잭션에서 잠금 상태를 다시 확인한다. 결과가 여전히 확정되지 않은 채 시도가 10회에 이르면 주문을 `PAYMENT_ACTION_REQUIRED`로 바꾸고 사용자에게 알림을 보낸다. 대사는 관리자 요청으로 실행되며 감사 로그(`PAYMENT_RECONCILE`)를 남긴다. (`commerce/payment/application/PaymentReconciliationService`)
-- **알려진 공백:** 일반 결제가 `PROCESSING`인 상태로 앱이 멈추면(결제사 승인 직후 포함) 대사 대상이 아니다. [#417](https://github.com/guseoh/pawcycle-commerce/issues/417), [알려진 위험](../architecture/known-risks.md) 참고.
+- **고립된 `PROCESSING` 복구:** 일반 결제가 `PROCESSING`인 상태로 앱이 멈추면(결제사 승인 직후 포함) 대사 대상이 아니다. 결제사 조회로 같은 결제의 `DONE`이 확인되면, 유지보수 명령 `ProcessingPaymentRecoveryCommand`가 정상 확정과 같은 효과를 한 번 적용한다(`PROCESSING → SUCCEEDED`). 실패 확정은 아직 없다. [PAYMENT-RECOVERY-001](../runbook/PAYMENT-RECOVERY-001-processing-success.md), [#417](https://github.com/guseoh/pawcycle-commerce/issues/417)
 
 ### 정기결제(BILLING) 흐름
 
