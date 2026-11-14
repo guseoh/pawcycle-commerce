@@ -1,0 +1,15 @@
+# Opt-in overlay for docs/runbook/PAYMENT-TOSS-TEST-001.
+# Enables the Toss Test payment adapter (local-integration profile only) and the browser widget.
+# Both keys must be Toss *test* keys supplied through the local environment; nothing is stored here.
+#
+#   docker compose --env-file .env.local -f compose.yaml -f compose.toss-test.yaml up --build -d
+services:
+  backend:
+    environment:
+      PAWCYCLE_TOSS_TEST_ENABLED: "true"
+      PAWCYCLE_TOSS_TEST_SECRET_KEY: ${PAWCYCLE_TOSS_TEST_SECRET_KEY:?PAWCYCLE_TOSS_TEST_SECRET_KEY is required for the Toss Test overlay}
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_TOSS_TEST_CLIENT_KEY: ${PAWCYCLE_TOSS_TEST_CLIENT_KEY:?PAWCYCLE_TOSS_TEST_CLIENT_KEY is required for the Toss Test overlay}
