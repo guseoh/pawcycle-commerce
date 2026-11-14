@@ -194,9 +194,4 @@ public class PaymentEntity {
     failureCode = "CHECKOUT_EXPIRED";
     failedAt = now;
   }
-
-  public void updateReconciliation(int attempts, LocalDateTime now) {
-    reconciliationAttempts = attempts;
-    lastReconciledAt = now;
-  }
 }
