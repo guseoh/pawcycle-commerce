@@ -28,6 +28,16 @@ class TossTestPaymentAdapterTests {
                     new ObjectMapper(),
                     HttpClient.newHttpClient()))
         .isInstanceOf(IllegalStateException.class);
+    for (String wrongKind : new String[] {"live_gsk_not_allowed", "test_sk_individual_api_key"}) {
+      assertThatThrownBy(
+              () ->
+                  new TossTestPaymentAdapter(
+                      wrongKind,
+                      "https://api.tosspayments.com",
+                      new ObjectMapper(),
+                      HttpClient.newHttpClient()))
+          .isInstanceOf(IllegalStateException.class);
+    }
   }
 
   @Test
@@ -35,7 +45,7 @@ class TossTestPaymentAdapterTests {
     TossPaymentAdapter fake = new TossSandboxPaymentAdapter();
     TossPaymentAdapter actualTest =
         new TossTestPaymentAdapter(
-            "test_sk_example",
+            "test_gsk_example",
             "https://api.tosspayments.com",
             new ObjectMapper(),
             HttpClient.newHttpClient());

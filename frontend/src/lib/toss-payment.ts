@@ -13,8 +13,9 @@ export interface TossSuccessCallback {
   urlAmount: string;
 }
 
+/** The checkout uses the Toss payment widget, which requires a payment-widget test client key (test_gck_). */
 export function isTossTestClientKey(value: string | undefined): value is string {
-  return Boolean(value && value.startsWith("test_ck_"));
+  return Boolean(value && value.startsWith("test_gck_"));
 }
 
 export function validateTossSuccess(

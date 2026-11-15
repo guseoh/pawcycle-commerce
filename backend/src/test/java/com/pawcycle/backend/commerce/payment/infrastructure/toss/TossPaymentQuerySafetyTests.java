@@ -130,7 +130,7 @@ class TossPaymentQuerySafetyTests {
       server.start();
     }
     TossPaymentAdapter adapter() {
-      return new TossTestPaymentAdapter("test_sk_fixture_only",
+      return new TossTestPaymentAdapter("test_gsk_fixture_only",
           "http://127.0.0.1:" + server.getAddress().getPort(), new ObjectMapper(), HttpClient.newHttpClient());
     }
     void respond(int code, String response) { http = code; body = response; }

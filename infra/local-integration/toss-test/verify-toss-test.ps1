@@ -19,9 +19,9 @@ function Test-TossTestKeys {
     param([string]$SecretKey, [string]$ClientKey)
     $problems = @()
     if ([string]::IsNullOrWhiteSpace($SecretKey)) { $problems += "PAWCYCLE_TOSS_TEST_SECRET_KEY is not set" }
-    elseif (-not $SecretKey.StartsWith("test_sk_")) { $problems += "PAWCYCLE_TOSS_TEST_SECRET_KEY is not a test_sk_ key" }
+    elseif (-not $SecretKey.StartsWith("test_gsk_")) { $problems += "PAWCYCLE_TOSS_TEST_SECRET_KEY is not a payment-widget test key (test_gsk_)" }
     if ([string]::IsNullOrWhiteSpace($ClientKey)) { $problems += "PAWCYCLE_TOSS_TEST_CLIENT_KEY is not set" }
-    elseif (-not $ClientKey.StartsWith("test_ck_")) { $problems += "PAWCYCLE_TOSS_TEST_CLIENT_KEY is not a test_ck_ key" }
+    elseif (-not $ClientKey.StartsWith("test_gck_")) { $problems += "PAWCYCLE_TOSS_TEST_CLIENT_KEY is not a payment-widget test key (test_gck_)" }
     return $problems
 }
 

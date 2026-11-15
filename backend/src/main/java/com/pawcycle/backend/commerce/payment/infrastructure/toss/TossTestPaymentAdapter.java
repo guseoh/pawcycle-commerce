@@ -48,8 +48,11 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
 
   TossTestPaymentAdapter(
       String secretKey, String baseUrl, ObjectMapper objectMapper, HttpClient httpClient) {
-    if (secretKey == null || secretKey.isBlank() || !secretKey.startsWith("test_sk_")) {
-      throw new IllegalStateException("Toss Test secret key is missing or is not a test key.");
+    // The browser uses the Toss payment widget, whose payments must be confirmed with the paired
+    // widget secret key (test_gsk_). API individual-integration keys (test_sk_) cannot confirm them.
+    if (secretKey == null || secretKey.isBlank() || !secretKey.startsWith("test_gsk_")) {
+      throw new IllegalStateException(
+          "Toss Test secret key is missing or is not a payment-widget test key (test_gsk_).");
     }
     if (baseUrl == null || baseUrl.isBlank()) {
       throw new IllegalStateException("Toss Test API base URL is missing.");
