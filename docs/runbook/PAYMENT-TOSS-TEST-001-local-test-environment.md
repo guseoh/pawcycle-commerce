@@ -16,6 +16,8 @@
 
 ## 시작 조건
 
+**이 문서의 모든 명령은 저장소 루트에서 실행한다.** `infra/local-integration` 폴더 안에서 실행하면 스크립트 경로를 찾지 못한다.
+
 1. `infra/local-integration/.env.local`이 준비돼 있고 기존 로컬 통합 환경이 뜬다(FOUNDATION-004).
 2. Toss 개발자센터 **API 키** 메뉴의 **"주문서형·결제창형 연동 키(결제위젯 연동 키)"** 테스트 키 두 개를 현재 셸 환경 변수로 넣는다. 결제 화면이 Toss 결제위젯(SDK v2 `widgets()`)을 쓰므로 이 키 쌍이어야 한다. 같은 화면의 "API 개별 연동 키"(`test_ck_`/`test_sk_`)는 쓰지 않는다. 전자결제 신청 전에는 문서 예제와 같은 공용 테스트 키가 표시되며, 로컬 테스트에는 그 키를 써도 된다.
    - `PAWCYCLE_TOSS_TEST_CLIENT_KEY` = `test_gck_...` (브라우저 결제위젯용, 공개 키)
@@ -39,8 +41,8 @@ pwsh infra/local-integration/toss-test/verify-toss-test.ps1 -Preflight
 
 Toss 테스트 overlay를 함께 지정해 이미지를 다시 빌드한다. client key는 frontend 빌드 때 들어간다.
 
-```bash
-cd infra/local-integration && docker compose --env-file .env.local -f compose.yaml -f compose.toss-test.yaml up --build -d
+```powershell
+docker compose --env-file infra/local-integration/.env.local -f infra/local-integration/compose.yaml -f infra/local-integration/compose.toss-test.yaml up --build -d
 ```
 
 확인: QA 계정으로 로그인한 뒤 상품을 장바구니에 담고 Checkout까지 가면 Toss 결제위젯이 보여야 한다. 위젯 대신 "결제 준비 전" 안내가 나오면 overlay나 키 설정을 다시 확인한다.
@@ -49,11 +51,20 @@ cd infra/local-integration && docker compose --env-file .env.local -f compose.ya
 
 ```powershell
 Get-Content infra/local-integration/.env.local |
+  ForEach-Object { $_ -replace '^\uFEFF','' } |
   Where-Object { $_ -match '^(MYSQL_DATABASE|MYSQL_USER|MYSQL_PASSWORD)=' } |
   ForEach-Object { $k,$v = $_ -split '=',2; Set-Item "Env:$k" $v }
 ```
 
+`.env.local`이 UTF-8 BOM으로 저장돼 있으면 첫 줄 키 앞에 보이지 않는 문자가 붙는다. 위 명령은 그 문자를 지우고 읽는다. 세 값이 들어갔는지는 `"$([bool]$env:MYSQL_DATABASE) $([bool]$env:MYSQL_USER) $([bool]$env:MYSQL_PASSWORD)"`가 모두 `True`인지로 확인한다.
+
 ## 시나리오
+
+### 결제 수단 선택 시 주의
+
+- **카드 결제는 실제 카드사 인증 화면이 뜰 수 있다.** 2026-11-15 실행에서 "신용·체크카드 → KB국민카드"를 고르자 KB Pay·스타뱅킹·ISP·앱 없이 결제를 고르는 카드사 인증 창이 떴다. Toss 문서는 테스트 환경에서 실제 카드 정보를 넣어도 가상 승인만 되고 출금되지 않는다고 안내하지만, 카드사 인증 단계까지 가상으로 처리되는지는 문서로 확인되지 않았다. 실제 카드 정보와 실제 앱 인증으로 진행할지는 실행자가 판단한다.
+- **즉시 할인이 붙은 수단(예: 퀵계좌이체 3% 할인)은 첫 검증에 쓰지 않는다.** 성공 화면은 결과 주소의 금액이 서버 Checkout 금액과 같은지 검사한다. 할인으로 금액이 달라지면 확인 단계에서 막힐 수 있으며, 아직 확인하지 않았다.
+- Checkout 화면에 다시 들어가면 주문이 새로 만들어지고 재고도 그만큼 예약된다. 쓰지 않은 주문은 30분 뒤 만료로 정리된다.
 
 각 시나리오마다 결제 결과 화면이나 주문 목록에서 주문번호(`O-...`)를 확인하고, 아래 명령으로 DB 상태를 판정한다.
 
@@ -99,6 +110,12 @@ backend를 멈추는 시점에 따라 결과가 갈린다. 매번 재현되지�
 - `Paid`: 멈추기 전에 확정까지 끝났다. 정상 동작이다.
 - `Processing`: **고립 결제가 재현됐다.** 결제 대기 만료 시각(`expires_at`)에서 10분이 지난 뒤, [PAYMENT-RECOVERY-001](PAYMENT-RECOVERY-001-processing-success.md)의 명령을 로컬 통합 DB에 대해 실행한다. 실행할 때는 이 Runbook과 같은 Toss 테스트 키 환경 변수, `local-integration` profile, `PAWCYCLE_TOSS_TEST_ENABLED=true`를 쓴다. 결과가 `RECOVERED`이면 `-Expect Paid`로 다시 확인한다. Toss 쪽에서 승인이 끝나지 않았다면 `STOPPED_PROVIDER_*`가 나오고 상태는 바뀌지 않아야 한다.
 
+## 검증 이력
+
+| 일시(UTC) | 커밋 | 결과 |
+| --- | --- | --- |
+| 2026-11-15 | `5257ee5b` | **부분 검증.** 결제위젯 연동 키(`test_gck_`/`test_gsk_`)로 환경이 정상 기동하고 Checkout 화면에 결제위젯이 표시됐다(`tossTestEnabled=true`). S2 결제창 취소 직후 두 주문 모두 `STATE OK`(Pending). **S1(실제 승인과 backend confirm)은 실행하지 않았다.** 카드 결제가 실제 카드사 인증 화면으로 이어져 실행자가 중단했다. S2 만료, S3~S5도 미실행 |
+
 ## 중단 조건
 
 - `PREFLIGHT FAIL`이거나 `live_` 키가 보이면 즉시 중단한다.
@@ -107,8 +124,8 @@ backend를 멈추는 시점에 따라 결과가 갈린다. 매번 재현되지�
 
 ## 정리
 
-```bash
-cd infra/local-integration && docker compose --env-file .env.local -f compose.yaml -f compose.toss-test.yaml down
+```powershell
+docker compose --env-file infra/local-integration/.env.local -f infra/local-integration/compose.yaml -f infra/local-integration/compose.toss-test.yaml down
 ```
 
 셸에서 Toss 키 환경 변수를 지운다. overlay 없이 다시 빌드하면 frontend 결제위젯은 꺼진 상태로 돌아간다.
