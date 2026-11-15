@@ -17,16 +17,23 @@
 ## 시작 조건
 
 1. `infra/local-integration/.env.local`이 준비돼 있고 기존 로컬 통합 환경이 뜬다(FOUNDATION-004).
-2. Toss 개발자 센터에서 발급한 **테스트** 키 두 개를 현재 셸 환경 변수로 넣는다.
-   - `PAWCYCLE_TOSS_TEST_CLIENT_KEY` = `test_ck_...` (브라우저 결제위젯용, 공개 키)
-   - `PAWCYCLE_TOSS_TEST_SECRET_KEY` = `test_sk_...` (backend 승인·조회용, 비밀 키)
+2. Toss 개발자센터 **API 키** 메뉴의 **"주문서형·결제창형 연동 키(결제위젯 연동 키)"** 테스트 키 두 개를 현재 셸 환경 변수로 넣는다. 결제 화면이 Toss 결제위젯(SDK v2 `widgets()`)을 쓰므로 이 키 쌍이어야 한다. 같은 화면의 "API 개별 연동 키"(`test_ck_`/`test_sk_`)는 쓰지 않는다. 전자결제 신청 전에는 문서 예제와 같은 공용 테스트 키가 표시되며, 로컬 테스트에는 그 키를 써도 된다.
+   - `PAWCYCLE_TOSS_TEST_CLIENT_KEY` = `test_gck_...` (브라우저 결제위젯용, 공개 키)
+   - `PAWCYCLE_TOSS_TEST_SECRET_KEY` = `test_gsk_...` (backend 승인·조회용, 비밀 키)
+
+   입력값이 화면과 명령 이력에 남지 않게 넣는다(PowerShell 7).
+
+   ```powershell
+   $env:PAWCYCLE_TOSS_TEST_CLIENT_KEY = Read-Host -MaskInput "client key"
+   $env:PAWCYCLE_TOSS_TEST_SECRET_KEY = Read-Host -MaskInput "secret key"
+   ```
 3. 키 접두사를 확인한다. 값은 출력되지 않는다.
 
 ```bash
 pwsh infra/local-integration/toss-test/verify-toss-test.ps1 -Preflight
 ```
 
-`PREFLIGHT OK`가 아니면 진행하지 않는다. backend 자체도 `test_sk_`로 시작하지 않는 키로는 시작을 거부한다(`TossTestPaymentAdapter`).
+`PREFLIGHT OK`가 아니면 진행하지 않는다. backend 자체도 `test_gsk_`로 시작하지 않는 키로는 시작을 거부하고(`TossTestPaymentAdapter`), 프런트엔드는 `test_gck_`가 아니면 결제위젯을 열지 않는다.
 
 ## 환경 시작
 
@@ -39,6 +46,12 @@ cd infra/local-integration && docker compose --env-file .env.local -f compose.ya
 확인: QA 계정으로 로그인한 뒤 상품을 장바구니에 담고 Checkout까지 가면 Toss 결제위젯이 보여야 한다. 위젯 대신 "결제 준비 전" 안내가 나오면 overlay나 키 설정을 다시 확인한다.
 
 상태 확인 스크립트는 MySQL 접속 정보를 쓰므로 `.env.local`의 `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`를 셸에 불러 둔다. 스크립트는 DB를 읽기만 한다.
+
+```powershell
+Get-Content infra/local-integration/.env.local |
+  Where-Object { $_ -match '^(MYSQL_DATABASE|MYSQL_USER|MYSQL_PASSWORD)=' } |
+  ForEach-Object { $k,$v = $_ -split '=',2; Set-Item "Env:$k" $v }
+```
 
 ## 시나리오
 

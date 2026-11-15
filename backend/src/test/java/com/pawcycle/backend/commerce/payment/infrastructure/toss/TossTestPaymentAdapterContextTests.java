@@ -20,7 +20,7 @@ class TossTestPaymentAdapterContextTests {
               "pawcycle.toss.test.enabled=${PAWCYCLE_TOSS_TEST_ENABLED:false}",
               "pawcycle.toss.test.secret-key=${PAWCYCLE_TOSS_TEST_SECRET_KEY:}",
               "PAWCYCLE_TOSS_TEST_ENABLED=true",
-              "PAWCYCLE_TOSS_TEST_SECRET_KEY=test_sk_context");
+              "PAWCYCLE_TOSS_TEST_SECRET_KEY=test_gsk_context");
 
   @Test
   void createsTossTestAdapterWhenEnvironmentOptInIsEnabled() {

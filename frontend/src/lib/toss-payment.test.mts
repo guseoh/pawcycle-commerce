@@ -9,7 +9,9 @@ const widgetSource = readFileSync(new URL("../components/toss-payment-widget.tsx
 test("Toss Test client key is opt-in and rejects live or missing values", () => {
   assert.equal(isTossTestClientKey(undefined), false);
   assert.equal(isTossTestClientKey("live_ck_example"), false);
-  assert.equal(isTossTestClientKey("test_ck_example"), true);
+  assert.equal(isTossTestClientKey("live_gck_example"), false);
+  assert.equal(isTossTestClientKey("test_ck_individual_api_key"), false);
+  assert.equal(isTossTestClientKey("test_gck_example"), true);
 });
 
 test("success redirect validation uses the server checkout context, not URL amount", () => {
