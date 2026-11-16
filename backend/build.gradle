@@ -61,6 +61,10 @@ tasks.named('test') {
 	inputs.file(rootProject.file('../docs/api/current-endpoints.md'))
 		.withPropertyName('apiEndpointIndex')
 		.withPathSensitivity(PathSensitivity.RELATIVE)
+	// Re-run the metric-name guard whenever local alert rules or dashboards change.
+	inputs.dir(rootProject.file('../infra/local-integration/observability'))
+		.withPropertyName('localObservabilityConfig')
+		.withPathSensitivity(PathSensitivity.RELATIVE)
 	// Regenerates docs/api/current-endpoints.md only when explicitly requested.
 	systemProperty 'pawcycle.api-index.update',
 		providers.systemProperty('pawcycle.api-index.update').getOrElse('false')

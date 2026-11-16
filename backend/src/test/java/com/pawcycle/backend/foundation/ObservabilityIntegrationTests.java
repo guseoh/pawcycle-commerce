@@ -117,6 +117,60 @@ class ObservabilityIntegrationTests {
             "pawcycle_subscription_idempotency_retained_rows");
   }
 
+  /**
+   * Prometheus attaches job and instance to every scraped series and renames a clashing metric tag
+   * to exported_job/exported_instance, so a PawCycle meter using them would never match its query.
+   */
+  @Test
+  void pawcycleMetersDoNotUsePrometheusReservedLabels() {
+    assertThat(meterRegistry.getMeters())
+        .filteredOn(meter -> meter.getId().getName().startsWith("pawcycle."))
+        .isNotEmpty()
+        .allSatisfy(meter -> assertThat(meter.getId().getTags())
+            .as("tags of %s", meter.getId().getName())
+            .noneMatch(tag -> tag.getKey().equals("job") || tag.getKey().equals("instance")));
+  }
+
+  /**
+   * Every PawCycle metric that a local alert rule or dashboard queries must exist in the scrape
+   * output, so a renamed or removed meter cannot leave an empty panel or a silent alert (stage 2).
+   */
+  @Test
+  void alertRulesAndDashboardsOnlyQueryExposedPawcycleMetrics() throws Exception {
+    String prometheus =
+        mockMvc
+            .perform(get("/actuator/prometheus"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    java.util.Set<String> exposed = new java.util.TreeSet<>();
+    for (String line : prometheus.split("\\R")) {
+      if (line.isBlank() || line.startsWith("#")) continue;
+      int end = line.indexOf('{');
+      if (end < 0) end = line.indexOf(' ');
+      exposed.add(line.substring(0, end));
+    }
+
+    java.nio.file.Path observability = java.nio.file.Path.of("../infra/local-integration/observability");
+    java.util.Set<String> queried = new java.util.TreeSet<>();
+    java.util.regex.Pattern name = java.util.regex.Pattern.compile("\\bpawcycle_[a-z0-9_]+");
+    try (var files = java.nio.file.Files.walk(observability)) {
+      for (java.nio.file.Path file : files
+          .filter(path -> path.toString().endsWith(".json")
+              || (path.toString().endsWith(".yml") && path.toString().contains("rules")))
+          .toList()) {
+        var matcher = name.matcher(java.nio.file.Files.readString(file));
+        while (matcher.find()) queried.add(matcher.group());
+      }
+    }
+
+    assertThat(queried).as("PawCycle metrics queried by rules and dashboards").isNotEmpty();
+    assertThat(queried)
+        .as("queried metrics missing from /actuator/prometheus")
+        .allSatisfy(metric -> assertThat(exposed).contains(metric));
+  }
+
   @Test
   void customMetricTagsStayWithinApprovedLowCardinalityValues() {
     Set<Meter> customMeters =

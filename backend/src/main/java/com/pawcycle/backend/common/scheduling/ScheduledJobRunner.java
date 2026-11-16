@@ -32,6 +32,8 @@ public class ScheduledJobRunner {
   static final String ITEMS = "pawcycle.job.items";
   static final String LAST_SUCCESS = "pawcycle.job.last.success.seconds";
   static final int UNKNOWN_ITEMS = -1;
+  /** Not "job": Prometheus reserves job for the scrape target and renames a clashing tag. */
+  static final String JOB_TAG = "job_name";
   private static final Logger log = LoggerFactory.getLogger(ScheduledJobRunner.class);
 
   private final Clock clock;
@@ -103,13 +105,13 @@ public class ScheduledJobRunner {
     private final AtomicLong lastSuccessMillis = new AtomicLong(-1);
 
     Meters(MeterRegistry registry, ScheduledJob job) {
-      successes = Counter.builder(EXECUTIONS).tag("job", job.tag()).tag("outcome", "success").register(registry);
-      failures = Counter.builder(EXECUTIONS).tag("job", job.tag()).tag("outcome", "failure").register(registry);
-      items = Counter.builder(ITEMS).tag("job", job.tag()).register(registry);
-      duration = Timer.builder(DURATION).tag("job", job.tag()).register(registry);
+      successes = Counter.builder(EXECUTIONS).tag(JOB_TAG, job.tag()).tag("outcome", "success").register(registry);
+      failures = Counter.builder(EXECUTIONS).tag(JOB_TAG, job.tag()).tag("outcome", "failure").register(registry);
+      items = Counter.builder(ITEMS).tag(JOB_TAG, job.tag()).register(registry);
+      duration = Timer.builder(DURATION).tag(JOB_TAG, job.tag()).register(registry);
       Gauge.builder(LAST_SUCCESS, lastSuccessMillis,
               value -> value.get() < 0 ? Double.NaN : value.get() / 1000.0)
-          .tag("job", job.tag())
+          .tag(JOB_TAG, job.tag())
           .register(registry);
     }
 

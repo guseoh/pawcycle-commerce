@@ -1,18 +1,51 @@
+# Local Alertmanager (OBS-STACK-001). Webhook URLs come only from runtime secret files.
 global:
   resolve_timeout: 1m
 
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
 route:
-  receiver: pawcycle-local-discord
+  receiver: pawcycle-local-discord-warning
   group_by:
     - alertname
   group_wait: 0s
   group_interval: 15s
-  repeat_interval: 1h
+  repeat_interval: 2h
+  routes:
+    - matchers:
+        - alertname="Watchdog"
+      receiver: blackhole
+      repeat_interval: 1m
+    - matchers:
+        - severity="critical"
+      receiver: pawcycle-local-discord-critical
+      repeat_interval: 30m
+    - matchers:
+        - severity="warning"
+      receiver: pawcycle-local-discord-warning
+      repeat_interval: 2h
+
+# While the backend cannot be scraped, its other alerts are noise: send only the outage.
+inhibit_rules:
+  - source_matchers:
+      - alertname="PawCycleBackendScrapeUnavailable"
+    target_matchers:
+      - scope="local"
+      - alertname!="PawCycleBackendScrapeUnavailable"
+      - alertname!="Watchdog"
 
 receivers:
-  - name: pawcycle-local-discord
+  - name: blackhole
+  - name: pawcycle-local-discord-critical
     discord_configs:
       - webhook_url_file: /run/secrets/discord-webhook
         send_resolved: true
-        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
-        message: '{{ range .Alerts }}{{ .Annotations.summary }} — {{ .Annotations.description }}{{ end }}'
+        title: '{{ template "pawcycle.title" . }}'
+        message: '{{ template "pawcycle.message" . }}'
+  - name: pawcycle-local-discord-warning
+    discord_configs:
+      - webhook_url_file: /run/secrets/discord-warning-webhook
+        send_resolved: true
+        title: '{{ template "pawcycle.title" . }}'
+        message: '{{ template "pawcycle.message" . }}'

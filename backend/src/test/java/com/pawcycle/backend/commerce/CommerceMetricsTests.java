@@ -89,7 +89,7 @@ class CommerceMetricsTests {
 
     assertThat(gauge("pawcycle.payment.stuck", "kind", "unknown")).isEqualTo(1);
     assertThat(jobRegistry.get("pawcycle.job.executions")
-            .tags("job", "commerce-metrics-refresh", "outcome", "failure").counter().count())
+            .tags("job_name", "commerce-metrics-refresh", "outcome", "failure").counter().count())
         .isEqualTo(1);
   }
 

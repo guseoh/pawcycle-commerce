@@ -1,0 +1,51 @@
+// Local-only log collection (OBS-STACK-001): container stdout of this compose project -> Loki.
+// Labels stay low-cardinality (service, level). Request and run ids remain in the log line and are
+// searched as JSON fields, never promoted to labels.
+
+discovery.docker "local" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=pawcycle-local-integration"]
+  }
+}
+
+discovery.relabel "local" {
+  targets = discovery.docker.local.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "local" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.local.output
+  relabel_rules = discovery.relabel.local.rules
+  forward_to    = [loki.process.levels.receiver]
+}
+
+// Backend JSON (ECS) lines carry log.level; promote only that value to a label.
+loki.process "levels" {
+  stage.match {
+    selector = "{service=\"backend\"}"
+
+    stage.json {
+      expressions = { level = "log.level" }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

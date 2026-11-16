@@ -142,7 +142,12 @@ class BacklogMetricsQueryIntegrationTests {
 
   private void payment(String type, String status, String expiresAt) {
     long payment = fixtures.payment(order(), type, status, 1);
-    jdbc.update("UPDATE payments SET expires_at=? WHERE id=?", expiresAt, payment);
+    // Written through Hibernate, like the queries read it (hibernate.jdbc.time_zone=UTC), so the
+    // test does not depend on the JVM time zone the way a raw JDBC string would.
+    entities.createQuery("update PaymentEntity p set p.expiresAt = :expiresAt where p.id = :id")
+        .setParameter("expiresAt", expiresAt == null ? null : LocalDateTime.parse(expiresAt.replace(' ', 'T')))
+        .setParameter("id", payment)
+        .executeUpdate();
   }
 
   private long subscription(String status, boolean managed) {

@@ -52,6 +52,13 @@ public class CommerceMetrics {
     this.clock = clock;
     Gauge.builder("pawcycle.commerce.operations.pending", pending, AtomicLong::get)
         .register(registry);
+    // Registered up front so dashboards and alerts see the series before the first event
+    // (and right after a restart), instead of an empty panel.
+    registry.timer("pawcycle.commerce.delivery.transition");
+    registry.timer("pawcycle.commerce.refund.provider");
+    for (String outcome : List.of("SUCCEEDED", "FAILED", "UNKNOWN")) {
+      registry.counter("pawcycle.commerce.refund", "outcome", outcome);
+    }
     for (String kind : STUCK_KINDS) {
       gauge("pawcycle.payment.stuck", "kind", kind, value -> value.stuck().get(kind).count());
       gauge("pawcycle.payment.stuck.oldest.age.seconds", "kind", kind,
