@@ -118,10 +118,11 @@ class RuntimeTopologyIntegrationTests {
       assertThat(schedule.scheduler()).isEqualTo(names[0].equals("SubscriptionMetrics") ? SchedulerNames.METRICS : "");
     }
     var scheduler = context.getBean(SchedulerNames.METRICS, ThreadPoolTaskScheduler.class);
-    assertThat(scheduler.getPoolSize()).isEqualTo(1);
+    // Configured size: getPoolSize() counts threads created so far.
+    assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize()).isEqualTo(1);
     assertThat(scheduler.getThreadNamePrefix()).isEqualTo("metrics-refresh-");
     var providerCalls = context.getBean(SchedulerNames.PROVIDER_CALLS, ThreadPoolTaskScheduler.class);
-    assertThat(providerCalls.getPoolSize()).isEqualTo(1);
+    assertThat(providerCalls.getScheduledThreadPoolExecutor().getCorePoolSize()).isEqualTo(1);
     assertThat(providerCalls.getThreadNamePrefix()).isEqualTo("provider-call-");
     var meters = context.getBean(MeterRegistry.class);
     assertThat(meters.find("pawcycle.recommendation.ai.outcomes").tag("result", "success").counter()).isNotNull();
