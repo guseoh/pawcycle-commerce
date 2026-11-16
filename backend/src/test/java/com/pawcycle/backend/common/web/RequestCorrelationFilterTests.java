@@ -22,14 +22,16 @@ class RequestCorrelationFilterTests {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader(RequestCorrelationFilter.REQUEST_ID_HEADER, "checkout-42");
     AtomicReference<String> observed = new AtomicReference<>();
+    MockHttpServletResponse response = new MockHttpServletResponse();
 
     filter.doFilter(
         request,
-        new MockHttpServletResponse(),
+        response,
         (ignoredRequest, ignoredResponse) ->
             observed.set(MDC.get(RequestCorrelationFilter.REQUEST_ID_MDC_KEY)));
 
     assertThat(observed).hasValue("checkout-42");
+    assertThat(response.getHeader(RequestCorrelationFilter.REQUEST_ID_HEADER)).isEqualTo("checkout-42");
     assertThat(MDC.get(RequestCorrelationFilter.REQUEST_ID_MDC_KEY)).isNull();
   }
 
@@ -47,6 +49,7 @@ class RequestCorrelationFilterTests {
             observed.set(MDC.get(RequestCorrelationFilter.REQUEST_ID_MDC_KEY)));
 
     assertThat(observed.get()).matches("[0-9a-f-]{36}");
-    assertThat(response.getHeader(RequestCorrelationFilter.REQUEST_ID_HEADER)).isNull();
+    // The generated id is returned; the unsafe inbound value is never reflected.
+    assertThat(response.getHeader(RequestCorrelationFilter.REQUEST_ID_HEADER)).isEqualTo(observed.get());
   }
 }

@@ -15,6 +15,14 @@
 
 **현재 등록된 전체 엔드포인트**는 [current-endpoints.md](current-endpoints.md)에 있다. 이 색인은 테스트가 Spring 매핑에서 생성하고 어긋나면 CI가 실패한다. API-001~012는 단계별 계약의 원본이다.
 
+## 공통 응답 헤더
+
+| 헤더 | 내용 | 도입 |
+| --- | --- | --- |
+| `X-Request-ID` | 모든 backend 응답에 붙는 요청 ID. 요청에 안전한 형식(`[A-Za-z0-9._-]`, 1~64자)의 `X-Request-ID`가 있으면 그 값을 쓰고, 없거나 형식이 다르면 새로 만든다(proxy가 만든 값 또는 UUID). 형식이 다른 요청 값은 응답에 돌려주지 않는다. 같은 값이 backend 로그(`requestId`)와 proxy access log(`request_id`)에 남으므로, 문의나 장애 보고 때 이 값으로 로그를 찾는다. | 2026-11-16, OBS-LOG-001 |
+
+추가 헤더이므로 기존 client에는 하위 호환 영향이 없다.
+
 ## API 변경 체크리스트
 
 - 작업 ID가 있다.

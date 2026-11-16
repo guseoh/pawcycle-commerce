@@ -36,18 +36,28 @@ public class AdminAuditLogEntity {
   @Column(name = "safe_detail_json", nullable = false, columnDefinition = "json")
   String safeDetailJson;
 
+  /** Request that caused the action; null outside an HTTP request. */
+  @Column(name = "request_id", length = 100)
+  String requestId;
+
   @Column(name = "created_at", nullable = false)
   LocalDateTime createdAt;
 
   protected AdminAuditLogEntity() {}
 
   public AdminAuditLogEntity(
-      long adminId, String action, String targetType, long targetId, LocalDateTime createdAt) {
+      long adminId,
+      String action,
+      String targetType,
+      long targetId,
+      String requestId,
+      LocalDateTime createdAt) {
     this.adminId = adminId;
     this.action = action;
     this.targetType = targetType;
     this.targetId = targetId;
     this.safeDetailJson = "{}";
+    this.requestId = requestId;
     this.createdAt = createdAt;
   }
 }

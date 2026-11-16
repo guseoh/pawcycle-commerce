@@ -66,6 +66,18 @@ if (-not $ObservabilityReady) {
 
 Grafana datasource와 PawCycle Dashboard는 provisioning 파일에서 자동 생성되며 UI 저장으로 수정하지 않는다.
 
+## 로그 형식과 요청 ID
+
+2026-11-16(OBS-LOG-001)부터 local-integration의 backend 로그는 한 줄에 하나씩 JSON(ECS)으로 나온다. 필요하면 `PAWCYCLE_LOG_FORMAT=` 처럼 값을 비워 텍스트로 되돌릴 수 있다.
+
+- HTTP 요청의 로그에는 `requestId`가 있고, 같은 값이 응답 헤더 `X-Request-ID`와 proxy access log의 `request_id`에 남는다.
+- 스케줄 작업의 로그에는 `jobName`과 `jobRunId`가 있다.
+- proxy access log도 JSON이다. `uri`에는 query string이 없다.
+
+```powershell
+docker compose --env-file infra/local-integration/.env.local -f infra/local-integration/compose.yaml logs backend | Select-String '"requestId":"<요청 ID>"'
+```
+
 ## 검증
 
 Prometheus API에서 `pawcycle-backend` target의 `health`가 `up`인지 확인한다. Grafana API에서는 datasource UID `pawcycle-prometheus`와 dashboard UID `pawcycle-local-observability`가 조회되어야 한다.

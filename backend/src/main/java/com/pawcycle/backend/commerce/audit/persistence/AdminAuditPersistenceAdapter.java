@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.audit.persistence;
 
+import com.pawcycle.backend.common.web.RequestCorrelationFilter;
+import org.slf4j.MDC;
 import com.pawcycle.backend.commerce.audit.persistence.AdminAuditLogEntity;
 import com.pawcycle.backend.commerce.audit.persistence.AdminAuditLogRepository;
 import java.sql.Timestamp;
@@ -28,6 +30,7 @@ public class AdminAuditPersistenceAdapter {
             action,
             targetType,
             targetId,
+            MDC.get(RequestCorrelationFilter.REQUEST_ID_MDC_KEY),
             LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)));
   }
 
