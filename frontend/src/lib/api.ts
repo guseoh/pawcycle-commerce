@@ -1,4 +1,4 @@
-export { ApiError } from "./http/api-error.ts";
+export { ApiError, withRequestReference } from "./http/api-error.ts";
 export type { ApiErrorBody, FieldError } from "./http/api-error.ts";
 import { requestJson, requestVoid } from "./http/client.ts";
 

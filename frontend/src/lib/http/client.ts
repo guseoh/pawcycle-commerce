@@ -13,33 +13,37 @@ function requestInit(init: RequestInit = {}): RequestInit {
   return { ...init, cache: "no-store", credentials: "same-origin", headers };
 }
 
-function invalidResponse(status: number): ApiError {
-  return new ApiError(status || 500, {
+function requestIdOf(response: Response): string | null {
+  return response.headers.get("X-Request-ID");
+}
+
+function invalidResponse(response: Response): ApiError {
+  return new ApiError(response.status || 500, {
     code: "INVALID_API_RESPONSE",
     message: "서버 응답을 확인할 수 없습니다.",
     fieldErrors: [],
-  });
+  }, requestIdOf(response));
 }
 
-function internalError(status: number): ApiError {
-  return new ApiError(status || 500, {
+function internalError(response: Response): ApiError {
+  return new ApiError(response.status || 500, {
     code: "INTERNAL_ERROR",
     message: "요청을 처리하지 못했습니다.",
     fieldErrors: [],
-  });
+  }, requestIdOf(response));
 }
 
 async function parseResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {
-    if (response.ok) throw invalidResponse(response.status);
-    throw internalError(response.status);
+    if (response.ok) throw invalidResponse(response);
+    throw internalError(response);
   }
   try {
     return JSON.parse(text);
   } catch {
-    if (response.ok) throw invalidResponse(response.status);
-    throw internalError(response.status);
+    if (response.ok) throw invalidResponse(response);
+    throw internalError(response);
   }
 }
 
@@ -47,8 +51,8 @@ async function responseWithJson(path: string, init?: RequestInit): Promise<{ res
   const response = await fetch(path, requestInit(init));
   const body = await parseResponse(response);
   if (!response.ok) {
-    if (isApiErrorBody(body)) throw new ApiError(response.status, body);
-    throw internalError(response.status);
+    if (isApiErrorBody(body)) throw new ApiError(response.status, body, requestIdOf(response));
+    throw internalError(response);
   }
   return { response, body };
 }
@@ -72,8 +76,8 @@ export async function requestVoid(path: string, init: RequestInit = {}): Promise
   const response = await fetch(path, requestInit(init));
   if (response.ok) return;
   const body = await parseResponse(response);
-  if (isApiErrorBody(body)) throw new ApiError(response.status, body);
-  throw internalError(response.status);
+  if (isApiErrorBody(body)) throw new ApiError(response.status, body, requestIdOf(response));
+  throw internalError(response);
 }
 
 export type { ApiErrorBody };

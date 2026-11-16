@@ -23,6 +23,19 @@
 
 추가 헤더이므로 기존 client에는 하위 호환 영향이 없다.
 
+## 공통 오류 응답
+
+현재 오류 응답의 원본은 이 절이다. 처음 형태(`code`, `message`, `fieldErrors`)는 ARCH-006에서 승인됐고, 이 절은 그 뒤에 추가된 필드까지 포함한다.
+
+| 형태 | 필드 | 사용처 |
+| --- | --- | --- |
+| `ApiErrorResponse` | `code`, `message`, `fieldErrors`(필드 오류가 없으면 빈 배열), `requestId` | interaction을 제외한 모든 API, 인증·인가 실패(401·403) |
+| `InteractionErrorResponse` | `code`, `message`, `requestId` | `/api/interactions` |
+
+- `requestId`(2026-11-16, OBS-LOG-002 추가): 응답 헤더 `X-Request-ID`와 같은 값이다. HTTP 요청 밖에서 만든 응답에서만 빠진다. 실제 서버 응답에는 항상 있다.
+- 예상하지 못한 오류는 모두 500 `INTERNAL_ERROR`("요청을 처리할 수 없습니다.")로 응답한다. 내부 예외 내용은 응답에 넣지 않는다. 모든 REST Controller에 이 처리기가 있는지는 `UnexpectedExceptionCoverageTests`가 검사한다.
+- 하위 호환: 필드가 추가될 뿐 기존 필드는 그대로다. frontend는 `requestId`를 선택 필드로 읽고, 서버 오류(5xx)일 때 결제 화면과 관리자 오류 메시지에 함께 보여 준다.
+
 ## API 변경 체크리스트
 
 - 작업 ID가 있다.

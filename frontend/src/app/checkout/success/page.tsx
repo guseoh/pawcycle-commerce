@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError } from "@/lib/api";
+import { ApiError, withRequestReference } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { paymentApi, type TossConfirmResult } from "@/lib/payment-api";
 import { buildLoginHref, formatPrice } from "@/lib/frontend-utils";
@@ -68,7 +68,7 @@ function SuccessContent() {
         markAnonymous();
         return;
       }
-      setState({ status: "error", message: reason instanceof ApiError ? reason.message : "결제 확인을 완료하지 못했습니다." });
+      setState({ status: "error", message: withRequestReference(reason instanceof ApiError ? reason.message : "결제 확인을 완료하지 못했습니다.", reason) });
     });
     return () => { active = false; };
   }, [executeWithCsrf, markAnonymous, paymentKey, providerOrderId, status, urlAmount]);
