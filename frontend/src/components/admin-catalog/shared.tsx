@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ApiError, type FieldError } from "@/lib/api";
+import { ApiError, withRequestReference, type FieldError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref } from "@/lib/frontend-utils";
 import { CsrfRefreshError } from "@/lib/csrf-lifecycle";
@@ -32,7 +32,7 @@ export function errorMessage(error: unknown): string {
     if (error.status === 401) return "로그인이 만료되었습니다. 다시 로그인해 주세요.";
     if (error.code === "CSRF_INVALID") return "보안 토큰이 만료되었습니다. 입력을 확인하고 다시 저장해 주세요.";
     if (error.status === 403) return "ADMIN 권한이 필요합니다. 계정 권한을 확인해 주세요.";
-    return `${error.message} (${error.code})`;
+    return withRequestReference(`${error.message} (${error.code})`, error);
   }
   if (error instanceof CsrfRefreshError) return "보안 정보를 갱신하지 못했습니다. 다시 시도해 주세요.";
   return "요청을 완료하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";

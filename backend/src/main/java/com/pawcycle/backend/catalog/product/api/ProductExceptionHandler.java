@@ -1,5 +1,6 @@
 package com.pawcycle.backend.catalog.product.api;
 
+import com.pawcycle.backend.common.error.UnexpectedErrors;
 import com.pawcycle.backend.catalog.product.application.ProductDetailUnavailableException;
 import com.pawcycle.backend.catalog.product.application.ProductListUnavailableException;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
@@ -44,5 +45,10 @@ public class ProductExceptionHandler {
         .body(
             ApiErrorResponse.withoutFieldErrors(
                 "PRODUCT_DETAIL_UNAVAILABLE", "상품 정보를 불러오지 못했습니다."));
+  }
+
+  @ExceptionHandler(Exception.class)
+  ResponseEntity<ApiErrorResponse> unexpected(Exception exception) throws Exception {
+    return UnexpectedErrors.internalError(log, "product", exception);
   }
 }

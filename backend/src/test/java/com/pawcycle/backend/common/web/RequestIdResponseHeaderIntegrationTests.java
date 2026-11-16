@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * Every backend response carries X-Request-ID through the real servlet filter chain, including
  * responses that Spring Security writes itself (401 without a session, 403 without a CSRF token).
+ * Error bodies carry the same value as {@code requestId}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -46,6 +47,23 @@ class RequestIdResponseHeaderIntegrationTests {
 
     assertThat(response.statusCode()).isIn(401, 403);
     assertThat(response.headers().firstValue("X-Request-ID").orElseThrow()).matches("[0-9a-f-]{36}");
+  }
+
+  @Test
+  void errorBodyRequestIdIsTheSameValueAsTheHeader() throws Exception {
+    HttpResponse<String> notFound = sendForBody(HttpRequest.newBuilder(uri("/api/products/999999999"))
+        .header("X-Request-ID", "client-404").GET());
+    assertThat(notFound.statusCode()).isEqualTo(404);
+    assertThat(notFound.body()).contains("\"code\":\"PRODUCT_NOT_FOUND\"").contains("\"requestId\":\"client-404\"");
+
+    HttpResponse<String> unauthorized = sendForBody(HttpRequest.newBuilder(uri("/api/auth/me")).GET());
+    String id = unauthorized.headers().firstValue("X-Request-ID").orElseThrow();
+    assertThat(unauthorized.statusCode()).isEqualTo(401);
+    assertThat(unauthorized.body()).contains("\"code\":\"AUTH_REQUIRED\"").contains("\"requestId\":\"" + id + "\"");
+  }
+
+  private HttpResponse<String> sendForBody(HttpRequest.Builder request) throws Exception {
+    return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
   }
 
   private URI uri(String path) {

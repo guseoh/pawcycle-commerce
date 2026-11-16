@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ApiError, isApiErrorBody } from "./api-error.ts";
+import { ApiError, isApiErrorBody, withRequestReference } from "./api-error.ts";
 import { requestJson, requestVoid, requestWithMetadata } from "./client.ts";
 import { interactionApi } from "../interaction-api.ts";
 
@@ -162,4 +162,44 @@ test("shared client retains caller authentication and CSRF headers", async () =>
     assert.equal(captured?.get("X-CSRF-TOKEN"), "fixture-csrf");
     assert.equal(captured?.get("Accept"), "application/json");
   } finally { globalThis.fetch = original; }
+});
+
+test("error requestId comes from the body, falling back to the X-Request-ID header", async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => Response.json(
+      { code: "INTERNAL_ERROR", message: "요청을 처리할 수 없습니다.", fieldErrors: [], requestId: "body-id" },
+      { status: 500, headers: { "X-Request-ID": "header-id" } },
+    )) as typeof fetch;
+    await assert.rejects(requestJson("/api/x"), (error: unknown) => error instanceof ApiError && error.requestId === "body-id");
+
+    globalThis.fetch = (async () => Response.json(
+      { code: "AUTH_REQUIRED", message: "인증이 필요합니다." },
+      { status: 401, headers: { "X-Request-ID": "header-only" } },
+    )) as typeof fetch;
+    await assert.rejects(requestJson("/api/x"), (error: unknown) => error instanceof ApiError && error.requestId === "header-only");
+
+    globalThis.fetch = (async () => new Response("<html>bad gateway</html>", { status: 502, headers: { "X-Request-ID": "proxy-id" } })) as typeof fetch;
+    await assert.rejects(requestVoid("/api/x", { method: "POST" }), (error: unknown) => (
+      error instanceof ApiError && error.code === "INTERNAL_ERROR" && error.requestId === "proxy-id"
+    ));
+
+    globalThis.fetch = (async () => Response.json({ code: "X", message: "y" }, { status: 500 })) as typeof fetch;
+    await assert.rejects(requestJson("/api/x"), (error: unknown) => error instanceof ApiError && error.requestId === null);
+  } finally { globalThis.fetch = original; }
+});
+
+test("error bodies with a non-string requestId are not trusted as API errors", () => {
+  assert.equal(isApiErrorBody({ code: "X", message: "y", requestId: 7 }), false);
+  assert.equal(isApiErrorBody({ code: "X", message: "y", requestId: "abc" }), true);
+});
+
+test("request reference is added only for server failures", () => {
+  const server = new ApiError(503, { code: "PAYMENT_PROVIDER_UNKNOWN", message: "결과를 확인하지 못했습니다.", requestId: "r-1" });
+  const client = new ApiError(409, { code: "CONFLICT", message: "상태가 올바르지 않습니다.", requestId: "r-2" });
+  const noId = new ApiError(500, { code: "INTERNAL_ERROR", message: "실패" });
+  assert.equal(withRequestReference(server.message, server), "결과를 확인하지 못했습니다. (문의 시 요청 ID: r-1)");
+  assert.equal(withRequestReference(client.message, client), "상태가 올바르지 않습니다.");
+  assert.equal(withRequestReference(noId.message, noId), "실패");
+  assert.equal(withRequestReference("네트워크 오류", new Error("x")), "네트워크 오류");
 });

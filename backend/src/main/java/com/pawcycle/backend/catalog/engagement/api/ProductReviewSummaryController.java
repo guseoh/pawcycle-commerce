@@ -1,5 +1,8 @@
 package com.pawcycle.backend.catalog.engagement.api;
 
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import com.pawcycle.backend.common.error.UnexpectedErrors;
 import com.pawcycle.backend.catalog.engagement.application.ReviewSummaryService;
 import com.pawcycle.backend.catalog.engagement.application.ReviewSummaryResponse;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
@@ -28,9 +31,16 @@ public class ProductReviewSummaryController {
 
 @RestControllerAdvice(assignableTypes = ProductReviewSummaryController.class)
 class ProductReviewSummaryExceptionHandler {
+  private static final Logger log = LoggerFactory.getLogger(ProductReviewSummaryExceptionHandler.class);
+
   @ExceptionHandler(ProductNotFoundException.class)
   ResponseEntity<ApiErrorResponse> notFound() {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(ApiErrorResponse.withoutFieldErrors("PRODUCT_NOT_FOUND", "상품을 확인할 수 없습니다."));
+  }
+
+  @ExceptionHandler(Exception.class)
+  ResponseEntity<ApiErrorResponse> unexpected(Exception exception) throws Exception {
+    return UnexpectedErrors.internalError(log, "product-review-summary", exception);
   }
 }

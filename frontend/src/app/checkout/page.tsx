@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthRequiredState, ErrorState, LoadingState } from "@/components/async-state";
-import { ApiError } from "@/lib/api";
+import { ApiError, withRequestReference } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { buildLoginHref, formatPrice, notifyCommerceChanged } from "@/lib/frontend-utils";
 import { addressApi, type Address } from "@/lib/address-api";
@@ -67,7 +67,7 @@ export default function CheckoutPage() {
         auth.markAnonymous();
         return false;
       }
-      setError(reason instanceof ApiError ? reason.message : "주문 정보를 불러오지 못했습니다.");
+      setError(withRequestReference(reason instanceof ApiError ? reason.message : "주문 정보를 불러오지 못했습니다.", reason));
       return false;
     }
   }, [auth]);
@@ -129,7 +129,7 @@ export default function CheckoutPage() {
         setError("주문 요청 정보가 이전 요청과 달라졌습니다. 새 주문으로 다시 시도해 주세요.");
       } else {
         // Network/unknown failures keep this key so the same request identity can replay safely.
-        setError(reason instanceof ApiError ? reason.message : "주문 결과를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요.");
+        setError(withRequestReference(reason instanceof ApiError ? reason.message : "주문 결과를 확인하지 못했습니다. 같은 요청으로 다시 시도해 주세요.", reason));
         if (reason instanceof ApiError && ["INVENTORY_CONFLICT", "INVENTORY_INSUFFICIENT", "SKU_NOT_PURCHASABLE"].includes(reason.code)) void load();
       }
     } finally {
