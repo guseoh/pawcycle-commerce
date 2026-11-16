@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.audit.persistence;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.web.RequestCorrelationFilter;
 import org.slf4j.MDC;
 import com.pawcycle.backend.commerce.audit.persistence.AdminAuditLogEntity;
@@ -32,6 +33,13 @@ public class AdminAuditPersistenceAdapter {
             targetId,
             MDC.get(RequestCorrelationFilter.REQUEST_ID_MDC_KEY),
             LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)));
+    // Same action in the log, written only if the audit row commits.
+    BusinessEvent.of(BusinessEvent.Name.ADMIN_ACTION)
+        .with(BusinessEvent.Field.ADMIN_ID, adminId)
+        .with(BusinessEvent.Field.ACTION, action)
+        .with(BusinessEvent.Field.TARGET_TYPE, targetType)
+        .with(BusinessEvent.Field.TARGET_ID, targetId)
+        .log();
   }
 
   @Transactional(readOnly = true)

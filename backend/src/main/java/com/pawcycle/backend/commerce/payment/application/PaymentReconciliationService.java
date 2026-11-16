@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -112,7 +113,14 @@ public class PaymentReconciliationService {
       billingFailures.recordExplicitFailure(id, "RECONCILED_FAILED", observation.providerStatus());
       billingFailures.prepareNextAttempt(id);
     }
-    return response(payments.find(id));
+    PaymentReconciliationResult reconciled = response(payments.find(id));
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_RECONCILED)
+        .with(BusinessEvent.Field.PAYMENT_ID, reconciled.paymentId())
+        .with(BusinessEvent.Field.ORDER_ID, reconciled.orderId())
+        .with(BusinessEvent.Field.PROVIDER_STATUS, observation.status())
+        .with(BusinessEvent.Field.OUTCOME, reconciled.status())
+        .log();
+    return reconciled;
   }
 
   /** Internal query-only boundary; no public HTTP recovery command or local finalization. */

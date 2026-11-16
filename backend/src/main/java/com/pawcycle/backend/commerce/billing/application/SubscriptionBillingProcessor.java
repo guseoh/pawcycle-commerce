@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.billing.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import org.slf4j.Logger;
@@ -115,6 +116,11 @@ public class SubscriptionBillingProcessor {
       retries.recordExplicitFailure(paymentId, "TOSS_REJECTED");
       retries.prepareNextAttempt(paymentId);
     } else markUnknown(paymentId, result.providerStatus());
+    BusinessEvent.of(BusinessEvent.Name.BILLING_CHARGE_FINISHED)
+        .with(BusinessEvent.Field.PAYMENT_ID, paymentId)
+        .with(BusinessEvent.Field.PROVIDER_STATUS, result.providerStatus())
+        .with(BusinessEvent.Field.OUTCOME, result.status())
+        .log();
   }
 
   void completeSuccess(long paymentId, String providerStatus) {
