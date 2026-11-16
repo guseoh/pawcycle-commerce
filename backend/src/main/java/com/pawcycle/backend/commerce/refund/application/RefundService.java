@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.refund.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -136,7 +137,7 @@ public class RefundService {
 
   private RefundResult complete(
       long id, TossRefundAdapter.RefundResult result, Long adminId, String auditAction) {
-    return transaction.execute(
+    RefundResult completed = transaction.execute(
         status -> {
           RefundPersistenceAdapter.CompletionTarget row = refunds.findForCompletion(id);
           if (row == null) throw notFound();
@@ -169,6 +170,13 @@ public class RefundService {
           if (adminId != null) audits.append(adminId, auditAction, "REFUND", id);
           return response(refunds.find(id));
         });
+    BusinessEvent.of(BusinessEvent.Name.REFUND_FINISHED)
+        .with(BusinessEvent.Field.REFUND_ID, completed.refundId())
+        .with(BusinessEvent.Field.ORDER_ID, completed.orderId())
+        .with(BusinessEvent.Field.PROVIDER_STATUS, result.providerStatus())
+        .with(BusinessEvent.Field.OUTCOME, completed.status())
+        .log();
+    return completed;
   }
 
   private static RefundResult response(RefundPersistenceAdapter.RefundView view) {

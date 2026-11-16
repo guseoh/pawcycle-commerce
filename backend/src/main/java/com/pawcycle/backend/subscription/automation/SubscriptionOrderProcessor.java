@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence;
 import com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.AddOnRow;
 import com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence.Candidate;
@@ -70,6 +71,11 @@ public class SubscriptionOrderProcessor {
         try {
           ProcessingOutcome outcome =
               targetTransaction.execute(status -> processCandidate(candidate, today));
+          BusinessEvent.of(BusinessEvent.Name.SUBSCRIPTION_ORDER_PROCESSED)
+              .with(BusinessEvent.Field.SUBSCRIPTION_ID, candidate.subscriptionId())
+              .with(BusinessEvent.Field.SCHEDULE_ID, candidate.scheduleId())
+              .with(BusinessEvent.Field.OUTCOME, outcome.name())
+              .log();
           if (outcome == ProcessingOutcome.CREATED) {
             created++;
           } else {

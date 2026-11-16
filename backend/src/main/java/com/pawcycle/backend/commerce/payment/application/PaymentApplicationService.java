@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
@@ -77,9 +78,20 @@ public class PaymentApplicationService {
       result = tossPaymentAdapter.confirm(paymentKey, providerOrderId, amount);
     } catch (RuntimeException exception) {
       failures.record(ExternalCall.TOSS_PAYMENT_CONFIRM, exception, "paymentId=" + work.paymentId());
-      return transaction.execute(status -> markProviderUnknown(work.paymentId()));
+      return confirmed(transaction.execute(status -> markProviderUnknown(work.paymentId())));
     }
-    return transaction.execute(status -> finalizePayment(work.paymentId(), result.status(), paymentKey));
+    return confirmed(
+        transaction.execute(status -> finalizePayment(work.paymentId(), result.status(), paymentKey)));
+  }
+
+  /** Records the committed result of a provider confirmation. */
+  private static PaymentResult confirmed(PaymentResult result) {
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_CONFIRM_FINISHED)
+        .with(BusinessEvent.Field.PAYMENT_ID, result.paymentId())
+        .with(BusinessEvent.Field.ORDER_ID, result.orderId())
+        .with(BusinessEvent.Field.OUTCOME, result.status())
+        .log();
+    return result;
   }
 
   private PaymentResult finalizePayment(long paymentId, String providerResult, String paymentKey) {

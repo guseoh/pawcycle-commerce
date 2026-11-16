@@ -1,5 +1,8 @@
 package com.pawcycle.backend.commerce;
 
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.junit.jupiter.api.extension.ExtendWith;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -27,6 +30,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 
+@ExtendWith(OutputCaptureExtension.class)
 class RefundServiceTests {
   @Test
   void zeroAmountRefundCompletesLocallyWithoutProviderWrite() {
@@ -59,7 +63,7 @@ class RefundServiceTests {
   }
 
   @Test
-  void processingReconcileQueriesProviderWithoutIssuingAnotherRefund() {
+  void processingReconcileQueriesProviderWithoutIssuingAnotherRefund(CapturedOutput output) {
     RefundPersistenceAdapter adapter = mock(RefundPersistenceAdapter.class);
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     TransactionStatus transactionStatus = mock(TransactionStatus.class);
@@ -96,6 +100,8 @@ class RefundServiceTests {
     assertThat(result).isNotNull();
     verify(provider).reconcile("refund-key");
     verify(provider, never()).refund(anyString(), any());
+    assertThat(output.getOut())
+        .contains("event=refund.finished refundId=91 orderId=11 providerStatus=NO_RESPONSE outcome=PROCESSING");
   }
 
   @Test

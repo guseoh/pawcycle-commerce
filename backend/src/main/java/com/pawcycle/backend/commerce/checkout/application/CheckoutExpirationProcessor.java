@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.checkout.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
 
 import com.pawcycle.backend.commerce.checkout.persistence.CheckoutExpirationPersistenceAdapter;
@@ -30,6 +31,10 @@ class CheckoutExpirationProcessor {
     }
     expirations.releaseCoupon(payment.orderId());
     expirations.markExpired(paymentId, payment.orderId());
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_EXPIRED) // written after this transaction commits
+        .with(BusinessEvent.Field.PAYMENT_ID, paymentId)
+        .with(BusinessEvent.Field.ORDER_ID, payment.orderId())
+        .log();
     return true;
   }
 }

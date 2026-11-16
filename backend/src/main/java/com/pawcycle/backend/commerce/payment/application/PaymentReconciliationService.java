@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -108,6 +109,15 @@ public class PaymentReconciliationService {
 
     ProviderResult observation = observed;
     boolean billingFailure = transaction.execute(status -> complete(id, adminId, observation));
+    // Recorded once the reconciliation result is committed, before the retry preparation below:
+    // after the last billing attempt that preparation refuses with an exception.
+    PaymentReconciliationResult committed = response(payments.find(id));
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_RECONCILED)
+        .with(BusinessEvent.Field.PAYMENT_ID, committed.paymentId())
+        .with(BusinessEvent.Field.ORDER_ID, committed.orderId())
+        .with(BusinessEvent.Field.PROVIDER_STATUS, observation.providerStatus())
+        .with(BusinessEvent.Field.OUTCOME, committed.status())
+        .log();
     if (billingFailure) {
       billingFailures.recordExplicitFailure(id, "RECONCILED_FAILED", observation.providerStatus());
       billingFailures.prepareNextAttempt(id);

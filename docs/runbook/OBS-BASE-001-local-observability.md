@@ -73,6 +73,18 @@ Grafana datasource와 PawCycle Dashboard는 provisioning 파일에서 자동 생
 - HTTP 요청의 로그에는 `requestId`가 있고, 같은 값이 응답 헤더 `X-Request-ID`와 proxy access log의 `request_id`에 남는다.
 - 스케줄 작업의 로그에는 `jobName`과 `jobRunId`가 있다.
 - proxy access log도 JSON이다. `uri`에는 query string이 없다.
+- 업무 이벤트(OBS-EVENT-001)는 logger `pawcycle.business-event`에 한 줄씩 남는다. 텍스트는 `event=<이름> 필드=값 …`이고, JSON에는 `businessEvent`와 각 필드가 들어간다. 트랜잭션 안에서 발생한 이벤트는 commit된 경우에만 남는다. 필드는 내부 ID와 짧은 상태 코드만 허용한다.
+
+  | 이벤트 | 필드 |
+  | --- | --- |
+  | `payment.confirm.finished` | `paymentId`, `orderId`, `outcome` |
+  | `payment.expired` | `paymentId`, `orderId` |
+  | `payment.reconciled` | `paymentId`, `orderId`, `providerStatus`, `outcome` |
+  | `payment.recovery.finished` | `paymentId`, `adminId`, `outcome` |
+  | `refund.finished` | `refundId`, `orderId`, `providerStatus`, `outcome` |
+  | `billing.charge.finished` | `paymentId`, `providerStatus`, `outcome` |
+  | `subscription.order.processed` | `subscriptionId`, `scheduleId`, `outcome` |
+  | `admin.action` | `adminId`, `action`, `targetType`, `targetId` |
 
 ```powershell
 docker compose --env-file infra/local-integration/.env.local -f infra/local-integration/compose.yaml logs backend | Select-String '"requestId":"<요청 ID>"'

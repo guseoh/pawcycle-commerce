@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.logging.BusinessEvent;
 import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
@@ -60,6 +61,16 @@ public class ProcessingPaymentRecoveryService {
 
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public Outcome recover(long paymentId, long operatorMemberId) {
+    Outcome outcome = recoverOnce(paymentId, operatorMemberId);
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_RECOVERY_FINISHED)
+        .with(BusinessEvent.Field.PAYMENT_ID, paymentId)
+        .with(BusinessEvent.Field.ADMIN_ID, operatorMemberId)
+        .with(BusinessEvent.Field.OUTCOME, outcome.name())
+        .log();
+    return outcome;
+  }
+
+  private Outcome recoverOnce(long paymentId, long operatorMemberId) {
     if (!Boolean.TRUE.equals(transaction.execute(status -> payments.isAdmin(operatorMemberId)))) {
       return Outcome.REFUSED_OPERATOR_NOT_ADMIN;
     }
