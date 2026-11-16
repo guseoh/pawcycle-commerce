@@ -1,5 +1,6 @@
 package com.pawcycle.backend.recommendation.application;
 
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -41,7 +42,7 @@ class RecommendationBoundaryTimingTests {
           path.equals("empty-after-ai") ? List.of() : List.of(candidate));
       when(ai.recommend(anyList(), anyList())).thenThrow(new IllegalStateException("fake provider failure"));
     }
-    var service = new RecommendationService(queries, ai, RecommendationMetricsFixture.create(meters), Clock.systemUTC());
+    var service = new RecommendationService(queries, ai, RecommendationMetricsFixture.create(meters), Clock.systemUTC(), new ExternalCallFailures(new SimpleMeterRegistry()));
     UUID expected = UUID.fromString("12345678-1234-1234-1234-123456789abc");
     try (var uuids = mockStatic(UUID.class)) {
       uuids.when(UUID::randomUUID).thenAnswer(call -> {
@@ -92,7 +93,7 @@ class RecommendationBoundaryTimingTests {
     List<Instant> instants = List.of(Instant.parse("2026-10-17T14:59:59.999999Z"), Instant.parse("2026-10-17T15:00:00Z"));
     String prior = null;
     for (int i = 0; i < instants.size(); i++) {
-      var service = new RecommendationService(queries, ai, RecommendationMetricsFixture.create(new SimpleMeterRegistry()), Clock.fixed(instants.get(i), ZoneOffset.UTC));
+      var service = new RecommendationService(queries, ai, RecommendationMetricsFixture.create(new SimpleMeterRegistry()), Clock.fixed(instants.get(i), ZoneOffset.UTC), new ExternalCallFailures(new SimpleMeterRegistry()));
       var result = service.recommend(10L, 1L);
       LocalDate expectedDate = LocalDate.of(2026, 10, 17).plusDays(i);
       long expectedId = List.of(10L, 11L).get(Math.floorMod(("10:1:" + expectedDate).hashCode(), 2));

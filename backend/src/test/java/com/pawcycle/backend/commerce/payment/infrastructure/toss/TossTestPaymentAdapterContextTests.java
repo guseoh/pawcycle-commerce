@@ -4,6 +4,9 @@ import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pawcycle.backend.common.external.ExternalCallFailures;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -33,11 +36,16 @@ class TossTestPaymentAdapterContextTests {
   }
 
   @TestConfiguration(proxyBeanMethods = false)
-  @Import(TossTestPaymentAdapter.class)
+  @Import({TossTestPaymentAdapter.class, ExternalCallFailures.class})
   static class TestContextConfiguration {
     @Bean
     ObjectMapper objectMapper() {
       return new ObjectMapper();
+    }
+
+    @Bean
+    MeterRegistry meterRegistry() {
+      return new SimpleMeterRegistry();
     }
   }
 }

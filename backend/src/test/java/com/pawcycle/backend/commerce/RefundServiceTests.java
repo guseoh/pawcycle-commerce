@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
@@ -49,7 +51,8 @@ class RefundServiceTests {
             mock(NotificationService.class),
             mock(MembershipEvaluationService.class),
             mock(AdminAuditService.class),
-            mock(CommerceMetrics.class));
+            mock(CommerceMetrics.class),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     assertThat(service.process(7L).status()).isEqualTo("SUCCEEDED");
     verify(provider, never()).refund(anyString(), any());
@@ -85,12 +88,52 @@ class RefundServiceTests {
             mock(NotificationService.class),
             mock(MembershipEvaluationService.class),
             mock(AdminAuditService.class),
-            metrics);
+            metrics,
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     RefundResult result = service.reconcile(91L);
 
     assertThat(result).isNotNull();
     verify(provider).reconcile("refund-key");
     verify(provider, never()).refund(anyString(), any());
+  }
+
+  @Test
+  void defectInProviderCallKeepsUnknownOutcomeAndIsCountedAsInternal() {
+    RefundPersistenceAdapter adapter = mock(RefundPersistenceAdapter.class);
+    PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+    TransactionStatus transactionStatus = mock(TransactionStatus.class);
+    TossRefundAdapter provider = mock(TossRefundAdapter.class);
+    CommerceMetrics metrics = mock(CommerceMetrics.class);
+    when(manager.getTransaction(any(TransactionDefinition.class))).thenReturn(transactionStatus);
+    when(provider.isConfigured()).thenReturn(true);
+    when(provider.reconcile("refund-key")).thenThrow(new NullPointerException("adapter bug"));
+    when(metrics.timer()).thenReturn(mock(Timer.Sample.class));
+    when(adapter.findForReconciliation(91L))
+        .thenReturn(new RefundPersistenceAdapter.ReconciliationWork(91L, "PROCESSING", "refund-key", 0));
+    when(adapter.findForCompletion(91L))
+        .thenReturn(new RefundPersistenceAdapter.CompletionTarget(91L, 11L, "RETURN", null, 12L, "PROCESSING", 4L));
+    when(adapter.find(91L))
+        .thenReturn(new RefundPersistenceAdapter.RefundView(91L, 11L, "RETURN", "PROCESSING", BigDecimal.ONE, 1, 1, "NO_RESPONSE", null, null, null, null));
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+
+    RefundResult result =
+        new RefundService(
+                adapter,
+                manager,
+                provider,
+                mock(NotificationService.class),
+                mock(MembershipEvaluationService.class),
+                mock(AdminAuditService.class),
+                metrics,
+                new ExternalCallFailures(registry))
+            .reconcile(91L);
+
+    // The outcome path is the same as an UNKNOWN provider answer; only the classification is new.
+    assertThat(result).isNotNull();
+    verify(adapter).findForCompletion(91L);
+    assertThat(registry.get("pawcycle.external.call.failures")
+            .tags("operation", "refund.query", "failure_class", "internal").counter().count())
+        .isEqualTo(1.0);
   }
 }

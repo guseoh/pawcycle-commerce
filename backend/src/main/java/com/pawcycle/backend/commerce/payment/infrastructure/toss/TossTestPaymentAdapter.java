@@ -2,7 +2,10 @@ package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
-import com.pawcycle.backend.commerce.common.error.CommerceException;
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallException;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
+import com.pawcycle.backend.common.external.FailureClass;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -35,19 +38,27 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
   private final String baseUrl;
   private final ObjectMapper objectMapper;
   private final HttpClient httpClient;
+  private final ExternalCallFailures failures;
 
   @Autowired
   TossTestPaymentAdapter(
-      @Value("${pawcycle.toss.test.secret-key:}") String secretKey, ObjectMapper objectMapper) {
+      @Value("${pawcycle.toss.test.secret-key:}") String secretKey,
+      ObjectMapper objectMapper,
+      ExternalCallFailures failures) {
     this(
         secretKey,
         TOSS_API_BASE_URL,
         objectMapper,
-        HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build());
+        HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build(),
+        failures);
   }
 
   TossTestPaymentAdapter(
-      String secretKey, String baseUrl, ObjectMapper objectMapper, HttpClient httpClient) {
+      String secretKey,
+      String baseUrl,
+      ObjectMapper objectMapper,
+      HttpClient httpClient,
+      ExternalCallFailures failures) {
     // The browser uses the Toss payment widget, whose payments must be confirmed with the paired
     // widget secret key (test_gsk_). API individual-integration keys (test_sk_) cannot confirm them.
     if (secretKey == null || secretKey.isBlank() || !secretKey.startsWith("test_gsk_")) {
@@ -61,6 +72,7 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
     this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     this.objectMapper = objectMapper;
     this.httpClient = httpClient;
+    this.failures = failures;
   }
 
   @Override
@@ -89,8 +101,14 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
           .timeout(REQUEST_TIMEOUT).header("Authorization", "Basic " + basicAuth())
           .header("Accept", "application/json").GET().build();
       HttpResponse<String> response = httpClient.send(query, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() < 200 || response.statusCode() >= 300)
+      if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        failures.record(
+            ExternalCall.TOSS_PAYMENT_QUERY,
+            response.statusCode() >= 500 ? FailureClass.PROVIDER_5XX : FailureClass.PROVIDER_REJECTED,
+            querySubject(providerOrderId),
+            "HTTP " + response.statusCode());
         return new ConfirmResult("UNKNOWN", "QUERY_HTTP_" + response.statusCode());
+      }
       JsonNode body = objectMapper.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
           .readTree(response.body());
       if (!body.path("orderId").isTextual() || !body.path("paymentKey").isTextual()
@@ -107,10 +125,16 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
       }, providerStatus);
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
+      failures.record(ExternalCall.TOSS_PAYMENT_QUERY, exception, querySubject(providerOrderId));
       return new ConfirmResult("UNKNOWN", "QUERY_UNAVAILABLE");
     } catch (IOException | RuntimeException exception) {
+      failures.record(ExternalCall.TOSS_PAYMENT_QUERY, exception, querySubject(providerOrderId));
       return new ConfirmResult("UNKNOWN", "QUERY_UNAVAILABLE");
     }
+  }
+
+  private static String querySubject(String providerOrderId) {
+    return "providerOrderId=" + providerOrderId;
   }
 
   private ConfirmResult request(String path, Map<String, Object> body) {
@@ -134,14 +158,17 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
         return new ConfirmResult("FAILED", providerCode(response.body()));
       }
       if (response.statusCode() < 200 || response.statusCode() >= 300) {
-        throw providerUnknown();
+        // Not a 4xx rejection: the provider may still have approved, so the caller keeps UNKNOWN.
+        throw new ExternalCallException(
+            FailureClass.PROVIDER_5XX, "Toss HTTP " + response.statusCode());
       }
       return mapProviderResult(response.body());
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
-      throw providerUnknown();
+      throw ExternalCallException.of(exception);
     } catch (IOException | RuntimeException exception) {
-      throw providerUnknown();
+      // Classified here, while the original cause is still known; the caller records it once.
+      throw ExternalCallException.of(exception);
     }
   }
 
@@ -174,9 +201,5 @@ class TossTestPaymentAdapter implements TossPaymentAdapter {
 
   private static String stringValue(Object value) {
     return value == null ? null : String.valueOf(value);
-  }
-
-  private static CommerceException providerUnknown() {
-    return new CommerceException(503, "PAYMENT_PROVIDER_UNKNOWN", "결제 Provider의 결과를 확인하지 못했습니다.");
   }
 }

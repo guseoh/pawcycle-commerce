@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentReconciliationPersistenceAdapter.RecoveryCandidate;
@@ -35,6 +37,7 @@ public class ProcessingPaymentRecoveryService {
   private final TossPaymentAdapter provider;
   private final TransactionTemplate transaction;
   private final Clock clock;
+  private final ExternalCallFailures failures;
 
   public ProcessingPaymentRecoveryService(
       PaymentReconciliationPersistenceAdapter payments,
@@ -43,7 +46,8 @@ public class ProcessingPaymentRecoveryService {
       AdminAuditService audits,
       TossPaymentAdapter provider,
       PlatformTransactionManager transactionManager,
-      Clock clock) {
+      Clock clock,
+      ExternalCallFailures failures) {
     this.payments = payments;
     this.reconciliation = reconciliation;
     this.normalPayments = normalPayments;
@@ -51,6 +55,7 @@ public class ProcessingPaymentRecoveryService {
     this.provider = provider;
     this.transaction = new TransactionTemplate(transactionManager);
     this.clock = clock;
+    this.failures = failures;
   }
 
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -69,6 +74,7 @@ public class ProcessingPaymentRecoveryService {
     try {
       observation = reconciliation.queryOnly(paymentId);
     } catch (RuntimeException unavailable) {
+      failures.record(ExternalCall.TOSS_PAYMENT_QUERY, unavailable, "paymentId=" + paymentId);
       return Outcome.STOPPED_PROVIDER_UNKNOWN;
     }
     if (!"SUCCEEDED".equals(observation.status())) return Outcome.stopped(observation.status());

@@ -3,6 +3,12 @@ package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.pawcycle.backend.common.external.ExternalCallException;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
+import com.pawcycle.backend.common.external.FailureClass;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.sun.net.httpserver.HttpServer;
 import java.math.BigDecimal;
@@ -16,11 +22,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
+@ExtendWith(OutputCaptureExtension.class)
 class TossPaymentQuerySafetyTests {
   private FakeServer fake;
   private TossPaymentAdapter adapter;
@@ -102,10 +112,57 @@ class TossPaymentQuerySafetyTests {
     assertThat(fake.lastPath).isEqualTo("/v1/payments/confirm");
   }
 
+  @ParameterizedTest
+  @CsvSource({"500,provider_5xx", "503,provider_5xx", "404,provider_rejected", "401,provider_rejected"})
+  void queryHttpErrorsAreCountedByFailureClass(int http, String failureClass) {
+    fake.respond(http, "{\"code\":\"LOOKUP_ERROR\"}");
+    adapter.queryPayment("order-1", "key-1", new BigDecimal("123.45"));
+    assertThat(fake.failures("payment.query", failureClass)).isEqualTo(1.0);
+    assertThat(fake.failures("payment.query", "internal")).isZero();
+  }
+
+  @Test void queryTimeoutIsCountedAsTimeoutNotAsAnInternalDefect() {
+    fake.releaseResponse = new CountDownLatch(1);
+    adapter.queryPayment("order-1", "key-1", new BigDecimal("123.45"));
+    assertThat(fake.failures("payment.query", "timeout")).isEqualTo(1.0);
+    assertThat(fake.failures("payment.query", "internal")).isZero();
+  }
+
+  @Test void conclusiveQueryRecordsNoFailure() {
+    adapter.queryPayment("order-1", "key-1", new BigDecimal("123.45"));
+    assertThat(fake.registry.get("pawcycle.external.call.failures").counters())
+        .allSatisfy(counter -> assertThat(counter.count()).isZero());
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {500, 502, 503})
+  void confirmServerErrorIsClassifiedAsProvider5xxSoTheCallerKeepsUnknown(int http) {
+    fake.respond(http, "{\"code\":\"PROVIDER_ERROR\"}");
+    assertThatThrownBy(() -> adapter.confirm("key-1", "order-1", new BigDecimal("123.45")))
+        .isInstanceOfSatisfying(ExternalCallException.class,
+            failure -> assertThat(failure.failureClass()).isEqualTo(FailureClass.PROVIDER_5XX));
+  }
+
+  @Test void confirmUnreadableSuccessBodyIsClassifiedAsParse() {
+    fake.respond(200, "broken-json");
+    assertThatThrownBy(() -> adapter.confirm("key-1", "order-1", new BigDecimal("123.45")))
+        .isInstanceOfSatisfying(ExternalCallException.class,
+            failure -> assertThat(failure.failureClass()).isEqualTo(FailureClass.PARSE));
+  }
+
+  @Test void unreadableProviderBodyNeverPutsItsPaymentKeyIntoTheLog(CapturedOutput output) {
+    fake.respond(200, "{\"paymentKey\": tgen_LEAK_CHECK_KEY, \"status\": \"DONE\"}");
+    assertThat(adapter.queryPayment("order-1", "key-1", new BigDecimal("123.45")).status())
+        .isEqualTo("UNKNOWN");
+    assertThat(fake.failures("payment.query", "parse")).isEqualTo(1.0);
+    assertThat(output.getOut()).contains("failureClass=PARSE").doesNotContain("tgen_LEAK_CHECK_KEY");
+  }
+
   static final class FakeServer implements AutoCloseable {
     final HttpServer server;
     final java.util.concurrent.ExecutorService worker = Executors.newCachedThreadPool();
     final AtomicInteger requests = new AtomicInteger();
+    final SimpleMeterRegistry registry = new SimpleMeterRegistry();
     volatile int http = 200;
     volatile String body = payment("order-1", "key-1", "123.45", "DONE");
     volatile String lastMethod;
@@ -131,13 +188,19 @@ class TossPaymentQuerySafetyTests {
     }
     TossPaymentAdapter adapter() {
       return new TossTestPaymentAdapter("test_gsk_fixture_only",
-          "http://127.0.0.1:" + server.getAddress().getPort(), new ObjectMapper(), HttpClient.newHttpClient());
+          "http://127.0.0.1:" + server.getAddress().getPort(), new ObjectMapper(), HttpClient.newHttpClient(),
+          new ExternalCallFailures(registry));
     }
     void respond(int code, String response) { http = code; body = response; }
     void assertQueryOnly() {
       assertThat(requests.get()).isEqualTo(1);
       assertThat(lastMethod).isEqualTo("GET");
       assertThat(lastPath).isEqualTo("/v1/payments/orders/order-1");
+    }
+    double failures(String operation, String failureClass) {
+      return registry.get("pawcycle.external.call.failures")
+          .tags("provider", "toss", "operation", operation, "failure_class", failureClass)
+          .counter().count();
     }
     static String payment(String order, String key, String amount, String status) {
       return "{\"orderId\":\"%s\",\"paymentKey\":\"%s\",\"totalAmount\":%s,\"status\":\"%s\"}"

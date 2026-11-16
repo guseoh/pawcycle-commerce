@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.billing.application.SubscriptionBillingService;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
@@ -31,6 +33,7 @@ public class PaymentReconciliationService {
   private final SubscriptionBillingService billingFailures;
   private final DeliveryService deliveries;
   private final Clock clock;
+  private final ExternalCallFailures failures;
 
   public PaymentReconciliationService(
       PaymentReconciliationPersistenceAdapter payments,
@@ -43,7 +46,8 @@ public class PaymentReconciliationService {
       AdminAuditService audits,
       SubscriptionBillingService billingFailures,
       DeliveryService deliveries,
-      Clock clock) {
+      Clock clock,
+      ExternalCallFailures failures) {
     this.payments = payments;
     this.transaction = new TransactionTemplate(transactionManager);
     this.paymentProvider = paymentProvider;
@@ -55,6 +59,7 @@ public class PaymentReconciliationService {
     this.billingFailures = billingFailures;
     this.deliveries = deliveries;
     this.clock = clock;
+    this.failures = failures;
   }
 
   // Suspend callers so Provider I/O stays outside the separate start/completion transactions.
@@ -82,16 +87,23 @@ public class PaymentReconciliationService {
             });
 
     ProviderResult observed;
-    try {
-      if ("BILLING".equals(work.type())) {
+    if ("BILLING".equals(work.type())) {
+      try {
         TossBillingAdapter.ChargeResult result = billingProvider.queryCharge(work.providerOrderId());
         observed = new ProviderResult(result.status(), result.providerStatus());
-      } else {
+      } catch (RuntimeException exception) {
+        failures.record(ExternalCall.TOSS_BILLING_QUERY, exception, "paymentId=" + id);
+        observed = new ProviderResult("UNKNOWN", "NO_RESPONSE");
+      }
+    } else {
+      try {
         ProviderObservation result = queryOnly(id);
         observed = new ProviderResult(result.status(), result.providerStatus());
+      } catch (RuntimeException exception) {
+        // queryOnly records provider failures itself; this only sees failures around the call.
+        failures.record(ExternalCall.TOSS_PAYMENT_QUERY, exception, "paymentId=" + id);
+        observed = new ProviderResult("UNKNOWN", "NO_RESPONSE");
       }
-    } catch (RuntimeException exception) {
-      observed = new ProviderResult("UNKNOWN", "NO_RESPONSE");
     }
 
     ProviderResult observation = observed;
@@ -119,6 +131,7 @@ public class PaymentReconciliationService {
       var result = paymentProvider.queryPayment(target.providerOrderId(), target.paymentKey(), target.amount());
       return new ProviderObservation(result.status(), result.providerStatus());
     } catch (RuntimeException exception) {
+      failures.record(ExternalCall.TOSS_PAYMENT_QUERY, exception, "paymentId=" + paymentId);
       return new ProviderObservation("UNKNOWN", "NO_RESPONSE");
     }
   }

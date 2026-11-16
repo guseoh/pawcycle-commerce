@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.product.application;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -20,7 +22,7 @@ class ProductComparisonServiceTests {
     ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
 
     org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> new ProductComparisonService(repository, ai).compare(List.of(1L)))
+            () -> new ProductComparisonService(repository, ai, new ExternalCallFailures(new SimpleMeterRegistry())).compare(List.of(1L)))
         .isInstanceOf(ProductComparisonException.class)
         .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
     verifyNoInteractions(repository, ai);
@@ -33,7 +35,7 @@ class ProductComparisonServiceTests {
       ProductComparisonQueryRepository repository = mock(ProductComparisonQueryRepository.class);
       ProductComparisonAiClient ai = mock(ProductComparisonAiClient.class);
       org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> new ProductComparisonService(repository, ai).compare(ids))
+              () -> new ProductComparisonService(repository, ai, new ExternalCallFailures(new SimpleMeterRegistry())).compare(ids))
           .isInstanceOf(ProductComparisonException.class)
           .hasFieldOrPropertyWithValue("code", "VALIDATION_FAILED");
       verifyNoInteractions(repository, ai);
@@ -50,7 +52,7 @@ class ProductComparisonServiceTests {
     when(ai.compare(anyList())).thenReturn("세 상품은 가격과 구성에서 차이가 있습니다.");
 
     ProductComparisonResponse response =
-        new ProductComparisonService(repository, ai).compare(List.of(1L, 2L, 3L));
+        new ProductComparisonService(repository, ai, new ExternalCallFailures(new SimpleMeterRegistry())).compare(List.of(1L, 2L, 3L));
 
     assertThat(response.aiStatus()).isEqualTo("AVAILABLE");
     assertThat(response.aiSummary()).isEqualTo("세 상품은 가격과 구성에서 차이가 있습니다.");
@@ -77,7 +79,7 @@ class ProductComparisonServiceTests {
     when(ai.compare(anyList())).thenReturn("질병 치료를 보장합니다.");
 
     ProductComparisonResponse response =
-        new ProductComparisonService(repository, ai).compare(List.of(1L, 2L));
+        new ProductComparisonService(repository, ai, new ExternalCallFailures(new SimpleMeterRegistry())).compare(List.of(1L, 2L));
 
     assertThat(response.aiStatus()).isEqualTo("UNAVAILABLE");
     assertThat(response.aiSummary()).isNull();
@@ -100,7 +102,7 @@ class ProductComparisonServiceTests {
     when(ai.compare(anyList())).thenThrow(new IllegalStateException("provider unavailable"));
 
     ProductComparisonResponse response =
-        new ProductComparisonService(repository, ai).compare(List.of(1L, 2L));
+        new ProductComparisonService(repository, ai, new ExternalCallFailures(new SimpleMeterRegistry())).compare(List.of(1L, 2L));
 
     assertThat(response.aiStatus()).isEqualTo("UNAVAILABLE");
     assertThat(response.aiSummary()).isNull();

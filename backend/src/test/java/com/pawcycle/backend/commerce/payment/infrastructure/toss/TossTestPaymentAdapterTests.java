@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 
+import com.pawcycle.backend.common.external.ExternalCallFailures;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +20,8 @@ class TossTestPaymentAdapterTests {
                     "",
                     "https://api.tosspayments.com",
                     new ObjectMapper(),
-                    HttpClient.newHttpClient()))
+                    HttpClient.newHttpClient(),
+                    new ExternalCallFailures(new SimpleMeterRegistry())))
         .isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(
             () ->
@@ -26,7 +29,8 @@ class TossTestPaymentAdapterTests {
                     "live_sk_not_allowed",
                     "https://api.tosspayments.com",
                     new ObjectMapper(),
-                    HttpClient.newHttpClient()))
+                    HttpClient.newHttpClient(),
+                    new ExternalCallFailures(new SimpleMeterRegistry())))
         .isInstanceOf(IllegalStateException.class);
     for (String wrongKind : new String[] {"live_gsk_not_allowed", "test_sk_individual_api_key"}) {
       assertThatThrownBy(
@@ -35,7 +39,8 @@ class TossTestPaymentAdapterTests {
                       wrongKind,
                       "https://api.tosspayments.com",
                       new ObjectMapper(),
-                      HttpClient.newHttpClient()))
+                      HttpClient.newHttpClient(),
+                    new ExternalCallFailures(new SimpleMeterRegistry())))
           .isInstanceOf(IllegalStateException.class);
     }
   }
@@ -48,7 +53,8 @@ class TossTestPaymentAdapterTests {
             "test_gsk_example",
             "https://api.tosspayments.com",
             new ObjectMapper(),
-            HttpClient.newHttpClient());
+            HttpClient.newHttpClient(),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     assertThat(fake.browserTestEnabled()).isFalse();
     assertThat(actualTest.browserTestEnabled()).isTrue();

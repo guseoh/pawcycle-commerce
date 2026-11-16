@@ -1,5 +1,7 @@
 package com.pawcycle.backend.recommendation.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCategory;
 import com.pawcycle.backend.recommendation.model.RecommendationView;
@@ -44,16 +46,19 @@ public class RecommendationService {
   private final RecommendationAiClient aiClient;
   private final RecommendationMetrics metrics;
   private final Clock clock;
+  private final ExternalCallFailures failures;
 
   RecommendationService(
       RecommendationQueryAdapter repository,
       RecommendationAiClient aiClient,
       RecommendationMetrics metrics,
-      Clock clock) {
+      Clock clock,
+      ExternalCallFailures failures) {
     this.repository = repository;
     this.aiClient = aiClient;
     this.metrics = metrics;
     this.clock = clock;
+    this.failures = failures;
   }
 
   public RecommendationView recommend(long memberId, long petId) {
@@ -77,7 +82,8 @@ public class RecommendationService {
     try {
       aiRecommendations =
           aiClient.recommend(List.copyOf(initialCandidates.subList(0, aiInputSize)), preferences);
-    } catch (RuntimeException ignored) {
+    } catch (RuntimeException exception) {
+      failures.record(ExternalCall.OPENAI_RECOMMENDATION, exception, "petId=" + petId);
       aiRecommendations = List.of();
       providerFallback = true;
     }

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.refund.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
@@ -22,6 +24,7 @@ public class RefundService {
   private final MembershipEvaluationService membershipEvaluation;
   private final AdminAuditService audits;
   private final CommerceMetrics metrics;
+  private final ExternalCallFailures failures;
 
   public RefundService(
       RefundPersistenceAdapter refunds,
@@ -30,7 +33,8 @@ public class RefundService {
       NotificationService notifications,
       MembershipEvaluationService membershipEvaluation,
       AdminAuditService audits,
-      CommerceMetrics metrics) {
+      CommerceMetrics metrics,
+      ExternalCallFailures failures) {
     this.refunds = refunds;
     this.transaction = new TransactionTemplate(transactionManager);
     this.provider = provider;
@@ -38,6 +42,7 @@ public class RefundService {
     this.membershipEvaluation = membershipEvaluation;
     this.audits = audits;
     this.metrics = metrics;
+    this.failures = failures;
   }
 
   public RefundResult process(long id) {
@@ -65,6 +70,7 @@ public class RefundService {
       try {
         result = provider.refund(work.idempotencyKey(), work.amount());
       } catch (RuntimeException exception) {
+        failures.record(ExternalCall.TOSS_REFUND, exception, "refundId=" + id);
         result = new TossRefundAdapter.RefundResult("UNKNOWN", "NO_RESPONSE");
       } finally {
         metrics.stop(sample, "refund.provider");
@@ -120,6 +126,7 @@ public class RefundService {
     try {
       result = provider.reconcile(work.idempotencyKey());
     } catch (RuntimeException exception) {
+      failures.record(ExternalCall.TOSS_REFUND_QUERY, exception, "refundId=" + id);
       result = new TossRefundAdapter.RefundResult("UNKNOWN", "NO_RESPONSE");
     } finally {
       metrics.stop(sample, "refund.provider");
