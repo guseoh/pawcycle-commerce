@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.SchedulerNames;
 import com.pawcycle.backend.common.scheduling.ScheduledJob;
 import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository;
@@ -54,6 +55,7 @@ public class SubscriptionBacklogMetrics {
   }
 
   @Scheduled(
+      scheduler = SchedulerNames.METRICS,
       fixedDelayString = "${pawcycle.subscription.backlog.metrics-refresh-ms:60000}",
       initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   public void refresh() {
