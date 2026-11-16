@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
  * (UNKNOWN, NO_RESPONSE, an empty AI result). It never changes that outcome.
  *
  * <p>Logs carry only the call, the class, an internal subject reference and the exception type.
+ * ERROR entries add the stack trace with every exception message removed ({@link RedactedFailure}).
  * Provider response bodies, payment keys and personal data must never be passed as the subject.
  */
 @Component
@@ -48,7 +49,10 @@ public class ExternalCallFailures {
     counters.get(call).get(failureClass).increment();
     String type = failure.getClass().getSimpleName();
     if (failureClass.error()) {
-      log.error(MESSAGE, call.provider(), call.operation(), failureClass, subject, type, failure);
+      // Types and frames only: exception messages may quote provider response text.
+      log.error(
+          MESSAGE, call.provider(), call.operation(), failureClass, subject, type,
+          RedactedFailure.of(failure));
     } else {
       log.warn(MESSAGE, call.provider(), call.operation(), failureClass, subject, type);
     }

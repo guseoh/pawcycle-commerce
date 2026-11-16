@@ -22,11 +22,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
+@ExtendWith(OutputCaptureExtension.class)
 class TossPaymentQuerySafetyTests {
   private FakeServer fake;
   private TossPaymentAdapter adapter;
@@ -144,6 +148,14 @@ class TossPaymentQuerySafetyTests {
     assertThatThrownBy(() -> adapter.confirm("key-1", "order-1", new BigDecimal("123.45")))
         .isInstanceOfSatisfying(ExternalCallException.class,
             failure -> assertThat(failure.failureClass()).isEqualTo(FailureClass.PARSE));
+  }
+
+  @Test void unreadableProviderBodyNeverPutsItsPaymentKeyIntoTheLog(CapturedOutput output) {
+    fake.respond(200, "{\"paymentKey\": tgen_LEAK_CHECK_KEY, \"status\": \"DONE\"}");
+    assertThat(adapter.queryPayment("order-1", "key-1", new BigDecimal("123.45")).status())
+        .isEqualTo("UNKNOWN");
+    assertThat(fake.failures("payment.query", "parse")).isEqualTo(1.0);
+    assertThat(output.getOut()).contains("failureClass=PARSE").doesNotContain("tgen_LEAK_CHECK_KEY");
   }
 
   static final class FakeServer implements AutoCloseable {
