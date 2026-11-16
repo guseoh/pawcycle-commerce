@@ -77,7 +77,9 @@ public class CommerceMetrics {
     registry.counter("pawcycle.commerce." + name, "outcome", outcome).increment();
   }
 
-  @Scheduled(fixedDelayString = "${pawcycle.commerce.operations.refresh-ms:60000}")
+  @Scheduled(
+      fixedDelayString = "${pawcycle.commerce.operations.refresh-ms:60000}",
+      initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   public void refreshPending() {
     jobs.run(ScheduledJob.COMMERCE_METRICS_REFRESH, this::refreshOnce);
   }
