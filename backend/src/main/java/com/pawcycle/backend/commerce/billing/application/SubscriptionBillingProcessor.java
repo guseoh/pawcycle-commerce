@@ -1,5 +1,9 @@
 package com.pawcycle.backend.commerce.billing.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
@@ -17,6 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** Executes at most the READY attempt selected at the start of a processor cycle. */
 @Service
 public class SubscriptionBillingProcessor {
+  private static final Logger log = LoggerFactory.getLogger(SubscriptionBillingProcessor.class);
   private final SubscriptionBillingPersistence persistence;
   private final TransactionTemplate tx;
   private final TossBillingAdapter provider;
@@ -27,6 +32,7 @@ public class SubscriptionBillingProcessor {
   private final MembershipEvaluationService membershipEvaluation;
   private final InventoryService inventory;
   private final Clock clock;
+  private final ExternalCallFailures failures;
 
   public SubscriptionBillingProcessor(
       SubscriptionBillingPersistence persistence,
@@ -38,7 +44,8 @@ public class SubscriptionBillingProcessor {
       NotificationService notifications,
       MembershipEvaluationService membershipEvaluation,
       InventoryService inventory,
-      Clock clock) {
+      Clock clock,
+      ExternalCallFailures failures) {
     this.persistence = persistence;
     this.tx = new TransactionTemplate(manager);
     this.provider = provider;
@@ -49,6 +56,7 @@ public class SubscriptionBillingProcessor {
     this.membershipEvaluation = membershipEvaluation;
     this.inventory = inventory;
     this.clock = clock;
+    this.failures = failures;
   }
 
   public int processReadyPayments() {
@@ -61,8 +69,13 @@ public class SubscriptionBillingProcessor {
       try {
         if ("PROCESSING".equals(candidate.status())) reconciliation.reconcile(id);
         else process(id);
-      } catch (CommerceException ignored) {
-        /* isolate one payment so later READY attempts can continue */
+      } catch (CommerceException skipped) {
+        // Isolate one payment so later READY attempts can continue, but keep the reason visible.
+        log.warn(
+            "Subscription billing candidate skipped; paymentId={}, status={}, code={}",
+            id,
+            candidate.status(),
+            skipped.code());
       }
     }
     return candidates.size();
@@ -94,6 +107,7 @@ public class SubscriptionBillingProcessor {
     try {
       result = provider.charge(work.billingKey(), work.providerOrderId(), work.amount());
     } catch (RuntimeException exception) {
+      failures.record(ExternalCall.TOSS_BILLING_CHARGE, exception, "paymentId=" + paymentId);
       result = new TossBillingAdapter.ChargeResult("UNKNOWN", "NO_RESPONSE");
     }
     if ("SUCCEEDED".equals(result.status())) completeSuccess(paymentId, result.providerStatus());

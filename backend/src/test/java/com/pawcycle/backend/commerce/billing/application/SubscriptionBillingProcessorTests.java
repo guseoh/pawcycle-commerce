@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.billing.application;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
@@ -46,7 +48,8 @@ class SubscriptionBillingProcessorTests {
             mock(NotificationService.class),
             membership,
             mock(InventoryService.class),
-            java.time.Clock.systemUTC());
+            java.time.Clock.systemUTC(),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     processor.completeSuccess(8L, "DONE");
 
@@ -73,7 +76,8 @@ class SubscriptionBillingProcessorTests {
             mock(NotificationService.class),
             mock(MembershipEvaluationService.class),
             mock(InventoryService.class),
-            java.time.Clock.systemUTC());
+            java.time.Clock.systemUTC(),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     assertThat(processor.processReadyPayments()).isEqualTo(1);
     verify(reconciliation).reconcile(42L);

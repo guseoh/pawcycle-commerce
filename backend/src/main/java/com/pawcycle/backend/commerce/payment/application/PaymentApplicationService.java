@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.payment.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
@@ -20,6 +22,7 @@ public class PaymentApplicationService {
   private final NotificationService notificationService;
   private final InventoryService inventoryService;
   private final MembershipEvaluationService membershipEvaluation;
+  private final ExternalCallFailures failures;
 
   public PaymentApplicationService(
       PaymentPersistenceAdapter payments,
@@ -28,7 +31,8 @@ public class PaymentApplicationService {
       DeliveryService deliveryService,
       NotificationService notificationService,
       InventoryService inventoryService,
-      MembershipEvaluationService membershipEvaluation) {
+      MembershipEvaluationService membershipEvaluation,
+      ExternalCallFailures failures) {
     this.payments = payments;
     this.transaction = new TransactionTemplate(transactionManager);
     this.tossPaymentAdapter = tossPaymentAdapter;
@@ -36,6 +40,7 @@ public class PaymentApplicationService {
     this.notificationService = notificationService;
     this.inventoryService = inventoryService;
     this.membershipEvaluation = membershipEvaluation;
+    this.failures = failures;
   }
 
   public PaymentResult confirm(
@@ -71,6 +76,7 @@ public class PaymentApplicationService {
     try {
       result = tossPaymentAdapter.confirm(paymentKey, providerOrderId, amount);
     } catch (RuntimeException exception) {
+      failures.record(ExternalCall.TOSS_PAYMENT_CONFIRM, exception, "paymentId=" + work.paymentId());
       return transaction.execute(status -> markProviderUnknown(work.paymentId()));
     }
     return transaction.execute(status -> finalizePayment(work.paymentId(), result.status(), paymentKey));

@@ -1,5 +1,6 @@
 package com.pawcycle.backend.recommendation.application;
 
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.recommendation.model.RecommendationView.ItemView;
 import com.pawcycle.backend.recommendation.model.RecommendationView;
 import com.pawcycle.backend.recommendation.domain.RecommendationCandidate;
@@ -34,7 +35,7 @@ class RecommendationServiceTests {
     ai = mock(RecommendationAiClient.class);
     meters = new SimpleMeterRegistry();
     service =
-        new RecommendationService(repository, ai, RecommendationMetricsFixture.create(meters), Clock.systemUTC());
+        new RecommendationService(repository, ai, RecommendationMetricsFixture.create(meters), Clock.systemUTC(), new ExternalCallFailures(new SimpleMeterRegistry()));
   }
 
   @Test

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.catalog.product.application.ProductNotFoundException;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.catalog.engagement.persistence.ReviewSummaryQueryRepository;
@@ -29,16 +31,19 @@ public class ReviewSummaryService {
   private final ProductRepository products;
   private final ReviewSummaryAiClient ai;
   private final Clock clock;
+  private final ExternalCallFailures failures;
 
   public ReviewSummaryService(
       ReviewSummaryQueryRepository queries,
       ProductRepository products,
       ReviewSummaryAiClient ai,
-      Clock clock) {
+      Clock clock,
+      ExternalCallFailures failures) {
     this.queries = queries;
     this.products = products;
     this.ai = ai;
     this.clock = clock;
+    this.failures = failures;
   }
 
   public ReviewSummaryResponse summary(long productId) {
@@ -63,6 +68,7 @@ public class ReviewSummaryService {
                   .map(row -> new ReviewSummaryAiClient.ReviewInput(row.rating(), row.content()))
                   .toList());
     } catch (RuntimeException exception) {
+      failures.record(ExternalCall.OPENAI_REVIEW_SUMMARY, exception, "productId=" + productId);
       return new ReviewSummaryResponse("UNAVAILABLE", null, count, average);
     }
     if (!validAiText(generated))

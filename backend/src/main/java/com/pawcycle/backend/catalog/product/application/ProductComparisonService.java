@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.product.application;
 
+import com.pawcycle.backend.common.external.ExternalCall;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -24,10 +26,15 @@ public class ProductComparisonService {
           "prescription");
   private final ProductComparisonQueryRepository queries;
   private final ProductComparisonAiClient ai;
+  private final ExternalCallFailures failures;
 
-  public ProductComparisonService(ProductComparisonQueryRepository queries, ProductComparisonAiClient ai) {
+  public ProductComparisonService(
+      ProductComparisonQueryRepository queries,
+      ProductComparisonAiClient ai,
+      ExternalCallFailures failures) {
     this.queries = queries;
     this.ai = ai;
+    this.failures = failures;
   }
 
   public ProductComparisonResponse compare(List<Long> productIds) {
@@ -52,7 +59,8 @@ public class ProductComparisonService {
         summary = generated.trim();
         status = "AVAILABLE";
       }
-    } catch (RuntimeException ignored) {
+    } catch (RuntimeException exception) {
+      failures.record(ExternalCall.OPENAI_PRODUCT_COMPARISON, exception, "productIds=" + productIds);
     }
     return new ProductComparisonResponse(facts, status, summary);
   }

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.billing.application.SubscriptionBillingService;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
@@ -58,7 +60,8 @@ class PaymentReconciliationServiceTests {
             mock(AdminAuditService.class),
             failures,
             mock(DeliveryService.class),
-            java.time.Clock.systemUTC());
+            java.time.Clock.systemUTC(),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
 
     assertThat(service.reconcile(44L).status()).isEqualTo("FAILED");
     verify(failures).recordExplicitFailure(44L, "RECONCILED_FAILED", "DECLINED");

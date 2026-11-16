@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.engagement.application;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.pawcycle.backend.common.external.ExternalCallFailures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -38,7 +40,8 @@ class ReviewSummaryServiceTests {
                 queries,
                 products,
                 ai,
-                Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC))
+                Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC),
+                new ExternalCallFailures(new SimpleMeterRegistry()))
             .summary(1L);
 
     assertThat(response.status()).isEqualTo("INSUFFICIENT_REVIEWS");
@@ -54,7 +57,8 @@ class ReviewSummaryServiceTests {
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
     ReviewSummaryService service =
         new ReviewSummaryService(
-            queries, products, ai, Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC));
+            queries, products, ai, Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC),
+            new ExternalCallFailures(new SimpleMeterRegistry()));
     List<ReviewSummaryService.ReviewRow> reviews = reviews(3);
     stubSummary(
         queries,
@@ -83,7 +87,8 @@ class ReviewSummaryServiceTests {
               queries,
               products,
               ai,
-              Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC));
+              Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC),
+              new ExternalCallFailures(new SimpleMeterRegistry()));
       List<ReviewSummaryService.ReviewRow> reviews = reviews(3);
       stubSummary(queries, products, reviews, reviews, Optional.empty());
       when(ai.summarize(org.mockito.ArgumentMatchers.anyList())).thenReturn(aiOutput);
@@ -110,7 +115,7 @@ class ReviewSummaryServiceTests {
     stubSummary(queries, products, reviews, reviews, Optional.empty());
     when(ai.summarize(org.mockito.ArgumentMatchers.anyList()))
         .thenThrow(new IllegalStateException("provider unavailable"));
-    assertThat(new ReviewSummaryService(queries, products, ai, Clock.systemUTC()).summary(1L).status())
+    assertThat(new ReviewSummaryService(queries, products, ai, Clock.systemUTC(), new ExternalCallFailures(new SimpleMeterRegistry())).summary(1L).status())
         .isEqualTo("UNAVAILABLE");
   }
 
@@ -119,7 +124,7 @@ class ReviewSummaryServiceTests {
     ReviewSummaryQueryRepository queries = mock(ReviewSummaryQueryRepository.class);
     ProductRepository products = mock(ProductRepository.class);
     ReviewSummaryAiClient ai = mock(ReviewSummaryAiClient.class);
-    ReviewSummaryService service = new ReviewSummaryService(queries, products, ai, Clock.systemUTC());
+    ReviewSummaryService service = new ReviewSummaryService(queries, products, ai, Clock.systemUTC(), new ExternalCallFailures(new SimpleMeterRegistry()));
     List<ReviewSummaryService.ReviewRow> latest = reviews(30);
     List<ReviewSummaryService.ReviewRow> changedFull = new ArrayList<>(latest);
     changedFull.add(
@@ -155,7 +160,7 @@ class ReviewSummaryServiceTests {
         .thenReturn(false);
 
     ReviewSummaryResponse response =
-        new ReviewSummaryService(queries, products, ai, Clock.systemUTC()).summary(1L);
+        new ReviewSummaryService(queries, products, ai, Clock.systemUTC(), new ExternalCallFailures(new SimpleMeterRegistry())).summary(1L);
     assertThat(response.status()).isEqualTo("UNAVAILABLE");
     assertThat(response.summary()).isNull();
   }
