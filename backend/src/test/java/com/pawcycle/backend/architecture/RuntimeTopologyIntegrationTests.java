@@ -1,5 +1,6 @@
 package com.pawcycle.backend.architecture;
 
+import com.pawcycle.backend.common.scheduling.SchedulerNames;
 import com.pawcycle.backend.subscription.automation.SubscriptionDeliveryReminderTrigger;
 import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,11 +115,15 @@ class RuntimeTopologyIntegrationTests {
       var schedule = Class.forName(ROOT + "subscription.automation." + names[0])
           .getDeclaredMethod(names[1]).getAnnotation(Scheduled.class);
       assertThat(schedule.fixedDelayString()).isEqualTo(entry.getValue());
-      assertThat(schedule.scheduler()).isEqualTo(names[0].equals("SubscriptionMetrics") ? "idempotencyMetricsTaskScheduler" : "");
+      assertThat(schedule.scheduler()).isEqualTo(names[0].equals("SubscriptionMetrics") ? SchedulerNames.METRICS : "");
     }
-    var scheduler = context.getBean("idempotencyMetricsTaskScheduler", ThreadPoolTaskScheduler.class);
-    assertThat(scheduler.getPoolSize()).isEqualTo(1);
-    assertThat(scheduler.getThreadNamePrefix()).isEqualTo("idempotency-metrics-");
+    var scheduler = context.getBean(SchedulerNames.METRICS, ThreadPoolTaskScheduler.class);
+    // Configured size: getPoolSize() counts threads created so far.
+    assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize()).isEqualTo(1);
+    assertThat(scheduler.getThreadNamePrefix()).isEqualTo("metrics-refresh-");
+    var providerCalls = context.getBean(SchedulerNames.PROVIDER_CALLS, ThreadPoolTaskScheduler.class);
+    assertThat(providerCalls.getScheduledThreadPoolExecutor().getCorePoolSize()).isEqualTo(1);
+    assertThat(providerCalls.getThreadNamePrefix()).isEqualTo("provider-call-");
     var meters = context.getBean(MeterRegistry.class);
     assertThat(meters.find("pawcycle.recommendation.ai.outcomes").tag("result", "success").counter()).isNotNull();
     assertThat(meters.find("pawcycle.recommendation.ai.outcomes").tag("result", "fallback").counter()).isNotNull();

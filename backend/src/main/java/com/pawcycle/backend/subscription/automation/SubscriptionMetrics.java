@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.SchedulerNames;
 import com.pawcycle.backend.common.scheduling.ScheduledJob;
 import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import io.micrometer.core.instrument.Counter;
@@ -91,7 +92,7 @@ public class SubscriptionMetrics {
   }
 
   @Scheduled(
-      scheduler = "idempotencyMetricsTaskScheduler",
+      scheduler = SchedulerNames.METRICS,
       fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}",
       initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   void refreshIdempotencyGauges() {

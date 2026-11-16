@@ -1,5 +1,13 @@
 package com.pawcycle.backend.subscription;
 
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
+import com.pawcycle.backend.commerce.billing.application.SubscriptionBillingProcessor;
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
@@ -88,6 +96,8 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private JdbcTemplate nativeJdbc;
   @MockitoSpyBean private com.pawcycle.backend.subscription.persistence.SubscriptionOrderPersistence orderRows;
+  @MockitoBean private TossBillingAdapter billingProvider;
+  @Autowired private SubscriptionBillingProcessor billingProcessor;
 
   private TransactionalTestSql jdbc;
   private Member member;
@@ -692,6 +702,71 @@ class SubscriptionOrderAutomationServiceIntegrationTests {
     } finally {
       executor.shutdownNow();
     }
+  }
+
+  /**
+   * O7: billing now runs on its own scheduler thread, so it can overlap order automation. While the
+   * previous round's billing payment is being charged, automation must not order the next round;
+   * once the charge succeeds, the next round is ordered exactly once and nothing is charged twice.
+   */
+  @Test
+  void billingChargeInProgressBlocksNextRoundUntilItSucceeds() throws Exception {
+    long subscriptionId = createSubscription("billing-overlap", basePlanVersionId, 2);
+    moveOnlyUnprocessedSchedule(subscriptionId, TODAY.minusDays(1));
+    assertThat(automation.processDueSchedules(1).ordersCreated()).isEqualTo(1);
+    long firstPayment = jdbc.queryForObject(
+        "SELECT payment.id FROM payments payment JOIN subscription_order_context context"
+            + " ON context.order_id=payment.order_id WHERE context.subscription_id=?"
+            + " AND payment.type='BILLING' AND payment.status='READY'",
+        Long.class, subscriptionId);
+    moveOnlyUnprocessedSchedule(subscriptionId, TODAY);
+
+    CountDownLatch charging = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    when(billingProvider.isConfigured()).thenReturn(true);
+    when(billingProvider.charge(anyString(), anyString(), any())).thenAnswer(invocation -> {
+      charging.countDown();
+      assertThat(release.await(15, TimeUnit.SECONDS)).isTrue();
+      return new TossBillingAdapter.ChargeResult("SUCCEEDED", "DONE");
+    });
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> billing = executor.submit(() -> billingProcessor.process(firstPayment));
+      assertThat(charging.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, firstPayment))
+          .isEqualTo("PROCESSING");
+
+      SubscriptionAutomationBatchResult whileCharging =
+          executor.submit(() -> automation.processDueSchedules(1)).get(15, TimeUnit.SECONDS);
+      assertThat(whileCharging.ordersCreated()).isZero();
+      assertThat(orderCount(subscriptionId)).isEqualTo(1);
+
+      release.countDown();
+      billing.get(15, TimeUnit.SECONDS);
+      assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, firstPayment))
+          .isEqualTo("SUCCEEDED");
+      assertThat(automation.processDueSchedules(1).ordersCreated()).isEqualTo(1);
+      assertThat(automation.processDueSchedules(1).ordersCreated()).isZero();
+      assertThat(orderCount(subscriptionId)).isEqualTo(2);
+      verify(billingProvider, times(1)).charge(anyString(), anyString(), any());
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+      cleanBillingSuccessEffects();
+    }
+  }
+
+  /** Rows created by a successful charge that the shared cleanup does not remove. */
+  private void cleanBillingSuccessEffects() {
+    String memberFilter =
+        "SELECT id FROM members WHERE email LIKE '" + EMAIL_PREFIX + "%@example.test'";
+    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+      jdbc.update("DELETE delivery FROM deliveries delivery JOIN orders common_order"
+          + " ON common_order.id=delivery.order_id WHERE common_order.member_id IN (" + memberFilter + ")");
+      jdbc.update("DELETE FROM notifications WHERE member_id IN (" + memberFilter + ")");
+      jdbc.update("DELETE FROM membership_histories WHERE member_id IN (" + memberFilter + ")");
+      jdbc.update("DELETE FROM member_memberships WHERE member_id IN (" + memberFilter + ")");
+    });
   }
 
   @Test

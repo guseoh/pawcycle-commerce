@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.metrics.application;
 
+import com.pawcycle.backend.common.scheduling.SchedulerNames;
 import com.pawcycle.backend.common.scheduling.ScheduledJob;
 import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import com.pawcycle.backend.commerce.metrics.persistence.CommerceMetricsQueryRepository;
@@ -78,6 +79,7 @@ public class CommerceMetrics {
   }
 
   @Scheduled(
+      scheduler = SchedulerNames.METRICS,
       fixedDelayString = "${pawcycle.commerce.operations.refresh-ms:60000}",
       initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   public void refreshPending() {

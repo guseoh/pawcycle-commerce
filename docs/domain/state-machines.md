@@ -88,13 +88,17 @@ Confirm:   [트랜잭션 1] READY → PROCESSING
 
 ## 6. 스케줄러 목록
 
-| 스케줄러 | 역할 | 기본 주기 |
-| --- | --- | --- |
-| `CheckoutExpirationTrigger` | 결제 대기 주문 만료 | 60초 |
-| `SubscriptionBillingTrigger` | 정기결제 실행 | 60초 |
-| `SubscriptionOrderAutomationTrigger` | 구독 회차 주문 생성 | 60초 |
-| `ScheduleReconciliationTrigger` | 회차 정합성 보정 | 60초 |
-| `SubscriptionDeliveryReminderProcessor` | 배송 예정 알림 | 60초 |
-| `CommerceMetrics`, `SubscriptionMetrics` | 운영 지표 갱신 | 설정값 |
+2026-11-17 기준(OBS-SCHED-001). 모든 작업은 `ScheduledJobRunner`를 거쳐 실행 횟수, 실패, 소요 시간, 마지막 성공 시각을 기록한다(`pawcycle.job.*`).
 
-모든 스케줄러는 인스턴스마다 독립적으로 돈다. 분산 잠금이 없으므로, 두 인스턴스가 동시에 떠 있으면 같은 작업을 함께 실행한다. 이때의 정합성은 각 작업의 DB 잠금과 CAS에 기대며, 아직 검증하지 않았다([알려진 위험](../architecture/known-risks.md)).
+| 스케줄러 | 역할 | 기본 | 스레드 |
+| --- | --- | --- | --- |
+| `CheckoutExpirationTrigger` | 결제 대기 주문 만료 | 켜짐, 60초 | 기본(`scheduling-1`) |
+| `SubscriptionOrderAutomationTrigger` | 구독 회차 주문 생성 | 꺼짐, 60초 | 기본 |
+| `ScheduleReconciliationTrigger` | 회차 정합성 보정 | 꺼짐, 60초 | 기본 |
+| `SubscriptionDeliveryReminderTrigger` | 배송 예정 알림 | 꺼짐, 60초 | 기본 |
+| `SubscriptionIdempotencyCleanupTrigger` | 멱등성 결과 30일 보존 정리(R9) | 꺼짐, 1시간 | 기본 |
+| `SubscriptionBillingTrigger` | 정기결제 청구(결제사 호출) | 꺼짐, 60초 | 결제사 호출 전용(`provider-call-`) |
+| `CommerceMetrics`, `SubscriptionBacklogMetrics`, `SubscriptionMetrics` | 운영 지표 갱신 | 켜짐, 60초 | 지표 전용(`metrics-refresh-`) |
+
+- **스레드 배치(O7):** DB 업무 작업끼리는 기본 스레드 하나에서 차례로 돈다. 결제사를 기다리는 정기결제(건당 최대 10초)와 지표 갱신은 각자 전용 스레드에서 돌아서, 서로를 막지 않는다. 그래서 정기결제는 다른 업무 작업과 동시에 돌 수 있다. 앞 회차 결제가 처리 중이면 구독 자동화가 다음 회차를 만들지 않는 것을 `billingChargeInProgressBlocksNextRoundUntilItSucceeds`로 확인한다.
+- **다중 인스턴스:** 분산 잠금은 없다. 같은 작업이 두 인스턴스에서 동시에 돌아도 중복 효과가 없음을 작업별 동시 실행 테스트로 확인했다([알려진 위험](../architecture/known-risks.md) R2).
