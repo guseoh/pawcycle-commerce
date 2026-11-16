@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,7 +24,8 @@ class SubscriptionMetricsTests {
     SubscriptionMetricsQueryRepository queries = org.mockito.Mockito.mock(SubscriptionMetricsQueryRepository.class);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     new SubscriptionMetrics(
-        registry, queries, Clock.systemUTC());
+        registry, queries, Clock.systemUTC(),
+        new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
 
     assertThat(
             registry
@@ -62,7 +64,7 @@ class SubscriptionMetricsTests {
     Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     SubscriptionMetrics metrics =
-        new SubscriptionMetrics(registry, queries, clock);
+        new SubscriptionMetrics(registry, queries, clock, new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
     when(queries.countCompletedRows(true)).thenReturn(11L);
     when(queries.countCompletedRows(false)).thenReturn(22L);
     when(queries.countCleanupCandidates(eq(true), any(LocalDateTime.class))).thenReturn(3L);
@@ -176,7 +178,7 @@ class SubscriptionMetricsTests {
     Clock clock = Clock.fixed(Instant.parse("2026-08-09T00:00:00Z"), ZoneOffset.UTC);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     SubscriptionMetrics metrics =
-        new SubscriptionMetrics(registry, queries, clock);
+        new SubscriptionMetrics(registry, queries, clock, new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
     var persistence = org.mockito.Mockito.mock(
         com.pawcycle.backend.subscription.persistence.SubscriptionIdempotencyCleanupPersistence.class);
     SubscriptionIdempotencyCleanupProcessor cleanup =

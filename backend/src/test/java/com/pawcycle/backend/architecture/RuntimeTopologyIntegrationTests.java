@@ -1,5 +1,7 @@
 package com.pawcycle.backend.architecture;
 
+import com.pawcycle.backend.subscription.automation.SubscriptionDeliveryReminderTrigger;
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -105,7 +107,7 @@ class RuntimeTopologyIntegrationTests {
     Map<String, String> schedules = Map.of(
         "ScheduleReconciliationTrigger#reconcileActiveSubscriptions", "${pawcycle.subscription.reconciliation.fixed-delay-ms:60000}",
         "SubscriptionOrderAutomationTrigger#processDueSchedules", "${pawcycle.subscription.automation.fixed-delay-ms:60000}",
-        "SubscriptionDeliveryReminderProcessor#process", "${pawcycle.subscription.delivery-reminder.fixed-delay-ms:60000}",
+        "SubscriptionDeliveryReminderTrigger#remind", "${pawcycle.subscription.delivery-reminder.fixed-delay-ms:60000}",
         "SubscriptionMetrics#refreshIdempotencyGauges", "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}");
     for (var entry : schedules.entrySet()) {
       String[] names = entry.getKey().split("#");
@@ -130,7 +132,8 @@ class RuntimeTopologyIntegrationTests {
     // Component-only context has no scheduling processor, so enabling discovery does not execute jobs.
     var runner = new ApplicationContextRunner()
         .withUserConfiguration(ScheduleReconciliationTrigger.class, SubscriptionOrderAutomationTrigger.class,
-            SubscriptionDeliveryReminderProcessor.class)
+            SubscriptionDeliveryReminderProcessor.class, SubscriptionDeliveryReminderTrigger.class)
+        .withBean(ScheduledJobRunner.class, () -> mock(ScheduledJobRunner.class))
         .withBean(SubscriptionReconciliationApplicationService.class, () -> mock(SubscriptionReconciliationApplicationService.class))
         .withBean(SubscriptionOrderAutomationService.class, () -> mock(SubscriptionOrderAutomationService.class))
         .withBean(SubscriptionDeliveryReminderPersistence.class, () -> mock(SubscriptionDeliveryReminderPersistence.class))
@@ -139,14 +142,16 @@ class RuntimeTopologyIntegrationTests {
     runner.run(ctx -> {
       assertThat(ctx).doesNotHaveBean(ScheduleReconciliationTrigger.class)
           .doesNotHaveBean(SubscriptionOrderAutomationTrigger.class)
-          .doesNotHaveBean(SubscriptionDeliveryReminderProcessor.class);
+          .doesNotHaveBean(SubscriptionDeliveryReminderProcessor.class)
+          .doesNotHaveBean(SubscriptionDeliveryReminderTrigger.class);
     });
     runner.withPropertyValues("pawcycle.subscription.reconciliation.enabled=true",
         "pawcycle.subscription.automation.enabled=true", "pawcycle.subscription.delivery-reminder.enabled=true")
         .run(ctx -> {
           assertThat(ctx).hasSingleBean(ScheduleReconciliationTrigger.class)
               .hasSingleBean(SubscriptionOrderAutomationTrigger.class)
-              .hasSingleBean(SubscriptionDeliveryReminderProcessor.class);
+              .hasSingleBean(SubscriptionDeliveryReminderProcessor.class)
+              .hasSingleBean(SubscriptionDeliveryReminderTrigger.class);
           assertThat(ReflectionTestUtils.getField(ctx.getBean(SubscriptionOrderAutomationTrigger.class), "batchSize")).isEqualTo(100);
           assertThat(ReflectionTestUtils.getField(ctx.getBean(SubscriptionDeliveryReminderProcessor.class), "windowDays")).isEqualTo(3);
         });

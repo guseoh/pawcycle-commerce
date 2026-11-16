@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.ScheduledJob;
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -19,6 +21,7 @@ public class SubscriptionMetrics {
   private static final String CREATION_TABLE = "subscription_creation_idempotency_results";
   private static final String COMMAND_TABLE = "subscription_command_idempotency_results";
 
+  private final ScheduledJobRunner jobs;
   private final MeterRegistry registry;
   private final SubscriptionMetricsQueryRepository queries;
   private final Clock clock;
@@ -39,7 +42,11 @@ public class SubscriptionMetrics {
   private final Counter gaugeRefreshFailures;
 
   public SubscriptionMetrics(
-      MeterRegistry registry, SubscriptionMetricsQueryRepository queries, Clock clock) {
+      MeterRegistry registry,
+      SubscriptionMetricsQueryRepository queries,
+      Clock clock,
+      ScheduledJobRunner jobs) {
+    this.jobs = jobs;
     this.registry = registry;
     this.queries = queries;
     this.clock = clock;
@@ -87,6 +94,10 @@ public class SubscriptionMetrics {
       scheduler = "idempotencyMetricsTaskScheduler",
       fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}")
   void refreshIdempotencyGauges() {
+    jobs.run(ScheduledJob.IDEMPOTENCY_METRICS_REFRESH, this::refreshIdempotencyGaugesOnce);
+  }
+
+  private void refreshIdempotencyGaugesOnce() {
     try {
       idempotencyGaugeSnapshot.set(
           new IdempotencyGaugeSnapshot(
@@ -97,6 +108,7 @@ public class SubscriptionMetrics {
       lastGaugeRefresh.set(clock.instant());
     } catch (RuntimeException exception) {
       gaugeRefreshFailures.increment();
+      throw exception; // the runner records and logs the failed run
     }
   }
 

@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce.billing.application;
 
+import com.pawcycle.backend.common.scheduling.ScheduledJob;
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -9,13 +11,15 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "pawcycle.commerce.billing", name = "enabled", havingValue = "true")
 class SubscriptionBillingTrigger {
   private final SubscriptionBillingProcessor processor;
+  private final ScheduledJobRunner jobs;
 
-  SubscriptionBillingTrigger(SubscriptionBillingProcessor processor) {
+  SubscriptionBillingTrigger(SubscriptionBillingProcessor processor, ScheduledJobRunner jobs) {
     this.processor = processor;
+    this.jobs = jobs;
   }
 
   @Scheduled(fixedDelayString = "${pawcycle.commerce.billing.fixed-delay-ms:60000}")
   void processReady() {
-    processor.processReadyPayments();
+    jobs.run(ScheduledJob.SUBSCRIPTION_BILLING, processor::processReadyPayments);
   }
 }

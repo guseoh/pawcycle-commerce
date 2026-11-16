@@ -1,5 +1,6 @@
 package com.pawcycle.backend.common.external;
 
+import com.pawcycle.backend.common.logging.RedactedFailure;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.EnumMap;

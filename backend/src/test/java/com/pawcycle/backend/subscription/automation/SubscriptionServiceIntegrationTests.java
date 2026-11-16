@@ -1,5 +1,6 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import com.pawcycle.backend.subscription.domain.SubscriptionFailure;
 import com.pawcycle.backend.subscription.application.SubscriptionResult;
 import com.pawcycle.backend.subscription.application.SubscriptionService;
@@ -463,7 +464,8 @@ class SubscriptionServiceIntegrationTests {
             registry,
             new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
                 entities),
-            cleanupClock);
+            cleanupClock,
+            new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
             cleanupPersistence,
@@ -562,7 +564,8 @@ class SubscriptionServiceIntegrationTests {
             registry,
             new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(
                 entities),
-            cleanupClock);
+            cleanupClock,
+            new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
     SubscriptionIdempotencyCleanupProcessor cleanup =
         new SubscriptionIdempotencyCleanupProcessor(
             cleanupPersistence,
@@ -943,7 +946,8 @@ class SubscriptionServiceIntegrationTests {
     Clock cleanupClock = Clock.fixed(now, ZoneId.of("Asia/Seoul"));
     SubscriptionMetrics metrics = new SubscriptionMetrics(new SimpleMeterRegistry(),
         new com.pawcycle.backend.subscription.persistence.SubscriptionMetricsQueryRepository(entities),
-        cleanupClock);
+        cleanupClock,
+        new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
     return new SubscriptionIdempotencyCleanupProcessor(
         cleanupPersistence,
         cleanupClock, metrics);
