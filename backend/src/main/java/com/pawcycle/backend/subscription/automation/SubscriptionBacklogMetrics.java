@@ -53,7 +53,9 @@ public class SubscriptionBacklogMetrics {
     }
   }
 
-  @Scheduled(fixedDelayString = "${pawcycle.subscription.backlog.metrics-refresh-ms:60000}")
+  @Scheduled(
+      fixedDelayString = "${pawcycle.subscription.backlog.metrics-refresh-ms:60000}",
+      initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   public void refresh() {
     jobs.run(ScheduledJob.SUBSCRIPTION_BACKLOG_METRICS_REFRESH, this::refreshOnce);
   }

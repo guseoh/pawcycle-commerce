@@ -92,7 +92,8 @@ public class SubscriptionMetrics {
 
   @Scheduled(
       scheduler = "idempotencyMetricsTaskScheduler",
-      fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}")
+      fixedDelayString = "${pawcycle.subscription.idempotency.metrics-refresh-ms:60000}",
+      initialDelayString = "${pawcycle.metrics.refresh.initial-delay-ms:0}")
   void refreshIdempotencyGauges() {
     jobs.run(ScheduledJob.IDEMPOTENCY_METRICS_REFRESH, this::refreshIdempotencyGaugesOnce);
   }
