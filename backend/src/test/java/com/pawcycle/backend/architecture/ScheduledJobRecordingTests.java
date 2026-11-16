@@ -35,7 +35,7 @@ class ScheduledJobRecordingTests {
         if (!callsRunner) missing.add(name);
       }
     }
-    assertThat(scheduled).hasSize(7);
+    assertThat(scheduled).hasSize(9);
     assertThat(missing).as("@Scheduled methods must call ScheduledJobRunner.run").isEmpty();
   }
 }

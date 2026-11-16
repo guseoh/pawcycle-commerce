@@ -8,7 +8,9 @@ public enum ScheduledJob {
   SUBSCRIPTION_ORDER_AUTOMATION("subscription-order-automation"),
   SUBSCRIPTION_DELIVERY_REMINDER("subscription-delivery-reminder"),
   COMMERCE_METRICS_REFRESH("commerce-metrics-refresh"),
-  IDEMPOTENCY_METRICS_REFRESH("idempotency-metrics-refresh");
+  IDEMPOTENCY_METRICS_REFRESH("idempotency-metrics-refresh"),
+  SUBSCRIPTION_BACKLOG_METRICS_REFRESH("subscription-backlog-metrics-refresh"),
+  IDEMPOTENCY_CLEANUP("idempotency-cleanup");
 
   private final String tag;
 

@@ -48,7 +48,9 @@ class ObservabilityIntegrationTests {
           "pawcycle.subscription.idempotency.cleanup.candidates",
           "pawcycle.subscription.idempotency.metrics.refresh.failures",
           "pawcycle.subscription.idempotency.metrics.refresh.last.success",
-          "pawcycle.subscription.idempotency.metrics.refresh.age.seconds");
+          "pawcycle.subscription.idempotency.metrics.refresh.age.seconds",
+          "pawcycle.subscription.schedules.overdue",
+          "pawcycle.subscription.schedules.held");
 
   @Autowired private WebApplicationContext applicationContext;
   @Autowired private MeterRegistry meterRegistry;
@@ -133,10 +135,14 @@ class ObservabilityIntegrationTests {
                     .getTags()
                     .forEach(
                         tag -> {
-                          assertThat(tag.getKey()).isIn("scope", "operation", "result");
+                          assertThat(tag.getKey()).isIn("scope", "operation", "result", "reason");
                           assertThat(tag.getValue())
                               .isIn(
-                                  "creation", "command", "repair", "delete", "success", "failure");
+                                  "creation", "command", "repair", "delete", "success", "failure",
+                                  // schedules.held: the fixed hold reasons of subscription_schedules
+                                  "missing_shipping_address", "missing_billing_method",
+                                  "payment_retry_exhausted", "payment_retry_stock_unavailable",
+                                  "order_stock_unavailable");
                         }));
     assertThat(customMeters)
         .allSatisfy(
