@@ -39,15 +39,13 @@ class LogCorrelationOutputTests {
   }
 
   @Test
-  void jsonLogsCarryEveryCorrelationKeyAsAField(CapturedOutput output) {
-    try (ConfigurableApplicationContext ignored = start("ecs")) {
-      MDC.put("jobName", "checkout-expiration");
-      logWith("jobRunId", "run-json-1");
-      MDC.clear();
-    }
-    String line = output.getOut().lines()
-        .filter(candidate -> candidate.contains("correlation probe"))
-        .findFirst().orElseThrow();
+  void jsonLogsCarryEveryCorrelationKeyAsAField() {
+    // Rendered with Spring Boot's ECS encoder in an isolated context: re-initializing the shared
+    // logging system is skipped while other test contexts are open, so it cannot be relied on.
+    String line = EcsLogLines.render(
+        LogCorrelationOutputTests.class.getName(), "correlation probe",
+        java.util.Map.of("jobName", "checkout-expiration", "jobRunId", "run-json-1"), java.util.List.of());
+
     assertThat(line)
         .startsWith("{")
         .contains("\"jobRunId\":\"run-json-1\"")

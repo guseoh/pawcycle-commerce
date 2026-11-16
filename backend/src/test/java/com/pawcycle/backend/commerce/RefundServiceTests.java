@@ -101,7 +101,7 @@ class RefundServiceTests {
     verify(provider).reconcile("refund-key");
     verify(provider, never()).refund(anyString(), any());
     assertThat(output.getOut())
-        .contains("event=refund.finished refundId=91 orderId=11 providerStatus=UNKNOWN outcome=PROCESSING");
+        .contains("event=refund.finished refundId=91 orderId=11 providerStatus=NO_RESPONSE outcome=PROCESSING");
   }
 
   @Test

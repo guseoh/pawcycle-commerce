@@ -109,18 +109,20 @@ public class PaymentReconciliationService {
 
     ProviderResult observation = observed;
     boolean billingFailure = transaction.execute(status -> complete(id, adminId, observation));
+    // Recorded once the reconciliation result is committed, before the retry preparation below:
+    // after the last billing attempt that preparation refuses with an exception.
+    PaymentReconciliationResult committed = response(payments.find(id));
+    BusinessEvent.of(BusinessEvent.Name.PAYMENT_RECONCILED)
+        .with(BusinessEvent.Field.PAYMENT_ID, committed.paymentId())
+        .with(BusinessEvent.Field.ORDER_ID, committed.orderId())
+        .with(BusinessEvent.Field.PROVIDER_STATUS, observation.providerStatus())
+        .with(BusinessEvent.Field.OUTCOME, committed.status())
+        .log();
     if (billingFailure) {
       billingFailures.recordExplicitFailure(id, "RECONCILED_FAILED", observation.providerStatus());
       billingFailures.prepareNextAttempt(id);
     }
-    PaymentReconciliationResult reconciled = response(payments.find(id));
-    BusinessEvent.of(BusinessEvent.Name.PAYMENT_RECONCILED)
-        .with(BusinessEvent.Field.PAYMENT_ID, reconciled.paymentId())
-        .with(BusinessEvent.Field.ORDER_ID, reconciled.orderId())
-        .with(BusinessEvent.Field.PROVIDER_STATUS, observation.status())
-        .with(BusinessEvent.Field.OUTCOME, reconciled.status())
-        .log();
-    return reconciled;
+    return response(payments.find(id));
   }
 
   /** Internal query-only boundary; no public HTTP recovery command or local finalization. */

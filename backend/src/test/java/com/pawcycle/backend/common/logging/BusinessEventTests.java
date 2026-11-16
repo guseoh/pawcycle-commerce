@@ -4,16 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pawcycle.backend.common.logging.BusinessEvent.Field;
 import com.pawcycle.backend.common.logging.BusinessEvent.Name;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(OutputCaptureExtension.class)
@@ -24,11 +19,6 @@ class BusinessEventTests {
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.clearSynchronization();
     }
-  }
-
-  @AfterAll
-  static void restoreTextLogging() {
-    start("").close();
   }
 
   @Test
@@ -77,27 +67,16 @@ class BusinessEventTests {
   }
 
   @Test
-  void jsonLinesCarryTheEventAndFieldsAsMembers(CapturedOutput output) {
-    try (ConfigurableApplicationContext ignored = start("ecs")) {
-      BusinessEvent.of(Name.PAYMENT_EXPIRED).with(Field.PAYMENT_ID, 21).with(Field.ORDER_ID, 5).log();
-    }
-    String line = output.getOut().lines()
-        .filter(candidate -> candidate.contains("payment.expired"))
-        .findFirst().orElseThrow();
+  void jsonLinesCarryTheEventAndFieldsAsMembers() {
+    BusinessEvent event = BusinessEvent.of(Name.PAYMENT_EXPIRED).with(Field.PAYMENT_ID, 21).with(Field.ORDER_ID, 5);
+
+    String line = EcsLogLines.render(BusinessEvent.LOGGER, event.text(), java.util.Map.of(), event.keyValues());
+
     assertThat(line)
         .startsWith("{")
+        .contains("\"message\":\"event=payment.expired paymentId=21 orderId=5\"")
         .contains("\"businessEvent\":\"payment.expired\"")
         .contains("\"paymentId\":21")
         .contains("\"orderId\":5");
   }
-
-  private static ConfigurableApplicationContext start(String format) {
-    return new SpringApplicationBuilder(Empty.class)
-        .web(WebApplicationType.NONE)
-        .properties("PAWCYCLE_LOG_FORMAT=" + format, "spring.main.banner-mode=off")
-        .run();
-  }
-
-  @Configuration(proxyBeanMethods = false)
-  static class Empty {}
 }

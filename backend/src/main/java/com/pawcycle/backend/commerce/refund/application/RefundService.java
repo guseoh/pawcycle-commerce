@@ -173,7 +173,7 @@ public class RefundService {
     BusinessEvent.of(BusinessEvent.Name.REFUND_FINISHED)
         .with(BusinessEvent.Field.REFUND_ID, completed.refundId())
         .with(BusinessEvent.Field.ORDER_ID, completed.orderId())
-        .with(BusinessEvent.Field.PROVIDER_STATUS, result.status())
+        .with(BusinessEvent.Field.PROVIDER_STATUS, result.providerStatus())
         .with(BusinessEvent.Field.OUTCOME, completed.status())
         .log();
     return completed;

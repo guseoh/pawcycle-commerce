@@ -111,11 +111,21 @@ public class SubscriptionBillingProcessor {
       failures.record(ExternalCall.TOSS_BILLING_CHARGE, exception, "paymentId=" + paymentId);
       result = new TossBillingAdapter.ChargeResult("UNKNOWN", "NO_RESPONSE");
     }
-    if ("SUCCEEDED".equals(result.status())) completeSuccess(paymentId, result.providerStatus());
-    else if ("FAILED".equals(result.status())) {
+    if ("SUCCEEDED".equals(result.status())) {
+      completeSuccess(paymentId, result.providerStatus());
+      chargeFinished(paymentId, result);
+    } else if ("FAILED".equals(result.status())) {
       retries.recordExplicitFailure(paymentId, "TOSS_REJECTED");
+      // Recorded before the next attempt is prepared: after the last attempt that step throws.
+      chargeFinished(paymentId, result);
       retries.prepareNextAttempt(paymentId);
-    } else markUnknown(paymentId, result.providerStatus());
+    } else {
+      markUnknown(paymentId, result.providerStatus());
+      chargeFinished(paymentId, result);
+    }
+  }
+
+  private static void chargeFinished(long paymentId, TossBillingAdapter.ChargeResult result) {
     BusinessEvent.of(BusinessEvent.Name.BILLING_CHARGE_FINISHED)
         .with(BusinessEvent.Field.PAYMENT_ID, paymentId)
         .with(BusinessEvent.Field.PROVIDER_STATUS, result.providerStatus())

@@ -1,5 +1,8 @@
 package com.pawcycle.backend.common.logging;
 
+import org.slf4j.event.KeyValuePair;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -115,14 +118,25 @@ public final class BusinessEvent {
   }
 
   void write() {
+    LoggingEventBuilder builder = log.atInfo();
+    for (KeyValuePair pair : keyValues()) builder = builder.addKeyValue(pair.key, pair.value);
+    builder.log(text());
+  }
+
+  /** {@code event=<name> key=value ...} in the order the fields were added. */
+  String text() {
     StringJoiner text = new StringJoiner(" ");
     text.add("event=" + name.value());
-    // "businessEvent", not "event": ECS reserves event.* for its own object.
-    LoggingEventBuilder builder = log.atInfo().addKeyValue("businessEvent", name.value());
-    for (var entry : fields.entrySet()) {
-      text.add(entry.getKey().key() + "=" + entry.getValue());
-      builder = builder.addKeyValue(entry.getKey().key(), entry.getValue());
-    }
-    builder.log(text.toString());
+    fields.forEach((field, value) -> text.add(field.key() + "=" + value));
+    return text.toString();
   }
+
+  /** JSON members. "businessEvent", not "event": ECS reserves event.* for its own object. */
+  List<KeyValuePair> keyValues() {
+    List<KeyValuePair> pairs = new ArrayList<>();
+    pairs.add(new KeyValuePair("businessEvent", name.value()));
+    fields.forEach((field, value) -> pairs.add(new KeyValuePair(field.key(), value)));
+    return pairs;
+  }
+
 }
