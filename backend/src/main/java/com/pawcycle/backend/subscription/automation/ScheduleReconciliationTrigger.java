@@ -1,5 +1,7 @@
 package com.pawcycle.backend.subscription.automation;
 
+import com.pawcycle.backend.common.scheduling.ScheduledJob;
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import com.pawcycle.backend.subscription.application.SubscriptionReconciliationApplicationService;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,13 +20,16 @@ import org.springframework.stereotype.Component;
 public class ScheduleReconciliationTrigger {
 
   private final SubscriptionReconciliationApplicationService service;
+  private final ScheduledJobRunner jobs;
 
-  public ScheduleReconciliationTrigger(SubscriptionReconciliationApplicationService service) {
+  public ScheduleReconciliationTrigger(
+      SubscriptionReconciliationApplicationService service, ScheduledJobRunner jobs) {
     this.service = service;
+    this.jobs = jobs;
   }
 
   @Scheduled(fixedDelayString = "${pawcycle.subscription.reconciliation.fixed-delay-ms:60000}")
   public void reconcileActiveSubscriptions() {
-    service.reconcileActiveSubscriptions();
+    jobs.run(ScheduledJob.SUBSCRIPTION_RECONCILIATION, service::reconcileActiveSubscriptions);
   }
 }

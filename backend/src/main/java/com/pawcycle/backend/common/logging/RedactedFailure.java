@@ -1,4 +1,4 @@
-package com.pawcycle.backend.common.external;
+package com.pawcycle.backend.common.logging;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -7,9 +7,10 @@ import java.util.Set;
 /**
  * A log-only copy of a failure that keeps each exception type and stack frame but drops every
  * message. Exception messages can echo provider response text (for example a JSON parser quoting an
- * unexpected token such as a payment key), so they are never logged for external calls.
+ * unexpected token such as a payment key) or SQL values, so they are never logged by the shared
+ * failure recorders.
  */
-final class RedactedFailure extends RuntimeException {
+public final class RedactedFailure extends RuntimeException {
   private static final int MAX_CAUSES = 16;
 
   private RedactedFailure(Throwable original, Throwable cause) {
@@ -17,7 +18,7 @@ final class RedactedFailure extends RuntimeException {
     setStackTrace(original.getStackTrace());
   }
 
-  static RedactedFailure of(Throwable failure) {
+  public static RedactedFailure of(Throwable failure) {
     return copy(failure, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
   }
 

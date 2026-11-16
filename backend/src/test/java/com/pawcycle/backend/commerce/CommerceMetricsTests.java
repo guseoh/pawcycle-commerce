@@ -1,5 +1,7 @@
 package com.pawcycle.backend.commerce;
 
+import java.time.Clock;
+import com.pawcycle.backend.common.scheduling.ScheduledJobRunner;
 import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +20,7 @@ class CommerceMetricsTests {
     when(queries.countPendingOperations()).thenReturn((long) Integer.MAX_VALUE + 100L);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     CommerceMetrics metrics =
-        new CommerceMetrics(registry, queries);
+        new CommerceMetrics(registry, queries, new ScheduledJobRunner(new SimpleMeterRegistry(), Clock.systemUTC()));
 
     metrics.refreshPending();
 
