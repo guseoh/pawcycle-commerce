@@ -50,6 +50,7 @@ ADR 원문의 상태 표기는 작성 당시 값이다. Lean Harness §15(과거
 | [ARCH-013](ARCH-013-rds-single-az.md) | RDS Single-AZ 전환 준비 | Approved (저장소 준비) | 대체됨 | AWS 운영 종료 후 OCI로 전환. [운영 개요](../architecture/production-operations-overview.md) |
 | [ARCH-014](ARCH-014-product-list-redis-cache.md) | 상품 목록 Redis cache | Accepted | 유효 | `ProductListCacheInvalidator` |
 | [ARCH-015](ARCH-015-ai-product-recommendation-boundary.md) | AI 상품 추천 경계 | Accepted | 유효 | 서버 후보 검증 후 AI 재정렬. 기본 비활성(`PAWCYCLE_RECOMMENDATION_AI_ENABLED=false`) |
+| [AUTH-005](AUTH-005-spring-session-redis.md) | 세션 저장소 Spring Session Redis | Approved | 유효 | `common/security/SessionStoreConfiguration`. 기본 `memory`, 운영 활성화는 별도 승인([AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)) |
 
 ### 승인 과정 기록
 
