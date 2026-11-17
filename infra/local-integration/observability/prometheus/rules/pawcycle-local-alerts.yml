@@ -3,6 +3,8 @@
 # The first two rules keep their original expressions: INC-BASE-001 depends on their timing.
 # Links assume the default local Grafana port 3001; first checks are in OBS-002.
 # Scheduled-job metrics use job_name: the job label is the scrape target (pawcycle-backend).
+# keep_firing_for on backlog/state gauges: a backend restart drops the series for about a minute,
+# which otherwise sends a false RESOLVED before the cause is fixed (OBS-STACK-002 rehearsal).
 groups:
   - name: pawcycle-local-alerts
     rules:
@@ -46,6 +48,7 @@ groups:
       - alert: PawCycleStuckProcessingPayment
         expr: pawcycle_payment_stuck{kind="normal_processing"} > 0
         for: 1m
+        keep_firing_for: 2m
         labels:
           scope: local
           severity: critical
@@ -59,6 +62,7 @@ groups:
       - alert: PawCycleUnknownPaymentAging
         expr: pawcycle_payment_stuck_oldest_age_seconds{kind="unknown"} > 1800
         for: 5m
+        keep_firing_for: 2m
         labels:
           scope: local
           severity: critical
@@ -100,8 +104,11 @@ groups:
           runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleapiservererrorrate
 
       - alert: PawCycleScheduledJobStalled
-        expr: (time() - pawcycle_job_last_success_seconds{job_name!="idempotency-cleanup"}) > 600
+        # Hourly in local-integration: idempotency cleanup and subscription reconciliation (compose.yaml).
+        # Reconciliation failures have their own alert (PawCycleReconciliationFailure).
+        expr: (time() - pawcycle_job_last_success_seconds{job_name!~"idempotency-cleanup|subscription-reconciliation"}) > 600
         for: 5m
+        keep_firing_for: 2m
         labels:
           scope: local
           severity: warning
@@ -127,6 +134,7 @@ groups:
       - alert: PawCycleCheckoutExpirationBacklog
         expr: pawcycle_checkout_expiration_backlog > 0
         for: 5m
+        keep_firing_for: 2m
         labels:
           scope: local
           severity: warning
@@ -140,6 +148,7 @@ groups:
       - alert: PawCycleSubscriptionOverdue
         expr: pawcycle_subscription_schedules_overdue > 0
         for: 30m
+        keep_firing_for: 2m
         labels:
           scope: local
           severity: warning
@@ -163,14 +172,18 @@ groups:
           runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleexternalcallfailures
 
       - alert: PawCycleApiLatencyP95
-        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri=~"/api/.*"}[5m]))) > 1
+        # Same traffic floor as the 5xx rule: at a few requests a minute, one slow request is the p95
+        # (OBS-STACK-002 rehearsal: fired 3 minutes after a DB outage had already recovered).
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri=~"/api/.*"}[5m]))) > 1
+          and sum(rate(http_server_requests_seconds_count{uri=~"/api/.*"}[5m])) > 0.2
         for: 10m
         labels:
           scope: local
           severity: warning
         annotations:
           summary: API p95 지연 {{ $value | humanizeDuration }}
-          description: 최근 5분 API 응답 시간의 95번째 백분위가 1초를 넘었다.
+          description: 최근 5분 API 응답 시간의 95번째 백분위가 1초를 넘었다. 요청이 초당 0.2건 이하일 때는 판정하지 않는다.
           impact: 화면이 느려진다.
           dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
           runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleapilatencyp95

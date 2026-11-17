@@ -4,7 +4,7 @@
 
 로컬 통합 환경(`compose.yaml` + `compose.observability.yaml`)의 알림을 받았을 때 처음 무엇을 확인할지 정리한다. 2단계 장애 관측(OBS-STACK-001)의 알림 규칙과 짝을 이룬다. 운영(Production) 절차가 아니다. 운영에는 아직 자동 알림이 없다([알려진 위험](../architecture/known-risks.md) 참고).
 
-임계값은 잠정값이다. 장애 리허설에서 정상 상태 값을 측정한 뒤 조정한다.
+임계값은 잠정값이다. 2026-11-17 로컬 장애 리허설([OBS-STACK-002](../reports/OBS-STACK-002/README.md))에서 근거가 확인된 `PawCycleApiLatencyP95`에만 요청량 하한을 추가했고, 나머지는 리허설에서 누락·오탐이 없어 그대로 둔다.
 
 ## 알림이 오는 길
 
@@ -21,6 +21,7 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 | none | Watchdog(알림 경로 확인용) | 보내지 않음 | — |
 
 - **억제:** `PawCycleBackendScrapeUnavailable`이 firing이면 다른 로컬 알림은 보내지 않는다. backend가 죽으면 나머지 신호는 모두 그 결과이기 때문이다.
+- **해소 지연:** 적체·상태 지표 알림 5개(고립 PROCESSING, UNKNOWN 경과, 결제 만료 적체, 정기배송 지연, 작업 정지)는 조건이 풀려도 2분 더 firing을 유지한다(`keep_firing_for`). backend가 재시작하는 1분 남짓 동안 지표가 사라져 원인이 그대로인데 resolved가 가던 문제를 막는다. 그래서 조치 후 resolved는 지표 갱신 1분을 더해 약 3분 뒤에 온다.
 - **링크:** 알림 메시지의 "대시보드·로그"는 Grafana 기본 포트 3001 기준이다. 포트를 바꿨다면 주소의 포트만 바꿔 연다.
 
 ## 공통 첫 확인
@@ -68,21 +69,25 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 ### PawCycleApiLatencyP95
 
 - API p95가 1초를 넘었다.
+- 요청이 초당 0.2건을 넘을 때만 판정한다. 요청이 적으면 느린 요청 한두 건이 p95가 되어, 이미 복구된 장애 뒤에 늦게 울린다(리허설에서 DB 복구 3분 뒤 firing).
 - 요청량이 늘었는지, Hikari 대기·느린 SQL이 있는지 기존 대시보드(`PawCycle Local Observability`)에서 본다.
 
 ### PawCycleDbConnectionWait
 
 - DB 커넥션을 기다리는 요청이 2분 넘게 있다.
+- **MySQL이 멈췄을 때 오는 첫 알림이다.** backend 지표는 scrape 때 DB를 읽지 않으므로 MySQL이 멈춰도 `PawCycleBackendScrapeUnavailable`은 울리지 않는다. 이 알림과 `PawCycleScheduledJobFailing`(지표 갱신·결제 만료 작업), `PawCycleBackendErrorLogSpike`가 함께 오면 `ps mysql`부터 본다. 지금은 모두 warning이다(리허설 결과, 아래 "알려진 한계").
 - 오래 걸리는 트랜잭션이나 잠금 대기가 있는지 MySQL `SHOW PROCESSLIST`로 본다. 스케줄 작업이 겹쳤는지 `Scheduled job` 로그를 본다.
 
 ### PawCycleScheduledJobStalled
 
-- 알림의 `job_name` 작업이 10분 넘게 성공하지 못했다. 1시간 주기인 `idempotency-cleanup`은 제외한다.
+- 알림의 `job_name` 작업이 10분 넘게 성공하지 못했다. 로컬에서 1시간 주기인 `idempotency-cleanup`과 `subscription-reconciliation`은 제외한다. 회차 보정 실패는 `PawCycleReconciliationFailure`가 따로 알린다.
+- 설정으로 꺼진 작업과, 재시작 뒤 한 번도 성공하지 못한 작업은 마지막 성공 시각이 NaN이라 이 알림이 울리지 않는다. 결제 만료 작업이 꺼지면 `PawCycleCheckoutExpirationBacklog`로 감지한다.
 - 로그에서 `jobName`으로 거르고 `Scheduled job failed`를 찾는다. 성공 로그도 실패 로그도 없으면 작업이 시작조차 못 하는 것이다. 같은 스레드의 다른 작업이 오래 걸리는지 본다(스레드 배치는 [상태 전이 문서](../domain/state-machines.md) 6절).
 
 ### PawCycleScheduledJobFailing
 
 - 최근 10분 안에 해당 작업 실행이 실패했다. 다음 실행에서 다시 시도된다.
+- 같은 알림 그룹에 작업이 추가되거나 풀릴 때마다 메시지가 다시 온다(DB 장애 리허설 한 번에 이 알림만 6건: 발생 3, 해소 중 갱신 2, resolved 1). 원인이 하나인지 `jobName`별 `cause`로 본다.
 - `jobRunId`로 그 실행의 로그를 모아 원인을 본다. 반복되면 정지 알림으로 이어진다.
 
 ### PawCycleCheckoutExpirationBacklog
@@ -113,6 +118,14 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 
 - 항상 firing인 알림이다. Discord로 보내지 않는다.
 - Alertmanager 화면에 **보이지 않으면** Prometheus 규칙 평가나 Alertmanager 전달이 멈춘 것이다. `ps prometheus alertmanager`와 각 로그를 본다.
+
+## 알려진 한계
+
+2026-11-17 리허설에서 확인했고 아직 바꾸지 않은 것이다. 바꾸려면 심각도·라우팅 결정이 필요하다.
+
+- MySQL 전체 중단이 warning 알림으로만 온다. 고객 요청은 그동안 응답하지 않는다(요청이 적어 5xx 비율 규칙은 판정하지 않음).
+- MySQL 7분 중단 한 번에 중단 중 warning 5건, 복구 뒤 resolved·그룹 갱신·늦은 p95까지 합쳐 12건이 왔다. DB 대기 알림이 다른 warning을 억제하지는 않는다.
+- 꺼진 작업은 정지 알림 대상이 아니다(위 `PawCycleScheduledJobStalled`).
 
 ## 설정 검증
 

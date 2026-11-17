@@ -23,7 +23,9 @@ $ScalarContainerPath = "/tmp/inc-base-001-scalar-$RunId.sql"
 $SharedVolumeNames = @(
     'pawcycle-local-integration-mysql-data',
     'pawcycle-local-integration-prometheus-data',
-    'pawcycle-local-integration-grafana-data'
+    'pawcycle-local-integration-grafana-data',
+    'pawcycle-local-integration-loki-data',
+    'pawcycle-local-integration-alloy-data'
 )
 $BackendStartupBudgetSeconds = 180
 $SchedulerStartBudgetSeconds = 15
@@ -34,6 +36,11 @@ $LockHoldBudgetSeconds = $BackendStartupBudgetSeconds + $SchedulerStartBudgetSec
 $SessionTerminationTimeoutSeconds = 10
 $PreviousPrometheusPort = $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT
 $PreviousGrafanaPort = $env:PAWCYCLE_LOCAL_GRAFANA_PORT
+$PreviousLokiPort = $env:PAWCYCLE_LOCAL_LOKI_PORT
+# compose.observability.yaml requires a webhook file even though this run never starts Alertmanager.
+# Without one, use a disposable placeholder that points nowhere; a real file is left untouched.
+$PreviousWebhookFile = $env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE
+$PlaceholderWebhookPath = $null
 $TemporaryEnvironmentNames = @(
     'MYSQL_DATABASE',
     'MYSQL_USER',
@@ -184,23 +191,34 @@ if (-not (Test-Path -LiteralPath $EnvFile)) { throw "Local env file not found: $
 if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found: $FixturePath" }
 
 $SharedVolumesBefore = Get-SharedVolumeState
-$env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
-$env:MYSQL_USER = 'pawcycle'
-$env:MYSQL_PASSWORD = New-DisposableSecret
-$env:MYSQL_ROOT_PASSWORD = New-DisposableSecret
-$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
-$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
-$env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
-$env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
 $ExecutionError = $null
 
 try {
+    # Temporary environment changes live inside try so finally always restores them,
+    # even when a secret or the placeholder file cannot be created.
+    $env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
+    $env:MYSQL_USER = 'pawcycle'
+    $env:MYSQL_PASSWORD = New-DisposableSecret
+    $env:MYSQL_ROOT_PASSWORD = New-DisposableSecret
+    $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
+    $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
+    $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
+    $env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
+    # Grafana depends on Loki, so Loki starts too; keep it off the shared stack's port.
+    $env:PAWCYCLE_LOCAL_LOKI_PORT = '0'
+    if (-not $PreviousWebhookFile) {
+        $PlaceholderWebhookPath = Join-Path $env:TEMP "inc-base-001-webhook-$RunId.txt"
+        [IO.File]::WriteAllText($PlaceholderWebhookPath, 'http://127.0.0.1:9/inc-base-001-disabled', [Text.UTF8Encoding]::new($false))
+        $env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE = $PlaceholderWebhookPath
+    }
     $ConfigText = Invoke-ComposeCapture @('config', '--format', 'json')
     $Config = $ConfigText | ConvertFrom-Json
     $ExpectedMounts = @{
         mysql = 'inc-base-001-mysql-data'
         prometheus = 'inc-base-001-prometheus-data'
         grafana = 'inc-base-001-grafana-data'
+        loki = 'inc-base-001-loki-data'
+        alloy = 'inc-base-001-alloy-data'
     }
     foreach ($ServiceName in $ExpectedMounts.Keys) {
         $DataMount = @($Config.services.$ServiceName.volumes | Where-Object { $_.type -eq 'volume' })
@@ -421,6 +439,9 @@ SELECT 'LOCK_RELEASED';
     try { if (Test-Path -LiteralPath $ScalarSqlPath) { Remove-Item -LiteralPath $ScalarSqlPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
     $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = $PreviousPrometheusPort
     $env:PAWCYCLE_LOCAL_GRAFANA_PORT = $PreviousGrafanaPort
+    $env:PAWCYCLE_LOCAL_LOKI_PORT = $PreviousLokiPort
+    $env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE = $PreviousWebhookFile
+    try { if ($PlaceholderWebhookPath -and (Test-Path -LiteralPath $PlaceholderWebhookPath)) { Remove-Item -LiteralPath $PlaceholderWebhookPath } } catch { [void]$CleanupErrors.Add($_.Exception) }
     foreach ($EnvironmentName in $TemporaryEnvironmentNames) {
         [Environment]::SetEnvironmentVariable($EnvironmentName, $PreviousTemporaryEnvironment[$EnvironmentName], [EnvironmentVariableTarget]::Process)
     }

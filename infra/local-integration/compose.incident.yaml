@@ -19,7 +19,21 @@ services:
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - inc-base-001-grafana-data:/var/lib/grafana
 
+  loki:
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - ./observability/loki/rules:/etc/loki/rules:ro
+      - inc-base-001-loki-data:/loki
+
+  alloy:
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - inc-base-001-alloy-data:/var/lib/alloy/data
+
 volumes:
   inc-base-001-mysql-data:
   inc-base-001-prometheus-data:
   inc-base-001-grafana-data:
+  inc-base-001-loki-data:
+  inc-base-001-alloy-data:

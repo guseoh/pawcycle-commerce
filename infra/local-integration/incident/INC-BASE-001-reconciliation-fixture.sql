@@ -26,7 +26,7 @@ INSERT INTO subscriptions(
     version,
     current_snapshot_id,
     legacy_api_visible,
-    mvp2_managed
+    runtime_managed
 ) VALUES (
     @member_id,
     @sku_id,

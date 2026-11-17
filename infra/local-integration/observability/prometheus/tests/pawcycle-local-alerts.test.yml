@@ -119,8 +119,11 @@ tests:
       # Disabled job: the gauge is NaN until its first success.
       - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="subscription-billing"}'
         values: 'NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN'
-      # The hourly cleanup is excluded from the 10-minute rule.
+      # The hourly jobs are excluded from the 10-minute rule.
       - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="idempotency-cleanup"}'
+        values: '0x20'
+      # Reconciliation also runs hourly in local-integration.
+      - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="subscription-reconciliation"}'
         values: '0x20'
     alert_rule_test:
       - eval_time: 12m
@@ -156,3 +159,73 @@ tests:
               impact: 고객의 정기배송이 늦어진다.
               dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-search=subscription&from=now-6h&to=now
               runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclesubscriptionoverdue
+
+  - name: p95 latency is not judged at low traffic
+    interval: 1m
+    input_series:
+      # 0.1 request/s, every request slower than 1s: below the 0.2 rps floor.
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="1.0"}'
+        values: '0x20'
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="5.0"}'
+        values: '0+6x20'
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="+Inf"}'
+        values: '0+6x20'
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="200"}'
+        values: '0+6x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PawCycleApiLatencyP95
+        exp_alerts: []
+
+  - name: p95 latency fires above one second with real traffic
+    interval: 1m
+    input_series:
+      # 1 request/s, every request between 1s and 5s.
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="1.0"}'
+        values: '0x20'
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="5.0"}'
+        values: '0+60x20'
+      - series: 'http_server_requests_seconds_bucket{uri="/api/products",le="+Inf"}'
+        values: '0+60x20'
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="200"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PawCycleApiLatencyP95
+        exp_alerts:
+          - exp_labels: { scope: local, severity: warning }
+            exp_annotations:
+              summary: API p95 지연 4.8s
+              description: 최근 5분 API 응답 시간의 95번째 백분위가 1초를 넘었다. 요청이 초당 0.2건 이하일 때는 판정하지 않는다.
+              impact: 화면이 느려진다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleapilatencyp95
+
+  - name: stuck payment keeps firing while a backend restart drops the series
+    interval: 1m
+    input_series:
+      # Firing from 1m; the series goes stale at 5m-6m (restart) and comes back still stuck.
+      - series: 'pawcycle_payment_stuck{kind="normal_processing"}'
+        values: '1 1 1 1 1 stale stale 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts:
+          - exp_labels: { scope: local, severity: critical, kind: normal_processing }
+            exp_annotations:
+              summary: 고립 PROCESSING 결제 1건
+              description: 결제창이 닫힌 지 10분이 지났는데 PROCESSING으로 남은 일반 결제가 있다(#417).
+              impact: 고객 결제가 확정되지 않았고 재고가 예약된 채 남아 있다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-search=payment&from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclestuckprocessingpayment
+
+  - name: stuck payment still resolves after a real fix
+    interval: 1m
+    input_series:
+      # Fixed at 5m; resolves once keep_firing_for (2m) has passed.
+      - series: 'pawcycle_payment_stuck{kind="normal_processing"}'
+        values: '1 1 1 1 1 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts: []

@@ -1,4 +1,6 @@
 // Local-only log collection (OBS-STACK-001): container stdout of this compose project -> Loki.
+// The project comes from compose (COMPOSE_PROJECT_NAME), so disposable rehearsal projects collect
+// only their own containers; the shared stack keeps the default name.
 // Labels stay low-cardinality (service, level). Request and run ids remain in the log line and are
 // searched as JSON fields, never promoted to labels.
 
@@ -7,7 +9,7 @@ discovery.docker "local" {
 
   filter {
     name   = "label"
-    values = ["com.docker.compose.project=pawcycle-local-integration"]
+    values = ["com.docker.compose.project=" + coalesce(sys.env("PAWCYCLE_COMPOSE_PROJECT"), "pawcycle-local-integration")]
   }
 }
 
