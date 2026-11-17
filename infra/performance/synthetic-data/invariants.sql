@@ -80,16 +80,19 @@ WHERE NOT (
   OR (type = 'DEDUCT' AND available_after = available_before AND reserved_after - reserved_before = -quantity)
   OR (type = 'ADMIN_ADJUST' AND ABS(available_after - available_before) = quantity AND reserved_after = reserved_before));
 
--- A NORMAL payment's reservation ends exactly as the payment ended:
+-- A NORMAL payment's reservation ends exactly as the payment ended, in count and quantity:
 -- SUCCEEDED -> RESERVE + DEDUCT, FAILED -> RESERVE + RELEASE, still open -> RESERVE only.
 SELECT 'normal_payment_reservation_outcome', COUNT(*) FROM (
   SELECT p.id, p.status, m.sku_id,
-         SUM(m.type = 'RESERVE') reserves, SUM(m.type = 'DEDUCT') deducts, SUM(m.type = 'RELEASE') releases
+         SUM(m.type = 'RESERVE') reserves, SUM(m.type = 'DEDUCT') deducts, SUM(m.type = 'RELEASE') releases,
+         SUM(IF(m.type = 'RESERVE', m.quantity, 0)) reserved_qty,
+         SUM(IF(m.type = 'DEDUCT', m.quantity, 0)) deducted_qty,
+         SUM(IF(m.type = 'RELEASE', m.quantity, 0)) released_qty
   FROM payments p JOIN inventory_movements m ON m.payment_id = p.id
   WHERE p.type = 'NORMAL' GROUP BY p.id, p.status, m.sku_id) r
 WHERE NOT (
-     (r.status = 'SUCCEEDED' AND r.reserves = 1 AND r.deducts = 1 AND r.releases = 0)
-  OR (r.status = 'FAILED' AND r.reserves = 1 AND r.deducts = 0 AND r.releases = 1)
+     (r.status = 'SUCCEEDED' AND r.reserves = 1 AND r.deducts = 1 AND r.releases = 0 AND r.deducted_qty = r.reserved_qty)
+  OR (r.status = 'FAILED' AND r.reserves = 1 AND r.deducts = 0 AND r.releases = 1 AND r.released_qty = r.reserved_qty)
   OR (r.status IN ('READY', 'PROCESSING', 'UNKNOWN') AND r.reserves = 1 AND r.deducts = 0 AND r.releases = 0));
 
 -- Every ONE_TIME order line of an order that reached payment has a reservation for that SKU.
@@ -117,6 +120,19 @@ JOIN subscription_snapshots ss ON ss.id = s.current_snapshot_id
 WHERE s.runtime_managed = 1 AND NOT EXISTS (
   SELECT 1 FROM plan_version_delivery_cycles c
   WHERE c.plan_version_id = ss.source_plan_version_id AND c.delivery_cycle_weeks = ss.delivery_cycle_weeks);
+
+-- Subscription creation and plan changes copy the PlanVersion: total = package price,
+-- snapshot items = plan items (DOMAIN-002, SubscriptionAggregateWritePersistence.snapshot()).
+SELECT 'subscription_snapshot_total_matches_plan_version', COUNT(*) FROM subscription_snapshots ss
+JOIN plan_versions pv ON pv.id = ss.source_plan_version_id
+WHERE ss.package_total_krw <> pv.package_price_krw;
+
+SELECT 'subscription_snapshot_items_match_plan_items', COUNT(*) FROM subscription_snapshots ss
+WHERE (SELECT COUNT(*) FROM subscription_snapshot_items si WHERE si.snapshot_id = ss.id)
+   <> (SELECT COUNT(*) FROM plan_items pi WHERE pi.plan_version_id = ss.source_plan_version_id)
+   OR EXISTS (SELECT 1 FROM subscription_snapshot_items si
+              LEFT JOIN plan_items pi ON pi.plan_version_id = ss.source_plan_version_id AND pi.sku_id = si.sku_id
+              WHERE si.snapshot_id = ss.id AND (pi.sku_id IS NULL OR pi.quantity <> si.quantity));
 
 SELECT 'subscription_sku_subscribable', COUNT(*) FROM subscriptions s JOIN skus k ON k.id = s.sku_id
 WHERE k.subscribable = 0;

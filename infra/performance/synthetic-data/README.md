@@ -34,7 +34,7 @@ python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-
 | inventory_movements | SKU 수 + 주문줄×2 | SKU별 INBOUND 10,000에서 시작, 주문줄마다 RESERVE 후 DEDUCT(성공) 또는 RELEASE(실패·만료) |
 | reviews | 약 0.47N | DELIVERED 구매가 있는 (회원, 상품)에서 결정적 60% |
 | subscription_plans 등 | N/1000 | 플랜마다 버전 1·상품 1·주기 2/4/8 |
-| subscriptions와 snapshot·schedule·shipping·pet·billing | N/2 | runtime-managed. ACTIVE 80% / PAUSED 10% / CANCELED 10%. 회차는 각각 SCHEDULED / HELD / CANCELED |
+| subscriptions와 snapshot·schedule·shipping·pet·billing | N/2 | runtime-managed. 구독 생성 API와 같이 수량 1, snapshot 총액 = PlanVersion 가격, snapshot 상품 = plan_items 복사. ACTIVE 80% / PAUSED 10% / CANCELED 10%. 회차는 각각 SCHEDULED / HELD / CANCELED |
 | brands, categories | 50, 20 | 고정 |
 
 모든 값은 `CRC32(seed:tag:key)`와 입력값의 함수다. `RAND()`·`UUID()`·`NOW()`를 데이터에 쓰지 않는다. brands·categories·members·billing·plan 주기는 seed와 무관하다.
@@ -51,9 +51,9 @@ python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-
 
 - 주문 금액 = 주문줄 합, 주문줄 금액 = 단가×수량, ONE_TIME 주문당 NORMAL 결제 1건, 결제 금액 = 주문 결제 금액
 - (주문 상태, 결제 상태) 허용 조합, PAID 주문의 `paid_at`·배송, SUCCEEDED 결제의 승인 정보, 배송은 PAID 주문에만
-- 재고 = 원장 합계, 원장 연속성(직전 after = 다음 before), 이동 유형별 증감, 결제 결과와 예약 종료(DEDUCT/RELEASE) 일치, 주문줄마다 예약 존재
+- 재고 = 원장 합계, 원장 연속성(직전 after = 다음 before), 이동 유형별 증감, 결제 결과와 예약 종료(DEDUCT/RELEASE) 건수·수량 일치, 주문줄마다 예약 존재
 - 리뷰는 DELIVERED 구매가 있어야 함
-- 구독 snapshot 소유·플랜 주기, 구독 SKU의 구독 가능 여부, ACTIVE/PAUSED/CANCELED별 열린 회차 규칙
+- 구독 snapshot 소유·플랜 주기, snapshot 총액·상품 = PlanVersion, 구독 SKU의 구독 가능 여부, ACTIVE/PAUSED/CANCELED별 열린 회차 규칙
 
 재고 원장 검사는 INBOUND 이동으로 시작하는 SKU만 대상으로 한다. 원장 없이 재고 행만 넣은 다른 fixture는 건너뛴다.
 

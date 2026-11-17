@@ -3,6 +3,7 @@
 Modes:
   ok        valid product list / detail / HTML responses
   bad-body  HTTP 200 with a body that violates the response contract
+  bad-detail  valid product list (setup still works), contract-violating detail body
   slow      valid responses after a fixed delay (forces arrival-rate drops)
 """
 import argparse
@@ -33,7 +34,7 @@ def handler(mode, delay):
         def do_GET(self):
             if mode == 'slow':
                 time.sleep(delay)
-            if mode == 'bad-body':
+            if mode == 'bad-body' or (mode == 'bad-detail' and self.path.startswith('/api/products/')):
                 self.send(200, '{"unexpected":true}', 'application/json')
             elif self.path.startswith('/api/products/'):
                 self.send(200, json.dumps(DETAIL), 'application/json')
@@ -55,7 +56,7 @@ class QuietServer(ThreadingHTTPServer):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['ok', 'bad-body', 'slow'], required=True)
+    parser.add_argument('--mode', choices=['ok', 'bad-body', 'bad-detail', 'slow'], required=True)
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--delay', type=float, default=2.0)
     args = parser.parse_args()

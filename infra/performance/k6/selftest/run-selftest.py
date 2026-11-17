@@ -93,10 +93,12 @@ def main():
     ]
     if args.real_cohort:
         script = K6_DIR / REAL_SCRIPTS[args.real_cohort]
-        results.append(expect(run_case('bad-body', script, {'VUS': '1'}), 99,
+        # The detail cohort's setup() picks a product from the list, so only the detail body is broken.
+        bad_mode = 'bad-detail' if args.real_cohort == 'api-product-detail' else 'bad-body'
+        results.append(expect(run_case(bad_mode, script, {'VUS': '1'}), 99,
                               lambda s: not s['verdict']['passed'] and s['responseContractErrorRate'] == 1
                               and s['expectedStatusErrorRate'] == 0,
-                              f'real-{args.real_cohort}-bad-body'))
+                              f'real-{args.real_cohort}-{bad_mode}'))
         results.append(expect(run_case('ok', script, {'VUS': '1'}), 0,
                               lambda s: s['verdict']['passed'] and s['responseContractErrorRate'] == 0,
                               f'real-{args.real_cohort}-ok'))

@@ -352,7 +352,7 @@ def steps(seed, n, as_of, schedule_start):
         "JOIN (SELECT 2 w UNION ALL SELECT 4 UNION ALL SELECT 8) c ORDER BY ps.plan_id, c.w; "
         "UPDATE subscription_plans SET current_plan_version_id = id WHERE plan_key LIKE 'syn-plan-%';")
     for a, b in chunks(subs):
-        sub = (f"(SELECT n, ps.sku_id, ps.pet_type, ps.price, ps.plan_id, 1 + MOD(z.h DIV 3, 3) qty, "
+        sub = (f"(SELECT n, ps.sku_id, ps.pet_type, ps.price, ps.plan_id, "
                f"ELT(1 + MOD(z.h DIV 5, 3), 2, 4, 8) cycle, "
                f"CASE MOD(z.h DIV 11, 10) WHEN 0 THEN 'PAUSED' WHEN 1 THEN 'CANCELED' ELSE 'ACTIVE' END status, z.h "
                f"FROM (SELECT n, {h(seed, 'subscription', 'n')} h FROM {seq} WHERE n BETWEEN {a} AND {b}) z "
@@ -367,15 +367,19 @@ def steps(seed, n, as_of, schedule_start):
         yield 'subscriptions', (
             "INSERT INTO subscriptions(id, member_id, sku_id, quantity, delivery_cycle_weeks, created_date, next_order_date, "
             "pet_id, status, version, current_snapshot_id, legacy_api_visible, runtime_managed) "
-            "SELECT n, n, sku_id, qty, cycle, "
+            "SELECT n, n, sku_id, 1, cycle, "
             f"DATE('{schedule_start}') + INTERVAL MOD(h DIV 7, cycle * 7) DAY - INTERVAL cycle WEEK, "
             f"DATE('{schedule_start}') + INTERVAL MOD(h DIV 7, cycle * 7) DAY, n, status, 0, NULL, 0, 1 "
             f"FROM {sub} y ORDER BY n;")
+        # Same as SubscriptionCreationApplicationService.create(): quantity 1, snapshot total =
+        # PlanVersion.package_price_krw, snapshot items copied from plan_items.
         yield 'subscription_snapshots', (
             "INSERT INTO subscription_snapshots(id, subscription_id, source_plan_version_id, package_total_krw, delivery_cycle_weeks) "
-            f"SELECT n, n, plan_id, price * qty, cycle FROM {sub} y ORDER BY n; "
+            "SELECT y.n, y.n, y.plan_id, pv.package_price_krw, y.cycle "
+            f"FROM {sub} y JOIN plan_versions pv ON pv.id = y.plan_id ORDER BY y.n; "
             "INSERT INTO subscription_snapshot_items(snapshot_id, sku_id, quantity) "
-            f"SELECT n, sku_id, qty FROM {sub} y ORDER BY n; "
+            "SELECT y.n, pi.sku_id, pi.quantity "
+            f"FROM {sub} y JOIN plan_items pi ON pi.plan_version_id = y.plan_id ORDER BY y.n, pi.sku_id; "
             f"UPDATE subscriptions SET current_snapshot_id = id WHERE id BETWEEN {a} AND {b};")
         yield 'subscription_schedules', (
             "INSERT INTO subscription_schedules(id, subscription_id, scheduled_date, status, effective_snapshot_id, hold_reason) "
