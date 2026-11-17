@@ -39,6 +39,9 @@ if ($ReuseSavedWebhook) {
     if ((Read-Host 'warning 채널을 따로 쓰나요? (y/N)') -eq 'y') {
         Save-WebhookFile $WarningFile 'warning'
     } else {
+        # Single channel: drop an older warning file so a later -ReuseSavedWebhook run
+        # keeps sending warnings to this critical channel, not to a past one.
+        Remove-Item -LiteralPath $WarningFile -Force -ErrorAction SilentlyContinue
         $WarningFile = $CriticalFile
     }
 }
