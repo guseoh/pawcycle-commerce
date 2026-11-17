@@ -97,3 +97,4 @@ Grafana: 데이터 소스 `pawcycle-prometheus`·`pawcycle-loki`, 대시보드 `
 
 - 가짜 결제사와 차단된 호스트로만 확인했다. 실제 Toss 응답(5xx, timeout) 분류는 Phase 1 테스트에 기대고 있다.
 - 실제 Discord가 이 메시지 형식(제목·본문 길이)을 받아들이는지는 아직 모른다.
+- `keep_firing_for: 2m`은 2분 안에 끝나는 backend 재시작만 덮는다. 2분 넘게 내려가 있으면 상태 알림의 `for` 시계가 처음부터 다시 돈다(예: 정기배송 지연은 복귀 후 다시 30분). 그 사이 상태 알림의 resolved가 scrape 중단 억제로 막히는지도 확인하지 않았다.
