@@ -3,6 +3,7 @@ package com.pawcycle.backend.member.api;
 import com.pawcycle.backend.common.error.ApiErrorResponse;
 import com.pawcycle.backend.member.application.AuthValidationException;
 import com.pawcycle.backend.member.application.InvalidCredentialsException;
+import com.pawcycle.backend.member.application.LoginRateLimitedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,12 @@ public class AuthExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleInvalidCredentials(InvalidCredentialsException exception) {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
         .body(ApiErrorResponse.withoutFieldErrors("INVALID_CREDENTIALS", exception.getMessage()));
+  }
+
+  @ExceptionHandler(LoginRateLimitedException.class)
+  ResponseEntity<ApiErrorResponse> handleRateLimited(LoginRateLimitedException exception) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .body(ApiErrorResponse.withoutFieldErrors("RATE_LIMITED", exception.getMessage()));
   }
 
   @ExceptionHandler(Exception.class)

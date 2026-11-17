@@ -1084,6 +1084,41 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
                 self.host.sources(self.target)
 
+    def test_query_logging_128a78cb_nginx_is_rejected_even_with_correct_source_hash(self):
+        # The last config approved before R4/R11 logged the default combined
+        # format (query strings such as ?paymentKey=) and limited only login.
+        self.host.main = "9" * 40
+        previous = Path(__file__).with_name("fixtures") / "nginx-128a78cb.conf"
+        nginx = previous.read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(nginx)).encode() + b"\0" + nginx).hexdigest()
+        self.assertEqual("2af5653e0fd286feb6344e683ede7d8582b28c3a", blob)
+        self.assertNotIn(b"access_log", nginx)
+        self.target["nginx_source_sha"] = "128a78cb2602c7f18ea098d02467479b8c5c3d34"
+        self.target["compose_sha256"] = release.digest(b"compose")
+        self.target["nginx_sha256"] = release.digest(nginx.replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
+        with patch.object(self.host, "git", side_effect=[b"", b"", b"", b"compose", nginx]):
+            with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+                self.host.sources(self.target)
+
+    def test_nginx_contract_rejects_access_log_and_rate_limit_weakening(self):
+        current = Path(__file__).with_name("nginx.https.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        self.assertEqual(5, current.count(b"access_log /var/log/nginx/access.log pawcycle_json;"))
+        for before, after in (
+                (b'"uri":"$uri"', b'"uri":"$request_uri"'),
+                (b"access_log /var/log/nginx/access.log pawcycle_json;", b"access_log /var/log/nginx/access.log main;"),
+                (b"access_log /var/log/nginx/access.log pawcycle_json;", b"access_log off;"),
+                (b"zone=csrf_per_ip:2m rate=30r/m", b"zone=csrf_per_ip:2m rate=3000r/m"),
+                (b"zone=search_per_ip burst=30", b"zone=search_per_ip burst=3000"),
+                (b"(?:q|%71)", b"(?:q)"),
+                (b"zone=payment_per_ip burst=10 nodelay;", b"zone=payment_per_ip burst=10;"),
+                (b"return 429 '{\"code\":\"RATE_LIMITED\"", b"return 503 '{\"code\":\"RATE_LIMITED\""),
+                (b"proxy_set_header X-Request-ID $pawcycle_request_id;", b"")):
+            with self.subTest(before=before, after=after):
+                self.assertIn(before, current)
+                with self.assertRaises(release.Refused):
+                    release.validate_nginx_contract(current.replace(before, after, 1))
+
     def test_nginx_contract_rejects_security_routing_and_dns_regressions(self):
         current = Path(__file__).with_name("nginx.https.conf").read_bytes().replace(
             b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
@@ -1093,7 +1128,12 @@ class BoundaryTests(unittest.TestCase):
                           b"add_header X-Frame-Options", b"add_header X-XSS-Protection", b"add_header Referrer-Policy",
                           b"limit_req_zone", b"limit_req zone=login_per_ip", b"location ^~ /.well-known/acme-challenge/",
                           b"listen 8081;", b"resolver 127.0.0.11", b"server backend:8080 resolve;",
-                          b"server frontend:3000 resolve;", b"zone pawcycle_application_backend"):
+                          b"server frontend:3000 resolve;", b"zone pawcycle_application_backend",
+                          b"log_format pawcycle_json", b"access_log /var/log/nginx/access.log pawcycle_json;",
+                          b"map $args $pawcycle_search_limit_key", b"limit_req zone=csrf_per_ip",
+                          b"limit_req zone=search_per_ip", b"limit_req zone=checkout_per_ip",
+                          b"limit_req zone=payment_per_ip", b"limit_req zone=interaction_per_ip",
+                          b"limit_req zone=ai_per_ip", b"location @rate_limited"):
             with self.subTest(directive=directive):
                 altered = current.replace(directive, b"# disabled " + directive)
                 with self.assertRaises(release.Refused):

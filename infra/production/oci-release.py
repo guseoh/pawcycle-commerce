@@ -52,7 +52,7 @@ INDEX_MEDIA_TYPES = {"application/vnd.oci.image.index.v1+json",
                      "application/vnd.docker.distribution.manifest.list.v2+json"}
 # Versioned allowlist for the approved Application Nginx contract. Source SHA
 # remains independent; only comments and whitespace outside strings may differ.
-NGINX_CONTRACT_SHA256 = "dfb93f4ff2133519a14512241e8bb5818087629f785619743816ea1ee9560865"
+NGINX_CONTRACT_SHA256 = "0371486ecda5b40c357e77239903651dada27793eb0e8333f6662f59922b4df6"
 NGINX_TOKEN = re.compile(r'''\s+|\#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{};]|[^\s{};\#"'\\]+''')
 
 

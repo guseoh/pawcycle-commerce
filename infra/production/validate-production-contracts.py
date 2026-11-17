@@ -80,8 +80,20 @@ def validate_oci_release_contract() -> None:
     for marker in ("resolver 127.0.0.11 valid=5s ipv6=off;", "server backend:8080 resolve;",
                    "server frontend:3000 resolve;", "zone pawcycle_application_backend",
                    "zone pawcycle_application_frontend", "listen 8081;", "limit_req zone=login_per_ip",
-                   "ssl_reject_handshake on;", "location ^~ /.well-known/acme-challenge/"):
+                   "ssl_reject_handshake on;", "location ^~ /.well-known/acme-challenge/",
+                   "log_format pawcycle_json", '"uri":"$uri"', "limit_req zone=csrf_per_ip",
+                   "limit_req zone=search_per_ip", "limit_req zone=checkout_per_ip",
+                   "limit_req zone=payment_per_ip", "limit_req zone=interaction_per_ip",
+                   "limit_req zone=ai_per_ip"):
         require(marker in nginx, f"Application DNS/security contract missing: {marker}")
+    # R11: every server must replace the image's combined (query-bearing) log.
+    for name in ("nginx.https.conf", "nginx.conf"):
+        config = (PRODUCTION / name).read_text(encoding="utf-8")
+        require(config.count("server {") == config.count("access_log /var/log/nginx/access.log pawcycle_json;"),
+                f"{name}: a server block lacks the query-free JSON access log")
+        log_format = config.split("log_format pawcycle_json", 1)[1].split("';", 1)[0]
+        require(not re.search(r"\$(?:request_uri|args|query_string|arg_\w+|request)(?![\w])", log_format),
+                f"{name}: access log format must not include the query string")
     require("proxy_pass http://backend:" not in nginx and "proxy_pass http://frontend:" not in nginx,
             "Application still has static DNS proxy_pass")
     for name in ("oci-release.py", "test-oci-release.py", "oci-cd.py", "test-oci-cd.py"):
