@@ -1,5 +1,7 @@
 package com.pawcycle.backend.catalog.product.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +14,7 @@ import com.pawcycle.backend.catalog.product.domain.Product;
 import com.pawcycle.backend.catalog.product.persistence.ProductRepository;
 import com.pawcycle.backend.foundation.bootstrap.LocalCommerceDemoFixtureService;
 import jakarta.persistence.EntityManager;
+import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,41 +105,93 @@ class ProductDiscoveryApiIntegrationTests {
     Category category =
         categoryRepository.saveAndFlush(
             new Category("Treat " + UUID.randomUUID(), "treat-" + UUID.randomUUID(), 0, true));
+    LiteralSearchFixture fixture = literalSearchFixture(category);
+
+    assertSearchKeywordsMatchLiterally(category, fixture);
+    assertSearchMatches(category, "l\\s", fixture.backslash());
+    assertSearchMatches(category, "\\", fixture.backslash());
+  }
+
+  @Test
+  void searchKeywordWildcardsMatchLiterallyWithoutBackslashEscapes() throws Exception {
+    Category category =
+        categoryRepository.saveAndFlush(
+            new Category("Treat " + UUID.randomUUID(), "treat-" + UUID.randomUUID(), 0, true));
+    LiteralSearchFixture fixture = literalSearchFixture(category);
+    String originalSqlMode = jdbcTemplate.queryForObject("SELECT @@SESSION.sql_mode", String.class);
+    try {
+      // The test transaction binds one connection, so the API request below runs in this mode.
+      jdbcTemplate.execute(
+          "SET SESSION sql_mode = CONCAT_WS(',', NULLIF(@@SESSION.sql_mode, ''), 'NO_BACKSLASH_ESCAPES')");
+      assertThat(jdbcTemplate.queryForObject("SELECT @@SESSION.sql_mode", String.class))
+          .contains("NO_BACKSLASH_ESCAPES");
+
+      // Backslash keywords are covered only in the default mode: the JDBC driver does not follow
+      // this mid-session sql_mode switch and still quotes a bound backslash as two characters.
+      // That would test the driver's quoting, not the LIKE escape.
+      assertSearchKeywordsMatchLiterally(category, fixture);
+    } finally {
+      jdbcTemplate.update("SET SESSION sql_mode = ?", originalSqlMode);
+    }
+  }
+
+  private record LiteralSearchFixture(
+      Product percent,
+      Product thousand,
+      Product underscore,
+      Product backslash,
+      Product exclamation) {}
+
+  private LiteralSearchFixture literalSearchFixture(Category category) {
     Product percent =
         productRepository.save(
             new Product(category, "100% Natural Treat", "single protein", null, "DOG", null, "PUBLIC"));
+    Product thousand =
+        productRepository.save(
+            new Product(category, "1000 Natural Treat", "mixed", null, "DOG", null, "PUBLIC"));
     Product underscore =
         productRepository.save(
             new Product(category, "chew_bone mini", "dental", null, "DOG", null, "PUBLIC"));
     productRepository.save(
-        new Product(category, "1000 Natural Treat", "mixed", null, "DOG", null, "PUBLIC"));
-    productRepository.save(
         new Product(category, "chewXbone mini", "dental", null, "DOG", null, "PUBLIC"));
+    Product backslash =
+        productRepository.save(
+            new Product(category, "bowl\\stand set", "feeder", null, "DOG", null, "PUBLIC"));
+    productRepository.save(
+        new Product(category, "bowlXstand set", "feeder", null, "DOG", null, "PUBLIC"));
+    Product exclamation =
+        productRepository.save(
+            new Product(category, "Wow! Chew", "toy", null, "DOG", null, "PUBLIC"));
+    productRepository.save(
+        new Product(category, "Wow Chew", "toy", null, "DOG", null, "PUBLIC"));
     entityManager.flush();
     entityManager.clear();
+    return new LiteralSearchFixture(percent, thousand, underscore, backslash, exclamation);
+  }
 
-    mockMvc
-        .perform(get("/api/products").param("q", "100%").param("category", category.getSlug()))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.items.length()").value(1))
-        .andExpect(jsonPath("$.items[0].productId").value(percent.getId()));
+  private void assertSearchKeywordsMatchLiterally(Category category, LiteralSearchFixture fixture)
+      throws Exception {
+    assertSearchMatches(category, "100%", fixture.percent());
+    assertSearchMatches(category, "100% NATURAL", fixture.percent());
+    assertSearchMatches(category, "chew_bone", fixture.underscore());
+    assertSearchMatches(category, "%", fixture.percent());
+    assertSearchMatches(category, "_", fixture.underscore());
+    assertSearchMatches(category, "wow!", fixture.exclamation());
+    assertSearchMatches(category, "!", fixture.exclamation());
+    // Plain keywords keep case-insensitive partial matching.
+    assertSearchMatches(category, "nAtUrAl tReAt", fixture.thousand(), fixture.percent());
+  }
 
+  private void assertSearchMatches(Category category, String keyword, Product... expected)
+      throws Exception {
+    // JsonPath reads small numeric ids as Integer.
+    Object[] expectedIds =
+        Arrays.stream(expected).map(product -> Math.toIntExact(product.getId())).toArray();
     mockMvc
-        .perform(get("/api/products").param("q", "chew_bone").param("category", category.getSlug()))
+        .perform(get("/api/products").param("q", keyword).param("category", category.getSlug()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.items.length()").value(1))
-        .andExpect(jsonPath("$.items[0].productId").value(underscore.getId()));
-
-    mockMvc
-        .perform(get("/api/products").param("q", "%").param("category", category.getSlug()))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.items.length()").value(1))
-        .andExpect(jsonPath("$.items[0].productId").value(percent.getId()));
-
-    mockMvc
-        .perform(get("/api/products").param("q", "\\").param("category", category.getSlug()))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.items.length()").value(0));
+        .andExpect(jsonPath("$.items.length()").value(expected.length))
+        .andExpect(jsonPath("$.items[*].productId", containsInAnyOrder(expectedIds)));
   }
 
   @Test

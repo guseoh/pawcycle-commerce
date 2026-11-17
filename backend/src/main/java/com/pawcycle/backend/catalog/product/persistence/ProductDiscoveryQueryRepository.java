@@ -35,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class ProductDiscoveryQueryRepository {
   private static final String DISCOVERY_PHASE_METRIC = "pawcycle.catalog.product.discovery.phase";
+  private static final String LIKE_ESCAPE_CHARACTER = "!";
+  private static final String LIKE_ESCAPE_CLAUSE = " ESCAPE '" + LIKE_ESCAPE_CHARACTER + "'";
 
   private final EntityManager entityManager;
   private final MeterRegistry meterRegistry;
@@ -377,7 +379,7 @@ public class ProductDiscoveryQueryRepository {
       String q1 = add(parameters, needle);
       String q2 = add(parameters, needle);
       String q3 = add(parameters, needle);
-      where.append(" AND (LOWER(p.name) LIKE :").append(q1).append(" OR LOWER(p.short_description) LIKE :").append(q2).append(" OR LOWER(COALESCE(p.description,'')) LIKE :").append(q3).append(")");
+      where.append(" AND (LOWER(p.name) LIKE :").append(q1).append(LIKE_ESCAPE_CLAUSE).append(" OR LOWER(p.short_description) LIKE :").append(q2).append(LIKE_ESCAPE_CLAUSE).append(" OR LOWER(COALESCE(p.description,'')) LIKE :").append(q3).append(LIKE_ESCAPE_CLAUSE).append(")");
     }
     if (petType != null && !petType.isBlank()) where.append(" AND LOWER(p.pet_type)=:").append(add(parameters, petType.trim().toLowerCase(Locale.ROOT)));
     if (category != null && !category.isBlank()) {
@@ -405,11 +407,16 @@ public class ProductDiscoveryQueryRepository {
   }
 
   /**
-   * Treats the search keyword as literal text. MySQL LIKE uses backslash as the default escape
-   * character, so the measured SQL shape stays unchanged and only the bound value is escaped.
+   * Treats the search keyword as literal text. The escape character is declared with an explicit
+   * ESCAPE clause and is not a backslash: MySQL drops the implicit backslash escape under the
+   * NO_BACKSLASH_ESCAPES sql_mode, and a backslash literal in the SQL text would itself depend on
+   * that mode. A backslash in the keyword is therefore an ordinary character.
    */
   static String escapeLikeLiteral(String value) {
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    return value
+        .replace(LIKE_ESCAPE_CHARACTER, LIKE_ESCAPE_CHARACTER + LIKE_ESCAPE_CHARACTER)
+        .replace("%", LIKE_ESCAPE_CHARACTER + "%")
+        .replace("_", LIKE_ESCAPE_CHARACTER + "_");
   }
 
   private String add(List<QueryParameter> parameters, Object value) {
