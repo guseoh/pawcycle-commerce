@@ -136,7 +136,7 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 
 ## 실제 Discord 전달 확인
 
-알림 설정이나 템플릿을 바꾸었거나 webhook을 새로 만들었으면 실제 채널로 한 번 보내 본다. 일회용 Alertmanager에 시험 알림(critical·warning)을 보내고 resolved까지 확인한다. 앱 스택은 띄우지 않아도 된다.
+알림 설정이나 템플릿을 바꾸었거나 webhook을 새로 만들었으면 실제 채널로 한 번 보내 본다. 일회용 Alertmanager에 시험 알림(critical·warning)을 보내고 resolved까지 확인한다. 앱 스택은 띄우지 않아도 된다. 시험 알림이 실제 채널로 가므로 **로컬 전용 webhook**을 쓴다(운영 채널과 섞지 않는다).
 
 ```powershell
 # 저장소 루트에서. webhook URL은 화면에 보이지 않게 입력받아 %USERPROFILE%\.pawcycle\secrets 에만 저장한다.
