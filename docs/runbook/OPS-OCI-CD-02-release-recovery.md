@@ -49,7 +49,7 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 
 - `sha`, `compose_source_sha`, `nginx_source_sha`는 각각 정확한 40자리 lowercase commit이며 조회 시점 main의 조상이어야 한다. `git ls-remote`와 cached `origin/main`이 다르면 source를 별도로 갱신한 뒤 다시 판단한다. 신규 activate는 current의 후손만 가능하고 의도된 이전 버전 복귀는 rollback action을 쓴다.
 - Compose는 `git show <compose_source_sha>:infra/production/compose.yaml` 원문 hash다. Nginx는 `nginx.https.conf`의 `__PAWCYCLE_DOMAIN__`을 기존 승인 hostname으로 치환한 **실제 적용 bytes hash**다. 두 source SHA를 이미지 SHA와 별도로 기록한다. 개행도 hash에 포함한다.
-- Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·로그인 rate limit·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다.
+- Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·요청 제한(rate limit)·query 없는 JSON access log·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다. query string을 남기는 기본 access log와 로그인만 제한하던 직전 승인 설정 `128a78cb`도 새 대상(activate·preflight·rollback target)으로는 같은 방식으로 거부한다. 단 이 설정은 `PREVIOUS_NGINX_CONTRACT_SHA256`에 명시된 유일한 이전 승인 지문이라, **이미 실행 중인 current baseline**을 검증·adopt·복구할 때만 허용한다(아래 4번). 변경 절차는 아래 [Edge 요청 제한과 access log 계약](#edge-요청-제한과-access-log-계약-r4r11)을 따른다.
 - `migration_tree`는 release SHA의 `backend/src/main/resources/db/migration` Git tree ID다. source path가 없거나 current와 다르면 이 단계에서 거부한다. 동일 tree는 애플리케이션·데이터 호환성의 보증이 아니므로 별도 pair compatibility evidence도 필수다.
 - Registry의 `repo:<sha>` raw manifest digest, index의 호스트 native platform(`x86_64` → `linux/amd64`, `aarch64` → `linux/arm64`)에 해당하는 유일한 child/config digest, remote config의 OS/arch와 OCI revision/source를 독립 확인한다. 각 local image도 Store별 Local ID(Config ID 또는 검증된 Descriptor ID)·RepoDigests·OS/arch·OCI labels·측정 크기를 확인하고 실행 컨테이너 Image와 대조한다. 서로 다른 revision, 미존재·변조 digest, index platform 불명확은 거부한다.
 - 플랫폼은 Linux host에서 결정하며 다른 CPU나 caller의 platform override를 허용하지 않는다. Registry 선택·config·local descriptor·pull이 같은 플랫폼을 사용한다. Manifest/approval/state 형식과 기존 amd64 계약은 유지한다. 네이티브 ARM64 운영 호스트 검증은 별도이며, 에뮬레이션 결과만으로 운영 실행을 승인하지 않는다.
@@ -120,6 +120,54 @@ adopt는 이미 실행 중인 정상 baseline을 검사·기록하며 컨테이�
 
 Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 shared upstream `zone`/`resolve`를 사용한다. IP가 바뀌어도 재해석하며 기존 HTTPS, 보안 헤더, rate limit, ACME와 8081 계약을 유지한다. smoke와 sibling container identity/시작시각 확인이 끝난 뒤에만 current를 commit한다.
 
+## Edge 요청 제한과 access log 계약 (R4·R11)
+
+2026-11-17 사용자 승인(R4: nginx IP 기준 확장 + 로그인 계정 단위는 앱 메모리 버킷, 운영 nginx 설정·지문 변경)에 따른 저장소 계약이다. 실제 운영 반영은 #470의 별도 승인이다.
+
+### access log (R11)
+
+- `nginx.conf`(HTTP bootstrap)와 `nginx.https.conf`의 **모든 server**가 `access_log /var/log/nginx/access.log pawcycle_json;`을 직접 지정한다. 이미지의 http 수준 combined log를 server 수준에서 대체하므로, server 하나라도 빠지면 그 server는 query string이 든 combined 형식으로 돌아간다(`validate-production-contracts.py`가 server 수와 access_log 수를 대조).
+- 형식은 local-integration(OBS-LOG-001)과 같은 JSON이다. 경로는 `$uri`라 query string이 없다. `$request`, `$request_uri`, `$args`, `$arg_*`를 log_format에 넣지 않는다.
+- `request_id`는 안전한 inbound `X-Request-ID`(`[A-Za-z0-9._-]{1,64}`)를 유지하고 아니면 nginx `$request_id`를 쓴다. 같은 값을 `X-Request-ID`로 backend에 넘겨 backend 로그·오류 응답 `requestId`와 연결한다.
+- 한계: nginx error log는 upstream 오류와 요청 제한 거부 때 query가 포함된 요청 줄을 남길 수 있다. error log를 끄면 장애 진단을 잃으므로 이번 범위에서 바꾸지 않았다.
+
+### 요청 제한 (R4, 2026-11-17 사용자 확정)
+
+키는 nginx가 본 TCP peer(`$binary_remote_addr`)다. 모두 `nodelay`라 burst+1개까지 즉시 통과하고, 그 뒤로는 평균 속도를 넘는 요청이 429가 된다. 거부 응답은 기존 로그인 제한과 같은 `429` + `{"code":"RATE_LIMITED","message":...,"fieldErrors":[]}`이며 로그인만 기존 문구를 유지한다. 8081 내부 listener는 host에 공개되지 않으므로 제한하지 않는다.
+
+| zone | 경로 | 속도 | burst | 정상 사용 근거 |
+| --- | --- | --- | --- | --- |
+| `login_per_ip` | `POST /api/auth/login` | 10r/m | 5 | 기존 값 유지 |
+| `csrf_per_ip` | `GET /api/auth/csrf` | 30r/m | 20 | 화면 진입·로그인 후 갱신 때 1회. 여러 탭을 한꺼번에 열어도 20개까지 즉시 허용. 익명 세션 생성 비용을 묶는다 |
+| `search_per_ip` | `GET /api/products`에 `q`(또는 `%71`)가 비어 있지 않을 때만 | 60r/m | 30 | 검색 뒤 필터·정렬·페이지 이동이 같은 q로 반복된다. 검색어 없는 목록 탐색은 제한하지 않는다 |
+| `checkout_per_ip` | `POST /api/checkout` | 10r/m | 10 | 주문 1건당 1회, 재시도도 같은 Idempotency-Key로 몇 회 |
+| `payment_per_ip` | `POST /api/payments/toss/confirm`, `POST /api/payment-methods/toss/billing/{prepare,complete}` 공유 | 10r/m | 10 | 결제 1건당 confirm 1회, 카드 등록 1건당 prepare·complete 각 1회 |
+| `interaction_per_ip` | `POST /api/interactions` | 120r/m | 60 | 화면당 노출·조회·추천 이벤트 1~4회를 빠르게 넘겨도 분당 수십 회 |
+| `ai_per_ip` | `GET /api/products/compare`, `GET /api/products/{id}/reviews/summary`, `GET /api/recommendations/products` 공유 | 30r/m | 30 | 상품 상세마다 리뷰 요약 1회. 기능 플래그가 켜지면 LLM 호출이라 가장 비싼 경로다 |
+
+모든 값은 **2026-11-17 사용자가 제안값 그대로 확정**했다. 운영 반영 뒤에는 access log(`status` 429 비율, zone별 경로, `remote_addr` 분포)로 정상 사용자 오탐을 확인한다. `remote_addr`가 한 IP로 모이거나 정상 흐름에서 429가 반복되면 값을 바꾸지 말고 이전 nginx로 되돌린 뒤(아래 절차) 원인과 새 값을 별도 승인받는다. AI 기능을 켜기 전에 `ai_per_ip`를 다시 정한다. 회사·통신사 NAT 뒤 사용자는 한 IP의 예산을 나눠 쓴다.
+
+**클라이언트 IP와 `X-Forwarded-For` 신뢰 범위**: proxy는 `compose.yaml`에서 host 80/443을 직접 publish하고 저장소에는 그 앞단 load balancer가 없다. nginx에는 `realip` 설정이 없어 클라이언트가 보낸 `X-Forwarded-For`는 제한 키에 쓰이지 않는다(위조 불가). Linux Docker의 기본 iptables DNAT publish는 외부 IPv4 클라이언트의 source IP를 보존한다. 단 userland-proxy 경로(IPv6 접속 등)나 앞단 L4/L7 장치가 생기면 `remote_addr`가 gateway·LB 하나로 모여 모든 사용자가 한 예산을 공유하게 된다. 운영 반영 직후 access log의 `remote_addr`가 다양한 공인 IP인지 확인하고, 한 IP로 모이면 즉시 이전 nginx로 되돌린다(아래 절차). backend는 `SERVER_FORWARD_HEADERS_STRATEGY=framework`로 `X-Forwarded-For`를 그대로 신뢰하므로(nginx는 값을 덧붙인다) backend의 `getRemoteAddr()`는 위조 가능하다. 그래서 backend 로그인 제한은 IP가 아닌 계정을 키로 쓴다.
+
+### 로그인 계정 단위 제한 (backend)
+
+`LoginAttemptLimiter`가 정규화 이메일(전체 소문자)당 실패를 앱 메모리에 센다. 기본값(2026-11-17 사용자 확정): 15분 안 실패 10회 → 15분 잠금, 추적 계정 최대 10,000개(`pawcycle.auth.login-throttle.*`).
+
+- 잠금 중에는 비밀번호가 맞아도 인증을 시도하지 않고 `429 RATE_LIMITED`(로그인 nginx 제한과 같은 문구)를 돌려준다. 존재하지 않는 이메일도 똑같이 세고 잠그므로 응답 순서·본문으로 계정 존재 여부가 드러나지 않는다. 로그인 성공은 그 계정의 실패를 지운다. 입력 검증 실패(400)는 세지 않는다.
+- 한계: 상태는 프로세스 메모리에만 있어 **재시작·배포 때 초기화**되고 인스턴스 간 공유되지 않는다. 다른 사람이 일부러 실패를 쌓아 계정을 15분 잠글 수 있다(nginx IP 제한이 속도를 묶는다). 추적 한도가 차면 만료·미잠금 항목부터 지우고, 모두 잠금이면 새 계정 실패는 세지 않는다(기존 잠금 보존).
+
+### 계약 변경 절차
+
+1. `nginx.https.conf`(필요하면 `nginx.conf`)를 고치고 `oci-release.py`의 `nginx_contract_fingerprint`로 새 값을 계산해 `NGINX_CONTRACT_SHA256`을 갱신한다(주석·문자열 밖 공백만 정규화). `fcntl`이 필요하므로 Linux/WSL에서 계산한다.
+2. `test-oci-release.py`(지문·변형 거부), `validate-production-contracts.py`, `test-production-nginx.sh`(pinned 이미지 `nginx -t`, zone별 429·통과·로그)를 갱신·실행한다. 직전 승인 설정을 `fixtures/`에 남겨 거부 회귀를 고정한다.
+3. 같은 PR에서 이 절의 표와 `known-risks.md`를 고친다. 지문 갱신은 보안 계약 변경이라 사용자 승인이 필요하다.
+4. 운영 반영 시 동작: CLI는 지문을 역할별로 나눠 검사한다.
+   - **새 대상 manifest**(preflight·activate·rollback target)는 현재 지문 `NGINX_CONTRACT_SHA256`만 허용한다(fail-closed).
+   - **이미 실행 중인 current baseline**(adopt 대상, preflight·activate 전 current 재검증, activation 실패 시 current 복구, `recover-state`)은 현재 지문 또는 `PREVIOUS_NGINX_CONTRACT_SHA256`에 적힌 직전 승인 지문(`128a78cb`)만 허용한다. 그 밖의 이력·임의 지문은 계속 거부한다.
+   - 따라서 `128a78cb` nginx가 current인 운영에서 새 nginx를 담은 release는 preflight와 activate를 통과하고, 실패하면 기존 current로 복구된다. application-only release는 현재 baseline과 같은 `nginx_sha256`을 요구하므로 nginx가 바뀌는 첫 반영은 application-only가 아닌 별도 승인 release(manual-pair, DB 호환 근거 포함)여야 한다.
+   - 이전 nginx(`128a78cb`)를 **대상으로 하는 rollback은 기본적으로 거부**한다(정책 결정 전). 되돌림은 revert PR(지문 포함)과 별도 승인 release로 한다. 이전 지문으로의 rollback을 허용하려면 rollback 대상에도 이전 승인 지문을 허용하도록 CLI와 이 절을 함께 바꾸는 별도 승인이 필요하다.
+   - 다음 계약 변경 때는 `PREVIOUS_NGINX_CONTRACT_SHA256`을 그때의 직전 지문 하나로 교체한다. 목록을 누적하지 않는다.
+
 ## 원자 상태와 중단 복구
 
 `oci-release-state.json` 하나가 current/previous·검증 결과·source/image identity·runtime hash·DB epoch의 권위 원본이다. 각 파일 쓰기는 mode `600` temporary → fsync → atomic replace → directory fsync다. 기존 `current-sha`, `previous-sha`, `<sha>.images`는 호환 projection이며 이 파일들의 묶음을 atomic하다고 주장하지 않는다. 쓰기 전 `release-state-transition`을 내구 기록하고 projection과 결과 기록 완료 후에만 제거한다. 기존 진단은 이 marker를 보고 배포 중으로 판단하고, catalog/auth 도구는 같은 deploy lock에 막힌다.
@@ -132,6 +180,6 @@ Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 sh
 
 ## 저장소 검증과 남은 운영 Gate
 
-`test-oci-release.py`는 disposable root-owned directory, 실제 flock/atomic state와 fake external runtime으로 정상·중복·경합·부분 실패·중단·torn write·복귀 불가를 검증한다. registry/config/platform/capacity 경계는 별도 fixture로 검증한다. `test-production-nginx.sh`는 pinned Nginx와 임시 self-signed certificate, 변경된 두 upstream IP에서 재해석·HTTPS·ACME·헤더·rate limit을 검증한다. 기존 `test-production-compose.sh`는 disposable MySQL/Backend/Frontend topology와 lifecycle을 검증한다. 로컬/CI의 결과 및 미실행은 PR에 기록한다.
+`test-oci-release.py`는 disposable root-owned directory, 실제 flock/atomic state와 fake external runtime으로 정상·중복·경합·부분 실패·중단·torn write·복귀 불가를 검증한다. registry/config/platform/capacity 경계는 별도 fixture로 검증한다. `test-production-nginx.sh`는 pinned Nginx와 임시 self-signed certificate, 변경된 두 upstream IP에서 재해석·HTTPS·ACME·헤더·zone별 rate limit(429 `RATE_LIMITED`, 제한 미만 통과)·JSON access log(결제 키 query 미기록, 요청 ID 전달)를 검증한다. 기존 `test-production-compose.sh`는 disposable MySQL/Backend/Frontend topology와 lifecycle을 검증한다. 로컬/CI의 결과 및 미실행은 PR에 기록한다.
 
 이 근거는 app01의 정상 baseline, 실제 peak 용량, 실제 DB/application/data 양방향 호환, 운영 인증서 갱신과 Release race, 실제 OCI Rollback 성공을 대신하지 않는다. #471 완료 뒤에도 #470의 별도 운영 Gate와 독립 리뷰·사용자 승인 없이 운영 활성화하지 않는다. 저장소 복구는 일반 revert PR이며, runtime 복구는 이 문서의 별도 승인 절차를 따른다.

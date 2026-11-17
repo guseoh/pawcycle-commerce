@@ -19,26 +19,37 @@ public class AuthApplicationService {
   private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
   private final SecurityContextRepository securityContextRepository;
   private final LogoutHandler logoutHandler;
+  private final LoginAttemptLimiter loginAttemptLimiter;
 
   public AuthApplicationService(
       EmailNormalizer emailNormalizer,
       MemberCredentialAuthenticator credentialAuthenticator,
       SessionAuthenticationStrategy sessionAuthenticationStrategy,
       SecurityContextRepository securityContextRepository,
-      LogoutHandler logoutHandler) {
+      LogoutHandler logoutHandler,
+      LoginAttemptLimiter loginAttemptLimiter) {
     this.emailNormalizer = emailNormalizer;
     this.credentialAuthenticator = credentialAuthenticator;
     this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
     this.securityContextRepository = securityContextRepository;
     this.logoutHandler = logoutHandler;
+    this.loginAttemptLimiter = loginAttemptLimiter;
   }
 
   @Transactional(readOnly = true)
   public AuthenticatedMemberPrincipal login(
       String email, String password, HttpServletRequest request, HttpServletResponse response) {
     NormalizedLoginCredentials credentials = emailNormalizer.normalize(email, password);
-    Authentication authentication =
-        credentialAuthenticator.authenticate(credentials.email(), credentials.password());
+    loginAttemptLimiter.checkAllowed(credentials.email());
+    Authentication authentication;
+    try {
+      authentication =
+          credentialAuthenticator.authenticate(credentials.email(), credentials.password());
+    } catch (InvalidCredentialsException exception) {
+      loginAttemptLimiter.recordFailure(credentials.email());
+      throw exception;
+    }
+    loginAttemptLimiter.recordSuccess(credentials.email());
     sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
 
     SecurityContext context = SecurityContextHolder.createEmptyContext();

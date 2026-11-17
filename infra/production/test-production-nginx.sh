@@ -60,6 +60,7 @@ printf '%s\n' \
   '    add_header X-Frame-Options "upstream-frame" always;' \
   '    add_header X-XSS-Protection "upstream-xss" always;' \
   '    add_header Referrer-Policy "upstream-referrer" always;' \
+  '    add_header X-Seen-Request-Id $http_x_request_id always;' \
   '    location / {' \
   '        default_type application/json;' \
   '        return 200 '\''{"source":"backend"}'\'';' \
@@ -255,6 +256,163 @@ done
 (( public_success_count > 0 ))
 (( public_rate_limited_count > 0 ))
 
+GENERIC_RATE_LIMITED_BODY='{"code":"RATE_LIMITED","message":"요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.","fieldErrors":[]}'
+
+public_code() {
+  local method="$1"
+  local path="$2"
+  local output="$3"
+  local -a body=()
+  if [[ "$method" == POST ]]; then
+    body=(--header 'Content-Type: application/json' --data '{}')
+  fi
+  curl --silent --show-error --insecure --max-time 5 \
+    --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" \
+    --request "$method" "${body[@]}" \
+    --dump-header "$output.headers" --output "$output.body" --write-out '%{http_code}' \
+    "https://$TEST_DOMAIN:$HTTPS_PORT$path"
+}
+
+assert_generic_rate_limited() {
+  local output="$1"
+  [[ "$(<"$output.body")" == "$GENERIC_RATE_LIMITED_BODY" ]]
+  grep -qi '^Content-Type: application/json' "$output.headers"
+  assert_public_header "$output.headers" 'Strict-Transport-Security' 'max-age=31536000; includeSubDomains'
+  assert_public_header "$output.headers" 'X-Content-Type-Options' 'nosniff'
+  assert_public_header "$output.headers" 'X-Frame-Options' 'DENY'
+}
+
+# Sends attempts as fast as possible from one client address. nodelay admits
+# burst+1 at once; a few more may pass as the bucket refills during the loop,
+# bounded by the elapsed time. Below the limit every request reaches backend.
+probe_rate_limit() {
+  local zone="$1" method="$2" path="$3" attempts="$4" burst="$5" per_minute="$6"
+  local success=0 limited=0 first_limited=0 code started elapsed refill attempt output
+  started="$(date +%s.%N)"
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    output="$TEST_ROOT/rate-$zone-$attempt"
+    code="$(public_code "$method" "$path" "$output")"
+    case "$code" in
+      200)
+        [[ "$(<"$output.body")" == '{"source":"backend"}' ]]
+        success=$((success + 1))
+        ;;
+      429)
+        assert_generic_rate_limited "$output"
+        limited=$((limited + 1))
+        if (( first_limited == 0 )); then first_limited="$attempt"; fi
+        ;;
+      *)
+        false
+        ;;
+    esac
+  done
+  elapsed="$(awk -v s="$started" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }')"
+  refill="$(awk -v t="$elapsed" -v r="$per_minute" 'BEGIN { printf "%d", t * r / 60 + 1 }')"
+  (( first_limited >= burst + 2 ))
+  (( success >= burst + 1 ))
+  (( success <= burst + 1 + refill ))
+  (( limited > 0 ))
+  printf 'rate-limit %s: %s %s attempts=%s passed=%s limited=%s first_429_at=%s elapsed=%ss\n' \
+    "$zone" "$method" "$path" "$attempts" "$success" "$limited" "$first_limited" "$elapsed"
+}
+
+expect_code() {
+  local expected="$1" method="$2" path="$3" output
+  output="$TEST_ROOT/expect-$RANDOM$RANDOM"
+  [[ "$(public_code "$method" "$path" "$output")" == "$expected" ]]
+  if [[ "$expected" == 429 ]]; then
+    assert_generic_rate_limited "$output"
+  fi
+}
+
+# Shared/keyed budgets are proven without timing: an unkeyed or separate fresh
+# bucket admits burst+1 requests in a row, while refilling burst+1 tokens of an
+# exhausted bucket takes a full minute, so a 429 within burst+1 attempts can
+# only come from the already exhausted shared key.
+expect_limited_within() {
+  local attempts="$1" method="$2" path="$3" attempt output code
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    output="$TEST_ROOT/within-$RANDOM$RANDOM"
+    code="$(public_code "$method" "$path" "$output")"
+    if [[ "$code" == 429 ]]; then
+      assert_generic_rate_limited "$output"
+      return 0
+    fi
+    [[ "$code" == 200 ]]
+  done
+  printf '%s %s was not limited within %s attempts
+' "$method" "$path" "$attempts" >&2
+  return 1
+}
+
+probe_rate_limit csrf GET /api/auth/csrf 40 20 30
+probe_rate_limit search GET '/api/products?q=probe' 50 30 60
+# Plain browsing and an empty term are never keyed; the %71 encoding of q is.
+expect_code 200 GET /api/products
+expect_code 200 GET '/api/products?q=&page=1'
+expect_limited_within 31 GET '/api/products?page=0&%71=probe'
+probe_rate_limit checkout POST /api/checkout 20 10 10
+probe_rate_limit payment POST /api/payments/toss/confirm 20 10 10
+# Billing prepare/complete share the exhausted payment budget; status reads do not.
+expect_limited_within 11 POST /api/payment-methods/toss/billing/prepare
+expect_limited_within 11 POST /api/payment-methods/toss/billing/complete
+expect_code 200 GET /api/payment-methods/toss/billing
+probe_rate_limit interaction POST /api/interactions 90 60 120
+probe_rate_limit ai GET '/api/products/compare?productIds=1,2' 45 30 30
+expect_limited_within 31 GET /api/products/7/reviews/summary
+expect_limited_within 31 GET '/api/recommendations/products?petId=1'
+expect_code 200 GET /api/products/7
+expect_code 200 GET /api/products/7/reviews
+expect_code 200 GET /api/cart
+
+# The container-only listener carries no request limits.
+for (( attempt = 1; attempt <= 25; attempt++ )); do
+  [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+    "http://127.0.0.1:$INTERNAL_PORT/api/auth/csrf")" == "200" ]]
+done
+
+# R11: a payment provider redirect keeps its query out of every log stream, the
+# access log is one JSON object per request and the request id is forwarded.
+PAYMENT_KEY_PROBE="r11_payment_key_$RANDOM$RANDOM"
+[[ "$(curl --silent --show-error --insecure --max-time 5 \
+  --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" --header 'X-Request-ID: r11-probe.1' \
+  --output /dev/null --write-out '%{http_code}' \
+  "https://$TEST_DOMAIN:$HTTPS_PORT/checkout/success?paymentKey=$PAYMENT_KEY_PROBE&orderId=r11-order&amount=1000")" \
+  == "200" ]]
+REQUEST_ID_HEADERS="$TEST_ROOT/request-id.headers"
+curl --silent --show-error --insecure --max-time 5 \
+  --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" --header 'X-Request-ID: r11-probe.2' \
+  --dump-header "$REQUEST_ID_HEADERS" --output /dev/null \
+  "https://$TEST_DOMAIN:$HTTPS_PORT/api/orders/1?token=$PAYMENT_KEY_PROBE"
+assert_public_header "$REQUEST_ID_HEADERS" 'X-Seen-Request-Id' 'r11-probe.2'
+curl --silent --show-error --insecure --max-time 5 \
+  --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" --header 'X-Request-ID: unsafe id;drop' \
+  --dump-header "$REQUEST_ID_HEADERS" --output /dev/null \
+  "https://$TEST_DOMAIN:$HTTPS_PORT/api/orders/2"
+[[ "$(grep -i '^X-Seen-Request-Id:' "$REQUEST_ID_HEADERS" | tr -d '\r' | cut -d' ' -f2)" =~ ^[0-9a-f]{32}$ ]]
+docker logs "$CONTAINER_NAME" > "$TEST_ROOT/proxy.stdout" 2> "$TEST_ROOT/proxy.stderr"
+if grep -q -e "$PAYMENT_KEY_PROBE" -e 'paymentKey' "$TEST_ROOT/proxy.stdout" "$TEST_ROOT/proxy.stderr"; then
+  printf 'payment key query reached a proxy log stream\n' >&2
+  false
+fi
+python3 - "$TEST_ROOT/proxy.stdout" <<'PY'
+import json, sys
+lines = [line for line in open(sys.argv[1], encoding="utf-8").read().splitlines() if line.strip()]
+# The image entrypoint also prints start-up notices to stdout; no request line
+# may appear in any other (e.g. combined) format.
+assert not [line for line in lines if not line.startswith("{") and " HTTP/" in line]
+records = [json.loads(line) for line in lines if line.startswith("{")]
+assert len(records) > 100, len(records)
+keys = {"time", "request_id", "method", "uri", "status", "bytes", "request_time", "upstream_time", "remote_addr"}
+assert all(set(record) == keys for record in records)
+assert all("?" not in record["uri"] and record["request_id"] for record in records)
+assert any(record["uri"] == "/checkout/success" and record["request_id"] == "r11-probe.1" and
+           record["status"] == 200 for record in records)
+assert any(record["uri"] == "/api/orders/1" and record["request_id"] == "r11-probe.2" for record in records)
+assert any(record["uri"] == "/api/products" and record["status"] == 429 for record in records)
+PY
+
 API_CODE="$(curl --silent --show-error --insecure --max-time 5 \
   --resolve "$TEST_DOMAIN:$HTTPS_PORT:127.0.0.1" \
   --output "$TEST_ROOT/api.body" --write-out '%{http_code}' \
@@ -312,4 +470,4 @@ done
   == '{"source":"backend-replaced"}' ]]
 docker exec "$CONTAINER_NAME" nginx -t >/dev/null
 
-printf 'Nginx hostname, TLS, security, rate-limit and changed-IP DNS regressions passed\n'
+printf 'Nginx hostname, TLS, security, rate-limit, access-log and changed-IP DNS regressions passed\n'

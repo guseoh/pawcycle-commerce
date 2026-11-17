@@ -43,7 +43,13 @@ class AuthApplicationServiceTests {
             credentialAuthenticator,
             sessionAuthenticationStrategy,
             securityContextRepository,
-            logoutHandler);
+            logoutHandler,
+            new LoginAttemptLimiter(
+                java.time.Clock.systemUTC(),
+                10,
+                java.time.Duration.ofMinutes(15),
+                java.time.Duration.ofMinutes(15),
+                100));
   }
 
   @AfterEach

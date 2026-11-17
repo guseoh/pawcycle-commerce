@@ -205,8 +205,8 @@ UNIQUE
 - 회원 가입
 - 비밀번호 재설정·변경
 - email 인증
-- 계정 잠금
-- rate limit
+- 계정 잠금 — 2026-11-17 R4 승인으로 로그인 실패 기반 일시 잠금(앱 메모리)만 도입. 계약은 [Edge 요청 제한](../runbook/OPS-OCI-CD-02-release-recovery.md#로그인-계정-단위-제한-backend)
+- rate limit — 2026-11-17 R4 승인으로 nginx IP 기준 제한 도입(같은 문서)
 - remember-me
 - 동시 session 제한
 - device/session 목록 조회

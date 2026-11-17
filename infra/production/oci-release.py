@@ -52,7 +52,12 @@ INDEX_MEDIA_TYPES = {"application/vnd.oci.image.index.v1+json",
                      "application/vnd.docker.distribution.manifest.list.v2+json"}
 # Versioned allowlist for the approved Application Nginx contract. Source SHA
 # remains independent; only comments and whitespace outside strings may differ.
-NGINX_CONTRACT_SHA256 = "dfb93f4ff2133519a14512241e8bb5818087629f785619743816ea1ee9560865"
+NGINX_CONTRACT_SHA256 = "0371486ecda5b40c357e77239903651dada27793eb0e8333f6662f59922b4df6"
+# Explicit allowlist of the directly preceding approved contract (128a78cb,
+# before R4/R11). It is accepted ONLY for the already running current baseline
+# (verification, adopt and restore), never for a new target or a rollback
+# target, so the first release can move off it without redeploying it.
+PREVIOUS_NGINX_CONTRACT_SHA256 = frozenset({"dfb93f4ff2133519a14512241e8bb5818087629f785619743816ea1ee9560865"})
 NGINX_TOKEN = re.compile(r'''\s+|\#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{};]|[^\s{};\#"'\\]+''')
 
 
@@ -120,11 +125,12 @@ def nginx_contract_fingerprint(config):
     return hashlib.sha256(json.dumps(tokens, separators=(",", ":")).encode()).hexdigest()
 
 
-def validate_nginx_contract(config):
+def validate_nginx_contract(config, baseline=False):
     # A hash supplied by the release operator proves provenance, not policy.
     # Pin the entire reviewed directive/token structure so added directives,
     # nested header overrides or commented-out security checks cannot pass.
-    require(nginx_contract_fingerprint(config) == NGINX_CONTRACT_SHA256,
+    fingerprint = nginx_contract_fingerprint(config)
+    require(fingerprint == NGINX_CONTRACT_SHA256 or (baseline and fingerprint in PREVIOUS_NGINX_CONTRACT_SHA256),
             "Nginx configuration violates approved security/DNS contract")
 
 
@@ -233,6 +239,16 @@ class Host:
         self.repository, self.state, self.runtime = map(Path, (repository, state, runtime))
         self.renewal_lock = Path(renewal_lock)
         self.registry_manifests = {}
+        self.nginx_baseline = False
+
+    @contextlib.contextmanager
+    def current_baseline(self):
+        """Scope in which sources() may accept the previous approved Nginx contract."""
+        previous, self.nginx_baseline = self.nginx_baseline, True
+        try:
+            yield
+        finally:
+            self.nginx_baseline = previous
 
     def command(self, *args, env=None, timeout=120):
         # Ignore caller Docker/Compose targeting and config overrides. Keep only
@@ -311,7 +327,7 @@ class Host:
         nginx = template.replace(b"__PAWCYCLE_DOMAIN__", DOMAIN.encode())
         require(digest(compose) == manifest["compose_sha256"] and
                 digest(nginx) == manifest["nginx_sha256"], "Compose/Nginx provenance mismatch")
-        validate_nginx_contract(nginx)
+        validate_nginx_contract(nginx, baseline=self.nginx_baseline)
         # Migration equality is necessary, never a substitute for approved
         # application/data compatibility evidence.
         migration = self.git("rev-parse", manifest["sha"] + ":backend/src/main/resources/db/migration").decode().strip()
@@ -749,7 +765,8 @@ class Release:
                         "unknown transition requires manual investigation")
                 manifest = state["current"]["manifest"]
                 self.approval(action, manifest, state, approval)
-                host.sources(manifest)
+                with host.current_baseline():
+                    host.sources(manifest)
                 host.smoke(manifest)
                 self.approval(action, manifest, state, approval)
                 self.commit(state)
@@ -779,7 +796,11 @@ class Release:
                         manifest["compose_sha256"] == current_manifest["compose_sha256"] and
                         manifest["nginx_sha256"] == current_manifest["nginx_sha256"],
                         "frontend-only mode cannot change Backend or runtime config")
-            host.sources(manifest)
+            # adopt records the release that is already running (no change);
+            # every other action's manifest is a new target and stays strict.
+            target_scope = host.current_baseline() if action == "adopt" else contextlib.nullcontext()
+            with target_scope:
+                host.sources(manifest)
             # Only the exact previously verified record can bypass Registry.
             # Its local digest/config ID/platform and saved evidence were
             # checked above; no layers will be pulled on this path.
@@ -796,11 +817,13 @@ class Release:
             else:
                 require(state is not None, "verified current baseline is unavailable")
                 self.check_projections(state)
-                host.sources(state["current"]["manifest"])
+                with host.current_baseline():
+                    host.sources(state["current"]["manifest"])
                 host.smoke(state["current"]["manifest"])
                 if action in ("activate", "preflight"):
                     host.git("merge-base", "--is-ancestor", state["current"]["manifest"]["sha"], manifest["sha"])
-            host.validate_config(manifest)
+            with host.current_baseline() if action == "adopt" else contextlib.nullcontext():
+                host.validate_config(manifest)
             require(digest(read_private(host.backend_env)) == host.env_hash,
                     "runtime bundle changed during preflight")
             capacity = host.capacity(manifest, state["current"]["manifest"] if state else manifest, approval, compressed,
@@ -854,7 +877,8 @@ class Release:
                     # Never downgrade schema or restore DB. Equality + explicit
                     # compatibility evidence was checked before mutation.
                     try:
-                        host.activate(state["current"]["manifest"], pull=False, **options)
+                        with host.current_baseline():
+                            host.activate(state["current"]["manifest"], pull=False, **options)
                         require_preserved()
                         require(host.siblings() == siblings, "sibling project identity changed during recovery")
                     except (Exception, KeyboardInterrupt):

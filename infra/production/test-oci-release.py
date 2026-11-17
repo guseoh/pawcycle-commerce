@@ -599,6 +599,150 @@ class LifecycleTests(unittest.TestCase):
                         self.fail("unsafe lock acquired")
 
 
+PREVIOUS_NGINX_SOURCE = "7" * 40
+CURRENT_NGINX_SOURCE = "8" * 40
+UNKNOWN_NGINX_SOURCE = "6" * 40
+
+
+class NginxContractSourceHost(FakeHost):
+    """FakeHost whose sources() runs the real Host provenance + contract check."""
+
+    def __init__(self, root):
+        super().__init__(root)
+        self.main = "9" * 40
+        here = Path(__file__)
+        current = here.with_name("nginx.https.conf").read_bytes()
+        self.templates = {
+            PREVIOUS_NGINX_SOURCE: (here.with_name("fixtures") / "nginx-128a78cb.conf").read_bytes(),
+            CURRENT_NGINX_SOURCE: current,
+            # A config nobody approved: one rate quietly raised.
+            UNKNOWN_NGINX_SOURCE: current.replace(b"rate=10r/m;\nlimit_req_zone $binary_remote_addr zone=payment",
+                                                   b"rate=99r/m;\nlimit_req_zone $binary_remote_addr zone=payment"),
+        }
+        assert self.templates[UNKNOWN_NGINX_SOURCE] != current
+
+    def sources(self, target):
+        return release.Host.sources(self, target)
+
+    def git(self, *args):
+        if args[0] == "show":
+            revision, path = args[1].split(":", 1)
+            return b"compose\n" if path == release.COMPOSE else self.templates[revision]
+        if args[0] == "rev-parse":
+            return b"1" * 40 + b"\n"
+        return b""
+
+    def activate(self, target, pull=True, frontend_only=False, services=None):
+        # Real activation materializes the release snapshot through sources().
+        self.sources(target)
+        super().activate(target, pull, frontend_only, services)
+
+
+def nginx_manifest(char, nginx_source, templates):
+    target = manifest(char)
+    target["compose_sha256"] = release.digest(b"compose\n")
+    target["nginx_source_sha"] = nginx_source
+    target["nginx_sha256"] = release.digest(
+        templates[nginx_source].replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
+    return target
+
+
+class NginxContractTransitionTests(unittest.TestCase):
+    """The first R4/R11 release must leave the previous approved Nginx behind."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.host = NginxContractSourceHost(self.root)
+        self.engine = release.Release(self.host)
+        templates = self.host.templates
+        self.old = nginx_manifest("a", PREVIOUS_NGINX_SOURCE, templates)
+        self.new = nginx_manifest("b", CURRENT_NGINX_SOURCE, templates)
+        self.host.live = self.old
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def adopt_old(self):
+        self.engine.run("adopt", self.old, approval("adopt", self.old), True)
+
+    def test_previous_fingerprint_is_an_explicit_single_entry(self):
+        previous = (Path(__file__).with_name("fixtures") / "nginx-128a78cb.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        self.assertEqual(frozenset({release.nginx_contract_fingerprint(previous)}),
+                         release.PREVIOUS_NGINX_CONTRACT_SHA256)
+        self.assertNotIn(release.NGINX_CONTRACT_SHA256, release.PREVIOUS_NGINX_CONTRACT_SHA256)
+
+    def test_current_previous_contract_to_new_contract_preflights_and_completes(self):
+        self.adopt_old()
+        result = self.engine.run("preflight", self.new, approval("preflight", self.new, self.old["sha"]))
+        self.assertEqual("preflight-passed", result["result"])
+        result = self.engine.run("activate", self.new, approval("activate", self.new, self.old["sha"]), True)
+        self.assertEqual("activate-verified", result["result"])
+        state = self.engine.read_state()
+        self.assertEqual(self.new, state["current"]["manifest"])
+        self.assertEqual(self.old, state["previous"]["manifest"])
+        self.assertFalse(self.host.nginx_baseline)
+
+    def test_failed_activation_restores_the_previous_contract_current(self):
+        self.adopt_old()
+        self.host.failures = [RuntimeError("isolated activation failure")]
+        with self.assertRaisesRegex(release.Refused, "previous verified release restored"):
+            self.engine.run("activate", self.new, approval("activate", self.new, self.old["sha"]), True)
+        self.assertEqual(self.old, self.host.live)
+        self.assertEqual(self.old, self.engine.read_state()["current"]["manifest"])
+        self.assertFalse(self.host.nginx_baseline)
+
+    def test_new_target_with_previous_contract_is_refused(self):
+        self.adopt_old()
+        stale = nginx_manifest("c", PREVIOUS_NGINX_SOURCE, self.host.templates)
+        for action in ("preflight", "activate"):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+                    self.engine.run(action, stale, approval(action, stale, self.old["sha"]), action == "activate")
+        self.assertEqual([], self.host.calls)
+        self.assertEqual(self.old, self.engine.read_state()["current"]["manifest"])
+
+    def test_rollback_to_previous_contract_stays_refused(self):
+        self.adopt_old()
+        self.engine.run("activate", self.new, approval("activate", self.new, self.old["sha"]), True)
+        with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+            self.engine.run("rollback", self.old, approval("rollback", self.old, self.new["sha"]), True)
+        self.assertEqual(self.new, self.engine.read_state()["current"]["manifest"])
+
+    def test_unknown_current_contract_is_refused(self):
+        unknown = nginx_manifest("c", UNKNOWN_NGINX_SOURCE, self.host.templates)
+        self.host.live = unknown
+        with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+            self.engine.run("adopt", unknown, approval("adopt", unknown), True)
+        self.assertIsNone(self.engine.read_state())
+        # A baseline adopted under the previous contract is refused once that
+        # contract is no longer on the explicit allowlist.
+        self.host.live = self.old
+        self.adopt_old()
+        with patch.object(release, "PREVIOUS_NGINX_CONTRACT_SHA256", frozenset()):
+            with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+                self.engine.run("preflight", self.new, approval("preflight", self.new, self.old["sha"]))
+
+    def test_unknown_target_contract_is_refused(self):
+        self.adopt_old()
+        unknown = nginx_manifest("c", UNKNOWN_NGINX_SOURCE, self.host.templates)
+        with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+            self.engine.run("activate", unknown, approval("activate", unknown, self.old["sha"]), True)
+        self.assertEqual([], self.host.calls)
+
+    def test_baseline_scope_admits_only_the_listed_previous_contract(self):
+        historical = (Path(__file__).with_name("fixtures") / "nginx-c09302a8.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        previous = (Path(__file__).with_name("fixtures") / "nginx-128a78cb.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        with self.assertRaises(release.Refused):
+            release.validate_nginx_contract(previous)
+        release.validate_nginx_contract(previous, baseline=True)
+        with self.assertRaises(release.Refused):
+            release.validate_nginx_contract(historical, baseline=True)
+
+
 class HostArchitectureTests(unittest.TestCase):
     def test_supported_native_machines_and_unsupported_host(self):
         for machine, expected in (("x86_64", "amd64"), ("aarch64", "arm64")):
@@ -1084,6 +1228,41 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
                 self.host.sources(self.target)
 
+    def test_query_logging_128a78cb_nginx_is_rejected_even_with_correct_source_hash(self):
+        # The last config approved before R4/R11 logged the default combined
+        # format (query strings such as ?paymentKey=) and limited only login.
+        self.host.main = "9" * 40
+        previous = Path(__file__).with_name("fixtures") / "nginx-128a78cb.conf"
+        nginx = previous.read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(nginx)).encode() + b"\0" + nginx).hexdigest()
+        self.assertEqual("2af5653e0fd286feb6344e683ede7d8582b28c3a", blob)
+        self.assertNotIn(b"access_log", nginx)
+        self.target["nginx_source_sha"] = "128a78cb2602c7f18ea098d02467479b8c5c3d34"
+        self.target["compose_sha256"] = release.digest(b"compose")
+        self.target["nginx_sha256"] = release.digest(nginx.replace(b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode()))
+        with patch.object(self.host, "git", side_effect=[b"", b"", b"", b"compose", nginx]):
+            with self.assertRaisesRegex(release.Refused, "approved security/DNS contract"):
+                self.host.sources(self.target)
+
+    def test_nginx_contract_rejects_access_log_and_rate_limit_weakening(self):
+        current = Path(__file__).with_name("nginx.https.conf").read_bytes().replace(
+            b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
+        self.assertEqual(5, current.count(b"access_log /var/log/nginx/access.log pawcycle_json;"))
+        for before, after in (
+                (b'"uri":"$uri"', b'"uri":"$request_uri"'),
+                (b"access_log /var/log/nginx/access.log pawcycle_json;", b"access_log /var/log/nginx/access.log main;"),
+                (b"access_log /var/log/nginx/access.log pawcycle_json;", b"access_log off;"),
+                (b"zone=csrf_per_ip:2m rate=30r/m", b"zone=csrf_per_ip:2m rate=3000r/m"),
+                (b"zone=search_per_ip burst=30", b"zone=search_per_ip burst=3000"),
+                (b"(?:q|%71)", b"(?:q)"),
+                (b"zone=payment_per_ip burst=10 nodelay;", b"zone=payment_per_ip burst=10;"),
+                (b"return 429 '{\"code\":\"RATE_LIMITED\"", b"return 503 '{\"code\":\"RATE_LIMITED\""),
+                (b"proxy_set_header X-Request-ID $pawcycle_request_id;", b"")):
+            with self.subTest(before=before, after=after):
+                self.assertIn(before, current)
+                with self.assertRaises(release.Refused):
+                    release.validate_nginx_contract(current.replace(before, after, 1))
+
     def test_nginx_contract_rejects_security_routing_and_dns_regressions(self):
         current = Path(__file__).with_name("nginx.https.conf").read_bytes().replace(
             b"__PAWCYCLE_DOMAIN__", release.DOMAIN.encode())
@@ -1093,7 +1272,12 @@ class BoundaryTests(unittest.TestCase):
                           b"add_header X-Frame-Options", b"add_header X-XSS-Protection", b"add_header Referrer-Policy",
                           b"limit_req_zone", b"limit_req zone=login_per_ip", b"location ^~ /.well-known/acme-challenge/",
                           b"listen 8081;", b"resolver 127.0.0.11", b"server backend:8080 resolve;",
-                          b"server frontend:3000 resolve;", b"zone pawcycle_application_backend"):
+                          b"server frontend:3000 resolve;", b"zone pawcycle_application_backend",
+                          b"log_format pawcycle_json", b"access_log /var/log/nginx/access.log pawcycle_json;",
+                          b"map $args $pawcycle_search_limit_key", b"limit_req zone=csrf_per_ip",
+                          b"limit_req zone=search_per_ip", b"limit_req zone=checkout_per_ip",
+                          b"limit_req zone=payment_per_ip", b"limit_req zone=interaction_per_ip",
+                          b"limit_req zone=ai_per_ip", b"location @rate_limited"):
             with self.subTest(directive=directive):
                 altered = current.replace(directive, b"# disabled " + directive)
                 with self.assertRaises(release.Refused):
