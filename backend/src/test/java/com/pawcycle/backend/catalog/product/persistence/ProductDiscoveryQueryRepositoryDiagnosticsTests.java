@@ -119,9 +119,9 @@ class ProductDiscoveryQueryRepositoryDiagnosticsTests {
                       assertThat(statement)
                           .startsWith(BASE_COUNT_SQL + DEFAULT_COUNT_FILTERS)
                           .contains(
-                              "LOWER(p.name) LIKE :p0",
-                              "LOWER(p.short_description) LIKE :p1",
-                              "LOWER(COALESCE(p.description,'')) LIKE :p2")
+                              "LOWER(p.name) LIKE :p0 ESCAPE '!'",
+                              "LOWER(p.short_description) LIKE :p1 ESCAPE '!'",
+                              "LOWER(COALESCE(p.description,'')) LIKE :p2 ESCAPE '!'")
                           .doesNotContain("JOIN_PREFIX", "NO_BNL", "FORCE INDEX"));
         });
   }
