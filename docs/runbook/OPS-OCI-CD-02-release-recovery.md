@@ -49,7 +49,7 @@ manifest는 Secret 없는 JSON 한 개다. 아래 구조의 값은 예시이며 
 
 - `sha`, `compose_source_sha`, `nginx_source_sha`는 각각 정확한 40자리 lowercase commit이며 조회 시점 main의 조상이어야 한다. `git ls-remote`와 cached `origin/main`이 다르면 source를 별도로 갱신한 뒤 다시 판단한다. 신규 activate는 current의 후손만 가능하고 의도된 이전 버전 복귀는 rollback action을 쓴다.
 - Compose는 `git show <compose_source_sha>:infra/production/compose.yaml` 원문 hash다. Nginx는 `nginx.https.conf`의 `__PAWCYCLE_DOMAIN__`을 기존 승인 hostname으로 치환한 **실제 적용 bytes hash**다. 두 source SHA를 이미지 SHA와 별도로 기록한다. 개행도 hash에 포함한다.
-- Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·요청 제한(rate limit)·query 없는 JSON access log·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다. query string을 남기는 기본 access log와 로그인만 제한하던 직전 승인 설정 `128a78cb`도 같은 방식으로 거부한다. 변경 절차는 아래 [Edge 요청 제한과 access log 계약](#edge-요청-제한과-access-log-계약-r4r11)을 따른다.
+- Nginx source의 조상 여부·입력 hash·문법만으로 보안 정책을 승인하지 않는다. CLI에 버전 고정된 승인 directive/token 구조 fingerprint를 별도로 대조해 HTTPS·보안 헤더·요청 제한(rate limit)·query 없는 JSON access log·ACME·내부 8081·Docker DNS `zone/resolve`와 routing 경계를 보호한다. Source SHA는 독립적으로 유지하되 현재 승인 구조와 같은 설정만 허용하며, 주석과 문자열 밖 whitespace 차이만 정규화한다. 그 외 설정 변경은 검토된 계약과 fingerprint 갱신이 필요하다. 보안 헤더·rate limit·DNS 재해석이 없는 역사적 `c09302a8` 설정은 올바른 source hash를 제시해도 거부한다. query string을 남기는 기본 access log와 로그인만 제한하던 직전 승인 설정 `128a78cb`도 새 대상(activate·preflight·rollback target)으로는 같은 방식으로 거부한다. 단 이 설정은 `PREVIOUS_NGINX_CONTRACT_SHA256`에 명시된 유일한 이전 승인 지문이라, **이미 실행 중인 current baseline**을 검증·adopt·복구할 때만 허용한다(아래 4번). 변경 절차는 아래 [Edge 요청 제한과 access log 계약](#edge-요청-제한과-access-log-계약-r4r11)을 따른다.
 - `migration_tree`는 release SHA의 `backend/src/main/resources/db/migration` Git tree ID다. source path가 없거나 current와 다르면 이 단계에서 거부한다. 동일 tree는 애플리케이션·데이터 호환성의 보증이 아니므로 별도 pair compatibility evidence도 필수다.
 - Registry의 `repo:<sha>` raw manifest digest, index의 호스트 native platform(`x86_64` → `linux/amd64`, `aarch64` → `linux/arm64`)에 해당하는 유일한 child/config digest, remote config의 OS/arch와 OCI revision/source를 독립 확인한다. 각 local image도 Store별 Local ID(Config ID 또는 검증된 Descriptor ID)·RepoDigests·OS/arch·OCI labels·측정 크기를 확인하고 실행 컨테이너 Image와 대조한다. 서로 다른 revision, 미존재·변조 digest, index platform 불명확은 거부한다.
 - 플랫폼은 Linux host에서 결정하며 다른 CPU나 caller의 platform override를 허용하지 않는다. Registry 선택·config·local descriptor·pull이 같은 플랫폼을 사용한다. Manifest/approval/state 형식과 기존 amd64 계약은 유지한다. 네이티브 ARM64 운영 호스트 검증은 별도이며, 에뮬레이션 결과만으로 운영 실행을 승인하지 않는다.
@@ -161,7 +161,12 @@ Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 sh
 1. `nginx.https.conf`(필요하면 `nginx.conf`)를 고치고 `oci-release.py`의 `nginx_contract_fingerprint`로 새 값을 계산해 `NGINX_CONTRACT_SHA256`을 갱신한다(주석·문자열 밖 공백만 정규화). `fcntl`이 필요하므로 Linux/WSL에서 계산한다.
 2. `test-oci-release.py`(지문·변형 거부), `validate-production-contracts.py`, `test-production-nginx.sh`(pinned 이미지 `nginx -t`, zone별 429·통과·로그)를 갱신·실행한다. 직전 승인 설정을 `fixtures/`에 남겨 거부 회귀를 고정한다.
 3. 같은 PR에서 이 절의 표와 `known-risks.md`를 고친다. 지문 갱신은 보안 계약 변경이라 사용자 승인이 필요하다.
-4. 운영 반영 시 주의: 새 지문의 CLI는 이전 nginx bytes를 담은 manifest를 거부한다. application-only release는 현재 baseline과 같은 `nginx_sha256`을 요구하므로, 이 변경 이후 첫 반영은 nginx를 포함한 별도 승인 release여야 하고 이전 nginx로의 rollback도 CLI가 거부한다. 되돌림은 revert PR(지문 포함)로 하고 다시 별도 승인 release를 거친다.
+4. 운영 반영 시 동작: CLI는 지문을 역할별로 나눠 검사한다.
+   - **새 대상 manifest**(preflight·activate·rollback target)는 현재 지문 `NGINX_CONTRACT_SHA256`만 허용한다(fail-closed).
+   - **이미 실행 중인 current baseline**(adopt 대상, preflight·activate 전 current 재검증, activation 실패 시 current 복구, `recover-state`)은 현재 지문 또는 `PREVIOUS_NGINX_CONTRACT_SHA256`에 적힌 직전 승인 지문(`128a78cb`)만 허용한다. 그 밖의 이력·임의 지문은 계속 거부한다.
+   - 따라서 `128a78cb` nginx가 current인 운영에서 새 nginx를 담은 release는 preflight와 activate를 통과하고, 실패하면 기존 current로 복구된다. application-only release는 현재 baseline과 같은 `nginx_sha256`을 요구하므로 nginx가 바뀌는 첫 반영은 application-only가 아닌 별도 승인 release(manual-pair, DB 호환 근거 포함)여야 한다.
+   - 이전 nginx(`128a78cb`)를 **대상으로 하는 rollback은 기본적으로 거부**한다(정책 결정 전). 되돌림은 revert PR(지문 포함)과 별도 승인 release로 한다. 이전 지문으로의 rollback을 허용하려면 rollback 대상에도 이전 승인 지문을 허용하도록 CLI와 이 절을 함께 바꾸는 별도 승인이 필요하다.
+   - 다음 계약 변경 때는 `PREVIOUS_NGINX_CONTRACT_SHA256`을 그때의 직전 지문 하나로 교체한다. 목록을 누적하지 않는다.
 
 ## 원자 상태와 중단 복구
 

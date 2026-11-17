@@ -326,22 +326,42 @@ expect_code() {
   fi
 }
 
+# Shared/keyed budgets are proven without timing: an unkeyed or separate fresh
+# bucket admits burst+1 requests in a row, while refilling burst+1 tokens of an
+# exhausted bucket takes a full minute, so a 429 within burst+1 attempts can
+# only come from the already exhausted shared key.
+expect_limited_within() {
+  local attempts="$1" method="$2" path="$3" attempt output code
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    output="$TEST_ROOT/within-$RANDOM$RANDOM"
+    code="$(public_code "$method" "$path" "$output")"
+    if [[ "$code" == 429 ]]; then
+      assert_generic_rate_limited "$output"
+      return 0
+    fi
+    [[ "$code" == 200 ]]
+  done
+  printf '%s %s was not limited within %s attempts
+' "$method" "$path" "$attempts" >&2
+  return 1
+}
+
 probe_rate_limit csrf GET /api/auth/csrf 40 20 30
 probe_rate_limit search GET '/api/products?q=probe' 50 30 60
 # Plain browsing and an empty term are never keyed; the %71 encoding of q is.
 expect_code 200 GET /api/products
 expect_code 200 GET '/api/products?q=&page=1'
-expect_code 429 GET '/api/products?page=0&%71=probe'
+expect_limited_within 31 GET '/api/products?page=0&%71=probe'
 probe_rate_limit checkout POST /api/checkout 20 10 10
 probe_rate_limit payment POST /api/payments/toss/confirm 20 10 10
 # Billing prepare/complete share the exhausted payment budget; status reads do not.
-expect_code 429 POST /api/payment-methods/toss/billing/prepare
-expect_code 429 POST /api/payment-methods/toss/billing/complete
+expect_limited_within 11 POST /api/payment-methods/toss/billing/prepare
+expect_limited_within 11 POST /api/payment-methods/toss/billing/complete
 expect_code 200 GET /api/payment-methods/toss/billing
 probe_rate_limit interaction POST /api/interactions 90 60 120
 probe_rate_limit ai GET '/api/products/compare?productIds=1,2' 45 30 30
-expect_code 429 GET /api/products/7/reviews/summary
-expect_code 429 GET '/api/recommendations/products?petId=1'
+expect_limited_within 31 GET /api/products/7/reviews/summary
+expect_limited_within 31 GET '/api/recommendations/products?petId=1'
 expect_code 200 GET /api/products/7
 expect_code 200 GET /api/products/7/reviews
 expect_code 200 GET /api/cart
