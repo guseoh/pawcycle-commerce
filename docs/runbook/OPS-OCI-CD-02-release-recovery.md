@@ -131,7 +131,7 @@ Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 sh
 - `request_id`는 안전한 inbound `X-Request-ID`(`[A-Za-z0-9._-]{1,64}`)를 유지하고 아니면 nginx `$request_id`를 쓴다. 같은 값을 `X-Request-ID`로 backend에 넘겨 backend 로그·오류 응답 `requestId`와 연결한다.
 - 한계: nginx error log는 upstream 오류와 요청 제한 거부 때 query가 포함된 요청 줄을 남길 수 있다. error log를 끄면 장애 진단을 잃으므로 이번 범위에서 바꾸지 않았다.
 
-### 요청 제한 (R4, 제안값)
+### 요청 제한 (R4, 2026-11-17 사용자 확정)
 
 키는 nginx가 본 TCP peer(`$binary_remote_addr`)다. 모두 `nodelay`라 burst+1개까지 즉시 통과하고, 그 뒤로는 평균 속도를 넘는 요청이 429가 된다. 거부 응답은 기존 로그인 제한과 같은 `429` + `{"code":"RATE_LIMITED","message":...,"fieldErrors":[]}`이며 로그인만 기존 문구를 유지한다. 8081 내부 listener는 host에 공개되지 않으므로 제한하지 않는다.
 
@@ -145,13 +145,13 @@ Application Nginx는 기존 metrics-proxy와 같은 `127.0.0.11` resolver 및 sh
 | `interaction_per_ip` | `POST /api/interactions` | 120r/m | 60 | 화면당 노출·조회·추천 이벤트 1~4회를 빠르게 넘겨도 분당 수십 회 |
 | `ai_per_ip` | `GET /api/products/compare`, `GET /api/products/{id}/reviews/summary`, `GET /api/recommendations/products` 공유 | 30r/m | 30 | 상품 상세마다 리뷰 요약 1회. 기능 플래그가 켜지면 LLM 호출이라 가장 비싼 경로다 |
 
-모든 값은 **사용자 확정 전 제안값**이다. 운영 반영 뒤 access log의 429 비율과 `remote_addr` 분포로 오탐을 확인하고, AI 기능을 켜기 전에 `ai_per_ip`를 다시 정한다. 회사·통신사 NAT 뒤 사용자는 한 IP의 예산을 나눠 쓴다.
+모든 값은 **2026-11-17 사용자가 제안값 그대로 확정**했다. 운영 반영 뒤에는 access log(`status` 429 비율, zone별 경로, `remote_addr` 분포)로 정상 사용자 오탐을 확인한다. `remote_addr`가 한 IP로 모이거나 정상 흐름에서 429가 반복되면 값을 바꾸지 말고 이전 nginx로 되돌린 뒤(아래 절차) 원인과 새 값을 별도 승인받는다. AI 기능을 켜기 전에 `ai_per_ip`를 다시 정한다. 회사·통신사 NAT 뒤 사용자는 한 IP의 예산을 나눠 쓴다.
 
 **클라이언트 IP와 `X-Forwarded-For` 신뢰 범위**: proxy는 `compose.yaml`에서 host 80/443을 직접 publish하고 저장소에는 그 앞단 load balancer가 없다. nginx에는 `realip` 설정이 없어 클라이언트가 보낸 `X-Forwarded-For`는 제한 키에 쓰이지 않는다(위조 불가). Linux Docker의 기본 iptables DNAT publish는 외부 IPv4 클라이언트의 source IP를 보존한다. 단 userland-proxy 경로(IPv6 접속 등)나 앞단 L4/L7 장치가 생기면 `remote_addr`가 gateway·LB 하나로 모여 모든 사용자가 한 예산을 공유하게 된다. 운영 반영 직후 access log의 `remote_addr`가 다양한 공인 IP인지 확인하고, 한 IP로 모이면 즉시 이전 nginx로 되돌린다(아래 절차). backend는 `SERVER_FORWARD_HEADERS_STRATEGY=framework`로 `X-Forwarded-For`를 그대로 신뢰하므로(nginx는 값을 덧붙인다) backend의 `getRemoteAddr()`는 위조 가능하다. 그래서 backend 로그인 제한은 IP가 아닌 계정을 키로 쓴다.
 
 ### 로그인 계정 단위 제한 (backend)
 
-`LoginAttemptLimiter`가 정규화 이메일(전체 소문자)당 실패를 앱 메모리에 센다. 기본값(제안값): 15분 안 실패 10회 → 15분 잠금, 추적 계정 최대 10,000개(`pawcycle.auth.login-throttle.*`).
+`LoginAttemptLimiter`가 정규화 이메일(전체 소문자)당 실패를 앱 메모리에 센다. 기본값(2026-11-17 사용자 확정): 15분 안 실패 10회 → 15분 잠금, 추적 계정 최대 10,000개(`pawcycle.auth.login-throttle.*`).
 
 - 잠금 중에는 비밀번호가 맞아도 인증을 시도하지 않고 `429 RATE_LIMITED`(로그인 nginx 제한과 같은 문구)를 돌려준다. 존재하지 않는 이메일도 똑같이 세고 잠그므로 응답 순서·본문으로 계정 존재 여부가 드러나지 않는다. 로그인 성공은 그 계정의 실패를 지운다. 입력 검증 실패(400)는 세지 않는다.
 - 한계: 상태는 프로세스 메모리에만 있어 **재시작·배포 때 초기화**되고 인스턴스 간 공유되지 않는다. 다른 사람이 일부러 실패를 쌓아 계정을 15분 잠글 수 있다(nginx IP 제한이 속도를 묶는다). 추적 한도가 차면 만료·미잠금 항목부터 지우고, 모두 잠금이면 새 계정 실패는 세지 않는다(기존 잠금 보존).
