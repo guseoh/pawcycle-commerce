@@ -5,8 +5,10 @@ import com.pawcycle.backend.member.maintenance.ProductionAuthSmokeMemberBootstra
 import java.util.Map;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.session.data.redis.autoconfigure.SessionDataRedisAutoConfiguration;
 
-@SpringBootApplication
+// Sessions use a dedicated Redis only when pawcycle.session.store=redis (SessionStoreConfiguration).
+@SpringBootApplication(exclude = SessionDataRedisAutoConfiguration.class)
 public class PawcycleBackendApplication {
   static final String RECOVERY_PROPERTY = "pawcycle.maintenance.recover-processing-payment.enabled";
   static final String RECOVERY_ENVIRONMENT = "PAWCYCLE_MAINTENANCE_RECOVER_PROCESSING_PAYMENT_ENABLED";
