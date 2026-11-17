@@ -134,6 +134,19 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 - MySQL 중단 한 번에 오는 메시지 수는 줄지 않았다. 스케줄 작업 실패 알림은 `for` 없이 1분 안에 울려 critical보다 먼저 오고, 작업이 늘거나 풀릴 때마다 그룹 메시지가 다시 온다(2026-11-17 OBS-STACK-003 리허설: 8분 중단에 warning 3건이 critical보다 먼저 왔다). 줄이려면 작업 실패 규칙의 창·`for`를 바꾸는 결정과 재측정이 필요하다.
 - 꺼진 작업은 정지 알림 대상이 아니다(위 `PawCycleScheduledJobStalled`).
 
+## 실제 Discord 전달 확인
+
+알림 설정이나 템플릿을 바꾸었거나 webhook을 새로 만들었으면 실제 채널로 한 번 보내 본다. 일회용 Alertmanager에 시험 알림(critical·warning)을 보내고 resolved까지 확인한다. 앱 스택은 띄우지 않아도 된다.
+
+```powershell
+# 저장소 루트에서. webhook URL은 화면에 보이지 않게 입력받아 %USERPROFILE%\.pawcycle\secrets 에만 저장한다.
+.\infra\local-integration\observability\verify-discord-delivery.ps1
+# 이미 저장한 webhook 파일을 다시 쓸 때
+.\infra\local-integration\observability\verify-discord-delivery.ps1 -ReuseSavedWebhook
+```
+
+성공 기준은 Discord에 `[CRITICAL]`·`[WARNING]`·`[RESOLVED]` 2건, 합계 4건이 오고, 스크립트가 출력하는 `alertmanager_notifications_total{integration="discord"}`가 4, `failed_total`이 모두 0인 것이다. 저장한 webhook 파일은 장애 리허설에서 `PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE`(와 warning 파일)로 다시 쓸 수 있다. 2026-11-17 첫 확인 결과는 [OBS-STACK-002 보고서](../reports/OBS-STACK-002/README.md#추가-검증--실제-discord-수신-2026-11-17)에 있다.
+
 ## 설정 검증
 
 알림 규칙이나 Alertmanager 설정을 바꾸면 다음을 실행한다. CI의 production contract lane도 같은 스크립트를 실행한다.
