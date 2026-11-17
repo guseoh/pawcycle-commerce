@@ -163,7 +163,7 @@ class DockerHost(tests.FakeHost):
     def siblings(self):
         return self.containers()["proxy"]["Id"]
 
-    def smoke(self, target):
+    def smoke(self, target, session_redis=True):
         if target["sha"] in self.kill_on_smoke:
             self.docker("kill", self.containers()["frontend"]["Id"])
         live = self.containers()

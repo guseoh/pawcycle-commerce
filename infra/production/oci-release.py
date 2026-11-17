@@ -653,10 +653,12 @@ class Host:
                 "networks": {n["Name"]: n["Id"] for n in networks},
                 "volumes": {v["Name"]: v.get("CreatedAt") for v in volumes}}
 
-    def smoke(self, manifest):
+    def smoke(self, manifest, session_redis=True):
+        # session_redis=False only skips the sibling health gate; application
+        # identity, image provenance and HTTP smoke are always verified.
         containers = self.runtime_check(manifest)
         backend_env = containers["backend"]["Config"].get("Env") or [] if containers else []
-        if session_store(dict(item.split("=", 1) for item in backend_env if "=" in item)) == "redis":
+        if session_redis and session_store(dict(item.split("=", 1) for item in backend_env if "=" in item)) == "redis":
             self.session_redis()
         proxy = PROJECT + "-proxy-1"
         self.docker("exec", proxy, "nginx", "-t")
@@ -860,7 +862,12 @@ class Release:
                 self.check_projections(state)
                 with host.current_baseline():
                     host.sources(state["current"]["manifest"])
-                host.smoke(state["current"]["manifest"])
+                # A rollback must stay reachable while the current release's
+                # session Redis is down (AUTH-005 recovery path). The target's
+                # store decides: validate_config() below still requires a
+                # healthy sibling when the rollback target itself selects redis,
+                # and post-activation smoke checks the restored backend.
+                host.smoke(state["current"]["manifest"], session_redis=action != "rollback")
                 if action in ("activate", "preflight"):
                     host.git("merge-base", "--is-ancestor", state["current"]["manifest"]["sha"], manifest["sha"])
             with host.current_baseline() if action == "adopt" else contextlib.nullcontext():

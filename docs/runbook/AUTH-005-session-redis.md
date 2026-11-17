@@ -124,12 +124,12 @@ PAWCYCLE_SESSION_REDIS_PORT: "6379"
 | 대상 | `memory`(또는 키 없음) | `redis` |
 | --- | --- | --- |
 | preflight·activate·rollback의 대상 compose(`validate_config`) | sibling을 보지 않는다 | host/port가 `session-redis`/`6379`이고 sibling이 아래 조건을 만족해야 통과 |
-| 실행 중 backend(`smoke`, 활성화 전후) | sibling을 보지 않는다 | 같은 조건 |
+| 실행 중 backend(`smoke`, 활성화 전후) | sibling을 보지 않는다 | 같은 조건. 단 `rollback`의 활성화 전 현재 release smoke는 sibling을 보지 않는다(아래) |
 | 그 밖의 값 | — | `session store selection mismatch`로 거부 |
 
 sibling 조건: `pawcycle-production-session-redis`/`session-redis` 컨테이너가 정확히 하나, image가 `SESSION_REDIS_IMAGE`, running·healthy, network가 `pawcycle-production-app` 하나, host port 공개 없음. 이 검사는 `docker ps`·`docker inspect`만 쓰며 sibling을 바꾸지 않는다.
 
-`memory`로 되돌린 release로의 rollback과, AUTH-005 이전 release(세션 키 없음)로의 rollback도 그대로 통과한다.
+`memory`로 되돌린 release로의 rollback과, AUTH-005 이전 release(세션 키 없음)로의 rollback도 그대로 통과한다. 현재 release가 `redis`이고 sibling이 멈췄거나 unhealthy여도 `memory` 대상 rollback은 막히지 않는다. 활성화 전 현재 release smoke는 애플리케이션 identity·image·HTTP 검사를 그대로 하되 sibling 검사만 건너뛰고, sibling 필요 여부는 rollback 대상 compose(`validate_config`)와 활성화 후 smoke가 정한다. 그래서 `redis` 대상 rollback은 여전히 healthy sibling을 요구한다. preflight·activate는 현재 release가 `redis`면 sibling 정상을 계속 요구한다.
 
 ### 운영 적용 전 확인할 것
 

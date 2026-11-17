@@ -104,7 +104,7 @@ class FakeHost(release.Host):
         if self.reject == "config":
             raise release.Refused("wrong Compose boundary")
 
-    def smoke(self, target):
+    def smoke(self, target, session_redis=True):
         release.require(self.live == target, "stale running release or unhealthy smoke")
 
     def git(self, *args):
@@ -1491,6 +1491,37 @@ class ConfigValidatingHost(FakeHost):
     validate_config = release.Host.validate_config
 
 
+class StopAfterSessionGate(Exception):
+    pass
+
+
+class SessionStoreLifecycleHost(ConfigValidatingHost):
+    """Per-release session store; preflight and smoke run the real session gates."""
+    def __init__(self, root, docker, environments):
+        super().__init__(root, docker)
+        self.environments = environments
+        self.smoke_calls = []
+
+    def validate_config(self, target):
+        self.fake_docker.config = rendered_config(target, self.environments[target["sha"]])
+        release.Host.validate_config(self, target)
+
+    def docker(self, *args, **kwargs):
+        if args[0] == "exec":
+            raise StopAfterSessionGate()
+        return self.fake_docker(*args, **kwargs)
+
+    def smoke(self, target, session_redis=True):
+        FakeHost.smoke(self, target)
+        self.smoke_calls.append((target["sha"], session_redis))
+        backend = {"Config": {"Env": [key + "=" + value for key, value in self.environments[target["sha"]].items()]}}
+        with patch.object(self, "runtime_check", return_value={"backend": backend}):
+            try:
+                release.Host.smoke(self, target, session_redis)
+            except StopAfterSessionGate:
+                pass
+
+
 class SessionRedisReleaseTests(unittest.TestCase):
     """AUTH-005: session store selection and the sibling session Redis boundary."""
     def setUp(self):
@@ -1621,6 +1652,50 @@ class SessionRedisReleaseTests(unittest.TestCase):
         self.assertTrue((host.state / "release-state-transition").exists())
         state = json.loads((host.state / "oci-release-state.json").read_text())
         self.assertEqual(self.a["sha"], state["current"]["manifest"]["sha"])
+
+    def lifecycle(self, a_environment, b_environment):
+        docker = SessionRedisDocker(None, session_redis_container())
+        host = SessionStoreLifecycleHost(Path(tempfile.mkdtemp(dir=self.root)), docker,
+                                         {self.a["sha"]: a_environment, self.b["sha"]: b_environment})
+        engine = release.Release(host)
+        engine.run("adopt", self.a, approval("adopt", self.a), True)
+        engine.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        return engine, host, docker
+
+    def test_rollback_to_memory_succeeds_while_current_session_redis_is_down(self):
+        memory = {**OLD_RUNTIME_ENVIRONMENT, **SESSION_ENVIRONMENT}
+        redis = {**memory, "PAWCYCLE_SESSION_STORE": "redis"}
+        for label, sibling in (("stopped", session_redis_container(**{"State.Running": False})),
+                               ("unhealthy", session_redis_container(**{"State.Health": {"Status": "unhealthy"}})),
+                               ("missing", None)):
+            with self.subTest(label):
+                engine, host, docker = self.lifecycle(memory, redis)
+                docker.sibling = sibling
+                # Forward releases from the redis current still require a healthy sibling.
+                with self.assertRaisesRegex(release.Refused, "session Redis"):
+                    engine.run("preflight", self.b, approval("preflight", self.b, self.b["sha"]))
+                host.smoke_calls.clear()
+                result = engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+                self.assertEqual("rollback-verified", result["result"])
+                state = engine.read_state()
+                self.assertEqual(self.a, state["current"]["manifest"])
+                self.assertFalse((host.state / "release-state-transition").exists())
+                # Current identity smoke still ran, only without the sibling gate.
+                self.assertEqual([(self.b["sha"], False)], host.smoke_calls)
+
+    def test_rollback_to_redis_target_still_requires_healthy_session_redis(self):
+        memory = {**OLD_RUNTIME_ENVIRONMENT, **SESSION_ENVIRONMENT}
+        redis = {**memory, "PAWCYCLE_SESSION_STORE": "redis"}
+        engine, host, docker = self.lifecycle(redis, memory)
+        docker.sibling = session_redis_container(**{"State.Running": False})
+        with self.assertRaisesRegex(release.Refused, "session Redis unhealthy"):
+            engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+        self.assertEqual(self.b, engine.read_state()["current"]["manifest"])
+        self.assertFalse((host.state / "release-state-transition").exists())
+        self.assertEqual([self.b["sha"]], host.calls, "refused before any activation")
+        docker.sibling = session_redis_container()
+        engine.run("rollback", self.a, approval("rollback", self.a, self.b["sha"]), True)
+        self.assertEqual(self.a, engine.read_state()["current"]["manifest"])
 
 
 if __name__ == "__main__":
