@@ -28,7 +28,7 @@ docker compose --env-file .env.local @ComposeFiles ps
 | 시나리오 | 장애 판정 | 원인 구분 | 정상 복귀 |
 | --- | --- | --- | --- |
 | Backend unavailable | Backend container가 stopped이고 `up=0`; Proxy API `502` | MySQL은 healthy | Backend healthy, health `UP`, `up=1`, Proxy `200` |
-| MySQL 연결 실패 | MySQL container가 stopped; Backend health·scrape·Proxy가 10초 안에 응답하지 않음 | Backend process는 running이고 Prometheus `lastError`는 scrape timeout | MySQL과 Backend healthy, health `UP`, `up=1`, Proxy `200` |
+| MySQL 연결 실패 | MySQL container가 stopped; Backend health·Proxy가 10초 안에 응답하지 않음 | Backend process는 running이고 scrape는 `up=1` 유지, Hikari pending 증가(2026-11-17 기준, 아래 참고) | MySQL과 Backend healthy, health `UP`, `up=1`, Proxy `200` |
 | reconciliation 실패 | disposable stack에서 `pawcycle_subscription_reconciliation_failures_total` 증가와 fixture ID의 lock-timeout log가 함께 존재 | 공유 DB가 아니라 단일 ACTIVE fixture의 row lock | lock 제거 후 다음 실행 완료, failure `0`, 오류 log 없음, fixture 불변 |
 
 이 값들은 local 판정 조건이며 Production alert 임계값이 아니다. Grafana의 `Backend scrape availability`, `Hikari connections`, `Reconciliation totals` 패널에서 같은 Prometheus 신호를 확인한다.
@@ -61,7 +61,7 @@ docker exec $BackendContainer curl --fail --silent --show-error --max-time 10 ht
 curl.exe --max-time 10 --output NUL --write-out "%{http_code}`n" "$ProxyUrl/api/products"
 ```
 
-실측에서는 `2026-08-09T05:42:30Z`에 Backend process가 running인 상태에서 Prometheus target `down`, `lastError=context deadline exceeded`, health와 Proxy timeout, MySQL stopped를 확인했다. `2026-08-09T05:43:16Z`에 기존 Backend process가 DB 연결을 회복해 health `UP`, `up=1`, Proxy `200`으로 복귀했다.
+실측에서는 `2026-08-09T05:42:30Z`에 Backend process가 running인 상태에서 Prometheus target `down`, `lastError=context deadline exceeded`, health와 Proxy timeout, MySQL stopped를 확인했다. 이후 업무 지표가 scrape 때 DB를 읽지 않게 바뀌어(#538), `2026-11-17` 재실측에서는 같은 장애에서 target이 `up`으로 남았다. 대신 `PawCycleDbConnectionWait`, `PawCycleScheduledJobFailing`, `PawCycleBackendErrorLogSpike`가 울린다([OBS-002](OBS-002-local-alert-response.md#pawcycledbconnectionwait)). `2026-08-09T05:43:16Z`에 기존 Backend process가 DB 연결을 회복해 health `UP`, `up=1`, Proxy `200`으로 복귀했다.
 
 ## Reconciliation 실패
 
@@ -84,9 +84,11 @@ Set-Location infra/local-integration
 - `FIXTURE_DATA_UNCHANGED=PASS`
 - `DISPOSABLE_CLEANUP=PASS`
 
+`2026-11-17`에는 두 결함을 고친 뒤 다시 통과했다. (1) 백엔드 설정 이름이 `pawcycle.subscription.reconciliation.*`로 바뀐 뒤에도 `compose.yaml`이 옛 `PAWCYCLE_MVP2_RECONCILIATION_*` 환경변수를 써서 로컬 회차 보정이 꺼져 있었다. (2) #543이 추가한 Loki·Alloy 볼륨이 disposable override에 없어 격리 검사에서 멈췄다. fixture의 `mvp2_managed` 컬럼명도 `runtime_managed`로 고쳤다. Discord webhook 파일이 없으면 스크립트가 일회용 placeholder 파일을 쓴다(Alertmanager는 띄우지 않는다).
+
 `2026-08-09` disposable 재검증에서는 ACTIVE subscription `1` 한 건으로 failures `1`, target `UP`, lock wait `50`초 log를 확인했다. 원인 제거 후 executions `1`, failures `0`, target `UP`과 새 failure 없음, Grafana datasource·Dashboard·13개 panel, fixture 불변과 전용 container·volume·network 정리를 확인했다.
 
-스크립트는 첫 `up` 전부터 cleanup 필요 상태를 기록하고 성공·실패 모두에서 전용 project에만 `down --volumes --remove-orphans --rmi local`을 실행한다. 실행 전 merged Compose model에 disposable volume 세 개만 존재하는지 확인하며, 종료 후 전용 container·volume·network 부재와 시작 전후 공유 named volume의 존재·생성 시각 불변을 확인한다. cleanup 오류를 숨기지 않고, 실행 오류와 동시에 발생하면 두 원인을 함께 보고한다. 전용 stack 정리나 lock-session rollback을 확인할 수 없으면 공유 stack으로 우회하지 않고 중단한다.
+스크립트는 첫 `up` 전부터 cleanup 필요 상태를 기록하고 성공·실패 모두에서 전용 project에만 `down --volumes --remove-orphans --rmi local`을 실행한다. 실행 전 merged Compose model에 disposable volume 다섯 개(MySQL·Prometheus·Grafana·Loki·Alloy)만 존재하는지 확인하며, 종료 후 전용 container·volume·network 부재와 시작 전후 공유 named volume의 존재·생성 시각 불변을 확인한다. cleanup 오류를 숨기지 않고, 실행 오류와 동시에 발생하면 두 원인을 함께 보고한다. 전용 stack 정리나 lock-session rollback을 확인할 수 없으면 공유 stack으로 우회하지 않고 중단한다.
 
 ## 복구와 중단
 
