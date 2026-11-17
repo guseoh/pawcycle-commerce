@@ -22,15 +22,26 @@ infra/performance/k6/run-baseline.sh --cohort api-products --results-dir /tmp/pa
 
 출력의 `throughput`은 warm-up이나 전체 test duration을 포함하지 않고 120초 measurement 창 안에서 완료되어 custom metric에 반영된 request count를 고정 120초로 나눈 requests/s다. measurement 종료 시 진행 중인 iteration은 `gracefulStop: "0s"` 경계로 중단되므로 120초 이후 완료 요청이 분자에 섞이지 않는다. `latencyMs`는 p50/p95/p99/max, `expectedStatusErrorRate`는 기대 상태(200)가 아닌 응답의 비율이다. 이는 local baseline 비교용 관측값이며 latency/SLO 판정이나 Production 용량 결론이 아니다.
 
+`responseContractErrorRate`는 status 200이어도 응답 내용이 계약과 다른 비율이다. `/api/products`는 `items` 배열·`page`·`size`·`totalElements`와 각 item의 `productId`, 상세는 요청한 `productId`와 `skus` 배열, `/products`는 `text/html` 문서를 확인한다. measurement 구간의 status 오류율과 응답 계약 오류율은 각각 `rate==0` threshold를 가지므로 한 건이라도 어긋나면 k6가 99로 끝나고 summary의 `verdict.failedThresholds`에 원인이 남는다. 이 판정은 workload·VU·duration을 바꾸지 않는다. constant-vus closed model은 iteration을 drop하지 않으므로 `droppedIterations`는 `applicable: false`로 표시한다. `run-baseline.sh`는 기존처럼 1·5·10·20 VU를 모두 실행하되 실패한 단계를 모아 마지막에 `baseline verdict=FAIL ... failed_steps=...`와 exit 1로 끝낸다.
+
 ## 관측과 복구
 
 Grafana `PawCycle Local Observability`에서 HTTP request rate, average, p95/p99, 전체 요청 대비 4xx/5xx error ratio와 기존 JVM·CPU·heap·GC·thread·Hikari panel을 함께 본다. capacity처럼 짧은 측정 구간이 고정 5분 창에 희석되지 않도록 HTTP rate 기반 패널은 Grafana `$__rate_interval`을 사용한다. Prometheus scrape interval(15초)보다 짧은 구간 해석은 피한다.
 
 실행을 중단하면 k6 process를 종료한다. 이 harness는 GET만 사용하고 application, DB, runtime 설정을 바꾸지 않는다. 저장소 변경을 되돌릴 때는 이 작업 PR을 revert한다.
 
+판정 경로 자체는 application 없이 loopback stub으로 확인한다. 기본 self-test는 약 20초이며, 실제 cohort script를 그대로 쓰는 확인은 수 분이 걸리므로 선택 옵션이다.
+
+```bash
+python infra/performance/k6/selftest/run-selftest.py
+python infra/performance/k6/selftest/run-selftest.py --real-cohort api-products --real-capacity
+```
+
 ## Capacity envelope
 
-`run-capacity.sh`는 동일 cohort를 250·500·750·1000 RPS로 각각 독립 실행한다. measurement는 `constant-arrival-rate` 2분이며 기존 1 VU/30초 warm-up을 재사용한다. warm-up과 measurement 모두 `gracefulStop: "0s"`를 사용해 구간 간 overlap과 measurement 종료 뒤 완료 요청의 집계를 막는다. latency SLO는 추가하지 않지만 expected-status error 또는 dropped iteration이 한 건이라도 발생하면 k6 threshold가 실패해 다음 단계가 실행되지 않는다.
+`run-capacity.sh`는 동일 cohort를 250·500·750·1000 RPS로 각각 독립 실행한다. measurement는 `constant-arrival-rate` 2분이며 기존 1 VU/30초 warm-up을 재사용한다. warm-up과 measurement 모두 `gracefulStop: "0s"`를 사용해 구간 간 overlap과 measurement 종료 뒤 완료 요청의 집계를 막는다. latency SLO는 추가하지 않지만 expected-status error, 응답 계약 오류 또는 dropped iteration이 한 건이라도 발생하면 k6 threshold가 실패해 다음 단계가 실행되지 않는다. runner는 이때 `capacity verdict=FAIL failed_rps=... not_run_rps=...`로 실행하지 않은 단계를 남기고 k6 종료 코드로 끝난다.
+
+summary의 `accounting`은 `scheduledIterations`(TARGET_RPS×120), `completedIterations`, `droppedIterations`, `notCompletedIterations`를 함께 남긴다. `notCompletedIterations`는 drop뿐 아니라 measurement 종료 시 `gracefulStop: "0s"`로 끊긴 진행 중 iteration까지 포함하므로 k6의 `dropped_iterations`보다 클 수 있다.
 
 `actualRps`와 `droppedIterationsPerSecond`는 warm-up 또는 전체 test duration을 포함하지 않고 120초 measurement 창 안에서 완료된 iteration만으로 계산한다. `preAllocatedVUs=250`은 로컬 load generator의 고정 초기 budget이고 필요하면 k6가 `maxVUs=1000`까지 동적으로 VU를 할당한다. 따라서 500 RPS 이상 단계에서 `allocatedVUs`가 초기 budget을 넘어 크게 증가하거나 dropped iteration이 발생하면 load-generator의 동적 할당 비용·VU 상한과 SUT 포화를 분리할 수 없으므로 그 결과만으로 application capacity를 확정하지 않는다. TARGET_RPS별 사전 VU 수를 별도로 조정하는 변경은 실제 load-generator saturation 증거가 확인될 때 수행한다.
 

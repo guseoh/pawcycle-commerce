@@ -31,7 +31,22 @@ if [[ -n "$results_dir" ]]; then
   mkdir -p -- "$results_dir"
 fi
 
+# Every VU step still runs in the same order; a failed step is recorded and the
+# runner exits non-zero at the end so a failed verdict cannot look like success.
+failed_steps=()
 for vus in 1 5 10 20; do
   printf 'Running cohort=%s vus=%s\n' "$cohort" "$vus"
+  set +e
   BASE_URL="$base_url" VUS="$vus" RESULTS_DIR="$results_dir" k6 run "$script_dir/$script"
+  step_exit=$?
+  set -e
+  if ((step_exit != 0)); then
+    failed_steps+=("${vus}vu:exit=${step_exit}")
+  fi
 done
+
+if ((${#failed_steps[@]})); then
+  printf 'baseline verdict=FAIL cohort=%s failed_steps=%s\n' "$cohort" "${failed_steps[*]}" >&2
+  exit 1
+fi
+printf 'baseline verdict=PASS cohort=%s steps=1,5,10,20\n' "$cohort"

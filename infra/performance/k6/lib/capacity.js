@@ -2,6 +2,7 @@ import http from "k6/http";
 import { check } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
 import { localBaseUrl } from "./baseline.js";
+import { arrivalAccounting, thresholdVerdict, validHtmlPage, validProductDetail, validProductList } from "./verdict.js";
 
 const SUPPORTED_RATES = [250, 500, 750, 1000];
 const MEASUREMENT_SECONDS = 120;
@@ -13,6 +14,13 @@ function catalogCardinality() {
 export const measurementIterations = new Counter("capacity_measurement_iterations");
 export const expectedStatusErrorRate = new Rate("capacity_expected_status_error_rate");
 export const measurementLatency = new Trend("capacity_measurement_latency", true);
+export const responseContractErrorRate = new Rate("capacity_response_contract_error_rate");
+
+const CONTRACTS = {
+  "capacity-api-products": (response) => validProductList(response),
+  "capacity-products-page": (response) => validHtmlPage(response),
+  "capacity-api-product-detail": (response, productId) => validProductDetail(response, productId),
+};
 
 function configuredRate() {
   const rate = Number(__ENV.TARGET_RPS || 250);
@@ -48,21 +56,26 @@ export function optionsForCapacity(cohort) {
     },
     thresholds: {
       capacity_expected_status_error_rate: ["rate==0"],
+      capacity_response_contract_error_rate: ["rate==0"],
       dropped_iterations: ["count==0"],
     },
     summaryTrendStats: ["med", "p(95)", "p(99)", "max"],
   };
 }
 
-export function request(cohort, path, measurement) {
+export function request(cohort, path, measurement, productId) {
   const response = http.get(`${localBaseUrl()}${path}`, {
     redirects: 0,
     tags: { cohort, name: cohort, catalog_cardinality: catalogCardinality() },
   });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
+  const contract = check(response, {
+    "response contract": (result) => CONTRACTS[cohort](result, productId),
+  });
   if (measurement) {
     measurementIterations.add(1);
     expectedStatusErrorRate.add(!expected);
+    responseContractErrorRate.add(!contract);
     measurementLatency.add(response.timings.duration);
   }
 }
@@ -95,6 +108,9 @@ export function handleSummaryForCapacity(cohort, data) {
     activeVUsMax: data.metrics.vus ? data.metrics.vus.values.max : null,
     latencyMs: { p50: values("capacity_measurement_latency").med, p95: values("capacity_measurement_latency")["p(95)"], p99: values("capacity_measurement_latency")["p(99)"], max: values("capacity_measurement_latency").max },
     expectedStatusErrorRate: values("capacity_expected_status_error_rate").rate,
+    responseContractErrorRate: values("capacity_response_contract_error_rate").rate,
+    accounting: arrivalAccounting(data, configuredRate() * MEASUREMENT_SECONDS, iterations.count),
+    verdict: thresholdVerdict(data),
   };
   return { stdout: `${JSON.stringify(summary)}\n` };
 }

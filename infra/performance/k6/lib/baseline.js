@@ -1,6 +1,7 @@
 import http from "k6/http";
 import { check } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
+import { thresholdVerdict, validHtmlPage, validProductDetail, validProductList } from "./verdict.js";
 
 const SUPPORTED_VUS = [1, 5, 10, 20];
 const WARMUP_DURATION = "30s";
@@ -10,6 +11,13 @@ const MEASUREMENT_SECONDS = 120;
 export const measurementRequests = new Counter("baseline_measurement_requests");
 export const expectedStatusErrorRate = new Rate("baseline_expected_status_error_rate");
 export const measurementLatency = new Trend("baseline_measurement_latency", true);
+export const responseContractErrorRate = new Rate("baseline_response_contract_error_rate");
+
+const CONTRACTS = {
+  "api-products": (response) => validProductList(response),
+  "products-page": (response) => validHtmlPage(response),
+  "api-product-detail": (response, productId) => validProductDetail(response, productId),
+};
 
 export function localBaseUrl() {
   const raw = __ENV.BASE_URL || "http://127.0.0.1:8080";
@@ -63,20 +71,28 @@ export function optionsFor(cohort) {
         tags: { cohort, phase: "measurement" },
       },
     },
+    thresholds: {
+      baseline_expected_status_error_rate: ["rate==0"],
+      baseline_response_contract_error_rate: ["rate==0"],
+    },
     summaryTrendStats: ["med", "p(95)", "p(99)", "max"],
   };
 }
 
-export function request(cohort, path, measurement) {
+export function request(cohort, path, measurement, productId) {
   const response = http.get(`${localBaseUrl()}${path}`, {
     redirects: 0,
     tags: { cohort, name: cohort },
   });
   const expected = check(response, { "expected status": (result) => result.status === 200 });
+  const contract = check(response, {
+    "response contract": (result) => CONTRACTS[cohort](result, productId),
+  });
 
   if (measurement) {
     measurementRequests.add(1);
     expectedStatusErrorRate.add(!expected);
+    responseContractErrorRate.add(!contract);
     measurementLatency.add(response.timings.duration);
   }
 }
@@ -98,7 +114,7 @@ export function selectPublicProductId() {
 }
 
 export function detailRequest(productId, measurement) {
-  request("api-product-detail", `/api/products/${encodeURIComponent(productId)}`, measurement);
+  request("api-product-detail", `/api/products/${encodeURIComponent(productId)}`, measurement, productId);
 }
 
 export function handleSummaryFor(cohort, data) {
@@ -117,6 +133,12 @@ export function handleSummaryFor(cohort, data) {
       max: values("baseline_measurement_latency").max,
     },
     expectedStatusErrorRate: values("baseline_expected_status_error_rate").rate,
+    responseContractErrorRate: values("baseline_response_contract_error_rate").rate,
+    measuredRequests: values("baseline_measurement_requests").count,
+    // Closed model (constant-vus): k6 never drops iterations, so there is no
+    // unexecuted-iteration count to report; a slow target lowers throughput instead.
+    droppedIterations: { applicable: false, reason: "closed-model constant-vus" },
+    verdict: thresholdVerdict(data),
   };
   const output = `${JSON.stringify(summary)}\n`;
   const resultsDir = __ENV.RESULTS_DIR;

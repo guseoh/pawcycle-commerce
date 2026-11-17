@@ -430,7 +430,7 @@ function Add-MeasurementEndPrometheusErrors([object]$Evidence) {
 function Get-DiagnosticOutcome([object]$K6Summary, [object]$ProcessExit, [bool]$CollectorFailure, [bool]$HarnessFailure) {
     $aggregateAvailable = $null -ne $K6Summary
     $thresholdFailure = $false
-    if ($aggregateAvailable -and (([double]$K6Summary.droppedIterations -gt 0) -or ([double]$K6Summary.expectedStatusErrorRate -gt 0))) {
+    if ($aggregateAvailable -and (([double]$K6Summary.droppedIterations -gt 0) -or ([double]$K6Summary.expectedStatusErrorRate -gt 0) -or ([double]$K6Summary.responseContractErrorRate -gt 0))) {
         $thresholdFailure = $true
     }
     $harnessFailure = $HarnessFailure -or $CollectorFailure -or (-not $aggregateAvailable) -or $null -eq $ProcessExit -or ([int]$ProcessExit -ne 0 -and -not $thresholdFailure)
