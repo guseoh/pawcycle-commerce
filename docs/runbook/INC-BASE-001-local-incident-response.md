@@ -61,7 +61,7 @@ docker exec $BackendContainer curl --fail --silent --show-error --max-time 10 ht
 curl.exe --max-time 10 --output NUL --write-out "%{http_code}`n" "$ProxyUrl/api/products"
 ```
 
-실측에서는 `2026-08-09T05:42:30Z`에 Backend process가 running인 상태에서 Prometheus target `down`, `lastError=context deadline exceeded`, health와 Proxy timeout, MySQL stopped를 확인했다. 이후 업무 지표가 scrape 때 DB를 읽지 않게 바뀌어(#538), `2026-11-17` 재실측에서는 같은 장애에서 target이 `up`으로 남았다. 대신 `PawCycleDbConnectionWait`, `PawCycleScheduledJobFailing`, `PawCycleBackendErrorLogSpike`가 울린다([OBS-002](OBS-002-local-alert-response.md#pawcycledbconnectionwait)). `2026-08-09T05:43:16Z`에 기존 Backend process가 DB 연결을 회복해 health `UP`, `up=1`, Proxy `200`으로 복귀했다.
+실측에서는 `2026-08-09T05:42:30Z`에 Backend process가 running인 상태에서 Prometheus target `down`, `lastError=context deadline exceeded`, health와 Proxy timeout, MySQL stopped를 확인했다. 이후 업무 지표가 scrape 때 DB를 읽지 않게 바뀌어(#538), `2026-11-17` 재실측에서는 같은 장애에서 target이 `up`으로 남았다. 대신 `PawCycleDbConnectionAcquireFailure`(critical, 2026-11-17 실측 2분 9초)와 `PawCycleScheduledJobFailing`, `PawCycleBackendErrorLogSpike`가 울린다([OBS-002](OBS-002-local-alert-response.md#pawcycledbconnectionwait)). `2026-08-09T05:43:16Z`에 기존 Backend process가 DB 연결을 회복해 health `UP`, `up=1`, Proxy `200`으로 복귀했다.
 
 ## Reconciliation 실패
 

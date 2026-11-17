@@ -34,6 +34,16 @@ inhibit_rules:
       - scope="local"
       - alertname!="PawCycleBackendScrapeUnavailable"
       - alertname!="Watchdog"
+  # While the DB cannot hand out connections, suppress only consequences whose condition clears as soon
+  # as connections come back: the instant connection-wait gauge. Windowed alerts (job failures 10m, ERROR
+  # log spike 5m, API p95 and 5xx 5m) stay firing after recovery, so suppressing them only delays them
+  # until just after the RESOLVED (OBS-STACK-003 rehearsal, Codex review on #546).
+  # Business backlog alerts (payments, subscriptions) are not consequences and still go out.
+  - source_matchers:
+      - alertname="PawCycleDbConnectionAcquireFailure"
+    target_matchers:
+      - scope="local"
+      - alertname="PawCycleDbConnectionWait"
 
 receivers:
   - name: blackhole

@@ -229,3 +229,52 @@ tests:
       - eval_time: 8m
         alertname: PawCycleStuckProcessingPayment
         exp_alerts: []
+
+  - name: DB connection acquisition failure fires while requests time out and wait
+    interval: 1m
+    input_series:
+      # MySQL stops at 1m: acquisitions time out from 2m on and requests keep waiting.
+      - series: 'hikaricp_connections_timeout_total{pool="HikariPool-1"}'
+        values: '0 0 2 4 6 8 10'
+      - series: 'hikaricp_connections_pending{pool="HikariPool-1"}'
+        values: '0 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts:
+          - exp_labels: { scope: local, severity: critical }
+            exp_annotations:
+              summary: DB 커넥션 획득 실패
+              description: 최근 2분 안에 DB 커넥션을 얻지 못하고 시간 초과로 끝난 요청이 있고, 지금도 기다리는 요청이 있다. MySQL이 멈췄거나 커넥션 풀이 고갈됐다.
+              impact: DB가 필요한 API와 스케줄 작업이 실패한다. 같은 원인의 DB 대기 알림은 억제되고, 시간창을 쓰는 작업 실패·ERROR 로그 급증·API 지연·5xx 알림은 함께 온다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycledbconnectionacquirefailure
+
+  - name: DB connection waiting without a timeout is not an acquisition failure
+    interval: 1m
+    input_series:
+      # Requests wait for a connection but every acquisition succeeds before the timeout.
+      - series: 'hikaricp_connections_timeout_total{pool="HikariPool-1"}'
+        values: '0x10'
+      - series: 'hikaricp_connections_pending{pool="HikariPool-1"}'
+        values: '3x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+
+  - name: DB connection acquisition failure resolves after recovery
+    interval: 1m
+    input_series:
+      # Failing from 1m to 4m, recovered from 5m (no new timeouts, nobody waiting).
+      - series: 'hikaricp_connections_timeout_total{pool="HikariPool-1"}'
+        values: '0 2 4 6 8 8 8 8 8 8 8 8'
+      - series: 'hikaricp_connections_pending{pool="HikariPool-1"}'
+        values: '0 5 5 5 5 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
