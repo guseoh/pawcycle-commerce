@@ -68,6 +68,7 @@ Alertmanager는 알림 몇 건과 receiver 하나를 다루는 상시 대기 서
 | Discord 장애·rate limit·webhook 삭제 | Alertmanager가 재시도하다 실패하고 그 알림은 **유실**된다(`alertmanager_notifications_failed_total` 증가) | Runbook 전달 확인 절차의 지표와 로그(URL 가림)로 확인 |
 | Prometheus 중단 | 규칙 평가가 멈춰 알림이 생기지 않는다 | ARCH-012의 Observability 복구 범위 |
 | `app01` 자체 중단 | 관측과 알림이 Application과 함께 멈춘다(same-host failure domain) | ARCH-012의 Deferred — Evidence Triggered(별도 Compute) 범위. 이번에 해결하지 않는다 |
+| webhook 교체 후 container 미재생성 | file bind mount라 실행 중 container는 이전 inode(이전 URL)를 계속 읽는다. 기존 webhook을 먼저 지우면 전달 실패 | Runbook 교체 절차: Alertmanager 재생성 → 시험 알림 확인 → 기존 webhook 삭제 |
 | webhook file 권한·경로 오류 | compose 적용 실패(경로 없음) 또는 전송 시 실패(읽기 불가) | 적용 전 조건에서 `65534:65534 400` 확인 |
 
 알림이 오지 않는다는 사실만으로 "정상"이라고 판단할 수 없다는 점이 이 결정의 남은 위험이다.

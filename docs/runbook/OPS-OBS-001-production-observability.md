@@ -468,7 +468,31 @@ Host metric gap을 continuous series로 해결하려면 `/proc`·`/sys` mount, �
    test "$(sudo stat -c '%u:%g %a' /opt/pawcycle/runtime/observability/discord-webhook)" = '65534:65534 400'
    ```
 
-4. webhook을 교체할 때는 같은 절차로 file만 다시 쓴다. Alertmanager는 전송할 때마다 file을 읽으므로 container 재시작이 필요 없다. 유출이 의심되면 Discord에서 webhook을 삭제하고 새로 만든다.
+4. webhook을 교체할 때는 다음 순서를 지킨다. compose는 webhook **file 자체**를 bind mount하므로 `install`이 새 inode로 file을 바꾸면 실행 중 container는 이전 inode(이전 URL)를 계속 읽는다. file만 다시 쓰고 기존 webhook을 먼저 지우면 critical 알림 전달이 실패한다.
+   1. Discord에서 새 webhook을 만든다. 기존 webhook은 아직 지우지 않는다(유출이 의심되어도 새 경로 확인까지 유지한다. 즉시 차단이 더 중요하면 그 사이 알림 유실을 감수하고 먼저 지운다).
+   2. 위 3번 블록으로 file을 새 URL로 다시 쓴다.
+   3. 현재 적용된 SHA의 source로 Alertmanager container만 재생성해 새 file을 mount한다. silence와 notification log는 named volume에 남는다.
+
+      ```bash
+      set -Eeuo pipefail
+      APPROVED_SHA='<currently-applied-sha>'
+      SOURCE_ROOT="/opt/pawcycle/observability-source/$APPROVED_SHA"
+      test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+      sudo env \
+        PAWCYCLE_APP_NETWORK=pawcycle-production-app \
+        PAWCYCLE_METRICS_TARGET=metrics-proxy:9464 \
+        PAWCYCLE_GRAFANA_ADMIN_USER_FILE=/opt/pawcycle/runtime/observability/grafana-admin-user \
+        PAWCYCLE_GRAFANA_ADMIN_PASSWORD_FILE=/opt/pawcycle/runtime/observability/grafana-admin-password \
+        PAWCYCLE_ALERTMANAGER_DISCORD_WEBHOOK_FILE=/opt/pawcycle/runtime/observability/discord-webhook \
+        docker compose \
+        --project-name pawcycle-production-observability \
+        --project-directory "$SOURCE_ROOT/infra/production-observability" \
+        --file "$SOURCE_ROOT/infra/production-observability/compose.yaml" \
+        up --detach --no-deps --force-recreate --wait --wait-timeout 60 --pull never alertmanager
+      ```
+
+   4. [적용 후 알림 경로 확인](#적용-후-알림-경로-확인)과 [운영 Discord 전달 확인](#운영-discord-전달-확인)을 실행해 **새 채널**에 firing·resolved가 오고 `failed_total`이 늘지 않았는지 확인한다.
+   5. 그다음에만 Discord에서 기존 webhook을 삭제한다. 확인이 실패하면 기존 webhook을 지우지 않고 file을 기존 URL로 되돌린 뒤 3단계를 다시 실행한다.
 
 ### 적용 후 알림 경로 확인
 
