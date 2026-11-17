@@ -8,11 +8,43 @@ services:
       - "127.0.0.1:${PAWCYCLE_LOCAL_ALERTMANAGER_PORT:-9094}:9093"
     volumes:
       - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability/alertmanager/templates:/etc/alertmanager/templates:ro
     tmpfs:
       - /alertmanager
     secrets:
       - source: discord-webhook
         target: discord-webhook
+      - source: discord-warning-webhook
+        target: discord-warning-webhook
+
+  loki:
+    image: grafana/loki:3.7.9
+    command:
+      - -config.file=/etc/loki/loki.yml
+    ports:
+      - "127.0.0.1:${PAWCYCLE_LOCAL_LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - ./observability/loki/rules:/etc/loki/rules:ro
+      - loki-data:/loki
+
+  # Reads container logs through the Docker socket (read-only mount). Local use only.
+  alloy:
+    image: grafana/alloy:v1.21.3
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    depends_on:
+      loki:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${PAWCYCLE_LOCAL_ALLOY_PORT:-12345}:12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
 
   prometheus:
     image: prom/prometheus:v3.13.2
@@ -42,6 +74,8 @@ services:
     depends_on:
       prometheus:
         condition: service_started
+      loki:
+        condition: service_started
     ports:
       - "127.0.0.1:${PAWCYCLE_LOCAL_GRAFANA_PORT:-3001}:3000"
     volumes:
@@ -54,7 +88,14 @@ volumes:
     name: pawcycle-local-integration-prometheus-data
   grafana-data:
     name: pawcycle-local-integration-grafana-data
+  loki-data:
+    name: pawcycle-local-integration-loki-data
+  alloy-data:
+    name: pawcycle-local-integration-alloy-data
 
 secrets:
+  # critical alerts; warning alerts use the second file, or the same file when it is not set.
   discord-webhook:
     file: ${PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE:?PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE is required}
+  discord-warning-webhook:
+    file: ${PAWCYCLE_LOCAL_DISCORD_WARNING_WEBHOOK_FILE:-${PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE:?PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE is required}}

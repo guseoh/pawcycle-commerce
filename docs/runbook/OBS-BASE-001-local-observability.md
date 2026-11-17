@@ -14,7 +14,11 @@ Prometheus와 Grafana의 host 포트는 `127.0.0.1`에만 바인딩한다. Prome
 PAWCYCLE_LOCAL_PROMETHEUS_PORT=9090
 PAWCYCLE_LOCAL_GRAFANA_PORT=3001
 PAWCYCLE_LOCAL_ALERTMANAGER_PORT=9094
+PAWCYCLE_LOCAL_LOKI_PORT=3100
+PAWCYCLE_LOCAL_ALLOY_PORT=12345
 ```
+
+2026-11-17(OBS-STACK-001)부터 로그 수집(Loki·Alloy)과 심각도별 알림이 추가됐다. Alloy는 이 compose project 컨테이너의 로그만 Docker socket(읽기 전용)으로 읽는다. warning 알림을 다른 Discord 채널로 받으려면 `PAWCYCLE_LOCAL_DISCORD_WARNING_WEBHOOK_FILE`을 추가로 준비한다. 없으면 critical과 같은 채널로 간다. 알림별 첫 확인은 [OBS-002](OBS-002-local-alert-response.md)를 따른다.
 
 Discord runtime secret file 경로를 `PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE`로 준비한다. runtime file은 Git tracked 상태가 아니어야 하며, repository 내부 파일이면 ignored 상태도 필요하다. webhook 값은 runtime file 외에 기록하지 않으며 Alertmanager는 `webhook_url_file`로만 이를 읽는다. Backend unavailable과 reconciliation failure의 Discord firing·resolved 수신은 local에서 수동으로 확인한다.
 
@@ -23,7 +27,7 @@ Discord runtime secret file 경로를 `PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE`로 �
 ```powershell
 $ComposeFiles = @('-f', 'compose.yaml', '-f', 'compose.observability.yaml')
 docker compose --env-file .env.local @ComposeFiles config --quiet
-docker compose --env-file .env.local @ComposeFiles pull mysql proxy prometheus grafana
+docker compose --env-file .env.local @ComposeFiles pull mysql proxy prometheus grafana alertmanager loki alloy
 docker compose --env-file .env.local @ComposeFiles build backend frontend
 docker compose --env-file .env.local @ComposeFiles up --detach --wait --wait-timeout 180
 docker compose --env-file .env.local @ComposeFiles ps

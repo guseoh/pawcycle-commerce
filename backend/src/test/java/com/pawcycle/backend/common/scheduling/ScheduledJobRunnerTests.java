@@ -35,9 +35,9 @@ class ScheduledJobRunnerTests {
 
     assertThat(items).isEqualTo(3);
     assertThat(executions(ScheduledJob.CHECKOUT_EXPIRATION, "success")).isEqualTo(1.0);
-    assertThat(registry.get(ScheduledJobRunner.ITEMS).tag("job", "checkout-expiration").counter().count())
+    assertThat(registry.get(ScheduledJobRunner.ITEMS).tag("job_name", "checkout-expiration").counter().count())
         .isEqualTo(3.0);
-    assertThat(registry.get(ScheduledJobRunner.DURATION).tag("job", "checkout-expiration").timer().count())
+    assertThat(registry.get(ScheduledJobRunner.DURATION).tag("job_name", "checkout-expiration").timer().count())
         .isEqualTo(1);
     assertThat(lastSuccess(ScheduledJob.CHECKOUT_EXPIRATION)).isEqualTo((double) NOW.getEpochSecond());
     assertThat(output.getOut()).contains("INFO").contains("job=checkout-expiration, items=3");
@@ -50,7 +50,7 @@ class ScheduledJobRunnerTests {
 
     assertThat(executions(ScheduledJob.SUBSCRIPTION_BILLING, "success")).isEqualTo(1.0);
     assertThat(executions(ScheduledJob.COMMERCE_METRICS_REFRESH, "success")).isEqualTo(1.0);
-    assertThat(registry.get(ScheduledJobRunner.ITEMS).tag("job", "commerce-metrics-refresh").counter().count())
+    assertThat(registry.get(ScheduledJobRunner.ITEMS).tag("job_name", "commerce-metrics-refresh").counter().count())
         .isZero();
     assertThat(output.getOut()).doesNotContain("INFO");
   }
@@ -93,10 +93,10 @@ class ScheduledJobRunnerTests {
 
   private double executions(ScheduledJob job, String outcome) {
     return registry.get(ScheduledJobRunner.EXECUTIONS)
-        .tag("job", job.tag()).tag("outcome", outcome).counter().count();
+        .tag("job_name", job.tag()).tag("outcome", outcome).counter().count();
   }
 
   private double lastSuccess(ScheduledJob job) {
-    return registry.get(ScheduledJobRunner.LAST_SUCCESS).tag("job", job.tag()).gauge().value();
+    return registry.get(ScheduledJobRunner.LAST_SUCCESS).tag("job_name", job.tag()).gauge().value();
   }
 }

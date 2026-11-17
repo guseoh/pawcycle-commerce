@@ -37,6 +37,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 - `PAYMENT-RECOVERY-001-processing-success.md`: 고립된 NORMAL/PROCESSING 결제의 성공 확정 유지보수 명령(#417 Phase 2a). 운영 실행은 별도 승인
 - `MVP4-DATA-002-demo-catalog-import.md`
 - `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약
+- `OBS-BASE-001-local-observability.md`, `OBS-002-local-alert-response.md`: 로컬 관측 스택(지표·로그·알림)의 실행과 알림별 첫 확인 절차
 - 관측·진단·성능 측정 관련 Runbook
 
 실제 Production·Cloud·운영 DB·Secret·비용 작업은 별도의 명시적 사용자 승인과 적용 전후·복구 evidence가 필요하다.

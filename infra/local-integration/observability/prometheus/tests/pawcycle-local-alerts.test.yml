@@ -1,0 +1,158 @@
+# promtool unit tests for the local alert rules (OBS-STACK-001).
+# Run: infra/local-integration/observability/test-observability-config.sh
+rule_files:
+  - ../rules/pawcycle-local-alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: backend scrape outage fires after 30 seconds and Watchdog always fires
+    interval: 15s
+    input_series:
+      - series: 'up{job="pawcycle-backend"}'
+        values: '1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 15s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts: []
+      - eval_time: 60s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts:
+          - exp_labels: { job: pawcycle-backend, scope: local, severity: critical }
+            exp_annotations:
+              summary: Backend 수집 중단
+              description: Prometheus가 30초 넘게 backend 지표를 읽지 못했다. backend가 멈췄거나 응답하지 않는다.
+              impact: 모든 API가 실패할 수 있다. 다른 알림은 이 알림이 풀릴 때까지 억제된다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclebackendscrapeunavailable
+      - eval_time: 15s
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: { scope: local, severity: none }
+            exp_annotations:
+              summary: 알림 경로 상시 확인용
+              description: 이 알림이 Alertmanager에 보이지 않으면 Prometheus 규칙 평가나 Alertmanager 전달이 멈춘 것이다.
+
+  - name: stuck processing payment fires only after one minute
+    interval: 15s
+    input_series:
+      - series: 'pawcycle_payment_stuck{kind="normal_processing"}'
+        values: '0 2 2 2 2 2 2'
+      - series: 'pawcycle_payment_stuck{kind="billing_processing"}'
+        values: '5 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts: []
+      - eval_time: 90s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts:
+          - exp_labels: { kind: normal_processing, scope: local, severity: critical }
+            exp_annotations:
+              summary: 고립 PROCESSING 결제 2건
+              description: 결제창이 닫힌 지 10분이 지났는데 PROCESSING으로 남은 일반 결제가 있다(#417).
+              impact: 고객 결제가 확정되지 않았고 재고가 예약된 채 남아 있다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-search=payment&from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclestuckprocessingpayment
+
+  - name: internal defect at an external call fires immediately; provider timeouts do not
+    interval: 1m
+    input_series:
+      - series: 'pawcycle_external_call_failures_total{provider="toss",operation="payment.confirm",failure_class="internal"}'
+        values: '0 0 1 1'
+      - series: 'pawcycle_external_call_failures_total{provider="toss",operation="payment.query",failure_class="timeout"}'
+        values: '0 1 2 3'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PawCycleExternalCallInternalFailure
+        exp_alerts:
+          - exp_labels: { provider: toss, operation: payment.confirm, scope: local, severity: critical }
+            exp_annotations:
+              summary: 외부 호출 경계의 내부 결함 (toss payment.confirm)
+              description: 결제사·AI 호출 경계에서 우리 코드의 예외(INTERNAL)가 났다. 결제사 장애가 아니라 버그일 가능성이 높다.
+              impact: 결제·환불은 UNKNOWN으로 남고, AI 기능은 기본 결과로 대체된다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-level=ERROR&from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleexternalcallinternalfailure
+      - eval_time: 3m
+        alertname: PawCycleExternalCallFailures
+        exp_alerts: []
+
+  - name: 5xx ratio is not judged at low traffic
+    interval: 1m
+    input_series:
+      # 0.1 request/s, half of them 5xx: below the 0.2 rps floor.
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="500"}'
+        values: '0+3x15'
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="200"}'
+        values: '0+3x15'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PawCycleApiServerErrorRate
+        exp_alerts: []
+
+  - name: 5xx ratio fires above five percent with real traffic
+    interval: 1m
+    input_series:
+      # 1 request/s, 10 percent 5xx.
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="500"}'
+        values: '0+6x15'
+      - series: 'http_server_requests_seconds_count{uri="/api/products",status="200"}'
+        values: '0+54x15'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PawCycleApiServerErrorRate
+        exp_alerts:
+          - exp_labels: { scope: local, severity: critical }
+            exp_annotations:
+              summary: API 5xx 비율 10%
+              description: 최근 5분 API 응답의 5% 넘게 5xx다. 요청이 초당 0.2건 이하일 때는 판정하지 않는다.
+              impact: 고객 요청이 실패하고 있다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycleapiservererrorrate
+
+  - name: a job that stopped succeeding fires; a disabled job (no success yet) does not
+    interval: 1m
+    input_series:
+      # As scraped: job is the target, job_name the scheduled job. Last success at t=0, never again.
+      - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="checkout-expiration"}'
+        values: '0x20'
+      # Disabled job: the gauge is NaN until its first success.
+      - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="subscription-billing"}'
+        values: 'NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN'
+      # The hourly cleanup is excluded from the 10-minute rule.
+      - series: 'pawcycle_job_last_success_seconds{job="pawcycle-backend",job_name="idempotency-cleanup"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PawCycleScheduledJobStalled
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: PawCycleScheduledJobStalled
+        exp_alerts:
+          - exp_labels: { job: pawcycle-backend, job_name: checkout-expiration, scope: local, severity: warning }
+            exp_annotations:
+              summary: 스케줄 작업 정지 (checkout-expiration)
+              description: checkout-expiration 작업이 10분 넘게 성공하지 못했다(기본 주기 1분).
+              impact: 작업에 따라 결제 만료, 구독 주문, 지표 갱신이 멈춘다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-search=Scheduled%20job&from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclescheduledjobstalled
+
+  - name: overdue subscription rounds wait thirty minutes
+    interval: 5m
+    input_series:
+      - series: 'pawcycle_subscription_schedules_overdue'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PawCycleSubscriptionOverdue
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: PawCycleSubscriptionOverdue
+        exp_alerts:
+          - exp_labels: { scope: local, severity: warning }
+            exp_annotations:
+              summary: 정기배송 지연 1건
+              description: 날짜가 지났는데 주문이 없는 회차가 30분 넘게 남아 있다. 앞 회차 결제를 기다리는 회차도 포함한다.
+              impact: 고객의 정기배송이 늦어진다.
+              dashboard: http://127.0.0.1:3001/d/pawcycle-logs/pawcycle-logs?var-service=backend&var-search=subscription&from=now-6h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcyclesubscriptionoverdue

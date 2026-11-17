@@ -35,7 +35,7 @@ class SubscriptionIdempotencyCleanupTriggerTests {
         .deleteExpired();
 
     verify(cleanup).deleteExpired(50);
-    assertThat(registry.get("pawcycle.job.items").tag("job", "idempotency-cleanup").counter().count())
+    assertThat(registry.get("pawcycle.job.items").tag("job_name", "idempotency-cleanup").counter().count())
         .isEqualTo(10);
   }
 }
