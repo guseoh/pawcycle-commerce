@@ -1,0 +1,48 @@
+# Production Alertmanager (ARCH-016). One production-only Discord channel.
+# The webhook URL is read only from a runtime secret file (webhook_url_file); it never appears in this file,
+# in Compose, in environment variables or in command arguments.
+# Timing differs from local (infra/local-integration/observability/alertmanager/alertmanager.yml):
+# production rules evaluate every 30s, so group_wait 10s and group_interval 1m keep the first message and the
+# RESOLVED message within about one evaluation of the state change without per-evaluation spam.
+global:
+  resolve_timeout: 5m
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  # Root receiver is the real channel on purpose: an alert without a matching route is surfaced, not dropped.
+  receiver: pawcycle-production-discord
+  group_by:
+    - alertname
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 30m
+  routes:
+    - matchers:
+        - alertname="Watchdog"
+      receiver: blackhole
+      repeat_interval: 1h
+    - matchers:
+        - severity="critical"
+      receiver: pawcycle-production-discord
+      repeat_interval: 30m
+
+# While the backend cannot be scraped, the business gauges and the Hikari counter have no data, so the other
+# alerts would send a false RESOLVED (or nothing). Only the outage itself goes out (local OBS-STACK-002).
+inhibit_rules:
+  - source_matchers:
+      - alertname="PawCycleBackendScrapeUnavailable"
+    target_matchers:
+      - scope="production"
+      - alertname!="PawCycleBackendScrapeUnavailable"
+      - alertname!="Watchdog"
+
+receivers:
+  - name: blackhole
+  - name: pawcycle-production-discord
+    discord_configs:
+      - webhook_url_file: /run/pawcycle-secrets/discord-webhook
+        send_resolved: true
+        title: '{{ template "pawcycle.production.title" . }}'
+        message: '{{ template "pawcycle.production.message" . }}'

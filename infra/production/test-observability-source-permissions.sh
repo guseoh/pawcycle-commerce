@@ -46,6 +46,9 @@ test -z "$(find "$SOURCE_ROOT" -type f ! -perm 0444 -print -quit)" \
 
 for required_path in \
   "$SOURCE_ROOT/infra/production-observability/prometheus" \
+  "$SOURCE_ROOT/infra/production-observability/prometheus/rules" \
+  "$SOURCE_ROOT/infra/production-observability/alertmanager" \
+  "$SOURCE_ROOT/infra/production-observability/alertmanager/templates" \
   "$SOURCE_ROOT/infra/production-observability/grafana/provisioning" \
   "$SOURCE_ROOT/infra/production-observability/grafana/dashboards" \
   "$SOURCE_ROOT/infra/production-metrics-proxy"; do
@@ -54,6 +57,9 @@ done
 
 for required_path in \
   "$SOURCE_ROOT/infra/production-observability/prometheus/prometheus.yml.tpl" \
+  "$SOURCE_ROOT/infra/production-observability/prometheus/rules/pawcycle-production-alerts.yml" \
+  "$SOURCE_ROOT/infra/production-observability/alertmanager/alertmanager.yml" \
+  "$SOURCE_ROOT/infra/production-observability/alertmanager/templates/pawcycle-production.tmpl" \
   "$SOURCE_ROOT/infra/production-observability/grafana/provisioning/dashboards/pawcycle.yaml" \
   "$SOURCE_ROOT/infra/production-observability/grafana/dashboards/production-overview.json" \
   "$SOURCE_ROOT/infra/production-metrics-proxy/compose.yaml"; do
@@ -65,6 +71,9 @@ docker run --rm --user 65534:65534 --volume "$SOURCE_ROOT:/source:ro" alpine:3.2
   for directory in \
     /source \
     /source/infra/production-observability/prometheus \
+    /source/infra/production-observability/prometheus/rules \
+    /source/infra/production-observability/alertmanager \
+    /source/infra/production-observability/alertmanager/templates \
     /source/infra/production-observability/grafana/provisioning \
     /source/infra/production-observability/grafana/dashboards \
     /source/infra/production-metrics-proxy; do
@@ -73,6 +82,10 @@ docker run --rm --user 65534:65534 --volume "$SOURCE_ROOT:/source:ro" alpine:3.2
   done
   find /source -type f -exec test -r {} \;
   test -r /source/infra/production-observability/prometheus/prometheus.yml.tpl
+  # Prometheus and Alertmanager both run as nobody (65534) and read these as non-owners (ARCH-016).
+  test -r /source/infra/production-observability/prometheus/rules/pawcycle-production-alerts.yml
+  test -r /source/infra/production-observability/alertmanager/alertmanager.yml
+  test -r /source/infra/production-observability/alertmanager/templates/pawcycle-production.tmpl
   test -r /source/infra/production-observability/grafana/provisioning/dashboards/pawcycle.yaml
   test -r /source/infra/production-observability/grafana/dashboards/production-overview.json
 ' || die 'non-owner container user cannot traverse/read the normalized source'

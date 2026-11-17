@@ -1,0 +1,18 @@
+{{/* Discord message for PawCycle production alerts (ARCH-016). Based on the local OBS-STACK-001 template. */}}
+{{ define "pawcycle.production.title" -}}
+[운영] {{ if eq .Status "firing" }}[{{ .CommonLabels.severity | toUpper }}]{{ else }}[RESOLVED]{{ end }} {{ .CommonLabels.alertname }}
+{{- end }}
+
+{{ define "pawcycle.production.message" -}}
+{{ range .Alerts -}}
+**{{ .Annotations.summary }}**
+{{ .Annotations.description }}
+{{ if .Annotations.impact }}영향: {{ .Annotations.impact }}
+{{ end -}}
+시작: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}{{ if eq .Status "resolved" }} / 해소: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
+{{ if .Annotations.dashboard }}대시보드(SSH 터널): {{ .Annotations.dashboard }}
+{{ end -}}
+{{ if .Annotations.runbook }}첫 확인: {{ .Annotations.runbook }}
+{{ end }}
+{{ end -}}
+{{- end }}

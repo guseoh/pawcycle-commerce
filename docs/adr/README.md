@@ -46,10 +46,11 @@ ADR 원문의 상태 표기는 작성 당시 값이다. Lean Harness §15(과거
 | [ARCH-009](ARCH-009-commerce-runtime-refactoring.md) | Commerce 런타임 리팩터링 | (표기 없음) | 채택 후 변경 | API·schema를 바꾸지 않고 책임을 나누는 원칙은 유지. 단일 `CommerceService`는 #275(2026-09-03)에서 제거됐고, 이후 구조는 Backend Architecture V2 T02·T06·T07 |
 | [ARCH-010](ARCH-010-authentication-provider-ownership.md) | 인증 Provider 책임 | Accepted | 유효 | `MemberAuthenticationProvider` |
 | [ARCH-011](ARCH-011-subscription-v2-runtime-structure.md) | Subscription V2 런타임 구조 | Accepted | 채택 후 변경 | 명시 SQL·typed projection·유스케이스 트랜잭션 원칙은 유지. `V2SubscriptionJdbcStore`는 #275(2026-09-03)에서 제거됐고, 이후 Backend Architecture V2 T08·T09에서 `subscription/persistence`의 조회·쓰기 영속 계층으로 정리됐다 |
-| [ARCH-012](ARCH-012-production-observability-boundary.md) | Production 관측 경계 | Accepted | 유효 | OCI `app01` same-host 관측, `infra/production-observability` |
+| [ARCH-012](ARCH-012-production-observability-boundary.md) | Production 관측 경계 | Accepted | 유효 | OCI `app01` same-host 관측, `infra/production-observability`. Alertmanager 제외는 [ARCH-016](ARCH-016-production-alertmanager.md)이 보완(Loki 제외는 유지) |
 | [ARCH-013](ARCH-013-rds-single-az.md) | RDS Single-AZ 전환 준비 | Approved (저장소 준비) | 대체됨 | AWS 운영 종료 후 OCI로 전환. [운영 개요](../architecture/production-operations-overview.md) |
 | [ARCH-014](ARCH-014-product-list-redis-cache.md) | 상품 목록 Redis cache | Accepted | 유효 | `ProductListCacheInvalidator` |
 | [ARCH-015](ARCH-015-ai-product-recommendation-boundary.md) | AI 상품 추천 경계 | Accepted | 유효 | 서버 후보 검증 후 AI 재정렬. 기본 비활성(`PAWCYCLE_RECOMMENDATION_AI_ENABLED=false`) |
+| [ARCH-016](ARCH-016-production-alertmanager.md) | 운영 Alertmanager와 critical 알림 | Accepted | 유효 (저장소 준비) | ARCH-012 보완. `infra/production-observability/alertmanager`, 운영 규칙 critical 4 + Watchdog. 운영 적용은 별도 승인([OPS-OBS-001](../runbook/OPS-OBS-001-production-observability.md#운영-알림-arch-016)) |
 | [AUTH-005](AUTH-005-spring-session-redis.md) | 세션 저장소 Spring Session Redis | Approved | 유효 | `common/security/SessionStoreConfiguration`. 기본 `memory`, 운영 활성화는 별도 승인([AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)) |
 
 ### 승인 과정 기록

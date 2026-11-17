@@ -1,0 +1,185 @@
+# promtool unit tests for the production alert rules (ARCH-016).
+# Series use the production scrape and evaluation interval (30s) and the production job label.
+# Run: infra/production-observability/test-alerting-config.sh
+rule_files:
+  - ../rules/pawcycle-production-alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: scrape outage needs two failed 30s scrapes and only the production job counts
+    interval: 30s
+    input_series:
+      - series: 'up{job="pawcycle-production-backend", instance="metrics-proxy:9464"}'
+        values: '1 0 0 0 0 0'
+      - series: 'up{job="other", instance="elsewhere:9100"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 60s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts: []
+      - eval_time: 90s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts:
+          - exp_labels: { job: pawcycle-production-backend, instance: "metrics-proxy:9464", scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 backend 수집 중단
+              description: Prometheus가 1분 넘게(30초 수집 2회 이상) metrics-proxy를 거쳐 backend 지표를 읽지 못했다. backend나 metrics-proxy가 멈췄거나 응답하지 않는다.
+              impact: 운영 API가 실패하고 있을 수 있다. 다른 운영 알림은 이 알림이 풀릴 때까지 억제된다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-overview/production-overview?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcyclebackendscrapeunavailable
+      - eval_time: 30s
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: { scope: production, severity: none }
+            exp_annotations:
+              summary: 운영 알림 경로 상시 확인용
+              description: 이 알림이 Alertmanager에 보이지 않으면 Prometheus 규칙 평가나 Alertmanager 전달이 멈춘 것이다.
+
+  - name: one failed scrape does not fire
+    interval: 30s
+    input_series:
+      - series: 'up{job="pawcycle-production-backend", instance="metrics-proxy:9464"}'
+        values: '1 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 150s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts: []
+
+  - name: MySQL outage with no traffic fires from the refresh job timeouts alone
+    # CommerceMetrics refresh: 30s connection timeout, then the next run 60s later -> one timeout every 90s.
+    # pending is > 0 only while a run waits; it is not part of the rule (30s sampling would miss it).
+    interval: 30s
+    input_series:
+      - series: 'hikaricp_connections_timeout_total{job="pawcycle-production-backend", pool="HikariPool-1"}'
+        values: '0 0 1 1 1 2 2 2 3 3 3 4 4 4 5'
+      - series: 'hikaricp_connections_pending{job="pawcycle-production-backend", pool="HikariPool-1"}'
+        values: '0 1 0 0 1 0 0 1 0 0 1 0 0 1 0'
+    alert_rule_test:
+      - eval_time: 120s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+      - eval_time: 240s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts:
+          - exp_labels: { scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 DB 커넥션 획득 실패
+              description: 최근 5분 안에 DB 커넥션을 얻지 못하고 시간 초과(30초)로 끝난 요청·작업이 2건 이상이다. 운영 MySQL에 닿지 않거나 커넥션 풀이 고갈됐다.
+              impact: DB가 필요한 API와 스케줄 작업이 실패한다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-runtime/runtime?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycledbconnectionacquirefailure
+      - eval_time: 420s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts:
+          - exp_labels: { scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 DB 커넥션 획득 실패
+              description: 최근 5분 안에 DB 커넥션을 얻지 못하고 시간 초과(30초)로 끝난 요청·작업이 2건 이상이다. 운영 MySQL에 닿지 않거나 커넥션 풀이 고갈됐다.
+              impact: DB가 필요한 API와 스케줄 작업이 실패한다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-runtime/runtime?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycledbconnectionacquirefailure
+
+  - name: a single transient connection timeout does not fire
+    interval: 30s
+    input_series:
+      - series: 'hikaricp_connections_timeout_total{job="pawcycle-production-backend", pool="HikariPool-1"}'
+        values: '0 0 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 90s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+      - eval_time: 180s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+
+  - name: DB alert resolves once fewer than two timeouts remain in the 5m window
+    interval: 30s
+    input_series:
+      # Timeouts every 90s until 270s, then MySQL is back and the counter stays flat.
+      - series: 'hikaricp_connections_timeout_total{job="pawcycle-production-backend", pool="HikariPool-1"}'
+        values: '0 0 1 1 1 2 2 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      - eval_time: 330s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts:
+          - exp_labels: { scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 DB 커넥션 획득 실패
+              description: 최근 5분 안에 DB 커넥션을 얻지 못하고 시간 초과(30초)로 끝난 요청·작업이 2건 이상이다. 운영 MySQL에 닿지 않거나 커넥션 풀이 고갈됐다.
+              impact: DB가 필요한 API와 스케줄 작업이 실패한다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-runtime/runtime?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycledbconnectionacquirefailure
+      - eval_time: 480s
+        alertname: PawCycleDbConnectionAcquireFailure
+        exp_alerts: []
+
+  - name: stuck processing payment fires after one minute and survives a backend restart gap
+    interval: 30s
+    input_series:
+      # Value 2 from 30s; the series disappears for 2 minutes (backend restart) and returns.
+      - series: 'pawcycle_payment_stuck{job="pawcycle-production-backend", kind="normal_processing"}'
+        values: '0 2 2 2 2 _ _ _ _ 2 2'
+      - series: 'pawcycle_payment_stuck{job="pawcycle-production-backend", kind="billing_processing"}'
+        values: '5 5 5 5 5 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 60s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts: []
+      - eval_time: 90s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts:
+          - exp_labels: { job: pawcycle-production-backend, kind: normal_processing, scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 고립 PROCESSING 결제 2건
+              description: 결제창이 닫힌 지 10분이 지났는데 PROCESSING으로 남은 일반 결제가 있다(#417).
+              impact: 고객 결제가 확정되지 않았고 재고가 예약된 채 남아 있다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-operations/pawcycle-operations?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcyclestuckprocessingpayment
+      - eval_time: 240s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts:
+          - exp_labels: { job: pawcycle-production-backend, kind: normal_processing, scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 고립 PROCESSING 결제 2건
+              description: 결제창이 닫힌 지 10분이 지났는데 PROCESSING으로 남은 일반 결제가 있다(#417).
+              impact: 고객 결제가 확정되지 않았고 재고가 예약된 채 남아 있다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-operations/pawcycle-operations?from=now-1h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcyclestuckprocessingpayment
+
+  - name: UNKNOWN payment aging fires after five minutes over thirty minutes
+    interval: 30s
+    input_series:
+      - series: 'pawcycle_payment_stuck_oldest_age_seconds{job="pawcycle-production-backend", kind="unknown"}'
+        values: '1700 1760 1820+30x14'
+      - series: 'pawcycle_payment_stuck_oldest_age_seconds{job="pawcycle-production-backend", kind="normal_processing"}'
+        values: '9000x16'
+    alert_rule_test:
+      - eval_time: 330s
+        alertname: PawCycleUnknownPaymentAging
+        exp_alerts: []
+      - eval_time: 390s
+        alertname: PawCycleUnknownPaymentAging
+        exp_alerts:
+          - exp_labels: { job: pawcycle-production-backend, kind: unknown, scope: production, severity: critical }
+            exp_annotations:
+              summary: 운영 UNKNOWN 결제가 30분 넘게 남음
+              description: 결제사 결과를 모르는 결제 중 가장 오래된 건이 35m 50s 지났다.
+              impact: 고객은 결제했을 수 있지만 주문이 확정되지 않았다.
+              dashboard: http://127.0.0.1:3000/d/pawcycle-production-operations/pawcycle-operations?from=now-6h&to=now
+              runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycleunknownpaymentaging
+
+  - name: local-job series never satisfy production rules
+    interval: 30s
+    input_series:
+      - series: 'up{job="pawcycle-backend"}'
+        values: '0x10'
+      - series: 'pawcycle_payment_stuck{job="pawcycle-backend", kind="normal_processing"}'
+        values: '3x10'
+    alert_rule_test:
+      - eval_time: 300s
+        alertname: PawCycleBackendScrapeUnavailable
+        exp_alerts: []
+      - eval_time: 300s
+        alertname: PawCycleStuckProcessingPayment
+        exp_alerts: []

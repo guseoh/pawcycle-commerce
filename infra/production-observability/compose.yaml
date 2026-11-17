@@ -24,6 +24,7 @@ services:
       - "127.0.0.1:${PAWCYCLE_OBSERVABILITY_PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml.tpl:/etc/prometheus/prometheus.yml.tpl:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     networks:
       - app
@@ -64,11 +65,54 @@ services:
     pids_limit: 128
     logging: *default-logging
 
+  # ARCH-016: alert delivery to the production Discord channel. No host port: Prometheus reaches it on the
+  # observability bridge and operators use amtool through docker exec. Not attached to the Application network.
+  # Caps: the disposable delivery run (validate-observability.sh) sampled 19.3 MiB with alerts firing and
+  # resolving, so 64m leaves over 3x headroom; 0.05 CPU matches metrics-proxy, the other mostly idle sidecar.
+  # Re-evaluated by the ARCH-012 OFF/ON calibration after the real apply (ARCH-016).
+  alertmanager:
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --data.retention=120h
+      # Single instance: no gossip listener.
+      - --cluster.listen-address=
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+      - ${PAWCYCLE_ALERTMANAGER_DISCORD_WEBHOOK_FILE:?PAWCYCLE_ALERTMANAGER_DISCORD_WEBHOOK_FILE is required}:/run/pawcycle-secrets/discord-webhook:ro
+      # Silences and the notification log survive a restart, so a restart neither drops silences nor re-sends.
+      - alertmanager-data:/alertmanager
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --output-document=/dev/null
+        - http://127.0.0.1:9093/-/ready
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - observability
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    cpus: 0.05
+    pids_limit: 64
+    logging: *default-logging
+
 volumes:
   prometheus-data:
     name: ${PAWCYCLE_OBSERVABILITY_PROMETHEUS_VOLUME:-pawcycle-production-observability-prometheus-data}
   grafana-data:
     name: ${PAWCYCLE_OBSERVABILITY_GRAFANA_VOLUME:-pawcycle-production-observability-grafana-data}
+  alertmanager-data:
+    name: ${PAWCYCLE_OBSERVABILITY_ALERTMANAGER_VOLUME:-pawcycle-production-observability-alertmanager-data}
 
 networks:
   app:

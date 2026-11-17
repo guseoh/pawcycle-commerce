@@ -385,6 +385,8 @@ jobs:
             infra/production/test-observability-source-permissions.sh \
             infra/production-metrics-proxy/test-metrics-proxy.sh
           bash -n infra/production-observability/validate-observability.sh
+          bash -n infra/production-observability/test-alerting-config.sh
+          python -m py_compile infra/production-observability/validation-fake-http.py
           python -m py_compile infra/production/validate-production-contracts.py
           python -m py_compile infra/production/oci-release.py infra/production/test-oci-release.py
           python -m py_compile infra/production/oci-compat-observer.py infra/production/test-oci-compat-observer.py
