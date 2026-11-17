@@ -82,9 +82,17 @@ Grafana: 데이터 소스 `pawcycle-prometheus`·`pawcycle-loki`, 대시보드 `
 - INC-BASE-001 `verify-inc-base-001.ps1`: 수정 후 `FAILURE_EVIDENCE`, `RECOVERY_EVIDENCE`, 두 알림 firing/resolved, `GRAFANA_EVIDENCE`, `FIXTURE_DATA_UNCHANGED=PASS`, `DISPOSABLE_CLEANUP=PASS`. 출력 마지막 줄 이후 PowerShell 프로세스 종료 코드는 1이었는데, 스크립트의 마지막 native 명령 종료 코드가 남은 것으로 보인다(공유 Loki·Alloy 볼륨이 없어 `docker volume inspect`가 1을 반환하는 경로). 스크립트 자체의 실패 경로(throw)는 타지 않았다.
 - Backend 코드는 바꾸지 않았다.
 
+## 추가 검증 — 실제 Discord 수신 (2026-11-17)
+
+리허설 당시 webhook 파일이 없어 미실행이던 항목이다. 사용자가 로컬 webhook 파일을 준비해 `infra/local-integration/observability/verify-discord-delivery.ps1`과 같은 절차로 확인했다.
+
+- 일회용 Alertmanager(`main` `bce2100b`의 설정·템플릿)에 critical·warning 시험 알림을 보낸 뒤 resolved로 바꿨다.
+- 사용자가 Discord에서 4건을 확인했다: `[CRITICAL]`·`[WARNING]` firing 각 1건(07:32:14·07:32:15 UTC 시작), `[RESOLVED]` 2건(07:33:54 UTC 해소). 요약·설명·영향·시각·대시보드·Runbook 링크가 템플릿대로 표시됐다.
+- webhook URL은 사용자 개인 폴더의 파일로만 쓰였고 저장소·로그·보고서에 남기지 않았다.
+- 이 검증은 Alertmanager → Discord 구간이다. Prometheus 규칙 → Alertmanager 구간은 위 6종 리허설과 가짜 수신기로 확인했다.
+
 ## 미실행 항목
 
-- 실제 Discord 채널 수신(webhook 파일 없음). 가짜 수신기 전달까지만 확인했다.
 - `PawCycleExternalCallInternalFailure`, `PawCycleApiServerErrorRate`, `PawCycleSubscriptionAutomationFailure`의 실행 리허설(규칙 테스트만).
 - 결제사 실패로 끝난 고립 PROCESSING의 실패 확정·예약 해제(#417, 별도 승인 대상).
 - 운영·OCI 환경.
