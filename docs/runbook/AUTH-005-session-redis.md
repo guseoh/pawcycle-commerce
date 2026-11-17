@@ -5,7 +5,7 @@
 [AUTH-005 ADR](../adr/AUTH-005-spring-session-redis.md)의 세션 저장소(Spring Session Redis)를 local-integration에서 확인하는 절차와, 운영에서 켜기 전에 필요한 결정·작업을 정리한다.
 
 - local-integration은 `PAWCYCLE_SESSION_STORE=redis`로 세션 전용 Redis(`session-redis`)를 쓴다.
-- 운영 기본값은 `memory`다. 이 문서의 운영 절은 **준비 목록**이며, 운영 실행 승인이 아니다.
+- 운영은 별도 sibling project `infra/production-session-redis`를 쓰도록 저장소가 준비돼 있고, 운영 compose의 스위치 기본값은 `memory`다. 이 문서의 운영 절은 **적용 절차**이며, 운영 실행 승인이 아니다.
 
 ## 설정
 
@@ -79,31 +79,155 @@ backend는 `session-redis`가 healthy가 된 뒤 시작한다. 캐시용 `redis`
 
 Redis가 멈췄을 때 세션 요청은 실패하지만(fail-closed) 상태 코드는 전용 코드가 아니다. 쿠키가 있는 요청은 500, 쿠키 없는 `GET /api/auth/csrf`는 401이다(세션 저장 실패 예외가 오류 처리 경로에서 인증 실패로 바뀌는 것으로 추정하며, 경로는 확인하지 않았다). 전용 응답(예: 503)으로 바꾸는 것은 인증 API 계약 변경이라 이 작업에 넣지 않았다.
 
-## 운영 활성화 준비(미실행·별도 승인)
+## 운영 구성(저장소 준비 완료, 운영 미실행)
 
-운영 compose(`infra/production/compose.yaml`)에는 세션 Redis를 **추가하지 않았다**. `infra/production/oci-release.py`가 compose의 서비스 집합(`backend`, `frontend`, `proxy`)과 volume 집합(`letsencrypt`, `certbot-webroot`)을 고정값으로 검사하므로(`Compose service set mismatch`, `Compose volume set mismatch`), 서비스를 넣으면 배포가 거부된다. 배포 도구 계약 변경은 이 작업의 범위 밖이다.
+2026-11-17 사용자 결정에 따라 운영 세션 Redis는 Application compose의 서비스가 아니라 **별도 sibling Compose project**다([ARCH-012](../adr/ARCH-012-production-observability-boundary.md)의 metrics-proxy 패턴). 이 절의 명령은 운영 실행 승인이 아니다. 실제 적용은 #470 운영 트랙에서 별도로 승인한다.
 
-### 먼저 필요한 사용자 결정
+### 구성 요소
 
-1. **운영 Redis 위치와 사양**: 같은 OCI 호스트의 compose 서비스로 둘지, 관리형 서비스를 쓸지. 호스트 안에 둔다면 메모리 상한(아래 안 참고)과 호스트 여유 메모리.
-2. **비용**: 같은 호스트면 추가 비용 없이 메모리만 쓴다. 관리형이면 월 비용이 생긴다.
-3. **장애 정책 확인**: 세션 Redis 장애 = 로그인·로그인 사용자 요청·CSRF 발급 실패(fail-closed). 알림 기준과 복구 목표.
-4. **Redis 인증**: 내부 network(`internal: true`)만으로 막을지, 비밀번호(ACL)를 둘지. 비밀번호를 쓰면 backend 설정에 password 항목을 추가하는 별도 변경이 필요하다(현재 코드에는 없음).
-5. **전환 시점**: `memory` → `redis` 전환 배포에서 로그인 사용자가 1회 로그아웃된다. 공지 여부.
+| 항목 | 값 |
+| --- | --- |
+| 정의 | `infra/production-session-redis/compose.yaml` |
+| Compose project | `pawcycle-production-session-redis` (service `session-redis` 하나) |
+| image | `redis:8.10.0-alpine3.23@sha256:978f0e01…6241`(digest 고정, `linux/amd64` manifest 확인). `oci-release.py`의 `SESSION_REDIS_IMAGE`와 같아야 한다(`validate-production-contracts.py`가 검사) |
+| 서버 옵션 | `--maxmemory 64mb --maxmemory-policy noeviction --appendonly yes --appendfsync everysec --save ""` |
+| 자원 | `mem_limit: 128m`, `cpus: 0.25`, `pids_limit: 64`, `read_only: true`, `no-new-privileges` |
+| 상태 확인·재시작 | `redis-cli ping` healthcheck, `restart: unless-stopped`, `stop_grace_period: 30s` |
+| 데이터 | named volume `pawcycle-production-session-redis-data`(`/data`, 이름 고정) |
+| network | external `pawcycle-production-app`(`internal: true`, Application project 소유)에만 연결. host port 없음, `expose` 없음 |
+| 인증 | 없음(사용자 결정). Docker-internal network만 접근 경계다. 인증이 필요해지면 backend 설정 변경이 따르는 별도 결정이다 |
 
-### 사양 안(제안, 결정 아님)
+backend는 같은 `app` network에서 service 이름 `session-redis:6379`로 접근한다. 세션 Redis는 Application release와 독립된 lifecycle을 가진다. release 도구는 이 project를 시작·중지·재생성하지 않고, `Host.siblings()`가 release 전후로 이 컨테이너의 `StartedAt`을 비교해 바뀌면 fail-closed 한다.
 
-- 같은 호스트 compose 서비스, `redis:8.10.0-alpine3.23`을 digest로 고정
-- `maxmemory 64mb`, `noeviction`, AOF `everysec`, `mem_limit 128m`, `cpus 0.25`, `read_only` + `/data` named volume
-- `app` network(`internal: true`)에만 연결, 포트 공개 없음
-- 근거: 세션 하나는 SecurityContext와 CSRF 토큰이라 대략 1KB 안팎이다(운영 측정 필요). 64MB면 수만 개 규모다. 익명 사용자도 `/api/auth/csrf`와 인증 필요 API의 401 응답에서 세션이 생기므로, 활성화 전 운영 트래픽에서 세션 생성 수를 측정해 상한을 다시 정한다.
+### 저장소 선택 스위치: 운영 compose의 `environment`
 
-### 활성화 순서(승인 후)
+운영 backend의 세션 저장소는 `infra/production/compose.yaml`의 backend `environment`가 정한다.
 
-1. 저장소 변경: 운영 compose에 `session-redis` 서비스·volume 추가, `oci-release.py`의 서비스·volume·network 계약과 테스트(`test-oci-release*.py`, `test-production-compose.sh`) 갱신, 운영 env에 `PAWCYCLE_SESSION_STORE`·`PAWCYCLE_SESSION_REDIS_*` 추가. 하나의 PR로 리뷰한다.
-2. `PAWCYCLE_SESSION_STORE=memory`인 채로 세션 Redis만 먼저 배포하고 healthy를 확인한다.
-3. 공지 후 `PAWCYCLE_SESSION_STORE=redis`로 backend를 다시 배포한다(1회 전원 로그아웃).
-4. 확인: 운영 인증 smoke([OPS-017](OPS-017-production-auth-session-smoke.md)), backend 재시작 후 로그인 유지, 세션 key 수·Redis 메모리 사용량.
-5. 되돌리기: `PAWCYCLE_SESSION_STORE=memory`로 backend를 다시 배포한다(다시 1회 로그아웃). 세션 Redis 데이터는 버려도 된다.
+```yaml
+PAWCYCLE_SESSION_STORE: memory          # 기본. 활성화 PR에서만 redis로 바꾼다
+PAWCYCLE_SESSION_REDIS_HOST: session-redis
+PAWCYCLE_SESSION_REDIS_PORT: "6379"
+```
 
-`redis` 모드의 로그아웃 응답에는 쿠키 삭제 헤더가 두 개(기존 + Spring Session `Max-Age=0`) 붙는다. 운영 인증 smoke(`verify-production-auth-session-smoke.sh`)는 curl cookie jar와 상태 코드로 판정하므로 영향이 없을 것으로 보지만, `redis` 모드에서 실행해 본 적은 없다. 활성화 PR에서 함께 확인한다.
+운영 runtime 환경 파일(`backend.env`)에는 새 키를 넣지 않는다. 이유는 다음과 같다.
+
+- `oci-release.py`는 baseline 기록의 `runtime_env_sha256`과 현재 `backend.env` 해시가 같아야 preflight·activate·rollback을 허용한다. 환경 파일을 고치면 기존 baseline에서 넘어가는 경로가 막힌다.
+- canonical bundle(`g0-t2a-canonical-v1`)은 `production_env.py`가 키 집합을 정확히 일치하게 검사한다. 세션 키를 넣으면 `ENV_KEYS`로 거부된다.
+- Compose에서 `environment`가 `env_file`보다 우선하므로, 누가 `backend.env`에 세션 키를 넣어도 저장소가 바뀌지 않는다. 스위치는 리뷰된 compose 한 곳뿐이다.
+
+따라서 `production_env.py`와 `oci-release.py`의 앱 compose 서비스·volume 집합 계약은 바뀌지 않았다. 기존 운영 환경 파일 그대로 release·preflight·복구가 통과한다(`test-oci-release.py`의 `SessionRedisReleaseTests`).
+
+### release 도구의 세션 Redis 검사
+
+`oci-release.py`는 backend 환경의 `PAWCYCLE_SESSION_STORE`를 읽는다(없으면 `memory`).
+
+| 대상 | `memory`(또는 키 없음) | `redis` |
+| --- | --- | --- |
+| preflight·activate·rollback의 대상 compose(`validate_config`) | sibling을 보지 않는다 | host/port가 `session-redis`/`6379`이고 sibling이 아래 조건을 만족해야 통과 |
+| 실행 중 backend(`smoke`, 활성화 전후) | sibling을 보지 않는다 | 같은 조건 |
+| 그 밖의 값 | — | `session store selection mismatch`로 거부 |
+
+sibling 조건: `pawcycle-production-session-redis`/`session-redis` 컨테이너가 정확히 하나, image가 `SESSION_REDIS_IMAGE`, running·healthy, network가 `pawcycle-production-app` 하나, host port 공개 없음. 이 검사는 `docker ps`·`docker inspect`만 쓰며 sibling을 바꾸지 않는다.
+
+`memory`로 되돌린 release로의 rollback과, AUTH-005 이전 release(세션 키 없음)로의 rollback도 그대로 통과한다.
+
+### 운영 적용 전 확인할 것
+
+1. **compose 변경은 manual-pair release로 반영된다.** 이 저장소 변경은 운영 compose의 `compose_sha256`을 바꾼다. `--application-only`(CD 포함)는 compose 변경을 거부하므로, 이 변경을 처음 운영에 올리는 것은 DB compatibility evidence가 있는 manual release다. 값이 `memory`이므로 동작은 지금과 같다.
+2. **메모리 여유**: 세션 Redis 상한 128MiB가 app01(6GB)에 더해진다. 적용 전 `free -m`과 기존 컨테이너 사용량을 기록한다.
+3. **세션 크기와 상한**: 세션 하나는 SecurityContext와 CSRF 토큰으로 대략 1KB 안팎이다(운영 측정 필요). 익명 사용자도 `/api/auth/csrf`와 인증 필요 API의 401 응답에서 세션이 생기므로, 활성화 뒤 `DBSIZE`와 `used_memory`를 보고 64MB 상한을 다시 판단한다.
+4. **알림**: 세션 Redis 전용 알림은 아직 없다. 활성화 전에 Observability 트랙에서 다룰지 결정한다.
+
+## 운영 적용 절차(미실행·별도 승인)
+
+각 단계는 별도 승인 단위다. Application `backend`/`frontend`/`proxy`와 Managed MySQL에는 이 절의 Compose 명령을 실행하지 않는다. **release가 진행 중일 때 sibling을 조작하지 않는다**(release의 sibling fence가 실패하고 복구 gate로 넘어간다).
+
+### 1. Sibling 기동(backend는 계속 `memory`)
+
+[OPS-OBS-001](OPS-OBS-001-production-observability.md)의 source 준비와 같은 방식으로 승인된 SHA의 `infra/production-session-redis`만 read-only source로 꺼낸다(`git archive` → `0555`/`0444`, `.approved-sha` marker). 그 다음 Application identity snapshot을 찍고 적용한다.
+
+```bash
+set -Eeuo pipefail
+APPROVED_SHA='<approved-merge-sha>'
+SOURCE_ROOT="/opt/pawcycle/session-redis-source/$APPROVED_SHA"
+test "$(cat "$SOURCE_ROOT/.approved-sha")" = "$APPROVED_SHA"
+
+sudo docker network inspect pawcycle-production-app --format '{{.Internal}}' | grep -qx true
+sudo env PAWCYCLE_APP_NETWORK=pawcycle-production-app docker compose \
+  --project-name pawcycle-production-session-redis \
+  --project-directory "$SOURCE_ROOT/infra/production-session-redis" \
+  --file "$SOURCE_ROOT/infra/production-session-redis/compose.yaml" \
+  config --quiet
+sudo env PAWCYCLE_APP_NETWORK=pawcycle-production-app docker compose \
+  --project-name pawcycle-production-session-redis \
+  --project-directory "$SOURCE_ROOT/infra/production-session-redis" \
+  --file "$SOURCE_ROOT/infra/production-session-redis/compose.yaml" \
+  up --detach --no-deps --wait --wait-timeout 60 --remove-orphans
+```
+
+image가 host에 없으면 compose가 digest reference를 pull한다. 적용 후 확인한다.
+
+```bash
+REDIS_ID="$(sudo docker ps --quiet \
+  --filter label=com.docker.compose.project=pawcycle-production-session-redis \
+  --filter label=com.docker.compose.service=session-redis)"
+test -n "$REDIS_ID"
+test -z "$(sudo docker port "$REDIS_ID")"
+sudo docker inspect "$REDIS_ID" --format '{{.State.Health.Status}} {{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'
+sudo docker exec "$REDIS_ID" redis-cli config get maxmemory-policy
+sudo docker exec "$REDIS_ID" redis-cli config get appendonly
+```
+
+성공 기준: `healthy pawcycle-production-app`, port 출력 없음, `noeviction`, `yes`. Application container ID·`StartedAt`이 적용 전후 같다. 실패하면 아래 "sibling 제거"로 되돌린다(backend가 `memory`이므로 사용자 영향 없음).
+
+### 2. 활성화(공지 후, 1회 전원 로그아웃)
+
+1. 저장소 PR: `infra/production/compose.yaml`의 `PAWCYCLE_SESSION_STORE: memory`를 `redis`로 바꾼다(`validate-production-contracts.py`의 기본값 검사도 함께 바꾼다). 리뷰·병합.
+2. 그 SHA로 manual release preflight. preflight가 sibling identity·health·network·port를 검사한다. sibling이 없거나 unhealthy면 여기서 멈춘다.
+3. activate. backend가 재생성되며 메모리 세션이 사라진다(1회 로그아웃).
+4. 확인: 운영 인증 smoke([OPS-017](OPS-017-production-auth-session-smoke.md)), `redis-cli DBSIZE` 증가, `INFO memory`의 `used_memory_human`. 다음 release(backend 재생성) 뒤에도 로그인 유지가 확인되면 R3 해소를 Production Verified로 기록한다.
+
+### 3. Rollback
+
+- **backend만 되돌림(권장)**: release 도구의 `rollback`으로 직전 verified release(`memory`)로 돌린다. 다시 1회 로그아웃이 생긴다. sibling은 그대로 둬도 되고 데이터는 버려도 된다.
+- **sibling 제거**: backend가 `memory`일 때만 한다. backend가 `redis`인 채로 sibling을 멈추면 로그인·로그인 사용자 요청·CSRF 발급이 실패한다(fail-closed).
+
+```bash
+sudo env PAWCYCLE_APP_NETWORK=pawcycle-production-app docker compose \
+  --project-name pawcycle-production-session-redis \
+  --file "$SOURCE_ROOT/infra/production-session-redis/compose.yaml" \
+  down
+```
+
+`down`은 volume을 지우지 않는다. 데이터를 버리기로 결정한 경우에만 `sudo docker volume rm pawcycle-production-session-redis-data`를 실행한다.
+
+### 데이터 보존
+
+- 세션은 일시 데이터라 별도 백업을 두지 않는다. 데이터를 잃으면 사용자가 다시 로그인하는 것으로 끝난다.
+- AOF `everysec`: 프로세스·호스트 비정상 종료 때 최대 약 1초분의 세션 쓰기를 잃을 수 있다. 정상 종료(`stop_grace_period: 30s`)는 AOF를 flush한다.
+- 컨테이너 재생성·image 교체·`down`/`up`에도 named volume이 남아 세션이 유지된다(`test-session-redis.sh`가 재생성·`down` 후 복원을 검증). sibling을 재시작하는 동안에는 세션 요청이 실패하므로 release와 겹치지 않는 시간에 한다.
+- image 교체는 `compose.yaml`의 digest와 `oci-release.py`의 `SESSION_REDIS_IMAGE`를 한 PR에서 함께 바꾼다. 둘이 다르면 `redis` 모드 preflight가 거부된다.
+
+### 운영 구성 일회용 재현(2026-11-17)
+
+운영 이미지 정의(`infra/production/backend.Dockerfile`)로 빌드한 backend, 운영 compose + `compose.test.yaml`(일회용 MySQL), 이 sibling compose를 일회용 이름(`pawcycle-auth005-repro-*`)으로 띄웠다. app network는 운영처럼 Application project가 `internal: true`로 만들고, sibling은 그 network에 external로 붙었다. 활성화 PR은 compose override(`PAWCYCLE_SESSION_STORE: redis` 한 줄)로 흉내 냈다. 첫 기동의 Flyway migration이 WSL에서 운영 healthcheck 재시도 한도를 넘어, 재현에서만 backend healthcheck `retries`를 늘렸다. backend 재생성은 release와 같은 `up --no-deps --force-recreate --wait backend`다. 쿠키·토큰·credential 값은 기록하지 않았다. Docker Engine 29.9.2(WSL2).
+
+| 단계 | 결과 |
+| --- | --- |
+| sibling network / published port / `PortBindings` | app network 하나 / 없음 / `{}` |
+| A. 기본 compose: backend `PAWCYCLE_SESSION_STORE` | `memory` |
+| A. 로그인 → `/api/auth/me` → backend 재생성(container ID 변경) → 같은 쿠키 `/api/auth/me` | 200 → 200 → **401**(R3 재현), sibling 세션 key 0개 |
+| B. 활성화 compose: backend `PAWCYCLE_SESSION_STORE` / network | `redis` / app·database(test)·egress |
+| B. 로그인 → `/api/auth/me` → backend 재생성(container ID 변경) | 200 → 200, sibling 세션 key 1개 |
+| B. 같은 쿠키 `/api/auth/me` | **200** |
+| B. 재생성 전 CSRF 토큰으로 `POST /api/auth/logout` → 세션 key → 이전 쿠키 `/api/auth/me` | 204 → 0개 → 401 |
+| backend 재생성 동안 sibling `StartedAt`·container ID | 변하지 않음 |
+| 정리 후 `auth005` 컨테이너·volume·network | 0개 |
+
+### 검증 자산
+
+- `bash infra/production-session-redis/test-session-redis.sh`: 일회용 internal network·volume에서 compose 계약(digest·옵션·자원·host port 없음·app network만), `noeviction`, AOF 재생성 복원, sibling `down` 뒤 Application 컨테이너·network 불변.
+- `python infra/production/test-oci-release.py`(root/Linux): `SessionRedisReleaseTests` — 기존 runtime 환경 파일로 AUTH-005 이전 compose·`memory` compose 모두 preflight 통과, `redis` 선택 시 sibling 검사와 거부 사례, 환경 파일 세션 키 거부, sibling 재시작 시 release 실패 유지.
+- `bash infra/production/test-production-compose.sh`: 운영 compose의 기본값 `memory`와 `env_file`이 세션 저장소를 바꾸지 못함.
+
+`redis` 모드의 로그아웃 응답에는 쿠키 삭제 헤더가 두 개(기존 + Spring Session `Max-Age=0`) 붙는다. 운영 인증 smoke(`verify-production-auth-session-smoke.sh`)는 curl cookie jar와 상태 코드로 판정하므로 영향이 없을 것으로 보지만, 운영 `redis` 모드에서 실행해 본 적은 없다. 활성화 단계에서 확인한다.

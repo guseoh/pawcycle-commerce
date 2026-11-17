@@ -45,6 +45,12 @@ NETWORKS = {
 }
 VOLUMES = {"pawcycle-production-letsencrypt": "/etc/letsencrypt",
            "pawcycle-production-certbot-webroot": "/var/www/certbot"}
+# AUTH-005 session Redis is a sibling project (never part of the Application
+# service/volume sets). Only its read-only identity is checked, and only when
+# the target or running Backend selects the "redis" session store.
+SESSION_REDIS_PROJECT = "pawcycle-production-session-redis"
+SESSION_REDIS_IMAGE = "redis:8.10.0-alpine3.23@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241"
+SESSION_REDIS_TARGET = {"PAWCYCLE_SESSION_REDIS_HOST": "session-redis", "PAWCYCLE_SESSION_REDIS_PORT": "6379"}
 GIB = 1024 ** 3
 IMAGE_MEDIA_TYPES = {"application/vnd.oci.image.manifest.v1+json",
                      "application/vnd.docker.distribution.manifest.v2+json"}
@@ -232,6 +238,20 @@ def locked(path, create=False):
         yield
     finally:
         os.close(fd)
+
+
+def session_store(environment):
+    """Session store selected by a Backend environment; absent means memory.
+
+    Releases before AUTH-005 (and rollback targets made from them) carry no
+    session keys and keep the Backend default, so they stay valid.
+    """
+    store = environment.get("PAWCYCLE_SESSION_STORE", "memory")
+    require(store in ("memory", "redis"), "session store selection mismatch")
+    if store == "redis":
+        require(all(environment.get(key) == value for key, value in SESSION_REDIS_TARGET.items()),
+                "session Redis target mismatch")
+    return store
 
 
 class Host:
@@ -602,6 +622,24 @@ class Host:
                 "Compose proxy read-only mounts mismatch")
         require({port["target"] for port in proxy["ports"]} == {80, 443} and len(proxy["ports"]) == 2,
                 "Compose proxy port boundary mismatch")
+        if session_store(config["services"]["backend"].get("environment") or {}) == "redis":
+            self.session_redis()
+
+    def session_redis(self):
+        # Read-only identity of the sibling session store; never started,
+        # stopped or recreated by a release (siblings() fences its lifecycle).
+        ids = self.docker("ps", "-aq", "--filter", "label=com.docker.compose.project=" + SESSION_REDIS_PROJECT,
+                          "--filter", "label=com.docker.compose.service=session-redis").decode().split()
+        require(len(ids) == 1, "session Redis identity missing")
+        container = json.loads(self.docker("inspect", ids[0]))[0]
+        require(container["Config"]["Image"] == SESSION_REDIS_IMAGE, "session Redis image mismatch")
+        require(container["State"]["Running"] and
+                container["State"].get("Health", {}).get("Status") == "healthy", "session Redis unhealthy")
+        require(set(container["NetworkSettings"]["Networks"]) == {"pawcycle-production-app"},
+                "session Redis network boundary mismatch")
+        require(not container["HostConfig"].get("PortBindings") and
+                not any((container["NetworkSettings"].get("Ports") or {}).values()),
+                "session Redis must not publish a host port")
 
     def siblings(self):
         # Fence accidental lifecycle changes to any sibling container, network
@@ -616,7 +654,10 @@ class Host:
                 "volumes": {v["Name"]: v.get("CreatedAt") for v in volumes}}
 
     def smoke(self, manifest):
-        self.runtime_check(manifest)
+        containers = self.runtime_check(manifest)
+        backend_env = containers["backend"]["Config"].get("Env") or [] if containers else []
+        if session_store(dict(item.split("=", 1) for item in backend_env if "=" in item)) == "redis":
+            self.session_redis()
         proxy = PROJECT + "-proxy-1"
         self.docker("exec", proxy, "nginx", "-t")
         # wget follows redirects, so examine every HTTP status and require a

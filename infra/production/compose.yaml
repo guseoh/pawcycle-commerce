@@ -19,6 +19,12 @@ services:
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: ${PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED:?PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED is required}
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE: ${PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE:?PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE is required}
       PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS: ${PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS:?PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS is required}
+      # AUTH-005: the reviewed Compose source, not the runtime env file, selects
+      # the session store (environment wins over env_file). "redis" uses the
+      # sibling infra/production-session-redis project on the app network.
+      PAWCYCLE_SESSION_STORE: memory
+      PAWCYCLE_SESSION_REDIS_HOST: session-redis
+      PAWCYCLE_SESSION_REDIS_PORT: "6379"
     expose:
       - "8080"
     healthcheck:

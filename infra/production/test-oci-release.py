@@ -1417,5 +1417,211 @@ class BoundaryTests(unittest.TestCase):
                 config = original
 
 
+SESSION_ENVIRONMENT = {"PAWCYCLE_SESSION_STORE": "memory", "PAWCYCLE_SESSION_REDIS_HOST": "session-redis",
+                       "PAWCYCLE_SESSION_REDIS_PORT": "6379"}
+# What Compose resolves from the existing runtime env file alone (no session keys).
+OLD_RUNTIME_ENVIRONMENT = {"SPRING_PROFILES_ACTIVE": "production", "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED": "false"}
+
+
+def rendered_config(target, environment):
+    networks = {name: {"name": release.PROJECT + "-" + name, "internal": name == "app"}
+                for name in ("app", "edge", "database-egress")}
+    config = {"networks": networks,
+              "volumes": {name: {"name": release.PROJECT + "-" + name} for name in ("letsencrypt", "certbot-webroot")},
+              "services": {role: {"image": target[role]["repository"] + ":" + target["sha"],
+                                  "networks": {name.removeprefix(release.PROJECT + "-"): {}
+                                               for name in release.NETWORKS[role]}}
+                           for role in ("backend", "frontend")}}
+    config["services"]["backend"]["environment"] = dict(environment)
+    config["services"]["proxy"] = {"image": release.PROXY, "networks": {"app": {}, "edge": {}},
+                                   "volumes": [{"read_only": True}] * 3,
+                                   "ports": [{"target": 80}, {"target": 443}]}
+    return config
+
+
+def session_redis_container(**changes):
+    container = {"Id": "session-redis-id", "Config": {"Image": release.SESSION_REDIS_IMAGE,
+                 "Labels": {"com.docker.compose.project": release.SESSION_REDIS_PROJECT,
+                            "com.docker.compose.service": "session-redis"}},
+                 "State": {"Running": True, "Health": {"Status": "healthy"}, "StartedAt": "redis-start"},
+                 "NetworkSettings": {"Networks": {"pawcycle-production-app": {}}, "Ports": {"6379/tcp": None}},
+                 "HostConfig": {"PortBindings": {}}}
+    for path, value in changes.items():
+        node = container
+        keys = path.split(".")
+        for key in keys[:-1]:
+            node = node[key]
+        node[keys[-1]] = value
+    return container
+
+
+class SessionRedisDocker:
+    """Fake Docker CLI for rendered Compose config and the sibling identity."""
+    def __init__(self, config, sibling=None):
+        self.config, self.sibling, self.commands = config, sibling, []
+
+    def __call__(self, *args, **kwargs):
+        self.commands.append(args)
+        if args[0] == "compose":
+            return release.encoded(self.config)
+        if args[0] == "ps":
+            return (self.sibling["Id"] + "\n").encode() if self.sibling else b""
+        if args[0] == "inspect":
+            return release.encoded([self.sibling])
+        return b""
+
+    def session_lookups(self):
+        return [c for c in self.commands if c[0] == "ps" and
+                "label=com.docker.compose.project=" + release.SESSION_REDIS_PROJECT in c]
+
+
+class ConfigValidatingHost(FakeHost):
+    """FakeHost whose preflight runs the real rendered-Compose validation."""
+    def __init__(self, root, docker):
+        super().__init__(root)
+        self.automation = {}
+        self.fake_docker = docker
+
+    def sources(self, target):
+        return b"compose", b"nginx"
+
+    def docker(self, *args, **kwargs):
+        return self.fake_docker(*args, **kwargs)
+
+    validate_config = release.Host.validate_config
+
+
+class SessionRedisReleaseTests(unittest.TestCase):
+    """AUTH-005: session store selection and the sibling session Redis boundary."""
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.a, self.b = manifest("a"), manifest("b")
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def preflight(self, environment, sibling=None):
+        docker = SessionRedisDocker(rendered_config(self.a, OLD_RUNTIME_ENVIRONMENT), sibling)
+        host = ConfigValidatingHost(Path(tempfile.mkdtemp(dir=self.root)), docker)
+        engine = release.Release(host)
+        # Baseline adopted from a release that predates AUTH-005 (no session keys).
+        engine.run("adopt", self.a, approval("adopt", self.a), True)
+        docker.config = rendered_config(self.b, environment)
+        docker.commands.clear()
+        result = engine.run("preflight", self.b, approval("preflight", self.b, self.a["sha"]))
+        return result, docker, host
+
+    def test_existing_runtime_env_file_preflights_old_and_new_compose(self):
+        # The runtime env file and its hash are unchanged; only Compose differs.
+        for label, environment in (("pre-AUTH-005 compose", OLD_RUNTIME_ENVIRONMENT),
+                                   ("memory default", {**OLD_RUNTIME_ENVIRONMENT, **SESSION_ENVIRONMENT})):
+            with self.subTest(label):
+                result, docker, host = self.preflight(environment)
+                self.assertEqual("preflight-passed", result["result"])
+                self.assertEqual([], docker.session_lookups(), "memory must not require the sibling")
+                state = json.loads((host.state / "oci-release-state.json").read_text())
+                self.assertEqual(host.env_hash, state["current"]["runtime_env_sha256"])
+
+    def test_redis_selection_preflights_only_with_healthy_internal_sibling(self):
+        redis = {**OLD_RUNTIME_ENVIRONMENT, **SESSION_ENVIRONMENT, "PAWCYCLE_SESSION_STORE": "redis"}
+        result, docker, _ = self.preflight(redis, session_redis_container())
+        self.assertEqual("preflight-passed", result["result"])
+        self.assertEqual(1, len(docker.session_lookups()))
+        self.assertFalse(any(c[0] in ("start", "restart", "stop", "rm") or
+                             (c[0] == "compose" and "session-redis" in c) for c in docker.commands),
+                         "release must never mutate the sibling")
+        for label, sibling in (
+            ("missing", None),
+            ("unhealthy", session_redis_container(**{"State.Health": {"Status": "starting"}})),
+            ("stopped", session_redis_container(**{"State.Running": False})),
+            ("unpinned image", session_redis_container(**{"Config.Image": "redis:latest"})),
+            ("extra network", session_redis_container(**{"NetworkSettings.Networks":
+                                                         {"pawcycle-production-app": {}, "bridge": {}}})),
+            ("host port binding", session_redis_container(**{"HostConfig.PortBindings":
+                                                             {"6379/tcp": [{"HostPort": "6379"}]}})),
+            ("published port", session_redis_container(**{"NetworkSettings.Ports":
+                                                          {"6379/tcp": [{"HostIp": "0.0.0.0", "HostPort": "6379"}]}})),
+        ):
+            with self.subTest(label):
+                with self.assertRaises(release.Refused):
+                    self.preflight(redis, sibling)
+
+    def test_session_store_selection_rejects_unknown_store_and_other_targets(self):
+        self.assertEqual("memory", release.session_store({}))
+        self.assertEqual("memory", release.session_store(SESSION_ENVIRONMENT))
+        for environment in ({"PAWCYCLE_SESSION_STORE": "jdbc"}, {"PAWCYCLE_SESSION_STORE": ""},
+                            {**SESSION_ENVIRONMENT, "PAWCYCLE_SESSION_STORE": "redis",
+                             "PAWCYCLE_SESSION_REDIS_HOST": "redis"},
+                            {**SESSION_ENVIRONMENT, "PAWCYCLE_SESSION_STORE": "redis",
+                             "PAWCYCLE_SESSION_REDIS_PORT": "6380"},
+                            {"PAWCYCLE_SESSION_STORE": "redis"}):
+            with self.subTest(environment=environment):
+                with self.assertRaises(release.Refused):
+                    release.session_store(environment)
+
+    def test_session_switch_is_not_a_runtime_env_file_key(self):
+        # The canonical runtime contract stays exact: a session key in
+        # backend.env is refused, so the existing baseline env (and its hash)
+        # remains the accepted file and Compose is the single switch.
+        entries = {"PAWCYCLE_DATASOURCE_HOST": "db.internal", "PAWCYCLE_DATASOURCE_PORT": "3306",
+                   "PAWCYCLE_DATASOURCE_SSL_MODE": "REQUIRED",
+                   "SPRING_DATASOURCE_URL": "jdbc:mysql://db.internal:3306/pawcycle?sslMode=REQUIRED",
+                   "SPRING_DATASOURCE_USERNAME": "fixture", "SPRING_DATASOURCE_PASSWORD": "fixture",
+                   "PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED": "false",
+                   "PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE": "10",
+                   "PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS": "60000"}
+        self.assertEqual(entries, release.parse_canonical(release.serialize(entries)))
+        with self.assertRaises(release.EnvRefused):
+            release.parse_canonical(release.serialize({**entries, "PAWCYCLE_SESSION_STORE": "redis"}))
+
+    def test_running_redis_backend_smoke_checks_sibling(self):
+        host = release.Host(self.root, self.root, self.root, self.root / "renewal.lock")
+        backend = {"Config": {"Env": ["SPRING_PROFILES_ACTIVE=production", "PAWCYCLE_SESSION_STORE=redis",
+                                      "PAWCYCLE_SESSION_REDIS_HOST=session-redis",
+                                      "PAWCYCLE_SESSION_REDIS_PORT=6379"]}}
+        with patch.object(host, "runtime_check", return_value={"backend": backend}), \
+                patch.object(host, "session_redis", side_effect=release.Refused("session Redis unhealthy")):
+            with self.assertRaisesRegex(release.Refused, "session Redis unhealthy"):
+                host.smoke(self.a)
+        backend["Config"]["Env"][1] = "PAWCYCLE_SESSION_STORE=memory"
+        with patch.object(host, "runtime_check", return_value={"backend": backend}), \
+                patch.object(host, "session_redis") as sibling, \
+                patch.object(host, "docker", side_effect=release.Refused("stop after session gate")):
+            with self.assertRaisesRegex(release.Refused, "stop after session gate"):
+                host.smoke(self.a)
+        sibling.assert_not_called()
+
+    def test_siblings_fence_includes_session_redis_but_not_application(self):
+        host = release.Host(self.root, self.root, self.root, self.root / "renewal.lock")
+        application = {"Id": "backend-id", "State": {"StartedAt": "backend-start"},
+                       "Config": {"Labels": {"com.docker.compose.project": release.PROJECT}}}
+        sibling = session_redis_container()
+        def docker(*args, **kwargs):
+            if args[:2] == ("ps", "-aq"):
+                return b"backend-id\nsession-redis-id\n"
+            if args[0] == "inspect":
+                return release.encoded([application, sibling])
+            if args[:2] == ("network", "inspect"):
+                return release.encoded([{"Name": name, "Id": name + "-id"} for name in args[2:]])
+            return release.encoded([{"Name": name, "CreatedAt": "created"} for name in args[2:]])
+        with patch.object(host, "docker", side_effect=docker):
+            fence = host.siblings()
+        self.assertEqual({"session-redis-id": "redis-start"}, fence["containers"])
+
+    def test_session_redis_restart_during_release_never_claims_success(self):
+        host = FakeHost(self.root)
+        engine = release.Release(host)
+        engine.run("adopt", self.a, approval("adopt", self.a), True)
+        before = {"containers": {"session-redis-id": "redis-start"}}
+        after = {"containers": {"session-redis-id": "redis-restarted"}}
+        with patch.object(host, "siblings", side_effect=[before, after, after]):
+            with self.assertRaisesRegex(release.Refused, "recovery failed; transition retained"):
+                engine.run("activate", self.b, approval("activate", self.b, self.a["sha"]), True)
+        self.assertTrue((host.state / "release-state-transition").exists())
+        state = json.loads((host.state / "oci-release-state.json").read_text())
+        self.assertEqual(self.a["sha"], state["current"]["manifest"]["sha"])
+
+
 if __name__ == "__main__":
     unittest.main()

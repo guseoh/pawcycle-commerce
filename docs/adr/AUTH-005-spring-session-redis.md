@@ -41,6 +41,20 @@ Approved — 사용자 승인 2026-11-17 (세션 외부화 방식으로 Spring S
 
 `memory`에서 `redis`로 바꾸는 배포에서는 메모리에 있던 세션이 옮겨지지 않는다. 그 순간 로그인한 사용자는 한 번 로그아웃되고 CSRF 토큰을 다시 받아야 한다. 되돌릴 때(`redis` → `memory`)도 같다. 사전 공지 대상이며, 이 1회 로그아웃을 사용자가 수용했다.
 
+### 보완(2026-11-17): 운영 세션 Redis 배치와 스위치 위치
+
+사용자(PO 겸 Tech Lead)가 운영 세션 Redis를 다음과 같이 결정했다.
+
+- **배치**: Application compose의 서비스가 아니라 별도 sibling Compose project `infra/production-session-redis`(`pawcycle-production-session-redis`). [ARCH-012](ARCH-012-production-observability-boundary.md)가 metrics-proxy에 정한 패턴을 따른다. external `pawcycle-production-app` network(`internal: true`)에만 붙고 host port를 열지 않으며, backend는 Docker-internal 이름 `session-redis:6379`로 접근한다. 그래서 `oci-release.py`의 앱 서비스(`backend`·`frontend`·`proxy`)·volume 집합 계약은 바뀌지 않는다. release는 이 project를 조작하지 않고 `Host.siblings()`로 재시작 여부만 fence한다.
+- **사양**: `redis:8.10.0-alpine3.23` digest 고정, `maxmemory 64mb`, `noeviction`, AOF `everysec`, `mem_limit 128m`, `cpus 0.25`, named volume `pawcycle-production-session-redis-data`, 비밀번호 없음.
+
+이에 맞춰 저장소에서 다음을 정했다.
+
+- **스위치 위치는 운영 compose의 backend `environment`**다(`PAWCYCLE_SESSION_STORE: memory`, host `session-redis`, port `6379`). 운영 runtime 환경 파일에 키를 추가하지 않는다. release 도구는 baseline의 runtime 환경 파일 해시가 그대로여야 release·rollback을 허용하고, canonical 환경 파일은 키 집합을 정확히 검사하므로, 환경 파일을 바꾸면 기존 baseline에서 넘어가는 경로가 막히기 때문이다. Compose에서 `environment`가 `env_file`보다 우선하므로 스위치는 리뷰된 compose 한 곳뿐이다. 활성화는 이 값을 `redis`로 바꾸는 PR과 manual release로 하고, 되돌리기는 release rollback이다.
+- **release 도구 검사**: backend 환경이 `redis`면 preflight·smoke가 sibling 컨테이너의 image digest·health·network·port 공개 여부를 read-only로 확인하고, 조건이 맞지 않으면 거부한다. `memory`이거나 키가 없는 이전 release는 sibling을 요구하지 않는다.
+
+이 보완은 운영 활성화를 승인하지 않는다. sibling 기동과 `redis` 전환은 #470 운영 트랙에서 별도로 승인한다. 절차는 [AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)의 운영 절에 있다.
+
 ## 검토한 대안(Alternatives Considered)
 
 ### Spring Session JDBC (MySQL)
@@ -61,7 +75,8 @@ Approved — 사용자 승인 2026-11-17 (세션 외부화 방식으로 Spring S
 - 세션 Redis가 인증의 필수 의존성이 된다. 메모리 상한을 넘으면(`noeviction`) 새 세션 쓰기가 거부되어 로그인이 실패한다. 익명 사용자도 `/api/auth/csrf` 호출이나 인증이 필요한 API의 401 응답에서 세션이 생기므로, 메모리 상한은 익명 세션 수까지 고려해 정해야 한다.
 - `redis` 모드의 로그아웃 응답에는 기존 쿠키 삭제 헤더 외에 Spring Session의 삭제 헤더(`Max-Age=0`)가 하나 더 붙는다. 브라우저의 결과(쿠키 삭제)는 같다. 쿠키 값은 Spring Session 형식(session id의 Base64)이 되지만 값은 원래 불투명하므로 계약 변경이 아니다.
 - JDK 직렬화는 클래스 버전에 묶인다. Spring Security 등 세션에 들어가는 클래스의 직렬화 호환이 깨지는 업그레이드에서는 기존 세션을 읽지 못할 수 있다. 그런 업그레이드는 세션 비우기(1회 로그아웃)를 포함해 배포한다.
-- 운영 활성화는 이 결정에 포함되지 않는다. 운영 compose에 세션 Redis를 추가하려면 `oci-release.py`의 서비스·볼륨 집합 계약을 바꿔야 하며, 운영 Redis 사양·비용·인증 방식 결정이 먼저 필요하다. 절차와 결정 항목은 [AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)에 있다.
+- 운영 활성화는 이 결정에 포함되지 않는다. 운영 세션 Redis는 위 보완대로 sibling project로 두어 `oci-release.py`의 서비스·볼륨 집합 계약을 바꾸지 않는다. 절차는 [AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)에 있다.
+- sibling을 운영자가 따로 관리하므로, release 중 sibling을 재시작하면 release가 fail-closed로 멈춘다. sibling 작업은 release와 겹치지 않게 한다.
 
 ## 검증(Validation)
 
@@ -74,3 +89,4 @@ Approved — 사용자 승인 2026-11-17 (세션 외부화 방식으로 Spring S
 
 - 2026-11-17: 사용자(PO 겸 Tech Lead)가 R3 해결책으로 Spring Session Redis를 선택했다(Spring Session JDBC 대안은 선택하지 않음). 운영 profile 기본값 `memory`, Redis 장애 시 인증 불가, 전환 시 1회 전원 로그아웃을 이 작업의 조건으로 지정했다.
 - 운영 활성화(운영 Redis 도입·사양·비용·배포 계약 변경)는 승인되지 않았다.
+- 2026-11-17: 사용자가 운영 세션 Redis를 별도 sibling project로 두고 사양(maxmemory 64mb·noeviction·AOF everysec·mem_limit 128m·cpus 0.25·named volume·비밀번호 없음·app network 전용·host port 없음)을 결정했다. 저장소 준비만 승인됐고, 실제 운영 기동·전환은 별도 승인이다.
