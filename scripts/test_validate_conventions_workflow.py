@@ -274,6 +274,13 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("services:\n      mysql:", backend_block)
         self.assertEqual(self.workflow.count("image: mysql:8.4"), 1)
 
+    def test_backend_owns_disposable_session_redis(self) -> None:
+        # AUTH-005 session store tests fail under CI when this Redis is missing.
+        backend_block = self.workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
+        self.assertIn("      session-redis:\n        image: redis:", backend_block)
+        test_step = backend_block.split("\n      - name: Backend test\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("PAWCYCLE_SESSION_REDIS_PORT: ${{ job.services.session-redis.ports['6379'] }}", test_step)
+
     def test_disposable_mysql_lock_gate_enforces_junit(self) -> None:
         # The broad PROCESS grant is conditional and never sent to Production.
         self.assertIn("image: mysql:8.4", self.workflow)

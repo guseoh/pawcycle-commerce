@@ -47,7 +47,7 @@ docker compose --env-file .env.local up --detach
 docker compose --env-file .env.local ps
 ```
 
-`mysql`, `backend`, `frontend`, `proxy`가 모두 `healthy`가 될 때까지 기다린다. MySQL named volume `pawcycle-local-integration-mysql-data`는 자동으로 생성된다.
+`mysql`, `redis`, `session-redis`, `backend`, `frontend`, `proxy`가 모두 `healthy`가 될 때까지 기다린다. MySQL named volume `pawcycle-local-integration-mysql-data`와 세션 Redis volume `pawcycle-local-integration_session-redis-data`는 자동으로 생성된다. Backend 세션은 `session-redis`(AOF, `noeviction`)에 저장되어 backend를 재시작해도 로그인이 유지된다. 구성과 재시작 리허설은 [AUTH-005 Runbook](AUTH-005-session-redis.md)을 따른다.
 
 ## 단일 origin과 smoke
 

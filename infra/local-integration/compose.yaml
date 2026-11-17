@@ -47,6 +47,37 @@ services:
       retries: 20
       start_period: 5s
 
+  # Session-only Redis (AUTH-005). Separate from the cache Redis above: sessions must never be
+  # evicted (noeviction) and must survive a Redis restart (AOF).
+  session-redis:
+    image: redis:8.10.0-alpine3.23
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - ""
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - noeviction
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - session-redis-data:/data
+
   backend:
     build:
       context: ../..
@@ -60,6 +91,9 @@ services:
       PAWCYCLE_PRODUCT_LIST_CACHE_TTL: ${PAWCYCLE_PRODUCT_LIST_CACHE_TTL:-PT5M}
       PAWCYCLE_REDIS_HOST: redis
       PAWCYCLE_REDIS_PORT: "6379"
+      PAWCYCLE_SESSION_STORE: redis
+      PAWCYCLE_SESSION_REDIS_HOST: session-redis
+      PAWCYCLE_SESSION_REDIS_PORT: "6379"
       PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: "true"
       PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL: ${PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL:?PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL is required}
       PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD: ${PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD:?PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD is required}
@@ -72,6 +106,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      session-redis:
         condition: service_healthy
     expose:
       - "8080"
@@ -133,3 +169,5 @@ services:
 volumes:
   mysql-data:
     name: pawcycle-local-integration-mysql-data
+  # Project-scoped name, so a disposable --project-name gets its own session volume.
+  session-redis-data:
