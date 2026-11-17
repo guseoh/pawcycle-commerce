@@ -196,6 +196,26 @@ class CheckoutRunnerTests(unittest.TestCase):
                 self.assertEqual(called, list(runner.LADDER_RATES[:runner.LADDER_RATES.index(fail_at) + 1]))
                 self.assertEqual(result['not_run_rps'], list(runner.LADDER_RATES[len(called):]))
 
+    def test_exit_code_is_non_zero_whenever_a_gate_failed_or_a_stage_was_not_run(self):
+        self.assertEqual(runner.exit_code_for(None), 0)
+        self.assertEqual(runner.exit_code_for({'classification': 'valid_before'}), 0)
+        for classification in ['invalid_measurement', 'invalid_measurement_with_drops',
+                               'capacity_failure_candidate', 'hard_failure', None]:
+            with self.subTest(classification=classification):
+                self.assertEqual(runner.exit_code_for({'classification': classification}),
+                                 runner.GATE_FAILURE_EXIT)
+        stable = {'classification': 'stable'}
+        failed = {'classification': 'hard_failure'}
+        self.assertEqual(runner.exit_code_for({'stages': [stable] * 4, 'not_run_rps': []}), 0)
+        self.assertEqual(runner.exit_code_for({'stages': [stable, failed], 'not_run_rps': [15, 20]}),
+                         runner.GATE_FAILURE_EXIT)
+        self.assertEqual(runner.exit_code_for({'stages': [stable] * 3, 'not_run_rps': [20]}),
+                         runner.GATE_FAILURE_EXIT)
+        all_stable = {'stages': [stable] * 4, 'not_run_rps': []}
+        self.assertEqual(runner.exit_code_for({'control': stable, 'shared_sku': all_stable}), 0)
+        self.assertEqual(runner.exit_code_for({'control': failed, 'shared_sku': {'stages': [], 'not_run_rps': [5]}}),
+                         runner.GATE_FAILURE_EXIT)
+
     def test_resource_json_is_sanitized_and_memory_units_match_existing_pattern(self):
         rows = [{'ID': cid, 'CPUPerc': '12.5%', 'MemUsage': '2MiB / 4GiB',
                  'Name': 'omit-container-name', 'PIDs': '7'} for cid in ['abc', 'def']]

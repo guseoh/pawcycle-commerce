@@ -6,6 +6,8 @@ PERF-COMMERCE-002: --ladder [--backend-port 18080], stops at first hard failure.
 PERF-COMMERCE-003: --perf003 [--backend-port 18080] runs isolated control then shared-SKU ladder.
 The runner refuses to overwrite evidence. --cleanup RUN_MARKER recovers its own
 fixture after an interruption; the non-secret marker is printed before seeding.
+Exit codes: 0 every executed stage passed; 3 evidence saved but a measurement gate
+failed or ladder stages were not run; 1 STOP/preflight failure (exception).
 """
 import argparse
 import datetime as dt
@@ -878,6 +880,7 @@ def main(argv=None):
         if not fixture_contract:
             raise RuntimeError('STOP: fixture mutation boundary/contract gate failed')
         print(f"Measurement evidence saved; classification={classification}; dropped={phase_dropped}", flush=True)
+        return evidence
     finally:
         commit_stop.set()
         resource_stop.set()
@@ -911,5 +914,33 @@ def fixture_delta_matches(before, after, requests, fixture_profile='isolated'):
             and after['inventories'] == sku_count and after['minimum_stock'] > 0)
 
 
+PASSING_CLASSIFICATIONS = {'valid_before', 'stable'}
+GATE_FAILURE_EXIT = 3
+
+
+def exit_code_for(result):
+    """Map a completed run to a process exit code without hiding failed gates.
+
+    Evidence is always written before this is evaluated. 0 means every executed
+    stage passed and none was skipped; GATE_FAILURE_EXIT means the run finished
+    but a measurement gate failed or later ladder stages were not run.
+    Runtime/preflight STOP conditions still raise and exit 1 as before.
+    """
+    if result is None:
+        return 0
+    if 'stages' in result:
+        stages_ok = all(stage['classification'] in PASSING_CLASSIFICATIONS for stage in result['stages'])
+        return 0 if stages_ok and not result['not_run_rps'] else GATE_FAILURE_EXIT
+    if 'control' in result:
+        shared = result['shared_sku']
+        control_ok = result['control']['classification'] in PASSING_CLASSIFICATIONS
+        return 0 if control_ok and exit_code_for(shared) == 0 else GATE_FAILURE_EXIT
+    return 0 if result.get('classification') in PASSING_CLASSIFICATIONS else GATE_FAILURE_EXIT
+
+
 if __name__ == '__main__':
-    main()
+    outcome = main()
+    code = exit_code_for(outcome)
+    if code:
+        print(f'Checkout verdict=FAIL exit={code}', flush=True)
+    raise SystemExit(code)

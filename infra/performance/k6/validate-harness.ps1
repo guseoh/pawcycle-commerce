@@ -90,7 +90,7 @@ if ($Phase8dContent -notmatch '127\\.0\\.0\\.1\|localhost' -or
 $CapacityShared = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\capacity.js') -Raw
 $CapacityRedirectCount = ([regex]::Matches($CapacityShared, 'redirects:\s*0')).Count
 $CapacityGracefulStopCount = ([regex]::Matches($CapacityShared, 'gracefulStop:\s*"0s"')).Count
-if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0' -or $CapacityRedirectCount -lt 2 -or $CapacityGracefulStopCount -lt 2) {
+if ($CapacityShared -notmatch 'constant-arrival-rate' -or $CapacityShared -notmatch 'MEASUREMENT_SECONDS = 120' -or $CapacityShared -notmatch 'droppedIterationsPerSecond' -or $CapacityShared -notmatch 'rate==0' -or $CapacityShared -notmatch 'capacity_response_contract_error_rate: \["rate==0"\]' -or $CapacityShared -notmatch 'arrivalAccounting' -or $CapacityRedirectCount -lt 2 -or $CapacityGracefulStopCount -lt 2) {
     throw 'Capacity arrival-rate, measurement-window, redirect, graceful-stop, or fail-closed contract is missing.'
 }
 
@@ -126,7 +126,7 @@ if ($ProductionRunbookContent -notmatch 'production_assessment=READY' -or $Produ
 $SharedScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'lib\baseline.js') -Raw
 $SharedRedirectCount = ([regex]::Matches($SharedScript, 'redirects:\s*0')).Count
 $SharedGracefulStopCount = ([regex]::Matches($SharedScript, 'gracefulStop:\s*"0s"')).Count
-if ($SharedScript -notmatch 'BASE_URL must be an http loopback origin' -or $SharedScript -notmatch 'baseline_measurement_latency' -or $SharedScript -notmatch 'baseline_expected_status_error_rate' -or $SharedScript -notmatch 'MEASUREMENT_SECONDS = 120' -or $SharedScript -notmatch 'count / MEASUREMENT_SECONDS' -or $SharedRedirectCount -lt 2 -or $SharedGracefulStopCount -lt 2) {
+if ($SharedScript -notmatch 'BASE_URL must be an http loopback origin' -or $SharedScript -notmatch 'baseline_measurement_latency' -or $SharedScript -notmatch 'baseline_expected_status_error_rate: \["rate==0"\]' -or $SharedScript -notmatch 'baseline_response_contract_error_rate: \["rate==0"\]' -or $SharedScript -notmatch 'MEASUREMENT_SECONDS = 120' -or $SharedScript -notmatch 'count / MEASUREMENT_SECONDS' -or $SharedRedirectCount -lt 2 -or $SharedGracefulStopCount -lt 2) {
     throw 'Local-only target guard, redirect refusal, graceful-stop boundary, or measurement-window aggregate metrics are missing.'
 }
 
