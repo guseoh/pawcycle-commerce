@@ -20,7 +20,7 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 | warning | 지연, 곧 영향 가능 | `PAWCYCLE_LOCAL_DISCORD_WARNING_WEBHOOK_FILE`(없으면 critical 파일과 같은 채널) | 2시간 |
 | none | Watchdog(알림 경로 확인용) | 보내지 않음 | — |
 
-- **억제:** `PawCycleBackendScrapeUnavailable`이 firing이면 다른 로컬 알림은 보내지 않는다. backend가 죽으면 나머지 신호는 모두 그 결과이기 때문이다. `PawCycleDbConnectionAcquireFailure`가 firing이면 DB 대기·API p95·API 5xx 알림만 보내지 않는다. 이 셋은 DB 연결이 돌아오면 바로 풀리지만, 스케줄 작업 실패(10분 창)와 ERROR 로그 급증(5분 창)은 복구 뒤에도 몇 분 더 울려서 억제하면 resolved 직후로 밀려 나가기만 한다.
+- **억제:** `PawCycleBackendScrapeUnavailable`이 firing이면 다른 로컬 알림은 보내지 않는다. backend가 죽으면 나머지 신호는 모두 그 결과이기 때문이다. `PawCycleDbConnectionAcquireFailure`가 firing이면 DB 대기 알림만 보내지 않는다. DB 대기는 커넥션이 돌아오면 바로 풀리지만, 시간창을 쓰는 알림(스케줄 작업 실패 10분, ERROR 로그 급증·API p95·API 5xx 5분)은 복구 뒤에도 몇 분 더 울려서 억제하면 resolved 직후로 밀려 나가기만 한다.
 - **해소 지연:** 적체·상태 지표 알림 5개(고립 PROCESSING, UNKNOWN 경과, 결제 만료 적체, 정기배송 지연, 작업 정지)는 조건이 풀려도 2분 더 firing을 유지한다(`keep_firing_for`). backend가 재시작하는 1분 남짓 동안 지표가 사라져 원인이 그대로인데 resolved가 가던 문제를 막는다. 그래서 조치 후 resolved는 지표 갱신 1분을 더해 약 3분 뒤에 온다.
 - **링크:** 알림 메시지의 "대시보드·로그"는 Grafana 기본 포트 3001 기준이다. 포트를 바꿨다면 주소의 포트만 바꿔 연다.
 
@@ -77,7 +77,7 @@ backend 로그 → Alloy → Loki 규칙 ┘    (critical / warning 채널, Watc
 - critical. 최근 2분 안에 DB 커넥션을 얻지 못하고 시간 초과(Hikari 기본 30초)로 끝난 요청이 있고, 지금도 기다리는 요청이 있다.
 - **MySQL이 멈췄을 때 오는 critical 알림이다.** backend 지표는 scrape 때 DB를 읽지 않으므로 MySQL이 멈춰도 `PawCycleBackendScrapeUnavailable`은 울리지 않는다. 리허설에서는 MySQL 중단 2분 9초 뒤 도착했다.
 - `ps mysql`로 MySQL 상태부터 본다. MySQL이 살아 있으면 커넥션 풀 고갈이다. `SHOW PROCESSLIST`로 오래 걸리는 트랜잭션과 잠금 대기를 본다.
-- 함께 오는 `PawCycleScheduledJobFailing`(지표 갱신·결제 만료 작업)과 `PawCycleBackendErrorLogSpike`는 같은 원인의 결과다. 이 둘은 일부러 억제하지 않으므로 복구 뒤에도 각 창(10분·5분)이 지날 때까지 남는다.
+- 함께 오는 `PawCycleScheduledJobFailing`(지표 갱신·결제 만료 작업), `PawCycleBackendErrorLogSpike`, 요청이 많을 때의 `PawCycleApiServerErrorRate`·`PawCycleApiLatencyP95`는 같은 원인의 결과다. 일부러 억제하지 않으므로 복구 뒤에도 각 창이 지날 때까지 남는다.
 - resolved는 복구 후 약 2분 뒤에 온다(`keep_firing_for` 2분).
 
 ### PawCycleDbConnectionWait

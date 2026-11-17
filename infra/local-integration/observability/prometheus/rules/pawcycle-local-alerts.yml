@@ -216,7 +216,7 @@ groups:
         annotations:
           summary: DB 커넥션 획득 실패
           description: 최근 2분 안에 DB 커넥션을 얻지 못하고 시간 초과로 끝난 요청이 있고, 지금도 기다리는 요청이 있다. MySQL이 멈췄거나 커넥션 풀이 고갈됐다.
-          impact: DB가 필요한 API와 스케줄 작업이 실패한다. 같은 원인의 DB 대기·지연·5xx 알림은 억제되고, 스케줄 작업 실패와 ERROR 로그 급증 알림은 함께 온다.
+          impact: DB가 필요한 API와 스케줄 작업이 실패한다. 같은 원인의 DB 대기 알림은 억제되고, 시간창을 쓰는 작업 실패·ERROR 로그 급증·API 지연·5xx 알림은 함께 온다.
           dashboard: http://127.0.0.1:3001/d/pawcycle-local-observability/pawcycle-local-observability?from=now-1h&to=now
           runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OBS-002-local-alert-response.md#pawcycledbconnectionacquirefailure
 
