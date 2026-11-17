@@ -53,6 +53,7 @@ route() {
   echo "ok: [$*] -> $actual"
 }
 route pawcycle-local-discord-critical alertname=PawCycleStuckProcessingPayment severity=critical scope=local
+route pawcycle-local-discord-critical alertname=PawCycleDbConnectionAcquireFailure severity=critical scope=local
 route pawcycle-local-discord-warning alertname=PawCycleSubscriptionOverdue severity=warning scope=local
 route blackhole alertname=Watchdog severity=none scope=local
 

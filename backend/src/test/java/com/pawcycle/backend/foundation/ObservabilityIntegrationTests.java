@@ -110,6 +110,8 @@ class ObservabilityIntegrationTests {
             "process_cpu_usage",
             "system_cpu_usage",
             "hikaricp_connections",
+            // PawCycleDbConnectionAcquireFailure (local alert rule) reads this counter.
+            "hikaricp_connections_timeout_total",
             "pawcycle_subscription_automation_executions_total",
             "pawcycle_subscription_automation_orders_total",
             "pawcycle_subscription_reconciliation_executions_total",
