@@ -191,24 +191,26 @@ if (-not (Test-Path -LiteralPath $EnvFile)) { throw "Local env file not found: $
 if (-not (Test-Path -LiteralPath $FixturePath)) { throw "Fixture file not found: $FixturePath" }
 
 $SharedVolumesBefore = Get-SharedVolumeState
-$env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
-$env:MYSQL_USER = 'pawcycle'
-$env:MYSQL_PASSWORD = New-DisposableSecret
-$env:MYSQL_ROOT_PASSWORD = New-DisposableSecret
-$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
-$env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
-$env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
-$env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
-# Grafana depends on Loki, so Loki starts too; keep it off the shared stack's port.
-$env:PAWCYCLE_LOCAL_LOKI_PORT = '0'
-if (-not $PreviousWebhookFile) {
-    $PlaceholderWebhookPath = Join-Path $env:TEMP "inc-base-001-webhook-$RunId.txt"
-    [IO.File]::WriteAllText($PlaceholderWebhookPath, 'http://127.0.0.1:9/inc-base-001-disabled', [Text.UTF8Encoding]::new($false))
-    $env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE = $PlaceholderWebhookPath
-}
 $ExecutionError = $null
 
 try {
+    # Temporary environment changes live inside try so finally always restores them,
+    # even when a secret or the placeholder file cannot be created.
+    $env:MYSQL_DATABASE = "pawcycle_inc_$RunId"
+    $env:MYSQL_USER = 'pawcycle'
+    $env:MYSQL_PASSWORD = New-DisposableSecret
+    $env:MYSQL_ROOT_PASSWORD = New-DisposableSecret
+    $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_EMAIL = "qa-foundation-004@alert-$RunId.test"
+    $env:PAWCYCLE_LOCAL_QA_BOOTSTRAP_PASSWORD = New-DisposableSecret
+    $env:PAWCYCLE_LOCAL_PROMETHEUS_PORT = '0'
+    $env:PAWCYCLE_LOCAL_GRAFANA_PORT = '0'
+    # Grafana depends on Loki, so Loki starts too; keep it off the shared stack's port.
+    $env:PAWCYCLE_LOCAL_LOKI_PORT = '0'
+    if (-not $PreviousWebhookFile) {
+        $PlaceholderWebhookPath = Join-Path $env:TEMP "inc-base-001-webhook-$RunId.txt"
+        [IO.File]::WriteAllText($PlaceholderWebhookPath, 'http://127.0.0.1:9/inc-base-001-disabled', [Text.UTF8Encoding]::new($false))
+        $env:PAWCYCLE_LOCAL_DISCORD_WEBHOOK_FILE = $PlaceholderWebhookPath
+    }
     $ConfigText = Invoke-ComposeCapture @('config', '--format', 'json')
     $Config = $ConfigText | ConvertFrom-Json
     $ExpectedMounts = @{
