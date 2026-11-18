@@ -207,6 +207,12 @@ assert services["frontend"]["healthcheck"]["test"] == [
 assert services["frontend"]["read_only"] is True
 assert services["frontend"]["pids_limit"] == 128
 assert set(services["proxy"].get("networks", {})) == {"edge", "app"}
+# AUTH-005: Compose selects the session store; default stays memory and the
+# session Redis itself is a sibling project, never an Application service.
+backend_environment = services["backend"]["environment"]
+assert backend_environment["PAWCYCLE_SESSION_STORE"] == "memory"
+assert backend_environment["PAWCYCLE_SESSION_REDIS_HOST"] == "session-redis"
+assert backend_environment["PAWCYCLE_SESSION_REDIS_PORT"] == "6379"
 
 database_egress_members = {
     name
@@ -226,6 +232,33 @@ assert not re.search(
     r"(?im)^\s*spring\.datasource\.(url|username|password)\s*=\s*(?!\$\{SPRING_DATASOURCE_(URL|USERNAME|PASSWORD)\})",
     application_properties,
 )
+PY
+}
+
+# AUTH-005: a session key smuggled into the runtime env file cannot switch the
+# store; Compose `environment` wins, so the reviewed source stays the switch.
+validate_session_store_precedence() {
+  local smuggled_env="$TEMP_DIR/backend-session-override.env"
+  cp "$BACKEND_ENV" "$smuggled_env"
+  printf 'PAWCYCLE_SESSION_STORE=redis\nPAWCYCLE_SESSION_REDIS_HOST=elsewhere\n' >>"$smuggled_env"
+  chmod 600 "$smuggled_env"
+  PAWCYCLE_BACKEND_ENV_FILE="$smuggled_env" \
+    RELEASE_SHA="$SHA_A" \
+    BACKEND_IMAGE="$BACKEND_IMAGE" \
+    FRONTEND_IMAGE="$FRONTEND_IMAGE" \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED=false \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_BATCH_SIZE=7 \
+    PAWCYCLE_SUBSCRIPTION_AUTOMATION_FIXED_DELAY_MS=12345 \
+      docker compose --project-name "$PROJECT_NAME" \
+        --file "$SCRIPT_DIR/compose.yaml" config --format json >"$TEMP_DIR/session-precedence.json"
+  python3 - "$TEMP_DIR/session-precedence.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    environment = json.load(handle)["services"]["backend"]["environment"]
+assert environment["PAWCYCLE_SESSION_STORE"] == "memory", "env_file must not switch the session store"
+assert environment["PAWCYCLE_SESSION_REDIS_HOST"] == "session-redis"
 PY
 }
 
@@ -451,6 +484,7 @@ validate_selective_application_rollouts() {
 }
 
 validate_active_production_contract
+validate_session_store_precedence
 validate_test_overlay_contract
 build_release "$SHA_A"
 build_release "$SHA_B"

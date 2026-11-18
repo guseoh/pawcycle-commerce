@@ -14,6 +14,8 @@ OBSERVABILITY_COMPOSE = ROOT / "infra" / "production-observability" / "compose.y
 OBSERVABILITY_VALIDATION = ROOT / "infra" / "production-observability" / "validate-observability.sh"
 METRICS_PROXY_COMPOSE = ROOT / "infra" / "production-metrics-proxy" / "compose.yaml"
 METRICS_PROXY_CONFIG = ROOT / "infra" / "production-metrics-proxy" / "metrics-proxy.conf"
+SESSION_REDIS_COMPOSE = ROOT / "infra" / "production-session-redis" / "compose.yaml"
+SESSION_REDIS_RUNBOOK = RUNBOOKS / "AUTH-005-session-redis.md"
 GRAFANA_DATASOURCE = ROOT / "infra" / "production-observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
 OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-boundary.md"
 ALERTING_ADR = ROOT / "docs" / "adr" / "ARCH-016-production-alertmanager.md"
@@ -248,6 +250,32 @@ def validate_production_alerting_contract(runbook: str, observability: str) -> N
         require(marker in runbook, f"OPS-OBS-001 production alerting marker is missing: {marker}")
 
 
+def validate_session_redis_contract() -> None:
+    """AUTH-005: sibling session Redis stays internal and the switch defaults to memory."""
+    sibling = SESSION_REDIS_COMPOSE.read_text(encoding="utf-8")
+    application = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    release = (PRODUCTION / "oci-release.py").read_text(encoding="utf-8")
+    runbook = SESSION_REDIS_RUNBOOK.read_text(encoding="utf-8")
+    image = re.search(r"image: (redis:[^\s]+)", sibling)
+    require(image is not None and "@sha256:" in image.group(1), "session Redis image must be digest-pinned")
+    require(f'SESSION_REDIS_IMAGE = "{image.group(1)}"' in release, "release tool must pin the same session Redis image")
+    require("name: pawcycle-production-session-redis" in sibling, "session Redis must remain its own Compose project")
+    require("ports:" not in sibling and "expose:" not in sibling, "session Redis must not publish or expose a port")
+    require("external: true" in sibling and "PAWCYCLE_APP_NETWORK" in sibling, "session Redis app network must remain external")
+    require("requirepass" not in sibling, "session Redis authentication is a separate approved change")
+    for marker in ("noeviction", "--appendfsync", "everysec", "64mb", "mem_limit: 128m", "cpus: 0.25",
+                   "read_only: true", "restart: unless-stopped", "redis-cli", "no-new-privileges:true"):
+        require(marker in sibling, f"session Redis contract missing: {marker}")
+    require(re.search(r"(?m)^  session-redis(?:-data)?:", application) is None,
+            "Application Compose must not own the session Redis service or volume")
+    require(re.search(r"(?m)^      PAWCYCLE_SESSION_STORE: memory$", application) is not None,
+            "Production session store must stay memory until a separately approved activation")
+    require("PAWCYCLE_SESSION_STORE" not in (PRODUCTION / "production_env.py").read_text(encoding="utf-8"),
+            "session store must not become a runtime env file key")
+    for marker in ("infra/production-session-redis", "pawcycle-production-session-redis-data", "rollback"):
+        require(marker in runbook, f"AUTH-005 Runbook is missing: {marker}")
+
+
 def validate_release_lock_contract() -> None:
     validate_oci_release_contract()
     secure_state = 'validate_secure_root_directory "$STATE_DIR" "state directory"'
@@ -326,6 +354,7 @@ def validate_current_status_contract(readiness: str, architecture: str) -> None:
 
 def main() -> None:
     validate_observability_contract()
+    validate_session_redis_contract()
     validate_release_lock_contract()
     for path in RETIRED_PATHS:
         require(not path.exists(), f"retired AWS/Production artifact is still active: {path.relative_to(ROOT)}")

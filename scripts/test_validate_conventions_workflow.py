@@ -108,6 +108,9 @@ class ChangeClassifierTest(unittest.TestCase):
     def test_standalone_metrics_proxy_is_production_only(self) -> None:
         self.assert_groups(["infra/production-metrics-proxy/compose.yaml"], production=True)
 
+    def test_standalone_session_redis_is_production_only(self) -> None:
+        self.assert_groups(["infra/production-session-redis/compose.yaml"], production=True)
+
     def test_local_integration_fails_safe_to_all_components(self) -> None:
         self.assert_groups(
             ["infra/local-integration/compose.yaml"],
