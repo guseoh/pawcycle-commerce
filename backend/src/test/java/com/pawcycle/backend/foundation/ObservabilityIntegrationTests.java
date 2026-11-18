@@ -154,18 +154,27 @@ class ObservabilityIntegrationTests {
       exposed.add(line.substring(0, end));
     }
 
-    java.nio.file.Path observability = java.nio.file.Path.of("../infra/local-integration/observability");
     java.util.Set<String> queried = new java.util.TreeSet<>();
     java.util.regex.Pattern name = java.util.regex.Pattern.compile("\\bpawcycle_[a-z0-9_]+");
-    try (var files = java.nio.file.Files.walk(observability)) {
-      for (java.nio.file.Path file : files
-          .filter(path -> path.toString().endsWith(".json")
-              || (path.toString().endsWith(".yml") && path.toString().contains("rules")))
-          .toList()) {
-        var matcher = name.matcher(java.nio.file.Files.readString(file));
-        while (matcher.find()) queried.add(matcher.group());
+    // Local rehearsal stack and the production stack (ARCH-016 rules, production dashboards).
+    for (String root :
+        java.util.List.of("../infra/local-integration/observability", "../infra/production-observability")) {
+      try (var files = java.nio.file.Files.walk(java.nio.file.Path.of(root))) {
+        for (java.nio.file.Path file : files
+            .filter(path -> path.toString().endsWith(".json")
+                || (path.toString().endsWith(".yml") && path.toString().contains("rules")))
+            .toList()) {
+          var matcher = name.matcher(java.nio.file.Files.readString(file));
+          while (matcher.find()) queried.add(matcher.group());
+        }
       }
     }
+    // The production DB rule reads a Hikari meter, not a pawcycle_ one.
+    assertThat(java.nio.file.Files.readString(
+            java.nio.file.Path.of(
+                "../infra/production-observability/prometheus/rules/pawcycle-production-alerts.yml")))
+        .contains("hikaricp_connections_timeout_total", "pawcycle_payment_stuck",
+            "pawcycle_payment_stuck_oldest_age_seconds");
 
     assertThat(queried).as("PawCycle metrics queried by rules and dashboards").isNotEmpty();
     assertThat(queried)

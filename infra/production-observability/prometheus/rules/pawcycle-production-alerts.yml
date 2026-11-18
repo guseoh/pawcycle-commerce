@@ -1,0 +1,104 @@
+# Production alert rules (ARCH-016). A small, critical-only set routed to the production Discord channel.
+# This file is NOT a copy of infra/local-integration/observability/prometheus/rules/pawcycle-local-alerts.yml.
+# Production differs from the local rehearsal in three ways that change each condition:
+#   - scrape_interval and evaluation_interval are 30s (local 15s), so `for` and range windows hold fewer samples;
+#   - the scrape job is pawcycle-production-backend and the target is metrics-proxy:9464 (local backend:8080);
+#   - backend start on app01 (1 OCPU) can take up to its healthcheck start_period 40s plus retries.
+# Every rule filters on the production job so a stray scrape job can never satisfy it.
+# Business gauges are refreshed by CommerceMetrics every 60s (pawcycle.commerce.operations.refresh-ms) and
+# are NaN until the first refresh after a backend start.
+# Thresholds are provisional until production calibration (OPS-OBS-001); first checks are in OPS-OBS-001.
+groups:
+  - name: pawcycle-production-alerts
+    rules:
+      # Source: local PawCycleBackendScrapeUnavailable (#543, OBS-STACK-001; inhibition behaviour OBS-STACK-002 #544).
+      # Local used `for: 30s` = two failed 15s scrapes. At 30s scrape one failed scrape is a single sample, so
+      # production waits 1m: at least two consecutive failed scrapes before it fires (notified 60-90s after
+      # the outage starts). up == 0 covers both a stopped backend (metrics-proxy answers 502) and a stopped
+      # metrics-proxy (DNS failure), because metrics-proxy is the only scrape path (ARCH-012).
+      - alert: PawCycleBackendScrapeUnavailable
+        expr: up{job="pawcycle-production-backend"} == 0
+        for: 1m
+        labels:
+          scope: production
+          severity: critical
+        annotations:
+          summary: 운영 backend 수집 중단
+          description: Prometheus가 1분 넘게(30초 수집 2회 이상) metrics-proxy를 거쳐 backend 지표를 읽지 못했다. backend나 metrics-proxy가 멈췄거나 응답하지 않는다.
+          impact: 운영 API가 실패하고 있을 수 있다. 다른 운영 알림은 이 알림이 풀릴 때까지 억제된다.
+          dashboard: http://127.0.0.1:3000/d/pawcycle-production-overview/production-overview?from=now-1h&to=now
+          runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcyclebackendscrapeunavailable
+
+      # Source: local PawCycleDbConnectionAcquireFailure (#546, OBS-STACK-003 rehearsal).
+      # Local: `increase(timeout[2m]) > 0 and max(pending) > 0` for 1m at 15s scrape. Production change:
+      # with no customer traffic the only DB users are scheduled jobs (CommerceMetrics refresh: Hikari
+      # connectionTimeout 30s, then the next run 60s later), so pending is > 0 for about 30s of every 90s.
+      # A 30s scrape samples that instant gauge on a coin flip and `for` would keep resetting, so the
+      # pending condition is dropped. Instead the rule asks for at least two acquisition timeouts in 5m.
+      # Why 5m and not 3m: a range selector is left-open, so at 30s scrape a 3m window only spans 150s of
+      # samples and a timeout every 90s is seen once half of the time (promtool test proved it). 5m spans
+      # 270s: at least two timeouts even if the refresh cycle stretches to 135s. A single transient timeout
+      # extrapolates to about 1.1 and does not fire. Pool exhaustion under load produces many timeouts and
+      # fires too, on purpose (customers are getting errors).
+      # No keep_firing_for: the 5m window already holds the alert about 5m after the last timeout, and a
+      # backend restart only resets the counter, which increase() handles.
+      - alert: PawCycleDbConnectionAcquireFailure
+        expr: sum(increase(hikaricp_connections_timeout_total{job="pawcycle-production-backend"}[5m])) >= 2
+        for: 1m
+        labels:
+          scope: production
+          severity: critical
+        annotations:
+          summary: 운영 DB 커넥션 획득 실패
+          description: 최근 5분 안에 DB 커넥션을 얻지 못하고 시간 초과(30초)로 끝난 요청·작업이 2건 이상이다. 운영 MySQL에 닿지 않거나 커넥션 풀이 고갈됐다.
+          impact: DB가 필요한 API와 스케줄 작업이 실패한다.
+          dashboard: http://127.0.0.1:3000/d/pawcycle-production-runtime/runtime?from=now-1h&to=now
+          runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycledbconnectionacquirefailure
+
+      # Source: local PawCycleStuckProcessingPayment (#543; keep_firing_for from OBS-STACK-002 rehearsal #544).
+      # The gauge already includes the 10-minute grace of the #417 recovery command, so `for` only has to
+      # span one 60s refresh: 1m = three 30s evaluations. keep_firing_for is 3m instead of local 2m because a
+      # backend restart on app01 drops the series for up to start_period 40s + one 30s scrape + the first
+      # refresh, which would otherwise send a false RESOLVED before the payment is fixed.
+      - alert: PawCycleStuckProcessingPayment
+        expr: pawcycle_payment_stuck{job="pawcycle-production-backend", kind="normal_processing"} > 0
+        for: 1m
+        keep_firing_for: 3m
+        labels:
+          scope: production
+          severity: critical
+        annotations:
+          summary: 운영 고립 PROCESSING 결제 {{ $value }}건
+          description: 결제창이 닫힌 지 10분이 지났는데 PROCESSING으로 남은 일반 결제가 있다(#417).
+          impact: 고객 결제가 확정되지 않았고 재고가 예약된 채 남아 있다.
+          dashboard: http://127.0.0.1:3000/d/pawcycle-production-operations/pawcycle-operations?from=now-1h&to=now
+          runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcyclestuckprocessingpayment
+
+      # Source: local PawCycleUnknownPaymentAging (#543; keep_firing_for #544).
+      # The age is computed at refresh time, so it only steps every 60s; 30s scrape changes nothing for a
+      # 30-minute threshold. `for: 5m` (ten evaluations) is kept from local. keep_firing_for 3m as above.
+      - alert: PawCycleUnknownPaymentAging
+        expr: pawcycle_payment_stuck_oldest_age_seconds{job="pawcycle-production-backend", kind="unknown"} > 1800
+        for: 5m
+        keep_firing_for: 3m
+        labels:
+          scope: production
+          severity: critical
+        annotations:
+          summary: 운영 UNKNOWN 결제가 30분 넘게 남음
+          description: 결제사 결과를 모르는 결제 중 가장 오래된 건이 {{ $value | humanizeDuration }} 지났다.
+          impact: 고객은 결제했을 수 있지만 주문이 확정되지 않았다.
+          dashboard: http://127.0.0.1:3000/d/pawcycle-production-operations/pawcycle-operations?from=now-6h&to=now
+          runbook: https://github.com/guseoh/pawcycle-commerce/blob/main/docs/runbook/OPS-OBS-001-production-observability.md#pawcycleunknownpaymentaging
+
+      # Source: local Watchdog (#543). Always firing; Alertmanager routes it to a receiver that sends nothing.
+      # It proves rule evaluation -> Alertmanager when an operator looks (OPS-OBS-001). There is no external
+      # dead man's switch, so nobody is paged when Prometheus or Alertmanager itself stops (ARCH-016).
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          scope: production
+          severity: none
+        annotations:
+          summary: 운영 알림 경로 상시 확인용
+          description: 이 알림이 Alertmanager에 보이지 않으면 Prometheus 규칙 평가나 Alertmanager 전달이 멈춘 것이다.

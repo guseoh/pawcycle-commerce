@@ -18,6 +18,9 @@ SESSION_REDIS_COMPOSE = ROOT / "infra" / "production-session-redis" / "compose.y
 SESSION_REDIS_RUNBOOK = RUNBOOKS / "AUTH-005-session-redis.md"
 GRAFANA_DATASOURCE = ROOT / "infra" / "production-observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
 OBSERVABILITY_ADR = ROOT / "docs" / "adr" / "ARCH-012-production-observability-boundary.md"
+ALERTING_ADR = ROOT / "docs" / "adr" / "ARCH-016-production-alertmanager.md"
+ALERTMANAGER_CONFIG = ROOT / "infra" / "production-observability" / "alertmanager" / "alertmanager.yml"
+PRODUCTION_ALERT_RULES = ROOT / "infra" / "production-observability" / "prometheus" / "rules" / "pawcycle-production-alerts.yml"
 OBSERVABILITY_RUNBOOK = RUNBOOKS / "OPS-OBS-001-production-observability.md"
 BACKEND_DIAGNOSTIC = PRODUCTION / "diagnose-backend-state.sh"
 APPLICATION_IDENTITY_VERIFIER = PRODUCTION / "verify-observability-application-identity.sh"
@@ -216,9 +219,35 @@ def validate_observability_contract() -> None:
     require("archive --format=tar" in source_permission_test, "archive source permission regression is missing archive coverage")
     require("65534:65534" in source_permission_test, "archive source permission regression is missing non-owner container coverage")
     require("0500" in source_permission_test and "0400" in source_permission_test, "archive source permission regression does not reject the defective modes")
+    validate_production_alerting_contract(runbook, observability)
+
     for retired in ("current-sha", "previous-sha", "/opt/pawcycle/control"):
         require(retired not in diagnostic, f"retired Application release-state dependency remains in diagnose-backend-state.sh: {retired}")
         require(retired not in identity_verifier, f"retired Application release-state dependency remains in verify-observability-application-identity.sh: {retired}")
+
+
+def validate_production_alerting_contract(runbook: str, observability: str) -> None:
+    """ARCH-016: production Alertmanager stays private, secret-file driven and critical-only."""
+    adr = ALERTING_ADR.read_text(encoding="utf-8")
+    alertmanager = ALERTMANAGER_CONFIG.read_text(encoding="utf-8")
+    rules = PRODUCTION_ALERT_RULES.read_text(encoding="utf-8")
+    for marker in ("ARCH-012", "Loki", "webhook_url_file", "Watchdog", "2026-11-17"):
+        require(marker in adr, f"ARCH-016 marker is missing: {marker}")
+    require("webhook_url_file: /run/pawcycle-secrets/discord-webhook" in alertmanager, "Discord webhook must come from webhook_url_file")
+    require("webhook_url:" not in alertmanager, "inline Discord webhook URL is forbidden")
+    require(re.search(r"https?://(discord|discordapp)\.com", alertmanager + observability + runbook) is None,
+            "a concrete Discord webhook URL must not be committed")
+    require("PAWCYCLE_ALERTMANAGER_DISCORD_WEBHOOK_FILE:?" in observability, "Alertmanager webhook file must be a required runtime path")
+    require("severity: warning" not in rules and "scope: local" not in rules, "production rules must stay critical-only and production-scoped")
+    for marker in (
+        "/opt/pawcycle/runtime/observability/discord-webhook",
+        "'65534:65534 400'",
+        "PAWCYCLE_ALERTMANAGER_DISCORD_WEBHOOK_FILE=\"$DISCORD_WEBHOOK_FILE\"",
+        "운영 Discord 채널 준비(사용자 작업)",
+        "PawCycleProductionDeliveryCheck",
+        "운영 알림 rollback",
+    ):
+        require(marker in runbook, f"OPS-OBS-001 production alerting marker is missing: {marker}")
 
 
 def validate_session_redis_contract() -> None:
