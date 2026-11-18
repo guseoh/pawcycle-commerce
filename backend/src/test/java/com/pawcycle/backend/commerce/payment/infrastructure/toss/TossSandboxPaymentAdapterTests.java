@@ -19,4 +19,17 @@ class TossSandboxPaymentAdapterTests {
     assertThat(adapter.confirm("unknown_test", "order-1", BigDecimal.valueOf(100)).status())
         .isEqualTo("UNKNOWN");
   }
+
+  @Test
+  void queryMapsDeterministicOutcomesForLocalRecoveryCommands() {
+    BigDecimal amount = BigDecimal.valueOf(100);
+    assertThat(adapter.queryPayment("order-1", "key", amount))
+        .isEqualTo(new TossPaymentAdapter.ConfirmResult("SUCCEEDED", "DONE"));
+    assertThat(adapter.queryPayment("order-unknown-1", "key", amount))
+        .isEqualTo(new TossPaymentAdapter.ConfirmResult("UNKNOWN", "NO_RESPONSE"));
+    assertThat(adapter.queryPayment("order-aborted-1", "key", amount))
+        .isEqualTo(new TossPaymentAdapter.ConfirmResult("FAILED", "ABORTED"));
+    assertThat(adapter.queryPayment("order-expired-1", "key", amount))
+        .isEqualTo(new TossPaymentAdapter.ConfirmResult("FAILED", "EXPIRED"));
+  }
 }

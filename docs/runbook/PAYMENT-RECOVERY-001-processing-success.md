@@ -60,7 +60,7 @@ java -jar backend.jar \
 | `ALREADY_FINALIZED` | 0 | 조회하는 사이 정상 확정이 먼저 끝남 | 사후 확인만 |
 | `CHANGED_DURING_QUERY` | 3 | 조회 중 결제·주문·예약이 바뀜 | 상태를 다시 조사 |
 | `STOPPED_PROVIDER_UNKNOWN` | 3 | 조회 불가·미발견·identity 불일치·진행 중·취소 | 결제사 콘솔에서 직접 확인. 다시 실행하지 말고 조사 |
-| `STOPPED_PROVIDER_FAILED` | 3 | 결제사가 ABORTED·EXPIRED로 확정 | 실패 확정은 범위 밖. 별도 승인으로 처리 |
+| `STOPPED_PROVIDER_FAILED` | 3 | 결제사가 ABORTED·EXPIRED로 확정 | 이 명령으로는 처리하지 않는다. [PAYMENT-RECOVERY-002](PAYMENT-RECOVERY-002-processing-failure.md) 실패 확정 절차로 |
 | `STOPPED_PROVIDER_OTHER` | 3 | 예상하지 못한 분류 | 조사 |
 | `REFUSED_*` | 3 | 시작 조건 불충족 | 사유에 맞게 조사 |
 | `REFUSED_INVALID_INPUT`, `REFUSED_BACKGROUND_TRIGGER_ACTIVE` | 2 | 입력 또는 프로세스 설정 오류 | 명령을 고쳐 다시 실행 |
@@ -85,6 +85,6 @@ java -jar backend.jar \
 
 ## 남은 위험
 
-- 결제사에서 실패로 끝난 고립 결제는 이 명령으로 처리되지 않는다. `PROCESSING`과 재고 예약이 그대로 남는다.
+- 결제사에서 실패로 끝난 고립 결제는 이 명령으로 처리되지 않는다. 별도 명령 [PAYMENT-RECOVERY-002](PAYMENT-RECOVERY-002-processing-failure.md)로 실패 확정과 예약 해제를 한다.
 - 결제사 응답 해석은 Phase 1의 조회 분류(`TossTestPaymentAdapter.queryPayment`)와 가짜 결제사 테스트에 기대고 있다. 실제 Toss 테스트 환경 검증은 별도 승인 대상이다.
 - 검증 근거: `ProcessingPaymentRecoveryIntegrationTests`(일회용 MySQL, 가짜 결제사), `ProcessingPaymentRecoveryCommandTests`, `ProcessingPaymentRecoveryWiringTests`, `PawcycleBackendApplicationRoutingTests`. 실행 jar로 위 명령을 로컬 일회용 MySQL에 실행해 결과 줄과 종료 코드가 나오는 것도 확인했다.
