@@ -383,7 +383,7 @@ jobs:
             infra/production/verify-observability-application-identity.sh \
             infra/production/test-observability-application-identity.sh \
             infra/production/test-observability-source-permissions.sh \
-            infra/production-metrics-proxy/test-metrics-proxy.sh
+            infra/production-metrics-proxy/test-metrics-proxy.sh \n            infra/production-session-redis/test-session-redis.sh
           bash -n infra/production-observability/validate-observability.sh
           python -m py_compile infra/production/validate-production-contracts.py
           python -m py_compile infra/production/oci-release.py infra/production/test-oci-release.py
@@ -404,6 +404,7 @@ jobs:
           sudo "$(command -v python)" infra/production/test-create-production-auth-smoke-member.py
           bash infra/production-observability/validate-observability.sh
           bash infra/production-metrics-proxy/test-metrics-proxy.sh
+          bash infra/production-session-redis/test-session-redis.sh
           # Local observability: Prometheus rule unit tests, Alertmanager routing, Loki and Alloy config.
           bash -n infra/local-integration/observability/test-observability-config.sh
           bash infra/local-integration/observability/test-observability-config.sh
