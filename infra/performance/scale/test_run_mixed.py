@@ -51,12 +51,13 @@ class RunMixedTests(unittest.TestCase):
         self.assertEqual(summary['jobs'], {'metrics.commerce:success': 4})
 
     def test_gates(self):
-        def report(passed=True, dropped=0, interrupted=0, invariants='PASS'):
+        def report(passed=True, dropped=0, interrupted=0, invariants='PASS', exit_code=0):
             return {'k6': {'steady': {'verdict': {'passed': passed}, 'accounting': {'droppedIterations': dropped},
-                                      'interrupted_iterations': interrupted}},
+                                      'interrupted_iterations': interrupted, 'k6_exit': exit_code}},
                     'invariants': invariants}
         self.assertEqual(run_mixed.gate_failures(report()), [])
-        self.assertEqual(run_mixed.gate_failures(report(passed=False)), ['k6_contract'])
+        self.assertEqual(run_mixed.gate_failures(report(passed=False, exit_code=99)), ['k6_exit', 'k6_contract'])
+        self.assertEqual(run_mixed.gate_failures(report(exit_code=107)), ['k6_exit'])
         self.assertEqual(run_mixed.gate_failures(report(dropped=3)), ['dropped_iterations'])
         self.assertEqual(run_mixed.gate_failures(report(invariants='FAIL')), ['invariants'])
         self.assertEqual(run_mixed.gate_failures(report(interrupted=1)), ['interrupted_iterations'])
@@ -74,6 +75,9 @@ class RunMixedTests(unittest.TestCase):
                     run_mixed.run_mixed(Args())
         down.assert_not_called()
         self.assertEqual(run.call_count, 1)   # only the docker inspect; run-scale never started
+
+    def test_k6_parses_json_without_throwing(self):
+        self.assertNotRegex(K6[K6.index('// ---- 5. Bundles'):K6.index('// ---- 6.')], r'\.json\(')
 
     def test_k6_counts_interrupted_iterations(self):
         self.assertIn('started_iterations', K6)

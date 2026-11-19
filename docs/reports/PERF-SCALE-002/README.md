@@ -40,6 +40,7 @@
 - dropped iteration 0, 상태 코드 오류 0. 완료가 예정보다 1건 많은 것은 arrival-rate 구간 경계의 정상 오차다.
 - 이 측정은 "시작했지만 끝나지 않은 iteration" 판정(`interrupted_iterations`, Codex 리뷰 P2 반영)을 추가하기 전 script로 했다. 당시 script는 끝까지 수행된 iteration만 셌는데 네 묶음 모두 완료 수가 예정 수 이상이었고 오류가 0이었으므로, 측정 끝에서 잘린 iteration은 없었던 것으로 본다. 수정한 script의 시험 실행(측정 40초)에서는 중단 0건을 직접 확인했다.
 - 쓰기 지연은 iteration 안 4요청(담기·장바구니·Checkout·결제 확인) 각각의 응답 시간이다.
+- 로그인 요청 수·지연은 `POST /api/auth/login`만이다. BCrypt 비용이 가벼운 CSRF GET에 희석되지 않게 했고, CSRF GET은 실패할 때만 기록한다.
 
 ### 서버(backend `/actuator/prometheus`, 10초 간격 59회 수집)
 
@@ -66,7 +67,7 @@
 
 ### 쓰기 뒤 상태
 
-- 측정으로 생긴 주문: PAID 1,439, PAYMENT_PENDING 3. PENDING은 실행이 끝날 때 Checkout까지만 하고 결제 확인 전에 끊긴 iteration이다(결제 만료 스케줄러가 꺼져 있어 남는다).
+- 측정으로 생긴 주문: PAID 1,439, PAYMENT_PENDING 3. 당시 script는 결제 확인 응답을 받은 뒤 완료를 셌고, 완료는 1,442회(예열 241 + 측정 1,201)였다. PAID가 이보다 3건 적고 예열 쓰기 오류가 3건이므로, **예열 중 결제 확인이 실패한 3건으로 보이지만 확정하지 못했다.** 당시 요약은 실패한 요청 단계를 남기지 않았다. 이후 script는 단계별 오류 수(`status_errors_by_step`)를 요약에 남긴다. 수정한 script의 시험 실행(예열 20초 + 측정 40초)에서는 예열 중 **결제 확인 실패 2건과 PAYMENT_PENDING 2건이 일치**했다. 같은 원인일 가능성이 높지만, 기동 직후 결제 확인이 왜 실패하는지(상태 코드·서버 로그)는 아직 확인하지 않았다(H에서 확인할 항목). 결제 만료 스케줄러가 꺼져 있어 PENDING 주문은 그대로 남는다.
 - `perfgen check --no-manifest`(도메인 불변식 25개) PASS.
 - 정리 후 남은 container·network·volume 0개.
 

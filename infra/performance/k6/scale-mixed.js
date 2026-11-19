@@ -30,6 +30,8 @@ const VUS = JSON.parse(__ENV.SCALE_VUS || '{"browse":60,"member":30,"write":40,"
 if (!PASSWORD) throw new Error('SCALE_COHORT_PASSWORD is required');
 
 export const MIX = { browse: 0.70, member: 0.15, write: 0.10, login: 0.05 };
+const STEPS = ['POST /api/cart/items', 'GET /api/cart', 'POST /api/checkout', 'POST /api/payments/toss/confirm',
+  'GET /api/auth/csrf', 'POST /api/auth/login'];
 const totalVus = Object.values(VUS).reduce((a, b) => a + b, 0);
 // VU ids are unique across scenarios, so one session per possible VU id means no two VUs share a
 // member (and a cart). The login bundle uses the other half of the cohort.
@@ -61,7 +63,11 @@ for (const [bundle, share] of Object.entries(MIX)) {
 export const options = {
   scenarios,
   summaryTrendStats: ['avg', 'med', 'p(95)', 'p(99)', 'max', 'count'],
-  thresholds: Object.fromEntries(Object.keys(MIX).map((b) => [`scale_${b}_errors`, ['rate<0.01']])),
+  thresholds: Object.assign(
+    Object.fromEntries(Object.keys(MIX).map((b) => [`scale_${b}_errors`, ['rate<0.01']])),
+    // Always-true thresholds only to expose per-step failure counts in the summary.
+    Object.fromEntries(STEPS.map((step) => [`scale_status_errors{name:${step}}`, ['count>=0']])),
+  ),
 };
 
 // ---- 3. Metrics ----
@@ -81,6 +87,17 @@ function iteration(bundle, body) {
   metrics[bundle].finished.add(1);
 }
 const statusErrors = new Counter('scale_status_errors');
+
+// A body that is not valid JSON is a contract failure, not an exception: an exception would end
+// the iteration before record() and leave the failure out of the error rate.
+function jsonOf(response, selector) {
+  try {
+    // json(undefined) is not json(): k6 treats the argument as a selector path.
+    return selector === undefined ? response.json() : response.json(selector);
+  } catch (error) {
+    return undefined;
+  }
+}
 
 function record(bundle, response, ok, name) {
   metrics[bundle].latency.add(response.timings.duration, { name });
@@ -188,9 +205,9 @@ function writeOnce(data) {
   // Unique per run, VU and iteration, so a re-run on the same DB never replays an old key.
   const key = `g2-${data.runTag}-${exec.vu.idInTest}-${exec.scenario.iterationInTest}`;
   const checkout = http.post(`${BASE}/api/checkout`,
-    JSON.stringify({ addressId: session.memberId, cartVersion: cart.json('version') }),
+    JSON.stringify({ addressId: session.memberId, cartVersion: jsonOf(cart, 'version') }),
     authParams(session, 'POST /api/checkout', { 'Idempotency-Key': key }));
-  const order = checkout.status === 200 ? checkout.json() : null;
+  const order = checkout.status === 200 ? jsonOf(checkout) : null;
   record('write', checkout, !!order && !!order.providerOrderId, 'POST /api/checkout');
   if (!order) return;
 
@@ -198,7 +215,7 @@ function writeOnce(data) {
   const confirm = http.post(`${BASE}/api/payments/toss/confirm`,
     JSON.stringify({ paymentKey: `perf_${key}`, providerOrderId: order.providerOrderId, amount: order.amount }),
     authParams(session, 'POST /api/payments/toss/confirm'));
-  record('write', confirm, confirm.status === 200 && confirm.json('status') === 'SUCCEEDED',
+  record('write', confirm, confirm.status === 200 && jsonOf(confirm, 'status') === 'SUCCEEDED',
     'POST /api/payments/toss/confirm');
 }
 
@@ -206,17 +223,20 @@ export function login() {
   iteration('login', loginOnce);
 }
 
+// Latency and request counts of the login bundle are POST /api/auth/login only, so the BCrypt
+// cost is not diluted by the cheap CSRF GET; the GET is recorded only when it fails.
 function loginOnce() {
   const id = COHORT / 2 + 1 + Math.floor(Math.random() * (COHORT / 2));
   http.cookieJar().clear(BASE);
   const csrf = http.get(`${BASE}/api/auth/csrf`, { tags: { name: 'GET /api/auth/csrf' } });
-  if (csrf.status !== 200) {
+  const token = csrf.status === 200 ? jsonOf(csrf, 'token') : undefined;
+  if (!token) {
     record('login', csrf, false, 'GET /api/auth/csrf');
     return;
   }
   const response = http.post(`${BASE}/api/auth/login`,
     JSON.stringify({ email: `syn-member-${id}@perf.invalid`, password: PASSWORD }),
-    { headers: { 'X-CSRF-TOKEN': csrf.json('token'), 'Content-Type': 'application/json' },
+    { headers: { 'X-CSRF-TOKEN': token, 'Content-Type': 'application/json' },
       tags: { name: 'POST /api/auth/login' } });
   record('login', response, response.status === 200, 'POST /api/auth/login');
 }
@@ -247,6 +267,9 @@ export function handleSummary(data) {
     // Started but never finished: cut off at gracefulStop or ended by an exception.
     interrupted_iterations: Object.values(bundles).reduce((sum, b) => sum + b.started_iterations - b.completed_iterations, 0),
     status_errors: value('scale_status_errors', 'count') || 0,
+    status_errors_by_step: Object.fromEntries(STEPS.map((step) => [step, value(`scale_status_errors{name:${step}}`, 'count') || 0])),
+    notes: { login: 'requests and latency are POST /api/auth/login only; the CSRF GET is counted only when it fails',
+      write: 'requests and latency cover all four write steps' },
     verdict: thresholdVerdict(data),
   };
   const out = { stdout: `${JSON.stringify(summary)}\n` };

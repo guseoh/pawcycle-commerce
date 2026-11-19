@@ -118,6 +118,8 @@ def server_summary(before, after, sampled):
 
 def gate_failures(report):
     failed = []
+    if report['k6']['steady']['k6_exit'] != 0:
+        failed.append('k6_exit')   # interrupted or aborted k6 can still write a passing-looking summary
     if not report['k6']['steady']['verdict']['passed']:
         failed.append('k6_contract')
     if report['k6']['steady']['accounting']['droppedIterations']:
