@@ -26,6 +26,9 @@ const PASSWORD = __ENV.SCALE_COHORT_PASSWORD || '';
 // index = VU id - 1. A temp file written by run-mixed.py outside the repository (removed after the
 // run): the list can exceed the 32,767-character Windows limit for one environment variable.
 const SESSIONS = __ENV.SCALE_SESSIONS_FILE ? JSON.parse(open(__ENV.SCALE_SESSIONS_FILE)) : [];
+// Product and SKU sample prepared by run-mixed.py before the warm-up, so that no catalog
+// preparation request falls inside a measured window. {productIds: [...], skuIds: [...]}
+const CATALOG = __ENV.SCALE_CATALOG_FILE ? JSON.parse(open(__ENV.SCALE_CATALOG_FILE)) : null;
 const VUS = JSON.parse(__ENV.SCALE_VUS || '{"browse":60,"member":30,"write":40,"login":20}');
 if (!PASSWORD) throw new Error('SCALE_COHORT_PASSWORD is required');
 
@@ -107,6 +110,12 @@ function record(bundle, response, ok, name) {
 
 // ---- 4. Setup: catalog sample only (sessions are made by the runner) ----
 export function setup() {
+  const runTag = `${PHASE}-${Date.now()}`;
+  if (CATALOG) {
+    if (CATALOG.productIds.length < 100 || CATALOG.skuIds.length < 20) throw new Error('catalog sample too small');
+    return { productIds: CATALOG.productIds, skuIds: CATALOG.skuIds, runTag };   // no request here
+  }
+  // Fallback for running the script on its own: these requests then belong to the run.
   const productIds = [];
   const skuIds = [];
   for (let page = 0; page < 10; page += 1) {
@@ -122,7 +131,7 @@ export function setup() {
       .forEach((sku) => skuIds.push(sku.skuId));
   }
   if (productIds.length < 100 || skuIds.length < 20) throw new Error('catalog sample too small');
-  return { productIds, skuIds, runTag: `${PHASE}-${Date.now()}` };
+  return { productIds, skuIds, runTag };
 }
 
 function pick(list) {

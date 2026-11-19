@@ -85,6 +85,7 @@ python infra/performance/scale/run-mixed.py --scale 10k --seed 42 --rps 20 --war
 
 ```text
 run-scale --keep → 새 cohort 비밀번호 → 세션 150개 미리 로그인(VU당 회원 1명)
+  → 상품·SKU 표본 준비(측정 구간 밖, k6 setup은 요청하지 않음)
   → k6 예열(기록만, 판정하지 않음)
   → performance_schema digest 초기화, row lock 상태·/actuator/prometheus 기준점
   → k6 측정(10초마다 /actuator/prometheus 수집)
@@ -105,6 +106,7 @@ run-scale --keep → 새 cohort 비밀번호 → 세션 150개 미리 로그인(
 - **비밀값:** cohort 비밀번호는 실행 프로세스와 k6 환경 변수에만 있다. 세션 쿠키 목록은 Windows 환경 변수 길이 제한(32,767자) 때문에 시스템 임시 폴더의 파일로 k6에 넘기고, 실행이 끝나면 지운다. 저장소에는 쓰지 않는다. 보고서에는 수치와 정규화된 SQL digest(값이 `?`로 바뀐 문장)만 남는다.
 - **수집 지표:** Hikari 활성·대기 최댓값과 획득 시간 초과 증가량, GC pause 횟수·합계, heap 최댓값, process CPU 최댓값, HTTP 요청·5xx 증가량, 스케줄 작업 실행 증가량.
 - 테스트: `python infra/performance/scale/test_run_mixed.py`(Docker·k6 없이 지표 파싱·구간 증가량·판정·k6와의 묶음 일치 확인).
+- k6 self-test: `python infra/performance/k6/selftest/scale-mixed-selftest.py`(loopback stub, 약 40초). Checkout이 200과 JSON이 아닌 본문을 주면 계약 오류로 기록되고, 결제 확인을 보내지 않으며, iteration이 예외로 끝나지 않고, k6가 99로 끝나는지 확인한다.
 
 ## 결과 해석
 
