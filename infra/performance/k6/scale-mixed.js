@@ -68,8 +68,18 @@ export const options = {
 const metrics = Object.fromEntries(Object.keys(MIX).map((b) => [b, {
   latency: new Trend(`scale_${b}_latency`, true),
   errors: new Rate(`scale_${b}_errors`),
-  iterations: new Counter(`scale_${b}_iterations`),
+  // started is added before the first request, finished after the last statement. An iteration
+  // cut off at gracefulStop (or one that threw) never reaches the second add, so
+  // started - finished counts it even though no response reached record().
+  started: new Counter(`scale_${b}_iterations_started`),
+  finished: new Counter(`scale_${b}_iterations_finished`),
 }]));
+
+function iteration(bundle, body) {
+  metrics[bundle].started.add(1);
+  body();
+  metrics[bundle].finished.add(1);
+}
 const statusErrors = new Counter('scale_status_errors');
 
 function record(bundle, response, ok, name) {
@@ -117,6 +127,10 @@ function authParams(session, name, extraHeaders) {
 
 // ---- 5. Bundles ----
 export function browse(data) {
+  iteration('browse', () => browseOnce(data));
+}
+
+function browseOnce(data) {
   const kind = Math.random();
   let response;
   let ok;
@@ -141,20 +155,26 @@ export function browse(data) {
     ok = validProductDetail(response, productId);
   }
   record('browse', response, ok, name);
-  metrics.browse.iterations.add(1);
 }
 
 const MEMBER_READS = ['/api/orders', '/api/cart', '/api/subscriptions'];
 
 export function member() {
+  iteration('member', memberOnce);
+}
+
+function memberOnce() {
   const session = mySession();
   const path = MEMBER_READS[exec.scenario.iterationInTest % MEMBER_READS.length];
   const response = http.get(`${BASE}${path}`, authParams(session, `GET ${path}`));
   record('member', response, response.status === 200, `GET ${path}`);
-  metrics.member.iterations.add(1);
 }
 
 export function write(data) {
+  iteration('write', () => writeOnce(data));
+}
+
+function writeOnce(data) {
   const session = mySession();
   const add = http.post(`${BASE}/api/cart/items`, JSON.stringify({ skuId: pick(data.skuIds), quantity: 1 }),
     authParams(session, 'POST /api/cart/items'));
@@ -180,10 +200,13 @@ export function write(data) {
     authParams(session, 'POST /api/payments/toss/confirm'));
   record('write', confirm, confirm.status === 200 && confirm.json('status') === 'SUCCEEDED',
     'POST /api/payments/toss/confirm');
-  metrics.write.iterations.add(1);
 }
 
 export function login() {
+  iteration('login', loginOnce);
+}
+
+function loginOnce() {
   const id = COHORT / 2 + 1 + Math.floor(Math.random() * (COHORT / 2));
   http.cookieJar().clear(BASE);
   const csrf = http.get(`${BASE}/api/auth/csrf`, { tags: { name: 'GET /api/auth/csrf' } });
@@ -196,7 +219,6 @@ export function login() {
     { headers: { 'X-CSRF-TOKEN': csrf.json('token'), 'Content-Type': 'application/json' },
       tags: { name: 'POST /api/auth/login' } });
   record('login', response, response.status === 200, 'POST /api/auth/login');
-  metrics.login.iterations.add(1);
 }
 
 // ---- 6. Summary: per-bundle table + verdict (no sessions, no password) ----
@@ -205,7 +227,8 @@ export function handleSummary(data) {
   const bundles = Object.fromEntries(Object.keys(MIX).map((b) => [b, {
     share: MIX[b],
     scheduled_iterations: perMinute(MIX[b]) * DURATION_SECONDS / 60,
-    completed_iterations: value(`scale_${b}_iterations`, 'count') || 0,
+    started_iterations: value(`scale_${b}_iterations_started`, 'count') || 0,
+    completed_iterations: value(`scale_${b}_iterations_finished`, 'count') || 0,
     requests: value(`scale_${b}_latency`, 'count'),
     p50_ms: value(`scale_${b}_latency`, 'med'),
     p95_ms: value(`scale_${b}_latency`, 'p(95)'),
@@ -221,6 +244,8 @@ export function handleSummary(data) {
     duration_seconds: DURATION_SECONDS,
     bundles,
     accounting: arrivalAccounting(data, scheduled, completed),
+    // Started but never finished: cut off at gracefulStop or ended by an exception.
+    interrupted_iterations: Object.values(bundles).reduce((sum, b) => sum + b.started_iterations - b.completed_iterations, 0),
     status_errors: value('scale_status_errors', 'count') || 0,
     verdict: thresholdVerdict(data),
   };

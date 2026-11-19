@@ -122,6 +122,8 @@ def gate_failures(report):
         failed.append('k6_contract')
     if report['k6']['steady']['accounting']['droppedIterations']:
         failed.append('dropped_iterations')
+    if report['k6']['steady']['interrupted_iterations']:
+        failed.append('interrupted_iterations')
     if report['invariants'] != 'PASS':
         failed.append('invariants')
     return failed
@@ -211,15 +213,19 @@ def run_mixed(args):
     report = {'run': run, 'scale': args.scale, 'seed': args.seed, 'rps_iterations': args.rps,
               'warmup_seconds': args.warmup, 'steady_seconds': args.steady, 'vus': VUS,
               'started_at': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')}
+    if subprocess.run(['docker', 'inspect', container], capture_output=True).returncode == 0:
+        # Never touch an environment this run did not create (for example one kept by --keep).
+        raise Stop(f'{container} already exists; remove it with run-scale.py --down {run} first')
     created = False
     sessions_file = None
     try:
         up = subprocess.run([sys.executable, str(HERE / 'run-scale.py'), '--scale', args.scale, '--seed', str(args.seed),
                              '--run', run, '--port', str(args.port), '--cohort', str(COHORT), '--keep'],
                             cwd=ROOT, capture_output=True, text=True, encoding='utf-8')
-        created = True
         if up.returncode:
+            # run-scale removes what it created when it fails, and refuses an existing environment.
             raise Stop(f'run-scale failed (exit {up.returncode}): {(up.stderr or up.stdout).strip()[-300:]}')
+        created = True   # only now does this run own a kept environment
         env_summary = json.loads(up.stdout)
         report['environment'] = {k: env_summary[k] for k in ('backend', 'mysql', 'scheduler_flags', 'flyway_version',
                                                                'database_bytes', 'seconds')}

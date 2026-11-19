@@ -38,6 +38,7 @@
 | 100만 | — | 미측정(H) | | | | | | |
 
 - dropped iteration 0, 상태 코드 오류 0. 완료가 예정보다 1건 많은 것은 arrival-rate 구간 경계의 정상 오차다.
+- 이 측정은 "시작했지만 끝나지 않은 iteration" 판정(`interrupted_iterations`, Codex 리뷰 P2 반영)을 추가하기 전 script로 했다. 당시 script는 끝까지 수행된 iteration만 셌는데 네 묶음 모두 완료 수가 예정 수 이상이었고 오류가 0이었으므로, 측정 끝에서 잘린 iteration은 없었던 것으로 본다. 수정한 script의 시험 실행(측정 40초)에서는 중단 0건을 직접 확인했다.
 - 쓰기 지연은 iteration 안 4요청(담기·장바구니·Checkout·결제 확인) 각각의 응답 시간이다.
 
 ### 서버(backend `/actuator/prometheus`, 10초 간격 59회 수집)

@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 import re
 import unittest
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('run_mixed', HERE / 'run-mixed.py')
@@ -50,13 +51,33 @@ class RunMixedTests(unittest.TestCase):
         self.assertEqual(summary['jobs'], {'metrics.commerce:success': 4})
 
     def test_gates(self):
-        def report(passed=True, dropped=0, invariants='PASS'):
-            return {'k6': {'steady': {'verdict': {'passed': passed}, 'accounting': {'droppedIterations': dropped}}},
+        def report(passed=True, dropped=0, interrupted=0, invariants='PASS'):
+            return {'k6': {'steady': {'verdict': {'passed': passed}, 'accounting': {'droppedIterations': dropped},
+                                      'interrupted_iterations': interrupted}},
                     'invariants': invariants}
         self.assertEqual(run_mixed.gate_failures(report()), [])
         self.assertEqual(run_mixed.gate_failures(report(passed=False)), ['k6_contract'])
         self.assertEqual(run_mixed.gate_failures(report(dropped=3)), ['dropped_iterations'])
         self.assertEqual(run_mixed.gate_failures(report(invariants='FAIL')), ['invariants'])
+        self.assertEqual(run_mixed.gate_failures(report(interrupted=1)), ['interrupted_iterations'])
+
+    def test_existing_environment_is_refused_and_never_removed(self):
+        class Args:
+            run, port, out, scale, seed, rps, warmup, steady, keep = 'kept', 18090, None, '10k', 42, 20, 1, 1, False
+
+        class Found:
+            returncode = 0
+
+        with patch.object(run_mixed.subprocess, 'run', return_value=Found()) as run:
+            with patch.object(run_mixed.run_scale, 'down') as down:
+                with self.assertRaises(run_mixed.Stop):
+                    run_mixed.run_mixed(Args())
+        down.assert_not_called()
+        self.assertEqual(run.call_count, 1)   # only the docker inspect; run-scale never started
+
+    def test_k6_counts_interrupted_iterations(self):
+        self.assertIn('started_iterations', K6)
+        self.assertRegex(K6, r"started\.add\(1\);\s*body\(\);\s*metrics\[bundle\]\.finished\.add\(1\)")
 
     def test_runner_and_k6_agree_on_bundles_and_vus(self):
         mix = re.search(r'export const MIX = \{(.*?)\};', K6).group(1)
