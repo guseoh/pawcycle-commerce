@@ -1,0 +1,294 @@
+{
+  "run": "mix-10k-g2",
+  "scale": "10k",
+  "seed": 42,
+  "rps_iterations": 20,
+  "warmup_seconds": 120,
+  "steady_seconds": 600,
+  "vus": {
+    "browse": 60,
+    "member": 30,
+    "write": 40,
+    "login": 20
+  },
+  "started_at": "2026-11-19T02:55:16+00:00",
+  "environment": {
+    "backend": {
+      "url": "http://127.0.0.1:18090",
+      "mem_limit": "640m",
+      "cpus": 0.75,
+      "profile": "local-integration"
+    },
+    "mysql": {
+      "image": "mysql:8.4.10",
+      "cpus": 2.0,
+      "mem_limit": "2g",
+      "binlog": false
+    },
+    "scheduler_flags": {
+      "checkout_expiration": false,
+      "subscription_automation": false,
+      "billing": false
+    },
+    "flyway_version": 28,
+    "database_bytes": 44007424,
+    "seconds": {
+      "build": 2.7,
+      "mysql_up": 11.6,
+      "flyway_first_start": 52.3,
+      "generate": 15.1,
+      "check": 8.0,
+      "cohort": 8.9,
+      "backend_start": 47.2
+    },
+    "generate_seconds": 11.7,
+    "source_sha": "375546aa8bc2ee4f8cf7a47fb8ac5d0830f77805"
+  },
+  "session_setup_seconds": 21.0,
+  "k6": {
+    "warmup": {
+      "phase": "warmup",
+      "rps_iterations": 20,
+      "duration_seconds": 120,
+      "bundles": {
+        "browse": {
+          "share": 0.7,
+          "scheduled_iterations": 1680,
+          "completed_iterations": 1681,
+          "requests": 1681,
+          "p50_ms": 11.504,
+          "p95_ms": 98.2724,
+          "p99_ms": 228.19096000000016,
+          "max_ms": 367.1309,
+          "error_rate": 0
+        },
+        "member": {
+          "share": 0.15,
+          "scheduled_iterations": 360,
+          "completed_iterations": 361,
+          "requests": 361,
+          "p50_ms": 6.289,
+          "p95_ms": 43.6898,
+          "p99_ms": 244.69047999999793,
+          "max_ms": 1306.7879,
+          "error_rate": 0
+        },
+        "write": {
+          "share": 0.1,
+          "scheduled_iterations": 240,
+          "completed_iterations": 241,
+          "requests": 964,
+          "p50_ms": 13.601600000000001,
+          "p95_ms": 194.26436999999999,
+          "p99_ms": 782.3184040000001,
+          "max_ms": 1896.1749,
+          "error_rate": 0.0031120331950207467
+        },
+        "login": {
+          "share": 0.05,
+          "scheduled_iterations": 120,
+          "completed_iterations": 121,
+          "requests": 121,
+          "p50_ms": 92.9487,
+          "p95_ms": 405.4076,
+          "p99_ms": 897.3145,
+          "max_ms": 999.7289,
+          "error_rate": 0
+        }
+      },
+      "accounting": {
+        "scheduledIterations": 2400,
+        "completedIterations": 2404,
+        "droppedIterations": 0,
+        "notCompletedIterations": 0
+      },
+      "status_errors": 3,
+      "verdict": {
+        "passed": true,
+        "evaluatedThresholds": 4,
+        "failedThresholds": []
+      },
+      "k6_exit": 0
+    },
+    "steady": {
+      "phase": "steady",
+      "rps_iterations": 20,
+      "duration_seconds": 600,
+      "bundles": {
+        "browse": {
+          "share": 0.7,
+          "scheduled_iterations": 8400,
+          "completed_iterations": 8401,
+          "requests": 8401,
+          "p50_ms": 9.7673,
+          "p95_ms": 26.4553,
+          "p99_ms": 34.0536,
+          "max_ms": 62.3234,
+          "error_rate": 0
+        },
+        "member": {
+          "share": 0.15,
+          "scheduled_iterations": 1800,
+          "completed_iterations": 1801,
+          "requests": 1801,
+          "p50_ms": 5.0432,
+          "p95_ms": 12.6995,
+          "p99_ms": 20.07,
+          "max_ms": 28.4857,
+          "error_rate": 0
+        },
+        "write": {
+          "share": 0.1,
+          "scheduled_iterations": 1200,
+          "completed_iterations": 1201,
+          "requests": 4804,
+          "p50_ms": 10.4768,
+          "p95_ms": 18.362404999999995,
+          "p99_ms": 35.91603000000003,
+          "max_ms": 88.9747,
+          "error_rate": 0
+        },
+        "login": {
+          "share": 0.05,
+          "scheduled_iterations": 600,
+          "completed_iterations": 601,
+          "requests": 601,
+          "p50_ms": 63.9221,
+          "p95_ms": 83.7485,
+          "p99_ms": 151.0548,
+          "max_ms": 181.2936,
+          "error_rate": 0
+        }
+      },
+      "accounting": {
+        "scheduledIterations": 12000,
+        "completedIterations": 12004,
+        "droppedIterations": 0,
+        "notCompletedIterations": 0
+      },
+      "status_errors": 0,
+      "verdict": {
+        "passed": true,
+        "evaluatedThresholds": 4,
+        "failedThresholds": []
+      },
+      "k6_exit": 0
+    }
+  },
+  "server": {
+    "hikari_timeouts": 0.0,
+    "gc_pause_count": 94.0,
+    "gc_pause_seconds": 0.294,
+    "http_requests": 16477.0,
+    "hikari_active_max": 2.0,
+    "hikari_pending_max": 0.0,
+    "heap_used_max_bytes": 139872528.0,
+    "process_cpu_max": 0.3922,
+    "http_5xx": 0.0,
+    "jobs": {
+      "commerce-metrics-refresh:success": 10,
+      "idempotency-metrics-refresh:success": 10,
+      "subscription-backlog-metrics-refresh:success": 10
+    },
+    "samples": 59,
+    "sample_failures": 0
+  },
+  "db": {
+    "row_lock_waits": 0,
+    "row_lock_time_ms": 0,
+    "top_digests": [
+      {
+        "digest": "SELECT `p` . `id` `product_id` , `p` . `name` , `p` . `pet_type` , `p` . `short_description` , COALESCE ( `main_image` . `image_url` , `p` . `thumbnail_url` ) `thumbnail_url` , `c` . `id` `category_id` , `c` . `name` `ca",
+        "count": 5891.0,
+        "total_ms": 29975.1,
+        "avg_ms": 5.088,
+        "rows_examined": 5140992.0,
+        "rows_sent": 103542.0
+      },
+      {
+        "digest": "COMMIT",
+        "count": 16297.0,
+        "total_ms": 11731.0,
+        "avg_ms": 0.72,
+        "rows_examined": 0.0,
+        "rows_sent": 0.0
+      },
+      {
+        "digest": "SELECT /*+ NO_BNL ( `c` , `b` ) */ COUNT ( * ) FROM `products` `p` FORCE INDEX ( PRIMARY ) JOIN `categories` `c` ON `c` . `id` = `p` . `category_id` JOIN `brands` `b` ON `b` . `id` = `p` . `brand_id` WHERE `p` . `display",
+        "count": 3283.0,
+        "total_ms": 8301.8,
+        "avg_ms": 2.529,
+        "rows_examined": 6483925.0,
+        "rows_sent": 3283.0
+      },
+      {
+        "digest": "SELECT COUNT ( * ) FROM `products` `p` JOIN `categories` `c` ON `c` . `id` = `p` . `category_id` JOIN `brands` `b` ON `b` . `id` = `p` . `brand_id` LEFT JOIN `categories` `parent` ON `parent` . `id` = `c` . `parent_id` W",
+        "count": 1324.0,
+        "total_ms": 5053.8,
+        "avg_ms": 3.817,
+        "rows_examined": 1377364.0,
+        "rows_sent": 1324.0
+      },
+      {
+        "digest": "SET `autocommit` = ?",
+        "count": 32593.0,
+        "total_ms": 2985.6,
+        "avg_ms": 0.092,
+        "rows_examined": 0.0,
+        "rows_sent": 0.0
+      },
+      {
+        "digest": "SET SESSION TRANSACTION READ ONLY",
+        "count": 11493.0,
+        "total_ms": 1765.6,
+        "avg_ms": 0.154,
+        "rows_examined": 0.0,
+        "rows_sent": 0.0
+      },
+      {
+        "digest": "SELECT `sov` . `sku_id` , `g` . `id` `group_id` , `g` . `name` `group_name` , `v` . `id` `value_id` , `v` . `value` FROM `sku_option_values` `sov` JOIN `product_option_values` `v` ON `v` . `id` = `sov` . `option_value_id",
+        "count": 2600.0,
+        "total_ms": 916.0,
+        "avg_ms": 0.352,
+        "rows_examined": 0.0,
+        "rows_sent": 0.0
+      },
+      {
+        "digest": "SELECT `p1_0` . `id` , `p1_0` . `brand_id` , `p1_0` . `catalog_key` , `c1_0` . `id` , `c1_0` . `active` , `c1_0` . `display_order` , `c1_0` . `name` , `c1_0` . `parent_id` , `c1_0` . `slug` , `p1_0` . `description` , `p1",
+        "count": 2600.0,
+        "total_ms": 899.1,
+        "avg_ms": 0.346,
+        "rows_examined": 2600.0,
+        "rows_sent": 2600.0
+      },
+      {
+        "digest": "SELECT COUNT ( * ) FROM `products` `p` JOIN `categories` `c` ON `c` . `id` = `p` . `category_id` JOIN `brands` `b` ON `b` . `id` = `p` . `brand_id` LEFT JOIN `categories` `parent` ON `parent` . `id` = `c` . `parent_id` W",
+        "count": 1284.0,
+        "total_ms": 888.0,
+        "avg_ms": 0.692,
+        "rows_examined": 151906.0,
+        "rows_sent": 1284.0
+      },
+      {
+        "digest": "SELECT `s` . `id` , `s` . `name` , `s` . `price` , `s` . `compare_at_price` , `s` . `subscribable` , COALESCE ( `i` . `available_quantity` , ? ) `available_quantity` FROM `skus` `s` LEFT JOIN `inventories` `i` ON `i` . `",
+        "count": 2600.0,
+        "total_ms": 880.7,
+        "avg_ms": 0.339,
+        "rows_examined": 10181.0,
+        "rows_sent": 4981.0
+      }
+    ]
+  },
+  "orders_created": {
+    "PAID": "1439",
+    "PAYMENT_PENDING": "3"
+  },
+  "invariants": "PASS",
+  "invariant_failures": [],
+  "cleanup": {
+    "containers": 0,
+    "networks": 0,
+    "volumes": 0
+  },
+  "finished_at": "2026-11-19T03:10:26+00:00"
+}

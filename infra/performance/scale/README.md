@@ -75,6 +75,37 @@ backend에는 회원가입 API가 없다. 그래서 다음처럼 만든다.
 
 `--due-count K`는 id 순서로 처음 K개 ACTIVE 구독의 다음 배송일과 회차 날짜를 `--as-of` 날짜(기본 2026-11-01)로 옮긴다. 나머지 회차는 지금처럼 2030년 이후다. `perfgen check`는 기한이 된 회차가 정확히 K개이고 모두 ACTIVE 구독의 SCHEDULED 회차인지 확인한다.
 
+## 혼합 부하 측정 (G-2)
+
+```bash
+python infra/performance/scale/run-mixed.py --scale 10k --seed 42 --rps 20 --warmup 120 --steady 600 --out <로컬 폴더>
+```
+
+`run-scale.py --keep`으로 환경을 만든 뒤 `infra/performance/k6/scale-mixed.js`를 **두 번** 실행한다(예열, 측정). 두 번으로 나누면 측정 직전에 DB digest와 서버 지표 기준점을 정확히 잡을 수 있다.
+
+```text
+run-scale --keep → 새 cohort 비밀번호 → 세션 150개 미리 로그인(VU당 회원 1명)
+  → k6 예열(기록만, 판정하지 않음)
+  → performance_schema digest 초기화, row lock 상태·/actuator/prometheus 기준점
+  → k6 측정(10초마다 /actuator/prometheus 수집)
+  → 상위 SQL digest 10개, row lock 증가량, 서버 지표 증가량·최댓값
+  → perfgen check --no-manifest(쓰기 뒤 불변식) → 환경 정리
+```
+
+| 묶음 | 비율(iteration) | 요청 |
+| --- | --- | --- |
+| browse | 70% | 상품 목록 40%, 검색 15%, 카테고리 15%, 상세 30% |
+| member | 15% | 내 주문, 장바구니, 구독(돌아가며) |
+| write | 10% | 장바구니 담기 → 장바구니 조회 → Checkout → sandbox 결제 확인(iteration당 4요청) |
+| login | 5% | csrf → 로그인(BCrypt). cohort 뒤쪽 절반 회원 |
+
+- **부하 모델:** 묶음마다 `constant-arrival-rate`. 서버가 느려져도 요청률이 줄지 않는다. `--rps`는 묶음 전체의 초당 iteration 수다.
+- **판정(종료 코드 3):** 측정 구간에서 묶음별 응답 계약 위반 1% 이상, dropped iteration, 쓰기 뒤 불변식 위반. 지연 기준(탐색 p95 < 300ms 등)은 기록만 하고 판정하지 않는다. 기준 미달은 5단계 후보로 기록한다.
+- **VU와 회원:** VU id는 시나리오를 넘어 고유하므로 VU마다 다른 회원 세션을 준다(장바구니가 겹치지 않는다). 로그인 묶음은 세션에 쓰지 않은 뒤쪽 절반 회원을 쓴다.
+- **비밀값:** cohort 비밀번호는 실행 프로세스와 k6 환경 변수에만 있다. 세션 쿠키 목록은 Windows 환경 변수 길이 제한(32,767자) 때문에 시스템 임시 폴더의 파일로 k6에 넘기고, 실행이 끝나면 지운다. 저장소에는 쓰지 않는다. 보고서에는 수치와 정규화된 SQL digest(값이 `?`로 바뀐 문장)만 남는다.
+- **수집 지표:** Hikari 활성·대기 최댓값과 획득 시간 초과 증가량, GC pause 횟수·합계, heap 최댓값, process CPU 최댓값, HTTP 요청·5xx 증가량, 스케줄 작업 실행 증가량.
+- 테스트: `python infra/performance/scale/test_run_mixed.py`(Docker·k6 없이 지표 파싱·구간 증가량·판정·k6와의 묶음 일치 확인).
+
 ## 결과 해석
 
 - 로컬 Docker Desktop(Windows)에서 같은 PC, 같은 자원 상한으로 규모만 바꿔 비교하는 기준선이다. 운영 용량의 절대값이 아니다.
