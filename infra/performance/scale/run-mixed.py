@@ -159,6 +159,32 @@ def session_for(base, member_id, password):
     return {'memberId': member_id, 'sessionId': session, 'csrf': call('/api/auth/csrf')['token']}
 
 
+def catalog_sample(base):
+    """Product ids from the first 10 list pages and purchasable SKUs of the first 80 products,
+    the same sample the k6 setup() used to collect itself, taken once before the warm-up."""
+    product_ids, sku_ids = [], []
+    for page in range(10):
+        body = json.loads(http_get(f'{base}/api/products?page={page}&size=50'))
+        product_ids += [item['productId'] for item in body['items']]
+    for product_id in product_ids[:80]:
+        try:
+            detail = json.loads(http_get(f'{base}/api/products/{product_id}'))
+        except (HTTPError, URLError):
+            continue
+        sku_ids += [sku['skuId'] for sku in detail.get('skus', [])
+                    if sku.get('purchasable') and sku.get('availableQuantity', 0) > 1000]
+    if len(product_ids) < 100 or len(sku_ids) < 20:
+        raise Stop('catalog sample too small')
+    return {'productIds': product_ids, 'skuIds': sku_ids}
+
+
+def temp_json(prefix, value):
+    handle, path = tempfile.mkstemp(prefix=prefix, suffix='.json')
+    with os.fdopen(handle, 'w', encoding='utf-8') as file:
+        json.dump(value, file)
+    return path
+
+
 def k6(env, phase, seconds, summary_path):
     run_env = dict(env, SCALE_PHASE=phase, SCALE_DURATION_SECONDS=str(seconds), SCALE_SUMMARY=str(summary_path))
     result = subprocess.run(['k6', 'run', '--quiet', '--no-color', str(K6_SCRIPT)], env=run_env,
@@ -219,7 +245,7 @@ def run_mixed(args):
         # Never touch an environment this run did not create (for example one kept by --keep).
         raise Stop(f'{container} already exists; remove it with run-scale.py --down {run} first')
     created = False
-    sessions_file = None
+    sessions_file = catalog_file = None
     try:
         up = subprocess.run([sys.executable, str(HERE / 'run-scale.py'), '--scale', args.scale, '--seed', str(args.seed),
                              '--run', run, '--port', str(args.port), '--cohort', str(COHORT), '--keep'],
@@ -241,11 +267,13 @@ def run_mixed(args):
         report['session_setup_seconds'] = round(time.monotonic() - begin, 1)
 
         work.mkdir(parents=True, exist_ok=True)
-        handle, sessions_file = tempfile.mkstemp(prefix='pawcycle-scale-sessions-', suffix='.json')
-        with os.fdopen(handle, 'w', encoding='utf-8') as file:
-            json.dump(sessions, file)
+        sessions_file = temp_json('pawcycle-scale-sessions-', sessions)
+        catalog = catalog_sample(base)
+        report['catalog_sample'] = {'products': len(catalog['productIds']), 'skus': len(catalog['skuIds'])}
+        catalog_file = temp_json('pawcycle-scale-catalog-', catalog)
         env = dict(os.environ, SCALE_BASE_URL=base, SCALE_RPS=str(args.rps), SCALE_COHORT=str(COHORT),
-                   SCALE_COHORT_PASSWORD=password, SCALE_SESSIONS_FILE=sessions_file, SCALE_VUS=json.dumps(VUS))
+                   SCALE_COHORT_PASSWORD=password, SCALE_SESSIONS_FILE=sessions_file,
+                   SCALE_CATALOG_FILE=catalog_file, SCALE_VUS=json.dumps(VUS))
         report['k6'] = {'warmup': k6(env, 'warmup', args.warmup, work / 'warmup.json')}
 
         # Measurement window starts here: digests and counters count only the steady run.
@@ -280,8 +308,9 @@ def run_mixed(args):
         report['error'] = str(error) if isinstance(error, Stop) else type(error).__name__
         raise
     finally:
-        if sessions_file:
-            Path(sessions_file).unlink(missing_ok=True)
+        for path in (sessions_file, catalog_file):
+            if path:
+                Path(path).unlink(missing_ok=True)
         for name in ('warmup.json', 'steady.json'):
             (work / name).unlink(missing_ok=True)
         if work.exists():
