@@ -39,7 +39,7 @@ class ScheduledJobRecordingTests {
         if (!callsRunner) missing.add(name);
       }
     }
-    assertThat(scheduled).hasSize(9);
+    assertThat(scheduled).hasSize(10);
     assertThat(missing).as("@Scheduled methods must call ScheduledJobRunner.run").isEmpty();
   }
 
@@ -60,7 +60,7 @@ class ScheduledJobRecordingTests {
         actual.put(type.getSimpleName() + "#" + method.getName(), scheduled.scheduler());
       }
     }
-    assertThat(actual).hasSize(9);
+    assertThat(actual).hasSize(10);
     actual.forEach((job, scheduler) -> assertThat(scheduler)
         .as("scheduler of %s", job)
         .isEqualTo(expected.getOrDefault(job, "")));

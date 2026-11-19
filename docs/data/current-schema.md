@@ -2,7 +2,7 @@
 
 이 문서는 현재 테이블을 업무 영역별로 묶은 색인이다. **스키마의 원본은 `backend/src/main/resources/db/migration`의 Flyway migration이다.** 컬럼·제약·인덱스는 migration을 직접 본다. 과거 설계 문서(DATA-001~004, MVP4-DATA-*)는 당시 설계 기록이다.
 
-- 확인 기준: `main` `70af0c3d`, migration V1~V28, 테이블 61개
+- 확인 기준: `main` `70af0c3d`(V1~V28) + PAYMENT-MEMBERSHIP-001의 V29, 테이블 62개
 - 상태 값과 전이는 [상태 전이 문서](../domain/state-machines.md)를 본다.
 - 이 목록은 migration의 `CREATE TABLE`과 대조해 빠진 테이블이 없음을 확인하고 작성했다.
 
@@ -102,6 +102,7 @@
 | `membership_grades` | V13 |
 | `member_memberships` | V13 |
 | `membership_histories` | V13 |
+| `membership_reevaluation_requests` | V29 |
 | `notifications` | V17 |
 | `admin_audit_logs` | V17 |
 
