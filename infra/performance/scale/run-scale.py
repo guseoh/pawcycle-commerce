@@ -227,11 +227,15 @@ def run_scale(args):
         summary['database_bytes'] = int(perfgen.mysql(
             container, "SELECT SUM(data_length + index_length) FROM information_schema.tables "
                        f"WHERE table_schema = '{perfgen.DATABASE}'"))
+        failed = verification_failures(summary)
+        if failed:
+            summary['verification_failed'] = failed
     except BaseException as error:
         summary['error'] = str(error) if isinstance(error, Stop) else type(error).__name__
         raise
     finally:
-        if args.keep and 'error' not in summary:
+        # Keep only a verified environment; a failed one is removed like an interrupted one.
+        if args.keep and 'error' not in summary and 'verification_failed' not in summary:
             summary['kept'] = True
         else:
             summary['cleanup'] = down(env, project, container)
@@ -242,9 +246,19 @@ def run_scale(args):
             out = Path(args.out)
             out.mkdir(parents=True, exist_ok=True)
             (out / f'{run}.json').write_text(text + '\n', encoding='utf-8')
-    login_ok = all(r == {'login': 200, 'me': 200} for r in summary['cohort']['login'].values())
-    if summary['check']['verdict'] != 'PASS' or not login_ok or summary['cohort']['outside_cohort_login'] == 200:
+    if 'verification_failed' in summary:
         raise SystemExit(3)
+
+
+def verification_failures(summary):
+    failed = []
+    if summary['check']['verdict'] != 'PASS':
+        failed.append('invariants')
+    if any(r != {'login': 200, 'me': 200} for r in summary['cohort']['login'].values()):
+        failed.append('cohort_login')
+    if summary['cohort']['outside_cohort_login'] == 200:
+        failed.append('outside_cohort_login')
+    return failed
 
 
 def main(argv=None):

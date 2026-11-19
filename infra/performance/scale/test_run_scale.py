@@ -51,6 +51,15 @@ class RunScaleTests(unittest.TestCase):
                 with self.subTest(flag=name):
                     self.assertRegex(value, r'^("false"|\$\{PAWCYCLE_SCALE_[A-Z_]+:-false\})$')
 
+    def test_failed_login_or_check_is_a_verification_failure(self):
+        def summary(verdict='PASS', login=200, outside=401):
+            return {'check': {'verdict': verdict},
+                    'cohort': {'login': {'1': {'login': login, 'me': 200}}, 'outside_cohort_login': outside}}
+        self.assertEqual(run_scale.verification_failures(summary()), [])
+        self.assertEqual(run_scale.verification_failures(summary(verdict='FAIL')), ['invariants'])
+        self.assertEqual(run_scale.verification_failures(summary(login=401)), ['cohort_login'])
+        self.assertEqual(run_scale.verification_failures(summary(outside=200)), ['outside_cohort_login'])
+
     def test_environment_without_secrets_uses_placeholders(self):
         env = run_scale.environment('g1-10k', 18090, {})
         self.assertEqual(env['PAWCYCLE_SCALE_DB_PASSWORD'], 'unused')
