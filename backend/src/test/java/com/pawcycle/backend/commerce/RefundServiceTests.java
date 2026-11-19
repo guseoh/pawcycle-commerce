@@ -6,7 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.refund.application.RefundService;
@@ -53,7 +53,7 @@ class RefundServiceTests {
             manager,
             provider,
             mock(NotificationService.class),
-            mock(MembershipEvaluationService.class),
+            mock(MembershipReevaluationService.class),
             mock(AdminAuditService.class),
             mock(CommerceMetrics.class),
             new ExternalCallFailures(new SimpleMeterRegistry()));
@@ -90,7 +90,7 @@ class RefundServiceTests {
             manager,
             provider,
             mock(NotificationService.class),
-            mock(MembershipEvaluationService.class),
+            mock(MembershipReevaluationService.class),
             mock(AdminAuditService.class),
             metrics,
             new ExternalCallFailures(new SimpleMeterRegistry()));
@@ -129,7 +129,7 @@ class RefundServiceTests {
                 manager,
                 provider,
                 mock(NotificationService.class),
-                mock(MembershipEvaluationService.class),
+                mock(MembershipReevaluationService.class),
                 mock(AdminAuditService.class),
                 metrics,
                 new ExternalCallFailures(registry))

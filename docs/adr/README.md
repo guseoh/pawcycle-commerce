@@ -51,6 +51,7 @@ ADR 원문의 상태 표기는 작성 당시 값이다. Lean Harness §15(과거
 | [ARCH-014](ARCH-014-product-list-redis-cache.md) | 상품 목록 Redis cache | Accepted | 유효 | `ProductListCacheInvalidator` |
 | [ARCH-015](ARCH-015-ai-product-recommendation-boundary.md) | AI 상품 추천 경계 | Accepted | 유효 | 서버 후보 검증 후 AI 재정렬. 기본 비활성(`PAWCYCLE_RECOMMENDATION_AI_ENABLED=false`) |
 | [ARCH-016](ARCH-016-production-alertmanager.md) | 운영 Alertmanager와 critical 알림 | Accepted | 유효 (저장소 준비) | ARCH-012 보완. `infra/production-observability/alertmanager`, 운영 규칙 critical 4 + Watchdog. 운영 적용은 별도 승인([OPS-OBS-001](../runbook/OPS-OBS-001-production-observability.md#운영-알림-arch-016)) |
+| [ARCH-017](ARCH-017-membership-reevaluation-outside-money-transactions.md) | 멤버십 재평가를 돈 트랜잭션 밖으로 분리 | Accepted | 유효 | 결제·대사·정기결제·환불은 재평가 요청만 기록, 정기 작업이 회원별 트랜잭션에서 평가(PAYMENT-MEMBERSHIP-001) |
 | [AUTH-005](AUTH-005-spring-session-redis.md) | 세션 저장소 Spring Session Redis | Approved | 유효 | `common/security/SessionStoreConfiguration`. 기본 `memory`, 운영 활성화는 별도 승인([AUTH-005 Runbook](../runbook/AUTH-005-session-redis.md)) |
 
 ### 승인 과정 기록

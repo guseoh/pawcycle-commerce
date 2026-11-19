@@ -9,7 +9,7 @@ import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdap
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
 
@@ -30,7 +30,7 @@ public class SubscriptionBillingProcessor {
   private final PaymentReconciliationService reconciliation;
   private final DeliveryService deliveries;
   private final NotificationService notifications;
-  private final MembershipEvaluationService membershipEvaluation;
+  private final MembershipReevaluationService membershipReevaluation;
   private final InventoryService inventory;
   private final Clock clock;
   private final ExternalCallFailures failures;
@@ -43,7 +43,7 @@ public class SubscriptionBillingProcessor {
       PaymentReconciliationService reconciliation,
       DeliveryService deliveries,
       NotificationService notifications,
-      MembershipEvaluationService membershipEvaluation,
+      MembershipReevaluationService membershipReevaluation,
       InventoryService inventory,
       Clock clock,
       ExternalCallFailures failures) {
@@ -54,7 +54,7 @@ public class SubscriptionBillingProcessor {
     this.reconciliation = reconciliation;
     this.deliveries = deliveries;
     this.notifications = notifications;
-    this.membershipEvaluation = membershipEvaluation;
+    this.membershipReevaluation = membershipReevaluation;
     this.inventory = inventory;
     this.clock = clock;
     this.failures = failures;
@@ -146,7 +146,7 @@ public class SubscriptionBillingProcessor {
           persistence.markOrderPaid(now, orderId);
           persistence.releaseMissingMethodHold(payment.scheduleId());
           deliveries.createPreparing(orderId);
-          membershipEvaluation.evaluate(payment.memberId());
+          membershipReevaluation.request(payment.memberId());
           notifications.create(payment.memberId(), "ORDER_PAID", "ORDER", orderId);
         });
   }

@@ -47,6 +47,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ActiveProfiles({"test", "local-integration"})
 class PaymentReconciliationIntegrationTests {
   @Autowired private PaymentReconciliationService service;
+  @Autowired private com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService reevaluation;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private EntityManager entities;
   @Autowired private PlatformTransactionManager manager;
@@ -216,6 +217,9 @@ class PaymentReconciliationIntegrationTests {
     assertThat(jdbc.queryForObject("SELECT status FROM orders WHERE id=?", String.class, f.order())).isEqualTo("PAID");
     assertThat(jdbc.queryForObject("SELECT provider_status FROM payments WHERE id=?", String.class, f.payment())).isEqualTo("DONE");
     assertThat(integer("SELECT COUNT(*) FROM deliveries WHERE order_id=? AND status='PREPARING'", f.order())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isZero();
+    reevaluation.processDue(1000);
     assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isEqualTo(1);
     assertThat(integer("SELECT COUNT(*) FROM notifications WHERE member_id=? AND type='ORDER_PAID' AND reference_id=?", f.member(), f.order())).isEqualTo(1);
     assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
@@ -430,6 +434,9 @@ class PaymentReconciliationIntegrationTests {
     assertThat(quantity(f)).isEqualTo(3);
     assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
     assertThat(jdbc.queryForObject("SELECT status FROM member_coupons WHERE id=?", String.class, f.coupon())).isEqualTo("USED");
+    assertThat(integer("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isZero();
+    reevaluation.processDue(1000);
     assertThat(integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isEqualTo(1);
     assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(2);
     assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=?", f.payment())).isEqualTo(1);

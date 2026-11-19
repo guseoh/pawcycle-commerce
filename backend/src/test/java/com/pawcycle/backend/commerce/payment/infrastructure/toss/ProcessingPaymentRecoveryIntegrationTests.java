@@ -13,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
+import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.ProcessingPaymentRecoveryService;
 import com.pawcycle.backend.commerce.payment.application.ProcessingPaymentRecoveryService.Outcome;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
@@ -57,7 +59,9 @@ class ProcessingPaymentRecoveryIntegrationTests {
   @Autowired EntityManager entities;
   @Autowired PlatformTransactionManager manager;
   @MockitoBean TossPaymentAdapter provider;
-  @MockitoSpyBean MembershipEvaluationService membership;
+  @MockitoSpyBean MembershipReevaluationService membership;
+  @Autowired MembershipEvaluationService evaluation;
+  @MockitoSpyBean NotificationService notifications;
   TossPaymentQuerySafetyTests.FakeServer fake;
   volatile CountDownLatch queryEntered;
   volatile CountDownLatch queryRelease;
@@ -83,7 +87,7 @@ class ProcessingPaymentRecoveryIntegrationTests {
   void stop() {
     fake.close();
     verify(provider, never()).confirm(anyString(), anyString(), any());
-    reset(membership);
+    reset(membership, notifications);
   }
 
   @Test
@@ -102,8 +106,55 @@ class ProcessingPaymentRecoveryIntegrationTests {
     assertThat(count("SELECT quantity FROM cart_items WHERE cart_id=?", f.cart())).isEqualTo(3);
     assertThat(count("SELECT COUNT(*) FROM notifications WHERE member_id=? AND type='ORDER_PAID'", f.member())).isEqualTo(1);
     assertThat(count("SELECT COUNT(*) FROM admin_audit_logs WHERE admin_id=? AND action='PAYMENT_PROCESSING_RECOVERED' AND target_id=?", f.admin(), f.payment())).isEqualTo(1);
-    verify(membership).evaluate(f.member());
+    verify(membership).request(f.member());
+    // The grade is evaluated later by the re-evaluation job, not inside the confirmation.
+    assertThat(count("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isEqualTo(1);
+    assertThat(count("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", f.member())).isZero();
     assertThat(fake.requests.get()).isEqualTo(1);
+  }
+
+  /**
+   * PAYMENT-MEMBERSHIP-001 regression. Before the fix, success effects ended with the member's first
+   * membership INSERT, which waits on (or deadlocks with) a gap lock that another first-time buyer's
+   * evaluation holds on member_memberships, and a deadlock rolled the confirmation back after the
+   * provider had approved. The confirmation must now finish while such a gap lock is held.
+   */
+  @Test
+  void successEffectsDoNotWaitForAMembershipGapLock() throws Exception {
+    Fixture f = fixture("NORMAL", "PROCESSING", "PAYMENT_PENDING");
+    done(f);
+    long missing = f.member() + 1_000_000L; // no membership row at or above the new fixture member
+    CountDownLatch locked = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    try (var executor = Executors.newFixedThreadPool(3)) {
+      Future<?> holder = executor.submit(() -> new TransactionTemplate(manager).executeWithoutResult(status -> {
+        jdbc.queryForList("SELECT grade_id FROM member_memberships WHERE member_id=? FOR UPDATE", missing);
+        locked.countDown();
+        try {
+          assertThat(release.await(30, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }));
+      assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+      try {
+        // Control: the old in-transaction evaluation of the same member is blocked by that gap lock.
+        Future<?> oldPath = executor.submit(() -> new TransactionTemplate(manager)
+            .executeWithoutResult(status -> evaluation.evaluate(f.member())));
+        Future<Outcome> recovered = executor.submit(() -> recovery.recover(f.payment(), f.admin()));
+
+        assertThat(recovered.get(10, TimeUnit.SECONDS)).isEqualTo(Outcome.RECOVERED);
+        assertThat(oldPath.isDone()).as("old evaluation path must still be waiting on the gap lock").isFalse();
+        release.countDown();
+        oldPath.get(20, TimeUnit.SECONDS);
+      } finally {
+        release.countDown();
+        holder.get(20, TimeUnit.SECONDS);
+      }
+    }
+    assertThat(one("SELECT status FROM payments WHERE id=?", f.payment())).isEqualTo("SUCCEEDED");
+    assertThat(one("SELECT status FROM orders WHERE id=?", f.order())).isEqualTo("PAID");
+    assertThat(count("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isEqualTo(1);
   }
 
   @ParameterizedTest
@@ -217,12 +268,15 @@ class ProcessingPaymentRecoveryIntegrationTests {
     Fixture f = fixture("NORMAL", "PROCESSING", "PAYMENT_PENDING");
     done(f);
     var before = state(f);
-    doThrow(new IllegalStateException("injected after earlier effects")).when(membership).evaluate(anyLong());
+    // request() requires the caller's transaction (MANDATORY), so the failure is injected into another
+    // finalization step that runs after the money effects.
+    doThrow(new IllegalStateException("injected after earlier effects")).when(notifications)
+        .create(anyLong(), anyString(), anyString(), anyLong());
     assertThatThrownBy(() -> recovery.recover(f.payment(), f.admin())).isInstanceOf(IllegalStateException.class);
     assertThat(state(f)).isEqualTo(before);
     assertThat(count("SELECT COUNT(*) FROM admin_audit_logs WHERE target_id=? AND action='PAYMENT_PROCESSING_RECOVERED'", f.payment())).isZero();
 
-    reset(membership);
+    reset(notifications);
     assertThat(recovery.recover(f.payment(), f.admin())).isEqualTo(Outcome.RECOVERED);
     assertThat(one("SELECT status FROM payments WHERE id=?", f.payment())).isEqualTo("SUCCEEDED");
   }

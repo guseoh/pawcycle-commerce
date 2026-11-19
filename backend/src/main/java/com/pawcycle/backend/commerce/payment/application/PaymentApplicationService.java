@@ -6,7 +6,7 @@ import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.payment.persistence.PaymentPersistenceAdapter;
@@ -22,7 +22,7 @@ public class PaymentApplicationService {
   private final DeliveryService deliveryService;
   private final NotificationService notificationService;
   private final InventoryService inventoryService;
-  private final MembershipEvaluationService membershipEvaluation;
+  private final MembershipReevaluationService membershipReevaluation;
   private final ExternalCallFailures failures;
 
   public PaymentApplicationService(
@@ -32,7 +32,7 @@ public class PaymentApplicationService {
       DeliveryService deliveryService,
       NotificationService notificationService,
       InventoryService inventoryService,
-      MembershipEvaluationService membershipEvaluation,
+      MembershipReevaluationService membershipReevaluation,
       ExternalCallFailures failures) {
     this.payments = payments;
     this.transaction = new TransactionTemplate(transactionManager);
@@ -40,7 +40,7 @@ public class PaymentApplicationService {
     this.deliveryService = deliveryService;
     this.notificationService = notificationService;
     this.inventoryService = inventoryService;
-    this.membershipEvaluation = membershipEvaluation;
+    this.membershipReevaluation = membershipReevaluation;
     this.failures = failures;
   }
 
@@ -121,7 +121,8 @@ public class PaymentApplicationService {
    * Success effects of a NORMAL payment, in the established order. The caller must hold the
    * payment row lock inside a transaction and must have checked that the payment is PROCESSING.
    * Shared by normal confirmation and the PROCESSING recovery command (#417) so both apply the
-   * same effects exactly once.
+   * same effects exactly once. The member's grade is re-evaluated later, outside this transaction,
+   * from the request recorded here (PAYMENT-MEMBERSHIP-001).
    */
   void applyNormalSuccess(long paymentId, long orderId, String paymentKey) {
     for (PaymentPersistenceAdapter.OrderItem item : payments.findOrderItems(orderId)) {
@@ -133,7 +134,9 @@ public class PaymentApplicationService {
     payments.useReservedCoupon(orderId);
     notificationService.create(payments.findMemberId(orderId), "ORDER_PAID", "ORDER", orderId);
     payments.consumeCart(payments.findMemberId(orderId), orderId);
-    membershipEvaluation.evaluate(payments.findMemberId(orderId));
+    // Only a request here: evaluating the grade inside this transaction could deadlock on the
+    // first membership row and roll the whole confirmation back (PAYMENT-MEMBERSHIP-001).
+    membershipReevaluation.request(payments.findMemberId(orderId));
   }
 
   private PaymentResult markProviderUnknown(long paymentId) {
