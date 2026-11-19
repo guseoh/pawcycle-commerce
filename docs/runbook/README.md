@@ -35,6 +35,7 @@ Cloud provider 전환 중에는 각 Runbook의 전제와 현재 상태를 먼저
 - `SUB-AUTO-001-subscription-automation.md`
 - `PAYMENT-TOSS-TEST-001-local-test-environment.md`: 로컬 통합 환경에서 Toss 테스트 키로 결제 승인·조회를 검증하는 절차. 키 사용 실행은 별도 승인
 - `PAYMENT-RECOVERY-001-processing-success.md`: 고립된 NORMAL/PROCESSING 결제의 성공 확정 유지보수 명령(#417 Phase 2a). 운영 실행은 별도 승인
+- `PAYMENT-RECOVERY-002-processing-failure.md`: 고립된 NORMAL/PROCESSING 결제의 실패 확정·재고 예약 해제 유지보수 명령(#417 Phase 2b). 작업자 배제 필수, 운영 실행은 별도 승인
 - `MVP4-DATA-002-demo-catalog-import.md`
 - `PERF-V7-003-isolated-catalog-scale.md`: live Catalog와 분리된 I0/I10K OCI Scale Dataset runtime/import/load/cleanup 계약
 - `OBS-BASE-001-local-observability.md`, `OBS-002-local-alert-response.md`: 로컬 관측 스택(지표·로그·알림)의 실행과 알림별 첫 확인 절차

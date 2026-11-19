@@ -85,6 +85,7 @@ Grafana datasource와 PawCycle Dashboard는 provisioning 파일에서 자동 생
   | `payment.expired` | `paymentId`, `orderId` |
   | `payment.reconciled` | `paymentId`, `orderId`, `providerStatus`, `outcome` |
   | `payment.recovery.finished` | `paymentId`, `adminId`, `outcome` |
+  | `payment.failure_confirmation.finished` | `paymentId`, `adminId`, `outcome`, `providerStatus`(있을 때) |
   | `refund.finished` | `refundId`, `orderId`, `providerStatus`, `outcome` |
   | `billing.charge.finished` | `paymentId`, `providerStatus`, `outcome` |
   | `subscription.order.processed` | `subscriptionId`, `scheduleId`, `outcome` |

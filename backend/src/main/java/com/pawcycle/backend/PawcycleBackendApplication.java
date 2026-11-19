@@ -12,6 +12,10 @@ import org.springframework.boot.session.data.redis.autoconfigure.SessionDataRedi
 public class PawcycleBackendApplication {
   static final String RECOVERY_PROPERTY = "pawcycle.maintenance.recover-processing-payment.enabled";
   static final String RECOVERY_ENVIRONMENT = "PAWCYCLE_MAINTENANCE_RECOVER_PROCESSING_PAYMENT_ENABLED";
+  static final String FAILURE_CONFIRMATION_PROPERTY =
+      "pawcycle.maintenance.confirm-processing-payment-failure.enabled";
+  static final String FAILURE_CONFIRMATION_ENVIRONMENT =
+      "PAWCYCLE_MAINTENANCE_CONFIRM_PROCESSING_PAYMENT_FAILURE_ENABLED";
 
   public static void main(String[] args) {
     int catalogImportExitCode = ProductionDemoCatalogImportCommand.runIfRequested(args);
@@ -21,7 +25,9 @@ public class PawcycleBackendApplication {
       }
       return;
     }
-    if (isProcessingPaymentRecovery(args, System.getProperty(RECOVERY_PROPERTY), System.getenv())) {
+    if (isProcessingPaymentRecovery(args, System.getProperty(RECOVERY_PROPERTY), System.getenv())
+        || isProcessingPaymentFailureConfirmation(
+            args, System.getProperty(FAILURE_CONFIRMATION_PROPERTY), System.getenv())) {
       SpringApplication.run(PawcycleBackendApplication.class, args);
       return;
     }
@@ -41,11 +47,20 @@ public class PawcycleBackendApplication {
    */
   static boolean isProcessingPaymentRecovery(
       String[] args, String systemProperty, Map<String, String> environment) {
+    return requested(args, RECOVERY_PROPERTY, systemProperty, environment.get(RECOVERY_ENVIRONMENT));
+  }
+
+  /** The #417 Phase 2b failure confirmation command is routed the same way. */
+  static boolean isProcessingPaymentFailureConfirmation(
+      String[] args, String systemProperty, Map<String, String> environment) {
+    return requested(
+        args, FAILURE_CONFIRMATION_PROPERTY, systemProperty, environment.get(FAILURE_CONFIRMATION_ENVIRONMENT));
+  }
+
+  private static boolean requested(String[] args, String property, String systemProperty, String environment) {
     for (String arg : args) {
-      if (arg.equals("--" + RECOVERY_PROPERTY) || arg.equalsIgnoreCase("--" + RECOVERY_PROPERTY + "=true"))
-        return true;
+      if (arg.equals("--" + property) || arg.equalsIgnoreCase("--" + property + "=true")) return true;
     }
-    return "true".equalsIgnoreCase(systemProperty)
-        || "true".equalsIgnoreCase(environment.get(RECOVERY_ENVIRONMENT));
+    return "true".equalsIgnoreCase(systemProperty) || "true".equalsIgnoreCase(environment);
   }
 }

@@ -1,5 +1,6 @@
 package com.pawcycle.backend.commerce.payment.persistence;
 
+import com.pawcycle.backend.commerce.order.domain.QCommerceOrderEntity;
 import com.pawcycle.backend.commerce.payment.domain.QPaymentEntity;
 import com.pawcycle.backend.commerce.coupon.domain.QMemberCouponEntity;
 import com.pawcycle.backend.commerce.cart.domain.QCartEntity;
@@ -51,6 +52,73 @@ public class PaymentReconciliationPersistenceAdapter {
         FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=?
         """ + (forUpdate ? " FOR UPDATE OF payment" : "");
     return locks.first(sql, RecoveryCandidate.class, expiredBefore, paymentId);
+  }
+
+  /**
+   * Eligibility facts for confirming the provider failure of an isolated NORMAL/PROCESSING payment
+   * (#417 Phase 2b). Unlike {@link #findRecoveryCandidate} it compares the RESERVE ledger with the
+   * order per SKU and quantity, and counts SUCCEEDED payments of the same order. The locking variant
+   * locks only the payment row, so the confirmation keeps the order payment -> inventory -> order ->
+   * coupon.
+   */
+  public FailureCandidate findFailureCandidate(long paymentId, Timestamp expiredBefore, boolean forUpdate) {
+    String sql = """
+        SELECT payment.id,payment.order_id,payment.type,payment.status,orders.status AS order_status,
+               payment.provider_order_id,payment.payment_key,payment.amount,
+               CAST(CASE WHEN payment.expires_at <= ? THEN 1 ELSE 0 END AS SIGNED) AS expired_long_enough,
+               (SELECT COUNT(*) FROM order_items item WHERE item.order_id=payment.order_id) AS order_item_count,
+               (SELECT COUNT(*) FROM inventory_movements movement
+                 WHERE movement.payment_id=payment.id AND movement.type='RESERVE') AS reserve_count,
+               (SELECT COUNT(*) FROM order_items item WHERE item.order_id=payment.order_id
+                 AND NOT EXISTS (SELECT 1 FROM inventory_movements movement
+                   WHERE movement.payment_id=payment.id AND movement.type='RESERVE'
+                     AND movement.sku_id=item.sku_id AND movement.quantity=item.quantity)) AS reserve_mismatch_count,
+               (SELECT COUNT(*) FROM inventory_movements movement
+                 WHERE movement.payment_id=payment.id AND movement.type IN ('DEDUCT','RELEASE')) AS settled_count,
+               (SELECT COUNT(*) FROM payments other
+                 WHERE other.order_id=payment.order_id AND other.status='SUCCEEDED') AS succeeded_payment_count
+        FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=?
+        """ + (forUpdate ? " FOR UPDATE OF payment" : "");
+    return locks.first(sql, FailureCandidate.class, expiredBefore, paymentId);
+  }
+
+  /**
+   * Everything a failure confirmation commits, read together. Used to tell a committed confirmation
+   * from a rolled-back one when the commit acknowledgement was lost (#417 Phase 2b).
+   */
+  public FailureEvidence findFailureEvidence(long paymentId, String failureCode, List<String> auditActions) {
+    String sql = """
+        SELECT payment.status,payment.provider_status,payment.failure_code,orders.status AS order_status,
+               (SELECT COUNT(*) FROM order_items item WHERE item.order_id=payment.order_id) AS order_item_count,
+               (SELECT COUNT(*) FROM inventory_movements movement
+                 WHERE movement.payment_id=payment.id AND movement.type='RELEASE') AS release_count,
+               (SELECT COUNT(*) FROM order_items item WHERE item.order_id=payment.order_id
+                 AND NOT EXISTS (SELECT 1 FROM inventory_movements movement
+                   WHERE movement.payment_id=payment.id AND movement.type='RELEASE'
+                     AND movement.sku_id=item.sku_id AND movement.quantity=item.quantity)) AS release_mismatch_count,
+               (SELECT COUNT(*) FROM member_coupons coupon
+                 WHERE coupon.reserved_order_id=payment.order_id AND coupon.status='RESERVED') AS reserved_coupon_count,
+               (SELECT COUNT(*) FROM admin_audit_logs audit
+                 WHERE audit.target_type='PAYMENT' AND audit.target_id=payment.id AND audit.action IN (?,?)) AS audit_count
+        FROM payments payment JOIN orders ON orders.id=payment.order_id WHERE payment.id=?
+        """;
+    return locks.first(sql, FailureEvidence.class, auditActions.get(0), auditActions.get(1), paymentId);
+  }
+
+  /** Payment PROCESSING -> FAILED, only while it is still PROCESSING. Returns the updated row count. */
+  public int markProcessingFailed(long paymentId, String providerStatus, String failureCode) {
+    var payment = new QPaymentEntity("payment");
+    return writes.mutate(() -> queries.update(payment).set(payment.status, "FAILED")
+        .set(payment.providerStatus, providerStatus).set(payment.failureCode, failureCode)
+        .set(payment.failedAt, PaymentPersistenceQueries.jdbcTime(now()))
+        .where(payment.id.eq(paymentId), payment.status.eq("PROCESSING")).execute());
+  }
+
+  /** Order PAYMENT_PENDING -> PAYMENT_FAILED, only while it is still PAYMENT_PENDING. */
+  public int markPendingOrderPaymentFailed(long orderId) {
+    var order = new QCommerceOrderEntity("orders");
+    return writes.mutate(() -> queries.update(order).set(order.status, "PAYMENT_FAILED")
+        .where(order.id.eq(orderId), order.status.eq("PAYMENT_PENDING")).execute());
   }
 
   public boolean isAdmin(long memberId) {
@@ -167,6 +235,31 @@ public class PaymentReconciliationPersistenceAdapter {
       Long orderItemCount,
       Long reserveCount,
       Long settledCount) {}
+  public record FailureCandidate(
+      Long paymentId,
+      Long orderId,
+      String type,
+      String status,
+      String orderStatus,
+      String providerOrderId,
+      String paymentKey,
+      BigDecimal amount,
+      Long expiredLongEnough,
+      Long orderItemCount,
+      Long reserveCount,
+      Long reserveMismatchCount,
+      Long settledCount,
+      Long succeededPaymentCount) {}
+  public record FailureEvidence(
+      String status,
+      String providerStatus,
+      String failureCode,
+      String orderStatus,
+      Long orderItemCount,
+      Long releaseCount,
+      Long releaseMismatchCount,
+      Long reservedCouponCount,
+      Long auditCount) {}
   public record QueryTarget(String type, String providerOrderId, String paymentKey, BigDecimal amount) {}
   public record ReconciliationWork(long paymentId, String type, String status, String providerOrderId, int attempts) {}
   public record ReconciliationTarget(long paymentId, long orderId, String type, String status, int attempts, long memberId, String source) {}

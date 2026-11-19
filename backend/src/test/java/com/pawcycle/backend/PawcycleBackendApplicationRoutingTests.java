@@ -24,4 +24,19 @@ class PawcycleBackendApplicationRoutingTests {
         new String[] {"--" + PawcycleBackendApplication.RECOVERY_PROPERTY + "=false"}, "false", Map.of()))
         .isFalse();
   }
+
+  @Test
+  void onlyExplicitFailureConfirmationRequestsAreRouted() {
+    String enabled = "--" + PawcycleBackendApplication.FAILURE_CONFIRMATION_PROPERTY + "=true";
+    assertThat(PawcycleBackendApplication.isProcessingPaymentFailureConfirmation(
+        new String[] {"--spring.main.web-application-type=none", enabled}, null, Map.of())).isTrue();
+    assertThat(PawcycleBackendApplication.isProcessingPaymentFailureConfirmation(new String[0], "true", Map.of()))
+        .isTrue();
+    assertThat(PawcycleBackendApplication.isProcessingPaymentFailureConfirmation(
+        new String[0], null, Map.of(PawcycleBackendApplication.FAILURE_CONFIRMATION_ENVIRONMENT, "true"))).isTrue();
+    assertThat(PawcycleBackendApplication.isProcessingPaymentFailureConfirmation(
+        new String[] {ENABLED}, null, Map.of())).isFalse();
+    assertThat(PawcycleBackendApplication.isProcessingPaymentRecovery(
+        new String[] {enabled}, null, Map.of())).isFalse();
+  }
 }

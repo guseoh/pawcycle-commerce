@@ -35,6 +35,7 @@ public final class BusinessEvent {
     PAYMENT_EXPIRED("payment.expired"),
     PAYMENT_RECONCILED("payment.reconciled"),
     PAYMENT_RECOVERY_FINISHED("payment.recovery.finished"),
+    PAYMENT_FAILURE_CONFIRMATION_FINISHED("payment.failure_confirmation.finished"),
     REFUND_FINISHED("refund.finished"),
     BILLING_CHARGE_FINISHED("billing.charge.finished"),
     SUBSCRIPTION_ORDER_PROCESSED("subscription.order.processed"),
