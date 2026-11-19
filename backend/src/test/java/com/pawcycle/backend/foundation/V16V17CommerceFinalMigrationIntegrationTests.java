@@ -128,7 +128,7 @@ class V16V17CommerceFinalMigrationIntegrationTests {
       assertThat(
               jdbc.queryForObject(
                   "SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class))
-          .isEqualTo(28);
+          .isEqualTo(29);
     } catch (Throwable failure) {
       primaryFailure = failure;
       throw failure;
