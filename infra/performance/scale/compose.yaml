@@ -1,0 +1,108 @@
+# PERF-SCALE-002 (stage 4 G-1): disposable MySQL with perfgen synthetic data + one backend.
+# Driven by run-scale.py, which sets every variable below for a single run and removes the
+# project (containers, network, anonymous volume) at the end. Not for production or shared DBs.
+#
+# - mysql keeps the perfgen guard contract: container name pawcycle-perfgen-<run>, label
+#   pawcycle.purpose=perf-synthetic-data, anonymous /var/lib/mysql volume, no published port.
+# - backend gets the production backend limits (640m, 0.75 CPU, MaxRAMPercentage=65) and is the
+#   only service with a port, bound to 127.0.0.1. Requests go to it directly, not through nginx.
+# - Every scheduled job that can be switched off is off unless the run asks for it; the three
+#   metric refresh jobs cannot be switched off and stay on.
+name: ${PAWCYCLE_SCALE_PROJECT:?PAWCYCLE_SCALE_PROJECT is required}
+
+x-runtime-hardening: &runtime-hardening
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 384
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    container_name: ${PAWCYCLE_SCALE_DB_CONTAINER:?PAWCYCLE_SCALE_DB_CONTAINER is required}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Synthetic data is thrown away after the run; binlog would only cost disk at 1M rows.
+      - --disable-log-bin
+    environment:
+      MYSQL_DATABASE: pawcycle
+      MYSQL_USER: ${PAWCYCLE_SCALE_DB_USER:?PAWCYCLE_SCALE_DB_USER is required}
+      MYSQL_PASSWORD: ${PAWCYCLE_SCALE_DB_PASSWORD:?PAWCYCLE_SCALE_DB_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${PAWCYCLE_SCALE_DB_ROOT_PASSWORD:?PAWCYCLE_SCALE_DB_ROOT_PASSWORD is required}
+    labels:
+      pawcycle.purpose: perf-synthetic-data
+    volumes:
+      - /var/lib/mysql
+    cpus: 2.0
+    mem_limit: 2g
+    networks:
+      - scale
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1 --user="$${MYSQL_USER}" --database=pawcycle --batch --skip-column-names --execute="SELECT 1" >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  backend:
+    build:
+      context: ../../..
+      dockerfile: infra/local-integration/backend.Dockerfile
+    image: pawcycle-perf-scale-backend:local
+    restart: "no"
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65.0 -XX:+ExitOnOutOfMemoryError
+      # local-integration: sandbox payment/billing/refund adapters, never a real provider.
+      SPRING_PROFILES_ACTIVE: local-integration
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pawcycle?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${PAWCYCLE_SCALE_DB_USER:?PAWCYCLE_SCALE_DB_USER is required}
+      SPRING_DATASOURCE_PASSWORD: ${PAWCYCLE_SCALE_DB_PASSWORD:?PAWCYCLE_SCALE_DB_PASSWORD is required}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+      # No fixtures: the data set is exactly what perfgen generated.
+      PAWCYCLE_LOCAL_DEMO_CATALOG_ENABLED: "false"
+      PAWCYCLE_LOCAL_QA_BOOTSTRAP_ENABLED: "false"
+      PAWCYCLE_LOCAL_CUSTOMER_CATALOG_V3_ENABLED: "false"
+      PAWCYCLE_PRODUCT_LIST_CACHE_ENABLED: "false"
+      PAWCYCLE_SESSION_STORE: memory
+      SESSION_COOKIE_SECURE: "false"
+      # Scheduled jobs (off unless the run turns them on). Real properties only.
+      PAWCYCLE_COMMERCE_CHECKOUT_EXPIRATION_ENABLED: ${PAWCYCLE_SCALE_CHECKOUT_EXPIRATION:-false}
+      PAWCYCLE_SUBSCRIPTION_AUTOMATION_ENABLED: ${PAWCYCLE_SCALE_SUBSCRIPTION_AUTOMATION:-false}
+      PAWCYCLE_COMMERCE_BILLING_ENABLED: ${PAWCYCLE_SCALE_BILLING:-false}
+      PAWCYCLE_SUBSCRIPTION_RECONCILIATION_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_DELIVERY_REMINDER_ENABLED: "false"
+      PAWCYCLE_SUBSCRIPTION_IDEMPOTENCY_CLEANUP_ENABLED: "false"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PAWCYCLE_SCALE_BACKEND_PORT:?PAWCYCLE_SCALE_BACKEND_PORT is required}:8080"
+    networks:
+      - scale
+    <<: *runtime-hardening
+    mem_limit: 640m
+    cpus: 0.75
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - http://127.0.0.1:8080/actuator/health
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+networks:
+  scale:
+    driver: bridge

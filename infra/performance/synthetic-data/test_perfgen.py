@@ -76,6 +76,25 @@ class PerfgenTests(unittest.TestCase):
         self.assertNotRegex(text, r'(?i)\b(CREATE|ALTER|DROP|TRUNCATE)\b')
         self.assertFalse(list(Path(__file__).parent.glob('V*__*.sql')))
 
+    def test_due_cohort_only_moves_first_active_subscriptions(self):
+        sql = perfgen.due_cohort_sql('2026-11-01 00:00:00', 250)
+        self.assertIn("WHERE status = 'ACTIVE' ORDER BY id LIMIT 250", sql)
+        self.assertIn("DATE('2026-11-01 00:00:00')", sql)
+        self.assertNotRegex(sql, r'(?i)(RAND|UUID|NOW|CREATE|ALTER|DROP|DELETE|INSERT)')
+        self.assertEqual(sql, perfgen.due_cohort_sql('2026-11-01 00:00:00', 250))
+
+    def test_flyway_schema_must_be_complete_at_latest_version(self):
+        def answers(*outputs):
+            return patch.object(perfgen, 'mysql', side_effect=list(outputs))
+        with answers('0'):
+            self.assertEqual(perfgen.schema_source('pawcycle-perfgen-t', 28), 'raw')
+        with answers('1', '0	28'):
+            self.assertEqual(perfgen.schema_source('pawcycle-perfgen-t', 28), 'flyway')
+        for history in ['0	27', '1	28', 'NULL	NULL']:
+            with self.subTest(history=history), answers('1', history):
+                with self.assertRaises(perfgen.Stop):
+                    perfgen.schema_source('pawcycle-perfgen-t', 28)
+
     def test_invariants_are_read_only(self):
         sql = perfgen.INVARIANTS.read_text(encoding='utf-8')
         self.assertNotRegex(sql, r'(?i)\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE|REPLACE)\b')

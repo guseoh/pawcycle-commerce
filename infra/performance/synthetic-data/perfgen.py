@@ -15,10 +15,14 @@ Safety boundary:
   * No port is published; all access is `docker exec`. The root password is random,
     lives only in the container environment, and is never printed or written.
   * No Flyway migration is added. `up` applies the repository migrations as-is.
+    A schema created by backend Flyway (infra/performance/scale) is also accepted,
+    but only when flyway_schema_history is complete and at the repository's latest
+    version.
 
 Commands:
   up --name N             start disposable MySQL 8.4.10 and apply db/migration V1..Vn
   generate --name N --scale 10k|100k|1m --seed S [--as-of ...] [--schedule-start ...]
+                          [--due-count K]   K ACTIVE subscriptions due on the --as-of date
   check --name N          domain invariants (invariants.sql) + generator manifest checks
   fingerprint --name N    CHECKSUM TABLE of generated tables (reproducibility evidence)
   reset --name N          drop and re-create the application schema, re-apply migrations
@@ -393,6 +397,33 @@ def steps(seed, n, as_of, schedule_start):
             f"WHERE s.id BETWEEN {a} AND {b} ORDER BY s.id;")
 
 
+def due_cohort_sql(as_of, count):
+    """Move the next delivery of the first `count` ACTIVE subscriptions (by id) to the --as-of
+    date, so subscription automation has exactly `count` due schedules. Others stay future."""
+    due = f"DATE('{as_of}')"
+    return (
+        "UPDATE subscriptions s JOIN (SELECT id FROM subscriptions WHERE status = 'ACTIVE' "
+        f"ORDER BY id LIMIT {int(count)}) d ON d.id = s.id "
+        f"SET s.next_order_date = {due}, s.created_date = {due} - INTERVAL s.delivery_cycle_weeks WEEK; "
+        "UPDATE subscription_schedules sc JOIN subscriptions s ON s.id = sc.subscription_id "
+        "SET sc.scheduled_date = s.next_order_date WHERE sc.scheduled_date <> s.next_order_date;")
+
+
+def schema_source(name, latest):
+    """'flyway' when backend Flyway built the schema (history must be complete and at `latest`),
+    'raw' when `up` applied the migrations without history."""
+    present = mysql(name, f"SELECT COUNT(*) FROM information_schema.tables "
+                          f"WHERE table_schema = '{DATABASE}' AND table_name = 'flyway_schema_history'")
+    if present == '0':
+        return 'raw'
+    failed, version = rows(mysql(name, (
+        "SELECT SUM(success = 0), MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history "
+        "WHERE version IS NOT NULL")))[0]
+    if failed not in ('0', 'NULL') or version != str(latest):
+        raise Stop(f'flyway schema is not complete at V{latest} (installed V{version}, failed {failed})')
+    return 'flyway'
+
+
 PRECONDITION_TABLES = ['members', 'products', 'skus', 'orders', 'payments', 'reviews', 'subscriptions',
                        'subscription_plans', 'inventory_movements']
 
@@ -404,17 +435,21 @@ def cmd_generate(args):
     schedule_start = dt.date.fromisoformat(args.schedule_start).isoformat()
     if dt.date.fromisoformat(schedule_start) <= dt.datetime.fromisoformat(as_of).date():
         raise Stop('--schedule-start must be after --as-of so no subscription schedule is already due')
+    if args.due_count < 0:
+        raise Stop('--due-count must not be negative')
     occupied = [t for t in PRECONDITION_TABLES
                 if mysql(args.name, f'SELECT EXISTS(SELECT 1 FROM {t})') != '0']
     if occupied:
         raise Stop(f'target schema is not empty: {", ".join(occupied)}')
     migration = int(migration_files()[-1].name[1:].split('__')[0])
+    source = schema_source(args.name, migration)
     sha = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).stdout.decode().strip()
     mysql(args.name, (
         f"CREATE DATABASE IF NOT EXISTS {WORK}; "
         f"CREATE TABLE IF NOT EXISTS {WORK}.runs(id INT AUTO_INCREMENT PRIMARY KEY, seed BIGINT NOT NULL, "
         "scale VARCHAR(8) NOT NULL, n INT NOT NULL, as_of DATETIME NOT NULL, schedule_start DATE NOT NULL, "
-        "migration_max INT NOT NULL, source_sha CHAR(40) NOT NULL, started_at DATETIME(6) NOT NULL, finished_at DATETIME(6) NULL); "
+        "due_count INT NOT NULL DEFAULT 0, migration_max INT NOT NULL, source_sha CHAR(40) NOT NULL, "
+        "started_at DATETIME(6) NOT NULL, finished_at DATETIME(6) NULL); "
         f"CREATE TABLE {WORK}.digits(d TINYINT PRIMARY KEY); "
         f"INSERT INTO {WORK}.digits VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9); "
         f"CREATE TABLE {WORK}.seq(n INT UNSIGNED PRIMARY KEY); "
@@ -424,14 +459,22 @@ def cmd_generate(args):
         f"CREATE TABLE {WORK}.lines(order_id INT UNSIGNED, line_no TINYINT, sku_id INT UNSIGNED, quantity INT, "
         "PRIMARY KEY(order_id, line_no)); "
         f"CREATE TABLE {WORK}.plan_source(plan_id INT PRIMARY KEY, sku_id BIGINT, pet_type VARCHAR(20), price BIGINT); "
-        f"INSERT INTO {WORK}.runs(seed, scale, n, as_of, schedule_start, migration_max, source_sha, started_at) "
-        f"VALUES ({args.seed}, '{args.scale}', {n}, '{as_of}', '{schedule_start}', {migration}, '{sha}', NOW(6));"))
+        f"INSERT INTO {WORK}.runs(seed, scale, n, as_of, schedule_start, due_count, migration_max, source_sha, started_at) "
+        f"VALUES ({args.seed}, '{args.scale}', {n}, '{as_of}', '{schedule_start}', {args.due_count}, {migration}, "
+        f"'{sha}', NOW(6));"))
     timings = {}
     started = time.monotonic()
     for step, sql in steps(args.seed, n, as_of, schedule_start):
         begin = time.monotonic()
         mysql(args.name, sql)
         timings[step] = round(timings.get(step, 0) + time.monotonic() - begin, 2)
+    if args.due_count:
+        begin = time.monotonic()
+        mysql(args.name, due_cohort_sql(as_of, args.due_count))
+        due = int(mysql(args.name, f"SELECT COUNT(*) FROM subscription_schedules WHERE scheduled_date <= DATE('{as_of}')"))
+        if due != args.due_count:
+            raise Stop(f'due cohort has {due} schedules, expected {args.due_count} (not enough ACTIVE subscriptions)')
+        timings['due_cohort'] = round(time.monotonic() - begin, 2)
     begin = time.monotonic()
     mysql(args.name, f"ANALYZE TABLE {', '.join(GENERATED_TABLES)};")
     timings['analyze'] = round(time.monotonic() - begin, 2)
@@ -440,7 +483,8 @@ def cmd_generate(args):
         f"UPDATE {WORK}.runs SET finished_at = NOW(6) ORDER BY id DESC LIMIT 1;"))
     counts = table_counts(args.name)
     print(json.dumps({'container': args.name, 'seed': args.seed, 'scale': args.scale, 'n': n, 'as_of': as_of,
-                      'schedule_start': schedule_start, 'migration_max': migration, 'source_sha': sha,
+                      'schedule_start': schedule_start, 'due_count': args.due_count, 'schema_source': source,
+                      'migration_max': migration, 'source_sha': sha,
                       'seconds': round(time.monotonic() - started, 1), 'step_seconds': timings,
                       'rows': counts}, ensure_ascii=False))
 
@@ -484,8 +528,13 @@ def manifest_checks(name, run_row):
             "LEFT JOIN billing_payment_methods b ON b.active_member_id = s.member_id "
             "LEFT JOIN subscription_shipping_snapshots sh ON sh.subscription_id = s.id "
             "WHERE p.id IS NULL OR b.id IS NULL OR sh.subscription_id IS NULL",
-        'manifest_no_schedule_due_at_generation':
-            f"SELECT COUNT(*) FROM subscription_schedules WHERE scheduled_date <= DATE('{run_row['as_of']}')",
+        'manifest_due_schedules_equal_due_count':
+            f"SELECT ABS(COUNT(*) - {int(run_row['due_count'])}) FROM subscription_schedules sc "
+            "JOIN subscriptions s ON s.id = sc.subscription_id "
+            f"WHERE sc.scheduled_date <= DATE('{run_row['as_of']}') AND s.status = 'ACTIVE' AND sc.status = 'SCHEDULED'",
+        'manifest_no_other_schedule_due':
+            f"SELECT COUNT(*) FROM subscription_schedules sc JOIN subscriptions s ON s.id = sc.subscription_id "
+            f"WHERE sc.scheduled_date <= DATE('{run_row['as_of']}') AND NOT (s.status = 'ACTIVE' AND sc.status = 'SCHEDULED')",
         'manifest_reviews_present':
             "SELECT (SELECT COUNT(*) FROM reviews) = 0",
         'manifest_work_tables_dropped':
@@ -504,11 +553,11 @@ def cmd_check(args):
     if len(results) != expected_invariants:
         raise Stop(f'invariant output incomplete: {len(results)}/{expected_invariants}')
     if args.manifest:
-        run_rows = rows(mysql(args.name, f"SELECT seed, scale, n, as_of FROM {WORK}.runs ORDER BY id DESC LIMIT 1"))
+        run_rows = rows(mysql(args.name, f"SELECT seed, scale, n, as_of, due_count FROM {WORK}.runs ORDER BY id DESC LIMIT 1"))
         if not run_rows:
             raise Stop('no generation run recorded; use --no-manifest for a schema without perfgen data')
-        seed, scale, n, as_of = run_rows[0]
-        results += manifest_checks(args.name, {'n': n, 'as_of': as_of})
+        seed, scale, n, as_of, due_count = run_rows[0]
+        results += manifest_checks(args.name, {'n': n, 'as_of': as_of, 'due_count': due_count})
     failed = [r for r in results if r[1] != 0]
     for check, violations, detail in results:
         print(json.dumps({'check': check, 'violations': violations, **({'detail': detail} if detail else {})}))
@@ -522,7 +571,7 @@ def cmd_fingerprint(args):
     guard(args.name)
     output = mysql(args.name, f"CHECKSUM TABLE {', '.join(GENERATED_TABLES)} EXTENDED;")
     checksums = {row[0].split('.', 1)[1]: row[1] for row in rows(output)}
-    run_rows = rows(mysql(args.name, f"SELECT seed, scale, as_of, schedule_start FROM {WORK}.runs ORDER BY id DESC LIMIT 1"))
+    run_rows = rows(mysql(args.name, f"SELECT seed, scale, as_of, schedule_start, due_count FROM {WORK}.runs ORDER BY id DESC LIMIT 1"))
     print(json.dumps({'run': run_rows[0] if run_rows else None, 'checksums': checksums}, sort_keys=True))
 
 
@@ -540,6 +589,7 @@ def main(argv=None):
             p.add_argument('--seed', type=int, required=True)
             p.add_argument('--as-of', default='2026-11-01 00:00:00')
             p.add_argument('--schedule-start', default='2030-01-01')
+            p.add_argument('--due-count', type=int, default=0)
         if command == 'check':
             p.add_argument('--no-manifest', dest='manifest', action='store_false')
     args = parser.parse_args(argv)

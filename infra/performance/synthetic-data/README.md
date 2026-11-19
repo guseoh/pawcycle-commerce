@@ -4,7 +4,7 @@
 
 - 실행: Python 3 표준 라이브러리 + Docker. 새 dependency는 없다.
 - 대상: `up`이 만든 일회용 MySQL 8.4.10 container만(`pawcycle-perfgen-*`, label `pawcycle.purpose=perf-synthetic-data`, 익명 volume, port 미공개). 공유 `pawcycle-local-integration-*` volume·container와 운영 DB는 거부한다.
-- 스키마: 저장소 `db/migration` V1..Vn을 그대로 적용한다. Flyway migration을 추가하지 않는다. `flyway_schema_history`는 만들지 않으므로 backend를 이 DB에 붙이려면 아래 "4단계에서 쓰기"를 본다.
+- 스키마: `up`은 저장소 `db/migration` V1..Vn을 그대로 적용한다(`flyway_schema_history` 없음). backend Flyway가 만든 schema도 받는다. 이때 `generate`는 history에 실패 행이 없고 최신 버전이 저장소 최신 migration과 같은지 먼저 확인한다. Flyway migration을 추가하지 않는다.
 
 ## 사용법
 
@@ -16,7 +16,7 @@ python infra/performance/synthetic-data/perfgen.py fingerprint --name pawcycle-p
 python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-s4
 ```
 
-- `generate`는 `--scale 10k|100k|1m`, `--seed`, `--as-of`(주문·리뷰 이력의 끝, 기본 `2026-11-01 00:00:00`), `--schedule-start`(구독 다음 배송일 시작, 기본 `2030-01-01`)를 받는다. 출력은 단계별 소요 시간과 테이블별 행 수 JSON이다.
+- `generate`는 `--scale 10k|100k|1m`, `--seed`, `--as-of`(주문·리뷰 이력의 끝, 기본 `2026-11-01 00:00:00`), `--schedule-start`(구독 다음 배송일 시작, 기본 `2030-01-01`), `--due-count K`(기본 0)를 받는다. `--due-count`는 id 순서로 처음 K개 ACTIVE 구독의 다음 배송일과 회차를 `--as-of` 날짜로 옮긴다. 출력은 단계별 소요 시간과 테이블별 행 수 JSON이다.
 - `check`는 `invariants.sql`(도메인 불변식)과 생성 manifest 검사를 실행하고, 위반이 하나라도 있으면 exit 1이다. `--no-manifest`는 도메인 불변식만 본다(쓰기 부하 뒤 재검사용).
 - `fingerprint`는 생성 테이블의 `CHECKSUM TABLE ... EXTENDED`를 출력한다. 같은 입력으로 다시 생성한 값과 비교해 재현성을 확인한다.
 - `reset`은 application schema를 지우고 migration을 다시 적용한다. `down`은 container와 익명 volume 삭제를 확인한다.
@@ -42,7 +42,7 @@ python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-
 의도적으로 만들지 않는 상태와 그 이유:
 
 - `PAYMENT_PENDING` 주문·`READY` 결제: backend의 Checkout 만료 scheduler(기본 켜짐)가 측정 중에 처리해 쓰기 부하를 섞는다.
-- 기한이 된 구독 회차: 모든 다음 배송일이 `--schedule-start` 이후다. 정기배송 부하용 due cohort는 4단계 측정 설계에서 정한다.
+- 기한이 된 구독 회차: `--due-count`를 주지 않으면 모든 다음 배송일이 `--schedule-start` 이후다.
 - 쿠폰·멤버십·취소·반품·환불·구독 주문·장바구니: 이번 범위의 연결 관계에 필요하지 않다.
 
 ## 불변식
@@ -59,9 +59,9 @@ python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-
 
 ## 4단계에서 쓰기
 
-- backend를 붙여 측정하려면 먼저 backend Flyway가 빈 DB에 schema와 `flyway_schema_history`를 만들게 한 뒤 `generate`를 실행해야 한다. 지금의 `up`은 migration을 raw SQL로 적용하므로 backend의 `validate-on-migrate`와 맞지 않는다. 이 연결(전용 compose project, backend 연결 방식)은 아직 만들지 않았다.
-- 합성 회원은 로그인할 수 없다. 로그인 부하에 쓸 회원과 비밀번호 처리 방식은 별도로 정해야 한다.
-- 1만 규모 생성은 local에서 약 50~85초였다. 대부분 chunk마다의 `docker exec` 비용이다. 10만·100만은 실행하지 않았고 소요 시간·disk 사용량은 측정 전이다. 100만 규모는 binlog를 포함해 수 GB를 쓸 수 있다.
+backend를 붙여 측정할 때는 `infra/performance/scale/`의 실행 스크립트를 쓴다. backend Flyway가 schema를 만든 뒤 이 생성기로 데이터를 채우고, 로그인 cohort를 준비한다. 자세한 내용은 그 폴더의 README를 본다.
+
+- 1만 규모 생성은 local에서 약 50~85초였다. 대부분 chunk마다의 `docker exec` 비용이다. 100만 규모는 1~2시간이 걸릴 수 있다.
 
 ## 검증
 
@@ -69,4 +69,4 @@ python infra/performance/synthetic-data/perfgen.py down --name pawcycle-perfgen-
 python infra/performance/synthetic-data/test_perfgen.py
 ```
 
-Docker 없이 guard(이름·label·named volume·port 거부), 규모 비율, chunk 경계, 생성 SQL의 결정성과 DDL 부재, 불변식 SQL의 read-only 여부를 확인한다.
+Docker 없이 guard(이름·label·named volume·port 거부), 규모 비율, chunk 경계, 생성 SQL의 결정성과 DDL 부재, due cohort SQL, Flyway schema 버전 확인, 불변식 SQL의 read-only 여부를 확인한다.
