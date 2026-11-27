@@ -32,7 +32,8 @@ class PrHandoffContractTest(unittest.TestCase):
         self.assertIn("request-coderabbit-review.yml", agent)
         self.assertIn("HEAD당 한 번의 manual-review handoff reminder", agent)
         self.assertIn("user-authenticated GitHub", agent)
-        self.assertIn("구현 에이전트와 repository automation은 이 명령을 발행하지 않는다", agent)
+        self.assertIn("구현 에이전트(예: Codex)를 포함한 에이전트가 연결된 user-authenticated GitHub 경로로", agent)
+        self.assertIn("repository automation(GitHub Actions bot)은 이 명령을 대신 발행하지 않는다", agent)
 
     def test_codex_review_guidelines_exist_once_per_agent_file(self) -> None:
         # Codex Review reads the `Review guidelines` heading from the AGENTS.md closest to each changed file.
@@ -56,7 +57,8 @@ class PrHandoffContractTest(unittest.TestCase):
         self.assertIn("`Codex Review 미실행`", skill)
         self.assertIn("최신 HEAD에 대한 Codex `P0`·`P1` finding", skill)
         prompt_skill = (ROOT / ".agents" / "skills" / "codex-delta-prompt" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("`@codex review` 호출을 넣지 않", prompt_skill)
+        self.assertIn("`@coderabbitai review`·`@codex review`를 HEAD당 한 번 요청할 수 있다", prompt_skill)
+        self.assertIn("finding을 근거 없이 임의 resolve하거나", prompt_skill)
 
 
 if __name__ == "__main__":

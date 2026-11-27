@@ -117,11 +117,11 @@ CodeRabbit, Codex Review와 독립 검토는 결함 발견을 돕는 보조 수�
 
 `<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호이며 merge-ready나 승인을 뜻하지 않는다. `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, native auto-review 대상이 아닌 저장소의 Ready PR에 최신 HEAD review가 없으면 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. native auto-review 대상 여부는 저장소 stargazer 수가 `scripts/request_coderabbit_review.py`의 `NATIVE_AUTO_REVIEW_STAR_THRESHOLD`(현재 10) 이상인지로 판정한다.
 
-실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 검토 요청은 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 그 요청까지 명시적으로 위임했거나 승인된 실행 범위에 포함한 경우에만 리뷰·오케스트레이터 에이전트가 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다. 구현 에이전트와 repository automation은 이 명령을 발행하지 않는다. reminder, passing status, request comment만으로 review 완료를 주장하지 않으며, Draft·reminder 처리와 최신 HEAD review evidence 확인 절차는 `pr-readiness-review` Skill을 따른다.
+실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 검토 요청은 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 그 요청까지 명시적으로 위임했거나 승인된 실행 범위에 포함한 경우, 구현 에이전트(예: Codex)를 포함한 에이전트가 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 HEAD당 한 번 요청할 수 있다. repository automation(GitHub Actions bot)은 이 명령을 대신 발행하지 않는다. reminder, passing status, request comment만으로 review 완료를 주장하지 않으며, Draft·reminder 처리와 최신 HEAD review evidence 확인 절차는 `pr-readiness-review` Skill을 따른다.
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. 필수 reviewer evidence나 PR별 예외 Gate를 정한 승인 원본을 저장소에서 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 Gate나 예외를 임의로 완화하지 않는다.
 
-Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@codex review` 요청으로 실행되며, 각 변경 파일에 가장 가까운 `AGENTS.md`의 `Review guidelines`를 따른다. `@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다. 사용자가 위임한 경우에만 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청하고, 구현 에이전트와 repository automation은 발행하지 않는다. Codex 자동 리뷰 설정의 변경은 사용자 결정이다. Codex Review는 보조 reviewer evidence이며 CodeRabbit evidence나 독립 검토를 대체하지 않는다. 최신 HEAD에 대한 `P0`·`P1` finding은 수정하거나, 무효 근거를 남기거나, 사용자가 명시적으로 수용하기 전까지 병합 blocker로 다룬다.
+Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@codex review` 요청으로 실행되며, 각 변경 파일에 가장 가까운 `AGENTS.md`의 `Review guidelines`를 따른다. `@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다. 사용자가 위임했거나 승인된 실행 범위에 포함된 경우 구현 에이전트를 포함한 에이전트가 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청할 수 있으며, repository automation은 발행하지 않는다. Codex 자동 리뷰 설정의 변경은 사용자 결정이다. Codex Review는 보조 reviewer evidence이며 CodeRabbit evidence나 독립 검토를 대체하지 않는다. 최신 HEAD에 대한 `P0`·`P1` finding은 수정하거나, 무효 근거를 남기거나, 사용자가 명시적으로 수용하기 전까지 병합 blocker로 다룬다.
 
 고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
 
