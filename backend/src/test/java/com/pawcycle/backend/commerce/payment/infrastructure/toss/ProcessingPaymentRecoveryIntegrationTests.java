@@ -3,18 +3,17 @@ package com.pawcycle.backend.commerce.payment.infrastructure.toss;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.pawcycle.backend.catalog.sku.domain.SkuStatus;
+import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
 import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
-import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.ProcessingPaymentRecoveryService;
 import com.pawcycle.backend.commerce.payment.application.ProcessingPaymentRecoveryService.Outcome;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
@@ -61,7 +60,7 @@ class ProcessingPaymentRecoveryIntegrationTests {
   @MockitoBean TossPaymentAdapter provider;
   @MockitoSpyBean MembershipReevaluationService membership;
   @Autowired MembershipEvaluationService evaluation;
-  @MockitoSpyBean NotificationService notifications;
+  @MockitoSpyBean AdminAuditService audits;
   TossPaymentQuerySafetyTests.FakeServer fake;
   volatile CountDownLatch queryEntered;
   volatile CountDownLatch queryRelease;
@@ -87,7 +86,7 @@ class ProcessingPaymentRecoveryIntegrationTests {
   void stop() {
     fake.close();
     verify(provider, never()).confirm(anyString(), anyString(), any());
-    reset(membership, notifications);
+    reset(membership, audits);
   }
 
   @Test
@@ -268,17 +267,22 @@ class ProcessingPaymentRecoveryIntegrationTests {
     Fixture f = fixture("NORMAL", "PROCESSING", "PAYMENT_PENDING");
     done(f);
     var before = state(f);
-    // request() requires the caller's transaction (MANDATORY), so the failure is injected into another
-    // finalization step that runs after the money effects.
-    doThrow(new IllegalStateException("injected after earlier effects")).when(notifications)
-        .create(anyLong(), anyString(), anyString(), anyLong());
-    assertThatThrownBy(() -> recovery.recover(f.payment(), f.admin())).isInstanceOf(IllegalStateException.class);
+    var failure = new IllegalStateException("injected after audit append");
+    doAnswer(call -> {
+      assertThat(count("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member()))
+          .isEqualTo(1);
+      call.callRealMethod();
+      throw failure;
+    }).when(audits).append(f.admin(), "PAYMENT_PROCESSING_RECOVERED", "PAYMENT", f.payment());
+    assertThatThrownBy(() -> recovery.recover(f.payment(), f.admin())).isSameAs(failure);
     assertThat(state(f)).isEqualTo(before);
+    assertThat(count("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isZero();
     assertThat(count("SELECT COUNT(*) FROM admin_audit_logs WHERE target_id=? AND action='PAYMENT_PROCESSING_RECOVERED'", f.payment())).isZero();
 
-    reset(notifications);
+    reset(audits);
     assertThat(recovery.recover(f.payment(), f.admin())).isEqualTo(Outcome.RECOVERED);
     assertThat(one("SELECT status FROM payments WHERE id=?", f.payment())).isEqualTo("SUCCEEDED");
+    assertThat(count("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", f.member())).isEqualTo(1);
   }
 
   @ParameterizedTest
@@ -376,6 +380,7 @@ class ProcessingPaymentRecoveryIntegrationTests {
     state.put("coupon", jdbc.queryForList("SELECT * FROM member_coupons WHERE reserved_order_id=?", f.order()));
     state.put("delivery", jdbc.queryForList("SELECT * FROM deliveries WHERE order_id=?", f.order()));
     state.put("notifications", jdbc.queryForList("SELECT * FROM notifications WHERE member_id=? ORDER BY id", f.member()));
+    state.put("membershipRequests", jdbc.queryForList("SELECT * FROM membership_reevaluation_requests WHERE member_id=?", f.member()));
     state.put("audit", jdbc.queryForList("SELECT * FROM admin_audit_logs WHERE target_id=? AND action='PAYMENT_PROCESSING_RECOVERED'", f.payment()));
     return state;
   }
