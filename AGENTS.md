@@ -144,8 +144,10 @@ Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@code
 
 실제 운영을 실행하지 않은 작업에 `Production Verified`를 사용하지 않는다.
 
-## LLM Wiki — 지속 기록 경계 (WIKI-CAPTURE-002)
+## LLM Wiki — 지속 기록 경계 (WIKI-CAPTURE-003)
 
-PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용한다. **매 작업 종료 시 기록 후보를 평가**하지만, Wiki 기록은 승인된 작업 범위와 이 저장소의 권위 원본을 대체하지 않으며 다른 저장소의 Issue/PR 생성이나 범위 밖 쓰기 권한을 자동으로 부여하지 않는다.
+PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용한다. **매 작업 종료 시 기록 후보를 평가**하며, `Repository Change` 완료, 승인된 `Design / Plan`(설계 확정) 완료 또는 `Operations Execution` 완료 시 공개 안전성과 도구 권한이 충족되면 `guseoh/cs`에 **임시 브랜치로 review PR을 생성하고 중앙 Wiki 검증(validator/CI) 통과와 최신 HEAD 재확인 후 병합 및 임시 브랜치 정리까지 수행**하는 것을 기본 위임한다.
 
-작업 시작 시 조회, 기록 분류, 공개성, 저장·실패 처리는 [Lean Harness §16](docs/runbook/lean-harness.md)이 권위 원본이다. 메타데이터·관계 규격은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)와 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따른다.
+단순 `Read / Analyze` 요청만으로는 타 저장소 PR 생성·병합을 수행하지 않으며, 직접 `main` write, 검증 미통과·충돌 상태 병합, 범위 밖 타 저장소 쓰기는 금지한다. 이 위임은 이 저장소(`pawcycle-commerce`) PR의 자동 병합, 권위 원본 대체 또는 실제 운영 실행 승인을 의미하지 않는다.
+
+작업 시작 시 조회, 기록 분류, 공개성, 저장·병합·실패 처리는 [Lean Harness §16](docs/runbook/lean-harness.md)이 권위 원본이다. 메타데이터·관계 규격은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)와 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따른다.
