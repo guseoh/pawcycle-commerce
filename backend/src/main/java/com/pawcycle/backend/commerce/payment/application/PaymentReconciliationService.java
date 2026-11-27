@@ -149,6 +149,9 @@ public class PaymentReconciliationService {
   public record ProviderObservation(String status, String providerStatus) {}
 
   private boolean complete(long paymentId, Long adminId, ProviderResult observed) {
+    if ("SUCCEEDED".equals(observed.status())) {
+      payments.lockOneTimeMemberForCompletion(paymentId);
+    }
     PaymentReconciliationPersistenceAdapter.ReconciliationTarget payment = payments.findForCompletion(paymentId);
     if (payment == null) throw notFound();
     boolean billingProcessing = "BILLING".equals(payment.type()) && "PROCESSING".equals(payment.status());

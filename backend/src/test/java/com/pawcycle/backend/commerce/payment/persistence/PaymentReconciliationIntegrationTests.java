@@ -21,12 +21,14 @@ import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
+import com.pawcycle.backend.commerce.order.application.OrderApplicationService;
 import com.pawcycle.backend.support.SecondaryReadFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,6 +54,7 @@ class PaymentReconciliationIntegrationTests {
   @Autowired private EntityManager entities;
   @Autowired private PlatformTransactionManager manager;
   @Autowired private CheckoutApplicationService checkout;
+  @Autowired private OrderApplicationService orders;
   @Autowired private MemberAddressApplicationService addresses;
   @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingProcessor processor;
   @Autowired private com.pawcycle.backend.commerce.billing.application.SubscriptionBillingService retries;
@@ -445,6 +448,55 @@ class PaymentReconciliationIntegrationTests {
     assertError(f, 409, "PAYMENT_RECONCILIATION_NOT_ALLOWED");
     assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(8);
     assertThat(integer("SELECT reconciliation_attempts FROM payments WHERE id=?", f.payment())).isEqualTo(2);
+  }
+
+  @Test
+  void successfulReconciliationWaitsForMemberBeforeQuickReorderNeedsItsCart() throws Exception {
+    Fixture f = fixture(5);
+    jdbc.update("""
+        UPDATE categories category JOIN products product ON product.category_id=category.id
+        JOIN skus sku ON sku.product_id=product.id SET category.active=true WHERE sku.id=?
+        """, f.sku());
+    succeed();
+
+    try (var executor = Executors.newSingleThreadExecutor()) {
+      var result = new TransactionTemplate(manager).execute(status -> {
+        assertThat(jdbc.queryForObject("SELECT id FROM members WHERE id=? FOR UPDATE",
+            Long.class, f.member())).isEqualTo(f.member());
+        var reconciliation = executor.submit(() -> service.reconcile(f.payment()));
+        awaitMemberLockWait(f.member());
+        assertThat(orders.reorder(f.member(), f.order(), "concurrent-reconciliation").cartVersion())
+            .isEqualTo(8);
+        return reconciliation;
+      });
+      assertThat(result.get(15, TimeUnit.SECONDS).status()).isEqualTo("SUCCEEDED");
+    }
+
+    assertThat(quantity(f)).isEqualTo(5);
+    assertThat(integer("SELECT version FROM carts WHERE id=?", f.cart())).isEqualTo(9);
+    assertThat(integer("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?",
+        f.member())).isEqualTo(1);
+    assertThat(integer("SELECT COUNT(*) FROM inventory_movements WHERE payment_id=? AND type='DEDUCT'",
+        f.payment())).isEqualTo(1);
+  }
+
+  private void awaitMemberLockWait(long memberId) {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    int waiting;
+    do {
+      waiting = integer("""
+          SELECT COUNT(*) FROM performance_schema.data_lock_waits waiters
+          JOIN performance_schema.data_locks held
+            ON held.ENGINE_LOCK_ID=waiters.BLOCKING_ENGINE_LOCK_ID AND held.ENGINE=waiters.ENGINE
+          JOIN performance_schema.threads holder ON holder.THREAD_ID=held.THREAD_ID
+          WHERE holder.PROCESSLIST_ID=CONNECTION_ID() AND held.OBJECT_SCHEMA=DATABASE()
+            AND held.OBJECT_NAME='members' AND held.INDEX_NAME='PRIMARY' AND held.LOCK_DATA=?
+          """, Long.toString(memberId));
+      if (waiting > 0) return;
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+    } while (System.nanoTime() < deadline);
+    assertThat(waiting).as("reconciliation observed waiting for the quick reorder member lock")
+        .isPositive();
   }
 
   private void succeed() {

@@ -22,7 +22,8 @@ Accepted — 사용자 결정 2026-11-19(재평가 요청 기록 + 정기 작업
 
 ## 결정(Decision)
 
-- 돈 트랜잭션 안에서는 멤버십을 평가하지 않는다. 대신 `MembershipReevaluationService.request(memberId)`가 같은 트랜잭션에 `membership_reevaluation_requests` 행 하나를 upsert한다(`Propagation.MANDATORY`). 이 쓰기는 요청 행의 primary key만 건드리므로 `member_memberships` gap lock과 무관하다.
+- 돈 트랜잭션 안에서는 멤버십을 평가하지 않는다. 대신 `MembershipReevaluationService.request(memberId)`가 같은 트랜잭션에 `membership_reevaluation_requests` 행 하나를 upsert한다(`Propagation.MANDATORY`). 이 쓰기는 `member_memberships` gap lock을 잡지 않는다.
+- 일반 구매 성공 대사는 빠른 재주문과 동일하게 회원 행을 먼저 잠근다. 결제·주문·재고·장바구니를 잠그기 전에 회원 행에 공유 잠금을 잡아, 재평가 요청의 외래 키 검사가 빠른 재주문의 회원 잠금과 순서를 뒤집지 않도록 한다.
 - `MembershipReevaluationTrigger`(기본 켜짐, 10초 간격, 기본 scheduler thread)가 `MembershipReevaluationService.processDue`로 기한이 된 요청을 오래된 순서로 꺼낸다. 회원마다 **자기 트랜잭션**에서 평가하고, 같은 트랜잭션에서 요청을 지운다.
 - 요청은 `request_version`을 가진다. 평가 중 새 요청이 들어오면 version이 올라가 삭제 조건(`request_version = 읽은 값`)이 맞지 않으므로 요청이 남고, 다음 실행에서 최신 결제 금액으로 다시 평가한다.
 - 평가가 실패하면 요청을 남기고 `attempts`를 올리며 `next_attempt_at`을 뒤로 민다(10초부터 두 배씩, 최대 1시간). 계속 실패하는 요청이 다른 요청을 막지 않는다.
@@ -30,7 +31,7 @@ Accepted — 사용자 결정 2026-11-19(재평가 요청 기록 + 정기 작업
 
 ## 결과(Consequences)
 
-- 멤버십 때문에 결제 확정·대사·정기결제·환불이 롤백되지 않는다.
+- 정기 작업의 멤버십 평가 실패는 이미 커밋된 결제 확정·대사·정기결제·환불을 롤백하지 않는다.
 - 요청은 돈 변경과 원자적으로 커밋되므로 서버가 재시작돼도 사라지지 않는다.
 - 요청 경로에서 멤버십 평가용 커넥션을 추가로 잡지 않는다. 커밋 직후 콜백에서 새 트랜잭션을 여는 방식은 원래 커넥션을 쥔 채 두 번째 커넥션을 잡아, 기본 풀 10개에서 고갈 위험이 있어 택하지 않았다.
 - 정기 작업이 한 번에 한 회원씩 처리하므로 요청 경로끼리의 gap 교착과 같은 회원의 동시 평가가 사라진다. 관리자 재평가와 겹치는 경우만 남고, 이때는 잠금 실패로 기록하고 다음 실행에서 다시 한다.

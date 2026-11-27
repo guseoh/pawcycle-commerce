@@ -71,6 +71,17 @@ public class PaymentReconciliationPersistenceAdapter {
     writes.reconciliation(attempts, now(), paymentId);
   }
 
+  public void lockOneTimeMemberForCompletion(long paymentId) {
+    // Quick reorder takes the member lock first. Take the FK's shared lock before
+    // locking the order, stock or cart that quick reorder may need.
+    locks.first("""
+        SELECT id FROM members WHERE id=(
+          SELECT orders.member_id FROM payments JOIN orders ON orders.id=payments.order_id
+          WHERE payments.id=? AND orders.source='ONE_TIME'
+        ) FOR SHARE
+        """, Long.class, paymentId);
+  }
+
   public ReconciliationTarget findForCompletion(long paymentId) {
     return locks.first("""
         SELECT payment.id,payment.order_id,payment.type,payment.status,payment.reconciliation_attempts,orders.member_id,orders.source
