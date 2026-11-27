@@ -57,13 +57,13 @@ Skill 이름을 사용자가 명시하면 해당 Skill을 우선한다. 이름�
 
 - 코드 이해·리버스 엔지니어링 → `tech-lead` + `backend-engineer` 중 필요한 판단·추적 절차
 - 운영·장애·성능 직접 분석 → `platform-sre` + 필요한 전문 역할
-- 승인된 코드 변경 → 해당 역할 Skill; Codex 구현 전달이 필요할 때만 `codex-delta-prompt`
+- 승인된 코드 변경 → 해당 역할 Skill; 구현 에이전트(예: Codex) 전달이 필요할 때만 `codex-delta-prompt`
 - UI 디자인 시스템 탐색 → `ux-designer`, 필요할 때만 `ui-ux-pro-max`의 `PAWCYCLE.md`를 확인하고 검색 보조 사용
 - PR 병합 전 최종 검토, merge readiness 판단 → `.agents/skills/pr-readiness-review/SKILL.md`
-- Codex 실행 Prompt, Delta Prompt, 리뷰 후 후속 수정 Prompt 생성 → `.agents/skills/codex-delta-prompt/SKILL.md`
+- 구현 에이전트 실행 Prompt, Delta Prompt, 리뷰 후 후속 수정 Prompt 생성 → `.agents/skills/codex-delta-prompt/SKILL.md`
 - PR/branch CI 실패 원인 분석과 최소 후속 수정 범위 판단 → `.agents/skills/ci-failure-triage/SKILL.md`
 
-Codex 또는 다른 AI 구현 작업 직후 사용자가 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 말하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다. 현재 Task ID·branch·대화 맥락을 우선 사용하고, 필요하면 `<!-- pawcycle-ai-handoff: review-ready -->` marker가 있는 최신 관련 open PR을 탐색한 뒤 `pr-readiness-review`를 적용한다. 여러 후보가 실제로 구분되지 않을 때만 임의 선택하지 않는다.
+구현 에이전트 작업 직후 사용자가 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 말하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다. 현재 Task ID·branch·대화 맥락을 우선 사용하고, 필요하면 `<!-- pawcycle-ai-handoff: review-ready -->` marker가 있는 최신 관련 open PR을 탐색한 뒤 `pr-readiness-review`를 적용한다. 여러 후보가 실제로 구분되지 않을 때만 임의 선택하지 않는다.
 
 Skill은 공통 정책의 복사본이 아니다. 지속 안전 규칙은 이 파일과 경로별 `AGENTS.md`를 따르고, Skill에는 반복 실행 절차만 둔다.
 
@@ -89,6 +89,7 @@ GitHub 파일 쓰기 또는 ref 변경 Tool을 호출하기 직전에 다음을 
 
 - 제품 요구사항: `docs/product/**`
 - 도메인 규칙: `docs/domain/**`
+- UI 디자인 계약: `docs/design/**`
 - 장기 기술 결정: `docs/adr/**`
 - API 계약: `docs/api/**`
 - 데이터·migration: `docs/data/**`와 DB 파일
@@ -112,15 +113,15 @@ CI Green만으로 의미상 정확성을 대신하지 않는다. 반대로 PR me
 
 ## 리뷰
 
-CodeRabbit, Codex Review와 ChatGPT 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
+CodeRabbit, Codex Review와 독립 검토는 결함 발견을 돕는 보조 수단이다. 지적은 최신 HEAD·계약·테스트와 대조해 유효성을 판정한다.
 
 `<!-- pawcycle-ai-handoff: review-ready -->` marker는 독립 검토를 시작할 수 있다는 신호이며 merge-ready나 승인을 뜻하지 않는다. `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit 명령을 GitHub Actions bot으로 대신 실행하지 않고, native auto-review 대상이 아닌 저장소의 Ready PR에 최신 HEAD review가 없으면 **HEAD당 한 번의 manual-review handoff reminder**만 남긴다. native auto-review 대상 여부는 저장소 stargazer 수가 `scripts/request_coderabbit_review.py`의 `NATIVE_AUTO_REVIEW_STAR_THRESHOLD`(현재 10) 이상인지로 판정한다.
 
-실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 검토 요청은 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 그 요청까지 명시적으로 위임했거나 승인된 실행 범위에 포함한 경우에만 ChatGPT가 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다. Codex와 repository automation은 이 명령을 발행하지 않는다. reminder, passing status, request comment만으로 review 완료를 주장하지 않으며, Draft·reminder 처리와 최신 HEAD review evidence 확인 절차는 `pr-readiness-review` Skill을 따른다.
+실제 `@coderabbitai review`는 사용자 인증 GitHub identity에서만 요청한다. 일반 PR 검토 요청은 Read / Analyze이며 외부 리뷰 요청 권한을 포함하지 않는다. 사용자가 그 요청까지 명시적으로 위임했거나 승인된 실행 범위에 포함한 경우에만 리뷰·오케스트레이터 에이전트가 연결된 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다. 구현 에이전트와 repository automation은 이 명령을 발행하지 않는다. reminder, passing status, request comment만으로 review 완료를 주장하지 않으며, Draft·reminder 처리와 최신 HEAD review evidence 확인 절차는 `pr-readiness-review` Skill을 따른다.
 
 외부 AI reviewer가 파일 수·rate limit·서비스 상태 때문에 실행되지 않았다는 이유만으로 coherent PR을 분리하지 않는다. 대신 리뷰 미실행을 명시하고 위험에 맞는 독립 검토와 테스트로 보완한다. 보완 검토가 필수 reviewer evidence를 면제하는 것은 아니다. 필수 reviewer evidence나 PR별 예외 Gate를 정한 승인 원본을 저장소에서 확인할 수 없거나 저장소 규칙과 충돌하면 Drift를 보고하고 Gate나 예외를 임의로 완화하지 않는다.
 
-Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@codex review` 요청으로 실행되며, 각 변경 파일에 가장 가까운 `AGENTS.md`의 `Review guidelines`를 따른다. `@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다. 사용자가 위임한 경우에만 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청하고, 구현 중인 Codex와 repository automation은 발행하지 않는다. Codex 자동 리뷰 설정의 변경은 사용자 결정이다. Codex Review는 보조 reviewer evidence이며 CodeRabbit evidence나 독립 검토를 대체하지 않는다. 최신 HEAD에 대한 `P0`·`P1` finding은 수정하거나, 무효 근거를 남기거나, 사용자가 명시적으로 수용하기 전까지 병합 blocker로 다룬다.
+Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@codex review` 요청으로 실행되며, 각 변경 파일에 가장 가까운 `AGENTS.md`의 `Review guidelines`를 따른다. `@codex review`도 `@coderabbitai review`와 같은 경계를 적용한다. 사용자가 위임한 경우에만 user-authenticated GitHub 경로로 최신 HEAD에 한 번 요청하고, 구현 에이전트와 repository automation은 발행하지 않는다. Codex 자동 리뷰 설정의 변경은 사용자 결정이다. Codex Review는 보조 reviewer evidence이며 CodeRabbit evidence나 독립 검토를 대체하지 않는다. 최신 HEAD에 대한 `P0`·`P1` finding은 수정하거나, 무효 근거를 남기거나, 사용자가 명시적으로 수용하기 전까지 병합 blocker로 다룬다.
 
 고위험 변경은 구현 이유, 상태·데이터·transaction 경계, 실패 모드, 보호 테스트와 복구 경계를 설명할 수 있어야 병합을 권고한다.
 
@@ -148,6 +149,6 @@ Codex Review는 저장소의 Codex 설정이 켜 둔 자동 리뷰 또는 `@code
 
 PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full` 기록 정책을 사용한다. **매 작업 종료 시 기록 후보를 평가**하며, `Repository Change` 완료, 승인된 `Design / Plan`(설계 확정) 완료 또는 `Operations Execution` 완료 시 공개 안전성과 도구 권한이 충족되면 `guseoh/cs`에 **임시 브랜치로 review PR을 생성하고 중앙 Wiki 검증(validator/CI) 통과와 최신 HEAD 재확인 후 병합 및 임시 브랜치 정리까지 수행**하는 것을 기본 위임한다.
 
-단순 `Read / Analyze` 요청만으로는 타 저장소 PR 생성·병합을 수행하지 않으며, 직접 `main` write, 검증 미통과·충돌 상태 병합, 범위 밖 타 저장소 쓰기는 금지한다. 이 위임은 이 저장소(`pawcycle-commerce`) PR의 자동 병합, 권위 원본 대체 또는 실제 운영 실행 승인을 의미하지 않는다.
+단순 `Read / Analyze` 질의는 별도 Wiki 기록 평가를 생략할 수 있으며 타 저장소 PR 생성·병합을 수행하지 않는다. 직접 `main` write, 검증 미통과·충돌 상태 병합, 범위 밖 타 저장소 쓰기는 금지한다. 이 위임은 이 저장소(`pawcycle-commerce`) PR의 자동 병합, 권위 원본 대체 또는 실제 운영 실행 승인을 의미하지 않는다.
 
 작업 시작 시 조회, 기록 분류, 공개성, 저장·병합·실패 처리는 [Lean Harness §16](docs/runbook/lean-harness.md)이 권위 원본이다. 메타데이터·관계 규격은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)와 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따른다.

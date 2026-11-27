@@ -8,7 +8,7 @@ Tech Lead는 PawCycle의 **승인 상태, 범위, 위험, 검증 충분성과 �
 
 - 현재 사용자 지시와 최신 권위 원본 정렬
 - 하나의 사용자 목적에 맞는 coherent work unit 정의
-- 작업 등급과 실행 유형 판정, 직접 분석으로 종료할지 Codex 구현으로 전달할지 결정
+- 작업 등급과 실행 유형 판정, 직접 분석으로 종료할지 구현 에이전트(예: Codex)로 전달할지 결정
 - 변경 필요성 자체를 증거로 판단하고 기술·구조 제안의 KEEP / DEFER / REJECT 근거 정리
 - Product Decision과 Technical Decision의 승인 필요 여부 판정
 - Acceptance Criteria와 검증·중단 조건 정리

@@ -48,6 +48,8 @@ Harness의 목적은 문서와 체크리스트를 늘리는 것이 아니라 다
 
 직접 운영 분석·성능 측정 근거의 해석·리버스 엔지니어링도 독립적인 결과다. 기존 근거를 읽는 분석과 실제 부하·장애 주입은 구분한다. 저장소 준비 승인은 실제 운영 실행 승인으로 확장되지 않는다. 외부 기록과 상태 변경의 권한은 루트 `AGENTS.md`가 소유한다.
 
+PR 템플릿(`.github/pull_request_template.md`)의 `실행 구분` 필드에는 PR 대상이 되는 두 유형의 한글 표기(`저장소 변경` 또는 `실제 운영 실행`)만 사용한다. `Read / Analyze`와 `Design / Plan`은 대화·분석·설계 단계의 실행 구분이다.
+
 ## 5. 작업 ID
 
 작업 ID는 **추적용 식별자**이지 제품·기술 taxonomy를 CI가 관리하기 위한 장치가 아니다.
@@ -168,7 +170,7 @@ PR metadata 오류는 최종 merge gate를 막을 수 있지만, 관련 제품 t
 
 ## 10. Spec ≠ Prompt
 
-상세 분석과 최종 AI 실행 Prompt는 같은 산출물이 아니다. 아래 Spec → Delta → Prompt 흐름은 Codex 구현을 수행하거나 전달하는 경우에만 적용한다. Read / Analyze 또는 Design / Plan으로 목적을 달성했다면 실행 Prompt·Task Branch·PR 없이 분석이나 판단으로 종료할 수 있다.
+상세 분석과 최종 AI 실행 Prompt는 같은 산출물이 아니다. 아래 Spec → Delta → Prompt 흐름은 구현 에이전트(예: Codex)에 구현을 전달하는 경우에만 적용한다. Read / Analyze 또는 Design / Plan으로 목적을 달성했다면 실행 Prompt·Task Branch·PR 없이 분석이나 판단으로 종료할 수 있다.
 
 ### 상세 분석 / 작업 명세
 
@@ -215,7 +217,7 @@ Prompt 길이는 품질의 대리 지표가 아니므로 CI가 차단하지 않�
 
 ## 12. Review
 
-CodeRabbit, Codex Review, ChatGPT와 사람 리뷰는 defect-discovery input이다.
+CodeRabbit, Codex Review, 독립 검토와 사람 리뷰는 defect-discovery input이다.
 
 - finding은 최신 HEAD와 계약에 대조한다.
 - outdated/false-positive는 근거를 남기고 수용하지 않는다.
@@ -268,7 +270,7 @@ PawCycle의 `full` 캡처 정책은 이 Harness의 **작업 종료 단계**로 �
 4. **정확성·공개성:** Repo/CI/PR evidence에서 확인되지 않은 배포 결과는 `unverified`로 유지한다. Production 적용은 별도 승인과 사후 검증 근거 없이 성공으로 기록하지 않는다. `guseoh/cs`는 공개 저장소이므로 Secret, 내부 계정, 운영 원시값, 개인정보, 비공개 기록과 대화 전문처럼 공개 Wiki로 반출할 수 없는 사실은 **게시하지 않는다**.
 5. **저장·병합 또는 전달:**
    - **기본 위임 대상(`Repository Change` 완료, 승인된 `Design / Plan` 설계 확정, `Operations Execution` 완료):** 공개 안전성과 도구 권한이 충족되면 `guseoh/cs`에 고유 임시 브랜치로 **review PR을 생성**하고, 중앙 Wiki 검증(`wiki_validate.py`, `wiki_query.py evaluate`, `unittest`, CI) 통과와 최신 HEAD·mergeable 상태를 재확인한 뒤 **PR 병합과 임시 브랜치 정리까지 수행**한다. 직접 `main` write나 검증 없는 자동 병합은 금지한다.
-   - **단순 `Read / Analyze` 또는 미확정 탐색:** 외부 저장소 쓰기로 확대하지 않고, 의미 있는 기록 후보가 있으면 내부 정리 또는 사용자 확인 후 반영한다.
+   - **단순 `Read / Analyze` 또는 미확정 탐색:** 단순 질의형 `Read / Analyze`는 별도 기록 평가를 생략할 수 있다. 외부 저장소 쓰기로 확대하지 않고, 의미 있는 조사·발견이 있으면 후보만 정리한다.
    - **권한·공개성·검증 제한:** 도구 권한 부족, 공개 불가 정보, 중앙 Wiki 검증 실패 또는 충돌이 있으면 병합을 중단하고 기록 후보와 간단한 미반영 사유를 최종 결과에 남긴다. 중앙 Wiki의 자동 GitHub PR 수집과 이 절차는 서로 보완하지만 동일한 동작이 아니다.
 
 ### 산출물 및 완료 기준

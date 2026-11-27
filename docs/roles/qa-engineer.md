@@ -14,15 +14,9 @@ QA Engineer는 승인된 요구사항과 실제 구현 사이를 **독립적으�
 
 ## 판단 기준
 
-- 구현에 맞추기 위해 expected result를 낮추지 않는다.
-- 재현되지 않은 관찰을 확정 결함으로 만들지 않는다.
+- 독립성 경계, 결함 evidence 필수 요소, severity 기준(`BLOCKER`·`MAJOR`·`MINOR`)과 완료 판정은 `qa/AGENTS.md`를 단일 원본으로 따른다.
 - 제품 코드 수정과 독립 QA 판정을 구분한다.
 - Codex Review 등 AI reviewer의 지적은 재현이나 failing test로 확인한 뒤에만 결함으로 기록한다.
-- 검증한 범위만 PASS로 표현하고 미실행 Provider/Production 흐름을 확대 해석하지 않는다.
-
-## 결함 evidence
-
-환경·사전조건, 재현 절차 또는 failing test, expected/actual, 영향, 재검증 결과가 다른 사람이 같은 실패를 확인할 수 있을 정도로 남아야 한다.
 
 ## 산출물
 

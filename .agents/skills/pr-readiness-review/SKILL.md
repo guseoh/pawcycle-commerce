@@ -10,7 +10,7 @@ description: >-
 
 ## 대상 PR 자동 탐색
 
-사용자가 PR 번호를 명시하지 않았더라도 Codex/다른 AI 구현 직후 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 요청하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다.
+사용자가 PR 번호를 명시하지 않았더라도 구현 에이전트 작업 직후 `검토해줘`, `이어서 검토`, `최종 검토해줘`처럼 요청하면 PR 번호를 다시 요구하는 것을 기본 동작으로 삼지 않는다.
 
 다음 순서로 관련 open PR을 찾는다.
 
@@ -35,17 +35,13 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
    - 미실행·skipped·cancelled 검증을 success로 취급하지 않는다.
 
 3. **리뷰 확인**
-   - `.github/workflows/request-coderabbit-review.yml`은 CodeRabbit review command를 GitHub Actions bot으로 대신 실행하지 않는다. native auto-review 대상이 아니고 Ready + handoff marker + 최신 HEAD review 없음 조건이면 **HEAD당 한 번의 manual-review reminder**만 남긴다.
-   - Draft PR에는 reminder를 만들지 않고 주기적 retry도 수행하지 않는다. 저장소가 native auto-review 조건을 충족하면 reminder 없이 native review에 맡긴다.
-   - 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지, 또는 신뢰 가능한 CodeRabbit 봇이 작성한 완료 요약의 실제 리뷰 범위·HEAD coverage가 최신 HEAD를 포함하는지 확인한다. 완료 요약은 review 수행 증거일 뿐 finding 해결이나 병합 승인이 아니다. reminder comment나 passing CodeRabbit status만으로 review 완료를 주장하지 않는다.
-   - native auto-review 대상이 아니고 최신 HEAD review가 필요한 경우, 일반 PR 검토는 Read / Analyze로 수행한다. 사용자가 해당 CodeRabbit 외부 리뷰 요청까지 명시적으로 위임했거나 이미 승인된 실행 범위에 포함한 경우에만 ChatGPT는 연결된 **user-authenticated GitHub identity**로 최신 HEAD를 재확인하고 `@coderabbitai review`를 한 번 요청할 수 있다. 위임이 없으면 임의로 명령을 실행하지 않고 manual review 필요 상태를 보고한다.
-   - Codex와 repository automation은 `@coderabbitai review`를 호출하지 않는다.
-   - Codex Review는 `chatgpt-codex-connector` 봇의 review submission과 inline comment를 확인한다. review `commit_id`가 최신 HEAD와 다르면 stale로 보고 현재 evidence로 쓰지 않는다. 사용량 제한·설정 꺼짐 안내나 리뷰 없음은 `Codex Review 미실행`으로 기록한다.
-   - 최신 HEAD에 대한 Codex `P0`·`P1` finding은 각각 수정 확인, 계약·테스트 근거를 남긴 무효 판정, 사용자의 명시적 수용 중 하나로 닫히기 전까지 blocker다. `P2`는 유효하면 수정하거나 후속 작업으로 분리하고 판정 근거를 남긴다.
-   - `@codex review` 재요청은 `@coderabbitai review`와 같은 위임 경계를 따른다.
-   - rate limit, 파일 수, 서비스 제한으로 최신 HEAD review가 없으면 그 한계를 기록하고 독립 diff 검토와 테스트로 보완한다. 필수 reviewer evidence와 승인된 예외의 적용 여부는 루트 AGENTS의 리뷰 정책에 따라 확인하며, 근거가 없으면 미충족·Drift를 보고한다.
-   - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 대조한다.
-   - reviewer 지적은 그대로 수용하지 않고 현재 계약·코드·테스트와 대조한다.
+   - CodeRabbit·Codex Review의 자동 실행 조건, manual-review reminder 및 `@coderabbitai review`·`@codex review` 발행 위임 경계는 루트 `AGENTS.md`의 `리뷰` 절을 단일 원본으로 따른다.
+   - **CodeRabbit evidence 확인**: 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지, 또는 신뢰 가능한 CodeRabbit 봇의 완료 요약 coverage가 최신 HEAD를 포함하는지 확인한다. 완료 요약은 review 수행 증거일 뿐 finding 해결·병합 승인이 아니며, reminder comment나 passing status만으로 review 완료를 주장하지 않는다.
+   - **Manual review 요청 경계**: 위임이 없으면 임의로 `@coderabbitai review`·`@codex review`를 발행하지 않고 manual review 필요 상태를 보고한다. 위임된 경우에만 리뷰·오케스트레이터 에이전트가 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다.
+   - **Codex Review evidence 확인**: `chatgpt-codex-connector` 봇의 review submission과 inline comment를 확인한다. `commit_id`가 최신 HEAD와 다르면 stale로 취급하며, 사용량 제한·설정 꺼짐·리뷰 없음은 `Codex Review 미실행`으로 기록한다.
+   - 최신 HEAD에 대한 Codex `P0`·`P1` finding은 수정 확인, 계약·테스트 근거를 남긴 무효 판정, 사용자의 명시적 수용 중 하나로 닫히기 전까지 blocker다. `P2`는 유효하면 수정하거나 후속 작업으로 분리하고 판정 근거를 남긴다.
+   - rate limit·파일 수·서비스 제한으로 최신 HEAD review가 없으면 한계를 기록하고 독립 diff 검토와 테스트로 보완한다. 필수 reviewer evidence와 예외 근거는 루트 `AGENTS.md`에 따라 확인하며, 근거가 없으면 미충족·Drift를 보고한다.
+   - review submission, inline thread, issue comment의 실제 상태를 최신 HEAD와 현재 계약·코드·테스트에 대조해 판정한다.
 
 4. **의미상 diff 검토**
    - 작업 목적과 Acceptance Criteria 대비 실제 변경이 충분한지 본다.
