@@ -152,3 +152,10 @@ PawCycle은 [중앙 Wiki](https://github.com/guseoh/cs/tree/main/Wiki)의 `full`
 단순 `Read / Analyze` 질의는 별도 Wiki 기록 평가를 생략할 수 있으며 타 저장소 PR 생성·병합을 수행하지 않는다. 직접 `main` write, 검증 미통과·충돌 상태 병합, 범위 밖 타 저장소 쓰기는 금지한다. 이 위임은 이 저장소(`pawcycle-commerce`) PR의 자동 병합, 권위 원본 대체 또는 실제 운영 실행 승인을 의미하지 않는다.
 
 작업 시작 시 조회, 기록 분류, 공개성, 저장·병합·실패 처리는 [Lean Harness §16](docs/runbook/lean-harness.md)이 권위 원본이다. 메타데이터·관계 규격은 [중앙 Wiki/AGENTS.md](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)와 [capture policy](https://github.com/guseoh/cs/blob/main/Wiki/capture-policy.md)를 따른다.
+
+## Obsidian 및 중앙 AI Wiki 접근
+
+- 이 저장소의 프로젝트 규칙을 진입점으로 사용한다. 설치된 공식 [Obsidian Agent Skills](https://github.com/obsidianmd/obsidian-skills)는 필요한 경우에만 활용한다.
+- 기존 결정·설계·장애·후속 작업을 조회할 때 [중앙 Wiki 실행 계약](https://github.com/guseoh/cs/blob/main/Wiki/AGENTS.md)과 [인덱스](https://github.com/guseoh/cs/blob/main/Wiki/index.md)를 따른다. 로컬 Vault와 CLI 접근이 허용되고 동기화 상태를 확인할 수 있으면 해당 Vault에서 필요한 기록만 읽는다. 그렇지 않으면 최신 GitHub 원문을 조회한다.
+- 스킬은 접근 권한이나 MCP 서버가 아니다. CLI가 없거나 앱 실행·권한·동기화 확인이 불가능하면 제한을 보고하고 허용된 GitHub/파일 읽기 경로를 사용한다.
+- 기존 프로젝트 권위 원본, 기록 모드, 승인·PR·검증 절차는 그대로 유지한다. Wiki 쓰기는 중앙 규칙에 따르며 로컬 main 직접 편집이나 자동 병합으로 우회하지 않는다. 사용자 승인 없이 앱 설정·플러그인·CSS·파일 삭제를 수행하지 않는다.
