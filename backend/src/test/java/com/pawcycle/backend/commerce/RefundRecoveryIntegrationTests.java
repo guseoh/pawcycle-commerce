@@ -58,6 +58,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class RefundRecoveryIntegrationTests {
   @Autowired private RefundService refunds;
+  @Autowired private com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService reevaluation;
   @Autowired private RefundPersistenceAdapter rows;
   @Autowired private CancellationService cancellations;
   @Autowired private ReturnService returns;
@@ -344,6 +345,10 @@ class RefundRecoveryIntegrationTests {
     assertThat(f.text("SELECT status FROM member_coupons WHERE id=?", o.coupon())).isEqualTo("AVAILABLE");
     assertThat(jdbc.queryForObject("SELECT reserved_order_id FROM member_coupons WHERE id=?", Long.class, o.coupon())).isNull();
     assertThat(jdbc.queryForObject("SELECT used_at FROM member_coupons WHERE id=?", Timestamp.class, o.coupon())).isNull();
+    // Refund completion only records a request; the job evaluates the grade afterwards.
+    assertThat(f.integer("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", o.member())).isEqualTo(1);
+    reevaluation.processDue(1000);
+    assertThat(f.integer("SELECT COUNT(*) FROM membership_reevaluation_requests WHERE member_id=?", o.member())).isZero();
     assertThat(f.integer("SELECT COUNT(*) FROM member_memberships WHERE member_id=?", o.member())).isEqualTo(1);
     assertThat(f.integer("SELECT COUNT(*) FROM membership_histories WHERE member_id=?", o.member())).isEqualTo(1);
     assertThat(f.integer("SELECT COUNT(*) FROM notifications WHERE member_id=? AND reference_type='REFUND' AND reference_id=? AND type=?", o.member(), id, source + "_COMPLETED")).isEqualTo(1);

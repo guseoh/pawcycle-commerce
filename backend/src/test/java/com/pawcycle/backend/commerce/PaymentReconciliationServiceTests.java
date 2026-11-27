@@ -7,7 +7,7 @@ import com.pawcycle.backend.commerce.billing.application.SubscriptionBillingServ
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
 import com.pawcycle.backend.commerce.payment.application.TossPaymentAdapter;
@@ -55,7 +55,7 @@ class PaymentReconciliationServiceTests {
             mock(TossPaymentAdapter.class),
             billing,
             mock(NotificationService.class),
-            mock(MembershipEvaluationService.class),
+            mock(MembershipReevaluationService.class),
             mock(InventoryService.class),
             mock(AdminAuditService.class),
             failures,

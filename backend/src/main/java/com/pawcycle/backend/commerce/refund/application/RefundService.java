@@ -5,7 +5,7 @@ import com.pawcycle.backend.common.external.ExternalCall;
 import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.audit.application.AdminAuditService;
 import com.pawcycle.backend.commerce.common.error.CommerceException;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.metrics.application.CommerceMetrics;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.refund.infrastructure.toss.TossRefundAdapter;
@@ -22,7 +22,7 @@ public class RefundService {
   private final TransactionTemplate transaction;
   private final TossRefundAdapter provider;
   private final NotificationService notifications;
-  private final MembershipEvaluationService membershipEvaluation;
+  private final MembershipReevaluationService membershipReevaluation;
   private final AdminAuditService audits;
   private final CommerceMetrics metrics;
   private final ExternalCallFailures failures;
@@ -32,7 +32,7 @@ public class RefundService {
       org.springframework.transaction.PlatformTransactionManager transactionManager,
       TossRefundAdapter provider,
       NotificationService notifications,
-      MembershipEvaluationService membershipEvaluation,
+      MembershipReevaluationService membershipReevaluation,
       AdminAuditService audits,
       CommerceMetrics metrics,
       ExternalCallFailures failures) {
@@ -40,7 +40,7 @@ public class RefundService {
     this.transaction = new TransactionTemplate(transactionManager);
     this.provider = provider;
     this.notifications = notifications;
-    this.membershipEvaluation = membershipEvaluation;
+    this.membershipReevaluation = membershipReevaluation;
     this.audits = audits;
     this.metrics = metrics;
     this.failures = failures;
@@ -157,7 +157,7 @@ public class RefundService {
             } else if (row.returnId() != null) {
               refunds.completeReturn(row.returnId());
             }
-            membershipEvaluation.evaluate(row.memberId());
+            membershipReevaluation.request(row.memberId());
             notifications.create(
                 row.memberId(),
                 "CANCELLATION".equals(row.source()) ? "CANCELLATION_COMPLETED" : "RETURN_COMPLETED",

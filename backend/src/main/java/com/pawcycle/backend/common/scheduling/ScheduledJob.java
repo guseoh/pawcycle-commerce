@@ -10,7 +10,8 @@ public enum ScheduledJob {
   COMMERCE_METRICS_REFRESH("commerce-metrics-refresh"),
   IDEMPOTENCY_METRICS_REFRESH("idempotency-metrics-refresh"),
   SUBSCRIPTION_BACKLOG_METRICS_REFRESH("subscription-backlog-metrics-refresh"),
-  IDEMPOTENCY_CLEANUP("idempotency-cleanup");
+  IDEMPOTENCY_CLEANUP("idempotency-cleanup"),
+  MEMBERSHIP_REEVALUATION("membership-reevaluation");
 
   private final String tag;
 

@@ -8,7 +8,7 @@ import com.pawcycle.backend.common.external.ExternalCallFailures;
 import com.pawcycle.backend.commerce.billing.infrastructure.toss.TossBillingAdapter;
 import com.pawcycle.backend.commerce.delivery.application.DeliveryService;
 import com.pawcycle.backend.commerce.inventory.application.InventoryService;
-import com.pawcycle.backend.commerce.membership.application.MembershipEvaluationService;
+import com.pawcycle.backend.commerce.membership.application.MembershipReevaluationService;
 import com.pawcycle.backend.commerce.notification.application.NotificationService;
 import com.pawcycle.backend.commerce.payment.application.PaymentReconciliationService;
 
@@ -35,7 +35,7 @@ class SubscriptionBillingProcessorTests {
     PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
     org.springframework.transaction.TransactionStatus status =
         mock(org.springframework.transaction.TransactionStatus.class);
-    MembershipEvaluationService membership = mock(MembershipEvaluationService.class);
+    MembershipReevaluationService membership = mock(MembershipReevaluationService.class);
     when(manager.getTransaction(any(org.springframework.transaction.TransactionDefinition.class)))
         .thenReturn(status);
     org.mockito.Mockito.doNothing().when(manager).commit(status);
@@ -57,7 +57,7 @@ class SubscriptionBillingProcessorTests {
 
     processor.completeSuccess(8L, "DONE");
 
-    verify(membership).evaluate(10L);
+    verify(membership).request(10L);
   }
 
   @Test
@@ -78,7 +78,7 @@ class SubscriptionBillingProcessorTests {
             reconciliation,
             mock(DeliveryService.class),
             mock(NotificationService.class),
-            mock(MembershipEvaluationService.class),
+            mock(MembershipReevaluationService.class),
             mock(InventoryService.class),
             java.time.Clock.systemUTC(),
             new ExternalCallFailures(new SimpleMeterRegistry()));
@@ -113,7 +113,7 @@ class SubscriptionBillingProcessorTests {
             mock(PaymentReconciliationService.class),
             mock(DeliveryService.class),
             mock(NotificationService.class),
-            mock(MembershipEvaluationService.class),
+            mock(MembershipReevaluationService.class),
             mock(InventoryService.class),
             java.time.Clock.systemUTC(),
             new ExternalCallFailures(new SimpleMeterRegistry()));
