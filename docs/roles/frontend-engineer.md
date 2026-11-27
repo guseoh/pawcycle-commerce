@@ -14,10 +14,8 @@ Frontend Engineer는 승인된 제품·API 계약을 **사용자가 이해하고
 
 ## 판단 기준
 
-- 서버 권위의 가격·재고·결제·구독 정책을 client에서 재정의하지 않는다.
-- mutation 실패·인증 만료·재시도에서 사용자 의도를 보존하되 안전한 서버 경계를 우회하지 않는다.
+- Server contract 보존, 상태·UX 안전 경계, 접근성과 검증 기준은 `frontend/AGENTS.md`를 단일 원본으로 따른다.
 - UI 상태와 서버 상태를 구분하고 내부 구현 용어를 사용자에게 노출하지 않는다.
-- API adapter 변경은 method/path/body/header까지 contract로 검증한다.
 
 ## 사용자 결정이 필요한 경우
 

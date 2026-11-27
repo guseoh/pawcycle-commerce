@@ -34,14 +34,15 @@ classifier와 component lane은 PR metadata 검증이 끝날 때까지 기다리
 
 GitHub Ruleset/Branch Protection에서 required check를 지정할 때는 workflow 이름이 아니라 최종 집계 check 이름인 **`Application validation`**을 사용한다.
 
-변경 분류 원칙은 다음과 같다.
+변경 분류 원칙(`scripts/classify-validation-changes.py` 및 `docs/runbook/lean-harness.md` §9 기준)은 다음과 같다.
 
 - Backend 내부 → Backend
 - Backend 외부 HTTP contract → Backend + Frontend
 - Frontend → Frontend
-- Production runtime/contract → Production
-- Harness 문서·역할·Skill·task validator → Harness
-- classifier 또는 workflow처럼 lane 선택 의미를 바꾸는 파일 → fail-safe 전체
+- Production runtime/contract → Production (`infra/production/{backend,frontend}.Dockerfile*`는 해당 앱 lane도 함께 선택)
+- Harness 문서·역할·등록된 Skill의 Markdown·task validator → Harness
+- `qa/**`, `infra/performance/**`의 Markdown 근거·설명 → Harness; 실행 입력·fixture·workload·계측 → fail-safe 전체
+- `infra/local-integration/**` 또는 classifier·workflow처럼 lane 선택 의미를 바꾸는 파일 → fail-safe 전체
 - 미분류 → fail-safe 전체
 
 `edited` event는 별도 `PR Metadata Validation`에서 title/body만 다시 검사하며 component CI를 재실행하지 않는다.

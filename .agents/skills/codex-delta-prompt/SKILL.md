@@ -50,11 +50,9 @@ description: >-
    - Git/PR 결과물
 
 7. **PR handoff 계약 연결**
-   - 승인된 작업이 commit/push/Draft PR 생성까지 포함하면 Codex가 구현과 정의된 검증을 마친 뒤 PR 본문 마지막에 `<!-- pawcycle-ai-handoff: review-ready -->`를 추가하도록 최종 Prompt에 넣는다.
-   - 이 marker는 **독립 검토를 시작할 수 있다는 handoff 신호**일 뿐 `Verified`, merge-ready 또는 사용자 승인 의미가 아니다.
-   - marker가 있는 PR은 `.github/workflows/request-coderabbit-review.yml`이 review-ready handoff 상태를 평가한다. native auto-review 대상이 아니고 최신 HEAD review가 없으면 workflow는 **manual-review reminder만** 남기며 CodeRabbit 명령을 직접 실행하지 않는다.
-   - Codex Prompt에는 `@coderabbitai review`나 `@codex review` 호출을 넣지 않는다. 구현 Codex가 자기 PR의 Codex Review를 요청하거나 finding을 스스로 resolve하지 않게 한다. 실제 manual review 요청은 review 단계에서 사용자 인증 GitHub identity로 수행한다.
-   - Codex 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 다시 ChatGPT에 복사해야 하는 계약으로 만들지는 않는다.
+   - 승인된 작업이 commit/push/Draft PR 생성까지 포함하면 구현 에이전트가 구현과 정의된 검증을 마친 뒤 PR 본문 마지막에 `<!-- pawcycle-ai-handoff: review-ready -->`를 추가하도록 최종 Prompt에 넣는다.
+   - marker 의미와 manual-review reminder 동작은 루트 `AGENTS.md`의 `리뷰` 절을 따른다. 실행 Prompt에는 `@coderabbitai review`나 `@codex review` 호출을 넣지 않으며, 구현 에이전트가 자기 PR의 리뷰를 요청하거나 finding을 임의 resolve하지 않게 한다.
+   - 구현 에이전트 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 리뷰 에이전트에 수동 복사해야 하는 계약으로 만들지는 않는다.
 
 8. **작업 종료 Wiki Capture 연결**
    - 구현 완료 또는 검증 중단 후 `docs/runbook/lean-harness.md` §16에 따라 확인된 변경·중요한 결정·검증과 실패·미완료 사항을 **짧은 Wiki 후보**로 평가하고, 기본 위임 범위(`Repository Change` 완료 등)에서 공개 안전성과 도구 권한이 충족되면 `guseoh/cs` review PR 생성·검증 확인·병합 및 임시 브랜치 정리까지 진행하도록 Codex Prompt에 한 줄로 지시한다. 공통 Wiki 정책·스키마·원문을 Prompt에 복사하지 않는다.
