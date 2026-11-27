@@ -8,14 +8,15 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
- * Background scheduling for the application process. A one-shot maintenance process that runs the
- * #417 payment recovery command must not run any scheduled job, so scheduling is off there.
+ * Background scheduling for the application process. A one-shot maintenance process that runs a
+ * #417 payment recovery command (success or failure confirmation) must not run any scheduled job,
+ * so scheduling is off there. Every listed property must be false or missing.
  */
 @Configuration
 @EnableScheduling
 @ConditionalOnProperty(
-    prefix = "pawcycle.maintenance.recover-processing-payment",
-    name = "enabled",
+    prefix = "pawcycle.maintenance",
+    name = {"recover-processing-payment.enabled", "confirm-processing-payment-failure.enabled"},
     havingValue = "false",
     matchIfMissing = true)
 class SchedulingConfiguration {

@@ -21,10 +21,15 @@ class TossSandboxPaymentAdapter implements TossPaymentAdapter {
     return new ConfirmResult("SUCCEEDED", "DONE");
   }
 
+  /**
+   * Local stand-in for the provider query. "aborted"/"expired" in the provider order id let the
+   * #417 failure confirmation command be exercised end to end on local-integration.
+   */
   @Override
   public ConfirmResult queryPayment(String providerOrderId, String paymentKey, BigDecimal amount) {
-    return providerOrderId.contains("unknown")
-        ? new ConfirmResult("UNKNOWN", "NO_RESPONSE")
-        : new ConfirmResult("SUCCEEDED", "DONE");
+    if (providerOrderId.contains("unknown")) return new ConfirmResult("UNKNOWN", "NO_RESPONSE");
+    if (providerOrderId.contains("aborted")) return new ConfirmResult("FAILED", "ABORTED");
+    if (providerOrderId.contains("expired")) return new ConfirmResult("FAILED", "EXPIRED");
+    return new ConfirmResult("SUCCEEDED", "DONE");
   }
 }
