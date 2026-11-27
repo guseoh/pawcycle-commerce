@@ -51,7 +51,7 @@ description: >-
 
 7. **PR handoff 계약 연결**
    - 승인된 작업이 commit/push/Draft PR 생성까지 포함하면 구현 에이전트가 구현과 정의된 검증을 마친 뒤 PR 본문 마지막에 `<!-- pawcycle-ai-handoff: review-ready -->`를 추가하도록 최종 Prompt에 넣는다.
-   - marker 의미와 manual-review reminder 동작은 루트 `AGENTS.md`의 `리뷰` 절을 따른다. 실행 Prompt에는 `@coderabbitai review`나 `@codex review` 호출을 넣지 않으며, 구현 에이전트가 자기 PR의 리뷰를 요청하거나 finding을 임의 resolve하지 않게 한다.
+   - marker 의미와 manual-review reminder 동작은 루트 `AGENTS.md`의 `리뷰` 절을 따른다. 사용자가 위임했거나 승인된 실행 범위에 포함된 경우 구현 에이전트도 user-authenticated GitHub 경로로 최신 HEAD에 `@coderabbitai review`·`@codex review`를 HEAD당 한 번 요청할 수 있다. 다만 finding을 근거 없이 임의 resolve하거나 요청 코멘트만으로 review 완료를 주장하지 않는다.
    - 구현 에이전트 최종 응답에는 PR 번호/URL, 최신 HEAD SHA, 실행한 검증과 미실행 항목을 짧게 남긴다. 사용자가 이 정보를 리뷰 에이전트에 수동 복사해야 하는 계약으로 만들지는 않는다.
 
 8. **작업 종료 Wiki Capture 연결**

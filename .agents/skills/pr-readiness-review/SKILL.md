@@ -37,7 +37,7 @@ handoff marker는 **검토 시작 신호**일 뿐 merge-ready, `Verified` 또는
 3. **리뷰 확인**
    - CodeRabbit·Codex Review의 자동 실행 조건, manual-review reminder 및 `@coderabbitai review`·`@codex review` 발행 위임 경계는 루트 `AGENTS.md`의 `리뷰` 절을 단일 원본으로 따른다.
    - **CodeRabbit evidence 확인**: 최신 HEAD가 실제 CodeRabbit review `commit_id`에 포함되는지, 또는 신뢰 가능한 CodeRabbit 봇의 완료 요약 coverage가 최신 HEAD를 포함하는지 확인한다. 완료 요약은 review 수행 증거일 뿐 finding 해결·병합 승인이 아니며, reminder comment나 passing status만으로 review 완료를 주장하지 않는다.
-   - **Manual review 요청 경계**: 위임이 없으면 임의로 `@coderabbitai review`·`@codex review`를 발행하지 않고 manual review 필요 상태를 보고한다. 위임된 경우에만 리뷰·오케스트레이터 에이전트가 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 한 번 요청한다.
+   - **Manual review 요청 경계**: 위임이 없으면 임의로 `@coderabbitai review`·`@codex review`를 발행하지 않고 manual review 필요 상태를 보고한다. 위임된 경우(승인된 실행 범위 포함)에는 구현 에이전트를 포함한 에이전트가 user-authenticated GitHub 경로로 최신 HEAD를 재확인한 뒤 HEAD당 한 번 요청할 수 있다. repository automation은 이 명령을 대신 발행하지 않는다.
    - **Codex Review evidence 확인**: `chatgpt-codex-connector` 봇의 review submission과 inline comment를 확인한다. `commit_id`가 최신 HEAD와 다르면 stale로 취급하며, 사용량 제한·설정 꺼짐·리뷰 없음은 `Codex Review 미실행`으로 기록한다.
    - 최신 HEAD에 대한 Codex `P0`·`P1` finding은 수정 확인, 계약·테스트 근거를 남긴 무효 판정, 사용자의 명시적 수용 중 하나로 닫히기 전까지 blocker다. `P2`는 유효하면 수정하거나 후속 작업으로 분리하고 판정 근거를 남긴다.
    - rate limit·파일 수·서비스 제한으로 최신 HEAD review가 없으면 한계를 기록하고 독립 diff 검토와 테스트로 보완한다. 필수 reviewer evidence와 예외 근거는 루트 `AGENTS.md`에 따라 확인하며, 근거가 없으면 미충족·Drift를 보고한다.
